@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -60,6 +61,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.NotificationSettingsViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.workspaceCaption
 
 // The option lists below carry UI text, so they are functions and not module-level
 // values: a `val` is computed once on class load and would keep the language of the
@@ -133,6 +135,7 @@ fun NotificationSettingsScreen(
     vm: NotificationSettingsViewModel = viewModel(key = "notif-settings"),
 ) {
     val c = Tessera.colors
+    val res = LocalResources.current
     val state by vm.state.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { vm.loadAll() }
 
@@ -212,7 +215,7 @@ fun NotificationSettingsScreen(
             RouteEditor(
                 edit = routeEdit!!,
                 channels = state.channels,
-                workspaces = state.workspaces.map { it.id to it.name },
+                workspaces = state.workspaces.map { it.id to workspaceCaption(res, it) },
                 saving = state.saving,
                 onSave = { vm.saveRoute(routeEdit!!.id, routeEdit!!.toRequest()) { routeEdit = null } },
                 onCancel = { routeEdit = null },

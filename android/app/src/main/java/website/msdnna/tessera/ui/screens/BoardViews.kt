@@ -157,25 +157,33 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
+import website.msdnna.tessera.util.isReviewColumn
 import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
 import website.msdnna.tessera.util.shortDate
 
-/** A kanban lane: title, swatch, count, cards, and (status lanes) a + button. */
-private class Lane(val id: String, val title: String, val color: String?, val tasks: List<Task>, val canAdd: Boolean)
-
 /**
- * Column names matching this get the ⅔-pie review status glyph (web REVIEW_RE parity).
+ * A kanban lane: title, swatch, count, cards, and (status lanes) a + button.
  *
- * Русские слова здесь — **данные, а не интерфейс**: имена колонок приходят с сервера
- * (дефолтный сид «На рассмотрении» и что там завёл пользователь) и не локализуются,
- * см. подводный камень 3 плана #2796. Поэтому строка помечена `i18n-data` — храповик
- * `HardcodedStringsTest` её пропускает.
+ * [title] — подпись для читателя: у засеянной колонки она собрана из ресурсов по
+ * `name_key`, у остальных это имя с сервера. Значок статуса выбирается не по ней, а
+ * по [nameKey] с откатом на собственное имя колонки ([rawTitle]): таблица слов в
+ * `isReviewColumn` сверяется с тем, что реально лежит в строке (#2800). У дорожек,
+ * которые колонками не являются (теги, этапы), оба поля совпадают с подписью.
  */
-private val REVIEW_RE = Regex("рассмотр|ревью|review|проверк", RegexOption.IGNORE_CASE) // i18n-data
+private class Lane(
+    val id: String,
+    val title: String,
+    val color: String?,
+    val tasks: List<Task>,
+    val canAdd: Boolean,
+    val nameKey: String? = null,
+    val rawTitle: String = title,
+)
 
 /**
  * A collapsed kanban column: a narrow 44dp strip with a chevron, the card count
@@ -274,6 +282,9 @@ fun KanbanView(
     // пересобрало бы кэш, и «Без тега» / «Без этапа» остались бы на прежнем языке.
     val noTagLabel = stringResource(R.string.board_lane_no_tag)
     val noMilestoneLabel = stringResource(R.string.task_milestone_none)
+    // Ресурсы — тоже ключ memo: подписи засеянных колонок собираются из них, а при
+    // смене языка AppLocale подставляет другой объект Resources (см. columnCaption).
+    val res = LocalResources.current
     val lanes = remember(
         state.groupByTag,
         state.groupByMilestone,
@@ -286,11 +297,12 @@ fun KanbanView(
         state.sortLevels,
         noTagLabel,
         noMilestoneLabel,
+        res,
     ) {
         when {
             state.groupByMilestone -> milestoneLanes(state, noMilestoneLabel)
             state.groupByTag -> tagLanes(state, noTagLabel)
-            else -> columnLanes(state)
+            else -> columnLanes(state, res)
         }
     }
     val scrollState = rememberScrollState()
@@ -468,7 +480,7 @@ fun KanbanView(
                                         state.groupByTag -> Ion.PRICETAG
                                         lane.id == state.doneColumnId -> Ion.STATUS_DONE
                                         lane.id == state.sortedColumns.firstOrNull()?.id -> Ion.STATUS_TODO
-                                        REVIEW_RE.containsMatchIn(lane.title) -> Ion.STATUS_REVIEW
+                                        isReviewColumn(lane.nameKey, lane.rawTitle) -> Ion.STATUS_REVIEW
                                         else -> Ion.STATUS_PROGRESS
                                     }
                                     IonIcon(laneIcon, size = 16.dp, tint = laneColor, gradient = laneHasColor)
@@ -730,6 +742,7 @@ private fun CreateText(label: String, modifier: Modifier = Modifier, onClick: ()
 @Composable
 fun BoardListView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
     val c = Tessera.colors
+    val res = LocalResources.current
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(12.dp),
@@ -741,7 +754,7 @@ fun BoardListView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) ->
                 Row(Modifier.padding(top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     ColorDot(parseHexColor(col.color, c.text3))
                     Spacer(Modifier.width(8.dp))
-                    Text(col.name, color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(columnCaption(res, col), color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(6.dp))
                     Text("${colTasks.size}", color = c.text3, fontSize = 12.sp)
                 }
@@ -1265,8 +1278,13 @@ private fun MatrixCard(
     }
 }
 
-private fun columnLanes(state: BoardUiState): List<Lane> =
-    state.sortedColumns.map { col -> Lane(col.id, col.name, col.color, state.visibleTasksIn(col.id), canAdd = true) }
+private fun columnLanes(state: BoardUiState, res: Resources): List<Lane> =
+    state.sortedColumns.map { col ->
+        Lane(
+            col.id, columnCaption(res, col), col.color, state.visibleTasksIn(col.id),
+            canAdd = true, nameKey = col.nameKey, rawTitle = col.name,
+        )
+    }
 
 private fun tagLanes(state: BoardUiState, noTagLabel: String): List<Lane> {
     // In namespace mode only tags carrying the prefix become columns; "Без тега"
@@ -1664,9 +1682,10 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val noTagLabel = stringResource(R.string.board_lane_no_tag)
     val unassignedLabel = stringResource(R.string.board_lane_unassigned)
     val allTasksLabel = stringResource(R.string.board_lane_all_tasks)
+    val res = LocalResources.current
     val lanes = remember(
         scheduled, state.groupMode, state.tagPrefix, state.tags, state.columns, state.members,
-        noTagLabel, unassignedLabel, allTasksLabel,
+        noTagLabel, unassignedLabel, allTasksLabel, res,
     ) {
         val mode = state.groupMode
         val members = state.membersMap
@@ -1675,7 +1694,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             map.getOrPut(key) { (label to color) to mutableListOf() }.second
         // Status grouping seeds lanes in column order so empty columns still show.
         if (mode == "status") {
-            for (col in state.sortedColumns) bucket(col.id, col.name, tagColor(col.color))
+            for (col in state.sortedColumns) bucket(col.id, columnCaption(res, col), tagColor(col.color))
         }
         for (t in scheduled) {
             when (mode) {
@@ -1698,7 +1717,11 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
 
                 else -> {
                     val col = state.sortedColumns.find { it.id == t.columnId }
-                    bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+                    bucket(
+                        t.columnId.ifBlank { "∅" },
+                        col?.let { columnCaption(res, it) } ?: "—",
+                        tagColor(col?.color),
+                    ).add(t)
                 }
             }
         }
@@ -2053,9 +2076,10 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val noTagLabel = stringResource(R.string.board_lane_no_tag)
     val unassignedLabel = stringResource(R.string.board_lane_unassigned)
     val allTasksLabel = stringResource(R.string.board_lane_all_tasks)
+    val res = LocalResources.current
     val lanes = remember(
         orderedScheduled, state.groupMode, state.tagPrefix, state.tags, state.columns, state.members,
-        noTagLabel, unassignedLabel, allTasksLabel,
+        noTagLabel, unassignedLabel, allTasksLabel, res,
     ) {
         val mode = state.groupMode
         val members = state.membersMap
@@ -2063,7 +2087,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         fun bucket(key: String, label: String, color: Color?) =
             map.getOrPut(key) { (label to color) to mutableListOf() }.second
         if (mode == "status") {
-            for (col in state.sortedColumns) bucket(col.id, col.name, tagColor(col.color))
+            for (col in state.sortedColumns) bucket(col.id, columnCaption(res, col), tagColor(col.color))
         }
         for (t in orderedScheduled) {
             when (mode) {
@@ -2086,7 +2110,11 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
 
                 else -> {
                     val col = state.sortedColumns.find { it.id == t.columnId }
-                    bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+                    bucket(
+                        t.columnId.ifBlank { "∅" },
+                        col?.let { columnCaption(res, it) } ?: "—",
+                        tagColor(col?.color),
+                    ).add(t)
                 }
             }
         }

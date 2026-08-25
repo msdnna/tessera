@@ -94,6 +94,7 @@ import website.msdnna.tessera.util.GitlabAuthor
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.boardGitlabAuthors
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.prefixLabel
 import website.msdnna.tessera.util.tagNamespace
 
@@ -163,6 +164,7 @@ fun BoardComposerBar(
     modifier: Modifier = Modifier,
 ) {
     val c = Tessera.colors
+    val barRes = LocalResources.current
     val f = state.filter
     val clearable = hasClearable(state)
     val sortDrag = remember { SortDragState() }
@@ -263,7 +265,7 @@ fun BoardComposerBar(
             }
             f.statuses.forEach { id ->
                 FacetChip(
-                    state.sortedColumns.find { it.id == id }?.name ?: "—",
+                    state.sortedColumns.find { it.id == id }?.let { columnCaption(barRes, it) } ?: "—",
                     icon = Ion.LIST,
                     onRemove = { vm.setFilter(f.copy(statuses = f.statuses - id)) },
                 )
@@ -440,6 +442,7 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
 @Composable
 private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
     val c = Tessera.colors
+    val res = LocalResources.current
     val f = state.filter
     var menu by remember { mutableStateOf(false) }
     var category by remember { mutableStateOf<String?>(null) }
@@ -592,7 +595,7 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                 "fs" -> {
                     BackRow { category = null }
                     state.sortedColumns.filter { it.id !in f.statuses }.forEach { col ->
-                        TMenuItem(col.name, onClick = {
+                        TMenuItem(columnCaption(res, col), onClick = {
                             vm.setFilter(f.copy(statuses = f.statuses + col.id))
                             close()
                         })

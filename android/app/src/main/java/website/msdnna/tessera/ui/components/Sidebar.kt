@@ -80,6 +80,7 @@ import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.WhatsNewSpotlight
+import website.msdnna.tessera.util.workspaceCaption
 
 // ── Layout metrics ────────────────────────────────────────────────────────────
 // Per-nesting-level indent. Must match the projection step used by the DnD code
@@ -166,6 +167,7 @@ fun Sidebar(
     val c = Tessera.colors
     val density = LocalDensity.current
     val focus = LocalFocusManager.current
+    val res = LocalResources.current
     var addWorkspace by remember { mutableStateOf(false) }
     var wsMenu by remember { mutableStateOf(false) }
     var wsEstimating by remember { mutableStateOf(false) }
@@ -256,12 +258,15 @@ fun Sidebar(
                             .clickableNoRipple { wsMenu = true }.padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(state.current?.name ?: "—", color = c.text1, fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                        Text(
+                            state.current?.let { workspaceCaption(res, it) } ?: "—",
+                            color = c.text1, fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f),
+                        )
                         IonIcon(Ion.CHEVRON_DOWN, size = 16.dp, tint = c.text3)
                     }
                     TDropdown(expanded = wsMenu, onDismiss = { wsMenu = false }) {
                         state.workspaces.forEach { ws ->
-                            TMenuItem(ws.name, onClick = {
+                            TMenuItem(workspaceCaption(res, ws), onClick = {
                                 wsMenu = false
                                 vm.selectWorkspace(ws.id)
                             })
@@ -406,7 +411,7 @@ fun Sidebar(
         if (wsEstimating) {
             EstimationDialog(
                 scope = "workspace",
-                name = ws.name,
+                name = workspaceCaption(res, ws),
                 current = ws.estimation,
                 inherited = website.msdnna.tessera.util.Estimation.DEFAULT,
                 onSave = { vm.setWorkspaceEstimation(ws.id, it) },
@@ -416,8 +421,8 @@ fun Sidebar(
         if (confirmDeleteWs) {
             TConfirmByNameDialog(
                 title = stringResource(R.string.sidebar_ws_delete),
-                message = stringResource(R.string.sidebar_ws_delete_message, ws.name),
-                name = ws.name,
+                message = stringResource(R.string.sidebar_ws_delete_message, workspaceCaption(res, ws)),
+                name = workspaceCaption(res, ws),
                 onConfirm = {
                     confirmDeleteWs = false
                     vm.removeWorkspace(ws.id) { onOpenHome() }
@@ -803,7 +808,10 @@ private fun TransferProjectDialog(
                             .padding(horizontal = 10.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(ws.name, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text(
+                            workspaceCaption(LocalResources.current, ws),
+                            color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f),
+                        )
                         if (on) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
                     }
                 }

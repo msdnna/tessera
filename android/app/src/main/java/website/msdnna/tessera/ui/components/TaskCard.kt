@@ -77,6 +77,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.divergedColumn
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
@@ -392,7 +393,10 @@ private fun CardHeader(
                                 .background(accentGradient(parseHexColor(divergedCol.color, c.text3))),
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text(divergedCol.name, color = c.text2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            columnCaption(LocalResources.current, divergedCol),
+                            color = c.text2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
                 if (showGitlab) {

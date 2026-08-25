@@ -1091,6 +1091,16 @@
         <item>Срочный</item>
     </string-array>
 
+    <!-- Подписи имён, которые рождаются на сервере: личное пространство при регистрации
+         и четыре засеваемых колонки доски. Сервер шлёт рядом с именем ключ (name_key),
+         подпись собирается по нему в util/DefaultNames — имя, которое завёл пользователь,
+         ключа не имеет и показывается как есть на любом языке (#2800). -->
+    <string name="default_workspace_personal">Личное пространство</string>
+    <string name="default_column_todo">К работе</string>
+    <string name="default_column_in_progress">В процессе</string>
+    <string name="default_column_review">На рассмотрении</string>
+    <string name="default_column_done">Готово</string>
+
     <!-- Названия семи акцентных схем дизайн-языка (ключ схемы — в accent, не здесь) -->
     <string name="accent_purple">Фиолетовый</string>
     <string name="accent_blue">Синий</string>

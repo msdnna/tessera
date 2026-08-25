@@ -69,6 +69,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.GitlabViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.canonPrefix
+import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.localDateTimeLabel
 
 private val MapActions = setOf("status", "priority", "board")
@@ -521,6 +522,12 @@ private fun IntegrationEditor(
             addAll(initial.map { EditBinding(it) })
         }
     }
+    // Подписи колонок для читателя: правило и привязка хранят серверные имя/id, а
+    // показывается перевод засеянной колонки (#2800). Ресурсы — ключ memo: при смене
+    // языка AppLocale подставляет другой объект, и подписи пересобираются.
+    val res = LocalResources.current
+    val columnNames = remember(state.columns, res) { state.columns.map { it.name to columnCaption(res, it) } }
+    val columnLabels = remember(state.columns, res) { state.columns.map { it.id to columnCaption(res, it) } }
     // Prefill each prefix rule's friendly name from the loaded store (web GitLabModal
     // loadPrefixNames). Re-runs when the target project's names load / change.
     LaunchedEffect(state.prefixNames, rules) {
@@ -594,7 +601,7 @@ private fun IntegrationEditor(
         )
         Spacer(Modifier.height(8.dp))
         bindings.forEachIndexed { i, b ->
-            BindingCard(b, state.columnOptions, onRemove = { bindings.removeAt(i) })
+            BindingCard(b, columnLabels, onRemove = { bindings.removeAt(i) })
             Spacer(Modifier.height(8.dp))
         }
         DashedAddButton(stringResource(R.string.gitlab_add_action), onClick = {
@@ -605,7 +612,11 @@ private fun IntegrationEditor(
     Spacer(Modifier.height(14.dp))
     SectionLabel(stringResource(R.string.gitlab_section_rules))
     Field(stringResource(R.string.gitlab_field_default_column)) {
-        TSelect(defaultColumn.ifBlank { "—" }, state.columns.map { it to it }) { defaultColumn = it }
+        // Значение правила — имя колонки на сервере (по нему матчит синхронизация),
+        // подпись — на языке читателя.
+        TSelect(columnNames.find { it.first == defaultColumn }?.second ?: defaultColumn.ifBlank { "—" }, columnNames) {
+            defaultColumn = it
+        }
     }
     Field(stringResource(R.string.gitlab_field_default_action)) {
         val opts = defaultActionOptions()
@@ -615,7 +626,7 @@ private fun IntegrationEditor(
 
     Spacer(Modifier.height(8.dp))
     rules.forEachIndexed { i, rule ->
-        RuleCard(rule, state.columns, state.boards.map { it.id to it.label }, onRemove = { rules.removeAt(i) })
+        RuleCard(rule, columnNames, state.boards.map { it.id to it.label }, onRemove = { rules.removeAt(i) })
         Spacer(Modifier.height(8.dp))
     }
     DashedAddButton(stringResource(R.string.gitlab_add_rule), onClick = { rules.add(EditRule(GitlabRule())) })
@@ -652,7 +663,7 @@ private fun IntegrationEditor(
                                 pushCreate = integ.writeback.pushCreate,
                                 fetchTemplates = integ.writeback.fetchTemplates,
                                 bindings = if (wbEnabled) {
-                                    bindings.map { b -> b.toBinding { id -> state.columnOptions.find { it.first == id }?.second ?: "" } }
+                                    bindings.map { b -> b.toBinding { id -> state.columns.find { it.id == id }?.name ?: "" } }
                                 } else {
                                     emptyList()
                                 },
@@ -669,7 +680,13 @@ private fun IntegrationEditor(
 }
 
 @Composable
-private fun RuleCard(rule: EditRule, columns: List<String>, boards: List<Pair<String, String>>, onRemove: () -> Unit) {
+private fun RuleCard(
+    rule: EditRule,
+    /** (имя колонки на сервере → подпись для читателя): правило хранит имя. */
+    columns: List<Pair<String, String>>,
+    boards: List<Pair<String, String>>,
+    onRemove: () -> Unit,
+) {
     val c = Tessera.colors
     TCard {
         Column {
@@ -712,7 +729,7 @@ private fun RuleCard(rule: EditRule, columns: List<String>, boards: List<Pair<St
             }
             if (rule.action in MapActions) {
                 val targets: List<Pair<String, String>> = when (rule.action) {
-                    "status" -> columns.map { it to it }
+                    "status" -> columns
 
                     "priority" -> stringArrayResource(R.array.task_priority_labels)
                         .mapIndexed { i, l -> i.toString() to l }

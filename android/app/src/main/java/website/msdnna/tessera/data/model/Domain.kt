@@ -19,6 +19,9 @@ data class EstimationConfig(
 data class Workspace(
     @SerializedName("id") val id: String = "",
     @SerializedName("name") val name: String = "",
+    /** Ключ серверного дефолтного имени (`personal`), null у всего, что назвал
+     *  пользователь. Подпись собирает `util/DefaultNames`, см. #2800. */
+    @SerializedName("name_key") val nameKey: String? = null,
     @SerializedName("owner_id") val ownerId: String = "",
     @SerializedName("task_counter") val taskCounter: Long = 0,
     @SerializedName("estimation") val estimation: EstimationConfig? = null,
@@ -78,6 +81,9 @@ data class BoardColumn(
     @SerializedName("id") val id: String = "",
     @SerializedName("board_id") val boardId: String = "",
     @SerializedName("name") val name: String = "",
+    /** Ключ засеянной колонки (`todo`/`in_progress`/`review`/`done`); сервер гасит
+     *  его при переименовании, поэтому null = имя завёл пользователь. См. #2800. */
+    @SerializedName("name_key") val nameKey: String? = null,
     @SerializedName("color") val color: String = "",
     @SerializedName("position") val position: Double = 0.0,
 )

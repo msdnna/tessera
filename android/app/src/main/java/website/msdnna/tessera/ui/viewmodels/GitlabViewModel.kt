@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.GitlabIntegration
 import website.msdnna.tessera.data.model.GitlabIntegrationRequest
 import website.msdnna.tessera.data.model.TagPrefixEntry
@@ -31,11 +32,11 @@ data class GitlabUiState(
     val isAdmin: Boolean = false,
     // pickers
     val boards: List<BoardOption> = emptyList(),
-    // editor context: columns + prefix display names of the board being edited
-    val columns: List<String> = emptyList(),
-    // column (id, name) pairs of the edited board — for the write-back binding
-    // column trigger (matches by stable id).
-    val columnOptions: List<Pair<String, String>> = emptyList(),
+    // editor context: columns + prefix display names of the board being edited.
+    // Колонки едут целиком (а не парами id/имя): экрану нужны и стабильный id, и имя
+    // для правила, и `name_key`, чтобы подписать засеянную колонку на языке читателя
+    // (#2800) — сохраняется при этом всегда имя, а не подпись.
+    val columns: List<BoardColumn> = emptyList(),
     val prefixNames: Map<String, String> = emptyMap(),
     val saving: Boolean = false,
     // id of the binding a sync is currently running for (null = none)
@@ -123,7 +124,7 @@ class GitlabViewModel : ViewModel() {
     fun loadColumns(boardId: String) {
         viewModelScope.launch {
             val cols = runCatching { repo.columns(boardId) }.getOrDefault(emptyList())
-            _state.update { it.copy(columns = cols.map { c -> c.second }, columnOptions = cols) }
+            _state.update { it.copy(columns = cols) }
         }
     }
 
@@ -145,7 +146,7 @@ class GitlabViewModel : ViewModel() {
     fun prepareEditor(integ: GitlabIntegration?) {
         val boardId = integ?.boardId
         if (boardId.isNullOrBlank()) {
-            _state.update { it.copy(columns = emptyList(), columnOptions = emptyList(), prefixNames = emptyMap()) }
+            _state.update { it.copy(columns = emptyList(), prefixNames = emptyMap()) }
             return
         }
         loadColumns(boardId)

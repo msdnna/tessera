@@ -1064,6 +1064,14 @@
         <item>Urgent</item>
     </string-array>
 
+    <!-- Captions for the names born on the server: the personal workspace and the four
+         seeded board columns (#2800). -->
+    <string name="default_workspace_personal">Personal space</string>
+    <string name="default_column_todo">To do</string>
+    <string name="default_column_in_progress">In progress</string>
+    <string name="default_column_review">In review</string>
+    <string name="default_column_done">Done</string>
+
     <!-- Names of the seven accent schemes of the design language -->
     <string name="accent_purple">Purple</string>
     <string name="accent_blue">Blue</string>

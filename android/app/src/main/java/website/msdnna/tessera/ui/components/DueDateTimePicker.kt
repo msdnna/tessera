@@ -53,6 +53,7 @@ import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.millisDayKey
 import website.msdnna.tessera.util.millisToUtcIso
@@ -130,6 +131,9 @@ fun DueDateTimePicker(
     onDismiss: () -> Unit,
 ) {
     val c = Tessera.colors
+    // Не `res`: ниже так зовётся @StringRes-элемент TriggerOptions, а это ресурсы
+    // читателя — из них собираются подписи засеянных колонок (#2800).
+    val colRes = LocalResources.current
     val ws = AppContainer.prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences()).value.weekStart
     // The calendar edits one endpoint at a time; `editTarget` says which. Each
     // endpoint keeps its own working calendar (start = left bar edge, due = right).
@@ -399,7 +403,7 @@ fun DueDateTimePicker(
                     Spacer(Modifier.height(8.dp))
                     SelectField(
                         stringResource(R.string.due_picker_trigger_column),
-                        columns.map { it.id as String? to it.name },
+                        columns.map { it.id as String? to columnCaption(colRes, it) },
                         triggerColumn,
                         placeholder = stringResource(R.string.due_picker_trigger_column_hint),
                     ) { triggerColumn = it }
@@ -409,7 +413,7 @@ fun DueDateTimePicker(
                 SelectField(
                     stringResource(R.string.due_picker_move_to),
                     listOf<Pair<String?, String>>(null to stringResource(R.string.due_picker_first_column)) +
-                        columns.map { it.id as String? to it.name },
+                        columns.map { it.id as String? to columnCaption(colRes, it) },
                     targetColumn,
                 ) { targetColumn = it }
 

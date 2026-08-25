@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -78,6 +79,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.workspaceCaption
 
 /**
  * Board detail: a compact icon toolbar (view / group / sort / filter / subtasks
@@ -239,7 +241,9 @@ fun BoardScreen(
         val project = wsState.projects.find { it.id == board.projectId }
         val group = project?.groupId?.let { gid -> wsState.groups.find { it.id == gid } }
         val breadcrumb = listOfNotNull(
-            wsState.current?.name,
+            // Группа, проект и доска — имена, которые завёл пользователь; пространство
+            // может быть засеянным «личным», и его подпись собирается по name_key (#2800).
+            wsState.current?.let { workspaceCaption(LocalResources.current, it) },
             group?.name,
             project?.name,
             board.name,

@@ -129,6 +129,7 @@ import website.msdnna.tessera.util.MentionItem
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
+import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.doneTarget
 import website.msdnna.tessera.util.dueLabel
 import website.msdnna.tessera.util.groupThreads
@@ -728,6 +729,7 @@ private fun ColumnChipPicker(
     val c = Tessera.colors
     val cols = remember(columns) { sortedColumns(columns) }
     val current = columnById(columns, columnId)
+    val res = LocalResources.current
     var menu by remember { mutableStateOf(false) }
     Box {
         Row(
@@ -741,7 +743,7 @@ private fun ColumnChipPicker(
             ColumnDot(current, size = if (mini) 6.dp else 8.dp)
             Spacer(Modifier.width(6.dp))
             Text(
-                current?.name ?: "—",
+                current?.let { columnCaption(res, it) } ?: "—",
                 color = c.text2,
                 fontSize = if (mini) 11.sp else 13.sp,
                 maxLines = 1,
@@ -763,7 +765,7 @@ private fun ColumnChipPicker(
                     ColumnDot(col)
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        col.name,
+                        columnCaption(res, col),
                         color = if (col.id == columnId) c.primary else c.text1,
                         fontSize = 14.sp,
                         fontWeight = if (col.id == columnId) FontWeight.Medium else FontWeight.Normal,
