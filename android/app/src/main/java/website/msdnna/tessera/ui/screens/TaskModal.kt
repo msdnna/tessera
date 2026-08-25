@@ -180,6 +180,10 @@ fun TaskModal(
     metaTagPrefixes: Set<String> = emptySet(),
     members: List<Member>,
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember> = emptyList(),
+    /** This board's GitLab create-issue capability — default (off) for hosts without
+     *  an integration, so the row simply doesn't appear. */
+    gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps =
+        website.msdnna.tessera.util.GitlabCreateCaps(),
     milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
     parentCandidates: List<Task>,
     /** Every card of the host board — only used to work out a moved task's landing
@@ -234,6 +238,15 @@ fun TaskModal(
     // A failed mutation on an open task was silent until now: `state.error` only
     // renders in place of a modal that has no detail to show. A comment whose
     // commands all fail is a 400 with nothing stored — the user has to hear it.
+    // Creating a GitLab issue is the one mutation whose success is worth announcing:
+    // the row turns into a link, but the issue number (and what happened to the
+    // attachments) is only visible here.
+    LaunchedEffect(state.glCreatedNotice) {
+        val notice = state.glCreatedNotice ?: return@LaunchedEffect
+        android.widget.Toast.makeText(toastCtx, notice, android.widget.Toast.LENGTH_LONG).show()
+        vm.consumeCreatedNotice()
+    }
+
     LaunchedEffect(state.error) {
         val err = state.error ?: return@LaunchedEffect
         if (state.detail == null) return@LaunchedEffect
@@ -328,6 +341,12 @@ fun TaskModal(
                             gitlabAssignees = detail.gitlabAssignees,
                             createdBy = detail.createdBy,
                             gitlab = detail.gitlab,
+                            gitlabCreate = gitlabCreate,
+                            glCreating = state.glCreating,
+                            glTemplates = state.glTemplates,
+                            onLoadTemplates = { vm.loadGitlabTemplates(gitlabCreate.integrationId) },
+                            onApplyTemplate = { description = it },
+                            onCreateIssue = { vm.createGitlabIssue(title, description) },
                             taskTagIds = detail.tags.map { it.id },
                             parentId = detail.parentId,
                             milestoneId = detail.milestoneId,
@@ -532,6 +551,14 @@ private fun PropertyGrid(
     gitlabAssignees: List<GitlabAssignee>,
     createdBy: String?,
     gitlab: GitlabLink?,
+    /** Whether this board's GitLab binding allows creating an issue from a task (and
+     *  prefilling it from a repo template) — resolved by the board view-model. */
+    gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps,
+    glCreating: Boolean,
+    glTemplates: List<website.msdnna.tessera.data.model.GitlabIssueTemplate>,
+    onLoadTemplates: () -> Unit,
+    onApplyTemplate: (String) -> Unit,
+    onCreateIssue: () -> Unit,
     taskTagIds: List<String>,
     parentId: String?,
     milestoneId: String?,
@@ -583,6 +610,20 @@ private fun PropertyGrid(
         }
         if (gitlab != null) {
             PropRow(Ion.GITLAB, "GitLab") { GitlabLinkValue(gitlab) }
+        } else if (gitlabCreate.canCreate) {
+            // Creation is offered only on the board whose binding allows it and only
+            // while the task isn't linked yet — the linked half of the row above is
+            // the same property, further along (web TaskModal.vue parity).
+            PropRow(Ion.GITLAB, "GitLab") {
+                GitlabCreateValue(
+                    creating = glCreating,
+                    templates = if (gitlabCreate.fetchTemplates) glTemplates else emptyList(),
+                    withTemplates = gitlabCreate.fetchTemplates,
+                    onOpenTemplates = onLoadTemplates,
+                    onPickTemplate = onApplyTemplate,
+                    onCreate = onCreateIssue,
+                )
+            }
         }
         PropRow(Ion.PRICETAG, "Теги") {
             TagsValue(taskTagIds, tags, prefixNames, metaTagPrefixes, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} })
@@ -1073,6 +1114,78 @@ private fun GitlabLinkValue(gitlab: GitlabLink) {
         Text("!${gitlab.iid}", fontSize = 14.sp, style = TextStyle(brush = accentGradient(c.primary)))
         Spacer(Modifier.width(6.dp))
         IonIcon(Ion.LINK, size = 13.dp, tint = c.text3)
+    }
+}
+
+/**
+ * «Создать issue» for a task the integration board can push, with the repo's issue
+ * templates beside it when the binding fetches them.
+ *
+ * The picker sits in this row rather than over the description editor (where web
+ * puts it): on Android the description lives in a tab of its own, and a control that
+ * only exists for an unlinked task on a create-enabled board would be invisible
+ * whenever that tab isn't the open one. Picking a template fills the description
+ * editor — the creation call saves it first, so it becomes the issue body.
+ */
+@Composable
+private fun GitlabCreateValue(
+    creating: Boolean,
+    templates: List<website.msdnna.tessera.data.model.GitlabIssueTemplate>,
+    withTemplates: Boolean,
+    onOpenTemplates: () -> Unit,
+    onPickTemplate: (String) -> Unit,
+    onCreate: () -> Unit,
+) {
+    val c = Tessera.colors
+    var menu by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            if (creating) "Создание…" else "Создать issue",
+            color = if (creating) c.text3 else c.text1,
+            fontSize = 14.sp,
+            modifier = Modifier
+                .testTag(TestTags.TASK_GITLAB_CREATE)
+                .clickableNoRipple(enabled = !creating) { onCreate() },
+        )
+        if (withTemplates) {
+            Spacer(Modifier.width(14.dp))
+            Box {
+                Text(
+                    "Шаблон",
+                    color = c.text3,
+                    fontSize = 13.sp,
+                    modifier = Modifier
+                        .testTag(TestTags.TASK_GITLAB_TEMPLATE)
+                        .clickableNoRipple(enabled = !creating) {
+                            onOpenTemplates()
+                            menu = true
+                        },
+                )
+                TDropdown(expanded = menu, onDismiss = { menu = false }) {
+                    if (templates.isEmpty()) {
+                        Text(
+                            "Шаблонов нет",
+                            color = c.text3,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
+                    templates.forEach { tpl ->
+                        Text(
+                            tpl.name,
+                            color = c.text1,
+                            fontSize = 14.sp,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickableNoRipple {
+                                    menu = false
+                                    onPickTemplate(tpl.content)
+                                }
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

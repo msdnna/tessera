@@ -319,6 +319,20 @@ interface ApiService {
     @GET("workspaces/{id}/gitlab/members")
     suspend fun gitlabMembers(@Path("id") workspaceId: String): List<GitlabMember>?
 
+    /** Creates a GitLab issue from this task (write-back `push_create`). */
+    @POST("tasks/{id}/gitlab-issue")
+    suspend fun createGitlabIssue(
+        @Path("id") taskId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateGitlabIssueRequest,
+    ): website.msdnna.tessera.data.model.GitlabIssueCreated
+
+    /** Issue templates of the bound GL project (soft-fails to `[]` on the backend). */
+    @GET("workspaces/{id}/gitlab/issue-templates")
+    suspend fun gitlabIssueTemplates(
+        @Path("id") workspaceId: String,
+        @Query("integration_id") integrationId: String?,
+    ): List<website.msdnna.tessera.data.model.GitlabIssueTemplate>?
+
     // ── Milestones («Этап»): project-scoped CRUD + task assignment + GL push ──
     @GET("projects/{id}/milestones")
     suspend fun milestones(@Path("id") projectId: String): List<website.msdnna.tessera.data.model.Milestone>?

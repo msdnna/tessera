@@ -113,6 +113,12 @@ object TestTags {
 
     fun taskStatusOption(columnId: String) = "task-status-option:$columnId"
 
+    /** «Создать issue» in the GitLab row of an unlinked task, and the issue-template
+     *  picker beside it. Both only exist on a board whose GitLab binding allows
+     *  creation (`push_create` / `fetch_templates`). */
+    const val TASK_GITLAB_CREATE = "task-gitlab-create"
+    const val TASK_GITLAB_TEMPLATE = "task-gitlab-template"
+
     /** The priority chip and its picker rows, keyed by level (0 = none). */
     const val TASK_PRIORITY = "task-priority"
 
