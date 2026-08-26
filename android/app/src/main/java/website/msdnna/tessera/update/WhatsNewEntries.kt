@@ -30,6 +30,23 @@ import website.msdnna.tessera.util.WhatsNewSpotlight
  */
 val WhatsNewEntries: List<WhatsNewEntry> = listOf(
     WhatsNewEntry(
+        version = "0.72.0",
+        date = "2026-08-26",
+        titleRes = R.string.whatsnew_v0_72_0_title,
+        itemsRes = R.array.whatsnew_v0_72_0_items,
+    ),
+    WhatsNewEntry(
+        version = "0.71.0",
+        date = "2026-08-24",
+        titleRes = R.string.whatsnew_v0_71_0_title,
+        itemsRes = R.array.whatsnew_v0_71_0_items,
+        spotlight = WhatsNewSpotlight(
+            navKey = "help",
+            titleRes = R.string.whatsnew_spotlight_help_title,
+            bodyRes = R.string.whatsnew_spotlight_help_body,
+        ),
+    ),
+    WhatsNewEntry(
         version = "0.70.0",
         date = "2026-08-20",
         titleRes = R.string.whatsnew_v0_70_0_title,

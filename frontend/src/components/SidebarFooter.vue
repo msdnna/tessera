@@ -159,15 +159,21 @@ function logout() {
         :options="helpOptions"
         @select="onHelpSelect"
       >
-        <n-button
-          quaternary
-          circle
-          size="small"
-          :aria-label="t('shell.user.help')"
-          data-tour="footer-help"
-        >
-          <n-icon :component="HelpCircleOutline" />
-        </n-button>
+        <n-tooltip>
+          <template #trigger>
+            <n-button
+              quaternary
+              circle
+              size="small"
+              :aria-label="t('shell.user.help')"
+              data-tour="footer-help"
+              data-nav="help"
+            >
+              <n-icon :component="HelpCircleOutline" />
+            </n-button>
+          </template>
+          {{ t('shell.user.help') }}
+        </n-tooltip>
       </n-dropdown>
       <n-tooltip>
         <template #trigger>

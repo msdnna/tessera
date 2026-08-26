@@ -44,10 +44,15 @@ function place() {
   const t = targetEl.getBoundingClientRect()
   const gap = 76
   const popW = pop.value.offsetWidth || 240
+  const popH = pop.value.offsetHeight || 96
   let left = t.right + gap
   // Keep the popover on-screen if the rail is wide / viewport is narrow.
   left = Math.min(left, window.innerWidth - popW - 16)
-  const top = Math.round(t.bottom + 4)
+  // Default: hang the popover just below the target's bottom. For a target low in
+  // the viewport (the footer «Помощь» button) that would run off the bottom edge,
+  // so flip it above the target instead — the arrow then draws downward to it.
+  const below = t.bottom + 4 + popH <= window.innerHeight - 8
+  const top = below ? Math.round(t.bottom + 4) : Math.round(t.top - 4 - popH)
   popStyle.value = { left: left + 'px', top: top + 'px' }
 
   nextTick(() => {
@@ -58,10 +63,15 @@ function place() {
     const anchor =
       targetEl.querySelector('.nav-badge') || targetEl.querySelector('span') || targetEl
     const a = anchor.getBoundingClientRect()
-    // Arrow: from the popover's top-left corner to just right of the label/badge.
+    // Arrow: from the popover's near-left corner to just right of the label/badge.
+    // When the popover sits above the target, leave from its bottom edge so the
+    // line curves down onto the item instead of doubling back over itself.
     const x1 = p.left + 14
-    const y1 = p.top + 8
-    const x2 = a.right + 12
+    const y1 = below ? p.top + 8 : p.bottom - 8
+    // Nav rows: land the tip just past the label/badge. A flipped (footer) target is
+    // a compact icon button, not a wide row — aim at its centre so the arrowhead sits
+    // on the icon itself rather than in the gap toward the next control.
+    const x2 = below ? a.right + 12 : a.left + a.width / 2
     const y2 = t.top + t.height / 2
     // Tighter arc for the narrow gap (smaller "radius" than the mockup) and a
     // sharp head that the stroke stops ARROW_HEAD px short of — shared with the

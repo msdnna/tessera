@@ -1,9 +1,16 @@
 {
+  "i18n": {
+    "title": "English and Russian interface",
+    "item1": "The app now has a language switch — English or Russian. Change it in Settings → Language; your choice is remembered on the device.",
+    "item2": "Date and time formats and the first day of the week fall in behind the language, and can be set in Settings too."
+  },
   "helpCenter": {
     "title": "Help centre",
     "item1": "A question-mark “Help” button now sits at the bottom of the sidebar, holding both the guided tour and the new help centre. The manual opens as a window over the board — with section navigation, search across every article and a table of contents — so you can read it without leaving your work.",
     "item2": "The “?” in the topbar and in the task window opens the article about the very screen in front of you. Help articles also turn up in the global search.",
-    "item3": "The articles carry interface screenshots, and in the dark theme those are dark too."
+    "item3": "The articles carry interface screenshots, and in the dark theme those are dark too.",
+    "spotlightTitle": "Meet the “Help” button",
+    "spotlightBody": "The question-mark button at the bottom of the sidebar: the guided tour and the help centre with search across every article."
   },
   "tourDnd": {
     "title": "The guide now shows drag and drop",

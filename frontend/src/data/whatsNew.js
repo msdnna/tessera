@@ -26,6 +26,12 @@
 //              elements.
 export const WHATS_NEW = [
   {
+    version: '0.176.0',
+    date: '2026-08-26',
+    titleKey: 'whatsNew.i18n.title',
+    itemKeys: ['whatsNew.i18n.item1', 'whatsNew.i18n.item2'],
+  },
+  {
     version: '0.175.0',
     date: '2026-08-24',
     titleKey: 'whatsNew.helpCenter.title',
@@ -34,6 +40,11 @@ export const WHATS_NEW = [
       'whatsNew.helpCenter.item2',
       'whatsNew.helpCenter.item3',
     ],
+    spotlight: {
+      navKey: 'help',
+      titleKey: 'whatsNew.helpCenter.spotlightTitle',
+      bodyKey: 'whatsNew.helpCenter.spotlightBody',
+    },
   },
   {
     version: '0.173.0',

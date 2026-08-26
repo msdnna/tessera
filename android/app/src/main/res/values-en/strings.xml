@@ -1122,6 +1122,18 @@
     <string name="conflict_state_open">Open</string>
 
     <!-- "What's new" release highlights — one key per entry in update/WhatsNewEntries. -->
+    <string name="whatsnew_v0_72_0_title">English and Russian</string>
+    <string-array name="whatsnew_v0_72_0_items">
+        <item>Switch the app language in Settings → Language: English or Russian. Your choice is remembered on the device.</item>
+        <item>Date and time formats and the first day of the week are configurable too, and apply across the whole app.</item>
+    </string-array>
+    <string name="whatsnew_v0_71_0_title">Help centre</string>
+    <string-array name="whatsnew_v0_71_0_items">
+        <item>A new “Help” item in the side menu — a help centre with articles, right inside the app and available offline.</item>
+        <item>Category navigation and search across every article; images follow the theme — in the dark theme the screenshots are dark too.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_help_title">Take a look at “Help”</string>
+    <string name="whatsnew_spotlight_help_body">The help centre with articles and search now lives in the side menu.</string>
     <string name="whatsnew_v0_70_0_title">Tasks, as on the web</string>
     <string-array name="whatsnew_v0_70_0_items">
         <item>The task description is the first tab now — comments and subtasks are one tap away.</item>
