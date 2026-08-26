@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -38,7 +39,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import website.msdnna.tessera.R
-import website.msdnna.tessera.data.model.HelpArticle
+import website.msdnna.tessera.data.model.HelpContent
 import website.msdnna.tessera.data.repository.HelpRepository
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
@@ -50,6 +51,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.util.HelpHit
 import website.msdnna.tessera.util.HelpSearcher
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.normalizeLanguage
 import website.msdnna.tessera.util.resolveHelpImages
 
 /**
@@ -67,12 +69,23 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
     val c = Tessera.colors
     val assets = LocalContext.current.assets
     val repo = remember(assets) { HelpRepository(assets) }
-    val articles = remember(repo) { repo.articles() }
-    val searcher = remember(articles) { HelpSearcher(articles) }
+    // The manual follows the profile language (#2809): AppLocale has already put
+    // it into the configuration, so the effective locale is the source of truth
+    // here too. Titles, categories, the search corpus and the body path are all
+    // resolved for it — recomputed when it changes, so switching language in
+    // settings re-renders the help without leaving the screen.
+    val lang = normalizeLanguage(LocalConfiguration.current.locales[0].language)
+    val baseArticles = remember(repo) { repo.articles() }
+    val articles = remember(baseArticles, lang) { baseArticles.map { it.content(lang) } }
+    val searcher = remember(articles, lang) { HelpSearcher(articles, lang) }
     val assetNames = remember(repo) { repo.assetNames() }
 
     var query by remember { mutableStateOf("") }
-    var open by remember { mutableStateOf<HelpArticle?>(null) }
+    // The open article is held by slug, not by value, so a language switch while
+    // one is open re-resolves it to the new language instead of leaving the old
+    // one on screen.
+    var openSlug by remember { mutableStateOf<String?>(null) }
+    val open = remember(openSlug, articles) { articles.firstOrNull { it.slug == openSlug } }
     var body by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(false) }
 
@@ -81,25 +94,26 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
     LaunchedEffect(initialSlug) {
         val slug = initialSlug ?: return@LaunchedEffect
         onSlugConsumed()
-        repo.bySlug(slug)?.let { open = it }
+        if (articles.any { it.slug == slug }) openSlug = slug
     }
 
     // Reading an article is a few kilobytes off the asset manager — off the main
-    // thread anyway, since it happens on every open of a cold article.
-    LaunchedEffect(open?.slug) {
+    // thread anyway, since it happens on every open of a cold article. Keyed by
+    // path, which carries the language, so switching language reloads the body.
+    LaunchedEffect(open?.path) {
         val article = open
         if (article == null) {
             body = null
             return@LaunchedEffect
         }
         loading = true
-        body = withContext(Dispatchers.IO) { repo.body(article) }
+        body = withContext(Dispatchers.IO) { repo.body(article.path) }
         loading = false
     }
 
     // The reader is an inline overlay, not a Dialog, so Back would otherwise
     // fall through to the nav back-stack.
-    BackHandler(enabled = open != null) { open = null }
+    BackHandler(enabled = open != null) { openSlug = null }
 
     Box(Modifier.fillMaxSize().background(c.bg).testTag(TestTags.HELP_NAV)) {
         Column(Modifier.fillMaxSize()) {
@@ -124,7 +138,7 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
 
                 query.isNotBlank() -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                     items(hits, key = { it.slug }) { hit ->
-                        HitRow(hit, onClick = { repo.bySlug(hit.slug)?.let { open = it } })
+                        HitRow(hit, onClick = { openSlug = hit.slug })
                     }
                     item { Spacer(Modifier.height(16.dp)) }
                 }
@@ -140,7 +154,7 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
                             item(key = "cat-${article.category}") { SectionLabel(article.category) }
                         }
                         item(key = article.slug) {
-                            ArticleRow(article, onClick = { open = article })
+                            ArticleRow(article, onClick = { openSlug = article.slug })
                         }
                     }
                     item { Spacer(Modifier.height(16.dp)) }
@@ -155,8 +169,8 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
                 loading = loading,
                 dark = c.isDark,
                 assetNames = assetNames,
-                onBack = { open = null },
-                onOpenSlug = { slug -> repo.bySlug(slug)?.let { open = it } },
+                onBack = { openSlug = null },
+                onOpenSlug = { slug -> if (articles.any { it.slug == slug }) openSlug = slug },
             )
         }
     }
@@ -164,7 +178,7 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
 
 @Composable
 private fun HelpArticleReader(
-    article: HelpArticle,
+    article: HelpContent,
     body: String?,
     loading: Boolean,
     dark: Boolean,
@@ -200,11 +214,18 @@ private fun HelpArticleReader(
         // (#2781), so the scrolling belongs to the column around it.
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
             Spacer(Modifier.height(12.dp))
-            // An article with no `<slug>.android.md` yet is shown as it is, with
-            // a note (#2795). Hiding it would be worse: search still finds it by
-            // title, and «found but won't open» reads as a bug where an honest
-            // label reads as a gap in the manual.
-            if (article.desktopOnlyText) {
+            // A language with no translation yet shows the Russian original with
+            // a note (#2809) — an honest label beats a blank page or a silent
+            // language switch the reader did not ask for.
+            if (!article.translated) {
+                HelpNotTranslatedNote()
+                Spacer(Modifier.height(12.dp))
+            }
+            // An article with no mobile rewrite is shown as its desktop text,
+            // with a note (#2795). Hiding it would be worse: search still finds
+            // it by title, and «found but won't open» reads as a bug where an
+            // honest label reads as a gap in the manual.
+            if (!article.mobileRewrite) {
                 HelpDesktopTextNote()
                 Spacer(Modifier.height(12.dp))
             }
@@ -226,10 +247,10 @@ private fun HelpArticleReader(
                     )
                 }
             }
-            if (article.androidUpdated.isNotBlank()) {
+            if (article.updated.isNotBlank()) {
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    stringResource(R.string.help_updated, article.androidUpdated),
+                    stringResource(R.string.help_updated, article.updated),
                     color = c.placeholder,
                     fontSize = 12.sp,
                 )
@@ -270,6 +291,35 @@ internal fun HelpDesktopTextNote() {
     }
 }
 
+/**
+ * Shown above an article that has no translation for the reader's language yet
+ * (#2809): they are looking at the Russian original, and saying so beats a blank
+ * page or a language they did not choose. In practice the parity test keeps
+ * every shipped article translated, so this is reached only by an older index —
+ * hence internal, so the suite can still mount it.
+ */
+@Composable
+internal fun HelpNotTranslatedNote() {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth()
+            .border(1.dp, c.border, RoundedCornerShape(8.dp))
+            .background(c.surfaceAlt, RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp)
+            .testTag(TestTags.HELP_NOT_TRANSLATED_NOTE),
+        verticalAlignment = Alignment.Top,
+    ) {
+        IonIcon(Ion.HELP_CIRCLE, size = 16.dp, tint = c.text3)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            stringResource(R.string.help_not_translated),
+            color = c.text3,
+            fontSize = 12.sp,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
 @Composable
 private fun SectionLabel(label: String) {
     Text(
@@ -282,7 +332,7 @@ private fun SectionLabel(label: String) {
 }
 
 @Composable
-private fun ArticleRow(article: HelpArticle, onClick: () -> Unit) {
+private fun ArticleRow(article: HelpContent, onClick: () -> Unit) {
     val c = Tessera.colors
     Row(
         Modifier.fillMaxWidth().clickableNoRipple(onClick = onClick)

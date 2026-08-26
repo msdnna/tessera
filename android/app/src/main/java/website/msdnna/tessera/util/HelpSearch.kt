@@ -2,7 +2,7 @@ package website.msdnna.tessera.util
 
 import java.text.Collator
 import java.util.Locale
-import website.msdnna.tessera.data.model.HelpArticle
+import website.msdnna.tessera.data.model.HelpContent
 
 /**
  * Search over the help index — a port of the web `utils/helpSearch.js` (#2795).
@@ -45,27 +45,29 @@ data class HelpHit(
 
 /**
  * Precomputes token → {slug → score} once per index; [search] is what the UI
- * calls on every keystroke.
+ * calls on every keystroke. The articles are already collapsed to one language
+ * and platform ([HelpContent]), so the corpus, the titles and the [collator]
+ * that orders ties all belong to the reader's language (#2809).
  */
-class HelpSearcher(articles: List<HelpArticle>) {
+class HelpSearcher(articles: List<HelpContent>, lang: String = "ru") {
     private val postings = HashMap<String, MutableMap<String, Int>>()
-    private val bySlug = LinkedHashMap<String, HelpArticle>()
+    private val bySlug = LinkedHashMap<String, HelpContent>()
     private val tokens: List<String>
+    private val collator: Collator = Collator.getInstance(Locale.forLanguageTag(lang))
 
     init {
         for (a in articles) {
             bySlug[a.slug] = a
             for (t in tokenizeHelp(a.title)) add(t, a.slug, Weight.TITLE)
-            // `android*` throughout: an article with a mobile rewrite is indexed
-            // from the text this client renders (#2795). Indexing the desktop
-            // body instead would make words findable that the reader never sees
-            // on screen — and hide the ones they do.
-            for (kw in a.androidKeywords) for (t in tokenizeHelp(kw)) add(t, a.slug, Weight.KEYWORDS)
-            for (h in a.androidHeadings) for (t in tokenizeHelp(h.text)) add(t, a.slug, Weight.HEADING)
+            // Indexed from the text this client renders in this language: a word
+            // findable in the browser must be findable in the app, and one the
+            // reader never sees on screen must not be.
+            for (kw in a.keywords) for (t in tokenizeHelp(kw)) add(t, a.slug, Weight.KEYWORDS)
+            for (h in a.headings) for (t in tokenizeHelp(h.text)) add(t, a.slug, Weight.HEADING)
             // The body is scored once per distinct token: repeating a word ten
             // times in one article should not outrank an article that is
             // actually about it.
-            for (t in tokenizeHelp(a.androidText).toSet()) add(t, a.slug, Weight.TEXT)
+            for (t in tokenizeHelp(a.text).toSet()) add(t, a.slug, Weight.TEXT)
         }
         // Sorted once so a prefix lookup scans a contiguous range instead of
         // testing every token in the corpus on each keystroke.
@@ -124,17 +126,16 @@ class HelpSearcher(articles: List<HelpArticle>) {
         val matched = acc ?: return emptyList()
         return matched.mapNotNull { (slug, score) ->
             val a = bySlug[slug] ?: return@mapNotNull null
-            HelpHit(slug, score, a.title, a.category, helpExcerpt(a.androidText, terms))
+            HelpHit(slug, score, a.title, a.category, helpExcerpt(a.text, terms))
         }.sortedWith(
             compareByDescending<HelpHit> { it.score }.thenComparator { x, y ->
-                RU.compare(x.title, y.title)
+                collator.compare(x.title, y.title)
             },
         ).take(limit)
     }
 
     private companion object {
         const val DEFAULT_LIMIT = 20
-        val RU: Collator = Collator.getInstance(Locale.forLanguageTag("ru"))
     }
 }
 

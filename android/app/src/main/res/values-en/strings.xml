@@ -1100,6 +1100,7 @@
     <string name="help_article_missing">Article missing from the build</string>
     <string name="help_updated">Updated: %1$s</string>
     <string name="help_desktop_note">The article describes the web version — some actions look different in the app.</string>
+    <string name="help_not_translated">This article has not been translated yet — showing the original.</string>
 
     <string name="search_placeholder">Search tasks, notes and help</string>
     <string name="search_hint">Type a query — searches task titles and descriptions, note titles and text, help articles</string>

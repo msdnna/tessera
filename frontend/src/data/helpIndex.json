@@ -76,6 +76,75 @@
           }
         ],
         "text": "tessera — таск-трекер: доски с задачами, документы, заметки и напоминания. эта статья проводит по пути от пустого аккаунта до первой задачи на доске — так, как это выглядит в приложении для android. пространство всё содержимое живёт внутри пространства (workspace). пространство — это отдельный контур со своими проектами, досками и участниками. первое пространство создаётся вместе с аккаунтом, так что начинать с нуля не придётся. навигация приложения спрятана в боковом меню: кнопка «☰» слева в верхней панели или свайп от левого края экрана. в шапке меню — текущее пространство; тап по нему переключает на другое, кнопка «＋» рядом создаёт новое. пригласить коллегу: меню пространства («…» рядом с названием) → «участники» → «пригласить по email». приглашённый получает письмо со ссылкой; роль — «участник» или «админ», владелец пространства один и роль ему не меняют. проекты и группы дерево проектов — в том же боковом меню, под разделами. проекты складываются в группы, группы вкладываются друг в друга. кнопка «＋» в заголовке «проекты» создаёт проект или группу в корне; такая же кнопка есть у каждого узла дерева. чтобы перенести проект в группу, задержите палец на его строке и перетащите — дерево прокручивается само, когда вы доводите проект до края экрана. тап по проекту открывает его доску и закрывает меню. доска доска принадлежит проекту и состоит из колонок. новая доска сразу приходит с четырьмя колонками — их можно переименовать, добавить свои и переставить. на телефоне колонки не помещаются в ширину экрана, поэтому доска листается вбок: одна колонка занимает почти всю ширину, соседние подсматриваются с краю. пустые колонки можно схлопнуть в узкие полоски — тогда доска пролистывается быстрее. задача создаётся полем в конце колонки: доведите список до низа и наберите название. чтобы перенести карточку в другую колонку, задержите на ней палец и перетащите — либо откройте задачу и смените колонку чипом статуса, что на телефоне обычно быстрее. тап по карточке открывает экран задачи: описание, подзадачи, теги, исполнители, приоритет, срок и комментарии. одна из колонок доски — завершающая: задача, попавшая в неё, считается выполненной, и у неё проставляется дата завершения. важно именно попадание в колонку, а не название задачи — подробнее в статье доски и задачи. доска проекта в приложении что дальше доски и задачи — группировка по тегам, представления, фильтры. документы — что из документов доступно с телефона. заметки — короткие записи, которым не нужна задача. напоминания — приложение и есть доставка push-уведомлений. этапы — вехи релизов и прогресс по ним. частые вопросы — короткие ответы на то, обо что спотыкаются чаще всего. пункт «помощь» в боковом меню открывает эту справку. интерактивного обучения, как в веб-версии, в приложении нет — его заменяет справочный центр, который работает офлайн: статьи лежат внутри приложения, а не скачиваются."
+      },
+      "locales": {
+        "en": {
+          "path": "start/first-steps.en.md",
+          "title": "First steps",
+          "category": "Getting started",
+          "updated": "2026-08-26",
+          "keywords": ["start", "sign up", "workspace", "project", "board", "onboarding", "guide"],
+          "headings": [
+            {
+              "id": "workspace",
+              "text": "Workspace",
+              "level": 2
+            },
+            {
+              "id": "projects-and-groups",
+              "text": "Projects and groups",
+              "level": 2
+            },
+            {
+              "id": "board",
+              "text": "Board",
+              "level": 2
+            },
+            {
+              "id": "what-s-next",
+              "text": "What's next",
+              "level": 2
+            }
+          ],
+          "text": "tessera is a task tracker: boards with tasks, documents, notes and reminders. this article walks the path from an empty account to your first task on a board. workspace everything lives inside a workspace. a workspace is a self-contained space with its own projects, boards and members; you switch between them in the header of the sidebar. your first workspace is created together with your account, so you never start from nothing. to invite a colleague: the members button (the people icon) in the sidebar header, to the right of the logo → “invite by email”. the invitee gets an email with a link; the role is “member” or “admin”, and the workspace has a single owner whose role is never changed. projects and groups on the left is the project tree. projects can be filed into groups, and groups nest inside one another: handy when you have many directions of work. the “+” button in the “projects” heading creates a project or a group at the root; every node in the tree has the same button. drag a project into a group with the mouse. board a board belongs to a project and is made of columns. a new board arrives with four columns already — you can rename them, add your own and reorder them. a task is created with the “+” button in a column header and moved between columns by dragging. clicking a card opens the task window: description, subtasks, tags, assignees, priority, due date and comments. one of the board's columns is the completing one: a task that lands in it counts as done and is stamped with a completion date. what matters is landing in the column, not the task's title or a checkbox — see boards and tasks for more. a project board with columns and cards what's next boards and tasks — grouping by tags, views, filters. documents — the collaborative editor, word import, version history. notes — short jottings that don't need a task. reminders — one-off reminders and push to your phone. milestones — release milestones and progress toward them. faq — short answers to the things people trip over most often. at the bottom of the sidebar there is a help button with a question mark, and inside it two items. get started is an interactive guide that walks you through the interface right inside the app; you can launch it at any time and go through it again. help centre is this help: it opens as a window over your current screen, so the board you called it from never goes away.",
+          "android": {
+            "path": "start/first-steps.android.en.md",
+            "updated": "2026-08-24",
+            "keywords": [
+              "start",
+              "sign up",
+              "workspace",
+              "project",
+              "board",
+              "app",
+              "android",
+              "menu"
+            ],
+            "headings": [
+              {
+                "id": "workspace",
+                "text": "Workspace",
+                "level": 2
+              },
+              {
+                "id": "projects-and-groups",
+                "text": "Projects and groups",
+                "level": 2
+              },
+              {
+                "id": "board",
+                "text": "Board",
+                "level": 2
+              },
+              {
+                "id": "what-s-next",
+                "text": "What's next",
+                "level": 2
+              }
+            ],
+            "text": "tessera is a task tracker: boards with tasks, documents, notes and reminders. this article walks the path from an empty account to your first task on a board — the way it looks in the android app. workspace everything lives inside a workspace. a workspace is a self-contained space with its own projects, boards and members. your first workspace is created together with your account, so you never start from nothing. the app's navigation is tucked into the side menu: the “☰” button at the left of the top bar, or a swipe from the left edge of the screen. at the top of the menu is the current workspace; tapping it switches to another, and the “＋” button next to it creates a new one. to invite a colleague: the workspace menu (“…” next to its name) → “members” → “invite by email”. the invitee gets an email with a link; the role is “member” or “admin”, and the workspace has a single owner whose role is never changed. projects and groups the project tree is in the same side menu, below the sections. projects are filed into groups, and groups nest inside one another. the “＋” button in the “projects” heading creates a project or a group at the root; every node in the tree has the same button. to move a project into a group, press and hold its row and drag — the tree scrolls on its own as you carry the project to the edge of the screen. tapping a project opens its board and closes the menu. board a board belongs to a project and is made of columns. a new board arrives with four columns already — you can rename them, add your own and reorder them. on a phone the columns do not fit across the screen, so the board swipes sideways: one column takes up almost the full width, and its neighbours peek in from the edge. empty columns can be collapsed into narrow strips, so the board scrolls through faster. a task is created with the field at the end of a column: scroll the list to the bottom and type a title. to move a card to another column, press and hold it and drag — or open the task and change its column with the status chip, which is usually faster on a phone. tapping a card opens the task screen: description, subtasks, tags, assignees, priority, due date and comments. one of the board's columns is the completing one: a task that lands in it counts as done and is stamped with a completion date. what matters is landing in the column, not the task's title — see boards and tasks for more. a project board in the app what's next boards and tasks — grouping by tags, views, filters. documents — what of the documents feature is available from a phone. notes — short jottings that don't need a task. reminders — the app itself is how push notifications are delivered. milestones — release milestones and progress toward them. faq — short answers to the things people trip over most often. the help item in the side menu opens this help. there is no interactive tour like the web version's; the help centre takes its place and works offline — the articles live inside the app rather than being downloaded."
+          }
+        }
       }
     },
     {
@@ -177,6 +246,106 @@
           }
         ],
         "text": "доска — основной экран работы. колонки задают этапы, карточки — задачи. на телефоне колонки листаются вбок: одна занимает почти всю ширину, соседние видны краем. доска со списком задач по колонкам как перенести задачу способа два, и на телефоне они не равноценны: задержать палец на карточке и перетащить её в соседнюю колонку. пока карточка «в руке», доска подкручивается к краям сама. удобно для короткого переноса в соседнюю колонку. открыть задачу и сменить колонку чипом статуса. через три колонки от текущей это быстрее, чем тянуть карточку через полдоски. в экране задачи рядом со статусом есть кнопка «›» — она двигает задачу на колонку вправо, и «✓» — она отправляет её сразу в завершающую колонку. группировка по тегам колонки доски не обязаны быть этапами. на панели над доской есть чип группировки (значок стопки): тап открывает список — «по статусам», «по тегам», «по этапам». выбрали теги — колонка стала тегом, а не этапом. один и тот же набор задач можно смотреть то как поток по стадиям, то как раскладку по направлениям — не пересобирая доску. если панель свёрнута в одну строку, тапните по ней — она раскроется и покажет чипы сортировки и фильтров. выбранные условия висят чипами, лишний снимается крестиком. та же доска, сгруппированная по тегам одна задача с двумя тегами попадёт сразу в две колонки — это не дубль, а одна и та же карточка, показанная в обоих направлениях. задачи без тегов собираются в колонку «без тега» в конце. представления кроме канбана доска умеет показывать те же задачи иначе — переключатель представления на панели доски: список — плоская таблица, удобно для массового разбора. календарь — по срокам. таймлайн и гант — протяжённость и зависимости. оба тянутся и масштабируются щипком; пока вы на них, свайп от левого края не открывает меню — иначе он конфликтовал бы с горизонтальной прокруткой. матрица — раскладка по важности и срочности. настройки представления общие с веб-версией: сменили группировку с телефона — на компьютере доска откроется такой же. экран задачи экран задачи: свойства сверху, вкладки снизу тап по карточке открывает задачу на весь экран. сверху — название и свойства (приоритет, срок, исполнители, теги, этап, статус), ниже — описание в markdown, а под ним вкладки: комментарии, подзадачи, связи, файлы, история. свойства применяются сразу, как только вы их меняете. название и описание сохраняются кнопкой «сохранить» — уход назад без неё правки не запишет. подзадачи — дерево любой глубины; на доске их можно раскрывать прямо в карточках. когда задача считается выполненной задача завершена, когда она попала в завершающую колонку доски. тогда же проставляется дата завершения и в журнал пишется событие; вынесли обратно — отметка снимается. если задача не считается выполненной, хотя визуально «в конце» — проверьте, какая колонка назначена завершающей: по умолчанию это самая правая. назначить другую можно из веб-версии. пустые колонки чтобы не листать доску через пустое, включите сворачивание пустых колонок в настройках доски — они схлопываются в узкие полоски. на телефоне это заметнее, чем на широком экране: каждая пустая колонка — лишний свайп."
+      },
+      "locales": {
+        "en": {
+          "path": "boards/boards-and-tasks.en.md",
+          "title": "Boards and tasks",
+          "category": "Working with tasks",
+          "updated": "2026-08-21",
+          "keywords": [
+            "board",
+            "kanban",
+            "columns",
+            "tags",
+            "grouping",
+            "filter",
+            "views",
+            "task",
+            "subtasks",
+            "priority",
+            "due date"
+          ],
+          "headings": [
+            {
+              "id": "grouping-by-tags",
+              "text": "Grouping by tags",
+              "level": 2
+            },
+            {
+              "id": "views",
+              "text": "Views",
+              "level": 2
+            },
+            {
+              "id": "task-card",
+              "text": "Task card",
+              "level": 2
+            },
+            {
+              "id": "when-a-task-counts-as-done",
+              "text": "When a task counts as done",
+              "level": 2
+            },
+            {
+              "id": "empty-columns",
+              "text": "Empty columns",
+              "level": 2
+            }
+          ],
+          "text": "the board is the main working screen. columns set the stages, cards are the tasks, and dragging a card with the mouse changes its state. a board with tasks laid out across columns grouping by tags a board's columns don't have to be stages. the board settings panel (the gear on the board bar) has a “grouping · sorting · filter” section: switch the grouping to tags and you get a board where a column is a tag, not a stage. the very same set of tasks can be viewed either as a flow through stages or as a layout by direction, team or client — without rebuilding the board. the same place is where sorting within columns and filters are set; the chosen conditions show up as chips, and an unwanted one is removed with its cross. the fastest way to switch is the grouping chip on the board bar itself — clicking it flips “status” to “tag” and back. the same board grouped by tags: a column per tag a single task with two tags lands in two columns at once — this isn't a duplicate but one and the same card shown in both directions. tasks with no tags gather in an “ungrouped” column at the end. views besides kanban, the board can show the same tasks differently — the view switcher on the board bar: list — a flat table, handy for bulk triage. calendar — by due dates. timeline and gantt — duration and dependencies. matrix — a layout across two axes (for example, priority × assignee). the combination of view, filters and sorting you've assembled can be saved: the folder and disk buttons on the board bar. a saved view opens in a single click, while autosave (in the settings panel) picks up changes on the fly. task card the task window: properties on the left, comments and subtasks on the right the task window opens on a click on the card and contains: a description in markdown — with a formatting toolbar, a preview mode and mentions via @. subtasks — a tree of any depth; on the board they can be expanded right inside the cards (the “expand subtasks” toggle). tags, assignees, priority and due date. comments — also markdown, with mentions of members. when a task counts as done a task is complete once it lands in the board's completing column. that's also when the completion date is stamped and an event is written to the log; move it back out and the mark is removed. if a task isn't counted as done even though it visually sits “at the end”, check which column is set as completing: by default it's the rightmost, but you can specify it explicitly in the board settings. empty columns to keep a long board from sprawling, the settings panel has collapse empty columns — they fold into narrow strips and take up no space.",
+          "android": {
+            "path": "boards/boards-and-tasks.android.en.md",
+            "updated": "2026-08-24",
+            "keywords": [
+              "board",
+              "kanban",
+              "columns",
+              "tags",
+              "grouping",
+              "filter",
+              "views",
+              "task",
+              "subtasks",
+              "priority",
+              "due date",
+              "app"
+            ],
+            "headings": [
+              {
+                "id": "how-to-move-a-task",
+                "text": "How to move a task",
+                "level": 2
+              },
+              {
+                "id": "grouping-by-tags",
+                "text": "Grouping by tags",
+                "level": 2
+              },
+              {
+                "id": "views",
+                "text": "Views",
+                "level": 2
+              },
+              {
+                "id": "task-screen",
+                "text": "Task screen",
+                "level": 2
+              },
+              {
+                "id": "when-a-task-counts-as-done",
+                "text": "When a task counts as done",
+                "level": 2
+              },
+              {
+                "id": "empty-columns",
+                "text": "Empty columns",
+                "level": 2
+              }
+            ],
+            "text": "the board is the main working screen. columns set the stages, cards are the tasks. on a phone the columns swipe sideways: one takes up almost the full width, and its neighbours peek in from the edge. a board with tasks laid out across columns how to move a task there are two ways, and on a phone they aren't equal: press and hold a card and drag it into a neighbouring column. while the card is “in your hand”, the board scrolls towards the edges on its own. handy for a short move to the next column. open the task and change its column with the status chip. three columns away from the current one, this is faster than dragging a card across half the board. on the task screen, next to the status, there is a “›” button — it shifts the task one column to the right — and a “✓” button, which sends it straight to the completing column. grouping by tags a board's columns don't have to be stages. on the bar above the board there is a grouping chip (the stack icon): a tap opens a list — “by status”, “by tag”, “by milestone”. pick tags and a column becomes a tag, not a stage. the very same set of tasks can be viewed either as a flow through stages or as a layout by direction — without rebuilding the board. if the bar is collapsed to a single line, tap it — it expands and shows the sorting and filter chips. the chosen conditions hang as chips, and an unwanted one is removed with its cross. the same board grouped by tags a single task with two tags lands in two columns at once — this isn't a duplicate but one and the same card shown in both directions. tasks with no tags gather in an “ungrouped” column at the end. views besides kanban, the board can show the same tasks differently — the view switcher on the board bar: list — a flat table, handy for bulk triage. calendar — by due dates. timeline and gantt — duration and dependencies. both pan and pinch-zoom; while you're on them, a swipe from the left edge doesn't open the menu — otherwise it would clash with the horizontal scroll. matrix — a layout by importance and urgency. the view settings are shared with the web version: change the grouping from your phone and the board opens the same way on your computer. task screen the task screen: properties on top, tabs below a tap on a card opens the task full-screen. on top are the title and properties (priority, due date, assignees, tags, milestone, status), below them the description in markdown, and under that the tabs: comments, subtasks, relations, files, history. properties are applied the moment you change them. the title and description are saved with the “save” button — going back without it won't record your edits. subtasks form a tree of any depth; on the board they can be expanded right inside the cards. when a task counts as done a task is complete once it lands in the board's completing column. that's also when the completion date is stamped and an event is written to the log; move it back out and the mark is removed. if a task isn't counted as done even though it visually sits “at the end”, check which column is set as completing: by default it's the rightmost. assigning a different one is done from the web version. empty columns to avoid swiping the board through emptiness, turn on collapse empty columns in the board settings — they fold into narrow strips. on a phone this is more noticeable than on a wide screen: every empty column is one extra swipe."
+          }
+        }
       }
     },
     {
@@ -267,6 +436,95 @@
           }
         ],
         "text": "раздел «документы» — совместный редактор для того, что не помещается в описание задачи: требования, протоколы встреч, инструкции. раздел открывается пунктом «документы» в боковом меню («☰» слева в верхней панели). в приложении документы доступны для чтения. это осознанное решение, а не недоделка: блочный редактор с перетаскиванием блоков, комментариями к абзацам и разбором конфликтов — отдельный проект, и наспех сделанный на телефоне он делал бы больше вреда, чем пользы. читать документ, найти нужный абзац и открыть ссылку с телефона можно; писать — из веб-версии. раздел «документы» в приложении структура документы складываются в дерево — у документа могут быть вложенные, так что раздел ведёт себя как небольшая вики. на телефоне сначала показывается список, а тап по документу выдвигает читалку поверх него; кнопка «‹» слева сверху возвращает к списку, системная «назад» — тоже. что видно при чтении текст показывается с полным форматированием: заголовки, списки, таблицы, изображения, блоки кода, выравнивание. документ, импортированный из word, читается со своими цветами и рамками — в том числе в тёмной теме. что делается только в веб-версии правка текста и структуры документа. комментарии к блокам. импорт .docx и просмотр pdf. история версий и откат к предыдущей редакции. шаблоны и связывание документа с задачами. связи, созданные в вебе, с телефона видны — на вкладке «связи» в экране задачи. документ или заметка если запись нужна только вам и на пару дней — это заметка, и её с телефона можно и писать, и править. документ — для длинного материала, который читают другие."
+      },
+      "locales": {
+        "en": {
+          "path": "documents/documents.en.md",
+          "title": "Documents",
+          "category": "Working with tasks",
+          "updated": "2026-08-21",
+          "keywords": [
+            "documents",
+            "editor",
+            "docx",
+            "word",
+            "import",
+            "pdf",
+            "versions",
+            "history",
+            "comments",
+            "templates",
+            "outline"
+          ],
+          "headings": [
+            {
+              "id": "structure",
+              "text": "Structure",
+              "level": 2
+            },
+            {
+              "id": "editor",
+              "text": "Editor",
+              "level": 2
+            },
+            {
+              "id": "word-and-pdf-import",
+              "text": "Word and PDF import",
+              "level": 2
+            },
+            {
+              "id": "version-history",
+              "text": "Version history",
+              "level": 2
+            },
+            {
+              "id": "templates-and-links",
+              "text": "Templates and links",
+              "level": 2
+            }
+          ],
+          "text": "the documents section is a collaborative editor for what doesn't fit into a task description: requirements, meeting notes, guides. the section is marked alpha: it's evolving, and some things still change. the documents section: document cards with previews structure documents are filed into a tree — a document can have nested documents, so the section behaves like a small wiki. on the left is the list of documents, on the right the outline of the current one, built from its headings. editor text is typed in a block editor: headings, lists, tables, images, code blocks, alignment. a block can be dragged by the handle on the left, a new one inserted below it, and each one discussed separately. comments are anchored to a block rather than sitting in a shared list: a thread opens next to the paragraph, is marked resolved and, if needed, reopened. word and pdf import a .docx document is uploaded straight into the section with its formatting preserved: text colours and sizes, horizontal rules, code blocks, table fills and borders. colours from word stay readable in the dark theme too. pdf files open in a viewer inside the app — no need to download them or switch to another program. version history a document has a history: you can look at earlier revisions and return to any of them. if two people edit one document at once, the app warns about the divergence and offers to resolve the conflict rather than silently overwriting someone else's text. templates and links a document you repeat often is saved as a template and created from it in one click. a document is linked to tasks — the link is visible from both sides and removed with the “remove the link” button.",
+          "android": {
+            "path": "documents/documents.android.en.md",
+            "updated": "2026-08-24",
+            "keywords": [
+              "documents",
+              "editor",
+              "docx",
+              "word",
+              "import",
+              "pdf",
+              "versions",
+              "history",
+              "comments",
+              "reading",
+              "app"
+            ],
+            "headings": [
+              {
+                "id": "structure",
+                "text": "Structure",
+                "level": 2
+              },
+              {
+                "id": "what-you-see-when-reading",
+                "text": "What you see when reading",
+                "level": 2
+              },
+              {
+                "id": "what-s-only-done-in-the-web-version",
+                "text": "What's only done in the web version",
+                "level": 2
+              },
+              {
+                "id": "a-document-or-a-note",
+                "text": "A document or a note",
+                "level": 2
+              }
+            ],
+            "text": "the documents section is a collaborative editor for what doesn't fit into a task description: requirements, meeting notes, guides. the section opens from the “documents” item in the side menu (the “☰” on the left of the top bar). in the app, documents are read-only. this is a deliberate choice, not an unfinished corner: a block editor with drag-and-drop blocks, comments on paragraphs and conflict resolution is a project of its own, and thrown together on a phone it would do more harm than good. you can read a document, find the paragraph you need and open a link from your phone; writing is done from the web version. the documents section in the app structure documents are filed into a tree — a document can have nested ones, so the section behaves like a small wiki. on a phone the list is shown first, and a tap on a document slides a reader out over it; the “‹” button at the top left returns to the list, as does the system “back”. what you see when reading text is shown with full formatting: headings, lists, tables, images, code blocks, alignment. a document imported from word reads with its own colours and borders — including in the dark theme. what's only done in the web version editing the text and structure of a document. comments on blocks. importing .docx and viewing pdfs. version history and rolling back to an earlier revision. templates and linking a document to tasks. links created on the web are visible from a phone — on the “relations” tab of the task screen. a document or a note if a record is only for you and only for a couple of days, it's a note, and from a phone you can both write and edit it. a document is for long material that others read."
+          }
+        }
       }
     },
     {
@@ -318,6 +576,56 @@
           }
         ],
         "text": "заметка — короткая запись, которой не нужна задача: итоги созвона, список вопросов, черновик формулировки. раздел открывается пунктом «заметки» в боковом меню («☰» слева в верхней панели). раздел «заметки» в приложении как устроено сначала — список заметок пространства. тап по заметке выдвигает редактор поверх списка: заголовок и текст. кнопка «новая заметка» создаёт пустую и сразу открывает её. изменения записываются кнопкой «сохранить»: ушли назад без неё — правки не сохранятся. удаление подтверждается отдельно, чтобы не потерять запись случайным касанием. текст — обычный markdown, тот же, что в вебе: заметка, начатая на телефоне, откроется на компьютере как есть. заметки принадлежат пространству: переключили пространство в шапке бокового меню — увидели его заметки. заметка или документ правило простое: заметка — для себя и на скорую руку, документ — для совместной работы. разница на телефоне ещё заметнее: заметки здесь можно писать и править, а документы — только читать. поиск заметки участвуют в общем поиске приложения — там же, где задачи, документы и статьи справки. ищите по слову из заголовка или текста, заходить в раздел для этого не нужно."
+      },
+      "locales": {
+        "en": {
+          "path": "notes/notes.en.md",
+          "title": "Notes",
+          "category": "Working with tasks",
+          "updated": "2026-08-21",
+          "keywords": ["notes", "records", "draft", "markdown", "project", "search"],
+          "headings": [
+            {
+              "id": "how-it-works",
+              "text": "How it works",
+              "level": 2
+            },
+            {
+              "id": "a-note-or-a-document",
+              "text": "A note or a document",
+              "level": 2
+            },
+            {
+              "id": "search",
+              "text": "Search",
+              "level": 2
+            }
+          ],
+          "text": "a note is a short record that doesn't need a task: the outcome of a call, a list of questions, a draft of some wording. the section opens from the “notes” item in the sidebar. the notes section: the list on the left, an open note on the right how it works on the left is the list of the workspace's notes, on the right the open note: a title and text. the “＋ new note” button creates an empty one; changes are saved with the “save” button, and deletion is confirmed separately so you don't lose a record with a stray click. notes belong to a workspace: switch the workspace in the sidebar header and you see its notes. a note or a document the rule is simple: a note is for yourself and off the cuff, a document is for working together. a document has a tree, a block editor, comments on paragraphs, version history and templates; a note does none of this — and shouldn't — it opens and closes in seconds. if a note has outgrown itself, move the text into a document: the documents section is built for long material that others read. search notes take part in the global search in the app header — the same place as tasks and documents. search by a word from the title or the text; there's no need to switch to the section for it.",
+          "android": {
+            "path": "notes/notes.android.en.md",
+            "updated": "2026-08-24",
+            "keywords": ["notes", "records", "draft", "markdown", "project", "search", "app"],
+            "headings": [
+              {
+                "id": "how-it-works",
+                "text": "How it works",
+                "level": 2
+              },
+              {
+                "id": "a-note-or-a-document",
+                "text": "A note or a document",
+                "level": 2
+              },
+              {
+                "id": "search",
+                "text": "Search",
+                "level": 2
+              }
+            ],
+            "text": "a note is a short record that doesn't need a task: the outcome of a call, a list of questions, a draft of some wording. the section opens from the “notes” item in the side menu (the “☰” on the left of the top bar). the notes section in the app how it works first comes the list of the workspace's notes. a tap on a note slides an editor out over the list: a title and text. the “new note” button creates an empty one and opens it straight away. changes are recorded with the “save” button: go back without it and your edits won't be saved. deletion is confirmed separately so you don't lose a record with a stray tap. the text is plain markdown, the same as on the web: a note started on a phone opens on a computer as-is. notes belong to a workspace: switch the workspace in the side-menu header and you see its notes. a note or a document the rule is simple: a note is for yourself and off the cuff, a document is for working together. on a phone the difference is even sharper: here notes can be written and edited, while documents are read-only. search notes take part in the app's global search — the same place as tasks, documents and help articles. search by a word from the title or the text; there's no need to enter the section for it."
+          }
+        }
       }
     },
     {
@@ -387,6 +695,74 @@
           }
         ],
         "text": "напоминание — разовая заметка о времени: текст плюс момент, когда о нём нужно вспомнить. раздел открывается пунктом «напоминания» в боковом меню («☰» слева в верхней панели). приложение и есть доставка. веб-версия показывает напоминание в списке, но системного уведомления не шлёт — сигнал в нужную минуту приходит именно отсюда. если вы завели напоминание на компьютере, а телефон с приложением рядом, сработает оно на телефоне. раздел «напоминания» в приложении создать и закрыть в строке сверху: текст в поле «о чём напомнить?», время — в выборе даты, затем «добавить». без текста или без времени напоминание не создастся — приложение попросит заполнить оба поля. сработавшее напоминание отмечается галочкой слева: оно остаётся в списке как выполненное, снять отметку можно тем же касанием. ненужное удаляется корзиной справа. чтобы сигнал пришёл вовремя уведомление ставится будильником на самом устройстве, поэтому от системных разрешений зависит, прозвенит ли оно: разрешение на уведомления. android 13 и новее спрашивает его отдельно; отказали — напоминания будут копиться в списке молча. включается в системных настройках приложения, раздел «уведомления». экономия батареи. если система «усыпила» приложение, будильник может сработать позже назначенного. на телефонах с агрессивной экономией стоит разрешить tessera работать в фоне. разрешение на уведомления приложение просит при первом запуске; отказ не ломает остальное — перестают приходить только сигналы, и разрешение всегда можно выдать позже в системных настройках. напоминание переживает перезагрузку телефона: будильники переставляются заново при следующем старте. чем отличается от срока задачи срок живёт на задаче: он показывается на карточке, по нему фильтруют и сортируют доску, по нему строятся календарь, таймлайн и гант. срок отвечает на вопрос «когда это должно быть сделано». напоминание — самостоятельная запись, оно ни к чему не привязано и отвечает на вопрос «когда мне об этом вспомнить». созвон, письмо, обещание перезвонить — всё это напоминания, а не задачи со сроком."
+      },
+      "locales": {
+        "en": {
+          "path": "reminders/reminders.en.md",
+          "title": "Reminders",
+          "category": "Working with tasks",
+          "updated": "2026-08-21",
+          "keywords": [
+            "reminders",
+            "remind",
+            "notifications",
+            "push",
+            "due date",
+            "alarm",
+            "android"
+          ],
+          "headings": [
+            {
+              "id": "creating-and-closing",
+              "text": "Creating and closing",
+              "level": 2
+            },
+            {
+              "id": "how-it-differs-from-a-task-s-due-date",
+              "text": "How it differs from a task's due date",
+              "level": 2
+            },
+            {
+              "id": "delivery",
+              "text": "Delivery",
+              "level": 2
+            }
+          ],
+          "text": "a reminder is a one-off note about a time: some text plus the moment when you need to be reminded of it. the section opens from the reminders item in the sidebar. the reminders section: the creation row and the list of reminders creating and closing in the row at the top: the text in the “what should we remind you about?” field, the time in the date picker, then add. without the text or the time a reminder won't be created — the app will ask you to fill in both fields. a reminder that has fired is marked with a checkmark on the left: it stays in the list as done, and you can clear the mark with the same click. an unwanted one is removed with the trash icon on the right. how it differs from a task's due date a due date lives on a task: it shows on the card, the board is filtered and sorted by it, and the calendar, timeline and gantt are built from it. a due date answers the question “when does this need to be done”. a reminder is a standalone record, tied to nothing, and it answers the question “when should i be reminded of this”. a call, an email, a promise to ring back — those are all reminders, not tasks with a due date. delivery the notification for a time that has come arrives as a push notification in the tessera mobile app for android — that is what handles delivery. in the web version a reminder is visible in the list, but there won't be a separate system notification: keep the mobile app installed and allow it notifications if you want to get the signal on time.",
+          "android": {
+            "path": "reminders/reminders.android.en.md",
+            "updated": "2026-08-24",
+            "keywords": [
+              "reminders",
+              "remind",
+              "notifications",
+              "push",
+              "due date",
+              "alarm",
+              "android",
+              "permissions",
+              "app"
+            ],
+            "headings": [
+              {
+                "id": "creating-and-closing",
+                "text": "Creating and closing",
+                "level": 2
+              },
+              {
+                "id": "getting-the-signal-on-time",
+                "text": "Getting the signal on time",
+                "level": 2
+              },
+              {
+                "id": "how-it-differs-from-a-task-s-due-date",
+                "text": "How it differs from a task's due date",
+                "level": 2
+              }
+            ],
+            "text": "a reminder is a one-off note about a time: some text plus the moment when you need to be reminded of it. the section opens from the reminders item in the side menu (the “☰” button at the left of the top bar). the app is the delivery. the web version shows a reminder in the list but sends no system notification — the signal at the right minute comes from right here. if you set up a reminder on your computer while the phone with the app is nearby, it will fire on the phone. the reminders section in the app creating and closing in the row at the top: the text in the “what should we remind you about?” field, the time in the date picker, then add. without the text or the time a reminder won't be created — the app will ask you to fill in both fields. a reminder that has fired is marked with a checkmark on the left: it stays in the list as done, and you can clear the mark with the same tap. an unwanted one is removed with the trash icon on the right. getting the signal on time the notification is set as an alarm on the device itself, so whether it rings depends on the system permissions: notification permission. android 13 and newer asks for it separately; deny it and reminders will pile up in the list silently. it's turned on in the app's system settings, under “notifications”. battery saving. if the system has put the app to sleep, the alarm may fire later than scheduled. on phones with aggressive battery saving it's worth allowing tessera to run in the background. the app asks for the notification permission on first launch; denying it doesn't break anything else — only the signals stop coming, and the permission can always be granted later in the system settings. a reminder survives a phone reboot: the alarms are set again at the next start. how it differs from a task's due date a due date lives on a task: it shows on the card, the board is filtered and sorted by it, and the calendar, timeline and gantt are built from it. a due date answers the question “when does this need to be done”. a reminder is a standalone record, tied to nothing, and it answers the question “when should i be reminded of this”. a call, an email, a promise to ring back — those are all reminders, not tasks with a due date."
+          }
+        }
       }
     },
     {
@@ -447,6 +823,64 @@
           }
         ],
         "text": "этап (веха, milestone) — точка, к которой должен быть готов набор задач: релиз, демо, сдача заказчику. раздел открывается пунктом «этапы» в боковом меню («☰» слева в верхней панели) и показывает этапы всех проектов пространства сразу. раздел «этапы» в приложении что видно в списке этапы сгруппированы по проектам. в строке этапа — название, даты начала и завершения, полоса прогресса и счётчик выполненных задач (например, 3/6). пока к этапу не привязана ни одна задача, вместо прогресса написано «нет задач». переключатель сверху выбирает, что показывать: «активные» — только незакрытые этапы, «все» — вместе с завершёнными. тап по строке открывает доску проекта, отфильтрованную по этому этапу, — сразу видно, что осталось. шестерёнка у названия проекта открывает управление его этапами: создание, переименование, даты, закрытие. как задача попадает в этап этап выбирается в экране задачи, в поле «этап». одна задача принадлежит одному этапу; сняли выбор — задача из этапа выпала, прогресс пересчитался. на доске по этапам можно группировать и фильтровать так же, как по тегам, — чипом группировки над доской, пункт «по этапам». подробнее — доски и задачи. связь с gitlab если проект связан с gitlab, этап синхронизируется с одноимённой вехой репозитория: рядом с названием появляется значок gitlab. тап по нему открывает веху в браузере телефона. синхронизация не обязательна — этапы полностью работают и без неё."
+      },
+      "locales": {
+        "en": {
+          "path": "milestones/milestones.en.md",
+          "title": "Milestones",
+          "category": "Working with tasks",
+          "updated": "2026-08-21",
+          "keywords": ["milestones", "milestone", "release", "progress", "due dates", "gitlab"],
+          "headings": [
+            {
+              "id": "what-the-list-shows",
+              "text": "What the list shows",
+              "level": 2
+            },
+            {
+              "id": "how-a-task-joins-a-milestone",
+              "text": "How a task joins a milestone",
+              "level": 2
+            },
+            {
+              "id": "the-link-with-gitlab",
+              "text": "The link with GitLab",
+              "level": 2
+            }
+          ],
+          "text": "a milestone is a point by which a set of tasks should be ready: a release, a demo, a hand-off to the client. the section opens from the milestones item in the sidebar and shows the milestones of every project in the workspace at once. the milestones section: project milestones with progress what the list shows milestones are grouped by project. a milestone row carries the name, the start and end dates, a progress bar and a counter of completed tasks (for example, 3/6). until a milestone has a single task attached, “no tasks” shows in place of the progress. the toggle at the top right chooses what to show: active — only milestones that aren't closed, all — closed ones included. clicking a row opens the project board filtered by that milestone, so you can see at a glance what's left. the gear next to a project name opens the management of its milestones: creating, renaming, dates, closing. how a task joins a milestone a milestone is picked in the task window, in the milestone field. a task belongs to a single milestone; clear the choice and the task drops out of the milestone, and the progress is recalculated. on a board you can group and filter by milestones just as by tags and assignees — see boards and tasks. the link with gitlab if a project is linked to gitlab, a milestone is synced with the repository milestone of the same name: a gitlab icon appears next to the name, leading to the milestone in gitlab itself. the sync is optional — milestones work fully without it.",
+          "android": {
+            "path": "milestones/milestones.android.en.md",
+            "updated": "2026-08-24",
+            "keywords": [
+              "milestones",
+              "milestone",
+              "release",
+              "progress",
+              "due dates",
+              "gitlab",
+              "app"
+            ],
+            "headings": [
+              {
+                "id": "what-the-list-shows",
+                "text": "What the list shows",
+                "level": 2
+              },
+              {
+                "id": "how-a-task-joins-a-milestone",
+                "text": "How a task joins a milestone",
+                "level": 2
+              },
+              {
+                "id": "the-link-with-gitlab",
+                "text": "The link with GitLab",
+                "level": 2
+              }
+            ],
+            "text": "a milestone is a point by which a set of tasks should be ready: a release, a demo, a hand-off to the client. the section opens from the milestones item in the side menu (the “☰” button at the left of the top bar) and shows the milestones of every project in the workspace at once. the milestones section in the app what the list shows milestones are grouped by project. a milestone row carries the name, the start and end dates, a progress bar and a counter of completed tasks (for example, 3/6). until a milestone has a single task attached, “no tasks” shows in place of the progress. the toggle at the top chooses what to show: active — only milestones that aren't closed, all — closed ones included. tapping a row opens the project board filtered by that milestone, so you can see at a glance what's left. the gear next to a project name opens the management of its milestones: creating, renaming, dates, closing. how a task joins a milestone a milestone is picked on the task screen, in the milestone field. a task belongs to a single milestone; clear the choice and the task drops out of the milestone, and the progress is recalculated. on a board you can group and filter by milestones just as by tags — with the grouping chip above the board, the “by milestone” item. more on that in boards and tasks. the link with gitlab if a project is linked to gitlab, a milestone is synced with the repository milestone of the same name: a gitlab icon appears next to the name. tapping it opens the milestone in the phone's browser. the sync is optional — milestones work fully without it."
+          }
+        }
       }
     },
     {
@@ -578,6 +1012,132 @@
           }
         ],
         "text": "уведомлений два вида. внутренние — лента под колокольчиком в верхней панели: назначения, комментарии, упоминания. они приходят всегда. внешние — то же событие, доставленное наружу: письмом, в telegram, вебхуком в свой сервис. настройки внешней доставки общие для всех ваших устройств: то, что вы настроите в приложении, действует и в веб-версии, и наоборот. где настраивается. боковое меню («☰» слева в верхней панели) → колокольчик в ряду иконок над списком проектов. не путайте с колокольчиком в самой верхней панели — тот открывает ленту уведомлений, а не настройки. экран собран из трёх блоков: каналы, правила маршрутизации, дедлайны и напоминания. по умолчанию наружу не уходит ничего: сначала заводится канал, потом правило. это устройство в списке каналов у телефона есть своя строка — канал типа «системные уведомления» с меткой «это устройство». приложение заводит его само при входе, добавлять вручную не нужно. он и отвечает за push-уведомления: если правило направляет событие сюда, оно приходит уведомлением android — в том числе когда приложение закрыто. чтобы это работало, нужно разрешение на уведомления: android 13 и новее спрашивает его при первом запуске, и отказ выключает именно этот канал. выдать разрешение позже можно в системных настройках приложения, раздел «уведомления». в браузере такой же канал работает только пока открыта вкладка с tessera — фоновые push есть только у мобильного приложения. каналы «добавить канал» разворачивает форму прямо в списке. тип выбирается один раз при создании; сменить его потом нельзя — нужный канал заводится заново. тип что заполняется --------------------------- ---------------------------------------------------------------------------- email адрес telegram chat id и токен бота (бот создаётся через @botfather; напишите ему первым) webhook url, метод (по умолчанию post), при необходимости заголовок authorization shoutrrr (любой сервис) одна строка service url — slack://…, discord://…, ntfy://… и другие переключатель «включён» в форме и переключатель в строке канала — одно и то же: выключенный канал остаётся в списке, но ничего не получает. секреты (токен бота, service url, заголовок авторизации) хранятся зашифрованными и обратно не показываются. при изменении канала поле пустое: оставили пустым — прежнее значение сохранится, ввели новое — заменится. «тест» отправляет пробное сообщение сразу, мимо очереди, и при успехе помечает канал как «проверен». ошибка приходит текстом от самого сервиса — это самый короткий путь понять, что не так с токеном или адресом. шаблон сообщения у каждого канала (кроме системного) — свой шаблон текста; пустой означает текст по умолчанию. поле шаблона в форме канала, под ним — чипы полей: касание вставляет поле в конец текста. доступны {{.text}}, {{.title}}, {{.tasknumber}}, {{.tasktitle}}, {{.actor}}, {{.workspace}} и {{.link}}. кнопка «предпросмотр» показывает, как это выглядит на демонстрационных данных; сломанный шаблон покажет ошибку и не сохранится. правила маршрутизации правила решают, какое событие в какие каналы уходит, и проверяются сверху вниз — срабатывает первое подходящее. пока правил нет, внешние каналы молчат, сколько бы их ни было. в правиле: события (пусто = любые), пространство (пусто = все) и каналы доставки. переключатель «заглушить» делает правило глушителем — подходящее уведомление никуда не уходит и до следующих правил не доходит. правило-исключение имеет смысл только выше общего. дедлайны и напоминания нижний блок — про уведомления по времени, которые tessera присылает сама: «уведомлять о дедлайнах», «напоминать» (за сколько до срока) и «повтор». те же три настройки есть у каждой задачи отдельно — в окне задачи, по касанию даты. «напоминания во внешние каналы» — отправлять ли сработавшее напоминание в каналы. на локальный сигнал самого приложения этот переключатель не влияет: он приходит будильником устройства в любом случае. «дайджест» — окно в 5–60 минут: накопившиеся уведомления придут одним сообщением вместо череды. системных уведомлений это не касается. «тихие часы» — окно «не беспокоить», можно через полночь. внешние уведомления придерживаются до его конца, push на устройство в это окно не показывается вовсе, а лента под колокольчиком пополняется как обычно. часовой пояс берётся с телефона. этот блок сохраняется кнопкой «сохранить» — каналы и правила сохраняются сразу. если уведомления не приходят 1. разрешение на уведомления у приложения — без него push не будет. 2. есть ли правило: канал без правила не получает ничего. 3. правило выше по списку не перехватывает событие (особенно глушитель). 4. канал и правило включены — выключенные показаны блёкло. 5. «тест» по каналу: он покажет настоящую ошибку доставки. 6. тихие часы и дайджест — сообщение может ждать конца окна. 7. экономия батареи. если система усыпила приложение, уведомление может прийти с опозданием; на телефонах с агрессивной экономией стоит разрешить tessera работать в фоне. внешние уведомления уходят не мгновенно: сервер разбирает очередь раз в десять секунд, а неудачную доставку повторяет до пяти раз с растущей паузой. что дальше про сами напоминания и их доставку — «напоминания»."
+      },
+      "locales": {
+        "en": {
+          "path": "notifications/notifications.en.md",
+          "title": "Notifications",
+          "category": "Working with tasks",
+          "updated": "2026-08-25",
+          "keywords": [
+            "notifications",
+            "channels",
+            "email",
+            "telegram",
+            "webhook",
+            "shoutrrr",
+            "routing",
+            "rules",
+            "quiet hours",
+            "digest",
+            "deadline",
+            "reminders",
+            "template"
+          ],
+          "headings": [
+            {
+              "id": "delivery-channels",
+              "text": "Delivery channels",
+              "level": 2
+            },
+            {
+              "id": "secrets-testing-and-deletion",
+              "text": "Secrets, testing and deletion",
+              "level": 3
+            },
+            {
+              "id": "message-template",
+              "text": "Message template",
+              "level": 2
+            },
+            {
+              "id": "routing-rules",
+              "text": "Routing rules",
+              "level": 2
+            },
+            {
+              "id": "deadlines-and-reminders",
+              "text": "Deadlines and reminders",
+              "level": 2
+            },
+            {
+              "id": "how-delivery-really-works",
+              "text": "How delivery really works",
+              "level": 2
+            },
+            {
+              "id": "if-notifications-don-t-arrive",
+              "text": "If notifications don't arrive",
+              "level": 2
+            },
+            {
+              "id": "what-s-next",
+              "text": "What's next",
+              "level": 2
+            }
+          ],
+          "text": "notifications in tessera come in two kinds, and only the second is configurable. internal — the bell in the bottom bar: you were assigned a task, someone replied to your comment, you were mentioned. they always come, they can't be turned off, and the counter on the bell shows the unread ones. external — the same event delivered outward: by email, to telegram, by a webhook to your own service. by default nothing goes out: first you set up a channel (where to deliver), then a rule (what exactly to send to it). all of this lives in settings (the gear in the bottom bar) under notifications. the notifications section: the list of delivery channels delivery channels a channel is a single recipient address. there can be as many as you like, and each is switched on and off with its own toggle; a switched-off one stays in the list but receives nothing. add channel opens a form. the type is chosen once, at creation — you can't change it afterwards; a channel of the type you need is set up anew. type what you fill in ---------------------------- --------------------------------------------------------------------------- email the address (the account address is filled in by default) telegram the chat id and the bot token webhook the url, the method (post by default) and, if needed, an authorization header shoutrrr (any service) one service url string — slack://…, discord://…, ntfy://… and a dozen more system notifications nothing: the channel is set up by the client itself telegram. the bot is created through @botfather, which also hands out the token. the chat id is your own identifier in telegram (or @channelname if the bot is an admin there); you need to message the bot once yourself, otherwise it isn't allowed to write first. webhook is the fallback for everything else: a small json with the fields kind, title, text and link goes to the address you specify, and the receiving side then does with it whatever it wants. the address has to be external: by default the server refuses to reach local and internal addresses, so a channel can't be pointed inside someone else's network. shoutrrr is the same idea, but without your own handler: a single url describes both the service and the credentials, and slack, discord, ntfy, gotify, matrix, pushover, teams and others are supported. the url format for each service is in shoutrrr's own documentation. system notifications are the device or browser you signed in from. such a channel appears in the list on its own and is marked this device if it's opened from that very device; you can't add it by hand, but you can rename, disable and delete it. in a browser it shows the operating system's pop-up notification while the tab with tessera is open, and it requires permission — if it hasn't been granted yet, an allow button appears under the channel name. the mobile app with this channel gets notifications even when closed. secrets, testing and deletion the bot token, the service url and the authorization header are stored encrypted and aren't shown back. when you edit a channel, the secret field is empty: leave it empty and the previous value is kept, enter a new one and it's replaced. you can wipe the secret entirely with the eraser next to the field. test sends a probe message to the channel right now, bypassing the queue. success marks the channel with a verified label, and it's the best way to make sure the token is right — an error comes back as text from the service itself. for email you may get the reply “smtp isn't configured on the server”: the letter is then only written to the server log, and that's a question for the instance administrator, not for the channel's settings. when you delete a channel, tessera warns you if it's used in rules: the rules themselves stay, but they stop delivering anywhere. message template every channel (except the system one) has its own text template. an empty template means the default text: the gist of the notification plus a link to the app. the edit button opens the editor: on the left is the template field with a live preview on sample data, on the right is the list of fields, each inserted with a click at the cursor position. field what it substitutes ---------------- -------------------------------------- {{.text}} the ready notification text {{.title}} the title by event type {{.kind}} the event type (assigned, comment, …) {{.tasknumber}} the task number {{.tasktitle}} the task title {{.actor}} who triggered it {{.workspace}} the workspace name {{.link}} the link to the app the syntax is go templates, and conditions are available too: {{if .tasknumber}}#{{.tasknumber}} {{end}}{{.text}}. a broken template won't be saved: the error appears in the preview right away, and on an attempt to save — under the channel form. routing rules rules decide which event goes to which channels. they are checked top to bottom, and the first match fires — the rest are no longer considered. as long as there are no rules, external channels stay silent, no matter how many are set up. routing rules: the list of rules and the form for a new rule a rule has three settings: events — which notification types it catches. empty = any. workspace — limit it to one workspace. empty = all. delivery channels — where to send; you can pick several. a separate mute toggle turns a rule into a silencer: a matching notification goes nowhere and doesn't reach the rules below. it's a way to cut out a noisy event type without touching the rest — for example, put “integration sync → mute” as the first rule and a general “any events → email” below it. there are nine event types: task assignment, comments, mentions, task update, task move, archiving, deadline approaching, reminders, integration sync. the order of rules is set by their order in the list — an exception rule must sit above the general one, otherwise the general one fires first and the exception never runs. deadlines and reminders the bottom block of the section is about the notifications tessera sends itself, by time. notify about an approaching deadline and two choices under it: remind — how long before the due date (from “at the deadline” to “2 days before”) and repeat — whether to repeat afterwards (once, every hour, every 3 or 6 hours, once a day). the due-date notification goes to the task's assignees and its author. the same three settings exist on each task separately — by clicking the date on the card, in the “notifications” block. the value “default” means “as in the settings”, and any other value overrides the general rule for that task. if the due date is moved, the notification is re-armed. deliver reminders to external channels is about the “reminders” section: when a reminder fires, whether to send it to the channels. the switch acts only on future ones: turning it on won't bring you old reminders. group into a digest — a window of 5, 15, 30 or 60 minutes. the notifications gathered over the window arrive as a single message per channel (“digest — n notifications”) instead of a stream of separate ones. this doesn't affect system notifications: a push that arrives half an hour late is useless. quiet hours — a “do not disturb” window that can cross midnight (for example, 22:00–08:00). external notifications in that window are held and arrive all at once after it ends; system notifications to the device simply aren't shown during quiet hours — a pop-up can't be postponed. internal notifications on the bell come as usual. the time is counted in your time zone — it's taken from the localization settings. changes in this block are applied with the save button — unlike channels and rules, which are saved immediately. how delivery really works external notifications aren't sent at the moment of the event: they go into a queue that the server processes once every ten seconds. that's why the normal delay for an email or a telegram message is up to a few dozen seconds, not an instant. if delivery fails, tessera retries it up to five times with a growing pause (roughly after 1, 4, 9 and 16 minutes). errors that won't clear on their own — a wrong token, a non-existent address, a rejected request — get no retries: those are fixed only by editing the channel. if notifications don't arrive 1. is there a rule. channels without rules receive nothing — that's the most common cause. 2. a rule higher in the list. the first matching rule takes the event for itself; check that a silencer rule isn't intercepting it. 3. the channel and the rule are enabled. a disabled channel is dim in the list; a disabled rule is too. 4. the channel is verified. press test: it will show the real service error. 5. quiet hours. if it's a quiet window right now, external notifications will come after it ends, and system ones won't come at all. 6. digest. with the digest on, a message waits for the end of the window and arrives together with the rest. 7. browser permission — for system notifications; the allow button under the channel appears if there's none. 8. email doesn't go out at all — smtp may not be configured on the server: the channel test will tell you. what's next how due dates and reminders are built on their own — reminders. what happens to the delivery queue on the server side — background jobs (for the instance administrator).",
+          "android": {
+            "path": "notifications/notifications.android.en.md",
+            "updated": "2026-08-25",
+            "keywords": [
+              "notifications",
+              "channels",
+              "email",
+              "telegram",
+              "webhook",
+              "shoutrrr",
+              "routing",
+              "rules",
+              "quiet hours",
+              "digest",
+              "deadline",
+              "reminders",
+              "template",
+              "app",
+              "push",
+              "permissions"
+            ],
+            "headings": [
+              {
+                "id": "this-device",
+                "text": "This device",
+                "level": 2
+              },
+              {
+                "id": "channels",
+                "text": "Channels",
+                "level": 2
+              },
+              {
+                "id": "message-template",
+                "text": "Message template",
+                "level": 2
+              },
+              {
+                "id": "routing-rules",
+                "text": "Routing rules",
+                "level": 2
+              },
+              {
+                "id": "deadlines-and-reminders",
+                "text": "Deadlines and reminders",
+                "level": 2
+              },
+              {
+                "id": "if-notifications-don-t-arrive",
+                "text": "If notifications don't arrive",
+                "level": 2
+              },
+              {
+                "id": "what-s-next",
+                "text": "What's next",
+                "level": 2
+              }
+            ],
+            "text": "there are two kinds of notifications. internal — the feed under the bell in the top bar: assignments, comments, mentions. they always come. external — the same event delivered outward: by email, to telegram, by a webhook to your own service. external-delivery settings are shared across all your devices: what you set up in the app also works in the web version, and the other way round. where it's configured. the side menu (the “☰” button at the left of the top bar) → the bell in the row of icons above the project list. don't confuse it with the bell in the very top bar — that one opens the notification feed, not the settings. the screen is made of three blocks: channels, routing rules, deadlines and reminders. by default nothing goes out: first you set up a channel, then a rule. this device in the channel list the phone has its own row — a channel of the system notifications type with the this device label. the app sets it up itself on sign-in; there's no need to add it by hand. it's what handles push notifications: if a rule routes an event here, it arrives as an android notification — including when the app is closed. for this to work, the notification permission is needed: android 13 and newer asks for it on first launch, and denying it turns off exactly this channel. you can grant the permission later in the app's system settings, under “notifications”. in a browser the same channel works only while the tab with tessera is open — background push is available only in the mobile app. channels add channel expands a form right in the list. the type is chosen once, at creation; you can't change it afterwards — a channel of the type you need is set up anew. type what you fill in --------------------------- ---------------------------------------------------------------------------- email the address telegram the chat id and the bot token (the bot is created through @botfather; message it first) webhook the url, the method (post by default), if needed an authorization header shoutrrr (any service) one service url string — slack://…, discord://…, ntfy://… and others the enabled toggle in the form and the toggle in the channel row are one and the same: a switched-off channel stays in the list but receives nothing. secrets (the bot token, the service url, the authorization header) are stored encrypted and aren't shown back. when you edit a channel, the field is empty: leave it empty and the previous value is kept, enter a new one and it's replaced. test sends a probe message right away, bypassing the queue, and on success marks the channel as verified. the error comes back as text from the service itself — that's the shortest way to understand what's wrong with the token or the address. message template every channel (except the system one) has its own text template; an empty one means the default text. the template field is in the channel form, and below it are the field chips: a tap inserts a field at the end of the text. available are {{.text}}, {{.title}}, {{.tasknumber}}, {{.tasktitle}}, {{.actor}}, {{.workspace}} and {{.link}}. the preview button shows how it looks on sample data; a broken template shows an error and won't be saved. routing rules rules decide which event goes to which channels, and are checked top to bottom — the first match fires. as long as there are no rules, external channels stay silent, no matter how many there are. in a rule: events (empty = any), workspace (empty = all) and delivery channels. the mute toggle makes a rule a silencer — a matching notification goes nowhere and doesn't reach the rules below. an exception rule only makes sense above the general one. deadlines and reminders the bottom block is about the time-based notifications tessera sends itself: notify about deadlines, remind (how long before the due date) and repeat. the same three settings exist on each task separately — in the task window, by tapping the date. reminders to external channels — whether to send a reminder that has fired to the channels. this toggle doesn't affect the app's own local signal: it comes as a device alarm in any case. digest — a window of 5–60 minutes: the gathered notifications arrive as a single message instead of a stream. this doesn't affect system notifications. quiet hours — a “do not disturb” window that can cross midnight. external notifications are held until it ends, push to the device isn't shown at all during that window, and the feed under the bell fills up as usual. the time zone is taken from the phone. this block is saved with the save button — channels and rules are saved immediately. if notifications don't arrive 1. the notification permission for the app — without it there'll be no push. 2. is there a rule: a channel without a rule receives nothing. 3. a rule higher in the list isn't intercepting the event (a silencer especially). 4. the channel and the rule are enabled — disabled ones are shown dim. 5. test on the channel: it will show the real delivery error. 6. quiet hours and digest — a message may be waiting for the end of the window. 7. battery saving. if the system has put the app to sleep, a notification may come late; on phones with aggressive saving it's worth allowing tessera to run in the background. external notifications don't go out instantly: the server processes the queue once every ten seconds, and it retries a failed delivery up to five times with a growing pause. what's next about reminders themselves and their delivery — reminders."
+          }
+        }
       }
     },
     {
@@ -630,7 +1190,58 @@
           "level": 2
         }
       ],
-      "text": "экран «администрирование» управляет учётными записями всего экземпляра tessera: кто может войти, у кого есть права администратора, кому выдать ссылку для восстановления доступа. это не настройки пространства — участников конкретного пространства приглашают и удаляют отдельно, а здесь речь об аккаунтах целиком. экран «администрирование»: карточка входа через gitlab и список пользователей экземпляра кто такой администратор экземпляра администратором автоматически становится первый зарегистрированный пользователь — тот, кто поднял экземпляр. дальше права выдаются вручную, с уже имеющегося админского аккаунта. администратор видит в подвале боковой панели кнопку «администрирование» (щит) — она и открывает этот экран. у остальных пользователей кнопки нет, а прямой переход на адрес /admin вернёт их обратно: доступ проверяется и на сервере, поэтому «угадать ссылку» нельзя. права администратора экземпляра дают: этот экран, карточку «вход через gitlab (oauth)» на нём, окно «фоновые задания» и управление интеграцией с gitlab. обычная работа — доски, задачи, документы — от них не зависит. список и поиск под карточкой oauth идёт список всех аккаунтов; в заголовке экрана — их общее число. поле «поиск по имени или почте» фильтрует список по мере ввода, по обоим полям сразу. рядом с именем показываются метки состояния: admin — у аккаунта права администратора экземпляра; вы — это ваша собственная строка; деактивирован — вход запрещён, строка приглушена; не подтверждён — почта аккаунта ещё не подтверждена. метка информационная: подтверждение почты не блокирует работу, но по неподтверждённому адресу не дойдут ни письмо о восстановлении доступа, ни уведомления по почте. выдать и снять права кнопка «сделать админом» выдаёт права одним нажатием. обратное действие — «снять админа» — спрашивает подтверждение: неосторожное нажатие не должно оставить экземпляр без администратора. свою собственную строку изменить нельзя — у неё этих кнопок нет, и сервер отклонит такую попытку. так единственный администратор не сможет случайно разжаловать сам себя и закрыть себе доступ ко всем админским экранам. деактивировать аккаунт «деактивировать» (с подтверждением) запрещает пользователю вход. аккаунт при этом сохраняется целиком: задачи, комментарии, авторство и упоминания остаются на месте, человек просто больше не может войти. это штатный способ проводить увольнение или закрывать доступ подрядчику — в отличие от удаления, он ничего не ломает в истории. строка деактивированного аккаунта становится приглушённой, а кнопка меняется на «активировать» — доступ возвращается тем же одним нажатием. свой собственный аккаунт деактивировать нельзя. ссылка для восстановления доступа кнопка с ключом слева от остальных действий создаёт ссылку для сброса пароля и копирует её в буфер обмена. ссылка действует один час. это выручает, когда пользователь забыл пароль, а почта на экземпляре не настроена или письма до него не доходят: администратор передаёт ссылку любым доступным каналом. если smtp настроен, письмо со ссылкой дополнительно уйдёт на адрес аккаунта. ссылка — это, по сути, временный доступ к аккаунту, поэтому передавайте её лично и не публикуйте в общих чатах. что дальше что происходит на экземпляре в фоне — синхронизации, доставка уведомлений, повторяющиеся задачи — показывает окно «фоновые задания»."
+      "text": "экран «администрирование» управляет учётными записями всего экземпляра tessera: кто может войти, у кого есть права администратора, кому выдать ссылку для восстановления доступа. это не настройки пространства — участников конкретного пространства приглашают и удаляют отдельно, а здесь речь об аккаунтах целиком. экран «администрирование»: карточка входа через gitlab и список пользователей экземпляра кто такой администратор экземпляра администратором автоматически становится первый зарегистрированный пользователь — тот, кто поднял экземпляр. дальше права выдаются вручную, с уже имеющегося админского аккаунта. администратор видит в подвале боковой панели кнопку «администрирование» (щит) — она и открывает этот экран. у остальных пользователей кнопки нет, а прямой переход на адрес /admin вернёт их обратно: доступ проверяется и на сервере, поэтому «угадать ссылку» нельзя. права администратора экземпляра дают: этот экран, карточку «вход через gitlab (oauth)» на нём, окно «фоновые задания» и управление интеграцией с gitlab. обычная работа — доски, задачи, документы — от них не зависит. список и поиск под карточкой oauth идёт список всех аккаунтов; в заголовке экрана — их общее число. поле «поиск по имени или почте» фильтрует список по мере ввода, по обоим полям сразу. рядом с именем показываются метки состояния: admin — у аккаунта права администратора экземпляра; вы — это ваша собственная строка; деактивирован — вход запрещён, строка приглушена; не подтверждён — почта аккаунта ещё не подтверждена. метка информационная: подтверждение почты не блокирует работу, но по неподтверждённому адресу не дойдут ни письмо о восстановлении доступа, ни уведомления по почте. выдать и снять права кнопка «сделать админом» выдаёт права одним нажатием. обратное действие — «снять админа» — спрашивает подтверждение: неосторожное нажатие не должно оставить экземпляр без администратора. свою собственную строку изменить нельзя — у неё этих кнопок нет, и сервер отклонит такую попытку. так единственный администратор не сможет случайно разжаловать сам себя и закрыть себе доступ ко всем админским экранам. деактивировать аккаунт «деактивировать» (с подтверждением) запрещает пользователю вход. аккаунт при этом сохраняется целиком: задачи, комментарии, авторство и упоминания остаются на месте, человек просто больше не может войти. это штатный способ проводить увольнение или закрывать доступ подрядчику — в отличие от удаления, он ничего не ломает в истории. строка деактивированного аккаунта становится приглушённой, а кнопка меняется на «активировать» — доступ возвращается тем же одним нажатием. свой собственный аккаунт деактивировать нельзя. ссылка для восстановления доступа кнопка с ключом слева от остальных действий создаёт ссылку для сброса пароля и копирует её в буфер обмена. ссылка действует один час. это выручает, когда пользователь забыл пароль, а почта на экземпляре не настроена или письма до него не доходят: администратор передаёт ссылку любым доступным каналом. если smtp настроен, письмо со ссылкой дополнительно уйдёт на адрес аккаунта. ссылка — это, по сути, временный доступ к аккаунту, поэтому передавайте её лично и не публикуйте в общих чатах. что дальше что происходит на экземпляре в фоне — синхронизации, доставка уведомлений, повторяющиеся задачи — показывает окно «фоновые задания».",
+      "locales": {
+        "en": {
+          "path": "admin/admin-users.en.md",
+          "title": "Instance users",
+          "category": "Administration",
+          "updated": "2026-08-25",
+          "keywords": [
+            "administration",
+            "admin",
+            "users",
+            "account",
+            "deactivation",
+            "password reset",
+            "permissions",
+            "instance"
+          ],
+          "headings": [
+            {
+              "id": "who-an-instance-admin-is",
+              "text": "Who an instance admin is",
+              "level": 2
+            },
+            {
+              "id": "list-and-search",
+              "text": "List and search",
+              "level": 2
+            },
+            {
+              "id": "grant-and-revoke-rights",
+              "text": "Grant and revoke rights",
+              "level": 2
+            },
+            {
+              "id": "deactivate-an-account",
+              "text": "Deactivate an account",
+              "level": 2
+            },
+            {
+              "id": "recovery-link",
+              "text": "Recovery link",
+              "level": 2
+            },
+            {
+              "id": "what-s-next",
+              "text": "What's next",
+              "level": 2
+            }
+          ],
+          "text": "the administration screen manages the accounts of the whole tessera instance: who can sign in, who has admin rights, and who to hand a recovery link. these are not workspace settings — the members of a particular workspace are invited and removed separately; here it's about entire accounts. the administration screen: the “sign in with gitlab” card and the list of instance users who an instance admin is the first registered user becomes an admin automatically — the one who set the instance up. after that, rights are granted by hand, from an existing admin account. an admin sees the administration button (a shield) in the sidebar footer — that's what opens this screen. other users don't have the button, and going straight to the /admin address sends them back: access is checked on the server as well, so you can't “guess the link”. instance admin rights unlock: this screen, the sign in with gitlab (oauth) card on it, the background jobs window, and management of the gitlab integration. everyday work — boards, tasks, documents — doesn't depend on them. list and search below the oauth card comes the list of all accounts; the screen heading shows their total number. the search by name or email field filters the list as you type, across both fields at once. status badges appear next to a name: admin — the account has instance admin rights; you — this is your own row; deactivated — sign-in is blocked, the row is dimmed; unverified — the account's email isn't confirmed yet. the badge is informational: email verification doesn't block work, but neither a recovery email nor email notifications will reach an unverified address. grant and revoke rights the make admin button grants rights in a single click. the reverse action — revoke admin — asks for confirmation: a careless click shouldn't leave the instance without an admin. you can't change your own row — it has none of these buttons, and the server would reject such an attempt. this way the sole admin can't accidentally demote themselves and lock themselves out of every admin screen. deactivate an account deactivate (with confirmation) blocks a user from signing in. the account itself is kept intact: tasks, comments, authorship and mentions all stay in place — the person just can't sign in any more. this is the proper way to offboard someone or cut off a contractor's access — unlike deletion, it breaks nothing in the history. a deactivated account's row is dimmed, and the button turns into activate — access comes back with the same single click. you can't deactivate your own account. recovery link the key button to the left of the other actions creates a password reset link and copies it to the clipboard. the link is valid for one hour. this helps when a user has forgotten their password and email isn't configured on the instance, or the messages don't reach them: the admin passes the link along by any available channel. if smtp is configured, an email with the link is additionally sent to the account's address. the link is, in effect, temporary access to the account, so hand it over personally and don't post it in shared chats. what's next what happens on the instance in the background — synchronizations, notification delivery, recurring tasks — is shown by the background jobs window."
+        }
+      }
     },
     {
       "slug": "admin-gitlab-oauth",
@@ -688,7 +1299,64 @@
           "level": 2
         }
       ],
-      "text": "карточка «вход через gitlab (oauth)» — верхний блок экрана «администрирование». она настраивает сразу две вещи, хотя лежат они рядом не случайно: вход в tessera через gitlab — кнопка «войти через gitlab» на экране входа вместо пары «почта + пароль»; сервисный токен синхронизации — учётные данные, под которыми работает интеграция с задачами gitlab. обе части заполняются один раз на весь экземпляр и доступны только администратору экземпляра. карточка «вход через gitlab (oauth)» на экране администрирования приложение oauth на стороне gitlab сначала приложение заводится в самом gitlab — в админке (admin → applications), в настройках группы или в личном профиле, в зависимости от того, чьим приложением вы хотите его сделать. нужны два значения: scopes — достаточно readapi. этого хватает и на профиль пользователя, и на список его групп (по нему работает org map ниже). более широкие права здесь не нужны: под этим токеном tessera ничего не пишет. redirect uri — точный адрес, на который gitlab вернёт пользователя. он показан прямо в карточке, в строке подсказки, и выглядит как https://ваш-адрес/api/auth/gitlab/callback. скопируйте его оттуда, а не собирайте руками: gitlab сверяет адрес посимвольно и при расхождении отказывает во входе. адрес callback tessera берёт из переменной окружения publicurl, а если она не задана — из заголовков запроса. на проде задавайте publicurl явно: за обратным прокси заголовки могут не донести порт или схему, и тогда карточка покажет — а tessera отправит в gitlab — адрес, которого gitlab не знает. gitlab выдаст application id и secret — их и вносим в карточку. поля карточки url gitlab — адрес экземпляра gitlab, например https://gitlab.example.com. тот же адрес используется и для синхронизации. application id и secret — из приложения gitlab. сервисный токен синка — персональный токен доступа (pat) сервисного аккаунта gitlab со scope api. под ним идёт вся синхронизация задач, поэтому личные токены пользователям подключать не нужно. задачи при этом раскладываются по учёткам tessera не по владельцу токена, а по oauth-идентичности: кто вошёл через gitlab, тот и опознаётся как исполнитель. запись от имени пользователя (sudo) — выключатель, после которого создание issue и обратная запись идут от лица действующего пользователя, а не от сервисного аккаунта. для этого сервисный токен должен быть админским pat со scope api и sudo. такой токен умеет действовать от имени любого пользователя gitlab, поэтому держите переключатель выключенным, если gitlab или tessera доступны из внешней сети: цена утечки такого токена несопоставима с удобством правильного авторства в issue. включён вход — показывает кнопку «войти через gitlab» на экране входа. кнопка появляется, только когда одновременно включён переключатель, заполнен application id и задан url gitlab; при незаполненной паре её не будет даже с включённым переключателем. org map — правила, по которым членство в группах gitlab превращается в доступ к пространствам tessera (разбор ниже). как хранятся секреты secret и сервисный токен возвращаются с сервера не значением, а признаком «сохранён»: в поле стоит •••••• (сохранён; введите, чтобы заменить). пустое поле означает «оставить как есть» — сохранение карточки не затирает секрет только потому, что вы его не перевводили. чтобы стереть сохранённое значение, нажмите кнопку с ластиком в правой части поля: она блокирует поле и меняет подсказку на «будет очищено при сохранении». отменить — соседняя кнопка со стрелкой, или просто начните печатать новое значение: замена отменяет очистку. фактическое стирание происходит при нажатии «сохранить». у сервисного токена рядом с полем появляется предупреждение «синхронизация gitlab остановится» — снятый токен останавливает синк всех привязок экземпляра, а не одной. что происходит при первом входе через gitlab пользователь нажимает кнопку на экране входа, подтверждает доступ в gitlab и возвращается обратно. дальше tessera ищет, к какому аккаунту его привязать: 1. знакомая gitlab-идентичность — вход в тот аккаунт, который уже связан с этим пользователем gitlab. 2. совпадение по почте — если адрес из gitlab совпал с адресом существующего аккаунта tessera, аккаунты связываются: gitlab выступает поручителем за адрес. 3. иначе — регистрация: создаётся аккаунт без пароля, с уже подтверждённой почтой и личным пространством, и принимаются приглашения, отправленные на этот адрес заранее. если gitlab скрывает почту пользователя, tessera подставляет служебный адрес вида login@gitlab.local — его можно поменять в профиле позже. деактивированный аккаунт через gitlab не войдёт: вход прерывается ошибкой, деактивация не обходится сменой способа входа. обратное тоже верно — заведённый через gitlab аккаунт деактивируется на экране администрирования как любой другой. org map: группы gitlab → пространства поле org map принимает json, где ключ — полный путь группы gitlab, а значение описывает, что даёт членство в ней: workspaceid — пространство tessera, доступ к которому выдаётся; admins — логины gitlab, которые получают в этом пространстве роль администратора; users — выдавать ли роль участника всем остальным членам группы (false — доступ получат только перечисленные в admins). правила применяются при каждом входе через gitlab, а не однократно при регистрации: достаточно добавить человека в группу gitlab, и после следующего входа он окажется в пространстве. выдача только добавляет права и никогда не понижает владельца пространства — снятие доступа остаётся ручной операцией в участниках пространства. ключ сверяется с полным путём группы, как он выглядит в адресе gitlab (отдел/подгруппа, а не только последний сегмент). если путь ни с чем не совпал, правило просто не сработает — молча, без ошибки. пустой {} отключает разбор целиком. некорректный json карточка сохранить не даст: появится сообщение «orgmap: некорректный json», и остальные поля карточки тоже не уйдут на сервер — исправьте json и сохраните ещё раз. проверка после сохранения: 1. откройте экран входа в приватном окне — кнопка «войти через gitlab» должна появиться. 2. войдите под тестовым аккаунтом gitlab и убедитесь, что пользователь оказался в нужных пространствах. 3. если вход обрывается, сообщение на экране входа называет причину: «вход через gitlab не настроен» — не заполнена пара application id/url или снят переключатель; «не удалось авторизоваться в gitlab» — не сошлись secret или redirect uri; «не удалось получить профиль gitlab» — приложению не хватает scope readapi. что дальше учётные данные заданы — можно привязывать проекты gitlab к доскам."
+      "text": "карточка «вход через gitlab (oauth)» — верхний блок экрана «администрирование». она настраивает сразу две вещи, хотя лежат они рядом не случайно: вход в tessera через gitlab — кнопка «войти через gitlab» на экране входа вместо пары «почта + пароль»; сервисный токен синхронизации — учётные данные, под которыми работает интеграция с задачами gitlab. обе части заполняются один раз на весь экземпляр и доступны только администратору экземпляра. карточка «вход через gitlab (oauth)» на экране администрирования приложение oauth на стороне gitlab сначала приложение заводится в самом gitlab — в админке (admin → applications), в настройках группы или в личном профиле, в зависимости от того, чьим приложением вы хотите его сделать. нужны два значения: scopes — достаточно readapi. этого хватает и на профиль пользователя, и на список его групп (по нему работает org map ниже). более широкие права здесь не нужны: под этим токеном tessera ничего не пишет. redirect uri — точный адрес, на который gitlab вернёт пользователя. он показан прямо в карточке, в строке подсказки, и выглядит как https://ваш-адрес/api/auth/gitlab/callback. скопируйте его оттуда, а не собирайте руками: gitlab сверяет адрес посимвольно и при расхождении отказывает во входе. адрес callback tessera берёт из переменной окружения publicurl, а если она не задана — из заголовков запроса. на проде задавайте publicurl явно: за обратным прокси заголовки могут не донести порт или схему, и тогда карточка покажет — а tessera отправит в gitlab — адрес, которого gitlab не знает. gitlab выдаст application id и secret — их и вносим в карточку. поля карточки url gitlab — адрес экземпляра gitlab, например https://gitlab.example.com. тот же адрес используется и для синхронизации. application id и secret — из приложения gitlab. сервисный токен синка — персональный токен доступа (pat) сервисного аккаунта gitlab со scope api. под ним идёт вся синхронизация задач, поэтому личные токены пользователям подключать не нужно. задачи при этом раскладываются по учёткам tessera не по владельцу токена, а по oauth-идентичности: кто вошёл через gitlab, тот и опознаётся как исполнитель. запись от имени пользователя (sudo) — выключатель, после которого создание issue и обратная запись идут от лица действующего пользователя, а не от сервисного аккаунта. для этого сервисный токен должен быть админским pat со scope api и sudo. такой токен умеет действовать от имени любого пользователя gitlab, поэтому держите переключатель выключенным, если gitlab или tessera доступны из внешней сети: цена утечки такого токена несопоставима с удобством правильного авторства в issue. включён вход — показывает кнопку «войти через gitlab» на экране входа. кнопка появляется, только когда одновременно включён переключатель, заполнен application id и задан url gitlab; при незаполненной паре её не будет даже с включённым переключателем. org map — правила, по которым членство в группах gitlab превращается в доступ к пространствам tessera (разбор ниже). как хранятся секреты secret и сервисный токен возвращаются с сервера не значением, а признаком «сохранён»: в поле стоит •••••• (сохранён; введите, чтобы заменить). пустое поле означает «оставить как есть» — сохранение карточки не затирает секрет только потому, что вы его не перевводили. чтобы стереть сохранённое значение, нажмите кнопку с ластиком в правой части поля: она блокирует поле и меняет подсказку на «будет очищено при сохранении». отменить — соседняя кнопка со стрелкой, или просто начните печатать новое значение: замена отменяет очистку. фактическое стирание происходит при нажатии «сохранить». у сервисного токена рядом с полем появляется предупреждение «синхронизация gitlab остановится» — снятый токен останавливает синк всех привязок экземпляра, а не одной. что происходит при первом входе через gitlab пользователь нажимает кнопку на экране входа, подтверждает доступ в gitlab и возвращается обратно. дальше tessera ищет, к какому аккаунту его привязать: 1. знакомая gitlab-идентичность — вход в тот аккаунт, который уже связан с этим пользователем gitlab. 2. совпадение по почте — если адрес из gitlab совпал с адресом существующего аккаунта tessera, аккаунты связываются: gitlab выступает поручителем за адрес. 3. иначе — регистрация: создаётся аккаунт без пароля, с уже подтверждённой почтой и личным пространством, и принимаются приглашения, отправленные на этот адрес заранее. если gitlab скрывает почту пользователя, tessera подставляет служебный адрес вида login@gitlab.local — его можно поменять в профиле позже. деактивированный аккаунт через gitlab не войдёт: вход прерывается ошибкой, деактивация не обходится сменой способа входа. обратное тоже верно — заведённый через gitlab аккаунт деактивируется на экране администрирования как любой другой. org map: группы gitlab → пространства поле org map принимает json, где ключ — полный путь группы gitlab, а значение описывает, что даёт членство в ней: workspaceid — пространство tessera, доступ к которому выдаётся; admins — логины gitlab, которые получают в этом пространстве роль администратора; users — выдавать ли роль участника всем остальным членам группы (false — доступ получат только перечисленные в admins). правила применяются при каждом входе через gitlab, а не однократно при регистрации: достаточно добавить человека в группу gitlab, и после следующего входа он окажется в пространстве. выдача только добавляет права и никогда не понижает владельца пространства — снятие доступа остаётся ручной операцией в участниках пространства. ключ сверяется с полным путём группы, как он выглядит в адресе gitlab (отдел/подгруппа, а не только последний сегмент). если путь ни с чем не совпал, правило просто не сработает — молча, без ошибки. пустой {} отключает разбор целиком. некорректный json карточка сохранить не даст: появится сообщение «orgmap: некорректный json», и остальные поля карточки тоже не уйдут на сервер — исправьте json и сохраните ещё раз. проверка после сохранения: 1. откройте экран входа в приватном окне — кнопка «войти через gitlab» должна появиться. 2. войдите под тестовым аккаунтом gitlab и убедитесь, что пользователь оказался в нужных пространствах. 3. если вход обрывается, сообщение на экране входа называет причину: «вход через gitlab не настроен» — не заполнена пара application id/url или снят переключатель; «не удалось авторизоваться в gitlab» — не сошлись secret или redirect uri; «не удалось получить профиль gitlab» — приложению не хватает scope readapi. что дальше учётные данные заданы — можно привязывать проекты gitlab к доскам.",
+      "locales": {
+        "en": {
+          "path": "admin/admin-gitlab-oauth.en.md",
+          "title": "Signing in with GitLab (OAuth)",
+          "category": "Administration",
+          "updated": "2026-08-25",
+          "keywords": [
+            "administration",
+            "gitlab",
+            "oauth",
+            "sign-in",
+            "authorization",
+            "service token",
+            "sudo",
+            "org map",
+            "integration"
+          ],
+          "headings": [
+            {
+              "id": "the-oauth-application-on-the-gitlab-side",
+              "text": "The OAuth application on the GitLab side",
+              "level": 2
+            },
+            {
+              "id": "card-fields",
+              "text": "Card fields",
+              "level": 2
+            },
+            {
+              "id": "how-secrets-are-stored",
+              "text": "How secrets are stored",
+              "level": 2
+            },
+            {
+              "id": "what-happens-on-the-first-sign-in-through-gitlab",
+              "text": "What happens on the first sign-in through GitLab",
+              "level": 2
+            },
+            {
+              "id": "org-map-gitlab-groups-workspaces",
+              "text": "Org map: GitLab groups → workspaces",
+              "level": 2
+            },
+            {
+              "id": "verification",
+              "text": "Verification",
+              "level": 2
+            },
+            {
+              "id": "what-s-next",
+              "text": "What's next",
+              "level": 2
+            }
+          ],
+          "text": "the “sign in with gitlab (oauth)” card is the top block of the administration screen. it configures two things at once, and their sitting side by side is no accident: signing in to tessera through gitlab — a “sign in with gitlab” button on the sign-in screen instead of the email-plus-password pair; the sync service token — the credentials the gitlab task integration runs under. both parts are filled in once for the whole instance and are available only to the instance administrator. the “sign in with gitlab (oauth)” card on the administration screen the oauth application on the gitlab side first the application is registered in gitlab itself — in the admin area (admin → applications), in a group's settings or in your personal profile, depending on whose application you want it to be. two values are needed: scopes — readapi is enough. it covers both the user's profile and the list of their groups (the org map below relies on it). broader permissions are not needed here: tessera writes nothing under this token. redirect uri — the exact address gitlab returns the user to. it is shown right in the card, in the hint line, and looks like https://your-address/api/auth/gitlab/callback. copy it from there rather than assembling it by hand: gitlab compares the address character by character and refuses the sign-in on any mismatch. tessera derives the callback address from the publicurl environment variable, and if it is not set — from the request headers. in production, set publicurl explicitly: behind a reverse proxy the headers may not carry the port or scheme, and then the card will show — and tessera will send to gitlab — an address gitlab does not recognize. gitlab issues an application id and a secret — these are what you enter into the card. card fields gitlab url — the address of the gitlab instance, for example https://gitlab.example.com. the same address is used for synchronization. application id and secret — from the gitlab application. sync service token — a personal access token (pat) of a gitlab service account with the api scope. all task synchronization runs under it, so users do not need to connect personal tokens. issues then map onto tessera accounts not by the token owner but by oauth identity: whoever signed in through gitlab is the one recognized as the assignee. write as the acting user (sudo) — a toggle after which creating an issue and write-back go out as the acting user rather than the service account. for this the service token has to be an admin pat with the api and sudo scopes. such a token can act on behalf of any gitlab user, so keep the toggle off if gitlab or tessera is reachable from an external network: the cost of leaking such a token is out of all proportion to the convenience of correct authorship in the issue. sign-in enabled — shows the “sign in with gitlab” button on the sign-in screen. the button appears only when the toggle is on, the application id is filled in and the gitlab url is set all at once; with the pair unfilled it will not appear even with the toggle on. org map — the rules by which membership in gitlab groups turns into access to tessera workspaces (detailed below). how secrets are stored the secret and the service token come back from the server not as a value but as a “stored” marker: the field shows •••••• (stored; type to replace). an empty field means “leave as is” — saving the card does not wipe a secret just because you did not re-enter it. to erase a stored value, click the eraser button on the right side of the field: it locks the field and changes the hint to “will be cleared on save”. to undo, use the neighboring arrow button, or simply start typing a new value: a replacement cancels the clearing. the actual erasure happens when you click save. next to the service token field a warning appears — “gitlab synchronization will stop” — a removed token stops the sync for every binding on the instance, not just one. what happens on the first sign-in through gitlab the user clicks the button on the sign-in screen, confirms access in gitlab and comes back. tessera then looks for which account to link them to: 1. a known gitlab identity — sign in to the account already linked to this gitlab user. 2. an email match — if the address from gitlab matches that of an existing tessera account, the accounts are linked: gitlab vouches for the address. 3. otherwise — registration: an account is created without a password, with an already-verified email and a personal workspace, and any invitations sent to that address in advance are accepted. if gitlab hides the user's email, tessera substitutes a service address of the form login@gitlab.local — it can be changed in the profile later. a deactivated account will not sign in through gitlab: the sign-in fails with an error, deactivation is not bypassed by switching the sign-in method. the reverse is also true — an account created through gitlab is deactivated on the administration screen like any other. org map: gitlab groups → workspaces the org map field takes json where the key is the full path of a gitlab group and the value describes what membership in it grants: workspaceid — the tessera workspace that access is granted to; admins — the gitlab logins that get the administrator role in this workspace; users — whether to grant the member role to everyone else in the group (false — only those listed in admins get access). the rules are applied on every sign-in through gitlab, not once at registration: it is enough to add a person to the gitlab group, and after their next sign-in they will be in the workspace. granting only adds rights and never demotes the workspace owner — revoking access remains a manual operation in the workspace members. the key is compared against the group's full path as it appears in the gitlab address (department/subgroup, not just the last segment). if the path matches nothing, the rule simply does not fire — silently, with no error. an empty {} disables parsing entirely. the card will not let you save invalid json: the message “orgmap: invalid json” appears, and the card's other fields do not go to the server either — fix the json and save again. verification after saving: 1. open the sign-in screen in a private window — the “sign in with gitlab” button should appear. 2. sign in with a test gitlab account and make sure the user ends up in the right workspaces. 3. if the sign-in fails, the message on the sign-in screen names the reason: “sign-in with gitlab is not configured” — the application id/url pair is unfilled or the toggle is off; “could not authorize with gitlab” — the secret or the redirect uri did not match; “could not fetch the gitlab profile” — the application lacks the readapi scope. what's next the credentials are set — you can move on to linking gitlab projects to boards."
+        }
+      }
     },
     {
       "slug": "admin-gitlab-project",
@@ -735,7 +1403,53 @@
           "level": 2
         }
       ],
-      "text": "привязка связывает один проект gitlab с одной доской tessera: issue проекта приезжают на доску задачами и дальше поддерживаются в актуальном состоянии. привязок в пространстве может быть несколько — по одной на каждую пару «проект ↔ доска». окно открывается из шапки боковой панели: кнопка «интеграции» (пазл, в ряду инструментов справа от логотипа) → gitlab. видеть его и запускать синхронизацию может любой участник пространства, а вот менять привязки — только администратор экземпляра. окно gitlab: раздел «аккаунт» и переключатель привязок аккаунт верхний раздел отвечает на вопрос «под кем ходим в gitlab». если администратор задал сервисный токен в карточке «вход через gitlab (oauth)», раздел так и говорит: синхронизация идёт под системным токеном, личный подключать не обязательно. это штатный режим — экземпляру хватает одного сервисного аккаунта. личный токен нужен как запасной вариант для операций от вашего имени. подключается парой полей: url gitlab и токен (pat). для записи — создания issue и обратной записи — токену нужен scope api; токена с readapi хватает только на чтение и синхронизацию. подключённый аккаунт показывается как @логин рядом с адресом экземпляра, отключается кнопкой «отключить» с подтверждением. когда учётных данных нет вообще — ни сервисного токена, ни личного, — раздел привязок показывает предупреждение: синхронизация и обратная запись работать не будут. сами привязки при этом никуда не деваются, их можно спокойно настраивать заранее. выбор привязки строка над полями — переключатель между привязками пространства. рядом две кнопки: плюс — начать новую привязку (поля очищаются, до сохранения ничего не создаётся); корзина — удалить текущую. подтверждение предупреждает честно: синхронизированные задачи останутся на доске, пропадёт только их связь с gitlab. поля привязки поля привязки в окне gitlab название — необязательная подпись, по которой привязку удобно узнавать в переключателе, если их несколько (например, «скрам-борд»). проект gitlab (полный путь) — путь вида группа/проект, ровно как в адресе проекта. для проекта во вложенной группе — со всеми сегментами: отдел/команда/проект. доска назначения — доска tessera, на которую поедут issue. пара «проект + доска» уникальна: попытка привязать к доске второй проект (или тот же проект ко второй доске) вернёт ошибку о том, что привязка уже существует. автосинхронизация — как часто фоновый воркер подтягивает изменения: вручную, каждые 5 или 15 минут, раз в час. «вручную» не отключает интеграцию — просто синк запускается только кнопкой. полная синхронизация — как часто вместо обычного (инкрементального) обхода делается полный. инкрементальный видит изменения, но не замечает того, чего в gitlab больше нет; полный сверяет проект целиком и ловит удаления и расхождения. варианты — от «раз в 6 часов» до «раз в неделю» или «не форсировать»: в последнем случае полный обход случается только при самой первой синхронизации и по команде из меню. источник срока — откуда брать дедлайн задачи: из самого issue, а если у него срока нет — из этапа (по умолчанию); только из issue; только из этапа; не синхронизировать вовсе. источник начала — дата создания issue, начало этапа или ничего. что переносить — все задачи проекта или только назначенные на вас. закрытые задачи — что делать с закрытыми issue: «закрытые из закрытых этапов — в архив» (по умолчанию) — доска не зарастает историей, но свежезакрытые задачи остаются на виду; «все закрытые — на доску (в „готово“)» — полная картина, включая давно закрытые; «только закрытые за период» — добавляет поле «закрытые не старше» с датой отсечки. синхронизировать связи — импортировать ли связанные issue gitlab во вкладку «связи» задачи. включена — рабочий выключатель привязки. выключенная привязка сохраняет все настройки, но не синхронизируется — удобнее, чем удалять и заводить заново. ниже идёт раздел «обратная запись в gitlab» — то есть движение в обратную сторону, из tessera в gitlab. он по умолчанию выключен целиком и разбирается отдельно. сохранение и запуск в подвале окна слева — время последней синхронизации, справа — кнопки. «синхронизировать» запускает обычный обход прямо сейчас. стрелка рядом открывает меню: «полная синхронизация» — форсировать полный обход, не дожидаясь расписания; «журнал синхронизации» — что именно сделал последний запуск; «конфликты» — расхождения, которые синк не решил сам (пункт активен, только когда они есть; их число дополнительно висит оранжевой меткой на кнопке синхронизации и на иконке «интеграции» в шапке боковой панели). «сохранить» записывает привязку. у не-администратора кнопка неактивна и объясняет причину подсказкой — просмотр и запуск синхронизации ему при этом доступны. первый синк новой привязки всегда полный и на большом проекте занимает заметное время; следующие идут инкрементально и укладываются в секунды. ход работы видно в окне «фоновые задания» — там же ищите причину, если синхронизация упала. частые ошибки «нет доступных учётных данных gitlab» — не задан сервисный токен и не подключён личный. начните с карточки oauth. привязка сохранилась, задач нет — проверьте, что переключатель «включена» включён, а «что переносить» не сужен до «только назначенные на меня» с токеном сервисного аккаунта: у сервисной учётки назначенных issue обычно нет. ошибка «доска или проект уже привязаны» — на эту доску уже смотрит другая привязка; найдите её в переключателе, а не создавайте вторую. синк идёт, но исполнители пустые — люди опознаются по oauth-идентичности gitlab. пока человек не вошёл в tessera через gitlab хотя бы раз, сопоставлять его не с чем."
+      "text": "привязка связывает один проект gitlab с одной доской tessera: issue проекта приезжают на доску задачами и дальше поддерживаются в актуальном состоянии. привязок в пространстве может быть несколько — по одной на каждую пару «проект ↔ доска». окно открывается из шапки боковой панели: кнопка «интеграции» (пазл, в ряду инструментов справа от логотипа) → gitlab. видеть его и запускать синхронизацию может любой участник пространства, а вот менять привязки — только администратор экземпляра. окно gitlab: раздел «аккаунт» и переключатель привязок аккаунт верхний раздел отвечает на вопрос «под кем ходим в gitlab». если администратор задал сервисный токен в карточке «вход через gitlab (oauth)», раздел так и говорит: синхронизация идёт под системным токеном, личный подключать не обязательно. это штатный режим — экземпляру хватает одного сервисного аккаунта. личный токен нужен как запасной вариант для операций от вашего имени. подключается парой полей: url gitlab и токен (pat). для записи — создания issue и обратной записи — токену нужен scope api; токена с readapi хватает только на чтение и синхронизацию. подключённый аккаунт показывается как @логин рядом с адресом экземпляра, отключается кнопкой «отключить» с подтверждением. когда учётных данных нет вообще — ни сервисного токена, ни личного, — раздел привязок показывает предупреждение: синхронизация и обратная запись работать не будут. сами привязки при этом никуда не деваются, их можно спокойно настраивать заранее. выбор привязки строка над полями — переключатель между привязками пространства. рядом две кнопки: плюс — начать новую привязку (поля очищаются, до сохранения ничего не создаётся); корзина — удалить текущую. подтверждение предупреждает честно: синхронизированные задачи останутся на доске, пропадёт только их связь с gitlab. поля привязки поля привязки в окне gitlab название — необязательная подпись, по которой привязку удобно узнавать в переключателе, если их несколько (например, «скрам-борд»). проект gitlab (полный путь) — путь вида группа/проект, ровно как в адресе проекта. для проекта во вложенной группе — со всеми сегментами: отдел/команда/проект. доска назначения — доска tessera, на которую поедут issue. пара «проект + доска» уникальна: попытка привязать к доске второй проект (или тот же проект ко второй доске) вернёт ошибку о том, что привязка уже существует. автосинхронизация — как часто фоновый воркер подтягивает изменения: вручную, каждые 5 или 15 минут, раз в час. «вручную» не отключает интеграцию — просто синк запускается только кнопкой. полная синхронизация — как часто вместо обычного (инкрементального) обхода делается полный. инкрементальный видит изменения, но не замечает того, чего в gitlab больше нет; полный сверяет проект целиком и ловит удаления и расхождения. варианты — от «раз в 6 часов» до «раз в неделю» или «не форсировать»: в последнем случае полный обход случается только при самой первой синхронизации и по команде из меню. источник срока — откуда брать дедлайн задачи: из самого issue, а если у него срока нет — из этапа (по умолчанию); только из issue; только из этапа; не синхронизировать вовсе. источник начала — дата создания issue, начало этапа или ничего. что переносить — все задачи проекта или только назначенные на вас. закрытые задачи — что делать с закрытыми issue: «закрытые из закрытых этапов — в архив» (по умолчанию) — доска не зарастает историей, но свежезакрытые задачи остаются на виду; «все закрытые — на доску (в „готово“)» — полная картина, включая давно закрытые; «только закрытые за период» — добавляет поле «закрытые не старше» с датой отсечки. синхронизировать связи — импортировать ли связанные issue gitlab во вкладку «связи» задачи. включена — рабочий выключатель привязки. выключенная привязка сохраняет все настройки, но не синхронизируется — удобнее, чем удалять и заводить заново. ниже идёт раздел «обратная запись в gitlab» — то есть движение в обратную сторону, из tessera в gitlab. он по умолчанию выключен целиком и разбирается отдельно. сохранение и запуск в подвале окна слева — время последней синхронизации, справа — кнопки. «синхронизировать» запускает обычный обход прямо сейчас. стрелка рядом открывает меню: «полная синхронизация» — форсировать полный обход, не дожидаясь расписания; «журнал синхронизации» — что именно сделал последний запуск; «конфликты» — расхождения, которые синк не решил сам (пункт активен, только когда они есть; их число дополнительно висит оранжевой меткой на кнопке синхронизации и на иконке «интеграции» в шапке боковой панели). «сохранить» записывает привязку. у не-администратора кнопка неактивна и объясняет причину подсказкой — просмотр и запуск синхронизации ему при этом доступны. первый синк новой привязки всегда полный и на большом проекте занимает заметное время; следующие идут инкрементально и укладываются в секунды. ход работы видно в окне «фоновые задания» — там же ищите причину, если синхронизация упала. частые ошибки «нет доступных учётных данных gitlab» — не задан сервисный токен и не подключён личный. начните с карточки oauth. привязка сохранилась, задач нет — проверьте, что переключатель «включена» включён, а «что переносить» не сужен до «только назначенные на меня» с токеном сервисного аккаунта: у сервисной учётки назначенных issue обычно нет. ошибка «доска или проект уже привязаны» — на эту доску уже смотрит другая привязка; найдите её в переключателе, а не создавайте вторую. синк идёт, но исполнители пустые — люди опознаются по oauth-идентичности gitlab. пока человек не вошёл в tessera через gitlab хотя бы раз, сопоставлять его не с чем.",
+      "locales": {
+        "en": {
+          "path": "admin/admin-gitlab-project.en.md",
+          "title": "Linking a GitLab project to a board",
+          "category": "Administration",
+          "updated": "2026-08-26",
+          "keywords": [
+            "administration",
+            "gitlab",
+            "integration",
+            "binding",
+            "synchronization",
+            "issue",
+            "board",
+            "token"
+          ],
+          "headings": [
+            {
+              "id": "account",
+              "text": "Account",
+              "level": 2
+            },
+            {
+              "id": "choosing-a-binding",
+              "text": "Choosing a binding",
+              "level": 2
+            },
+            {
+              "id": "binding-fields",
+              "text": "Binding fields",
+              "level": 2
+            },
+            {
+              "id": "saving-and-running",
+              "text": "Saving and running",
+              "level": 2
+            },
+            {
+              "id": "common-mistakes",
+              "text": "Common mistakes",
+              "level": 2
+            }
+          ],
+          "text": "a binding ties one gitlab project to one tessera board: the project's issues arrive on the board as tasks and are then kept up to date. a workspace can have several bindings — one per “project ↔ board” pair. the window opens from the sidebar header: the integrations button (the puzzle piece, in the row of tools to the right of the logo) → gitlab. any workspace member can view it and start a sync, but only the instance administrator can change bindings. the gitlab window: the “account” section and the binding switcher account the top section answers the question “who do we go to gitlab as”. if the administrator set a service token in the “sign in with gitlab (oauth)” card, the section says so: syncing runs under the system token, connecting a personal one is optional. this is the standard mode — one service account is enough for the instance. a personal token serves as a fallback for operations on your behalf. it is connected with a pair of fields: gitlab url and token (pat). for writing — creating issues and write-back — the token needs the api scope; a readapi token is only enough for reading and syncing. a connected account is shown as @login next to the instance address and is disconnected with the disconnect button and a confirmation. when there are no credentials at all — neither a service token nor a personal one — the binding section shows a warning: syncing and write-back will not run. the bindings themselves are not lost meanwhile, and you can configure them ahead of time in peace. choosing a binding the row above the fields switches between the workspace's bindings. two buttons sit next to it: plus — start a new binding (the fields are cleared, nothing is created until you save); trash — delete the current one. the confirmation warns you honestly: synced tasks stay on the board, only their link to gitlab is gone. binding fields binding fields in the gitlab window name — an optional label that makes the binding easy to recognize in the switcher when there are several (for example, “scrum board”). gitlab project (full path) — a path of the form group/project, exactly as in the project address. for a project in a nested group — with all the segments: department/team/project. target board — the tessera board the issues will go to. the “project + board” pair is unique: trying to bind a second project to the board (or the same project to a second board) returns an error that the binding already exists. auto sync — how often the background worker pulls changes: manually, every 5 or 15 minutes, once an hour. “manually” does not disable the integration — it just means the sync runs only from the button. full sync — how often, instead of the ordinary (incremental) pass, a full one is done. the incremental pass sees changes but does not notice what is no longer in gitlab; the full one reconciles the whole project and catches deletions and discrepancies. the options range from “every 6 hours” to “every week” or “do not force”: in the last case a full pass happens only on the very first sync and on command from the menu. due date source — where to take the task's deadline from: from the issue itself, and if it has no due date — from the milestone (the default); from the issue only; from the milestone only; do not sync at all. start date source — the issue creation date, the milestone start, or nothing. what to import — all the project's tasks or only the ones assigned to you. closed issues — what to do with closed issues: “closed in a closed milestone — to the archive” (the default) — the board does not fill up with history, but recently closed tasks stay visible; “all closed — onto the board (into ‘done’)” — the full picture, including long-closed ones; “only the ones closed within a period” — adds a “closed no earlier than” field with a cut-off date. sync relations — whether to import linked gitlab issues into the task's “relations” tab. enabled — the binding's working switch. a disabled binding keeps all its settings but does not sync — handier than deleting it and setting it up again. below comes the “write-back to gitlab” section — that is, movement in the opposite direction, from tessera into gitlab. it is off entirely by default and is covered separately. saving and running at the bottom of the window: on the left, the time of the last sync; on the right, the buttons. sync runs an ordinary pass right now. the arrow next to it opens a menu: full sync — force a full pass without waiting for the schedule; sync journal — what exactly the last run did; conflicts — discrepancies the sync did not resolve on its own (the item is active only when there are any; their count also hangs as an orange badge on the sync button and on the “integrations” icon in the sidebar header). save records the binding. for a non-administrator the button is disabled and explains why with a hint — viewing and running a sync are still available to them. the first sync of a new binding is always full and takes a noticeable while on a large project; the following ones run incrementally and finish within seconds. the progress is visible in the background jobs window — that is also where to look for the reason if a sync fails. common mistakes “no gitlab credentials available” — no service token is set and no personal one is connected. start with the oauth card. the binding saved, but there are no tasks — check that the “enabled” toggle is on and that “what to import” is not narrowed to “only the ones assigned to me” with the service account token: a service account usually has no assigned issues. the error “the board or project is already bound” — another binding already points at this board; find it in the switcher instead of creating a second one. the sync runs, but the assignees are empty — people are recognized by gitlab oauth identity. until a person has signed in to tessera through gitlab at least once, there is nothing to match them against."
+        }
+      }
     },
     {
       "slug": "admin-gitlab-sync",
@@ -793,7 +1507,64 @@
           "level": 2
         }
       ],
-      "text": "когда привязка проекта уже настроена, остаётся решить, что именно и в какую сторону ездит между tessera и gitlab. направлений два, и настраиваются они порознь: из gitlab в tessera — синхронизация читает issue и превращает их метки в колонку, приоритет и теги. этим управляют правила разбора меток; из tessera в gitlab — изменения задачи возвращаются на issue. это обратная запись, она выключена по умолчанию и включается по одному действию. когда обе стороны меняют одно и то же поле, изменение не затирается, а откладывается в конфликт. что именно сделал каждый запуск, видно в журнале синхронизации. все настройки ниже живут в окне «интеграции» → gitlab и относятся к выбранной привязке. менять их может только администратор экземпляра. обратная запись в gitlab раздел «обратная запись в gitlab» находится под полями привязки. верхний выключатель «включить запись» — общий рубильник: пока он выключен, ни одно действие в gitlab не уходит, как бы ни были настроены остальные переключатели. создание issue из задачи добавляет в модалку задачи (под свойством «родитель») кнопку «создать issue в gitlab». issue открывается из заголовка, описания и свойств задачи, после чего задача становится синхронизированной. это отдельная возможность: она работает, даже если обратная запись изменений не настроена ни на одно поле. получение issue-templates из проекта подтягивает шаблоны из .gitlab/issuetemplates/.md — при создании issue шаблон можно выбрать над редактором описания. выгрузка подзадач в иерархию gitlab создаёт подзадачи сгруппированной задачи дочерними элементами issue. родителя помечает метка из поля «метка сгруппированной задачи» (пусто — берётся m: сгруппированная задача). метку задают здесь, а не тегом: она должна читаться правилами разбора как группирующая, иначе сервер отклонит кнопку «сделать сгруппированной». «помечать родителя автоматически» по умолчанию выключено — иначе первая же подзадача молча поправит метки в gitlab; вместо этого в списке подзадач появляется подсказка с кнопкой. загружать вложения в gitlab копирует картинки из описания и комментариев, а также файлы задачи, в хранилище загрузок проекта gitlab. без этого ссылки в issue остаются битыми — gitlab резолвит их от своего адреса. выключают его тогда, когда не хотят дублировать бинарники: ссылки тогда заменяются пометкой. учтите: удаление файла в tessera копию в gitlab не убирает, штатного api удаления загрузок у gitlab нет. действия обратной записи что именно происходит на issue, задаёт таблица действий — кнопка «настроить действия» открывает её в правой части окна. кнопка неактивна, пока не включена запись. правая панель «действия обратной записи» каждая строка — пара «событие в tessera → действие в gitlab», со своим выключателем: правило можно погасить, не удаляя. записи уходят под токеном владельца интеграции, которому нужен scope api. событий в tessera десять: перемещение в колонку, флаг «выполнено», изменение приоритета, срока, исполнителей, оценки, этапа, заголовка или описания, тегов и новый комментарий. у части из них есть уточнение — конкретная колонка, конкретный уровень приоритета («любой приоритет» = любое изменение), направление флага «выполнено» («стало выполнено» / «снято» / любое изменение). действий в gitlab девять: действие что делает --- --- установить метку ставит на issue указанную метку. переключатель «снимать метки того же префикса» убирает соседей по префиксу — так s: in progress вытесняет s: to do, а не копится рядом с ней закрыть / открыть issue закрывает или открывает; вариант «из флага „выполнено“» берёт направление из самой задачи установить срок пишет duedate. начало (start) у issue нет, этот вариант для них игнорируется установить исполнителей переносит исполнителей задачи. сопоставляются только те, кто входил в tessera через gitlab установить оценку пишет timeestimate; имеет смысл, только когда доска считает оценку во времени установить этап ставит milestone — если этап tessera сам связан с gitlab обновить заголовок/описание переносит текст задачи в issue синхронизировать теги приводит метки issue в соответствие тегам задачи написать комментарий публикует комментарий; «добавлять маркер tessera» дописывает в конец подпись, по которой читатель в gitlab понимает, откуда пришла запись перенос в колонку намеренно ставит метку статуса, а не закрывает issue: закрытие — это отдельное событие «выполнено», и смешивать их значило бы закрывать issue всякий раз, когда карточка доехала до правого края доски. пустая таблица не означает «ничего не делать»: если действия ни разу не настраивали, при открытии окна набор восстанавливается из прежних флагов записи, и его видно готовым к правке. тонкость про теги: действие «синхронизировать теги» работает только тогда, когда имя тега можно превратить обратно в полное название метки, то есть при включённом «сохранять префикс тега» в правилах разбора. если префикс отбрасывается, восстановить t: bug из тега bug нечем — и такие записи не ставятся в очередь вовсе. как уходят изменения обратная запись асинхронная: обработчик задачи только кладёт изменение в очередь, а фоновый воркер разбирает её пачками примерно раз в десять секунд. поэтому недоступный gitlab не тормозит работу в tessera — запись просто подождёт. неудачная попытка повторяется с растущей паузой, до пяти раз, после чего запись помечается неудачной и остаётся в журнале. серия правок одного и того же поля схлопывается в одну запись (побеждает последняя) — комментарии не схлопываются никогда. правила разбора меток gitlab обратная дорога: как метки issue превращаются в состояние задачи. кнопка «настроить правила» открывает редактор — он доступен независимо от того, включена ли обратная запись. правая панель «правила разбора меток gitlab» сверху — три общих параметра: колонка по умолчанию — куда попадёт issue, если ни одно правило статуса не сработало; прочие метки — что делать с метками, не подошедшими ни под одно правило: «создавать тег» (по умолчанию) или «игнорировать»; сохранять префикс тега — оставлять ли в имени тега префикс метки (t: bug) или отбрасывать его (bug). от этого зависит и обратная запись тегов, см. выше. ниже — список правил. каждое состоит из образца, типа сравнения и действия: префикс — метка подходит, если начинается с образца (s: ); значением считается остаток названия; regex — метка подходит по регулярному выражению; значением считается всё название целиком. действий шесть: статус → колонка и приоритет и доска (роутинг) — с таблицей соответствий «значение метки → колонка / уровень приоритета / доска». роутинг по доске нужен, когда issue одного проекта раскладываются по разным доскам; тег — метка становится тегом задачи (со своим переключателем префикса); группировка (подзадачи) — метка помечает задачу сгруппированным родителем; игнорировать — метка отбрасывается. у правила с типом «префикс» есть понятное имя — подпись, под которой префикс показывается в интерфейсе tessera (например, «статус» для s: ). она хранится у проекта, а не у правила, поэтому её видно и на других экранах с тегами. разбор идёт сверху вниз: каждая метка достаётся первому подошедшему правилу, а статус, приоритет и доска берутся из первого сработавшего совпадения. значения в таблицах сверяются без учёта регистра — метка s: in progress найдёт строку in progress. изначально правила заполнены принятой в проекте раскладкой: s: — статус, p: — приоритет, m: — группировка, остальное превращается в теги с сохранением префикса. если у команды другая система меток — разумнее переписать таблицы соответствий, чем переименовывать метки в gitlab. конфликты синхронизация не решает за вас, кто прав. если с момента последнего обмена и вы, и gitlab изменили одно и то же поле, запись не уходит, а откладывается в конфликт. так ведут себя заголовок и описание, срок, оценка, статус «выполнено» и приоритет — то есть поля, где потеря чужой правки заметна. неразрешённый конфликт видно сразу в трёх местах: оранжевая метка «конфликт» на карточке задачи, счётчик на кнопке «синхронизировать» и на иконке «интеграции» в шапке боковой панели, и пункт «конфликты» в меню рядом с кнопкой синхронизации (он активен, только когда есть что разрешать). панель конфликтов показывает слева список задач, справа — разбор по полям в трёх колонках: «было (база)» — значение на момент последней синхронизации, «gitlab» и «tessera» — что стало с каждой стороны. для заголовка и описания расхождения подсвечиваются построчно. решение принимается кнопками: оставить своё, оставить значение gitlab или объединить вручную — последнее доступно для текстовых и числовых полей (для статуса и приоритета выбор и так двоичный). после разрешения выбранное значение отправляется в gitlab обычной обратной записью, а базовый снимок обновляется, чтобы следующая правка не считалась расхождением снова. журнал синхронизации пункт «журнал синхронизации» в меню кнопки «синхронизировать» открывает историю запусков. слева — список: тип (pull — чтение из gitlab, push — доставка обратной записи), время старта, что запустило (вручную или авто), итог и длительность. точка справа показывает состояние: выполняется, успех, частично, ошибка. идущий прямо сейчас запуск виден живьём — счётчик времени тикает, и по окончании строка сама меняет статус, панель переоткрывать не нужно. счётчики у pull-запуска читаются так: +n — создано задач, n — обновлено, «без изменений» — обход прошёл, расхождений не нашлось. у push-запуска считаются доставки. клик по запуску раскрывает список действий, клик по действию — подробности справа: какие поля изменились и на что, какие теги, комментарии и исполнители затронуты. длинный запуск отдаётся страницами — внизу списка появляется «показать ещё». у неудачной доставки (только у push) есть кнопка «повторить» — она ставит запись обратно в очередь. если что-то идёт не так изменения не уезжают в gitlab. проверьте общий выключатель «включить запись», затем — есть ли в таблице включённое действие на нужное событие. событие без действия не ставится в очередь вообще, и в журнале от него не останется следа. задачи приходят не в ту колонку. смотрите правило статуса: скорее всего, значение метки отсутствует в таблице соответствий, и сработала колонка по умолчанию. метки приезжают тегами вместо статуса. ни одно правило не подошло, и метку подобрало «прочие метки → создавать тег». чаще всего дело в префиксе: в правиле s: с пробелом, а в gitlab метка s:in progress. теги не уходят обратно в gitlab. включите «сохранять префикс тега» — без префикса имя тега не превращается обратно в название метки. исполнители не переносятся ни в ту, ни в другую сторону. люди сопоставляются по идентичности gitlab: пока человек не вошёл в tessera через gitlab хотя бы раз, сопоставлять его не с чем. запись помечена неудачной. откройте её в журнале — там текст ошибки от gitlab. после устранения причины (права токена, удалённый issue, недоступный сервер) нажмите «повторить». кнопка «сделать сгруппированной» не срабатывает. метка сгруппированной задачи должна попадать под правило с действием «группировка»; иначе tessera поставила бы метку, которую сама же прочитала бы как обычный тег."
+      "text": "когда привязка проекта уже настроена, остаётся решить, что именно и в какую сторону ездит между tessera и gitlab. направлений два, и настраиваются они порознь: из gitlab в tessera — синхронизация читает issue и превращает их метки в колонку, приоритет и теги. этим управляют правила разбора меток; из tessera в gitlab — изменения задачи возвращаются на issue. это обратная запись, она выключена по умолчанию и включается по одному действию. когда обе стороны меняют одно и то же поле, изменение не затирается, а откладывается в конфликт. что именно сделал каждый запуск, видно в журнале синхронизации. все настройки ниже живут в окне «интеграции» → gitlab и относятся к выбранной привязке. менять их может только администратор экземпляра. обратная запись в gitlab раздел «обратная запись в gitlab» находится под полями привязки. верхний выключатель «включить запись» — общий рубильник: пока он выключен, ни одно действие в gitlab не уходит, как бы ни были настроены остальные переключатели. создание issue из задачи добавляет в модалку задачи (под свойством «родитель») кнопку «создать issue в gitlab». issue открывается из заголовка, описания и свойств задачи, после чего задача становится синхронизированной. это отдельная возможность: она работает, даже если обратная запись изменений не настроена ни на одно поле. получение issue-templates из проекта подтягивает шаблоны из .gitlab/issuetemplates/.md — при создании issue шаблон можно выбрать над редактором описания. выгрузка подзадач в иерархию gitlab создаёт подзадачи сгруппированной задачи дочерними элементами issue. родителя помечает метка из поля «метка сгруппированной задачи» (пусто — берётся m: сгруппированная задача). метку задают здесь, а не тегом: она должна читаться правилами разбора как группирующая, иначе сервер отклонит кнопку «сделать сгруппированной». «помечать родителя автоматически» по умолчанию выключено — иначе первая же подзадача молча поправит метки в gitlab; вместо этого в списке подзадач появляется подсказка с кнопкой. загружать вложения в gitlab копирует картинки из описания и комментариев, а также файлы задачи, в хранилище загрузок проекта gitlab. без этого ссылки в issue остаются битыми — gitlab резолвит их от своего адреса. выключают его тогда, когда не хотят дублировать бинарники: ссылки тогда заменяются пометкой. учтите: удаление файла в tessera копию в gitlab не убирает, штатного api удаления загрузок у gitlab нет. действия обратной записи что именно происходит на issue, задаёт таблица действий — кнопка «настроить действия» открывает её в правой части окна. кнопка неактивна, пока не включена запись. правая панель «действия обратной записи» каждая строка — пара «событие в tessera → действие в gitlab», со своим выключателем: правило можно погасить, не удаляя. записи уходят под токеном владельца интеграции, которому нужен scope api. событий в tessera десять: перемещение в колонку, флаг «выполнено», изменение приоритета, срока, исполнителей, оценки, этапа, заголовка или описания, тегов и новый комментарий. у части из них есть уточнение — конкретная колонка, конкретный уровень приоритета («любой приоритет» = любое изменение), направление флага «выполнено» («стало выполнено» / «снято» / любое изменение). действий в gitlab девять: действие что делает --- --- установить метку ставит на issue указанную метку. переключатель «снимать метки того же префикса» убирает соседей по префиксу — так s: in progress вытесняет s: to do, а не копится рядом с ней закрыть / открыть issue закрывает или открывает; вариант «из флага „выполнено“» берёт направление из самой задачи установить срок пишет duedate. начало (start) у issue нет, этот вариант для них игнорируется установить исполнителей переносит исполнителей задачи. сопоставляются только те, кто входил в tessera через gitlab установить оценку пишет timeestimate; имеет смысл, только когда доска считает оценку во времени установить этап ставит milestone — если этап tessera сам связан с gitlab обновить заголовок/описание переносит текст задачи в issue синхронизировать теги приводит метки issue в соответствие тегам задачи написать комментарий публикует комментарий; «добавлять маркер tessera» дописывает в конец подпись, по которой читатель в gitlab понимает, откуда пришла запись перенос в колонку намеренно ставит метку статуса, а не закрывает issue: закрытие — это отдельное событие «выполнено», и смешивать их значило бы закрывать issue всякий раз, когда карточка доехала до правого края доски. пустая таблица не означает «ничего не делать»: если действия ни разу не настраивали, при открытии окна набор восстанавливается из прежних флагов записи, и его видно готовым к правке. тонкость про теги: действие «синхронизировать теги» работает только тогда, когда имя тега можно превратить обратно в полное название метки, то есть при включённом «сохранять префикс тега» в правилах разбора. если префикс отбрасывается, восстановить t: bug из тега bug нечем — и такие записи не ставятся в очередь вовсе. как уходят изменения обратная запись асинхронная: обработчик задачи только кладёт изменение в очередь, а фоновый воркер разбирает её пачками примерно раз в десять секунд. поэтому недоступный gitlab не тормозит работу в tessera — запись просто подождёт. неудачная попытка повторяется с растущей паузой, до пяти раз, после чего запись помечается неудачной и остаётся в журнале. серия правок одного и того же поля схлопывается в одну запись (побеждает последняя) — комментарии не схлопываются никогда. правила разбора меток gitlab обратная дорога: как метки issue превращаются в состояние задачи. кнопка «настроить правила» открывает редактор — он доступен независимо от того, включена ли обратная запись. правая панель «правила разбора меток gitlab» сверху — три общих параметра: колонка по умолчанию — куда попадёт issue, если ни одно правило статуса не сработало; прочие метки — что делать с метками, не подошедшими ни под одно правило: «создавать тег» (по умолчанию) или «игнорировать»; сохранять префикс тега — оставлять ли в имени тега префикс метки (t: bug) или отбрасывать его (bug). от этого зависит и обратная запись тегов, см. выше. ниже — список правил. каждое состоит из образца, типа сравнения и действия: префикс — метка подходит, если начинается с образца (s: ); значением считается остаток названия; regex — метка подходит по регулярному выражению; значением считается всё название целиком. действий шесть: статус → колонка и приоритет и доска (роутинг) — с таблицей соответствий «значение метки → колонка / уровень приоритета / доска». роутинг по доске нужен, когда issue одного проекта раскладываются по разным доскам; тег — метка становится тегом задачи (со своим переключателем префикса); группировка (подзадачи) — метка помечает задачу сгруппированным родителем; игнорировать — метка отбрасывается. у правила с типом «префикс» есть понятное имя — подпись, под которой префикс показывается в интерфейсе tessera (например, «статус» для s: ). она хранится у проекта, а не у правила, поэтому её видно и на других экранах с тегами. разбор идёт сверху вниз: каждая метка достаётся первому подошедшему правилу, а статус, приоритет и доска берутся из первого сработавшего совпадения. значения в таблицах сверяются без учёта регистра — метка s: in progress найдёт строку in progress. изначально правила заполнены принятой в проекте раскладкой: s: — статус, p: — приоритет, m: — группировка, остальное превращается в теги с сохранением префикса. если у команды другая система меток — разумнее переписать таблицы соответствий, чем переименовывать метки в gitlab. конфликты синхронизация не решает за вас, кто прав. если с момента последнего обмена и вы, и gitlab изменили одно и то же поле, запись не уходит, а откладывается в конфликт. так ведут себя заголовок и описание, срок, оценка, статус «выполнено» и приоритет — то есть поля, где потеря чужой правки заметна. неразрешённый конфликт видно сразу в трёх местах: оранжевая метка «конфликт» на карточке задачи, счётчик на кнопке «синхронизировать» и на иконке «интеграции» в шапке боковой панели, и пункт «конфликты» в меню рядом с кнопкой синхронизации (он активен, только когда есть что разрешать). панель конфликтов показывает слева список задач, справа — разбор по полям в трёх колонках: «было (база)» — значение на момент последней синхронизации, «gitlab» и «tessera» — что стало с каждой стороны. для заголовка и описания расхождения подсвечиваются построчно. решение принимается кнопками: оставить своё, оставить значение gitlab или объединить вручную — последнее доступно для текстовых и числовых полей (для статуса и приоритета выбор и так двоичный). после разрешения выбранное значение отправляется в gitlab обычной обратной записью, а базовый снимок обновляется, чтобы следующая правка не считалась расхождением снова. журнал синхронизации пункт «журнал синхронизации» в меню кнопки «синхронизировать» открывает историю запусков. слева — список: тип (pull — чтение из gitlab, push — доставка обратной записи), время старта, что запустило (вручную или авто), итог и длительность. точка справа показывает состояние: выполняется, успех, частично, ошибка. идущий прямо сейчас запуск виден живьём — счётчик времени тикает, и по окончании строка сама меняет статус, панель переоткрывать не нужно. счётчики у pull-запуска читаются так: +n — создано задач, n — обновлено, «без изменений» — обход прошёл, расхождений не нашлось. у push-запуска считаются доставки. клик по запуску раскрывает список действий, клик по действию — подробности справа: какие поля изменились и на что, какие теги, комментарии и исполнители затронуты. длинный запуск отдаётся страницами — внизу списка появляется «показать ещё». у неудачной доставки (только у push) есть кнопка «повторить» — она ставит запись обратно в очередь. если что-то идёт не так изменения не уезжают в gitlab. проверьте общий выключатель «включить запись», затем — есть ли в таблице включённое действие на нужное событие. событие без действия не ставится в очередь вообще, и в журнале от него не останется следа. задачи приходят не в ту колонку. смотрите правило статуса: скорее всего, значение метки отсутствует в таблице соответствий, и сработала колонка по умолчанию. метки приезжают тегами вместо статуса. ни одно правило не подошло, и метку подобрало «прочие метки → создавать тег». чаще всего дело в префиксе: в правиле s: с пробелом, а в gitlab метка s:in progress. теги не уходят обратно в gitlab. включите «сохранять префикс тега» — без префикса имя тега не превращается обратно в название метки. исполнители не переносятся ни в ту, ни в другую сторону. люди сопоставляются по идентичности gitlab: пока человек не вошёл в tessera через gitlab хотя бы раз, сопоставлять его не с чем. запись помечена неудачной. откройте её в журнале — там текст ошибки от gitlab. после устранения причины (права токена, удалённый issue, недоступный сервер) нажмите «повторить». кнопка «сделать сгруппированной» не срабатывает. метка сгруппированной задачи должна попадать под правило с действием «группировка»; иначе tessera поставила бы метку, которую сама же прочитала бы как обычный тег.",
+      "locales": {
+        "en": {
+          "path": "admin/admin-gitlab-sync.en.md",
+          "title": "GitLab synchronization in detail",
+          "category": "Administration",
+          "updated": "2026-08-26",
+          "keywords": [
+            "administration",
+            "gitlab",
+            "synchronization",
+            "write-back",
+            "labels",
+            "tags",
+            "conflicts",
+            "journal",
+            "issue"
+          ],
+          "headings": [
+            {
+              "id": "write-back-to-gitlab",
+              "text": "Write-back to GitLab",
+              "level": 2
+            },
+            {
+              "id": "write-back-actions",
+              "text": "Write-back actions",
+              "level": 3
+            },
+            {
+              "id": "how-changes-are-sent",
+              "text": "How changes are sent",
+              "level": 3
+            },
+            {
+              "id": "gitlab-label-parsing-rules",
+              "text": "GitLab label parsing rules",
+              "level": 2
+            },
+            {
+              "id": "conflicts",
+              "text": "Conflicts",
+              "level": 2
+            },
+            {
+              "id": "sync-journal",
+              "text": "Sync journal",
+              "level": 2
+            },
+            {
+              "id": "if-something-goes-wrong",
+              "text": "If something goes wrong",
+              "level": 2
+            }
+          ],
+          "text": "once the project binding is set up, what remains is deciding what exactly moves between tessera and gitlab, and in which direction. there are two directions, and they are configured separately: from gitlab into tessera — synchronization reads issues and turns their labels into a column, a priority and tags. this is governed by the label parsing rules; from tessera into gitlab — task changes are pushed back onto the issue. this is write-back; it is off by default and is turned on one action at a time. when both sides change the same field, the change is not overwritten but held back as a conflict. what exactly each run did is visible in the sync journal. all the settings below live in the integrations → gitlab window and apply to the selected binding. only the instance administrator can change them. write-back to gitlab the “write-back to gitlab” section sits below the binding fields. the top toggle “enable write-back” is the master switch: while it is off, nothing goes out to gitlab no matter how the other toggles are set. create an issue from a task adds a “create a gitlab issue” button to the task modal (under the “parent” property). the issue is opened from the task's title, description and properties, after which the task counts as synced. this is a separate capability: it works even if change write-back is not configured for any field. fetch issue templates from the project pulls in templates from .gitlab/issuetemplates/.md — when creating an issue, you can pick a template above the description editor. push subtasks into the gitlab hierarchy creates the subtasks of a grouped task as child items of the issue. the parent is marked by the label from the “grouped-task label” field (empty — m: сгруппированная задача is used). the label is set here rather than as a tag: it has to be read as grouping by the parsing rules, otherwise the server rejects the “mark as grouped” button. “label the parent automatically” is off by default — otherwise the very first subtask would quietly edit labels in gitlab; instead, a hint with a button appears in the subtask list. upload attachments to gitlab copies images from the description and comments, as well as the task's files, into the gitlab project's upload store. without this, links inside the issue stay broken — gitlab resolves them against its own address. it is turned off when you would rather not duplicate binaries: links are then replaced with a note. note: deleting a file in tessera does not remove the gitlab copy — gitlab has no upload-deletion api. write-back actions what exactly happens to the issue is set by the actions table — the “configure actions” button opens it on the right side of the window. the button is disabled until write-back is enabled. the “write-back actions” pane on the right each row is an “event in tessera → action in gitlab” pair, with its own toggle: a rule can be silenced without deleting it. entries go out under the integration owner's token, which needs the api scope. there are ten events in tessera: move to a column, the “completed” flag, a priority change, a due date, assignees, an estimate, a milestone, a title or description, tags, and a new comment. some of them have a qualifier — a specific column, a specific priority level (“any priority” = any change), the direction of the “completed” flag (“became ‘completed’” / “‘completed’ cleared” / any change). there are nine actions in gitlab: action what it does --- --- set a label puts the given label on the issue. the “clear labels with the same prefix” toggle removes prefix neighbors — so s: in progress displaces s: to do rather than piling up alongside it close / reopen the issue closes or reopens; the “from the ‘completed’ flag” variant takes the direction from the task itself set the due date writes duedate. an issue has no start date, so this variant is ignored for them set the assignees carries over the task's assignees. only those who signed in to tessera through gitlab are matched set the estimate writes timeestimate; it only makes sense when the board counts the estimate in time set the milestone sets the milestone — if the tessera milestone is itself linked to gitlab update the title/description carries the task's text over to the issue reconcile the tags brings the issue's labels into line with the task's tags post a comment posts a comment; “add a tessera marker” appends a signature at the end, by which a reader in gitlab can tell where the entry came from moving to a column deliberately sets a status label and does not close the issue: closing is a separate “completed” event, and mixing them would mean closing the issue every time a card reached the right edge of the board. an empty table does not mean “do nothing”: if the actions were never configured, the set is restored from the previous write-back flags when the window opens, and it is shown ready for editing. a subtlety about tags: the “reconcile the tags” action works only when a tag name can be turned back into the full label name — that is, with “keep the tag prefix” enabled in the parsing rules. if the prefix is dropped, there is no way to restore t: bug from the bug tag — and such entries are not queued at all. how changes are sent write-back is asynchronous: the task handler only puts the change into a queue, and a background worker processes it in batches roughly every ten seconds. that is why an unreachable gitlab does not slow down work in tessera — the entry simply waits. a failed attempt is retried with a growing pause, up to five times, after which the entry is marked failed and stays in the journal. a series of edits to the same field collapses into a single entry (the last one wins) — comments never collapse. gitlab label parsing rules the way back: how issue labels turn into a task's state. the “configure rules” button opens the editor — it is available regardless of whether write-back is on. the “gitlab label parsing rules” pane on the right at the top are three shared parameters: default column — where an issue lands if no status rule fired; other labels — what to do with labels that matched no rule: “create a tag” (the default) or “ignore”; keep the tag prefix — whether to keep the label prefix in the tag name (t: bug) or drop it (bug). tag write-back depends on this too, see above. below is the list of rules. each consists of a pattern, a match type and an action: prefix — a label matches if it starts with the pattern (s: ); the rest of the name is taken as the value; regex — a label matches by a regular expression; the whole name is taken as the value. there are six actions: status → column, priority and board (routing) — with a mapping table of “label value → column / priority level / board”. board routing is needed when one project's issues are spread across different boards; tag — the label becomes a task tag (with its own prefix toggle); grouping (subtasks) — the label marks the task as a grouped parent; ignore — the label is dropped. a rule of the “prefix” type has a friendly name — the label under which the prefix is shown in the tessera interface (for example, “status” for s: ). it is stored on the project, not on the rule, so it is visible on other tag screens too. parsing goes top to bottom: each label goes to the first rule it matches, and the status, priority and board are taken from the first match that fired. values in the tables are compared case-insensitively — the label s: in progress finds the row in progress. out of the box the rules are filled with the layout common to the project: s: — status, p: — priority, m: — grouping, everything else becomes tags with the prefix kept. if a team uses a different label system, it is more sensible to rewrite the mapping tables than to rename labels in gitlab. conflicts synchronization does not decide for you who is right. if both you and gitlab changed the same field since the last exchange, the entry is not sent but held back as a conflict. this is how the title and description, due date, estimate, the “completed” state and priority behave — that is, the fields where losing someone else's edit would be noticeable. an unresolved conflict is visible in three places at once: an orange “conflict” badge on the task card, a counter on the “sync” button and on the “integrations” icon in the sidebar header, and the “conflicts” item in the menu next to the sync button (it is active only when there is something to resolve). the conflicts pane shows a list of tasks on the left and, on the right, a per-field breakdown in three columns: “before (base)” — the value as of the last sync, “gitlab” and “tessera” — what each side became. for the title and description, differences are highlighted line by line. a decision is made with buttons: keep mine, keep the gitlab value, or merge by hand — the last is available for text and numeric fields (for status and priority the choice is binary anyway). after resolving, the chosen value is sent to gitlab by the usual write-back, and the base snapshot is updated so the next edit is not treated as a discrepancy again. sync journal the “sync journal” item in the “sync” button's menu opens the run history. on the left is a list: the type (pull — reading from gitlab, push — delivering write-back), the start time, what triggered it (manual or auto), the outcome and the duration. the dot on the right shows the state: running, success, partial, error. a run happening right now is visible live — the time counter ticks, and when it ends the row changes its status by itself, with no need to reopen the pane. a pull run's counters read like this: +n — tasks created, n — updated, “no changes” — the pass completed and found no discrepancies. a push run counts deliveries. clicking a run expands its list of actions; clicking an action shows the details on the right: which fields changed and to what, which tags, comments and assignees were touched. a long run is paged — “show more” appears at the bottom of the list. a failed delivery (push only) has a “retry” button — it puts the entry back into the queue. if something goes wrong changes do not go out to gitlab. check the master “enable write-back” toggle, then whether the table has an enabled action for the event in question. an event with no action is not queued at all, and leaves no trace of itself in the journal. tasks arrive in the wrong column. look at the status rule: most likely the label value is missing from the mapping table, and the default column fired. labels arrive as tags instead of a status. no rule matched, and the label was picked up by “other labels → create a tag”. most often the culprit is the prefix: the rule has s: with a space, while the gitlab label is s:in progress. tags do not go back to gitlab. enable “keep the tag prefix” — without the prefix a tag name is not turned back into a label name. assignees are not carried over either way. people are matched by gitlab identity: until a person has signed in to tessera through gitlab at least once, there is nothing to match them against. an entry is marked failed. open it in the journal — the gitlab error text is there. after fixing the cause (token permissions, a deleted issue, an unreachable server) click “retry”. the “mark as grouped” button does not work. the grouped-task label has to fall under a rule with the “grouping” action; otherwise tessera would set a label it would then read back as an ordinary tag."
+        }
+      }
     },
     {
       "slug": "admin-jobs",
@@ -851,7 +1622,64 @@
           "level": 2
         }
       ],
-      "text": "часть работы tessera делает сама и не на глазах у пользователя: опрашивает gitlab, выгружает туда изменения, рассылает уведомления, наступает сроки напоминаний, создаёт повторяющиеся задачи. окно «фоновые задания» показывает, что из этого сейчас выполняется, когда произойдёт в следующий раз и что закончилось ошибкой. открывается кнопкой с иконкой сервера в шапке боковой панели (в ряду инструментов справа от логотипа) — она видна только администратору экземпляра. окно «фоновые задания»: список слева, карточка выбранного задания справа воркер и синхронизация — разные вещи в списке два вида строк, и путать их не стоит. worker — постоянный цикл, который живёт всё время, пока работает сервер, и просыпается по своему интервалу. он почти всегда «выполняется»: это состояние самого цикла, а не признак того, что прямо сейчас идёт тяжёлая работа. для воркера имеет смысл строка «следующий запуск» — через сколько он проснётся. синхронизация — разовый прогон с началом и концом: конкретный запуск обмена с gitlab по одной интеграции. у неё есть длительность, режим, счётчики созданного и обновлённого. постоянные воркеры их пять, роль у каждого своя: воркер интервал что делает --------------------------------- -------- ------------------------------------------------------------------ автосинхронизация gitlab 30 с смотрит, каким интеграциям пора синхронизироваться, и запускает их выгрузка изменений в gitlab 10 с отправляет в gitlab накопившиеся изменения задач (обратная запись) доставка уведомлений 10 с разбирает очередь уведомлений и отправляет их по каналам сканирование сроков и напоминаний 60 с ищет наступившие сроки задач и сработавшие напоминания повторяющиеся задачи 60 с создаёт следующее повторение по расписанию интервалы фиксированные; настраивать их из интерфейса нельзя. как читать список слева — строки заданий, у каждой цветная точка состояния: выполняется — зелёная; в очереди — оранжевая; готово — серая; ошибка — красная. рядом со статусом воркера идёт «след. запуск через …», у синхронизации — текущий шаг. справа в строке — время работы для выполняющегося задания и время окончания для завершённого. список сам обновляется каждые несколько секунд; кнопка со стрелками в заголовке обновляет его немедленно. клик по строке открывает карточку справа: статус, для воркера — последняя активность и следующий запуск, для синхронизации — режим (инкрементальная или полная), чем запущена (вручную или по расписанию), начало, конец, длительность и счётчики создано / обновлено. если задание упало, здесь же будет текст ошибки. метка «журнал» метка «журнал» у названия означает, что запись взята из сохранённого журнала синхронизаций, а не из памяти процесса: такие строки переживают перезапуск сервера. всё остальное — живое состояние, и после перезапуска список воркеров начинается с чистого листа. в окне показываются завершённые прогоны за последний час. более старые из окна уходят — это витрина текущего состояния, а не полная история; историю по конкретной интеграции смотрят в журнале синхронизации в её настройках. запустить и остановить «запустить сейчас» выполняет работу воркера немедленно, не дожидаясь следующего тика. это то, что нужно, когда изменение уже сделано, а ждать минуту не хочется — например, проверить, уходит ли уведомление. кнопка есть только у воркеров: разовую синхронизацию конкретной интеграции запускают из её собственных настроек, а не отсюда. «остановить» появляется у выполняющегося задания, которое умеет отменяться, — сейчас это синхронизации с gitlab. отмена не мгновенная: задание останавливается на ближайшем безопасном шаге, поэтому строка какое-то время ещё держится в состоянии «выполняется». уже перенесённые данные при отмене не откатываются — следующий прогон просто продолжит с того места, куда дошёл предыдущий. если задание завершилось ошибкой красная точка и текст ошибки в карточке — первое, что стоит прочитать: чаще всего там прямо назван недоступный адрес gitlab, истёкший токен или отсутствующие права. порядок действий обычно такой: 1. прочитать текст ошибки в карточке задания; 2. проверить настройки интеграции — адрес, сервисный токен, права токена; 3. запустить работу заново («запустить сейчас» для воркера, повторная синхронизация — из настроек интеграции) и посмотреть, повторится ли ошибка. одна неудачная попытка не останавливает воркер: он продолжит просыпаться по своему интервалу и попробует снова. что дальше кто имеет доступ к этому окну и остальным админским экранам — в статье «пользователи экземпляра»."
+      "text": "часть работы tessera делает сама и не на глазах у пользователя: опрашивает gitlab, выгружает туда изменения, рассылает уведомления, наступает сроки напоминаний, создаёт повторяющиеся задачи. окно «фоновые задания» показывает, что из этого сейчас выполняется, когда произойдёт в следующий раз и что закончилось ошибкой. открывается кнопкой с иконкой сервера в шапке боковой панели (в ряду инструментов справа от логотипа) — она видна только администратору экземпляра. окно «фоновые задания»: список слева, карточка выбранного задания справа воркер и синхронизация — разные вещи в списке два вида строк, и путать их не стоит. worker — постоянный цикл, который живёт всё время, пока работает сервер, и просыпается по своему интервалу. он почти всегда «выполняется»: это состояние самого цикла, а не признак того, что прямо сейчас идёт тяжёлая работа. для воркера имеет смысл строка «следующий запуск» — через сколько он проснётся. синхронизация — разовый прогон с началом и концом: конкретный запуск обмена с gitlab по одной интеграции. у неё есть длительность, режим, счётчики созданного и обновлённого. постоянные воркеры их пять, роль у каждого своя: воркер интервал что делает --------------------------------- -------- ------------------------------------------------------------------ автосинхронизация gitlab 30 с смотрит, каким интеграциям пора синхронизироваться, и запускает их выгрузка изменений в gitlab 10 с отправляет в gitlab накопившиеся изменения задач (обратная запись) доставка уведомлений 10 с разбирает очередь уведомлений и отправляет их по каналам сканирование сроков и напоминаний 60 с ищет наступившие сроки задач и сработавшие напоминания повторяющиеся задачи 60 с создаёт следующее повторение по расписанию интервалы фиксированные; настраивать их из интерфейса нельзя. как читать список слева — строки заданий, у каждой цветная точка состояния: выполняется — зелёная; в очереди — оранжевая; готово — серая; ошибка — красная. рядом со статусом воркера идёт «след. запуск через …», у синхронизации — текущий шаг. справа в строке — время работы для выполняющегося задания и время окончания для завершённого. список сам обновляется каждые несколько секунд; кнопка со стрелками в заголовке обновляет его немедленно. клик по строке открывает карточку справа: статус, для воркера — последняя активность и следующий запуск, для синхронизации — режим (инкрементальная или полная), чем запущена (вручную или по расписанию), начало, конец, длительность и счётчики создано / обновлено. если задание упало, здесь же будет текст ошибки. метка «журнал» метка «журнал» у названия означает, что запись взята из сохранённого журнала синхронизаций, а не из памяти процесса: такие строки переживают перезапуск сервера. всё остальное — живое состояние, и после перезапуска список воркеров начинается с чистого листа. в окне показываются завершённые прогоны за последний час. более старые из окна уходят — это витрина текущего состояния, а не полная история; историю по конкретной интеграции смотрят в журнале синхронизации в её настройках. запустить и остановить «запустить сейчас» выполняет работу воркера немедленно, не дожидаясь следующего тика. это то, что нужно, когда изменение уже сделано, а ждать минуту не хочется — например, проверить, уходит ли уведомление. кнопка есть только у воркеров: разовую синхронизацию конкретной интеграции запускают из её собственных настроек, а не отсюда. «остановить» появляется у выполняющегося задания, которое умеет отменяться, — сейчас это синхронизации с gitlab. отмена не мгновенная: задание останавливается на ближайшем безопасном шаге, поэтому строка какое-то время ещё держится в состоянии «выполняется». уже перенесённые данные при отмене не откатываются — следующий прогон просто продолжит с того места, куда дошёл предыдущий. если задание завершилось ошибкой красная точка и текст ошибки в карточке — первое, что стоит прочитать: чаще всего там прямо назван недоступный адрес gitlab, истёкший токен или отсутствующие права. порядок действий обычно такой: 1. прочитать текст ошибки в карточке задания; 2. проверить настройки интеграции — адрес, сервисный токен, права токена; 3. запустить работу заново («запустить сейчас» для воркера, повторная синхронизация — из настроек интеграции) и посмотреть, повторится ли ошибка. одна неудачная попытка не останавливает воркер: он продолжит просыпаться по своему интервалу и попробует снова. что дальше кто имеет доступ к этому окну и остальным админским экранам — в статье «пользователи экземпляра».",
+      "locales": {
+        "en": {
+          "path": "admin/admin-jobs.en.md",
+          "title": "Background jobs",
+          "category": "Administration",
+          "updated": "2026-08-26",
+          "keywords": [
+            "administration",
+            "background jobs",
+            "workers",
+            "worker",
+            "synchronization",
+            "queue",
+            "log",
+            "error",
+            "run"
+          ],
+          "headings": [
+            {
+              "id": "a-worker-and-a-sync-are-different-things",
+              "text": "A worker and a sync are different things",
+              "level": 2
+            },
+            {
+              "id": "the-permanent-workers",
+              "text": "The permanent workers",
+              "level": 2
+            },
+            {
+              "id": "how-to-read-the-list",
+              "text": "How to read the list",
+              "level": 2
+            },
+            {
+              "id": "the-journal-badge",
+              "text": "The “journal” badge",
+              "level": 2
+            },
+            {
+              "id": "run-and-stop",
+              "text": "Run and stop",
+              "level": 2
+            },
+            {
+              "id": "if-a-job-ended-with-an-error",
+              "text": "If a job ended with an error",
+              "level": 2
+            },
+            {
+              "id": "what-s-next",
+              "text": "What's next",
+              "level": 2
+            }
+          ],
+          "text": "some of tessera's work happens on its own, out of the user's sight: it polls gitlab, pushes changes there, sends notifications, watches reminder due dates and creates recurring tasks. the background jobs window shows what of this is running right now, when it will happen next, and what ended with an error. it's opened with the server-icon button in the sidebar header (in the tools row to the right of the logo) — visible only to an instance admin. the background jobs window: the list on the left, the selected job's card on the right a worker and a sync are different things there are two kinds of rows in the list, and they shouldn't be confused. a worker is a permanent loop that lives for as long as the server runs and wakes up on its own interval. it's almost always “running”: that's the state of the loop itself, not a sign that heavy work is happening right now. for a worker the next run line is what matters — how long until it wakes up. a sync is a one-off pass with a beginning and an end: a specific run of the exchange with gitlab for a single integration. it has a duration, a mode, and counters of what was created and updated. the permanent workers there are five of them, each with its own role: worker interval what it does ----------------------------- -------- ------------------------------------------------------------------ gitlab auto-sync 30 s checks which integrations are due for a sync and starts them gitlab write-back 10 s pushes the accumulated task changes to gitlab (write-back) notification delivery 10 s works through the notification queue and sends them over channels due dates and reminders scan 60 s looks for task due dates that have arrived and reminders that fired recurring tasks 60 s creates the next occurrence on schedule the intervals are fixed; you can't configure them from the interface. how to read the list on the left are the job rows, each with a coloured status dot: running — green; queued — orange; done — grey; error — red. next to a worker's status comes “next run in …”; for a sync — the current step. on the right of the row is the running time for a job that's running and the finish time for a completed one. the list refreshes itself every few seconds; the arrows button in the heading refreshes it immediately. clicking a row opens the card on the right: status, for a worker — the last activity and the next run, for a sync — the mode (incremental or full), what started it (manual or scheduled), the start, the finish, the duration and the created / updated counters. if the job failed, the error text is right here too. the “journal” badge the journal badge by a name means the record was taken from the saved synchronization log, not from the process's memory: such rows survive a server restart. everything else is live state, and after a restart the list of workers starts from a clean slate. the window shows completed runs from the last hour. older ones drop out of the window — this is a display of the current state, not the full history; you look up the history for a specific integration in its synchronization log in its settings. run and stop run now does the worker's work immediately, without waiting for the next tick. it's what you need when a change has already been made and you don't want to wait a minute — for example, to check whether a notification goes out. the button is only on workers: a one-off sync of a specific integration is started from its own settings, not from here. stop appears on a running job that supports cancellation — right now that's the gitlab syncs. cancellation isn't instant: the job stops at the nearest safe step, so the row stays in the “running” state for a while. data already moved isn't rolled back on cancellation — the next pass simply continues from where the previous one got to. if a job ended with an error the red dot and the error text in the card are the first thing to read: most often it names outright the unreachable gitlab address, an expired token or missing permissions. the usual order of action is: 1. read the error text in the job's card; 2. check the integration settings — the address, the service token, the token's permissions; 3. run the work again (“run now” for a worker, a repeat sync — from the integration settings) and see whether the error recurs. one failed attempt doesn't stop a worker: it keeps waking up on its interval and tries again. what's next who has access to this window and the other admin screens is covered in the instance users article."
+        }
+      }
     },
     {
       "slug": "faq",
@@ -978,6 +1806,132 @@
           }
         ],
         "text": "как включить тёмную тему? боковое меню («☰» слева в верхней панели) → шестерёнка внизу → «тема»: «системная», «светлая» или «тёмная». системная следует за настройкой телефона. там же — акцентный цвет интерфейса, формат даты и времени и первый день недели. задача лежит в последней колонке, но не считается выполненной выполненной задачу делает завершающая колонка доски, а она задаётся явно в настройках доски (по умолчанию — самая правая). если колонки переставляли или добавляли новую справа, проверьте, что завершающей назначена та, которую вы имеете в виду; назначить другую можно из веб-версии. подробнее — доски и задачи. как пригласить человека в пространство? меню пространства («…» рядом с названием в шапке бокового меню) → «участники» → «пригласить по email». приглашение приходит письмом со ссылкой; роль — «участник» или «админ». роль уже добавленного участника меняется в том же окне. почему документы нельзя править с телефона? так задумано: в приложении раздел «документы» доступен для чтения. блочный редактор с комментариями к абзацам и разбором конфликтов — отдельный проект, и наспех перенесённый на телефон он терял бы текст чаще, чем помогал. подробнее — документы. не приходят напоминания проверьте два системных разрешения: уведомления (android 13 и новее спрашивает их отдельно) и работу в фоне — «уснувшее» ради экономии батареи приложение может отдать сигнал позже назначенного. подробнее — напоминания. где посмотреть версию приложения? в самом низу бокового меню, под вашим именем: v<версия> — приложение, api <версия> — сервер, когда он ответил. расхождение видно сразу. приложение сказало, что вышла новая версия приложение само проверяет, не вышел ли новый выпуск, и предлагает его скачать и поставить. соглашайтесь, когда удобно: данные лежат на сервере, при обновлении ничего не теряется. после обновления один раз показывается окно «что нового» с главным из выпусков, которые вы пропустили. работает ли приложение без интернета? частично. доски, задачи, документы и заметки живут на сервере, поэтому без сети они не откроются. справка — откроется: статьи лежат внутри приложения, и поиск по ним тоже работает офлайн. я забыл пароль на экране входа — ссылка «забыли пароль»: на почту придёт письмо со ссылкой для смены. если письмо не пришло, проверьте папку со спамом."
+      },
+      "locales": {
+        "en": {
+          "path": "faq/faq.en.md",
+          "title": "FAQ",
+          "category": "FAQ",
+          "updated": "2026-08-26",
+          "keywords": [
+            "faq",
+            "questions",
+            "theme",
+            "dark",
+            "notifications",
+            "android",
+            "app",
+            "password",
+            "what's new"
+          ],
+          "headings": [
+            {
+              "id": "how-do-i-turn-on-the-dark-theme",
+              "text": "How do I turn on the dark theme?",
+              "level": 2
+            },
+            {
+              "id": "a-task-is-in-the-last-column-but-isn-t-counted-as-done",
+              "text": "A task is in the last column but isn't counted as done",
+              "level": 2
+            },
+            {
+              "id": "how-do-i-invite-someone-into-a-workspace",
+              "text": "How do I invite someone into a workspace?",
+              "level": 2
+            },
+            {
+              "id": "is-there-a-mobile-app",
+              "text": "Is there a mobile app?",
+              "level": 2
+            },
+            {
+              "id": "what-is-the-notes-section-and-how-does-it-differ-from-documents",
+              "text": "What is the “Notes” section and how does it differ from documents?",
+              "level": 2
+            },
+            {
+              "id": "where-did-the-what-s-new-window-go",
+              "text": "Where did the “What's new” window go?",
+              "level": 2
+            },
+            {
+              "id": "i-forgot-my-password",
+              "text": "I forgot my password",
+              "level": 2
+            },
+            {
+              "id": "the-app-said-a-new-version-is-out",
+              "text": "The app said a new version is out",
+              "level": 2
+            }
+          ],
+          "text": "how do i turn on the dark theme? settings → theme: “system”, “light” or “dark”. system follows your operating system's setting. the same place lets you pick the interface accent colour, the date and time format and the first day of the week. a task is in the last column but isn't counted as done a task is made done by the board's completing column, and that column is set explicitly in the board settings (by default it's the rightmost one). if columns have been reordered or a new one was added on the right, check that the column you have in mind is the one marked as completing. see boards and tasks for more. how do i invite someone into a workspace? the members button (the people icon) in the sidebar header, to the right of the logo → “invite by email”. the invitation arrives as an email with a link; the role is “member” or “admin”. you change the role of an existing member in the same window. is there a mobile app? yes, there's an android client — the install link is in the app, and there's a download button in the interface. the app works online and can send push notifications for reminders; the web version doesn't send push. what is the “notes” section and how does it differ from documents? notes are quick jottings for yourself: open, write, close. documents are for collaboration, with formatting, version history and comments. if a note is meant for colleagues or will outlive a week — it belongs in documents. where did the “what's new” window go? it's shown once after an update. you can open it again from the same place where you saw the version number — the client and server versions are shown in the bottom-right corner of the sidebar, and hovering shows the commit and the build date. i forgot my password on the sign-in screen there's a “forgot password” link: an email with a reset link will arrive. if the email doesn't come, check your spam folder. the app said a new version is out that's normal: the web client notices a new release on its own and offers to reload. nothing gets lost — accept when it suits you.",
+          "android": {
+            "path": "faq/faq.android.en.md",
+            "updated": "2026-08-24",
+            "keywords": [
+              "faq",
+              "questions",
+              "theme",
+              "dark",
+              "notifications",
+              "android",
+              "app",
+              "password",
+              "update",
+              "version"
+            ],
+            "headings": [
+              {
+                "id": "how-do-i-turn-on-the-dark-theme",
+                "text": "How do I turn on the dark theme?",
+                "level": 2
+              },
+              {
+                "id": "a-task-is-in-the-last-column-but-isn-t-counted-as-done",
+                "text": "A task is in the last column but isn't counted as done",
+                "level": 2
+              },
+              {
+                "id": "how-do-i-invite-someone-into-a-workspace",
+                "text": "How do I invite someone into a workspace?",
+                "level": 2
+              },
+              {
+                "id": "why-can-t-documents-be-edited-from-the-phone",
+                "text": "Why can't documents be edited from the phone?",
+                "level": 2
+              },
+              {
+                "id": "reminders-aren-t-arriving",
+                "text": "Reminders aren't arriving",
+                "level": 2
+              },
+              {
+                "id": "where-do-i-see-the-app-version",
+                "text": "Where do I see the app version?",
+                "level": 2
+              },
+              {
+                "id": "the-app-said-a-new-version-is-out",
+                "text": "The app said a new version is out",
+                "level": 2
+              },
+              {
+                "id": "does-the-app-work-without-the-internet",
+                "text": "Does the app work without the internet?",
+                "level": 2
+              },
+              {
+                "id": "i-forgot-my-password",
+                "text": "I forgot my password",
+                "level": 2
+              }
+            ],
+            "text": "how do i turn on the dark theme? the side menu (“☰” at the left of the top bar) → the gear at the bottom → “theme”: “system”, “light” or “dark”. system follows your phone's setting. the same place holds the interface accent colour, the date and time format and the first day of the week. a task is in the last column but isn't counted as done a task is made done by the board's completing column, and that column is set explicitly in the board settings (by default it's the rightmost one). if columns have been reordered or a new one was added on the right, check that the column you have in mind is the one marked as completing; you can assign a different one from the web version. see boards and tasks for more. how do i invite someone into a workspace? the workspace menu (“…” next to its name in the side menu header) → “members” → “invite by email”. the invitation arrives as an email with a link; the role is “member” or “admin”. you change the role of an existing member in the same window. why can't documents be edited from the phone? that's by design: in the app the documents section is read-only. the block editor with paragraph comments and conflict resolution is a project of its own, and hastily ported to a phone it would lose text more often than it helped. see documents for more. reminders aren't arriving check two system permissions: notifications (android 13 and later asks for them separately) and background activity — an app that has “gone to sleep” to save battery may fire the signal later than scheduled. see reminders for more. where do i see the app version? at the very bottom of the side menu, under your name: v<version> — the app, api <version> — the server, whenever it last replied. a mismatch is visible at a glance. the app said a new version is out the app checks on its own whether a new release is out and offers to download and install it. accept when it suits you: your data lives on the server, and nothing is lost during an update. after an update the “what's new” window is shown once, with the highlights of the releases you missed. does the app work without the internet? partly. boards, tasks, documents and notes live on the server, so without a connection they won't open. help — will open: the articles live inside the app, and searching them works offline too. i forgot my password on the sign-in screen there's a “forgot password” link: an email with a reset link will arrive. if the email doesn't come, check your spam folder."
+          }
+        }
       }
     }
   ]

@@ -6,6 +6,7 @@
   "openInCenter": "Открыть в справке",
   "onThisPage": "На этой странице",
   "updated": "Обновлено {date}",
+  "notTranslated": "Эта статья ещё не переведена — показан оригинал.",
   "hintTip": "Справка: {title}",
   "search": {
     "placeholder": "Поиск по справке",

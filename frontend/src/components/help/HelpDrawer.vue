@@ -34,6 +34,8 @@ function openFull() {
       closable
       :native-scrollbar="false"
     >
+      <p v-if="help.drawerUntranslated" class="hd-note">{{ t('help.notTranslated') }}</p>
+
       <n-spin v-if="help.drawerLoading && !help.drawerBody" size="small" />
       <p v-else-if="help.drawerError" class="hd-error">{{ help.drawerError }}</p>
       <HelpArticle
@@ -58,6 +60,15 @@ function openFull() {
 
 <style scoped>
 .hd-error {
+  color: var(--t-text3);
+  font-size: 13px;
+}
+.hd-note {
+  margin: 0 0 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface-alt);
   color: var(--t-text3);
   font-size: 13px;
 }

@@ -9,10 +9,11 @@ import org.robolectric.RobolectricTestRunner
 import website.msdnna.tessera.data.model.HelpArticle
 
 /**
- * Which half of an article the app reads (#2795). The manual ships both: the
- * desktop text the site renders and, next to it, the mobile rewrite. Picking the
- * wrong one is not a visible failure — the screen fills with perfectly readable
- * instructions about a mouse and a left-hand sidebar the reader does not have.
+ * Which half of an article the app reads (#2795, #2809). The manual ships every
+ * article several ways: the desktop text the site renders, the mobile rewrite
+ * next to it, and — since #2809 — the English translation of each. Picking the
+ * wrong one is not a visible failure: the screen fills with perfectly readable
+ * instructions in the wrong language, or about a mouse the reader does not have.
  */
 @RunWith(RobolectricTestRunner::class)
 class HelpRepositoryTest {
@@ -21,36 +22,70 @@ class HelpRepositoryTest {
 
     private fun asset(path: String) = assets.open("help/$path").bufferedReader().use { it.readText() }
 
+    private val languages = listOf("ru", "en")
+
     @Test
-    fun `an article with a mobile rewrite is read from it`() {
-        val withVariant = repo.articles().filter { it.android != null }
-        assertThat(withVariant).isNotEmpty()
-        for (a in withVariant) {
-            val body = repo.body(a)!!
-            // Compared against the files themselves rather than a phrase from the
-            // text: the wording is meant to be edited, the choice of file is not.
-            assertThat(body).isEqualTo(stripFrontmatter(asset(a.android!!.path)))
-            assertThat(body).isNotEqualTo(stripFrontmatter(asset(a.path)))
+    fun `a mobile rewrite is read from its own file, in every language`() {
+        for (lang in languages) {
+            val rewritten = repo.articles().map { it.content(lang) }.filter { it.mobileRewrite }
+            assertThat(rewritten).isNotEmpty()
+            for (c in rewritten) {
+                // Compared against the file itself rather than a phrase from the
+                // text: the wording is meant to be edited, the choice of file is
+                // not. The path carries the language, so this also proves the
+                // English body is bundled and reached.
+                assertThat(repo.body(c.path)).isEqualTo(stripFrontmatter(asset(c.path)))
+            }
         }
     }
 
     @Test
-    fun `an article without one falls back to the desktop text`() {
+    fun `an article without a mobile rewrite falls back to the desktop text`() {
         // No such article in the manual today — every topic got a mobile rewrite
         // — so the fallback is asserted against a hand-made entry. It is the path
         // the next article added to docs/help takes before anyone rewrites it.
         val base = repo.articles().first()
         val plain = HelpArticle(slug = "plain-${base.slug}", path = base.path, title = base.title)
+        val content = plain.content("ru")
 
-        assertThat(plain.desktopOnlyText).isTrue()
-        assertThat(repo.body(plain)).isEqualTo(stripFrontmatter(asset(base.path)))
+        assertThat(content.mobileRewrite).isFalse()
+        assertThat(repo.body(content.path)).isEqualTo(stripFrontmatter(asset(base.path)))
+    }
+
+    @Test
+    fun `a language with no translation falls back to Russian, flagged`() {
+        // An older index, or a language added before the article was translated:
+        // the reader gets the Russian original, not a blank page, and the flag is
+        // what the screen turns into a note.
+        val base = repo.articles().first()
+        val ruOnly = HelpArticle(slug = "x", path = base.path, title = "Только по-русски", category = "Раздел")
+        val en = ruOnly.content("en")
+
+        assertThat(en.translated).isFalse()
+        assertThat(en.title).isEqualTo("Только по-русски")
+        assertThat(en.path).isEqualTo(base.path)
+    }
+
+    @Test
+    fun `a real article is fully translated into English`() {
+        // Parity (#2809): every article shown in the app has an English
+        // translation, body and all. Switching the language swaps the whole
+        // article — title, search text and the file behind it.
+        val article = repo.articles().first { it.locales.containsKey("en") }
+        val ru = article.content("ru")
+        val en = article.content("en")
+
+        assertThat(en.translated).isTrue()
+        assertThat(en.text).isNotEqualTo(ru.text)
+        assertThat(repo.body(en.path)).isNotNull()
+        assertThat(repo.body(en.path)).isNotEqualTo(repo.body(ru.path))
     }
 
     @Test
     fun `an article scoped to the web is not shown at all`() {
         val webOnly = HelpArticle(slug = "shortcuts", path = "start/first-steps.md", platforms = listOf("web"))
         assertThat(webOnly.onAndroid).isFalse()
-        // Everything actually bundled is meant for the app.
+        // Everything actually bundled for the app is meant for the app.
         assertThat(repo.articles().none { !it.onAndroid }).isTrue()
     }
 
@@ -64,14 +99,7 @@ class HelpRepositoryTest {
 
     @Test
     fun `a missing file reads as null rather than an empty article`() {
-        assertThat(repo.body(HelpArticle(slug = "ghost", path = "start/ghost.md"))).isNull()
-    }
-
-    @Test
-    fun `updated date follows the text being shown`() {
-        for (a in repo.articles().filter { it.android != null }) {
-            assertThat(a.androidUpdated).isEqualTo(a.android!!.updated.ifBlank { a.updated })
-        }
+        assertThat(repo.body("start/ghost.md")).isNull()
     }
 
     private fun stripFrontmatter(raw: String) = Regex("^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n?").replace(raw, "")

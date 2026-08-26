@@ -1129,6 +1129,7 @@
     <string name="help_article_missing">Статья не найдена в сборке</string>
     <string name="help_updated">Обновлено: %1$s</string>
     <string name="help_desktop_note">Статья описывает веб-версию — в приложении часть действий выглядит иначе.</string>
+    <string name="help_not_translated">Эта статья ещё не переведена — показан оригинал.</string>
 
     <string name="search_placeholder">Поиск задач, заметок и справки</string>
     <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок, статьям справки</string>

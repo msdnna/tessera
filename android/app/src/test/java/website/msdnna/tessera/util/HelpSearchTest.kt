@@ -4,6 +4,7 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import website.msdnna.tessera.data.model.HelpArticle
 import website.msdnna.tessera.data.model.HelpHeading
+import website.msdnna.tessera.data.model.HelpLocale
 import website.msdnna.tessera.data.model.HelpVariant
 
 /**
@@ -36,7 +37,9 @@ class HelpSearchTest {
         ),
     )
 
-    private val search = HelpSearcher(articles)
+    // The searcher works on articles already collapsed to one language (#2809);
+    // `content("ru")` reproduces the Russian rendering these cases assert.
+    private val search = HelpSearcher(articles.map { it.content("ru") }, "ru")
 
     @Test
     fun `tokenize splits Cyrillic and digits and lowercases`() {
@@ -147,9 +150,21 @@ class HelpSearchVariantTest {
             headings = listOf(HelpHeading("perenos", "Как перенести задачу", 2)),
             text = "карточка переносится долгим тапом или сменой колонки в экране задачи",
         ),
+        locales = mapOf(
+            "en" to HelpLocale(
+                title = "Boards and tasks",
+                category = "Working with tasks",
+                android = HelpVariant(
+                    path = "boards/boards.android.en.md",
+                    keywords = listOf("kanban", "finger"),
+                    headings = listOf(HelpHeading("move", "How to move a task", 2)),
+                    text = "a card moves with a long press of a finger or by changing its column",
+                ),
+            ),
+        ),
     )
 
-    private val search = HelpSearcher(listOf(boards))
+    private val search = HelpSearcher(listOf(boards).map { it.content("ru") }, "ru")
 
     @Test
     fun `a word only the mobile text uses is findable`() {
@@ -176,6 +191,17 @@ class HelpSearchVariantTest {
     @Test
     fun `an article without a variant keeps its own text`() {
         val plain = HelpArticle(slug = "faq", title = "Частые вопросы", text = "версия видна в настройках")
-        assertThat(HelpSearcher(listOf(plain)).search("версия").map { it.slug }).containsExactly("faq")
+        assertThat(HelpSearcher(listOf(plain).map { it.content("ru") }).search("версия").map { it.slug })
+            .containsExactly("faq")
+    }
+
+    @Test
+    fun `the English rendering is indexed and searched in English`() {
+        // A translated article (#2809): searching the English body finds it, and
+        // the Russian body no longer does — the corpus follows the language the
+        // reader is in.
+        val en = HelpSearcher(listOf(boards.content("en")), "en")
+        assertThat(en.search("finger").map { it.slug }).containsExactly("boards")
+        assertThat(en.search("тапом")).isEmpty()
     }
 }
