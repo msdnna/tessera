@@ -36,7 +36,14 @@ describe('the guide', () => {
     // cx-tour-overlay.spec.js). The popover is teleported to <body>.
     const el = document.createElement('button')
     el.setAttribute('data-tour', 'ws-switch')
-    el.getBoundingClientRect = () => ({ left: 100, top: 60, width: 40, height: 24, right: 140, bottom: 84 })
+    el.getBoundingClientRect = () => ({
+      left: 100,
+      top: 60,
+      width: 40,
+      height: 24,
+      right: 140,
+      bottom: 84,
+    })
     document.body.appendChild(el)
 
     useTourStore().start([{ id: 'workspaces', anchor: 'ws-switch', mode: 'info' }])

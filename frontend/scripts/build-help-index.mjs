@@ -70,10 +70,13 @@ function parseFrontmatter(src, where) {
     .filter(Boolean)
   for (const p of platforms) {
     if (!PLATFORMS.includes(p)) {
-      throw new Error(`${where}: неизвестная платформа «${p}» в «platforms» — можно ${PLATFORMS.join('/')}`)
+      throw new Error(
+        `${where}: неизвестная платформа «${p}» в «platforms» — можно ${PLATFORMS.join('/')}`,
+      )
     }
   }
-  if (!platforms.length) throw new Error(`${where}: «platforms» пустой — убери поле или укажи платформу`)
+  if (!platforms.length)
+    throw new Error(`${where}: «platforms» пустой — убери поле или укажи платформу`)
   return {
     title: meta.title,
     category: meta.category,
@@ -166,7 +169,9 @@ function attachVariants(articles, slugs, variants) {
       }
     }
     if (!variant.meta.platforms.includes('android')) {
-      throw new Error(`${variant.path}: мобильный вариант с «platforms: ${variant.meta.platforms.join(',')}»`)
+      throw new Error(
+        `${variant.path}: мобильный вариант с «platforms: ${variant.meta.platforms.join(',')}»`,
+      )
     }
     if (!base.platforms.includes('android')) {
       throw new Error(
@@ -197,7 +202,9 @@ export function buildIndex(dir = HELP_DIR) {
     if (name.endsWith(ANDROID_SUFFIX)) {
       const slug = name.slice(0, -ANDROID_SUFFIX.length)
       if (variants.has(slug)) {
-        throw new Error(`два мобильных варианта одного slug «${slug}»: ${variants.get(slug).path} и ${rel}`)
+        throw new Error(
+          `два мобильных варианта одного slug «${slug}»: ${variants.get(slug).path} и ${rel}`,
+        )
       }
       variants.set(slug, { path: rel, meta })
       continue

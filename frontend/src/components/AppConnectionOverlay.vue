@@ -26,7 +26,12 @@ function retry() {
 <template>
   <!-- Server reachable but a call is taking a beat — non-blocking top bar. -->
   <transition name="tp-fade">
-    <div v-if="active" class="top-progress" role="progressbar" :aria-label="t('app.connection.loading')">
+    <div
+      v-if="active"
+      class="top-progress"
+      role="progressbar"
+      :aria-label="t('app.connection.loading')"
+    >
       <div class="top-progress__bar" />
     </div>
   </transition>

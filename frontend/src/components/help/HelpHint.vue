@@ -28,9 +28,7 @@ const slug = computed(() => props.slug || helpSlugForPath(route.path))
 // An unknown slug renders nothing rather than a button that opens «Статья не
 // найдена» — a dead ? is worse than no ?.
 const article = computed(() => (slug.value ? help.bySlug(slug.value) : null))
-const tip = computed(
-  () => props.label || t('help.hintTip', { title: article.value?.title || '' }),
-)
+const tip = computed(() => props.label || t('help.hintTip', { title: article.value?.title || '' }))
 </script>
 
 <template>

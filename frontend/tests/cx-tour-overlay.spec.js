@@ -240,9 +240,7 @@ describe('TourOverlay', () => {
     anchor('project-name', { left: 100, top: 100, width: 200, height: 30 })
     surface('n-modal', { left: 40, top: 40, width: 500, height: 400 }) // wraps the field
     const tour = useTourStore()
-    tour.start([
-      { id: 'project-create', anchor: 'project-name', mode: 'action' },
-    ])
+    tour.start([{ id: 'project-create', anchor: 'project-name', mode: 'action' }])
     await render()
     expect(document.querySelector('.tr-mask')).not.toBe(null)
     // one hole for the field row

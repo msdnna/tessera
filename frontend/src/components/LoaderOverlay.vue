@@ -26,7 +26,9 @@ const props = defineProps({
 
 // Resolved per render, not at setup: the two callers that pass no captions
 // (the milestones screen, the GitLab journal) must follow a language switch.
-const captions = computed(() => (props.messages.length ? props.messages : [t('app.loader.default')]))
+const captions = computed(() =>
+  props.messages.length ? props.messages : [t('app.loader.default')],
+)
 
 const index = ref(0)
 let timer = null
