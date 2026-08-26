@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
+import { readdirSync } from 'node:fs'
+import { join, dirname } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { helpAssetUrl, helpAssetCandidates, resolveHelpImages } from '@/utils/helpAssets'
+
+// The Russian set — the names articles actually link. The English twins are
+// resolved *to*, never linked, so they are filtered out here.
+const ASSETS = join(dirname(fileURLToPath(import.meta.url)), '../../docs/help/assets')
+const BASE_NAMES = readdirSync(ASSETS).filter((n) => !n.includes('.en.'))
 
 // The help articles are `?raw` strings, so nothing in the build pipeline checks
 // their image links (#2793). This guards the one piece that makes them work:
@@ -33,16 +41,39 @@ describe('helpAssetUrl', () => {
     expect(helpAssetUrl('../assets/такого-нет.png')).toBe('')
   })
 
-  it('без английского кадра берётся русский того же тона', () => {
-    // The English shots land in waves (#2816): until a name has its `.en` twin,
-    // an English reader must get the Russian shot in the right theme, not a
-    // blank picture.
+  it('снятый английский кадр действительно подставляется', () => {
+    // The desktop wave landed (#2816), so for those names the resolver must pick
+    // the twin, not merely be capable of it.
     expect(helpAssetUrl('../assets/board-light.png', false, 'en')).toBe(
-      helpAssetUrl('../assets/board-light.png'),
+      helpAssetUrl('../assets/board-light.en.png'),
     )
     expect(helpAssetUrl('../assets/board-light.png', true, 'en')).toBe(
-      helpAssetUrl('../assets/board-dark.png'),
+      helpAssetUrl('../assets/board-dark.en.png'),
     )
+  })
+
+  it('без английского кадра берётся русский того же тона', () => {
+    // The English shots land in waves (#2816): the mobile set is shot on an
+    // emulator and has no twins yet, and until it does an English reader must get
+    // the Russian shot in the right theme, not a blank picture. When that wave
+    // lands, this case moves up to the assertion above.
+    expect(helpAssetUrl('../assets/board-mobile-light.png', false, 'en')).toBe(
+      helpAssetUrl('../assets/board-mobile-light.png'),
+    )
+    expect(helpAssetUrl('../assets/board-mobile-light.png', true, 'en')).toBe(
+      helpAssetUrl('../assets/board-mobile-dark.png'),
+    )
+  })
+
+  it('английскому читателю ни одно имя не даёт пустую картинку', () => {
+    // Holds regardless of which wave has landed: every name an article can link
+    // resolves to *something* in English. Guards the case a per-name assertion
+    // cannot — a twin added under a typo'd name leaves the original unreachable.
+    expect(BASE_NAMES.length).toBeGreaterThan(0)
+    for (const name of BASE_NAMES) {
+      expect(helpAssetUrl(`../assets/${name}`, false, 'en')).toBeTruthy()
+      expect(helpAssetUrl(`../assets/${name}`, true, 'en')).toBeTruthy()
+    }
   })
 })
 
