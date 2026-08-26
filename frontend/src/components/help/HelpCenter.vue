@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { NIcon, NSpin } from 'naive-ui'
 import { ArrowBackOutline, ArrowForwardOutline } from '@vicons/ionicons5'
 import { useHelpStore } from '@/stores/help'
+import { pickActive, measureHeadings } from '@/utils/helpToc'
 import HelpNav from './HelpNav.vue'
 import HelpSearch from './HelpSearch.vue'
 import HelpArticle from './HelpArticle.vue'
@@ -15,44 +16,53 @@ import HelpArticle from './HelpArticle.vue'
 const { t } = useI18n()
 const help = useHelpStore()
 
-const root = ref(null) // the scrolling column, also the observer's root
+const root = ref(null) // the scrolling column
 const activeHeading = ref('')
 
-// Highlights the section being read. IntersectionObserver rather than a scroll
-// handler: it fires only when a heading actually crosses the line, instead of on
-// every frame of a long scroll. The root is the modal's scrolling column, not
-// the viewport — the modal does not scroll the page behind it.
-let observer = null
+// Highlights the section being read, computed from the scroll offset of the
+// reading column (#2811). This used to be an IntersectionObserver watching a
+// band at the top of the column, which cannot answer the question at the end of
+// an article: the last headings never reach that band, so the highlight stuck on
+// a section already scrolled past. One source of truth — see utils/helpToc.
+const HEADINGS = '.h-article h2, .h-article h3'
 
-function observeHeadings() {
-  if (!observer || !root.value) return
-  observer.disconnect()
-  activeHeading.value = ''
-  for (const h of root.value.querySelectorAll('.h-article h2, .h-article h3')) observer.observe(h)
+let frame = 0
+
+// Measured on every recompute rather than cached: the screenshots in an article
+// load after it paints and push every heading below them down, so a cached set
+// of offsets highlights a section the reader is nowhere near. A handful of
+// getBoundingClientRect reads, once per frame, is cheaper than being wrong.
+function update() {
+  frame = 0
+  const el = root.value
+  if (!el) return
+  activeHeading.value = pickActive(measureHeadings(el, HEADINGS), {
+    scrollTop: el.scrollTop,
+    clientHeight: el.clientHeight,
+    scrollHeight: el.scrollHeight,
+  })
+}
+
+// Scroll fires far more often than the highlight can change; one recompute per
+// frame is enough and keeps a long drag off the layout path.
+function onScroll() {
+  if (!frame) frame = requestAnimationFrame(update)
 }
 
 onMounted(() => {
-  if (typeof IntersectionObserver === 'undefined') return
-  observer = new IntersectionObserver(
-    (entries) => {
-      for (const e of entries) {
-        if (e.isIntersecting) activeHeading.value = e.target.id
-      }
-    },
-    // Only the band at the top of the reading column counts as "current".
-    { root: root.value, rootMargin: '0px 0px -70% 0px' },
-  )
   watch(
     () => help.body,
     async () => {
       await nextTick() // let the article paint
-      observeHeadings()
+      update()
     },
     { immediate: true },
   )
 })
 
-onBeforeUnmount(() => observer?.disconnect())
+onBeforeUnmount(() => {
+  if (frame) cancelAnimationFrame(frame)
+})
 
 // A new article starts at its own beginning: the modal body keeps its scroll
 // offset otherwise, dropping the reader into the middle of the next page.
@@ -79,7 +89,7 @@ function goToHeading(id) {
       <HelpNav />
     </aside>
 
-    <main ref="root" class="hc-main">
+    <main ref="root" class="hc-main" @scroll.passive="onScroll">
       <div class="hc-body">
         <header v-if="help.meta" class="hc-head">
           <div class="hc-crumb">{{ help.meta.category }}</div>
