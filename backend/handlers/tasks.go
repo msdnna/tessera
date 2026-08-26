@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -55,6 +56,14 @@ func (h *API) CreateTask(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// binding:"required" only rejects the empty string — a title of pure
+	// whitespace normalizes to nothing and must be refused here.
+	req.Title = normalizeTitle(req.Title)
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "заголовок не может быть пустым"})
 		return
 	}
 
@@ -418,6 +427,17 @@ func sameEstimate(a, b *float64) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// normalizeTitle collapses every whitespace run in a title — newlines, tabs,
+// doubled spaces — into one space and trims the ends. A title is single-line by
+// contract: the web card renders it as HTML (a newline shows as a space) while
+// the modal keeps it in an <input>, which strips newlines out of value, so a
+// stored "\n" makes the same task read differently in the two places (#2813).
+// Every write path goes through here, so no client — web, Android, MCP or
+// curl — can put a newline back in.
+func normalizeTitle(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // normalizeEstimate rejects non-positive / non-finite estimates, mapping them to

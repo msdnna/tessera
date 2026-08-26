@@ -123,6 +123,43 @@ func TestTaskCreateGetUpdate(t *testing.T) {
 	}
 }
 
+// A title is single-line by contract: the card renders it as HTML (a newline
+// reads as a space) while the modal holds it in an <input>, which drops newlines
+// from value — so a stored "\n" makes one task look like two different ones
+// (#2813). Both write paths collapse whitespace, whatever the client sends.
+func TestTaskTitleNormalized(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+
+	created := c.expect(t, c.post("/boards/"+s.Board+"/tasks", map[string]any{
+		"title": "Окно Ч\nто нового", "column_id": s.col(t, 0),
+	}), http.StatusCreated)
+	if created["title"] != "Окно Ч то нового" {
+		t.Fatalf("create kept the newline: %q", created["title"])
+	}
+	id := created["id"].(string)
+
+	updated := c.expect(t, c.patch("/tasks/"+id, map[string]any{
+		"title": "Перевод\tдокументации в С\r\nправочном центре ",
+	}), http.StatusOK)
+	if updated["title"] != "Перевод документации в С правочном центре" {
+		t.Fatalf("update kept the whitespace: %q", updated["title"])
+	}
+	// The normalized form is what got stored, not just what the write echoed.
+	full := c.expect(t, c.get("/tasks/"+id), http.StatusOK)
+	if full["title"] != updated["title"] {
+		t.Fatalf("GET title = %q, want %q", full["title"], updated["title"])
+	}
+
+	// Whitespace-only survives binding:"required" but must not create a task.
+	if r := c.post("/boards/"+s.Board+"/tasks", map[string]any{
+		"title": " \n\t ", "column_id": s.col(t, 0),
+	}); r.Status != http.StatusBadRequest {
+		t.Fatalf("whitespace-only title should be rejected: %d", r.Status)
+	}
+}
+
 // Optimistic locking: an edit that carries the updated_at it was made against
 // is refused with 409 once someone else has written the row, instead of quietly
 // dropping their change.

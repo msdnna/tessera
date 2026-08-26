@@ -191,10 +191,10 @@ type taskPatch struct {
 func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPatch) (db.Task, error) {
 	title := t.Title
 	if p.Title != nil {
-		if strings.TrimSpace(*p.Title) == "" {
+		title = normalizeTitle(*p.Title)
+		if title == "" {
 			return t, userErr("заголовок не может быть пустым")
 		}
-		title = *p.Title
 	}
 	description := t.Description
 	if p.Description != nil {

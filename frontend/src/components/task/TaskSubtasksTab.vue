@@ -12,6 +12,7 @@ import { useDateLocale } from '@/composables/useDateLocale'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { sortedColumns, columnById, siblingNeighbors } from '@/utils/status'
 import { columnName } from '@/utils/defaultNames'
+import { normalizeTitle } from '@/utils/title'
 import TaskMiniCard from '../TaskMiniCard.vue'
 import EmptyState from '../EmptyState.vue'
 
@@ -40,7 +41,7 @@ function subDue(d) {
 }
 
 async function addSubtask() {
-  const title = newSubtask.value.trim()
+  const title = normalizeTitle(newSubtask.value)
   if (!title || !props.task) return
   try {
     await boardsApi.createTask(props.task.board_id, {

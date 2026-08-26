@@ -6,6 +6,7 @@ import { NIcon, NInput, useMessage } from 'naive-ui'
 import { CloseCircleOutline } from '@vicons/ionicons5'
 import TaskCard from './TaskCard.vue'
 import { tasks as tasksApi } from '@/api'
+import { normalizeTitle } from '@/utils/title'
 
 const props = defineProps({
   // Filtered top-level board tasks (same array the kanban groups).
@@ -117,7 +118,7 @@ function startAdd(qi) {
   nextTick(() => addInput.value?.focus())
 }
 function submitAdd(qi) {
-  const title = newTitle.value.trim()
+  const title = normalizeTitle(newTitle.value)
   addingIn.value = -1
   if (!title) return
   // The parent creates the task in the board's first column, then pins the
@@ -203,7 +204,7 @@ function submitAdd(qi) {
           size="small"
           :autosize="{ minRows: 1, maxRows: 4 }"
           :placeholder="t('board.column.taskPlaceholder')"
-          @keyup.enter.prevent="submitAdd(q.i)"
+          @keydown.enter.exact.prevent="submitAdd(q.i)"
           @keyup.esc="addingIn = -1"
           @blur="submitAdd(q.i)"
         />
