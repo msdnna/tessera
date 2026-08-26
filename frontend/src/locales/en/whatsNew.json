@@ -1,4 +1,9 @@
 {
+  "helpEnglish": {
+    "title": "The help centre in English",
+    "item1": "With the interface in English, help centre articles now open in English. An article that hasn't been translated yet stays in Russian, so nothing goes missing from the manual.",
+    "item2": "Screenshots follow the language of the article: an English article carries frames shot from the English interface — in the light theme, the dark one and on the phone."
+  },
   "changelogHistory": {
     "title": "Change history on click",
     "item1": "The version line in the bottom-right corner is now a button: click it to open the full change history — the same What's New cards, all of them."
