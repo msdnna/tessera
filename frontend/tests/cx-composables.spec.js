@@ -36,6 +36,9 @@ describe('useDateLocale', () => {
 
   it('builds a date/time format from the date format + 12h/24h preference', () => {
     const theme = useThemeStore()
+    // The date part is language-derived, and the default language follows the
+    // browser since #2818 — pin it, since what's under test is the time suffix.
+    theme.language = 'ru'
     theme.dateFormat = 'dd.MM.yyyy'
     theme.timeFormat = '24h'
     let dl = useDateLocale()

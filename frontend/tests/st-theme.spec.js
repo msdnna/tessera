@@ -15,6 +15,15 @@ vi.mock('@/api', () => ({ users: { updatePreferences }, getAccessToken }))
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { DARK, LIGHT } from '@/styles/tokens'
 
+// The store's language default reads navigator.languages (#2818), and jsdom's
+// own value is 'en-US' — pin it per case so these tests don't hinge on that.
+// Restored one spy at a time rather than via restoreAllMocks(), which would also
+// strip the api mocks above of their implementations.
+let langSpy = null
+function stubLanguages(list) {
+  langSpy = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(list)
+}
+
 describe('theme store', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -22,7 +31,11 @@ describe('theme store', () => {
     getAccessToken.mockReturnValue('')
     setActivePinia(createPinia())
   })
-  afterEach(() => localStorage.clear())
+  afterEach(() => {
+    localStorage.clear()
+    langSpy?.mockRestore()
+    langSpy = null
+  })
 
   it('defaults to purple accent and system theme mode', () => {
     const s = useThemeStore()
@@ -182,6 +195,7 @@ describe('theme store', () => {
     s.setLocale({ language: 'en', country: 'US' })
     s.setBoardBackground('grid')
     updatePreferences.mockClear()
+    stubLanguages(['de-DE'])
     s.reset()
     // Accent back to the brand purple so the auth screens stay on-brand (#2817).
     expect(s.activeTheme.key).toBe('purple')
@@ -189,7 +203,9 @@ describe('theme store', () => {
     // Theme mode is device-level — a dark-mode user isn't flashed into white.
     expect(s.isDark).toBe(true)
     expect(s.themeMode).toBe('dark')
-    // Account-bound prefs back to defaults.
+    // Account-bound prefs back to defaults. Language is the one that isn't a
+    // constant: logout lands on the auth screens, so it re-follows the browser
+    // (#2818) — here a locale we don't ship, hence the 'ru' default.
     expect(s.language).toBe('ru')
     expect(s.country).toBe('')
     expect(s.boardBackground).toBe('')
@@ -198,6 +214,30 @@ describe('theme store', () => {
     expect(JSON.parse(localStorage.getItem('tessera_prefs')).accent).toBe('purple')
     expect(localStorage.getItem('tessera_dark')).toBe('1')
     expect(updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it('first visit takes the language from the browser', () => {
+    stubLanguages(['en-GB', 'ru-RU'])
+    expect(useThemeStore().language).toBe('en')
+  })
+
+  it('first visit falls back to ru when we ship none of the browser languages', () => {
+    stubLanguages(['de-DE', 'fr'])
+    expect(useThemeStore().language).toBe('ru')
+  })
+
+  it('a stored language choice beats the browser', () => {
+    localStorage.setItem('tessera_prefs', JSON.stringify({ language: 'ru' }))
+    stubLanguages(['en-US'])
+    expect(useThemeStore().language).toBe('ru')
+  })
+
+  it('hydrate lets the account language override the browser guess', () => {
+    stubLanguages(['en-US'])
+    const s = useThemeStore()
+    expect(s.language).toBe('en')
+    s.hydrate({ language: 'ru' })
+    expect(s.language).toBe('ru')
   })
 
   it('reset then hydrate brings the next user accent back', () => {

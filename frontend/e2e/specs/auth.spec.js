@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs'
+import { dirname, resolve } from 'path'
+import { fileURLToPath } from 'url'
 import { test, expect } from '../fixtures.js'
 
 // The auth flow is the one thing the suite must NOT shortcut: every other spec
@@ -78,4 +81,62 @@ test('логаут разлогинивает и защищает приватн
   // token server-side, so bootstrap has nothing left to trade.
   await page.goto('/notes')
   await expect(page).toHaveURL(/\/login/)
+})
+
+// Language on the auth screens (#2818): the browser's own preference picks the
+// first-visit language, and the toggle overrides it.
+//
+// These assert on both bundles at once, so they read the catalogs directly
+// rather than going through e2e/i18n.js — that helper resolves against the run's
+// seed language, and the point here is precisely which of the two is on screen.
+const localesDir = resolve(dirname(fileURLToPath(import.meta.url)), '../../src/locales')
+const loginTitle = Object.fromEntries(
+  ['ru', 'en'].map((lang) => [
+    lang,
+    JSON.parse(readFileSync(resolve(localesDir, lang, 'common.json'), 'utf-8')).auth.login.title,
+  ]),
+)
+
+const authTitle = (page) => page.locator('.auth-title')
+const langToggle = (page) => page.getByTestId('auth-lang-toggle')
+
+// No registration in this block: the backend caps registrations per IP, and the
+// toggle is reachable while signed out — which is the case under test.
+test.describe('язык экранов входа, системный русский', () => {
+  test.use({ locale: 'de-DE' }) // a language we don't ship → the ru default
+
+  test('незнакомый язык браузера открывает вход по-русски', async ({ page }) => {
+    await page.goto('/login')
+    await expect(authTitle(page)).toHaveText(loginTitle.ru)
+    await expect(langToggle(page)).toHaveText('RU')
+  })
+
+  test('переключатель меняет язык и переживает перезагрузку', async ({ page }) => {
+    await page.goto('/login')
+    await expect(authTitle(page)).toHaveText(loginTitle.ru)
+
+    await langToggle(page).click()
+    await expect(authTitle(page)).toHaveText(loginTitle.en)
+    await expect(langToggle(page)).toHaveText('EN')
+
+    // The choice is a stored preference, not view state: a reload must not send
+    // the anonymous visitor back to the browser's guess.
+    await page.reload()
+    await expect(authTitle(page)).toHaveText(loginTitle.en)
+    await expect(langToggle(page)).toHaveText('EN')
+
+    // And it follows them across the auth screens.
+    await page.goto('/register')
+    await expect(langToggle(page)).toHaveText('EN')
+  })
+})
+
+test.describe('язык экранов входа, системный английский', () => {
+  test.use({ locale: 'en-GB' }) // regional variant → matched on its primary subtag
+
+  test('английский язык браузера открывает вход по-английски', async ({ page }) => {
+    await page.goto('/login')
+    await expect(authTitle(page)).toHaveText(loginTitle.en)
+    await expect(langToggle(page)).toHaveText('EN')
+  })
 })

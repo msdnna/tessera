@@ -67,9 +67,17 @@ export const useAuthStore = defineStore('auth', () => {
     setAuth(res.data)
   }
 
+  // A brand-new account is created with the server's default preferences, so
+  // setAuth's hydrate() would throw away the language the user just picked on
+  // the auth screen (#2818). Login is the opposite case — the language is a
+  // property of the existing account — so only register carries the choice over,
+  // writing it back once as the new account's preference.
   async function register(email, name, password) {
+    const theme = useThemeStore()
+    const chosen = theme.language
     const res = await auth.register({ email, name, password })
     setAuth(res.data)
+    if (theme.language !== chosen) theme.setLocale({ language: chosen })
   }
 
   // setUser refreshes the cached user after a profile edit.

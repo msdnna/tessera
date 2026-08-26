@@ -4,6 +4,7 @@ import { darkTheme } from 'naive-ui'
 import { DARK, LIGHT } from '@/styles/tokens'
 import { users, getAccessToken } from '@/api'
 import { normalizeDatePreset, DEFAULT_PREFS } from '@/utils/format'
+import { detectBrowserLocale } from '@/i18n'
 
 // Multi-color accent schemes. Default = purple. The palette is a token; the
 // human name of a scheme is not, so it lives in the catalogue under
@@ -100,7 +101,10 @@ export const useThemeStore = defineStore('theme', () => {
 
   // Localizing + board-background preferences (drive date pickers / formats /
   // — later — i18n, and the board canvas background).
-  const language = ref(cached.language || 'ru')
+  // No stored choice yet (first visit, or signed out after a reset) → follow the
+  // browser's language list instead of assuming Russian (#2818). A signed-in
+  // user's own preference still wins: hydrate() overwrites this from the server.
+  const language = ref(cached.language || detectBrowserLocale())
   const timezone = ref(cached.timezone || '')
   const country = ref(cached.country || '')
   const timeFormat = ref(cached.time_format || '24h')
@@ -329,7 +333,9 @@ export const useThemeStore = defineStore('theme', () => {
   // their own accent comes straight back once signed in.
   function reset() {
     activeTheme.value = COLOR_THEMES[0]
-    language.value = 'ru'
+    // Back to the system guess, not a hard 'ru': after logout the user is on the
+    // auth screens again, which is exactly where the browser language rules.
+    language.value = detectBrowserLocale()
     timezone.value = ''
     country.value = ''
     timeFormat.value = '24h'

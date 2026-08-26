@@ -1,10 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { h } from 'vue'
 import { mount } from '@vue/test-utils'
 import { NConfigProvider, NEmpty } from 'naive-ui'
 import ru from '@/locales/ru'
 import en from '@/locales/en'
-import { i18n, setI18nLocale, loadLocaleMessages, normalizeLocale, SUPPORTED_LOCALES } from '@/i18n'
+import {
+  i18n,
+  setI18nLocale,
+  loadLocaleMessages,
+  normalizeLocale,
+  detectBrowserLocale,
+  SUPPORTED_LOCALES,
+  FALLBACK_LOCALE,
+} from '@/i18n'
 import { naivePack } from '@/i18n/naive'
 import { WHATS_NEW } from '@/data/whatsNew'
 
@@ -243,5 +251,50 @@ describe('i18n runtime', () => {
     const before = i18n.global.getLocaleMessage('en')
     await loadLocaleMessages('en')
     expect(i18n.global.getLocaleMessage('en')).toBe(before)
+  })
+})
+
+describe('detectBrowserLocale', () => {
+  let spy = null
+  afterEach(() => {
+    spy?.mockRestore()
+    spy = null
+  })
+  function stub(list) {
+    spy = vi.spyOn(navigator, 'languages', 'get').mockReturnValue(list)
+  }
+
+  it('matches on the primary subtag, so regional variants count', () => {
+    stub(['ru-RU'])
+    expect(detectBrowserLocale()).toBe('ru')
+    spy.mockReturnValue(['en-GB'])
+    expect(detectBrowserLocale()).toBe('en')
+  })
+
+  it('honours the order of the browser preference list', () => {
+    // First supported entry wins, even if a later one is also shippable.
+    stub(['de-DE', 'en-US', 'ru'])
+    expect(detectBrowserLocale()).toBe('en')
+  })
+
+  it('falls back to ru for languages we do not ship', () => {
+    stub(['de-DE', 'fr-FR'])
+    expect(detectBrowserLocale()).toBe(FALLBACK_LOCALE)
+    expect(FALLBACK_LOCALE).toBe('ru')
+  })
+
+  it('reads the singular navigator.language when the list is empty', () => {
+    // Older/embedded browsers expose only navigator.language.
+    stub([])
+    const single = vi.spyOn(navigator, 'language', 'get').mockReturnValue('en-US')
+    expect(detectBrowserLocale()).toBe('en')
+    single.mockReturnValue('de-DE')
+    expect(detectBrowserLocale()).toBe('ru')
+    single.mockRestore()
+  })
+
+  it('falls back to ru on entries that are not language tags', () => {
+    stub([null, ''])
+    expect(detectBrowserLocale()).toBe('ru')
   })
 })

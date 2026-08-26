@@ -111,7 +111,8 @@
   "auth": {
     "server": "Адрес сервера",
     "themeLight": "Светлая тема",
-    "themeDark": "Тёмная тема"
+    "themeDark": "Тёмная тема",
+    "languageSwitchTo": "Переключить на {lang}"
   },
   "home": {
     "greeting": "Привет, {name} 👋",
