@@ -119,16 +119,220 @@ async function writeDoc(token, doc, paragraphs) {
   )
 }
 
+// The admin screen (#2810) is the only shot that shows e-mail addresses, so the
+// demo accounts ask for a presentable one first and fall back to the run-id
+// address only when it is taken — that is, on a database that already holds a
+// previous run. Domains are the ones RFC 2606 reserves for documentation.
+const DEMO_EMAIL = 'a.kovaleva@example.com'
+
+// Extra accounts so the admin list is a list and not a single row. They are
+// instance accounts only — not members of the demo workspace — so they change
+// nothing in the board, document or milestone shots.
+const INSTANCE_USERS = [
+  { name: 'Павел Дорохов', email: 'p.dorohov@example.com', admin: true },
+  { name: 'Марина Кисляк', email: 'm.kislyak@example.com' },
+  { name: 'Тимур Асланов', email: 't.aslanov@example.com', active: false },
+]
+
+// A GitLab OAuth application that does not exist, spelled out in full: the card
+// on top of the admin screen is in the picture either way, and an empty one
+// would document the setup form as a set of blank boxes.
+const DEMO_OAUTH = {
+  gl_base_url: 'https://gitlab.example.com',
+  client_id: '7d1f9c2ab3e84f60a5c7d2e1b8f43a09c6d5e4b2a1f09876543210fedcba9876',
+  client_secret: 'gloas-demo-secret-not-a-real-application',
+  service_token: 'glpat-DEMOxxxxxxxxxxxxxxxx',
+  enabled: true,
+  sudo_writeback: false,
+}
+
+async function registerPresentable(runId, name, email, suffix = '') {
+  const password = newCredentials(runId, suffix).password
+  try {
+    const creds = { email, name, password }
+    return { creds, ...(await register(creds)) }
+  } catch (e) {
+    // 409 — the address is taken, i.e. this database has seen a run before.
+    if (!e.message.includes('→ 409')) throw e
+    const creds = { ...newCredentials(runId, suffix), name }
+    return { creds, ...(await register(creds)) }
+  }
+}
+
+// A binding to a GitLab project that does not exist either: the modal shows the
+// selected binding's fields, and an unsaved blank form would document the screen
+// as a column of placeholders. `enabled` is on because that is the state the
+// article describes — the sync it schedules simply never reaches
+// gitlab.example.com, which changes nothing in the picture.
+const DEMO_BINDING = {
+  name: 'Мобильное приложение → demo-project',
+  project_path: 'demo-group/demo-project',
+  enabled: true,
+  sync_interval_sec: 900,
+  full_sync_interval_sec: 86400,
+  due_source: 'issue_milestone',
+  start_source: 'created',
+  scope: 'all',
+  closed_policy: 'archive_closed_sprints',
+  relations_sync: 'pull',
+}
+
+// Write-back actions for the demo binding (#2810). The pane documents a table of
+// trigger→action rows, and an integration that never had one authored opens it
+// synthesized from the legacy flags — a list without a column move, which is the
+// row the article talks about first. Spelling the set out here keeps the picture
+// stable and shows the qualifiers (a specific column, a marker on a comment).
+// The labels are the project's own S:/P: taxonomy, the one the default parsing
+// rules in the neighbouring shot read back.
+function demoWriteback(columns) {
+  const col = (name) => columns.find((c) => c.name === name)
+  return {
+    enabled: true,
+    push_create: true,
+    fetch_templates: true,
+    bindings: [
+      {
+        enabled: true,
+        trigger: { type: 'column', column_id: col('В процессе')?.id, column_name: 'В процессе' },
+        action: { type: 'set_label', label: 'S: In progress', clear_prefix: true },
+      },
+      {
+        enabled: true,
+        trigger: { type: 'completion', completed: true },
+        action: { type: 'set_state', state: '' },
+      },
+      {
+        enabled: true,
+        trigger: { type: 'due' },
+        action: { type: 'set_due', date_kind: 'due' },
+      },
+      {
+        enabled: true,
+        trigger: { type: 'labels' },
+        action: { type: 'reconcile_labels' },
+      },
+      {
+        enabled: false,
+        trigger: { type: 'comment' },
+        action: { type: 'post_comment', add_marker: true },
+      },
+    ],
+  }
+}
+
+// Delivery channels and routing rules for the notifications article (#2810).
+// Nothing here can actually deliver: the addresses are documentation domains and
+// the tokens are spelled out as demo, so the outbox retries into nowhere — which
+// changes nothing in a picture of the settings screen. The browser adds its own
+// «Браузер (Chrome)» row on top of these when the shot signs in: device channels
+// register themselves per client.
+const DEMO_CHANNELS = [
+  { type: 'email', label: 'Рабочая почта', config: { address: DEMO_EMAIL } },
+  {
+    type: 'telegram',
+    label: 'Мой телеграм',
+    config: { chat_id: '123456789' },
+    secret: { bot_token: '1234567:DEMO-not-a-real-bot-token' },
+  },
+  {
+    type: 'shoutrrr',
+    label: 'Дежурный чат',
+    secret: { url: 'slack://demo/DEMO/not-a-real-token' },
+  },
+]
+
+// The rules are ordered the way the article explains them: the narrow ones
+// first, the mute last. First-match-wins, so a general "everything → mail" rule
+// on top would make the rest of the list dead weight — and a screenshot of a
+// list that cannot work is worse than no screenshot.
+const DEMO_ROUTES = [
+  { kinds: ['mention', 'assigned'], channels: ['Рабочая почта', 'Мой телеграм'] },
+  { kinds: ['comment', 'updated'], channels: ['Мой телеграм'], scoped: true },
+  { kinds: ['integration_sync'], mute: true },
+]
+
+// seedNotifications creates the demo user's channels, routing rules and schedule.
+// Per-user state (no admin needed), so unlike the instance seed it runs on every
+// database.
+async function seedNotifications(token, workspaceId) {
+  const byLabel = {}
+  for (const ch of DEMO_CHANNELS) {
+    const created = await api.post(
+      '/notification-channels',
+      { type: ch.type, label: ch.label, config: ch.config || {}, secret: ch.secret || {} },
+      token,
+    )
+    byLabel[ch.label] = created.id
+  }
+  for (const r of DEMO_ROUTES) {
+    await api.post(
+      '/notification-routes',
+      {
+        matcher: { kinds: r.kinds, ...(r.scoped ? { workspace_id: workspaceId } : {}) },
+        channel_ids: (r.channels || []).map((l) => byLabel[l]),
+        options: { mute: r.mute === true },
+        enabled: true,
+      },
+      token,
+    )
+  }
+  // Quiet hours and a digest window on, so the schedule block below the rules is
+  // a filled-in form rather than a column of defaults.
+  await api.put(
+    '/notification-prefs',
+    {
+      due_enabled: true,
+      due_lead_minutes: 60,
+      due_repeat_minutes: 0,
+      reminder_enabled: true,
+      digest_minutes: 15,
+      quiet_enabled: true,
+      quiet_start_minutes: 1320,
+      quiet_end_minutes: 480,
+      quiet_tz: 'Europe/Moscow',
+    },
+    token,
+  )
+}
+
+// seedInstance fills the instance-wide state the admin articles document: a few
+// accounts in different states, a GitLab OAuth application and a project binding.
+// Only possible for a global admin — and the backend grants that to the *first*
+// account of an instance, so it happens on a clean database and is skipped on a
+// shared one (the admin shots skip with it; see help-shots.spec.js).
+async function seedInstance(runId, token, workspaceId, boardId, columns) {
+  for (const [i, u] of INSTANCE_USERS.entries()) {
+    let created
+    try {
+      created = await registerPresentable(runId, u.name, u.email, `+u${i}`)
+    } catch {
+      continue // taken by an earlier run — the list is illustrative, not exact
+    }
+    const id = created.user.id
+    if (u.admin) await api.patch(`/admin/users/${id}/admin`, { admin: true }, token)
+    if (u.active === false) await api.patch(`/admin/users/${id}/active`, { active: false }, token)
+  }
+  await api.put(
+    '/admin/oauth/gitlab',
+    {
+      ...DEMO_OAUTH,
+      org_map: {
+        'demo-group': { workspace_id: workspaceId, admins: ['p.dorohov'], users: true },
+      },
+    },
+    token,
+  )
+  await api.post(
+    `/workspaces/${workspaceId}/gitlab/integrations`,
+    { ...DEMO_BINDING, board_id: boardId, writeback: demoWriteback(columns) },
+    token,
+  )
+}
+
 // seedDemo builds the whole demo workspace and returns what the shots spec needs
 // to navigate: ids plus the credentials to sign in with.
 export async function seedDemo(runId, base) {
-  const creds = {
-    ...newCredentials(runId),
-    // The user's name is on every avatar and in the sidebar footer, so it gets a
-    // real one instead of "E2E <runid>".
-    name: 'Аня Ковалёва',
-  }
-  const { token, user } = await register(creds)
+  const { creds, token, user } = await registerPresentable(runId, 'Аня Ковалёва', DEMO_EMAIL)
   const t = token
   const post = (p, b) => api.post(p, b, t)
   const get = (p) => api.get(p, t)
@@ -247,10 +451,17 @@ export async function seedDemo(runId, base) {
     message: 'Собрать обратную связь по онбордингу',
   })
 
+  await seedNotifications(t, ws.id)
+
+  // Instance-wide state for the admin articles (#2810). Gated on the flag the
+  // backend itself set at registration, not on a guess about the database.
+  if (user.is_admin) await seedInstance(runId, t, ws.id, board.id, columns)
+
   return {
     runId,
     creds,
     token,
+    isAdmin: user.is_admin === true,
     userId: user.id,
     workspaceId: ws.id,
     projectId: project.id,
