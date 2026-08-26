@@ -319,13 +319,16 @@ export const useThemeStore = defineStore('theme', () => {
 
   watch([isDark, activeTheme], applyCssVars, { immediate: true })
 
-  // Logout cleanup. Appearance (theme mode + accent) is a device-level preference:
-  // we KEEP it so the auth screens and any reload hold the look the user last chose
-  // — and re-persist it to localStorage. Only the account-bound preferences
-  // (localizing + board background) drop back to defaults. The next login
-  // re-hydrates everything from that user's server prefs (so a different account's
-  // saved appearance still wins once signed in).
+  // Logout cleanup. The accent drops back to the brand purple (#2817): the auth
+  // screens are a pre-account zone drawn in the brand colour, so a leftover
+  // account accent clashes with their hard-coded purple glow. Theme MODE
+  // (light/dark) stays — it is a device-level comfort setting, and resetting it
+  // would flash a logging-out dark-mode user into white. The rest of the
+  // account-bound preferences (localizing + board background) drop to defaults.
+  // The next login re-hydrates everything from that user's server prefs, so
+  // their own accent comes straight back once signed in.
   function reset() {
+    activeTheme.value = COLOR_THEMES[0]
     language.value = 'ru'
     timezone.value = ''
     country.value = ''

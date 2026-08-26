@@ -175,20 +175,39 @@ describe('theme store', () => {
     expect(s.boardBackground).toBe('')
   })
 
-  it('reset restores account-bound prefs but keeps appearance', () => {
+  it('reset drops the accent to purple but keeps the theme mode', () => {
     const s = useThemeStore()
     s.selectColor(COLOR_THEMES.find((t) => t.key === 'teal'))
     s.setThemeMode('dark')
     s.setLocale({ language: 'en', country: 'US' })
     s.setBoardBackground('grid')
+    updatePreferences.mockClear()
     s.reset()
-    // Appearance kept.
-    expect(s.activeTheme.key).toBe('teal')
+    // Accent back to the brand purple so the auth screens stay on-brand (#2817).
+    expect(s.activeTheme.key).toBe('purple')
+    expect(s.primaryColor).toBe('#7c5cff')
+    // Theme mode is device-level — a dark-mode user isn't flashed into white.
     expect(s.isDark).toBe(true)
+    expect(s.themeMode).toBe('dark')
     // Account-bound prefs back to defaults.
     expect(s.language).toBe('ru')
     expect(s.country).toBe('')
     expect(s.boardBackground).toBe('')
+    // Local caches follow the reset accent, and no PUT goes out (token is gone).
+    expect(localStorage.getItem('tessera_color')).toBe('purple')
+    expect(JSON.parse(localStorage.getItem('tessera_prefs')).accent).toBe('purple')
+    expect(localStorage.getItem('tessera_dark')).toBe('1')
+    expect(updatePreferences).not.toHaveBeenCalled()
+  })
+
+  it('reset then hydrate brings the next user accent back', () => {
+    const s = useThemeStore()
+    s.selectColor(COLOR_THEMES.find((t) => t.key === 'teal'))
+    s.reset()
+    expect(s.activeTheme.key).toBe('purple')
+    s.hydrate({ accent: 'green', theme: 'light' })
+    expect(s.activeTheme.key).toBe('green')
+    expect(s.primaryColor).toBe(COLOR_THEMES.find((t) => t.key === 'green').primary)
   })
 
   it('reads legacy tessera_color / tessera_dark keys on init', () => {
