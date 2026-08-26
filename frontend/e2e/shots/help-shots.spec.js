@@ -24,6 +24,59 @@ const seed = JSON.parse(readFileSync(SHOTS_SEED_FILE, 'utf-8'))
 
 mkdirSync(ASSETS, { recursive: true })
 
+// The language axis (#2816). `make help-shots` still writes the Russian set under
+// the plain names; `make help-shots-en` writes `<name>-<scheme>.en.png` next to
+// them, which is exactly what helpAssets.js/HelpAssets.kt look for first when the
+// reader is on an English article. Russian is the base set, so it keeps the bare
+// name — the fallback resolves *to* it, and renaming it would orphan every
+// article's <img src>.
+const LANG = process.env.TESSERA_SHOTS_LANG || 'ru'
+if (!['ru', 'en'].includes(LANG)) {
+  throw new Error(`TESSERA_SHOTS_LANG=${LANG}: поддерживаются только ru и en`)
+}
+const SUFFIX = LANG === 'ru' ? '' : `.${LANG}`
+
+// Captions the shots have to click or wait for. Only *interface* strings live
+// here — the demo data («Регламент релиза», «Релиз 2.4», «Мой телеграм») is
+// content and stays Russian in both runs, the way a real English-speaking user's
+// own workspace would keep its own language. Column selectors are unaffected too:
+// `data-column-name` carries the stored name, not the localized caption.
+const CAPTIONS = {
+  ru: {
+    integrations: 'Интеграции',
+    jobs: 'Фоновые задания',
+    adminUsers: 'Пользователи экземпляра',
+    // Substring of the bindings heading («Привязки GitLab → доска»).
+    bindingsHead: 'Привязки',
+    configureWriteback: /Настроить действия/,
+    configureRules: 'Настроить правила',
+    notifications: 'Уведомления',
+    thisDevice: 'это устройство',
+    routesTitle: 'Правила маршрутизации',
+    addRule: 'Добавить правило',
+    newRule: 'Новое правило',
+    events: 'События',
+    mention: 'Упоминания',
+  },
+  en: {
+    integrations: 'Integrations',
+    jobs: 'Background jobs',
+    adminUsers: 'Users on this instance',
+    // Substring of «GitLab → board bindings» — lower-case, the match is exact.
+    bindingsHead: 'bindings',
+    configureWriteback: /Configure actions/,
+    configureRules: 'Configure rules',
+    notifications: 'Notifications',
+    thisDevice: 'this device',
+    routesTitle: 'Routing rules',
+    addRule: 'Add rule',
+    newRule: 'New rule',
+    events: 'Events',
+    mention: 'Mentions',
+  },
+}
+const L = CAPTIONS[LANG]
+
 const test = base.extend({
   // Signed in and pointed at the demo workspace before every shot. Same fetch
   // login as the e2e fixtures (the refresh cookie is single-use, so a shared
@@ -53,16 +106,40 @@ const test = base.extend({
         if (!res.ok) return `login ${res.status}: ${(await res.text()).slice(0, 200)}`
         const data = await res.json()
         localStorage.setItem('tessera_user', JSON.stringify(data.user))
+        // Interface language (#2816). localStorage alone is not enough: the theme
+        // store's hydrate() overwrites `tessera_prefs` with whatever /auth/me
+        // returns, so a purely local switch flips back to Russian one request
+        // later. The preference is written the same way the settings screen
+        // writes it — a full PUT (the endpoint replaces the row, hence spreading
+        // the server's own values) — and mirrored into localStorage so the very
+        // first paint is already in the right language.
+        const prefs = { ...data.preferences, language: c.lang }
+        localStorage.setItem('tessera_prefs', JSON.stringify(prefs))
+        if (c.lang !== 'ru') {
+          const put = await fetch('/api/users/me/preferences', {
+            method: 'PUT',
+            headers: {
+              'Content-Type': 'application/json',
+              // Cookie mode only moves the *refresh* token out of reach; the
+              // access token still comes back in the body and protected routes
+              // take it as a bearer, the same as for the app itself.
+              Authorization: `Bearer ${data.access_token}`,
+            },
+            body: JSON.stringify(prefs),
+          })
+          if (!put.ok) return `prefs ${put.status}: ${(await put.text()).slice(0, 200)}`
+        }
         return true
       },
-      { ...seed.creds, workspaceId: seed.workspaceId },
+      { ...seed.creds, workspaceId: seed.workspaceId, lang: LANG },
     )
     if (ok !== true) throw new Error(`не удалось войти под демо-пользователем: ${ok}`)
     await use(page)
   },
 })
 
-// shoot writes <name>-<scheme>.png. `animations: 'disabled'` freezes the loader
+// shoot writes <name>-<scheme>.png (<name>-<scheme>.<lang>.png outside Russian).
+// `animations: 'disabled'` freezes the loader
 // and the card transitions, so re-running the pipeline on unchanged UI produces
 // byte-identical files instead of a diff on every run.
 async function shoot(page, scheme, name, target) {
@@ -70,7 +147,7 @@ async function shoot(page, scheme, name, target) {
   // One frame for the theme swap to paint before the shutter.
   await page.waitForTimeout(150)
   await (target || page).screenshot({
-    path: resolve(ASSETS, `${name}-${scheme}.png`),
+    path: resolve(ASSETS, `${name}-${scheme}${SUFFIX}.png`),
     animations: 'disabled',
   })
 }
@@ -148,7 +225,7 @@ for (const scheme of ['light', 'dark']) {
     test('администрирование', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
       await page.goto('/admin')
-      await expect(page.getByText('Пользователи экземпляра')).toBeVisible()
+      await expect(page.getByText(L.adminUsers)).toBeVisible()
       // The user rows arrive in a second request; without this the shutter can
       // catch the OAuth card above an empty list.
       await expect(page.locator('.urow').first()).toBeVisible()
@@ -181,7 +258,7 @@ for (const scheme of ['light', 'dark']) {
     // scrolls at 76vh). The article shows each next to the text that explains it.
     async function openGitlab(page) {
       await openBoard(page)
-      await page.getByRole('button', { name: 'Интеграции' }).click()
+      await page.getByRole('button', { name: L.integrations }).click()
       // Naive UI's dropdown options are plain divs, not menu items with a role,
       // and the GitLab one renders its label through a render function (it can
       // carry a conflict badge) — so it is matched by text, not by role.
@@ -210,12 +287,10 @@ for (const scheme of ['light', 'dark']) {
       // shot came back a byte-for-byte twin of the account one. Scrolling the
       // pane by hand, anchored on the bindings heading, puts the whole set of
       // fields in frame instead.
-      await card.locator('.gl-left').evaluate((pane) => {
-        const head = [...pane.querySelectorAll('.gl-h')].find((h) =>
-          h.textContent.includes('Привязки'),
-        )
+      await card.locator('.gl-left').evaluate((pane, head0) => {
+        const head = [...pane.querySelectorAll('.gl-h')].find((h) => h.textContent.includes(head0))
         pane.scrollTop += head.getBoundingClientRect().top - pane.getBoundingClientRect().top
-      })
+      }, L.bindingsHead)
       await shoot(page, scheme, 'gitlab-bindings', card)
     })
 
@@ -235,7 +310,7 @@ for (const scheme of ['light', 'dark']) {
 
     test('GitLab: действия обратной записи', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openRightPane(page, /Настроить действия/)
+      const card = await openRightPane(page, L.configureWriteback)
       // The bindings come from the seed; waiting for the first row's summary keeps
       // the shutter off the pane's own loading frame.
       await expect(card.locator('.gl-rcard').first()).toBeVisible()
@@ -244,7 +319,7 @@ for (const scheme of ['light', 'dark']) {
 
     test('GitLab: правила разбора меток', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openRightPane(page, 'Настроить правила')
+      const card = await openRightPane(page, L.configureRules)
       // The rules are the backend's defaults (S:/P:/M:), so the value maps are
       // filled — waiting for the first one avoids shooting three empty cards.
       await expect(card.locator('.gl-rmap .gl-rule').first()).toBeVisible()
@@ -254,7 +329,7 @@ for (const scheme of ['light', 'dark']) {
     test('фоновые задания', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
       await openBoard(page)
-      await page.getByRole('button', { name: 'Фоновые задания' }).click()
+      await page.getByRole('button', { name: L.jobs }).click()
       const modal = page.locator('.bj-modal')
       await expect(modal).toBeVisible()
       // The panel selects its first job on load; waiting for the detail pane
@@ -286,9 +361,9 @@ for (const scheme of ['light', 'dark']) {
       await page.reload()
       const section = page
         .locator('section.card')
-        .filter({ has: page.getByRole('heading', { name: 'Уведомления' }) })
+        .filter({ has: page.getByRole('heading', { name: L.notifications }) })
       await expect(section).toBeVisible()
-      await expect(section.getByText('это устройство')).toBeVisible()
+      await expect(section.getByText(L.thisDevice)).toBeVisible()
       // Channels arrive in their own request; the seeded one keeps the shutter
       // off the spinner and off the «Каналов пока нет» empty state.
       // Exact: the channel's own row, not the two rule rows that list it as a
@@ -315,20 +390,20 @@ for (const scheme of ['light', 'dark']) {
       // The rule editor over the rule list: the picture has to show both the
       // order of the rules (first match wins) and what a rule is made of, so the
       // list is scrolled up first and the form opened on top of it.
-      const block = section.locator('.block', { hasText: 'Правила маршрутизации' }).first()
+      const block = section.locator('.block', { hasText: L.routesTitle }).first()
       await scrollToTop(block)
-      await section.getByRole('button', { name: 'Добавить правило' }).click()
-      const modal = page.locator('.n-card', { hasText: 'Новое правило' })
+      await section.getByRole('button', { name: L.addRule }).click()
+      const modal = page.locator('.n-card', { hasText: L.newRule })
       await expect(modal).toBeVisible()
       // Pick the events so the form is documented in use, not empty. The label is
       // a <span> above the select, so the click has to land on the selection box
       // itself; the options then render in a detached dropdown layer, outside the
       // modal — hence the page-level locator for them.
-      await modal.locator('.field', { hasText: 'События' }).locator('.n-base-selection').click()
-      await page.locator('.n-base-select-option', { hasText: 'Упоминания' }).first().click()
+      await modal.locator('.field', { hasText: L.events }).locator('.n-base-selection').click()
+      await page.locator('.n-base-select-option', { hasText: L.mention }).first().click()
       await page.keyboard.press('Escape') // close the dropdown, keep the modal
       // The pick lands as a tag inside the select — that is what has to be in frame.
-      await expect(modal.locator('.n-tag', { hasText: 'Упоминания' })).toBeVisible()
+      await expect(modal.locator('.n-tag', { hasText: L.mention })).toBeVisible()
       await shoot(page, scheme, 'notifications-routes')
     })
 
