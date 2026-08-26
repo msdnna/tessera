@@ -15,9 +15,18 @@ const { useThemeStore } = await import('@/stores/theme')
 // The store-bound layer (#2798): what components see. The formatting itself is
 // covered in ut-format.spec.js — here it's the wiring that matters, above all
 // that a preference change is picked up without re-calling the composable.
+// Every expectation below is written against Russian formatting, which used to
+// be the store's hard-coded default. Since #2818 that default follows
+// navigator.languages — 'en-US' under jsdom — so the assumption has to be stated
+// rather than inherited.
+function pinRussianBrowser() {
+  vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['ru-RU'])
+}
+
 describe('useFormat', () => {
   beforeEach(() => {
     localStorage.clear()
+    pinRussianBrowser()
     setActivePinia(createPinia())
   })
 
@@ -114,6 +123,7 @@ describe('theme store date_format', () => {
 describe('useDateLocale (adapter)', () => {
   beforeEach(() => {
     localStorage.clear()
+    pinRussianBrowser()
     setActivePinia(createPinia())
   })
 

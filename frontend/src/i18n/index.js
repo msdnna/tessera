@@ -45,6 +45,21 @@ export function normalizeLocale(locale) {
   return SUPPORTED_LOCALES.includes(locale) ? locale : FALLBACK_LOCALE
 }
 
+// First-visit language guess (#2818), used only until the user has a stored
+// choice of their own. Walks the browser's ordered preference list and takes the
+// first entry whose primary subtag we ship, so `en-GB` counts as `en`; a list we
+// support nothing from (de-DE, fr) lands on Russian, the product's default.
+export function detectBrowserLocale() {
+  const tags = navigator.languages?.length ? navigator.languages : [navigator.language]
+  for (const tag of tags) {
+    const primary = String(tag || '')
+      .toLowerCase()
+      .split('-')[0]
+    if (SUPPORTED_LOCALES.includes(primary)) return primary
+  }
+  return FALLBACK_LOCALE
+}
+
 // Fetches a locale bundle unless it is already registered. Returns the locale
 // actually available afterwards — a failed chunk fetch (offline, stale deploy)
 // degrades to the fallback instead of leaving the UI without messages.
