@@ -42,26 +42,33 @@ describe('helpAssetUrl', () => {
   })
 
   it('снятый английский кадр действительно подставляется', () => {
-    // The desktop wave landed (#2816), so for those names the resolver must pick
-    // the twin, not merely be capable of it.
+    // Both waves landed (#2816) — desktop and mobile — so for these names the
+    // resolver must pick the twin, not merely be capable of it.
     expect(helpAssetUrl('../assets/board-light.png', false, 'en')).toBe(
       helpAssetUrl('../assets/board-light.en.png'),
     )
     expect(helpAssetUrl('../assets/board-light.png', true, 'en')).toBe(
       helpAssetUrl('../assets/board-dark.en.png'),
     )
+    expect(helpAssetUrl('../assets/board-mobile-light.png', false, 'en')).toBe(
+      helpAssetUrl('../assets/board-mobile-light.en.png'),
+    )
+    expect(helpAssetUrl('../assets/board-mobile-light.png', true, 'en')).toBe(
+      helpAssetUrl('../assets/board-mobile-dark.en.png'),
+    )
   })
 
   it('без английского кадра берётся русский того же тона', () => {
-    // The English shots land in waves (#2816): the mobile set is shot on an
-    // emulator and has no twins yet, and until it does an English reader must get
-    // the Russian shot in the right theme, not a blank picture. When that wave
-    // lands, this case moves up to the assertion above.
-    expect(helpAssetUrl('../assets/board-mobile-light.png', false, 'en')).toBe(
-      helpAssetUrl('../assets/board-mobile-light.png'),
+    // Checked on a language nothing has been shot in rather than on a name whose
+    // twin merely hasn't been taken yet: the previous version stood on
+    // `board-mobile-*`, and the moment that wave landed it began asserting the
+    // opposite of its own title. Only ru and en are shot, so any third language
+    // exercises the fallback for good.
+    expect(helpAssetUrl('../assets/board-light.png', false, 'de')).toBe(
+      helpAssetUrl('../assets/board-light.png'),
     )
-    expect(helpAssetUrl('../assets/board-mobile-light.png', true, 'en')).toBe(
-      helpAssetUrl('../assets/board-mobile-dark.png'),
+    expect(helpAssetUrl('../assets/board-light.png', true, 'de')).toBe(
+      helpAssetUrl('../assets/board-dark.png'),
     )
   })
 
