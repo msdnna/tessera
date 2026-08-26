@@ -164,6 +164,10 @@ object TestTags {
      *  articles that have no mobile rewrite yet (#2795). */
     const val HELP_DESKTOP_NOTE = "help-desktop-note"
 
+    /** The «not translated yet, showing the original» note (#2809), shown when a
+     *  non-Russian reader opens an article that has no translation. */
+    const val HELP_NOT_TRANSLATED_NOTE = "help-not-translated-note"
+
     // ── what's new / spotlight (#2766) ──────────────────────────────────────
 
     /** The post-update changelog card and its «Понятно». Present only while the

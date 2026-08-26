@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +48,7 @@ import website.msdnna.tessera.ui.viewmodels.SearchViewModel
 import website.msdnna.tessera.util.HelpHit
 import website.msdnna.tessera.util.HelpSearcher
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.normalizeLanguage
 
 /** How many help articles the global search offers before the server's own
  *  results — enough to answer «как …», not enough to bury the tasks. */
@@ -70,9 +72,13 @@ fun SearchOverlay(
     val focus = remember { FocusRequester() }
 
     // The manual is bundled, so its hits are ready on the keystroke — they show
-    // while the server is still answering rather than after it (#2795).
+    // while the server is still answering rather than after it (#2795). Indexed
+    // in the profile language, like the help screen itself (#2809).
     val assets = LocalContext.current.assets
-    val searcher = remember(assets) { HelpSearcher(HelpRepository(assets).articles()) }
+    val helpLang = normalizeLanguage(LocalConfiguration.current.locales[0].language)
+    val searcher = remember(assets, helpLang) {
+        HelpSearcher(HelpRepository(assets).articles().map { it.content(helpLang) }, helpLang)
+    }
     val helpHits = remember(state.query, searcher) { searcher.search(state.query, HELP_HITS_LIMIT) }
 
     LaunchedEffect(workspaceId) { vm.bind(workspaceId) }

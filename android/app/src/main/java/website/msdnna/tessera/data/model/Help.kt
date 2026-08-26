@@ -35,6 +35,14 @@ data class HelpArticle(
     @SerializedName("text") val text: String = "",
     /** The mobile rewrite of this article, when one exists (`<slug>.android.md`). */
     @SerializedName("android") val android: HelpVariant? = null,
+    /**
+     * Translations of this article (#2809), keyed by language — `en`, and any
+     * language added later. The Russian article always stays on the top level;
+     * a translation lives here beside it, never in its place, so an older APK
+     * whose index predates a language keeps showing the Russian help rather than
+     * an empty screen.
+     */
+    @SerializedName("locales") val locales: Map<String, HelpLocale> = emptyMap(),
 ) {
     /**
      * Whether this article belongs in the app at all. An index without the field
@@ -44,31 +52,50 @@ data class HelpArticle(
     val onAndroid: Boolean
         get() = platforms.isEmpty() || platforms.contains(PLATFORM_ANDROID)
 
-    /** True when the app has to fall back to the desktop text for this article. */
-    val desktopOnlyText: Boolean
-        get() = android == null
+    /**
+     * Collapses the article to what this client renders for [lang]: the
+     * translated mobile rewrite when one exists, then the translated web body,
+     * then the Russian mobile rewrite, then the Russian web body. Title and
+     * category follow the same language. A language with no translation yet
+     * falls back to Russian with [HelpContent.translated] false, so the screen
+     * can say the article is not translated instead of hiding it.
+     */
+    fun content(lang: String): HelpContent {
+        val loc = if (lang != DEFAULT_LANG) locales[lang] else null
+        if (loc != null) {
+            val v = loc.android
+            return HelpContent(
+                slug = slug,
+                title = loc.title.ifBlank { title },
+                category = loc.category.ifBlank { category },
+                path = v?.path ?: loc.path,
+                text = v?.text ?: loc.text,
+                keywords = v?.keywords ?: loc.keywords,
+                headings = v?.headings ?: loc.headings,
+                updated = (v?.updated?.takeIf { it.isNotBlank() } ?: loc.updated).ifBlank { updated },
+                translated = true,
+                mobileRewrite = v != null,
+            )
+        }
+        return HelpContent(
+            slug = slug,
+            title = title,
+            category = category,
+            path = android?.path ?: path,
+            text = android?.text ?: text,
+            keywords = android?.keywords ?: keywords,
+            headings = android?.headings ?: headings,
+            updated = android?.updated?.takeIf { it.isNotBlank() } ?: updated,
+            translated = lang == DEFAULT_LANG,
+            mobileRewrite = android != null,
+        )
+    }
 
-    /** The Markdown this client renders — the mobile rewrite when there is one. */
-    val androidPath: String
-        get() = android?.path ?: path
-
-    // The search corpus follows the body, not the base article: indexing the
-    // desktop text under a mobile article would make words findable that the
-    // reader never sees on screen.
-    val androidText: String
-        get() = android?.text ?: text
-
-    val androidKeywords: List<String>
-        get() = android?.keywords ?: keywords
-
-    val androidHeadings: List<HelpHeading>
-        get() = android?.headings ?: headings
-
-    val androidUpdated: String
-        get() = android?.updated?.takeIf { it.isNotBlank() } ?: updated
-
-    private companion object {
+    companion object {
         const val PLATFORM_ANDROID = "android"
+
+        /** The language the manual is authored in; every other one is a translation. */
+        const val DEFAULT_LANG = "ru"
     }
 }
 
@@ -85,6 +112,48 @@ data class HelpVariant(
     @SerializedName("keywords") val keywords: List<String> = emptyList(),
     @SerializedName("headings") val headings: List<HelpHeading> = emptyList(),
     @SerializedName("text") val text: String = "",
+)
+
+/**
+ * A translation of an article (#2809). It carries the same shape as the base
+ * article — its own title/category, web body and (when the mobile client has a
+ * rewrite of it) an `android` half — so switching language swaps the whole
+ * article, not just its prose.
+ */
+data class HelpLocale(
+    @SerializedName("path") val path: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("category") val category: String = "",
+    @SerializedName("updated") val updated: String = "",
+    @SerializedName("keywords") val keywords: List<String> = emptyList(),
+    @SerializedName("headings") val headings: List<HelpHeading> = emptyList(),
+    @SerializedName("text") val text: String = "",
+    @SerializedName("android") val android: HelpVariant? = null,
+)
+
+/**
+ * An article collapsed to a single language and platform (#2809) — the fields
+ * the screen and the searcher actually use, with the locale/mobile fallbacks
+ * already resolved. Not deserialized; produced by [HelpArticle.content].
+ */
+data class HelpContent(
+    val slug: String,
+    val title: String,
+    val category: String,
+    /** Markdown path relative to `docs/help`, unique per language and platform —
+     *  so it doubles as the body cache key, and one language cannot serve the
+     *  body cached for another. */
+    val path: String,
+    val text: String,
+    val keywords: List<String>,
+    val headings: List<HelpHeading>,
+    val updated: String,
+    /** False when a non-Russian reader is seeing the Russian original because no
+     *  translation exists yet — the screen shows a note. */
+    val translated: Boolean,
+    /** True when [text]/[path] are the mobile rewrite; false when they are the
+     *  desktop web body and the reader is warned it describes a mouse. */
+    val mobileRewrite: Boolean,
 )
 
 data class HelpHeading(

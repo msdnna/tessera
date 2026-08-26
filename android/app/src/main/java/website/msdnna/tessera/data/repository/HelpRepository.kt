@@ -56,19 +56,23 @@ class HelpRepository(private val assets: AssetManager) {
     }
 
     /**
-     * An article's Markdown, frontmatter stripped — the mobile rewrite
-     * (`<slug>.android.md`) when the article has one, the desktop text
-     * otherwise. Returns null when the index and the files disagree (the index
-     * was not rebuilt, or a file was deleted) so the screen can say so instead
-     * of rendering a blank page.
+     * The Markdown at [path] (relative to `docs/help`), frontmatter stripped.
+     * The path already encodes language and platform — `boards.md`,
+     * `boards.android.md`, `boards.en.md`, `boards.android.en.md` are four
+     * distinct files — so caching by it is language-safe by construction: no key
+     * can serve the body of a language the reader has left (#2809). Pass
+     * [HelpContent.path], which [HelpArticle.content] has already resolved to the
+     * right language and platform. Returns null when the index and the files
+     * disagree (the index was not rebuilt, or a file was deleted) so the screen
+     * can say so instead of rendering a blank page.
      */
-    fun body(article: HelpArticle): String? {
-        synchronized(bodies) { bodies[article.slug] }?.let { return it }
+    fun body(path: String): String? {
+        synchronized(bodies) { bodies[path] }?.let { return it }
         val raw = runCatching {
-            assets.open("$HELP_DIR/${article.androidPath}").bufferedReader().use { it.readText() }
+            assets.open("$HELP_DIR/$path").bufferedReader().use { it.readText() }
         }.getOrNull() ?: return null
         val md = frontmatter.replace(raw, "")
-        synchronized(bodies) { bodies[article.slug] = md }
+        synchronized(bodies) { bodies[path] = md }
         return md
     }
 

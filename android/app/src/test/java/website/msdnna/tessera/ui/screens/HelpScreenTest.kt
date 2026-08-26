@@ -27,8 +27,11 @@ import website.msdnna.tessera.util.tokenizeHelp
  * rows off the visible area, and a tap below the edge is dropped in silence
  * rather than failing with something that names the cause.
  */
+// Pinned to Russian: the screen now renders in the configuration language
+// (#2809), and the fixtures below search by the Russian title. English rendering
+// is covered where it is cheaper to assert — HelpRepositoryTest / HelpIndexTest.
 @RunWith(RobolectricTestRunner::class)
-@Config(qualifiers = "w411dp-h891dp-xhdpi")
+@Config(qualifiers = "ru-w411dp-h891dp-xhdpi")
 class HelpScreenTest {
     @get:Rule
     val compose = createComposeRule()
