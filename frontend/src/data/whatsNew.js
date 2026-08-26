@@ -26,6 +26,12 @@
 //              elements.
 export const WHATS_NEW = [
   {
+    version: '0.177.0',
+    date: '2026-08-26',
+    titleKey: 'whatsNew.changelogHistory.title',
+    itemKeys: ['whatsNew.changelogHistory.item1'],
+  },
+  {
     version: '0.176.0',
     date: '2026-08-26',
     titleKey: 'whatsNew.i18n.title',
