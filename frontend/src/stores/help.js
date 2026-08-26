@@ -103,6 +103,11 @@ export const useHelpStore = defineStore('help', () => {
   // is showing the Russian fallback — the reader is told, not left guessing.
   const untranslated = computed(() => (meta.value ? meta.value.translated === false : false))
 
+  // Language the screenshots follow (#2816). It tracks the article, not the
+  // interface: on the Russian fallback the shots stay Russian, so the pictures
+  // never disagree with the prose next to them.
+  const bodyLang = computed(() => (untranslated.value ? DEFAULT_LOCALE : lang.value))
+
   const defaultSlug = computed(() => localized.value[0]?.slug || '')
 
   function bySlug(slug) {
@@ -214,6 +219,9 @@ export const useHelpStore = defineStore('help', () => {
   const drawerUntranslated = computed(() =>
     drawerMeta.value ? drawerMeta.value.translated === false : false,
   )
+  const drawerBodyLang = computed(() =>
+    drawerUntranslated.value ? DEFAULT_LOCALE : lang.value,
+  )
 
   // Contextual help: show the panel first, then load. The article is a lazy
   // chunk, so waiting for it before opening would look like the ? button did
@@ -239,6 +247,7 @@ export const useHelpStore = defineStore('help', () => {
     meta,
     headings,
     untranslated,
+    bodyLang,
     neighbours,
     defaultSlug,
     bySlug,
@@ -254,6 +263,7 @@ export const useHelpStore = defineStore('help', () => {
     drawerError,
     drawerMeta,
     drawerUntranslated,
+    drawerBodyLang,
     openDrawer,
     closeDrawer,
   }

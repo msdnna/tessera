@@ -41,6 +41,7 @@ function openFull() {
       <HelpArticle
         v-else
         :source="help.drawerBody"
+        :lang="help.drawerBodyLang"
         inline
         @open-slug="help.openDrawer($event)"
         @navigate="help.closeDrawer()"

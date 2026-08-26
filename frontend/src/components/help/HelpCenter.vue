@@ -108,6 +108,7 @@ function goToHeading(id) {
         <HelpArticle
           v-else
           :source="help.body"
+          :lang="help.bodyLang"
           inline
           @open-slug="help.open($event)"
           @navigate="help.closeCenter()"

@@ -48,6 +48,7 @@ import website.msdnna.tessera.ui.components.RichContent
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.util.HELP_ASSET_DEFAULT_LANG
 import website.msdnna.tessera.util.HelpHit
 import website.msdnna.tessera.util.HelpSearcher
 import website.msdnna.tessera.util.Ion
@@ -239,7 +240,17 @@ private fun HelpArticleReader(
                 )
 
                 else -> {
-                    val md = remember(body, dark, assetNames) { resolveHelpImages(body, dark, assetNames) }
+                    // Screenshots follow the language of the *text* (#2816): on
+                    // the Russian fallback the shots stay Russian, so the
+                    // pictures never disagree with the prose next to them.
+                    val shotLang = if (article.translated) {
+                        normalizeLanguage(LocalConfiguration.current.locales[0].language)
+                    } else {
+                        HELP_ASSET_DEFAULT_LANG
+                    }
+                    val md = remember(body, dark, assetNames, shotLang) {
+                        resolveHelpImages(body, dark, assetNames, shotLang)
+                    }
                     RichContent(
                         source = md,
                         helpLinks = true,

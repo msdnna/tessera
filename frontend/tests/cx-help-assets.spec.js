@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { helpAssetUrl, resolveHelpImages } from '@/utils/helpAssets'
+import { helpAssetUrl, helpAssetCandidates, resolveHelpImages } from '@/utils/helpAssets'
 
 // The help articles are `?raw` strings, so nothing in the build pipeline checks
 // their image links (#2793). This guards the one piece that makes them work:
@@ -32,6 +32,46 @@ describe('helpAssetUrl', () => {
   it('неизвестный файл даёт пустую строку', () => {
     expect(helpAssetUrl('../assets/такого-нет.png')).toBe('')
   })
+
+  it('без английского кадра берётся русский того же тона', () => {
+    // The English shots land in waves (#2816): until a name has its `.en` twin,
+    // an English reader must get the Russian shot in the right theme, not a
+    // blank picture.
+    expect(helpAssetUrl('../assets/board-light.png', false, 'en')).toBe(
+      helpAssetUrl('../assets/board-light.png'),
+    )
+    expect(helpAssetUrl('../assets/board-light.png', true, 'en')).toBe(
+      helpAssetUrl('../assets/board-dark.png'),
+    )
+  })
+})
+
+describe('helpAssetCandidates', () => {
+  // The order is the contract, and it has to be checkable before the `.en.png`
+  // files exist — the shots are added in a later wave of the same task.
+  it('в русском ищет ровно то, что искал раньше', () => {
+    expect(helpAssetCandidates('../assets/board-light.png')).toEqual(['board-light.png'])
+    expect(helpAssetCandidates('../assets/board-light.png', true)).toEqual([
+      'board-dark.png',
+      'board-light.png',
+    ])
+  })
+
+  it('английский кадр берётся первым, но тема важнее языка', () => {
+    expect(helpAssetCandidates('../assets/board-light.png', false, 'en')).toEqual([
+      'board-light.en.png',
+      'board-light.png',
+    ])
+    // A white shot on a dark page hurts to look at; a Russian shot in an English
+    // article merely reads as untranslated — so the dark Russian twin outranks
+    // the light English one.
+    expect(helpAssetCandidates('../assets/board-light.png', true, 'en')).toEqual([
+      'board-dark.en.png',
+      'board-dark.png',
+      'board-light.en.png',
+      'board-light.png',
+    ])
+  })
 })
 
 describe('resolveHelpImages', () => {
@@ -53,6 +93,14 @@ describe('resolveHelpImages', () => {
     const data = '<img src="data:image/png;base64,AAAA">'
     expect(resolveHelpImages(external)).toBe(external)
     expect(resolveHelpImages(data)).toBe(data)
+  })
+
+  it('язык статьи не ломает русский рендер', () => {
+    // Regression guard: an untranslated article renders with lang='ru' and must
+    // resolve byte-for-byte as it did before the language axis existed.
+    const html = '<img src="../assets/board-light.png">'
+    expect(resolveHelpImages(html, false, 'ru')).toBe(resolveHelpImages(html))
+    expect(resolveHelpImages(html, true, 'ru')).toBe(resolveHelpImages(html, true))
   })
 
   it('оставляет ссылку как есть, если файла нет', () => {
