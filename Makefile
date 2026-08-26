@@ -316,6 +316,19 @@ android-shots: ## Re-take the mobile help screenshots (needs `make e2e-backend-u
 	  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 	@$(MAKE) android-shots-pull
 
+# The English twins of the mobile shots (#2816). The language is the app's own
+# profile setting, not the device's, so it is passed to the test as an argument
+# and applied through the same `AppLocale` wrapper the app switches with — no
+# emulator locale change, no restart.
+.PHONY: android-shots-en
+android-shots-en: ## Re-take the mobile help screenshots in English (needs `make e2e-backend-up`)
+	@$(MAKE) android-emulator-up
+	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest \
+	  -Pandroid.testInstrumentationRunnerArguments.class=website.msdnna.tessera.shots.HelpShotsTest \
+	  -Pandroid.testInstrumentationRunnerArguments.shotsLang=en \
+	  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+	@$(MAKE) android-shots-pull
+
 # Separate from the run above so a failed fetch can be retried without paying for
 # the two-minute instrumented run again — the shots survive on the device.
 .PHONY: android-shots-pull

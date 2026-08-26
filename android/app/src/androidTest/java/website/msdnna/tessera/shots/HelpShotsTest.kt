@@ -31,6 +31,7 @@ import website.msdnna.tessera.e2e.E2eBackend
 import website.msdnna.tessera.e2e.E2eRule
 import website.msdnna.tessera.e2e.awaitTag
 import website.msdnna.tessera.e2e.selectGrouping
+import website.msdnna.tessera.ui.AppLocale
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.screens.BoardScreen
 import website.msdnna.tessera.ui.screens.DocumentsScreen
@@ -66,6 +67,18 @@ class HelpShotsTest {
     val rules: RuleChain = RuleChain.outerRule(e2e).around(compose)
 
     private val dark = mutableStateOf(false)
+
+    /**
+     * Which language the run photographs (#2816), from
+     * `-Pandroid.testInstrumentationRunnerArguments.shotsLang`. Russian is the
+     * base set and keeps the bare file name — [langSuffix] is what the resolver
+     * (`HelpAssets.kt`, `helpAssets.js`) tries first for a reader on a translated
+     * article, and what it falls back *from* when a twin has not been shot yet.
+     */
+    private val lang: String =
+        InstrumentationRegistry.getArguments().getString("shotsLang")?.takeIf { it.isNotBlank() } ?: DEFAULT_LANG
+
+    private val langSuffix: String = if (lang == DEFAULT_LANG) "" else ".$lang"
 
     /** System bar heights of the current mount — the strips [crop] cuts away. */
     private var chrome: Insets = Insets.NONE
@@ -228,17 +241,25 @@ class HelpShotsTest {
         val bars = measureSystemBars()
         chrome = bars
         val theme: MutableState<Boolean> = dark
+        val language = lang
         compose.setContent {
             val isDark by theme
-            val density = LocalDensity.current
-            TesseraTheme(isDark = isDark) {
-                Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
-                    Box(
-                        Modifier.fillMaxSize().padding(
-                            top = with(density) { bars.top.toDp() },
-                            bottom = with(density) { bars.bottom.toDp() },
-                        ),
-                    ) { content() }
+            // The same wrapper the app itself switches languages with: it swaps
+            // LocalResources, so every `stringResource` under it answers in the
+            // shot's language. The device locale is left alone deliberately —
+            // changing it would restart the emulator's own UI mid-run, and the
+            // app's language is a profile setting anyway, not a system one.
+            AppLocale(language = language) {
+                val density = LocalDensity.current
+                TesseraTheme(isDark = isDark) {
+                    Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
+                        Box(
+                            Modifier.fillMaxSize().padding(
+                                top = with(density) { bars.top.toDp() },
+                                bottom = with(density) { bars.bottom.toDp() },
+                            ),
+                        ) { content() }
+                    }
                 }
             }
         }
@@ -273,18 +294,18 @@ class HelpShotsTest {
     }
 
     /**
-     * Writes `<name>-light.png` and `<name>-dark.png`. The suffixes are not
-     * decoration: `helpAssetUrl` (web and Kotlin alike) finds a dark screenshot
-     * by swapping exactly that trailing `-light`, so a shot named otherwise
-     * simply never appears in the dark theme.
+     * Writes `<name>-light.png` and `<name>-dark.png` (`<name>-<scheme>.<lang>.png`
+     * outside Russian). The suffixes are not decoration: `helpAssetUrl` (web and
+     * Kotlin alike) finds a dark screenshot by swapping exactly that trailing
+     * `-light`, so a shot named otherwise simply never appears in the dark theme.
      */
     private fun ComposeContentTestRule.shoot(name: String) {
         dark.value = false
         waitForIdle()
-        write("$name-light.png", screen())
+        write("$name-light$langSuffix.png", screen())
         dark.value = true
         waitForIdle()
-        write("$name-dark.png", screen())
+        write("$name-dark$langSuffix.png", screen())
     }
 
     /**
@@ -351,6 +372,9 @@ class HelpShotsTest {
 
     private companion object {
         const val AWAIT_MS = 20_000L
+
+        /** The language whose shots carry the bare file name. */
+        const val DEFAULT_LANG = "ru"
 
         /** How many times [screen] re-shoots while the frame keeps changing. */
         const val STABLE_TRIES = 12
