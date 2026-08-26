@@ -30,7 +30,44 @@ const REQUIRED = ['title', 'category', 'order']
 // `platforms:` narrows an article to one client entirely, for a topic the other
 // one does not have.
 const PLATFORMS = ['web', 'android']
-const ANDROID_SUFFIX = '.android.md'
+const ANDROID_TAG = '.android'
+
+// Locale scoping (#2809). An article is written in Russian by default;
+// `<slug>.en.md` next to it is the English translation of the same article —
+// same slug, same order, same place in the nav, translated title/category/body.
+// The locale tag sits at the very end of the name, after the optional platform
+// tag, so the four shapes of one article are:
+//   first-steps.md              ru · web
+//   first-steps.android.md      ru · android
+//   first-steps.en.md           en · web
+//   first-steps.android.en.md   en · android
+// The Russian article stays on the top level of the index; a translation goes
+// into `locales[<lang>]` instead of replacing it — Gson on Android ignores the
+// unknown field, so an already-installed APK with an older index keeps showing
+// the Russian help rather than an empty screen.
+const LOCALES = ['ru', 'en']
+const DEFAULT_LOCALE = 'ru'
+const TRANSLATED = LOCALES.filter((l) => l !== DEFAULT_LOCALE)
+
+// classify splits a Markdown file name into { slug, platform, locale }. The
+// locale tag is stripped first (it is outermost), then the platform tag; what
+// remains is the slug. Slugs never contain a dot, so a trailing `.en` is
+// unambiguously the locale and `.android` unambiguously the platform.
+function classify(name) {
+  let base = name.slice(0, -'.md'.length)
+  let locale = DEFAULT_LOCALE
+  const m = /\.([a-z]{2})$/.exec(base)
+  if (m && TRANSLATED.includes(m[1])) {
+    locale = m[1]
+    base = base.slice(0, -m[0].length)
+  }
+  let platform = 'web'
+  if (base.endsWith(ANDROID_TAG)) {
+    platform = 'android'
+    base = base.slice(0, -ANDROID_TAG.length)
+  }
+  return { slug: base, platform, locale }
+}
 
 function walk(dir) {
   const out = []
@@ -141,97 +178,174 @@ function flatten(body) {
     .toLowerCase()
 }
 
-// attachVariants folds every `<slug>.android.md` into its base article as an
-// `android` section instead of listing it as an article of its own. The nav, the
-// slug and the reading order stay single — only the body, the headings and the
-// search corpus fork, which is the whole point: the app must not grow a second
-// table of contents that drifts from the site's.
-//
-// Every mismatch here fails the build. A variant whose base is gone, or one that
-// disagrees about the category, would otherwise ship as an article the reader
-// can reach on one platform and not the other — the kind of gap nobody notices
-// until a user reports a dead link.
-function attachVariants(articles, slugs, variants) {
-  const bySlug = new Map(articles.map((a) => [a.slug, a]))
-  for (const [slug, variant] of variants) {
-    const base = bySlug.get(slug)
-    if (!base) {
-      throw new Error(
-        `${variant.path}: мобильный вариант без базовой статьи — нужен ${slug}.md рядом`,
-      )
-    }
-    for (const field of ['category', 'order']) {
-      if (variant.meta[field] !== base[field]) {
-        throw new Error(
-          `${variant.path}: «${field}» расходится с ${slugs.get(slug)} — ` +
-            `${variant.meta[field]} и ${base[field]}; навигация у платформ общая`,
-        )
-      }
-    }
-    if (!variant.meta.platforms.includes('android')) {
-      throw new Error(
-        `${variant.path}: мобильный вариант с «platforms: ${variant.meta.platforms.join(',')}»`,
-      )
-    }
-    if (!base.platforms.includes('android')) {
-      throw new Error(
-        `${variant.path}: у ${slugs.get(slug)} стоит «platforms: ${base.platforms.join(',')}» — ` +
-          `мобильный вариант некуда показывать`,
-      )
-    }
-    base.android = {
-      path: variant.path,
-      updated: variant.meta.updated,
-      keywords: variant.meta.keywords,
-      headings: collectHeadings(variant.meta.body),
-      text: flatten(variant.meta.body),
-    }
+// bodySection is the part of an article that forks per platform and per locale:
+// the body path, its headings and the flattened search corpus. The base article
+// carries these at the top level; a mobile rewrite and a translation each get
+// their own copy under `android` / `locales[<lang>]`.
+function bodySection(rec) {
+  return {
+    path: rec.path,
+    updated: rec.meta.updated,
+    keywords: rec.meta.keywords,
+    headings: collectHeadings(rec.meta.body),
+    text: flatten(rec.meta.body),
   }
+}
+
+// samePlatforms compares two platform lists; both are already normalised to
+// PLATFORMS order by parseFrontmatter, so a join is enough.
+const samePlatforms = (a, b) => a.join(',') === b.join(',')
+
+// attachAndroid folds a `<slug>.android[.<lang>].md` into `target` as its
+// `android` section instead of a stand-alone article. `base` is always the
+// Russian web article (order and platform scope are single across languages);
+// `label` is the category the *same-locale* text is filed under, so a Russian
+// rewrite is checked against the Russian category and an English one against the
+// English caption. Every mismatch fails the build: a variant that disagrees
+// about the category or order would ship as an article reachable on one
+// platform/language and not the others — the kind of gap nobody notices until a
+// user reports a dead link.
+function attachAndroid(target, base, rec, label) {
+  if (rec.meta.category !== label) {
+    throw new Error(
+      `${rec.path}: «category» расходится с ${target.path} — ` +
+        `${rec.meta.category} и ${label}; навигация у платформ общая`,
+    )
+  }
+  if (rec.meta.order !== base.order) {
+    throw new Error(
+      `${rec.path}: «order» расходится с ${base.path} — ` +
+        `${rec.meta.order} и ${base.order}; навигация у платформ общая`,
+    )
+  }
+  if (!rec.meta.platforms.includes('android')) {
+    throw new Error(`${rec.path}: мобильный вариант с «platforms: ${rec.meta.platforms.join(',')}»`)
+  }
+  if (!base.platforms.includes('android')) {
+    throw new Error(
+      `${rec.path}: у ${base.path} стоит «platforms: ${base.platforms.join(',')}» — ` +
+        `мобильный вариант некуда показывать`,
+    )
+  }
+  target.android = bodySection(rec)
 }
 
 // `dir` is a parameter only so the suite can build a throwaway tree and assert
 // the guards below actually fire; every caller in the repo builds docs/help.
 export function buildIndex(dir = HELP_DIR) {
-  const articles = []
-  const slugs = new Map()
-  const variants = new Map() // slug → the parsed `<slug>.android.md`
+  // Bucket every file by slug, then by platform and locale, so the four shapes
+  // of one article (ru/en × web/android) land together.
+  const bySlug = new Map()
   for (const file of walk(dir)) {
     const rel = relative(dir, file).split(/[\\/]/).join('/')
     const meta = parseFrontmatter(readFileSync(file, 'utf8'), rel)
-    const name = basename(file)
-    if (name.endsWith(ANDROID_SUFFIX)) {
-      const slug = name.slice(0, -ANDROID_SUFFIX.length)
-      if (variants.has(slug)) {
+    const { slug, platform, locale } = classify(basename(file))
+    let bucket = bySlug.get(slug)
+    if (!bucket) bySlug.set(slug, (bucket = { web: {}, android: {} }))
+    if (bucket[platform][locale]) {
+      throw new Error(
+        `две статьи с одним slug/платформой/локалью «${slug}·${platform}·${locale}»: ` +
+          `${bucket[platform][locale].path} и ${rel}`,
+      )
+    }
+    bucket[platform][locale] = { path: rel, meta }
+  }
+
+  // catLabels[ruCategory][lang] = the single caption that language files the
+  // group under. A category is grouping identity in Russian and a translated
+  // caption everywhere else; two articles of one Russian category disagreeing
+  // about the English caption would split the nav into twin groups.
+  const catLabels = new Map()
+  const articles = []
+  for (const [slug, bucket] of bySlug) {
+    const baseRec = bucket.web[DEFAULT_LOCALE]
+    if (!baseRec) {
+      // A translation or a mobile rewrite hangs off the Russian web article;
+      // without it there is nothing to fork from and the reader would reach the
+      // topic on one platform/language and not the others.
+      const orphan =
+        bucket.android[DEFAULT_LOCALE] ||
+        Object.values(bucket.web)[0] ||
+        Object.values(bucket.android)[0]
+      throw new Error(`${orphan.path}: вариант без базовой статьи — нужен ${slug}.md рядом`)
+    }
+    const base = {
+      slug,
+      path: baseRec.path,
+      title: baseRec.meta.title,
+      category: baseRec.meta.category,
+      order: baseRec.meta.order,
+      updated: baseRec.meta.updated,
+      keywords: baseRec.meta.keywords,
+      platforms: baseRec.meta.platforms,
+      headings: collectHeadings(baseRec.meta.body),
+      text: flatten(baseRec.meta.body),
+    }
+    if (bucket.android[DEFAULT_LOCALE]) {
+      attachAndroid(base, base, bucket.android[DEFAULT_LOCALE], base.category)
+    }
+
+    const locales = {}
+    for (const lang of TRANSLATED) {
+      const webRec = bucket.web[lang]
+      const androidRec = bucket.android[lang]
+      if (!webRec) {
+        if (androidRec) {
+          throw new Error(
+            `${androidRec.path}: перевод мобильного варианта без ${slug}.${lang}.md рядом`,
+          )
+        }
+        // No translation for this language yet — the parity test (not the
+        // builder) is what fails an article that should have one.
+        continue
+      }
+      if (!samePlatforms(webRec.meta.platforms, base.platforms)) {
         throw new Error(
-          `два мобильных варианта одного slug «${slug}»: ${variants.get(slug).path} и ${rel}`,
+          `${webRec.path}: «platforms» расходится с ${base.path} — ` +
+            `${webRec.meta.platforms.join(',')} и ${base.platforms.join(',')}; перевод не меняет охват`,
         )
       }
-      variants.set(slug, { path: rel, meta })
-      continue
+      if (webRec.meta.order !== base.order) {
+        throw new Error(
+          `${webRec.path}: «order» расходится с ${base.path} — ` +
+            `${webRec.meta.order} и ${base.order}; порядок статей общий на всех языках`,
+        )
+      }
+      let langLabels = catLabels.get(base.category)
+      if (!langLabels) catLabels.set(base.category, (langLabels = new Map()))
+      const seen = langLabels.get(lang)
+      if (seen !== undefined && seen !== webRec.meta.category) {
+        throw new Error(
+          `${webRec.path}: категория «${webRec.meta.category}» ≠ «${seen}» для той же ` +
+            `русской «${base.category}» — навигация ${lang} разъедется на две группы`,
+        )
+      }
+      langLabels.set(lang, webRec.meta.category)
+
+      const loc = {
+        path: webRec.path,
+        title: webRec.meta.title,
+        category: webRec.meta.category,
+        updated: webRec.meta.updated,
+        keywords: webRec.meta.keywords,
+        headings: collectHeadings(webRec.meta.body),
+        text: flatten(webRec.meta.body),
+      }
+      // A translated mobile rewrite is checked against the translated caption,
+      // not the Russian one. Its absence when the Russian article has one is a
+      // parity gap left to the test, not a build error.
+      if (androidRec) attachAndroid(loc, base, androidRec, webRec.meta.category)
+      locales[lang] = loc
     }
-    const slug = basename(file, '.md')
-    if (slugs.has(slug)) {
-      // Slugs are the URL (/help/<slug>), so a duplicate would make one of the
-      // two articles unreachable — fail the build rather than pick a winner.
-      throw new Error(`дублирующийся slug «${slug}»: ${slugs.get(slug)} и ${rel}`)
-    }
-    slugs.set(slug, rel)
-    articles.push({
-      slug,
-      path: rel,
-      title: meta.title,
-      category: meta.category,
-      order: meta.order,
-      updated: meta.updated,
-      keywords: meta.keywords,
-      platforms: meta.platforms,
-      headings: collectHeadings(meta.body),
-      text: flatten(meta.body),
-    })
+    if (Object.keys(locales).length) base.locales = locales
+    articles.push(base)
   }
-  attachVariants(articles, slugs, variants)
+
   // Sorted here, once, so every consumer (nav, search, prev/next) sees the same
-  // order without re-sorting: category by its lowest `order`, then article.
+  // order without re-sorting: category by its lowest `order`, then article. The
+  // order is computed from the Russian structure and never recomputed per
+  // locale — the manual has one shape on every language, only the captions
+  // differ.
   const catOrder = new Map()
   for (const a of articles) {
     const cur = catOrder.get(a.category)

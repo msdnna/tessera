@@ -99,6 +99,8 @@ function goToHeading(id) {
           </div>
         </header>
 
+        <p v-if="help.untranslated" class="hc-untranslated">{{ t('help.notTranslated') }}</p>
+
         <n-spin v-if="help.loading && !help.body" size="small" />
         <p v-else-if="help.error" class="hc-error">{{ help.error }}</p>
         <!-- inline: a cross-link to a neighbouring article swaps this pane
@@ -199,6 +201,15 @@ function goToHeading(id) {
 }
 .hc-error {
   color: var(--t-text2);
+}
+.hc-untranslated {
+  margin: 0 0 16px;
+  padding: 8px 12px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface-alt);
+  color: var(--t-text3);
+  font-size: 13px;
 }
 .hc-neighbours {
   display: grid;
