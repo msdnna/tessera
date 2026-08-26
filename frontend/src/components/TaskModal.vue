@@ -1989,7 +1989,11 @@ async function onSubtaskChanged() {
      column: content takes the slack, the footer stays pinned at the bottom edge. */
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* No `overflow: hidden` here on purpose (#2807). Naive teleports popovers into the
+     nearest modal body — this very card — instead of <body>, so clipping the card
+     clips every popover wider than the panel (the due-date calendar is ~490px against
+     560px of panel, so it shifts left and loses its recurrence column). The scroll
+     lives on .n-card-content and the footer clips itself, so the card doesn't need it. */
 }
 /* Slide in from the right edge and back out to it. The default centred scale-up
    reads as "a dialog appeared"; a panel docked to the edge has to look like it came

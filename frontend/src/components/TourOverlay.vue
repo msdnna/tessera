@@ -146,7 +146,10 @@ function placePopover() {
   const u = unionRect(anchors)
   if (!u) return
   const p = choosePlacement(u, anchors, [...anchors, ...panels.value, ...getCutRects()], {
-    popW: POP_W,
+    // Measured, not the CSS number (#2807): .tr-pop is content-box, so its 260px
+    // width plus padding and border renders 290 — placing it by 260 let the last
+    // step of the guide hang 30px past the right edge of the viewport.
+    popW: pop.value?.offsetWidth || POP_W,
     popH: pop.value?.offsetHeight || 140,
     vw: window.innerWidth,
     vh: window.innerHeight,
