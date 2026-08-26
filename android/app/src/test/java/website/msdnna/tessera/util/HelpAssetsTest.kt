@@ -70,6 +70,46 @@ class HelpAssetsTest {
         assertThat(resolveHelpImages(md, dark = false, names = names)).isEqualTo(md)
     }
 
+    /** The English shots (#2816) live beside the Russian ones as
+     *  `<name>-<light|dark>.en.png`; a name with no English twin keeps the
+     *  Russian file, which is why they can land in waves. */
+    private val withEn = names + setOf("board-light.en.png", "board-dark.en.png")
+
+    @Test
+    fun `an english reader gets the english shot`() {
+        assertThat(helpAssetUrl("../assets/board-light.png", dark = false, names = withEn, lang = "en"))
+            .isEqualTo(HELP_ASSET_BASE + "board-light.en.png")
+        assertThat(helpAssetUrl("../assets/board-light.png", dark = true, names = withEn, lang = "en"))
+            .isEqualTo(HELP_ASSET_BASE + "board-dark.en.png")
+    }
+
+    @Test
+    fun `without an english shot the russian one of the same theme is used`() {
+        assertThat(helpAssetUrl("../assets/board-light.png", dark = false, names = names, lang = "en"))
+            .isEqualTo(HELP_ASSET_BASE + "board-light.png")
+        assertThat(helpAssetUrl("../assets/board-light.png", dark = true, names = names, lang = "en"))
+            .isEqualTo(HELP_ASSET_BASE + "board-dark.png")
+    }
+
+    @Test
+    fun `theme beats language`() {
+        // A white shot on a dark page hurts to look at; a Russian shot in an
+        // English article merely reads as untranslated. So when only the light
+        // English twin exists, the dark Russian one still wins.
+        val lightEnOnly = names + "board-light.en.png"
+        assertThat(helpAssetUrl("../assets/board-light.png", dark = true, names = lightEnOnly, lang = "en"))
+            .isEqualTo(HELP_ASSET_BASE + "board-dark.png")
+    }
+
+    @Test
+    fun `russian resolves exactly as before the language axis`() {
+        val md = "![Доска](../assets/board-light.png)"
+        assertThat(resolveHelpImages(md, dark = true, names = withEn, lang = "ru"))
+            .isEqualTo(resolveHelpImages(md, dark = true, names = withEn))
+        assertThat(resolveHelpImages(md, dark = true, names = withEn, lang = "ru"))
+            .contains("board-dark.png)")
+    }
+
     @Test
     fun `an ordinary link is not touched — only images`() {
         val md = "[Доски](/help/boards-and-tasks) и ![Доска](../assets/board-light.png)"

@@ -14,6 +14,10 @@ const props = defineProps({
   // Rendered inside the contextual drawer (#2794) rather than on the help page:
   // links to other articles stay in the drawer instead of navigating away.
   inline: { type: Boolean, default: false },
+  // Language of the *text* being rendered, not of the interface (#2816): a
+  // reader on English who opens an article nobody translated yet sees Russian
+  // prose, and Russian screenshots belong with it.
+  lang: { type: String, default: 'ru' },
 })
 
 const emit = defineEmits(['open-slug', 'navigate'])
@@ -45,7 +49,7 @@ const html = computed(() => {
   // Screenshots are `?raw` text as far as the bundler is concerned, so their
   // links have to be pointed at the built assets here — and the dark reader gets
   // the dark twin of each shot (utils/helpAssets.js).
-  return resolveHelpImages(withAnchors, theme.isDark)
+  return resolveHelpImages(withAnchors, theme.isDark, props.lang)
 })
 
 // Cross-links between articles are written as ordinary Markdown links to

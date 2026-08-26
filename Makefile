@@ -91,6 +91,16 @@ help-index: ## Rebuild the help-centre index from docs/help
 help-shots: ## Re-take the help-centre screenshots into docs/help/assets (needs `make e2e-backend-up`)
 	cd frontend && corepack yarn build && corepack yarn docs:shots
 
+# The English twins (#2816): same run, same seed, the interface switched through
+# the account's own language preference. They land next to the Russian set as
+# `<name>-<scheme>.en.png` — the name helpAssets.js tries first for a reader on an
+# English article, falling back to the Russian file when a twin is missing.
+# Needs a *clean* E2E_DB_URL: eight of the shots are admin-only and the backend
+# hands admin to the instance's first account.
+.PHONY: help-shots-en
+help-shots-en: ## Re-take the help-centre screenshots in English (needs a clean `make e2e-backend-up`)
+	cd frontend && corepack yarn build && TESSERA_SHOTS_LANG=en corepack yarn docs:shots
+
 .PHONY: lint-frontend
 lint-frontend: ## Lint + format-check frontend
 	cd frontend && corepack yarn lint && corepack yarn format:check
@@ -303,6 +313,19 @@ android-shots: ## Re-take the mobile help screenshots (needs `make e2e-backend-u
 	@# them. The run stays green and the fetch below finds nothing.
 	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest \
 	  -Pandroid.testInstrumentationRunnerArguments.class=website.msdnna.tessera.shots.HelpShotsTest \
+	  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
+	@$(MAKE) android-shots-pull
+
+# The English twins of the mobile shots (#2816). The language is the app's own
+# profile setting, not the device's, so it is passed to the test as an argument
+# and applied through the same `AppLocale` wrapper the app switches with — no
+# emulator locale change, no restart.
+.PHONY: android-shots-en
+android-shots-en: ## Re-take the mobile help screenshots in English (needs `make e2e-backend-up`)
+	@$(MAKE) android-emulator-up
+	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest \
+	  -Pandroid.testInstrumentationRunnerArguments.class=website.msdnna.tessera.shots.HelpShotsTest \
+	  -Pandroid.testInstrumentationRunnerArguments.shotsLang=en \
 	  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 	@$(MAKE) android-shots-pull
 
