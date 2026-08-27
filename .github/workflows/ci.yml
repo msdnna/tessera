@@ -610,7 +610,11 @@ jobs:
         if: ${{ needs.changes.outputs.web == 'true' }}
         uses: docker/build-push-action@v6
         with:
-          context: frontend
+          # Repo root, not ./frontend: the image globs repo-root docs/help into the
+          # bundle (#2786), so frontend/Dockerfile COPYs `frontend/...` and `docs/help`
+          # from a root context — same as release-web.yml and docker-compose*.yml. A
+          # ./frontend context fails at `COPY frontend/nginx.conf … not found`.
+          context: .
           file: frontend/Dockerfile
           push: false
           tags: tessera-frontend:ci-${{ github.sha }}
