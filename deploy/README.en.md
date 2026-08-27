@@ -76,6 +76,25 @@ docker compose up -d
 docker compose exec backend /migrate       # if the release added migrations
 ```
 
+### One-off: ownership of the uploads volume
+
+Only for deployments created **before** the release that fixed #2820. The backend
+runs as `nonroot` (65532), while Docker gave older `backend_uploads` volumes to
+`root` — image and attachment uploads then fail with "permission denied". Fresh
+volumes now fix themselves (the image ships the directory with the right owner);
+an existing one needs a single manual pass:
+
+```bash
+docker volume ls                                   # find <project>_backend_uploads
+docker compose stop backend
+docker run --rm -v <project>_backend_uploads:/d busybox chown -R 65532:65532 /d
+docker compose start backend
+```
+
+To verify, the backend log should carry `uploads: каталог доступен на запись` at
+startup. A `uploads: каталог НЕ доступен на запись` line means the step is still
+needed.
+
 ## Backups (do this — confidentiality isn't complete without it)
 
 ```bash

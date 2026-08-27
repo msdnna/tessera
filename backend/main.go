@@ -58,6 +58,11 @@ func main() {
 	flushSentry := observability.InitSentry(cfg.SentryDSN, cfg.SentryEnv, "tessera-backend@"+appVersion, cfg.SentryTracesRate)
 	defer flushSentry()
 
+	// Attachments write to UPLOAD_DIR; nothing else in the boot path does, so a
+	// volume we cannot write to would stay invisible until a user uploads a file.
+	// Runs after InitSentry so the report lands there too.
+	preflightUploadDir(cfg.UploadDir)
+
 	// Cancelled on SIGINT/SIGTERM; every background worker hangs off it, so a
 	// deploy stops them at a tick boundary instead of mid-write.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

@@ -18,11 +18,24 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
       -o tessera . \
  && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o migrate ./cmd/migrate
 
+# Staged here only to be copied into the final image: distroless has no shell,
+# so `RUN mkdir` is impossible there.
+RUN mkdir -p /out/uploads
+
 # Distroless: no shell, minimal attack surface. Static binary (CGO disabled).
 FROM gcr.io/distroless/static-debian12
 
 COPY --from=builder /app/tessera /tessera
 COPY --from=builder /app/migrate /migrate
+
+# Mount point of the backend_uploads volume. Docker seeds a *fresh* named volume
+# from the image at this path — owner included — so the directory has to exist
+# here and belong to nonroot (65532). Without it the daemon creates the mount
+# point itself as root:root and every upload fails with EACCES (#2820). UID as a
+# number, not `nonroot:nonroot`: it must not depend on parsing /etc/passwd.
+# No VOLUME instruction on purpose — it spawns anonymous volumes on plain
+# `docker run`.
+COPY --from=builder --chown=65532:65532 /out/uploads /data/uploads
 
 EXPOSE 8080
 USER nonroot:nonroot
