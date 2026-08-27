@@ -19,6 +19,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"tessera/internal/gitlab"
 )
 
 // ── fake GitLab server ───────────────────────────────────────────────────────
@@ -120,6 +122,10 @@ type fakeGitlab struct {
 	links             []glLink
 	linkedItemsWidget bool
 	linkCalls         int
+
+	// Child items of a grouped parent, keyed by parent iid — what the Hierarchy
+	// widget reports and the sync mirrors as Tessera subtasks.
+	children map[int64][]int64
 }
 
 func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
@@ -129,6 +135,7 @@ func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
 		projectPath: projectPath, pageSize: 2,
 		templates: map[string]string{}, nextIID: 100, nextMsID: 9000,
 		linkedItemsWidget: true,
+		children:          map[int64][]int64{},
 	}
 	f.srv = httptest.NewServer(f)
 	t.Cleanup(f.srv.Close)
@@ -226,10 +233,7 @@ func (f *fakeGitlab) graphql(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(req.Query, "linkedItems"):
 		f.linkedItemsQuery(w, req.Variables)
 	case strings.Contains(req.Query, "workItems"):
-		// Child-item hierarchy: none of the fixture issues group subtasks.
-		writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
-			"project": map[string]any{"workItems": map[string]any{"nodes": []any{}}},
-		}})
+		f.childItemsQuery(w, req.Variables)
 	default:
 		f.issuesQuery(w, req.Variables)
 	}
@@ -285,6 +289,28 @@ func (f *fakeGitlab) linkedItemsQuery(w http.ResponseWriter, vars map[string]any
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
 		"project": map[string]any{"workItems": map[string]any{"nodes": nodes}},
+	}})
+}
+
+// childItemsQuery serves the Hierarchy widget for one parent iid. A parent with no
+// registered children answers with an empty node list — "asked, and it has none",
+// which the sync reads as a real detach rather than a failure.
+func (f *fakeGitlab) childItemsQuery(w http.ResponseWriter, vars map[string]any) {
+	iid, _ := strconv.ParseInt(fmt.Sprint(vars["iid"]), 10, 64)
+	f.mu.Lock()
+	kids := append([]int64(nil), f.children[iid]...)
+	f.mu.Unlock()
+	nodes := make([]any, 0, len(kids))
+	for _, k := range kids {
+		nodes = append(nodes, map[string]any{"iid": strconv.FormatInt(k, 10)})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
+		"project": map[string]any{"workItems": map[string]any{"nodes": []any{
+			map[string]any{"widgets": []any{
+				map[string]any{},
+				map[string]any{"children": map[string]any{"nodes": nodes}},
+			}},
+		}}},
 	}})
 }
 
@@ -912,6 +938,76 @@ func TestGitlabSyncFlow(t *testing.T) {
 		if tk["gitlab_iid"] == float64(1) {
 			t.Fatalf("issue 1 deleted in GitLab but its task is still active on the board")
 		}
+	}
+}
+
+// A grouped parent's children are placed by their OWN status labels (#2819). The
+// pull used to file every child in the parent's column, so an issue tagged "S: Done"
+// under a parent sitting in "К работе" was dragged out of "Готово" on every sync —
+// and, because completion was computed from the child's state alone, it could be
+// flagged completed while sitting in an unfinished column.
+func TestGitlabGroupedChildColumns(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	makeAdmin(t, c)
+	s := mkStack(t, c)
+	f := newFakeGitlab(t, "gl-kids-user", "grp-kids")
+
+	// Parent has no status label → default column ("К работе"). One child carries
+	// "S: Done", the other carries no status at all.
+	f.addIssue(glIssue{IID: 10, Title: "Grouped parent", Labels: []glLabel{{Title: gitlab.DefaultGroupLabel}}})
+	f.addIssue(glIssue{IID: 11, Title: "Finished child", Labels: []glLabel{{Title: "S: Done", Color: "#2da160"}}})
+	f.addIssue(glIssue{IID: 12, Title: "Statusless child"})
+	f.children[10] = []int64{11, 12}
+
+	connectGitlab(t, c, f)
+	integ := createIntegration(t, c, s.WS, s.Board, f, nil)
+
+	triggerSync(t, c, s.WS, integ["id"].(string))
+	waitSyncRuns(t, c, s.WS, 1)
+
+	// The children are claimed by the parent, so the board itself holds one card.
+	tasks := c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	if len(tasks) != 1 {
+		t.Fatalf("board has %d top-level tasks, want 1 (the grouped parent)\n%v", len(tasks), tasks)
+	}
+	parent := taskByIid(t, tasks, 10)
+	if parent["column_id"] != s.col(t, 0) {
+		t.Fatalf("parent column = %v, want default %s", parent["column_id"], s.col(t, 0))
+	}
+
+	detail := c.get("/tasks/" + parent["id"].(string)).mapBody(t)
+	kids, _ := detail["subtasks"].([]any)
+	if len(kids) != 2 {
+		t.Fatalf("parent has %d subtasks, want 2\n%v", len(kids), detail["subtasks"])
+	}
+	byIID := map[float64]map[string]any{}
+	for _, k := range kids {
+		kid, _ := k.(map[string]any)
+		iid, _ := kid["gl_iid"].(float64)
+		byIID[iid] = kid
+	}
+	done, ok := byIID[11]
+	if !ok {
+		t.Fatalf("subtask for issue 11 missing: %v", byIID)
+	}
+	if done["column_id"] != s.col(t, 3) {
+		t.Fatalf("S: Done child column = %v, want done column %s", done["column_id"], s.col(t, 3))
+	}
+	if done["completed_at"] == nil {
+		t.Fatalf("child in the done column is not completed: %v", done)
+	}
+	// The statusless child must NOT fall back to the rules' default column — it
+	// stays where its parent is, which is what keeps grouping stable across pulls.
+	plain, ok := byIID[12]
+	if !ok {
+		t.Fatalf("subtask for issue 12 missing: %v", byIID)
+	}
+	if plain["column_id"] != parent["column_id"] {
+		t.Fatalf("statusless child column = %v, want the parent's %v", plain["column_id"], parent["column_id"])
+	}
+	if plain["completed_at"] != nil {
+		t.Fatalf("open child marked completed: %v", plain)
 	}
 }
 
