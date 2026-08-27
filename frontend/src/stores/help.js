@@ -219,9 +219,7 @@ export const useHelpStore = defineStore('help', () => {
   const drawerUntranslated = computed(() =>
     drawerMeta.value ? drawerMeta.value.translated === false : false,
   )
-  const drawerBodyLang = computed(() =>
-    drawerUntranslated.value ? DEFAULT_LOCALE : lang.value,
-  )
+  const drawerBodyLang = computed(() => (drawerUntranslated.value ? DEFAULT_LOCALE : lang.value))
 
   // Contextual help: show the panel first, then load. The article is a lazy
   // chunk, so waiting for it before opening would look like the ? button did
