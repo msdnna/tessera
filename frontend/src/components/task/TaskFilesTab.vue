@@ -4,6 +4,7 @@
 // the modal loads it alongside comments/relations/journal), so mutations here are
 // published back through `update:attachments`.
 import { ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, NPopconfirm, useMessage } from 'naive-ui'
 import { AttachOutline, DownloadOutline, TrashOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
@@ -17,13 +18,16 @@ const props = defineProps({
 const emit = defineEmits(['update:attachments', 'changed'])
 
 const message = useMessage()
+const { t } = useI18n()
 const fileInput = ref(null)
 const uploading = ref(false)
 
+// Unit suffixes are text, so they come from the catalogue rather than being
+// glued onto the number here (ru «КБ» vs en «KB»).
 function fmtSize(bytes) {
-  if (bytes < 1024) return `${bytes} Б`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} КБ`
-  return `${(bytes / 1024 / 1024).toFixed(1)} МБ`
+  if (bytes < 1024) return t('task.files.size.b', { n: bytes })
+  if (bytes < 1024 * 1024) return t('task.files.size.kb', { n: (bytes / 1024).toFixed(0) })
+  return t('task.files.size.mb', { n: (bytes / 1024 / 1024).toFixed(1) })
 }
 function pickFile() {
   fileInput.value?.click?.()
@@ -48,7 +52,8 @@ async function onFileChosen(ev) {
 }
 async function downloadAttachment(att) {
   try {
-    if ((await saveAttachment(att.id, att.filename)) === 'saved') message.success('Файл сохранён')
+    if ((await saveAttachment(att.id, att.filename)) === 'saved')
+      message.success(t('task.files.saved'))
   } catch (e) {
     message.error(e.message)
   }
@@ -72,32 +77,32 @@ async function deleteAttachment(id) {
       <n-icon :component="AttachOutline" class="f-ico" />
       <button class="f-name" @click="downloadAttachment(a)">{{ a.filename }}</button>
       <span class="f-size">{{ fmtSize(a.size) }}</span>
-      <button class="c-act" title="Скачать" @click="downloadAttachment(a)">
+      <button class="c-act" :title="t('task.files.download')" @click="downloadAttachment(a)">
         <n-icon :component="DownloadOutline" />
       </button>
       <n-popconfirm
         :positive-button-props="{ type: 'error' }"
-        positive-text="Удалить"
+        :positive-text="t('common.action.delete')"
         @positive-click="deleteAttachment(a.id)"
       >
         <template #trigger>
-          <button class="c-act" title="Удалить">
+          <button class="c-act" :title="t('common.action.delete')">
             <n-icon :component="TrashOutline" />
           </button>
         </template>
-        Удалить файл «{{ a.filename }}»?
+        {{ t('task.files.deleteConfirm', { name: a.filename }) }}
       </n-popconfirm>
     </div>
     <EmptyState
       v-if="!attachments.length"
       size="small"
       :icon="AttachOutline"
-      text="Файлов пока нет"
+      :text="t('task.files.empty')"
     />
     <input ref="fileInput" type="file" hidden @change="onFileChosen" />
     <n-button size="small" :loading="uploading" @click="pickFile">
       <template #icon><n-icon :component="AttachOutline" /></template>
-      Прикрепить файл
+      {{ t('task.files.attach') }}
     </n-button>
   </div>
 </template>

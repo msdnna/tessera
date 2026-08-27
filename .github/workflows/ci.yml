@@ -11,7 +11,14 @@ on:
 
 permissions:
   contents: read
+  # The `changes` guard queries open PRs to decide whether a push run is redundant.
+  pull-requests: read
 
+# Per-ref groups: a newer push supersedes an older push on the same branch, and a
+# newer PR sync supersedes an older one — but a push and its PR never share a group,
+# so neither cancels the other (a push cancelling the PR would blank its checks and
+# block the merge). Cross-event de-duplication — a push yielding to the PR that
+# already covers the same commit — is the `changes` guard's job instead.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,13 +28,37 @@ jobs:
     name: Detect changed components
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' }}
-      web:     ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
-      android: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true' }}
-      mcp:     ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.mcp == 'true' }}
-      desktop: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.desktop == 'true' }}
+      backend: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true') }}
+      web:     ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true') }}
+      android: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true') }}
+      mcp:     ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.mcp == 'true') }}
+      desktop: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.desktop == 'true') }}
     steps:
       - uses: actions/checkout@v4
+
+      # A push run yields to the pull_request run when one already covers this
+      # commit: pushing to a branch that is the head of an open PR fires both a
+      # `push` and a `pull_request` (synchronize) pipeline for the same SHA, and
+      # the PR one is the one that matters (it tests the merge result and gates the
+      # merge). So when this is a push and an open PR has this branch as its head,
+      # the guard sets run=false and every component output below collapses to
+      # false — the push pipeline no-ops while the PR pipeline does the work.
+      # Any other case (no open PR, pull_request event, manual dispatch) runs.
+      - id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            count=$(gh pr list --repo "${{ github.repository }}" \
+              --head "${{ github.ref_name }}" --state open --json number --jq 'length')
+            if [ "${count:-0}" -gt 0 ]; then
+              echo "Open PR has ${{ github.ref_name }} as its head — its pipeline covers this commit; the push pipeline yields."
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
       - id: filter
         uses: dorny/paths-filter@v3
         with:
@@ -549,10 +580,22 @@ jobs:
           cache-dependency-path: mcp/go.sum
       - name: Install golangci-lint v2
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-      - name: Lint + test
+      - name: Lint + test (with coverage)
         run: |
           make lint-mcp GO=go
-          make test-mcp GO=go
+          make test-mcp-cover GO=go
+
+      - name: Generate coverage badge JSON
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        run: GO=go ./tools/coverage-badge.sh mcp mcp/coverage.out
+
+      - name: Upload coverage badge artifact
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-mcp
+          path: _badges/mcp.json
+          retention-days: 1
 
   desktop-lint:
     name: Desktop (Rust lint)
@@ -598,7 +641,11 @@ jobs:
         if: ${{ needs.changes.outputs.web == 'true' }}
         uses: docker/build-push-action@v6
         with:
-          context: frontend
+          # Repo root, not ./frontend: the image globs repo-root docs/help into the
+          # bundle (#2786), so frontend/Dockerfile COPYs `frontend/...` and `docs/help`
+          # from a root context — same as release-web.yml and docker-compose*.yml. A
+          # ./frontend context fails at `COPY frontend/nginx.conf … not found`.
+          context: .
           file: frontend/Dockerfile
           push: false
           tags: tessera-frontend:ci-${{ github.sha }}
@@ -610,7 +657,7 @@ jobs:
   # README renders them via shields.io endpoints from raw.githubusercontent.com.
   publish-coverage-badges:
     name: Publish coverage badges
-    needs: [backend, web, android]
+    needs: [backend, web, android, mcp]
     if: ${{ always() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
     runs-on: ubuntu-latest
     permissions:

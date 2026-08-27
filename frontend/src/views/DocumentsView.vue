@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import {
   NAlert,
   NButton,
@@ -57,13 +58,16 @@ import { useDocComments } from '@/composables/useDocComments'
 import { useDocLinks } from '@/composables/useDocLinks'
 import { useDocPresence } from '@/composables/useDocPresence'
 import { useDocVersions } from '@/composables/useDocVersions'
+import { useFormat } from '@/composables/useFormat'
 import { toDocJSON } from '@/utils/docSchema'
 import { blockNodeById, quoteFromBlock } from '@/utils/docComments'
 import { docOutline, headingForBlock } from '@/utils/docToc'
 
 const message = useMessage()
+const { t } = useI18n()
 const wsStore = useWorkspacesStore()
 const theme = useThemeStore()
+const { formatDate } = useFormat()
 const route = useRoute()
 const router = useRouter()
 
@@ -210,7 +214,7 @@ watch(contentNudge, async () => {
   if (!selected.value?.id || Date.now() - restoredAt < 3000) return
   await flushSave()
   await reload()
-  message.info('Документ восстановлен из истории')
+  message.info(t('documents.view.toast.restoredFromHistory'))
 })
 
 // A colleague saved. Their text has to arrive here, or the room is a set of
@@ -335,7 +339,14 @@ function onBlocked(held) {
   const now = Date.now()
   if (now - blockedAt < 2000) return
   blockedAt = now
-  message.warning(`Блок редактирует ${held?.name || 'другой участник'}`)
+  // The class is the e2e anchor: a toast has no element of ours to hang a
+  // data-testid on, and its wording moves into the locale files (#2799).
+  message.warning(
+    t('documents.view.toast.blockLocked', {
+      name: held?.name || t('documents.view.toast.someone'),
+    }),
+    { class: 'msg-block-locked' },
+  )
 }
 
 function applyPreview(id, data) {
@@ -346,7 +357,7 @@ function applyPreview(id, data) {
 }
 
 function fmtDate(v) {
-  return v ? new Date(v).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }) : ''
+  return v ? formatDate(v, { day: 'numeric', month: 'short' }) : ''
 }
 
 async function loadList() {
@@ -453,7 +464,11 @@ const linkAnchorQuote = computed(() => {
 async function onLink(payload) {
   try {
     await links.link(payload)
-    message.success(payload.blockId ? 'Блок связан с задачей' : 'Задача связана')
+    message.success(
+      payload.blockId
+        ? t('documents.view.toast.blockLinked')
+        : t('documents.view.toast.taskLinked'),
+    )
   } catch (e) {
     message.error(e.message)
   }
@@ -473,7 +488,7 @@ async function onRaiseApproval(payload) {
     // Raising a route pins a manual snapshot, so an open journal is now a
     // version behind — same reasoning as the autosave path above.
     if (historyOpen.value) await versions.load()
-    message.success('Документ отправлен на согласование')
+    message.success(t('documents.view.toast.sentForApproval'))
   } catch (e) {
     message.error(e.message)
   }
@@ -482,7 +497,11 @@ async function onRaiseApproval(payload) {
 async function onDecide({ id, decision, comment }) {
   try {
     await links.decide(id, { decision, comment })
-    message.success(decision === 'approved' ? 'Подписано' : 'Отклонено')
+    message.success(
+      decision === 'approved'
+        ? t('documents.view.toast.signed')
+        : t('documents.view.toast.declined'),
+    )
   } catch (e) {
     message.error(e.message)
   }
@@ -491,7 +510,7 @@ async function onDecide({ id, decision, comment }) {
 async function onCancelApproval(id) {
   try {
     await links.cancel(id)
-    message.info('Маршрут отозван')
+    message.info(t('documents.view.toast.routeCancelled'))
   } catch (e) {
     message.error(e.message)
   }
@@ -508,7 +527,7 @@ async function onOpenTask(link) {
 async function onSnapshot(label) {
   try {
     await versions.snapshot(label)
-    message.success('Версия сохранена')
+    message.success(t('documents.view.toast.versionSaved'))
   } catch (e) {
     message.error(e.message)
   }
@@ -531,7 +550,7 @@ async function onRestore(versionId) {
       comments.setDoc(content.value)
       applyPreview(doc.id, doc)
     }
-    message.success('Документ восстановлен')
+    message.success(t('documents.view.toast.restored'))
   } catch (e) {
     message.error(e.message)
   }
@@ -589,7 +608,7 @@ async function create() {
   if (!wsStore.currentId) return
   try {
     const res = await docsApi.create(wsStore.currentId, {
-      title: 'Без названия',
+      title: t('documents.view.untitled'),
       parent_id: parentId.value,
     })
     await loadList()
@@ -631,8 +650,10 @@ const exportOptions = computed(() => {
 // unavailable-hint would hide a feature that works.
 const importHint = computed(() =>
   converter.value.available
-    ? 'Импортировать документ (docx, odt, rtf, pdf, md, json)'
-    : `Импортировать документ (pdf, md, json)\u2009— ${converter.value.reason || 'конвертация офисных форматов недоступна'}`,
+    ? t('documents.view.importHint')
+    : t('documents.view.importHintLimited', {
+        reason: converter.value.reason || t('documents.view.converterOff'),
+      }),
 )
 
 function pickImport() {
@@ -659,7 +680,7 @@ async function onImportPicked(e) {
 
 async function importOffice(file) {
   if (needsConverter(file.name) && !converter.value.available) {
-    throw new Error(converter.value.reason || 'Конвертация офисных форматов недоступна')
+    throw new Error(converter.value.reason || t('documents.view.error.converterOff'))
   }
   const {
     document: doc,
@@ -671,12 +692,15 @@ async function importOffice(file) {
   // figure as PNG would help or whether it is ours to fix (#2755). The warning
   // stays up longer than the default — it is the only place the reason appears.
   if (imagesDropped) {
-    const why = imagesDroppedReason ? ` (${imagesDroppedReason})` : ''
-    message.warning(`Документ импортирован, изображений пропущено: ${imagesDropped}${why}`, {
-      duration: 8000,
-    })
+    const text = imagesDroppedReason
+      ? t('documents.view.toast.importedImagesDroppedWhy', {
+          count: imagesDropped,
+          reason: imagesDroppedReason,
+        })
+      : t('documents.view.toast.importedImagesDropped', { count: imagesDropped })
+    message.warning(text, { duration: 8000 })
   } else {
-    message.success('Документ импортирован')
+    message.success(t('documents.view.toast.imported'))
   }
   return doc
 }
@@ -686,12 +710,12 @@ async function importOffice(file) {
 async function importLocal(file) {
   const draft = await fileToTemplate(file)
   const res = await docsApi.create(wsStore.currentId, {
-    title: draft.title || 'Импортированный документ',
+    title: draft.title || t('documents.view.importedTitle'),
     icon: draft.icon || '',
     parent_id: parentId.value,
   })
   await docsApi.updateContent(res.data.id, draft.content, res.data.updated_at)
-  message.success('Документ импортирован')
+  message.success(t('documents.view.toast.imported'))
   return res.data
 }
 
@@ -717,9 +741,9 @@ async function exportAs(format) {
 // the reason has to be read back out of the body.
 function exportError(err) {
   const status = err?.response?.status
-  if (status === 503) return 'Сервис конвертации документов недоступен'
-  if (status === 422) return 'Не удалось преобразовать документ'
-  return err?.message || 'Не удалось выгрузить документ'
+  if (status === 503) return t('documents.view.error.exportUnavailable')
+  if (status === 422) return t('documents.view.error.exportFailed')
+  return err?.message || t('documents.view.error.exportGeneric')
 }
 
 // Template gallery (#2734). Saved templates come from the workspace; the
@@ -790,7 +814,7 @@ async function saveAsTemplate() {
   try {
     await flushSave()
     await docsApi.createTemplate(wsStore.currentId, { document_id: selected.value.id })
-    message.success('Шаблон сохранён')
+    message.success(t('documents.view.toast.templateSaved'))
   } catch (e) {
     message.error(e.message)
   }
@@ -821,7 +845,7 @@ async function createNested() {
   const parent = selected.value
   try {
     const res = await docsApi.create(wsStore.currentId, {
-      title: 'Без названия',
+      title: t('documents.view.untitled'),
       parent_id: parent.id,
     })
     await loadList()
@@ -853,11 +877,27 @@ async function rename() {
 // now — with the delete confirmation moved to a dialog, because a menu item has
 // no anchor a popconfirm could hang off.
 const docActions = computed(() => {
-  const items = [{ key: 'nested', label: 'Вложенный документ' }]
+  // testid on every item: the e2e suite has to reach them by something other
+  // than their wording, which is about to move into the locale files (#2799).
+  const items = [
+    {
+      key: 'nested',
+      label: t('documents.view.action.nested'),
+      props: { 'data-testid': 'doc-action-nested' },
+    },
+  ]
   if (childCount.value)
-    items.push({ key: 'children', label: `Показать вложенные (${childCount.value})` })
+    items.push({
+      key: 'children',
+      label: t('documents.view.action.children', { count: childCount.value }),
+      props: { 'data-testid': 'doc-action-children' },
+    })
   items.push({ key: 'div', type: 'divider' })
-  items.push({ key: 'remove', label: 'Удалить документ' })
+  items.push({
+    key: 'remove',
+    label: t('documents.view.action.remove'),
+    props: { 'data-testid': 'doc-action-remove' },
+  })
   return items
 })
 
@@ -1107,7 +1147,7 @@ onMounted(async () => {
   await loadList()
   if (route.params.slug) {
     const ok = await resolveSlug(route.params.slug)
-    if (!ok) message.error('Документ не найден')
+    if (!ok) message.error(t('documents.view.error.notFound'))
   }
 })
 
@@ -1139,7 +1179,7 @@ watch(
       const current = selected.value?.slug || selected.value?.id
       if (slug !== current) {
         const ok = await resolveSlug(slug)
-        if (!ok) message.error('Документ не найден')
+        if (!ok) message.error(t('documents.view.error.notFound'))
       }
       return
     }
@@ -1168,7 +1208,9 @@ watch(
     <template v-if="!selected">
       <div class="head">
         <div class="crumbs">
-          <n-button text size="small" @click="crumbTo(-1)">Документы</n-button>
+          <n-button text size="small" @click="crumbTo(-1)">
+            {{ $t('documents.view.crumbRoot') }}
+          </n-button>
           <template v-for="(c, i) in trail" :key="c.id">
             <span class="sep">/</span>
             <n-button text size="small" @click="crumbTo(i)">{{ c.title }}</n-button>
@@ -1182,7 +1224,7 @@ watch(
           @click="pickImport"
         >
           <template #icon><n-icon :component="CloudUploadOutline" /></template>
-          Импорт
+          {{ $t('documents.view.import') }}
         </n-button>
         <input
           ref="importInput"
@@ -1193,11 +1235,11 @@ watch(
         />
         <n-button size="small" data-testid="doc-templates" @click="openTemplates">
           <template #icon><n-icon :component="GridOutline" /></template>
-          Из шаблона
+          {{ $t('documents.view.fromTemplate') }}
         </n-button>
-        <n-button type="primary" size="small" @click="create">
+        <n-button type="primary" size="small" data-testid="doc-new" @click="create">
           <template #icon><n-icon :component="AddOutline" /></template>
-          Новый документ
+          {{ $t('documents.view.create') }}
         </n-button>
       </div>
 
@@ -1206,20 +1248,29 @@ watch(
           <div class="tile-head">
             <span v-if="d.icon" class="doc-emoji">{{ d.icon }}</span>
             <n-icon v-else :component="DocumentsOutline" :size="16" />
-            <span class="tile-title">{{ d.title || 'Без названия' }}</span>
+            <span class="tile-title">{{ d.title || $t('documents.view.untitled') }}</span>
           </div>
           <p class="tile-preview">
-            {{ d.preview || 'Пустой документ' }}
+            {{ d.preview || $t('documents.view.emptyPreview') }}
           </p>
           <div class="tile-foot">
             <span>{{ fmtDate(d.updated_at) }}</span>
             <span v-if="list.filter((x) => x.parent_id === d.id).length">
-              вложенных: {{ list.filter((x) => x.parent_id === d.id).length }}
+              {{
+                $t('documents.view.nestedCount', {
+                  count: list.filter((x) => x.parent_id === d.id).length,
+                })
+              }}
             </span>
           </div>
         </button>
       </div>
-      <empty-state v-else :icon="DocumentsOutline" text="Документов пока нет" size="small" />
+      <empty-state
+        v-else
+        :icon="DocumentsOutline"
+        :text="$t('documents.view.empty')"
+        size="small"
+      />
     </template>
 
     <!-- Editor: title + working area, as asked in the review of #2726. -->
@@ -1231,9 +1282,9 @@ watch(
            cases fall back to rendering here, in .head. -->
       <div class="head">
         <teleport to="#tb-slot-left" :disabled="!inTopbar">
-          <n-button quaternary size="small" @click="backToGrid">
+          <n-button quaternary size="small" data-testid="doc-back" @click="backToGrid">
             <template #icon><n-icon :component="ArrowBackOutline" /></template>
-            К списку
+            {{ $t('documents.view.back') }}
           </n-button>
         </teleport>
         <teleport to="#tb-slot-right" :disabled="!inTopbar">
@@ -1251,7 +1302,11 @@ watch(
                 class="viewer"
                 :class="{ editing: v.blocks.length }"
                 :style="viewerStyle(v.user_id)"
-                :title="v.blocks.length ? `${v.name} — редактирует` : `${v.name} — смотрит`"
+                :title="
+                  v.blocks.length
+                    ? $t('documents.view.viewerEditing', { name: v.name })
+                    : $t('documents.view.viewerViewing', { name: v.name })
+                "
               >
                 {{ initials(v.name) }}
               </span>
@@ -1259,7 +1314,11 @@ watch(
             <n-button
               quaternary
               size="tiny"
-              :title="commentsOpen ? 'Скрыть обсуждение' : 'Показать обсуждение'"
+              :title="
+                commentsOpen
+                  ? $t('documents.view.comments.hide')
+                  : $t('documents.view.comments.show')
+              "
               @click="commentsOpen = !commentsOpen"
             >
               <template #icon><n-icon :component="ChatbubbleEllipsesOutline" /></template>
@@ -1268,7 +1327,7 @@ watch(
             <n-button
               quaternary
               size="tiny"
-              :title="tocOpen ? 'Скрыть оглавление' : 'Оглавление'"
+              :title="tocOpen ? $t('documents.view.toc.hide') : $t('documents.view.toc.show')"
               data-testid="doc-toc-toggle"
               @click="tocOpen = !tocOpen"
             >
@@ -1277,7 +1336,10 @@ watch(
             <n-button
               quaternary
               size="tiny"
-              :title="historyOpen ? 'Скрыть историю' : 'История версий'"
+              :title="
+                historyOpen ? $t('documents.view.history.hide') : $t('documents.view.history.show')
+              "
+              data-testid="doc-history-toggle"
               @click="toggleHistory"
             >
               <template #icon><n-icon :component="TimeOutline" /></template>
@@ -1285,7 +1347,7 @@ watch(
             <n-button
               quaternary
               size="tiny"
-              :title="linksOpen ? 'Скрыть связи' : 'Связи и согласование'"
+              :title="linksOpen ? $t('documents.view.links.hide') : $t('documents.view.links.show')"
               data-testid="doc-links-toggle"
               @click="toggleLinks"
             >
@@ -1294,7 +1356,7 @@ watch(
             <n-button
               quaternary
               size="tiny"
-              title="Сохранить как шаблон"
+              :title="$t('documents.view.saveTemplate')"
               data-testid="doc-save-template"
               @click="saveAsTemplate"
             >
@@ -1304,7 +1366,7 @@ watch(
               <n-button
                 quaternary
                 size="tiny"
-                title="Выгрузить документ"
+                :title="$t('documents.view.export')"
                 data-testid="doc-export"
                 :loading="!!exporting"
               >
@@ -1312,20 +1374,31 @@ watch(
               </n-button>
             </n-dropdown>
             <n-dropdown trigger="click" :options="docActions" @select="onDocAction">
-              <n-button quaternary size="tiny" title="Действия" data-testid="doc-actions">
+              <n-button
+                quaternary
+                size="tiny"
+                :title="$t('documents.view.actions')"
+                data-testid="doc-actions"
+              >
                 <template #icon><n-icon :component="EllipsisHorizontalOutline" /></template>
               </n-button>
             </n-dropdown>
-            <n-text v-if="saving" depth="3">Сохранение…</n-text>
-            <n-text v-else-if="dirty" depth="3">Есть несохранённые правки</n-text>
-            <n-text v-else depth="3">Все изменения сохранены</n-text>
+            <n-text v-if="saving" depth="3" data-testid="doc-save-state" data-state="saving">
+              {{ $t('documents.view.state.saving') }}
+            </n-text>
+            <n-text v-else-if="dirty" depth="3" data-testid="doc-save-state" data-state="dirty">
+              {{ $t('documents.view.state.dirty') }}
+            </n-text>
+            <n-text v-else depth="3" data-testid="doc-save-state" data-state="saved">
+              {{ $t('documents.view.state.saved') }}
+            </n-text>
           </span>
         </teleport>
       </div>
 
-      <n-alert v-if="conflict" type="warning" class="conflict">
-        Документ изменён в другом месте — ваши последние правки не сохранены.
-        <n-button text size="small" @click="reload">Загрузить актуальную версию</n-button>
+      <n-alert v-if="conflict" type="warning" class="conflict" data-testid="doc-conflict">
+        {{ $t('documents.view.conflict') }}
+        <n-button text size="small" @click="reload">{{ $t('documents.view.reload') }}</n-button>
       </n-alert>
       <n-alert v-else-if="saveError" type="error" class="conflict">
         {{ saveError }}
@@ -1333,7 +1406,12 @@ watch(
 
       <n-spin v-if="loading" size="small" />
       <template v-else>
-        <n-input v-model:value="title" placeholder="Заголовок" class="title plain" @blur="rename" />
+        <n-input
+          v-model:value="title"
+          :placeholder="$t('documents.view.titlePlaceholder')"
+          class="title plain"
+          @blur="rename"
+        />
         <div ref="workEl" class="work">
           <!-- Which block each remark is about, drawn rather than implied. The
                layer spans the editor and the panel because the line crosses the
@@ -1423,15 +1501,15 @@ watch(
           </aside>
         </div>
         <div v-if="children.length" class="nested">
-          <n-text depth="3">Вложенные документы</n-text>
+          <n-text depth="3">{{ $t('documents.view.nestedTitle') }}</n-text>
           <div class="grid small">
             <button v-for="d in children" :key="d.id" type="button" class="tile" @click="open(d)">
               <div class="tile-head">
                 <span v-if="d.icon" class="doc-emoji">{{ d.icon }}</span>
                 <n-icon v-else :component="DocumentsOutline" :size="16" />
-                <span class="tile-title">{{ d.title || 'Без названия' }}</span>
+                <span class="tile-title">{{ d.title || $t('documents.view.untitled') }}</span>
               </div>
-              <p class="tile-preview">{{ d.preview || 'Пустой документ' }}</p>
+              <p class="tile-preview">{{ d.preview || $t('documents.view.emptyPreview') }}</p>
             </button>
           </div>
         </div>
@@ -1442,14 +1520,14 @@ watch(
           v-model:show="removeAsk"
           preset="dialog"
           type="error"
-          title="Удалить документ?"
-          positive-text="Удалить"
-          negative-text="Отмена"
+          :title="$t('documents.view.remove.title')"
+          :positive-text="$t('common.action.delete')"
+          :negative-text="$t('common.action.cancel')"
           :positive-button-props="{ type: 'error' }"
           :content="
             childCount
-              ? `Документ будет удалён вместе с вложенными (${childCount}).`
-              : 'Документ будет удалён.'
+              ? $t('documents.view.remove.withChildren', { count: childCount })
+              : $t('documents.view.remove.single')
           "
           @positive-click="remove"
         />

@@ -10,11 +10,12 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.WorkspaceMilestone
 import website.msdnna.tessera.data.repository.MilestoneRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class MilestonesUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val milestones: List<WorkspaceMilestone> = emptyList(),
     /** Closed «Этапы» hidden by default (web «Активные/Все» toggle). */
     val showClosed: Boolean = false,
@@ -31,7 +32,7 @@ data class MilestoneManagerState(
     val glCapable: Boolean = false,
     val loading: Boolean = true,
     val saving: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val milestones: List<Milestone> = emptyList(),
 )
 

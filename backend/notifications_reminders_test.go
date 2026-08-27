@@ -113,6 +113,63 @@ func TestNotificationsFeed(t *testing.T) {
 	}
 }
 
+// The structured payload (#2801) has to survive the whole way: builder → jsonb
+// column → API response, as real JSON and not a base64 blob. The client renders
+// its sentence from these facts, so a broken round-trip degrades every
+// notification to the Russian legacy text without anything failing loudly.
+func TestNotificationPayloadRoundTrip(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	member := signup(t)
+	s := mkStack(t, owner)
+	task := mkTask(t, owner, s.Board, s.col(t, 0), "Полить цветы")
+	id := task["id"].(string)
+	owner.expect(t, owner.post("/workspaces/"+s.WS+"/members", map[string]any{"email": member.Email}), http.StatusCreated)
+
+	if r := owner.post("/tasks/"+id+"/assignees", map[string]any{"user_id": member.UserID}); r.Status != http.StatusNoContent {
+		t.Fatalf("assign: %d\n%s", r.Status, r.Body)
+	}
+	// A field edit the member watches: the payload must name the changed fields
+	// in machine form, so each client can word them in its own language.
+	owner.expect(t, owner.patch("/tasks/"+id, map[string]any{"title": "Полить фикус", "priority": 3}), http.StatusOK)
+
+	feed := member.get("/notifications").listBody(t)
+	if len(feed) != 2 {
+		t.Fatalf("member feed: want assign + update, got %v", feed)
+	}
+	byKind := map[string]map[string]any{}
+	for _, n := range feed {
+		p, ok := n["payload"].(map[string]any)
+		if !ok {
+			t.Fatalf("notification %v carries no JSON payload object", n)
+		}
+		byKind[n["kind"].(string)] = p
+	}
+
+	assigned := byKind["assigned"]
+	if assigned["event"] != "task_assigned" || assigned["title"] != "Полить цветы" {
+		t.Fatalf("assigned payload: %v", assigned)
+	}
+	if _, ok := assigned["task_number"].(float64); !ok {
+		t.Fatalf("assigned payload has no task number: %v", assigned)
+	}
+
+	updated := byKind["updated"]
+	if updated["event"] != "task_updated" {
+		t.Fatalf("updated payload: %v", updated)
+	}
+	fields, _ := updated["fields"].([]any)
+	if len(fields) != 2 || fields[0] != "title" || fields[1] != "priority" {
+		t.Fatalf("updated fields = %v, want [title priority]", updated["fields"])
+	}
+	// The legacy sentence keeps being written for clients that predate the payload.
+	for _, n := range feed {
+		if txt, _ := n["text"].(string); txt == "" {
+			t.Fatalf("notification %v lost its legacy text", n)
+		}
+	}
+}
+
 // Delivery channels: webhook CRUD + the synchronous /test send against a local
 // HTTP server (which must receive the sample POST; success flips `verified`).
 func TestNotificationChannels(t *testing.T) {

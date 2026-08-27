@@ -1,6 +1,8 @@
 // Tree assembly for the documents section. The API returns a flat list (the
 // same shape serves Android and MCP), so nesting is rebuilt here.
 
+import { i18n } from '@/i18n'
+
 /**
  * Builds a nested tree from the flat document list.
  *
@@ -53,7 +55,7 @@ function isAncestor(byId, nodeId, candidate) {
 export function docTreeOptions(nodes) {
   return (nodes || []).map((n) => ({
     key: n.id,
-    label: n.title || 'Без названия',
+    label: n.title || i18n.global.t('documents.view.untitled'),
     icon: n.icon || '',
     children: n.children && n.children.length ? docTreeOptions(n.children) : undefined,
   }))

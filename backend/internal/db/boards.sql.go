@@ -95,22 +95,28 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 }
 
 const createColumn = `-- name: CreateColumn :one
-INSERT INTO board_columns (board_id, name, color, position)
-VALUES ($1, $2, $3, $4)
-RETURNING id, board_id, name, color, position, created_at, updated_at
+INSERT INTO board_columns (board_id, name, name_key, color, position)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, board_id, name, color, position, created_at, updated_at, name_key
 `
 
 type CreateColumnParams struct {
 	BoardID  uuid.UUID `json:"board_id"`
 	Name     string    `json:"name"`
+	NameKey  *string   `json:"name_key"`
 	Color    string    `json:"color"`
 	Position float64   `json:"position"`
 }
 
+// CreateColumn takes an optional name_key alongside the display name: the four
+// columns seeded with a new board pass their key ('todo', 'in_progress', …) so
+// clients can caption them in the reader's language, a column the user adds
+// himself passes NULL and is shown verbatim.
 func (q *Queries) CreateColumn(ctx context.Context, arg CreateColumnParams) (BoardColumn, error) {
 	row := q.db.QueryRow(ctx, createColumn,
 		arg.BoardID,
 		arg.Name,
+		arg.NameKey,
 		arg.Color,
 		arg.Position,
 	)
@@ -123,6 +129,7 @@ func (q *Queries) CreateColumn(ctx context.Context, arg CreateColumnParams) (Boa
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NameKey,
 	)
 	return i, err
 }
@@ -222,7 +229,7 @@ func (q *Queries) GetBoardInProjectBySlug(ctx context.Context, arg GetBoardInPro
 }
 
 const getColumn = `-- name: GetColumn :one
-SELECT id, board_id, name, color, position, created_at, updated_at FROM board_columns WHERE id = $1
+SELECT id, board_id, name, color, position, created_at, updated_at, name_key FROM board_columns WHERE id = $1
 `
 
 func (q *Queries) GetColumn(ctx context.Context, id uuid.UUID) (BoardColumn, error) {
@@ -236,6 +243,7 @@ func (q *Queries) GetColumn(ctx context.Context, id uuid.UUID) (BoardColumn, err
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NameKey,
 	)
 	return i, err
 }
@@ -277,7 +285,7 @@ func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board,
 }
 
 const listColumns = `-- name: ListColumns :many
-SELECT id, board_id, name, color, position, created_at, updated_at FROM board_columns WHERE board_id = $1 ORDER BY position
+SELECT id, board_id, name, color, position, created_at, updated_at, name_key FROM board_columns WHERE board_id = $1 ORDER BY position
 `
 
 func (q *Queries) ListColumns(ctx context.Context, boardID uuid.UUID) ([]BoardColumn, error) {
@@ -297,6 +305,7 @@ func (q *Queries) ListColumns(ctx context.Context, boardID uuid.UUID) ([]BoardCo
 			&i.Position,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.NameKey,
 		); err != nil {
 			return nil, err
 		}
@@ -419,9 +428,11 @@ func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board
 
 const updateColumn = `-- name: UpdateColumn :one
 UPDATE board_columns
-SET name = $2, color = $3, position = $4, updated_at = now()
+SET name = $2,
+    name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END,
+    color = $3, position = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, name, color, position, created_at, updated_at
+RETURNING id, board_id, name, color, position, created_at, updated_at, name_key
 `
 
 type UpdateColumnParams struct {
@@ -431,6 +442,10 @@ type UpdateColumnParams struct {
 	Position float64   `json:"position"`
 }
 
+// UpdateColumn drops name_key when the name actually changes: a column the user
+// renamed must keep that name in every language. Re-saving the same text (a
+// colour edit or a reorder both go through here) is not a rename, so the key
+// survives those.
 func (q *Queries) UpdateColumn(ctx context.Context, arg UpdateColumnParams) (BoardColumn, error) {
 	row := q.db.QueryRow(ctx, updateColumn,
 		arg.ID,
@@ -447,6 +462,7 @@ func (q *Queries) UpdateColumn(ctx context.Context, arg UpdateColumnParams) (Boa
 		&i.Position,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.NameKey,
 	)
 	return i, err
 }

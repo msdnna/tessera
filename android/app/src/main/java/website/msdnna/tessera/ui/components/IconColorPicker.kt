@@ -16,8 +16,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.CuratedIconKeys
@@ -50,7 +52,7 @@ fun ColumnScopePicker(
     val c = Tessera.colors
     val tint = parseHexColor(color, c.text2)
 
-    SectionLabel("Цвет")
+    SectionLabel(stringResource(R.string.picker_color))
     FlowRow(
         Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -78,7 +80,7 @@ fun ColumnScopePicker(
     }
 
     TMenuDivider()
-    SectionLabel("Иконка")
+    SectionLabel(stringResource(R.string.picker_icon))
     FlowRow(
         Modifier.padding(horizontal = 12.dp).padding(bottom = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -104,7 +106,7 @@ fun ColumnScopePicker(
     // Where the colour lands: the badge box (default) or the glyph itself.
     if (onIconMode != null) {
         TMenuDivider()
-        SectionLabel("Что красить")
+        SectionLabel(stringResource(R.string.picker_icon_mode))
         ModeToggle(
             mode = iconMode ?: "badge",
             onMode = onIconMode,
@@ -121,7 +123,10 @@ private fun ModeToggle(mode: String, onMode: (String) -> Unit, modifier: Modifie
         modifier.clip(RoundedCornerShape(6.dp)).background(c.surfaceAlt).padding(2.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        listOf("badge" to "Бейдж", "icon" to "Иконка").forEach { (key, label) ->
+        listOf(
+            "badge" to stringResource(R.string.picker_icon_mode_badge),
+            "icon" to stringResource(R.string.picker_icon_mode_icon),
+        ).forEach { (key, label) ->
             val active = (mode != "icon") == (key == "badge")
             Box(
                 Modifier.weight(1f).clip(RoundedCornerShape(5.dp))

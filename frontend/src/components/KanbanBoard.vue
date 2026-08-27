@@ -13,6 +13,7 @@ import {
   h,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import {
   NSpin,
@@ -64,6 +65,8 @@ import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardE
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
+import { columnName } from '@/utils/defaultNames'
+import { normalizeTitle } from '@/utils/title'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -81,6 +84,9 @@ import UserAvatar from './UserAvatar.vue'
 const props = defineProps({ boardId: { type: String, required: true } })
 
 const message = useMessage()
+// `t` is the translator everywhere below; task/tag loop variables are spelled out
+// (`task`, `tag`) so nothing shadows it (#2799).
+const { t } = useI18n()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const boardViewStore = useBoardViewStore()
@@ -251,7 +257,7 @@ const tagPrefix = ref('') // when grouping by tag: only tags with this namespace
 // Tags that become columns in tag-grouping mode (filtered by the chosen prefix).
 const groupTags = computed(() =>
   tagPrefix.value
-    ? tagsList.value.filter((t) => (t.name || '').startsWith(tagPrefix.value))
+    ? tagsList.value.filter((tag) => (tag.name || '').startsWith(tagPrefix.value))
     : tagsList.value,
 )
 
@@ -272,9 +278,12 @@ const milestoneScope = computed(() => (route.query.milestone ? String(route.quer
 const milestoneScopeLabel = computed(() => {
   const s = milestoneScope.value
   if (!s) return ''
-  if (s === BACKLOG_SCOPE) return 'Бэклог'
+  if (s === BACKLOG_SCOPE) return t('board.scope.backlog')
   // Keyed by id, so a slug scope needs a scan (a project has few milestones).
-  return (milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)))?.title || 'Этап'
+  return (
+    (milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)))?.title ||
+    t('board.scope.milestoneFallback')
+  )
 })
 function clearMilestoneScope() {
   const q = { ...route.query }
@@ -335,7 +344,7 @@ const addMenuOptions = computed(() => {
   }
   const parent = addOptions.value.find((o) => o.key === addLevel.value)
   return [
-    { label: 'Назад', key: 'nav.back' },
+    { label: t('board.composer.back'), key: 'nav.back' },
     { type: 'divider', key: 'nav.div' },
     ...(parent?.children || []),
   ]
@@ -607,7 +616,7 @@ async function saveView() {
     newViewName.value = ''
     showSaveView.value = false
     await loadViews()
-    message.success(`Представление «${name}» сохранено`)
+    message.success(t('board.views.saved', { name }))
   } catch (e) {
     message.error(e.message)
   }
@@ -996,17 +1005,47 @@ async function onSetDone(columnId) {
 
 const displayColumns = computed(() => {
   if (groupMode.value === 'status') {
-    return columns.value.map((c) => ({ key: c.id, name: c.name, color: c.color, status: c }))
+    return columns.value.map((c) => ({
+      key: c.id,
+      name: columnName(c),
+      rawName: c.name,
+      color: c.color,
+      status: c,
+    }))
   }
   if (groupMode.value === 'milestone') {
     return [
-      ...milestonesList.value.map((m) => ({ key: m.id, name: m.title, color: '', milestone: m })),
-      { key: '__none__', name: 'Без этапа', color: '', milestone: null },
+      ...milestonesList.value.map((m) => ({
+        key: m.id,
+        name: m.title,
+        rawName: m.title,
+        color: '',
+        milestone: m,
+      })),
+      {
+        key: '__none__',
+        name: t('board.group.noMilestone'),
+        rawName: t('board.group.noMilestone'),
+        color: '',
+        milestone: null,
+      },
     ]
   }
   return [
-    ...groupTags.value.map((t) => ({ key: t.id, name: tagColumnName(t), color: t.color, tag: t })),
-    { key: '__none__', name: 'Без тегов', color: '', tag: null },
+    ...groupTags.value.map((tag) => ({
+      key: tag.id,
+      name: tagColumnName(tag),
+      rawName: tagColumnName(tag),
+      color: tag.color,
+      tag,
+    })),
+    {
+      key: '__none__',
+      name: t('board.group.noTags'),
+      rawName: t('board.group.noTags'),
+      color: '',
+      tag: null,
+    },
   ]
 })
 
@@ -1014,8 +1053,8 @@ const displayColumns = computed(() => {
 // board is already filtered to one prefix the scope sits in the group label
 // ("Тег · Сложность"), so only the value is left; otherwise the friendly scope
 // is spelled out ahead of it.
-function tagColumnName(t) {
-  const parts = tagParts(t.name, tagPrefixNames)
+function tagColumnName(tag) {
+  const parts = tagParts(tag.name, tagPrefixNames)
   if (!parts.hasScope) return parts.label
   return tagPrefix.value ? parts.label : `${parts.scope}: ${parts.label}`
 }
@@ -1127,7 +1166,9 @@ function cancelAddTask() {
   newTaskTitle.value = ''
 }
 async function submitAddTask(dcol) {
-  const title = newTaskTitle.value.trim()
+  // Enter is caught on keydown so the textarea never gets to insert its newline;
+  // normalizeTitle is the backstop for pasted multi-line text.
+  const title = normalizeTitle(newTaskTitle.value)
   if (!title) {
     cancelAddTask()
     return
@@ -1136,7 +1177,7 @@ async function submitAddTask(dcol) {
   // and pre-tag with the tag column's tag.
   const columnId = groupMode.value === 'status' ? dcol.key : columns.value[0]?.id
   if (!columnId) {
-    message.warning('Сначала создайте хотя бы одну колонку-статус')
+    message.warning(t('board.column.needStatus'))
     return
   }
   suppress()
@@ -1192,7 +1233,7 @@ function onChanged() {
 async function createInQuadrant({ title, quadrant }) {
   const columnId = columns.value[0]?.id
   if (!columnId) {
-    message.warning('Сначала создайте хотя бы одну колонку-статус')
+    message.warning(t('board.column.needStatus'))
     return
   }
   suppress()
@@ -1210,7 +1251,7 @@ useRealtime((ev) => {
   // Surface a freshly detected write-back conflict so the user knows to resolve it
   // (the resolver lives in the GitLab modal's «Конфликты» entry).
   if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
-    message.warning('Конфликт обратной записи GitLab — откройте настройки GitLab, чтобы разрешить')
+    message.warning(t('board.toast.gitlabConflict'))
   }
   // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
@@ -1250,23 +1291,23 @@ useRealtime((ev) => {
 // card we still hold locally (the board reload is debounced, so the pre-move state
 // is intact here): entering/leaving the done boundary reads as completed/reopened.
 function pushActivity(ev) {
-  const t = ev.data
-  if (!t || typeof t !== 'object' || t.board_id !== props.boardId) return
+  const task = ev.data
+  if (!task || typeof task !== 'object' || task.board_id !== props.boardId) return
   let verb = ev.type === 'task.created' ? 'created' : 'moved'
   if (ev.type === 'task.moved') {
-    const prev = allTasks.value.find((x) => x.id === t.id)
+    const prev = allTasks.value.find((x) => x.id === task.id)
     const wasDone = !!prev?.completed_at
-    const isDone = !!t.completed_at
+    const isDone = !!task.completed_at
     if (isDone && !wasDone) verb = 'completed'
     else if (!isDone && wasDone) verb = 'reopened'
   }
-  const actorId = ev.actor || t.created_by || null
+  const actorId = ev.actor || task.created_by || null
   const self = !!actorId && actorId === auth.user?.id
   const m = actorId ? membersMap[actorId] : null
   activityToasts.value?.push({
-    id: t.id,
-    number: t.number ?? null,
-    title: t.title || 'Задача',
+    id: task.id,
+    number: task.number ?? null,
+    title: task.title || t('task.fallbackTitle'),
     verb,
     actorId: m ? actorId : null,
     actorName: m?.name || '',
@@ -1386,7 +1427,7 @@ async function restoreFromArchive(taskId) {
   try {
     await tasksApi.restore(taskId)
     allTasks.value = allTasks.value.filter((t) => t.id !== taskId)
-    message.success('Задача возвращена из архива')
+    message.success(t('board.toast.restored'))
   } catch (e) {
     message.error(e.message)
   }
@@ -1417,15 +1458,29 @@ async function restoreFromArchive(taskId) {
           data-tour="board-composer"
         >
           <!-- Scope chips: archive = amber tint, sprint = accent tint (no border). -->
-          <span v-if="archivedMode" class="facet facet-archive" title="Архив — только чтение">
+          <span
+            v-if="archivedMode"
+            class="facet facet-archive"
+            :title="t('board.scope.archiveTitle')"
+          >
             <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
-            Архив (только чтение)
-            <button class="facet-x" title="Выйти из архива" @click.stop="exitArchive">×</button>
+            {{ t('board.scope.archiveChip') }}
+            <button class="facet-x" :title="t('board.scope.archiveExit')" @click.stop="exitArchive">
+              ×
+            </button>
           </span>
-          <span v-if="milestoneScope" class="facet facet-accent" title="Показан один этап">
+          <span
+            v-if="milestoneScope"
+            class="facet facet-accent"
+            :title="t('board.scope.milestoneTitle')"
+          >
             <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
             {{ milestoneScopeLabel }}
-            <button class="facet-x" title="Сбросить этап" @click.stop="clearMilestoneScope">
+            <button
+              class="facet-x"
+              :title="t('board.scope.milestoneClear')"
+              @click.stop="clearMilestoneScope"
+            >
               ×
             </button>
           </span>
@@ -1434,7 +1489,9 @@ async function restoreFromArchive(taskId) {
           <button
             class="facet subtasks-chip"
             :class="{ active: subtasksExpanded }"
-            :title="subtasksExpanded ? 'Подзадачи раскрыты' : 'Раскрыть подзадачи'"
+            :title="
+              t(subtasksExpanded ? 'board.composer.subtasksOn' : 'board.composer.subtasksOff')
+            "
             @click.stop="toggleSubtasksExpanded"
           >
             <n-icon class="facet-ic" :component="GitBranchOutline" :size="14" />
@@ -1444,7 +1501,7 @@ async function restoreFromArchive(taskId) {
           <span
             v-if="groupChip"
             class="facet group"
-            title="Переключить статусы/теги"
+            :title="t('board.composer.groupToggle')"
             @click="onChipClick(groupChip)"
           >
             <n-icon class="facet-ic" :component="groupChip.icon" :size="13" />
@@ -1464,12 +1521,18 @@ async function restoreFromArchive(taskId) {
             <template #item="{ element: l }">
               <span
                 class="facet sortable"
-                title="Клик — направление · перетащите для порядка"
+                :title="t('board.composer.sortHint')"
                 @click="toggleSortDir(l)"
               >
                 <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
                 {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
-                <button class="facet-x" title="Убрать" @click.stop="removeSort(l)">×</button>
+                <button
+                  class="facet-x"
+                  :title="t('board.composer.remove')"
+                  @click.stop="removeSort(l)"
+                >
+                  ×
+                </button>
               </span>
             </template>
           </draggable>
@@ -1478,7 +1541,9 @@ async function restoreFromArchive(taskId) {
           <span v-for="(c, ci) in filterChips" :key="ci" class="facet">
             <n-icon class="facet-ic" :component="c.icon" :size="13" />
             {{ c.text }}
-            <button class="facet-x" title="Убрать" @click.stop="removeChip(c)">×</button>
+            <button class="facet-x" :title="t('board.composer.remove')" @click.stop="removeChip(c)">
+              ×
+            </button>
           </span>
 
           <n-dropdown
@@ -1491,7 +1556,7 @@ async function restoreFromArchive(taskId) {
             @update:show="onAddShow"
             @select="onAddSelect"
           >
-            <button class="facet-add" title="Добавить группировку / сортировку / фильтр">
+            <button class="facet-add" :title="t('board.composer.add')">
               <n-icon :component="AddOutline" :size="14" />
             </button>
           </n-dropdown>
@@ -1501,12 +1566,12 @@ async function restoreFromArchive(taskId) {
             v-model="filters.q"
             class="composer-search"
             data-testid="board-search"
-            placeholder="Поиск по названию…"
+            :placeholder="t('board.composer.search')"
           />
           <button
             v-if="hasClearableFacets"
             class="facet-clear"
-            title="Сбросить всё"
+            :title="t('board.composer.clear')"
             @click="clearAll"
           >
             ×
@@ -1530,11 +1595,7 @@ async function restoreFromArchive(taskId) {
                 <template #icon><n-icon :component="GitNetworkOutline" /></template>
               </n-button>
             </template>
-            {{
-              autoActive
-                ? 'Авто-сортировка по зависимостям (вкл.)'
-                : 'Авто: сортировать по зависимостям'
-            }}
+            {{ t(autoActive ? 'board.tools.autoOn' : 'board.tools.autoOff') }}
           </n-tooltip>
 
           <n-tooltip v-if="!timelineLike">
@@ -1550,7 +1611,7 @@ async function restoreFromArchive(taskId) {
                 <template #icon><n-icon :component="SettingsOutline" /></template>
               </n-button>
             </template>
-            Настроить вид
+            {{ t('board.tools.customize') }}
           </n-tooltip>
 
           <!-- saved views: load (folder) + save (disk) -->
@@ -1568,7 +1629,9 @@ async function restoreFromArchive(taskId) {
                   </n-button>
                 </template>
                 {{
-                  currentViewName ? `Представление: ${currentViewName}` : 'Загрузить представление'
+                  currentViewName
+                    ? t('board.views.current', { name: currentViewName })
+                    : t('board.views.load')
                 }}
               </n-tooltip>
             </template>
@@ -1583,7 +1646,7 @@ async function restoreFromArchive(taskId) {
                 </button>
                 <n-popconfirm
                   :positive-button-props="{ type: 'error' }"
-                  positive-text="Удалить"
+                  :positive-text="t('common.action.delete')"
                   @positive-click="deleteView(v)"
                 >
                   <template #trigger>
@@ -1591,11 +1654,11 @@ async function restoreFromArchive(taskId) {
                       ><n-icon :component="TrashOutline"
                     /></n-button>
                   </template>
-                  Удалить представление «{{ v.name }}»?
+                  {{ t('board.views.deleteConfirm', { name: v.name }) }}
                 </n-popconfirm>
               </div>
               <n-text v-if="!viewsForLayout.length" depth="3" class="views-empty">
-                Нет сохранённых представлений
+                {{ t('board.views.empty') }}
               </n-text>
             </div>
           </n-popover>
@@ -1608,18 +1671,18 @@ async function restoreFromArchive(taskId) {
                     <template #icon><n-icon :component="SaveOutline" /></template>
                   </n-button>
                 </template>
-                Сохранить представление
+                {{ t('board.views.save') }}
               </n-tooltip>
             </template>
             <div class="views-pop">
               <n-input
                 v-model:value="newViewName"
                 size="small"
-                placeholder="Название представления"
+                :placeholder="t('board.views.namePlaceholder')"
                 @keyup.enter="saveView"
               />
               <div v-if="viewsForLayout.length" class="views-over">
-                <n-text depth="3" class="views-lbl">Перезаписать:</n-text>
+                <n-text depth="3" class="views-lbl">{{ t('board.views.overwrite') }}</n-text>
                 <button
                   v-for="v in viewsForLayout"
                   :key="v.id"
@@ -1629,7 +1692,9 @@ async function restoreFromArchive(taskId) {
                   {{ v.name }}
                 </button>
               </div>
-              <n-button type="primary" size="small" block @click="saveView">Сохранить</n-button>
+              <n-button type="primary" size="small" block @click="saveView">{{
+                t('common.action.save')
+              }}</n-button>
             </div>
           </n-popover>
         </div>
@@ -1720,7 +1785,7 @@ async function restoreFromArchive(taskId) {
               class="col"
               data-testid="column"
               :data-column-key="dcol.key"
-              :data-column-name="dcol.name"
+              :data-column-name="dcol.rawName"
               :class="{ collapsed: colCollapsedNow(dcol) }"
               :style="{
                 '--col-accent': dcol.color || 'var(--t-primary)',
@@ -1738,7 +1803,7 @@ async function restoreFromArchive(taskId) {
               <div
                 v-if="colCollapsedNow(dcol)"
                 class="col-strip"
-                title="Развернуть колонку"
+                :title="t('board.column.expand')"
                 @click="toggleCollapse(dcol)"
               >
                 <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
@@ -1813,8 +1878,8 @@ async function restoreFromArchive(taskId) {
                     type="textarea"
                     size="small"
                     :autosize="{ minRows: 1, maxRows: 4 }"
-                    placeholder="Название задачи, Enter — создать"
-                    @keyup.enter.prevent="submitAddTask(dcol)"
+                    :placeholder="t('board.column.taskPlaceholder')"
+                    @keydown.enter.exact.prevent="submitAddTask(dcol)"
                     @keyup.esc="cancelAddTask"
                     @blur="submitAddTask(dcol)"
                   />
@@ -1827,7 +1892,7 @@ async function restoreFromArchive(taskId) {
                   data-testid="add-task-button"
                   @click="startAddTask(dcol)"
                 >
-                  ＋ Создать задачу
+                  {{ t('board.column.addTask') }}
                 </n-button>
               </template>
             </div>
@@ -1841,24 +1906,27 @@ async function restoreFromArchive(taskId) {
             ref="colInput"
             v-model:value="newColumnName"
             size="small"
-            placeholder="Название колонки"
+            :placeholder="t('board.column.namePlaceholder')"
             @keyup.enter="submitAddColumn"
             @keyup.esc="addingColumn = false"
             @blur="submitAddColumn"
           />
-          <n-button v-else dashed block class="add-btn" @click="startAddColumn">
-            ＋ Создать колонку
+          <n-button
+            v-else
+            dashed
+            block
+            class="add-btn"
+            data-testid="add-column"
+            @click="startAddColumn"
+          >
+            {{ t('board.column.add') }}
           </n-button>
         </div>
       </div>
 
       <div v-if="layout === 'board' && !displayColumns.length" class="empty-board">
         <n-text depth="3">
-          {{
-            groupMode === 'status'
-              ? 'Нет колонок — создайте первую кнопкой «＋ Колонка».'
-              : 'Нет тегов — добавьте в «Теги».'
-          }}
+          {{ t(groupMode === 'status' ? 'board.column.emptyStatus' : 'board.column.emptyTag') }}
         </n-text>
       </div>
     </div>

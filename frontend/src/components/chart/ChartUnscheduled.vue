@@ -1,5 +1,8 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { PRIORITY_COLORS } from '@/styles/tokens'
+
+const { t } = useI18n()
 
 // Tasks with neither a start nor a due date can't be placed on the axis, so they
 // sit under the chart as clickable chips. Same strip in both chart views.
@@ -11,19 +14,19 @@ defineEmits(['open', 'menu'])
 
 <template>
   <div v-if="tasks.length" class="tl-unsched">
-    <span class="us-label">Без дат</span>
+    <span class="us-label">{{ t('board.chart.unscheduled') }}</span>
     <button
-      v-for="t in tasks"
-      :key="t.id"
+      v-for="task in tasks"
+      :key="task.id"
       type="button"
       class="us-chip"
-      :class="{ done: t.completed_at }"
-      :style="{ '--chip': PRIORITY_COLORS[t.priority || 0] }"
-      :title="t.title"
-      @click="$emit('open', t.id)"
-      @contextmenu.prevent.stop="$emit('menu', $event, t)"
+      :class="{ done: task.completed_at }"
+      :style="{ '--chip': PRIORITY_COLORS[task.priority || 0] }"
+      :title="task.title"
+      @click="$emit('open', task.id)"
+      @contextmenu.prevent.stop="$emit('menu', $event, task)"
     >
-      {{ t.title }}
+      {{ task.title }}
     </button>
   </div>
 </template>

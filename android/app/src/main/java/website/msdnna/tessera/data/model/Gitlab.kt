@@ -71,8 +71,9 @@ data class GitlabBinding(
  *  All off by default. The legacy toggles are kept so a pre-bindings integration can
  *  be synthesized into an editable binding set on load; a non-empty [bindings] takes
  *  over completely (the backend ignores the legacy flags then). `push_create` /
- *  `fetch_templates` are round-tripped only (no Android UI yet) so saving here never
- *  clobbers a web-configured create-issue setup. */
+ *  `fetch_templates` are not editable here (the toggles live on web), but they are
+ *  round-tripped so saving never clobbers a web-configured create-issue setup — and
+ *  read by the task modal's «Создать issue» row (see `gitlabCreateCaps`). */
 data class GitlabWriteback(
     @SerializedName("enabled") val enabled: Boolean = false,
     @SerializedName("push_state") val pushState: Boolean = false,
@@ -155,6 +156,34 @@ data class GitlabSyncResult(
     @SerializedName("total") val total: Int = 0,
     @SerializedName("created") val created: Int = 0,
     @SerializedName("updated") val updated: Int = 0,
+)
+
+/** One issue template of the bound repo (a Markdown file under
+ *  `.gitlab/issue_templates`) — GET …/gitlab/issue-templates. */
+data class GitlabIssueTemplate(
+    @SerializedName("name") val name: String = "",
+    @SerializedName("content") val content: String = "",
+)
+
+/** Body of POST /tasks/:id/gitlab-issue. The description is optional: left null the
+ *  backend uses the task's own (already saved) text, which is what we want — sending
+ *  it twice would drift the issue body from the task on the next write-back. */
+data class CreateGitlabIssueRequest(
+    @SerializedName("description") val description: String? = null,
+)
+
+/** What the backend mirrored into the GitLab upload store while creating the issue
+ *  (#2713): a skipped file is a link the issue won't render, so we name it. */
+data class GitlabAssetStats(
+    @SerializedName("uploaded") val uploaded: Int = 0,
+    @SerializedName("skipped") val skipped: Int = 0,
+)
+
+/** POST /tasks/:id/gitlab-issue response — the fresh link plus the asset stats. */
+data class GitlabIssueCreated(
+    @SerializedName("iid") val iid: Long = 0,
+    @SerializedName("web_url") val webUrl: String = "",
+    @SerializedName("attachments") val attachments: GitlabAssetStats? = null,
 )
 
 /** One sync-journal run header (mirrors backend `db.GitlabSyncRun`). `kind` =

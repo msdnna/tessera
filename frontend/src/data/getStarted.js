@@ -2,6 +2,13 @@
 // through, in order. Pure data, like data/whatsNew.js — the engine that walks it
 // lives in stores/tour.js, the layer that draws it in components/TourOverlay.vue.
 //
+// The wording of every step lives in the catalogue, under `tour.steps.<id>`, and
+// is resolved by the overlay on each render (#2799). It is deliberately NOT
+// carried on these objects: the store copies the list into a ref when the guide
+// starts, so text baked in here would keep the language the guide started in for
+// its whole run. What stays here is what the guide is made of — anchors, modes
+// and advancement rules.
+//
 // Anchors are `data-tour="<key>"` keys, or a raw CSS selector where the element
 // already carries a usable attribute (kanban columns and cards do). Every key
 // named here is in the markup — grep for it to find the element.
@@ -39,23 +46,17 @@ export const GET_STARTED = [
   {
     id: 'workspaces',
     anchor: 'ws-switch',
-    title: 'Пространства',
-    body: 'Здесь переключаются пространства: у каждого свои проекты, участники и теги. Рядом создаётся новое — но начнём с личного.',
     mode: 'info',
   },
   {
     id: 'tree-add',
     anchor: 'proj-add',
-    title: 'Дерево проектов',
-    body: 'Проекты живут слева. Нажмите «+», чтобы добавить первый.',
     mode: 'action',
     advanceOn: { click: 'proj-add' },
   },
   {
     id: 'menu-project',
     anchor: 'menu-project',
-    title: 'Выберите «Проект»',
-    body: 'Группа пригодится позже, когда проектов станет много.',
     mode: 'action',
     advanceOn: { click: 'menu-project' },
   },
@@ -68,8 +69,6 @@ export const GET_STARTED = [
     // Un-dim the «Создать» button too, so the user isn't left staring at a
     // greyed-out control they're supposed to press (#2753 rework).
     cut: ['project-submit'],
-    title: 'Назовите проект',
-    body: 'Название решает и адрес проекта: /project/название. Адрес назначается один раз — если он важен, задайте его вручную.',
     mode: 'action',
     advanceOn: { count: 'project-row' },
   },
@@ -78,16 +77,12 @@ export const GET_STARTED = [
     // Scoped to the project the user just created (`{project}` → its id), so the
     // arrow lands on its «+» and not the first project's (#2753 rework).
     anchor: '[data-tour-project="{project}"] [data-tour="board-add"]',
-    title: 'Добавьте доску',
-    body: 'Задачи живут на досках, у проекта их может быть несколько. Нажмите «+» у проекта.',
     mode: 'action',
     advanceOn: { click: '[data-tour-project="{project}"] [data-tour="board-add"]' },
   },
   {
     id: 'board-create',
     anchor: 'board-name',
-    title: 'Назовите доску',
-    body: 'Введите название и нажмите Enter — доска появится в дереве с четырьмя колонками.',
     mode: 'action',
     advanceOn: { count: 'board-row' },
   },
@@ -95,16 +90,12 @@ export const GET_STARTED = [
     id: 'board-open',
     // The board just created (`{board}` → its id), not the first in the tree.
     anchor: '[data-tour-board="{board}"]',
-    title: 'Откройте доску',
-    body: 'Нажмите на доску — откроется канбан.',
     mode: 'action',
     advanceOn: { click: '[data-tour-board="{board}"]' },
   },
   {
     id: 'task-create',
     anchor: '[data-column-name="К работе"] [data-testid="add-task-button"]',
-    title: 'Создайте задачу',
-    body: 'Нажмите «Создать задачу» в колонке «К работе», введите название и нажмите Enter.',
     mode: 'action',
     advanceOn: { count: NEW_CARD },
   },
@@ -118,8 +109,6 @@ export const GET_STARTED = [
       `${NEW_CARD} [data-tour="card-tags"]`,
       `${NEW_CARD} [data-tour="card-assignees"]`,
     ],
-    title: 'Прямо на карточке',
-    body: 'Приоритет, срок, теги и исполнители правятся не открывая задачу — по клику на значок карточки.',
     mode: 'info',
   },
 
@@ -127,8 +116,6 @@ export const GET_STARTED = [
   {
     id: 'card-open',
     anchor: NEW_CARD,
-    title: 'Откройте задачу',
-    body: 'Нажмите на карточку — откроется полная форма задачи.',
     mode: 'action',
     // `click: true` = «клик по собственному якорю шага», чтобы не повторять
     // длинный селектор карточки.
@@ -139,40 +126,30 @@ export const GET_STARTED = [
   {
     id: 'tm-due',
     anchor: 'tm-due',
-    title: 'Срок',
-    body: 'Задайте срок — в календаре же настраиваются повтор и напоминание.',
     mode: 'action',
     advanceOn: { set: '[data-tour="tm-due"][data-tour-set]' },
   },
   {
     id: 'tm-assignees',
     anchor: 'tm-assignees',
-    title: 'Исполнители',
-    body: 'Выберите, кто ведёт задачу. Пока вы в пространстве один — назначьте себя.',
     mode: 'action',
     advanceOn: { set: '[data-tour="tm-assignees"][data-tour-set]' },
   },
   {
     id: 'tm-priority',
     anchor: 'tm-priority',
-    title: 'Приоритет',
-    body: 'Приоритет красит точку на карточке и по нему же можно сортировать доску.',
     mode: 'action',
     advanceOn: { set: '[data-tour="tm-priority"][data-tour-set]' },
   },
   {
     id: 'tm-tags',
     anchor: 'tm-tags',
-    title: 'Теги',
-    body: 'Тег создаётся прямо отсюда. По тегам доска умеет группироваться в колонки — это главный способ разложить задачи по-своему.',
     mode: 'action',
     advanceOn: { set: '[data-tour="tm-tags"][data-tour-set]' },
   },
   {
     id: 'tm-description',
     anchor: 'tm-description',
-    title: 'Описание',
-    body: 'Опишите задачу: поддерживается Markdown, вложения и упоминания через @.',
     mode: 'action',
     advanceOn: { set: '[data-tour="tm-description"][data-tour-set]' },
   },
@@ -184,15 +161,11 @@ export const GET_STARTED = [
     // «История» намеренно без стрелки: таб уезжает за правый край строки табов
     // (её не видно), а по смыслу указывать на неё необязательно (#2753 rework).
     extra: ['[data-name="subtasks"]', '[data-name="relations"]'],
-    title: 'Комментарии, подзадачи, связи',
-    body: 'Здесь же — обсуждение, дерево подзадач, связи с другими задачами и полная история изменений.',
     mode: 'info',
   },
   {
     id: 'tm-save',
     anchor: 'tm-save',
-    title: 'Сохраните задачу',
-    body: 'Нажмите «Сохранить» — модалка закроется, а изменения появятся на карточке.',
     mode: 'action',
     advanceOn: { click: 'tm-save' },
   },
@@ -202,16 +175,12 @@ export const GET_STARTED = [
     id: 'board-tools',
     anchor: 'board-layout',
     extra: ['ws-search', 'board-actions'],
-    title: 'Виды и инструменты доски',
-    body: 'Слева — канбан, список, календарь и гант: одни и те же задачи в разных разрезах. В центре — поиск по всему пространству, справа — теги, этапы и архив.',
     mode: 'info',
   },
   {
     id: 'board-composer',
     anchor: 'board-composer',
     extra: ['board-customize'],
-    title: 'Группировка, сортировка, фильтры',
-    body: 'Через «+» на этой панели добавляются группировка (в том числе по тегам), сортировка и фильтры, а справа — настройка вида карточек.',
     mode: 'info',
   },
 
@@ -241,23 +210,17 @@ export const GET_STARTED = [
     },
     // Не затемнять колонку, в которую просим перетащить.
     cut: ['[data-column-name="В процессе"]'],
-    title: 'Перетащите карточку',
-    body: 'Задача переносится между колонками перетаскиванием — так на доске меняется её статус. Перетащите карточку в «В процессе».',
     mode: 'action',
   },
   {
     id: 'group-add',
     anchor: 'proj-add',
-    title: 'Проекты тоже группируются',
-    body: 'Когда проектов становится много, их складывают в группы. Нажмите «+» над деревом ещё раз.',
     mode: 'action',
     advanceOn: { click: 'proj-add' },
   },
   {
     id: 'menu-group',
     anchor: 'menu-group',
-    title: 'Выберите «Группа»',
-    body: 'Теперь пригодился второй пункт меню.',
     mode: 'action',
     advanceOn: { click: 'menu-group' },
   },
@@ -272,8 +235,6 @@ export const GET_STARTED = [
     // якоря нет и оверлей ничего не рисует. Если группа так и не возникнет
     // (offline), шаг снимется по общему таймауту якоря.
     anchor: '[data-tour-group="{group}"] [data-tour="group-row"]',
-    title: 'Группа создана',
-    body: 'Она называется «Группа» — двойной клик по названию переименовывает её.',
     mode: 'info',
   },
   {
@@ -284,8 +245,6 @@ export const GET_STARTED = [
     // Из затемнения вырезаем строку созданной группы — «бросьте сюда» должно
     // показывать на неё, а не на первую попавшуюся группу дерева (#2778 rework).
     cut: ['[data-tour-group="{group}"] [data-tour="group-row"]'],
-    title: 'Перетащите проект в группу',
-    body: 'Дерево проектов перетаскивается так же: возьмите проект и бросьте его в группу.',
     mode: 'action',
     advanceOn: {
       moved: {
@@ -310,16 +269,12 @@ export const GET_STARTED = [
     id: 'nav-sections',
     anchor: '[data-nav="notes"]',
     extra: ['[data-nav="documents"]', '[data-nav="reminders"]'],
-    title: 'Заметки, документы, напоминания',
-    body: 'Кроме досок в пространстве живут заметки, совместные документы и напоминания.',
     mode: 'info',
   },
   {
     id: 'nav-footer',
     anchor: 'footer-settings',
     extra: ['footer-notifications'],
-    title: 'Настройки и уведомления',
-    body: 'Внизу — ваш профиль и настройки, рядом — колокольчик с уведомлениями.',
     mode: 'info',
   },
 
@@ -327,8 +282,6 @@ export const GET_STARTED = [
   {
     id: 'done',
     anchor: 'sb-footer',
-    title: 'Готово',
-    body: 'Это всё, что нужно для старта. Обучение можно перезапустить отсюда же, из нижней части боковой панели.',
     mode: 'info',
   },
 ]

@@ -1,6 +1,7 @@
 package website.msdnna.tessera.ui.viewmodels
 
 import android.os.SystemClock
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.BoardView
@@ -24,6 +26,7 @@ import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.repository.BoardRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.BoardFilter
 import website.msdnna.tessera.util.DueFilter
 import website.msdnna.tessera.util.FilterClock
@@ -34,13 +37,16 @@ import website.msdnna.tessera.util.moveItem
 
 enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline, Gantt }
 
-/** Sort fields available in the multi-level sort editor (web parity). */
-enum class SortField(val key: String, val label: String) {
-    Priority("priority", "Приоритет"),
-    Due("due", "Срок"),
-    Status("status", "Статус"),
-    Title("title", "Название"),
-    Number("number", "Номер"),
+/** Sort fields available in the multi-level sort editor (web parity).
+ *
+ *  [labelRes] и не может быть готовой строкой: `entries` вычисляются один раз при
+ *  загрузке класса, и подпись застыла бы на языке первого открытия доски. */
+enum class SortField(val key: String, @param:StringRes val labelRes: Int) {
+    Priority("priority", R.string.task_prop_priority),
+    Due("due", R.string.task_prop_due),
+    Status("status", R.string.task_prop_status),
+    Title("title", R.string.composer_sort_title),
+    Number("number", R.string.composer_sort_number),
     ;
 
     companion object {
@@ -66,7 +72,7 @@ data class BoardActivity(
 
 data class BoardUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val columns: List<BoardColumn> = emptyList(),
     val tasks: List<Task> = emptyList(),
     val subtasks: List<Task> = emptyList(),
@@ -80,6 +86,10 @@ data class BoardUiState(
     /** Canonical prefixes of GitLab label rules mapping to non-tag actions (status /
      *  priority / …) on this board's integrations — hidden from the ADD tag-picker. */
     val metaTagPrefixes: Set<String> = emptySet(),
+    /** Create-issue capability of the GitLab binding targeting THIS board — gates the
+     *  task modal's «GitLab → Создать issue» row and its template picker. */
+    val gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps =
+        website.msdnna.tessera.util.GitlabCreateCaps(),
     /** Resolved estimation unit config for this board's project (drives the
      *  estimate input/chip/aggregates). Falls back to the built-in default. */
     val estimation: website.msdnna.tessera.data.model.EstimationConfig =
@@ -349,7 +359,7 @@ class BoardViewModel(
             val estimation = loadEstimation()
             val members = if (workspaceId.isNotBlank()) runCatching { repo.members(workspaceId) }.getOrDefault(emptyList()) else emptyList()
             val gitlabMembers = if (workspaceId.isNotBlank()) repo.gitlabMembers(workspaceId) else emptyList()
-            val metaTagPrefixes = loadMetaTagPrefixes()
+            val gitlabCaps = loadGitlabBoardCaps()
             val registry = if (workspaceId.isNotBlank()) {
                 repo.workspaceCommands(workspaceId)
             } else {
@@ -367,7 +377,8 @@ class BoardViewModel(
                     tagList = tags,
                     milestones = milestones,
                     prefixNames = prefixNames,
-                    metaTagPrefixes = metaTagPrefixes,
+                    metaTagPrefixes = gitlabCaps.metaTagPrefixes,
+                    gitlabCreate = gitlabCaps.create,
                     estimation = estimation,
                     members = members,
                     gitlabMembers = gitlabMembers,
@@ -475,7 +486,9 @@ class BoardViewModel(
             key = ++activitySeq,
             taskId = t.id,
             number = t.number,
-            title = t.title.ifBlank { "Задача" },
+            // Заголовок отдаёт сервер — не локализуем; подпись пустого разрешает
+            // тост, у которого есть Resources (board_activity_untitled). i18n-data
+            title = t.title,
             verb = verb,
             actorName = actorName,
             self = self,
@@ -521,14 +534,26 @@ class BoardViewModel(
         }
     }
 
-    /** Canonical GitLab meta-label prefixes for this board's integrations, hidden from
-     *  the ADD tag-picker (best-effort). Computed once on [load] — it rarely changes,
-     *  so realtime echoes skip the extra integrations call (like the estimation config). */
-    private suspend fun loadMetaTagPrefixes(): Set<String> {
-        if (workspaceId.isBlank() || boardId.isBlank()) return emptySet()
+    /** What this board's GitLab bindings imply for the UI: the meta-label prefixes to
+     *  hide from the tag-picker, and whether an issue can be created from a task. */
+    private data class GitlabBoardCaps(
+        val metaTagPrefixes: Set<String> = emptySet(),
+        val create: website.msdnna.tessera.util.GitlabCreateCaps = website.msdnna.tessera.util.GitlabCreateCaps(),
+    )
+
+    /** Both of the above from ONE integrations call (best-effort). Computed once on
+     *  [load] — bindings rarely change, so realtime echoes skip the extra call (like
+     *  the estimation config). */
+    private suspend fun loadGitlabBoardCaps(): GitlabBoardCaps {
+        if (workspaceId.isBlank() || boardId.isBlank()) return GitlabBoardCaps()
         val integrations = repo.gitlabIntegrations(workspaceId).filter { it.boardId == boardId }
-        if (integrations.isEmpty()) return emptySet()
-        return integrations.flatMap { website.msdnna.tessera.util.metaPrefixesFromRules(it.labelRules.rules) }.toSet()
+        if (integrations.isEmpty()) return GitlabBoardCaps()
+        return GitlabBoardCaps(
+            metaTagPrefixes = integrations
+                .flatMap { website.msdnna.tessera.util.metaPrefixesFromRules(it.labelRules.rules) }
+                .toSet(),
+            create = website.msdnna.tessera.util.gitlabCreateCaps(integrations, boardId),
+        )
     }
 
     /** Loads the project's canonical prefix → label map (best-effort, empty on failure). */

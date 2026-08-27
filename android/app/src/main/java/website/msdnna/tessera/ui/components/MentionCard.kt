@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -75,7 +76,7 @@ fun MentionCardPopup(item: MentionItem, onDismiss: () -> Unit) {
                 if (handle.isNotBlank()) {
                     Text(handle, color = c.text2, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                val role = if (item.gitlab) "" else roleLabel(item.role)
+                val role = if (item.gitlab) "" else roleLabel(LocalResources.current, item.role)
                 if (role.isNotBlank()) {
                     Text(role, color = c.text3, fontSize = 11.sp, modifier = Modifier.padding(top = 3.dp))
                 }

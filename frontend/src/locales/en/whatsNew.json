@@ -1,0 +1,73 @@
+{
+  "helpEnglish": {
+    "title": "The help centre in English",
+    "item1": "With the interface in English, help centre articles now open in English. An article that hasn't been translated yet stays in Russian, so nothing goes missing from the manual.",
+    "item2": "Screenshots follow the language of the article: an English article carries frames shot from the English interface — in the light theme, the dark one and on the phone."
+  },
+  "changelogHistory": {
+    "title": "Change history on click",
+    "item1": "The version line in the bottom-right corner is now a button: click it to open the full change history — the same What's New cards, all of them."
+  },
+  "i18n": {
+    "title": "English and Russian interface",
+    "item1": "The app now has a language switch — English or Russian. Change it in Settings → Language; your choice is remembered on the device.",
+    "item2": "Date and time formats and the first day of the week fall in behind the language, and can be set in Settings too."
+  },
+  "helpCenter": {
+    "title": "Help centre",
+    "item1": "A question-mark “Help” button now sits at the bottom of the sidebar, holding both the guided tour and the new help centre. The manual opens as a window over the board — with section navigation, search across every article and a table of contents — so you can read it without leaving your work.",
+    "item2": "The “?” in the topbar and in the task window opens the article about the very screen in front of you. Help articles also turn up in the global search.",
+    "item3": "The articles carry interface screenshots, and in the dark theme those are dark too.",
+    "spotlightTitle": "Meet the “Help” button",
+    "spotlightBody": "The question-mark button at the bottom of the sidebar: the guided tour and the help centre with search across every article."
+  },
+  "tourDnd": {
+    "title": "The guide now shows drag and drop",
+    "item1": "The Get Started guide gained hands-on steps: dragging a card between board columns and dragging a project into a tree group, with creating a project group in between. A step completes once the item has actually moved.",
+    "item2": "While you drag, the hint and the dimming fade out so the arrow does not get in the way of aiming."
+  },
+  "docxImport": {
+    "title": "Word import and a steadier session",
+    "item1": "Importing `.docx` keeps the formatting: text colours and sizes, horizontal rules, code blocks, table fills and borders. Colours from Word stay readable in the dark theme.",
+    "item2": "A brief drop of the server connection no longer throws you back to the login screen — the session restores itself.",
+    "item3": "The new-version notice appears right away, with no page reload."
+  },
+  "getStarted": {
+    "title": "The Get Started walkthrough",
+    "item1": "New users get an interactive 12-step guide: from picking a workspace to creating a project, a board and a first task, then a tour of the board tools and the sections. You can restart it at any time — “Get started” at the bottom of the sidebar.",
+    "item2": "PDF preview in documents works again: the pdf.js worker is no longer blocked, and the overlapping render passes are gone."
+  },
+  "versions": {
+    "title": "Service versions and self-update",
+    "item1": "Client and server versions are now visible in the bottom-right corner — hover to see the commit and the build date.",
+    "item2": "The app offers to update itself when a new version ships, with no manual reload."
+  },
+  "gitlabGrouping": {
+    "title": "GitLab: grouping and subtask statuses",
+    "item1": "A task can be marked as grouped in GitLab, and the Subtasks tab shows each subtask's GitLab status with a link to the issue."
+  },
+  "descriptionTab": {
+    "title": "Description in its own tab",
+    "item1": "In the side-panel layout the task description moved into the first tab — comments and subtasks are now a click closer."
+  },
+  "mentionCards": {
+    "title": "Mention cards",
+    "item1": "Hovering an {'@'}mention in a description or a comment shows the user's card: avatar, name, login and role."
+  },
+  "commentThreads": {
+    "title": "Reply threads in comments",
+    "item1": "Replies render as a thread under the comment — indented and collapsible; “Reply” pre-fills a mention of the author."
+  },
+  "editor": {
+    "title": "A better description editor",
+    "item1": "A formatting toolbar: headings, lists, checkboxes, quotes, spoilers; brackets close themselves and lists continue on Enter.",
+    "item2": "A full-screen editor with live preview, and `#N` links to tasks and attachments right in the text."
+  },
+  "documents": {
+    "title": "Documents and task layouts",
+    "item1": "The new Documents section (alpha): wiki pages with a block editor — nesting, autosave, a drag handle per block and a “/” menu.",
+    "item2": "A task layout of your choice: modal, full screen or right-hand panel (remembered per device).",
+    "spotlightTitle": "Take a look at Documents",
+    "spotlightBody": "Wiki pages and workspace documents are available right now."
+  }
+}

@@ -44,11 +44,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.hypot
+import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -204,11 +206,18 @@ private fun SpotlightCard(spot: WhatsNewSpotlight, onDismiss: () -> Unit) {
                 IonIcon(Ion.STAR, size = 12.dp, tint = c.onPrimary)
             }
             Spacer(Modifier.width(8.dp))
-            Text(spot.title, color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(spot.titleRes),
+                color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+            )
         }
         Spacer(Modifier.size(5.dp))
-        Text(spot.body, color = c.text3, fontSize = 12.sp, lineHeight = 17.sp)
+        Text(stringResource(spot.bodyRes), color = c.text3, fontSize = 12.sp, lineHeight = 17.sp)
         Spacer(Modifier.size(10.dp))
-        TButton("Понятно", onClick = onDismiss, modifier = Modifier.testTag(TestTags.SPOTLIGHT_DISMISS))
+        TButton(
+            stringResource(R.string.common_got_it),
+            onClick = onDismiss,
+            modifier = Modifier.testTag(TestTags.SPOTLIGHT_DISMISS),
+        )
     }
 }

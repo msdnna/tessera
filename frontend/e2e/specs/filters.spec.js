@@ -48,8 +48,8 @@ test('группировка по тегам: колонки становятс�
 
   // Composer → «+» → Группировка → По тегам (все).
   await page.locator('.facet-add').click()
-  await page.getByText('Группировка', { exact: true }).click()
-  await page.getByText('По тегам (все)', { exact: true }).click()
+  await page.getByTestId('facet-group').click()
+  await page.getByTestId('facet-group-tag').click()
 
   // The tag now IS a column, and the tagged card lives in it.
   await expect(column(page, tagName)).toBeVisible()

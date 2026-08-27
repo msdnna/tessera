@@ -3,6 +3,7 @@
 // a one-line composer. Every mutation reloads the parent task, so the tab reports
 // `changed` and lets the modal re-fetch rather than patching its own copy.
 import { ref, computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NInput, NPopover, useMessage } from 'naive-ui'
 import { CheckmarkCircle, EllipseOutline, GitBranchOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, gitlab as glApi } from '@/api'
@@ -10,6 +11,8 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { sortedColumns, columnById, siblingNeighbors } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
+import { normalizeTitle } from '@/utils/title'
 import TaskMiniCard from '../TaskMiniCard.vue'
 import EmptyState from '../EmptyState.vue'
 
@@ -26,24 +29,25 @@ const props = defineProps({
 const emit = defineEmits(['open', 'changed', 'group-parent'])
 
 const message = useMessage()
+const { t } = useI18n()
 const bv = useBoardViewStore()
 const { formatDue } = useDateLocale()
 const newSubtask = ref('')
 
 const sortedCols = computed(() => sortedColumns(props.columns))
-const columnOf = (t) => columnById(props.columns, t?.column_id)
+const columnOf = (sub) => columnById(props.columns, sub?.column_id)
 function subDue(d) {
   return formatDue(d)
 }
 
 async function addSubtask() {
-  const t = newSubtask.value.trim()
-  if (!t || !props.task) return
+  const title = normalizeTitle(newSubtask.value)
+  if (!title || !props.task) return
   try {
     await boardsApi.createTask(props.task.board_id, {
       column_id: props.task.column_id,
       parent_id: props.task.id,
-      title: t,
+      title,
     })
     newSubtask.value = ''
     emit('changed')
@@ -93,7 +97,7 @@ async function pushChild(sub) {
     await glApi.pushChild(sub.id)
     // 202: the worker owns the GitLab round trip. Say "queued" rather than "done" —
     // the row updates when the write-back lands and the parent is re-fetched.
-    message.success('Выгрузка подзадачи в GitLab поставлена в очередь')
+    message.success(t('task.subtasks.pushQueued'))
   } catch (e) {
     message.error(e?.response?.data?.error || e.message)
   } finally {
@@ -149,7 +153,7 @@ async function moveSubtask(sub, columnId) {
               :href="sub.gl_web_url || undefined"
               target="_blank"
               rel="noopener"
-              :title="'Дочерний элемент issue в GitLab'"
+              :title="t('task.subtasks.glChild')"
               @click.stop
               >!{{ sub.gl_iid }}</a
             >
@@ -159,12 +163,16 @@ async function moveSubtask(sub, columnId) {
               :disabled="pushing.has(sub.id)"
               :title="
                 glState(sub) === 'detached'
-                  ? `Issue !${sub.gl_iid} создан, но GitLab не принял его в иерархию — повторить`
-                  : 'Подзадача ещё не выгружена в GitLab — выгрузить'
+                  ? t('task.subtasks.glDetachedHint', { iid: sub.gl_iid })
+                  : t('task.subtasks.glAbsentHint')
               "
               @click.stop="pushChild(sub)"
             >
-              {{ glState(sub) === 'detached' ? 'вне иерархии' : 'не в GitLab' }}
+              {{
+                glState(sub) === 'detached'
+                  ? t('task.subtasks.glDetached')
+                  : t('task.subtasks.glAbsent')
+              }}
             </button>
           </template>
           <!-- status of the subtask, changeable without opening it -->
@@ -172,7 +180,7 @@ async function moveSubtask(sub, columnId) {
             <template #trigger>
               <span class="col-chip mini" @click.stop>
                 <span class="col-dot" :style="{ background: columnOf(sub)?.color }" />
-                <span>{{ columnOf(sub)?.name || '—' }}</span>
+                <span>{{ columnName(columnOf(sub)) || '—' }}</span>
               </span>
             </template>
             <div class="menu pmenu" @click.stop>
@@ -184,7 +192,7 @@ async function moveSubtask(sub, columnId) {
                 @click="moveSubtask(sub, c.id)"
               >
                 <span class="col-dot" :style="{ background: c.color }" />
-                <span>{{ c.name }}</span>
+                <span>{{ columnName(c) }}</span>
               </div>
             </div>
           </n-popover>
@@ -202,7 +210,7 @@ async function moveSubtask(sub, columnId) {
       v-if="!(task?.subtasks || []).length"
       size="small"
       :icon="GitBranchOutline"
-      text="Подзадач пока нет"
+      :text="t('task.subtasks.empty')"
     />
     <!-- The one case the per-row chips cannot express: the parent is linked but not a
          grouped issue, so no subtask here can reach the GitLab hierarchy at all. Said
@@ -211,14 +219,16 @@ async function moveSubtask(sub, columnId) {
       v-if="showGitlab && !parentGrouped && !readonly && (task?.subtasks || []).length"
       class="gl-hint"
     >
-      <span>Родитель не помечен как сгруппированная задача — подзадачи не уедут в GitLab.</span>
-      <button class="gl-hint-act" @click="emit('group-parent')">Пометить</button>
+      <span>{{ t('task.subtasks.parentNotGrouped') }}</span>
+      <button class="gl-hint-act" @click="emit('group-parent')">
+        {{ t('task.subtasks.markGrouped') }}
+      </button>
     </div>
     <n-input
       v-model:value="newSubtask"
       size="small"
       class="plain"
-      placeholder="+ подзадача (Enter)"
+      :placeholder="t('task.subtasks.addPlaceholder')"
       @keyup.enter="addSubtask"
     />
   </div>

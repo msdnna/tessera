@@ -10,11 +10,13 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Invitation
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.repository.WorkspaceRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
+import website.msdnna.tessera.util.rawErrorText
 
 data class MembersUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val members: List<Member> = emptyList(),
     val invitations: List<Invitation> = emptyList(),
     val lastInviteLink: String = "",
@@ -53,8 +55,10 @@ class MembersViewModel(
                 }
                 return@launch
             }
-            val msg = errorMessage(added.exceptionOrNull()!!)
-            if (msg.contains("no user", ignoreCase = true)) {
+            val failure = added.exceptionOrNull()!!
+            // Ветвимся по сырому ответу сервера, а не по показываемому тексту:
+            // тот переводится, и на английском интерфейсе «no user» не нашлось бы.
+            if (rawErrorText(failure)?.contains("no user", ignoreCase = true) == true) {
                 runCatching { repo.createInvitation(workspaceId, email, role) }
                     .onSuccess { inv ->
                         val invs = repo.invitations(workspaceId)
@@ -62,7 +66,7 @@ class MembersViewModel(
                     }
                     .onFailure { e -> _state.update { it.copy(busy = false, error = errorMessage(e)) } }
             } else {
-                _state.update { it.copy(busy = false, error = msg) }
+                _state.update { it.copy(busy = false, error = errorMessage(failure)) }
             }
         }
     }

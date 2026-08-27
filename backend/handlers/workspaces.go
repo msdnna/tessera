@@ -10,6 +10,16 @@ import (
 	"tessera/middleware"
 )
 
+// The personal workspace every account is seeded with (see Register / the OAuth
+// first-login path). Its caption is drawn by the client from name_key, so the
+// stored Russian name is only a fallback — for old clients, e-mail and DB
+// lookups. A rename clears the key (UpdateWorkspace), and from then on the name
+// is the user's, in every language.
+const (
+	personalWorkspaceName = "Личное пространство"
+	personalWorkspaceKey  = "personal"
+)
+
 // CreateWorkspace makes a new (shared) workspace owned by the caller.
 func (h *API) CreateWorkspace(c *gin.Context) {
 	var req struct {

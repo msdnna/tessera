@@ -11,12 +11,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.SearchResults
 import website.msdnna.tessera.data.repository.SearchRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class SearchUiState(
     val query: String = "",
     val loading: Boolean = false,
-    val error: String? = null,
+    val error: UiText? = null,
     val results: SearchResults? = null,
 )
 

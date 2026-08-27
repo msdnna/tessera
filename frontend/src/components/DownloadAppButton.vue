@@ -2,7 +2,7 @@
 // App-download control on the login screen (web only). Two shapes:
 //
 //  - The visitor's platform HAS a build → a full split button
-//    «⤓ Загрузить для <ОС> | ▾»: the labelled part downloads that platform's
+//    «⤓ Download for <OS> | ▾»: the labelled part downloads that platform's
 //    recommended build directly (AppImage on Linux), the caret opens the full
 //    per-platform menu.
 //  - No build for this platform (mac / iOS / unknown) → a round icon button that
@@ -12,6 +12,7 @@
 // pulled from the published manifests at runtime (see composables/useDownloads.js
 // and DownloadMenu.vue).
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover } from 'naive-ui'
 import {
   LogoWindows,
@@ -23,6 +24,7 @@ import {
 import { useDownloads } from '@/composables/useDownloads'
 import DownloadMenu from '@/components/DownloadMenu.vue'
 
+const { t } = useI18n()
 const { detected, android, windows, linux } = useDownloads()
 
 const META = {
@@ -80,15 +82,17 @@ const primary = computed(() => {
       :href="primary.url"
       download
       rel="noopener noreferrer"
-      :title="`Загрузить для ${detectedGroup.name}`"
+      :title="t('app.download.forPlatform', { platform: detectedGroup.name })"
     >
       <n-icon :component="detectedGroup.icon" :size="18" />
-      <span class="dl-split-label">Загрузить для {{ detectedGroup.name }}</span>
+      <span class="dl-split-label">{{
+        t('app.download.forPlatform', { platform: detectedGroup.name })
+      }}</span>
     </a>
     <span class="dl-split-sep" aria-hidden="true" />
     <n-popover trigger="click" placement="bottom-end">
       <template #trigger>
-        <button class="dl-split-caret" type="button" aria-label="Другие платформы">
+        <button class="dl-split-caret" type="button" :aria-label="t('app.download.otherPlatforms')">
           <n-icon :component="ChevronDownOutline" :size="14" />
         </button>
       </template>
@@ -102,8 +106,8 @@ const primary = computed(() => {
       <button
         class="dl-round"
         type="button"
-        title="Скачать приложение"
-        aria-label="Скачать приложение"
+        :title="t('app.download.title')"
+        :aria-label="t('app.download.title')"
       >
         <n-icon :component="DownloadOutline" :size="18" />
       </button>

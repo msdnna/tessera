@@ -30,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -38,6 +40,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.WorkspaceCommand
@@ -52,7 +55,6 @@ import website.msdnna.tessera.ui.components.TagChip
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
-import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -83,13 +85,18 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
             Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg))
                 .background(c.surface).clickableNoRipple { editingId = null }.padding(18.dp),
         ) {
-            Text("Управление тегами", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.tags_title),
+                color = c.text1,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             Spacer(Modifier.height(12.dp))
 
             if (state.tagList.isEmpty()) {
-                Text("Тегов пока нет", color = c.text3, fontSize = 13.sp)
+                Text(stringResource(R.string.tags_empty), color = c.text3, fontSize = 13.sp)
             } else {
-                val groups = buildTagGroups(state.tagList, state.prefixNames)
+                val groups = buildTagGroups(LocalResources.current, state.tagList, state.prefixNames)
                 val showHeaders = groups.size > 1
                 Column(Modifier.heightIn(max = 340.dp).verticalScroll(rememberScrollState())) {
                     groups.forEach { g ->
@@ -120,15 +127,24 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
             }
 
             Spacer(Modifier.height(14.dp))
-            Text("Новый тег", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(
+                stringResource(R.string.tags_new),
+                color = c.text3,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+            )
             Spacer(Modifier.height(6.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1f)) {
-                    TTextField(value = newName, onValueChange = { newName = it }, placeholder = "Название тега")
+                    TTextField(
+                        value = newName,
+                        onValueChange = { newName = it },
+                        placeholder = stringResource(R.string.tags_name_hint),
+                    )
                 }
                 Spacer(Modifier.width(8.dp))
                 TButton(
-                    "Создать",
+                    stringResource(R.string.common_create),
                     enabled = newName.isNotBlank(),
                     onClick = {
                         vm.createTagStandalone(newName.trim(), TagPalette.first())
@@ -139,7 +155,7 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
 
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TButton("Готово", onClick = onDismiss)
+                TButton(stringResource(R.string.common_done), onClick = onDismiss)
             }
         }
     }
@@ -166,14 +182,21 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
 
     // Per-row validation, shown inline: the backend rejects the whole PUT on the
     // first bad key, so catching it here keeps the user from losing the other rows.
+    // Тексты берутся заранее: `rowError` — обычная локальная функция, из неё
+    // `stringResource` не вызвать.
+    val errEmptyKey = stringResource(R.string.commands_err_empty_key)
+    val errBadKey = stringResource(R.string.commands_err_bad_key)
+    val errBuiltin = stringResource(R.string.commands_err_builtin)
+    val errDuplicate = stringResource(R.string.commands_err_duplicate)
+    val errTooLong = stringResource(R.string.commands_err_too_long)
     fun rowError(i: Int): String {
         val key = canonCommandKey(rows[i].first)
         return when {
-            key.isEmpty() -> "пустой ключ"
-            !isValidCommandKey(key) -> "латиница, цифры, _ и -"
-            key in builtinKeys -> "встроенная команда"
-            rows.take(i).any { canonCommandKey(it.first) == key } -> "дубль"
-            rows[i].second.length > 200 -> "описание длиннее 200 символов"
+            key.isEmpty() -> errEmptyKey
+            !isValidCommandKey(key) -> errBadKey
+            key in builtinKeys -> errBuiltin
+            rows.take(i).any { canonCommandKey(it.first) == key } -> errDuplicate
+            rows[i].second.length > 200 -> errTooLong
             else -> ""
         }
     }
@@ -185,11 +208,15 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
             Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg))
                 .background(c.surface).padding(18.dp),
         ) {
-            Text("Команды редактора", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.commands_title),
+                color = c.text1,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             Spacer(Modifier.height(6.dp))
             Text(
-                "Свои команды только подсказываются в редакторе и остаются в тексте комментария — " +
-                    "выполняет их адресат, а не Tessera. Встроенные выполняет сервер и вырезает из текста.",
+                stringResource(R.string.commands_hint),
                 color = c.text3,
                 fontSize = 11.sp,
             )
@@ -221,7 +248,7 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
                                     onValueChange = { v ->
                                         rows = rows.toMutableList().also { it[i] = row.first to v }
                                     },
-                                    placeholder = "Одобрить план",
+                                    placeholder = stringResource(R.string.commands_description_hint),
                                 )
                             }
                             // Order in the list is order in the popup, so it has to be movable.
@@ -244,14 +271,14 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
                     }
                 }
                 if (rows.isEmpty()) {
-                    Text("Своих команд пока нет", color = c.text3, fontSize = 13.sp)
+                    Text(stringResource(R.string.commands_empty), color = c.text3, fontSize = 13.sp)
                 }
             }
 
             if (canManage) {
                 Spacer(Modifier.height(4.dp))
                 TButton(
-                    "Добавить",
+                    stringResource(R.string.commands_add),
                     kind = TButtonKind.Secondary,
                     enabled = rows.size < 50,
                     onClick = { rows = rows + ("" to "") },
@@ -259,12 +286,17 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
                 )
             } else {
                 Spacer(Modifier.height(4.dp))
-                Text("Редактировать словарь может владелец или админ", color = c.text3, fontSize = 11.sp)
+                Text(stringResource(R.string.commands_readonly), color = c.text3, fontSize = 11.sp)
             }
 
             if (state.builtinCommands.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
-                Text("Встроенные", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    stringResource(R.string.commands_builtin),
+                    color = c.text3,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                )
                 Spacer(Modifier.height(4.dp))
                 Column(Modifier.heightIn(max = 200.dp).verticalScroll(rememberScrollState())) {
                     state.builtinCommands.forEach { cmd -> CommandRefRow("/${cmd.key}", cmd.description) }
@@ -274,10 +306,10 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 if (canManage) {
-                    TButton("Отмена", kind = TButtonKind.Secondary, onClick = onDismiss)
+                    TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = onDismiss)
                     Spacer(Modifier.width(8.dp))
                     TButton(
-                        "Сохранить",
+                        stringResource(R.string.common_save),
                         enabled = canSave,
                         onClick = {
                             vm.saveCustomCommands(
@@ -287,7 +319,7 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
                         },
                     )
                 } else {
-                    TButton("Готово", onClick = onDismiss)
+                    TButton(stringResource(R.string.common_done), onClick = onDismiss)
                 }
             }
         }
@@ -326,8 +358,13 @@ private fun PrefixModeRow() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
-            Text("Короткие префиксы", color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-            Text("Сырой префикс («T») вместо понятного имени", color = c.text3, fontSize = 11.sp)
+            Text(
+                stringResource(R.string.tags_prefix_mode),
+                color = c.text2,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(stringResource(R.string.tags_prefix_mode_hint), color = c.text3, fontSize = 11.sp)
         }
         Spacer(Modifier.width(8.dp))
         TSwitch(
@@ -361,7 +398,11 @@ private fun TagRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (editing) {
                 Box(Modifier.weight(1f)) {
-                    TTextField(value = nameEdit, onValueChange = { nameEdit = it }, placeholder = "Имя тега")
+                    TTextField(
+                        value = nameEdit,
+                        onValueChange = { nameEdit = it },
+                        placeholder = stringResource(R.string.tags_rename_hint),
+                    )
                 }
                 Spacer(Modifier.width(6.dp))
                 IonIconButton(
@@ -390,7 +431,7 @@ private fun TagRow(
                 IonIconButton(Ion.TRASH, onClick = { confirmDelete = true }, boxSize = 30.dp, iconSize = 15.dp, tint = c.text3)
                 TConfirmPopover(
                     expanded = confirmDelete,
-                    message = "Удалить тег? Он снимется со всех задач.",
+                    message = stringResource(R.string.tags_delete_confirm),
                     onConfirm = {
                         confirmDelete = false
                         vm.deleteTag(tag.id)

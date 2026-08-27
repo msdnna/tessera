@@ -4,19 +4,31 @@
 // settle on the last one. Used by AppConnectionOverlay (server slow) and for
 // longer scoped operations (e.g. GitLab sync). Renders fixed/full-screen so it
 // sits above whatever triggered it (modals included).
-import { ref, watch, onUnmounted } from 'vue'
+import { computed, ref, watch, onUnmounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+
+const { t } = useI18n()
 
 const props = defineProps({
   show: { type: Boolean, default: false },
-  // Captions to cross-fade through; stays on the last once reached.
-  messages: { type: Array, default: () => ['Загружаем…'] },
+  // Captions to cross-fade through; stays on the last once reached. Empty by
+  // default so the fallback below can come from the catalogue: a Russian default
+  // here would never be empty, so no in-template fallback could ever fire — the
+  // trap that left ConfirmByName and DocEditor untranslatable (#2799).
+  messages: { type: Array, default: () => [] },
   size: { type: Number, default: 66 },
   interval: { type: Number, default: 3000 },
   // contained: absolute-fill the nearest positioned ancestor (e.g. dim only a
   // modal body) instead of covering the whole viewport.
   contained: { type: Boolean, default: false },
 })
+
+// Resolved per render, not at setup: the two callers that pass no captions
+// (the milestones screen, the GitLab journal) must follow a language switch.
+const captions = computed(() =>
+  props.messages.length ? props.messages : [t('app.loader.default')],
+)
 
 const index = ref(0)
 let timer = null
@@ -29,9 +41,9 @@ function stop() {
 function start() {
   stop()
   index.value = 0
-  if (props.messages.length < 2) return
+  if (captions.value.length < 2) return
   timer = setInterval(() => {
-    if (index.value < props.messages.length - 1) index.value += 1
+    if (index.value < captions.value.length - 1) index.value += 1
     else stop()
   }, props.interval)
 }
@@ -49,7 +61,7 @@ onUnmounted(stop)
       <div class="lo-box">
         <tessera-spinner :size="size" />
         <transition name="lo-cap" mode="out-in">
-          <div :key="index" class="lo-cap">{{ messages[index] }}</div>
+          <div :key="index" class="lo-cap">{{ captions[index] }}</div>
         </transition>
       </div>
     </div>

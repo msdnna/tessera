@@ -1,0 +1,52 @@
+{
+  "download": {
+    "title": "Download the app",
+    "forPlatform": "Download for {platform}",
+    "otherPlatforms": "Other platforms",
+    "recommended": "recommended",
+    "versionTag": "v{version}",
+    "format": {
+      "appimage": "AppImage",
+      "deb": ".deb (Debian / Ubuntu)",
+      "rpm": ".rpm (Fedora / openSUSE)",
+      "exe": "Installer (.exe)",
+      "apk": "APK"
+    }
+  },
+  "update": {
+    "title": "An update is available",
+    "text": "A new version of Tessera has been downloaded",
+    "reload": "Update",
+    "reloading": "Updating…",
+    "postpone": "Later"
+  },
+  "version": {
+    "web": "Client",
+    "api": "Server",
+    "commit": "commit {commit}",
+    "built": "built {date}"
+  },
+  "connection": {
+    "loading": "Loading",
+    "offlineTitle": "No connection to the server",
+    "offlineSub": "Check your internet connection and try again.",
+    "retry": "Try again"
+  },
+  "whatsNew": {
+    "title": "What's new",
+    "sub": "The update has been applied — here is what changed",
+    "gotIt": "Got it",
+    "historyTitle": "Changelog",
+    "historySub": "All Tessera updates",
+    "close": "Close"
+  },
+  "device": {
+    "desktop": "Desktop app ({os})",
+    "desktopOs": "desktop",
+    "browser": "Browser ({browser})",
+    "browserName": "browser"
+  },
+  "loader": {
+    "default": "Loading…"
+  }
+}

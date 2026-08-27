@@ -1,0 +1,125 @@
+{
+  "app": {
+    "name": "Tessera"
+  },
+  "action": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "create": "Create",
+    "edit": "Edit",
+    "delete": "Delete",
+    "retry": "Retry",
+    "search": "Search",
+    "more": "More"
+  },
+  "priority": {
+    "none": "No priority",
+    "low": "Low",
+    "normal": "Normal",
+    "high": "High",
+    "urgent": "Urgent"
+  },
+  "duration": {
+    "hm": "{h} h {m} m",
+    "ms": "{m} m {s} s",
+    "s": "{s} s"
+  },
+  "state": {
+    "loading": "Loading…",
+    "empty": "Empty",
+    "saved": "Saved"
+  },
+  "confirm": {
+    "deleteTitle": "Confirm deletion",
+    "ask": "Type {name} to confirm:",
+    "namePlaceholder": "Name"
+  },
+  "answer": {
+    "yes": "Yes",
+    "no": "No"
+  },
+  "language": {
+    "ru": "Русский",
+    "en": "English"
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "email": "Email",
+      "emailPlaceholder": "you{'@'}example.com",
+      "password": "Password",
+      "submit": "Sign in",
+      "or": "or",
+      "gitlab": "Sign in with GitLab",
+      "gitlabWaiting": "Waiting for confirmation in the browser…",
+      "forgot": "Forgot your password?",
+      "noAccount": "No account?",
+      "register": "Sign up"
+    },
+    "register": {
+      "title": "Sign up",
+      "name": "Name",
+      "namePlaceholder": "Your name",
+      "passwordPlaceholder": "at least 8 characters",
+      "submit": "Create account",
+      "gitlab": "Continue with GitLab",
+      "haveAccount": "Already have an account?",
+      "login": "Sign in"
+    },
+    "forgot": {
+      "title": "Password recovery",
+      "submit": "Send the link",
+      "sent": "If an account with this address exists, we have sent it a password reset link.",
+      "back": "Back to sign-in"
+    },
+    "reset": {
+      "title": "New password",
+      "noToken": "This link is invalid — the token is missing.",
+      "done": "Password changed. Redirecting to sign-in…",
+      "password": "New password (≥ 8)",
+      "confirm": "Repeat the password",
+      "submit": "Save password",
+      "toLogin": "To sign-in"
+    },
+    "verify": {
+      "title": "Confirmation",
+      "pending": "Confirming…",
+      "ok": "Email confirmed. Thank you!",
+      "fail": "This link is invalid or has expired."
+    },
+    "invite": {
+      "title": "Invitation",
+      "pending": "Accepting the invitation…",
+      "ok": "Done! You have joined the workspace.",
+      "fail": "The invitation is invalid, has expired or was meant for another address."
+    },
+    "oauth": {
+      "title": "Sign in with GitLab",
+      "finishing": "Finishing the sign-in…"
+    },
+    "toHome": "Go to Home",
+    "validation": {
+      "emailRequired": "Enter your email",
+      "emailInvalid": "Enter a valid email",
+      "passwordRequired": "Enter your password",
+      "nameRequired": "Enter your name",
+      "passwordTooShort": "At least 8 characters"
+    },
+    "oauthError": {
+      "generic": "Could not sign in with GitLab.",
+      "state_mismatch": "The sign-in session has expired. Please try again.",
+      "not_configured": "Sign-in with GitLab is not configured.",
+      "account_disabled": "This account is deactivated.",
+      "exchange_failed": "Could not authorize with GitLab.",
+      "userinfo_failed": "Could not fetch the GitLab profile.",
+      "browserOpen": "Could not open the browser to sign in with GitLab.",
+      "noReturn": "Could not return to the app. Check that tessera:// links open in Tessera."
+    }
+  },
+  "secret": {
+    "clearedPlaceholder": "will be cleared on save",
+    "undoClear": "Undo the clearing",
+    "clear": "Clear the stored value"
+  }
+}

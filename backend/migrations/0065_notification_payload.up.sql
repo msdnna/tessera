@@ -1,0 +1,14 @@
+-- Structured notification content next to the pre-rendered `text` (#2801).
+--
+-- `text` holds a Russian sentence built on the server, so a notification could
+-- never be shown in another language. From here the server writes the facts
+-- (which event, who, which task, which fields changed) into `payload` and the
+-- client renders the sentence in the reader's language. `text` keeps being
+-- filled as a legacy fallback: rows written before this migration have an empty
+-- payload, and old clients (Android until stage 7) still read `text` only.
+--
+-- Shape: {"event":"task_updated","actor":"Иван","task_number":42,"fields":[…]}
+-- — `event` is the render key, everything else is that key's placeholders. It
+-- is deliberately not a typed set of columns: every kind carries different
+-- facts, and adding one must not mean a migration.
+ALTER TABLE notifications ADD COLUMN payload jsonb NOT NULL DEFAULT '{}'::jsonb;

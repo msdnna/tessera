@@ -1,6 +1,7 @@
 import { Node, mergeAttributes } from '@tiptap/core'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import DocPdf from '@/components/documents/DocPdf.vue'
+import { i18n } from '@/i18n'
 
 /**
  * PdfEmbed is the block an imported or dropped PDF becomes (#2733).
@@ -49,7 +50,7 @@ export const PdfEmbed = Node.create({
   },
 
   renderHTML({ HTMLAttributes, node }) {
-    const label = node.attrs.name || 'документ.pdf'
+    const label = node.attrs.name || i18n.global.t('documents.doc.pdfFallbackName')
     return [
       'div',
       mergeAttributes(HTMLAttributes, { 'data-pdf-embed': '' }),
@@ -73,7 +74,11 @@ export const PdfEmbed = Node.create({
           if (!pdf?.src) return false
           return commands.insertContent({
             type: this.name,
-            attrs: { src: pdf.src, name: pdf.name || 'документ.pdf', size: Number(pdf.size) || 0 },
+            attrs: {
+              src: pdf.src,
+              name: pdf.name || i18n.global.t('documents.doc.pdfFallbackName'),
+              size: Number(pdf.size) || 0,
+            },
           })
         },
     }

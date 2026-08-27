@@ -79,6 +79,17 @@ type Config struct {
 	MaxBodyBytes       int64
 	MaxUploadBytes     int64
 	MaxAttachmentBytes int64
+	// Optional error/performance telemetry (Sentry). All empty by default:
+	// a blank SentryDSN leaves the SDK uninitialised and every capture path a
+	// no-op, and a blank SentryFrontendDSN tells the browser not to load its
+	// own SDK at all. The two DSNs are separate because a Sentry project is
+	// per-platform — backend events belong to a Go project, browser events to a
+	// JavaScript one, and they carry different sample rates.
+	SentryDSN                string
+	SentryEnv                string
+	SentryTracesRate         float64
+	SentryFrontendDSN        string
+	SentryFrontendTracesRate float64
 }
 
 // Body-size defaults, also used as the fallback when a Config is built
@@ -177,6 +188,20 @@ func New() *Config {
 	desktopOrigins := splitCSV(getEnv("DESKTOP_CORS_ORIGINS",
 		"tauri://localhost,http://tauri.localhost,https://tauri.localhost"))
 
+	// Sentry's environment tag falls back to APP_ENV so a deployment names its
+	// environment once; SENTRY_ENV exists only to override it. Blank counts as
+	// unset here rather than as an answer — compose passes the whole optional
+	// block through as SENTRY_ENV=${SENTRY_ENV:-}, so in a container the variable
+	// is present-but-empty whenever the operator hasn't set it, and a plain
+	// LookupEnv fallback would tag every production event with "".
+	sentryEnv := strings.TrimSpace(os.Getenv("SENTRY_ENV"))
+	if sentryEnv == "" {
+		sentryEnv = strings.TrimSpace(os.Getenv("APP_ENV"))
+	}
+	if sentryEnv == "" {
+		sentryEnv = "development"
+	}
+
 	return &Config{
 		DatabaseURL:    dbURL,
 		Port:           getEnv("PORT", "8080"),
@@ -204,6 +229,15 @@ func New() *Config {
 		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
 		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
 		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),
+
+		SentryDSN: strings.TrimSpace(os.Getenv("SENTRY_DSN")),
+		SentryEnv: sentryEnv,
+		// Server transactions are cheap and low-volume for a self-hosted
+		// tracker, so sample all of them; browser transactions include every
+		// page load and route change, hence the far lower default.
+		SentryTracesRate:         getEnvRate("SENTRY_TRACES_SAMPLE_RATE", 1.0),
+		SentryFrontendDSN:        strings.TrimSpace(os.Getenv("SENTRY_FRONTEND_DSN")),
+		SentryFrontendTracesRate: getEnvRate("SENTRY_FRONTEND_TRACES_SAMPLE_RATE", 0.1),
 	}
 }
 
@@ -254,6 +288,30 @@ func getEnvBool(key string, fallback bool) bool {
 		return fallback
 	}
 	return b
+}
+
+// getEnvRate parses a sample rate and clamps it to [0,1] — the range the Sentry
+// SDK accepts. An unreadable value keeps the default rather than failing the
+// boot: a typo in a telemetry knob must not cost the operator their API.
+func getEnvRate(key string, fallback float64) float64 {
+	v, ok := os.LookupEnv(key)
+	if !ok || strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
+	if err != nil {
+		log.Printf("WARNING: %s=%q is not a number — keeping %.2f", key, v, fallback)
+		return fallback
+	}
+	switch {
+	case f < 0:
+		log.Printf("WARNING: %s=%q is below 0 — clamping to 0 (tracing off)", key, v)
+		return 0
+	case f > 1:
+		log.Printf("WARNING: %s=%q is above 1 — clamping to 1 (sample everything)", key, v)
+		return 1
+	}
+	return f
 }
 
 // getEnvBytes parses a byte count, rejecting non-positive values (a zero limit

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NModal, NCard, NInput, NButton, NIcon, NTooltip, useMessage } from 'naive-ui'
 import { AddOutline, TrashOutline, ArrowUpOutline, ArrowDownOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
@@ -16,6 +17,7 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:show'])
 
+const { t } = useI18n()
 const store = useWorkspacesStore()
 const message = useMessage()
 const saving = ref(false)
@@ -41,11 +43,12 @@ const builtinKeys = computed(() => new Set(builtin.value.map((c) => c.key)))
 // first bad key, so catching it here keeps the user from losing the other rows.
 function rowError(row, i) {
   const key = canonCommandKey(row.key)
-  if (!key) return 'пустой ключ'
-  if (!isValidCommandKey(key)) return 'латиница, цифры, _ и -'
-  if (builtinKeys.value.has(key)) return 'встроенная команда'
-  if (rows.value.some((r, j) => j < i && canonCommandKey(r.key) === key)) return 'дубль'
-  if (row.description.length > 200) return 'описание длиннее 200 символов'
+  if (!key) return t('shell.commands.error.empty')
+  if (!isValidCommandKey(key)) return t('shell.commands.error.charset')
+  if (builtinKeys.value.has(key)) return t('shell.commands.error.builtin')
+  if (rows.value.some((r, j) => j < i && canonCommandKey(r.key) === key))
+    return t('shell.commands.error.duplicate')
+  if (row.description.length > 200) return t('shell.commands.error.tooLong')
   return ''
 }
 const errors = computed(() => rows.value.map((r, i) => rowError(r, i)))
@@ -88,13 +91,9 @@ async function save() {
 
 <template>
   <n-modal :show="show" @update:show="$emit('update:show', $event)">
-    <n-card class="cmd-modal" title="Команды редактора" :bordered="false" role="dialog">
+    <n-card class="cmd-modal" :title="t('shell.commands.title')" :bordered="false" role="dialog">
       <div class="cmd-body">
-        <p class="cmd-hint">
-          Свои команды только подсказываются в редакторе и остаются в тексте комментария — выполняет
-          их адресат, а не Tessera. Встроенные команды ниже выполняются сервером и из текста
-          вырезаются.
-        </p>
+        <p class="cmd-hint">{{ t('shell.commands.hint') }}</p>
 
         <div v-if="rows.length" class="cmd-rows">
           <div v-for="(row, i) in rows" :key="i" class="cmd-row">
@@ -111,7 +110,7 @@ async function save() {
             </div>
             <n-input
               v-model:value="row.description"
-              placeholder="Одобрить план"
+              :placeholder="t('shell.commands.descPlaceholder')"
               :maxlength="200"
               class="cmd-desc"
             />
@@ -134,7 +133,7 @@ async function save() {
             </div>
           </div>
         </div>
-        <p v-else class="cmd-empty">Своих команд пока нет — подсказки покажут только встроенные.</p>
+        <p v-else class="cmd-empty">{{ t('shell.commands.empty') }}</p>
 
         <n-button
           tertiary
@@ -144,11 +143,11 @@ async function save() {
           @click="addRow"
         >
           <template #icon><n-icon :component="AddOutline" /></template>
-          Добавить команду
+          {{ t('shell.commands.add') }}
         </n-button>
 
         <div class="cmd-builtin">
-          <div class="cmd-blabel">Встроенные команды ({{ builtin.length }})</div>
+          <div class="cmd-blabel">{{ t('shell.commands.builtin', { count: builtin.length }) }}</div>
           <div class="cmd-bgrid">
             <n-tooltip v-for="c in builtin" :key="c.key" :disabled="!c.example">
               <template #trigger>
@@ -162,9 +161,11 @@ async function save() {
 
       <template #footer>
         <div class="cmd-foot">
-          <n-button tertiary @click="$emit('update:show', false)">Отмена</n-button>
+          <n-button tertiary @click="$emit('update:show', false)">
+            {{ t('common.action.cancel') }}
+          </n-button>
           <n-button type="primary" :loading="saving" :disabled="!canSave" @click="save">
-            Сохранить
+            {{ t('common.action.save') }}
           </n-button>
         </div>
       </template>

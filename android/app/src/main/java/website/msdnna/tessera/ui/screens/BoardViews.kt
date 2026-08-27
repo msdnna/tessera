@@ -1,8 +1,10 @@
 package website.msdnna.tessera.ui.screens
 
+import android.content.res.Resources
 import android.graphics.Paint
 import android.graphics.Typeface
 import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
@@ -97,7 +99,11 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -112,6 +118,7 @@ import java.util.Calendar
 import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.TestTags
@@ -150,18 +157,33 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
+import website.msdnna.tessera.util.isReviewColumn
 import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
 import website.msdnna.tessera.util.shortDate
 
-/** A kanban lane: title, swatch, count, cards, and (status lanes) a + button. */
-private class Lane(val id: String, val title: String, val color: String?, val tasks: List<Task>, val canAdd: Boolean)
-
-/** Column names matching this get the ⅔-pie review status glyph (web REVIEW_RE parity). */
-private val REVIEW_RE = Regex("рассмотр|ревью|review|проверк", RegexOption.IGNORE_CASE)
+/**
+ * A kanban lane: title, swatch, count, cards, and (status lanes) a + button.
+ *
+ * [title] — подпись для читателя: у засеянной колонки она собрана из ресурсов по
+ * `name_key`, у остальных это имя с сервера. Значок статуса выбирается не по ней, а
+ * по [nameKey] с откатом на собственное имя колонки ([rawTitle]): таблица слов в
+ * `isReviewColumn` сверяется с тем, что реально лежит в строке (#2800). У дорожек,
+ * которые колонками не являются (теги, этапы), оба поля совпадают с подписью.
+ */
+private class Lane(
+    val id: String,
+    val title: String,
+    val color: String?,
+    val tasks: List<Task>,
+    val canAdd: Boolean,
+    val nameKey: String? = null,
+    val rawTitle: String = title,
+)
 
 /**
  * A collapsed kanban column: a narrow 44dp strip with a chevron, the card count
@@ -255,6 +277,14 @@ fun KanbanView(
     // whole board on every drag frame (a drag mutates only drag state, not the
     // inputs below). Memoise on the actual inputs so a drag — or any unrelated
     // recomposition — reuses the cached lanes instead of re-sorting 100s of cards.
+    //
+    // Подписи «сборных» дорожек — тоже ключи memo: без них переключение языка не
+    // пересобрало бы кэш, и «Без тега» / «Без этапа» остались бы на прежнем языке.
+    val noTagLabel = stringResource(R.string.board_lane_no_tag)
+    val noMilestoneLabel = stringResource(R.string.task_milestone_none)
+    // Ресурсы — тоже ключ memo: подписи засеянных колонок собираются из них, а при
+    // смене языка AppLocale подставляет другой объект Resources (см. columnCaption).
+    val res = LocalResources.current
     val lanes = remember(
         state.groupByTag,
         state.groupByMilestone,
@@ -265,11 +295,14 @@ fun KanbanView(
         state.milestones,
         state.filter,
         state.sortLevels,
+        noTagLabel,
+        noMilestoneLabel,
+        res,
     ) {
         when {
-            state.groupByMilestone -> milestoneLanes(state)
-            state.groupByTag -> tagLanes(state)
-            else -> columnLanes(state)
+            state.groupByMilestone -> milestoneLanes(state, noMilestoneLabel)
+            state.groupByTag -> tagLanes(state, noTagLabel)
+            else -> columnLanes(state, res)
         }
     }
     val scrollState = rememberScrollState()
@@ -447,7 +480,7 @@ fun KanbanView(
                                         state.groupByTag -> Ion.PRICETAG
                                         lane.id == state.doneColumnId -> Ion.STATUS_DONE
                                         lane.id == state.sortedColumns.firstOrNull()?.id -> Ion.STATUS_TODO
-                                        REVIEW_RE.containsMatchIn(lane.title) -> Ion.STATUS_REVIEW
+                                        isReviewColumn(lane.nameKey, lane.rawTitle) -> Ion.STATUS_REVIEW
                                         else -> Ion.STATUS_PROGRESS
                                     }
                                     IonIcon(laneIcon, size = 16.dp, tint = laneColor, gradient = laneHasColor)
@@ -479,9 +512,10 @@ fun KanbanView(
                                     // Σ estimate of the milestone's cards (web parity: shown
                                     // only when grouped «По этапам», in the board's unit).
                                     if (state.groupByMilestone) {
-                                        val eff = remember(lane.tasks, state.estimation) {
+                                        val res = LocalResources.current
+                                        val eff = remember(lane.tasks, state.estimation, res) {
                                             Estimation.sum(lane.tasks.map { it.estimate })
-                                                ?.let { Estimation.format(it, state.estimation).ifBlank { null } }
+                                                ?.let { Estimation.format(res, it, state.estimation).ifBlank { null } }
                                         }
                                         if (eff != null) {
                                             Text(
@@ -547,7 +581,7 @@ fun KanbanView(
                                                 }
                                                 if (addingColumn == lane.id) {
                                                     InlineCreateField(
-                                                        placeholder = "Название задачи, Enter",
+                                                        placeholder = stringResource(R.string.board_new_task_hint),
                                                         onCommit = {
                                                             vm.createTask(lane.id, it)
                                                             addingColumn = null
@@ -557,7 +591,7 @@ fun KanbanView(
                                                     )
                                                 } else {
                                                     CreateText(
-                                                        "+ СОЗДАТЬ ЗАДАЧУ",
+                                                        stringResource(R.string.board_add_task),
                                                         modifier = Modifier.testTag(TestTags.columnAddTask(lane.id)),
                                                     ) { addingColumn = lane.id }
                                                 }
@@ -582,7 +616,7 @@ fun KanbanView(
                                 .padding(8.dp),
                         ) {
                             InlineCreateField(
-                                placeholder = "Название колонки, Enter",
+                                placeholder = stringResource(R.string.board_new_column_hint),
                                 onCommit = {
                                     vm.createColumn(it)
                                     addingNewColumn = false
@@ -602,7 +636,7 @@ fun KanbanView(
                             contentAlignment = Alignment.Center,
                         ) {
                             Text(
-                                "+ СОЗДАТЬ КОЛОНКУ",
+                                stringResource(R.string.board_add_column),
                                 color = Tessera.colors.text3,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
@@ -630,13 +664,13 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
     Box {
         IonIconButton(Ion.ELLIPSIS_H, onClick = { menu = true }, boxSize = 28.dp, iconSize = 16.dp, tint = c.text3)
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            TMenuItem("Переименовать", icon = Ion.PENCIL, onClick = {
+            TMenuItem(stringResource(R.string.common_rename), icon = Ion.PENCIL, onClick = {
                 menu = false
                 onRename()
             })
             TMenuDivider()
             Text(
-                "Цвет колонки",
+                stringResource(R.string.board_column_color),
                 color = c.text3,
                 fontSize = 12.sp,
                 modifier = Modifier.padding(start = 14.dp, top = 6.dp, bottom = 4.dp),
@@ -664,19 +698,19 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Завершающая", color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.board_column_done), color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
                 TSwitch(checked = isDone, onCheckedChange = { vm.setDoneColumn(if (isDone) null else lane.id) })
             }
             TMenuDivider()
-            TMenuItem("Удалить колонку", icon = Ion.TRASH, danger = true, onClick = {
+            TMenuItem(stringResource(R.string.board_column_delete), icon = Ion.TRASH, danger = true, onClick = {
                 menu = false
                 confirmDelete = true
             })
         }
         TConfirmPopover(
             expanded = confirmDelete,
-            message = "Удалить «${lane.title}» и задачи в ней?",
-            confirmText = "Удалить",
+            message = stringResource(R.string.board_column_delete_confirm, lane.title),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 confirmDelete = false
                 vm.deleteColumn(lane.id)
@@ -708,6 +742,7 @@ private fun CreateText(label: String, modifier: Modifier = Modifier, onClick: ()
 @Composable
 fun BoardListView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
     val c = Tessera.colors
+    val res = LocalResources.current
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(12.dp),
@@ -719,7 +754,7 @@ fun BoardListView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) ->
                 Row(Modifier.padding(top = 8.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                     ColorDot(parseHexColor(col.color, c.text3))
                     Spacer(Modifier.width(8.dp))
-                    Text(col.name, color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    Text(columnCaption(res, col), color = c.text2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     Spacer(Modifier.width(6.dp))
                     Text("${colTasks.size}", color = c.text3, fontSize = 12.sp)
                 }
@@ -730,12 +765,6 @@ fun BoardListView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) ->
         }
     }
 }
-
-private val CalMonths = listOf(
-    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
-)
-private val CalWeekdays = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
 
 /** One day cell of the month grid. */
 private class CalCell(val key: String, val day: Int, val inMonth: Boolean)
@@ -767,6 +796,11 @@ private fun monthCells(year: Int, month0: Int): List<CalCell> {
 @Composable
 fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
     val c = Tessera.colors
+    // Названия читаются в композиции, а не из `val` уровня файла: список в module-level
+    // `val` вычислился бы один раз при загрузке класса и застыл бы на языке первого
+    // рендера — переключение языка календарь бы уже не тронуло.
+    val calMonths = stringArrayResource(R.array.calendar_months)
+    val calWeekdays = stringArrayResource(R.array.calendar_weekdays_short)
     val today = remember { Calendar.getInstance() }
     val todayKey = remember { dayKey(today) }
     var cursor by remember { mutableStateOf(today.get(Calendar.YEAR) to today.get(Calendar.MONTH)) }
@@ -801,7 +835,7 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             ) {
                 IonIconButton(Ion.CHEVRON_FORWARD, onClick = { shift(-1) }, boxSize = 32.dp, iconSize = 15.dp, tint = c.text2, modifier = Modifier.rotate(180f))
                 Text(
-                    "Сегодня",
+                    stringResource(R.string.board_today),
                     color = c.text1,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
@@ -811,7 +845,7 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                 IonIconButton(Ion.CHEVRON_FORWARD, onClick = { shift(1) }, boxSize = 32.dp, iconSize = 15.dp, tint = c.text2)
             }
             Spacer(Modifier.width(12.dp))
-            Text("${CalMonths[month]} $year", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text("${calMonths[month]} $year", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         }
 
         // Grid: 1px gaps over a border-coloured backing render the grid lines.
@@ -820,7 +854,7 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             verticalArrangement = Arrangement.spacedBy(1.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                CalWeekdays.forEach { wd ->
+                calWeekdays.forEach { wd ->
                     Box(Modifier.weight(1f).background(c.surfaceAlt).padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
                         Text(wd, color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
@@ -836,7 +870,13 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         }
 
         if (undated.isNotEmpty()) {
-            Text("Без срока", color = c.text3, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 14.dp, bottom = 6.dp))
+            Text(
+                stringResource(R.string.board_calendar_undated),
+                color = c.text3,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.padding(top = 14.dp, bottom = 6.dp),
+            )
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 undated.forEach { task -> TaskCard(task = task, state = state, vm = vm, onOpen = onOpenTask) }
             }
@@ -900,13 +940,21 @@ private fun CalChip(task: Task, onOpenTask: (Task) -> Unit) {
 
 // ── Eisenhower matrix view ────────────────────────────────────────────────
 
-private class EisenQuad(val index: Int, val title: String, val hint: String, val accent: Color)
+/** Квадрант матрицы. Подписи — **id ресурсов**, а не готовые строки: список лежит на
+ *  уровне файла и вычисляется один раз, так что готовый текст в нём застыл бы на языке
+ *  первого рендера. Id постоянны, строка разрешается в композиции. */
+private class EisenQuad(
+    val index: Int,
+    @param:StringRes val titleRes: Int,
+    @param:StringRes val hintRes: Int,
+    val accent: Color,
+)
 
 private val EisenhowerQuads = listOf(
-    EisenQuad(0, "Срочно и важно", "Сделать сейчас", Color(0xFFEF5D5D)),
-    EisenQuad(1, "Важно, не срочно", "Запланировать", Color(0xFF5B8DEF)),
-    EisenQuad(2, "Срочно, не важно", "Делегировать", Color(0xFFE6A43B)),
-    EisenQuad(3, "Не срочно, не важно", "Может подождать", Color(0xFF9AA0AA)),
+    EisenQuad(0, R.string.board_matrix_q0_title, R.string.board_matrix_q0_hint, Color(0xFFEF5D5D)),
+    EisenQuad(1, R.string.board_matrix_q1_title, R.string.board_matrix_q1_hint, Color(0xFF5B8DEF)),
+    EisenQuad(2, R.string.board_matrix_q2_title, R.string.board_matrix_q2_hint, Color(0xFFE6A43B)),
+    EisenQuad(3, R.string.board_matrix_q3_title, R.string.board_matrix_q3_hint, Color(0xFF9AA0AA)),
 )
 
 private const val EISEN_URGENT_DAYS = 7
@@ -963,10 +1011,15 @@ fun BoardMatrixView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) 
                 Column(Modifier.fillMaxSize()) {
                     // Column headers: Срочно | Несрочно (offset past the row-label gutter).
                     Row(Modifier.fillMaxWidth().padding(start = 20.dp, bottom = 4.dp)) {
-                        MatrixColHeader("Срочно", c.text1, Modifier.weight(1f))
-                        MatrixColHeader("Несрочно", c.text2, Modifier.weight(1f))
+                        MatrixColHeader(stringResource(R.string.board_matrix_urgent), c.text1, Modifier.weight(1f))
+                        MatrixColHeader(stringResource(R.string.board_matrix_not_urgent), c.text2, Modifier.weight(1f))
                     }
-                    listOf(Triple("Важно", 0, 1), Triple("Неважно", 2, 3)).forEach { (rowLabel, left, right) ->
+                    // Подписи строк собираются на рекомпозицию — в `val` уровня файла
+                    // они бы застыли на языке первого рендера.
+                    listOf(
+                        Triple(stringResource(R.string.board_matrix_important), 0, 1),
+                        Triple(stringResource(R.string.board_matrix_not_important), 2, 3),
+                    ).forEach { (rowLabel, left, right) ->
                         Row(Modifier.fillMaxWidth().weight(1f).padding(vertical = 4.dp)) {
                             Box(Modifier.width(20.dp).fillMaxHeight(), contentAlignment = Alignment.Center) {
                                 Text(
@@ -1048,8 +1101,15 @@ private fun QuadrantCell(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(quad.title, color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(quad.hint, color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(
+                    stringResource(quad.titleRes),
+                    color = c.text1,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(stringResource(quad.hintRes), color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text("${tasks.size}", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
             IonIconButton(if (expanded) Ion.CLOSE else Ion.EXPAND, onClick = onToggleExpand, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
@@ -1082,7 +1142,7 @@ private fun QuadrantCell(
         if (adding) {
             Box(Modifier.fillMaxWidth().padding(start = 8.dp, end = 8.dp, bottom = 8.dp)) {
                 InlineCreateField(
-                    placeholder = "Название задачи",
+                    placeholder = stringResource(R.string.task_title_placeholder),
                     onCommit = { title ->
                         vm.createTaskInQuadrant(title, quad.index)
                         adding = false
@@ -1140,7 +1200,7 @@ private fun MatrixCard(
                 overflow = TextOverflow.Ellipsis,
                 textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
             )
-            val due = shortDate(task.dueDate)
+            val due = shortDate(LocalResources.current, task.dueDate)
             if (task.number != null || due.isNotEmpty() || subs.isNotEmpty()) {
                 Row(Modifier.padding(top = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                     task.number?.let {
@@ -1194,7 +1254,7 @@ private fun MatrixCard(
             TDropdown(expanded = menu, onDismiss = { menu = false }) {
                 EisenhowerQuads.forEach { q ->
                     TMenuItem(
-                        label = q.title,
+                        label = stringResource(q.titleRes),
                         onClick = {
                             vm.setEisenhower(task.id, q.index)
                             menu = false
@@ -1208,7 +1268,7 @@ private fun MatrixCard(
                 }
                 if (task.eisenhowerQuadrant != null) {
                     TMenuDivider()
-                    TMenuItem(label = "Вернуть на авто", icon = Ion.REFRESH, onClick = {
+                    TMenuItem(label = stringResource(R.string.board_matrix_reset_auto), icon = Ion.REFRESH, onClick = {
                         vm.setEisenhower(task.id, null)
                         menu = false
                     })
@@ -1218,10 +1278,15 @@ private fun MatrixCard(
     }
 }
 
-private fun columnLanes(state: BoardUiState): List<Lane> =
-    state.sortedColumns.map { col -> Lane(col.id, col.name, col.color, state.visibleTasksIn(col.id), canAdd = true) }
+private fun columnLanes(state: BoardUiState, res: Resources): List<Lane> =
+    state.sortedColumns.map { col ->
+        Lane(
+            col.id, columnCaption(res, col), col.color, state.visibleTasksIn(col.id),
+            canAdd = true, nameKey = col.nameKey, rawTitle = col.name,
+        )
+    }
 
-private fun tagLanes(state: BoardUiState): List<Lane> {
+private fun tagLanes(state: BoardUiState, noTagLabel: String): List<Lane> {
     // In namespace mode only tags carrying the prefix become columns; "Без тега"
     // then collects tasks with no tag *in that namespace* (web `rebuildLists`).
     val tags: List<Tag> = state.tags.values
@@ -1232,19 +1297,19 @@ private fun tagLanes(state: BoardUiState): List<Lane> {
     }
     val tagIds = tags.map { it.id }.toSet()
     val untagged = state.applyFilterSort(state.tasks.filter { task -> task.tagIds.none { it in tagIds } })
-    return byTag + Lane("none", "Без тега", null, untagged, canAdd = false)
+    return byTag + Lane("none", noTagLabel, null, untagged, canAdd = false)
 }
 
 /** Milestone columns («По этапам»): one read-only lane per milestone (by position)
  *  plus a trailing «Без этапа» for the unassigned (web `rebuildLists` milestone mode). */
-private fun milestoneLanes(state: BoardUiState): List<Lane> {
+private fun milestoneLanes(state: BoardUiState, noMilestoneLabel: String): List<Lane> {
     val milestones = state.milestones.sortedBy { it.position }
     val byMs = milestones.map { m ->
         Lane(m.id, m.title, null, state.applyFilterSort(state.tasks.filter { it.milestoneId == m.id }), canAdd = false)
     }
     val msIds = milestones.map { it.id }.toSet()
     val none = state.applyFilterSort(state.tasks.filter { it.milestoneId == null || it.milestoneId !in msIds })
-    return byMs + Lane("none", "Без этапа", null, none, canAdd = false)
+    return byMs + Lane("none", noMilestoneLabel, null, none, canAdd = false)
 }
 
 /** Pixel x-positions (track-relative) of milestone due-dates inside the timeline window. */
@@ -1493,9 +1558,9 @@ private data class TlLaneHeaderRow(val lane: TLane) : TlBodyRow
 private data class TlTaskRow(val task: Task) : TlBodyRow
 
 /** Summed estimate of a lane's tasks, formatted in the board's unit, or null when none set. */
-private fun laneEffort(lane: TLane, state: BoardUiState): String? {
+private fun laneEffort(res: Resources, lane: TLane, state: BoardUiState): String? {
     val total = website.msdnna.tessera.util.Estimation.sum(lane.tasks.map { it.estimate }) ?: return null
-    return website.msdnna.tessera.util.Estimation.format(total, state.estimation).ifBlank { null }
+    return website.msdnna.tessera.util.Estimation.format(res, total, state.estimation).ifBlank { null }
 }
 
 @Composable
@@ -1599,8 +1664,13 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     }
     // Precompute day-cell metadata once per window — rebuilding Calendar objects for
     // every day on each zoom frame was the main pinch-lag culprit.
-    val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
-    val monthBands = remember(rangeStart, dayCount) { buildMonthBands(rangeStart, dayCount) }
+    // Подписи оси — тоже ключи: смена языка обязана пересобрать ячейки и полосы месяцев.
+    val axisMonths = tlMonths()
+    val axisWeekdays = tlWeekdays()
+    val dayCells = remember(rangeStart, dayCount, todayMs, axisWeekdays) {
+        buildDayCells(rangeStart, dayCount, todayMs, axisWeekdays)
+    }
+    val monthBands = remember(rangeStart, dayCount, axisMonths) { buildMonthBands(rangeStart, dayCount, axisMonths) }
     val weekBands = remember(rangeStart, dayCount, tier) {
         if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
     }
@@ -1608,7 +1678,15 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     // Swimlanes follow the shared composer-bar grouping (status / tag[+prefix]) —
     // no separate timeline control (mirrors web; avoids duplicate grouping).
     fun tagColor(hex: String?): Color? = hex?.takeIf { it.isNotBlank() }?.let { parseHexColor(it, c.primary) }
-    val lanes = remember(scheduled, state.groupMode, state.tagPrefix, state.tags, state.columns, state.members) {
+    // Подписи сборных дорожек — ключи memo, иначе смена языка не пересобрала бы кэш.
+    val noTagLabel = stringResource(R.string.board_lane_no_tag)
+    val unassignedLabel = stringResource(R.string.board_lane_unassigned)
+    val allTasksLabel = stringResource(R.string.board_lane_all_tasks)
+    val res = LocalResources.current
+    val lanes = remember(
+        scheduled, state.groupMode, state.tagPrefix, state.tags, state.columns, state.members,
+        noTagLabel, unassignedLabel, allTasksLabel, res,
+    ) {
         val mode = state.groupMode
         val members = state.membersMap
         val map = LinkedHashMap<String, Pair<Pair<String, Color?>, MutableList<Task>>>()
@@ -1616,7 +1694,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             map.getOrPut(key) { (label to color) to mutableListOf() }.second
         // Status grouping seeds lanes in column order so empty columns still show.
         if (mode == "status") {
-            for (col in state.sortedColumns) bucket(col.id, col.name, tagColor(col.color))
+            for (col in state.sortedColumns) bucket(col.id, columnCaption(res, col), tagColor(col.color))
         }
         for (t in scheduled) {
             when (mode) {
@@ -1626,20 +1704,24 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                         tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
                     }
                     val tag = id?.let { state.tags[it] }
-                    bucket(id ?: "∅", tag?.name ?: "Без тега", tagColor(tag?.color)).add(t)
+                    bucket(id ?: "∅", tag?.name ?: noTagLabel, tagColor(tag?.color)).add(t)
                 }
 
                 "assignee" -> {
                     val id = t.assigneeIds.firstOrNull()
                     val m = id?.let { members[it] }
-                    bucket(id ?: "∅", m?.name ?: "Не назначено", null).add(t)
+                    bucket(id ?: "∅", m?.name ?: unassignedLabel, null).add(t)
                 }
 
-                "none" -> bucket("all", "Все задачи", null).add(t)
+                "none" -> bucket("all", allTasksLabel, null).add(t)
 
                 else -> {
                     val col = state.sortedColumns.find { it.id == t.columnId }
-                    bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+                    bucket(
+                        t.columnId.ifBlank { "∅" },
+                        col?.let { columnCaption(res, it) } ?: "—",
+                        tagColor(col?.color),
+                    ).add(t)
                 }
             }
         }
@@ -1724,7 +1806,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             Box(
                 Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
                     .clickableNoRipple { scrollToToday() }.padding(horizontal = 12.dp, vertical = 6.dp),
-            ) { Text("Сегодня", color = c.text2, fontSize = 13.sp) }
+            ) { Text(stringResource(R.string.board_today), color = c.text2, fontSize = 13.sp) }
             Spacer(Modifier.width(8.dp))
             ZoomBtn("−") { zoomTo(dayW * 0.8f, viewportPx / 2f) }
             Spacer(Modifier.width(4.dp))
@@ -1744,10 +1826,12 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             }
             Spacer(Modifier.weight(1f))
             if (overdue > 0) {
-                TimelineCounter("$overdue просрочено", Color(0xFFE0533D), c.primary.copy(alpha = 0f))
+                TimelineCounter(stringResource(R.string.board_timeline_overdue, overdue), Color(0xFFE0533D), c.primary.copy(alpha = 0f))
                 Spacer(Modifier.width(6.dp))
             }
-            if (unscheduled.isNotEmpty()) TimelineCounter("${unscheduled.size} без дат", c.text3, c.surfaceAlt)
+            if (unscheduled.isNotEmpty()) {
+                TimelineCounter(stringResource(R.string.board_timeline_undated, unscheduled.size), c.text3, c.surfaceAlt)
+            }
         }
         Spacer(Modifier.height(8.dp))
 
@@ -1763,7 +1847,15 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                         .tlRowBorders(leftW, c.border, c.border)
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     contentAlignment = Alignment.BottomStart,
-                ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+                ) {
+                    Text(
+                        stringResource(R.string.board_timeline_task_column),
+                        color = c.text3,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
                 Box(Modifier.weight(1f).height(headH).onSizeChanged { viewportPx = it.width }.clipToBounds()) {
                     TimelineAxisCanvas(dayCells, monthBands, weekBands, tier, dayW, hScroll, Modifier.fillMaxSize())
                 }
@@ -1772,7 +1864,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
             // ── body (pinch-to-zoom; canPan=false so 1-finger scroll passes through) ──
             if (lanes.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
+                    Text(stringResource(R.string.board_timeline_empty), color = c.text3, fontSize = 14.sp)
                 }
             } else {
                 LazyColumn(Modifier.weight(1f).pinchZoom { z, cx, s -> applyZoom(z, cx, s) }) {
@@ -1791,7 +1883,12 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Без дат", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    stringResource(R.string.board_timeline_undated_header),
+                    color = c.text3,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Spacer(Modifier.width(8.dp))
                 unscheduled.forEach { t ->
                     val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
@@ -1950,8 +2047,13 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         val width = (dayW * ((rMs - lMs).toFloat() / TL_DAY_MS) - 2.dp).coerceAtLeast(3.dp)
         return left to width
     }
-    val dayCells = remember(rangeStart, dayCount, todayMs) { buildDayCells(rangeStart, dayCount, todayMs) }
-    val monthBands = remember(rangeStart, dayCount) { buildMonthBands(rangeStart, dayCount) }
+    // Подписи оси — тоже ключи: смена языка обязана пересобрать ячейки и полосы месяцев.
+    val axisMonths = tlMonths()
+    val axisWeekdays = tlWeekdays()
+    val dayCells = remember(rangeStart, dayCount, todayMs, axisWeekdays) {
+        buildDayCells(rangeStart, dayCount, todayMs, axisWeekdays)
+    }
+    val monthBands = remember(rangeStart, dayCount, axisMonths) { buildMonthBands(rangeStart, dayCount, axisMonths) }
     val weekBands = remember(rangeStart, dayCount, tier) {
         if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
     }
@@ -1971,14 +2073,21 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     // Swimlanes follow the shared composer grouping (status / tag[+prefix] /
     // assignee / none) — same as the timeline, so "Без группировки" (needed by Авто)
     // and "По исполнителю" work on the Gantt too.
-    val lanes = remember(orderedScheduled, state.groupMode, state.tagPrefix, state.tags, state.columns, state.members) {
+    val noTagLabel = stringResource(R.string.board_lane_no_tag)
+    val unassignedLabel = stringResource(R.string.board_lane_unassigned)
+    val allTasksLabel = stringResource(R.string.board_lane_all_tasks)
+    val res = LocalResources.current
+    val lanes = remember(
+        orderedScheduled, state.groupMode, state.tagPrefix, state.tags, state.columns, state.members,
+        noTagLabel, unassignedLabel, allTasksLabel, res,
+    ) {
         val mode = state.groupMode
         val members = state.membersMap
         val map = LinkedHashMap<String, Pair<Pair<String, Color?>, MutableList<Task>>>()
         fun bucket(key: String, label: String, color: Color?) =
             map.getOrPut(key) { (label to color) to mutableListOf() }.second
         if (mode == "status") {
-            for (col in state.sortedColumns) bucket(col.id, col.name, tagColor(col.color))
+            for (col in state.sortedColumns) bucket(col.id, columnCaption(res, col), tagColor(col.color))
         }
         for (t in orderedScheduled) {
             when (mode) {
@@ -1988,20 +2097,24 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                         tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
                     }
                     val tag = id?.let { state.tags[it] }
-                    bucket(id ?: "∅", tag?.name ?: "Без тега", tagColor(tag?.color)).add(t)
+                    bucket(id ?: "∅", tag?.name ?: noTagLabel, tagColor(tag?.color)).add(t)
                 }
 
                 "assignee" -> {
                     val id = t.assigneeIds.firstOrNull()
                     val m = id?.let { members[it] }
-                    bucket(id ?: "∅", m?.name ?: "Не назначено", null).add(t)
+                    bucket(id ?: "∅", m?.name ?: unassignedLabel, null).add(t)
                 }
 
-                "none" -> bucket("all", "Все задачи", null).add(t)
+                "none" -> bucket("all", allTasksLabel, null).add(t)
 
                 else -> {
                     val col = state.sortedColumns.find { it.id == t.columnId }
-                    bucket(t.columnId.ifBlank { "∅" }, col?.name ?: "—", tagColor(col?.color)).add(t)
+                    bucket(
+                        t.columnId.ifBlank { "∅" },
+                        col?.let { columnCaption(res, it) } ?: "—",
+                        tagColor(col?.color),
+                    ).add(t)
                 }
             }
         }
@@ -2150,7 +2263,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
             Box(
                 Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
                     .clickableNoRipple { scrollToToday() }.padding(horizontal = 12.dp, vertical = 6.dp),
-            ) { Text("Сегодня", color = c.text2, fontSize = 13.sp) }
+            ) { Text(stringResource(R.string.board_today), color = c.text2, fontSize = 13.sp) }
             Spacer(Modifier.width(8.dp))
             ZoomBtn("−") { zoomTo(dayW * 0.8f, viewportPx / 2f) }
             Spacer(Modifier.width(4.dp))
@@ -2170,14 +2283,20 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
             }
             Spacer(Modifier.weight(1f))
             if (overdue > 0) {
-                TimelineCounter("$overdue просрочено", Color(0xFFE0533D), c.primary.copy(alpha = 0f))
+                TimelineCounter(stringResource(R.string.board_timeline_overdue, overdue), Color(0xFFE0533D), c.primary.copy(alpha = 0f))
                 Spacer(Modifier.width(6.dp))
             }
             if (arrows.isNotEmpty()) {
-                TimelineCounter("${arrows.size} связей", c.text3, c.surfaceAlt)
+                TimelineCounter(
+                    pluralStringResource(R.plurals.board_timeline_links, arrows.size, arrows.size),
+                    c.text3,
+                    c.surfaceAlt,
+                )
                 Spacer(Modifier.width(6.dp))
             }
-            if (unscheduled.isNotEmpty()) TimelineCounter("${unscheduled.size} без дат", c.text3, c.surfaceAlt)
+            if (unscheduled.isNotEmpty()) {
+                TimelineCounter(stringResource(R.string.board_timeline_undated, unscheduled.size), c.text3, c.surfaceAlt)
+            }
         }
         Spacer(Modifier.height(8.dp))
 
@@ -2193,7 +2312,15 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                         .tlRowBorders(leftW, c.border, c.border)
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                     contentAlignment = Alignment.BottomStart,
-                ) { Text("Задача", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, maxLines = 1) }
+                ) {
+                    Text(
+                        stringResource(R.string.board_timeline_task_column),
+                        color = c.text3,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                    )
+                }
                 Box(Modifier.weight(1f).height(headH).onSizeChanged { viewportPx = it.width }.clipToBounds()) {
                     TimelineAxisCanvas(dayCells, monthBands, weekBands, tier, dayW, hScroll, Modifier.fillMaxSize())
                 }
@@ -2201,7 +2328,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
 
             if (lanes.isEmpty()) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Нет задач со сроками.\nЗадайте начало или срок в карточке.", color = c.text3, fontSize = 14.sp)
+                    Text(stringResource(R.string.board_timeline_empty), color = c.text3, fontSize = 14.sp)
                 }
             } else {
                 // Body = shared virtualized timeline rows + an arrow Canvas overlay.
@@ -2260,7 +2387,12 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("Без дат", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(
+                    stringResource(R.string.board_timeline_undated_header),
+                    color = c.text3,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                )
                 Spacer(Modifier.width(8.dp))
                 unscheduled.forEach { t ->
                     val accent = PriorityColors.getOrElse(t.priority) { PriorityColors[0] }
@@ -2292,12 +2424,12 @@ private fun TimelineCounter(text: String, fg: Color, bg: Color) {
 /** A month label spanning [span] consecutive day-cells starting at [startIdx]. */
 private data class TlMonthBand(val label: String, val startIdx: Int, val span: Int)
 
-private fun buildMonthBands(rangeStart: Long, dayCount: Int): List<TlMonthBand> {
+private fun buildMonthBands(rangeStart: Long, dayCount: Int, months: List<String>): List<TlMonthBand> {
     val out = ArrayList<TlMonthBand>()
     val cal = Calendar.getInstance()
     for (i in 0 until dayCount) {
         cal.timeInMillis = rangeStart + i * TL_DAY_MS
-        val label = "${TlMonths[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
+        val label = "${months[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
         val last = out.lastOrNull()
         if (last != null && last.label == label) out[out.lastIndex] = last.copy(span = last.span + 1)
         else out.add(TlMonthBand(label, i, 1))
@@ -2486,7 +2618,7 @@ private fun LazyListScope.timelineBodyItems(
                         )
                         Spacer(Modifier.width(6.dp))
                         Text("${lane.tasks.size}", color = c.text3, fontSize = 11.sp)
-                        laneEffort(lane, state)?.let { eff ->
+                        laneEffort(LocalResources.current, lane, state)?.let { eff ->
                             Spacer(Modifier.width(6.dp))
                             IonIcon(Ion.TIME, size = 11.dp, tint = c.text2)
                             Spacer(Modifier.width(3.dp))
@@ -2540,7 +2672,7 @@ private fun LazyListScope.timelineBodyItems(
                         ) {
                             Box(Modifier.offset(x = todayLeft).width(1.5.dp).fillMaxHeight().background(c.primary.copy(alpha = 0.4f)))
                             Estimation.toDays(t.estimate, state.estimation)?.let { gd ->
-                                val lbl = Estimation.format(t.estimate, state.estimation)
+                                val lbl = Estimation.format(LocalResources.current, t.estimate, state.estimation)
                                 GhostBar(barLeft, (dayW * gd.toFloat()).coerceAtLeast(dayW), accent, lbl)
                             }
                             Box(
@@ -2592,7 +2724,7 @@ private fun LazyListScope.timelineBodyItems(
 /** Precomputed per-day header metadata, built once per window (cheap zoom frames). */
 private data class TlDayCell(val dom: Int, val weekday: String, val weekend: Boolean, val isToday: Boolean)
 
-private fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long): List<TlDayCell> {
+private fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long, weekdays: List<String>): List<TlDayCell> {
     val out = ArrayList<TlDayCell>(dayCount)
     val cal = Calendar.getInstance()
     for (i in 0 until dayCount) {
@@ -2601,7 +2733,7 @@ private fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long): List<
         out.add(
             TlDayCell(
                 dom = cal.get(Calendar.DAY_OF_MONTH),
-                weekday = TlWeekdays[(dow + 5) % 7],
+                weekday = weekdays[(dow + 5) % 7],
                 weekend = dow == Calendar.SATURDAY || dow == Calendar.SUNDAY,
                 isToday = tlDayFloor(cal.timeInMillis) == todayMs,
             ),
@@ -2650,8 +2782,16 @@ private fun GhostBar(
     }
 }
 
-private val TlMonths = listOf("янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек")
-private val TlWeekdays = listOf("пн", "вт", "ср", "чт", "пт", "сб", "вс")
+/**
+ * Подписи оси таймлайна на языке профиля. Возвращается `List`, а не `Array`: список
+ * идёт ключом в `remember`, а у массива `equals` — это сравнение ссылок, то есть кэш
+ * дневных ячеек пересобирался бы на каждую рекомпозицию (и зум снова начал бы дёргаться).
+ */
+@Composable
+private fun tlMonths(): List<String> = stringArrayResource(R.array.dates_months_short).toList()
+
+@Composable
+private fun tlWeekdays(): List<String> = stringArrayResource(R.array.dates_weekdays_short).toList()
 
 // Zoom spans week-grouping (out) → hour-precision (in); `tierFor` picks the axis
 // granularity. Thresholds mirror web (dp ≈ web's logical px): below ~20 a 2-digit day

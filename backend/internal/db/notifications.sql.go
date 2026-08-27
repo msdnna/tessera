@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,18 +25,19 @@ func (q *Queries) CountUnreadNotifications(ctx context.Context, userID uuid.UUID
 }
 
 const createNotification = `-- name: CreateNotification :one
-INSERT INTO notifications (user_id, workspace_id, task_id, actor_id, kind, text)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, workspace_id, task_id, actor_id, kind, text, read_at, created_at
+INSERT INTO notifications (user_id, workspace_id, task_id, actor_id, kind, text, payload)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, user_id, workspace_id, task_id, actor_id, kind, text, read_at, created_at, payload
 `
 
 type CreateNotificationParams struct {
-	UserID      uuid.UUID  `json:"user_id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	TaskID      *uuid.UUID `json:"task_id"`
-	ActorID     *uuid.UUID `json:"actor_id"`
-	Kind        string     `json:"kind"`
-	Text        string     `json:"text"`
+	UserID      uuid.UUID       `json:"user_id"`
+	WorkspaceID uuid.UUID       `json:"workspace_id"`
+	TaskID      *uuid.UUID      `json:"task_id"`
+	ActorID     *uuid.UUID      `json:"actor_id"`
+	Kind        string          `json:"kind"`
+	Text        string          `json:"text"`
+	Payload     json.RawMessage `json:"payload"`
 }
 
 func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotificationParams) (Notification, error) {
@@ -46,6 +48,7 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 		arg.ActorID,
 		arg.Kind,
 		arg.Text,
+		arg.Payload,
 	)
 	var i Notification
 	err := row.Scan(
@@ -58,13 +61,14 @@ func (q *Queries) CreateNotification(ctx context.Context, arg CreateNotification
 		&i.Text,
 		&i.ReadAt,
 		&i.CreatedAt,
+		&i.Payload,
 	)
 	return i, err
 }
 
 const listNotifications = `-- name: ListNotifications :many
 SELECT
-    n.id, n.user_id, n.workspace_id, n.task_id, n.actor_id, n.kind, n.text, n.read_at, n.created_at,
+    n.id, n.user_id, n.workspace_id, n.task_id, n.actor_id, n.kind, n.text, n.read_at, n.created_at, n.payload,
     t.number   AS task_number,
     t.board_id AS task_board_id
 FROM notifications n
@@ -75,17 +79,18 @@ LIMIT 50
 `
 
 type ListNotificationsRow struct {
-	ID          uuid.UUID  `json:"id"`
-	UserID      uuid.UUID  `json:"user_id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	TaskID      *uuid.UUID `json:"task_id"`
-	ActorID     *uuid.UUID `json:"actor_id"`
-	Kind        string     `json:"kind"`
-	Text        string     `json:"text"`
-	ReadAt      *time.Time `json:"read_at"`
-	CreatedAt   time.Time  `json:"created_at"`
-	TaskNumber  *int64     `json:"task_number"`
-	TaskBoardID *uuid.UUID `json:"task_board_id"`
+	ID          uuid.UUID       `json:"id"`
+	UserID      uuid.UUID       `json:"user_id"`
+	WorkspaceID uuid.UUID       `json:"workspace_id"`
+	TaskID      *uuid.UUID      `json:"task_id"`
+	ActorID     *uuid.UUID      `json:"actor_id"`
+	Kind        string          `json:"kind"`
+	Text        string          `json:"text"`
+	ReadAt      *time.Time      `json:"read_at"`
+	CreatedAt   time.Time       `json:"created_at"`
+	Payload     json.RawMessage `json:"payload"`
+	TaskNumber  *int64          `json:"task_number"`
+	TaskBoardID *uuid.UUID      `json:"task_board_id"`
 }
 
 func (q *Queries) ListNotifications(ctx context.Context, userID uuid.UUID) ([]ListNotificationsRow, error) {
@@ -107,6 +112,7 @@ func (q *Queries) ListNotifications(ctx context.Context, userID uuid.UUID) ([]Li
 			&i.Text,
 			&i.ReadAt,
 			&i.CreatedAt,
+			&i.Payload,
 			&i.TaskNumber,
 			&i.TaskBoardID,
 		); err != nil {

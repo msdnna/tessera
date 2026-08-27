@@ -1,5 +1,6 @@
 import { test, expect, signIn } from '../fixtures.js'
 import { newCredentials, register } from '../api.js'
+import { t } from '../i18n.js'
 
 // D6 (#2731). The unit tests drive the diff and the panel in isolation, and the
 // Go tests drive coalescing, retention and the restore endpoint; none of them can
@@ -52,7 +53,7 @@ test('документ: журнал версий, сравнение и отк�
   try {
     await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
     await page.goto('/documents')
-    await page.getByRole('button', { name: /Новый документ/ }).click()
+    await page.getByTestId('doc-new').click()
     await expect(page.locator('.ProseMirror')).toBeVisible()
 
     await typeAndSave(page, 'Первая редакция регламента')
@@ -64,15 +65,15 @@ test('документ: журнал версий, сравнение и отк�
     const journal = page.waitForResponse(
       (r) => /\/documents\/[^/]+\/versions$/.test(r.url()) && r.request().method() === 'GET',
     )
-    await page.locator('button[title="История версий"]').click()
+    await page.getByTestId('doc-history-toggle').click()
     await journal
     const history = page.locator('.doc-history')
     await expect(history).toBeVisible()
 
     // 2. A named snapshot is the milestone the user asked to keep.
-    await history.getByRole('button', { name: 'Сохранить версию' }).click()
-    await history.getByPlaceholder('Например: согласованная редакция').fill('Согласованная')
-    await history.getByRole('button', { name: 'Сохранить', exact: true }).click()
+    await history.getByTestId('doc-snapshot').click()
+    await history.getByTestId('doc-snapshot-label').locator('input').fill('Согласованная')
+    await history.getByTestId('doc-snapshot-save').click()
     await expect(history.locator('.entry.milestone')).toHaveCount(1)
     await expect(history.getByText('Согласованная')).toBeVisible()
 
@@ -86,7 +87,9 @@ test('документ: журнал версий, сравнение и отк�
 
     // 4. Comparison is block-level and says what changed, not "файл отличается".
     await history.locator('.entry.milestone').click()
-    await expect(history.locator('.diff .counts')).toContainText('изменено: 1')
+    await expect(history.locator('.diff .counts')).toContainText(
+      t('documents.history.changed', { count: 1 }),
+    )
     await expect(history.locator('.diff .block.changed .was')).toContainText('Первая редакция')
 
     // 5. The mate opens the document and sees the current text, not the version
@@ -96,8 +99,8 @@ test('документ: журнал версий, сравнение и отк�
 
     // 6. Roll back. The state being replaced is snapshotted first, so the
     // rollback is itself undoable.
-    await history.getByRole('button', { name: 'Восстановить' }).click()
-    await page.getByRole('button', { name: 'Подтвердить' }).click()
+    await history.getByTestId('doc-restore').click()
+    await page.getByTestId('doc-restore-confirm').click()
     await expect(page.locator('.ProseMirror')).not.toContainText('с поправками')
     await expect(page.locator('.ProseMirror')).toContainText('Первая редакция регламента')
 

@@ -1,5 +1,8 @@
 package website.msdnna.tessera.util
 
+import androidx.annotation.ArrayRes
+import androidx.annotation.StringRes
+
 /*
  * "What's New" + spotlight bookkeeping — the pure half of the feature (web
  * `stores/whatsNew.js`), kept out of the ViewModel so it is testable on the JVM.
@@ -21,15 +24,26 @@ package website.msdnna.tessera.util
  */
 
 /** A one-shot hint pointing at a sidebar nav item ([navKey] matches `activeNav`). */
-data class WhatsNewSpotlight(val navKey: String, val title: String, val body: String)
+data class WhatsNewSpotlight(
+    val navKey: String,
+    @StringRes val titleRes: Int,
+    @StringRes val bodyRes: Int,
+)
 
-/** One curated release highlight. [items] are plain sentences — the Android card
- *  renders them as a bullet list verbatim (no Markdown pass, unlike the web). */
+/**
+ * One curated release highlight.
+ *
+ * The texts are resource ids, not strings: [WhatsNewEntries] is a top-level `val`,
+ * evaluated once when the class loads, so a ready string would freeze on whatever
+ * language was set at that moment and survive a switch in the profile. [itemsRes]
+ * is a `string-array` — the bullet count is each release's own; the card renders
+ * the items as plain sentences, verbatim (no Markdown pass, unlike the web).
+ */
 data class WhatsNewEntry(
     val version: String,
     val date: String,
-    val title: String,
-    val items: List<String>,
+    @StringRes val titleRes: Int,
+    @ArrayRes val itemsRes: Int,
     val spotlight: WhatsNewSpotlight? = null,
 )
 

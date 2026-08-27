@@ -1,5 +1,7 @@
 package website.msdnna.tessera.util
 
+import android.content.res.Resources
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.GitlabMember
 import website.msdnna.tessera.data.model.Member
 
@@ -9,11 +11,17 @@ import website.msdnna.tessera.data.model.Member
 //   • RichContent's highlighting — matches on [insert] and [display];
 //   • the mention card — resolves a tapped chip back to the person.
 
-/** Roles as the mention card spells them. An unknown role falls back to its raw
- *  value: inventing «Участник» for it would be worse than showing the code. */
-private val RoleLabels = mapOf("owner" to "Владелец", "admin" to "Админ", "member" to "Участник")
+/** Roles as the mention card spells them — те же строки, что и в списке участников.
+ *  An unknown role falls back to its raw value: inventing «Участник» for it would be
+ *  worse than showing the code. */
+private val RoleLabels = mapOf(
+    "owner" to R.string.members_role_owner,
+    "admin" to R.string.members_role_admin,
+    "member" to R.string.members_role_member,
+)
 
-fun roleLabel(role: String?): String = RoleLabels[role] ?: role.orEmpty()
+fun roleLabel(res: Resources, role: String?): String =
+    RoleLabels[role]?.let(res::getString) ?: role.orEmpty()
 
 /**
  * One @-mention candidate. [insert] is the text put after '@' in the content,

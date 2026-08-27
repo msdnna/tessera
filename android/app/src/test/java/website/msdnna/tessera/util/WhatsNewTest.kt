@@ -9,12 +9,14 @@ import org.junit.Test
  * sign-up — are asserted here rather than through the UI.
  */
 class WhatsNewTest {
-    private val spot = WhatsNewSpotlight("documents", "Документы", "Загляните")
+    // The texts are resource ids and this tier has no resources — the planner only
+    // ever compares versions and navKeys, so any distinct ids will do.
+    private val spot = WhatsNewSpotlight("documents", titleRes = 11, bodyRes = 12)
 
     private val entries = listOf(
-        WhatsNewEntry("0.70.0", "2026-08-20", "Новое", listOf("а")),
-        WhatsNewEntry("0.69.0", "2026-08-17", "Документы", listOf("б"), spotlight = spot),
-        WhatsNewEntry("0.68.0", "2026-08-12", "Пуши", listOf("в")),
+        WhatsNewEntry("0.70.0", "2026-08-20", titleRes = 21, itemsRes = 22),
+        WhatsNewEntry("0.69.0", "2026-08-17", titleRes = 31, itemsRes = 32, spotlight = spot),
+        WhatsNewEntry("0.68.0", "2026-08-12", titleRes = 41, itemsRes = 42),
     )
 
     // The build landed on 2026-08-01; the account predates it, so the brand-new
@@ -88,7 +90,7 @@ class WhatsNewTest {
 
     @Test
     fun `the same navKey queues once even from two releases`() {
-        val twice = entries + WhatsNewEntry("0.67.0", "2026-08-01", "Раньше", listOf("г"), spotlight = spot)
+        val twice = entries + WhatsNewEntry("0.67.0", "2026-08-01", titleRes = 51, itemsRes = 52, spotlight = spot)
         val plan = planWhatsNew(twice, emptySet(), "0.70.0", oldAccount, buildAt)
         assertThat(plan.spotlights).hasSize(1)
     }

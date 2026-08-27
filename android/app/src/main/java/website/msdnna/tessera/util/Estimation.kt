@@ -1,6 +1,8 @@
 package website.msdnna.tessera.util
 
+import android.content.res.Resources
 import kotlin.math.roundToInt
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.EstimationConfig
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.Workspace
@@ -15,6 +17,11 @@ import website.msdnna.tessera.data.model.Workspace
  *              output compresses back so "3 дня" = 24 working hours);
  *   • points → the point number on a scale (Fibonacci / T-shirt / linear);
  *   • custom → a count of a named unit.
+ *
+ * Форматирующие функции берут [Resources] явно: объект живёт вне Compose, а язык
+ * приходит из профиля (#2803, волна 10). Разбор ввода, наоборот, локали не знает —
+ * он принимает и русские, и английские буквы единиц, поэтому «3d 4h», набранное
+ * на английском интерфейсе, читается и после переключения языка.
  */
 object Estimation {
     val DEFAULT = EstimationConfig(unit = "time", hoursPerDay = 8.0, daysPerWeek = 5.0)
@@ -60,7 +67,9 @@ object Estimation {
         val unitMin = mapOf('w' to mpd * (cfg.daysPerWeek ?: 5.0), 'd' to mpd, 'h' to 60.0, 'm' to 1.0)
         var total = 0.0
         var matched = false
-        val re = Regex("""(\d+(?:\.\d+)?)\s*([a-zа-яё]*)""")
+        // Кириллица здесь — разбор ввода, а не интерфейс: буквы единиц принимаются
+        // в обоих алфавитах независимо от языка профиля.
+        val re = Regex("""(\d+(?:\.\d+)?)\s*([a-zа-яё]*)""") // i18n-data
         for (mr in re.findAll(s)) {
             val num = mr.groupValues[1].toDoubleOrNull() ?: continue
             val u = mr.groupValues[2]
@@ -90,19 +99,23 @@ object Estimation {
      * Format a canonical value for display. Time compresses minutes to working
      * weeks/days/hours/minutes (30h with an 8h day → "3д 6ч"). Empty for null/≤0.
      */
-    fun format(value: Double?, cfg: EstimationConfig): String {
+    fun format(res: Resources, value: Double?, cfg: EstimationConfig): String {
         if (value == null || value <= 0) return ""
         when (cfg.unit.ifEmpty { "time" }) {
             "points" -> {
                 if (cfg.pointsScale == "tshirt") {
                     return TSHIRT.firstOrNull { it.second.toDouble() == value }?.first ?: trimNum(value)
                 }
-                return "${trimNum(value)} SP"
+                return res.getString(R.string.est_points_value, trimNum(value))
             }
 
             "custom" -> {
                 val label = cfg.customLabel?.trim().orEmpty()
-                return if (label.isNotEmpty()) "${trimNum(value)} $label" else trimNum(value)
+                return if (label.isNotEmpty()) {
+                    res.getString(R.string.est_custom_value, trimNum(value), label)
+                } else {
+                    trimNum(value)
+                }
             }
         }
         val mpd = minutesPerDay(cfg).roundToInt()
@@ -116,12 +129,13 @@ object Estimation {
         rem -= h * 60
         val min = rem
         val parts = buildList {
-            if (w > 0) add("${w}н")
-            if (d > 0) add("${d}д")
-            if (h > 0) add("${h}ч")
-            if (min > 0) add("${min}м")
+            if (w > 0) add(res.getString(R.string.est_unit_week, w))
+            if (d > 0) add(res.getString(R.string.est_unit_day, d))
+            if (h > 0) add(res.getString(R.string.est_unit_hour, h))
+            if (min > 0) add(res.getString(R.string.est_unit_minute, min))
         }
-        return if (parts.isEmpty()) "0м" else parts.joinToString(" ")
+        // Ноль рисуется тем же суффиксом минут — отдельной строки на «0м» не нужно.
+        return if (parts.isEmpty()) res.getString(R.string.est_unit_minute, 0) else parts.joinToString(" ")
     }
 
     /** Discrete options for a point picker (empty for time/custom). Pairs of (label, value). */
@@ -134,18 +148,19 @@ object Estimation {
         }
     }
 
-    /** Human name of the unit, for settings labels and aggregates. */
-    fun unitName(cfg: EstimationConfig): String = when (cfg.unit.ifEmpty { "time" }) {
-        "points" -> "Стори-поинты"
-        "custom" -> cfg.customLabel?.trim()?.ifEmpty { null } ?: "Единицы"
-        else -> "Время"
+    /** Human name of the unit, for settings labels and aggregates. Название своей
+     *  единицы (`custom`) задал пользователь — оно остаётся как введено. */
+    fun unitName(res: Resources, cfg: EstimationConfig): String = when (cfg.unit.ifEmpty { "time" }) {
+        "points" -> res.getString(R.string.est_unit_points)
+        "custom" -> cfg.customLabel?.trim()?.ifEmpty { null } ?: res.getString(R.string.est_unit_custom)
+        else -> res.getString(R.string.est_unit_time)
     }
 
     /** Input placeholder hinting the accepted syntax for the resolved unit. */
-    fun placeholder(cfg: EstimationConfig): String = when (cfg.unit.ifEmpty { "time" }) {
-        "points" -> "напр. 5"
-        "custom" -> "напр. 8"
-        else -> "напр. 3д 4ч, 90м, 1н"
+    fun placeholder(res: Resources, cfg: EstimationConfig): String = when (cfg.unit.ifEmpty { "time" }) {
+        "points" -> res.getString(R.string.est_hint_points)
+        "custom" -> res.getString(R.string.est_hint_custom)
+        else -> res.getString(R.string.est_hint_time)
     }
 
     /**

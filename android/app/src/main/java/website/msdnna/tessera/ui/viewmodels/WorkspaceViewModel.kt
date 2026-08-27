@@ -8,17 +8,19 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.Workspace
 import website.msdnna.tessera.data.repository.WorkspaceRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class WorkspaceUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val workspaces: List<Workspace> = emptyList(),
     val currentId: String = "",
     val groups: List<ProjectGroup> = emptyList(),
@@ -88,7 +90,7 @@ class WorkspaceViewModel(
      *  host can leave for Home. Refuses to delete the only workspace. */
     fun removeWorkspace(id: String, onGone: () -> Unit) = launchCatching {
         if (_state.value.workspaces.size <= 1) {
-            _state.update { it.copy(error = "Нельзя удалить единственное пространство") }
+            _state.update { it.copy(error = UiText.Res(R.string.sidebar_ws_delete_last)) }
             return@launchCatching
         }
         val wasCurrent = _state.value.currentId == id

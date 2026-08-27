@@ -6,13 +6,13 @@
 import { RouterLink } from 'vue-router'
 import AuthLayout from '@/components/AuthLayout.vue'
 
+// The overridable texts default to '' rather than to the Russian wording: a
+// non-empty default is never falsy, so the `|| $t(…)` fallback in the template
+// would never fire and the screen would stay Russian in every locale (#2799).
 defineProps({
   code: { type: String, default: '404' },
-  title: { type: String, default: 'Страница не найдена' },
-  text: {
-    type: String,
-    default: 'Такой страницы нет или она была перемещена.',
-  },
+  title: { type: String, default: '' },
+  text: { type: String, default: '' },
 })
 </script>
 
@@ -20,10 +20,12 @@ defineProps({
   <auth-layout>
     <div class="nf">
       <div class="nf-code">{{ code }}</div>
-      <div class="nf-title">{{ title }}</div>
-      <p class="nf-text">{{ text }}</p>
+      <div class="nf-title">{{ title || $t('shell.notFound.title') }}</div>
+      <p class="nf-text">{{ text || $t('shell.notFound.text') }}</p>
     </div>
-    <div class="auth-foot"><router-link to="/">На главную</router-link></div>
+    <div class="auth-foot">
+      <router-link to="/">{{ $t('common.auth.toHome') }}</router-link>
+    </div>
   </auth-layout>
 </template>
 

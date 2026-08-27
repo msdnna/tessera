@@ -25,7 +25,9 @@ class TesseraMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val push = PushPayload.parse(message.data) ?: return
-        DeviceNotifier.show(applicationContext, push)
+        // Показ ушёл в корутину: язык интерфейса живёт в DataStore, а канал и
+        // заголовок обязаны быть на языке профиля, а не на локали телефона.
+        scope.launch { DeviceNotifier.show(applicationContext, push) }
     }
 
     /**

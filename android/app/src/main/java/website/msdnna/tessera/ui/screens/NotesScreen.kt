@@ -30,12 +30,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Note
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -81,7 +83,7 @@ fun NotesScreen(
                 Modifier.fillMaxWidth().padding(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TButton("Новая заметка", onClick = { vm.newNote() })
+                TButton(stringResource(R.string.notes_new), onClick = { vm.newNote() })
             }
             when {
                 state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -92,7 +94,7 @@ fun NotesScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         IonIcon(Ion.DOCUMENT_TEXT, size = 40.dp, tint = c.text3)
                         Spacer(Modifier.height(10.dp))
-                        Text("Заметок пока нет", color = c.text3, fontSize = 14.sp)
+                        Text(stringResource(R.string.notes_empty), color = c.text3, fontSize = 14.sp)
                     }
                 }
 
@@ -128,7 +130,7 @@ private fun NoteListItem(note: Note, onClick: () -> Unit) {
             .padding(12.dp),
     ) {
         Text(
-            note.title.ifBlank { "Без названия" },
+            note.title.ifBlank { stringResource(R.string.notes_untitled) },
             color = c.text1,
             fontSize = 15.sp,
             fontWeight = FontWeight.SemiBold,
@@ -153,6 +155,9 @@ private fun NoteEditor(
     var title by remember(note?.id) { mutableStateOf(note?.title ?: "") }
     var body by remember(note?.id) { mutableStateOf(note?.body ?: "") }
     var confirmDelete by remember { mutableStateOf(false) }
+    // decorationBox — обычная лямбда, не композабл: плейсхолдеры берём заранее.
+    val titlePlaceholder = stringResource(R.string.notes_title_placeholder)
+    val bodyPlaceholder = stringResource(R.string.notes_body_placeholder)
 
     Column(Modifier.fillMaxSize().background(c.surface)) {
         Row(
@@ -167,7 +172,7 @@ private fun NoteEditor(
             )
             Spacer(Modifier.width(4.dp))
             Text(
-                if (note == null) "Новая заметка" else "Заметка",
+                stringResource(if (note == null) R.string.notes_new else R.string.notes_editor_title),
                 color = c.text1,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -178,7 +183,7 @@ private fun NoteEditor(
                     IonIconButton(Ion.TRASH, onClick = { confirmDelete = true }, boxSize = 36.dp, tint = c.text3)
                     TConfirmPopover(
                         expanded = confirmDelete,
-                        message = "Удалить заметку?",
+                        message = stringResource(R.string.notes_delete_confirm),
                         onConfirm = {
                             confirmDelete = false
                             onDelete()
@@ -198,7 +203,7 @@ private fun NoteEditor(
             cursorBrush = SolidColor(c.primary),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             decorationBox = { inner ->
-                if (title.isEmpty()) Text("Заголовок", color = c.placeholder, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+                if (title.isEmpty()) Text(titlePlaceholder, color = c.placeholder, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                 inner()
             },
         )
@@ -211,7 +216,7 @@ private fun NoteEditor(
             cursorBrush = SolidColor(c.primary),
             modifier = Modifier.fillMaxWidth().weight(1f).padding(16.dp),
             decorationBox = { inner ->
-                if (body.isEmpty()) Text("Текст заметки…", color = c.placeholder, fontSize = 14.sp)
+                if (body.isEmpty()) Text(bodyPlaceholder, color = c.placeholder, fontSize = 14.sp)
                 inner()
             },
         )
@@ -222,9 +227,9 @@ private fun NoteEditor(
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            TButton("Отмена", kind = TButtonKind.Ghost, onClick = onBack)
+            TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onBack)
             Spacer(Modifier.width(8.dp))
-            TButton("Сохранить", enabled = title.isNotBlank(), onClick = { onSave(title.trim(), body) })
+            TButton(stringResource(R.string.common_save), enabled = title.isNotBlank(), onClick = { onSave(title.trim(), body) })
         }
     }
 }

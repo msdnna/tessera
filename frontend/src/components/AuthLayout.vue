@@ -4,13 +4,15 @@
 // holding the slotted form. Behind the card sits a soft, blurred brand-purple
 // glow that drifts toward the pointer as it moves anywhere on the page — only
 // the transform animates (the blurred bitmap is rasterised once), so it's cheap.
-// A theme toggle sits in the top-right corner.
+// Theme and language toggles sit in the top-right corner.
 // Input / button / link styling for the slotted form lives in main.css under
 // `.auth` (scoped styles can't reach slotted nodes).
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover, NInput, NButton } from 'naive-ui'
 import { SunnyOutline, MoonOutline, ServerOutline } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
+import { SUPPORTED_LOCALES, normalizeLocale } from '@/i18n'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 import DownloadAppButton from '@/components/DownloadAppButton.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
@@ -19,6 +21,7 @@ defineProps({
   title: { type: String, default: '' },
 })
 
+const { t } = useI18n()
 const theme = useThemeStore()
 
 // Desktop only: let the user point the app at a self-hosted server before
@@ -30,6 +33,20 @@ function saveServer() {
   setServerBase(serverInput.value)
   // Reload so axios (baseURL) and the WS reconnect against the new origin.
   location.reload()
+}
+
+// Language toggle. With two locales a cycle button beats a picker, and the label
+// is the current language's own tag ("RU"/"EN") rather than a globe icon — on
+// two locales that says both what you're on and what you'd get. setLocale
+// persists to localStorage and only PUTs prefs when signed in, so pressing it
+// here (no token) is a purely local switch.
+const activeLocale = computed(() => normalizeLocale(theme.language))
+const nextLocale = computed(() => {
+  const i = SUPPORTED_LOCALES.indexOf(activeLocale.value)
+  return SUPPORTED_LOCALES[(i + 1) % SUPPORTED_LOCALES.length]
+})
+function cycleLocale() {
+  theme.setLocale({ language: nextLocale.value })
 }
 
 const card = ref(null)
@@ -96,29 +113,42 @@ onBeforeUnmount(() => {
           <button
             class="auth-tool-btn"
             type="button"
-            title="Адрес сервера"
-            aria-label="Адрес сервера"
+            :title="t('shell.auth.server')"
+            :aria-label="t('shell.auth.server')"
           >
             <n-icon :component="ServerOutline" :size="20" />
           </button>
         </template>
         <div class="auth-server-pop">
-          <div class="auth-server-label">Адрес сервера</div>
+          <div class="auth-server-label">{{ t('shell.auth.server') }}</div>
           <n-input
             v-model:value="serverInput"
             placeholder="https://tessera.msdnna.website"
             size="small"
             @keyup.enter="saveServer"
           />
-          <n-button size="small" type="primary" block @click="saveServer">Сохранить</n-button>
+          <n-button size="small" type="primary" block @click="saveServer">
+            {{ t('common.action.save') }}
+          </n-button>
         </div>
       </n-popover>
 
       <button
+        class="auth-tool-btn auth-lang-btn"
+        type="button"
+        data-testid="auth-lang-toggle"
+        :title="t('shell.auth.languageSwitchTo', { lang: t(`common.language.${nextLocale}`) })"
+        :aria-label="t('shell.auth.languageSwitchTo', { lang: t(`common.language.${nextLocale}`) })"
+        @click="cycleLocale"
+      >
+        {{ activeLocale.toUpperCase() }}
+      </button>
+
+      <button
         class="auth-tool-btn"
         type="button"
-        :title="theme.isDark ? 'Светлая тема' : 'Тёмная тема'"
-        :aria-label="theme.isDark ? 'Светлая тема' : 'Тёмная тема'"
+        :title="theme.isDark ? t('shell.auth.themeLight') : t('shell.auth.themeDark')"
+        :aria-label="theme.isDark ? t('shell.auth.themeLight') : t('shell.auth.themeDark')"
         @click="theme.toggle()"
       >
         <n-icon :component="theme.isDark ? SunnyOutline : MoonOutline" :size="20" />
@@ -161,7 +191,7 @@ onBeforeUnmount(() => {
   background: var(--t-bg);
 }
 
-/* Tool buttons (server address + theme toggle), top-right corner. */
+/* Tool buttons (server address + language + theme toggle), top-right corner. */
 .auth-tools {
   position: absolute;
   top: 18px;
@@ -190,6 +220,14 @@ onBeforeUnmount(() => {
 .auth-tool-btn:hover {
   color: var(--t-primary);
   border-color: var(--t-primary);
+}
+/* The language button carries a text label where its siblings carry a 20px icon;
+   the bolder, smaller type keeps it optically the same weight as those glyphs. */
+.auth-lang-btn {
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 
 /* Server-address popover body. */

@@ -67,6 +67,11 @@ fun RichContent(
     // where the link would swallow clicks meant for the card.
     taskRefs: Boolean = false,
     onTaskRef: ((Int) -> Unit)? = null,
+    // Opt-in: `/help/<slug>` links between help articles stay inside the app and
+    // report the slug instead of opening the site in a browser (#2795). Off
+    // everywhere else, where such a path is an ordinary server link.
+    helpLinks: Boolean = false,
+    onHelpLink: ((String) -> Unit)? = null,
 ) {
     val c = Tessera.colors
     val ctx = LocalContext.current
@@ -75,6 +80,7 @@ fun RichContent(
     // Latest callback, so the long-lived JS bridge always calls the current one.
     val toggleCb by rememberUpdatedState(onToggleCheck)
     val taskRefCb by rememberUpdatedState(onTaskRef)
+    val helpLinkCb by rememberUpdatedState(onHelpLink)
     val roster by rememberUpdatedState(mentions)
     // The mention card and where its chip sits (CSS px inside the view — with the
     // viewport at initial-scale=1 those are dp, as the height report already assumes).
@@ -89,10 +95,10 @@ fun RichContent(
     val lastLoaded = remember { mutableStateOf<String?>(null) }
 
     // Rebuild the document whenever the source, theme, mentions or mode changes.
-    val html = remember(source, c.isDark, mentions, interactive, mentionCards, taskRefs) {
+    val html = remember(source, c.isDark, mentions, interactive, mentionCards, taskRefs, helpLinks) {
         // Both handles a person can be written by are matched, longer first.
         val handles = mentions.flatMap { listOf(it.insert, it.display) }.filter { it.isNotBlank() }.distinct()
-        buildRichHtml(source, c, serverRoot, handles, interactive, mentionCards, taskRefs)
+        buildRichHtml(source, c, serverRoot, handles, interactive, mentionCards, taskRefs, helpLinks)
     }
 
     Box(modifier.fillMaxWidth()) {
@@ -134,6 +140,11 @@ fun RichContent(
                             @JavascriptInterface
                             fun onTaskRef(number: Int) {
                                 post { taskRefCb?.invoke(number) }
+                            }
+
+                            @JavascriptInterface
+                            fun onHelpLink(slug: String) {
+                                post { helpLinkCb?.invoke(slug) }
                             }
                         },
                         "AndroidRich",
@@ -248,6 +259,7 @@ private fun buildRichHtml(
     interactive: Boolean,
     mentionCards: Boolean,
     taskRefs: Boolean,
+    helpLinks: Boolean,
 ): String {
     val hljsTheme = if (c.isDark) "github-dark" else "github"
     val src = JSONObject.quote(source)
@@ -311,7 +323,7 @@ private fun buildRichHtml(
 <script src="file:///android_asset/richcontent/marked.umd.js"></script>
 <script>
   var SRC = $src, ROOT = $root, MENTIONS = $mentionsJson, INTERACTIVE = $interactive;
-  var MENTION_CARDS = $mentionCards, TASK_REFS = $taskRefs;
+  var MENTION_CARDS = $mentionCards, TASK_REFS = $taskRefs, HELP_LINKS = $helpLinks;
   marked.setOptions({breaks:true, gfm:true});
   // Wrap "@Name" tokens for known members in a .mention span (mirrors the web
   // utils/markdown.js highlightMentions: text boundaries only, longer names first).
@@ -355,6 +367,17 @@ private fun buildRichHtml(
     var s = im.getAttribute('src')||'';
     if (s.charAt(0) === '/') im.src = ROOT + s;
   });
+  // Help articles cross-link as "/help/<slug>". Claim those before the
+  // root-relative rewrite below, or they would become site URLs and a tap would
+  // leave the app for a browser.
+  if (HELP_LINKS) {
+    el.querySelectorAll('a').forEach(function(an){
+      var h = an.getAttribute('href')||'';
+      if (h.indexOf('/help/') !== 0) return;
+      an.setAttribute('data-help-slug', h.slice(6).split('#')[0]);
+      an.setAttribute('href', '#');
+    });
+  }
   el.querySelectorAll('a').forEach(function(an){
     var h = an.getAttribute('href')||'';
     if (h.charAt(0) === '/') an.href = ROOT + h;
@@ -368,9 +391,17 @@ private fun buildRichHtml(
     allBoxes = [].slice.call(el.querySelectorAll('input[type=checkbox]'));
     allBoxes.forEach(function(box){ box.disabled = false; });
   }
-  if (INTERACTIVE || MENTION_CARDS || TASK_REFS) {
+  if (INTERACTIVE || MENTION_CARDS || TASK_REFS || HELP_LINKS) {
     el.addEventListener('click', function(e){
       var t = e.target;
+      if (HELP_LINKS && t.closest) {
+        var help = t.closest('[data-help-slug]');
+        if (help) {
+          e.preventDefault(); // href="#" would reload the document
+          if (window.AndroidRich) AndroidRich.onHelpLink(help.getAttribute('data-help-slug'));
+          return;
+        }
+      }
       // Mention chips and "#N" links come first — they work whether or not the
       // content is interactive. A mention highlighted inside a code sample is
       // not a person, so it gets no card.

@@ -33,7 +33,7 @@ test('документ: замечание к блоку доезжает до �
   try {
     await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
     await page.goto('/documents')
-    await page.getByRole('button', { name: /Новый документ/ }).click()
+    await page.getByTestId('doc-new').click()
 
     const editor = page.locator('.ProseMirror')
     await expect(editor).toBeVisible()
@@ -49,7 +49,7 @@ test('документ: замечание к блоку доезжает до �
 
     // Give the paragraph back before the mate arrives, so the annotation is not
     // competing with a lock.
-    await page.getByRole('button', { name: /К списку/ }).click()
+    await page.getByTestId('doc-back').click()
     await page.goto(docURL)
     await expect(page.locator('.ProseMirror')).toContainText('Исполнитель обязан')
 
@@ -59,10 +59,13 @@ test('документ: замечание к блоку доезжает до �
     // 1. The mate annotates the paragraph: hovering reveals the gutter, and the
     // "обсудить блок" button arms the draft with the block's text as the quote.
     await matePage.locator('.ProseMirror p').first().hover()
-    await matePage.locator('.gutter-btn[title="Обсудить блок"]').click()
+    await matePage.getByTestId('doc-block-comment').click()
     await expect(matePage.locator('.anchor-text')).toContainText('Исполнитель обязан')
-    await matePage.getByPlaceholder('Комментарий к блоку…').fill('Нужен срок согласования')
-    await matePage.getByRole('button', { name: 'Отправить' }).click()
+    await matePage
+      .getByTestId('doc-comment-draft')
+      .locator('textarea')
+      .fill('Нужен срок согласования')
+    await matePage.getByTestId('doc-comment-send').click()
 
     // 2. It reaches the author without a reload — this is the socket nudge.
     await expect(page.getByText('Нужен срок согласования')).toBeVisible()
@@ -72,8 +75,8 @@ test('документ: замечание к блоку доезжает до �
     await expect(marked).toHaveAttribute('data-comment-count', '1')
 
     // 3. The author answers; the reply lands in the same thread for the mate.
-    await page.getByPlaceholder('Ответить…').fill('До пятницы')
-    await page.getByPlaceholder('Ответить…').press('Enter')
+    await page.getByTestId('doc-comment-reply').locator('input').fill('До пятницы')
+    await page.getByTestId('doc-comment-reply').locator('input').press('Enter')
     await expect(matePage.getByText('До пятницы')).toBeVisible()
 
     // 4. The annotation writes nothing into the document: the text is untouched
@@ -91,13 +94,13 @@ test('документ: замечание к блоку доезжает до �
     await page.keyboard.press('Backspace')
     await resaved
 
-    await expect(page.getByText('Блок удалён')).toBeVisible()
+    await expect(page.getByTestId('doc-comment-detached')).toBeVisible()
     await expect(page.getByText('Нужен срок согласования')).toBeVisible()
     await expect(page.locator('.ProseMirror .doc-block-commented')).toHaveCount(0)
 
     // 6. Resolving is any member's job, not just the author's, and it takes the
     // thread out of the open count.
-    await page.getByRole('button', { name: /Решено/ }).click()
+    await page.getByTestId('doc-comment-resolve').click()
     await expect(page.locator('.thread.done')).toHaveCount(1)
   } finally {
     await context.close()
@@ -111,7 +114,7 @@ test('документ: замечание к блоку доезжает до �
 test('документ: блоки связаны с аннотациями линиями, без пересечений', async ({ page, seed }) => {
   await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
   await page.goto('/documents')
-  await page.getByRole('button', { name: /Новый документ/ }).click()
+  await page.getByTestId('doc-new').click()
 
   const editor = page.locator('.ProseMirror')
   await expect(editor).toBeVisible()
@@ -136,9 +139,14 @@ test('документ: блоки связаны с аннотациями ли
     [0, 'Замечание к первому'],
   ]) {
     await paragraphs.nth(index).hover()
-    await page.locator('.gutter-btn[title="Обсудить блок"]').click()
-    await page.getByPlaceholder('Комментарий к блоку…').fill(body)
-    await page.getByRole('button', { name: 'Отправить' }).click()
+    await page.getByTestId('doc-block-comment').click()
+    // The draft is armed against the block, not against the document — the
+    // placeholder used to say so, and it is what makes these annotations
+    // anchored rather than a pair of document-level remarks.
+    const draft = page.getByTestId('doc-comment-draft')
+    await expect(draft).toHaveAttribute('data-armed', 'block')
+    await draft.locator('textarea').fill(body)
+    await page.getByTestId('doc-comment-send').click()
     await expect(page.getByText(body)).toBeVisible()
   }
 
@@ -200,9 +208,6 @@ test('документ: блоки связаны с аннотациями ли
 
   // Resolving takes the markup off the block; the line goes with it.
   await cards.nth(0).click()
-  await page
-    .getByRole('button', { name: /Решено/ })
-    .first()
-    .click()
+  await page.getByTestId('doc-comment-resolve').first().click()
   await expect(page.locator('.annotation-lines path')).toHaveCount(1)
 })

@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -57,7 +59,17 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.MembersViewModel
 import website.msdnna.tessera.util.Ion
 
-private val RoleLabels = mapOf("owner" to "Владелец", "admin" to "Админ", "member" to "Участник")
+/**
+ * Подписи ролей. Это функция, а не `val` уровня файла: карта с готовым текстом
+ * вычислилась бы один раз при загрузке класса и застыла бы на языке первого
+ * рендера — переключение языка бейджи ролей уже не тронуло бы.
+ */
+@Composable
+private fun roleLabels(): Map<String, String> = mapOf(
+    "owner" to stringResource(R.string.members_role_owner),
+    "admin" to stringResource(R.string.members_role_admin),
+    "member" to stringResource(R.string.members_role_member),
+)
 
 /** Workspace members modal (web `MembersModal`): list + invite-by-email + remove. */
 @Composable
@@ -76,7 +88,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
         Column(
             Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(20.dp),
         ) {
-            Text("Участники", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.members_title), color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(14.dp))
 
             when {
@@ -94,14 +106,18 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
             // Pending invitations (by email; invitee may not have an account yet).
             if (state.invitations.isNotEmpty()) {
                 Spacer(Modifier.height(14.dp))
-                Text("Приглашения", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                Text(stringResource(R.string.members_invitations), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                 Spacer(Modifier.height(4.dp))
                 state.invitations.forEach { inv ->
                     Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
                         IonIcon(Ion.LINK, size = 16.dp, tint = c.text3)
                         Spacer(Modifier.width(8.dp))
                         Text(inv.email, color = c.text2, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                        Text(if (inv.role == "admin") "Админ" else "Участник", color = c.text3, fontSize = 11.sp)
+                        Text(
+                            stringResource(if (inv.role == "admin") R.string.members_role_admin else R.string.members_role_member),
+                            color = c.text3,
+                            fontSize = 11.sp,
+                        )
                         Spacer(Modifier.width(6.dp))
                         IonIconButton(Ion.TRASH, onClick = { vm.revokeInvite(inv.id) }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
                     }
@@ -109,7 +125,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
             }
 
             Spacer(Modifier.height(16.dp))
-            Text("Пригласить по email", color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(R.string.members_invite_title), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(6.dp))
             TTextField(
                 value = email,
@@ -119,12 +135,12 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                RoleChip("Участник", role == "member") { role = "member" }
+                RoleChip(stringResource(R.string.members_role_member), role == "member") { role = "member" }
                 Spacer(Modifier.width(8.dp))
-                RoleChip("Админ", role == "admin") { role = "admin" }
+                RoleChip(stringResource(R.string.members_role_admin), role == "admin") { role = "admin" }
                 Spacer(Modifier.weight(1f))
                 TButton(
-                    "Пригласить",
+                    stringResource(R.string.members_invite_action),
                     enabled = email.isNotBlank() && !state.busy,
                     loading = state.busy,
                     onClick = {
@@ -134,7 +150,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
                 )
             }
             Text(
-                "Зарегистрированного добавим сразу; нового — приглашение по ссылке.",
+                stringResource(R.string.members_invite_hint),
                 color = c.text3,
                 fontSize = 11.sp,
                 modifier = Modifier.padding(top = 6.dp),
@@ -151,7 +167,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
                         modifier = Modifier.weight(1f),
                     )
                     Spacer(Modifier.width(8.dp))
-                    TButton("Копировать", kind = TButtonKind.Secondary, onClick = {
+                    TButton(stringResource(R.string.members_copy_link), kind = TButtonKind.Secondary, onClick = {
                         clipboard.setText(AnnotatedString(state.lastInviteLink))
                     })
                 }
@@ -160,7 +176,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
 
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TButton("Готово", onClick = onDismiss)
+                TButton(stringResource(R.string.common_done), onClick = onDismiss)
             }
         }
     }
@@ -171,6 +187,7 @@ private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (Strin
     val c = Tessera.colors
     var confirm by remember { mutableStateOf(false) }
     var roleMenu by remember { mutableStateOf(false) }
+    val roles = roleLabels()
     Row(
         Modifier.fillMaxWidth().padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -185,7 +202,7 @@ private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (Strin
             Box(
                 Modifier.clip(RoundedCornerShape(RadiusSm)).background(c.surfaceAlt).padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
-                Text(RoleLabels["owner"]!!, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                Text(roles.getValue("owner"), color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             }
         } else {
             // Tap the role badge to switch member ↔ admin.
@@ -195,16 +212,16 @@ private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (Strin
                         .clickableNoRipple { roleMenu = true }.padding(horizontal = 8.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(RoleLabels[member.role] ?: member.role, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(roles[member.role] ?: member.role, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.width(3.dp))
                     IonIcon(Ion.CHEVRON_DOWN, size = 12.dp, tint = c.text3)
                 }
                 TDropdown(expanded = roleMenu, onDismiss = { roleMenu = false }) {
-                    TMenuItem("Участник", onClick = {
+                    TMenuItem(roles.getValue("member"), onClick = {
                         roleMenu = false
                         if (member.role != "member") onChangeRole("member")
                     })
-                    TMenuItem("Админ", onClick = {
+                    TMenuItem(roles.getValue("admin"), onClick = {
                         roleMenu = false
                         if (member.role != "admin") onChangeRole("admin")
                     })
@@ -217,8 +234,8 @@ private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (Strin
                 IonIconButton(Ion.TRASH, onClick = { confirm = true }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
                 TConfirmPopover(
                     expanded = confirm,
-                    message = "Убрать участника?",
-                    confirmText = "Убрать",
+                    message = stringResource(R.string.members_remove_confirm),
+                    confirmText = stringResource(R.string.members_remove),
                     onConfirm = {
                         confirm = false
                         onRemove()

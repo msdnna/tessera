@@ -9,13 +9,19 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
-import { PRIORITY_LABELS } from '@/styles/tokens'
+import { i18n } from '@/i18n'
+import { priorityOptions } from '@/utils/priority'
 import { pressMoved } from '@/utils/dnd'
 import { taskBasePatch } from '@/utils/taskPatch'
+import { columnName } from '@/utils/defaultNames'
 
 // naive's dropdown `icon` option field wants a render fn — exported so callers
 // can build their `extra` items with the same look.
 export const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
+// The menu is built by a computed that also runs outside a component (chart and
+// list views call this composable from setup, its callers' specs directly), so
+// the translator is the global one rather than useI18n() (#2799).
+const tr = (key) => i18n.global.t(key)
 const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
 
 // Reusable right-click menu for a task, shared by the board card and the
@@ -46,33 +52,33 @@ export function useTaskMenu({ onOpen, onChanged, onSelect, columns, extra, dange
     const t = target.value
     const cols = resolveColumns().filter((c) => c.id !== t?.column_id)
     return [
-      { label: 'Открыть', key: 'open', icon: menuIcon(OpenOutline) },
+      { label: tr('task.menu.open'), key: 'open', icon: menuIcon(OpenOutline) },
       {
-        label: t?.completed_at ? 'Снять выполнение' : 'Отметить выполненной',
+        label: tr(t?.completed_at ? 'task.menu.uncomplete' : 'task.menu.complete'),
         key: 'toggle',
         icon: menuIcon(CheckmarkDoneOutline),
       },
       {
-        label: 'Приоритет',
+        label: tr('task.menu.priority'),
         key: 'prio',
         icon: menuIcon(FlagOutline),
-        children: PRIORITY_LABELS.map((l, i) => ({ label: l, key: 'prio:' + i })),
+        children: priorityOptions().map((o) => ({ label: o.label, key: 'prio:' + o.value })),
       },
       ...(cols.length
         ? [
             {
-              label: 'Переместить в колонку',
+              label: tr('task.menu.move'),
               key: 'move',
               icon: menuIcon(ArrowForwardOutline),
-              children: cols.map((c) => ({ label: c.name, key: 'col:' + c.id })),
+              children: cols.map((c) => ({ label: columnName(c), key: 'col:' + c.id })),
             },
           ]
         : []),
       { type: 'divider', key: 'd1' },
       ...(extra?.(t) || []),
-      { label: 'В архив', key: 'archive', icon: menuIcon(ArchiveOutline) },
+      { label: tr('task.menu.archive'), key: 'archive', icon: menuIcon(ArchiveOutline) },
       {
-        label: 'Удалить',
+        label: tr('task.menu.delete'),
         key: 'delete',
         icon: dangerDelete ? dangerIcon(TrashOutline) : menuIcon(TrashOutline),
         ...(dangerDelete ? { props: { style: 'color:#e0533d' } } : {}),

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Attachment
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.CommandOutcome
@@ -21,6 +22,7 @@ import website.msdnna.tessera.data.model.TaskEvent
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.data.repository.TaskRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.MoveNeighbors
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.hasCommandLine
@@ -31,7 +33,7 @@ private val TagPalette = listOf(
 
 data class TaskDetailUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val detail: TaskDetail? = null,
     val comments: List<Comment> = emptyList(),
     val relations: List<Relation> = emptyList(),
@@ -54,6 +56,18 @@ data class TaskDetailUiState(
     /** What the last posted comment's commands actually did — the UI reports it
      *  once and calls [TaskDetailViewModel.consumeCommandNotice]. */
     val commandNotice: CommandSummary? = null,
+    /** A GitLab issue is being created from this task — the row says so and refuses
+     *  a second tap meanwhile. */
+    val glCreating: Boolean = false,
+    /** The bound repo's issue templates, fetched on the picker's first open (empty
+     *  both before that and when the repo has none). */
+    val glTemplates: List<website.msdnna.tessera.data.model.GitlabIssueTemplate> = emptyList(),
+    /** The templates request already ran — distinguishes «none» from «not asked yet»,
+     *  so an empty repo isn't re-fetched on every open. */
+    val glTemplatesLoaded: Boolean = false,
+    /** What creating the issue produced («Создан issue !12 …») — reported once by the
+     *  modal, then consumed. */
+    val glCreatedNotice: UiText? = null,
     /** True once any mutation happened, so the host can refresh the board on close. */
     val changed: Boolean = false,
 )
@@ -333,6 +347,73 @@ class TaskDetailViewModel(
             runCatching { taskRepo.workspaceTasks(workspaceId) }.getOrNull()?.let { tasks ->
                 _state.update { it.copy(relationCandidates = tasks) }
             }
+        }
+    }
+
+    // ── GitLab: create an issue from this task ────────────────────────────────
+
+    /**
+     * Creates a GitLab issue from this task, mirroring web `createGlIssue()`.
+     *
+     * The on-screen title/description are saved FIRST: the backend builds the issue
+     * from the stored task, so an unsaved edit (a template just picked, above all)
+     * would silently not reach GitLab. The body is then left out of the request —
+     * the backend reads the task's own description, and sending it twice would drift
+     * the issue from the task on the next write-back.
+     */
+    fun createGitlabIssue(title: String, description: String) = mutate {
+        val d = state.value.detail ?: return@mutate
+        if (state.value.glCreating) return@mutate
+        _state.update { it.copy(glCreating = true) }
+        try {
+            val newTitle = title.trim().ifBlank { d.title }
+            if (newTitle != d.title || description != d.description) {
+                boardRepo.updateTask(d.asTask(), title = newTitle, description = description)
+            }
+            val created = boardRepo.createGitlabIssue(d.id)
+            reloadDetail()
+            _state.update { it.copy(glCreatedNotice = createdIssueNotice(created)) }
+        } catch (e: Throwable) {
+            // A 409 means the task got linked meanwhile (created from web while this
+            // modal was open) — refresh so the row becomes the issue link instead of
+            // offering a creation that can never succeed. The error still surfaces.
+            runCatching { reloadDetail() }
+            throw e
+        } finally {
+            _state.update { it.copy(glCreating = false) }
+        }
+    }
+
+    /** Fetches the bound repo's issue templates once (best-effort: no templates just
+     *  means the picker stays empty). */
+    fun loadGitlabTemplates(integrationId: String?) {
+        if (_state.value.glTemplatesLoaded || workspaceId.isBlank()) return
+        viewModelScope.launch {
+            val templates = boardRepo.gitlabIssueTemplates(workspaceId, integrationId)
+            _state.update { it.copy(glTemplates = templates, glTemplatesLoaded = true) }
+        }
+    }
+
+    fun consumeCreatedNotice() = _state.update { it.copy(glCreatedNotice = null) }
+
+    /** «Создан issue !12 (загружено вложений: 2)» — the asset suffix is web's, and it
+     *  matters: a skipped file is a link the issue won't render.
+     *
+     *  Four resources instead of a suffix glued in code (#2796): the whole sentence
+     *  has to be one translatable unit — its punctuation and word order belong to the
+     *  language, not to this loop. */
+    private fun createdIssueNotice(created: website.msdnna.tessera.data.model.GitlabIssueCreated): UiText {
+        val uploaded = created.attachments?.uploaded?.takeIf { it > 0 }
+        val skipped = created.attachments?.skipped?.takeIf { it > 0 }
+        return when {
+            uploaded != null && skipped != null ->
+                UiText.Res(R.string.gitlab_issue_created_both, listOf(created.iid, uploaded, skipped))
+
+            uploaded != null -> UiText.Res(R.string.gitlab_issue_created_uploaded, listOf(created.iid, uploaded))
+
+            skipped != null -> UiText.Res(R.string.gitlab_issue_created_skipped, listOf(created.iid, skipped))
+
+            else -> UiText.Res(R.string.gitlab_issue_created, listOf(created.iid))
         }
     }
 

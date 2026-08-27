@@ -1,5 +1,8 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { NDropdown, NPopconfirm } from 'naive-ui'
+
+const { t } = useI18n()
 
 // The chart's right-click menu and its two confirmations. Presentational only: the
 // useTaskMenu state stays owned by the view, which feeds it in and applies every
@@ -38,24 +41,24 @@ defineEmits([
     :x="x"
     :y="y"
     :positive-button-props="{ type: 'error' }"
-    positive-text="Удалить"
+    :positive-text="t('task.confirm.deleteYes')"
     @update:show="$emit('update:deleteShow', $event)"
     @positive-click="$emit('delete-confirm')"
     @clickoutside="$emit('update:deleteShow', false)"
   >
     <template #trigger><span /></template>
-    Удалить безвозвратно? Это действие необратимо.
+    {{ t('task.confirm.delete') }}
   </n-popconfirm>
   <n-popconfirm
     :show="archiveShow"
     :x="x"
     :y="y"
-    positive-text="В архив"
+    :positive-text="t('task.confirm.archiveYes')"
     @update:show="$emit('update:archiveShow', $event)"
     @positive-click="$emit('archive-confirm')"
     @clickoutside="$emit('update:archiveShow', false)"
   >
     <template #trigger><span /></template>
-    Перенести задачу в архив?
+    {{ t('task.confirm.archive') }}
   </n-popconfirm>
 </template>

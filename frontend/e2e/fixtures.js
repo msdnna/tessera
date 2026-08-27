@@ -69,17 +69,26 @@ export { expect }
 // realtime spec opens a second context and has to sign that one in too.
 export async function signIn(page, creds = seed.creds) {
   await page.goto('/login')
-  const ok = await page.evaluate(async (c) => {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'cookie' },
-      body: JSON.stringify({ email: c.email, password: c.password }),
-    })
-    if (!res.ok) return `login ${res.status}: ${(await res.text()).slice(0, 200)}`
-    const data = await res.json()
-    localStorage.setItem('tessera_user', JSON.stringify(data.user))
-    return true
-  }, creds)
+  const ok = await page.evaluate(
+    async (c) => {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Auth-Mode': 'cookie' },
+        body: JSON.stringify({ email: c.email, password: c.password }),
+      })
+      if (!res.ok) return `login ${res.status}: ${(await res.text()).slice(0, 200)}`
+      const data = await res.json()
+      localStorage.setItem('tessera_user', JSON.stringify(data.user))
+      // First-paint language: the theme store reads `tessera_prefs` before the
+      // server prefs arrive, so without this the English run renders one Russian
+      // frame — enough for a fast assertion to catch the wrong text (#2800). The
+      // server side is seeded once in global-setup.
+      const prefs = JSON.parse(localStorage.getItem('tessera_prefs') || '{}')
+      localStorage.setItem('tessera_prefs', JSON.stringify({ ...prefs, language: c.language }))
+      return true
+    },
+    { ...creds, language: seed.language || 'ru' },
+  )
   if (ok !== true) throw new Error(`e2e sign-in failed: ${ok}`)
 }
 

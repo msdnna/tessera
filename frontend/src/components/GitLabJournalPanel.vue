@@ -1,13 +1,13 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useMessage } from 'naive-ui'
 import { OpenOutline, RefreshOutline } from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
-import { useThemeStore } from '@/stores/theme'
-import { useDateLocale } from '@/composables/useDateLocale'
+import { useFormat } from '@/composables/useFormat'
 import { useRealtime } from '@/composables/useRealtime'
 import { runDuration, elapsedSince } from '@/utils/duration'
-import { PRIORITY_LABELS } from '@/styles/tokens'
+import { priorityLabel } from '@/utils/priority'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
 
@@ -18,8 +18,8 @@ const props = defineProps({
 })
 
 const message = useMessage()
-const theme = useThemeStore()
-const { formatDue } = useDateLocale()
+const { t } = useI18n()
+const { formatDue, formatDateTime } = useFormat()
 
 const runs = ref([])
 const loading = ref(false)
@@ -115,7 +115,7 @@ async function retry() {
   retrying.value = true
   try {
     await glApi.retryWriteback(props.wsId, a.runId, a.id)
-    message.success('Поставлено в очередь на повтор')
+    message.success(t('gitlab.journal.queuedForRetry'))
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -136,15 +136,9 @@ const relations = computed(() => detail.value.relations || null)
 const isPush = computed(() => selectedAction.value?.direction === 'push')
 const canRetry = computed(() => isPush.value && selectedAction.value?.status === 'fail')
 
-const FIELD_LABELS = {
-  title: 'Заголовок',
-  description: 'Описание',
-  priority: 'Приоритет',
-  column: 'Колонка',
-  completed: 'Статус',
-  due: 'Срок',
-  start: 'Начало',
-}
+// FIELD_ORDER is the render order, not a label table — the wording is looked up
+// per call so a language switch reaches it (pitfall 1 of the #2799 plan). A key
+// the backend adds later renders raw instead of as a missing translation.
 const FIELD_ORDER = ['title', 'description', 'priority', 'column', 'completed', 'due', 'start']
 
 function orderedEntries(obj) {
@@ -152,44 +146,44 @@ function orderedEntries(obj) {
   return FIELD_ORDER.filter((k) => k in obj).map((k) => [k, obj[k]])
 }
 
+function fieldLabel(key) {
+  return FIELD_ORDER.includes(key) ? t(`gitlab.journal.field.${key}`) : key
+}
+
 function fmtVal(key, v) {
   if (v === null || v === undefined || v === '') return '—'
-  if (key === 'priority') return PRIORITY_LABELS[v] ?? String(v)
-  if (key === 'completed') return v ? 'Выполнено' : 'Не выполнено'
+  if (key === 'priority') return priorityLabel(v) ?? String(v)
+  if (key === 'completed') {
+    return t(v ? 'gitlab.journal.value.completed' : 'gitlab.journal.value.notCompleted')
+  }
   if (key === 'due' || key === 'start') return formatDue(v)
   return String(v)
 }
 
 function fmtTime(s) {
   if (!s) return ''
-  const locale = theme.language === 'en' ? 'en-GB' : 'ru-RU'
-  return new Date(s).toLocaleString(locale, {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: theme.timeFormat === '12h',
-  })
+  return formatDateTime(s, { day: '2-digit', month: 'short' })
 }
 
 function runCounts(run) {
   if (run.kind === 'push') {
-    return `${run.action_count} дост.`
+    return t('gitlab.journal.deliveries', { n: run.action_count })
   }
   const parts = []
   if (run.created_count) parts.push(`+${run.created_count}`)
   if (run.updated_count) parts.push(`~${run.updated_count}`)
-  return parts.join(' ') || 'без изменений'
+  return parts.join(' ') || t('gitlab.journal.noChanges')
 }
 
-const STATUS_LABEL = {
-  running: 'выполняется',
-  ok: 'успех',
-  partial: 'частично',
-  error: 'ошибка',
-  fail: 'ошибка',
+const STATUS_KEYS = ['running', 'ok', 'partial', 'error', 'fail']
+const TRIGGER_KEYS = ['manual', 'auto']
+
+function statusLabel(status) {
+  return STATUS_KEYS.includes(status) ? t(`gitlab.journal.status.${status}`) : status
 }
-const TRIGGER_LABEL = { manual: 'вручную', auto: 'авто' }
+function triggerLabel(trigger) {
+  return TRIGGER_KEYS.includes(trigger) ? t(`gitlab.journal.trigger.${trigger}`) : trigger
+}
 
 // A run opened by the backend but not yet finished. Manual syncs are detached, so
 // this is the live state the user watches instead of a blocking overlay.
@@ -197,7 +191,7 @@ function isRunning(run) {
   return run.status === 'running' || !run.finished_at
 }
 
-// Ticks once a second so the "идёт N с" caption on an in-flight run advances.
+// Ticks once a second so the "running for N s" caption on an in-flight run advances.
 // Only armed while something is actually running, so an idle journal costs nothing.
 const now = ref(Date.now())
 let ticker = null
@@ -214,7 +208,9 @@ onBeforeUnmount(() => clearInterval(ticker))
 
 // Duration cell: the finished span, or a live ticker while the run is in flight.
 function runDurationText(run) {
-  if (isRunning(run)) return `идёт ${elapsedSince(run.started_at, now.value)}`
+  if (isRunning(run)) {
+    return t('gitlab.journal.runningFor', { elapsed: elapsedSince(run.started_at, now.value) })
+  }
   return runDuration(run.started_at, run.finished_at)
 }
 
@@ -242,9 +238,11 @@ function pushPayloadText() {
   const p = d.payload || {}
   switch (d.change_kind) {
     case 'state':
-      return p.state === 'closed' ? 'закрыть issue' : 'открыть issue'
+      return t(
+        p.state === 'closed' ? 'gitlab.journal.push.closeIssue' : 'gitlab.journal.push.openIssue',
+      )
     case 'priority':
-      return `приоритет → ${PRIORITY_LABELS[p.priority] ?? p.priority}`
+      return t('gitlab.journal.push.priority', { to: priorityLabel(p.priority) ?? p.priority })
     case 'comment':
       return p.body || ''
     default:
@@ -270,7 +268,7 @@ defineExpose({ reload: () => loadRuns() })
         <empty-state
           v-if="!loading && !runs.length"
           size="small"
-          text="Журнал пуст — синхронизация ещё не запускалась"
+          :text="$t('gitlab.journal.empty')"
         />
         <div
           v-for="run in runs"
@@ -285,7 +283,7 @@ defineExpose({ reload: () => loadRuns() })
             <span class="j-run-main">
               <span class="j-run-time">{{ fmtTime(run.started_at) }}</span>
               <span class="j-run-meta">
-                {{ TRIGGER_LABEL[run.trigger] }} ·
+                {{ triggerLabel(run.trigger) }} ·
                 <template v-if="!isRunning(run)">{{ runCounts(run) }} · </template>
                 {{ runDurationText(run) }}
               </span>
@@ -293,14 +291,14 @@ defineExpose({ reload: () => loadRuns() })
             <span
               class="j-dot"
               :class="isRunning(run) ? 'running' : run.status"
-              :title="STATUS_LABEL[isRunning(run) ? 'running' : run.status]"
+              :title="statusLabel(isRunning(run) ? 'running' : run.status)"
             />
           </button>
           <div v-if="expandedRunId === run.id" class="j-actions">
             <empty-state
               v-if="!loadingActions && !(actionsByRun[run.id]?.items || []).length"
               size="small"
-              text="Нет записанных действий"
+              :text="$t('gitlab.journal.noActions')"
             />
             <button
               v-for="a in actionsByRun[run.id]?.items || []"
@@ -315,13 +313,13 @@ defineExpose({ reload: () => loadRuns() })
               <span class="j-op" :class="a.op">{{ a.op }}</span>
               <span class="j-action-sum">{{ a.summary }}</span>
             </button>
-            <div v-if="loadingActions" class="j-muted">Загрузка…</div>
+            <div v-if="loadingActions" class="j-muted">{{ $t('common.state.loading') }}</div>
             <button
               v-else-if="actionsByRun[run.id]?.hasMore"
               class="j-more"
               @click="loadActions(run, false)"
             >
-              Показать ещё
+              {{ $t('gitlab.journal.more') }}
             </button>
           </div>
         </div>
@@ -332,12 +330,16 @@ defineExpose({ reload: () => loadRuns() })
         <empty-state
           v-if="!selectedAction"
           size="small"
-          text="Выберите действие, чтобы увидеть детали"
+          :text="$t('gitlab.journal.selectAction')"
         />
         <template v-else>
           <div class="j-d-head">
             <span class="j-d-dir" :class="selectedAction.direction">
-              {{ selectedAction.direction === 'pull' ? 'GitLab → Tessera' : 'Tessera → GitLab' }}
+              {{
+                selectedAction.direction === 'pull'
+                  ? $t('gitlab.journal.direction.pull')
+                  : $t('gitlab.journal.direction.push')
+              }}
             </span>
             <span class="j-d-sum">{{ selectedAction.summary }}</span>
           </div>
@@ -345,7 +347,7 @@ defineExpose({ reload: () => loadRuns() })
           <!-- pull: changed fields (update) -->
           <div v-if="fields" class="j-sec">
             <div v-for="[key, f] in orderedEntries(fields)" :key="key" class="j-field">
-              <span class="j-fl">{{ FIELD_LABELS[key] || key }}</span>
+              <span class="j-fl">{{ fieldLabel(key) }}</span>
               <div class="j-diff">
                 <span class="j-before">{{ fmtVal(key, f.before) }}</span>
                 <span class="j-arrow">→</span>
@@ -357,31 +359,35 @@ defineExpose({ reload: () => loadRuns() })
           <!-- pull: created task snapshot -->
           <div v-if="after" class="j-sec">
             <div v-for="[key, v] in orderedEntries(after)" :key="key" class="j-field">
-              <span class="j-fl">{{ FIELD_LABELS[key] || key }}</span>
+              <span class="j-fl">{{ fieldLabel(key) }}</span>
               <span class="j-after">{{ fmtVal(key, v) }}</span>
             </div>
           </div>
 
           <!-- tags -->
           <div v-if="tags" class="j-sec">
-            <div class="j-fl">Теги</div>
+            <div class="j-fl">{{ $t('gitlab.journal.tags') }}</div>
+            <!-- `tag`, not `t`: the loop variable would shadow the translation
+                 function for the rest of the template. -->
             <div class="j-chips">
-              <span v-for="t in tags.added || []" :key="'a' + t" class="j-chip add">+ {{ t }}</span>
-              <span v-for="t in tags.removed || []" :key="'r' + t" class="j-chip rem"
-                >− {{ t }}</span
-              >
+              <span v-for="tag in tags.added || []" :key="'a' + tag" class="j-chip add">
+                + {{ tag }}
+              </span>
+              <span v-for="tag in tags.removed || []" :key="'r' + tag" class="j-chip rem">
+                − {{ tag }}
+              </span>
             </div>
           </div>
 
           <!-- comments -->
           <div v-if="comments && comments.added" class="j-sec">
-            <div class="j-fl">Новые комментарии ({{ comments.added }})</div>
+            <div class="j-fl">{{ $t('gitlab.journal.newComments', { n: comments.added }) }}</div>
             <div v-for="(b, i) in comments.new || []" :key="i" class="j-comment">{{ b }}</div>
           </div>
 
           <!-- assignees -->
           <div v-if="assignees && assignees.length" class="j-sec">
-            <div class="j-fl">Исполнители (GitLab)</div>
+            <div class="j-fl">{{ $t('gitlab.journal.assignees') }}</div>
             <div class="j-chips">
               <span v-for="a in assignees" :key="a" class="j-chip">{{ a }}</span>
             </div>
@@ -389,14 +395,16 @@ defineExpose({ reload: () => loadRuns() })
 
           <!-- relations (aggregated per run) -->
           <div v-if="relations" class="j-sec">
-            <div class="j-fl">Связи</div>
+            <div class="j-fl">{{ $t('gitlab.journal.relations') }}</div>
             <div class="j-chips">
-              <span v-if="relations.added" class="j-chip add">+{{ relations.added }} связей</span>
+              <span v-if="relations.added" class="j-chip add">
+                {{ $t('gitlab.journal.relationsAdded', relations.added, { n: relations.added }) }}
+              </span>
               <span v-if="relations.removed" class="j-chip rem">
-                −{{ relations.removed }} удалено
+                {{ $t('gitlab.journal.relationsRemoved', { n: relations.removed }) }}
               </span>
               <span v-if="relations.deferred" class="j-chip">
-                {{ relations.deferred }} отложено
+                {{ $t('gitlab.journal.relationsDeferred', { n: relations.deferred }) }}
               </span>
             </div>
           </div>
@@ -404,11 +412,11 @@ defineExpose({ reload: () => loadRuns() })
           <!-- push: payload + result/error -->
           <div v-if="isPush" class="j-sec">
             <div class="j-field">
-              <span class="j-fl">Действие</span>
+              <span class="j-fl">{{ $t('gitlab.journal.action') }}</span>
               <span class="j-after">{{ pushPayloadText() }}</span>
             </div>
             <div v-if="selectedAction.status === 'fail'" class="j-error">
-              {{ selectedAction.error || detail.error || 'Ошибка доставки' }}
+              {{ selectedAction.error || detail.error || $t('gitlab.journal.deliveryFailed') }}
             </div>
             <div v-else-if="detail.result" class="j-ok">{{ detail.result }}</div>
           </div>
@@ -421,7 +429,7 @@ defineExpose({ reload: () => loadRuns() })
               target="_blank"
               rel="noopener noreferrer"
             >
-              <n-icon :component="OpenOutline" /> Открыть в GitLab
+              <n-icon :component="OpenOutline" /> {{ $t('gitlab.journal.openInGitLab') }}
             </a>
             <n-button
               v-if="canRetry"
@@ -431,7 +439,7 @@ defineExpose({ reload: () => loadRuns() })
               @click="retry"
             >
               <template #icon><n-icon :component="RefreshOutline" /></template>
-              Повторить
+              {{ $t('gitlab.journal.retry') }}
             </n-button>
           </div>
         </template>

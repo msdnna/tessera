@@ -15,6 +15,8 @@ import {
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import { notificationText } from '@/utils/notificationText'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -22,6 +24,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useAuthStore } from '@/stores/auth'
 import { useResponsive } from '@/composables/useResponsive'
+import { useFormat } from '@/composables/useFormat'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
@@ -29,6 +32,7 @@ import EstimationModal from './EstimationModal.vue'
 import WorkspaceCommandsModal from './WorkspaceCommandsModal.vue'
 import BackgroundJobsModal from './BackgroundJobsModal.vue'
 import { DEFAULT_ESTIMATION } from '@/utils/estimation'
+import { workspaceName } from '@/utils/defaultNames'
 
 defineProps({ placement: { type: String, default: 'bottom-end' } })
 
@@ -41,6 +45,9 @@ const router = useRouter()
 // On touch (mobile) tooltips fire on tap and overlap the dropdown/popover they
 // label — suppress them there.
 const { isMobile } = useResponsive()
+const { formatTime, formatters } = useFormat()
+// A bare `t` is safe here again: the colour-swatch loop below is `ct`, not `t`.
+const { t, te } = useI18n()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
@@ -73,7 +80,7 @@ const glLabel = () =>
 const integrationOptions = computed(() => [
   { label: glLabel, key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
   {
-    label: 'Оценка задач',
+    label: t('shell.tools.estimation'),
     key: 'estimation',
     icon: () => h(NIcon, null, { default: () => h(TimerOutline) }),
   },
@@ -82,7 +89,7 @@ const integrationOptions = computed(() => [
   ...(ws.commandsCanManage
     ? [
         {
-          label: 'Команды редактора',
+          label: t('shell.tools.commands'),
           key: 'commands',
           icon: () => h(NIcon, null, { default: () => h(TerminalOutline) }),
         },
@@ -107,7 +114,12 @@ function openNotification(n) {
   }
 }
 function fmtTime(d) {
-  return new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+  return formatTime(d)
+}
+// The feed line is rendered from the notification's payload, so switching the
+// language re-renders the whole feed — including rows fetched minutes ago.
+function noteText(n) {
+  return notificationText(n, { t, te, formatters: formatters.value })
 }
 </script>
 
@@ -116,11 +128,17 @@ function fmtTime(d) {
     <!-- Members -->
     <n-tooltip :disabled="isMobile">
       <template #trigger>
-        <n-button quaternary circle size="small" aria-label="Участники" @click="showMembers = true">
+        <n-button
+          quaternary
+          circle
+          size="small"
+          :aria-label="t('shell.tools.members')"
+          @click="showMembers = true"
+        >
           <n-icon :component="PeopleOutline" />
         </n-button>
       </template>
-      Участники
+      {{ t('shell.tools.members') }}
     </n-tooltip>
 
     <!-- Integrations -->
@@ -132,7 +150,7 @@ function fmtTime(d) {
     >
       <n-tooltip :disabled="isMobile">
         <template #trigger>
-          <n-button quaternary circle size="small" aria-label="Интеграции">
+          <n-button quaternary circle size="small" :aria-label="t('shell.tools.integrations')">
             <n-badge
               :value="conflicts.count"
               :max="9"
@@ -144,7 +162,11 @@ function fmtTime(d) {
             </n-badge>
           </n-button>
         </template>
-        {{ conflicts.count ? `Интеграции · конфликтов: ${conflicts.count}` : 'Интеграции' }}
+        {{
+          conflicts.count
+            ? t('shell.tools.integrationsConflicts', { count: conflicts.count })
+            : t('shell.tools.integrations')
+        }}
       </n-tooltip>
     </n-dropdown>
 
@@ -155,13 +177,14 @@ function fmtTime(d) {
           quaternary
           circle
           size="small"
-          aria-label="Фоновые задания"
+          :aria-label="t('shell.tools.jobs')"
+          data-testid="jobs-button"
           @click="showJobs = true"
         >
           <n-icon :component="ServerOutline" />
         </n-button>
       </template>
-      Фоновые задания
+      {{ t('shell.tools.jobs') }}
     </n-tooltip>
 
     <!-- Notifications -->
@@ -171,7 +194,7 @@ function fmtTime(d) {
           quaternary
           circle
           size="small"
-          aria-label="Уведомления"
+          :aria-label="t('shell.tools.notifications')"
           class="bell-btn"
           data-tour="footer-notifications"
         >
@@ -182,7 +205,7 @@ function fmtTime(d) {
       </template>
       <div class="feed">
         <div class="feed-head">
-          <span>Уведомления</span>
+          <span>{{ t('shell.tools.notifications') }}</span>
           <n-button
             v-if="notes.unread"
             text
@@ -191,7 +214,7 @@ function fmtTime(d) {
             class="ngrad"
             @click="notes.markAllRead()"
           >
-            Прочитать все
+            {{ t('shell.tools.markAllRead') }}
           </n-button>
         </div>
         <button
@@ -201,13 +224,13 @@ function fmtTime(d) {
           :class="{ unread: !it.read_at }"
           @click="openNotification(it)"
         >
-          <span class="ft">{{ it.text }}</span>
+          <span class="ft">{{ noteText(it) }}</span>
           <span class="fa">{{ fmtTime(it.created_at) }}</span>
         </button>
         <empty-state
           v-if="!notes.items.length"
           :icon="NotificationsOutline"
-          text="Пока тихо"
+          :text="t('shell.tools.feedEmpty')"
           size="small"
         />
       </div>
@@ -218,16 +241,16 @@ function fmtTime(d) {
       <template #trigger>
         <n-tooltip :disabled="isMobile">
           <template #trigger>
-            <n-button quaternary circle size="small" aria-label="Оформление">
+            <n-button quaternary circle size="small" :aria-label="t('shell.tools.appearance')">
               <n-icon :component="ColorPaletteOutline" />
             </n-button>
           </template>
-          Оформление
+          {{ t('shell.tools.appearance') }}
         </n-tooltip>
       </template>
       <div class="appearance">
         <div class="row">
-          <n-text depth="2">Тёмная тема</n-text>
+          <n-text depth="2">{{ t('shell.tools.darkTheme') }}</n-text>
           <n-switch :value="theme.isDark" @update:value="theme.toggle()">
             <template #checked-icon><n-icon :component="MoonOutline" /></template>
             <template #unchecked-icon><n-icon :component="SunnyOutline" /></template>
@@ -235,13 +258,13 @@ function fmtTime(d) {
         </div>
         <div class="swatches">
           <button
-            v-for="t in COLOR_THEMES"
-            :key="t.key"
+            v-for="ct in COLOR_THEMES"
+            :key="ct.key"
             class="swatch-btn"
-            :class="{ active: t.key === theme.activeTheme.key }"
-            :style="{ backgroundImage: hueGrad(t.primary) }"
-            :title="t.name"
-            @click="theme.selectColor(t)"
+            :class="{ active: ct.key === theme.activeTheme.key }"
+            :style="{ backgroundImage: hueGrad(ct.primary) }"
+            :title="t(`settings.appearance.color.${ct.key}`)"
+            @click="theme.selectColor(ct)"
           />
         </div>
       </div>
@@ -253,7 +276,7 @@ function fmtTime(d) {
       v-model:show="showEstimation"
       scope="workspace"
       :target-id="ws.currentId"
-      :name="ws.current?.name || ''"
+      :name="workspaceName(ws.current)"
       :value="ws.current?.estimation || null"
       :inherited="DEFAULT_ESTIMATION"
     />

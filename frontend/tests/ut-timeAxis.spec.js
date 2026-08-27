@@ -2,8 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   DAY_MS,
   HOUR_MS,
-  MONTHS,
-  WD,
   startOfDay,
   isAllDayMs,
   tierFor,
@@ -18,13 +16,12 @@ import {
   hourStepFor,
   hourTicksInWindow,
 } from '@/utils/timeAxis'
+import { createFormatters } from '@/utils/format'
 
 describe('constants', () => {
-  it('exposes ms/label tables', () => {
+  it('exposes the ms units', () => {
     expect(DAY_MS).toBe(86400000)
     expect(HOUR_MS).toBe(3600000)
-    expect(MONTHS).toHaveLength(12)
-    expect(WD).toEqual(['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'])
   })
 })
 
@@ -115,6 +112,16 @@ describe('buildDays', () => {
     expect(days[5].weekend).toBe(true)
     expect(days[6].weekend).toBe(true)
   })
+
+  // The weekday strip used to be a hardcoded Russian table, so the axis stayed
+  // Russian whatever the language was (#2799).
+  it('names the weekday in the formatter language', () => {
+    const rangeStart = startOfDay(new Date(2026, 5, 1).getTime()) // Monday
+    const ru = buildDays(rangeStart, 1, 0, createFormatters({ language: 'ru' }))
+    const en = buildDays(rangeStart, 1, 0, createFormatters({ language: 'en' }))
+    expect(ru[0].dow).toBe('пн')
+    expect(en[0].dow).toBe('Mon')
+  })
 })
 
 describe('buildMonthBands', () => {
@@ -126,6 +133,15 @@ describe('buildMonthBands', () => {
     expect(bands[0].span).toBe(3)
     expect(bands[1].span).toBe(3)
     expect(bands[0].label).toContain('июн')
+    expect(bands[0].label).toContain('2026')
+  })
+
+  it('names the month in the formatter language', () => {
+    const rangeStart = startOfDay(new Date(2026, 5, 28).getTime())
+    const en = createFormatters({ language: 'en' })
+    const bands = buildMonthBands(buildDays(rangeStart, 6, 0, en), en)
+    expect(bands[0].label).toBe('Jun 2026')
+    expect(bands[1].label).toBe('Jul 2026')
   })
 })
 

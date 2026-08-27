@@ -11,7 +11,7 @@ test('документ: набранный текст сохраняется с�
   await page.addInitScript((id) => localStorage.setItem('tessera_ws', id), seed.workspaceId)
   await page.goto('/documents')
 
-  await page.getByRole('button', { name: /Новый документ/ }).click()
+  await page.getByTestId('doc-new').click()
   const editor = page.locator('.ProseMirror')
   await expect(editor).toBeVisible()
 
@@ -25,7 +25,7 @@ test('документ: набранный текст сохраняется с�
   await editor.click()
   await editor.pressSequentially(text)
   expect((await saved).status()).toBe(200)
-  await expect(page.getByText('Все изменения сохранены')).toBeVisible()
+  await expect(page.getByTestId('doc-save-state')).toHaveAttribute('data-state', 'saved')
 
   // open() rewrites the URL to /documents/<slug>, so the reload also exercises
   // the deep link: the document is resolved by slug, not restored from memory.

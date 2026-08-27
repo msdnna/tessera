@@ -1,0 +1,341 @@
+{
+  "fallbackTitle": "Задача",
+  "menu": {
+    "open": "Открыть",
+    "complete": "Отметить выполненной",
+    "uncomplete": "Снять выполнение",
+    "priority": "Приоритет",
+    "move": "Переместить в колонку",
+    "archive": "В архив",
+    "delete": "Удалить",
+    "addSubtask": "Создать подзадачу"
+  },
+  "confirm": {
+    "delete": "Удалить безвозвратно? Это действие необратимо.",
+    "deleteYes": "Удалить",
+    "archive": "Перенести задачу в архив?",
+    "archiveYes": "В архив"
+  },
+  "action": {
+    "restore": "Вернуть из архива"
+  },
+  "field": {
+    "priority": "Приоритет",
+    "due": "Срок",
+    "estimate": "Оценка",
+    "milestone": "Этап",
+    "tags": "Теги",
+    "assignee": "Исполнитель",
+    "recurring": "Повторяемая задача",
+    "author": "Автор",
+    "assignees": "Исполнители",
+    "status": "Статус",
+    "parent": "Родитель",
+    "grouping": "Группировка"
+  },
+  "layout": {
+    "hint": "Как открывать задачу",
+    "modal": "Модальное окно",
+    "fullscreen": "Полный экран",
+    "sidebar": "Панель справа"
+  },
+  "card": {
+    "columnIs": "Колонка: {name}",
+    "openIssue": "GitLab issue !{iid} — открыть",
+    "narrowed": "{shown} из {total} подзадач — остальные скрыты фильтром",
+    "subtaskPlaceholder": "Название подзадачи, Enter"
+  },
+  "pill": {
+    "conflict": "Конфликт",
+    "conflictHint": "Конфликт обратной записи GitLab — нажмите, чтобы разрешить",
+    "hasDescription": "Есть описание"
+  },
+  "estimate": {
+    "tooltip": "Оценка: {value}",
+    "rollupTooltip": "Сумма оценок подзадач: {value}",
+    "rollupHint": "Сумма оценок подзадач",
+    "clear": "Очистить",
+    "apply": "ОК",
+    "short": {
+      "week": "{n}н",
+      "day": "{n}д",
+      "hour": "{n}ч",
+      "minute": "{n}м",
+      "points": "{n} SP"
+    },
+    "full": {
+      "week": "{n} неделя | {n} недели | {n} недель",
+      "day": "{n} день | {n} дня | {n} дней",
+      "hour": "{n} час | {n} часа | {n} часов",
+      "minute": "{n} минута | {n} минуты | {n} минут"
+    },
+    "unit": {
+      "time": "Время",
+      "points": "Стори-поинты",
+      "custom": "Единицы"
+    },
+    "placeholder": {
+      "time": "напр. 3д 4ч, 90м, 1н",
+      "points": "напр. 5",
+      "custom": "напр. 8"
+    },
+    "config": {
+      "titleWorkspace": "Оценка задач — по умолчанию",
+      "titleProject": "Оценка задач — {name}",
+      "inherit": "Наследовать ({value})",
+      "inheritTime": "{unit} · {hours}ч/день · {days}дн/неделя",
+      "unitField": "Единица",
+      "hoursPerDay": "Часов в рабочем дне",
+      "daysPerWeek": "Дней в рабочей неделе",
+      "scale": "Шкала",
+      "customLabel": "Название единицы",
+      "customPlaceholder": "напр. у.е.",
+      "example": "Пример:",
+      "unitOption": {
+        "time": "Время",
+        "points": "Стори-поинты",
+        "custom": "Свои единицы"
+      },
+      "scaleOption": {
+        "fibonacci": "Фибоначчи (1, 2, 3, 5, 8, 13)",
+        "tshirt": "Футболки (XS…XXL)",
+        "linear": "Линейная (1…10)"
+      }
+    }
+  },
+  "milestone": {
+    "tooltip": "Этап: {title}",
+    "tooltipClosed": "Этап: {title} (закрыт)",
+    "newPlaceholder": "Новый этап…"
+  },
+  "tags": {
+    "newPlaceholder": "Новый тег, Enter"
+  },
+  "people": {
+    "author": "Автор: {name}",
+    "assignee": "Исполнитель: {names}",
+    "none": "Нет исполнителя",
+    "noMatches": "Никого не найдено"
+  },
+  "tab": {
+    "description": "Описание",
+    "comments": "Комментарии",
+    "subtasks": "Подзадачи",
+    "relations": "Связи",
+    "files": "Файлы",
+    "documents": "Документы",
+    "history": "История"
+  },
+  "desc": {
+    "template": "Шаблон issue…",
+    "insertImage": "Вставить изображение",
+    "insertMermaid": "Вставить Mermaid-диаграмму",
+    "fullscreen": "Открыть на весь экран",
+    "preview": "Предпросмотр",
+    "placeholder": "Добавьте описание…",
+    "emptyMarkdown": "_Нет описания_"
+  },
+  "comments": {
+    "someone": "Кто-то",
+    "placeholder": "Комментарий…",
+    "composerPlaceholder": "Написать комментарий… ({'@'} — упоминание, / — команда, Ctrl+Enter — отправить)",
+    "replyPlaceholder": "Ответить… (Esc — отмена, Ctrl+Enter — отправить)",
+    "reply": "Ответить",
+    "collapse": "Свернуть ответы",
+    "replies": "{n} ответ | {n} ответа | {n} ответов",
+    "deleteConfirm": "Удалить комментарий?",
+    "empty": "Комментариев пока нет",
+    "offlineComment": "Сервер недоступен — комментарий не отправлен",
+    "offlineReply": "Сервер недоступен — ответ не отправлен",
+    "commandsApplied": "Применено: {list}",
+    "retrying": "Нет связи — повтор попытки ({attempt}/{max})…",
+    "customCommands": "{list} — останется текстом"
+  },
+  "subtasks": {
+    "empty": "Подзадач пока нет",
+    "addPlaceholder": "+ подзадача (Enter)",
+    "pushQueued": "Выгрузка подзадачи в GitLab поставлена в очередь",
+    "glChild": "Дочерний элемент issue в GitLab",
+    "glDetached": "вне иерархии",
+    "glDetachedHint": "Issue !{iid} создан, но GitLab не принял его в иерархию — повторить",
+    "glAbsent": "не в GitLab",
+    "glAbsentHint": "Подзадача ещё не выгружена в GitLab — выгрузить",
+    "parentNotGrouped": "Родитель не помечен как сгруппированная задача — подзадачи не уедут в GitLab.",
+    "markGrouped": "Пометить"
+  },
+  "relations": {
+    "empty": "Связей пока нет",
+    "link": "Связать",
+    "unlink": "Убрать связь",
+    "searchPlaceholder": "№ или название",
+    "noMatches": "Ничего не найдено",
+    "deleteConfirm": "Убрать связь?",
+    "deleteExternalConfirm": "Эта связь вернётся при следующем синке {source}. Удалить?",
+    "kind": {
+      "relates": "связана с",
+      "blocks": "блокирует",
+      "blocked_by": "заблокирована",
+      "duplicates": "дублирует"
+    }
+  },
+  "files": {
+    "empty": "Файлов пока нет",
+    "attach": "Прикрепить файл",
+    "download": "Скачать",
+    "saved": "Файл сохранён",
+    "deleteConfirm": "Удалить файл «{name}»?",
+    "size": {
+      "b": "{n} Б",
+      "kb": "{n} КБ",
+      "mb": "{n} МБ"
+    },
+    "downloadFailed": "Не удалось скачать файл"
+  },
+  "docs": {
+    "empty": "Связанных документов нет",
+    "untitled": "Без названия",
+    "fragment": "фрагмент",
+    "unlink": "Убрать связь",
+    "unlinkYes": "Убрать",
+    "unlinkConfirm": "Убрать связь с документом?"
+  },
+  "history": {
+    "empty": "История пуста",
+    "someone": "Кто-то"
+  },
+  "head": {
+    "titlePlaceholder": "Название задачи",
+    "moveTitle": "Перенести в другую доску",
+    "moveHint": "Перенести в доску:",
+    "noBoards": "нет досок",
+    "shareCopy": "Скопировать ссылку на задачу",
+    "shareDone": "Ссылка скопирована",
+    "shareFailed": "Не удалось скопировать ссылку",
+    "showPane": "Показать панель",
+    "hidePane": "Скрыть панель",
+    "dividerHidden": "Двойной клик — показать панель",
+    "dividerDrag": "Потяните / двойной клик",
+    "openInGitlab": "Открыть issue !{iid} в GitLab"
+  },
+  "value": {
+    "dueUnset": "Не задан",
+    "estimateUnset": "Не задана",
+    "milestoneUnset": "Не задан",
+    "milestoneClosed": "закрыт",
+    "tagsNone": "Нет",
+    "assigneesNone": "Никто",
+    "columnNone": "Без колонки"
+  },
+  "recur": {
+    "title": "Повтор задачи",
+    "every": "каждые",
+    "customHint": "Отметьте даты повтора в календаре →",
+    "event": "Событие",
+    "triggerColumn": "Колонка-триггер",
+    "columnPlaceholder": "Выберите колонку",
+    "moveTo": "Переносить в",
+    "targetDefault": "Первая колонка (по умолчанию)",
+    "createDuplicate": "Создавать дубликат",
+    "forever": "Повторять всегда",
+    "skipWeekends": "Пропускать выходные",
+    "freq": {
+      "none": "Без повтора",
+      "daily": "Ежедневно",
+      "weekly": "Еженедельно",
+      "monthly": "Ежемесячно",
+      "yearly": "Ежегодно",
+      "custom": "Выборочно (по датам)"
+    },
+    "trigger": {
+      "complete": "При завершении",
+      "column": "При переходе в колонку",
+      "schedule": "По расписанию"
+    },
+    "unit": {
+      "daily": "день | дня | дней",
+      "weekly": "неделю | недели | недель",
+      "monthly": "месяц | месяца | месяцев",
+      "yearly": "год | года | лет"
+    }
+  },
+  "due": {
+    "start": "Начало",
+    "due": "Срок",
+    "startUnset": "не задано",
+    "dueUnset": "не задан",
+    "timePlaceholder": "Время",
+    "clearStart": "Очистить начало",
+    "clearDue": "Очистить срок",
+    "notify": {
+      "title": "Уведомления",
+      "lead": "Напоминать",
+      "repeat": "Повтор уведомления",
+      "default": "По умолчанию",
+      "on": "Включены",
+      "off": "Выключены",
+      "leadAt": "В срок",
+      "lead15": "За 15 мин",
+      "lead60": "За час",
+      "lead180": "За 3 часа",
+      "lead1440": "За день",
+      "repeatOnce": "Однократно",
+      "repeat60": "Каждый час",
+      "repeat180": "Каждые 3 часа",
+      "repeat1440": "Каждый день"
+    }
+  },
+  "parent": {
+    "detach": "Открепить",
+    "makeSubtask": "Сделать подзадачей…",
+    "noCandidates": "Нет других задач"
+  },
+  "status": {
+    "next": "Сдвинуть → «{name}»",
+    "last": "Это последняя колонка",
+    "reopen": "Вернуть в работу",
+    "complete": "Выполнено"
+  },
+  "gitlab": {
+    "create": "Создать issue",
+    "creating": "Создание…",
+    "created": "Создан issue !{iid} в GitLab{suffix}",
+    "assetsUploaded": "загружено вложений: {n}",
+    "assetsSkipped": "не удалось: {n}",
+    "saving": "Сохранение…",
+    "grouped": "Сгруппированная",
+    "group": "Сделать сгруппированной",
+    "ungroup": "Снять группировку",
+    "groupSet": "Задача помечена сгруппированной",
+    "groupCleared": "Группировка снята"
+  },
+  "footer": {
+    "readonly": "Архивная задача — только просмотр",
+    "archiveBoth": "В архив вместе",
+    "detachSubtasks": "Открепить подзадачи",
+    "archiveWithSubs": "У задачи есть подзадачи — что с ними сделать?"
+  },
+  "journal": {
+    "created": "создал(а) задачу",
+    "renamed": "переименовал(а) → «{to}»",
+    "description": "изменил(а) описание",
+    "priority": "изменил(а) приоритет → {to}",
+    "dueSet": "установил(а) срок",
+    "dueCleared": "убрал(а) срок",
+    "completed": "отметил(а) выполненной",
+    "reopened": "вернул(а) в работу",
+    "recurred": "перенёс(ла) повтор задачи",
+    "moved": "переместил(а)",
+    "movedTo": "переместил(а) → «{to}»",
+    "assigned": "назначил(а) исполнителя",
+    "unassigned": "снял(а) исполнителя",
+    "archived": "отправил(а) в архив",
+    "restored": "восстановил(а) из архива",
+    "comment": "оставил(а) комментарий",
+    "relation": "добавил(а) связь с #{ref}",
+    "attachment": "прикрепил(а) файл",
+    "attachmentNamed": "прикрепил(а) файл «{name}»"
+  },
+  "ref": {
+    "notFound": "Задача #{number} не найдена"
+  }
+}

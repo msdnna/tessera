@@ -1,8 +1,10 @@
 <script setup>
 import { ref, computed, h, render } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NDropdown, NModal, NCard, NInput, useMessage } from 'naive-ui'
 import { FolderOutline } from '@vicons/ionicons5'
 import { PROJECT_ICONS, sanitizeIconSvg } from '@/utils/projectIcons'
+import { formatFileSize } from '@/utils/docPdf'
 import TesseraIcon from './TesseraIcon.vue'
 
 const props = defineProps({
@@ -16,6 +18,7 @@ const props = defineProps({
   transparentDefault: { type: Boolean, default: false }, // groups: empty ≡ transparent
 })
 const emit = defineEmits(['update:icon', 'update:color', 'update:mode'])
+const { t } = useI18n()
 const message = useMessage()
 
 const COLORS = [
@@ -44,10 +47,12 @@ function swatchBg(s) {
   return `linear-gradient(to top right, color-mix(in srgb, ${s} 86%, #000), ${s} 50%, color-mix(in srgb, ${s} 86%, #fff))`
 }
 
-const addIconOptions = [
-  { label: 'Найти иконку', key: 'search' },
-  { label: 'Загрузить SVG / PNG', key: 'upload' },
-]
+// computed, not a constant: dropdown labels built once at setup would keep the
+// language the picker was first opened in.
+const addIconOptions = computed(() => [
+  { label: t('project.icon.search'), key: 'search' },
+  { label: t('project.icon.upload'), key: 'upload' },
+])
 const iconFileInput = ref(null)
 const iconSearchShow = ref(false)
 const iconQuery = ref('')
@@ -100,7 +105,7 @@ function onIconFile(e) {
   const isSvg = file.type === 'image/svg+xml' || file.name.toLowerCase().endsWith('.svg')
   const isPng = file.type === 'image/png'
   if (!isSvg && !isPng) {
-    message.warning('Поддерживаются только SVG или PNG')
+    message.warning(t('project.icon.onlySvgPng'))
     return
   }
   const reader = new FileReader()
@@ -108,7 +113,9 @@ function onIconFile(e) {
     let icon = String(reader.result || '')
     if (isSvg) icon = sanitizeIconSvg(icon)
     if (!icon || icon.length > MAX_ICON) {
-      message.warning('Файл повреждён или слишком большой (макс. 40 КБ)')
+      // Same formatter as every other size limit in the app, so the number in
+      // this warning cannot drift from MAX_ICON or read in other units.
+      message.warning(t('project.icon.tooLarge', { limit: formatFileSize(MAX_ICON) }))
       return
     }
     emit('update:icon', icon)
@@ -126,10 +133,10 @@ function onIconFile(e) {
         :class="{ active: !icon }"
         :title="
           fallbackFolder
-            ? 'Папка (по умолчанию)'
+            ? t('project.icon.folderDefault')
             : fallbackKanban
-              ? 'Канбан (по умолчанию)'
-              : 'Инициалы'
+              ? t('project.icon.kanbanDefault')
+              : t('project.icon.initials')
         "
         @click="emit('update:icon', '')"
       >
@@ -147,9 +154,11 @@ function onIconFile(e) {
         <n-icon :component="i.component" :size="16" />
       </button>
       <n-dropdown v-if="allowUpload" trigger="click" :options="addIconOptions" @select="onAddMenu">
-        <button class="ic ic-more" title="Ещё иконки: поиск или загрузка">＋</button>
+        <button class="ic ic-more" :title="t('project.icon.more')">＋</button>
       </n-dropdown>
-      <button v-else class="ic ic-more" title="Найти иконку" @click="openIconSearch">＋</button>
+      <button v-else class="ic ic-more" :title="t('project.icon.search')" @click="openIconSearch">
+        ＋
+      </button>
     </div>
 
     <div class="swatches">
@@ -159,26 +168,26 @@ function onIconFile(e) {
         class="sw"
         :class="{ active: swatchActive(s), 'sw-bare': s === 'transparent' }"
         :style="s === 'transparent' ? {} : { backgroundImage: swatchBg(s) }"
-        :title="s === 'transparent' ? 'Без фона' : ''"
+        :title="s === 'transparent' ? t('project.icon.noBackground') : ''"
         @click="emit('update:color', s)"
       />
     </div>
 
     <!-- Where the colour lands: the badge box (default) or the glyph itself. -->
-    <div class="mode-toggle" role="group" aria-label="Что красить">
+    <div class="mode-toggle" role="group" :aria-label="t('project.icon.paintWhat')">
       <button
         class="mt-opt"
         :class="{ active: mode !== 'icon' }"
         @click="emit('update:mode', 'badge')"
       >
-        Бейдж
+        {{ t('project.icon.badge') }}
       </button>
       <button
         class="mt-opt"
         :class="{ active: mode === 'icon' }"
         @click="emit('update:mode', 'icon')"
       >
-        Иконка
+        {{ t('project.icon.glyph') }}
       </button>
     </div>
 
@@ -191,14 +200,14 @@ function onIconFile(e) {
       @change="onIconFile"
     />
     <n-modal v-model:show="iconSearchShow">
-      <n-card title="Иконка из коллекции" style="max-width: 440px" role="dialog">
+      <n-card :title="t('project.icon.collection')" style="max-width: 440px" role="dialog">
         <n-input
           v-model:value="iconQuery"
-          placeholder="Поиск по названию (англ.): home, code, rocket…"
+          :placeholder="t('project.icon.searchPlaceholder')"
           clearable
         />
-        <div v-if="iconsLoading" class="icp-hint">Загрузка коллекции…</div>
-        <div v-else-if="!iconResults.length" class="icp-hint">Ничего не найдено</div>
+        <div v-if="iconsLoading" class="icp-hint">{{ t('project.icon.loading') }}</div>
+        <div v-else-if="!iconResults.length" class="icp-hint">{{ t('project.icon.notFound') }}</div>
         <div v-else class="icp-grid">
           <button
             v-for="i in iconResults"

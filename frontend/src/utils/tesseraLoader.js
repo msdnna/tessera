@@ -208,7 +208,8 @@ export function mountTesseraLoader(el, o = {}) {
     }
   }
 
-  draw(at(LOOP, 0)) // первый кадр сразу, без ожидания rAF (стартуем с плитки-cover)
+  // первый кадр сразу, без ожидания rAF (стартуем с плитки-cover)
+  draw(at(LOOP, 0))
   const lTot = sum(LOOP)
   let raf
   let start = null

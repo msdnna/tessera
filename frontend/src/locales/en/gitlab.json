@@ -1,0 +1,311 @@
+{
+  "modal": {
+    "connectedAs": "GitLab connected as {'@'}{name}",
+    "disconnected": "GitLab disconnected",
+    "account": {
+      "title": "Account",
+      "serviceHint": "Syncing runs under {strong} (set by an admin in the administration panel). Connecting a personal token below is optional — it only serves as a fallback for operations on your behalf.",
+      "serviceHintStrong": "the instance service token",
+      "baseUrl": "GitLab URL",
+      "token": "Token (PAT, api scope)",
+      "scopeHint": "Writing on your behalf (creating issues, write-back) needs the {api} scope. A {readApi} token is only enough for reading and syncing.",
+      "connect": "Connect",
+      "disconnect": "Disconnect",
+      "disconnectConfirm": "Disconnect the GitLab account? Integrations will stop syncing."
+    },
+    "binding": {
+      "title": "GitLab → board bindings",
+      "noCredsWarning": "No GitLab credentials available: syncing and write-back will not run. Connect a personal token above or ask an admin to set a service token. Saved bindings are not lost meanwhile.",
+      "readOnlyHint": "Only an administrator can change bindings. You can view them and start a sync.",
+      "adminOnly": "Only an administrator can change bindings",
+      "fallbackLabel": "binding",
+      "new": "New binding",
+      "delete": "Delete binding",
+      "deleteConfirm": "Delete this binding? Synced tasks stay, but the link to GitLab is gone.",
+      "deleted": "Binding deleted",
+      "name": "Name (optional)",
+      "namePlaceholder": "e.g. Scrum board",
+      "projectPath": "GitLab project (full path)",
+      "board": "Target board",
+      "boardPlaceholder": "Pick a board",
+      "interval": "Auto sync",
+      "fullInterval": "Full sync",
+      "dueSource": "Due date source",
+      "startSource": "Start date source",
+      "scope": "What to import",
+      "closedPolicy": "Closed issues",
+      "closedAfter": "Closed no earlier than",
+      "relations": "Sync relations",
+      "relationsHint": "Import linked issues from GitLab into the “Relations” tab",
+      "enabled": "Enabled",
+      "saved": "Integration settings saved",
+      "needProjectAndBoard": "Set the GitLab project path and the target board"
+    },
+    "writeback": {
+      "title": "Write-back to GitLab",
+      "enabled": "Enable write-back",
+      "create": "Create an issue from a task",
+      "fetchTemplates": "Fetch issue templates from the project",
+      "children": "Push subtasks into the GitLab hierarchy",
+      "groupLabel": "Grouped-task label",
+      "groupLabelPlaceholder": "M: Сгруппированная задача",
+      "autoGroup": "Label the parent automatically",
+      "attachments": "Upload attachments to GitLab",
+      "hint": "“Create an issue from a task” adds a “Create a GitLab issue” button to the task modal (under the “Parent” property) — the issue is opened from the task's properties and description under the integration owner's token, after which the task counts as synced. It works independently of the change write-back below. “Fetch issue templates” pulls in {templates} templates — you can pick one above the description editor before creating. “Upload attachments” copies images from the description and comments, plus the task's files, into the GitLab project store — otherwise links to them stay broken inside the issue (GitLab resolves them against its own address). Turn it off if you would rather not duplicate binaries in GitLab: links are then replaced with a note. Deleting a file in Tessera does not remove the GitLab copy — there is no upload-deletion API.",
+      "childrenHint": "“Push subtasks” adds a “Mark as grouped” button to the task modal (it sets the label in GitLab), and subtasks of such a parent are created as child items of the issue. The label is set here rather than as a tag: its prefix is owned by a sync rule, which is why the tag picker hides it on purpose — the label has to be read as grouping by this integration's rules, otherwise the server rejects the button. “Label the parent automatically” is off by default: otherwise the very first subtask would quietly edit labels in GitLab; the subtask list shows a hint with a button instead."
+    },
+    "actions": {
+      "title": "Write-back actions",
+      "cfgHint": "What to do to the GitLab issue when the task changes. Moving to a column sets a status label and does not close the issue.",
+      "configure": "Configure actions",
+      "paneHint": "Each action ties an event on a Tessera task to an action on the GitLab issue (under the integration owner's token, “api” scope). By default the set mirrors the previous write-back behaviour.",
+      "empty": "No actions yet. Add the first one below.",
+      "add": "Action",
+      "remove": "Delete",
+      "trigger": "Event in Tessera",
+      "targetColumn": "Target column",
+      "columnPlaceholder": "Pick a column",
+      "priority": "Priority",
+      "condition": "Condition",
+      "dateKind": "Date kind",
+      "action": "Action in GitLab",
+      "label": "Label",
+      "labelPlaceholder": "e.g. S: In Progress",
+      "clearPrefix": "Clear labels with the same prefix",
+      "state": "Issue state",
+      "addMarker": "Add a Tessera marker",
+      "anyPriority": "Any priority"
+    },
+    "rules": {
+      "title": "GitLab label parsing rules",
+      "cfgHint": "How incoming GitLab labels turn into status, priority and tags while syncing.",
+      "configure": "Configure rules",
+      "defaultColumn": "Default column",
+      "defaultColumnPlaceholder": "e.g. To do",
+      "otherLabels": "Other labels",
+      "tagKeepPrefix": "Keep the tag prefix",
+      "matchPlaceholder": "S: or ^(T{'|'}C): ",
+      "friendlyName": "Friendly name",
+      "friendlyNamePlaceholder": "e.g. Status",
+      "keepPrefix": "Keep the prefix",
+      "valuePlaceholder": "→ value",
+      "addValue": "Value",
+      "add": "Rule"
+    },
+    "sync": {
+      "run": "Sync",
+      "full": "Full sync",
+      "journal": "Sync journal",
+      "conflicts": "Conflicts",
+      "conflictsCount": "Conflicts ({n})",
+      "conflictsBadge": "There are unresolved conflicts — open “Conflicts” in the menu next to this button",
+      "saveFirst": "Save the binding first",
+      "alreadyRunning": "A sync is already running — wait for it to finish",
+      "startedFull": "A full sync started in the background — we will notify you when it ends",
+      "started": "A sync started in the background — we will notify you when it ends",
+      "last": "Last sync: {at}",
+      "never": "not synced yet"
+    },
+    "option": {
+      "scope": {
+        "all": "All issues of the project",
+        "assigned": "Only the ones assigned to me"
+      },
+      "closedPolicy": {
+        "archive_closed_sprints": "Closed in a closed milestone — to the archive",
+        "all": "All closed — onto the board (into “Done”)",
+        "period": "Only the ones closed within a period"
+      },
+      "interval": {
+        "manual": "Manually (off)",
+        "min5": "Every 5 minutes",
+        "min15": "Every 15 minutes",
+        "hour": "Every hour"
+      },
+      "fullInterval": {
+        "off": "Do not force (manual only)",
+        "h6": "Every 6 hours",
+        "h12": "Every 12 hours",
+        "d1": "Every day",
+        "d2": "Every 2 days",
+        "w1": "Every week"
+      },
+      "dueSource": {
+        "issue_milestone": "Issue, else the milestone due date",
+        "issue": "From the issue only",
+        "milestone": "From the milestone only",
+        "off": "Do not sync"
+      },
+      "startSource": {
+        "created": "Task creation date",
+        "milestone": "Milestone start",
+        "off": "Do not sync"
+      },
+      "trigger": {
+        "column": "Move to a column",
+        "completion": "“Completed” flag",
+        "priority": "Priority change",
+        "due": "Due date change",
+        "assignees": "Assignee change",
+        "estimate": "Estimate change",
+        "milestone": "Milestone change",
+        "title_desc": "Title / description",
+        "labels": "Tag change",
+        "comment": "New comment"
+      },
+      "action": {
+        "set_label": "Set a label",
+        "set_state": "Close / reopen the issue",
+        "set_due": "Set the due date",
+        "set_assignees": "Set the assignees",
+        "set_estimate": "Set the estimate",
+        "set_milestone": "Set the milestone",
+        "set_title_desc": "Update the title/description",
+        "reconcile_labels": "Reconcile the tags",
+        "post_comment": "Post a comment"
+      },
+      "state": {
+        "fromFlag": "From the “Completed” flag",
+        "closed": "Close the issue",
+        "opened": "Reopen the issue"
+      },
+      "dateKind": {
+        "due": "Due date (due)",
+        "start": "Start (start) — ignored for an issue"
+      },
+      "completion": {
+        "any": "Any change",
+        "became": "Became “Completed”",
+        "cleared": "“Completed” cleared"
+      },
+      "ruleAction": {
+        "status": "Status → column",
+        "priority": "Priority",
+        "board": "Board (routing)",
+        "tag": "Tag",
+        "group": "Grouping (subtasks)",
+        "ignore": "Ignore"
+      },
+      "matchType": {
+        "prefix": "Prefix",
+        "regex": "Regex"
+      },
+      "defaultAction": {
+        "tag": "Create a tag",
+        "ignore": "Ignore"
+      }
+    },
+    "summary": {
+      "columnMove": "Move → “{name}”",
+      "priorityAny": "Priority (any)",
+      "priority": "Priority: {name}",
+      "completionFlag": "“Completed” flag",
+      "completionBecame": "Became “Completed”",
+      "completionCleared": "“Completed” cleared",
+      "startChange": "Start date change",
+      "dueChange": "Due date change",
+      "setLabel": "label “{label}”",
+      "closeIssue": "close the issue",
+      "openIssue": "reopen the issue",
+      "toggleIssue": "close/reopen the issue",
+      "commentMarker": "comment (+marker)",
+      "comment": "comment",
+      "unknown": "?"
+    },
+    "close": "Close",
+    "save": "Save"
+  },
+  "journal": {
+    "empty": "The journal is empty — no sync has run yet",
+    "noActions": "No recorded actions",
+    "selectAction": "Pick an action to see its details",
+    "more": "Show more",
+    "queuedForRetry": "Queued for a retry",
+    "retry": "Retry",
+    "openInGitLab": "Open in GitLab",
+    "deliveryFailed": "Delivery failed",
+    "action": "Action",
+    "tags": "Tags",
+    "newComments": "New comments ({n})",
+    "assignees": "Assignees (GitLab)",
+    "relations": "Links",
+    "relationsAdded": "+{n} link | +{n} links",
+    "relationsRemoved": "−{n} removed",
+    "relationsDeferred": "{n} deferred",
+    "runningFor": "running for {elapsed}",
+    "deliveries": "{n} deliv.",
+    "noChanges": "no changes",
+    "direction": {
+      "pull": "GitLab → Tessera",
+      "push": "Tessera → GitLab"
+    },
+    "field": {
+      "title": "Title",
+      "description": "Description",
+      "priority": "Priority",
+      "column": "Column",
+      "completed": "State",
+      "due": "Due",
+      "start": "Start"
+    },
+    "value": {
+      "completed": "Done",
+      "notCompleted": "Not done"
+    },
+    "status": {
+      "running": "running",
+      "ok": "success",
+      "partial": "partial",
+      "error": "error",
+      "fail": "error"
+    },
+    "trigger": {
+      "manual": "manual",
+      "auto": "auto"
+    },
+    "push": {
+      "closeIssue": "close the issue",
+      "openIssue": "reopen the issue",
+      "priority": "priority → {to}"
+    }
+  },
+  "conflicts": {
+    "title": "GitLab write-back conflicts",
+    "empty": "No open conflicts",
+    "select": "Pick a conflict on the left",
+    "loading": "Loading conflicts…",
+    "resolved": "Conflict resolved",
+    "taskFallback": "Task",
+    "hint": "Both you and GitLab changed this since the last sync. Choose whose value to keep.",
+    "hintManual": "Both you and GitLab changed this since the last sync. Choose whose value to keep, or merge them by hand.",
+    "colBase": "Before (base)",
+    "colTheirs": "GitLab",
+    "colOurs": "Mine (Tessera)",
+    "merged": "Merged value",
+    "mergedPlaceholder": "Enter the final value",
+    "emptyValue": "— empty —",
+    "acceptOurs": "Keep mine",
+    "acceptTheirs": "Keep GitLab",
+    "mergeManual": "Merge by hand…",
+    "saveMerge": "Save the merge",
+    "field": {
+      "title": "Title",
+      "description": "Description",
+      "due": "Due (YYYY-MM-DD)",
+      "estimate": "Estimate (minutes)",
+      "state": "State",
+      "priority": "Priority"
+    },
+    "kind": {
+      "title_desc": "Title and description",
+      "due": "Due",
+      "estimate": "Estimate",
+      "state": "State",
+      "priority": "Priority"
+    },
+    "state": {
+      "open": "Open",
+      "closed": "Closed"
+    }
+  }
+}

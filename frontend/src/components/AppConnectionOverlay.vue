@@ -10,10 +10,12 @@
 // Driven by the shared `connection` reactive (api interceptors feed it). Offline
 // wins over the bar. Nothing renders on the common fast path.
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NButton } from 'naive-ui'
 import { CloudOfflineOutline, RefreshOutline } from '@vicons/ionicons5'
 import { connection } from '@/composables/useConnection'
 
+const { t } = useI18n()
 const active = computed(() => connection.active && !connection.offline)
 
 function retry() {
@@ -24,7 +26,12 @@ function retry() {
 <template>
   <!-- Server reachable but a call is taking a beat — non-blocking top bar. -->
   <transition name="tp-fade">
-    <div v-if="active" class="top-progress" role="progressbar" aria-label="Загрузка">
+    <div
+      v-if="active"
+      class="top-progress"
+      role="progressbar"
+      :aria-label="t('app.connection.loading')"
+    >
       <div class="top-progress__bar" />
     </div>
   </transition>
@@ -36,11 +43,11 @@ function retry() {
         <span class="conn-disc">
           <n-icon :component="CloudOfflineOutline" class="conn-icon" />
         </span>
-        <div class="conn-title">Нет связи с сервером</div>
-        <div class="conn-sub">Проверьте подключение к интернету и попробуйте снова.</div>
+        <div class="conn-title">{{ t('app.connection.offlineTitle') }}</div>
+        <div class="conn-sub">{{ t('app.connection.offlineSub') }}</div>
         <n-button type="primary" class="conn-retry" @click="retry">
           <template #icon><n-icon :component="RefreshOutline" /></template>
-          Попробовать ещё раз
+          {{ t('app.connection.retry') }}
         </n-button>
       </div>
     </div>

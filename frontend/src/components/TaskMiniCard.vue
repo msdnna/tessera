@@ -1,11 +1,15 @@
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { CalendarClearOutline } from '@vicons/ionicons5'
-import { PRIORITY_COLORS, PRIORITY_LABELS } from '@/styles/tokens'
+import { PRIORITY_COLORS } from '@/styles/tokens'
+import { priorityLabel } from '@/utils/priority'
 import { hueGrad } from '@/utils/gradient'
+import { columnName } from '@/utils/defaultNames'
 import UserAvatar from './UserAvatar.vue'
 import TagPill from './TagPill.vue'
+import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -17,6 +21,9 @@ const props = defineProps({
   column: { type: Object, default: null },
 })
 
+const { t } = useI18n()
+const { formatDate } = useFormat()
+
 const tags = computed(() =>
   (props.task.tag_ids || []).map((id) => props.tagsMap[id]).filter(Boolean),
 )
@@ -25,10 +32,7 @@ const assignees = computed(() =>
 )
 const due = computed(() => {
   if (!props.task.due_date) return null
-  return new Date(props.task.due_date).toLocaleDateString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-  })
+  return formatDate(props.task.due_date, { day: '2-digit', month: 'short' })
 })
 </script>
 
@@ -38,7 +42,7 @@ const due = computed(() => {
       <span
         class="mini-pr"
         :style="{ background: hueGrad(PRIORITY_COLORS[task.priority || 0]) }"
-        :title="PRIORITY_LABELS[task.priority || 0]"
+        :title="priorityLabel(task.priority)"
       />
       <span v-if="task.number" class="mini-num">#{{ task.number }}</span>
       <span class="mini-title">{{ task.title }}</span>
@@ -46,11 +50,11 @@ const due = computed(() => {
 
     <div v-if="tags.length" class="mini-tags">
       <TagPill
-        v-for="t in tags"
-        :key="t.id"
+        v-for="tag in tags"
+        :key="tag.id"
         class="mini-tag"
-        :style="{ borderColor: t.color || 'var(--t-border)' }"
-        :tag="t"
+        :style="{ borderColor: tag.color || 'var(--t-border)' }"
+        :tag="tag"
         :prefix-names="tagPrefixNames"
         variant="plain"
       />
@@ -58,7 +62,7 @@ const due = computed(() => {
 
     <div v-if="column" class="mini-col">
       <span class="mini-dot" :style="{ background: column.color }" />
-      Колонка: {{ column.name }}
+      {{ t('task.card.columnIs', { name: columnName(column) }) }}
     </div>
 
     <div class="mini-foot">

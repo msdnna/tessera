@@ -10,9 +10,11 @@ import {
   RibbonOutline,
   CreateOutline,
 } from '@vicons/ionicons5'
-import { PRIORITY_LABELS } from '@/styles/tokens'
+import { i18n, uiCollator } from '@/i18n'
+import { priorityLabel, priorityOptions } from '@/utils/priority'
 import { tagNamespace, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
 import { boardGitlabAuthors } from '@/utils/boardFilters'
+import { columnName } from '@/utils/defaultNames'
 import {
   emptyFilters,
   countActiveFilters,
@@ -58,23 +60,39 @@ export const CHIP_ICONS = {
   due: CalendarOutline,
 }
 
-export const SORT_FIELD_OPTIONS = [
-  { label: 'Приоритет', value: 'priority' },
-  { label: 'Срок', value: 'due' },
-  { label: 'Этап', value: 'milestone' },
-  { label: 'Статус', value: 'status' },
-  { label: 'Название', value: 'title' },
-  { label: 'Номер', value: 'number' },
-]
+// Anchors for the e2e suite on the entries it drives. Menu options are plain
+// objects, so the hook Playwright needs is `props`, not an attribute in a
+// template — and it has to be one that survives the labels being translated.
+const TESTID = {
+  group: { 'data-testid': 'facet-group' },
+  groupStatus: { 'data-testid': 'facet-group-status' },
+  groupTag: { 'data-testid': 'facet-group-tag' },
+}
 
-export const DUE_OPTIONS = [
-  { label: 'Все', value: '' },
-  { label: 'Просроченные', value: 'overdue' },
-  { label: 'Сегодня', value: 'today' },
-  { label: 'Ближайшая неделя', value: 'week' },
-  { label: 'Со сроком', value: 'has' },
-  { label: 'Без срока', value: 'none' },
-]
+// Both tables used to be module-level arrays with Russian labels in them. A
+// label computed once at import time never changes language again (pitfall 1 of
+// the #2799 plan), so what stays constant here is the *order and the values* —
+// the text is looked up on call, inside the computeds that render it.
+//
+// `t` comes from `i18n.global`, not from `useI18n()`: this composable also runs
+// outside a component (its own spec calls it directly), and useI18n() is only
+// legal inside setup. The global `t` reads the locale ref just the same, so a
+// computed that calls it still re-runs on a language switch.
+const t = (key, named) => i18n.global.t(key, named)
+
+export const SORT_FIELD_VALUES = ['priority', 'due', 'milestone', 'status', 'title', 'number']
+export const DUE_VALUES = ['', 'overdue', 'today', 'week', 'has', 'none']
+
+// Locale-aware option lists (`{ label, value }`), rebuilt per call.
+export function sortFieldOptions() {
+  return SORT_FIELD_VALUES.map((value) => ({ label: t(`board.facet.sortField.${value}`), value }))
+}
+export function dueOptions() {
+  return DUE_VALUES.map((value) => ({
+    label: t(`board.facet.due.${value || 'all'}`),
+    value,
+  }))
+}
 
 export function useBoardFacets({
   // grouping state (owned by the board — it builds columns from it)
@@ -110,25 +128,29 @@ export function useBoardFacets({
   // the configured friendly name (else the raw prefix), sorted alphabetically.
   const tagPrefixOptions = computed(() => {
     const set = new Set()
-    for (const t of tagsList.value) {
-      const ns = tagNamespace(t.name)
+    // `tag`, not `t`: the module-level `t` is the translator now, and shadowing
+    // it inside a loop is exactly how a stray Russian label sneaks back in.
+    for (const tag of tagsList.value) {
+      const ns = tagNamespace(tag.name)
       if (ns) set.add(ns)
     }
     return [
-      { label: 'Все теги', value: '' },
+      { label: t('board.facet.allTags'), value: '' },
       ...[...set]
         .map((p) => ({ label: prefixLabel(p, tagPrefixNames), value: p }))
-        .sort((a, b) => a.label.localeCompare(b.label, 'ru')),
+        .sort((a, b) => uiCollator().compare(a.label, b.label)),
     ]
   })
   // Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
   const groupModeLabel = computed(() => {
-    if (groupMode.value === 'assignee') return 'Исполнитель'
-    if (groupMode.value === 'none') return 'Без группировки'
-    if (groupMode.value === 'milestone') return 'Этап'
+    if (groupMode.value === 'assignee') return t('board.facet.group.assignee')
+    if (groupMode.value === 'none') return t('board.facet.group.none')
+    if (groupMode.value === 'milestone') return t('board.facet.group.milestone')
     if (groupMode.value === 'tag')
-      return `Тег${tagPrefix.value ? ` · ${prefixLabel(tagPrefix.value, tagPrefixNames)}` : ''}`
-    return 'Статус'
+      return tagPrefix.value
+        ? t('board.facet.group.tagPrefix', { prefix: prefixLabel(tagPrefix.value, tagPrefixNames) })
+        : t('board.facet.group.tag')
+    return t('board.facet.group.status')
   })
 
   // ── sorting ──
@@ -137,11 +159,11 @@ export function useBoardFacets({
   // groups by status into columns, so sorting/filtering by it there is redundant).
   const sortFieldsForMenu = computed(() =>
     timelineLike.value
-      ? SORT_FIELD_OPTIONS
-      : SORT_FIELD_OPTIONS.filter((o) => o.value !== 'status'),
+      ? sortFieldOptions()
+      : sortFieldOptions().filter((o) => o.value !== 'status'),
   )
   function sortFieldLabel(field) {
-    return SORT_FIELD_OPTIONS.find((o) => o.value === field)?.label || field
+    return SORT_FIELD_VALUES.includes(field) ? t(`board.facet.sortField.${field}`) : field
   }
   // column id → position, for the status sort.
   const colPos = computed(() => {
@@ -150,8 +172,8 @@ export function useBoardFacets({
     return m
   })
   // Milestone sort order: by the milestone's due date (none last), then its title.
-  const milestoneSortKey = (t) => {
-    const m = t.milestone_id ? milestonesMap[t.milestone_id] : null
+  const milestoneSortKey = (task) => {
+    const m = task.milestone_id ? milestonesMap[task.milestone_id] : null
     if (!m) return { d: Number.POSITIVE_INFINITY, s: '' }
     return { d: m.due_date ? Date.parse(m.due_date) : Number.POSITIVE_INFINITY, s: m.title || '' }
   }
@@ -173,17 +195,17 @@ export function useBoardFacets({
       const ka = milestoneSortKey(a)
       const kb = milestoneSortKey(b)
       if (ka.d !== kb.d) return d * (ka.d - kb.d)
-      return d * ka.s.localeCompare(kb.s, 'ru')
+      return d * uiCollator().compare(ka.s, kb.s)
     }
     if (field === 'title')
-      return d * String(a.title || '').localeCompare(String(b.title || ''), 'ru')
+      return d * uiCollator().compare(String(a.title || ''), String(b.title || ''))
     if (field === 'number') return d * ((a.number || 0) - (b.number || 0))
     return 0
   }
 
   // ── filter menus ──
 
-  const priorityFilterOptions = PRIORITY_LABELS.map((label, value) => ({ label, value }))
+  const priorityFilterOptions = computed(() => priorityOptions())
   // Assignee filter menu — carries avatar hints so `renderAddLabel` can draw the
   // user's face (Tessera by `avatarUserId`, GitLab by `avatarSrc`), like the on-card
   // assignee picker. GitLab-only assignees sit under an inline «GitLab» group; their
@@ -238,34 +260,34 @@ export function useBoardFacets({
     const groups = buildTagGroups(tagsList.value, tagPrefixNames)
     // Inside a group the header already names the scope, so entries show the bare
     // value; a flat (single-bucket) menu spells the scope out instead.
-    const flatLabel = (t) => {
-      const p = tagParts(t.name, tagPrefixNames)
+    const flatLabel = (tag) => {
+      const p = tagParts(tag.name, tagPrefixNames)
       return p.hasScope ? `${p.scope}: ${p.label}` : p.label
     }
     if (groups.length <= 1) {
-      return (groups[0]?.tags || []).map((t) => ({
-        label: flatLabel(t),
-        key: encodeFacet('tag', t.id),
+      return (groups[0]?.tags || []).map((tag) => ({
+        label: flatLabel(tag),
+        key: encodeFacet('tag', tag.id),
       }))
     }
     return groups.map((g) => ({
       type: 'group',
       label: g.label,
       key: `ftg.${g.key}`,
-      children: g.tags.map((t) => ({
-        label: tagParts(t.name, tagPrefixNames).label,
-        key: encodeFacet('tag', t.id),
+      children: g.tags.map((tag) => ({
+        label: tagParts(tag.name, tagPrefixNames).label,
+        key: encodeFacet('tag', tag.id),
       })),
     }))
   })
   // Status filter = which board columns to show (timeline-only facet).
   const statusFilterOptions = computed(() =>
-    columns.value.map((c) => ({ label: c.name, value: c.id })),
+    columns.value.map((c) => ({ label: columnName(c), value: c.id })),
   )
-  // Milestone filter menu (+ an explicit "Без этапа" bucket).
+  // Milestone filter menu (+ an explicit "no milestone" bucket).
   const milestoneFilterMenu = computed(() => [
     ...milestonesList.value.map((m) => ({ label: m.title, key: encodeFacet('milestone', m.id) })),
-    { label: 'Без этапа', key: encodeFacet('milestone', NO_MILESTONE) },
+    { label: t('board.facet.noMilestone'), key: encodeFacet('milestone', NO_MILESTONE) },
   ])
   const activeFilterCount = computed(() => countActiveFilters(filters))
   function resetFilters() {
@@ -289,81 +311,47 @@ export function useBoardFacets({
   function personName(value, withBoardFallback) {
     if (typeof value === 'string' && value.startsWith('gl:'))
       return glDisplayName(value, withBoardFallback)
-    return membersMap[value]?.name || '—'
+    return membersMap[value]?.name || t('board.facet.unknown')
   }
 
   const facetChips = computed(() => {
     const out = []
-    const g = groupModeLabel.value
-    out.push({ kind: 'group', icon: CHIP_ICONS.group, text: g, label: `Группировка: ${g}` })
+    const unknown = t('board.facet.unknown')
+    // Chip text is the bare value (an icon stands in for the prefix); `label` is
+    // the spelled-out "kind: value" the customize panel renders instead.
+    const chip = (kind, text, rest = {}) => ({
+      kind,
+      icon: CHIP_ICONS[kind],
+      text,
+      label: t(`board.facet.chip.${kind}`, { value: text }),
+      ...rest,
+    })
+    out.push(chip('group', groupModeLabel.value))
     sortLevels.value.forEach((l, i) => {
-      const f = sortFieldLabel(l.field)
       const arrow = l.dir === 'desc' ? '↓' : '↑'
-      out.push({
-        kind: 'sort',
-        i,
-        icon: CHIP_ICONS.sort,
-        text: `${f} ${arrow}`,
-        label: `Сорт: ${f} ${arrow}`,
-      })
+      out.push(chip('sort', `${sortFieldLabel(l.field)} ${arrow}`, { i }))
     })
-    filters.priorities.forEach((p) => {
-      const t = PRIORITY_LABELS[p]
-      out.push({
-        kind: 'priority',
-        value: p,
-        icon: CHIP_ICONS.priority,
-        text: t,
-        label: `Приоритет: ${t}`,
-      })
-    })
-    filters.assignees.forEach((a) => {
-      const name = personName(a, false)
-      out.push({
-        kind: 'assignee',
-        value: a,
-        icon: CHIP_ICONS.assignee,
-        text: name,
-        label: `Исполнитель: ${name}`,
-      })
-    })
-    filters.authors.forEach((a) => {
-      const name = personName(a, true)
-      out.push({
-        kind: 'author',
-        value: a,
-        icon: CHIP_ICONS.author,
-        text: name,
-        label: `Автор: ${name}`,
-      })
-    })
-    filters.tags.forEach((t) => {
-      const nm = tagsMap[t]?.name || '—'
-      out.push({ kind: 'tag', value: t, icon: CHIP_ICONS.tag, text: nm, label: `Тег: ${nm}` })
-    })
-    filters.statuses.forEach((s) => {
-      const nm = columns.value.find((c) => c.id === s)?.name || '—'
-      out.push({
-        kind: 'status',
-        value: s,
-        icon: CHIP_ICONS.status,
-        text: nm,
-        label: `Статус: ${nm}`,
-      })
-    })
+    filters.priorities.forEach((p) => out.push(chip('priority', priorityLabel(p), { value: p })))
+    filters.assignees.forEach((a) => out.push(chip('assignee', personName(a, false), { value: a })))
+    filters.authors.forEach((a) => out.push(chip('author', personName(a, true), { value: a })))
+    filters.tags.forEach((tag) =>
+      out.push(chip('tag', tagsMap[tag]?.name || unknown, { value: tag })),
+    )
+    filters.statuses.forEach((s) =>
+      out.push(
+        chip('status', columnName(columns.value.find((c) => c.id === s)) || unknown, {
+          value: s,
+        }),
+      ),
+    )
     filters.milestones.forEach((m) => {
-      const nm = m === NO_MILESTONE ? 'без этапа' : milestonesMap[m]?.title || '—'
-      out.push({
-        kind: 'milestone',
-        value: m,
-        icon: CHIP_ICONS.milestone,
-        text: nm,
-        label: `Этап: ${nm}`,
-      })
+      const nm =
+        m === NO_MILESTONE ? t('board.facet.noMilestoneChip') : milestonesMap[m]?.title || unknown
+      out.push(chip('milestone', nm, { value: m }))
     })
     if (filters.due) {
-      const nm = DUE_OPTIONS.find((o) => o.value === filters.due)?.label || filters.due
-      out.push({ kind: 'due', icon: CHIP_ICONS.due, text: nm, label: `Срок: ${nm}` })
+      const nm = dueOptions().find((o) => o.value === filters.due)?.label || filters.due
+      out.push(chip('due', nm))
     }
     return out
   })
@@ -378,27 +366,37 @@ export function useBoardFacets({
 
   const addOptions = computed(() => {
     const grouping = [
-      { label: 'По статусам', key: encodeGroup('status') },
-      { label: 'По тегам (все)', key: encodeGroup('tag') },
+      // testid rather than the wording: the e2e suite reaches these through the
+      // menu, and the labels are moving into the locale files (#2799).
+      {
+        label: t('board.facet.groupOption.status'),
+        key: encodeGroup('status'),
+        props: TESTID.groupStatus,
+      },
+      {
+        label: t('board.facet.groupOption.tagAll'),
+        key: encodeGroup('tag'),
+        props: TESTID.groupTag,
+      },
       ...tagPrefixOptions.value
         .filter((o) => o.value)
         .map((o) => ({
-          label: `По тегам · ${o.label}`,
+          label: t('board.facet.groupOption.tagPrefix', { prefix: o.label }),
           key: encodeGroup('tag', o.value),
         })),
-      { label: 'По этапам', key: encodeGroup('milestone') },
+      { label: t('board.facet.groupOption.milestone'), key: encodeGroup('milestone') },
     ]
     // Timeline swimlanes can also be per-assignee or ungrouped.
     if (timelineLike.value) {
       grouping.push(
-        { label: 'По исполнителю', key: encodeGroup('assignee') },
-        { label: 'Без группировки', key: encodeGroup('none') },
+        { label: t('board.facet.groupOption.assignee'), key: encodeGroup('assignee') },
+        { label: t('board.facet.groupOption.none'), key: encodeGroup('none') },
       )
     }
     const opts = [
-      { label: 'Группировка', key: 'group', children: grouping },
+      { label: t('board.facet.menu.group'), key: 'group', children: grouping, props: TESTID.group },
       {
-        label: 'Сортировка',
+        label: t('board.facet.menu.sort'),
         key: 'sort',
         children: sortFieldsForMenu.value.map((o) => ({
           label: o.label,
@@ -406,39 +404,41 @@ export function useBoardFacets({
         })),
       },
       {
-        label: 'Фильтр: приоритет',
+        label: t('board.facet.menu.priority'),
         key: 'fp',
-        children: priorityFilterOptions.map((o) => ({
+        children: priorityFilterOptions.value.map((o) => ({
           label: o.label,
           key: encodeFacet('priority', o.value),
         })),
       },
       {
-        label: 'Фильтр: исполнитель',
+        label: t('board.facet.menu.assignee'),
         key: 'fa',
         children: memberFilterMenu.value,
       },
       {
-        label: 'Фильтр: автор',
+        label: t('board.facet.menu.author'),
         key: 'fc',
         children: authorFilterMenu.value,
       },
-      { label: 'Фильтр: тег', key: 'ft', children: tagFilterMenu.value },
-      { label: 'Фильтр: этап', key: 'fm', children: milestoneFilterMenu.value },
+      { label: t('board.facet.menu.tag'), key: 'ft', children: tagFilterMenu.value },
+      { label: t('board.facet.menu.milestone'), key: 'fm', children: milestoneFilterMenu.value },
       {
-        label: 'Фильтр: срок',
+        label: t('board.facet.menu.due'),
         key: 'fd',
-        children: DUE_OPTIONS.filter((o) => o.value).map((o) => ({
-          label: o.label,
-          key: encodeFacet('due', o.value),
-        })),
+        children: dueOptions()
+          .filter((o) => o.value)
+          .map((o) => ({
+            label: o.label,
+            key: encodeFacet('due', o.value),
+          })),
       },
     ]
     // Status (column) filter — timeline only, so the user can hide e.g. the «done»
     // column's completed cards that otherwise crowd the chart.
     if (timelineLike.value) {
       opts.splice(2, 0, {
-        label: 'Фильтр: статус',
+        label: t('board.facet.menu.status'),
         key: 'fs',
         children: statusFilterOptions.value.map((o) => ({
           label: o.label,

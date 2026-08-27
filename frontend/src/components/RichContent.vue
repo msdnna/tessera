@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
 import { NPopover, useMessage } from 'naive-ui'
 import { renderRich, sanitizeSvgFragment } from '@/utils/markdown'
 import { resolveMention } from '@/utils/mentions'
@@ -36,6 +37,7 @@ const emit = defineEmits(['toggle'])
 // div — callers pass `class` (e.g. `.c-text`) and expect it there, not on a wrapper.
 defineOptions({ inheritAttrs: false })
 
+const { t } = useI18n()
 const theme = useThemeStore()
 const ws = useWorkspacesStore()
 const router = useRouter()
@@ -88,13 +90,13 @@ async function openTaskRef(el) {
     const task = refCache.get(key)
     // No board means the task exists but isn't on one — there is nowhere to go.
     if (!task?.board_id) {
-      message.warning(`Задача #${number} не найдена`)
+      message.warning(t('task.ref.notFound', { number }))
       return
     }
     router.push(`/board/${task.board_id}?task=${number}`)
   } catch {
     refCache.set(key, null)
-    message.warning(`Задача #${number} не найдена`)
+    message.warning(t('task.ref.notFound', { number }))
   }
 }
 
@@ -102,9 +104,9 @@ async function openTaskRef(el) {
 // token never leaves memory, so the click is turned into an api request.
 async function downloadLink(id, filename) {
   try {
-    if ((await saveAttachment(id, filename)) === 'saved') message.success('Файл сохранён')
+    if ((await saveAttachment(id, filename)) === 'saved') message.success(t('task.files.saved'))
   } catch (e) {
-    message.error(e.message || 'Не удалось скачать файл')
+    message.error(e.message || t('task.files.downloadFailed'))
   }
 }
 

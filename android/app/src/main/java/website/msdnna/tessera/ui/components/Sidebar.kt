@@ -55,6 +55,8 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -63,6 +65,7 @@ import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import kotlin.math.roundToInt
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.Project
@@ -77,6 +80,7 @@ import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.WhatsNewSpotlight
+import website.msdnna.tessera.util.workspaceCaption
 
 // ── Layout metrics ────────────────────────────────────────────────────────────
 // Per-nesting-level indent. Must match the projection step used by the DnD code
@@ -142,6 +146,7 @@ fun Sidebar(
     onOpenNotes: () -> Unit,
     onOpenDocuments: () -> Unit,
     onOpenMilestones: () -> Unit,
+    onOpenHelp: () -> Unit,
     onOpenMembers: () -> Unit,
     onOpenGitlab: () -> Unit,
     conflictCount: Int = 0,
@@ -162,6 +167,7 @@ fun Sidebar(
     val c = Tessera.colors
     val density = LocalDensity.current
     val focus = LocalFocusManager.current
+    val res = LocalResources.current
     var addWorkspace by remember { mutableStateOf(false) }
     var wsMenu by remember { mutableStateOf(false) }
     var wsEstimating by remember { mutableStateOf(false) }
@@ -252,25 +258,28 @@ fun Sidebar(
                             .clickableNoRipple { wsMenu = true }.padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(state.current?.name ?: "—", color = c.text1, fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                        Text(
+                            state.current?.let { workspaceCaption(res, it) } ?: "—",
+                            color = c.text1, fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f),
+                        )
                         IonIcon(Ion.CHEVRON_DOWN, size = 16.dp, tint = c.text3)
                     }
                     TDropdown(expanded = wsMenu, onDismiss = { wsMenu = false }) {
                         state.workspaces.forEach { ws ->
-                            TMenuItem(ws.name, onClick = {
+                            TMenuItem(workspaceCaption(res, ws), onClick = {
                                 wsMenu = false
                                 vm.selectWorkspace(ws.id)
                             })
                         }
                         if (state.current != null) {
                             TMenuDivider()
-                            TMenuItem("Оценка задач…", icon = Ion.TIME, onClick = {
+                            TMenuItem(stringResource(R.string.sidebar_estimation), icon = Ion.TIME, onClick = {
                                 wsMenu = false
                                 wsEstimating = true
                             })
                             // Owner-only, and never the last workspace (server re-checks).
                             if (state.current?.ownerId == user?.id && state.workspaces.size > 1) {
-                                TMenuItem("Удалить пространство", icon = Ion.TRASH, danger = true, onClick = {
+                                TMenuItem(stringResource(R.string.sidebar_ws_delete), icon = Ion.TRASH, danger = true, onClick = {
                                     wsMenu = false
                                     confirmDeleteWs = true
                                 })
@@ -283,15 +292,16 @@ fun Sidebar(
             }
 
             Spacer(Modifier.padding(top = 2.dp))
-            NavRow(Ion.HOME, "Моя работа", activeNav == "home", onOpenHome, spotSink("home"))
-            NavRow(Ion.ROCKET, "Этапы", activeNav == "milestones", onOpenMilestones, spotSink("milestones"))
-            NavRow(Ion.ALARM, "Напоминания", activeNav == "reminders", onOpenReminders, spotSink("reminders"))
-            NavRow(Ion.DOCUMENT_TEXT, "Заметки", activeNav == "notes", onOpenNotes, spotSink("notes"))
-            NavRow(Ion.BOOK, "Документы", activeNav == "documents", onOpenDocuments, spotSink("documents"))
+            NavRow(Ion.HOME, stringResource(R.string.nav_home), activeNav == "home", onOpenHome, spotSink("home"))
+            NavRow(Ion.ROCKET, stringResource(R.string.nav_milestones), activeNav == "milestones", onOpenMilestones, spotSink("milestones"))
+            NavRow(Ion.ALARM, stringResource(R.string.nav_reminders), activeNav == "reminders", onOpenReminders, spotSink("reminders"))
+            NavRow(Ion.DOCUMENT_TEXT, stringResource(R.string.nav_notes), activeNav == "notes", onOpenNotes, spotSink("notes"))
+            NavRow(Ion.BOOK, stringResource(R.string.nav_documents), activeNav == "documents", onOpenDocuments, spotSink("documents"))
+            NavRow(Ion.HELP_CIRCLE, stringResource(R.string.nav_help), activeNav == "help", onOpenHelp, spotSink("help"))
             if (user?.isAdmin == true) {
                 NavRow(
                     Ion.SHIELD_CHECKMARK,
-                    "Администрирование",
+                    stringResource(R.string.nav_admin),
                     active = activeNav == "admin",
                     onClick = onOpenAdmin,
                     spotlight = spotSink("admin"),
@@ -303,15 +313,18 @@ fun Sidebar(
                 Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("ПРОЕКТЫ", color = c.text3, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                Text(
+                    stringResource(R.string.sidebar_projects_header),
+                    color = c.text3, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
+                )
                 Box {
                     IonIconButton(Ion.ADD, onClick = { addMenu = true }, boxSize = 28.dp, iconSize = 16.dp, tint = c.text3)
                     TDropdown(expanded = addMenu, onDismiss = { addMenu = false }) {
-                        TMenuItem("Проект", icon = Ion.GRID, onClick = {
+                        TMenuItem(stringResource(R.string.sidebar_add_project), icon = Ion.GRID, onClick = {
                             addMenu = false
                             creating = Creating.Project(null)
                         })
-                        TMenuItem("Группа", icon = Ion.FOLDER, onClick = {
+                        TMenuItem(stringResource(R.string.sidebar_add_group), icon = Ion.FOLDER, onClick = {
                             addMenu = false
                             creating = Creating.Group(null)
                         })
@@ -329,14 +342,21 @@ fun Sidebar(
                 state.childGroups(null).forEach { key(it.id) { GroupNode(it, 0, ctx) } }
                 val rootCreate = creating
                 if (rootCreate is Creating.Group && rootCreate.parentId == null) {
-                    InlineCreateRow("Название группы", onDismiss = { creating = null }) { ctx.commitGroup(it, null) }
+                    InlineCreateRow(stringResource(R.string.sidebar_group_name_hint), onDismiss = { creating = null }) {
+                        ctx.commitGroup(it, null)
+                    }
                 }
                 state.projectsInGroup(null).forEach { key(it.id) { ProjectNode(it, 0, ctx) } }
                 if (rootCreate is Creating.Project && rootCreate.groupId == null) {
-                    InlineCreateRow("Название проекта", onDismiss = { creating = null }) { ctx.commitProject(it, null) }
+                    InlineCreateRow(stringResource(R.string.sidebar_project_name_hint), onDismiss = { creating = null }) {
+                        ctx.commitProject(it, null)
+                    }
                 }
                 if (state.groups.isEmpty() && state.projects.isEmpty() && creating == null && !state.loading) {
-                    Text("Нет проектов. Нажмите +, чтобы создать.", color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(16.dp))
+                    Text(
+                        stringResource(R.string.sidebar_empty_tree),
+                        color = c.text3, fontSize = 13.sp, modifier = Modifier.padding(16.dp),
+                    )
                 }
             }
 
@@ -377,7 +397,9 @@ fun Sidebar(
     }
     if (addWorkspace) {
         TInputDialog(
-            "Новое пространство", confirmText = "Создать", placeholder = "Название",
+            stringResource(R.string.sidebar_ws_new_title),
+            confirmText = stringResource(R.string.common_create),
+            placeholder = stringResource(R.string.sidebar_ws_name_hint),
             onConfirm = {
                 vm.addWorkspace(it)
                 addWorkspace = false
@@ -389,7 +411,7 @@ fun Sidebar(
         if (wsEstimating) {
             EstimationDialog(
                 scope = "workspace",
-                name = ws.name,
+                name = workspaceCaption(res, ws),
                 current = ws.estimation,
                 inherited = website.msdnna.tessera.util.Estimation.DEFAULT,
                 onSave = { vm.setWorkspaceEstimation(ws.id, it) },
@@ -398,10 +420,9 @@ fun Sidebar(
         }
         if (confirmDeleteWs) {
             TConfirmByNameDialog(
-                title = "Удалить пространство",
-                message = "Пространство «${ws.name}» и все его проекты, доски и задачи будут " +
-                    "удалены безвозвратно. Введите название для подтверждения.",
-                name = ws.name,
+                title = stringResource(R.string.sidebar_ws_delete),
+                message = stringResource(R.string.sidebar_ws_delete_message, workspaceCaption(res, ws)),
+                name = workspaceCaption(res, ws),
                 onConfirm = {
                     confirmDeleteWs = false
                     vm.removeWorkspace(ws.id) { onOpenHome() }
@@ -507,17 +528,17 @@ private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
         ctx = ctx,
         onClick = { ctx.clickRow { ctx.vm.toggleGroup(group.id) } },
         menu = { close ->
-            TMenuItem("Добавить проект", icon = Ion.ADD, onClick = {
+            TMenuItem(stringResource(R.string.sidebar_group_add_project), icon = Ion.ADD, onClick = {
                 close()
                 ctx.vm.ensureGroupExpanded(group.id)
                 ctx.setCreating(Creating.Project(group.id))
             })
-            TMenuItem("Добавить подгруппу", icon = Ion.FOLDER, onClick = {
+            TMenuItem(stringResource(R.string.sidebar_group_add_subgroup), icon = Ion.FOLDER, onClick = {
                 close()
                 ctx.vm.ensureGroupExpanded(group.id)
                 ctx.setCreating(Creating.Group(group.id))
             })
-            TMenuItem("Переименовать", icon = Ion.PENCIL, onClick = {
+            TMenuItem(stringResource(R.string.common_rename), icon = Ion.PENCIL, onClick = {
                 close()
                 ctx.setRenaming(group.id)
             })
@@ -531,7 +552,7 @@ private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
                 onIconMode = { ctx.vm.setGroupIconMode(group, it) },
             )
         },
-        deleteMessage = "Удалить «${group.name}»? Подгруппы вложатся выше, проекты станут без группы.",
+        deleteMessage = stringResource(R.string.sidebar_group_delete_message, group.name),
         onDelete = { ctx.vm.deleteGroup(group.id) },
     )
     if (expanded) {
@@ -539,11 +560,15 @@ private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
             ctx.state.childGroups(group.id).forEach { key(it.id) { GroupNode(it, depth + 1, ctx) } }
             val create = ctx.creating
             if (create is Creating.Group && create.parentId == group.id) {
-                InlineCreateRow("Название группы", onDismiss = { ctx.setCreating(null) }) { ctx.commitGroup(it, group.id) }
+                InlineCreateRow(stringResource(R.string.sidebar_group_name_hint), onDismiss = { ctx.setCreating(null) }) {
+                    ctx.commitGroup(it, group.id)
+                }
             }
             ctx.state.projectsInGroup(group.id).forEach { key(it.id) { ProjectNode(it, depth + 1, ctx) } }
             if (create is Creating.Project && create.groupId == group.id) {
-                InlineCreateRow("Название проекта", onDismiss = { ctx.setCreating(null) }) { ctx.commitProject(it, group.id) }
+                InlineCreateRow(stringResource(R.string.sidebar_project_name_hint), onDismiss = { ctx.setCreating(null) }) {
+                    ctx.commitProject(it, group.id)
+                }
             }
         }
     }
@@ -564,32 +589,38 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
         ctx = ctx,
         onClick = { ctx.clickRow { ctx.vm.toggleProject(project.id) } },
         menu = { close ->
-            TMenuItem("Добавить доску", icon = Ion.GRID, onClick = {
+            TMenuItem(stringResource(R.string.sidebar_project_add_board), icon = Ion.GRID, onClick = {
                 close()
                 ctx.vm.ensureProjectExpanded(project.id)
                 ctx.setCreating(Creating.Board(project.id))
             })
-            TMenuItem("Переименовать", icon = Ion.PENCIL, onClick = {
+            TMenuItem(stringResource(R.string.common_rename), icon = Ion.PENCIL, onClick = {
                 close()
                 ctx.setRenaming(project.id)
             })
-            TMenuItem("Оценка задач…", icon = Ion.TIME, onClick = {
+            TMenuItem(stringResource(R.string.sidebar_estimation), icon = Ion.TIME, onClick = {
                 close()
                 estimating = true
             })
             if (ctx.state.workspaces.size > 1) {
-                TMenuItem("Перенести в другое пространство", icon = Ion.SEND, warn = true, onClick = {
+                TMenuItem(stringResource(R.string.sidebar_project_transfer), icon = Ion.SEND, warn = true, onClick = {
                     close()
                     transferring = true
                 })
             }
             TMenuDivider()
             Text(
-                "Показывать в дереве",
+                stringResource(R.string.sidebar_project_tree_mode),
                 color = c.text3, fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(start = 14.dp, top = 8.dp, bottom = 2.dp),
             )
-            listOf("boards" to "Доски", "milestones" to "Этапы", "both" to "Доски и этапы").forEach { (mode, label) ->
+            // Подписи собираются на каждую рекомпозицию, а не в module-level списке:
+            // иначе они бы застыли на языке первого рендера.
+            listOf(
+                "boards" to stringResource(R.string.sidebar_tree_mode_boards),
+                "milestones" to stringResource(R.string.sidebar_tree_mode_milestones),
+                "both" to stringResource(R.string.sidebar_tree_mode_both),
+            ).forEach { (mode, label) ->
                 TMenuItem(
                     label,
                     onClick = {
@@ -604,7 +635,7 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
             if (project.treeMode != "boards") {
                 val closedOn = project.id in ctx.state.showClosedStages
                 TMenuItem(
-                    "Показывать закрытые этапы",
+                    stringResource(R.string.sidebar_show_closed_milestones),
                     onClick = { ctx.vm.toggleShowClosedStages(project.id) },
                     trailing = {
                         if (closedOn) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
@@ -621,7 +652,7 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                 onIconMode = { ctx.vm.setProjectIconMode(project, it) },
             )
         },
-        deleteMessage = "Проект «${project.name}» будет удалён со всеми досками и задачами. Действие необратимо.",
+        deleteMessage = stringResource(R.string.sidebar_project_delete_message, project.name),
         onDelete = {
             ctx.vm.deleteProject(project.id)
             // Leave the project's board for Home if it's the one open (web parity).
@@ -641,6 +672,9 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
     }
     if (transferring) {
         val androidCtx = LocalContext.current
+        // Тост показывается уже вне композиции, поэтому строку берём из тех же
+        // ресурсов, что подменил AppLocale, а не из LocalContext (он на системной локали).
+        val res = LocalResources.current
         TransferProjectDialog(
             project = project,
             targets = ctx.state.workspaces.filter { it.id != ctx.state.currentId },
@@ -648,9 +682,9 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                 ctx.vm.transferProject(project.id, targetId) { stripped ->
                     ctx.host.onProjectGone(project.id)
                     val msg = if (stripped > 0) {
-                        "Проект перенесён · снято исполнителей: $stripped"
+                        res.getString(R.string.sidebar_project_transferred_stripped, stripped)
                     } else {
-                        "Проект перенесён"
+                        res.getString(R.string.sidebar_project_transferred)
                     }
                     android.widget.Toast.makeText(androidCtx, msg, android.widget.Toast.LENGTH_SHORT).show()
                 }
@@ -666,7 +700,11 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
             if (showMilestones) {
                 val loaded = ctx.state.milestonesByProject[project.id]
                 if (loaded == null) {
-                    Text("Загрузка…", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp))
+                    Text(
+                        stringResource(R.string.common_loading),
+                        color = c.text3, fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp),
+                    )
                 } else {
                     // Backlog first, then open milestones (due asc, undated last), then
                     // closed (only when the per-project toggle is on) — mirrors web ProjectRow.
@@ -674,23 +712,31 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                     val ms = loaded
                         .filter { showClosed || !it.isClosed }
                         .sortedWith(compareBy({ it.isClosed }, { it.dueDate ?: "￿" }))
-                    MilestoneRow(project.id, null, "Бэклог", ctx)
+                    MilestoneRow(project.id, null, stringResource(R.string.sidebar_backlog), ctx)
                     ms.forEach { m -> key(m.id) { MilestoneRow(project.id, m.id, m.title, ctx, closed = m.isClosed) } }
                 }
             }
             if (showBoards) {
                 val boards = ctx.state.boardsByProject[project.id]
                 if (boards == null) {
-                    Text("Загрузка…", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp))
+                    Text(
+                        stringResource(R.string.common_loading),
+                        color = c.text3, fontSize = 12.sp,
+                        modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp),
+                    )
                 } else {
                     boards.forEach { b -> key(b.id) { BoardRow(b, project.id, ctx) } }
                     if (boards.isEmpty() && ctx.creating !is Creating.Board) {
-                        Text("Нет досок", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp))
+                        Text(
+                            stringResource(R.string.sidebar_no_boards),
+                            color = c.text3, fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 6.dp, top = 4.dp, bottom = 4.dp),
+                        )
                     }
                 }
                 val create = ctx.creating
                 if (create is Creating.Board && create.projectId == project.id) {
-                    InlineCreateRow("Название доски", onDismiss = { ctx.setCreating(null) }) {
+                    InlineCreateRow(stringResource(R.string.sidebar_board_name_hint), onDismiss = { ctx.setCreating(null) }) {
                         ctx.vm.addBoard(project.id, it)
                         ctx.setCreating(null)
                     }
@@ -742,12 +788,13 @@ private fun TransferProjectDialog(
         Column(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusLg)).background(c.surface).padding(18.dp),
         ) {
-            Text("Перенести проект", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.sidebar_transfer_title),
+                color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+            )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Проект «${project.name}» переедет в выбранное пространство со всеми досками, " +
-                    "задачами, тегами и заметками. В новом пространстве он окажется без группы. " +
-                    "Исполнители, не состоящие в целевом пространстве, будут сняты с задач.",
+                stringResource(R.string.sidebar_transfer_message, project.name),
                 color = c.text3, fontSize = 13.sp,
             )
             Spacer(Modifier.height(12.dp))
@@ -761,16 +808,23 @@ private fun TransferProjectDialog(
                             .padding(horizontal = 10.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(ws.name, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                        Text(
+                            workspaceCaption(LocalResources.current, ws),
+                            color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f),
+                        )
                         if (on) IonIcon(Ion.CHECK, size = 16.dp, tint = c.primary, gradient = true)
                     }
                 }
             }
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                TButton("Отмена", kind = TButtonKind.Ghost, onClick = onDismiss)
+                TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onDismiss)
                 Spacer(Modifier.width(8.dp))
-                TButton("Перенести", enabled = selected != null, onClick = { selected?.let(onTransfer) })
+                TButton(
+                    stringResource(R.string.sidebar_transfer_confirm),
+                    enabled = selected != null,
+                    onClick = { selected?.let(onTransfer) },
+                )
             }
         }
     }
@@ -816,18 +870,18 @@ private fun BoardRow(board: Board, projectId: String, ctx: TreeCtx) {
         Box {
             IonIconButton(Ion.ELLIPSIS_H, onClick = { menu = true }, boxSize = 26.dp, iconSize = 17.dp, tint = c.text3)
             TDropdown(expanded = menu, onDismiss = { menu = false }) {
-                TMenuItem("Переименовать", icon = Ion.PENCIL, onClick = {
+                TMenuItem(stringResource(R.string.common_rename), icon = Ion.PENCIL, onClick = {
                     menu = false
                     ctx.setRenaming(board.id)
                 })
-                TMenuItem("Удалить", icon = Ion.TRASH, danger = true, onClick = {
+                TMenuItem(stringResource(R.string.common_delete), icon = Ion.TRASH, danger = true, onClick = {
                     menu = false
                     confirmDelete = true
                 })
             }
             TConfirmPopover(
                 expanded = confirmDelete,
-                message = "Удалить доску «${board.name}»?",
+                message = stringResource(R.string.sidebar_board_delete_message, board.name),
                 onConfirm = {
                     confirmDelete = false
                     ctx.vm.deleteBoard(projectId, board.id)
@@ -899,7 +953,7 @@ private fun TreeRow(
             TDropdown(expanded = menuOpen, onDismiss = { menuOpen = false }) {
                 menu { menuOpen = false }
                 TMenuDivider()
-                TMenuItem("Удалить", icon = Ion.TRASH, danger = true, onClick = {
+                TMenuItem(stringResource(R.string.common_delete), icon = Ion.TRASH, danger = true, onClick = {
                     menuOpen = false
                     confirmDelete = true
                 })
@@ -909,7 +963,7 @@ private fun TreeRow(
             if (confirmName != null) {
                 if (confirmDelete) {
                     TConfirmByNameDialog(
-                        title = "Удалить проект",
+                        title = stringResource(R.string.sidebar_project_delete_title),
                         message = deleteMessage,
                         name = confirmName,
                         onConfirm = {
@@ -985,10 +1039,13 @@ private fun SidebarUpdateRow(version: String, onUpdate: () -> Unit) {
         IonIcon(Ion.DOWNLOAD, size = 18.dp, tint = c.primary, gradient = true)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text("Доступно обновление", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+            Text(
+                stringResource(R.string.update_available),
+                color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1,
+            )
             Text(version, color = c.text3, fontSize = 12.sp, maxLines = 1)
         }
-        TButton("Обновить", onClick = onUpdate)
+        TButton(stringResource(R.string.update_action), onClick = onUpdate)
     }
 }
 
@@ -1016,7 +1073,8 @@ private fun SidebarFooter(user: User?, apiVersion: String, onOpenSettings: () ->
             }
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text(user?.name?.ifBlank { "Пользователь" } ?: "Пользователь", color = c.text1, fontSize = 14.sp, maxLines = 1)
+                val fallbackName = stringResource(R.string.sidebar_user_fallback)
+                Text(user?.name?.ifBlank { fallbackName } ?: fallbackName, color = c.text1, fontSize = 14.sp, maxLines = 1)
                 val email = user?.email.orEmpty()
                 if (email.isNotBlank()) Text(email, color = c.text3, fontSize = 12.sp, maxLines = 1)
                 // App version, plus the server's own once it answers /version —

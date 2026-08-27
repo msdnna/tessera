@@ -1,0 +1,9 @@
+{
+  "messagePlaceholder": "What should we remind you about?",
+  "add": "Add",
+  "required": "Enter the text and the time",
+  "untitled": "Reminder",
+  "overdue": "overdue",
+  "deleteConfirm": "Delete this reminder?",
+  "empty": "No reminders yet"
+}

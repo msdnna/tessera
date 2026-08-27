@@ -1,11 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
 import { LogoGitlab } from '@vicons/ionicons5'
 import { useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
+
+const { t } = useI18n()
 
 const email = ref('')
 const name = ref('')
@@ -33,11 +36,13 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 function validate() {
   const e = {}
-  if (!name.value.trim()) e.name = 'Укажите имя'
-  if (!email.value.trim()) e.email = 'Укажите email'
-  else if (!EMAIL_RE.test(email.value.trim())) e.email = 'Введите корректный email'
-  if (!password.value) e.password = 'Укажите пароль'
-  else if (password.value.length < 8) e.password = 'Минимум 8 символов'
+  // Resolved on submit, not in a module-level table: the messages have to speak
+  // the language the form is being filled in right now (#2799).
+  if (!name.value.trim()) e.name = t('common.auth.validation.nameRequired')
+  if (!email.value.trim()) e.email = t('common.auth.validation.emailRequired')
+  else if (!EMAIL_RE.test(email.value.trim())) e.email = t('common.auth.validation.emailInvalid')
+  if (!password.value) e.password = t('common.auth.validation.passwordRequired')
+  else if (password.value.length < 8) e.password = t('common.auth.validation.passwordTooShort')
   errors.value = e
   return Object.keys(e).length === 0
 }
@@ -58,35 +63,35 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout title="Регистрация">
+  <auth-layout :title="$t('common.auth.register.title')">
     <div v-if="formError" class="auth-error">{{ formError }}</div>
     <n-form @submit.prevent="submit">
       <n-form-item
-        label="Имя"
+        :label="$t('common.auth.register.name')"
         :validation-status="errors.name ? 'error' : undefined"
         :feedback="errors.name"
       >
         <n-input
           v-model:value="name"
-          placeholder="Ваше имя"
+          :placeholder="$t('common.auth.register.namePlaceholder')"
           data-testid="register-name"
           @input="errors.name = ''"
         />
       </n-form-item>
       <n-form-item
-        label="Email"
+        :label="$t('common.auth.login.email')"
         :validation-status="errors.email ? 'error' : undefined"
         :feedback="errors.email"
       >
         <n-input
           v-model:value="email"
-          placeholder="you@example.com"
+          :placeholder="$t('common.auth.login.emailPlaceholder')"
           data-testid="register-email"
           @input="errors.email = ''"
         />
       </n-form-item>
       <n-form-item
-        label="Пароль"
+        :label="$t('common.auth.login.password')"
         :validation-status="errors.password ? 'error' : undefined"
         :feedback="errors.password"
       >
@@ -94,7 +99,7 @@ async function submit() {
           v-model:value="password"
           type="password"
           show-password-on="click"
-          placeholder="минимум 8 символов"
+          :placeholder="$t('common.auth.register.passwordPlaceholder')"
           data-testid="register-password"
           @input="errors.password = ''"
           @keyup.enter="submit"
@@ -107,17 +112,22 @@ async function submit() {
         :loading="loading"
         @click="submit"
       >
-        Создать аккаунт
+        {{ $t('common.auth.register.submit') }}
       </n-button>
     </n-form>
     <template v-if="gitlabEnabled">
-      <div class="auth-or"><span>или</span></div>
+      <div class="auth-or">
+        <span>{{ $t('common.auth.login.or') }}</span>
+      </div>
       <n-button block @click="registerWithGitlab">
         <template #icon><n-icon :component="LogoGitlab" /></template>
-        Продолжить с GitLab
+        {{ $t('common.auth.register.gitlab') }}
       </n-button>
     </template>
-    <div class="auth-foot">Уже есть аккаунт? <router-link to="/login">Вход</router-link></div>
+    <div class="auth-foot">
+      {{ $t('common.auth.register.haveAccount') }}
+      <router-link to="/login">{{ $t('common.auth.register.login') }}</router-link>
+    </div>
   </auth-layout>
 </template>
 

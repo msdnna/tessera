@@ -43,7 +43,11 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringArrayResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -55,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.BoardColumn
@@ -63,7 +68,6 @@ import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.PriorityColors
-import website.msdnna.tessera.ui.theme.PriorityLabels
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -73,6 +77,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.divergedColumn
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
@@ -388,7 +393,10 @@ private fun CardHeader(
                                 .background(accentGradient(parseHexColor(divergedCol.color, c.text3))),
                         )
                         Spacer(Modifier.width(4.dp))
-                        Text(divergedCol.name, color = c.text2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(
+                            columnCaption(LocalResources.current, divergedCol),
+                            color = c.text2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
                 if (showGitlab) {
@@ -434,40 +442,42 @@ private fun CardMenu(
     Box {
         IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 24.dp, iconSize = 16.dp, tint = c.text3)
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            TMenuItem("Открыть", icon = Ion.DOCUMENT_TEXT, onClick = {
+            TMenuItem(stringResource(R.string.common_open), icon = Ion.DOCUMENT_TEXT, onClick = {
                 menu = false
                 onOpen(task)
             })
             TMenuItem(
-                if (task.isCompleted) "Вернуть в работу" else "Выполнено",
+                stringResource(
+                    if (task.isCompleted) R.string.task_card_menu_reopen else R.string.task_card_menu_complete,
+                ),
                 icon = if (task.isCompleted) Ion.ELLIPSE else Ion.CHECK_CIRCLE,
                 onClick = {
                     menu = false
                     vm.toggleDone(task)
                 },
             )
-            TMenuItem("Переименовать", icon = Ion.PENCIL, onClick = {
+            TMenuItem(stringResource(R.string.common_rename), icon = Ion.PENCIL, onClick = {
                 menu = false
                 onEditTitle()
             })
-            TMenuItem("Создать подзадачу", icon = Ion.GIT_BRANCH, onClick = {
+            TMenuItem(stringResource(R.string.task_card_menu_add_subtask), icon = Ion.GIT_BRANCH, onClick = {
                 menu = false
                 onAddSubtask()
             })
             TMenuDivider()
-            TMenuItem("В архив", icon = Ion.ARCHIVE, onClick = {
+            TMenuItem(stringResource(R.string.task_archive_action), icon = Ion.ARCHIVE, onClick = {
                 menu = false
                 confirmArchive = true
             })
-            TMenuItem("Удалить", icon = Ion.TRASH, danger = true, onClick = {
+            TMenuItem(stringResource(R.string.common_delete), icon = Ion.TRASH, danger = true, onClick = {
                 menu = false
                 confirmDelete = true
             })
         }
         TConfirmPopover(
             expanded = confirmArchive,
-            message = "Архивировать задачу «${task.title}»?",
-            confirmText = "В архив",
+            message = stringResource(R.string.task_card_archive_confirm, task.title),
+            confirmText = stringResource(R.string.task_archive_action),
             danger = false,
             onConfirm = {
                 confirmArchive = false
@@ -477,8 +487,8 @@ private fun CardMenu(
         )
         TConfirmPopover(
             expanded = confirmDelete,
-            message = "Удалить задачу «${task.title}»? Это действие необратимо.",
-            confirmText = "Удалить",
+            message = stringResource(R.string.task_card_delete_confirm, task.title),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 confirmDelete = false
                 vm.delete(task.id)
@@ -497,24 +507,29 @@ private fun ArchiveCardMenu(task: Task, vm: BoardViewModel, onOpen: (Task) -> Un
     Box {
         IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 24.dp, iconSize = 16.dp, tint = c.text3)
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            TMenuItem("Открыть", icon = Ion.DOCUMENT_TEXT, onClick = {
+            TMenuItem(stringResource(R.string.common_open), icon = Ion.DOCUMENT_TEXT, onClick = {
                 menu = false
                 onOpen(task)
             })
-            TMenuItem("Вернуть из архива", icon = Ion.ELLIPSE, onClick = {
+            TMenuItem(stringResource(R.string.task_card_menu_restore), icon = Ion.ELLIPSE, onClick = {
                 menu = false
                 vm.restoreFromArchive(task.id)
             })
             TMenuDivider()
-            TMenuItem("Удалить навсегда", icon = Ion.TRASH, danger = true, onClick = {
-                menu = false
-                confirmDelete = true
-            })
+            TMenuItem(
+                stringResource(R.string.task_card_menu_delete_forever),
+                icon = Ion.TRASH,
+                danger = true,
+                onClick = {
+                    menu = false
+                    confirmDelete = true
+                },
+            )
         }
         TConfirmPopover(
             expanded = confirmDelete,
-            message = "Удалить задачу «${task.title}» навсегда? Это действие необратимо.",
-            confirmText = "Удалить",
+            message = stringResource(R.string.task_card_delete_forever_confirm, task.title),
+            confirmText = stringResource(R.string.common_delete),
             onConfirm = {
                 confirmDelete = false
                 vm.deleteFromArchive(task.id)
@@ -674,17 +689,25 @@ private fun ConflictPill(onClick: () -> Unit) {
     ) {
         IonIcon(Ion.GIT_NETWORK, size = 13.dp, tint = ConflictAmber)
         Spacer(Modifier.width(5.dp))
-        Text("Конфликт", color = ConflictAmber, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+        Text(
+            stringResource(R.string.task_card_conflict),
+            color = ConflictAmber,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
 /** «N из M подзадач» — footnote under a filter-narrowed child list, telling you the card
- *  is only here because a child matched and the rest are hidden (web parity). */
+ *  is only here because a child matched and the rest are hidden (web parity).
+ *
+ *  The noun agrees with [total] (the count after «из»), so that — not [shown] —
+ *  is the plural quantity: «1 из 21 подзадачи», but «1 из 3 подзадач». */
 @Composable
 private fun SubtasksNarrowedHint(shown: Int, total: Int) {
     val c = Tessera.colors
     Text(
-        "$shown из $total подзадач — остальные скрыты фильтром",
+        pluralStringResource(R.plurals.task_subtasks_filtered, total, shown, total),
         color = c.text3,
         fontSize = 10.sp,
         modifier = Modifier.padding(start = 12.dp, top = 4.dp, end = 8.dp),
@@ -731,7 +754,7 @@ private fun EstimatePill(task: Task, state: BoardUiState, stacked: Boolean = fal
         state.subtasks.filter { it.parentId == task.id }.map { it.estimate },
     )
     val value = own ?: rollup
-    val text = website.msdnna.tessera.util.Estimation.format(value, state.estimation)
+    val text = website.msdnna.tessera.util.Estimation.format(LocalResources.current, value, state.estimation)
     val isRollup = own == null && rollup != null
     if (stacked) {
         StackField(Ion.TIME, c.text2) { StackValue(if (text.isBlank()) "" else (if (isRollup) "Σ " else "") + text) }
@@ -778,7 +801,7 @@ private fun PriorityPill(task: Task, vm: BoardViewModel, stacked: Boolean = fals
     Box {
         if (stacked) {
             StackField(Ion.FLAG, color, gradient = on, onClick = { menu = true }) {
-                StackValue(if (on) PriorityLabels[task.priority] else "")
+                StackValue(if (on) stringArrayResource(R.array.task_priority_labels)[task.priority] else "")
             }
         } else {
             // Icon-only flag, tinted by priority (no text) — like the web.
@@ -787,7 +810,7 @@ private fun PriorityPill(task: Task, vm: BoardViewModel, stacked: Boolean = fals
             }
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
-            PriorityLabels.forEachIndexed { i, label ->
+            stringArrayResource(R.array.task_priority_labels).forEachIndexed { i, label ->
                 Row(
                     Modifier.fillMaxWidth().clickableNoRipple {
                         menu = false
@@ -876,7 +899,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             // Group the chips by tag prefix; headers only with >1 group (web parity).
-            val groups = buildTagGroups(state.tagList, state.prefixNames)
+            val groups = buildTagGroups(LocalResources.current, state.tagList, state.prefixNames)
             val headers = groups.size > 1
             groups.forEach { g ->
                 if (headers) {
@@ -919,7 +942,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
                 // autoFocus=false so opening the tag picker doesn't pop the keyboard;
                 // the user taps the field when they actually want to add a tag.
                 InlineCreateField(
-                    placeholder = "Новый тег, Enter",
+                    placeholder = stringResource(R.string.task_tag_new_hint),
                     autoFocus = false,
                     onCommit = {
                         vm.createTagAndAdd(task, it)
@@ -936,7 +959,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
 private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val due = dueShort(task.dueDate)
+    val due = dueShort(LocalResources.current, task.dueDate)
     // Overdue (past due, not done) → red tint, like the web.
     val overdue = !task.isCompleted && isOverdue(task.dueDate)
     val overdueColor = Color(0xFFE0533D)
@@ -1057,7 +1080,7 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel, s
         }
         TDropdown(expanded = menu, onDismiss = { menu = false }, scrollable = true) {
             TTextField(
-                query, { query = it }, placeholder = "Поиск…",
+                query, { query = it }, placeholder = stringResource(R.string.task_assignee_search_hint),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp),
             )
             pickerMembers.forEach { m ->
@@ -1160,7 +1183,7 @@ private fun SubtaskRow(
             textDecoration = if (sub.isCompleted) TextDecoration.LineThrough else null,
             modifier = Modifier.weight(1f),
         )
-        val due = shortDate(sub.dueDate)
+        val due = shortDate(LocalResources.current, sub.dueDate)
         if (due.isNotBlank()) Text(due, color = c.text3, fontSize = 11.sp)
         // This child ran ahead of (or behind) its parent — mark it with the
         // column's own colour. Just the marker: a row this narrow has no space
@@ -1181,7 +1204,7 @@ private fun SubtaskRow(
 private fun SubtaskCreateField(task: Task, vm: BoardViewModel, onDone: () -> Unit) {
     Box(Modifier.fillMaxWidth().padding(top = 6.dp)) {
         InlineCreateField(
-            placeholder = "Название подзадачи, Enter",
+            placeholder = stringResource(R.string.task_card_subtask_hint),
             onCommit = {
                 vm.createTask(task.columnId, it, parentId = task.id)
                 onDone()

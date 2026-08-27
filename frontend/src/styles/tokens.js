@@ -37,4 +37,5 @@ export const PRIORITY_COLORS = [
   '#e0533d', // 4 urgent
 ]
 
-export const PRIORITY_LABELS = ['Без приоритета', 'Низкий', 'Обычный', 'Высокий', 'Срочный']
+// The matching labels are NOT here: a colour is a token, a string is not. They
+// live in utils/priority.js, produced from the catalog per call (#2799).

@@ -38,9 +38,29 @@ func (h *API) RegisterBackgroundWorkers() {
 	}
 }
 
+// Worker operation keys — what a tick loop is doing right now. The client renders
+// them from its own catalog; workerOps keeps the Russian wording as a fallback for
+// anything reading the API (or the supervisor log) without that catalog.
+const (
+	opSyncScan   = "sync_scan"
+	opWriteback  = "writeback"
+	opDelivery   = "delivery"
+	opDueScan    = "due_scan"
+	opRecurrence = "recurrence"
+)
+
+var workerOps = map[string]string{
+	opSyncScan:   "проверка интеграций к синхронизации",
+	opWriteback:  "выгрузка изменений в GitLab",
+	opDelivery:   "рассылка уведомлений",
+	opDueScan:    "проверка сроков и напоминаний",
+	opRecurrence: "продвижение повторяющихся задач",
+}
+
 // tick refreshes a worker's heartbeat; a thin wrapper so worker loops don't import
-// the jobs package directly.
-func (h *API) tick(key, op string) { h.jobs.Tick(key, op) }
+// the jobs package directly. opKey is a key from workerOps — the rendered wording is
+// looked up here so a loop never spells it out.
+func (h *API) tick(key, opKey string) { h.jobs.Tick(key, opKey, workerOps[opKey]) }
 
 // RunJobSupervisor periodically prints a logfmt summary of in-flight background
 // jobs (queue depth, current job, elapsed) so operators can see activity in the

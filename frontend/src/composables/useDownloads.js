@@ -17,17 +17,10 @@ import { serverBase } from '@/utils/serverBase'
 // served by the site's nginx (deploy/docker-compose.yml bind-mounts). On dev
 // (Vite) the manifests 404 → the button simply stays hidden.
 
-const FORMAT_LABELS = {
-  appimage: 'AppImage',
-  deb: '.deb (Debian / Ubuntu)',
-  rpm: '.rpm (Fedora / openSUSE)',
-  exe: 'Установщик (.exe)',
-  apk: 'APK',
-}
-
-function labelFor(format) {
-  return FORMAT_LABELS[format] || format
-}
+// A variant carries its wire-format id only; the human label is resolved where
+// it is drawn (DownloadMenu). Naming it here would freeze the label at fetch
+// time — the manifests are read once at login and the menu outlives a language
+// switch (#2799).
 
 async function fetchJson(url) {
   try {
@@ -48,14 +41,14 @@ function normalizeVariants(list, base) {
       // the Android APK); `url` = legacy absolute URL (older manifests).
       const url = v.file ? `${base}/desktop/${v.file}` : v.url
       if (!url) return null
-      return { format: v.format || 'file', label: labelFor(v.format), url }
+      return { format: v.format || 'file', url }
     })
     .filter(Boolean)
   return out.length ? out : null
 }
 
 function fallbackVariant(url, format) {
-  return url ? [{ format, label: labelFor(format), url }] : null
+  return url ? [{ format, url }] : null
 }
 
 // detectOS reports the visitor's platform. Android's UA also contains "Linux",
@@ -73,7 +66,7 @@ function detectOS() {
 export function useDownloads() {
   const loading = ref(true)
   const detected = ref(detectOS())
-  // Each: { version, variants: [{ format, label, url }] } | null
+  // Each: { version, variants: [{ format, url }] } | null
   const android = ref(null)
   const windows = ref(null)
   const linux = ref(null)
@@ -88,7 +81,7 @@ export function useDownloads() {
     if (apk?.apk) {
       android.value = {
         version: apk.version || '',
-        variants: [{ format: 'apk', label: labelFor('apk'), url: `${base}/apks/${apk.apk}` }],
+        variants: [{ format: 'apk', url: `${base}/apks/${apk.apk}` }],
       }
     }
 

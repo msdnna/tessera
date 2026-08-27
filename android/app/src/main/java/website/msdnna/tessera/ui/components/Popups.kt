@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
+import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
@@ -185,7 +187,7 @@ fun TConfirmPopover(
     message: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
-    confirmText: String = "Удалить",
+    confirmText: String = stringResource(R.string.common_delete),
     danger: Boolean = true,
 ) {
     if (!expanded) return
@@ -210,7 +212,7 @@ fun TConfirmPopover(
             Text(message, color = c.text1, fontSize = 14.sp)
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                ConfirmButton("Отмена", filled = false, color = c.text1, onClick = onDismiss)
+                ConfirmButton(stringResource(R.string.common_cancel), filled = false, color = c.text1, onClick = onDismiss)
                 Spacer(Modifier.width(8.dp))
                 ConfirmButton(confirmText, filled = true, color = if (danger) TesseraDanger else c.primary, onClick = onConfirm)
             }

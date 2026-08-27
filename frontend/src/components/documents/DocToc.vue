@@ -68,14 +68,16 @@ function tickWidth(depth) {
          by assistive tech and reached by Tab without a hover first. -->
     <div v-show="open" class="flyout" data-testid="doc-toc-flyout">
       <div class="panel-head">
-        <span class="panel-title">Оглавление</span>
+        <span class="panel-title">{{ $t('documents.toc.title') }}</span>
         <span class="grow" />
-        <n-button quaternary size="tiny" @click="emit('close')">Закрыть</n-button>
+        <n-button quaternary size="tiny" @click="emit('close')">{{
+          $t('common.action.close')
+        }}</n-button>
       </div>
 
       <div class="panel-body">
         <p v-if="!rows.length" class="empty">
-          <n-text depth="3">Добавьте заголовки — они соберутся в оглавление.</n-text>
+          <n-text depth="3">{{ $t('documents.toc.empty') }}</n-text>
         </p>
         <!-- Indent is a left padding on a flat list rather than nested lists: on
              a narrow popover a fourth-level heading inside four <ul>s has almost

@@ -20,6 +20,7 @@ import (
 	"tessera/internal/gitlab"
 	"tessera/internal/jobs"
 	"tessera/internal/netguard"
+	"tessera/internal/observability"
 	"tessera/middleware"
 )
 
@@ -578,10 +579,14 @@ func (h *API) SyncGitlab(c *gin.Context) {
 	if c.Query("mode") == "full" || integ.LastFullSyncedAt == nil {
 		j.mode = "full"
 	}
-	handle.SetOp(syncOpLabel(j.mode))
+	handle.SetOp(syncOpKey(j.mode), syncOpLabel(j.mode))
 	h.beginJournal(c, j)
 	go func() {
+		// Detached goroutine: a panic here would crash the whole server. Report it
+		// to Sentry and let the process live. cancel runs after so the run's context
+		// is always released, even on panic.
 		defer cancel()
+		defer observability.Recover("gitlab-sync")
 		ctx, tcancel := context.WithTimeout(syncCtx, 30*time.Minute)
 		defer tcancel()
 		created, updated, serr := h.runSyncJournal(ctx, integ, cred, uid, j)
@@ -589,6 +594,7 @@ func (h *API) SyncGitlab(c *gin.Context) {
 		handle.Finish(serr)
 		if serr != nil {
 			log.Printf("gitlab manual-sync ws=%s: %v", integ.WorkspaceID, serr)
+			observability.CaptureError("gitlab-sync", serr)
 		}
 		h.notifySyncFinished(ctx, integ, j, created, updated, serr)
 	}()
@@ -610,25 +616,26 @@ func (h *API) notifySyncFinished(ctx context.Context, integ db.GitlabIntegration
 	}
 	// The originating request is long gone; keep the context alive for the write.
 	ctx = context.WithoutCancel(ctx)
-	label := "GitLab · " + integ.ProjectPath
-	took := fmtSyncDuration(time.Since(j.startedAt))
-	var text string
+	elapsed := time.Since(j.startedAt)
+	counts := syncCounts{
+		label:   "GitLab · " + integ.ProjectPath,
+		created: created,
+		updated: updated,
+		took:    fmtSyncDuration(elapsed),
+		seconds: int(elapsed.Round(time.Second).Seconds()),
+	}
+	var msg notifyMsg
 	switch {
 	case err != nil || j.status == "error":
-		reason := j.errText
+		counts.reason = j.errText
 		if err != nil {
-			reason = err.Error()
+			counts.reason = err.Error()
 		}
-		if reason == "" {
-			reason = "неизвестная ошибка"
-		}
-		text = fmt.Sprintf("%s: синхронизация не удалась — %s (за %s)", label, reason, took)
-	case j.status == "partial":
-		text = fmt.Sprintf("%s: +%d новых, ~%d обновлено, за %s (часть действий с ошибками)", label, created, updated, took)
+		msg = msgSyncFailed(counts)
 	default:
-		text = fmt.Sprintf("%s: +%d новых, ~%d обновлено, за %s", label, created, updated, took)
+		msg = msgSyncDone(counts, j.status == "partial")
 	}
-	h.deliverNotification(ctx, *j.actorID, integ.WorkspaceID, nil, nil, "integration_sync", text)
+	h.deliverNotification(ctx, *j.actorID, integ.WorkspaceID, nil, nil, "integration_sync", msg)
 	payload := gin.H{
 		"provider": "gitlab", "integration_id": integ.ID, "status": j.status,
 		"created": created, "updated": updated,
@@ -662,16 +669,35 @@ func gitlabSyncKey(integrationID uuid.UUID) string { return "gitlab_sync:" + int
 // side (syncRunToDTO) so a run doesn't get renamed the moment it finishes.
 const gitlabSyncJournalPrefix = "Синхронизация GitLab · "
 
-func gitlabSyncName(integ db.GitlabIntegration) string {
-	name := integ.ProjectPath
+// gitlabSyncNameKey is the catalog key for that same phrase; the integration label
+// travels beside it as the argument, so the client can build "GitLab sync · Foo"
+// without parsing the rendered Russian string.
+const gitlabSyncNameKey = "gitlab_sync"
+
+// gitlabSyncLabel is what a sync run is named after: the integration's own name, or
+// its project path when unnamed.
+func gitlabSyncLabel(integ db.GitlabIntegration) string {
 	if integ.Name != "" {
-		name = integ.Name
+		return integ.Name
 	}
-	return gitlabSyncJournalPrefix + name
+	return integ.ProjectPath
 }
 
-// syncOpLabel renders a sync run's mode for the jobs panel's current-op line. The
-// wording matches the frontend's mode dictionary (BackgroundJobsModal.vue MODE).
+func gitlabSyncName(integ db.GitlabIntegration) jobs.Name {
+	label := gitlabSyncLabel(integ)
+	return jobs.Name{Key: gitlabSyncNameKey, Arg: label, Text: gitlabSyncJournalPrefix + label}
+}
+
+// syncOpKey / syncOpLabel describe a sync run's mode on the jobs panel's current-op
+// line — as a catalog key and as the rendered fallback. The wording matches the
+// frontend's mode dictionary (BackgroundJobsModal.vue).
+func syncOpKey(mode string) string {
+	if mode == "full" {
+		return "sync_full"
+	}
+	return "sync_incremental"
+}
+
 func syncOpLabel(mode string) string {
 	if mode == "full" {
 		return "полная синхронизация"
@@ -679,11 +705,15 @@ func syncOpLabel(mode string) string {
 	return "инкрементальная синхронизация"
 }
 
-// syncBoard caches a board's columns + done column during a sync run.
+// syncBoard caches a board's columns + done column during a sync run. Columns are
+// indexed twice: by display name (what the rules' ValueMap spells out) and by
+// name_key, so a seeded column still resolves when its name no longer matches the
+// rules verbatim — see resolveBoardCol.
 type syncBoard struct {
 	id     uuid.UUID
 	cols   []db.BoardColumn
 	byName map[string]db.BoardColumn
+	byKey  map[string]db.BoardColumn
 	doneID *uuid.UUID
 }
 
@@ -939,10 +969,14 @@ func (r *syncRun) loadBoard(ctx context.Context, bid uuid.UUID) (*syncBoard, err
 		return nil, fmt.Errorf("board has no columns")
 	}
 	byName := make(map[string]db.BoardColumn, len(cols))
+	byKey := make(map[string]db.BoardColumn, len(cols))
 	for _, c := range cols {
 		byName[c.Name] = c
+		if c.NameKey != nil {
+			byKey[*c.NameKey] = c
+		}
 	}
-	bc := &syncBoard{id: bid, cols: cols, byName: byName, doneID: doneColumnID(b)}
+	bc := &syncBoard{id: bid, cols: cols, byName: byName, byKey: byKey, doneID: doneColumnID(b)}
 	r.boards[bid] = bc
 	return bc, nil
 }
@@ -964,6 +998,20 @@ func (r *syncRun) resolveBoardCol(ctx context.Context, issue gitlab.Issue, res g
 		bc = r.boards[r.integ.BoardID] // fall back to the default board
 	}
 	col, found := bc.byName[res.ColumnName]
+	if !found {
+		// Display-name matching stays primary: a seeded column keeps its Russian
+		// `name` in the DB whatever language it is captioned in for the reader, so
+		// the built-in rules keep resolving. But a rule may also target a column by
+		// its language-neutral key ("todo") — the only spelling available to
+		// someone writing rules against a board they see in English, and one that
+		// survives a caption change. The Russian default name maps to the same key,
+		// so both spellings land on the same column.
+		key := res.ColumnName
+		if k := defaultColumnKey(res.ColumnName); k != "" {
+			key = k
+		}
+		col, found = bc.byKey[key]
+	}
 	if !found {
 		col = bc.cols[0]
 	}
@@ -1173,14 +1221,14 @@ func (h *API) RunSyncWorker(ctx context.Context) {
 	const tick = 30 * time.Second
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
-	h.tick(jobGitlabSyncCron, "проверка интеграций к синхронизации")
+	h.tick(jobGitlabSyncCron, opSyncScan)
 	h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.autoSyncDue(ctx) }) // catch up at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			h.tick(jobGitlabSyncCron, "проверка интеграций к синхронизации")
+			h.tick(jobGitlabSyncCron, opSyncScan)
 			h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.autoSyncDue(ctx) })
 		}
 	}
@@ -1230,7 +1278,7 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		if fullSyncDue(integ) {
 			mode = "full"
 		}
-		handle.SetOp(syncOpLabel(mode))
+		handle.SetOp(syncOpKey(mode), syncOpLabel(mode))
 		created, updated, serr := h.runSync(syncCtx, integ, cred, actor, "auto", mode)
 		handle.SetCounts(created, updated)
 		handle.Finish(serr)

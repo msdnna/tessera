@@ -1,0 +1,1156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    English locale. Key set must mirror values/strings.xml exactly — StringParityTest
+    fails the build on a missing or extra key (a silent gap would show Russian text
+    to an English user, which is exactly the failure mode nobody notices).
+-->
+<resources>
+    <!-- Auth screen -->
+    <string name="auth_headline_login">Sign in to your account</string>
+    <string name="auth_headline_register">Create an account</string>
+    <string name="auth_email_label">Email</string>
+    <string name="auth_email_placeholder">you@example.com</string>
+    <string name="auth_name_label">Name</string>
+    <string name="auth_name_placeholder">What should we call you</string>
+    <string name="auth_password_label">Password</string>
+    <string name="auth_password_placeholder">••••••••</string>
+    <string name="auth_submit_login">Sign in</string>
+    <string name="auth_submit_register">Sign up</string>
+    <string name="auth_gitlab">Sign in with GitLab</string>
+    <string name="auth_divider_or">or</string>
+    <string name="auth_forgot">Forgot your password?</string>
+    <string name="auth_forgot_sent">If that account exists, the email is on its way</string>
+    <string name="auth_switch_to_login">Already have an account? Sign in</string>
+    <string name="auth_switch_to_register">No account yet? Sign up</string>
+    <string name="auth_reset_title">Password recovery</string>
+    <string name="auth_reset_confirm">Send</string>
+    <string name="auth_server_title">Server</string>
+    <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
+    <string name="auth_server_hint">Applied immediately. Empty means the default server.</string>
+    <string name="auth_browser_failed">Couldn\'t open a browser to sign in</string>
+
+    <!-- OAuth redirect errors (codes come from the backend) -->
+    <string name="auth_oauth_not_configured">GitLab sign-in is not configured on the server</string>
+    <string name="auth_oauth_state_mismatch">The sign-in session expired — please try again</string>
+    <string name="auth_oauth_exchange_failed">Couldn\'t fetch your details from GitLab</string>
+    <string name="auth_oauth_account_disabled">Account disabled</string>
+    <string name="auth_oauth_incomplete">Sign-in was not completed</string>
+    <string name="auth_oauth_failed">Couldn\'t sign in with GitLab</string>
+
+    <!-- Startup session gate -->
+    <string name="gate_offline_title">No connection to the server</string>
+    <string name="gate_offline_message">Couldn\'t reach the API server. Check that it is available and try again.</string>
+    <string name="gate_offline_retry">Try again</string>
+    <string name="gate_session_title">Session ended</string>
+    <string name="gate_session_message">Looks like the session expired or account access was revoked. Sign in again to continue.</string>
+    <string name="gate_session_relogin">Sign in again</string>
+    <string name="gate_exit">Exit</string>
+
+    <!-- Settings: profile -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_profile_title">Profile</string>
+    <string name="settings_avatar_upload">Upload</string>
+    <string name="settings_avatar_remove">Remove</string>
+    <string name="settings_avatar_hint">PNG/JPEG/GIF/WebP, up to 2 MB</string>
+    <string name="settings_email_label">Email (login)</string>
+    <string name="settings_email_verified">Email verified</string>
+    <string name="settings_email_unverified">Email not verified</string>
+    <string name="settings_email_sent">email sent</string>
+    <string name="settings_email_send">Send</string>
+    <string name="settings_display_name">Display name</string>
+    <string name="settings_display_name_placeholder">How to show you</string>
+    <string name="settings_last_name">Last name</string>
+    <string name="settings_first_name">First name</string>
+    <string name="settings_middle_name">Middle name</string>
+    <string name="settings_company">Company</string>
+    <string name="settings_job_title">Job title</string>
+    <string name="settings_bio">About</string>
+    <string name="settings_save_profile">Save profile</string>
+
+    <!-- Settings: security -->
+    <string name="settings_security_title">Security</string>
+    <string name="settings_password_current">Current password</string>
+    <string name="settings_password_new">New password (≥ 8)</string>
+    <string name="settings_password_repeat">Repeat the new one</string>
+    <string name="settings_password_changed">Password changed</string>
+    <string name="settings_password_submit">Change password</string>
+
+    <!-- Settings: appearance -->
+    <string name="settings_appearance_title">Appearance</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_accent">Accent</string>
+    <string name="settings_board_background">Board background (CSS colour or URL)</string>
+    <string name="settings_board_background_placeholder">#0e0e12 or https://…/bg.jpg</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+
+    <!-- Settings: localization and formats -->
+    <string name="settings_locale_title">Localization and formats</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_week_start">Week starts on</string>
+    <string name="settings_time_format">Time format</string>
+    <string name="settings_date_format">Date format</string>
+    <string name="settings_timezone">Time zone</string>
+    <string name="settings_timezone_placeholder">Europe/Moscow</string>
+    <string name="settings_country">Country</string>
+    <string name="settings_country_placeholder">Pick a country</string>
+    <string name="settings_locale_hint">Formats apply to calendars and dates. The interface is being translated in waves — some screens are still Russian-only.</string>
+    <string name="settings_search_placeholder">Search…</string>
+    <string name="language_ru">Русский</string>
+    <string name="language_en">English (partial)</string>
+    <string name="time_format_24h">24-hour</string>
+    <string name="time_format_12h">12-hour (AM/PM)</string>
+    <string name="week_start_monday">Monday</string>
+    <string name="week_start_sunday">Sunday</string>
+
+    <!-- Shared action labels (reused across screens) -->
+    <string name="common_create">Create</string>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_delete">Delete</string>
+    <string name="common_rename">Rename</string>
+    <string name="common_open">Open</string>
+    <string name="common_save">Save</string>
+    <string name="common_loading">Loading…</string>
+    <string name="common_error">Error</string>
+    <string name="common_nothing_found">Nothing found</string>
+    <string name="common_edit">Edit</string>
+    <string name="common_done">Done</string>
+    <string name="common_close">Close</string>
+    <string name="common_retry">Retry</string>
+    <string name="common_got_it">Got it</string>
+
+    <!-- Sidebar navigation -->
+    <string name="nav_home">My work</string>
+    <string name="nav_milestones">Milestones</string>
+    <string name="nav_reminders">Reminders</string>
+    <string name="nav_notes">Notes</string>
+    <string name="nav_documents">Documents</string>
+    <string name="nav_help">Help</string>
+    <string name="nav_admin">Administration</string>
+
+    <!-- Sidebar: workspaces -->
+    <string name="sidebar_estimation">Task estimation…</string>
+    <string name="sidebar_ws_new_title">New workspace</string>
+    <string name="sidebar_ws_name_hint">Name</string>
+    <string name="sidebar_ws_delete">Delete workspace</string>
+    <string name="sidebar_ws_delete_message">Workspace “%1$s” and all of its projects, boards and tasks will be deleted permanently. Type the name to confirm.</string>
+    <string name="sidebar_ws_delete_last">You cannot delete your only workspace</string>
+
+    <!-- Sidebar: project tree -->
+    <string name="sidebar_projects_header">PROJECTS</string>
+    <string name="sidebar_add_project">Project</string>
+    <string name="sidebar_add_group">Group</string>
+    <string name="sidebar_group_name_hint">Group name</string>
+    <string name="sidebar_project_name_hint">Project name</string>
+    <string name="sidebar_board_name_hint">Board name</string>
+    <string name="sidebar_empty_tree">No projects yet. Tap + to create one.</string>
+    <string name="sidebar_no_boards">No boards</string>
+    <string name="sidebar_backlog">Backlog</string>
+
+    <!-- Sidebar: group menu -->
+    <string name="sidebar_group_add_project">Add project</string>
+    <string name="sidebar_group_add_subgroup">Add subgroup</string>
+    <string name="sidebar_group_delete_message">Delete “%1$s”? Subgroups move one level up, projects are left without a group.</string>
+
+    <!-- Sidebar: project and board menus -->
+    <string name="sidebar_project_add_board">Add board</string>
+    <string name="sidebar_project_tree_mode">Show in the tree</string>
+    <string name="sidebar_tree_mode_boards">Boards</string>
+    <string name="sidebar_tree_mode_milestones">Milestones</string>
+    <string name="sidebar_tree_mode_both">Boards and milestones</string>
+    <string name="sidebar_show_closed_milestones">Show closed milestones</string>
+    <string name="sidebar_project_delete_title">Delete project</string>
+    <string name="sidebar_project_delete_message">Project “%1$s” will be deleted with all of its boards and tasks. This cannot be undone.</string>
+    <string name="sidebar_board_delete_message">Delete board “%1$s”?</string>
+
+    <!-- Sidebar: transferring a project between workspaces -->
+    <string name="sidebar_project_transfer">Move to another workspace</string>
+    <string name="sidebar_transfer_title">Move project</string>
+    <string name="sidebar_transfer_message">Project “%1$s” will move to the selected workspace with all of its boards, tasks, tags and notes. In the new workspace it will have no group. Assignees who are not members of the target workspace will be removed from tasks.</string>
+    <string name="sidebar_transfer_confirm">Move</string>
+    <string name="sidebar_project_transferred">Project moved</string>
+    <string name="sidebar_project_transferred_stripped">Project moved · assignees removed: %1$d</string>
+
+    <!-- Sidebar: footer -->
+    <string name="sidebar_user_fallback">User</string>
+
+    <!-- Task card -->
+    <plurals name="task_subtasks_filtered">
+        <item quantity="one">%1$d of %2$d subtask — the rest are hidden by the filter</item>
+        <item quantity="other">%1$d of %2$d subtasks — the rest are hidden by the filter</item>
+    </plurals>
+    <!-- The card's "⋯" menu. "Mark done" here is an action, not a status: the
+         status label lives in task_status_completed and reads "Completed". -->
+    <string name="task_card_menu_complete">Mark done</string>
+    <string name="task_card_menu_reopen">Reopen</string>
+    <string name="task_card_menu_add_subtask">Add subtask</string>
+    <string name="task_card_menu_restore">Restore from archive</string>
+    <string name="task_card_menu_delete_forever">Delete forever</string>
+    <string name="task_card_archive_confirm">Archive the task “%1$s”?</string>
+    <string name="task_card_delete_confirm">Delete the task “%1$s”? This cannot be undone.</string>
+    <string name="task_card_delete_forever_confirm">Delete the task “%1$s” forever? This cannot be undone.</string>
+    <string name="task_card_conflict">Conflict</string>
+    <string name="task_card_subtask_hint">Subtask title, Enter</string>
+    <string name="task_assignee_search_hint">Search…</string>
+
+    <!-- Task modal: header, footer, properties -->
+    <string name="task_title_placeholder">Task title</string>
+    <string name="task_ref_not_found">Task #%1$d not found</string>
+    <string name="task_commands_applied">Applied: %1$s</string>
+    <!-- The "Create an issue" row in task properties and its template picker (#2595) -->
+    <string name="task_gitlab_create">Create an issue</string>
+    <string name="task_gitlab_creating">Creating…</string>
+    <string name="task_gitlab_template">Template</string>
+    <string name="task_gitlab_templates_empty">No templates</string>
+    <string name="task_archive_confirm">Archive this task?</string>
+    <string name="task_archive_action">Archive</string>
+    <string name="task_delete_confirm">Delete this task? This cannot be undone.</string>
+    <string name="task_prop_priority">Priority</string>
+    <string name="task_prop_due">Due</string>
+    <string name="task_prop_estimate">Estimate</string>
+    <string name="task_prop_author">Author</string>
+    <string name="task_prop_assignees">Assignees</string>
+    <string name="task_prop_tags">Tags</string>
+    <string name="task_prop_milestone">Milestone</string>
+    <string name="task_prop_status">Status</string>
+    <string name="task_prop_parent">Parent</string>
+    <string name="task_prop_title">Title</string>
+    <string name="task_prop_column">Column</string>
+    <string name="task_prop_start">Start</string>
+    <string name="task_status_completed">Completed</string>
+    <string name="task_status_active">Not completed</string>
+    <string name="task_due_unset">Not set</string>
+    <string name="task_estimate_unset">Not set</string>
+    <string name="task_assignees_none">Nobody</string>
+    <string name="task_tags_none">None</string>
+    <string name="task_tag_new_hint">New tag, Enter</string>
+    <string name="task_parent_detach">Detach</string>
+    <string name="task_parent_attach">Make a subtask…</string>
+    <string name="task_parent_empty">No other tasks</string>
+    <string name="task_milestone_none">No milestone</string>
+    <string name="task_milestone_new_hint">New milestone, Enter</string>
+
+    <!-- Task modal: tabs -->
+    <string name="task_tab_description">Description</string>
+    <string name="task_tab_comments">Comments</string>
+    <string name="task_tab_subtasks">Subtasks</string>
+    <string name="task_tab_relations">Relations</string>
+    <string name="task_tab_files">Files</string>
+    <string name="task_tab_history">History</string>
+
+    <!-- Task modal: description and comments -->
+    <string name="task_description_placeholder">Add a description…</string>
+    <string name="task_someone">Someone</string>
+    <string name="task_comments_empty">No comments yet</string>
+    <string name="task_comment_edit_placeholder">Comment…</string>
+    <string name="task_comment_reply">Reply</string>
+    <string name="task_comment_collapse">Hide replies</string>
+    <string name="task_reply_placeholder">Reply… (@ — mention)</string>
+    <string name="task_comment_placeholder">Write a comment… (@ — mention)</string>
+    <string name="task_comment_placeholder_commands">Write a comment… (@ — mention, / — command)</string>
+    <string name="task_comment_send">Send</string>
+    <string name="task_commands_custom">%1$s — will stay as plain text</string>
+    <plurals name="task_comment_replies">
+        <item quantity="one">%1$d reply</item>
+        <item quantity="other">%1$d replies</item>
+    </plurals>
+
+    <!-- Task modal: subtasks and relations -->
+    <string name="task_subtasks_empty">No subtasks yet</string>
+    <string name="task_subtask_new_hint">+ subtask (Enter)</string>
+    <string name="task_relations_empty">No relations yet</string>
+    <string name="task_relation_relates">relates to</string>
+    <string name="task_relation_blocks">blocks</string>
+    <string name="task_relation_blocked_by">blocked by</string>
+    <string name="task_relation_duplicates">duplicates</string>
+    <string name="task_relation_remove_external">This relation will come back on the next %1$s sync. Delete it?</string>
+    <string name="task_relation_remove_confirm">Remove the relation?</string>
+    <string name="task_relation_search_hint">Find a task: #number or title</string>
+
+    <!-- Task modal: files -->
+    <string name="task_files_empty">No files yet</string>
+    <string name="task_file_attach">Attach a file</string>
+    <string name="task_file_open_chooser">Open “%1$s”</string>
+    <string name="task_attachment_delete_confirm">Delete this attachment?</string>
+    <string name="task_file_size_mb">%1$s MB</string>
+    <string name="task_file_size_kb">%1$s KB</string>
+    <string name="task_file_size_b">%1$d B</string>
+
+    <!-- Task modal: history -->
+    <string name="task_history_empty">No history yet</string>
+    <string name="task_event_created">created the task</string>
+    <string name="task_event_renamed">renamed the task</string>
+    <string name="task_event_description">edited the description</string>
+    <string name="task_event_priority">changed the priority</string>
+    <string name="task_event_due">changed the due date</string>
+    <string name="task_event_completed">completed the task</string>
+    <string name="task_event_reopened">reopened the task</string>
+    <string name="task_event_recurred">rescheduled the repeat</string>
+    <string name="task_event_moved">moved the task</string>
+    <string name="task_event_assigned">added an assignee</string>
+    <string name="task_event_unassigned">removed an assignee</string>
+    <string name="task_event_comment">left a comment</string>
+    <string name="task_event_relation">added a relation</string>
+    <string name="task_event_attachment">attached a file</string>
+    <string name="task_event_archived">archived the task</string>
+    <string name="task_event_restored">restored the task</string>
+
+    <!-- Task modal: move to another board -->
+    <string name="task_transfer_title">Move to a board</string>
+    <string name="task_transfer_no_projects">No projects</string>
+
+    <!-- GitLab settings: account and binding list -->
+    <string name="gitlab_section_account">Account</string>
+    <string name="gitlab_disconnect">Disconnect</string>
+    <string name="gitlab_url_label">GitLab URL</string>
+    <string name="gitlab_token_label">Token (PAT, scope read_api)</string>
+    <string name="gitlab_connect">Connect</string>
+    <string name="gitlab_section_bindings">GitLab bindings</string>
+    <string name="gitlab_bindings_empty">No bindings yet.</string>
+    <string name="gitlab_add_binding">Binding</string>
+    <string name="gitlab_connect_hint">Connect a GitLab account to sync.</string>
+    <string name="gitlab_journal">Sync log</string>
+    <string name="gitlab_conflicts">Write-back conflicts: %1$d</string>
+
+    <!-- GitLab settings: binding card -->
+    <string name="gitlab_binding_off">off</string>
+    <string name="gitlab_last_sync">Synced: %1$s</string>
+    <string name="gitlab_tile_sync">Sync</string>
+    <string name="gitlab_tile_full">Full</string>
+    <string name="gitlab_binding_delete_title">Delete binding</string>
+    <string name="gitlab_binding_delete_message">Delete the “%1$s” binding? Task links to GitLab will be broken.</string>
+
+    <!-- GitLab settings: binding editor -->
+    <string name="gitlab_field_name">Name</string>
+    <string name="gitlab_name_placeholder">e.g. Main</string>
+    <string name="gitlab_field_project">GitLab project</string>
+    <string name="gitlab_field_board">Target board</string>
+    <string name="gitlab_board_placeholder">Pick a board</string>
+    <string name="gitlab_field_scope">Import scope</string>
+    <string name="gitlab_field_closed">Closed issues</string>
+    <string name="gitlab_field_interval">Auto-sync</string>
+    <string name="gitlab_field_full_interval">Full sync</string>
+    <string name="gitlab_field_due_source">Due date source</string>
+    <string name="gitlab_field_start_source">Start date source</string>
+    <string name="gitlab_field_relations">Sync relations</string>
+    <string name="gitlab_relations_hint">Import related issues from GitLab into the “Relations” tab.</string>
+    <string name="gitlab_field_enabled">Enabled</string>
+
+    <!-- GitLab settings: interval and source options -->
+    <string name="gitlab_interval_off">Manually (off)</string>
+    <string name="gitlab_interval_5m">Every 5 minutes</string>
+    <string name="gitlab_interval_15m">Every 15 minutes</string>
+    <string name="gitlab_interval_1h">Every hour</string>
+    <string name="gitlab_full_off">Do not force (manual only)</string>
+    <string name="gitlab_full_6h">Every 6 hours</string>
+    <string name="gitlab_full_12h">Every 12 hours</string>
+    <string name="gitlab_full_1d">Once a day</string>
+    <string name="gitlab_full_2d">Every 2 days</string>
+    <string name="gitlab_full_1w">Once a week</string>
+    <string name="gitlab_source_off">Do not sync</string>
+    <string name="gitlab_due_issue_milestone">Issue, else Milestone</string>
+    <string name="gitlab_due_issue">Issue only</string>
+    <string name="gitlab_due_milestone">Milestone only</string>
+    <string name="gitlab_start_created">Creation date</string>
+    <string name="gitlab_start_milestone">Milestone start</string>
+    <string name="gitlab_scope_assigned">Assigned to me only</string>
+    <string name="gitlab_scope_all">All project issues</string>
+    <string name="gitlab_closed_all">Import all</string>
+    <string name="gitlab_closed_archive">Archive closed milestones</string>
+    <string name="gitlab_closed_period">Selected period only</string>
+
+    <!-- GitLab settings: write-back -->
+    <string name="gitlab_section_writeback">Write-back to GitLab</string>
+    <string name="gitlab_field_writeback_enabled">Enable write-back</string>
+    <string name="gitlab_writeback_hint">Each action ties an event on a Tessera task to an action on a GitLab issue (under the instance service token or the owner token, scope “api”). By default the set repeats the previous write-back behaviour.</string>
+    <string name="gitlab_add_action">Action</string>
+    <string name="gitlab_bind_trigger">Event in Tessera</string>
+    <string name="gitlab_bind_column">Target column</string>
+    <string name="gitlab_bind_column_placeholder">Pick a column</string>
+    <string name="gitlab_bind_priority">Priority</string>
+    <string name="gitlab_bind_condition">Condition</string>
+    <string name="gitlab_bind_date_kind">Date kind</string>
+    <string name="gitlab_bind_action">Action in GitLab</string>
+    <string name="gitlab_bind_label">Label</string>
+    <string name="gitlab_bind_label_placeholder">e.g. S: In Progress</string>
+    <string name="gitlab_bind_clear_prefix">Clear labels with the same prefix</string>
+    <string name="gitlab_bind_state">Issue state</string>
+    <string name="gitlab_bind_add_marker">Add a Tessera marker</string>
+
+    <!-- GitLab settings: write-back trigger and action options -->
+    <string name="gitlab_trigger_column">Move to column</string>
+    <string name="gitlab_trigger_completion">“Done” flag</string>
+    <string name="gitlab_trigger_priority">Priority change</string>
+    <string name="gitlab_trigger_due">Due date change</string>
+    <string name="gitlab_trigger_assignees">Assignee change</string>
+    <string name="gitlab_trigger_estimate">Estimate change</string>
+    <string name="gitlab_trigger_milestone">Milestone change</string>
+    <string name="gitlab_trigger_title_desc">Title / description</string>
+    <string name="gitlab_trigger_labels">Tag change</string>
+    <string name="gitlab_trigger_comment">New comment</string>
+    <string name="gitlab_action_set_label">Set a label</string>
+    <string name="gitlab_action_set_state">Close / reopen the issue</string>
+    <string name="gitlab_action_set_due">Set the due date</string>
+    <string name="gitlab_action_set_assignees">Set assignees</string>
+    <string name="gitlab_action_set_estimate">Set the estimate</string>
+    <string name="gitlab_action_set_milestone">Set the milestone</string>
+    <string name="gitlab_action_set_title_desc">Update title/description</string>
+    <string name="gitlab_action_reconcile_labels">Reconcile tags</string>
+    <string name="gitlab_action_post_comment">Post a comment</string>
+    <string name="gitlab_state_from_flag">From the “Done” flag</string>
+    <string name="gitlab_state_closed">Close the issue</string>
+    <string name="gitlab_state_opened">Reopen the issue</string>
+    <string name="gitlab_date_due">Due date (due)</string>
+    <string name="gitlab_date_start">Start date (start) — ignored for issues</string>
+    <string name="gitlab_completion_any">Any change</string>
+    <string name="gitlab_completion_true">Became “Done”</string>
+    <string name="gitlab_completion_false">“Done” cleared</string>
+    <string name="gitlab_priority_any">Any priority</string>
+
+    <!-- GitLab settings: binding summary in the card header -->
+    <string name="gitlab_sum_column">Move → “%1$s”</string>
+    <string name="gitlab_sum_priority">Priority: %1$s</string>
+    <string name="gitlab_sum_priority_any">Priority (any)</string>
+    <string name="gitlab_sum_start_change">Start date change</string>
+    <string name="gitlab_sum_label">label “%1$s”</string>
+    <string name="gitlab_sum_state_closed">close the issue</string>
+    <string name="gitlab_sum_state_opened">reopen the issue</string>
+    <string name="gitlab_sum_state_any">close/reopen the issue</string>
+    <string name="gitlab_sum_comment">comment</string>
+    <string name="gitlab_sum_comment_marker">comment (+marker)</string>
+
+    <!-- GitLab settings: screen messages (success toasts and sync totals) -->
+    <string name="gitlab_msg_connected">Connected as @%1$s</string>
+    <string name="gitlab_msg_disconnected">GitLab disconnected</string>
+    <string name="gitlab_msg_saved">Settings saved</string>
+    <string name="gitlab_msg_binding_deleted">Binding removed</string>
+    <string name="gitlab_msg_synced">Synced: %1$d (+%2$d, ~%3$d)</string>
+    <string name="gitlab_msg_sync_background">Sync is running in the background — see the journal</string>
+    <!-- Outcome of creating an issue from a task (#2595). Four keys rather than one
+         string with a glued-on suffix: a UiText cannot be nested inside a UiText.Res
+         argument, and assembling "(a, b)" in code would fix the punctuation to one language -->
+    <string name="gitlab_issue_created">Created issue !%1$d</string>
+    <string name="gitlab_issue_created_uploaded">Created issue !%1$d (attachments uploaded: %2$d)</string>
+    <string name="gitlab_issue_created_skipped">Created issue !%1$d (failed: %2$d)</string>
+    <string name="gitlab_issue_created_both">Created issue !%1$d (attachments uploaded: %2$d, failed: %3$d)</string>
+    <string name="gitlab_err_sync_failed">Sync failed: %1$s</string>
+    <!-- Its own key rather than an "error" substitution: the reason comes from the
+         server verbatim, and a UiText cannot be nested inside a UiText.Res argument -->
+    <string name="gitlab_err_sync_failed_unknown">Sync failed</string>
+
+    <!-- GitLab settings: label rules -->
+    <string name="gitlab_section_rules">Label rules</string>
+    <string name="gitlab_field_default_column">Default column</string>
+    <string name="gitlab_field_default_action">Other labels</string>
+    <string name="gitlab_field_tag_keep_prefix">Keep the tag prefix</string>
+    <string name="gitlab_add_rule">Rule</string>
+    <!-- Quotes are load-bearing: without them Android would strip the trailing space -->
+    <string name="gitlab_rule_match_placeholder">"S: or ^(T|C): "</string>
+    <string name="gitlab_rule_label">Friendly name</string>
+    <string name="gitlab_rule_label_placeholder">e.g. Status</string>
+    <string name="gitlab_rule_keep_prefix">Keep the prefix</string>
+    <string name="gitlab_rule_map_value">GitLab value</string>
+    <string name="gitlab_rule_add_value">value</string>
+    <string name="gitlab_match_prefix">Prefix</string>
+    <string name="gitlab_match_regex">Regex</string>
+    <string name="gitlab_default_action_tag">Create a tag</string>
+    <string name="gitlab_rule_action_status">Status → column</string>
+    <string name="gitlab_rule_action_priority">Priority</string>
+    <string name="gitlab_rule_action_board">Board</string>
+    <string name="gitlab_rule_action_tag">Tag</string>
+    <string name="gitlab_rule_action_group">Grouping</string>
+    <string name="gitlab_rule_action_ignore">Ignore</string>
+
+    <!-- Board: columns and quick create -->
+    <string name="board_new_task_hint">Task title, Enter</string>
+    <string name="board_add_task">+ ADD TASK</string>
+    <string name="board_new_column_hint">Column name, Enter</string>
+    <string name="board_add_column">+ ADD COLUMN</string>
+    <string name="board_column_color">Column colour</string>
+    <string name="board_column_done">Done column</string>
+    <string name="board_column_delete">Delete column</string>
+    <string name="board_column_delete_confirm">Delete “%1$s” and the tasks in it?</string>
+
+    <!-- Board: lane labels in grouping modes -->
+    <string name="board_lane_no_tag">No tag</string>
+    <string name="board_lane_unassigned">Unassigned</string>
+    <string name="board_lane_all_tasks">All tasks</string>
+
+    <!-- Board: calendar -->
+    <string name="board_today">Today</string>
+    <string name="board_calendar_undated">No due date</string>
+    <string-array name="calendar_months">
+        <item>January</item>
+        <item>February</item>
+        <item>March</item>
+        <item>April</item>
+        <item>May</item>
+        <item>June</item>
+        <item>July</item>
+        <item>August</item>
+        <item>September</item>
+        <item>October</item>
+        <item>November</item>
+        <item>December</item>
+    </string-array>
+    <string-array name="calendar_weekdays_short">
+        <item>Mon</item>
+        <item>Tue</item>
+        <item>Wed</item>
+        <item>Thu</item>
+        <item>Fri</item>
+        <item>Sat</item>
+        <item>Sun</item>
+    </string-array>
+
+    <!-- Board: Eisenhower matrix -->
+    <string name="board_matrix_urgent">Urgent</string>
+    <string name="board_matrix_not_urgent">Not urgent</string>
+    <string name="board_matrix_important">Important</string>
+    <string name="board_matrix_not_important">Not important</string>
+    <string name="board_matrix_q0_title">Urgent and important</string>
+    <string name="board_matrix_q0_hint">Do it now</string>
+    <string name="board_matrix_q1_title">Important, not urgent</string>
+    <string name="board_matrix_q1_hint">Schedule it</string>
+    <string name="board_matrix_q2_title">Urgent, not important</string>
+    <string name="board_matrix_q2_hint">Delegate it</string>
+    <string name="board_matrix_q3_title">Neither urgent nor important</string>
+    <string name="board_matrix_q3_hint">It can wait</string>
+    <string name="board_matrix_reset_auto">Back to auto</string>
+
+    <!-- Board: timeline and Gantt -->
+    <string name="board_timeline_task_column">Task</string>
+    <string name="board_timeline_empty">No tasks with dates.\nSet a start or due date on a card.</string>
+    <string name="board_timeline_overdue">%1$d overdue</string>
+    <string name="board_timeline_undated">%1$d undated</string>
+    <string name="board_timeline_undated_header">Undated</string>
+    <plurals name="board_timeline_links">
+        <item quantity="one">%1$d link</item>
+        <item quantity="other">%1$d links</item>
+    </plurals>
+    <string-array name="dates_months_short">
+        <item>Jan</item>
+        <item>Feb</item>
+        <item>Mar</item>
+        <item>Apr</item>
+        <item>May</item>
+        <item>Jun</item>
+        <item>Jul</item>
+        <item>Aug</item>
+        <item>Sep</item>
+        <item>Oct</item>
+        <item>Nov</item>
+        <item>Dec</item>
+    </string-array>
+    <string-array name="dates_weekdays_short">
+        <item>Mon</item>
+        <item>Tue</item>
+        <item>Wed</item>
+        <item>Thu</item>
+        <item>Fri</item>
+        <item>Sat</item>
+        <item>Sun</item>
+    </string-array>
+
+    <!-- Dates: relative labels and assembly. English puts the month first and
+         separates the year with a comma, hence the reordered arguments. -->
+    <string name="dates_today">today</string>
+    <string name="dates_tomorrow">tomorrow</string>
+    <string name="dates_yesterday">yesterday</string>
+    <string name="dates_short">%2$s %1$d</string>
+    <string name="dates_short_year">%2$s %1$d, %3$d</string>
+    <string name="dates_long">%2$s %1$d, %3$d</string>
+    <string name="dates_full">%2$s %1$d, %3$d</string>
+    <string name="dates_at_time">%1$s, %2$s</string>
+    <string name="dates_with_time">%1$s %2$s</string>
+    <string name="dates_clock">%1$02d:%2$02d</string>
+
+    <!-- Notifications: header and sections -->
+    <string name="notif_title">Notifications</string>
+    <string name="notif_subtitle">In-app notifications always arrive. Here you set up external channels and delivery rules.</string>
+    <string name="notif_section_channels">Channels</string>
+    <string name="notif_section_routes">Routing rules</string>
+    <string name="notif_routes_hint">Top to bottom — the first matching rule wins.</string>
+    <string name="notif_section_schedule">Due dates and reminders</string>
+    <string name="notif_add_action">Add %1$s</string>
+    <string name="notif_add_channel">Channel</string>
+    <string name="notif_add_rule">Rule</string>
+
+    <!-- Notifications: channel row -->
+    <string name="notif_type_device">System notifications</string>
+    <string name="notif_type_shoutrrr_any">Shoutrrr (any service)</string>
+    <string name="notif_channel_verified">verified</string>
+    <string name="notif_channel_this_device">this device</string>
+
+    <!-- Notifications: channel editor -->
+    <string name="notif_field_type">Type</string>
+    <string name="notif_field_label">Name</string>
+    <string name="notif_label_placeholder">E.g. “My Telegram”</string>
+    <string name="notif_field_address">Address</string>
+    <string name="notif_field_method">Method</string>
+    <string name="notif_field_auth_optional">Authorization (optional)</string>
+    <string name="notif_secret_unchanged">empty — keep current</string>
+    <string name="notif_device_hint">This device/browser. System notifications arrive while the app is open.</string>
+    <string name="notif_channel_enabled">Enabled</string>
+    <string name="notif_template_title">Message template (empty = default)</string>
+    <string name="notif_template_preview">Preview</string>
+
+    <!-- Notifications: routing rule -->
+    <string name="notif_route_any_kinds">Any events</string>
+    <string name="notif_route_muted">muted</string>
+    <string name="notif_route_no_channels">— no channels selected</string>
+    <string name="notif_route_kinds">Events (empty = any)</string>
+    <string name="notif_route_workspace">Workspace</string>
+    <string name="notif_route_all_workspaces">All workspaces</string>
+    <string name="notif_route_mute">Mute (do not send)</string>
+    <string name="notif_route_channels">Delivery channels</string>
+
+    <!-- Notifications: event kinds -->
+    <string name="notif_kind_assigned">Assignments</string>
+    <string name="notif_kind_comment">Comments</string>
+    <string name="notif_kind_mention">Mentions</string>
+    <string name="notif_kind_updated">Updates</string>
+    <string name="notif_kind_moved">Moves</string>
+    <string name="notif_kind_archived">Archiving</string>
+    <string name="notif_kind_due_soon">Due dates</string>
+    <string name="notif_kind_reminder">Reminders</string>
+
+    <!-- Notifications: due date and quiet hours schedule -->
+    <string name="notif_due_enabled">Notify about due dates</string>
+    <string name="notif_field_lead">Remind</string>
+    <string name="notif_field_repeat">Repeat</string>
+    <string name="notif_reminder_external">Reminders to external channels</string>
+    <string name="notif_field_digest">Digest</string>
+    <string name="notif_quiet_hours">Quiet hours</string>
+    <string name="notif_quiet_from">From</string>
+    <string name="notif_quiet_to">To</string>
+    <string name="notif_lead_on_time">On time</string>
+    <string name="notif_lead_15m">15 min before</string>
+    <string name="notif_lead_30m">30 min before</string>
+    <string name="notif_lead_1h">1 hour before</string>
+    <string name="notif_lead_3h">3 hours before</string>
+    <string name="notif_lead_1d">1 day before</string>
+    <string name="notif_repeat_once">Once</string>
+    <string name="notif_repeat_1h">Every hour</string>
+    <string name="notif_repeat_3h">Every 3 hours</string>
+    <string name="notif_repeat_6h">Every 6 hours</string>
+    <string name="notif_repeat_1d">Every day</string>
+    <string name="notif_digest_off">Off</string>
+    <string name="notif_digest_5m">5 minutes</string>
+    <string name="notif_digest_15m">15 minutes</string>
+    <string name="notif_digest_30m">30 minutes</string>
+    <string name="notif_digest_1h">Hourly</string>
+
+    <!-- Home screen -->
+    <string name="home_greeting">Hi, %1$s 👋</string>
+    <string name="home_greeting_fallback">there</string>
+    <string name="home_stat_me">My tasks</string>
+    <string name="home_stat_all">All active</string>
+    <string name="home_stat_overdue">Overdue</string>
+    <string name="home_stat_today">Today</string>
+    <string name="home_stat_week">This week</string>
+    <string name="home_stat_completed">Completed</string>
+    <string name="home_empty">No tasks</string>
+
+    <!-- Notes -->
+    <string name="notes_new">New note</string>
+    <string name="notes_empty">No notes yet</string>
+    <string name="notes_untitled">Untitled</string>
+    <string name="notes_editor_title">Note</string>
+    <string name="notes_delete_confirm">Delete note?</string>
+    <string name="notes_title_placeholder">Title</string>
+    <string name="notes_body_placeholder">Note text…</string>
+
+    <!-- Reminders -->
+    <string name="reminders_message_placeholder">What should we remind you about?</string>
+    <string name="reminders_pick_time">Pick a time</string>
+    <string name="reminders_add">Add</string>
+    <string name="reminders_empty">No reminders yet</string>
+    <string name="reminders_untitled">Reminder</string>
+    <string name="reminders_delete_confirm">Delete reminder?</string>
+
+    <!-- Documents -->
+    <string name="docs_empty">No documents yet</string>
+    <string name="docs_empty_hint">Documents are created in the web app</string>
+    <string name="docs_untitled">Untitled</string>
+    <string name="docs_reader_untitled">Document</string>
+    <string name="docs_reader_empty">This document is empty</string>
+    <string name="docs_image_alt">Document image</string>
+
+    <!-- Workspace members -->
+    <string name="members_title">Members</string>
+    <string name="members_invitations">Invitations</string>
+    <string name="members_invite_title">Invite by email</string>
+    <string name="members_invite_action">Invite</string>
+    <string name="members_invite_hint">An existing account is added right away; a new one gets an invite link.</string>
+    <string name="members_copy_link">Copy</string>
+    <string name="members_remove_confirm">Remove member?</string>
+    <string name="members_remove">Remove</string>
+    <string name="members_role_owner">Owner</string>
+    <string name="members_role_admin">Admin</string>
+    <string name="members_role_member">Member</string>
+
+    <!-- Admin: account list -->
+    <string name="admin_users_count">Accounts on this instance — %1$d</string>
+    <string name="admin_search_placeholder">Search by name or email</string>
+    <string name="admin_load_failed">Could not load the account list</string>
+    <string name="admin_nobody_found">Nobody found</string>
+    <string name="admin_reset_link_copied">Password-reset link copied</string>
+    <string name="admin_badge_you">you</string>
+    <string name="admin_badge_inactive">deactivated</string>
+    <string name="admin_badge_unverified">unverified</string>
+    <string name="admin_reset_password">Reset password</string>
+    <string name="admin_demote">Revoke admin</string>
+    <string name="admin_promote">Make admin</string>
+    <string name="admin_deactivate">Deactivate</string>
+    <string name="admin_activate">Activate</string>
+    <string name="admin_demote_title">Revoke admin rights</string>
+    <string name="admin_demote_message">Revoke admin rights from %1$s?</string>
+    <string name="admin_demote_confirm">Revoke</string>
+    <string name="admin_deactivate_title">Deactivate account</string>
+    <string name="admin_deactivate_message">Deactivate %1$s? They will not be able to sign in.</string>
+
+    <!-- Admin: OAuth card -->
+    <string name="admin_oauth_title">Sign in with GitLab (OAuth)</string>
+    <string name="admin_oauth_badge_on">on</string>
+    <string name="admin_oauth_load_failed">Could not load the OAuth settings</string>
+    <string name="admin_oauth_save_failed">Could not save the settings</string>
+    <string name="admin_oauth_orgmap_invalid">org_map: a JSON object is expected</string>
+    <string name="admin_oauth_saved">OAuth settings saved</string>
+    <string name="admin_oauth_secret_stored">(stored — type to replace)</string>
+    <string name="admin_oauth_service_token">Service token (PAT, instance-wide)</string>
+    <string name="admin_oauth_enabled">Enabled</string>
+    <string name="admin_oauth_org_map">org_map (JSON: group path → {workspace_id, admins, users})</string>
+    <string name="admin_oauth_callback_hint">Callback URL (set it in the GitLab OAuth app):</string>
+
+    <!-- Board: empty state and the customize panel -->
+    <string name="board_no_columns">This board has no columns yet</string>
+    <string name="board_customize_title">Board look</string>
+    <string name="board_customize_appearance">Board icon and colour</string>
+    <string name="board_customize_card_size">Card size</string>
+    <string name="board_card_size_compact">Compact</string>
+    <string name="board_card_size_medium">Medium</string>
+    <string name="board_card_size_large">Large</string>
+    <string name="board_customize_fields">Fields</string>
+    <string name="board_customize_stack">Stacked (one per line)</string>
+    <string name="board_customize_show_empty">Show empty fields</string>
+    <string name="board_field_assignee">Assignee</string>
+    <string name="board_field_number">Number (#)</string>
+    <string name="board_field_gitlab">GitLab</string>
+    <string name="board_customize_columns">Columns and subtasks</string>
+    <string name="board_customize_auto_collapse">Collapse empty columns</string>
+    <string name="board_customize_subtasks">Expand subtasks</string>
+
+    <!-- Board: activity toasts -->
+    <string name="board_activity_created">created a task</string>
+    <string name="board_activity_completed">completed a task</string>
+    <string name="board_activity_reopened">reopened a task</string>
+    <string name="board_activity_moved">moved a task</string>
+    <string name="board_activity_you">You</string>
+    <string name="board_activity_open">Open</string>
+    <string name="board_activity_copied">Copied</string>
+    <string name="board_activity_link">Link</string>
+    <!-- The task title comes from the server; this shows only when it is empty -->
+    <string name="board_activity_untitled">Task</string>
+
+    <!-- Tag manager -->
+    <string name="tags_title">Manage tags</string>
+    <string name="tags_empty">No tags yet</string>
+    <string name="tags_new">New tag</string>
+    <string name="tags_name_hint">Tag name</string>
+    <string name="tags_rename_hint">Tag name</string>
+    <string name="tags_delete_confirm">Delete the tag? It will be removed from every task.</string>
+    <string name="tags_prefix_mode">Short prefixes</string>
+    <string name="tags_prefix_mode_hint">Raw prefix (“T”) instead of the friendly name</string>
+
+    <!-- Editor commands -->
+    <string name="commands_title">Editor commands</string>
+    <string name="commands_hint">Your own commands are only suggested in the editor and stay in the comment text — the reader runs them, not Tessera. Built-in ones are run by the server and stripped from the text.</string>
+    <string name="commands_description_hint">Approve the plan</string>
+    <string name="commands_empty">No custom commands yet</string>
+    <string name="commands_add">Add</string>
+    <string name="commands_readonly">Only the owner or an admin can edit the dictionary</string>
+    <string name="commands_builtin">Built-in</string>
+    <string name="commands_err_empty_key">empty key</string>
+    <string name="commands_err_bad_key">latin letters, digits, _ and -</string>
+    <string name="commands_err_builtin">built-in command</string>
+    <string name="commands_err_duplicate">duplicate</string>
+    <string name="commands_err_too_long">description longer than 200 characters</string>
+
+    <!-- Milestones: list and manager -->
+    <string name="milestones_filter_active">Active</string>
+    <string name="milestones_filter_all">All</string>
+    <string name="milestones_empty_all">No milestones yet</string>
+    <string name="milestones_empty_active">No active milestones</string>
+    <string name="milestones_closed">closed</string>
+    <string name="milestones_no_tasks">no tasks</string>
+    <string name="milestones_manager_empty">No milestones yet</string>
+    <string name="milestones_delete_confirm">Delete the milestone?</string>
+    <string name="milestones_new">New milestone</string>
+    <string name="milestones_title_hint">Title</string>
+    <string name="milestones_date_start">Start</string>
+    <string name="milestones_date_due">Due</string>
+    <string name="milestones_date_clear">Clear</string>
+    <string name="milestones_range">%1$s – %2$s</string>
+    <string name="milestones_range_until">until %1$s</string>
+    <string name="milestones_range_from">from %1$s</string>
+
+    <!-- Due picker: start/due tabs -->
+    <string name="due_picker_tab_start">Start</string>
+    <string name="due_picker_tab_due">Due</string>
+    <string name="due_picker_start_unset">not set</string>
+    <string name="due_picker_due_unset">not set</string>
+    <string name="due_picker_clear_start">Clear start</string>
+    <string name="due_picker_clear_due">Clear due date</string>
+
+    <!-- Due picker: task recurrence -->
+    <string name="due_picker_repeat">Repeat task</string>
+    <string name="due_picker_every">every</string>
+    <string name="due_picker_custom_hint">Mark the repeat dates on the calendar above.</string>
+    <string name="due_picker_trigger">Event</string>
+    <string name="due_picker_trigger_column">Trigger column</string>
+    <string name="due_picker_trigger_column_hint">Pick a column</string>
+    <string name="due_picker_move_to">Move to</string>
+    <string name="due_picker_first_column">First column</string>
+    <string name="due_picker_duplicate">Create a duplicate</string>
+    <string name="due_picker_forever">Repeat forever</string>
+    <string name="due_picker_skip_weekends">Skip weekends</string>
+    <string name="recur_freq_none">None</string>
+    <string name="recur_freq_daily">Day</string>
+    <string name="recur_freq_weekly">Week</string>
+    <string name="recur_freq_monthly">Month</string>
+    <string name="recur_freq_yearly">Year</string>
+    <string name="recur_freq_custom">Custom</string>
+    <string name="recur_trigger_complete">On completion</string>
+    <string name="recur_trigger_column">On moving to a column</string>
+    <string name="recur_trigger_schedule">On schedule</string>
+    <plurals name="recur_unit_daily">
+        <item quantity="one">day</item>
+        <item quantity="other">days</item>
+    </plurals>
+    <plurals name="recur_unit_weekly">
+        <item quantity="one">week</item>
+        <item quantity="other">weeks</item>
+    </plurals>
+    <plurals name="recur_unit_monthly">
+        <item quantity="one">month</item>
+        <item quantity="other">months</item>
+    </plurals>
+    <plurals name="recur_unit_yearly">
+        <item quantity="one">year</item>
+        <item quantity="other">years</item>
+    </plurals>
+
+    <!-- Due picker: per-task notifications -->
+    <string name="due_notify_title">Notifications</string>
+    <string name="due_notify_lead">Remind</string>
+    <string name="due_notify_repeat">Reminder repeat</string>
+    <string name="due_notify_inherit">Default</string>
+    <string name="due_notify_on">On</string>
+    <string name="due_notify_off">Off</string>
+    <string name="due_notify_lead_0">At the due time</string>
+    <string name="due_notify_lead_15">15 minutes before</string>
+    <string name="due_notify_lead_60">An hour before</string>
+    <string name="due_notify_lead_180">3 hours before</string>
+    <string name="due_notify_lead_1440">A day before</string>
+    <string name="due_notify_repeat_0">Once</string>
+    <string name="due_notify_repeat_60">Every hour</string>
+    <string name="due_notify_repeat_180">Every 3 hours</string>
+    <string name="due_notify_repeat_1440">Every day</string>
+
+    <!-- Board composer: grouping chip -->
+    <string name="composer_scope_archive">Archive (read-only)</string>
+    <string name="composer_scope_milestone">Milestone</string>
+    <string name="composer_group_status">statuses</string>
+    <string name="composer_group_tag">tags</string>
+    <string name="composer_group_milestone">milestones</string>
+    <string name="composer_group_assignee">assignee</string>
+    <string name="composer_group_none">none</string>
+    <string name="composer_group_by_status">By status</string>
+    <string name="composer_group_by_tags_all">By tags (all)</string>
+    <string name="composer_group_by_tags_prefix">By tags · %1$s</string>
+    <string name="composer_group_by_milestone">By milestone</string>
+    <string name="composer_group_by_assignee">By assignee</string>
+    <string name="composer_group_by_none">No grouping</string>
+
+    <!-- Board composer: the «+» menu, filters and search -->
+    <string name="composer_add_sort">Sorting</string>
+    <string name="composer_add_filter_status">Filter: status</string>
+    <string name="composer_add_filter_priority">Filter: priority</string>
+    <string name="composer_add_filter_assignee">Filter: assignee</string>
+    <string name="composer_add_filter_author">Filter: author</string>
+    <string name="composer_add_filter_tag">Filter: tag</string>
+    <string name="composer_add_filter_milestone">Filter: milestone</string>
+    <string name="composer_add_filter_due">Filter: due date</string>
+    <string name="composer_back">‹ Back</string>
+    <string name="composer_search_hint">Search…</string>
+    <string name="due_filter_overdue">Overdue</string>
+    <string name="due_filter_today">Today</string>
+    <string name="due_filter_week">Next 7 days</string>
+    <string name="due_filter_has">With a due date</string>
+    <string name="due_filter_none">No due date</string>
+
+    <!-- Board composer: sort fields. Priority/Due/Status reuse the shared task_prop_*
+         keys — same words in both locales. Title and Number get their own keys: in
+         Russian the task modal spells the same field differently -->
+    <string name="composer_sort_title">Title</string>
+    <string name="composer_sort_number">Number</string>
+
+    <!-- Board composer: saved views -->
+    <string name="views_title">Views</string>
+    <string name="views_empty">No saved views</string>
+    <string name="views_save_current">Save the current view</string>
+    <string name="views_name_hint">Name</string>
+    <string name="views_delete_confirm">Delete the view “%1$s”?</string>
+
+    <!-- System notifications: channels, reminders and push titles -->
+    <string name="notif_channel_device_name">Notifications</string>
+    <string name="notif_channel_device_desc">Task notifications</string>
+    <string name="notif_channel_reminders_name">Reminders</string>
+    <string name="notif_channel_reminders_desc">Task reminder alarms</string>
+    <string name="reminder_push_title">Reminder</string>
+    <string name="reminder_push_default_body">Time to get to the task</string>
+    <string name="push_title_assigned">Task assigned</string>
+    <string name="push_title_comment">New comment</string>
+    <string name="push_title_mention">You were mentioned</string>
+    <string name="push_title_updated">Task updated</string>
+    <string name="push_title_moved">Task moved</string>
+    <string name="push_title_archived">Task archived</string>
+    <string name="push_title_due_soon">Due soon</string>
+    <string name="push_title_reminder">Reminder</string>
+
+    <!-- Notification panel (bell) and settings replies -->
+    <string name="notif_panel_mark_all">Mark all read</string>
+    <string name="notif_panel_empty">Nothing yet</string>
+    <string name="notif_test_sent">Test sent</string>
+    <string name="notif_saved">Saved</string>
+
+    <!-- Estimates: compact suffixes ("3d 6h"), unit names and input hints -->
+    <string name="est_unit_week">%1$dw</string>
+    <string name="est_unit_day">%1$dd</string>
+    <string name="est_unit_hour">%1$dh</string>
+    <string name="est_unit_minute">%1$dm</string>
+    <string name="est_points_value">%1$s SP</string>
+    <string name="est_custom_value">%1$s %2$s</string>
+    <string name="est_unit_time">Time</string>
+    <string name="est_unit_points">Story points</string>
+    <string name="est_unit_custom">Units</string>
+    <string name="est_hint_points">e.g. 5</string>
+    <string name="est_hint_custom">e.g. 8</string>
+    <string name="est_hint_time">e.g. 3d 4h, 90m, 1w</string>
+
+    <!-- Tag prefix grouping: the bucket for tags without a prefix -->
+    <string name="tag_group_none">Ungrouped</string>
+
+    <!-- API call errors. Assembled in util/Errors outside composition, so they travel
+         to the screen as UiText and resolve there. -->
+    <string name="err_http_code">Error %1$d</string>
+    <string name="err_no_connection">No connection to the server</string>
+    <string name="err_unknown">Unknown error</string>
+    <string name="err_invalid_credentials">Wrong email or password</string>
+    <string name="err_email_registered">This email is already registered</string>
+    <string name="err_email_in_use">This email is already in use</string>
+    <string name="err_user_exists">A user with this email already exists</string>
+    <string name="err_user_not_found">User not found</string>
+    <string name="err_link_invalid">The link is invalid or has expired</string>
+    <string name="err_link_expired">The link has expired</string>
+    <string name="err_account_deactivated">Account deactivated</string>
+    <string name="err_forbidden">Not enough permissions</string>
+    <string name="err_unauthorized">Please sign in again</string>
+    <string name="err_not_found">Not found</string>
+    <string name="err_invalid_email">Enter a valid email</string>
+    <string name="err_required_fields">Fill in all required fields</string>
+    <string name="err_value_too_short">The value is too short</string>
+    <string name="err_value_too_long">The value is too long</string>
+    <string name="err_check_fields">Check the fields for errors</string>
+    <string name="err_offline">No connection to the server. Check your network.</string>
+
+    <!-- GitLab sync journal: the run list and the per-action diff dialog. Field
+         labels come from task_prop_* — the journal diffs the same task properties
+         the task modal shows. -->
+    <string name="gljournal_empty">The journal is empty — sync has not run yet</string>
+    <string name="gljournal_no_actions">No recorded actions</string>
+    <string name="gljournal_trigger_manual">manual</string>
+    <string name="gljournal_trigger_auto">auto</string>
+    <string name="gljournal_run_meta">%1$s · %2$s</string>
+    <string name="gljournal_push_count">%1$d sent</string>
+    <string name="gljournal_no_changes">no changes</string>
+    <string name="gljournal_comments_new">New comments (%1$d)</string>
+    <plurals name="gljournal_relations_added">
+        <item quantity="one">+%1$d relation</item>
+        <item quantity="other">+%1$d relations</item>
+    </plurals>
+    <string name="gljournal_relations_removed">−%1$d removed</string>
+    <string name="gljournal_relations_deferred">%1$d deferred</string>
+    <string name="gljournal_delivery_failed">Delivery failed</string>
+    <string name="gljournal_push_issue_close">close the issue</string>
+    <string name="gljournal_push_issue_open">reopen the issue</string>
+    <string name="gljournal_push_priority">priority → %1$s</string>
+    <string name="gljournal_retry_queued">Queued for retry</string>
+
+    <!-- Shared dialogs (input, confirm, type-to-confirm) -->
+    <string name="dialog_confirm_by_name_hint">Type “%1$s” to confirm:</string>
+
+    <!-- Estimation dialog: the title depends on the scope (workspace or project),
+         the "Inherit" caption is built from the inherited unit. -->
+    <string name="est_dialog_title_workspace">Task estimation — default</string>
+    <string name="est_dialog_title_project">Task estimation — %1$s</string>
+    <string name="est_dialog_inherit">Inherit (%1$s)</string>
+    <string name="est_dialog_inherit_time">%1$s · %2$dh/day · %3$dd/week</string>
+    <string name="est_dialog_seg_time">Time</string>
+    <string name="est_dialog_seg_points">Points</string>
+    <string name="est_dialog_seg_custom">Custom</string>
+    <string name="est_dialog_hours_label">Hours in a working day</string>
+    <string name="est_dialog_days_label">Days in a working week</string>
+    <string name="est_dialog_scale_fibonacci">Fibonacci</string>
+    <string name="est_dialog_scale_tshirt">T-shirt</string>
+    <string name="est_dialog_scale_linear">Linear</string>
+    <string name="est_dialog_custom_label">Unit name</string>
+    <string name="est_dialog_custom_hint">e.g. pts</string>
+
+    <!-- Project / group colour and icon picker -->
+    <string name="picker_color">Colour</string>
+    <string name="picker_icon">Icon</string>
+    <string name="picker_icon_mode">What to colour</string>
+    <string name="picker_icon_mode_badge">Badge</string>
+    <string name="picker_icon_mode_icon">Icon</string>
+
+    <!-- Appearance picker: accent and dark mode -->
+    <string name="theme_picker_title">Appearance</string>
+    <string name="theme_picker_accent">Accent</string>
+    <string name="theme_picker_dark">Dark theme</string>
+
+    <!-- Board layout switch (segmented selector) -->
+    <string name="board_view_kanban">Board</string>
+    <string name="board_view_list">List</string>
+    <string name="board_view_calendar">Calendar</string>
+    <string name="board_view_timeline">Timeline</string>
+    <string name="board_view_gantt">Gantt</string>
+    <string name="board_view_matrix">Matrix</string>
+
+    <!-- App shell: top bar, board menu, Back-to-exit -->
+    <string name="main_boards_of_project">PROJECT BOARDS</string>
+    <string name="main_board_menu_archive">Board archive</string>
+    <string name="main_provider_soon">%1$s · soon</string>
+    <string name="main_back_again_to_exit">Press Back again to exit</string>
+
+    <!-- App update and release highlights. The "Update available" caption and the
+         "Update" action are shared by the dialog and the sidebar footer. -->
+    <string name="update_available">Update available</string>
+    <string name="update_action">Update</string>
+    <string name="update_version">Version %1$s</string>
+    <string name="update_downloading">Downloading… %1$d%%</string>
+    <string name="update_install">Install</string>
+    <string name="update_later">Later</string>
+    <string name="update_download_failed">Download failed</string>
+    <string name="whats_new_title">What\'s new</string>
+    <string name="whats_new_subtitle">The update is applied — here is what changed</string>
+
+    <!-- Markdown editor. The placeholder captions ("text", "Hidden text") end up
+         inside the document itself: they are a starter written by the UI, so they
+         take the interface language of the moment they are inserted. -->
+    <string name="md_fullscreen_title">Editor</string>
+    <string name="md_preview_empty">Preview</string>
+    <string name="md_custom_badge">custom</string>
+    <string name="md_spoiler_summary">Details</string>
+    <string name="md_spoiler_placeholder">Hidden text</string>
+    <string name="md_link_placeholder">text</string>
+    <string name="md_mermaid_start">Start</string>
+    <string name="md_mermaid_done">Done</string>
+
+    <!-- Captions under the loader (shown only when a load drags on) and the
+         screen-level error state. -->
+    <string name="loading_caption_connecting">Trying to reach the server…</string>
+    <string name="loading_caption_slow">This is taking a bit longer than expected…</string>
+    <string name="loading_caption_still_trying">Still trying to reach the server…</string>
+    <string name="error_retry_action">Try again</string>
+
+    <!-- Priority labels (index = priority 0..4). An array rather than five keys:
+         lookup is by index, and the locale-parity test guards its length. -->
+    <string-array name="task_priority_labels">
+        <item>No priority</item>
+        <item>Low</item>
+        <item>Normal</item>
+        <item>High</item>
+        <item>Urgent</item>
+    </string-array>
+
+    <!-- Captions for the names born on the server: the personal workspace and the four
+         seeded board columns (#2800). -->
+    <string name="default_workspace_personal">Personal space</string>
+    <string name="default_column_todo">To do</string>
+    <string name="default_column_in_progress">In progress</string>
+    <string name="default_column_review">In review</string>
+    <string name="default_column_done">Done</string>
+
+    <!-- Names of the seven accent schemes of the design language -->
+    <string name="accent_purple">Purple</string>
+    <string name="accent_blue">Blue</string>
+    <string name="accent_teal">Teal</string>
+    <string name="accent_green">Green</string>
+    <string name="accent_orange">Orange</string>
+    <string name="accent_red">Red</string>
+    <string name="accent_pink">Pink</string>
+
+    <!-- Full-screen search -->
+    <!-- Help centre -->
+    <string name="help_search_placeholder">Search the help</string>
+    <string name="help_not_built">The manual is not bundled in this build</string>
+    <string name="help_article_missing">Article missing from the build</string>
+    <string name="help_updated">Updated: %1$s</string>
+    <string name="help_desktop_note">The article describes the web version — some actions look different in the app.</string>
+    <string name="help_not_translated">This article has not been translated yet — showing the original.</string>
+
+    <string name="search_placeholder">Search tasks, notes and help</string>
+    <string name="search_hint">Type a query — searches task titles and descriptions, note titles and text, help articles</string>
+    <string name="search_empty">Nothing found</string>
+    <string name="search_section_help">HELP</string>
+    <string name="search_section_tasks">TASKS</string>
+    <string name="search_section_notes">NOTES</string>
+
+    <!-- GitLab write-back conflict resolver. Field labels come from task_prop_*;
+         the "GitLab" side is the service name and has no key. -->
+    <string name="conflict_title">GitLab conflict</string>
+    <string name="conflict_more">More conflicts: %1$d</string>
+    <string name="conflict_save_merge">Save merge</string>
+    <string name="conflict_take_ours">Keep mine</string>
+    <string name="conflict_take_theirs">Take GitLab</string>
+    <string name="conflict_merge_manually">Merge manually…</string>
+    <string name="conflict_side_base">Before</string>
+    <string name="conflict_side_ours">Mine</string>
+    <string name="conflict_state_closed">Closed</string>
+    <string name="conflict_state_open">Open</string>
+
+    <!-- "What's new" release highlights — one key per entry in update/WhatsNewEntries. -->
+    <string name="whatsnew_v0_72_0_title">English and Russian</string>
+    <string-array name="whatsnew_v0_72_0_items">
+        <item>Switch the app language in Settings → Language: English or Russian. Your choice is remembered on the device.</item>
+        <item>Date and time formats and the first day of the week are configurable too, and apply across the whole app.</item>
+    </string-array>
+    <string name="whatsnew_v0_71_0_title">Help centre</string>
+    <string-array name="whatsnew_v0_71_0_items">
+        <item>A new “Help” item in the side menu — a help centre with articles, right inside the app and available offline.</item>
+        <item>Category navigation and search across every article; images follow the theme — in the dark theme the screenshots are dark too.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_help_title">Take a look at “Help”</string>
+    <string name="whatsnew_spotlight_help_body">The help centre with articles and search now lives in the side menu.</string>
+    <string name="whatsnew_v0_70_0_title">Tasks, as on the web</string>
+    <string-array name="whatsnew_v0_70_0_items">
+        <item>The task description is the first tab now — comments and subtasks are one tap away.</item>
+        <item>Comment replies form a thread: indentation, collapsing, and “Reply” fills in the author.</item>
+        <item>Tapping an @mention opens that person’s card; tapping “#123” opens the task itself.</item>
+        <item>A description editor with a formatting bar, list continuation and a full-screen mode.</item>
+    </string-array>
+    <string name="whatsnew_v0_69_0_title">Workspace documents</string>
+    <string-array name="whatsnew_v0_69_0_items">
+        <item>The new “Documents” section: a tree of wiki pages with nesting, tables, checkboxes and images.</item>
+        <item>On the phone documents are read-only for now — editing stays on the web.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_documents_title">Take a look at “Documents”</string>
+    <string name="whatsnew_spotlight_documents_body">Your workspace wiki pages are available right from the phone.</string>
+    <string name="whatsnew_v0_68_0_title">Notifications while the app is closed</string>
+    <string-array name="whatsnew_v0_68_0_items">
+        <item>Notifications arrive even when the app is closed, and open the right task when tapped.</item>
+    </string-array>
+</resources>

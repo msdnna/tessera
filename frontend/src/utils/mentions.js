@@ -9,13 +9,17 @@
 // shown in the popup and the card. They differ on purpose: a comment is pushed to
 // GitLab verbatim, so "@Евгений Полянский" resolves to nothing there — the GitLab
 // login has to be what lands in the text, while the readable name stays on screen.
+import { i18n } from '@/i18n'
 
-// Roles as shown on the hover card. Unknown roles fall back to the raw value
-// rather than to "Участник" — inventing a role is worse than showing the code.
-const ROLE_LABELS = { owner: 'Владелец', admin: 'Админ', member: 'Участник' }
+// Roles as shown on the hover card, sharing the member-list catalogue entries.
+// Unknown roles fall back to the raw value rather than to "member" — inventing a
+// role is worse than showing the code. Resolved per call (this module is used
+// outside a setup context), so a language switch reaches the card too (#2799).
+const ROLES = ['owner', 'admin', 'member']
 
 export function roleLabel(role) {
-  return ROLE_LABELS[role] || role || ''
+  if (!role) return ''
+  return ROLES.includes(role) ? i18n.global.t(`shell.members.${role}`) : role
 }
 
 // glLoginsByUserId maps tessera_user_id → gl_username from the *unfiltered* GitLab

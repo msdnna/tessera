@@ -40,18 +40,23 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 }
 
 const createWorkspace = `-- name: CreateWorkspace :one
-INSERT INTO workspaces (name, owner_id)
-VALUES ($1, $2)
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation
+INSERT INTO workspaces (name, name_key, owner_id)
+VALUES ($1, $2, $3)
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
 `
 
 type CreateWorkspaceParams struct {
 	Name    string    `json:"name"`
+	NameKey *string   `json:"name_key"`
 	OwnerID uuid.UUID `json:"owner_id"`
 }
 
+// CreateWorkspace takes both the display name and an optional name_key: the
+// personal workspace seeded at registration passes 'personal' so clients can
+// render the caption in the reader's language, while a workspace the user names
+// himself passes NULL and is shown verbatim.
 func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams) (Workspace, error) {
-	row := q.db.QueryRow(ctx, createWorkspace, arg.Name, arg.OwnerID)
+	row := q.db.QueryRow(ctx, createWorkspace, arg.Name, arg.NameKey, arg.OwnerID)
 	var i Workspace
 	err := row.Scan(
 		&i.ID,
@@ -61,6 +66,7 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 		&i.UpdatedAt,
 		&i.TaskCounter,
 		&i.Estimation,
+		&i.NameKey,
 	)
 	return i, err
 }
@@ -127,7 +133,7 @@ func (q *Queries) GetMembershipRole(ctx context.Context, arg GetMembershipRolePa
 }
 
 const getWorkspace = `-- name: GetWorkspace :one
-SELECT id, name, owner_id, created_at, updated_at, task_counter, estimation FROM workspaces WHERE id = $1
+SELECT id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key FROM workspaces WHERE id = $1
 `
 
 func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, error) {
@@ -141,6 +147,7 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 		&i.UpdatedAt,
 		&i.TaskCounter,
 		&i.Estimation,
+		&i.NameKey,
 	)
 	return i, err
 }
@@ -198,7 +205,7 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 }
 
 const listWorkspacesForUser = `-- name: ListWorkspacesForUser :many
-SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation, m.role AS my_role
+SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation, w.name_key, m.role AS my_role
 FROM workspaces w
 JOIN memberships m ON m.workspace_id = w.id
 WHERE m.user_id = $1
@@ -213,6 +220,7 @@ type ListWorkspacesForUserRow struct {
 	UpdatedAt   time.Time        `json:"updated_at"`
 	TaskCounter int64            `json:"task_counter"`
 	Estimation  *json.RawMessage `json:"estimation"`
+	NameKey     *string          `json:"name_key"`
 	MyRole      string           `json:"my_role"`
 }
 
@@ -233,6 +241,7 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 			&i.UpdatedAt,
 			&i.TaskCounter,
 			&i.Estimation,
+			&i.NameKey,
 			&i.MyRole,
 		); err != nil {
 			return nil, err
@@ -260,7 +269,7 @@ const setWorkspaceEstimation = `-- name: SetWorkspaceEstimation :one
 UPDATE workspaces
 SET estimation = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
 `
 
 type SetWorkspaceEstimationParams struct {
@@ -282,6 +291,7 @@ func (q *Queries) SetWorkspaceEstimation(ctx context.Context, arg SetWorkspaceEs
 		&i.UpdatedAt,
 		&i.TaskCounter,
 		&i.Estimation,
+		&i.NameKey,
 	)
 	return i, err
 }
@@ -313,9 +323,11 @@ func (q *Queries) UpdateMembershipRole(ctx context.Context, arg UpdateMembership
 
 const updateWorkspace = `-- name: UpdateWorkspace :one
 UPDATE workspaces
-SET name = $2, updated_at = now()
+SET name = $2,
+    name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END,
+    updated_at = now()
 WHERE id = $1
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
 `
 
 type UpdateWorkspaceParams struct {
@@ -323,6 +335,11 @@ type UpdateWorkspaceParams struct {
 	Name string    `json:"name"`
 }
 
+// UpdateWorkspace renames a workspace and drops its name_key: a chosen name must
+// survive a language switch, so the default-caption key stops applying the moment
+// the user picks a name of their own.
+// Re-saving the same name is not a rename (the settings form submits every
+// field), so the key survives it; only actually changing the text drops it.
 func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams) (Workspace, error) {
 	row := q.db.QueryRow(ctx, updateWorkspace, arg.ID, arg.Name)
 	var i Workspace
@@ -334,6 +351,7 @@ func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams
 		&i.UpdatedAt,
 		&i.TaskCounter,
 		&i.Estimation,
+		&i.NameKey,
 	)
 	return i, err
 }

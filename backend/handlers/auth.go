@@ -90,7 +90,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// Every new user gets a personal workspace they own. Shared workspaces are
 	// created explicitly via POST /workspaces.
 	if ws, err := h.q.CreateWorkspace(c, db.CreateWorkspaceParams{
-		Name: "Личное пространство", OwnerID: user.ID,
+		Name: personalWorkspaceName, NameKey: ptr(personalWorkspaceKey), OwnerID: user.ID,
 	}); err == nil {
 		_, _ = h.q.CreateMembership(c, db.CreateMembershipParams{
 			WorkspaceID: ws.ID, UserID: user.ID, Role: "owner",

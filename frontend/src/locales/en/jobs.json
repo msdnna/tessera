@@ -1,0 +1,67 @@
+{
+  "title": "Background jobs",
+  "refresh": "Refresh",
+  "empty": "No background jobs",
+  "select": "Pick a job",
+  "journal": "journal",
+  "started": "Started",
+  "cancelling": "Cancelling…",
+  "run": "Run now",
+  "cancel": "Stop",
+  "nextRunPrefix": "· next run {when}",
+  "name": {
+    "gitlab_sync": "GitLab sync · {arg}"
+  },
+  "worker": {
+    "gitlab_sync_cron": "GitLab auto-sync",
+    "gitlab_writeback": "GitLab write-back",
+    "notify_delivery": "Notification delivery",
+    "notify_scanner": "Due dates and reminders scan",
+    "recurrence": "Recurring tasks"
+  },
+  "op": {
+    "sync_scan": "checking integrations due for a sync",
+    "writeback": "pushing changes to GitLab",
+    "delivery": "delivering notifications",
+    "due_scan": "checking due dates and reminders",
+    "recurrence": "advancing recurring tasks",
+    "sync_full": "full sync",
+    "sync_incremental": "incremental sync"
+  },
+  "status": {
+    "running": "running",
+    "pending": "queued",
+    "done": "done",
+    "failed": "error"
+  },
+  "kind": {
+    "worker": "worker",
+    "sync": "sync"
+  },
+  "mode": {
+    "incremental": "incremental",
+    "full": "full"
+  },
+  "trigger": {
+    "manual": "manual",
+    "auto": "scheduled"
+  },
+  "next": {
+    "soon": "any moment",
+    "inMinutes": "in {m} min {s} s",
+    "inSeconds": "in {s} s"
+  },
+  "fact": {
+    "status": "Status",
+    "purpose": "Purpose",
+    "lastActivity": "Last activity",
+    "nextRun": "Next run",
+    "mode": "Mode",
+    "trigger": "Trigger",
+    "startedAt": "Started",
+    "finishedAt": "Finished",
+    "duration": "Duration",
+    "createdUpdated": "Created / updated",
+    "error": "Error"
+  }
+}

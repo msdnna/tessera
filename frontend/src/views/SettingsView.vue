@@ -1,5 +1,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NInput, NButton, NSelect, NAvatar, NIcon, NSwitch } from 'naive-ui'
 import { CloudUploadOutline, TrashOutline, CheckmarkCircle } from '@vicons/ionicons5'
 import { users, accountFlows } from '@/api'
@@ -7,9 +8,12 @@ import NotificationSettings from '@/components/NotificationSettings.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
+import { useFormat } from '@/composables/useFormat'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 import { useApiImage } from '@/composables/useApiImage'
 import { useDesktopUpdate } from '@/composables/useDesktopUpdate'
+
+const { t } = useI18n()
 
 // Desktop-only settings: configurable server address + self-update.
 const isDesktop = isTauri()
@@ -57,9 +61,11 @@ onMounted(loadAutostart)
 const auth = useAuthStore()
 const theme = useThemeStore()
 
-// Built once from native Intl data (filterable selects show all on focus).
+// Built from native Intl data (filterable selects show all on focus). Country
+// names are language-dependent, so they follow the UI language instead of
+// freezing on whatever it was at import time.
 const tzOptions = timezoneOptions()
-const countryOpts = countryOptions(theme.language || 'ru')
+const countryOpts = computed(() => countryOptions(theme.language || 'ru'))
 
 // ── profile ────────────────────────────────────────────────────────────────
 const u = auth.user || {}
@@ -142,7 +148,7 @@ const pwValid = computed(() => pw.current && pw.next.length >= 8 && pw.next === 
 async function changePassword() {
   pwError.value = ''
   if (!pwValid.value) {
-    pwError.value = 'Проверьте поля: новый пароль ≥ 8 символов и совпадает с подтверждением'
+    pwError.value = t('settings.security.invalid')
     return
   }
   pwSaving.value = true
@@ -158,31 +164,33 @@ async function changePassword() {
 }
 
 // ── appearance (persists immediately via the theme store) ──────────────────────
-const themeModeOptions = [
-  { label: 'Системная', value: 'system' },
-  { label: 'Светлая', value: 'light' },
-  { label: 'Тёмная', value: 'dark' },
-]
+// Every option table below is a computed, never a module-level const: built
+// once at import time it would keep the labels of whatever language rendered
+// first, and switching the UI language would leave the selects behind (#2799).
+const themeModeOptions = computed(() => [
+  { label: t('settings.appearance.mode.system'), value: 'system' },
+  { label: t('settings.appearance.mode.light'), value: 'light' },
+  { label: t('settings.appearance.mode.dark'), value: 'dark' },
+])
 
 // ── localization ───────────────────────────────────────────────────────────────
-const langOptions = [
-  { label: 'Русский', value: 'ru' },
-  { label: 'English (скоро)', value: 'en' },
-]
-const timeFmtOptions = [
-  { label: '24-часовой', value: '24h' },
-  { label: '12-часовой (AM/PM)', value: '12h' },
-]
-const dateFmtOptions = [
-  { label: '31.12.2026', value: 'dd.MM.yyyy' },
-  { label: '2026-12-31', value: 'yyyy-MM-dd' },
-  { label: '12/31/2026', value: 'MM/dd/yyyy' },
-  { label: '31/12/2026', value: 'dd/MM/yyyy' },
-]
-const weekStartOptions = [
-  { label: 'Понедельник', value: 1 },
-  { label: 'Воскресенье', value: 0 },
-]
+// Language names stay endonyms — «Русский» reads the same on an English UI.
+const langOptions = computed(() => [
+  { label: t('common.language.ru'), value: 'ru' },
+  { label: t('common.language.en'), value: 'en' },
+])
+const timeFmtOptions = computed(() => [
+  { label: t('settings.localization.time.h24'), value: '24h' },
+  { label: t('settings.localization.time.h12'), value: '12h' },
+])
+// Date format is a named preset since #2798, so the options are samples rendered
+// by Intl in the current language — picking "medium" shows «31 дек. 2026 г.» on
+// ru and "31 Dec 2026" on en, instead of a fixed pattern that fights the locale.
+const { datePresetOptions } = useFormat()
+const weekStartOptions = computed(() => [
+  { label: t('settings.localization.weekStart.monday'), value: 1 },
+  { label: t('settings.localization.weekStart.sunday'), value: 0 },
+])
 
 // flash a transient "saved" tick on a ref for ~2s.
 function flash(r) {
@@ -204,11 +212,11 @@ async function resendVerify() {
 
 <template>
   <div class="settings page">
-    <h1 class="title">Настройки</h1>
+    <h1 class="title">{{ t('settings.title') }}</h1>
 
     <!-- Profile -->
     <section class="card">
-      <h2>Профиль</h2>
+      <h2>{{ t('settings.profile.title') }}</h2>
       <div class="avatar-row">
         <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" />
         <n-avatar v-else round :size="72" class="ava">{{ initials }}</n-avatar>
@@ -223,56 +231,56 @@ async function resendVerify() {
           />
           <n-button size="small" @click="fileInput?.click()">
             <template #icon><n-icon :component="CloudUploadOutline" /></template>
-            Загрузить
+            {{ t('settings.profile.avatar.upload') }}
           </n-button>
           <n-button v-if="auth.user?.avatar_url" size="small" quaternary @click="removeAvatar">
             <template #icon><n-icon :component="TrashOutline" /></template>
-            Убрать
+            {{ t('settings.profile.avatar.remove') }}
           </n-button>
-          <div class="hint">PNG/JPEG/GIF/WebP, до 2 МБ</div>
+          <div class="hint">{{ t('settings.profile.avatar.hint') }}</div>
           <div v-if="avatarError" class="err">{{ avatarError }}</div>
         </div>
       </div>
 
       <label class="field">
-        <span>Email (логин)</span>
+        <span>{{ t('settings.profile.email') }}</span>
         <n-input :value="auth.user?.email" disabled />
         <div class="verify-row">
           <span v-if="auth.user?.email_verified" class="saved">
-            <n-icon :component="CheckmarkCircle" /> Почта подтверждена
+            <n-icon :component="CheckmarkCircle" /> {{ t('settings.profile.verify.done') }}
           </span>
           <template v-else>
-            <span class="hint">Почта не подтверждена</span>
-            <n-button v-if="!verifySent" size="tiny" @click="resendVerify"
-              >Отправить письмо</n-button
-            >
-            <span v-else class="hint">Письмо отправлено</span>
+            <span class="hint">{{ t('settings.profile.verify.pending') }}</span>
+            <n-button v-if="!verifySent" size="tiny" @click="resendVerify">{{
+              t('settings.profile.verify.send')
+            }}</n-button>
+            <span v-else class="hint">{{ t('settings.profile.verify.sent') }}</span>
           </template>
         </div>
       </label>
       <label class="field">
-        <span>Отображаемое имя</span>
+        <span>{{ t('settings.profile.displayName') }}</span>
         <n-input
           v-model:value="profile.name"
-          placeholder="Как вас показывать"
+          :placeholder="t('settings.profile.displayNamePlaceholder')"
           :input-props="{ autocomplete: 'nickname' }"
         />
       </label>
       <div class="grid3">
         <label class="field"
-          ><span>Фамилия</span
+          ><span>{{ t('settings.profile.lastName') }}</span
           ><n-input
             v-model:value="profile.last_name"
             :input-props="{ autocomplete: 'family-name' }"
         /></label>
         <label class="field"
-          ><span>Имя</span
+          ><span>{{ t('settings.profile.firstName') }}</span
           ><n-input
             v-model:value="profile.first_name"
             :input-props="{ autocomplete: 'given-name' }"
         /></label>
         <label class="field"
-          ><span>Отчество</span
+          ><span>{{ t('settings.profile.middleName') }}</span
           ><n-input
             v-model:value="profile.middle_name"
             :input-props="{ autocomplete: 'additional-name' }"
@@ -280,18 +288,18 @@ async function resendVerify() {
       </div>
       <div class="grid2">
         <label class="field"
-          ><span>Место работы</span
+          ><span>{{ t('settings.profile.company') }}</span
           ><n-input v-model:value="profile.company" :input-props="{ autocomplete: 'organization' }"
         /></label>
         <label class="field"
-          ><span>Должность</span
+          ><span>{{ t('settings.profile.jobTitle') }}</span
           ><n-input
             v-model:value="profile.job_title"
             :input-props="{ autocomplete: 'organization-title' }"
         /></label>
       </div>
       <label class="field">
-        <span>О себе</span>
+        <span>{{ t('settings.profile.bio') }}</span>
         <n-input
           v-model:value="profile.bio"
           type="textarea"
@@ -302,29 +310,29 @@ async function resendVerify() {
         <span v-if="profileError" class="err">{{ profileError }}</span>
         <transition name="fade">
           <span v-if="profileSaved" class="saved"
-            ><n-icon :component="CheckmarkCircle" /> Сохранено</span
+            ><n-icon :component="CheckmarkCircle" /> {{ t('common.state.saved') }}</span
           >
         </transition>
-        <n-button type="primary" :loading="profileSaving" @click="saveProfile"
-          >Сохранить профиль</n-button
-        >
+        <n-button type="primary" :loading="profileSaving" @click="saveProfile">{{
+          t('settings.profile.save')
+        }}</n-button>
       </div>
     </section>
 
     <!-- Security -->
     <section class="card">
-      <h2>Безопасность</h2>
+      <h2>{{ t('settings.security.title') }}</h2>
       <div class="grid3">
         <label class="field"
-          ><span>Текущий пароль</span
+          ><span>{{ t('settings.security.current') }}</span
           ><n-input v-model:value="pw.current" type="password" show-password-on="click"
         /></label>
         <label class="field"
-          ><span>Новый пароль</span
+          ><span>{{ t('settings.security.next') }}</span
           ><n-input v-model:value="pw.next" type="password" show-password-on="click"
         /></label>
         <label class="field"
-          ><span>Повторите новый</span
+          ><span>{{ t('settings.security.confirm') }}</span
           ><n-input v-model:value="pw.confirm" type="password" show-password-on="click"
         /></label>
       </div>
@@ -332,12 +340,12 @@ async function resendVerify() {
         <span v-if="pwError" class="err">{{ pwError }}</span>
         <transition name="fade">
           <span v-if="pwSaved" class="saved"
-            ><n-icon :component="CheckmarkCircle" /> Пароль изменён</span
+            ><n-icon :component="CheckmarkCircle" /> {{ t('settings.security.changed') }}</span
           >
         </transition>
-        <n-button type="primary" :disabled="!pwValid" :loading="pwSaving" @click="changePassword"
-          >Сменить пароль</n-button
-        >
+        <n-button type="primary" :disabled="!pwValid" :loading="pwSaving" @click="changePassword">{{
+          t('settings.security.change')
+        }}</n-button>
       </div>
     </section>
 
@@ -346,9 +354,9 @@ async function resendVerify() {
 
     <!-- Appearance -->
     <section class="card">
-      <h2>Оформление</h2>
+      <h2>{{ t('settings.appearance.title') }}</h2>
       <label class="field">
-        <span>Тема</span>
+        <span>{{ t('settings.appearance.theme') }}</span>
         <n-select
           :value="theme.themeMode"
           :options="themeModeOptions"
@@ -356,24 +364,24 @@ async function resendVerify() {
         />
       </label>
       <div class="field">
-        <span>Акцент</span>
+        <span>{{ t('settings.appearance.accent') }}</span>
         <div class="swatches">
           <button
-            v-for="t in COLOR_THEMES"
-            :key="t.key"
+            v-for="ct in COLOR_THEMES"
+            :key="ct.key"
             class="swatch"
-            :class="{ active: theme.activeTheme.key === t.key }"
-            :style="{ background: t.primary }"
-            :title="t.name || t.key"
-            @click="theme.selectColor(t)"
+            :class="{ active: theme.activeTheme.key === ct.key }"
+            :style="{ background: ct.primary }"
+            :title="t(`settings.appearance.color.${ct.key}`)"
+            @click="theme.selectColor(ct)"
           />
         </div>
       </div>
       <label class="field">
-        <span>Фон досок (CSS-цвет или URL картинки)</span>
+        <span>{{ t('settings.appearance.boardBackground') }}</span>
         <n-input
           :value="theme.boardBackground"
-          placeholder="например #0e0e12 или https://…/bg.jpg"
+          :placeholder="t('settings.appearance.boardBackgroundPlaceholder')"
           clearable
           @update:value="theme.setBoardBackground"
         />
@@ -382,10 +390,10 @@ async function resendVerify() {
 
     <!-- Localization -->
     <section class="card">
-      <h2>Локализация и форматы</h2>
+      <h2>{{ t('settings.localization.title') }}</h2>
       <div class="grid2">
         <label class="field">
-          <span>Язык</span>
+          <span>{{ t('settings.localization.language') }}</span>
           <n-select
             :value="theme.language"
             :options="langOptions"
@@ -393,7 +401,7 @@ async function resendVerify() {
           />
         </label>
         <label class="field">
-          <span>Начало недели</span>
+          <span>{{ t('settings.localization.weekStartLabel') }}</span>
           <n-select
             :value="theme.weekStart"
             :options="weekStartOptions"
@@ -401,7 +409,7 @@ async function resendVerify() {
           />
         </label>
         <label class="field">
-          <span>Формат времени</span>
+          <span>{{ t('settings.localization.timeFormat') }}</span>
           <n-select
             :value="theme.timeFormat"
             :options="timeFmtOptions"
@@ -409,72 +417,83 @@ async function resendVerify() {
           />
         </label>
         <label class="field">
-          <span>Формат даты</span>
+          <span>{{ t('settings.localization.dateFormat') }}</span>
           <n-select
             :value="theme.dateFormat"
-            :options="dateFmtOptions"
+            :options="datePresetOptions"
             @update:value="(v) => theme.setLocale({ date_format: v })"
           />
         </label>
         <label class="field">
-          <span>Часовой пояс</span>
+          <span>{{ t('settings.localization.timezone') }}</span>
           <n-select
             :value="theme.timezone || null"
             :options="tzOptions"
             filterable
             clearable
-            placeholder="Europe/Moscow"
+            :placeholder="t('settings.localization.timezonePlaceholder')"
             @update:value="(v) => theme.setLocale({ timezone: v || '' })"
           />
         </label>
         <label class="field">
-          <span>Страна</span>
+          <span>{{ t('settings.localization.country') }}</span>
           <n-select
             :value="theme.country || null"
             :options="countryOpts"
             filterable
             clearable
-            placeholder="Выберите страну"
+            :placeholder="t('settings.localization.countryPlaceholder')"
             @update:value="(v) => theme.setLocale({ country: v || '' })"
           />
         </label>
       </div>
-      <p class="hint">
-        Форматы применяются к календарям и датам. Переключение языка интерфейса появится позже.
-      </p>
+      <p class="hint">{{ t('settings.localization.hint') }}</p>
     </section>
 
     <!-- Desktop app: server address + self-update (hidden in the browser). -->
     <section v-if="isDesktop" class="card">
-      <h2>Приложение</h2>
+      <h2>{{ t('settings.app.title') }}</h2>
       <label class="field">
-        <span>Адрес сервера</span>
-        <n-input v-model:value="serverAddr" placeholder="https://tessera.msdnna.website" />
+        <span>{{ t('settings.app.serverAddr') }}</span>
+        <n-input
+          v-model:value="serverAddr"
+          :placeholder="t('settings.app.serverAddrPlaceholder')"
+        />
       </label>
       <div class="row-end">
-        <n-button type="primary" @click="saveServerAddr">Сохранить и перезапустить</n-button>
+        <n-button type="primary" @click="saveServerAddr">{{
+          t('settings.app.saveAndRestart')
+        }}</n-button>
       </div>
       <div class="field" style="margin-top: 14px">
-        <span>Автозапуск</span>
+        <span>{{ t('settings.app.autostart') }}</span>
         <label class="autostart-row">
           <n-switch :value="autostart" :loading="autostartBusy" @update:value="toggleAutostart" />
-          <span>Запускать Tessera при входе в систему (свёрнутой в трей)</span>
+          <span>{{ t('settings.app.autostartHint') }}</span>
         </label>
       </div>
       <div class="field" style="margin-top: 14px">
-        <span>Обновления</span>
+        <span>{{ t('settings.app.updates') }}</span>
         <div class="row-end" style="justify-content: flex-start; gap: 10px">
-          <n-button :loading="updBusy" @click="updCheck(false)">Проверить обновления</n-button>
+          <n-button :loading="updBusy" @click="updCheck(false)">{{
+            t('settings.app.check')
+          }}</n-button>
           <n-button v-if="updStatus === 'available'" type="primary" @click="updInstall">
-            Установить {{ updVersion }} и перезапустить
+            {{ t('settings.app.install', { version: updVersion }) }}
           </n-button>
         </div>
       </div>
       <p class="hint">
-        <template v-if="updStatus === 'none'">Установлена последняя версия.</template>
-        <template v-else-if="updStatus === 'available'">Доступна версия {{ updVersion }}.</template>
-        <template v-else-if="updStatus === 'downloading'">Загрузка обновления…</template>
-        <template v-else-if="updStatus === 'error'">Ошибка обновления: {{ updError }}</template>
+        <template v-if="updStatus === 'none'">{{ t('settings.app.upToDate') }}</template>
+        <template v-else-if="updStatus === 'available'">{{
+          t('settings.app.available', { version: updVersion })
+        }}</template>
+        <template v-else-if="updStatus === 'downloading'">{{
+          t('settings.app.downloading')
+        }}</template>
+        <template v-else-if="updStatus === 'error'">{{
+          t('settings.app.error', { error: updError })
+        }}</template>
       </p>
     </section>
   </div>

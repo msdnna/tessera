@@ -12,6 +12,7 @@ import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.WorkspaceSummary
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.data.repository.HomeRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.isoDateKey
 
@@ -19,7 +20,7 @@ enum class HomeFilter { Me, All, Overdue, Today, Week, Completed }
 
 data class HomeUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val summary: WorkspaceSummary = WorkspaceSummary(),
     val tasks: List<WorkspaceTask> = emptyList(),
     val tags: Map<String, Tag> = emptyMap(),

@@ -1,10 +1,11 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, NInput, NText, useMessage } from 'naive-ui'
 import { LogoGitlab, CheckmarkOutline } from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
 import { diffSegments } from '@/utils/linediff'
-import { PRIORITY_LABELS } from '@/styles/tokens'
+import { priorityLabel } from '@/utils/priority'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
 
@@ -20,6 +21,7 @@ const props = defineProps({
 const emit = defineEmits(['resolved', 'empty'])
 
 const message = useMessage()
+const { t } = useI18n()
 
 const conflicts = ref([])
 const loading = ref(false)
@@ -28,21 +30,11 @@ const resolving = ref(false)
 const manualField = ref(null) // field key currently being merged, or null
 const manualValues = ref({}) // field → string
 
-const FIELD_LABEL = {
-  title: 'Заголовок',
-  description: 'Описание',
-  due: 'Срок (ГГГГ-ММ-ДД)',
-  estimate: 'Оценка (минуты)',
-  state: 'Статус',
-  priority: 'Приоритет',
-}
-const KIND_LABEL = {
-  title_desc: 'Заголовок и описание',
-  due: 'Срок',
-  estimate: 'Оценка',
-  state: 'Статус',
-  priority: 'Приоритет',
-}
+// Field and change-kind names come from the catalog per call rather than from a
+// module-level map: a frozen map would keep the language of the first render
+// (pitfall 1 of the #2799 plan). An unknown key from the server is shown raw.
+const FIELD_KEYS = ['title', 'description', 'due', 'estimate', 'state', 'priority']
+const KIND_KEYS = ['title_desc', 'due', 'estimate', 'state', 'priority']
 
 const selected = computed(() => conflicts.value.find((c) => c.id === selectedId.value) || null)
 // Manual merge makes sense only for free-text/numeric fields; state and priority
@@ -52,10 +44,10 @@ const manualAllowed = computed(() =>
 )
 
 function fieldLabel(f) {
-  return FIELD_LABEL[f] || f
+  return FIELD_KEYS.includes(f) ? t(`gitlab.conflicts.field.${f}`) : f
 }
 function kindLabel(k) {
-  return KIND_LABEL[k] || k
+  return KIND_KEYS.includes(k) ? t(`gitlab.conflicts.kind.${k}`) : k
 }
 function emptyVal(v) {
   return v === '' || v == null
@@ -67,9 +59,11 @@ function isTextField(field) {
 }
 // Human-readable value for discrete fields (state/priority); others pass through.
 function displayVal(field, v) {
-  if (emptyVal(v)) return '— пусто —'
-  if (field === 'state') return v === 'closed' ? 'Закрыта' : 'Открыта'
-  if (field === 'priority') return PRIORITY_LABELS[Number(v)] || v
+  if (emptyVal(v)) return t('gitlab.conflicts.emptyValue')
+  if (field === 'state') {
+    return t(v === 'closed' ? 'gitlab.conflicts.state.closed' : 'gitlab.conflicts.state.open')
+  }
+  if (field === 'priority') return priorityLabel(v) || v
   return v
 }
 const theirsDiff = (f) => diffSegments(f.base, f.theirs)
@@ -120,7 +114,7 @@ async function resolve(resolution) {
     const body = { resolution }
     if (resolution === 'manual') body.value = { ...manualValues.value }
     await glApi.resolveConflict(c.task_id, c.id, body)
-    message.success('Конфликт разрешён')
+    message.success(t('gitlab.conflicts.resolved'))
     conflicts.value = conflicts.value.filter((x) => x.id !== c.id)
     selectedId.value = conflicts.value[0]?.id || null
     manualField.value = null
@@ -148,7 +142,7 @@ defineExpose({ reload: load })
           v-if="!loading && !conflicts.length"
           size="small"
           :icon="LogoGitlab"
-          text="Открытых конфликтов нет"
+          :text="$t('gitlab.conflicts.empty')"
         />
         <button
           v-for="c in conflicts"
@@ -158,7 +152,9 @@ defineExpose({ reload: load })
           @click="pick(c)"
         >
           <span class="c-item-main">
-            <span class="c-item-title">{{ c.task_title || 'Задача' }}</span>
+            <span class="c-item-title">{{
+              c.task_title || $t('gitlab.conflicts.taskFallback')
+            }}</span>
             <span class="c-item-meta">
               <span v-if="c.task_number" class="c-num">#{{ c.task_number }}</span>
               {{ kindLabel(c.change_kind) }}
@@ -170,12 +166,14 @@ defineExpose({ reload: load })
 
       <!-- RIGHT: three-way detail + actions -->
       <div class="c-right">
-        <empty-state v-if="!selected" size="small" text="Выберите конфликт слева" />
+        <empty-state v-if="!selected" size="small" :text="$t('gitlab.conflicts.select')" />
         <template v-else>
           <p class="c-hint">
+            <!-- Two whole sentences, not one plus an optional tail: where the
+                 "or merge them" clause attaches is not the same in every
+                 language, so it cannot be glued on at render time. -->
             <n-text depth="3">
-              И вы, и GitLab изменили это с момента последней синхронизации. Выберите, чьё значение
-              оставить{{ manualAllowed ? ', или объедините вручную' : '' }}.
+              {{ manualAllowed ? $t('gitlab.conflicts.hintManual') : $t('gitlab.conflicts.hint') }}
             </n-text>
           </p>
 
@@ -183,7 +181,7 @@ defineExpose({ reload: load })
             <div class="c-field-name">{{ fieldLabel(f.field) }}</div>
             <div class="c-three">
               <div class="c-col">
-                <div class="c-col-lbl">Было (база)</div>
+                <div class="c-col-lbl">{{ $t('gitlab.conflicts.colBase') }}</div>
                 <div class="c-val base" :class="{ empty: emptyVal(f.base) }">
                   {{ displayVal(f.field, f.base) }}
                 </div>
@@ -191,7 +189,9 @@ defineExpose({ reload: load })
               <div class="c-col">
                 <div class="c-col-lbl gl">GitLab</div>
                 <div class="c-val theirs" :class="{ empty: emptyVal(f.theirs) }">
-                  <template v-if="emptyVal(f.theirs)">— пусто —</template>
+                  <template v-if="emptyVal(f.theirs)">{{
+                    $t('gitlab.conflicts.emptyValue')
+                  }}</template>
                   <template v-else-if="isTextField(f.field)"
                     ><span
                       v-for="(seg, si) in theirsDiff(f)"
@@ -204,9 +204,11 @@ defineExpose({ reload: load })
                 </div>
               </div>
               <div class="c-col">
-                <div class="c-col-lbl mine">Моё (Tessera)</div>
+                <div class="c-col-lbl mine">{{ $t('gitlab.conflicts.colOurs') }}</div>
                 <div class="c-val ours" :class="{ empty: emptyVal(f.ours) }">
-                  <template v-if="emptyVal(f.ours)">— пусто —</template>
+                  <template v-if="emptyVal(f.ours)">{{
+                    $t('gitlab.conflicts.emptyValue')
+                  }}</template>
                   <template v-else-if="isTextField(f.field)"
                     ><span
                       v-for="(seg, si) in oursDiff(f)"
@@ -220,31 +222,35 @@ defineExpose({ reload: load })
               </div>
             </div>
             <div v-if="manualField" class="c-manual">
-              <div class="c-col-lbl">Объединённое значение</div>
+              <div class="c-col-lbl">{{ $t('gitlab.conflicts.merged') }}</div>
               <n-input
                 v-if="f.field === 'description'"
                 v-model:value="manualValues[f.field]"
                 type="textarea"
                 :autosize="{ minRows: 3, maxRows: 10 }"
-                placeholder="Введите итоговое значение"
+                :placeholder="$t('gitlab.conflicts.mergedPlaceholder')"
               />
               <n-input
                 v-else
                 v-model:value="manualValues[f.field]"
-                placeholder="Введите итоговое значение"
+                :placeholder="$t('gitlab.conflicts.mergedPlaceholder')"
               />
             </div>
           </div>
 
           <div class="c-actions">
-            <n-button :disabled="resolving" @click="resolve('ours')"> Принять моё </n-button>
-            <n-button :disabled="resolving" @click="resolve('theirs')"> Принять GitLab </n-button>
+            <n-button :disabled="resolving" @click="resolve('ours')">
+              {{ $t('gitlab.conflicts.acceptOurs') }}
+            </n-button>
+            <n-button :disabled="resolving" @click="resolve('theirs')">
+              {{ $t('gitlab.conflicts.acceptTheirs') }}
+            </n-button>
             <n-button
               v-if="manualAllowed && !manualField"
               :disabled="resolving"
               @click="startManual"
             >
-              Объединить вручную…
+              {{ $t('gitlab.conflicts.mergeManual') }}
             </n-button>
             <n-button
               v-else-if="manualAllowed"
@@ -253,14 +259,14 @@ defineExpose({ reload: load })
               @click="resolve('manual')"
             >
               <template #icon><n-icon :component="CheckmarkOutline" /></template>
-              Сохранить объединение
+              {{ $t('gitlab.conflicts.saveMerge') }}
             </n-button>
           </div>
         </template>
       </div>
     </div>
 
-    <loader-overlay :show="loading" contained :messages="['Загрузка конфликтов…']" />
+    <loader-overlay :show="loading" contained :messages="[$t('gitlab.conflicts.loading')]" />
   </div>
 </template>
 

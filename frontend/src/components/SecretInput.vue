@@ -7,6 +7,7 @@
 // `cleared`. The parent sends the matching clear_* flag on save. Typing a new
 // value cancels the armed erase (replace beats erase — same rule as the backend).
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NInput, NIcon } from 'naive-ui'
 import { BackspaceOutline, ArrowUndoOutline } from '@vicons/ionicons5'
 
@@ -22,10 +23,12 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:value', 'update:cleared'])
 
+const { t } = useI18n()
+
 const showEraser = computed(() => props.stored && props.resettable)
 
 const effectivePlaceholder = computed(() => {
-  if (props.cleared) return 'будет очищено при сохранении'
+  if (props.cleared) return t('common.secret.clearedPlaceholder')
   if (props.stored) return props.storedPlaceholder || props.placeholder
   return props.placeholder
 })
@@ -60,7 +63,7 @@ function undo() {
       <span
         class="secret-eraser"
         role="button"
-        :title="cleared ? 'Отменить очистку' : 'Очистить сохранённое значение'"
+        :title="cleared ? t('common.secret.undoClear') : t('common.secret.clear')"
         @mousedown.prevent
         @click="cleared ? undo() : arm()"
       >

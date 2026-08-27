@@ -25,12 +25,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Reminder
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -66,7 +69,7 @@ fun RemindersScreen() {
     Column(Modifier.fillMaxSize().background(c.bg)) {
         // ── composer ──
         Column(Modifier.fillMaxWidth().padding(16.dp)) {
-            TTextField(value = message, onValueChange = { message = it }, placeholder = "О чём напомнить?")
+            TTextField(value = message, onValueChange = { message = it }, placeholder = stringResource(R.string.reminders_message_placeholder))
             Spacer(Modifier.height(10.dp))
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Row(
@@ -79,14 +82,15 @@ fun RemindersScreen() {
                     IonIcon(Ion.TIME, size = 16.dp, tint = c.text3)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        pickedIso?.let { localDateTimeLabel(it) } ?: "Выбрать время",
+                        pickedIso?.let { localDateTimeLabel(LocalResources.current, it) }
+                            ?: stringResource(R.string.reminders_pick_time),
                         color = if (pickedIso != null) c.text1 else c.placeholder,
                         fontSize = 14.sp,
                     )
                 }
                 Spacer(Modifier.width(10.dp))
                 TButton(
-                    "Добавить",
+                    stringResource(R.string.reminders_add),
                     enabled = message.isNotBlank() && pickedIso != null,
                     onClick = {
                         val iso = pickedIso ?: return@TButton
@@ -107,7 +111,7 @@ fun RemindersScreen() {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     IonIcon(Ion.ALARM, size = 40.dp, tint = c.text3)
                     Spacer(Modifier.height(10.dp))
-                    Text("Напоминаний пока нет", color = c.text3, fontSize = 14.sp)
+                    Text(stringResource(R.string.reminders_empty), color = c.text3, fontSize = 14.sp)
                 }
             }
 
@@ -163,7 +167,7 @@ private fun ReminderRow(reminder: Reminder, onToggle: () -> Unit, onDelete: () -
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                reminder.message.ifBlank { "Напоминание" },
+                reminder.message.ifBlank { stringResource(R.string.reminders_untitled) },
                 color = if (reminder.done) c.text3 else c.text1,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium,
@@ -171,7 +175,7 @@ private fun ReminderRow(reminder: Reminder, onToggle: () -> Unit, onDelete: () -
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                localDateTimeLabel(reminder.remindAt),
+                localDateTimeLabel(LocalResources.current, reminder.remindAt),
                 color = if (overdue) TesseraDanger else c.text3,
                 fontSize = 12.sp,
             )
@@ -180,7 +184,7 @@ private fun ReminderRow(reminder: Reminder, onToggle: () -> Unit, onDelete: () -
             IonIconButton(Ion.TRASH, onClick = { confirmDelete = true }, boxSize = 30.dp, iconSize = 18.dp, tint = c.text3)
             TConfirmPopover(
                 expanded = confirmDelete,
-                message = "Удалить напоминание?",
+                message = stringResource(R.string.reminders_delete_confirm),
                 onConfirm = {
                     confirmDelete = false
                     onDelete()

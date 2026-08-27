@@ -1,0 +1,243 @@
+{
+  "scope": {
+    "archiveTitle": "Archive — read-only",
+    "archiveChip": "Archive (read-only)",
+    "archiveExit": "Leave the archive",
+    "milestoneTitle": "A single milestone is shown",
+    "milestoneClear": "Clear the milestone",
+    "backlog": "Backlog",
+    "milestoneFallback": "Milestone"
+  },
+  "composer": {
+    "subtasksOn": "Subtasks expanded",
+    "subtasksOff": "Expand subtasks",
+    "groupToggle": "Switch statuses/tags",
+    "sortHint": "Click — direction · drag to reorder",
+    "remove": "Remove",
+    "add": "Add grouping / sorting / filter",
+    "search": "Search by title…",
+    "clear": "Clear all",
+    "back": "Back"
+  },
+  "tools": {
+    "autoOn": "Auto-sort by dependencies (on)",
+    "autoOff": "Auto: sort by dependencies",
+    "customize": "Customize the view"
+  },
+  "views": {
+    "load": "Load a view",
+    "current": "View: {name}",
+    "save": "Save the view",
+    "namePlaceholder": "View name",
+    "overwrite": "Overwrite:",
+    "empty": "No saved views",
+    "deleteConfirm": "Delete the view “{name}”?",
+    "saved": "View “{name}” saved"
+  },
+  "column": {
+    "expand": "Expand the column",
+    "addTask": "＋ New task",
+    "taskPlaceholder": "Task title, Enter — create",
+    "add": "＋ New column",
+    "namePlaceholder": "Column name",
+    "needStatus": "Create at least one status column first",
+    "emptyStatus": "No columns — create the first one with “＋ Column”.",
+    "emptyTag": "No tags — add them under “Tags”.",
+    "collapse": "Collapse the column",
+    "doneTitle": "Completing column",
+    "dragTitle": "Drag by the header",
+    "estimateTitle": "Total estimate of the milestone tasks",
+    "colorDefault": "Default",
+    "rename": "Rename",
+    "setDone": "Make it completing",
+    "unsetDone": "Stop completing",
+    "delete": "Delete the column",
+    "deleteConfirm": "Delete the column with all its tasks?",
+    "defaultName": {
+      "todo": "To do",
+      "in_progress": "In progress",
+      "review": "In review",
+      "done": "Done"
+    }
+  },
+  "group": {
+    "noMilestone": "No milestone",
+    "noTags": "No tags"
+  },
+  "tag": {
+    "ungrouped": "Ungrouped"
+  },
+  "toast": {
+    "gitlabConflict": "GitLab write-back conflict — open the GitLab settings to resolve it",
+    "restored": "Task restored from the archive"
+  },
+  "activity": {
+    "you": "You",
+    "someone": "Someone",
+    "open": "Open",
+    "link": "Link",
+    "copied": "Copied",
+    "hide": "Hide",
+    "verb": {
+      "created": "created a task",
+      "completed": "completed a task",
+      "reopened": "reopened a task",
+      "moved": "moved a task",
+      "updated": "changed a task"
+    }
+  },
+  "layout": {
+    "board": "Board",
+    "list": "List",
+    "calendar": "Calendar",
+    "timeline": "Timeline",
+    "gantt": "Gantt",
+    "matrix": "Matrix"
+  },
+  "actions": {
+    "view": "View",
+    "tags": "Tags",
+    "milestones": "Milestones",
+    "archive": "Archive"
+  },
+  "customize": {
+    "title": "Customize the view",
+    "board": "Board",
+    "boardName": "Board name",
+    "cardSize": "Card size",
+    "sizeCompact": "Compact",
+    "sizeMedium": "Medium",
+    "sizeLarge": "Expanded",
+    "fields": "Fields",
+    "stack": "Stack (in a column)",
+    "showEmpty": "Show empty fields",
+    "columns": "Columns",
+    "autoCollapse": "Collapse empty columns",
+    "facets": "Grouping · sorting · filter",
+    "subtasks": "Expand subtasks",
+    "views": "Views",
+    "autosave": "Autosave",
+    "autosaveNamed": "Autosave: {name}",
+    "viewsHint": "Saving and loading views — the folder and disk buttons on the board bar.",
+    "field": {
+      "priority": "Priority",
+      "due": "Due date",
+      "assignee": "Assignee",
+      "tags": "Tags",
+      "estimate": "Estimate",
+      "milestone": "Milestone",
+      "description": "Description",
+      "number": "Number (#)",
+      "gitlab": "GitLab"
+    }
+  },
+  "facet": {
+    "unknown": "—",
+    "allTags": "All tags",
+    "noMilestone": "No milestone",
+    "noMilestoneChip": "no milestone",
+    "sortField": {
+      "priority": "Priority",
+      "due": "Due date",
+      "milestone": "Milestone",
+      "status": "Status",
+      "title": "Title",
+      "number": "Number"
+    },
+    "due": {
+      "all": "All",
+      "overdue": "Overdue",
+      "today": "Today",
+      "week": "This coming week",
+      "has": "With a due date",
+      "none": "Without a due date"
+    },
+    "group": {
+      "status": "Status",
+      "tag": "Tag",
+      "tagPrefix": "Tag · {prefix}",
+      "assignee": "Assignee",
+      "milestone": "Milestone",
+      "none": "No grouping"
+    },
+    "groupOption": {
+      "status": "By status",
+      "tagAll": "By tag (all)",
+      "tagPrefix": "By tag · {prefix}",
+      "milestone": "By milestone",
+      "assignee": "By assignee",
+      "none": "No grouping"
+    },
+    "menu": {
+      "group": "Grouping",
+      "sort": "Sorting",
+      "priority": "Filter: priority",
+      "assignee": "Filter: assignee",
+      "author": "Filter: author",
+      "tag": "Filter: tag",
+      "milestone": "Filter: milestone",
+      "due": "Filter: due date",
+      "status": "Filter: status"
+    },
+    "chip": {
+      "group": "Grouping: {value}",
+      "sort": "Sort: {value}",
+      "priority": "Priority: {value}",
+      "assignee": "Assignee: {value}",
+      "author": "Author: {value}",
+      "tag": "Tag: {value}",
+      "status": "Status: {value}",
+      "milestone": "Milestone: {value}",
+      "due": "Due: {value}"
+    }
+  },
+  "calendar": {
+    "today": "Today",
+    "noDue": "No due date"
+  },
+  "list": {
+    "empty": "— empty —"
+  },
+  "matrix": {
+    "urgent": "Urgent",
+    "notUrgent": "Not urgent",
+    "important": "Important",
+    "notImportant": "Not important",
+    "addTask": "Add a task",
+    "pinned": "Placed by hand — return to auto",
+    "pinnedShort": "by hand",
+    "quadrant": {
+      "doTitle": "Urgent and important",
+      "doHint": "Do it now",
+      "planTitle": "Important, not urgent",
+      "planHint": "Schedule it",
+      "delegateTitle": "Urgent, not important",
+      "delegateHint": "Delegate it",
+      "dropTitle": "Neither urgent nor important",
+      "dropHint": "It can wait"
+    }
+  },
+  "chart": {
+    "taskColumn": "Task",
+    "today": "Today",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "showTasks": "Show the task column",
+    "collapseTasks": "Collapse the task column",
+    "effortTotal": "Total estimate: {value}",
+    "unscheduled": "No dates",
+    "linkHint": "Drag from the right edge of a task to another one to create a dependency",
+    "linkCreate": "Create a dependency",
+    "empty": "No tasks with dates. Set a due date or a start on the card.",
+    "counter": {
+      "overdue": "{n} overdue",
+      "unscheduled": "{n} without dates",
+      "deps": "{n} link | {n} links"
+    },
+    "lane": {
+      "unassigned": "Unassigned",
+      "noTag": "No tag",
+      "all": "All tasks"
+    }
+  }
+}

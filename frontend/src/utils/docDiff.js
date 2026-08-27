@@ -13,6 +13,8 @@
  * nothing stable to match on.
  */
 
+import { i18n } from '@/i18n'
+
 /** Status of a block in the comparison. */
 export const DIFF_SAME = 'same'
 export const DIFF_CHANGED = 'changed'
@@ -35,7 +37,8 @@ export const DIFF_MOVED = 'moved'
 export function blockText(node) {
   if (!node) return ''
   if (node.type === 'text') return node.text || ''
-  if (node.type === 'image') return node.attrs?.alt || node.attrs?.src || '[изображение]'
+  if (node.type === 'image')
+    return node.attrs?.alt || node.attrs?.src || i18n.global.t('documents.history.diffImage')
   if (node.type === 'horizontalRule') return '———'
   if (!Array.isArray(node.content)) return ''
   return node.content.map(blockText).filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()

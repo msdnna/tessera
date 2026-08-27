@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-  FREQ_OPTIONS,
-  TRIGGER_OPTIONS,
-  pluralRu,
+  FREQ_VALUES,
+  TRIGGER_VALUES,
+  freqOptions,
+  triggerOptions,
   unitLabel,
   nextOccurrence,
   occurrenceKeys,
@@ -14,26 +15,27 @@ const key = (d) =>
 
 describe('option lists', () => {
   it('expose the expected frequency and trigger values', () => {
-    expect(FREQ_OPTIONS.map((o) => o.value)).toEqual([
-      '',
-      'daily',
-      'weekly',
-      'monthly',
-      'yearly',
-      'custom',
-    ])
-    expect(TRIGGER_OPTIONS.map((o) => o.value)).toEqual(['complete', 'column', 'schedule'])
+    expect(FREQ_VALUES).toEqual(['', 'daily', 'weekly', 'monthly', 'yearly', 'custom'])
+    expect(TRIGGER_VALUES).toEqual(['complete', 'column', 'schedule'])
+    expect(freqOptions().map((o) => o.value)).toEqual(FREQ_VALUES)
+    expect(triggerOptions().map((o) => o.value)).toEqual(TRIGGER_VALUES)
+  })
+
+  it('labels every option from the catalogue (no raw keys)', () => {
+    for (const o of [...freqOptions(), ...triggerOptions()]) {
+      expect(o.label).toBeTruthy()
+      expect(o.label).not.toMatch(/^task\.recur\./) // missing key falls back to the path
+    }
   })
 })
 
-describe('pluralRu / unitLabel', () => {
+describe('unitLabel', () => {
   it('picks russian plural forms', () => {
-    const f = ['день', 'дня', 'дней']
-    expect(pluralRu(1, f)).toBe('день')
-    expect(pluralRu(2, f)).toBe('дня')
-    expect(pluralRu(5, f)).toBe('дней')
-    expect(pluralRu(11, f)).toBe('дней') // teens → many
-    expect(pluralRu(21, f)).toBe('день')
+    expect(unitLabel('daily', 1)).toBe('день')
+    expect(unitLabel('daily', 2)).toBe('дня')
+    expect(unitLabel('daily', 5)).toBe('дней')
+    expect(unitLabel('daily', 11)).toBe('дней') // teens → many
+    expect(unitLabel('daily', 21)).toBe('день')
   })
 
   it('labels a frequency unit, empty for unknown', () => {

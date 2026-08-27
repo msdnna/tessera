@@ -150,6 +150,20 @@ class BoardRepository {
         api.pinGitlabAssignee(taskId, PinGitlabAssigneeRequest(m.glUsername, m.glName, m.glAvatarUrl))
     suspend fun removeGitlabAssignee(taskId: String, username: String) = api.removeGitlabAssignee(taskId, username)
 
+    /** Creates a GitLab issue from a task. Deliberately NOT best-effort: a refusal
+     *  («disabled», «already linked», a GitLab error) is the user's answer, so it
+     *  travels up to the modal's error toast. */
+    suspend fun createGitlabIssue(taskId: String): website.msdnna.tessera.data.model.GitlabIssueCreated =
+        api.createGitlabIssue(taskId, website.msdnna.tessera.data.model.CreateGitlabIssueRequest())
+
+    /** Repo issue templates for the create-issue picker (best-effort — no templates
+     *  simply means no picker). */
+    suspend fun gitlabIssueTemplates(
+        workspaceId: String,
+        integrationId: String?,
+    ): List<website.msdnna.tessera.data.model.GitlabIssueTemplate> =
+        runCatching { api.gitlabIssueTemplates(workspaceId, integrationId).orEmpty() }.getOrDefault(emptyList())
+
     /** The workspace's quick-action registry (built-ins + custom dictionary + the
      *  caller's right to edit it). Best-effort: without it the editor simply has
      *  no `/`-popup, which must not break the board load. */

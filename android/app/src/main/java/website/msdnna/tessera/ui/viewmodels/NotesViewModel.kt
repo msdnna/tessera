@@ -9,11 +9,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Note
 import website.msdnna.tessera.data.repository.NoteRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
 data class NotesUiState(
     val loading: Boolean = true,
-    val error: String? = null,
+    val error: UiText? = null,
     val list: List<Note> = emptyList(),
     val selectedId: String? = null,
     // True when the right pane is a brand-new (unsaved) note.

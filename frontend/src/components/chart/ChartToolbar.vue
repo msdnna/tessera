@@ -1,4 +1,5 @@
 <script setup>
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 
@@ -14,17 +15,21 @@ defineProps({
   counters: { type: Array, default: () => [] },
 })
 defineEmits(['today', 'zoom-in', 'zoom-out', 'toggle-left'])
+
+const { t } = useI18n()
 </script>
 
 <template>
   <div class="tl-toolbar">
-    <button class="tl-today-btn" type="button" @click="$emit('today')">Сегодня</button>
+    <button class="tl-today-btn" type="button" @click="$emit('today')">
+      {{ t('board.chart.today') }}
+    </button>
     <div class="tl-zoom">
       <button
         class="tl-zoom-btn"
         type="button"
         :disabled="zoomIdx === 0"
-        title="Уменьшить масштаб"
+        :title="t('board.chart.zoomOut')"
         @click="$emit('zoom-out')"
       >
         −
@@ -33,7 +38,7 @@ defineEmits(['today', 'zoom-in', 'zoom-out', 'toggle-left'])
         class="tl-zoom-btn"
         type="button"
         :disabled="zoomIdx === zoomCount - 1"
-        title="Увеличить масштаб"
+        :title="t('board.chart.zoomIn')"
         @click="$emit('zoom-in')"
       >
         +
@@ -41,7 +46,7 @@ defineEmits(['today', 'zoom-in', 'zoom-out', 'toggle-left'])
       <button
         class="tl-zoom-btn"
         type="button"
-        :title="leftCollapsed ? 'Показать колонку задач' : 'Свернуть колонку задач'"
+        :title="t(leftCollapsed ? 'board.chart.showTasks' : 'board.chart.collapseTasks')"
         @click="$emit('toggle-left')"
       >
         <n-icon

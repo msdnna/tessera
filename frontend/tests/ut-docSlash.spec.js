@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { Editor } from '@tiptap/core'
 import { docExtensions } from '@/utils/docSchema'
-import { SLASH_ITEMS, filterSlashItems, groupSlashItems } from '@/utils/docSlash'
+import { slashItems, filterSlashItems, groupSlashItems } from '@/utils/docSlash'
+
+// The menu is built per call now that its labels come from the catalogue, so
+// the specs ask for a fresh list instead of reading a frozen constant. The
+// default locale is ru, which is what the group names below are.
+const SLASH_ITEMS = slashItems()
 import { slashRangeAt, slashState } from '@/utils/docExtensions/slashMenu'
 
 function makeEditor(opts = {}) {

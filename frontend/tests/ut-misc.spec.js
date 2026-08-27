@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { humanizeError } from '@/utils/errors'
 import { makeSlug } from '@/utils/slug'
+import { normalizeTitle } from '@/utils/title'
 import { initials } from '@/utils/initials'
 import { BACKLOG_SCOPE, matchesScope, milestoneKey, milestoneRange } from '@/utils/milestones'
 import { iconComponent, iconKind, sanitizeIconSvg, PROJECT_ICONS } from '@/utils/projectIcons'
@@ -42,6 +43,35 @@ describe('makeSlug', () => {
   it('treats nullish input as empty', () => {
     expect(makeSlug(null)).toBe('')
     expect(makeSlug(undefined)).toBe('')
+  })
+})
+
+// ── title.js ───────────────────────────────────────────────────────────
+// Quick-add used to submit on keyup, so Enter with the caret mid-string left a
+// real newline in the title: the card (HTML) showed it as a space while the
+// modal's <input> dropped it entirely (#2813). The Go side collapses the same
+// way in handlers/normalizeTitle — keep the two lists in step.
+describe('normalizeTitle', () => {
+  it('collapses a newline in the middle of the string', () => {
+    expect(normalizeTitle('Окно Ч\nто нового при клике на версию в футере')).toBe(
+      'Окно Ч то нового при клике на версию в футере',
+    )
+  })
+
+  it('handles pasted multi-line text, tabs and doubled spaces', () => {
+    expect(normalizeTitle('первая\nвторая\r\nтретья')).toBe('первая вторая третья')
+    expect(normalizeTitle('а\tб  в')).toBe('а б в')
+  })
+
+  it('trims the edges and empties a whitespace-only title', () => {
+    expect(normalizeTitle('Задача\n')).toBe('Задача')
+    expect(normalizeTitle(' \n\t ')).toBe('')
+  })
+
+  it('treats nullish input as empty and leaves a clean title alone', () => {
+    expect(normalizeTitle(null)).toBe('')
+    expect(normalizeTitle(undefined)).toBe('')
+    expect(normalizeTitle('Обычный заголовок')).toBe('Обычный заголовок')
   })
 })
 

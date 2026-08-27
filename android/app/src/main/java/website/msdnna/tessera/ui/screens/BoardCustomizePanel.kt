@@ -19,11 +19,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.ui.components.ColumnScopePicker
 import website.msdnna.tessera.ui.components.TButton
@@ -36,24 +38,28 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 
+// Оба списка остаются значениями уровня файла, но держат id ресурса, а не готовый
+// текст: с текстом подписи вычислились бы один раз при загрузке класса и застыли
+// бы на языке первого рендера. Строка разрешается в месте отрисовки.
+
 /** Card density presets: config key → label (web cardSize). */
 private val CARD_SIZES = listOf(
-    "compact" to "Компактно",
-    "medium" to "Средне",
-    "large" to "Расширенно",
+    "compact" to R.string.board_card_size_compact,
+    "medium" to R.string.board_card_size_medium,
+    "large" to R.string.board_card_size_large,
 )
 
 /** Per-field visibility toggles: fieldVis key → label (web FIELDS, same order). */
 private val CARD_FIELDS = listOf(
-    "priority" to "Приоритет",
-    "due" to "Срок",
-    "assignee" to "Исполнитель",
-    "tags" to "Теги",
-    "estimate" to "Оценка",
-    "milestone" to "Этап",
-    "description" to "Описание",
-    "number" to "Номер (#)",
-    "gitlab" to "GitLab",
+    "priority" to R.string.task_prop_priority,
+    "due" to R.string.task_prop_due,
+    "assignee" to R.string.board_field_assignee,
+    "tags" to R.string.task_prop_tags,
+    "estimate" to R.string.task_prop_estimate,
+    "milestone" to R.string.task_prop_milestone,
+    "description" to R.string.task_tab_description,
+    "number" to R.string.board_field_number,
+    "gitlab" to R.string.board_field_gitlab,
 )
 
 /**
@@ -81,10 +87,15 @@ fun BoardCustomizePanel(
                 .background(c.surface)
                 .padding(20.dp),
         ) {
-            Text("Вид доски", color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+            Text(
+                stringResource(R.string.board_customize_title),
+                color = c.text1,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
             Spacer(Modifier.height(14.dp))
             Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                SectionLabel("Иконка и цвет доски")
+                SectionLabel(stringResource(R.string.board_customize_appearance))
                 ColumnScopePicker(
                     color = board.color,
                     icon = board.icon,
@@ -95,31 +106,33 @@ fun BoardCustomizePanel(
                     fallbackIcon = "layout_kanban_outline",
                 )
 
-                SectionLabel("Размер карточки")
+                SectionLabel(stringResource(R.string.board_customize_card_size))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CARD_SIZES.forEach { (key, label) ->
-                        SizeChip(label, active = state.cardSize == key, modifier = Modifier.weight(1f)) {
+                    CARD_SIZES.forEach { (key, labelRes) ->
+                        SizeChip(stringResource(labelRes), active = state.cardSize == key, modifier = Modifier.weight(1f)) {
                             vm.setCardSize(key)
                         }
                     }
                 }
 
-                SectionLabel("Поля")
-                ToggleRow("Стек (в столбик)", state.stackFields) { vm.setStackFields(it) }
-                ToggleRow("Показывать пустые поля", state.showEmpty) { vm.setShowEmpty(it) }
-                CARD_FIELDS.forEach { (key, label) ->
-                    ToggleRow(label, state.fieldOn(key)) { vm.setFieldVisible(key, it) }
+                SectionLabel(stringResource(R.string.board_customize_fields))
+                ToggleRow(stringResource(R.string.board_customize_stack), state.stackFields) { vm.setStackFields(it) }
+                ToggleRow(stringResource(R.string.board_customize_show_empty), state.showEmpty) { vm.setShowEmpty(it) }
+                CARD_FIELDS.forEach { (key, labelRes) ->
+                    ToggleRow(stringResource(labelRes), state.fieldOn(key)) { vm.setFieldVisible(key, it) }
                 }
 
-                SectionLabel("Колонки и подзадачи")
-                ToggleRow("Сворачивать пустые колонки", state.autoCollapseEmpty) {
+                SectionLabel(stringResource(R.string.board_customize_columns))
+                ToggleRow(stringResource(R.string.board_customize_auto_collapse), state.autoCollapseEmpty) {
                     vm.setAutoCollapseEmpty(it, emptyLaneIds)
                 }
-                ToggleRow("Раскрыть подзадачи", state.subtasksExpanded) { vm.toggleSubtasksExpanded() }
+                ToggleRow(stringResource(R.string.board_customize_subtasks), state.subtasksExpanded) {
+                    vm.toggleSubtasksExpanded()
+                }
             }
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TButton("Готово", onClick = onDismiss)
+                TButton(stringResource(R.string.common_done), onClick = onDismiss)
             }
         }
     }

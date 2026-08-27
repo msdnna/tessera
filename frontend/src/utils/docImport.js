@@ -2,6 +2,8 @@ import { Editor } from '@tiptap/core'
 import { renderMarkdown } from './markdown'
 import { docExtensions, isDocJSON } from './docSchema'
 import { ensureBlockIds } from './docExtensions/blockId'
+import { formatFileSize } from './docPdf'
+import { i18n } from '@/i18n'
 
 // Turning an uploaded file into a document body (#2734, "загрузка готовых
 // шаблонов"). Two formats, and both are deliberate:
@@ -72,11 +74,11 @@ export function parseDocJSON(text) {
   try {
     parsed = JSON.parse(text)
   } catch {
-    throw new Error('Файл не является корректным JSON')
+    throw new Error(i18n.global.t('documents.file.notJson'))
   }
   const content = isDocJSON(parsed) ? parsed : parsed?.content
   if (!isDocJSON(content)) {
-    throw new Error('В файле нет документа Tessera')
+    throw new Error(i18n.global.t('documents.file.noTessera'))
   }
   return {
     content: ensureBlockIds(content),
@@ -95,14 +97,20 @@ export function parseDocJSON(text) {
  *   does not parse
  */
 export async function fileToTemplate(file) {
-  if (!file) throw new Error('Файл не выбран')
+  if (!file) throw new Error(i18n.global.t('documents.file.notPicked'))
   const name = file.name || ''
   const ext = name.slice(name.lastIndexOf('.')).toLowerCase()
   if (!IMPORT_EXTENSIONS.includes(ext)) {
-    throw new Error(`Поддерживаются только ${IMPORT_EXTENSIONS.join(', ')}`)
+    throw new Error(
+      i18n.global.t('documents.file.onlyFormats', { formats: IMPORT_EXTENSIONS.join(', ') }),
+    )
   }
   if (file.size > MAX_IMPORT_BYTES) {
-    throw new Error('Файл больше 2 МБ')
+    // The limit is said in the reader's own units — "2 MB" beside "2 МБ" in the
+    // viewer's file size would read as two different limits.
+    throw new Error(
+      i18n.global.t('documents.file.tooLarge', { limit: formatFileSize(MAX_IMPORT_BYTES) }),
+    )
   }
   const text = await file.text()
   // Title falls back to the file name without its extension: an uploaded

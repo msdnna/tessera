@@ -1,113 +1,113 @@
+<p align="right"><b>Русский</b> · <a href="README.en.md">English</a></p>
+
 # Tessera Desktop (Tauri v2)
 
-Native desktop app (Windows + Linux) wrapping the shared Vue frontend
-(`../frontend`). The frontend detects Tauri at runtime and points the API/WS at
-the login-configured server (default: production `tessera.msdnna.website`) — see
-`frontend/src/utils/serverBase.js`. There is **no separate JS package**: the
-desktop app consumes the frontend's dev server and build output directly.
+Нативное десктоп-приложение (Windows + Linux) — обёртка вокруг общего Vue-фронтенда
+(`../frontend`). Фронтенд определяет Tauri в рантайме и направляет API/WS на
+сервер, заданный при входе (по умолчанию — прод `tessera.msdnna.website`) — см.
+`frontend/src/utils/serverBase.js`. **Отдельного JS-пакета нет**: десктоп использует
+dev-сервер и сборочный вывод фронтенда напрямую.
 
-Independently versioned via `desktop/VERSION` (semver), like the other
-components. Bump with `make bump-desktop BUMP=minor` and add a `CHANGELOG.md`
-entry (see the root `CLAUDE.md` conventions).
+Версионируется независимо через `desktop/VERSION` (semver), как и остальные
+компоненты. Бамп — `make bump-desktop BUMP=minor`, плюс запись в `CHANGELOG.md`
+(см. конвенции в корневом `CLAUDE.md`).
 
-## Toolchain
+## Тулчейн
 
-- **Rust** (stable) via [rustup](https://rustup.rs). Cargo bin on `PATH`.
+- **Rust** (stable) через [rustup](https://rustup.rs). Cargo-bin в `PATH`.
 - **Tauri CLI v2**: `cargo install tauri-cli --version '^2' --locked`
-  (invoked as `cargo tauri …`).
+  (вызывается как `cargo tauri …`).
 
-### Linux (built on the dev box)
+### Linux (собирается на dev-машине)
 
-System `-dev` packages (Debian/Ubuntu):
+Системные `-dev`-пакеты (Debian/Ubuntu):
 
 ```
 libwebkit2gtk-4.1-dev  libgtk-3-dev  libayatana-appindicator3-dev
 librsvg2-dev  patchelf  build-essential  curl  wget  file
 ```
 
-Build: `make desktop` (or `cargo tauri build`) → AppImage + `.deb` under
-`src-tauri/target/release/bundle/`. The `.deb` declares the appindicator/webkit
-runtime deps; AppImage users need `libayatana-appindicator3` installed for the
-system tray (Phase 2).
+Сборка: `make desktop` (или `cargo tauri build`) → AppImage + `.deb` в
+`src-tauri/target/release/bundle/`. `.deb` объявляет рантайм-зависимости
+appindicator/webkit; пользователям AppImage нужен установленный
+`libayatana-appindicator3` для системного трея (Фаза 2).
 
-**AppImage under WSL:** the AppImage step runs `linuxdeploy`, itself an AppImage
-that needs FUSE — this fails on many WSL setups (`failed to run linuxdeploy`),
-even with `APPIMAGE_EXTRACT_AND_RUN=1`. The `.deb` builds fine there. Build the
-AppImage (the Linux self-update target) on a native Linux host or CI runner.
-`build-desktop-release.sh` tolerates a failed AppImage step and still publishes
-the `.deb`.
+**AppImage под WSL:** шаг AppImage запускает `linuxdeploy` — сам по себе AppImage,
+которому нужен FUSE, а он падает на многих WSL-конфигурациях (`failed to run
+linuxdeploy`), даже с `APPIMAGE_EXTRACT_AND_RUN=1`. `.deb` там собирается нормально.
+Собирайте AppImage (цель Linux-самообновления) на нативном Linux-хосте или CI-раннере.
+`build-desktop-release.sh` терпит провал шага AppImage и всё равно публикует `.deb`.
 
-### Windows (built natively on Windows — not from WSL)
+### Windows (собирается нативно на Windows — не из WSL)
 
-Cross-compiling from Linux is impractical, AND the native Windows toolchain
-(cargo/MSVC/NSIS) **cannot build over a `\\wsl$` / UNC path** — so the repo must
-live on a native Windows drive. sh scripts and the Makefile don't run on Windows
-either; use `desktop\build-windows.ps1` instead.
+Кросс-компиляция из Linux непрактична, И нативный Windows-тулчейн (cargo/MSVC/NSIS)
+**не умеет собирать через путь `\\wsl$` / UNC** — поэтому репозиторий должен лежать на
+нативном Windows-диске. sh-скрипты и Makefile на Windows тоже не работают; используйте
+`desktop\build-windows.ps1`.
 
-One-time setup:
-1. **Rust (MSVC)** via rustup (`x86_64-pc-windows-msvc` target).
-2. **Visual Studio C++ Build Tools** (the MSVC linker).
-3. **WebView2 Runtime** — preinstalled on current Windows 10/11; else install the
-   Evergreen runtime.
+Разовая настройка:
+1. **Rust (MSVC)** через rustup (таргет `x86_64-pc-windows-msvc`).
+2. **Visual Studio C++ Build Tools** (линкер MSVC).
+3. **WebView2 Runtime** — предустановлен в актуальных Windows 10/11; иначе поставьте
+   Evergreen-runtime.
 4. `cargo install tauri-cli --version '^2' --locked`.
-5. **Native checkout** (not a `\\wsl.localhost\...` path):
+5. **Нативный checkout** (не путь `\\wsl.localhost\...`):
    ```
    git clone \\wsl.localhost\<distro>\home\msdnna\GolandProjects\tessera C:\src\tessera
    ```
-   Re-sync later with `git -C C:\src\tessera pull`.
+   Позже синхронизировать `git -C C:\src\tessera pull`.
 
-Each build (frontend built in WSL, only Rust+NSIS on Windows):
-1. In WSL: `corepack yarn --cwd frontend build`.
-2. Mirror the built frontend into the Windows checkout (frontend\dist is
-   gitignored, so `git pull` won't carry it):
+Каждая сборка (фронтенд собирается в WSL, на Windows — только Rust+NSIS):
+1. В WSL: `corepack yarn --cwd frontend build`.
+2. Зеркалировать собранный фронтенд в Windows-checkout (frontend\dist в gitignore,
+   поэтому `git pull` его не привезёт):
    ```
    robocopy \\wsl.localhost\<distro>\home\msdnna\GolandProjects\tessera\frontend\dist C:\src\tessera\frontend\dist /MIR
    ```
-3. In PowerShell:
+3. В PowerShell:
    ```
-   # signing (self-update) — copy the key from WSL ~/.tessera/ first:
+   # подпись (самообновление) — сперва скопируйте ключ из WSL ~/.tessera/:
    $env:TAURI_SIGNING_PRIVATE_KEY = 'C:\path\to\tessera-desktop-updater.key'
    $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ''
    pwsh C:\src\tessera\desktop\build-windows.ps1
    ```
-   → NSIS `-setup.exe` (+ `.sig`) under `desktop\src-tauri\target\release\bundle\nsis\`.
-   Pass `-BuildFrontend` to build the frontend on Windows instead (needs Node 22 +
-   a prior `corepack yarn install` in `frontend\`).
-4. Copy the `-setup.exe` + its `.sig` into the WSL repo's `desktop-dist\`, then run
-   `make desktop-release` in WSL to fold the Windows entry into `latest.json`.
+   → NSIS `-setup.exe` (+ `.sig`) в `desktop\src-tauri\target\release\bundle\nsis\`.
+   Передайте `-BuildFrontend`, чтобы собрать фронтенд на Windows (нужен Node 22 +
+   предварительный `corepack yarn install` в `frontend\`).
+4. Скопируйте `-setup.exe` + его `.sig` в `desktop-dist\` WSL-репозитория, затем
+   выполните `make desktop-release` в WSL, чтобы вложить Windows-запись в `latest.json`.
 
-## Develop
+## Разработка
 
 ```
-make dev-desktop        # cargo tauri dev — starts Vite :5174 + the app,
-                        # talking to the local backend via the proxy
+make dev-desktop        # cargo tauri dev — поднимает Vite :5174 + приложение,
+                        # ходит к локальному бэкенду через прокси
 ```
 
-## Testing
+## Тестирование
 
-The Rust side (`src-tauri/src/lib.rs`, ~90 lines) is **pure Tauri glue** — it
-wires the OS-integration plugins (single-instance, tray, autostart, notifications,
-updater, dialog/fs/clipboard) and the close-to-tray window behaviour. It holds no
-business logic: both functions (`show_main`, `run`) need a live Tauri runtime and
-`AppHandle` to do anything, so they are only meaningfully exercised end-to-end,
-not by unit tests. Adding unit tests here would test the Tauri framework, not our
-code.
+Rust-часть (`src-tauri/src/lib.rs`, ~90 строк) — **чистый Tauri-клей**: связывает
+плагины ОС-интеграции (single-instance, трей, автозапуск, уведомления, updater,
+dialog/fs/clipboard) и поведение close-to-tray. Бизнес-логики в ней нет: обе функции
+(`show_main`, `run`) требуют живой Tauri-рантайм и `AppHandle`, поэтому осмысленно
+проверяются только end-to-end, а не юнит-тестами. Юнит-тесты здесь тестировали бы
+фреймворк Tauri, а не наш код.
 
-All application logic lives in the shared Vue frontend and is covered by the
-frontend test suite (`frontend/tests/`). The Rust shell is kept under quality
-control by `make lint-desktop` (`cargo fmt --check` + `cargo clippy -D warnings`),
-run in CI. Interactive behaviour (tray, close-to-tray, self-update, deep links)
-is verified manually / by e2e.
+Вся прикладная логика живёт в общем Vue-фронтенде и покрыта его тест-сьютом
+(`frontend/tests/`). Rust-оболочка держится под контролем качества через
+`make lint-desktop` (`cargo fmt --check` + `cargo clippy -D warnings`), запускается в
+CI. Интерактивное поведение (трей, close-to-tray, самообновление, deep-links)
+проверяется вручную / через e2e.
 
-## Release + self-update
+## Релиз + самообновление
 
-`tools/build-desktop-release.sh` builds the Linux bundles, signs the updater
-artifacts, and writes the updater manifest into `desktop-dist/` for serving at
-`https://tessera.msdnna.website/desktop/`. Windows artifacts are built on Windows
-and dropped into the same directory.
+`tools/build-desktop-release.sh` собирает Linux-бандлы, подписывает артефакты updater
+и пишет манифест updater в `desktop-dist/` для раздачи на
+`https://tessera.msdnna.website/desktop/`. Windows-артефакты собираются на Windows и
+кладутся в тот же каталог.
 
-- The minisign **private** key lives outside the repo at
-  `~/.tessera/tessera-desktop-updater.key` (password-less); the **public** key is
-  baked into `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). Signing reads
-  `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PATH`. Keep the private
-  key safe — losing it breaks updates (same discipline as the Android keystore).
+- **Приватный** minisign-ключ лежит вне репозитория —
+  `~/.tessera/tessera-desktop-updater.key` (без пароля); **публичный** ключ вшит в
+  `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`). Подпись читает
+  `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PATH`. Берегите приватный
+  ключ — его потеря ломает обновления (та же дисциплина, что с Android-keystore).

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NLayout,
@@ -16,6 +17,8 @@ import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
 import SidebarSpotlight from './SidebarSpotlight.vue'
 import TourOverlay from './TourOverlay.vue'
+import HelpDrawer from './help/HelpDrawer.vue'
+import HelpCenterModal from './help/HelpCenterModal.vue'
 import VersionBadge from './VersionBadge.vue'
 import { notificationChannels } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
@@ -32,6 +35,7 @@ import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { useDesktopDeepLink } from '@/composables/useDesktopDeepLink'
 
+const { t } = useI18n()
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
@@ -115,7 +119,7 @@ function onProjectGone(ev) {
   const viewing = slug && ws.projects.find((p) => p.slug === slug)?.id === ev.data?.id
   ws.refresh() // drop it from the sidebar tree for everyone in this workspace
   if (viewing) {
-    message.info('Проект был удалён или перенесён в другое пространство — открыта «Главная»')
+    message.info(t('shell.layout.projectGone'))
     router.push('/')
   }
 }
@@ -205,7 +209,7 @@ watch(
         class="sider-resizer"
         :class="{ active: dragging }"
         :style="{ left: layoutWidth + 'px' }"
-        title="Потяните, чтобы изменить ширину (двойной клик — свернуть)"
+        :title="t('shell.layout.resize')"
         @pointerdown.prevent="startDrag"
         @dblclick="toggle"
       >
@@ -281,6 +285,15 @@ watch(
     <!-- Get Started guide (#2753). Inert until the tour store is started — the
          autostart / «Обучение» entry point is wired up separately. -->
     <TourOverlay />
+
+    <!-- Contextual help (#2794): one drawer for the whole app, opened by the «?»
+         hints and by the «Справка» results in global search. -->
+    <HelpDrawer />
+
+    <!-- The help centre itself (#2792): a modal over the current screen, opened
+         from the sidebar's «Помощь» menu. Not a route — reading the manual must
+         not cost the reader the board they had open. -->
+    <HelpCenterModal />
   </div>
 </template>
 

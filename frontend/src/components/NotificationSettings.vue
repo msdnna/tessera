@@ -1,5 +1,6 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   NInput,
   NButton,
@@ -30,12 +31,14 @@ import {
   notificationPrefs as prefsApi,
 } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
+import { workspaceName } from '@/utils/defaultNames'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import SecretInput from '@/components/SecretInput.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
 
+const { t } = useI18n()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const theme = useThemeStore()
@@ -53,19 +56,28 @@ const routes = ref([])
 const loading = ref(true)
 const loadError = ref('')
 
-// Channel type registry — extend here as the backend gains senders.
-const TYPE_META = {
-  email: { label: 'Email', icon: MailOutline },
-  telegram: { label: 'Telegram', icon: PaperPlaneOutline },
-  webhook: { label: 'Webhook', icon: GlobeOutline },
-  shoutrrr: { label: 'Shoutrrr (любой сервис)', icon: ShareSocialOutline },
-  device: { label: 'Системные уведомления', icon: PhonePortraitOutline },
+// Channel type registry — extend here as the backend gains senders. Only the
+// icon lives here; the label is looked up per render, so switching the UI
+// language relabels the selects instead of leaving them on the first language
+// the component saw (#2799).
+const TYPE_ICONS = {
+  email: MailOutline,
+  telegram: PaperPlaneOutline,
+  webhook: GlobeOutline,
+  shoutrrr: ShareSocialOutline,
+  device: PhonePortraitOutline,
+}
+const CHANNEL_TYPES = Object.keys(TYPE_ICONS)
+function typeLabel(type) {
+  return TYPE_ICONS[type] ? t(`settings.notifications.channelType.${type}`) : type
 }
 // `device` channels auto-register per client and aren't manually addable.
-const typeOptions = Object.entries(TYPE_META)
-  .filter(([v]) => v !== 'device')
-  .map(([value, m]) => ({ value, label: m.label }))
-const allTypeOptions = Object.entries(TYPE_META).map(([value, m]) => ({ value, label: m.label }))
+const typeOptions = computed(() =>
+  CHANNEL_TYPES.filter((v) => v !== 'device').map((value) => ({ value, label: typeLabel(value) })),
+)
+const allTypeOptions = computed(() =>
+  CHANNEL_TYPES.map((value) => ({ value, label: typeLabel(value) })),
+)
 
 const myDeviceId = getDeviceId()
 const notifPermission = ref(notificationsSupported() ? Notification.permission : 'unsupported')
@@ -74,50 +86,43 @@ async function requestNotifPermission() {
   notifPermission.value = await Notification.requestPermission()
 }
 
-const KIND_META = {
-  assigned: 'Назначение задачи',
-  comment: 'Комментарии',
-  mention: 'Упоминания',
-  updated: 'Изменение задачи',
-  moved: 'Перемещение задачи',
-  archived: 'Архивирование',
-  due_soon: 'Скоро дедлайн',
-  reminder: 'Напоминания (по времени)',
-  integration_sync: 'Синхронизация интеграций',
+const EVENT_KINDS = [
+  'assigned',
+  'comment',
+  'mention',
+  'updated',
+  'moved',
+  'archived',
+  'due_soon',
+  'reminder',
+  'integration_sync',
+]
+function kindLabel(kind) {
+  return EVENT_KINDS.includes(kind) ? t(`settings.notifications.kind.${kind}`) : kind
 }
 
-// Minute presets for the due-date schedule selects.
-const LEAD_OPTIONS = [
-  { label: 'В момент дедлайна', value: 0 },
-  { label: 'За 15 минут', value: 15 },
-  { label: 'За 30 минут', value: 30 },
-  { label: 'За час', value: 60 },
-  { label: 'За 3 часа', value: 180 },
-  { label: 'За день', value: 1440 },
-  { label: 'За 2 дня', value: 2880 },
-]
-const REPEAT_OPTIONS = [
-  { label: 'Однократно', value: 0 },
-  { label: 'Каждый час', value: 60 },
-  { label: 'Каждые 3 часа', value: 180 },
-  { label: 'Каждые 6 часов', value: 360 },
-  { label: 'Каждый день', value: 1440 },
-]
-const DIGEST_OPTIONS = [
-  { label: 'Выключено (сразу)', value: 0 },
-  { label: 'Каждые 5 минут', value: 5 },
-  { label: 'Каждые 15 минут', value: 15 },
-  { label: 'Каждые 30 минут', value: 30 },
-  { label: 'Раз в час', value: 60 },
-]
-const kindOptions = Object.entries(KIND_META).map(([value, label]) => ({ value, label }))
+// Minute presets for the schedule selects. The values are the contract with the
+// backend; only the labels are translated, and — like every option table here —
+// they are rebuilt per render rather than frozen at import.
+const LEAD_VALUES = [0, 15, 30, 60, 180, 1440, 2880]
+const REPEAT_VALUES = [0, 60, 180, 360, 1440]
+const DIGEST_VALUES = [0, 5, 15, 30, 60]
+const LEAD_OPTIONS = computed(() =>
+  LEAD_VALUES.map((value) => ({ value, label: t(`settings.notifications.lead.${value}`) })),
+)
+const REPEAT_OPTIONS = computed(() =>
+  REPEAT_VALUES.map((value) => ({ value, label: t(`settings.notifications.repeat.${value}`) })),
+)
+const DIGEST_OPTIONS = computed(() =>
+  DIGEST_VALUES.map((value) => ({ value, label: t(`settings.notifications.digest.${value}`) })),
+)
+const kindOptions = computed(() => EVENT_KINDS.map((value) => ({ value, label: kindLabel(value) })))
 
-const wsOptions = computed(() => (wsStore.list || []).map((w) => ({ value: w.id, label: w.name })))
+const wsOptions = computed(() =>
+  (wsStore.list || []).map((w) => ({ value: w.id, label: workspaceName(w) })),
+)
 const channelOptions = computed(() =>
-  channels.value.map((c) => ({
-    value: c.id,
-    label: c.label || TYPE_META[c.type]?.label || c.type,
-  })),
+  channels.value.map((c) => ({ value: c.id, label: channelTitle(c) })),
 )
 
 // per-user scheduling defaults (due dates + reminders)
@@ -170,7 +175,7 @@ onMounted(() => {
 })
 
 function channelTitle(c) {
-  return c.label || TYPE_META[c.type]?.label || c.type
+  return c.label || typeLabel(c.type)
 }
 function channelName(id) {
   const c = channels.value.find((x) => x.id === id)
@@ -182,8 +187,7 @@ function channelName(id) {
 function usedInRoutesHint(c) {
   const n = routes.value.filter((r) => (r.channel_ids || []).includes(c.id)).length
   if (!n) return ''
-  const word = n === 1 ? 'правиле' : 'правилах'
-  return ` Он используется в ${n} ${word} — они перестанут доставлять в этот канал.`
+  return ` ${t('settings.notifications.confirm.channelUsedIn', n, { named: { n } })}`
 }
 // This browser's own device channel (for the «это устройство» badge + permission).
 function isThisDevice(c) {
@@ -280,7 +284,7 @@ async function testChannel(c) {
   testState[c.id] = { pending: true }
   try {
     const res = await chApi.test(c.id)
-    testState[c.id] = { ok: true, msg: res.data?.warning || 'Тест отправлен' }
+    testState[c.id] = { ok: true, msg: res.data?.warning || t('settings.notifications.testSent') }
     await load()
   } catch (e) {
     testState[c.id] = { ok: false, msg: e.response?.data?.error || e.message }
@@ -295,21 +299,32 @@ const tplError = ref('')
 const taRef = ref(null)
 const hlRef = ref(null)
 
-// Avoid literal {{ }} in the Vue template (it would be parsed as interpolation):
-// these strings are data, rendered verbatim.
-const templateDefaultHint = 'по умолчанию: {{.Text}} + ссылка'
-const syntaxHint =
-  'Синтаксис Go-шаблонов: {{.Field}}, {{if .X}}…{{end}}. Пусто = шаблон по умолчанию.'
-const TEMPLATE_FIELDS = [
-  { token: '{{.Text}}', desc: 'Готовый текст уведомления' },
-  { token: '{{.Title}}', desc: 'Заголовок по типу события' },
-  { token: '{{.Kind}}', desc: 'Тип события (assigned/comment/…)' },
-  { token: '{{.TaskNumber}}', desc: 'Номер задачи' },
-  { token: '{{.TaskTitle}}', desc: 'Заголовок задачи' },
-  { token: '{{.Actor}}', desc: 'Кто инициировал' },
-  { token: '{{.Workspace}}', desc: 'Название пространства' },
-  { token: '{{.Link}}', desc: 'Ссылка на приложение' },
+// Go template actions, not vue-i18n ones. They stay in code rather than in the
+// bundle for two reasons: they are a backend contract, identical in every
+// language, and a literal `{{ }}` in a message would be eaten by vue-i18n's own
+// interpolation. Only the descriptions are translated.
+const TEMPLATE_TOKENS = [
+  ['text', '{{.Text}}'],
+  ['title', '{{.Title}}'],
+  ['kind', '{{.Kind}}'],
+  ['taskNumber', '{{.TaskNumber}}'],
+  ['taskTitle', '{{.TaskTitle}}'],
+  ['actor', '{{.Actor}}'],
+  ['workspace', '{{.Workspace}}'],
+  ['link', '{{.Link}}'],
 ]
+const templateDefaultHint = computed(() =>
+  t('settings.notifications.template.defaultHint', { token: '{{.Text}}' }),
+)
+const syntaxHint = computed(() =>
+  t('settings.notifications.template.syntax', { field: '{{.Field}}', cond: '{{if .X}}…{{end}}' }),
+)
+const TEMPLATE_FIELDS = computed(() =>
+  TEMPLATE_TOKENS.map(([key, token]) => ({
+    token,
+    desc: t(`settings.notifications.template.field.${key}`),
+  })),
+)
 
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -455,27 +470,36 @@ async function toggleRoute(r) {
   await load()
 }
 
+// Two keys rather than a conditional suffix glued onto one: the timezone lands
+// mid-sentence in some languages, and a bare « (Europe/Moscow)» appended to a
+// finished sentence cannot be moved by a translator.
+const quietHint = computed(() =>
+  theme.timezone
+    ? t('settings.notifications.schedule.quietHintTz', { tz: theme.timezone })
+    : t('settings.notifications.schedule.quietHint'),
+)
+
 function kindsSummary(r) {
   const ks = r.matcher?.kinds
-  if (!ks || !ks.length) return 'Любые события'
-  return ks.map((k) => KIND_META[k] || k).join(', ')
+  if (!ks || !ks.length) return t('settings.notifications.route.anyEvent')
+  return ks.map(kindLabel).join(', ')
 }
 function wsSummary(r) {
   const id = r.matcher?.workspace_id
-  if (!id) return 'все пространства'
-  return wsOptions.value.find((w) => w.value === id)?.label || 'выбранное пространство'
+  if (!id) return t('settings.notifications.route.allWorkspaces')
+  return (
+    wsOptions.value.find((w) => w.value === id)?.label ||
+    t('settings.notifications.route.someWorkspace')
+  )
 }
 </script>
 
 <template>
   <section class="card">
     <div class="head">
-      <h2>Уведомления</h2>
+      <h2>{{ t('settings.notifications.title') }}</h2>
     </div>
-    <p class="hint">
-      Внутренние уведомления (колокольчик, мобильное приложение) приходят всегда. Здесь
-      настраиваются внешние каналы доставки и правила, по которым уведомления в них попадают.
-    </p>
+    <p class="hint">{{ t('settings.notifications.hint') }}</p>
 
     <n-spin v-if="loading" size="small" />
     <div v-else-if="loadError" class="err">{{ loadError }}</div>
@@ -483,43 +507,45 @@ function wsSummary(r) {
       <!-- Channels -->
       <div class="block">
         <div class="block-head">
-          <span class="block-title">Каналы</span>
+          <span class="block-title">{{ t('settings.notifications.channels.title') }}</span>
           <n-button size="tiny" dashed @click="openChannelNew">
             <template #icon><n-icon :component="AddOutline" /></template>
-            Добавить канал
+            {{ t('settings.notifications.channels.add') }}
           </n-button>
         </div>
         <empty-state
           v-if="!channels.length"
           :icon="NotificationsOutline"
-          text="Каналов пока нет"
+          :text="t('settings.notifications.channels.empty')"
           size="small"
         />
         <div v-for="c in channels" :key="c.id" class="item" :class="{ off: !c.enabled }">
-          <n-icon :component="TYPE_META[c.type]?.icon || GlobeOutline" class="item-ico" />
+          <n-icon :component="TYPE_ICONS[c.type] || GlobeOutline" class="item-ico" />
           <div class="item-main">
             <div class="item-title">
-              {{ c.label || TYPE_META[c.type]?.label || c.type }}
+              {{ channelTitle(c) }}
               <n-tag v-if="c.verified" size="tiny" type="success" round :bordered="false">
-                проверен
+                {{ t('settings.notifications.channels.verified') }}
               </n-tag>
               <n-tag v-if="isThisDevice(c)" size="tiny" type="info" round :bordered="false">
-                это устройство
+                {{ t('settings.notifications.channels.thisDevice') }}
               </n-tag>
             </div>
-            <div class="item-sub">{{ TYPE_META[c.type]?.label || c.type }}</div>
+            <div class="item-sub">{{ typeLabel(c.type) }}</div>
             <div v-if="isThisDevice(c) && notifPermission !== 'granted'" class="item-test bad">
               <template v-if="notifPermission === 'denied'">
-                Уведомления запрещены в браузере — включите их в настройках сайта.
+                {{ t('settings.notifications.channels.permDenied') }}
               </template>
-              <template v-else>Нужно разрешение браузера на уведомления.</template>
+              <template v-else>{{ t('settings.notifications.channels.permNeeded') }}</template>
             </div>
             <div
               v-if="testState[c.id]"
               class="item-test"
               :class="testState[c.id].ok ? 'ok' : 'bad'"
             >
-              <template v-if="testState[c.id].pending">отправка…</template>
+              <template v-if="testState[c.id].pending">{{
+                t('settings.notifications.channels.testing')
+              }}</template>
               <template v-else>{{ testState[c.id].msg }}</template>
             </div>
           </div>
@@ -532,18 +558,18 @@ function wsSummary(r) {
               @click="requestNotifPermission"
             >
               <template #icon><n-icon :component="NotificationsOutline" /></template>
-              Разрешить
+              {{ t('settings.notifications.channels.allow') }}
             </n-button>
             <n-button v-if="c.type !== 'device'" size="tiny" tertiary @click="testChannel(c)">
               <template #icon><n-icon :component="FlashOutline" /></template>
-              Тест
+              {{ t('settings.notifications.channels.test') }}
             </n-button>
             <n-button size="tiny" quaternary @click="openChannelEdit(c)">
               <template #icon><n-icon :component="CreateOutline" /></template>
             </n-button>
             <n-popconfirm
               :positive-button-props="{ type: 'error' }"
-              positive-text="Удалить"
+              :positive-text="t('common.action.delete')"
               @positive-click="removeChannel(c)"
             >
               <template #trigger>
@@ -551,7 +577,8 @@ function wsSummary(r) {
                   <template #icon><n-icon :component="TrashOutline" /></template>
                 </n-button>
               </template>
-              Удалить канал «{{ channelTitle(c) }}»?{{ usedInRoutesHint(c) }}
+              {{ t('settings.notifications.confirm.deleteChannel', { name: channelTitle(c) })
+              }}{{ usedInRoutesHint(c) }}
             </n-popconfirm>
           </div>
         </div>
@@ -560,20 +587,17 @@ function wsSummary(r) {
       <!-- Routes -->
       <div class="block">
         <div class="block-head">
-          <span class="block-title">Правила маршрутизации</span>
+          <span class="block-title">{{ t('settings.notifications.routes.title') }}</span>
           <n-button size="tiny" dashed :disabled="!channels.length" @click="openRouteNew">
             <template #icon><n-icon :component="AddOutline" /></template>
-            Добавить правило
+            {{ t('settings.notifications.routes.add') }}
           </n-button>
         </div>
-        <p class="hint sub">
-          Правила проверяются сверху вниз — срабатывает первое подходящее. Уведомление уходит в его
-          каналы (или никуда, если правило «заглушает»).
-        </p>
+        <p class="hint sub">{{ t('settings.notifications.routes.hint') }}</p>
         <empty-state
           v-if="!routes.length"
           :icon="ShareSocialOutline"
-          text="Правил нет — внешние каналы не получают уведомления"
+          :text="t('settings.notifications.routes.empty')"
           size="small"
         />
         <div v-for="r in routes" :key="r.id" class="item" :class="{ off: !r.enabled }">
@@ -581,10 +605,16 @@ function wsSummary(r) {
             <div class="item-title">{{ kindsSummary(r) }}</div>
             <div class="item-sub">
               <template v-if="r.options?.mute">
-                <n-tag size="tiny" type="warning" round :bordered="false">заглушено</n-tag>
+                <n-tag size="tiny" type="warning" round :bordered="false">{{
+                  t('settings.notifications.routes.muted')
+                }}</n-tag>
               </template>
               <template v-else>
-                → {{ (r.channel_ids || []).map(channelName).join(', ') || '— каналы не выбраны' }}
+                →
+                {{
+                  (r.channel_ids || []).map(channelName).join(', ') ||
+                  t('settings.notifications.routes.noChannels')
+                }}
               </template>
               · {{ wsSummary(r) }}
             </div>
@@ -596,7 +626,7 @@ function wsSummary(r) {
             </n-button>
             <n-popconfirm
               :positive-button-props="{ type: 'error' }"
-              positive-text="Удалить"
+              :positive-text="t('common.action.delete')"
               @positive-click="removeRoute(r)"
             >
               <template #trigger>
@@ -604,7 +634,7 @@ function wsSummary(r) {
                   <template #icon><n-icon :component="TrashOutline" /></template>
                 </n-button>
               </template>
-              Удалить правило маршрутизации?
+              {{ t('settings.notifications.confirm.deleteRoute') }}
             </n-popconfirm>
           </div>
         </div>
@@ -613,19 +643,16 @@ function wsSummary(r) {
       <!-- Scheduling defaults (due dates + reminders) -->
       <div class="block">
         <div class="block-head">
-          <span class="block-title">Дедлайны и напоминания</span>
+          <span class="block-title">{{ t('settings.notifications.schedule.title') }}</span>
         </div>
-        <p class="hint sub">
-          Когда уведомлять о сроках задач. Можно переопределить для конкретной задачи — кликом по
-          дате на карточке. Дробить частоту без спама помогают тихие часы (silence).
-        </p>
+        <p class="hint sub">{{ t('settings.notifications.schedule.hint') }}</p>
         <label class="sched-row">
           <n-switch v-model:value="prefs.due_enabled" size="small" />
-          <span>Уведомлять о приближении дедлайна задач</span>
+          <span>{{ t('settings.notifications.schedule.dueEnabled') }}</span>
         </label>
         <div class="grid2">
           <label class="field">
-            <span>Напоминать</span>
+            <span>{{ t('settings.notifications.schedule.lead') }}</span>
             <n-select
               v-model:value="prefs.due_lead_minutes"
               :options="LEAD_OPTIONS"
@@ -633,7 +660,7 @@ function wsSummary(r) {
             />
           </label>
           <label class="field">
-            <span>Повтор</span>
+            <span>{{ t('settings.notifications.schedule.repeat') }}</span>
             <n-select
               v-model:value="prefs.due_repeat_minutes"
               :options="REPEAT_OPTIONS"
@@ -643,43 +670,36 @@ function wsSummary(r) {
         </div>
         <label class="sched-row">
           <n-switch v-model:value="prefs.reminder_enabled" size="small" />
-          <span>Доставлять напоминания (reminders) во внешние каналы</span>
+          <span>{{ t('settings.notifications.schedule.reminderEnabled') }}</span>
         </label>
         <label class="field">
-          <span>Группировать в сводку (дайджест)</span>
+          <span>{{ t('settings.notifications.schedule.digest') }}</span>
           <n-select v-model:value="prefs.digest_minutes" :options="DIGEST_OPTIONS" />
         </label>
-        <p class="hint">
-          Уведомления за окно объединяются в одно сообщение на канал — меньше шума при всплесках.
-        </p>
+        <p class="hint">{{ t('settings.notifications.schedule.digestHint') }}</p>
         <label class="sched-row">
           <n-switch v-model:value="prefs.quiet_enabled" size="small" />
-          <span>Тихие часы (не беспокоить)</span>
+          <span>{{ t('settings.notifications.schedule.quiet') }}</span>
         </label>
         <template v-if="prefs.quiet_enabled">
           <div class="grid2">
             <label class="field">
-              <span>С</span>
+              <span>{{ t('settings.notifications.schedule.quietFrom') }}</span>
               <n-select v-model:value="prefs.quiet_start_minutes" :options="TIME_OPTIONS" />
             </label>
             <label class="field">
-              <span>До</span>
+              <span>{{ t('settings.notifications.schedule.quietTo') }}</span>
               <n-select v-model:value="prefs.quiet_end_minutes" :options="TIME_OPTIONS" />
             </label>
           </div>
-          <p class="hint">
-            В это окно внешние уведомления придерживаются и приходят после его окончания. Внутренние
-            (колокольчик) — всегда. Время — по вашему часовому поясу{{
-              theme.timezone ? ` (${theme.timezone})` : ''
-            }}.
-          </p>
+          <p class="hint">{{ quietHint }}</p>
         </template>
         <div class="row-end">
           <transition name="fade">
-            <span v-if="prefsSaved" class="saved-tick">Сохранено</span>
+            <span v-if="prefsSaved" class="saved-tick">{{ t('common.state.saved') }}</span>
           </transition>
           <n-button size="small" type="primary" :loading="prefsSaving" @click="savePrefs">
-            Сохранить
+            {{ t('common.action.save') }}
           </n-button>
         </div>
       </div>
@@ -689,13 +709,17 @@ function wsSummary(r) {
     <n-modal v-model:show="chModal">
       <n-card
         class="modal"
-        :title="chEditing ? 'Изменить канал' : 'Новый канал'"
+        :title="
+          chEditing
+            ? t('settings.notifications.channelForm.editTitle')
+            : t('settings.notifications.channelForm.newTitle')
+        "
         closable
         @close="chModal = false"
       >
         <div class="form">
           <label class="field">
-            <span>Тип</span>
+            <span>{{ t('settings.notifications.channelForm.type') }}</span>
             <n-select
               v-model:value="chForm.type"
               :options="chEditing ? allTypeOptions : typeOptions"
@@ -703,94 +727,107 @@ function wsSummary(r) {
             />
           </label>
           <label class="field">
-            <span>Название</span>
-            <n-input v-model:value="chForm.label" placeholder="Напр. «Мой телеграм»" />
+            <span>{{ t('settings.notifications.channelForm.label') }}</span>
+            <n-input
+              v-model:value="chForm.label"
+              :placeholder="t('settings.notifications.channelForm.labelPlaceholder')"
+            />
           </label>
 
           <!-- email -->
           <template v-if="chForm.type === 'email'">
             <label class="field">
-              <span>Адрес</span>
-              <n-input v-model:value="chForm.config.address" placeholder="you@example.com" />
+              <span>{{ t('settings.notifications.channelForm.address') }}</span>
+              <n-input
+                v-model:value="chForm.config.address"
+                :placeholder="t('settings.notifications.channelForm.addressPlaceholder')"
+              />
             </label>
           </template>
 
           <!-- telegram -->
           <template v-else-if="chForm.type === 'telegram'">
             <label class="field">
-              <span>Chat ID</span>
-              <n-input v-model:value="chForm.config.chat_id" placeholder="123456789 или @канал" />
+              <span>{{ t('settings.notifications.channelForm.chatId') }}</span>
+              <n-input
+                v-model:value="chForm.config.chat_id"
+                :placeholder="t('settings.notifications.channelForm.chatIdPlaceholder')"
+              />
             </label>
             <label class="field">
-              <span>Bot token</span>
+              <span>{{ t('settings.notifications.channelForm.botToken') }}</span>
               <n-input
                 v-model:value="chForm.secret.bot_token"
                 type="password"
                 show-password-on="click"
-                :placeholder="chEditing ? 'оставьте пустым, чтобы не менять' : '123456:ABC-...'"
+                :placeholder="
+                  chEditing
+                    ? t('settings.notifications.channelForm.keepSecret')
+                    : t('settings.notifications.channelForm.botTokenPlaceholder')
+                "
               />
             </label>
-            <p class="hint">
-              Создайте бота через @BotFather, отправьте ему сообщение и укажите свой chat_id.
-            </p>
+            <p class="hint">{{ t('settings.notifications.channelForm.telegramHint') }}</p>
           </template>
 
           <!-- device (auto-registered client) -->
           <template v-else-if="chForm.type === 'device'">
-            <p class="hint">
-              Это устройство/браузер. Системные уведомления приходят, когда приложение открыто и
-              правило направляет события сюда. Можно переименовать, включить/выключить и удалить.
-            </p>
+            <p class="hint">{{ t('settings.notifications.channelForm.deviceHint') }}</p>
           </template>
 
           <!-- shoutrrr (generic) -->
           <template v-else-if="chForm.type === 'shoutrrr'">
             <label class="field">
-              <span>Service URL</span>
+              <span>{{ t('settings.notifications.channelForm.serviceUrl') }}</span>
               <n-input
                 v-model:value="chForm.secret.url"
                 type="password"
                 show-password-on="click"
                 :placeholder="
                   chEditing
-                    ? 'оставьте пустым, чтобы не менять'
-                    : 'slack://… · discord://… · ntfy://…'
+                    ? t('settings.notifications.channelForm.keepSecret')
+                    : t('settings.notifications.channelForm.serviceUrlPlaceholder')
                 "
               />
             </label>
-            <p class="hint">
-              Любой сервис из shoutrrr: slack, discord, ntfy, gotify, matrix, pushover, teams и др.
-              Формат URL — см. документацию shoutrrr (containrrr.dev/shoutrrr/services).
-            </p>
+            <p class="hint">{{ t('settings.notifications.channelForm.shoutrrrHint') }}</p>
           </template>
 
           <!-- webhook -->
           <template v-else-if="chForm.type === 'webhook'">
             <label class="field">
-              <span>URL</span>
-              <n-input v-model:value="chForm.config.url" placeholder="https://…" />
+              <span>{{ t('settings.notifications.channelForm.url') }}</span>
+              <n-input
+                v-model:value="chForm.config.url"
+                :placeholder="t('settings.notifications.channelForm.urlPlaceholder')"
+              />
             </label>
             <label class="field">
-              <span>Метод</span>
-              <n-input v-model:value="chForm.config.method" placeholder="POST (по умолчанию)" />
+              <span>{{ t('settings.notifications.channelForm.method') }}</span>
+              <n-input
+                v-model:value="chForm.config.method"
+                :placeholder="t('settings.notifications.channelForm.methodPlaceholder')"
+              />
             </label>
             <label class="field">
-              <span>Заголовок Authorization (необязательно)</span>
+              <span>{{ t('settings.notifications.channelForm.authHeader') }}</span>
               <SecretInput
                 v-model:value="chForm.secret.auth_header"
                 v-model:cleared="chForm.clearSecret"
                 :stored="chEditing ? chForm.hasSecret : false"
-                placeholder="Bearer …"
-                stored-placeholder="оставьте пустым, чтобы не менять"
+                :placeholder="t('settings.notifications.channelForm.authHeaderPlaceholder')"
+                :stored-placeholder="t('settings.notifications.channelForm.keepSecret')"
               />
             </label>
           </template>
 
           <div class="field">
-            <span>Шаблон сообщения</span>
+            <span>{{ t('settings.notifications.template.title') }}</span>
             <div class="tpl-row">
               <code class="tpl-inline">{{ chForm.template || templateDefaultHint }}</code>
-              <n-button size="tiny" tertiary @click="openTemplate">Изменить</n-button>
+              <n-button size="tiny" tertiary @click="openTemplate">{{
+                t('common.action.edit')
+              }}</n-button>
             </div>
           </div>
 
@@ -798,8 +835,10 @@ function wsSummary(r) {
         </div>
         <template #footer>
           <div class="row-end">
-            <n-button @click="chModal = false">Отмена</n-button>
-            <n-button type="primary" :loading="chSaving" @click="saveChannel">Сохранить</n-button>
+            <n-button @click="chModal = false">{{ t('common.action.cancel') }}</n-button>
+            <n-button type="primary" :loading="chSaving" @click="saveChannel">{{
+              t('common.action.save')
+            }}</n-button>
           </div>
         </template>
       </n-card>
@@ -807,7 +846,12 @@ function wsSummary(r) {
 
     <!-- Template editor modal -->
     <n-modal v-model:show="tplModal">
-      <n-card class="modal tpl-modal" title="Шаблон сообщения" closable @close="tplModal = false">
+      <n-card
+        class="modal tpl-modal"
+        :title="t('settings.notifications.template.title')"
+        closable
+        @close="tplModal = false"
+      >
         <div class="tpl-grid">
           <div class="tpl-left">
             <div class="editor">
@@ -819,18 +863,20 @@ function wsSummary(r) {
                 v-model="tplDraft"
                 class="ta"
                 spellcheck="false"
-                placeholder="Пусто — шаблон по умолчанию"
+                :placeholder="t('settings.notifications.template.editorPlaceholder')"
                 @scroll="syncScroll"
               ></textarea>
             </div>
             <div class="tpl-preview">
-              <div class="tpl-preview-head">Предпросмотр (на примере данных)</div>
+              <div class="tpl-preview-head">
+                {{ t('settings.notifications.template.preview') }}
+              </div>
               <div v-if="tplError" class="err mono">{{ tplError }}</div>
               <pre v-else class="prev mono">{{ tplPreview }}</pre>
             </div>
           </div>
           <div class="tpl-hints">
-            <div class="hints-title">Поля</div>
+            <div class="hints-title">{{ t('settings.notifications.template.fields') }}</div>
             <button
               v-for="f in TEMPLATE_FIELDS"
               :key="f.token"
@@ -846,9 +892,13 @@ function wsSummary(r) {
         </div>
         <template #footer>
           <div class="row-end">
-            <n-button quaternary @click="clearTemplate">Сбросить</n-button>
-            <n-button @click="tplModal = false">Отмена</n-button>
-            <n-button type="primary" @click="applyTemplate">Применить</n-button>
+            <n-button quaternary @click="clearTemplate">{{
+              t('settings.notifications.template.reset')
+            }}</n-button>
+            <n-button @click="tplModal = false">{{ t('common.action.cancel') }}</n-button>
+            <n-button type="primary" @click="applyTemplate">{{
+              t('settings.notifications.template.apply')
+            }}</n-button>
           </div>
         </template>
       </n-card>
@@ -858,38 +908,44 @@ function wsSummary(r) {
     <n-modal v-model:show="rtModal">
       <n-card
         class="modal"
-        :title="rtEditing ? 'Изменить правило' : 'Новое правило'"
+        :title="
+          rtEditing
+            ? t('settings.notifications.routeForm.editTitle')
+            : t('settings.notifications.routeForm.newTitle')
+        "
         closable
         @close="rtModal = false"
       >
         <div class="form">
           <label class="field">
-            <span>События (пусто = любые)</span>
+            <span>{{ t('settings.notifications.routeForm.kinds') }}</span>
             <n-select v-model:value="rtForm.kinds" :options="kindOptions" multiple clearable />
           </label>
           <label class="field">
-            <span>Пространство (пусто = все)</span>
+            <span>{{ t('settings.notifications.routeForm.workspace') }}</span>
             <n-select
               v-model:value="rtForm.workspace_id"
               :options="wsOptions"
               clearable
-              placeholder="Все пространства"
+              :placeholder="t('settings.notifications.routeForm.workspacePlaceholder')"
             />
           </label>
           <label class="field mute">
             <n-switch v-model:value="rtForm.mute" size="small" />
-            <span>Заглушить (не отправлять никуда)</span>
+            <span>{{ t('settings.notifications.routeForm.mute') }}</span>
           </label>
           <label v-if="!rtForm.mute" class="field">
-            <span>Каналы доставки</span>
+            <span>{{ t('settings.notifications.routeForm.channels') }}</span>
             <n-select v-model:value="rtForm.channel_ids" :options="channelOptions" multiple />
           </label>
           <div v-if="rtErr" class="err">{{ rtErr }}</div>
         </div>
         <template #footer>
           <div class="row-end">
-            <n-button @click="rtModal = false">Отмена</n-button>
-            <n-button type="primary" :loading="rtSaving" @click="saveRoute">Сохранить</n-button>
+            <n-button @click="rtModal = false">{{ t('common.action.cancel') }}</n-button>
+            <n-button type="primary" :loading="rtSaving" @click="saveRoute">{{
+              t('common.action.save')
+            }}</n-button>
           </div>
         </template>
       </n-card>

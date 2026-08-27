@@ -1,13 +1,9 @@
 package website.msdnna.tessera.util
 
 import com.google.common.truth.Truth.assertThat
-import java.util.Calendar
 import org.junit.Test
-import website.msdnna.tessera.data.model.Milestone
 
 class MiscUtilTest {
-    private fun currentYear() = Calendar.getInstance().get(Calendar.YEAR).toString()
-
     // ── diffSegments ─────────────────────────────────────────────────────────
     @Test
     fun `diffSegments equal strings single unchanged segment`() {
@@ -85,32 +81,6 @@ class MiscUtilTest {
     fun `toggleTaskMarker ignores non-marker lines`() {
         val src = "plain text\nno checkbox"
         assertThat(toggleTaskMarker(src, 0)).isEqualTo(src)
-    }
-
-    // ── Milestones.range ─────────────────────────────────────────────────────
-    @Test
-    fun `Milestones range both sides`() {
-        assertThat(Milestones.range("2026-06-01T00:00:00Z", "2026-06-30T00:00:00Z"))
-            .isEqualTo("1 июн. 2026 г. – 30 июн. 2026 г.")
-    }
-
-    @Test
-    fun `Milestones range due only and start only`() {
-        assertThat(Milestones.range(null, "2026-06-30")).isEqualTo("до 30 июн. 2026 г.")
-        assertThat(Milestones.range("2026-06-01", null)).isEqualTo("с 1 июн. 2026 г.")
-    }
-
-    @Test
-    fun `Milestones range neither is empty`() {
-        assertThat(Milestones.range(null, null)).isEmpty()
-        assertThat(Milestones.range("", "")).isEmpty()
-    }
-
-    @Test
-    fun `Milestones range from milestone and null milestone`() {
-        assertThat(Milestones.range(null as Milestone?)).isEmpty()
-        val m = Milestone(startDate = "2026-06-01", dueDate = "2026-06-30")
-        assertThat(Milestones.range(m)).isEqualTo("1 июн. 2026 г. – 30 июн. 2026 г.")
     }
 
     // ── LocaleOptions ────────────────────────────────────────────────────────

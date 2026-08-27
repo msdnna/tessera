@@ -1,5 +1,7 @@
 import { computed } from 'vue'
+import { i18n } from '@/i18n'
 import { formatEstimate, formatEstimateFull, sumEstimates } from '@/utils/estimation'
+import { columnName } from '@/utils/defaultNames'
 
 // Swimlane grouping for the Timeline and Gantt board views, driven by the shared
 // composer-bar's groupMode ('status' | 'tag' (+ prefix) | 'assignee' | 'none') —
@@ -9,6 +11,10 @@ import { formatEstimate, formatEstimateFull, sumEstimates } from '@/utils/estima
 // Timeline feeds it the incoming order (which already reflects the composer's sort),
 // the Gantt feeds it the dependency-DFS order when «Авто» is on. Lane membership is
 // the only thing computed here; ordering stays the caller's decision.
+// Called from a component's setup but also directly from its own spec, so the
+// translator comes from `i18n.global` rather than `useI18n()` (#2799).
+const t = (key) => i18n.global.t(key)
+
 export function useChartLanes({
   source,
   statusColumns,
@@ -28,27 +34,27 @@ export function useChartLanes({
     // For 'status' grouping, seed lanes in column order so empty columns still show
     // and the lane order matches the board.
     if (mode === 'status') {
-      for (const col of statusColumns.value) ensure(col.id, col.name, col.color)
+      for (const col of statusColumns.value) ensure(col.id, columnName(col), col.color)
     }
-    for (const t of source.value) {
+    for (const task of source.value) {
       if (mode === 'assignee') {
-        const id = (t.assignee_ids || [])[0]
+        const id = (task.assignee_ids || [])[0]
         const m = id ? membersMap.value[id] : null
-        ensure(id || '∅', m?.name || 'Не назначено').tasks.push(t)
+        ensure(id || '∅', m?.name || t('board.chart.lane.unassigned')).tasks.push(task)
       } else if (mode === 'tag') {
         // Respect the prefix when grouping by a tag namespace.
-        const ids = (t.tag_ids || []).filter((id) => {
+        const ids = (task.tag_ids || []).filter((id) => {
           const tag = tagsMap.value[id]
           return tag && (!tagPrefix.value || (tag.name || '').startsWith(tagPrefix.value))
         })
         const id = ids[0]
         const tag = id ? tagsMap.value[id] : null
-        ensure(id || '∅', tag?.name || 'Без тега', tag?.color).tasks.push(t)
+        ensure(id || '∅', tag?.name || t('board.chart.lane.noTag'), tag?.color).tasks.push(task)
       } else if (mode === 'status') {
-        const col = statusColumns.value.find((c) => c.id === t.column_id)
-        ensure(t.column_id || '∅', col?.name || '—', col?.color).tasks.push(t)
+        const col = statusColumns.value.find((c) => c.id === task.column_id)
+        ensure(task.column_id || '∅', col?.name || '—', col?.color).tasks.push(task)
       } else {
-        ensure('all', 'Все задачи').tasks.push(t)
+        ensure('all', t('board.chart.lane.all')).tasks.push(task)
       }
     }
     const arr = [...buckets.values()].filter((l) => l.tasks.length || mode === 'status')

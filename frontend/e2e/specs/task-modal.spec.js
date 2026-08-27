@@ -64,7 +64,7 @@ test('ответ в треде остаётся вложенным после п
   await expect(modal).toBeVisible()
 
   const thread = modal.locator('.c-thread')
-  await thread.getByRole('button', { name: 'Ответить' }).click()
+  await thread.getByTestId('comment-reply').click()
   const replyBody = `Ответ из e2e ${Date.now().toString(36)}`
   const composer = modal.locator('.c-reply-add textarea')
   await composer.fill(replyBody)
@@ -272,7 +272,7 @@ test('панель: кнопки футера выровнены по право
   await expect(modal).toHaveClass(/tm-sidebar/)
   await panelSettled(modal)
 
-  await modal.getByText('Комментарии', { exact: false }).first().click()
+  await modal.getByTestId('tab-comments').click()
   const edges = await modal.evaluate((root) => {
     root.querySelector('.n-card-content').scrollTop = 99999
     const add = root.querySelector('.comment-add')

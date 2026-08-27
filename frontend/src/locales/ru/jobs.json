@@ -1,0 +1,67 @@
+{
+  "title": "Фоновые задания",
+  "refresh": "Обновить",
+  "empty": "Нет фоновых заданий",
+  "select": "Выберите задание",
+  "journal": "журнал",
+  "started": "Запущено",
+  "cancelling": "Отменяется…",
+  "run": "Запустить сейчас",
+  "cancel": "Остановить",
+  "nextRunPrefix": "· след. запуск {when}",
+  "name": {
+    "gitlab_sync": "Синхронизация GitLab · {arg}"
+  },
+  "worker": {
+    "gitlab_sync_cron": "Автосинхронизация GitLab",
+    "gitlab_writeback": "Выгрузка изменений в GitLab",
+    "notify_delivery": "Доставка уведомлений",
+    "notify_scanner": "Сканирование сроков и напоминаний",
+    "recurrence": "Повторяющиеся задачи"
+  },
+  "op": {
+    "sync_scan": "проверка интеграций к синхронизации",
+    "writeback": "выгрузка изменений в GitLab",
+    "delivery": "рассылка уведомлений",
+    "due_scan": "проверка сроков и напоминаний",
+    "recurrence": "продвижение повторяющихся задач",
+    "sync_full": "полная синхронизация",
+    "sync_incremental": "инкрементальная синхронизация"
+  },
+  "status": {
+    "running": "выполняется",
+    "pending": "в очереди",
+    "done": "готово",
+    "failed": "ошибка"
+  },
+  "kind": {
+    "worker": "worker",
+    "sync": "синхронизация"
+  },
+  "mode": {
+    "incremental": "инкрементальная",
+    "full": "полная"
+  },
+  "trigger": {
+    "manual": "вручную",
+    "auto": "по расписанию"
+  },
+  "next": {
+    "soon": "вот-вот",
+    "inMinutes": "через {m} мин {s} с",
+    "inSeconds": "через {s} с"
+  },
+  "fact": {
+    "status": "Статус",
+    "purpose": "Назначение",
+    "lastActivity": "Последняя активность",
+    "nextRun": "Следующий запуск",
+    "mode": "Режим",
+    "trigger": "Запуск",
+    "startedAt": "Начато",
+    "finishedAt": "Завершено",
+    "duration": "Длительность",
+    "createdUpdated": "Создано / обновлено",
+    "error": "Ошибка"
+  }
+}

@@ -5,6 +5,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -55,6 +56,14 @@ func (h *API) CreateTask(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// binding:"required" only rejects the empty string — a title of pure
+	// whitespace normalizes to nothing and must be refused here.
+	req.Title = normalizeTitle(req.Title)
+	if req.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "заголовок не может быть пустым"})
 		return
 	}
 
@@ -366,40 +375,42 @@ func issueState(completed bool) string {
 }
 
 // journalUpdate records the field-level changes of a task edit into its journal
-// and returns a short human list of what changed (for a notification summary).
+// and returns the machine names of what changed (for the notification payload;
+// fieldWords turns them into Russian for the legacy text, the client into the
+// reader's language).
 func (h *API) journalUpdate(c *gin.Context, before, after db.Task) []string {
 	var changed []string
 	if before.Title != after.Title {
 		h.logEvent(c, after.ID, "renamed", map[string]any{"from": before.Title, "to": after.Title})
-		changed = append(changed, "название")
+		changed = append(changed, "title")
 	}
 	if before.Description != after.Description {
 		h.logEvent(c, after.ID, "description", nil)
-		changed = append(changed, "описание")
+		changed = append(changed, "description")
 	}
 	if before.Priority != after.Priority {
 		h.logEvent(c, after.ID, "priority", map[string]any{"from": before.Priority, "to": after.Priority})
-		changed = append(changed, "приоритет")
+		changed = append(changed, "priority")
 	}
 	if !sameTime(before.DueDate, after.DueDate) {
 		h.logEvent(c, after.ID, "due", map[string]any{"set": after.DueDate != nil})
-		changed = append(changed, "срок")
+		changed = append(changed, "due")
 	}
 	if !sameTime(before.StartDate, after.StartDate) {
 		h.logEvent(c, after.ID, "start", map[string]any{"set": after.StartDate != nil})
-		changed = append(changed, "начало")
+		changed = append(changed, "start")
 	}
 	if !sameEstimate(before.Estimate, after.Estimate) {
 		h.logEvent(c, after.ID, "estimate", map[string]any{"set": after.Estimate != nil})
-		changed = append(changed, "оценка")
+		changed = append(changed, "estimate")
 	}
 	switch {
 	case before.CompletedAt == nil && after.CompletedAt != nil:
 		h.logEvent(c, after.ID, "completed", nil)
-		changed = append(changed, "выполнена")
+		changed = append(changed, "completed")
 	case before.CompletedAt != nil && after.CompletedAt == nil:
 		h.logEvent(c, after.ID, "reopened", nil)
-		changed = append(changed, "возвращена в работу")
+		changed = append(changed, "reopened")
 	}
 	return changed
 }
@@ -416,6 +427,17 @@ func sameEstimate(a, b *float64) bool {
 		return a == b
 	}
 	return *a == *b
+}
+
+// normalizeTitle collapses every whitespace run in a title — newlines, tabs,
+// doubled spaces — into one space and trims the ends. A title is single-line by
+// contract: the web card renders it as HTML (a newline shows as a space) while
+// the modal keeps it in an <input>, which strips newlines out of value, so a
+// stored "\n" makes the same task read differently in the two places (#2813).
+// Every write path goes through here, so no client — web, Android, MCP or
+// curl — can put a newline back in.
+func normalizeTitle(s string) string {
+	return strings.Join(strings.Fields(s), " ")
 }
 
 // normalizeEstimate rejects non-positive / non-finite estimates, mapping them to

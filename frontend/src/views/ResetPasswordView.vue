@@ -31,15 +31,15 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout title="Новый пароль">
-    <p v-if="!token" class="note">Ссылка недействительна — токен отсутствует.</p>
-    <p v-else-if="done" class="note">Пароль изменён. Перенаправляем ко входу…</p>
+  <auth-layout :title="$t('common.auth.reset.title')">
+    <p v-if="!token" class="note">{{ $t('common.auth.reset.noToken') }}</p>
+    <p v-else-if="done" class="note">{{ $t('common.auth.reset.done') }}</p>
     <template v-else>
       <n-form @submit.prevent="submit">
-        <n-form-item label="Новый пароль (≥ 8)">
+        <n-form-item :label="$t('common.auth.reset.password')">
           <n-input v-model:value="pw" type="password" show-password-on="click" />
         </n-form-item>
-        <n-form-item label="Повторите пароль">
+        <n-form-item :label="$t('common.auth.reset.confirm')">
           <n-input
             v-model:value="confirm"
             type="password"
@@ -48,11 +48,13 @@ async function submit() {
           />
         </n-form-item>
         <n-button type="primary" block :disabled="!valid" :loading="loading" @click="submit">
-          Сохранить пароль
+          {{ $t('common.auth.reset.submit') }}
         </n-button>
       </n-form>
     </template>
-    <div class="auth-foot"><router-link to="/login">Ко входу</router-link></div>
+    <div class="auth-foot">
+      <router-link to="/login">{{ $t('common.auth.reset.toLogin') }}</router-link>
+    </div>
   </auth-layout>
 </template>
 

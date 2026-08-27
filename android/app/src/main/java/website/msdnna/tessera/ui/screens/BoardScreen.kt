@@ -47,6 +47,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.ui.components.ErrorState
@@ -65,6 +68,7 @@ import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.softShadow
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -75,6 +79,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.workspaceCaption
 
 /**
  * Board detail: a compact icon toolbar (view / group / sort / filter / subtasks
@@ -184,11 +189,11 @@ fun BoardScreen(
                     state.loading -> LoadingState()
 
                     state.error != null -> ErrorState(
-                        message = state.error ?: "Ошибка",
+                        message = state.error?.resolve() ?: stringResource(R.string.common_error),
                         onRetry = { vm.load(board.id, workspaceId) },
                     )
 
-                    state.columns.isEmpty() -> BoardEmpty("На этой доске пока нет колонок")
+                    state.columns.isEmpty() -> BoardEmpty(stringResource(R.string.board_no_columns))
 
                     else -> Crossfade(targetState = state.viewMode, animationSpec = tween(200), label = "viewMode") { mode ->
                         when (mode) {
@@ -236,7 +241,9 @@ fun BoardScreen(
         val project = wsState.projects.find { it.id == board.projectId }
         val group = project?.groupId?.let { gid -> wsState.groups.find { it.id == gid } }
         val breadcrumb = listOfNotNull(
-            wsState.current?.name,
+            // Группа, проект и доска — имена, которые завёл пользователь; пространство
+            // может быть засеянным «личным», и его подпись собирается по name_key (#2800).
+            wsState.current?.let { workspaceCaption(LocalResources.current, it) },
             group?.name,
             project?.name,
             board.name,
@@ -250,6 +257,7 @@ fun BoardScreen(
             metaTagPrefixes = state.metaTagPrefixes,
             members = state.members,
             gitlabMembers = state.gitlabMembers,
+            gitlabCreate = state.gitlabCreate,
             milestones = state.milestones,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
             boardTasks = state.tasks,
@@ -306,12 +314,16 @@ private fun BoardActivityOverlay(
     }
 }
 
-/** Verb → (label, icon, accent colour) for an activity toast. */
-private fun activityVerbMeta(verb: String): Triple<String, String, Color> = when (verb) {
-    "created" -> Triple("создал(а) задачу", Ion.ADD, Color(0xFF7C5CFF))
-    "completed" -> Triple("завершил(а) задачу", Ion.CHECK_CIRCLE, Color(0xFF18A058))
-    "reopened" -> Triple("вернул(а) в работу", Ion.ELLIPSE, Color(0xFFE0922F))
-    else -> Triple("переместил(а) задачу", Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
+/**
+ * Verb → (label, icon, accent colour) for an activity toast. Возвращается id
+ * ресурса, а не готовая строка: функция обычная, не композабл, и с текстом внутри
+ * подпись тоста осталась бы на языке, на котором пришло событие.
+ */
+private fun activityVerbMeta(verb: String): Triple<Int, String, Color> = when (verb) {
+    "created" -> Triple(R.string.board_activity_created, Ion.ADD, Color(0xFF7C5CFF))
+    "completed" -> Triple(R.string.board_activity_completed, Ion.CHECK_CIRCLE, Color(0xFF18A058))
+    "reopened" -> Triple(R.string.board_activity_reopened, Ion.ELLIPSE, Color(0xFFE0922F))
+    else -> Triple(R.string.board_activity_moved, Ion.CHEVRON_FORWARD, Color(0xFF2F80ED))
 }
 
 @Composable
@@ -322,7 +334,8 @@ private fun ActivityToast(
     onClose: () -> Unit,
 ) {
     val c = Tessera.colors
-    val (verbText, icon, color) = activityVerbMeta(activity.verb)
+    val (verbRes, icon, color) = activityVerbMeta(activity.verb)
+    val verbText = stringResource(verbRes)
     var copied by remember(activity.key) { mutableStateOf(false) }
     val shape = RoundedCornerShape(RadiusLg)
     Row(
@@ -340,14 +353,18 @@ private fun ActivityToast(
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    if (activity.self) "Вы" else activity.actorName.ifBlank { "Кто-то" },
+                    if (activity.self) {
+                        stringResource(R.string.board_activity_you)
+                    } else {
+                        activity.actorName.ifBlank { stringResource(R.string.task_someone) }
+                    },
                     color = c.text2, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 )
                 Spacer(Modifier.width(4.dp))
                 Text(verbText, color = c.text3, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Text(
-                activity.title,
+                activity.title.ifBlank { stringResource(R.string.board_activity_untitled) },
                 color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.Medium,
                 maxLines = 2, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.padding(top = 2.dp, bottom = 6.dp),
@@ -357,7 +374,7 @@ private fun ActivityToast(
                     Modifier.clip(RoundedCornerShape(RadiusSm)).background(accentGradient(c.primary))
                         .clickableNoRipple(onClick = onOpen).padding(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    Text("Открыть", color = c.onPrimary, fontSize = 12.sp)
+                    Text(stringResource(R.string.board_activity_open), color = c.onPrimary, fontSize = 12.sp)
                 }
                 Box(
                     Modifier.clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))
@@ -367,7 +384,13 @@ private fun ActivityToast(
                         }
                         .padding(horizontal = 10.dp, vertical = 4.dp),
                 ) {
-                    Text(if (copied) "Скопировано" else "Ссылка", color = c.text2, fontSize = 12.sp)
+                    Text(
+                        stringResource(
+                            if (copied) R.string.board_activity_copied else R.string.board_activity_link,
+                        ),
+                        color = c.text2,
+                        fontSize = 12.sp,
+                    )
                 }
             }
         }

@@ -1,9 +1,11 @@
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NConfigProvider, NGlobalStyle, NMessageProvider, ruRU, dateRuRU } from 'naive-ui'
+import { NConfigProvider, NGlobalStyle, NMessageProvider } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
+import { setI18nLocale } from '@/i18n'
+import { naivePack } from '@/i18n/naive'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
 import UpdateToast from '@/components/UpdateToast.vue'
@@ -11,6 +13,14 @@ import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOA
 
 const theme = useThemeStore()
 const router = useRouter()
+
+// Language (#2797). The watch — rather than a call in the settings screen —
+// is what makes every source of the preference land: the localStorage cache
+// read at store init, the switch in SettingsView, and the server prefs that
+// arrive after sign-in. Naive UI's own locale follows the same value.
+const naiveLocale = computed(() => naivePack(theme.language).locale)
+const naiveDateLocale = computed(() => naivePack(theme.language).dateLocale)
+watch(() => theme.language, setI18nLocale, { immediate: true })
 
 // Priority colours 1..4 (0 = "none", never gradient'd) → shared flag-icon gradients.
 const PRIORITY_GRADS = PRIORITY_COLORS.slice(1)
@@ -91,8 +101,8 @@ onUnmounted(() => unlistenOAuth?.())
   <n-config-provider
     :theme="theme.naiveTheme"
     :theme-overrides="theme.themeOverrides"
-    :locale="ruRU"
-    :date-locale="dateRuRU"
+    :locale="naiveLocale"
+    :date-locale="naiveDateLocale"
   >
     <n-global-style />
     <n-message-provider>

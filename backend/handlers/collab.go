@@ -50,24 +50,24 @@ func (h *API) logEventActor(ctx context.Context, taskID, actorID uuid.UUID, kind
 
 // notify creates a persistent notification for a user (skipping the actor
 // themselves) and pushes it live over the workspace socket. Best-effort.
-func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, kind, text string) {
+func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, kind string, msg notifyMsg) {
 	actor := middleware.CurrentUser(c)
 	if userID == actor {
 		return
 	}
 	a := actor
-	h.deliverNotification(c, userID, wsID, taskID, &a, kind, text)
+	h.deliverNotification(c, userID, wsID, taskID, &a, kind, msg)
 }
 
 // notifyTaskParticipants notifies a task's assignees and creator (minus the
 // actor) — used when something happens that watchers should hear about.
-func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, kind, text string) {
-	h.notifyTaskParticipantsExcept(c, t, wsID, kind, text, nil)
+func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, kind string, msg notifyMsg) {
+	h.notifyTaskParticipantsExcept(c, t, wsID, kind, msg, nil)
 }
 
 // notifyTaskParticipantsExcept is notifyTaskParticipants with a set of user ids
 // to skip (e.g. users already reached by a more specific mention notification).
-func (h *API) notifyTaskParticipantsExcept(c *gin.Context, t db.Task, wsID uuid.UUID, kind, text string, skip map[uuid.UUID]bool) {
+func (h *API) notifyTaskParticipantsExcept(c *gin.Context, t db.Task, wsID uuid.UUID, kind string, msg notifyMsg, skip map[uuid.UUID]bool) {
 	seen := map[uuid.UUID]bool{}
 	for id := range skip {
 		seen[id] = true
@@ -76,12 +76,12 @@ func (h *API) notifyTaskParticipantsExcept(c *gin.Context, t db.Task, wsID uuid.
 		for _, a := range assignees {
 			if !seen[a.ID] {
 				seen[a.ID] = true
-				h.notify(c, a.ID, wsID, &t.ID, kind, text)
+				h.notify(c, a.ID, wsID, &t.ID, kind, msg)
 			}
 		}
 	}
 	if t.CreatedBy != nil && !seen[*t.CreatedBy] {
-		h.notify(c, *t.CreatedBy, wsID, &t.ID, kind, text)
+		h.notify(c, *t.CreatedBy, wsID, &t.ID, kind, msg)
 	}
 }
 
@@ -250,17 +250,17 @@ func (h *API) CreateComment(c *gin.Context) {
 
 	// @-mentions: notify each mentioned workspace member explicitly, then fall
 	// back to the generic "commented" notice for the remaining participants. A
-	// short comment is inlined for context; a long one shows only the #N.
-	ctx := shortCtx(body)
-	mentioned := h.notifyMentions(c, t, wsID, req.Mentions, ctx)
+	// short comment is inlined for context; a long one shows only the #N (the
+	// message builders apply that cut-off).
+	mentioned := h.notifyMentions(c, t, wsID, req.Mentions, body)
 	if parentID != nil {
 		// A reply has an audience the task's participant list does not cover: the
 		// author of the root comment is frequently neither assignee nor reporter,
 		// and would never learn a branch was started under their text.
-		mentioned = h.notifyThread(c, t, wsID, *parentID, ctx, mentioned)
+		mentioned = h.notifyThread(c, t, wsID, *parentID, body, mentioned)
 	}
 	h.notifyTaskParticipantsExcept(c, t, wsID, "comment",
-		fmt.Sprintf("%s прокомментировал #%s%s", h.actorName(c), taskRef(t.Number), ctx), mentioned)
+		msgComment(h.actorName(c), t.Number, body), mentioned)
 	if summary.empty() {
 		c.JSON(http.StatusCreated, cm)
 		return
@@ -324,12 +324,12 @@ func (h *API) resolveCommentParent(c *gin.Context, taskID uuid.UUID, want *uuid.
 // notifyThread notifies the people already in a thread (its root author and
 // everyone who replied) that someone answered in it, skipping whoever the
 // mention pass already reached. Returns the updated notified set.
-func (h *API) notifyThread(c *gin.Context, t db.Task, wsID, rootID uuid.UUID, ctx string, notified map[uuid.UUID]bool) map[uuid.UUID]bool {
+func (h *API) notifyThread(c *gin.Context, t db.Task, wsID, rootID uuid.UUID, body string, notified map[uuid.UUID]bool) map[uuid.UUID]bool {
 	ids, err := h.q.ListThreadParticipants(c, rootID)
 	if err != nil {
 		return notified
 	}
-	text := fmt.Sprintf("%s ответил(а) в обсуждении #%s%s", h.actorName(c), taskRef(t.Number), ctx)
+	msg := msgThreadReply(h.actorName(c), t.Number, body)
 	for _, id := range ids {
 		if id == nil || notified[*id] {
 			continue
@@ -338,7 +338,7 @@ func (h *API) notifyThread(c *gin.Context, t db.Task, wsID, rootID uuid.UUID, ct
 			continue // no longer a member of this workspace
 		}
 		notified[*id] = true
-		h.notify(c, *id, wsID, &t.ID, "comment", text)
+		h.notify(c, *id, wsID, &t.ID, "comment", msg)
 	}
 	return notified
 }
@@ -346,12 +346,12 @@ func (h *API) notifyThread(c *gin.Context, t db.Task, wsID, rootID uuid.UUID, ct
 // notifyMentions sends a "mention" notification to each id that is a member of
 // the workspace (skipping duplicates and the actor, handled in notify). Returns
 // the set of users actually notified so the caller can avoid double-notifying.
-func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uuid.UUID, ctx string) map[uuid.UUID]bool {
+func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uuid.UUID, body string) map[uuid.UUID]bool {
 	notified := map[uuid.UUID]bool{}
 	if len(ids) == 0 {
 		return notified
 	}
-	text := fmt.Sprintf("%s упомянул(а) вас в #%s%s", h.actorName(c), taskRef(t.Number), ctx)
+	msg := msgMention(h.actorName(c), t.Number, body)
 	for _, uid := range ids {
 		if notified[uid] {
 			continue
@@ -360,7 +360,7 @@ func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uu
 			continue // not a member of this workspace — ignore
 		}
 		notified[uid] = true
-		h.notify(c, uid, wsID, &t.ID, "mention", text)
+		h.notify(c, uid, wsID, &t.ID, "mention", msg)
 	}
 	return notified
 }

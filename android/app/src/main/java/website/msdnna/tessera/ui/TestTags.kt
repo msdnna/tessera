@@ -113,6 +113,12 @@ object TestTags {
 
     fun taskStatusOption(columnId: String) = "task-status-option:$columnId"
 
+    /** «Создать issue» in the GitLab row of an unlinked task, and the issue-template
+     *  picker beside it. Both only exist on a board whose GitLab binding allows
+     *  creation (`push_create` / `fetch_templates`). */
+    const val TASK_GITLAB_CREATE = "task-gitlab-create"
+    const val TASK_GITLAB_TEMPLATE = "task-gitlab-template"
+
     /** The priority chip and its picker rows, keyed by level (0 = none). */
     const val TASK_PRIORITY = "task-priority"
 
@@ -137,6 +143,30 @@ object TestTags {
     /** One row of that tree, keyed by document id — so a spec asserts «this
      *  document», not «the second row», and a nesting regression is visible. */
     fun documentRow(id: String) = "document-row:$id"
+
+    // ── help centre (#2795) ────────────────────────────────────────────────
+
+    /** Root of the help section — the category navigation over the bundled manual. */
+    const val HELP_NAV = "help-nav"
+
+    /** Its search field, and one row per article (or per search hit), keyed by
+     *  slug: a spec asserts «this article», not «the third row», so a reordering
+     *  of the manual doesn't quietly rewrite what a test checks. */
+    const val HELP_SEARCH = "help-search"
+
+    fun helpRow(slug: String) = "help-row:$slug"
+
+    /** The article reader that slides over the navigation, present exactly while
+     *  an article is open. */
+    const val HELP_ARTICLE = "help-article"
+
+    /** The «this text describes the web version» note, shown exactly on the
+     *  articles that have no mobile rewrite yet (#2795). */
+    const val HELP_DESKTOP_NOTE = "help-desktop-note"
+
+    /** The «not translated yet, showing the original» note (#2809), shown when a
+     *  non-Russian reader opens an article that has no translation. */
+    const val HELP_NOT_TRANSLATED_NOTE = "help-not-translated-note"
 
     // ── what's new / spotlight (#2766) ──────────────────────────────────────
 

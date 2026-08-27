@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { CloudDownloadOutline, CloseOutline, ReloadOutline } from '@vicons/ionicons5'
 import { useAppUpdate } from '@/composables/useAppUpdate'
@@ -7,8 +8,9 @@ import { useAppUpdate } from '@/composables/useAppUpdate'
 // A single, global "new version available" toast, styled after the board
 // activity toasts (#2748). Bottom-right so it never collides with the
 // bottom-left board-activity stack. Prompt mode: shows only when the waiting
-// service worker signals a fresh deploy; "Обновить" reloads onto it, "Отложить"
+// service worker signals a fresh deploy; "update" reloads onto it, "later"
 // hides it for now (it returns if a further deploy lands, or on next load).
+const { t } = useI18n()
 const { needRefresh, updateServiceWorker } = useAppUpdate()
 
 const dismissed = ref(false)
@@ -36,17 +38,19 @@ function postpone() {
         <n-icon :component="CloudDownloadOutline" :size="22" />
       </div>
       <div class="u-body">
-        <div class="u-title">Доступно обновление</div>
-        <div class="u-text">Загружена новая версия Tessera</div>
+        <div class="u-title">{{ t('app.update.title') }}</div>
+        <div class="u-text">{{ t('app.update.text') }}</div>
         <div class="u-actions">
           <button class="u-btn primary" :disabled="reloading" @click="reload">
             <n-icon :component="ReloadOutline" :size="13" />
-            {{ reloading ? 'Обновляем…' : 'Обновить' }}
+            {{ reloading ? t('app.update.reloading') : t('app.update.reload') }}
           </button>
-          <button class="u-btn" :disabled="reloading" @click="postpone">Отложить</button>
+          <button class="u-btn" :disabled="reloading" @click="postpone">
+            {{ t('app.update.postpone') }}
+          </button>
         </div>
       </div>
-      <button class="u-close" title="Отложить" @click="postpone">
+      <button class="u-close" :title="t('app.update.postpone')" @click="postpone">
         <n-icon :component="CloseOutline" :size="15" />
       </button>
     </div>
@@ -108,7 +112,7 @@ function postpone() {
   color: var(--t-text2);
   cursor: pointer;
 }
-/* Only the neutral "Отложить" button greys on hover — the primary one keeps its
+/* Only the neutral "later" button greys on hover — the primary one keeps its
    accent (a blanket .u-btn:hover would paint it grey and leave white text on it,
    unreadable; #2748 rework). */
 .u-btn:not(.primary):hover:not(:disabled) {

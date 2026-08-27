@@ -90,10 +90,35 @@ export default defineConfig({
       '@': resolve(__dirname, 'src'),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Keep the Vue runtime, vue-i18n and their shared @vue/@intlify guts in
+        // one chunk. Left to itself, rolldown split them the moment vue-i18n
+        // reached a shared chunk (utils/errors.js pulled `@/i18n` in through the
+        // axios interceptor, #2799 wave 6) and emitted a chunk calling
+        // `init_shared_esm_bundler()` without importing it — the built app then
+        // died on the first paint with a blank page. `yarn build` stays green
+        // either way, so nothing but a real browser catches it.
+        manualChunks(id) {
+          if (/node_modules[\\/](vue|vue-i18n|@vue[\\/]|@intlify[\\/])/.test(id)) {
+            return 'vendor-vue'
+          }
+        },
+      },
+    },
+  },
   server: {
     host: '0.0.0.0',
     port: 5174,
     proxy: apiProxy,
+    // The help centre (#2792/#2793) globs its articles and screenshots out of
+    // ../docs/help. Vite's workspace root is this directory (yarn.lock lives
+    // here, not at the repo root), so without this every one of those files is
+    // a "Denied ID" in dev. `vite build` reads them straight off disk, so the
+    // bundle just needs docs/help present next to frontend/ — which is why the
+    // Docker build context is the repo root, not ./frontend (#2786).
+    fs: { allow: [resolve(__dirname, '..')] },
   },
   preview: {
     host: '0.0.0.0',

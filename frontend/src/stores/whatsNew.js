@@ -71,6 +71,31 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
   // Spotlight hints to show one-at-a-time AFTER the modal is dismissed. Kept
   // separate from `pending` so dismissing the modal doesn't wipe the queue.
   const spotlightQueue = ref([])
+  // The same modal opened by hand from the version stamp in the footer (#2812):
+  // the full changelog rather than "what you just updated into".
+  const historyOpen = ref(false)
+
+  function openHistory() {
+    historyOpen.value = true
+  }
+
+  // Closing the history acknowledges nothing: it was opened deliberately, and
+  // advancing the baseline here would silently eat the next real What's New.
+  function closeHistory() {
+    historyOpen.value = false
+  }
+
+  // Are we showing the history right now? An update the user hasn't seen yet
+  // wins — that modal is already on screen, and it is the one that writes acks.
+  const isHistory = computed(() => historyOpen.value && pending.value.length === 0)
+
+  // What the modal renders. In history mode: every curated release, newest
+  // first, regardless of acks or of the build the bundle was cut from (#2812
+  // asks for "everything in whatsNew.js"); otherwise the update queue.
+  const entries = computed(() => {
+    if (!isHistory.value) return pending.value
+    return [...WHATS_NEW].sort((a, b) => cmp(b.version, a.version))
+  })
 
   function has(key) {
     return acked.value.has(key)
@@ -145,9 +170,12 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
 
   // The spotlight to show right now: the head of the queue, but only once the
   // modal is closed (modal first, then spotlights one at a time) — and never
-  // while the guide is drawing its own arrows.
+  // while the guide is drawing its own arrows, nor while the history is open
+  // (`pending` is empty exactly then, so the arrow would land on top of it).
   const currentSpotlight = computed(() =>
-    pending.value.length === 0 && !tour.active ? spotlightQueue.value[0] || null : null,
+    pending.value.length === 0 && !tour.active && !historyOpen.value
+      ? spotlightQueue.value[0] || null
+      : null,
   )
 
   async function dismissSpotlight(navKey) {
@@ -159,11 +187,16 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
     acked,
     loaded,
     pending,
+    entries,
+    historyOpen,
+    isHistory,
     spotlightQueue,
     currentSpotlight,
     load,
     has,
     ack,
+    openHistory,
+    closeHistory,
     dismissModal,
     dismissSpotlight,
   }
