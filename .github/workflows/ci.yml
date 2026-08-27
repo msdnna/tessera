@@ -11,7 +11,14 @@ on:
 
 permissions:
   contents: read
+  # The `changes` guard queries open PRs to decide whether a push run is redundant.
+  pull-requests: read
 
+# Per-ref groups: a newer push supersedes an older push on the same branch, and a
+# newer PR sync supersedes an older one — but a push and its PR never share a group,
+# so neither cancels the other (a push cancelling the PR would blank its checks and
+# block the merge). Cross-event de-duplication — a push yielding to the PR that
+# already covers the same commit — is the `changes` guard's job instead.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -21,13 +28,37 @@ jobs:
     name: Detect changed components
     runs-on: ubuntu-latest
     outputs:
-      backend: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true' }}
-      web:     ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
-      android: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true' }}
-      mcp:     ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.mcp == 'true' }}
-      desktop: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.desktop == 'true' }}
+      backend: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.backend == 'true') }}
+      web:     ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true') }}
+      android: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true') }}
+      mcp:     ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.mcp == 'true') }}
+      desktop: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.desktop == 'true') }}
     steps:
       - uses: actions/checkout@v4
+
+      # A push run yields to the pull_request run when one already covers this
+      # commit: pushing to a branch that is the head of an open PR fires both a
+      # `push` and a `pull_request` (synchronize) pipeline for the same SHA, and
+      # the PR one is the one that matters (it tests the merge result and gates the
+      # merge). So when this is a push and an open PR has this branch as its head,
+      # the guard sets run=false and every component output below collapses to
+      # false — the push pipeline no-ops while the PR pipeline does the work.
+      # Any other case (no open PR, pull_request event, manual dispatch) runs.
+      - id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            count=$(gh pr list --repo "${{ github.repository }}" \
+              --head "${{ github.ref_name }}" --state open --json number --jq 'length')
+            if [ "${count:-0}" -gt 0 ]; then
+              echo "Open PR has ${{ github.ref_name }} as its head — its pipeline covers this commit; the push pipeline yields."
+              echo "run=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
       - id: filter
         uses: dorny/paths-filter@v3
         with:
