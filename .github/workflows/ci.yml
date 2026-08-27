@@ -549,10 +549,22 @@ jobs:
           cache-dependency-path: mcp/go.sum
       - name: Install golangci-lint v2
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
-      - name: Lint + test
+      - name: Lint + test (with coverage)
         run: |
           make lint-mcp GO=go
-          make test-mcp GO=go
+          make test-mcp-cover GO=go
+
+      - name: Generate coverage badge JSON
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        run: GO=go ./tools/coverage-badge.sh mcp mcp/coverage.out
+
+      - name: Upload coverage badge artifact
+        if: ${{ github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-mcp
+          path: _badges/mcp.json
+          retention-days: 1
 
   desktop-lint:
     name: Desktop (Rust lint)
@@ -610,7 +622,7 @@ jobs:
   # README renders them via shields.io endpoints from raw.githubusercontent.com.
   publish-coverage-badges:
     name: Publish coverage badges
-    needs: [backend, web, android]
+    needs: [backend, web, android, mcp]
     if: ${{ always() && github.event_name == 'push' && github.ref_name == github.event.repository.default_branch }}
     runs-on: ubuntu-latest
     permissions:
