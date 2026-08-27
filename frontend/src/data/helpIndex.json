@@ -1637,30 +1637,195 @@
       }
     },
     {
+      "slug": "tags",
+      "path": "tags/tags.md",
+      "title": "Теги, префиксы и управление ими",
+      "category": "Теги",
+      "order": 36,
+      "updated": "2026-08-28",
+      "keywords": [
+        "теги",
+        "метки",
+        "префиксы",
+        "двоеточие",
+        "переименовать",
+        "цвет",
+        "удалить",
+        "группировка",
+        "поповер",
+        "Enter",
+        "GitLab"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "теги-живут-в-проекте-а-не-в-задаче",
+          "text": "Теги живут в проекте, а не в задаче",
+          "level": 2
+        },
+        {
+          "id": "где-ими-управлять",
+          "text": "Где ими управлять",
+          "level": 2
+        },
+        {
+          "id": "создать",
+          "text": "Создать",
+          "level": 3
+        },
+        {
+          "id": "переименовать-двойным-кликом",
+          "text": "Переименовать — двойным кликом",
+          "level": 3
+        },
+        {
+          "id": "цвет-только-в-режиме-правки",
+          "text": "Цвет — только в режиме правки",
+          "level": 3
+        },
+        {
+          "id": "удалить",
+          "text": "Удалить",
+          "level": 3
+        },
+        {
+          "id": "префиксы-как-из-тегов-получается-система",
+          "text": "Префиксы: как из тегов получается система",
+          "level": 2
+        },
+        {
+          "id": "имена-префиксов",
+          "text": "Имена префиксов",
+          "level": 2
+        },
+        {
+          "id": "короткие-префиксы-переключатель-для-себя",
+          "text": "Короткие префиксы — переключатель для себя",
+          "level": 2
+        },
+        {
+          "id": "теги-на-задаче",
+          "text": "Теги на задаче",
+          "level": 2
+        },
+        {
+          "id": "теги-и-gitlab",
+          "text": "Теги и GitLab",
+          "level": 2
+        }
+      ],
+      "text": "тег в tessera — не просто цветная метка. колонки доски можно разложить по тегам, и тогда тег превращается в направление работы: команда, компонент, клиент, стадия проработки. поэтому теги стоит заводить осознанно и называть по системе — на них держится второй взгляд на доску. управление тегами проекта: список, переименование и цвет теги живут в проекте, а не в задаче набор тегов принадлежит проекту: все доски одного проекта видят один список, а соседний проект — свой собственный. тег, снятый со всех задач, из списка не исчезает: он остаётся заготовкой, и колонка по нему на доске просто будет пустой. где ими управлять кнопка «теги» в шапке доски открывает поповер со всем списком тегов проекта. на узком экране она же лежит в меню доски (значок с тремя точками). в поповере видно всё сразу: какие теги есть, какого они цвета и как разложены по префиксам. создать внизу поповера — поле «новый тег». введите имя и нажмите «добавить» или enter. новый тег получает первый цвет палитры (фиолетовый) — цвет меняется отдельно, при переименовании. переименовать — двойным кликом одиночный клик по тегу в поповере ничего не делает: это не кнопка, а образец того, как тег выглядит на карточке. переименование открывается двойным кликом — подсказка при наведении говорит то же самое («имя · двойной клик — переименовать»). тег превращается в поле ввода; enter или клик мимо сохраняют, имя без изменений просто закрывает поле. цвет — только в режиме правки палитра из восьми цветов появляется под тегом, который вы правите, и больше нигде. это и есть ответ на частый вопрос «где поменять цвет тега»: двойной клик по тегу → ряд кружков под ним → клик по нужному. цвет применяется сразу, поле имени при этом не закрывается. цвет — не только украшение: из него собираются градиент чипа на карточке, цвет колонки при группировке по тегам и заливка в фильтрах. удалить корзина справа от тега удаляет его со всех задач проекта разом — об этом честно предупреждает подтверждение. отмены нет: восстановить тег означает завести его заново и расставить руками. если тег просто перестал быть нужен, но историю ломать не хочется, надёжнее переименовать его (например, добавить «архив») и не использовать дальше. префиксы: как из тегов получается система тег с двоеточием в имени tessera читает как префикс и значение: сложность::высокая — разделитель ::; статус: в ревью — разделитель : (двоеточие с пробелом). обе записи равноправны. всё, что до разделителя, — префикс (пространство имён), всё после — значение. что это даёт: 1. двухсегментный чип. такой тег рисуется как в gitlab: слева залитый сегмент с именем префикса, справа — значение. один взгляд на карточку, и понятно, что «высокая» — это про сложность, а не про приоритет. 2. группировку списков. в поповере тегов, в выборе тегов у задачи и в фильтре доски теги собираются в группы по префиксу, с заголовком у каждой. список из сорока тегов остаётся читаемым. 3. колонки по одному префиксу. на доске можно сгруппировать не «по всем тегам», а по конкретному префиксу — тогда колонками станут только его значения, а остальные теги в раскладке не участвуют. подробнее — панель доски. регистр и пробелы вокруг префикса не важны: сложность:: и сложность :: — один и тот же префикс. имена префиксов префикс в имени тега бывает коротким — t: bug, s: doing. читать такое на карточке неудобно, и для этого есть «имена префиксов» внизу поповера: рядом с каждым найденным префиксом — поле для понятного названия. написали у t: имя «тип» — и во всех чипах, заголовках групп и фильтрах вместо t появится «тип». сохраняется по enter или по клику мимо поля. имена префиксов — настройка проекта: их видят все участники. пустое поле снимает имя, и префикс снова показывается как есть. раздел появляется только тогда, когда в проекте есть хотя бы один тег с префиксом, — иначе имени неоткуда взяться. короткие префиксы — переключатель для себя рядом стоит переключатель «короткие префиксы». он делает обратное: показывает сырой префикс (t) вместо понятного имени («тип»). это личная настройка этого устройства — она не меняется у коллег и не переезжает на телефон. полезно, когда чипов на карточке много и место дороже слов. теги на задаче в окне задачи и в быстром меню карточки теги выбираются из того же списка, сгруппированного по префиксам: клик по тегу вешает его, повторный — снимает. главная спотыкалка при переходе из clickup — создание тега прямо отсюда. внизу выбора есть поле, подписанное «новый тег, enter», и подпись не преувеличивает: кнопки рядом с ним нет, тег создаётся только по enter. введённое и не подтверждённое имя не сохранится, а поповер закроется как ни в чём не бывало. созданный так тег сразу вешается на задачу и получает случайный цвет из палитры — если цвет важен, поправьте его потом в поповере тегов доски. одна задача может нести сколько угодно тегов. при группировке доски по тегам она покажется в каждой соответствующей колонке — это одна и та же карточка, а не копии. теги и gitlab на доске, связанной с gitlab, метки приезжают из репозитория тегами. часть из них разбирается правилами в поля задачи: метка s: done может означать колонку, p: high — приоритет. такие теги не предлагаются в выборе у задачи: повесить их вручную значило бы разойтись с полем, которым они управляют. в поповере доски они видны и правятся как обычные — там вы смотрите на список меток проекта, а не назначаете их. как настраиваются сами правила разбора — в статье gitlab: синхронизация.",
+      "locales": {
+        "en": {
+          "path": "tags/tags.en.md",
+          "title": "Tags, prefixes and how to manage them",
+          "category": "Tags",
+          "updated": "2026-08-28",
+          "keywords": [
+            "tags",
+            "labels",
+            "prefixes",
+            "colon",
+            "rename",
+            "colour",
+            "delete",
+            "grouping",
+            "popover",
+            "Enter",
+            "GitLab"
+          ],
+          "headings": [
+            {
+              "id": "tags-belong-to-the-project-not-to-the-task",
+              "text": "Tags belong to the project, not to the task",
+              "level": 2
+            },
+            {
+              "id": "where-to-manage-them",
+              "text": "Where to manage them",
+              "level": 2
+            },
+            {
+              "id": "create",
+              "text": "Create",
+              "level": 3
+            },
+            {
+              "id": "rename-with-a-double-click",
+              "text": "Rename — with a double click",
+              "level": 3
+            },
+            {
+              "id": "colour-only-while-editing",
+              "text": "Colour — only while editing",
+              "level": 3
+            },
+            {
+              "id": "delete",
+              "text": "Delete",
+              "level": 3
+            },
+            {
+              "id": "prefixes-how-tags-become-a-system",
+              "text": "Prefixes: how tags become a system",
+              "level": 2
+            },
+            {
+              "id": "prefix-names",
+              "text": "Prefix names",
+              "level": 2
+            },
+            {
+              "id": "short-prefixes-a-switch-for-yourself",
+              "text": "Short prefixes — a switch for yourself",
+              "level": 2
+            },
+            {
+              "id": "tags-on-a-task",
+              "text": "Tags on a task",
+              "level": 2
+            },
+            {
+              "id": "tags-and-gitlab",
+              "text": "Tags and GitLab",
+              "level": 2
+            }
+          ],
+          "text": "a tag in tessera is more than a coloured label. board columns can be laid out by tag, and then a tag becomes a direction of work: a team, a component, a client, a stage of refinement. that is why tags are worth creating deliberately and naming systematically — the second view of your board rests on them. project tag management: the list, renaming and colour tags belong to the project, not to the task the set of tags belongs to the project: every board of one project sees the same list, and a neighbouring project has its own. a tag removed from every task does not disappear from the list — it stays as a blank, and its column on a tag-grouped board is simply empty. where to manage them the tags button in the board header opens a popover with the project's whole tag list. on a narrow screen the same thing lives in the board menu (the three-dot icon). the popover shows everything at once: which tags exist, what colour they are and how they group by prefix. create at the bottom of the popover there is a new tag field. type a name and press add or enter. a new tag takes the first colour of the palette (purple) — the colour is changed separately, while renaming. rename — with a double click a single click on a tag in the popover does nothing: it is not a button but a sample of how the tag looks on a card. renaming opens on a double click — the hover tooltip says as much (“name · double-click to rename”). the tag turns into an input; enter or a click elsewhere saves it, and an unchanged name simply closes the field. colour — only while editing the palette of eight colours appears under the tag you are editing, and nowhere else. that is the answer to the frequent “where do i change a tag's colour”: double-click the tag → the row of circles under it → click the one you want. the colour applies immediately and the name field stays open. the colour is not just decoration: the chip gradient on a card, the column colour under tag grouping and the fill in filters are all derived from it. delete the bin next to a tag removes it from every task in the project at once — the confirmation says so plainly. there is no undo: restoring a tag means creating it again and re-applying it by hand. if a tag is simply no longer needed but you would rather not break the history, it is safer to rename it (adding “archive”, say) and stop using it. prefixes: how tags become a system tessera reads a tag whose name contains a colon as a prefix and a value: difficulty::high — the :: separator; status: in review — the : separator (a colon and a space). both spellings are equal. everything before the separator is the prefix (the namespace), everything after it is the value. what that buys you: 1. a two-segment chip. such a tag is drawn the way gitlab draws it: a filled segment with the prefix name on the left, the value on the right. one glance at the card and it is clear that “high” is about difficulty, not about priority. 2. grouped lists. in the tag popover, in a task's tag picker and in the board filter, tags are collected into groups by prefix, each with its own header. a list of forty tags stays readable. 3. columns for a single prefix. a board can be grouped not “by all tags” but by one prefix — then only its values become columns, and the rest of the tags stay out of the layout. see the board bar. case and spaces around the prefix do not matter: difficulty:: and difficulty :: are the same prefix. prefix names a prefix inside a tag name is often short — t: bug, s: doing. that is awkward to read on a card, which is what prefix names at the bottom of the popover is for: next to every prefix found there is a field for a friendly name. give t: the name “type” and every chip, group header and filter shows “type” instead of t. it is saved with enter or by clicking outside the field. prefix names are a project setting: everyone sees them. the section appears only once the project has at least one prefixed tag — otherwise there is nothing to name. short prefixes — a switch for yourself next to it sits the short prefixes switch. it does the opposite: it shows the raw prefix (t) instead of the friendly name (“type”). this is a personal setting of this device — it does not change for your colleagues and does not travel to your phone. handy when a card carries many chips and space is worth more than words. tags on a task in the task window and in a card's quick menu, tags are picked from the same list grouped by prefix: click a tag to attach it, click again to remove it. the main stumbling block when moving from clickup is creating a tag right there. there is a field at the bottom of the picker labelled “new tag, enter”, and the label does not overstate it: there is no button next to it, a tag is created only with enter. a name typed and not confirmed is not saved, and the popover closes as if nothing happened. a tag created this way is attached to the task straight away and gets a random colour from the palette — if the colour matters, fix it afterwards in the board's tag popover. one task can carry any number of tags. when the board is grouped by tags it appears in every matching column — the same card, not copies. tags and gitlab on a board linked to gitlab, repository labels arrive as tags. some of them are parsed by rules into task fields: the label s: done may mean a column, p: high a priority. such tags are not offered in a task's picker: attaching one by hand would mean disagreeing with the field it drives. in the board popover they are visible and editable like any other — there you are looking at the project's label list, not assigning labels. how the parsing rules themselves are configured is covered in gitlab: synchronisation."
+        }
+      }
+    },
+    {
       "slug": "documents",
       "path": "documents/documents.md",
       "title": "Документы",
       "category": "Документы",
       "order": 40,
-      "updated": "2026-08-21",
+      "updated": "2026-08-28",
       "keywords": [
         "документы",
         "редактор",
         "docx",
         "word",
+        "odt",
         "импорт",
+        "экспорт",
         "pdf",
         "версии",
         "история",
+        "согласование",
+        "подпись",
         "комментарии",
+        "обсуждение",
         "шаблоны",
-        "оглавление"
+        "оглавление",
+        "вложенные"
       ],
       "platforms": ["web", "android"],
       "headings": [
         {
-          "id": "структура",
-          "text": "Структура",
+          "id": "дерево-документов",
+          "text": "Дерево документов",
           "level": 2
         },
         {
@@ -1669,8 +1834,18 @@
           "level": 2
         },
         {
-          "id": "импорт-из-word-и-pdf",
-          "text": "Импорт из Word и PDF",
+          "id": "оглавление",
+          "text": "Оглавление",
+          "level": 2
+        },
+        {
+          "id": "сохранение-и-совместная-работа",
+          "text": "Сохранение и совместная работа",
+          "level": 2
+        },
+        {
+          "id": "обсуждения",
+          "text": "Обсуждения",
           "level": 2
         },
         {
@@ -1679,12 +1854,27 @@
           "level": 2
         },
         {
-          "id": "шаблоны-и-связи",
-          "text": "Шаблоны и связи",
+          "id": "связи-с-задачами-и-согласование",
+          "text": "Связи с задачами и согласование",
+          "level": 2
+        },
+        {
+          "id": "импорт",
+          "text": "Импорт",
+          "level": 2
+        },
+        {
+          "id": "экспорт",
+          "text": "Экспорт",
+          "level": 2
+        },
+        {
+          "id": "шаблоны",
+          "text": "Шаблоны",
           "level": 2
         }
       ],
-      "text": "раздел «документы» — совместный редактор для того, что не помещается в описание задачи: требования, протоколы встреч, инструкции. раздел помечен alpha: он развивается, и отдельные вещи ещё меняются. раздел «документы»: карточки документов с превью структура документы складываются в дерево — у документа могут быть вложенные документы, так что раздел ведёт себя как небольшая вики. слева список документов, справа — оглавление текущего, собранное по заголовкам. редактор текст набирается в блочном редакторе: заголовки, списки, таблицы, изображения, блоки кода, выравнивание. блок можно перетащить за ручку слева, вставить новый под ним и обсудить отдельно. комментарии привязываются к блоку, а не висят общим списком: тред открывается рядом с абзацем, помечается решённым и при необходимости возвращается в работу. импорт из word и pdf документ .docx загружается прямо в раздел, с сохранением форматирования: цвета и размеры текста, горизонтальные линии, блоки кода, заливка и рамки таблиц. цвета из word остаются читаемыми и в тёмной теме. pdf-файлы открываются просмотрщиком внутри приложения — скачивать и переключаться на другую программу не нужно. история версий у документа есть история: можно посмотреть предыдущие редакции и вернуться к любой из них. если двое правят один документ одновременно, приложение предупредит о расхождении и предложит разобрать конфликт, а не затрёт чужой текст молча. шаблоны и связи часто повторяющийся документ сохраняется шаблоном и создаётся из него в один клик. документ связывается с задачами — связь видна с обеих сторон, снимается кнопкой «убрать связь».",
+      "text": "раздел «документы» — совместный редактор для того, что не помещается в описание задачи: требования, протоколы встреч, регламенты, инструкции. в отличие от описания задачи документ живёт сам по себе: у него есть версии, оглавление, обсуждение по абзацам и маршрут согласования. раздел помечен alpha — он развивается, и отдельные вещи ещё меняются. раздел «документы»: карточки документов с превью дерево документов слева список документов пространства, справа — открытый документ. у документа могут быть вложенные документы: кнопка «вложенный документ» в меню действий создаёт потомка, а «показать вложенные (n)» разворачивает ветку. так раздел ведёт себя как небольшая вики, а не как плоская папка с файлами. удаление предупреждает честно: если у документа есть потомки, в подтверждении будет сказано, что он будет удалён вместе с вложенными, и сколько их. редактор текст набирается в блочном редакторе — каждый абзац, заголовок, список или таблица это отдельный блок. тулбар над документом: отмена и повтор (ctrl+z / ctrl+shift+z), уровни заголовков, жирный (ctrl+b), курсив (ctrl+i), подчёркнутый (ctrl+u), зачёркнутый, моноширинный; списки — маркированный, нумерованный и список задач с чекбоксами; увеличение и уменьшение отступа; таблица 3×3 с шапкой; изображение, ссылка, блок кода, цитата, разделитель; выравнивание по левому краю, по центру, по правому и по ширине. правее — три подборщика: шрифт (системный, с засечками, моноширинный), кегль и межстрочный интервал. значение «по умолчанию» в каждом из них снимает ручную настройку и возвращает оформление темы. клавиша / открывает меню вставки прямо в тексте — то же самое без похода в тулбар, с группами «текст», «списки», «вставка» и «загрузка»: абзац, заголовки трёх уровней, цитата, списки, таблица, разделитель, блок кода, изображение и pdf. ручка слева от блока (появляется при наведении) даёт три действия: вставить блок ниже, обсудить блок и перетащить блок на новое место. ссылка умеет вести не только наружу: в поле адреса, кроме https://…, можно выбрать раздел этого документа — получится внутренняя ссылка на заголовок. оглавление кнопка «оглавление» открывает панель, собранную по заголовкам документа: клик по строке перематывает к разделу. пока заголовков нет, панель прямо говорит, что их нужно добавить, — оглавление не настраивается вручную и не требует отдельной разметки. сохранение и совместная работа документ сохраняется сам. строка состояния над текстом показывает, что происходит: «сохранение…», «есть несохранённые правки» или «все изменения сохранены». пока документ открыт у нескольких участников, рядом с заголовком видно, кто редактирует, а кто смотрит. блок, который в этот момент правит коллега, для остальных заблокирован — попытка печатать в нём отвечает подсказкой «блок редактирует имя». это не мешает работать в соседнем абзаце. если документ всё же изменили в другом месте (например, в другой вкладке), появится предупреждение «документ изменён в другом месте — ваши последние правки не сохранены» и кнопка «загрузить актуальную версию». чужой текст не затирается молча. обсуждения комментарии в документе привязываются к блоку, а не висят общим списком. выделите блок и нажмите значок в поле слева («обсудить блок») — тред откроется в панели обсуждения напротив абзаца. комментарий можно оставить и ко всему документу — такие треды собраны в секции «к документу». тред помечается решённым и при необходимости возвращается в работу. привязку к блоку можно снять кнопкой «открепить» — тред останется, но перестанет держаться за абзац. если блок с тредом удалили, тред не пропадает: он переезжает в секцию «блок удалён», где его видно и можно дочитать. удаление корневого комментария предупреждает, сколько ответов уйдёт вместе с ним. история версий кнопка «история версий» открывает список редакций. версия создаётся кнопкой «сохранить версию»; к ней можно приписать метку — например, «согласованная редакция», — чтобы потом не искать нужную по дате. выбранная версия показывается сравнением с текущим состоянием: сколько блоков добавлено, удалено, изменено и перемещено, с пометкой у каждого блока. если расхождений нет, так и написано — «версии совпадают». «восстановить» возвращает документ к выбранной редакции. текущее состояние при этом не теряется — оно само остаётся в истории, так что откат обратим. связи с задачами и согласование кнопка «связи и согласование» открывает панель с двумя частями. связи. документ связывается с задачами — целиком («связать задачу») или фрагментом: выделенный блок связывается отдельно («связать блок с задачей»), и в списке такая связь так и подписана — «фрагмент документа». задача ищется по номеру или названию. связь видна с обеих сторон и снимается кнопкой «убрать»; со стороны задачи то же самое описано в статье документы задачи. согласование. кнопка «отправить на согласование» заводит маршрут: название («что согласуем»), список согласующих и режим — «по очереди» (следующий видит запрос, когда подписал предыдущий) или «одновременно» (запрос уходит всем сразу). пока маршрут открыт, второй завести нельзя. согласующий подписывает или отклоняет, при желании с комментарием. в строке маршрута виден прогресс — «подписали из всего», а у каждого участника пометка: ждёт, подписал или отклонил. маршрут можно отозвать; уже поставленные подписи при этом остаются в протоколе. готовые маршруты складываются в «протоколы согласования» со статусом (на согласовании, согласовано, отклонено, отозвано) и подписью «версия n · автор · дата»: протокол привязан к конкретной редакции, поэтому позднейшие правки не выдают себя за согласованный текст. импорт кнопка «импорт» принимает .docx, .doc, .odt, .rtf, .fodt, .html, .txt, а также .pdf, .md и .json (выгрузка самой tessera). ограничение — 20 мб на файл. форматирование переносится: цвета и размеры текста, горизонтальные линии, блоки кода, заливка и рамки таблиц. цвета из word остаются читаемыми и в тёмной теме. если часть изображений перенести не удалось, приложение скажет об этом прямо в уведомлении и назовёт количество, а не сделает вид, что всё прошло гладко. офисные форматы конвертирует отдельный сервис. если он не развёрнут, кнопка честно сообщает об этом и оставляет только то, что работает без него: pdf, markdown и json. pdf никогда не конвертируется — он сохраняется как файл и открывается встроенным просмотрщиком: перелистывание страниц, увеличение и уменьшение, скачивание. переключаться на другую программу не нужно. экспорт «выгрузить документ» предлагает форматы: pdf, word (.docx), opendocument (.odt) и html. html собирается самим сервером и доступен всегда; остальные три требуют того же сервиса конвертации, что и импорт, — без него в списке останется только html. перед выгрузкой несохранённые правки записываются, так что файл всегда соответствует тому, что на экране, а не состоянию секундной давности. шаблоны «из шаблона» создаёт документ по заготовке. три шаблона встроены: протокол совещания (участники, повестка, решения, задачи по итогам), техническое задание (постановка, объём, критерии приёмки, риски) и ретроспектива (что получилось, что мешало, что меняем). свои шаблоны берутся из двух мест: «сохранить как шаблон» превращает в заготовку текущий документ, а кнопка «загрузить» в окне шаблонов принимает файл. встроенные шаблоны помечены и не удаляются; удаление своего предупреждает, что документы, созданные по нему, останутся на месте.",
       "android": {
         "path": "documents/documents.android.md",
         "updated": "2026-08-24",
@@ -1730,34 +1920,50 @@
           "path": "documents/documents.en.md",
           "title": "Documents",
           "category": "Documents",
-          "updated": "2026-08-21",
+          "updated": "2026-08-28",
           "keywords": [
             "documents",
             "editor",
             "docx",
             "word",
+            "odt",
             "import",
+            "export",
             "pdf",
             "versions",
             "history",
+            "approval",
+            "sign",
             "comments",
+            "discussion",
             "templates",
-            "outline"
+            "table of contents",
+            "nested"
           ],
           "headings": [
             {
-              "id": "structure",
-              "text": "Structure",
+              "id": "the-document-tree",
+              "text": "The document tree",
               "level": 2
             },
             {
-              "id": "editor",
-              "text": "Editor",
+              "id": "the-editor",
+              "text": "The editor",
               "level": 2
             },
             {
-              "id": "word-and-pdf-import",
-              "text": "Word and PDF import",
+              "id": "table-of-contents",
+              "text": "Table of contents",
+              "level": 2
+            },
+            {
+              "id": "saving-and-working-together",
+              "text": "Saving and working together",
+              "level": 2
+            },
+            {
+              "id": "discussions",
+              "text": "Discussions",
               "level": 2
             },
             {
@@ -1766,12 +1972,27 @@
               "level": 2
             },
             {
-              "id": "templates-and-links",
-              "text": "Templates and links",
+              "id": "task-links-and-approval",
+              "text": "Task links and approval",
+              "level": 2
+            },
+            {
+              "id": "import",
+              "text": "Import",
+              "level": 2
+            },
+            {
+              "id": "export",
+              "text": "Export",
+              "level": 2
+            },
+            {
+              "id": "templates",
+              "text": "Templates",
               "level": 2
             }
           ],
-          "text": "the documents section is a collaborative editor for what doesn't fit into a task description: requirements, meeting notes, guides. the section is marked alpha: it's evolving, and some things still change. the documents section: document cards with previews structure documents are filed into a tree — a document can have nested documents, so the section behaves like a small wiki. on the left is the list of documents, on the right the outline of the current one, built from its headings. editor text is typed in a block editor: headings, lists, tables, images, code blocks, alignment. a block can be dragged by the handle on the left, a new one inserted below it, and each one discussed separately. comments are anchored to a block rather than sitting in a shared list: a thread opens next to the paragraph, is marked resolved and, if needed, reopened. word and pdf import a .docx document is uploaded straight into the section with its formatting preserved: text colours and sizes, horizontal rules, code blocks, table fills and borders. colours from word stay readable in the dark theme too. pdf files open in a viewer inside the app — no need to download them or switch to another program. version history a document has a history: you can look at earlier revisions and return to any of them. if two people edit one document at once, the app warns about the divergence and offers to resolve the conflict rather than silently overwriting someone else's text. templates and links a document you repeat often is saved as a template and created from it in one click. a document is linked to tasks — the link is visible from both sides and removed with the “remove the link” button.",
+          "text": "documents is a collaborative editor for everything that outgrows a task description: requirements, meeting minutes, policies, how-tos. unlike a task description, a document stands on its own — it has versions, a table of contents, per-paragraph discussion and an approval route. the section is marked alpha: it is still developing, and details do change. the documents section: document cards with previews the document tree the list of the workspace's documents is on the left, the open document on the right. a document can have nested documents: nested document in the actions menu creates a child, and show nested (n) expands the branch. that makes the section behave like a small wiki rather than a flat folder of files. deleting is honest about the consequences: if the document has children, the confirmation says it will be deleted together with its nested documents, and how many there are. the editor text is written in a block editor — every paragraph, heading, list and table is a block of its own. the toolbar above the document: undo and redo (ctrl+z / ctrl+shift+z), heading levels, bold (ctrl+b), italic (ctrl+i), underline (ctrl+u), strikethrough, monospace; lists — bulleted, numbered and a task list with checkboxes; increase and decrease indent; a 3×3 table with a header row; image, link, code block, quote, divider; align left, centre, right and justify. to the right sit three pickers: font (system, serif, monospace), size and line height. the «default» value in each of them drops the manual setting and hands the styling back to the theme. the / key opens the insert menu right in the text — the same thing without a trip to the toolbar, grouped into text, lists, insert and upload: paragraph, three heading levels, quote, lists, table, divider, code block, image and pdf. the handle to the left of a block (it appears on hover) offers three actions: insert a block below, discuss the block and drag the block somewhere else. a link does not have to point outwards: besides https://…, the address field lets you pick a section of this document, which produces an internal link to that heading. table of contents table of contents opens a pane built from the document's headings; clicking a line scrolls to that section. while there are no headings, the pane says so outright — the contents are not assembled by hand and need no special markup. saving and working together the document saves itself. the status line above the text says what is going on: saving…, unsaved changes or all changes saved. while several people have the document open, the names next to the title show who is editing and who is viewing. a block a colleague is editing right now is locked for everyone else — typing into it answers with «name is editing this block». work in the neighbouring paragraph is unaffected. if the document was changed elsewhere anyway (in another tab, say), you get the warning «the document was changed elsewhere — your latest edits were not saved» and a load the current version button. nobody's text is overwritten silently. discussions comments in a document are anchored to a block rather than piling up in one list. select a block and click the icon in the left gutter (discuss the block) — the thread opens in the discussion pane beside the paragraph. a comment can also be left on the whole document; those threads are collected under «on the document». a thread can be marked resolved and later reopened. the anchor can be dropped with unpin — the thread stays, it just stops holding on to a paragraph. if the block with a thread is deleted, the thread does not disappear: it moves to the block deleted section, where it stays readable. deleting a root comment warns how many replies go with it. version history version history opens the list of revisions. a version is taken with save version; you can attach a label to it — «approved wording», for instance — so you don't have to hunt for the right one by date later. the selected version is shown as a comparison against the current state: how many blocks were added, removed, changed and moved, with a marker on each. if there are no differences, it says so — «the versions are identical». restore takes the document back to the chosen revision. the current state is not lost — it goes into the history itself, so the rollback is reversible. task links and approval links and approval opens a pane with two halves. links. a document is linked to tasks either whole (link a task) or by fragment: a selected block is linked separately (link the block to a task), and the list labels such a link accordingly — «document fragment». tasks are searched by number or title. the link is visible from both sides and is removed with remove; the task side of it is covered in task documents. approval. send for approval opens a route: a title (what is being approved), the list of approvers and the mode — sequentially (the next person sees the request once the previous one has signed) or in parallel (everyone is asked at once). while a route is open, a second one cannot be started. an approver signs or rejects, optionally with a comment. the route line shows the progress — «signed of total» — and each participant is marked as waiting, signed or rejected. a route can be withdrawn; signatures already given stay in the record. finished routes are collected under approval records with their status (pending, approved, rejected, withdrawn) and a caption of «revision n · author · date»: a record is bound to a specific revision, so later edits cannot pass themselves off as approved text. import import accepts .docx, .doc, .odt, .rtf, .fodt, .html, .txt, and also .pdf, .md and .json (tessera's own export). the limit is 20 mb per file. formatting comes across: text colours and sizes, horizontal rules, code blocks, table fills and borders. colours from word stay readable in the dark theme too. if some images could not be brought over, the app says so in the notification and names the count instead of pretending everything went smoothly. office formats are converted by a separate service. if it is not deployed, the button says so and leaves what works without it: pdf, markdown and json. pdf is never converted — it is stored as a file and opened by the built-in viewer: page navigation, zoom in and out, download. no need to switch to another program. export export document offers pdf, word (.docx), opendocument (.odt) and html. html is rendered by the server itself and is always available; the other three need the same conversion service as import — without it, only html remains in the list. unsaved edits are written out before the export runs, so the file always matches what is on screen rather than the state of a second ago. templates from a template creates a document from a blueprint. three are built in: meeting minutes (attendees, agenda, decisions, follow-up tasks), a specification (statement, scope, acceptance criteria, risks) and a retrospective (what worked, what got in the way, what we change). your own templates come from two places: save as template turns the current document into a blueprint, and the upload button in the templates dialog takes a file. built-in templates are marked as such and cannot be deleted; deleting one of your own warns that documents already created from it stay where they are.",
           "android": {
             "path": "documents/documents.android.en.md",
             "updated": "2026-08-24",
@@ -2059,8 +2280,21 @@
       "title": "Этапы",
       "category": "Этапы",
       "order": 60,
-      "updated": "2026-08-21",
-      "keywords": ["этапы", "вехи", "milestone", "релиз", "прогресс", "сроки", "gitlab"],
+      "updated": "2026-08-28",
+      "keywords": [
+        "этапы",
+        "вехи",
+        "milestone",
+        "спринт",
+        "релиз",
+        "прогресс",
+        "сроки",
+        "закрытые",
+        "архив",
+        "бэклог",
+        "дерево проектов",
+        "gitlab"
+      ],
       "platforms": ["web", "android"],
       "headings": [
         {
@@ -2069,8 +2303,38 @@
           "level": 2
         },
         {
+          "id": "управление-этапами-проекта",
+          "text": "Управление этапами проекта",
+          "level": 2
+        },
+        {
+          "id": "создать",
+          "text": "Создать",
+          "level": 3
+        },
+        {
+          "id": "переименовать-и-переставить-сроки",
+          "text": "Переименовать и переставить сроки",
+          "level": 3
+        },
+        {
+          "id": "закрыть-и-открыть-заново",
+          "text": "Закрыть и открыть заново",
+          "level": 3
+        },
+        {
+          "id": "удалить",
+          "text": "Удалить",
+          "level": 3
+        },
+        {
           "id": "как-задача-попадает-в-этап",
           "text": "Как задача попадает в этап",
+          "level": 2
+        },
+        {
+          "id": "этапы-в-дереве-проектов",
+          "text": "Этапы в дереве проектов",
           "level": 2
         },
         {
@@ -2079,7 +2343,7 @@
           "level": 2
         }
       ],
-      "text": "этап (веха, milestone) — точка, к которой должен быть готов набор задач: релиз, демо, сдача заказчику. раздел открывается пунктом «этапы» в боковой панели и показывает этапы всех проектов пространства сразу. раздел «этапы»: этапы проектов с прогрессом что видно в списке этапы сгруппированы по проектам. в строке этапа — название, даты начала и завершения, полоса прогресса и счётчик выполненных задач (например, 3/6). пока к этапу не привязана ни одна задача, вместо прогресса написано «нет задач». переключатель справа сверху выбирает, что показывать: «активные» — только незакрытые этапы, «все» — вместе с завершёнными. клик по строке открывает доску проекта, отфильтрованную по этому этапу, — сразу видно, что осталось. шестерёнка у названия проекта открывает управление его этапами: создание, переименование, даты, закрытие. как задача попадает в этап этап выбирается в окне задачи, в поле «этап». одна задача принадлежит одному этапу; сняли выбор — задача из этапа выпала, прогресс пересчитался. на доске по этапам можно группировать и фильтровать так же, как по тегам и исполнителям — см. доски и задачи. связь с gitlab если проект связан с gitlab, этап синхронизируется с одноимённой вехой репозитория: рядом с названием появляется значок gitlab, ведущий на веху в самом gitlab. синхронизация не обязательна — этапы полностью работают и без неё.",
+      "text": "этап (веха, milestone) — точка, к которой должен быть готов набор задач: релиз, демо, спринт, сдача заказчику. раздел открывается пунктом «этапы» в боковой панели и показывает этапы всех проектов пространства сразу. раздел «этапы»: этапы проектов с прогрессом что видно в списке этапы сгруппированы по проектам. в строке этапа — название, сроки (с 1 сентября, до 15 сентября или оба), полоса прогресса и счётчик выполненных задач (например, 3/6). пока к этапу не привязана ни одна задача, вместо прогресса написано «нет задач». переключатель справа сверху выбирает, что показывать: «активные» — только открытые этапы, «все» — вместе с закрытыми. если активных нет, раздел прямо предлагает переключиться на «все» — пустой экран не выглядит поломкой. клик по строке открывает доску проекта, отфильтрованную по этому этапу, — сразу видно, что осталось. управление этапами проекта этапы заводятся в отдельном окне: шестерёнка у названия проекта в разделе «этапы» или пункт «этапы…» в контекстном меню проекта в дереве слева. управление этапами проекта: создание, сроки, закрытие создать нижняя строка окна — форма создания: название, необязательные начало и конец, кнопка «создать». пока название пустое, кнопка неактивна; enter в поле названия делает то же самое, что кнопка. даты необязательны обе. этап без сроков — нормальная ситуация: он просто не покажет диапазон в списке. переименовать и переставить сроки клик по названию этапа превращает строку в форму правки: поле имени и два выбора даты. галочка сохраняет, «отмена» выходит без изменений. даты очищаются крестиком в самом поле — так этап лишается срока, не теряя задач. закрыть и открыть заново кнопка с галочкой закрывает этап: он остаётся со всеми задачами и историей, но уходит из «активных» — в списке раздела он покажется только на «все», а в дереве проектов спрячется, пока не включить показ закрытых. кнопка со стрелками открывает его обратно. закрытая строка приглушена, так что перепутать открытый этап с закрытым трудно. это и есть «архивные» этапы: отдельного архива для них нет, состояние переключается прямо здесь и обратимо. удалить корзина удаляет этап после подтверждения. оно говорит главное: задачи останутся, но потеряют этап — данные не пропадают, теряется только привязка. как задача попадает в этап этап выбирается в окне задачи, в поле «этап». оттуда же его можно создать на ходу — строка «новый этап…» в списке заводит этап в проекте и сразу вешает его на задачу. одна задача принадлежит одному этапу; сняли выбор — задача из этапа выпала, прогресс пересчитался. если задача лежит в закрытом этапе, рядом со значением так и написано — «закрыт». на доске по этапам можно группировать (колонки станут этапами, плюс колонка «без этапа») и фильтровать — так же, как по тегам и исполнителям; подробнее в статье панель доски. когда доска открыта в рамках одного этапа, сверху видна плашка «показан один этап» с кнопкой «сбросить этап». этапы в дереве проектов по умолчанию под проектом в боковой панели перечислены его доски. это настраивается: контекстное меню проекта → «показывать в дереве» → «доски», «этапы» или «доски и этапы». в режимах с этапами под проектом появляются строки этапов и отдельная строка «бэклог» — задачи без этапа. клик по любой из них открывает доску проекта с соответствующим фильтром. порядок: открытые этапы выше закрытых, внутри — по сроку, ближайший вниз списка. закрытые этапы в дереве по умолчанию скрыты. когда этапы в дереве показываются, в том же меню появляется переключатель «показывать закрытые этапы». одно ограничение: строки этапов — это навигация по доске проекта, поэтому в проекте без единой доски открыть этап из дерева не получится — приложение об этом скажет. связь с gitlab если проект связан с gitlab, этап синхронизируется с одноимённой вехой репозитория. у такого этапа рядом с названием значок gitlab, ведущий на веху в самом gitlab, а править его в tessera нельзя — ни имя, ни сроки, ни состояние: источник истины в gitlab, и подсказка на названии говорит об этом прямо. обратное направление доступно: у собственного этапа tessera есть кнопка «в gitlab», которая создаёт одноимённую веху в связанном репозитории и связывает их. удаление связанного этапа предупреждает отдельно: в gitlab веха останется, снимется только связь. синхронизация не обязательна — этапы полностью работают и без неё. как настраивается сама связь, описано в статье gitlab: синхронизация.",
       "android": {
         "path": "milestones/milestones.android.md",
         "updated": "2026-08-24",
@@ -2117,8 +2381,19 @@
           "path": "milestones/milestones.en.md",
           "title": "Milestones",
           "category": "Milestones",
-          "updated": "2026-08-21",
-          "keywords": ["milestones", "milestone", "release", "progress", "due dates", "gitlab"],
+          "updated": "2026-08-28",
+          "keywords": [
+            "milestones",
+            "sprint",
+            "release",
+            "progress",
+            "dates",
+            "closed",
+            "archive",
+            "backlog",
+            "project tree",
+            "gitlab"
+          ],
           "headings": [
             {
               "id": "what-the-list-shows",
@@ -2126,17 +2401,47 @@
               "level": 2
             },
             {
+              "id": "managing-a-project-s-milestones",
+              "text": "Managing a project's milestones",
+              "level": 2
+            },
+            {
+              "id": "create",
+              "text": "Create",
+              "level": 3
+            },
+            {
+              "id": "rename-and-move-the-dates",
+              "text": "Rename and move the dates",
+              "level": 3
+            },
+            {
+              "id": "close-and-reopen",
+              "text": "Close and reopen",
+              "level": 3
+            },
+            {
+              "id": "delete",
+              "text": "Delete",
+              "level": 3
+            },
+            {
               "id": "how-a-task-joins-a-milestone",
               "text": "How a task joins a milestone",
               "level": 2
             },
             {
-              "id": "the-link-with-gitlab",
-              "text": "The link with GitLab",
+              "id": "milestones-in-the-project-tree",
+              "text": "Milestones in the project tree",
+              "level": 2
+            },
+            {
+              "id": "gitlab",
+              "text": "GitLab",
               "level": 2
             }
           ],
-          "text": "a milestone is a point by which a set of tasks should be ready: a release, a demo, a hand-off to the client. the section opens from the milestones item in the sidebar and shows the milestones of every project in the workspace at once. the milestones section: project milestones with progress what the list shows milestones are grouped by project. a milestone row carries the name, the start and end dates, a progress bar and a counter of completed tasks (for example, 3/6). until a milestone has a single task attached, “no tasks” shows in place of the progress. the toggle at the top right chooses what to show: active — only milestones that aren't closed, all — closed ones included. clicking a row opens the project board filtered by that milestone, so you can see at a glance what's left. the gear next to a project name opens the management of its milestones: creating, renaming, dates, closing. how a task joins a milestone a milestone is picked in the task window, in the milestone field. a task belongs to a single milestone; clear the choice and the task drops out of the milestone, and the progress is recalculated. on a board you can group and filter by milestones just as by tags and assignees — see boards and tasks. the link with gitlab if a project is linked to gitlab, a milestone is synced with the repository milestone of the same name: a gitlab icon appears next to the name, leading to the milestone in gitlab itself. the sync is optional — milestones work fully without it.",
+          "text": "a milestone is a point by which a set of tasks has to be ready: a release, a demo, a sprint, a handover. the section opens from milestones in the sidebar and shows the milestones of every project in the workspace at once. the milestones section: project milestones with progress what the list shows milestones are grouped by project. a row carries the name, the dates (from 1 september, until 15 september, or both), a progress bar and a counter of completed tasks (3/6, say). while no task is attached, the progress reads «no tasks» instead. the switch in the top right chooses what to show: active — open milestones only, all — closed ones as well. if there are no active ones, the section suggests switching to «all» outright, so an empty screen doesn't look like a fault. clicking a row opens the project's board filtered by that milestone — what is left is visible at once. managing a project's milestones milestones are created in a dialog of their own: the gear next to the project name in the milestones section, or milestones… in the project's context menu in the tree on the left. managing a project's milestones: creating, dates, closing create the bottom row of the dialog is the creation form: a name, an optional start and end, and the create button. while the name is empty the button is disabled; enter in the name field does the same thing as the button. both dates are optional. a milestone without dates is perfectly normal — it just won't show a range in the list. rename and move the dates clicking the name turns the row into an edit form: a name field and two date pickers. the tick saves, cancel leaves it as it was. dates are cleared by the small cross in the field itself, which strips a milestone of its deadline without touching its tasks. close and reopen the tick button closes a milestone: it keeps all its tasks and history but leaves the active set — it shows up in the section only under «all», and it hides from the project tree until closed ones are turned on. the arrows button reopens it. a closed row is dimmed, so an open milestone is hard to mistake for a closed one. these are the «archived» milestones: there is no separate archive for them, the state is toggled right here and is reversible. delete the bin deletes a milestone after a confirmation, which says the thing that matters: the tasks stay, they just lose their milestone. nothing is lost but the attachment. how a task joins a milestone the milestone is picked in the task window, in the milestone field. it can also be created on the spot — the «new milestone…» row in the list creates one in the project and attaches it to the task straight away. a task belongs to one milestone; clear the choice and it leaves, and the progress is recounted. if the task sits in a closed milestone, the value says so — «closed». a board can be grouped by milestone (columns become milestones, plus a «no milestone» column) and filtered by it, exactly as by tags and assignees — see the board bar. when a board is opened scoped to a single milestone, a «one milestone shown» chip appears on top with a «clear milestone» button. milestones in the project tree by default a project in the sidebar lists its boards. that is configurable: the project's context menu → show in the tree → boards, milestones or boards and milestones. in the modes that include milestones, milestone rows appear under the project along with a backlog row — the tasks with no milestone. clicking any of them opens the project's board with the matching filter. the order: open milestones above closed ones, and within each group by date, the nearest one further down. closed milestones are hidden in the tree by default. once milestones are shown there, the same menu grows a show closed milestones toggle. one limitation: milestone rows are navigation over the project's board, so a project without a single board cannot open a milestone from the tree — the app says so. gitlab if the project is linked to gitlab, a milestone syncs with the repository milestone of the same name. such a milestone carries a gitlab icon next to its name that leads to the milestone in gitlab itself, and it cannot be edited in tessera — not the name, not the dates, not the state: gitlab is the source of truth, and the hint on the name says exactly that. the other direction is available: a native tessera milestone has a to gitlab button that creates a milestone of the same name in the linked repository and links the two. deleting a linked milestone warns separately: the gitlab milestone stays, only the link is dropped. syncing is not required — milestones work perfectly well without it. how the link itself is set up is described in gitlab sync.",
           "android": {
             "path": "milestones/milestones.android.en.md",
             "updated": "2026-08-24",

@@ -339,6 +339,33 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'milestones')
     })
 
+    // ── tags and milestone management (#2823, wave 3) ──
+
+    test('управление тегами', async ({ page }) => {
+      await openBoard(page)
+      // The tag popover hangs off the first button of `.board-actions`; the
+      // caption is translated, so the anchor is the position in that row.
+      await page.locator('.board-actions button').first().click()
+      await expect(page.locator('.tagmgr')).toBeVisible()
+      // Double-click is what opens the rename field and the colour swatches under
+      // it — the gesture the article exists to document, so the shot has to show
+      // its result rather than the resting list.
+      await page.locator('.tagmgr .chip').first().dblclick()
+      await expect(page.locator('.tagmgr .swatches')).toBeVisible()
+      await shoot(page, scheme, 'tags-manager')
+    })
+
+    test('управление этапами', async ({ page }) => {
+      await page.goto('/milestones')
+      await page.locator('.ms-manage').first().click()
+      const card = page.locator('.m-card')
+      await expect(card).toBeVisible()
+      // The rows arrive in their own request; waiting for one keeps the shutter
+      // off the empty state, which is a picture of nothing.
+      await expect(card.locator('.m-row').first()).toBeVisible()
+      await shoot(page, scheme, 'milestones-manage')
+    })
+
     // Admin screens (#2810). They exist only for a global admin, and the backend
     // hands that to the first account of an instance — so these run on a clean
     // database and skip on a shared one instead of shooting a redirect to the

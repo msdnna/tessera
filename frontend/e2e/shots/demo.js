@@ -31,7 +31,7 @@ const CARDS = {
       priority: 2,
       start: 1,
       due: 6,
-      tags: ['дизайн'],
+      tags: ['дизайн', 'T: улучшение'],
     },
     {
       title: 'Импорт задач из CSV',
@@ -39,14 +39,14 @@ const CARDS = {
       priority: 1,
       start: 5,
       due: 9,
-      tags: ['бэкенд'],
+      tags: ['бэкенд', 'Сложность::высокая'],
     },
     {
       title: 'Ревизия пустых состояний',
       priority: 0,
       start: -3,
       due: 1,
-      tags: ['дизайн'],
+      tags: ['дизайн', 'T: баг'],
     },
   ],
   'В процессе': [
@@ -109,7 +109,20 @@ const TAG_COLORS = {
   фронтенд: '#7c5cff',
   бэкенд: '#2f80ed',
   мобильное: '#18a058',
+  // Prefixed tags (#2823, wave 3). The tags article is largely about prefixes —
+  // two-segment pills, grouped pickers, friendly prefix names — and a seed of
+  // four bare tags pictures none of it. Both separators are represented on
+  // purpose: `T: ` is the short form the friendly name below renames, `::` the
+  // long one left as-is, so one screenshot shows a named prefix and a raw one.
+  'T: баг': '#e0533d',
+  'T: улучшение': '#0eb0a9',
+  'Сложность::высокая': '#eb2f96',
 }
+
+// Friendly name for the short prefix, set on the project like a user would in
+// the tag popover. Without it `T` stays `T` and the «Имена префиксов» section
+// has nothing to show. Key is the canonical prefix (handlers/tag_prefixes.go).
+const TAG_PREFIX_NAMES = [{ prefix: 'T:', label: 'Тип' }]
 
 // writeDoc fills a freshly created document with paragraphs. The content is
 // ProseMirror JSON (the editor's own format) and the save is guarded by the
@@ -359,6 +372,7 @@ export async function seedDemo(runId, base) {
   const { creds, token, user } = await registerPresentable(runId, 'Аня Ковалёва', DEMO_EMAIL)
   const t = token
   const post = (p, b) => api.post(p, b, t)
+  const put = (p, b) => api.put(p, b, t)
   const get = (p) => api.get(p, t)
 
   const ws = await post('/workspaces', { name: 'Тессера Демо' })
@@ -393,6 +407,7 @@ export async function seedDemo(runId, base) {
   for (const [name, color] of Object.entries(TAG_COLORS)) {
     tags[name] = await post(`/projects/${project.id}/tags`, { name, color })
   }
+  await put(`/projects/${project.id}/tag-prefixes`, { prefixes: TAG_PREFIX_NAMES })
 
   const created = []
   for (const [columnName, cards] of Object.entries(CARDS)) {
