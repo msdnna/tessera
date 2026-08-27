@@ -124,6 +124,29 @@
       "system": "Системный",
       "serif": "С засечками",
       "mono": "Моноширинный"
+    },
+    "page": {
+      "title": "Параметры страницы: {size}, {orientation}",
+      "size": "Размер",
+      "orientation": "Ориентация",
+      "portrait": "Книжная",
+      "landscape": "Альбомная",
+      "marginsLabel": "Поля",
+      "dims": "{w} × {h} мм, поля {margins} мм",
+      "sizes": {
+        "a3": "A3",
+        "a4": "A4",
+        "a5": "A5",
+        "custom": "свой размер",
+        "legal": "Legal",
+        "letter": "Letter"
+      },
+      "margins": {
+        "moderate": "Средние",
+        "narrow": "Узкие",
+        "normal": "Обычные",
+        "wide": "Широкие"
+      }
     }
   },
   "templates": {
@@ -208,7 +231,8 @@
       "templateSaved": "Шаблон сохранён",
       "imported": "Документ импортирован",
       "importedImagesDropped": "Документ импортирован, изображений пропущено: {count}",
-      "importedImagesDroppedWhy": "Документ импортирован, изображений пропущено: {count} ({reason})"
+      "importedImagesDroppedWhy": "Документ импортирован, изображений пропущено: {count} ({reason})",
+      "importedSectionsDiffer": "В исходном файле страницы разной ориентации или размера. Документ получил один лист — по самой широкой странице; проверьте параметры страницы."
     },
     "importedTitle": "Импортированный документ",
     "error": {

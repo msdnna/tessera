@@ -11,6 +11,7 @@ import { BlockComments } from './docExtensions/blockComments'
 import { BlockLocks } from './docExtensions/blockLocks'
 import { BlockMove } from './docExtensions/blockMove'
 import { BlockStyle, STYLED_TYPES } from './docExtensions/blockStyle'
+import { DocPage } from './docExtensions/docPage'
 import { ImageDrop } from './docExtensions/imageDrop'
 import { InternalLink } from './docExtensions/internalLink'
 import { PdfEmbed } from './docExtensions/pdfEmbed'
@@ -85,6 +86,10 @@ export const ALLOWED_ATTRS = [
   'level',
   'lineHeight',
   'name',
+  // Page geometry on the doc node (#2821) — the one attribute here that carries
+  // an object rather than a scalar, and the one the server validates by shape
+  // (checkDocPage) because the export turns it into an @page rule.
+  'page',
   'rel',
   'rowspan',
   'size',
@@ -332,6 +337,8 @@ export function docExtensions(opts = {}) {
     TextAlign.configure({ types: STYLED_TYPES }),
     BlockId,
     BlockStyle,
+    // Sheet size, orientation and margins, stored on the doc node (#2821).
+    DocPage,
     BlockMove,
     BlockLocks.configure({ onBlocked: opts.onBlocked || (() => {}) }),
     BlockComments.configure({ onSelect: opts.onSelectComments || (() => {}) }),

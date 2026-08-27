@@ -238,6 +238,63 @@ func TestRenderDocHTMLDeclaresCharset(t *testing.T) {
 	}
 }
 
+// The @page rule is the whole of the export half of #2821: LibreOffice turns it
+// into <w:pgSz>/<w:pgMar> in the produced .docx, which is what makes an imported
+// landscape document come back out landscape.
+func TestRenderDocHTMLWritesPageGeometry(t *testing.T) {
+	root := docNode{Type: "doc", Attrs: map[string]any{"page": map[string]any{
+		"w": float64(297), "h": float64(210),
+		"ml": float64(15), "mr": float64(15), "mt": float64(20), "mb": float64(20),
+	}}}
+	page := renderDocHTML("Смета", root, nil)
+	// margin is top/right/bottom/left — the CSS order, not the order the
+	// attribute happens to be written in.
+	if want := "@page { size: 297mm 210mm; margin: 20mm 15mm 20mm 15mm; }"; !strings.Contains(page, want) {
+		t.Fatalf("export does not carry %q:\n%s", want, page)
+	}
+}
+
+// A document that has never been through the page dialog must export exactly as
+// it did before this feature existed — A4 with the 20 mm margins LibreOffice was
+// already choosing on its own. Otherwise the first re-export of an archived
+// document silently reformats it.
+func TestRenderDocHTMLDefaultPageGeometry(t *testing.T) {
+	const wantA4 = "@page { size: 210mm 297mm; margin: 20mm 20mm 20mm 20mm; }"
+	for name, root := range map[string]docNode{
+		"no attrs":      {Type: "doc"},
+		"page null":     {Type: "doc", Attrs: map[string]any{"page": nil}},
+		"page rubbish":  {Type: "doc", Attrs: map[string]any{"page": "A4"}},
+		"page impossible": {Type: "doc", Attrs: map[string]any{"page": map[string]any{
+			"w": float64(1), "h": float64(1), "ml": float64(0), "mr": float64(0), "mt": float64(0), "mb": float64(0),
+		}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if page := renderDocHTML("", root, nil); !strings.Contains(page, wantA4) {
+				t.Fatalf("export does not fall back to A4:\n%s", page)
+			}
+		})
+	}
+}
+
+// Twips do not divide evenly into millimetres, so an imported A4 page arrives as
+// 209.99999999999997 unless it is rounded — and "209.99999999999997mm" in a CSS
+// length is the kind of thing that works until something downstream parses it.
+func TestMMValueIsACSSLength(t *testing.T) {
+	cases := map[float64]string{
+		210:                "210",
+		297.0000001:        "297",
+		209.99999999999997: "210",
+		29.7:               "29.7",
+		0:                  "0",
+		0.0000001:          "0",
+	}
+	for in, want := range cases {
+		if got := mmValue(in); got != want {
+			t.Errorf("mmValue(%v) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestInlineDocAssetEmbedsOwnFileAndLeavesOthersAlone(t *testing.T) {
 	dir := t.TempDir()
 	h := &API{uploadDir: dir, assetKey: []byte("test-key")}

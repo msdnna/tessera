@@ -4,11 +4,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html"
+	"math"
 	"mime"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -66,7 +68,7 @@ func renderDocHTML(title string, root docNode, resolveImage func(string) string)
 	// mojibake in the exported PDF.
 	b.WriteString(`<meta charset="utf-8">` + "\n")
 	b.WriteString("<title>" + html.EscapeString(title) + "</title>\n")
-	b.WriteString("<style>\n" + docExportCSS + "</style>\n")
+	b.WriteString("<style>\n" + docPageCSS(root.Attrs) + docExportCSS + "</style>\n")
 	b.WriteString("</head><body>\n")
 	if strings.TrimSpace(title) != "" {
 		b.WriteString("<h1 class=\"doc-title\">" + html.EscapeString(title) + "</h1>\n")
@@ -132,6 +134,47 @@ table { border-collapse: collapse; }
 td, th { border: 0.5pt solid #999999; padding: 3pt; }
 img { max-width: 100%; }
 `
+
+// defaultDocPage is the geometry of a document that has never been through the
+// page dialog: A4 with 20 mm margins, which is what LibreOffice assumed on its
+// own before this rule existed. Keeping the two in step is deliberate — an
+// export of an untouched document has to come out looking exactly as it did
+// before #2821, or the feature would silently reformat every archived document
+// the first time it was re-exported.
+var defaultDocPage = map[string]float64{"w": 210, "h": 297, "ml": 20, "mr": 20, "mt": 20, "mb": 20}
+
+// docPageCSS turns the doc node's page geometry into the @page rule the
+// LibreOffice import obeys.
+//
+// It obeys exactly this much: an unnamed @page with `size` and `margin` reaches
+// the produced .docx as <w:pgSz>/<w:pgMar>, which was verified against the
+// sidecar rather than assumed. Named page rules (@page landscape { … }), which
+// is how CSS expresses more than one geometry per document, are dropped by the
+// same importer — that limit is what makes per-section orientation a separate
+// job (#2826) instead of a longer version of this function.
+func docPageCSS(attrs map[string]any) string {
+	page := defaultDocPage
+	if given, ok := attrs["page"].(map[string]any); ok {
+		// Validated on write by checkDocPage, and re-read defensively here: a body
+		// can predate a validation rule, and this value becomes CSS.
+		if err := checkDocPage(given); err == nil {
+			page = map[string]float64{}
+			for k, v := range given {
+				page[k], _ = v.(float64)
+			}
+		}
+	}
+	return fmt.Sprintf("@page { size: %smm %smm; margin: %smm %smm %smm %smm; }\n",
+		mmValue(page["w"]), mmValue(page["h"]),
+		mmValue(page["mt"]), mmValue(page["mr"]), mmValue(page["mb"]), mmValue(page["ml"]))
+}
+
+// mmValue formats a millimetre measurement without the exponent or the trailing
+// zeros %v would produce — "29.7", not "29.700000000000003" and not "2.97e+01",
+// neither of which is a CSS length.
+func mmValue(v float64) string {
+	return strconv.FormatFloat(math.Round(v*10)/10, 'f', -1, 64)
+}
 
 func renderDocNodes(b *strings.Builder, nodes []docNode, ctx docRenderCtx) {
 	for _, n := range nodes {

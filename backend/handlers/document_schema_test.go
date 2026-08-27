@@ -31,6 +31,23 @@ func TestValidateDocContent(t *testing.T) {
 		{"data image", `{"type":"doc","content":[{"type":"image","attrs":{"src":"data:text/html,<script>"}}]}`, true},
 		{"empty text node", `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":""}]}]}`, true},
 		{"garbage", `{"nope"`, true},
+		// Page geometry (#2821). This attribute becomes CSS the sidecar acts on,
+		// so it is the one value in a document body that is validated by shape and
+		// not only by name.
+		{"page geometry", `{"type":"doc","attrs":{"page":{"w":297,"h":210,"ml":15,"mr":15,"mt":20,"mb":20}},"content":[]}`, false},
+		// What every editor save looks like: ProseMirror serialises an unset
+		// attribute as null rather than omitting it, so rejecting null here would
+		// 400 every document the moment the doc node gained the attribute.
+		{"page unset", `{"type":"doc","attrs":{"page":null},"content":[]}`, false},
+		{"page on a paragraph", `{"type":"doc","content":[{"type":"paragraph","attrs":{"page":{"w":210,"h":297,"ml":20,"mr":20,"mt":20,"mb":20}}}]}`, true},
+		{"page missing a margin", `{"type":"doc","attrs":{"page":{"w":210,"h":297,"ml":20,"mr":20,"mt":20}},"content":[]}`, true},
+		{"page with an extra key", `{"type":"doc","attrs":{"page":{"w":210,"h":297,"ml":20,"mr":20,"mt":20,"mb":20,"orient":"landscape"}},"content":[]}`, true},
+		{"page as a string", `{"type":"doc","attrs":{"page":"A4"},"content":[]}`, true},
+		{"page side as a string", `{"type":"doc","attrs":{"page":{"w":"210mm","h":297,"ml":20,"mr":20,"mt":20,"mb":20}},"content":[]}`, true},
+		{"page too small", `{"type":"doc","attrs":{"page":{"w":10,"h":297,"ml":0,"mr":0,"mt":0,"mb":0}},"content":[]}`, true},
+		{"page too large", `{"type":"doc","attrs":{"page":{"w":210,"h":99999,"ml":20,"mr":20,"mt":20,"mb":20}},"content":[]}`, true},
+		{"negative margin", `{"type":"doc","attrs":{"page":{"w":210,"h":297,"ml":-20,"mr":20,"mt":20,"mb":20}},"content":[]}`, true},
+		{"margins leave no column", `{"type":"doc","attrs":{"page":{"w":210,"h":297,"ml":110,"mr":110,"mt":20,"mb":20}},"content":[]}`, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"mime/multipart"
 	"regexp"
 	"sort"
 	"strings"
@@ -21,6 +21,7 @@ import (
 
 	"tessera/internal/converter"
 	"tessera/internal/db"
+	"tessera/internal/office"
 	"tessera/middleware"
 )
 
@@ -191,6 +192,10 @@ func (h *API) ImportDocument(c *gin.Context) {
 	// The body comes back as HTML rather than as blocks: the client parses it
 	// with the editor's schema and saves it through the ordinary content
 	// endpoint, so an import is validated by exactly the same code as typing.
+	//
+	// The page geometry travels *beside* the HTML rather than in it, because it
+	// is not in the HTML to begin with — see importedPageSetup.
+	page, differ := importedPageSetup(ext, src, doc, name)
 	c.JSON(http.StatusCreated, gin.H{
 		"document":               viewDocument(doc),
 		"html":                   body,
@@ -198,7 +203,41 @@ func (h *API) ImportDocument(c *gin.Context) {
 		"images_dropped_reason":  images.summary(),
 		"images_dropped_reasons": images.counts(),
 		"source_file_name":       name,
+		"page":                   page,
+		"sections_differ":        differ,
 	})
+}
+
+// importedPageSetup reads the source file's page geometry, reduced to the one
+// sheet this stage of #2821 gives a document.
+//
+// Read from the original bytes, not from the converted HTML, because the
+// conversion is where it is lost: LibreOffice emits an @page rule for the first
+// section only, so a file whose landscape section holds the wide table arrives
+// as portrait HTML and the table hangs off the sheet. Widest() picks the section
+// that fits the most, and `differ` is handed to the client so it can say the
+// sheet is a reduction rather than a copy.
+//
+// A file we cannot read geometry from is not an error: .doc, .rtf, .txt and
+// .html have none to give, and the client falls back to the editor's default.
+// Returns nil in that case, so the response carries `page: null` and the client
+// has one thing to test rather than a zero geometry to second-guess.
+func importedPageSetup(ext string, src []byte, doc db.Document, name string) (*office.PageSetup, bool) {
+	setups, err := office.PageSetups(ext, src)
+	if err != nil {
+		if !errors.Is(err, office.ErrNoPageSetup) {
+			// Worth a line but not a failed import: the document's text converted
+			// fine, and refusing it over its margins would trade a real import for a
+			// cosmetic one.
+			log.Printf("document import %s (%q): page setup unreadable: %v", doc.ID, name, err)
+		}
+		return nil, false
+	}
+	widest, ok := office.Widest(setups)
+	if !ok {
+		return nil, false
+	}
+	return &widest, office.Differ(setups)
 }
 
 // createImportedDocument makes the empty document an import will fill in, doing

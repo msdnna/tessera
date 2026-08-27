@@ -124,6 +124,29 @@
       "system": "System",
       "serif": "Serif",
       "mono": "Monospaced"
+    },
+    "page": {
+      "title": "Page setup: {size}, {orientation}",
+      "size": "Size",
+      "orientation": "Orientation",
+      "portrait": "Portrait",
+      "landscape": "Landscape",
+      "marginsLabel": "Margins",
+      "dims": "{w} × {h} mm, margins {margins} mm",
+      "sizes": {
+        "a3": "A3",
+        "a4": "A4",
+        "a5": "A5",
+        "custom": "custom size",
+        "legal": "Legal",
+        "letter": "Letter"
+      },
+      "margins": {
+        "moderate": "Moderate",
+        "narrow": "Narrow",
+        "normal": "Normal",
+        "wide": "Wide"
+      }
     }
   },
   "templates": {
@@ -208,7 +231,8 @@
       "templateSaved": "The template was saved",
       "imported": "The document was imported",
       "importedImagesDropped": "Document imported, images skipped: {count}",
-      "importedImagesDroppedWhy": "Document imported, images skipped: {count} ({reason})"
+      "importedImagesDroppedWhy": "Document imported, images skipped: {count} ({reason})",
+      "importedSectionsDiffer": "The source file mixes page sizes or orientations. The document got a single sheet, sized to the widest page — check the page setup."
     },
     "importedTitle": "Imported document",
     "error": {

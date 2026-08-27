@@ -11,6 +11,7 @@ import {
   ReorderTwoOutline,
 } from '@vicons/ionicons5'
 import { docExtensions, editableDoc } from '@/utils/docSchema'
+import { normalizePage, pageStyleVars, samePage } from '@/utils/docPage'
 import { BLOCK_ID_META, ensureBlockIds } from '@/utils/docExtensions/blockId'
 import {
   blockAtClientY,
@@ -129,6 +130,7 @@ function build() {
     onTransaction: ({ editor: e }) => {
       syncSlash(e)
       reportBlock(e)
+      syncPage(e)
     },
     onBlur: () => {
       // The parent gives the block back on blur, so forget which one we claimed —
@@ -141,6 +143,18 @@ function build() {
 }
 
 build()
+
+// The sheet's geometry, mirrored out of the document into Vue so the CSS can
+// follow it (#2821). Compared before assigning rather than recomputed on every
+// transaction: onTransaction fires on each keystroke, and re-rendering the
+// wrapper's style object that often would put a full style recalculation into
+// the typing path for a value that changes when a dialog is used.
+const page = ref(normalizePage(props.modelValue?.attrs?.page))
+function syncPage(e) {
+  const next = normalizePage(e.state.doc.attrs.page)
+  if (!samePage(next, page.value)) page.value = next
+}
+const pageStyle = computed(() => pageStyleVars(page.value))
 
 // The block the caret is in, reported on change so the parent can claim it.
 // Emitting only on change keeps a lock refresh from being sent on every
@@ -615,7 +629,12 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
            main.css). Reusing it is the point: a document whose code blocks and
            links look different from a task description is exactly the mismatch
            this task set out to avoid. -->
-      <editor-content class="doc-content md" :editor="editor" @scroll="onScroll" />
+      <editor-content
+        class="doc-content md"
+        :style="pageStyle"
+        :editor="editor"
+        @scroll="onScroll"
+      />
       <div
         v-if="slash.active"
         class="slash-menu"
@@ -835,15 +854,23 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
    the width of the three gutter buttons — 3×24 plus two 4px gaps plus the inset.
    The asymmetry is deliberate and maintained by hand: a lane narrower than the
    row would put the buttons on top of the first characters.
-   The width is visual only — this is still a block document, and page size,
-   margins and orientation remain export-time settings (задача 2733), so there
-   are no page breaks here. */
+   Width and padding come from the document's own page geometry (задача 2821):
+   pageStyleVars turns doc.attrs.page into the custom properties below, so a
+   landscape document gets a landscape sheet and an imported table laid out for
+   a 297mm page has the column it was measured against. The fallbacks are A4
+   with 20mm margins — the sheet still draws if the style object is missing, as
+   it is in a unit test that mounts the editor without a document.
+   Still no pagination: the sheet is one continuous page, which is why there are
+   no page breaks and no running headers here (the per-section version of this
+   is задача 2826 — written without the hash, because the theming guard in
+   cx-doc-editor.spec.js reads four hex digits after one as a literal colour). */
 .doc-content :deep(.ProseMirror) {
   outline: none;
   box-sizing: border-box;
-  max-width: 820px;
+  max-width: var(--doc-sheet-w, 820px);
   margin: 0 auto;
-  padding: 40px 40px 56px 88px;
+  padding: var(--doc-sheet-pt, 40px) var(--doc-sheet-pr, 40px) var(--doc-sheet-pb, 56px)
+    var(--doc-sheet-pl, 88px);
   border: 1px solid var(--t-border);
   border-radius: 8px;
   background: var(--t-surface);
@@ -913,6 +940,23 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   width: 100%;
   margin: 10px 0;
   table-layout: fixed;
+}
+/* Last resort for a table that is wider than the printable column even after
+   the sheet has been given the document's real geometry — an imported table
+   whose author let it run into the margins in Word too, say.
+   It is scroll containment and not a proportional squeeze, and that is a
+   limit of CSS rather than a choice: prosemirror-tables writes the authored
+   column widths into a <colgroup> and an inline `width` on the table, and per
+   CSS 2.1 §17.5.2 a table's used width is the *greater* of its own width and
+   the sum of its columns — so `max-width` on the table is inert here. Measured
+   in Chromium rather than assumed (задача 2821): with max-width:100% the 933px
+   table stayed 934px wide and hung 244px past the column; with this rule it is
+   clipped at the column edge and scrolls.
+   Squeezing the columns for real would mean overriding prosemirror-tables'
+   TableView and re-deriving the widths on every resize drag, which trades a
+   sticking-out table for a fight with upstream on every column drag. */
+.doc-content :deep(.ProseMirror .tableWrapper) {
+  overflow-x: auto;
 }
 .doc-content :deep(.ProseMirror th),
 .doc-content :deep(.ProseMirror td) {

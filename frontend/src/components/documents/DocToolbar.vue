@@ -2,10 +2,22 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover } from 'naive-ui'
+import { TabletLandscapeOutline, TabletPortraitOutline } from '@vicons/ionicons5'
 import TesseraIcon from '@/components/TesseraIcon.vue'
 import { toolbarGroups, lineHeightLabel } from '@/utils/docToolbar'
 import { fontFamilies, FONT_SIZES } from '@/utils/docSchema'
 import { LINE_HEIGHTS } from '@/utils/docExtensions/blockStyle'
+import {
+  MARGIN_PRESETS,
+  PAGE_SIZES,
+  isLandscape,
+  marginKey,
+  normalizePage,
+  sizeKey,
+  withMargins,
+  withOrientation,
+  withSize,
+} from '@/utils/docPage'
 
 const { t } = useI18n()
 
@@ -147,6 +159,66 @@ const pickers = computed(() => {
   ]
 })
 
+// Page setup (#2821): sheet size, orientation and margins, stored on the doc
+// node rather than as an export option, because the sheet in the editor is laid
+// out from it — an imported landscape document has to *look* landscape, or the
+// table it was laid out for still hangs off the page.
+//
+// A popover rather than three more toolbar controls: these are per-document
+// settings changed once and then left alone, and putting them in the row beside
+// bold and italic would give the least-used controls the same weight as the
+// most-used ones.
+const page = computed(() => {
+  void tick.value
+  return normalizePage(props.editor?.state?.doc?.attrs?.page)
+})
+const landscape = computed(() => isLandscape(page.value))
+
+const pageTitle = computed(() =>
+  t('documents.toolbar.page.title', {
+    size: t(`documents.toolbar.page.sizes.${sizeKey(page.value) || 'custom'}`),
+    orientation: t(
+      `documents.toolbar.page.${landscape.value ? 'landscape' : 'portrait'}`,
+    ).toLowerCase(),
+  }),
+)
+
+// Millimetres, trimmed of the trailing ".0" an imported page picks up from the
+// twips it was converted out of — "209.9 × 297" is information, "210.0" is not.
+const mm = (v) => String(Math.round(v * 10) / 10)
+const pageDims = computed(() => {
+  const p = page.value
+  return t('documents.toolbar.page.dims', {
+    w: mm(p.w),
+    h: mm(p.h),
+    margins: [p.mt, p.mr, p.mb, p.ml].map(mm).join(' / '),
+  })
+})
+
+const sizeOptions = computed(() =>
+  PAGE_SIZES.map((s) => ({
+    key: s.key,
+    label: t(`documents.toolbar.page.sizes.${s.key}`),
+    on: sizeKey(page.value) === s.key,
+    apply: () => applyPage(withSize(page.value, s)),
+  })),
+)
+const marginOptions = computed(() =>
+  MARGIN_PRESETS.map((m) => ({
+    key: m.key,
+    label: t(`documents.toolbar.page.margins.${m.key}`),
+    on: marginKey(page.value) === m.key,
+    apply: () => applyPage(withMargins(page.value, m)),
+  })),
+)
+
+function applyPage(next) {
+  props.editor?.chain().focus().setDocPage(next).run()
+}
+function setOrientation(v) {
+  applyPage(withOrientation(page.value, v))
+}
+
 // One popover open at a time, and it closes on pick: naive's own click trigger
 // would leave the list hanging open over the text after a value is chosen.
 const openPicker = ref('')
@@ -225,6 +297,95 @@ function pick(picker, value) {
           <template v-else>{{ cmd.text }}</template>
         </button>
       </template>
+      <!-- Page setup sits last and behind its own separator: it changes the
+           sheet rather than the selection, so it does not belong in any of the
+           command groups above. -->
+      <span class="sep" />
+      <n-popover
+        :show="openPicker === 'page'"
+        trigger="manual"
+        placement="bottom-end"
+        :show-arrow="false"
+        @clickoutside="openPicker = ''"
+      >
+        <template #trigger>
+          <button
+            type="button"
+            class="doc-tbtn"
+            :title="pageTitle"
+            data-tbtn="page"
+            data-testid="doc-page-setup"
+            @click="togglePicker('page')"
+          >
+            <n-icon
+              :component="landscape ? TabletLandscapeOutline : TabletPortraitOutline"
+              :size="15"
+            />
+          </button>
+        </template>
+        <div class="page-setup" data-testid="doc-page-panel">
+          <div class="ps-row">
+            <span class="ps-label">{{ $t('documents.toolbar.page.size') }}</span>
+            <div class="ps-opts">
+              <button
+                v-for="s in sizeOptions"
+                :key="s.key"
+                type="button"
+                class="ps-chip"
+                :class="{ on: s.on }"
+                :data-page-size="s.key"
+                @click="s.apply()"
+              >
+                {{ s.label }}
+              </button>
+            </div>
+          </div>
+          <div class="ps-row">
+            <span class="ps-label">{{ $t('documents.toolbar.page.orientation') }}</span>
+            <div class="ps-opts">
+              <button
+                type="button"
+                class="ps-chip"
+                :class="{ on: !landscape }"
+                data-page-orientation="portrait"
+                @click="setOrientation(false)"
+              >
+                {{ $t('documents.toolbar.page.portrait') }}
+              </button>
+              <button
+                type="button"
+                class="ps-chip"
+                :class="{ on: landscape }"
+                data-page-orientation="landscape"
+                @click="setOrientation(true)"
+              >
+                {{ $t('documents.toolbar.page.landscape') }}
+              </button>
+            </div>
+          </div>
+          <div class="ps-row">
+            <span class="ps-label">{{ $t('documents.toolbar.page.marginsLabel') }}</span>
+            <div class="ps-opts">
+              <button
+                v-for="m in marginOptions"
+                :key="m.key"
+                type="button"
+                class="ps-chip"
+                :class="{ on: m.on }"
+                :data-page-margins="m.key"
+                @click="m.apply()"
+              >
+                {{ m.label }}
+              </button>
+            </div>
+          </div>
+          <!-- The numbers, read-only. The pickers above cover what a document
+               needs; showing the millimetres is what makes an imported geometry
+               that matches no preset legible instead of leaving every chip
+               unlit with no explanation. -->
+          <p class="ps-current" data-testid="doc-page-dims">{{ pageDims }}</p>
+        </div>
+      </n-popover>
     </div>
   </div>
 </template>
@@ -343,5 +504,54 @@ function pick(picker, value) {
 }
 .opt.on {
   color: var(--t-primary);
+}
+/* Page setup panel. Wider than the value pickers because its options are words
+   rather than numbers, and laid out in labelled rows: three unlabelled chip
+   strips would leave "Узкие" and "Альбомная" looking like members of one list. */
+.page-setup {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 260px;
+  margin: -4px;
+}
+.ps-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ps-label {
+  color: var(--t-text3);
+  font-size: 11px;
+}
+.ps-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.ps-chip {
+  padding: 4px 9px;
+  border: 1px solid var(--t-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t-text1);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ps-chip:hover {
+  background: var(--t-hover);
+}
+/* Same accent treatment the toolbar buttons get when active — the panel is part
+   of the same control, not a separate widget with its own idea of "selected". */
+.ps-chip.on {
+  border-color: transparent;
+  background: var(--t-primary);
+  color: var(--t-on-primary);
+}
+.ps-current {
+  margin: 0;
+  color: var(--t-text3);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 </style>
