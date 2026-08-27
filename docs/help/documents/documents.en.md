@@ -1,7 +1,7 @@
 ---
 title: Documents
-category: Working with tasks
-order: 30
+category: Documents
+order: 40
 keywords: documents, editor, docx, word, import, pdf, versions, history, comments, templates, outline
 updated: 2026-08-21
 ---

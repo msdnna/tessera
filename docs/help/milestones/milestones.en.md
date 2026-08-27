@@ -1,6 +1,6 @@
 ---
 title: Milestones
-category: Working with tasks
+category: Milestones
 order: 60
 keywords: milestones, milestone, release, progress, due dates, gitlab
 updated: 2026-08-21

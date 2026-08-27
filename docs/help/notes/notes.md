@@ -1,7 +1,7 @@
 ---
 title: Заметки
-category: Работа с задачами
-order: 40
+category: Заметки
+order: 50
 keywords: заметки, записи, черновик, markdown, проект, поиск
 updated: 2026-08-21
 ---

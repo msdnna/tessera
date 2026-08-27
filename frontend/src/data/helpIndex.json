@@ -150,10 +150,10 @@
     {
       "slug": "boards-and-tasks",
       "path": "boards/boards-and-tasks.md",
-      "title": "Доски и задачи",
-      "category": "Работа с задачами",
+      "title": "Доска: основы",
+      "category": "Доски",
       "order": 20,
-      "updated": "2026-08-21",
+      "updated": "2026-08-28",
       "keywords": [
         "доска",
         "канбан",
@@ -170,13 +170,18 @@
       "platforms": ["web", "android"],
       "headings": [
         {
+          "id": "из-чего-состоит-экран",
+          "text": "Из чего состоит экран",
+          "level": 2
+        },
+        {
           "id": "группировка-по-тегам",
           "text": "Группировка по тегам",
           "level": 2
         },
         {
-          "id": "представления",
-          "text": "Представления",
+          "id": "визуализации",
+          "text": "Визуализации",
           "level": 2
         },
         {
@@ -190,12 +195,12 @@
           "level": 2
         },
         {
-          "id": "пустые-колонки",
-          "text": "Пустые колонки",
+          "id": "что-делать-с-задачей-которая-больше-не-нужна",
+          "text": "Что делать с задачей, которая больше не нужна",
           "level": 2
         }
       ],
-      "text": "доска — основной экран работы. колонки задают этапы, карточки — задачи, перенос карточки мышью меняет её состояние. доска со списком задач по колонкам группировка по тегам колонки доски не обязаны быть этапами. в панели настройки доски (шестерёнка на панели доски) есть раздел «группировка · сортировка · фильтр»: сменив группировку на теги, вы получаете доску, где колонка — это тег, а не этап. один и тот же набор задач можно смотреть то как поток по стадиям, то как раскладку по направлениям, командам или клиентам — не пересобирая доску. там же настраиваются сортировка внутри колонок и фильтры; выбранные условия показываются чипами, лишний снимается крестиком. быстрее всего переключаться самим чипом группировки на панели доски — клик по нему меняет «статус» на «тег» и обратно. та же доска, сгруппированная по тегам: колонка на каждый тег одна задача с двумя тегами попадёт сразу в две колонки — это не дубль, а одна и та же карточка, показанная в обоих направлениях. задачи без тегов собираются в колонку «без тега» в конце. представления кроме канбана доска умеет показывать те же задачи иначе — переключатель представления на панели доски: список — плоская таблица, удобно для массового разбора. календарь — по срокам. таймлайн и гант — протяжённость и зависимости. матрица — раскладка по двум осям (например, приоритет × исполнитель). собранную комбинацию представления, фильтров и сортировки можно сохранить: кнопки папки и дискеты на панели доски. сохранённое представление открывается одним кликом, а автосохранение (в панели настройки) подхватывает изменения на лету. карточка задачи окно задачи: свойства слева, комментарии и подзадачи справа окно задачи открывается кликом по карточке и содержит: описание в markdown — с панелью форматирования, режимом просмотра и упоминаниями через @. подзадачи — дерево любой глубины; на доске их можно раскрывать прямо в карточках (переключатель «раскрыть подзадачи»). теги, исполнителей, приоритет и срок. комментарии — тоже markdown, с упоминаниями участников. когда задача считается выполненной задача завершена, когда она попала в завершающую колонку доски. тогда же проставляется дата завершения и в журнал пишется событие; вынесли обратно — отметка снимается. если задача не считается выполненной, хотя визуально «в конце» — проверьте, какая колонка назначена завершающей: по умолчанию это самая правая, но её можно указать явно в настройках доски. пустые колонки чтобы длинная доска не расползалась, в панели настройки включается сворачивание пустых колонок — они схлопываются в узкие полоски и не занимают место.",
+      "text": "доска — основной экран работы. колонки задают этапы, карточки — задачи, перенос карточки мышью меняет её состояние. доска со списком задач по колонкам эта статья — обзор: что где лежит и как всё связано. подробности каждой части вынесены в соседние статьи раздела, ссылки стоят по тексту. из чего состоит экран шапка доски — переключатель визуализации и кнопки «теги», «этапы», «архив». панель доски под шапкой — чипы группировки, сортировки и фильтров, поиск по названию, а справа шестерёнка настройки вида и кнопки представлений. см. панель доски. колонки и карточки — собственно доска. см. колонки доски. группировка по тегам колонки доски не обязаны быть этапами. смените группировку на теги — и колонка станет тегом, а не этапом. один и тот же набор задач можно смотреть то как поток по стадиям, то как раскладку по направлениям, командам или клиентам, не пересобирая доску. быстрее всего переключаться самим чипом группировки в панели доски — клик по нему меняет «статус» на «тег» и обратно. та же доска, сгруппированная по тегам: колонка на каждый тег одна задача с двумя тегами попадёт сразу в две колонки — это не дубль, а одна и та же карточка, показанная в обоих направлениях. задачи без тегов собираются в колонку «без тегов» в конце. группировать можно ещё по этапам, а на таймлайне и ганте — по исполнителю. все варианты разобраны в статье панель доски. визуализации кроме канбана доска умеет показывать те же задачи иначе — переключатель в шапке: список — плоская таблица, удобно для массового разбора. календарь — по срокам. таймлайн и гант — протяжённость и зависимости. матрица — важность против срочности. это один и тот же набор задач, показанный по-разному: изменили задачу в календаре — изменилась и на канбане. подробно каждая раскладка описана в статье визуализации. собранную комбинацию визуализации, группировки, фильтров и сортировки можно сохранить и открывать одним кликом — см. сохранённые представления. что показывать на карточках и насколько они крупные, настраивается в панели «настроить вид». карточка задачи окно задачи: свойства слева, комментарии и подзадачи справа окно задачи открывается кликом по карточке и содержит: описание в markdown — с панелью форматирования, режимом просмотра и упоминаниями через @. подзадачи — дерево любой глубины; на доске их можно раскрывать прямо в карточках. теги, исполнителей, приоритет, срок, оценку и этап. комментарии — тоже markdown, с упоминаниями участников. когда задача считается выполненной задача завершена, когда она попала в завершающую колонку доски. тогда же проставляется дата завершения и в журнал пишется событие; вынесли обратно — отметка снимается. если задача не считается выполненной, хотя визуально «в конце», — проверьте, какая колонка назначена завершающей: по умолчанию это самая правая, но её можно указать явно. разбор — в статье колонки доски. что делать с задачей, которая больше не нужна отправьте её в архив: она пропадёт с доски, но сохранится со всей историей и в любой момент вернётся обратно.",
       "android": {
         "path": "boards/boards-and-tasks.android.md",
         "updated": "2026-08-24",
@@ -250,8 +255,8 @@
       "locales": {
         "en": {
           "path": "boards/boards-and-tasks.en.md",
-          "title": "Boards and tasks",
-          "category": "Working with tasks",
+          "title": "The board: basics",
+          "category": "Boards",
           "updated": "2026-08-21",
           "keywords": [
             "board",
@@ -349,11 +354,667 @@
       }
     },
     {
+      "slug": "board-composer",
+      "path": "boards/board-composer.md",
+      "title": "Панель доски: группировка, сортировка, фильтры",
+      "category": "Доски",
+      "order": 21,
+      "updated": "2026-08-28",
+      "keywords": [
+        "панель",
+        "композер",
+        "группировка",
+        "сортировка",
+        "порядок",
+        "фильтр",
+        "чипы",
+        "поиск",
+        "подзадачи",
+        "этап",
+        "бэклог",
+        "сброс"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "группировка",
+          "text": "Группировка",
+          "level": 2
+        },
+        {
+          "id": "сортировка-и-направление-и-порядок",
+          "text": "Сортировка — и направление, и порядок",
+          "level": 2
+        },
+        {
+          "id": "фильтры",
+          "text": "Фильтры",
+          "level": 2
+        },
+        {
+          "id": "поиск-по-названию",
+          "text": "Поиск по названию",
+          "level": 2
+        },
+        {
+          "id": "раскрытие-подзадач",
+          "text": "Раскрытие подзадач",
+          "level": 2
+        },
+        {
+          "id": "область-этап-и-архив",
+          "text": "Область: этап и архив",
+          "level": 2
+        },
+        {
+          "id": "что-панель-запоминает",
+          "text": "Что панель запоминает",
+          "level": 2
+        }
+      ],
+      "text": "панель доски — узкая строка под шапкой, в которой собрано всё, что меняет вид задач, не меняя сами задачи: группировка, сортировка, фильтры и поиск. каждое условие показано чипом; чипы читаются слева направо, и вместе они полностью описывают, что вы сейчас видите. панель доски: чипы группировки, сортировки и фильтров порядок элементов в панели всегда один и тот же: 1. чип области — архив или этап, если вы вошли в них (см. ниже). 2. значок ветки — раскрытие подзадач. 3. чип группировки — по чему разложены колонки. 4. чипы сортировки — по одному на уровень. 5. чипы фильтров — по одному на условие. 6. кнопка + — добавить группировку, сортировку или фильтр. 7. поиск по названию и, если есть что сбрасывать, крестик «сбросить всё». когда чипов становится много, панель занимает всю строку, а кнопки справа (настройка вида, представления) временно уезжают — это не ошибка, они вернутся, как только вы снимете лишние условия. группировка группировка решает, что такое колонка на этой доске. меню + → «группировка» предлагает: по статусам — колонки-этапы, обычный канбан. значение по умолчанию. по тегам (все) — колонка на каждый тег проекта. это фирменная возможность tessera: один и тот же набор задач вы смотрите то как поток по стадиям, то как раскладку по направлениям, командам или клиентам, не пересобирая доску. по тегам · «префикс» — только теги одного префикса. если теги названы сложность::высокая, сложность::низкая, то группировка по префиксу «сложность» даст доску ровно из этих колонок, а остальные теги в раскладке не участвуют. по этапам — колонка на каждый этап проекта плюс колонка «без этапа». в заголовке такой колонки дополнительно показывается сумма оценок её задач (σ). на таймлайне и ганте к списку добавляются «по исполнителю» и «без группировки» — там колонки превращаются в дорожки, и обе раскладки имеют смысл. чип группировки — не только индикатор: клик по нему переключает статусы ⇄ теги. это самый быстрый способ сравнить два взгляда на доску. задача с двумя тегами попадёт сразу в две колонки. это не дубль, а одна и та же карточка, показанная в двух направлениях: измените её в одной колонке — изменится и в другой. задачи без тегов собираются в колонку «без тегов». сортировка — и направление, и порядок сортировка в tessera многоуровневая. меню + → «сортировка» добавляет уровень; полей шесть: приоритет, срок, этап, название, номер и — только на таймлайне и ганте — статус. с каждым уровнем можно сделать две вещи, и их легко перепутать: клик по чипу меняет направление — стрелка ↑ (по возрастанию) переключается на ↓ (по убыванию). перетаскивание чипа меняет порядок уровней. левый чип — первичная сортировка, следующий разрешает совпадения в первой, и так далее. подсказка на самом чипе говорит об этом же: «клик — направление · перетащите для порядка». крестик на чипе убирает уровень. пример: чипы «приоритет ↓» и «срок ↑» в этом порядке дают «сначала самые важные, а внутри одного приоритета — самые срочные». поменяйте их местами перетаскиванием — получите принципиально другой список: сначала ближайшие сроки, а приоритет только разрешает совпадения в один день. пока не добавлен ни один уровень сортировки, карточки лежат в ручном порядке — том, в котором вы их перетащили. как только уровень появился, ручной порядок скрывается за ним (он не теряется: уберите чип сортировки — и порядок вернётся). подзадачи, раскрытые на карточках, сортируются тем же правилом, что и родители. сроки обрабатываются отдельно от направления: задачи без срока всегда в конце, независимо от того, ↑ сортировка или ↓. иначе при сортировке по убыванию всё бессрочное всплывало бы наверх. фильтры меню + содержит по разделу на каждый фильтр: приоритет, исполнитель, автор, тег, этап, срок, а на таймлайне и ганте ещё и статус (там колонок-статусов нет, и спрятать завершённые задачи больше нечем). несколько значений одного фильтра складываются по «или»: два выбранных исполнителя показывают задачи обоих. разные фильтры складываются по «и»: исполнитель и тег. отдельного упоминания стоят: срок — не дата, а состояние: «просроченные», «сегодня», «ближайшая неделя», «со сроком», «без срока». этап — кроме самих этапов, есть явный пункт «без этапа». тег — меню сгруппировано по префиксам, чтобы длинный список тегов оставался читаемым. исполнитель и автор — на досках, связанных с gitlab, под отдельным заголовком «gitlab» перечислены люди из gitlab, у которых нет учётной записи в tessera. в фильтре по автору вдобавок появляются авторы, встреченные прямо в задачах доски: issue может завести кто-то, кого нет в списке участников проекта. каждый выбранный фильтр превращается в чип, крестик на чипе снимает именно его. крестик в самом конце панели («сбросить всё») убирает разом все сортировки и фильтры, но не трогает группировку — она остаётся выбранной. поиск по названию поле справа в панели ищет по названию задачи и работает вместе с фильтрами, а не вместо них. поиск сужает уже отфильтрованный набор, поэтому пустой результат при активных чипах чаще означает «ничего не подошло под все условия сразу», а не «такой задачи нет». если сомневаетесь — сбросьте фильтры крестиком и повторите поиск. раскрытие подзадач значок ветки слева в панели раскрывает подзадачи прямо в карточках: каждая карточка показывает своих детей списком, не открывая окно задачи. подсказка на значке говорит текущее состояние — «раскрыть подзадачи» или «подзадачи раскрыты». раскрытие уважает фильтры: если фильтр спрятал часть подзадач, карточка честно сообщает, сколько детей скрыто. область: этап и архив кроме фильтров у доски есть область — то, что доска вообще загрузила с сервера. область показывается чипом в самом начале панели и снимается крестиком на нём. этап. в дереве проектов слева под доской можно показать её этапы; клик по этапу открывает доску, суженную до одного этапа. в панели появляется акцентный чип с названием этапа. отдельный пункт «бэклог» показывает задачи, не привязанные ни к одному этапу. это именно область, а не фильтр: большой проект не грузит все карточки разом. архив. кнопка «архив» в шапке доски открывает её архив — см. архив. область и фильтр по этапу — разные вещи, и они не складываются. если, находясь в области одного этапа, вы добавите фильтр по этапу, область снимется сама: фильтр по нескольким этапам требует, чтобы доска была загружена целиком. что панель запоминает состояние панели хранится отдельно для каждого представления одной доски. фильтр по статусу, поставленный на ганте, не протечёт на канбан — там такого фильтра и не предлагают. переключились на список и обратно — каждое представление вернётся к своим условиям. текущее (безымянное) состояние панели запоминается на этом устройстве. чтобы набор условий переезжал между устройствами и открывался одним кликом, сохраните его как представление — см. сохранённые представления.",
+      "locales": {
+        "en": {
+          "path": "boards/board-composer.en.md",
+          "title": "The board bar: grouping, sorting, filters",
+          "category": "Boards",
+          "updated": "2026-08-28",
+          "keywords": [
+            "bar",
+            "composer",
+            "grouping",
+            "sorting",
+            "order",
+            "filter",
+            "chips",
+            "search",
+            "subtasks",
+            "milestone",
+            "backlog",
+            "reset"
+          ],
+          "headings": [
+            {
+              "id": "grouping",
+              "text": "Grouping",
+              "level": 2
+            },
+            {
+              "id": "sorting-both-direction-and-order",
+              "text": "Sorting — both direction and order",
+              "level": 2
+            },
+            {
+              "id": "filters",
+              "text": "Filters",
+              "level": 2
+            },
+            {
+              "id": "search-by-title",
+              "text": "Search by title",
+              "level": 2
+            },
+            {
+              "id": "expanding-subtasks",
+              "text": "Expanding subtasks",
+              "level": 2
+            },
+            {
+              "id": "scope-milestone-and-archive",
+              "text": "Scope: milestone and archive",
+              "level": 2
+            },
+            {
+              "id": "what-the-bar-remembers",
+              "text": "What the bar remembers",
+              "level": 2
+            }
+          ],
+          "text": "the board bar is the narrow strip under the header that collects everything which changes how tasks are shown without changing the tasks themselves: grouping, sorting, filters and search. every condition is a chip; read left to right, the chips fully describe what you are looking at. the board bar: grouping, sorting and filter chips the order of the elements is always the same: 1. the scope chip — the archive or a milestone, if you entered one (see below). 2. the branch icon — expanding subtasks. 3. the grouping chip — what the columns are made of. 4. sort chips — one per level. 5. filter chips — one per condition. 6. the + button — add a grouping, a sort or a filter. 7. search by title and, when there is something to reset, the clear all cross. once there are many chips, the bar takes the whole row and the buttons on the right (customize, saved views) slide away for a while. that isn't a glitch — they come back as soon as you drop the extra conditions. grouping grouping decides what a column means on this board. the + menu → grouping offers: by status — stage columns, the ordinary kanban. the default. by tags (all) — a column per project tag. this is tessera's signature capability: the very same set of tasks is seen either as a flow through stages or as a layout by direction, team or client, without rebuilding the board. by tags · “prefix” — only the tags of one prefix. if your tags read difficulty::high, difficulty::low, grouping by the “difficulty” prefix gives you a board of exactly those columns, and the other tags stay out of the layout. by milestone — a column per project milestone plus a “no milestone” column. the header of such a column also shows the sum of its tasks' estimates (σ). on the timeline and the gantt the list also carries by assignee and no grouping — there the columns become swimlanes, and both layouts make sense. the grouping chip isn't only an indicator: clicking it flips status ⇄ tags. that's the fastest way to compare two readings of one board. a task with two tags lands in two columns at once. it isn't a duplicate but one and the same card shown in two directions: change it in one column and it changes in the other. tasks without tags gather in a no tags column. sorting — both direction and order sorting in tessera is multi-level. the + menu → sorting adds a level; there are six fields: priority, due date, milestone, title, number and — on the timeline and the gantt only — status. there are two things you can do to a level, and they are easy to confuse: clicking a chip changes the direction — the ↑ arrow (ascending) flips to ↓ (descending). dragging a chip changes the order of the levels. the leftmost chip is the primary sort, the next one breaks ties in the first, and so on. the hint on the chip itself says exactly that: “click — direction · drag to reorder”. the cross on a chip removes the level. an example: the chips “priority ↓” and “due ↑” in that order mean “the most important first, and within one priority the most urgent”. swap them by dragging and you get a fundamentally different list: nearest due dates first, with priority only breaking ties within a day. until a single sort level is added, the cards sit in manual order — the one you dragged them into. once a level appears, the manual order hides behind it (it isn't lost: remove the sort chip and the order returns). subtasks expanded on cards follow the same rule their parents do. due dates are handled apart from the direction: tasks without a due date always come last, whether the sort is ↑ or ↓. otherwise a descending sort would float everything undated to the top. filters the + menu has a section per filter: priority, assignee, author, tag, milestone, due date, and — on the timeline and the gantt — status as well (there are no status columns there, and nothing else would hide completed tasks). several values of one filter combine with “or”: two chosen assignees show the tasks of both. different filters combine with “and”: assignee and tag. worth calling out: due date is not a date but a state: “overdue”, “today”, “this coming week”, “with a due date”, “no due date”. milestone has an explicit “no milestone” entry besides the milestones themselves. tag — the menu is grouped by prefix so a long tag list stays readable. assignee and author — on boards linked to gitlab, a separate “gitlab” heading lists people from gitlab who have no tessera account. the author filter additionally picks up authors met right in the board's tasks: an issue can be opened by someone outside the project's member roster. every chosen filter becomes a chip, and the cross on the chip removes that one. the cross at the very end of the bar (clear all) drops every sort and filter at once, but leaves the grouping alone — it stays as chosen. search by title the field on the right of the bar searches task titles and works together with the filters, not instead of them. the search narrows an already filtered set, so an empty result while chips are active more often means “nothing matched all conditions at once” than “no such task”. when in doubt, clear the filters with the cross and search again. expanding subtasks the branch icon on the left of the bar expands subtasks right inside the cards: every card lists its children without opening the task window. the tooltip on the icon states the current state — “expand subtasks” or “subtasks expanded”. expansion respects the filters: if a filter hid some of the children, the card honestly reports how many are hidden. scope: milestone and archive besides filters a board has a scope — what it loaded from the server at all. the scope shows as a chip at the very start of the bar and is removed by the cross on it. milestone. the project tree on the left can show a board's milestones; clicking one opens the board narrowed to a single milestone. an accent chip with the milestone name appears in the bar. a separate backlog entry shows the tasks attached to no milestone. this is a scope, not a filter: a large project never loads all its cards at once. archive. the “archive” button in the board header opens its archive — see the board archive. a scope and a milestone filter are different things, and they don't stack. if, while scoped to one milestone, you add a filter by milestone, the scope drops itself: filtering across several milestones needs the whole board loaded. what the bar remembers the state of the bar is kept separately for each visualization of one board. a status filter set on the gantt never leaks into the kanban — that filter isn't even offered there. switch to the list and back, and each visualization returns to its own conditions. the current (unnamed) state of the bar is remembered on this device. to carry a set of conditions between devices and open it in one click, save it as a view — see saved views."
+        }
+      }
+    },
+    {
+      "slug": "board-columns",
+      "path": "boards/board-columns.md",
+      "title": "Колонки доски",
+      "category": "Доски",
+      "order": 22,
+      "updated": "2026-08-28",
+      "keywords": [
+        "колонки",
+        "статусы",
+        "перетаскивание",
+        "переименование",
+        "цвет",
+        "завершающая колонка",
+        "сворачивание",
+        "удаление",
+        "по умолчанию"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "четыре-колонки-по-умолчанию",
+          "text": "Четыре колонки по умолчанию",
+          "level": 2
+        },
+        {
+          "id": "правка-колонок-только-в-группировке-по-статусам",
+          "text": "Правка колонок — только в группировке по статусам",
+          "level": 2
+        },
+        {
+          "id": "перетаскивание",
+          "text": "Перетаскивание",
+          "level": 2
+        },
+        {
+          "id": "переименование-двойным-кликом",
+          "text": "Переименование двойным кликом",
+          "level": 2
+        },
+        {
+          "id": "цвет",
+          "text": "Цвет",
+          "level": 2
+        },
+        {
+          "id": "завершающая-колонка",
+          "text": "Завершающая колонка",
+          "level": 2
+        },
+        {
+          "id": "сворачивание",
+          "text": "Сворачивание",
+          "level": 2
+        },
+        {
+          "id": "создание-и-удаление",
+          "text": "Создание и удаление",
+          "level": 2
+        },
+        {
+          "id": "что-ещё-видно-в-заголовке",
+          "text": "Что ещё видно в заголовке",
+          "level": 2
+        }
+      ],
+      "text": "колонка — это статус задачи. новая доска заводится с четырьмя колонками, и их набор можно менять как угодно: переименовывать, красить, переставлять, добавлять и удалять. колонка доски: заголовок со счётчиком и меню настроек четыре колонки по умолчанию каждая новая доска получает «к работе» → «в процессе» → «на рассмотрении» → «готово», каждая со своим цветом. самая правая («готово») сразу назначается завершающей. у этих четырёх колонок есть особенность, которой нет у созданных вами: их названия следуют языку интерфейса. переключите язык — и они переведутся сами. как только вы переименуете такую колонку вручную, эта связь обрывается: дальше колонка называется так, как вы её назвали, на любом языке. это осознанное поведение — ваше название важнее автоматического перевода, — но вернуть его переименованием обратно уже нельзя. правка колонок — только в группировке по статусам всё, что описано ниже, работает, когда доска сгруппирована по статусам. при группировке по тегам, этапам или исполнителю колонки — это не колонки доски, а способ раскладки: их нельзя переименовать или удалить, потому что за ними стоят теги и этапы, а не статусы. чтобы вернуться к правке, переключите группировку чипом в панели доски. перетаскивание колонка переносится за заголовок: возьмите её за название или за значок статуса слева от него (курсор меняется на «руку») и перетащите на новое место. порядок колонок общий для всех, кто открывает доску. переименование двойным кликом двойной клик по названию превращает заголовок в поле ввода. enter сохраняет, клик мимо — тоже сохраняет (поле сохраняет по потере фокуса). пустое имя или имя без изменений просто закрывает поле. тот же пункт есть в контекстном меню: правый клик по заголовку → «переименовать». цвет кнопка «…» в заголовке открывает настройки колонки. верхняя строка — девять кружков: «по умолчанию» и восемь цветов. цвет ложится на верхнюю кромку колонки полосой-градиентом, слегка подкрашивает её фон и рамку и тонирует значок статуса в заголовке. на самих карточках цвет колонки не отражается — карточка носит свои цвета (приоритет, теги). завершающая колонка задача считается выполненной ровно тогда, когда она попала в завершающую колонку. не «крайняя правая», не «называется готово», а именно назначенная завершающей. назначается она в том же меню «…» кнопкой «сделать завершающей» (или правым кликом по заголовку). повторное нажатие — «снять завершение». завершающая колонка помечена сплошным закрашенным значком статуса в заголовке. когда задача попадает в завершающую колонку, ей проставляется дата завершения и в историю пишется событие «завершена»; вынесли обратно — отметка снимается, в историю пишется «возвращена в работу». если явная колонка не назначена, завершающей считается самая правая. отсюда самая частая путаница: колонку переставили — и «выполненными» стали считаться задачи в другой колонке. если задачи не отмечаются выполненными, хотя визуально стоят «в конце», проверьте в меню «…», у какой колонки стоит «снять завершение» — она и есть завершающая. удаление завершающей колонки не ломает доску, но и не передаёт роль соседу: явное назначение просто снимается, и доска снова считает завершающей самую правую колонку. сворачивание кнопка со стрелкой в заголовке («свернуть колонку») схлопывает колонку в узкую вертикальную полоску — задачи из неё никуда не деваются, просто перестают занимать ширину. клик по полоске («развернуть колонку») возвращает её. свёрнутое состояние запоминается вместе с остальными настройками вида и сохраняется в представлении. рядом есть автоматический вариант: переключатель «сворачивать пустые колонки» в панели настройки вида сам схлопывает все колонки без задач. удобно на досках, где колонок много, а заняты в каждый момент две-три. создание и удаление кнопка «＋ создать колонку» справа от последней колонки просит название и добавляет колонку в конец. внутри колонки есть своя кнопка «＋ создать задачу»: введите название и нажмите enter — задача создастся прямо в этой колонке, не открывая окно задачи. удаление — в меню «…», кнопка «удалить колонку». она спрашивает подтверждение, и не зря: колонка удаляется вместе со всеми своими задачами, и в архив они при этом не попадают. если задачи нужно сохранить, сначала перенесите их в другую колонку. что ещё видно в заголовке рядом с названием всегда стоит счётчик задач в колонке — он считает то, что видно после фильтров, а не всё содержимое колонки. при группировке по этапам к нему добавляется сумма оценок задач колонки (σ 12 ч) в единицах, выбранных в проекте.",
+      "locales": {
+        "en": {
+          "path": "boards/board-columns.en.md",
+          "title": "Board columns",
+          "category": "Boards",
+          "updated": "2026-08-28",
+          "keywords": [
+            "columns",
+            "statuses",
+            "drag",
+            "rename",
+            "colour",
+            "completing column",
+            "collapse",
+            "delete",
+            "defaults"
+          ],
+          "headings": [
+            {
+              "id": "the-four-default-columns",
+              "text": "The four default columns",
+              "level": 2
+            },
+            {
+              "id": "editing-columns-works-in-status-grouping-only",
+              "text": "Editing columns works in status grouping only",
+              "level": 2
+            },
+            {
+              "id": "dragging",
+              "text": "Dragging",
+              "level": 2
+            },
+            {
+              "id": "renaming-with-a-double-click",
+              "text": "Renaming with a double click",
+              "level": 2
+            },
+            {
+              "id": "colour",
+              "text": "Colour",
+              "level": 2
+            },
+            {
+              "id": "the-completing-column",
+              "text": "The completing column",
+              "level": 2
+            },
+            {
+              "id": "collapsing",
+              "text": "Collapsing",
+              "level": 2
+            },
+            {
+              "id": "creating-and-deleting",
+              "text": "Creating and deleting",
+              "level": 2
+            },
+            {
+              "id": "what-else-the-header-shows",
+              "text": "What else the header shows",
+              "level": 2
+            }
+          ],
+          "text": "a column is a task's status. a new board starts with four columns, and the set can be changed however you like: renamed, coloured, reordered, added to and deleted. a board column: the header with a counter and the settings menu the four default columns every new board gets “to do” → “in progress” → “in review” → “done”, each with its own colour. the rightmost one (“done”) is set as the completing column right away. these four have a property the ones you create don't: their names follow the interface language. switch the language and they translate themselves. the moment you rename such a column by hand, that link is cut: from then on the column is called what you called it, in every language. this is deliberate — your name matters more than an automatic translation — but renaming it back will not restore the behaviour. editing columns works in status grouping only everything below applies while the board is grouped by status. under grouping by tags, milestones or assignee the columns aren't board columns but a way of laying tasks out: they can't be renamed or deleted, because what stands behind them are tags and milestones, not statuses. to get editing back, flip the grouping with the chip in the board bar. dragging a column is moved by its header: take it by the name or by the status glyph to its left (the cursor turns into a hand) and drag it to a new place. the column order is shared by everyone who opens the board. renaming with a double click a double click on the name turns the header into an input. enter saves; clicking away saves too (the field commits on blur). an empty name, or one you didn't actually change, just closes the field. the same entry lives in the context menu: right-click the header → “rename”. colour the “…” button in the header opens the column settings. the top row is nine circles: “default” and eight colours. the colour paints the column's top edge as a gradient strip, faintly tints its background and border, and colours the status glyph in the header. it doesn't reach the cards — a card carries its own colours (priority, tags). the completing column a task counts as done exactly when it lands in the completing column. not “the rightmost”, not “the one called done”, but the one actually set as completing. it's set in the same “…” menu with make it completing (or by right-clicking the header). pressing it again gives “stop completing”. the completing column is marked by a solid filled status glyph in its header. when a task enters the completing column, a completion date is stamped and a “completed” event is written to its history; move it back out and the mark is removed, with a “reopened” event written. if no column is set explicitly, the rightmost one counts as completing. hence the most common confusion: a column was moved, and tasks in a different column started counting as done. if tasks aren't being marked complete even though they visually sit “at the end”, check in the “…” menu which column offers “stop completing” — that one is it. deleting the completing column doesn't break the board, but it doesn't hand the role to a neighbour either: the explicit assignment is simply cleared, and the board goes back to treating the rightmost column as completing. collapsing the arrow button in the header (collapse the column) folds the column into a narrow vertical strip — its tasks don't go anywhere, they just stop taking width. clicking the strip (“expand the column”) brings it back. the collapsed state is remembered along with the rest of the view settings and is stored in a saved view. there's an automatic counterpart next to it: the collapse empty columns toggle in the customize panel folds every column without tasks by itself. handy on boards with many columns where only two or three are busy at any moment. creating and deleting the ＋ new column button to the right of the last column asks for a name and appends a column at the end. inside a column there's its own ＋ new task button: type a title and press enter, and the task is created right in that column without opening the task window. deletion lives in the “…” menu, under delete the column. it asks for confirmation, and for good reason: a column is deleted together with all of its tasks, and they do not go to the archive. if the tasks are worth keeping, move them to another column first. what else the header shows next to the name there's always a task counter for the column — it counts what's visible after the filters, not the column's whole contents. under grouping by milestone it's joined by the sum of estimates of the column's tasks (σ 12h), in the unit chosen for the project."
+        }
+      }
+    },
+    {
+      "slug": "board-customize",
+      "path": "boards/board-customize.md",
+      "title": "Настройка вида доски",
+      "category": "Доски",
+      "order": 23,
+      "updated": "2026-08-28",
+      "keywords": [
+        "настройка",
+        "кастомизация",
+        "вид",
+        "размер карточек",
+        "поля",
+        "стек",
+        "иконка доски",
+        "цвет доски",
+        "автосохранение",
+        "сворачивание"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "доска",
+          "text": "Доска",
+          "level": 2
+        },
+        {
+          "id": "размер-карточек",
+          "text": "Размер карточек",
+          "level": 2
+        },
+        {
+          "id": "поля",
+          "text": "Поля",
+          "level": 2
+        },
+        {
+          "id": "колонки",
+          "text": "Колонки",
+          "level": 2
+        },
+        {
+          "id": "группировка-сортировка-фильтр",
+          "text": "Группировка · сортировка · фильтр",
+          "level": 2
+        },
+        {
+          "id": "представления",
+          "text": "Представления",
+          "level": 2
+        },
+        {
+          "id": "что-из-этого-попадает-в-представление",
+          "text": "Что из этого попадает в представление",
+          "level": 2
+        }
+      ],
+      "text": "кнопка с шестерёнкой в панели доски открывает справа панель «настроить вид». в ней собрано то, что относится к внешнему виду доски и карточек: как выглядит сама доска, насколько крупные карточки и какие поля на них показывать. панель «настроить вид»: разделы от названия доски до представлений панель доступна на канбане, списке, календаре и матрице. на таймлайне и ганте её нет: там карточек в привычном смысле не существует, а размер и поля настраивать не на чем. разделы идут сверху вниз в том же порядке, что и ниже. доска поле с названием доски правит его прямо здесь: enter или клик мимо поля сохраняют. под ним — выбор значка и цвета доски, тот же, что у проектов и групп. значок можно взять из набора или загрузить свой; переключатель режима определяет, рисовать значок плашкой-бейджем или без неё. если значок не выбран, доска показывается двумя первыми буквами названия. значок и цвет видны в дереве проектов слева — это способ различать десяток досок одного проекта не по названию, а по виду. размер карточек три варианта: «компактно», «средне» (по умолчанию) и «расширенно». размер меняет плотность карточки — сколько её займёт заголовок и сколько останется полям. компактный размер имеет смысл, когда важнее охват (большая доска целиком на экране); расширенный — когда на карточках много полей и их нужно читать, не открывая задачу. поля здесь решается, что вообще показывать на карточке. сначала два общих переключателя: «стек (в столбик)» — выкладывать поля вертикально одно под другим, а не в строку с переносом. помогает, когда полей много и строчная раскладка рвётся в неудобных местах. «показывать пустые поля» — рисовать ли плашку-заглушку у незаполненного поля. включено — видно, что у задачи не проставлен срок; выключено — карточка чище, но отсутствие поля незаметно. дальше — по переключателю на каждое поле: приоритет, срок, исполнитель, теги, оценка, этап, описание, номер (#) и gitlab. выключенное поле исчезает только с карточек: в самой задаче оно остаётся и продолжает участвовать в фильтрах и сортировке. практический приём: на доске, сгруппированной по тегам, выключите поле «теги». тег уже написан в заголовке колонки, и на карточках он только шумит. колонки один переключатель — «сворачивать пустые колонки». колонки без задач схлопываются в узкие полоски автоматически, по мере того как задачи из них уходят. ручное сворачивание отдельных колонок никуда не девается, они работают вместе: см. колонки доски. группировка · сортировка · фильтр этот раздел — не вторая настройка, а то же самое, что чипы в панели доски, показанное списком. здесь удобнее разбирать длинный набор условий: чипы написаны словами целиком («приоритет: высокий»), а не значком плюс значение. кнопка + открывает то же меню добавления, крестик на чипе снимает условие, клик по чипу группировки так же переключает статусы ⇄ теги. подробно про сами условия — в статье панель доски. здесь же лежит переключатель «раскрыть подзадачи» — дубликат значка ветки в панели. представления «автосохранение» дописывает изменения панели в текущее сохранённое представление, не заставляя каждый раз нажимать «сохранить». переключатель неактивен, пока никакое представление не загружено, — и это важная деталь, а не недоработка: автосохранению нужно, во что сохранять. загрузите представление кнопкой-папкой, и подпись переключателя сменится на «автосохранение: <название>». сами кнопки сохранения и загрузки живут в панели доски, а не здесь; подсказка внизу раздела об этом и напоминает. подробности — в статье сохранённые представления. что из этого попадает в представление всё, что настроено в этой панели — размер карточек, стек, пустые поля, видимость каждого поля, сворачивание колонок, — сохраняется вместе с группировкой и фильтрами в представление доски. название, значок и цвет доски — нет: это свойства самой доски, они одинаковы для всех участников и от представления не зависят.",
+      "locales": {
+        "en": {
+          "path": "boards/board-customize.en.md",
+          "title": "Customizing the board view",
+          "category": "Boards",
+          "updated": "2026-08-28",
+          "keywords": [
+            "customize",
+            "view",
+            "card size",
+            "fields",
+            "stack",
+            "board icon",
+            "board colour",
+            "autosave",
+            "collapse"
+          ],
+          "headings": [
+            {
+              "id": "board",
+              "text": "Board",
+              "level": 2
+            },
+            {
+              "id": "card-size",
+              "text": "Card size",
+              "level": 2
+            },
+            {
+              "id": "fields",
+              "text": "Fields",
+              "level": 2
+            },
+            {
+              "id": "columns",
+              "text": "Columns",
+              "level": 2
+            },
+            {
+              "id": "grouping-sorting-filter",
+              "text": "Grouping · sorting · filter",
+              "level": 2
+            },
+            {
+              "id": "views",
+              "text": "Views",
+              "level": 2
+            },
+            {
+              "id": "what-of-this-goes-into-a-view",
+              "text": "What of this goes into a view",
+              "level": 2
+            }
+          ],
+          "text": "the gear button on the board bar opens the customize the view panel on the right. it holds everything about how the board and its cards look: the board itself, how large the cards are and which fields to show on them. the “customize the view” panel: sections from the board name down to views the panel is available on the kanban, the list, the calendar and the matrix. it isn't there on the timeline and the gantt: there are no cards in the usual sense there, so there is nothing whose size and fields to set. the sections run top to bottom in the same order as below. board the board-name field edits it in place: enter, or a click away, saves. below it is the picker for the board's icon and colour, the same one projects and groups use. the icon can be taken from the built-in set or uploaded; the mode switch decides whether to draw the icon on a badge plate or without one. with no icon chosen, the board shows the first two letters of its name. the icon and the colour are visible in the project tree on the left — that's how you tell a dozen boards of one project apart by look rather than by reading names. card size three options: compact, medium (the default) and expanded. the size changes the density of a card — how much of it the title takes and how much is left for the fields. compact makes sense when coverage matters (a big board fitting on screen at once); expanded when the cards carry many fields and you need to read them without opening the task. fields this is where you decide what to show on a card at all. first two general switches: stack (in a column) — lay the fields out vertically one under another instead of a wrapping row. helps when there are many fields and the inline layout breaks in awkward places. show empty fields — whether to draw a placeholder pill for a field that isn't filled in. on, and you can see a task has no due date; off, and the card is cleaner but the absence goes unnoticed. then a switch per field: priority, due date, assignee, tags, estimate, milestone, description, number (#) and gitlab. a field switched off only disappears from the cards: inside the task it stays, and it keeps taking part in filters and sorting. a practical trick: on a board grouped by tags, switch the “tags” field off. the tag is already written in the column header, and on the cards it is only noise. columns one switch — collapse empty columns. columns without tasks fold into narrow strips automatically as tasks leave them. collapsing individual columns by hand doesn't go away; the two work together — see board columns. grouping · sorting · filter this section isn't a second set of settings but the very same chips as on the board bar, shown as a list. sorting through a long set of conditions is easier here: the chips are spelled out in words (“priority: high”) rather than as an icon plus a value. the + button opens the same add menu, the cross on a chip removes a condition, and clicking the grouping chip flips status ⇄ tags just the same. the conditions themselves are covered in the board bar. the expand subtasks switch lives here too — a duplicate of the branch icon on the bar. views autosave writes changes made on the bar into the currently loaded saved view, so you don't have to press save each time. the switch is disabled until a view is loaded — and that's a meaningful detail, not an oversight: autosave needs something to save into. load a view with the folder button and the switch's caption changes to “autosave: <name>”. the save and load buttons themselves live on the board bar, not here; the hint at the bottom of the section says as much. details are in saved views. what of this goes into a view everything set in this panel — card size, stacking, empty fields, the visibility of each field, collapsed columns — is stored in a board view along with the grouping and the filters. the board's name, icon and colour are not: those are properties of the board itself, the same for every member, and independent of any view."
+        }
+      }
+    },
+    {
+      "slug": "board-saved-views",
+      "path": "boards/board-saved-views.md",
+      "title": "Сохранённые представления",
+      "category": "Доски",
+      "order": 24,
+      "updated": "2026-08-28",
+      "keywords": [
+        "представления",
+        "сохранить",
+        "загрузить",
+        "набор",
+        "пресет",
+        "автосохранение",
+        "перезаписать",
+        "удалить"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "что-сохраняется",
+          "text": "Что сохраняется",
+          "level": 2
+        },
+        {
+          "id": "представления-привязаны-к-визуализации",
+          "text": "Представления привязаны к визуализации",
+          "level": 2
+        },
+        {
+          "id": "сохранение-и-перезапись",
+          "text": "Сохранение и перезапись",
+          "level": 2
+        },
+        {
+          "id": "загрузка-переключение-удаление",
+          "text": "Загрузка, переключение, удаление",
+          "level": 2
+        },
+        {
+          "id": "автосохранение",
+          "text": "Автосохранение",
+          "level": 2
+        },
+        {
+          "id": "представления-личные-и-переезжают-с-вами",
+          "text": "Представления личные и переезжают с вами",
+          "level": 2
+        }
+      ],
+      "text": "собранная комбинация группировки, сортировок, фильтров и настроек карточек — это представление. его можно назвать и сохранить, чтобы возвращаться к нему одним кликом, а не собирать чипы заново. список сохранённых представлений доски две кнопки в панели доски: папка — загрузить представление, дискета — сохранить текущее. что сохраняется представление запоминает целиком то, что вы видите: визуализацию (доска, список, календарь, таймлайн, гант, матрица); группировку и префикс тегов, если группировка по префиксу; все уровни сортировки — вместе с их порядком и направлением; все фильтры и раскрытие подзадач; какие колонки свёрнуты и включено ли автосворачивание пустых; размер карточек, стек полей, показ пустых полей и видимость каждого поля; состояние автосохранения. не сохраняются область (этап или архив) и текст в поле поиска: это то, где вы находитесь сейчас, а не то, как вы смотрите. представления привязаны к визуализации список в папке показывает только представления текущей визуализации. представление, сохранённое на канбане, не появится в списке на ганте — и наоборот. отсюда самая частая жалоба: «мои представления пропали». почти всегда это значит, что вы стоите на другой визуализации. переключитесь обратно кнопкой представления в шапке — список вернётся. сохранение и перезапись дискета открывает поле для названия. введите имя и нажмите enter или «сохранить» — появится сообщение «представление «…» сохранено». чтобы перезаписать существующее, не набирайте имя заново: под полем есть строка «перезаписать:» с кнопками уже сохранённых названий. клик по названию подставляет его в поле, «сохранить» перезаписывает. сохранение под именем, которое у вас уже есть, всегда перезаписывает, а не создаёт второе представление с тем же именем. загрузка, переключение, удаление папка показывает список; клик по названию применяет представление сразу, а само название подсвечивается как текущее и переезжает в подсказку кнопки — «представление: <название>». корзина рядом с названием удаляет его, спросив подтверждение. если удалить то, что сейчас загружено, доска не изменится — просто перестанет считаться, что вы находитесь в именованном представлении. когда сохранённых представлений для этой визуализации нет, в списке написано «нет сохранённых представлений». автосохранение переключатель «автосохранение» живёт в панели настройки вида. пока он включён и загружено именованное представление, любое изменение панели дописывается в него само. переключатель неактивен, пока представление не загружено: автосохранению нужно, во что писать. сначала загрузите представление папкой, затем включайте автосохранение. учтите обратную сторону: с включённым автосохранением случайно снятый фильтр тоже сохранится. если представление — ваш «рабочий эталон», к которому вы возвращаетесь после экспериментов, автосохранение лучше держать выключенным. представления личные и переезжают с вами представления хранятся на сервере и отдельно у каждого пользователя. из этого следует и то и другое: ваши представления доступны на всех ваших устройствах — и в браузере, и в приложении, под одной и той же учётной записью. ваши представления не видит никто другой. двое на одной доске могут иметь разные «мои задачи на неделю», и они не мешают друг другу. поделиться представлением с коллегой нельзя — договаривайтесь о наборе фильтров словами. отдельно стоит безымянное текущее состояние панели: то, что вы просто накликали и не сохранили. оно запоминается для каждой доски и каждой визуализации, но только на этом устройстве — за ним не стоит записи на сервере. если набор условий должен пережить смену устройства, сохраните его как представление.",
+      "locales": {
+        "en": {
+          "path": "boards/board-saved-views.en.md",
+          "title": "Saved views",
+          "category": "Boards",
+          "updated": "2026-08-28",
+          "keywords": ["views", "save", "load", "preset", "autosave", "overwrite", "delete"],
+          "headings": [
+            {
+              "id": "what-gets-saved",
+              "text": "What gets saved",
+              "level": 2
+            },
+            {
+              "id": "views-belong-to-a-visualization",
+              "text": "Views belong to a visualization",
+              "level": 2
+            },
+            {
+              "id": "saving-and-overwriting",
+              "text": "Saving and overwriting",
+              "level": 2
+            },
+            {
+              "id": "loading-switching-deleting",
+              "text": "Loading, switching, deleting",
+              "level": 2
+            },
+            {
+              "id": "autosave",
+              "text": "Autosave",
+              "level": 2
+            },
+            {
+              "id": "views-are-personal-and-travel-with-you",
+              "text": "Views are personal and travel with you",
+              "level": 2
+            }
+          ],
+          "text": "the combination of grouping, sorts, filters and card settings you've assembled is a view. it can be named and saved, so you come back to it in a single click instead of collecting the chips all over again. the list of a board's saved views two buttons on the board bar: the folder loads a view, the disk saves the current one. what gets saved a view remembers the whole of what you see: the visualization (board, list, calendar, timeline, gantt, matrix); the grouping, and the tag prefix if the grouping is by prefix; every sort level — with its order and direction; every filter and the subtask expansion; which columns are collapsed and whether empty ones auto-collapse; card size, field stacking, showing empty fields and the visibility of each field; the state of autosave. what is not saved: the scope (a milestone or the archive) and the text in the search box. those are where you are right now, not how you are looking. views belong to a visualization the list in the folder shows only the views of the current visualization. a view saved on the kanban won't appear in the list on the gantt — and the other way round. hence the most common complaint: “my views are gone”. almost always it means you're standing on a different visualization. switch back with the view button in the header and the list returns. saving and overwriting the disk opens a name field. type a name and press enter or “save” — a message reads “view “…” saved”. to overwrite an existing one, don't retype the name: under the field there's an “overwrite:” row with buttons for the names you already have. clicking a name puts it in the field, and “save” overwrites it. saving under a name you already own always overwrites rather than creating a second view with the same name. loading, switching, deleting the folder shows the list; clicking a name applies the view immediately, and the name is highlighted as current and moves into the button's tooltip — “view: <name>”. the bin next to a name deletes it after a confirmation. deleting the one currently loaded doesn't change the board — it just stops counting as being inside a named view. when there are no saved views for this visualization, the list reads “no saved views”. autosave the autosave switch lives in the customize panel. while it's on and a named view is loaded, every change on the bar is written into that view by itself. the switch is disabled until a view is loaded: autosave needs something to write to. load a view with the folder first, then turn autosave on. mind the flip side: with autosave on, a filter you removed by accident is saved too. if a view is your “working baseline” that you return to after experiments, autosave is better left off. views are personal and travel with you views are stored on the server and separately per user. both of these follow from that: your views are available on all of your devices — in the browser and in the app alike, under the same account. your views are invisible to everyone else. two people on one board can each have their own “my tasks this week” without getting in each other's way. a view can't be shared with a colleague — agree on the set of filters in words. apart from that stands the unnamed current state of the bar: the one you simply clicked together and never saved. it is remembered per board and per visualization, but on this device only — no server record stands behind it. if a set of conditions has to survive a change of device, save it as a view."
+        }
+      }
+    },
+    {
+      "slug": "board-layouts",
+      "path": "boards/board-layouts.md",
+      "title": "Визуализации: список, календарь, таймлайн, Гант, матрица",
+      "category": "Доски",
+      "order": 25,
+      "updated": "2026-08-28",
+      "keywords": [
+        "визуализации",
+        "представление",
+        "список",
+        "календарь",
+        "таймлайн",
+        "гант",
+        "диаграмма",
+        "матрица",
+        "эйзенхауэр",
+        "зависимости",
+        "масштаб"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "доска",
+          "text": "Доска",
+          "level": 2
+        },
+        {
+          "id": "список",
+          "text": "Список",
+          "level": 2
+        },
+        {
+          "id": "календарь",
+          "text": "Календарь",
+          "level": 2
+        },
+        {
+          "id": "таймлайн",
+          "text": "Таймлайн",
+          "level": 2
+        },
+        {
+          "id": "гант",
+          "text": "Гант",
+          "level": 2
+        },
+        {
+          "id": "матрица-эйзенхауэра",
+          "text": "Матрица Эйзенхауэра",
+          "level": 2
+        }
+      ],
+      "text": "одни и те же задачи доски можно смотреть шестью способами. переключатель визуализации стоит в шапке доски; выбранный способ запоминается для этой доски. важно понимать, что это не разные доски и не копии задач. это один набор карточек, показанный по-разному: перенесли задачу в календаре — она переехала и на канбане. у каждой визуализации своя память: группировка, сортировки и фильтры хранятся отдельно для каждой из них. фильтр, поставленный на ганте, не появится на канбане. сохранённые представления тоже привязаны к визуализации — см. сохранённые представления. доска канбан — колонки и карточки, раскладка по умолчанию. ей посвящены статьи доска: основы и колонки доски. список доска в виде списка плоская таблица: заголовки групп (те же, что колонки на канбане, с цветной точкой и счётчиком), под каждым — строки задач. в строке: название, приоритет, срок, исполнители и теги. просроченный срок подсвечен, завершённые задачи приглушены. пустая группа отмечена «— пусто —». клик по строке открывает задачу, правый клик — то же контекстное меню, что на карточке (сменить колонку, приоритет, срок, в архив). список удобен для массового разбора: за один экран помещается втрое больше задач, чем на канбане, и глазами легко сравнивать сроки соседних строк. календарь доска в виде календаря сетка месяца, неделя начинается с понедельника. задача попадает в клетку своего срока; сегодняшний день выделен, стрелки перелистывают месяцы, кнопка «сегодня» возвращает к текущему. задачи без срока собраны отдельным блоком под сеткой — это самый быстрый способ увидеть, что вы ещё не запланировали. клик по задаче открывает её, правый клик — контекстное меню. срок меняется в самой задаче: перетаскивание карточек между клетками календаря не предусмотрено — раскладка следует за сроком, а не задаёт его. названия месяцев и дней недели берутся из языка интерфейса, а первый день недели — понедельник, независимо от языка. таймлайн доска в виде таймлайна горизонтальная ось времени, задача — полоса от даты начала до срока. полосы разложены по дорожкам, а дорожки — это та же группировка из панели доски: по статусам, тегам, этапам, исполнителю или без группировки вовсе. управление над диаграммой: «сегодня» — вернуть ось к текущей дате; вертикальная линия «сегодня» видна всегда. − и + — масштаб оси, от «плотно» до «подробно». стрелка — свернуть левую колонку с названиями задач, отдав всю ширину диаграмме. справа — счётчики: сколько задач просрочено и сколько без дат. полосу можно перетаскивать по оси — так меняются даты задачи, — а также растягивать за края: левый край задаёт начало, правый — срок. пунктирными вертикалями отмечены сроки этапов проекта: сразу видно, какие задачи не успевают к вехе. задачи без дат не выбрасываются: они собраны в блок «без дат» рядом с диаграммой. поставьте задаче срок или дату начала — и она появится на оси. раскрытые подзадачи рисуются тонкими полосками внутри строки родителя. гант доска в виде диаграммы ганта гант — это таймлайн плюс зависимости между задачами. ось, масштаб, перетаскивание полос и маркеры этапов работают одинаково; добавляются стрелки блокировок. чтобы создать зависимость, потяните от правого края одной полосы к другой — подсказка над диаграммой говорит то же самое. появится стрелка «блокирует → заблокирована». в счётчиках справа добавляется число связей. каждая задача на ганте занимает свою строку — иначе стрелке некуда было бы прийти. поэтому гант выглядит длиннее таймлайна на тех же данных. кнопка «авто» в панели доски (только на ганте) раскладывает строки по графу зависимостей: блокирующая задача всегда выше заблокированной. помните: осмысленно это лишь при пустых группировке и сортировке, поэтому включение «авто» их сбрасывает. выключите «авто» — и вернётесь к обычной раскладке, но снятые условия придётся выставить заново. подробно про сами типы связей — в статье о связях задачи. матрица эйзенхауэра доска в виде матрицы эйзенхауэра квадрат 2×2: колонки — «срочно» и «несрочно», строки — «важно» и «неважно». отсюда четыре квадранта с подсказками: квадрант что это значит --- --- срочно и важно сделать сейчас важно, не срочно запланировать срочно, не важно делегировать не срочно, не важно может подождать задачи раскладываются сами. важной считается задача с высоким или срочным приоритетом; срочной — та, чей срок наступает примерно в ближайшую неделю или уже прошёл. то есть матрица не требует заводить ещё два поля: она читает приоритет и срок, которые у задач уже есть. автоматику можно переспорить: перетащите карточку в другой квадрант, и она там закрепится. у такой задачи появляется пометка «вручную»; клик по пометке возвращает её на автоматическое место. в каждом квадранте есть кнопка «＋» для быстрого создания задачи: она создаётся в первой колонке доски и сразу закрепляется в этом квадранте. завершённые задачи в матрицу не попадают — это инструмент разбора того, что ещё предстоит, а не отчёт о сделанном.",
+      "locales": {
+        "en": {
+          "path": "boards/board-layouts.en.md",
+          "title": "Visualizations: list, calendar, timeline, Gantt, matrix",
+          "category": "Boards",
+          "updated": "2026-08-28",
+          "keywords": [
+            "visualizations",
+            "view",
+            "list",
+            "calendar",
+            "timeline",
+            "gantt",
+            "chart",
+            "matrix",
+            "eisenhower",
+            "dependencies",
+            "zoom"
+          ],
+          "headings": [
+            {
+              "id": "board",
+              "text": "Board",
+              "level": 2
+            },
+            {
+              "id": "list",
+              "text": "List",
+              "level": 2
+            },
+            {
+              "id": "calendar",
+              "text": "Calendar",
+              "level": 2
+            },
+            {
+              "id": "timeline",
+              "text": "Timeline",
+              "level": 2
+            },
+            {
+              "id": "gantt",
+              "text": "Gantt",
+              "level": 2
+            },
+            {
+              "id": "the-eisenhower-matrix",
+              "text": "The Eisenhower matrix",
+              "level": 2
+            }
+          ],
+          "text": "the same board tasks can be looked at in six ways. the visualization switcher sits in the board header; the chosen one is remembered for that board. it's important to understand that these are not different boards and not copies of the tasks. it's one set of cards shown differently: move a task in the calendar and it moves on the kanban too. each visualization has its own memory: grouping, sorts and filters are kept separately for each. a filter set on the gantt won't turn up on the kanban. saved views are tied to a visualization as well — see saved views. board the kanban — columns and cards, the default layout. it's covered by the board: basics and board columns. list the board as a list a flat table: group headers (the same ones the kanban shows as columns, with a coloured dot and a counter) and rows of tasks under each. a row carries the title, the priority, the due date, the assignees and the tags. an overdue date is highlighted, completed tasks are dimmed. an empty group is marked “— empty —”. clicking a row opens the task; right-clicking gives the same context menu the card has (change column, priority, due date, archive). the list is good for bulk triage: three times as many tasks fit on a screen as on the kanban, and comparing due dates of neighbouring rows by eye is easy. calendar the board as a calendar a month grid, the week starting on monday. a task lands in the cell of its due date; today is highlighted, arrows page through the months, and the “today” button returns to the current one. tasks without a due date gather in a separate block under the grid — the quickest way to see what you haven't scheduled yet. clicking a task opens it, right-clicking gives the context menu. the due date is changed in the task itself: dragging cards between calendar cells isn't provided — the layout follows the due date rather than setting it. month and weekday names come from the interface language, while the first day of the week is monday regardless of language. timeline the board as a timeline a horizontal time axis, with a task as a bar from its start date to its due date. the bars are laid out in swimlanes, and the lanes are the same grouping as on the board bar: by status, tag, milestone, assignee, or no grouping at all. the controls above the chart: today — bring the axis back to the current date; the vertical “today” line is always visible. − and + — the axis zoom, from dense to detailed. the arrow — collapse the left column of task names, giving the whole width to the chart. on the right — counters: how many tasks are overdue and how many have no dates. a bar can be dragged along the axis — that changes the task's dates — and stretched by either edge (the left one sets the start, the right one the due date). dashed verticals mark the milestone due dates of the project: you see at once which tasks won't make a milestone. tasks with no dates aren't thrown away: they gather in an “unscheduled” block beside the chart. give a task a due or start date and it appears on the axis. expanded subtasks are drawn as thin bars inside their parent's row. gantt the board as a gantt chart the gantt is the timeline plus dependencies between tasks. the axis, the zoom, dragging bars and the milestone markers all work the same; blocking arrows are added. to create a dependency, drag from the right edge of one bar to another — the hint above the chart says as much. a “blocks → blocked” arrow appears. the counters on the right gain a number of links. every task on the gantt occupies its own row — otherwise an arrow would have nowhere to land. that's why the gantt looks longer than the timeline on the same data. the auto button on the board bar (gantt only) lays the rows out by the dependency graph: a blocking task always sits above the one it blocks. bear in mind this is only meaningful with grouping and sorting empty, so turning “auto” on clears them. turn it off and you're back to the ordinary layout, but the conditions it cleared have to be set again. the link types themselves are covered in the article on task links. the eisenhower matrix the board as an eisenhower matrix a 2×2 square: the columns are “urgent” and “not urgent”, the rows “important” and “not important”. hence four quadrants, each with a hint: quadrant what it means --- --- urgent and important do it now important, not urgent schedule it urgent, not important delegate it neither urgent nor important it can wait tasks place themselves. a task counts as important when its priority is high or urgent; as urgent when its due date falls roughly within the coming week or has already passed. that is, the matrix doesn't ask you to fill in two more fields: it reads the priority and the due date the tasks already have. the automatic placement can be overruled: drag a card into another quadrant and it is pinned there. such a task gets a “by hand” mark; clicking the mark returns it to its automatic place. each quadrant has a ＋ button for quickly creating a task: it is created in the board's first column and pinned to that quadrant right away. completed tasks don't reach the matrix — it's a tool for triaging what's still ahead, not a report on what's done."
+        }
+      }
+    },
+    {
+      "slug": "archive",
+      "path": "boards/archive.md",
+      "title": "Архив доски",
+      "category": "Доски",
+      "order": 26,
+      "updated": "2026-08-28",
+      "keywords": [
+        "архив",
+        "архивировать",
+        "восстановить",
+        "только чтение",
+        "удаление",
+        "подзадачи",
+        "отвязать"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "архив-это-та-же-доска-только-для-чтения",
+          "text": "Архив — это та же доска, только для чтения",
+          "level": 2
+        },
+        {
+          "id": "как-задача-попадает-в-архив",
+          "text": "Как задача попадает в архив",
+          "level": 2
+        },
+        {
+          "id": "восстановление",
+          "text": "Восстановление",
+          "level": 2
+        },
+        {
+          "id": "архив-и-удаление-не-одно-и-то-же",
+          "text": "Архив и удаление — не одно и то же",
+          "level": 2
+        }
+      ],
+      "text": "архив — место, куда уезжают задачи, которые больше не нужны на доске, но которые жалко потерять. это не корзина с отложенным удалением: из архива ничего не пропадает само. кнопка «архив» стоит в шапке доски, рядом с «тегами» и «этапами». архив доски: карточки только для чтения архив — это та же доска, только для чтения открыв архив, вы не уходите на отдельный экран. это область той же доски: те же колонки, та же группировка, те же фильтры — но показаны архивные задачи вместо живых. в панели доски появляется янтарный чип «архив (только чтение)»; крестик на нём возвращает к обычной доске. из этого следует главное правило: в архиве ничего нельзя изменить. карточки не перетаскиваются, поля не правятся, задачи не создаются, окно задачи открывается только на просмотр. единственное разрешённое действие — восстановление. ищите в архиве теми же средствами, что и на доске: фильтр по тегу, по исполнителю, поиск по названию — всё работает и здесь. при входе в архив снимается область этапа, если она была: архивная выборка по этапам не разбирается, и оставлять чип, который ни на что не влияет, было бы враньём. как задача попадает в архив пункт «в архив» есть в контекстном меню карточки (правый клик) и в самом окне задачи. если у задачи есть подзадачи, вопрос будет с выбором: архивировать вместе с подзадачами — всё дерево уезжает в архив целиком и восстановится тоже целиком. отвязать подзадачи — дети остаются на доске как самостоятельные задачи, в архив едет только родитель. по умолчанию подзадачи едут вместе с родителем — именно поэтому в архиве карточки показаны плоско: их дети уже лежат рядом, внутри того же архива. восстановление на архивной карточке вместо обычных действий одна кнопка — восстановить. задача сразу возвращается на доску, в свою колонку, а сверху появляется сообщение «задача возвращена из архива». карточка исчезает из архивного списка: она больше не архивная. подзадачи, уехавшие в архив вместе с родителем, возвращаются вместе с ним. архив и удаление — не одно и то же разница важная, и её легко упустить: в архив — задача сохраняется со всей историей, комментариями и вложениями, её видно в архиве и можно вернуть. удалить колонку — колонка исчезает вместе со своими задачами, минуя архив. это необратимо. прежде чем удалять колонку, перенесите нужные задачи в другую или отправьте их в архив. если сомневаетесь — отправляйте в архив. он существует ровно для того, чтобы не выбирать между «мешает на доске» и «жалко потерять».",
+      "locales": {
+        "en": {
+          "path": "boards/archive.en.md",
+          "title": "The board archive",
+          "category": "Boards",
+          "updated": "2026-08-28",
+          "keywords": [
+            "archive",
+            "archived",
+            "restore",
+            "read-only",
+            "delete",
+            "subtasks",
+            "detach"
+          ],
+          "headings": [
+            {
+              "id": "the-archive-is-the-same-board-read-only",
+              "text": "The archive is the same board, read-only",
+              "level": 2
+            },
+            {
+              "id": "how-a-task-gets-into-the-archive",
+              "text": "How a task gets into the archive",
+              "level": 2
+            },
+            {
+              "id": "restoring",
+              "text": "Restoring",
+              "level": 2
+            },
+            {
+              "id": "archiving-and-deleting-are-not-the-same",
+              "text": "Archiving and deleting are not the same",
+              "level": 2
+            }
+          ],
+          "text": "the archive is where tasks go that are no longer wanted on the board but would be a shame to lose. it isn't a bin with delayed deletion: nothing disappears from the archive on its own. the archive button sits in the board header, next to “tags” and “milestones”. the board archive: read-only cards the archive is the same board, read-only opening the archive doesn't take you to a separate screen. it is a scope of the same board: the same columns, the same grouping, the same filters — only archived tasks are shown instead of live ones. an amber archive (read-only) chip appears in the board bar; the cross on it returns you to the ordinary board. the main rule follows from that: nothing in the archive can be changed. cards don't drag, fields don't edit, tasks aren't created, and the task window opens for reading only. the single permitted action is restoring. search the archive with the same means as the board: filter by tag, by assignee, search by title — all of it works here too. entering the archive clears a milestone scope if one was set: the archived listing doesn't apply milestone scoping, and leaving a chip that affects nothing would be a lie. how a task gets into the archive the archive entry is in the card's context menu (right click) and in the task window itself. if the task has subtasks, the question comes with a choice: archive together with the subtasks — the whole tree goes to the archive at once and comes back at once. detach the subtasks — the children stay on the board as tasks of their own, and only the parent is archived. by default subtasks travel with their parent — which is exactly why cards are shown flat in the archive: their children are already lying next to them, inside the same archive. restoring an archived card carries one action instead of the usual ones — restore. the task returns to the board, to its column, right away, and a message reads “task restored from the archive”. the card leaves the archived list: it isn't archived any more. subtasks that went to the archive with their parent come back with it. archiving and deleting are not the same the difference matters and is easy to miss: archive — the task is kept with all of its history, comments and attachments, it's visible in the archive and it can be brought back. delete a column — the column disappears together with its tasks, bypassing the archive. that is irreversible. before deleting a column, move the tasks you need to another one or send them to the archive. when in doubt, archive. that's exactly what it exists for — so you never have to choose between “it's in the way on the board” and “it would be a shame to lose it”."
+        }
+      }
+    },
+    {
       "slug": "documents",
       "path": "documents/documents.md",
       "title": "Документы",
-      "category": "Работа с задачами",
-      "order": 30,
+      "category": "Документы",
+      "order": 40,
       "updated": "2026-08-21",
       "keywords": [
         "документы",
@@ -441,7 +1102,7 @@
         "en": {
           "path": "documents/documents.en.md",
           "title": "Documents",
-          "category": "Working with tasks",
+          "category": "Documents",
           "updated": "2026-08-21",
           "keywords": [
             "documents",
@@ -531,8 +1192,8 @@
       "slug": "notes",
       "path": "notes/notes.md",
       "title": "Заметки",
-      "category": "Работа с задачами",
-      "order": 40,
+      "category": "Заметки",
+      "order": 50,
       "updated": "2026-08-21",
       "keywords": ["заметки", "записи", "черновик", "markdown", "проект", "поиск"],
       "platforms": ["web", "android"],
@@ -581,7 +1242,7 @@
         "en": {
           "path": "notes/notes.en.md",
           "title": "Notes",
-          "category": "Working with tasks",
+          "category": "Notes",
           "updated": "2026-08-21",
           "keywords": ["notes", "records", "draft", "markdown", "project", "search"],
           "headings": [
@@ -632,8 +1293,8 @@
       "slug": "reminders",
       "path": "reminders/reminders.md",
       "title": "Напоминания",
-      "category": "Работа с задачами",
-      "order": 50,
+      "category": "Напоминания",
+      "order": 55,
       "updated": "2026-08-21",
       "keywords": [
         "напоминания",
@@ -700,7 +1361,7 @@
         "en": {
           "path": "reminders/reminders.en.md",
           "title": "Reminders",
-          "category": "Working with tasks",
+          "category": "Reminders",
           "updated": "2026-08-21",
           "keywords": [
             "reminders",
@@ -769,7 +1430,7 @@
       "slug": "milestones",
       "path": "milestones/milestones.md",
       "title": "Этапы",
-      "category": "Работа с задачами",
+      "category": "Этапы",
       "order": 60,
       "updated": "2026-08-21",
       "keywords": ["этапы", "вехи", "milestone", "релиз", "прогресс", "сроки", "gitlab"],
@@ -828,7 +1489,7 @@
         "en": {
           "path": "milestones/milestones.en.md",
           "title": "Milestones",
-          "category": "Working with tasks",
+          "category": "Milestones",
           "updated": "2026-08-21",
           "keywords": ["milestones", "milestone", "release", "progress", "due dates", "gitlab"],
           "headings": [
@@ -887,7 +1548,7 @@
       "slug": "notifications",
       "path": "notifications/notifications.md",
       "title": "Уведомления",
-      "category": "Работа с задачами",
+      "category": "Уведомления",
       "order": 70,
       "updated": "2026-08-25",
       "keywords": [
@@ -1017,7 +1678,7 @@
         "en": {
           "path": "notifications/notifications.en.md",
           "title": "Notifications",
-          "category": "Working with tasks",
+          "category": "Notifications",
           "updated": "2026-08-25",
           "keywords": [
             "notifications",

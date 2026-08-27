@@ -1,6 +1,6 @@
 ---
 title: Notifications
-category: Working with tasks
+category: Notifications
 order: 70
 keywords: notifications, channels, email, telegram, webhook, shoutrrr, routing, rules, quiet hours, digest, deadline, reminders, template, app, push, permissions
 updated: 2026-08-25

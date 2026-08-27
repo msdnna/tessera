@@ -1,6 +1,6 @@
 ---
 title: Этапы
-category: Работа с задачами
+category: Этапы
 order: 60
 keywords: этапы, вехи, milestone, релиз, прогресс, сроки, gitlab
 updated: 2026-08-21

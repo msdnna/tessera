@@ -178,6 +178,76 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'board-tags')
     })
 
+    // ── the board's own controls (#2823) ──
+    // These six are driven by structure, not by captions: the composer chips, the
+    // column menu and the layout switcher all carry translated labels, so every
+    // locator below is a class, a testid or an index into a fixed list. That is
+    // what lets the same spec produce both the Russian and the English set.
+
+    test('панель доски: меню добавления', async ({ page }) => {
+      await openBoard(page)
+      // The add menu renders in a detached dropdown layer, so the frame is the
+      // whole page — cropping to the bar would cut the menu the shot is about.
+      await page.locator('.facet-add').click()
+      await expect(page.locator('.n-dropdown-option').first()).toBeVisible()
+      await shoot(page, scheme, 'board-composer')
+    })
+
+    test('меню колонки', async ({ page }) => {
+      await openBoard(page)
+      await page.locator('[data-testid="column"]').first().locator('.col-menu').click()
+      await expect(page.getByTestId('column-delete')).toBeVisible()
+      await shoot(page, scheme, 'board-columns')
+    })
+
+    test('настройка вида', async ({ page }) => {
+      await openBoard(page)
+      await page.locator('[data-tour="board-customize"]').click()
+      await expect(page.locator('.n-drawer')).toBeVisible()
+      await shoot(page, scheme, 'board-customize')
+    })
+
+    test('сохранённые представления', async ({ page }) => {
+      await openBoard(page)
+      // An empty list would picture the empty state, not the feature — so the
+      // shot saves a view first, then opens the list that now has it. The two
+      // buttons are the last pair of `.bar-tools` (folder, then disk).
+      const tools = page.locator('.bar-tools .bar-btn')
+      await tools.nth(2).click()
+      await page.locator('.views-pop input').fill('Мой спринт')
+      await page.locator('.views-pop input').press('Enter')
+      await tools.nth(1).click()
+      await expect(page.locator('.views-pop .view-name')).toBeVisible()
+      await shoot(page, scheme, 'board-views')
+    })
+
+    test('архив доски', async ({ page }) => {
+      await openBoard(page)
+      // The archive is a scope of the same board, reached by a query parameter —
+      // no caption to click, and the amber scope chip is what has to be in frame.
+      await page.goto(`${new URL(page.url()).pathname}?archived=1`)
+      await expect(page.locator('.facet-archive')).toBeVisible()
+      await shoot(page, scheme, 'board-archive')
+    })
+
+    // The switcher lists the visualizations in a fixed order (board, list,
+    // calendar, timeline, gantt, matrix), so an index beats a caption here.
+    const LAYOUTS = [
+      { idx: 1, name: 'board-list', ready: '.list-view' },
+      { idx: 2, name: 'board-calendar', ready: '.cal-cell' },
+      { idx: 3, name: 'board-timeline', ready: '.tl-toolbar' },
+      { idx: 4, name: 'board-gantt', ready: '.tl-toolbar' },
+      { idx: 5, name: 'board-matrix', ready: '.m-colhead' },
+    ]
+    for (const layout of LAYOUTS) {
+      test(`визуализация: ${layout.name}`, async ({ page }) => {
+        await openBoard(page)
+        await page.locator('[data-tour="board-layout"] button').nth(layout.idx).click()
+        await expect(page.locator(layout.ready).first()).toBeVisible()
+        await shoot(page, scheme, layout.name)
+      })
+    }
+
     test('окно задачи', async ({ page }) => {
       await openBoard(page)
       await page

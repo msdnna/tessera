@@ -1,7 +1,7 @@
 ---
 title: Reminders
-category: Working with tasks
-order: 50
+category: Reminders
+order: 55
 keywords: reminders, remind, notifications, push, due date, alarm, android
 updated: 2026-08-21
 ---

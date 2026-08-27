@@ -29,6 +29,7 @@ const CARDS = {
       description:
         'Собрать финальные тексты трёх шагов и заменить временные иллюстрации на отрисованные.',
       priority: 2,
+      start: 1,
       due: 6,
       tags: ['дизайн'],
     },
@@ -36,11 +37,15 @@ const CARDS = {
       title: 'Импорт задач из CSV',
       description: 'Разобрать формат, показать предпросмотр перед импортом.',
       priority: 1,
+      start: 5,
+      due: 9,
       tags: ['бэкенд'],
     },
     {
       title: 'Ревизия пустых состояний',
       priority: 0,
+      start: -3,
+      due: 1,
       tags: ['дизайн'],
     },
   ],
@@ -50,6 +55,7 @@ const CARDS = {
       description:
         'Доставка через мобильный клиент: регистрация токена, отправка, тихие часы.\n\nОсталось: тихие часы и повтор при ошибке доставки.',
       priority: 3,
+      start: -5,
       due: 2,
       tags: ['мобильное', 'бэкенд'],
       assign: true,
@@ -60,6 +66,7 @@ const CARDS = {
       title: 'Фильтры на доске: сохранение пресетов',
       description: 'Пресеты фильтров хранятся локально и переживают перезагрузку.',
       priority: 2,
+      start: -2,
       due: 4,
       tags: ['фронтенд'],
       assign: true,
@@ -70,6 +77,7 @@ const CARDS = {
       title: 'Экспорт документа в PDF',
       description: 'Печатная вёрстка с оглавлением и колонтитулами.',
       priority: 2,
+      start: -8,
       due: -1,
       tags: ['фронтенд'],
       assign: true,
@@ -366,6 +374,7 @@ export async function seedDemo(runId, base) {
         description: card.description || '',
         priority: card.priority ?? 0,
         ...(card.due === undefined ? {} : { due_date: iso(base, card.due) }),
+        ...(card.start === undefined ? {} : { start_date: iso(base, card.start) }),
       })
       for (const tag of card.tags || []) {
         await post(`/tasks/${task.id}/tags`, { tag_id: tags[tag].id })
@@ -386,6 +395,23 @@ export async function seedDemo(runId, base) {
       if (card.completed) await api.patch(`/tasks/${task.id}`, { completed: true }, t)
       created.push(task)
     }
+  }
+
+  // Task relations (#2823). Without a single blocking edge the Gantt shot shows
+  // bars and no arrows — exactly the half of the view its article is about. The
+  // pair is picked to read as real work: the empty-state pass gates the
+  // onboarding screen, and the CSV import is merely adjacent to the PDF export.
+  const byTitle = (title) => {
+    const found = created.find((x) => x.title === title)
+    if (!found) throw new Error(`демо-сид: нет задачи «${title}» для связи`)
+    return found
+  }
+  const RELATIONS = [
+    ['Ревизия пустых состояний', 'Экран онбординга: тексты и иллюстрации', 'blocks'],
+    ['Импорт задач из CSV', 'Экспорт документа в PDF', 'relates'],
+  ]
+  for (const [from, to, kind] of RELATIONS) {
+    await post(`/tasks/${byTitle(from).id}/relations`, { number: byTitle(to).number, kind })
   }
 
   const release = await post(`/projects/${project.id}/milestones`, {
