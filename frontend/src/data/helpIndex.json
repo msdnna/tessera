@@ -1010,6 +1010,633 @@
       }
     },
     {
+      "slug": "task-modal",
+      "path": "tasks/task-modal.md",
+      "title": "Окно задачи",
+      "category": "Задачи",
+      "order": 30,
+      "updated": "2026-08-28",
+      "keywords": [
+        "задача",
+        "окно",
+        "модалка",
+        "оценка",
+        "этап",
+        "приоритет",
+        "срок",
+        "повтор",
+        "исполнители",
+        "статус",
+        "родитель",
+        "вкладки",
+        "ссылка",
+        "панель справа"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "три-способа-открывать-задачу",
+          "text": "Три способа открывать задачу",
+          "level": 2
+        },
+        {
+          "id": "шапка-окна",
+          "text": "Шапка окна",
+          "level": 2
+        },
+        {
+          "id": "поля-слева",
+          "text": "Поля слева",
+          "level": 2
+        },
+        {
+          "id": "оценка-то-чего-на-карточке-не-поправить",
+          "text": "Оценка: то, чего на карточке не поправить",
+          "level": 3
+        },
+        {
+          "id": "срок-повтор-и-уведомления",
+          "text": "Срок, повтор и уведомления",
+          "level": 3
+        },
+        {
+          "id": "вкладки-справа",
+          "text": "Вкладки справа",
+          "level": 2
+        },
+        {
+          "id": "низ-окна",
+          "text": "Низ окна",
+          "level": 2
+        }
+      ],
+      "text": "карточка на доске показывает задачу в двух строках. всё остальное — оценка, этап, автор, связи, файлы, история — живёт в окне задачи. оно открывается кликом по карточке и закрывается по esc или клику вне окна. окно задачи: поля слева, вкладки справа окно разделено пополам: слева поля задачи, справа — вкладки с её содержимым. границу между половинами можно потянуть мышью, а двойной клик по ней прячет правую половину целиком (и возвращает обратно). три способа открывать задачу кнопка «как открывать задачу» в шапке окна переключает подачу: модальное окно — привычный диалог по центру. значение по умолчанию. полный экран — окно во весь экран, для задач с длинным описанием. панель справа — задача уезжает в боковую панель, а доска слева остаётся живой: видно, из какой колонки задача и что рядом. выбор запоминается на этом устройстве, а не в вашем профиле: 27-дюймовому монитору идёт панель справа, ноутбуку — модальное окно, и навязывать одно другому было бы неудобно. на узком экране выбора нет — там задача всегда открывается листом на весь экран. шапка окна хлебные крошки «проект · доска» сверху — не просто подпись. клик по ним открывает список досок: так задача переносится в другую доску вместе со всей своей историей. кнопка со стрелкой копирует ссылку на задачу вида /board/<доска>?task=<номер>. такую ссылку можно отправить коллеге: она откроет доску и сразу развернёт нужную задачу. название правится прямо в шапке — это обычное поле ввода, а не отдельная форма. если задача связана с gitlab, рядом появляется ссылка «открыть issue в gitlab». поля слева поле что делает --- --- приоритет пять уровней; цветная точка приоритета видна и на карточке. срок открывает календарь: дата начала, срок, время, а также повтор и уведомления. оценка трудоёмкость задачи в единицах проекта. этап привязка к этапу (milestone); здесь же можно завести новый. автор кто создал задачу. только для чтения. исполнители сколько угодно человек, включая участников из gitlab. теги те же теги, по которым доска умеет раскладываться на колонки. статус колонка доски. рядом — кнопка «сдвинуть →» в следующую колонку и галочка «выполнено». родитель сделать задачу подзадачей другой или открепить от родителя. оценка: то, чего на карточке не поправить оценка задаётся в единицах, настроенных для проекта: время (3д 4ч, 90м, 1н), стори-поинты или свои единицы. если проект работает по шкале (фибоначчи, футболки, линейная), в поповере будет готовый список значений вместо поля ввода. рядом со своей оценкой задача показывает σ — сумму оценок подзадач. это две разные величины, и они намеренно не складываются: σ отвечает на вопрос «сколько уйдёт на детей», собственная оценка — «сколько на саму задачу». на карточке доски оценка и этап показаны чипами только для чтения (если вы не скрыли их в настройке вида). изменить их можно лишь здесь, в окне задачи, — это и есть главная причина открывать окно у задачи, которая на доске выглядит заполненной. срок, повтор и уведомления в календаре среза три части: 1. начало и срок — две даты, каждая со временем. дата начала нужна таймлайну и ганту: без неё задача рисуется точкой, а не отрезком. 2. повтор задачи — ежедневно, еженедельно, ежемесячно, ежегодно или выборочно по датам, отмеченным в календаре. повтор срабатывает по событию: при завершении задачи, при переходе в выбранную колонку или просто по расписанию. можно попросить создавать дубликат (тогда история остаётся у оригинала), пропускать выходные и повторять всегда. 3. уведомления — за сколько напоминать (в срок, за 15 минут, за час, за 3 часа, за день) и повторять ли напоминание. «по умолчанию» берёт настройку из уведомлений. вкладки справа на ярлыке каждой вкладки стоит счётчик, поэтому по закрытой вкладке видно, есть ли там что-нибудь. описание — markdown-редактор с тулбаром, вложениями и диаграммами. комментарии — обсуждение с ветками ответов, упоминаниями и командами. подзадачи — дети этой задачи; их же видно на карточке, если включено раскрытие подзадач. связи — блокировки, дубликаты и просто «связана с». файлы — вложения задачи. сюда же попадают файлы, перетащенные в описание. документы — документы, которые ссылаются на эту задачу. история — журнал изменений. низ окна внизу — «в архив» и «удалить». разница принципиальная: архив сохраняет задачу целиком и позволяет её вернуть, удаление необратимо. если у задачи есть подзадачи, при архивации будет выбор: отправить в архив вместе с детьми или открепить детей и оставить их на доске. архивную задачу окно открывает только на просмотр — внизу прямо об этом написано, а вместо кнопок действий стоит «вернуть из архива».",
+      "locales": {
+        "en": {
+          "path": "tasks/task-modal.en.md",
+          "title": "The task window",
+          "category": "Tasks",
+          "updated": "2026-08-28",
+          "keywords": [
+            "task",
+            "window",
+            "modal",
+            "estimate",
+            "milestone",
+            "priority",
+            "due",
+            "recurrence",
+            "assignees",
+            "status",
+            "parent",
+            "tabs",
+            "link",
+            "side panel"
+          ],
+          "headings": [
+            {
+              "id": "three-ways-to-open-a-task",
+              "text": "Three ways to open a task",
+              "level": 2
+            },
+            {
+              "id": "the-window-header",
+              "text": "The window header",
+              "level": 2
+            },
+            {
+              "id": "the-fields-on-the-left",
+              "text": "The fields on the left",
+              "level": 2
+            },
+            {
+              "id": "the-estimate-what-a-card-can-t-edit",
+              "text": "The estimate: what a card can't edit",
+              "level": 3
+            },
+            {
+              "id": "due-date-recurrence-and-notifications",
+              "text": "Due date, recurrence and notifications",
+              "level": 3
+            },
+            {
+              "id": "the-tabs-on-the-right",
+              "text": "The tabs on the right",
+              "level": 2
+            },
+            {
+              "id": "the-bottom-of-the-window",
+              "text": "The bottom of the window",
+              "level": 2
+            }
+          ],
+          "text": "a card on the board shows a task in two lines. everything else — the estimate, the milestone, the author, the relations, the files, the history — lives in the task window. it opens with a click on the card and closes with esc or a click outside it. the task window: fields on the left, tabs on the right the window is split in half: fields on the left, tabs with the task's content on the right. the divider between the halves can be dragged, and a double click on it hides the right half entirely (and brings it back). three ways to open a task the how to open a task button in the window header switches the presentation: modal window — the familiar centred dialog. the default. full screen — the window fills the screen, for tasks with a long description. side panel — the task moves into a panel on the right and the board stays live on the left: you can see which column the task is in and what sits next to it. the choice is remembered on this device, not in your profile: a 27\" monitor suits the side panel, a laptop the modal, and forcing one on the other would be uncomfortable. on a narrow screen there is no choice — a task always opens as a full-screen sheet. the window header the breadcrumbs “project · board” at the top aren't just a caption. clicking them opens the list of boards: that's how a task is moved to another board, with all of its history. the arrow button copies a link to the task, shaped /board/<board>?task=<number>. send it to a colleague and it opens the board with that task already unfolded. the title is edited right in the header — it's an ordinary input, not a separate form. if the task is linked to gitlab, an open issue in gitlab link appears next to it. the fields on the left field what it does --- --- priority five levels; the coloured priority dot is visible on the card too. due opens the calendar: start date, due date, time, plus recurrence and notifications. estimate how much work the task is, in the project's units. milestone the milestone the task belongs to; a new one can be created here as well. author who created the task. read-only. assignees any number of people, including members from gitlab. tags the same tags the board can lay itself out by. status the board column. next to it: a “move →” button for the next column and a “done” tick. parent make the task a subtask of another one, or detach it from its parent. the estimate: what a card can't edit the estimate is entered in the units configured for the project: time (3d 4h, 90m, 1w), story points or custom units. if the project works on a scale (fibonacci, t-shirts, linear), the popover offers a ready list of values instead of a text field. next to its own estimate a task shows σ — the sum of its subtasks' estimates. these are two different numbers and they are deliberately not added together: σ answers “how much will the children take”, the own estimate “how much the task itself will”. on a board card the estimate and the milestone are shown as read-only chips (unless you have hidden them in customising the board). they can only be changed here, in the task window — which is the main reason to open a task that already looks complete on the board. due date, recurrence and notifications the calendar has three parts: 1. start and due — two dates, each with a time. the start date is what the timeline and the gantt chart need: without it a task is drawn as a point rather than a bar. 2. recurrence — daily, weekly, monthly, yearly, or on selected dates you tick in the calendar. a repeat fires on an event: when the task is completed, when it enters a chosen column, or simply on schedule. you can ask it to create a duplicate (so the history stays with the original), to skip weekends and to repeat forever. 3. notifications — how early to remind (at the due time, 15 minutes, an hour, 3 hours, a day before) and whether to repeat the reminder. “default” takes the setting from notifications. the tabs on the right every tab label carries a counter, so a closed tab still tells you whether there is anything inside. description — the markdown editor with a toolbar, attachments and diagrams. comments — the discussion, with reply threads, mentions and commands. subtasks — this task's children; the same ones the card shows when subtasks are expanded. relations — blocks, duplicates and plain “relates to”. files — the task's attachments. files dropped into the description land here too. documents — documents that point at this task. history — the journal of changes. the bottom of the window at the bottom: archive and delete. the difference matters: the archive keeps the task whole and lets you bring it back, deleting is irreversible. if the task has subtasks, archiving asks what to do with them: archive them along with the parent, or detach them and leave them on the board. an archived task opens read-only — the window says so outright, and instead of the action buttons there is “restore from the archive”."
+        }
+      }
+    },
+    {
+      "slug": "markdown-editor",
+      "path": "tasks/markdown-editor.md",
+      "title": "Редактор описаний и комментариев",
+      "category": "Задачи",
+      "order": 31,
+      "updated": "2026-08-28",
+      "keywords": [
+        "markdown",
+        "редактор",
+        "тулбар",
+        "форматирование",
+        "изображение",
+        "вложение",
+        "mermaid",
+        "диаграмма",
+        "полный экран",
+        "предпросмотр",
+        "спойлер",
+        "чекбокс",
+        "код"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "тулбар",
+          "text": "Тулбар",
+          "level": 2
+        },
+        {
+          "id": "чекбоксы-работают-в-готовом-тексте",
+          "text": "Чекбоксы работают в готовом тексте",
+          "level": 2
+        },
+        {
+          "id": "картинки-кнопка-буфер-обмена-и-перетаскивание",
+          "text": "Картинки: кнопка, буфер обмена и перетаскивание",
+          "level": 2
+        },
+        {
+          "id": "вложения-задачи-скрепка",
+          "text": "Вложения задачи: скрепка",
+          "level": 2
+        },
+        {
+          "id": "диаграммы-mermaid",
+          "text": "Диаграммы Mermaid",
+          "level": 2
+        },
+        {
+          "id": "подсветка-кода",
+          "text": "Подсветка кода",
+          "level": 2
+        },
+        {
+          "id": "предпросмотр-и-полный-экран",
+          "text": "Предпросмотр и полный экран",
+          "level": 2
+        },
+        {
+          "id": "упоминания-и-ссылки-на-задачи",
+          "text": "Упоминания и ссылки на задачи",
+          "level": 2
+        },
+        {
+          "id": "что-редактор-сохраняет-и-когда",
+          "text": "Что редактор сохраняет и когда",
+          "level": 2
+        }
+      ],
+      "text": "описание задачи, комментарий, заметка и текст в документе редактируются одним и тем же редактором. он хранит markdown — не «свою» разметку и не html, поэтому текст переживает копирование в любой другой инструмент. редактор описания: тулбар форматирования тулбар кнопки применяются к выделенному тексту, а если ничего не выделено — вставляют заготовку и ставят курсор туда, где нужно писать. кнопка что вставляет --- --- ж жирный к курсив з зачёркнутый </> код ссылка текст заголовок ## в начало строки маркированный список - в начало строки нумерованный список 1. в начало строки чекбокс - [ ] в начало строки цитата > в начало строки спойлер блок <details> — свёрнутый текст с подписью «подробнее» форматирование можно применить и не глядя на тулбар: выделите текст — и над выделением всплывёт компактная панель с теми же жирным, курсивом, зачёркиванием, кодом и ссылкой. чекбоксы работают в готовом тексте чекбокс - [ ] — не просто значок. в отрендеренном описании или комментарии по нему можно кликнуть, и правка запишется в сам markdown: - [ ] станет - [x]. так из описания получается живой чек-лист, для которого не нужно заводить подзадачи. картинки: кнопка, буфер обмена и перетаскивание изображение попадает в текст тремя способами, и все три равноправны: 1. кнопка с картинкой в тулбаре — открывает выбор файла. 2. ctrl+v — вставка картинки прямо из буфера обмена (скриншот не нужно сохранять на диск). 3. перетаскивание файла в поле ввода. редактор загружает файл и вставляет на его место имя. принимаются png, jpeg, gif, webp и bmp. svg сознательно не принимается: такой файл исполнялся бы как активное содержимое на нашем же домене. вложения задачи: скрепка скрепка появляется в тулбаре только там, где текст принадлежит задаче. она делает две вещи: загружает файл во вкладку «файлы» этой задачи и сразу вставляет в текст ссылку на скачивание; показывает уже приложенные файлы, чтобы сослаться на существующий, ничего не загружая заново. отсюда же правило перетаскивания: картинка становится картинкой в тексте, а любой другой файл — вложением задачи со ссылкой на него. отдельно ходить на вкладку «файлы» не нужно. диаграммы mermaid кнопка с узлами графа вставляет заготовку: mermaid flowchart td a[старт] --> b[готово] в предпросмотре и в готовом описании этот блок рисуется как диаграмма. внутри работает обычный синтаксис mermaid: flowchart, sequencediagram, gantt, statediagram и остальные. если диаграмма не нарисовалась, а осталась текстом — значит mermaid не смог разобрать её синтаксис. проверьте отступы и стрелки: блок рисуется целиком или не рисуется вовсе. подсветка кода фенсы с указанием языка подсвечиваются: javascript, typescript, json, yaml, python, bash, go, sql, xml/html, css, markdown, dockerfile, ini. go func main() { fmt.println(\"привет\") } внутри кода ничего не подменяется: #2550 в примере кода не станет ссылкой на задачу, а @root в команде оболочки — упоминанием. это касается и команд: /close внутри блока кода не выполнится, поэтому примеры команд можно спокойно приводить в тексте. предпросмотр и полный экран кнопка с глазом переключает редактирование ⇄ предпросмотр: видно ровно то, что увидят остальные. кнопка с расходящимися стрелками открывает полноэкранный редактор. там подача другая — две панели рядом: слева текст, справа живой предпросмотр, который перерисовывается по мере набора. для длинного описания это удобнее переключения туда-сюда. закрытие полноэкранного окна сохраняет текст — это то же самое, что увести из поля фокус. упоминания и ссылки на задачи @ открывает список участников, #123 в готовом тексте превращается в ссылку на задачу — подробнее об этом в статье про комментарии. одну разницу стоит держать в голове: уведомление об упоминании отправляет только комментарий. в описании задачи @имя подсветится и будет ссылаться на человека, но письма и колокольчика он не получит — описание правится помногу раз, и уведомлять на каждое сохранение было бы шумом. хотите позвать коллегу — напишите комментарий. что редактор сохраняет и когда описание сохраняется, когда вы уводите из поля фокус, — отдельной кнопки «сохранить» нет. комментарий отправляется кнопкой или ctrl+enter.",
+      "locales": {
+        "en": {
+          "path": "tasks/markdown-editor.en.md",
+          "title": "The description and comment editor",
+          "category": "Tasks",
+          "updated": "2026-08-28",
+          "keywords": [
+            "markdown",
+            "editor",
+            "toolbar",
+            "formatting",
+            "image",
+            "attachment",
+            "mermaid",
+            "diagram",
+            "full screen",
+            "preview",
+            "spoiler",
+            "checkbox",
+            "code"
+          ],
+          "headings": [
+            {
+              "id": "the-toolbar",
+              "text": "The toolbar",
+              "level": 2
+            },
+            {
+              "id": "checkboxes-work-in-finished-text",
+              "text": "Checkboxes work in finished text",
+              "level": 2
+            },
+            {
+              "id": "images-the-button-the-clipboard-and-drag-and-drop",
+              "text": "Images: the button, the clipboard and drag-and-drop",
+              "level": 2
+            },
+            {
+              "id": "task-attachments-the-paperclip",
+              "text": "Task attachments: the paperclip",
+              "level": 2
+            },
+            {
+              "id": "mermaid-diagrams",
+              "text": "Mermaid diagrams",
+              "level": 2
+            },
+            {
+              "id": "code-highlighting",
+              "text": "Code highlighting",
+              "level": 2
+            },
+            {
+              "id": "preview-and-full-screen",
+              "text": "Preview and full screen",
+              "level": 2
+            },
+            {
+              "id": "mentions-and-task-links",
+              "text": "Mentions and task links",
+              "level": 2
+            },
+            {
+              "id": "what-the-editor-saves-and-when",
+              "text": "What the editor saves, and when",
+              "level": 2
+            }
+          ],
+          "text": "a task description, a comment, a note and the text in a document are all edited by the same editor. it stores markdown — not a house format and not html — so the text survives being copied into any other tool. the description editor: the formatting toolbar the toolbar buttons apply to the selected text; with nothing selected they insert a stub and put the caret where you have to type. button what it inserts --- --- b bold i italic s strikethrough </> code link text heading ## at the start of the line bullet list - at the start of the line numbered list 1. at the start of the line checkbox - [ ] at the start of the line quote > at the start of the line spoiler a <details> block — collapsed text under a caption you don't have to look at the toolbar at all: select some text and a compact bar floats above the selection with the same bold, italic, strikethrough, code and link. checkboxes work in finished text a - [ ] checkbox isn't just a glyph. in a rendered description or comment you can click it, and the change is written back into the markdown itself: - [ ] becomes - [x]. that turns a description into a live checklist you don't have to create subtasks for. images: the button, the clipboard and drag-and-drop an image gets into the text three ways, all of them equal: 1. the image button in the toolbar — opens a file picker. 2. ctrl+v — paste an image straight from the clipboard (no need to save a screenshot to disk first). 3. dropping a file onto the input. the editor uploads the file and inserts name in its place. png, jpeg, gif, webp and bmp are accepted. svg is deliberately refused: such a file would run as active content on our own origin. task attachments: the paperclip the paperclip only appears where the text belongs to a task. it does two things: uploads a file into that task's “files” tab and immediately inserts a download link into the text; lists the files already attached, so you can point at an existing one without uploading anything again. hence the drag-and-drop rule: an image becomes an image in the text, any other file becomes a task attachment with a link to it. there is no need to visit the “files” tab separately. mermaid diagrams the graph-node button inserts a stub: mermaid flowchart td a[start] --> b[done] in the preview and in the finished description that block is drawn as a diagram. inside it, ordinary mermaid syntax applies: flowchart, sequencediagram, gantt, statediagram and the rest. if a diagram stayed text instead of being drawn, mermaid could not parse it. check the indentation and the arrows: the block is either drawn whole or not at all. code highlighting fences with a language are highlighted: javascript, typescript, json, yaml, python, bash, go, sql, xml/html, css, markdown, dockerfile, ini. go func main() { fmt.println(\"hello\") } inside code nothing is substituted: #2550 in a code sample doesn't become a task link, and @root in a shell snippet doesn't become a mention. the same goes for commands: /close inside a code block is not executed, so command examples are safe to write out. preview and full screen the eye button switches editing ⇄ preview: you see exactly what everyone else will. the button with diverging arrows opens the full-screen editor. its presentation is different — two panes side by side: text on the left, a live preview on the right that redraws as you type. for a long description that beats toggling back and forth. closing the full-screen window saves the text — it is the same moment as moving the focus out of the field. mentions and task links @ opens the list of members, and #123 in finished text becomes a link to a task — see comments for the details. one difference is worth keeping in mind: only a comment sends a mention notification. in a task description @name will be highlighted and will resolve to the person, but no mail and no bell reaches them — a description is edited many times over, and notifying on every save would be noise. to call a colleague in, write a comment. what the editor saves, and when a description is saved when you move the focus out of the field — there is no separate save button. a comment is sent with the button or with ctrl+enter."
+        }
+      }
+    },
+    {
+      "slug": "comments",
+      "path": "tasks/comments.md",
+      "title": "Комментарии",
+      "category": "Задачи",
+      "order": 32,
+      "updated": "2026-08-28",
+      "keywords": [
+        "комментарии",
+        "обсуждение",
+        "ответы",
+        "ветка",
+        "упоминание",
+        "mention",
+        "команды",
+        "quick actions",
+        "ссылка на задачу",
+        "редактировать",
+        "удалить"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "отправка",
+          "text": "Отправка",
+          "level": 2
+        },
+        {
+          "id": "ветки-ответов",
+          "text": "Ветки ответов",
+          "level": 2
+        },
+        {
+          "id": "упоминания",
+          "text": "Упоминания",
+          "level": 2
+        },
+        {
+          "id": "ссылки-на-задачи-через",
+          "text": "Ссылки на задачи через #",
+          "level": 2
+        },
+        {
+          "id": "команды",
+          "text": "Команды",
+          "level": 2
+        },
+        {
+          "id": "подсказка-до-отправки",
+          "text": "Подсказка до отправки",
+          "level": 3
+        },
+        {
+          "id": "команды-пространства",
+          "text": "Команды пространства",
+          "level": 3
+        }
+      ],
+      "text": "вкладка «комментарии» — это обсуждение задачи. пишутся комментарии тем же markdown-редактором, что и описание, поэтому в них работают форматирование, картинки, вложения и диаграммы. а сверх этого — три вещи, которых в описании нет: ветки ответов, упоминания с уведомлением и команды. комментарии: ветка ответов и подсказка команд отправка поле ввода закреплено внизу вкладки и не уезжает при прокрутке. отправить — кнопкой или ctrl+enter. если сервер недоступен, комментарий не потеряется: под полем появится «нет связи — повтор попытки (1/3)…», и редактор сам попробует отправить его ещё трижды с нарастающей паузой. ваш текст всё это время остаётся в поле, а кнопка «отмена» прекращает ожидание. повтор делается только при пропавшей сети: если сервер ответил ошибкой, пересылать бессмысленно, и попытка не повторится. свои комментарии можно править и удалять — действия появляются на строке комментария при наведении. ветки ответов ответ на комментарий заводит ветку: корневое сообщение и ответы под ним с отступом. кнопка «ответить» есть и у корня, и у любого ответа внутри ветки; при этом автор того сообщения, на которое вы отвечаете, подставляется в поле упоминанием — ответ сразу читается как ответ. ветки ровно двухуровневые: ответ на ответ попадает в ту же ветку, а не заводит новую вложенность. так обсуждение не уползает вправо на пятом сообщении. длинную ветку можно свернуть — вместо ответов останется строка «3 ответа», по клику она разворачивается обратно. свёрнутость живёт только в вашем окне и никому больше не видна. ответ уведомляет не только участников задачи, но и всех, кто уже писал в этой ветке. автор корневого сообщения часто не исполнитель и не автор задачи — без этого правила он бы просто не узнал, что под его текстом началось обсуждение. упоминания @ открывает список участников. дальше можно набирать имя, а выбранного из списка человека tessera отмечает как упомянутого и отправляет ему уведомление. отсюда важная тонкость: уведомление получает только тот, кого вы выбрали из списка. если набрать @иван руками и не выбрать строку в подсказке, текст подсветится, но уведомления не будет — tessera не угадывает, какого именно ивана вы имели в виду. на досках, связанных с gitlab, в списке встречаются участники без учётной записи в tessera. их упоминание — @логин — уезжает в gitlab вместе с комментарием и срабатывает уже там; уведомления tessera у такого человека быть не может, ему просто негде прийти. ссылки на задачи через # #123 в готовом комментарии превращается в ссылку на задачу. клик по ней открывает доску с этой задачей — даже если она в другом проекте того же пространства. что стоит знать: ссылка разрешается в момент клика, а не при отправке. поэтому #123 можно писать смело: если задача появится позже, ссылка заработает сама. несуществующий номер честно сообщает об этом: «задача #123 не найдена». внутри блоков кода #123 остаётся текстом: номер в диффе — это не ссылка. распознаются номера до семи цифр, чтобы длинные числа не превращались в ссылки. команды комментарий умеет не только рассказывать о задаче, но и менять её. команда — это строка, начинающаяся со /. наберите / в начале строки, и появится список: у каждой команды есть описание и пример. что можно сделать командой: область команды --- --- исполнители /assign @msdnna, /unassign (без аргумента — снять всех) даты и оценка /due 2026-08-14, /start завтра, /removedue, /removestart, /estimate 2h30m, /removeestimate поля /priority высокий, /title новый заголовок теги и этап /tag backend, срочно, /untag backend, /milestone релиз 1.0, /removemilestone колонка и жизненный цикл /move в процессе, /close, /reopen, /archive связи /relate #2591, /blocks #2591, /blockedby #2591, /duplicates #2591, /unlink #2591 иерархия /subtask написать тесты, /parent #2591, /unparent правила, которые экономят время: команда занимает строку целиком и начинается с неё. cd /home и src/utils — обычный текст, а не команды. команд может быть несколько — по одной на строку; выполняются сверху вниз. выполненные строки в комментарии не остаются. комментарий не должен повторять то, что уже сделано; если кроме команд в нём ничего не было, останется только запись в истории. внутри блока кода команда не выполняется — примеры команд можно спокойно приводить в тексте. даты понимают человеческие формулировки: завтра, в пятницу, 2026-08-14. подсказка до отправки пока вы печатаете, tessera показывает под полем, что именно произойдёт: «назначен @msdnna», «перенесена в „в процессе“» — или ошибку, если участника с таким логином нет. проверку делает тот же разборщик, который потом выполнит команду, поэтому подсказка не может разойтись с результатом. частичный успех остаётся успехом: /assign @есть @нет назначит того, кого нашёл, и отдельно скажет, кого не нашёл. команды пространства кроме встроенных, в пространстве могут быть заведены свои команды — например /approve для бота. tessera их узнаёт, но не выполняет: такая строка остаётся в тексте комментария (подсказка честно пишет «останется текстом»), а разбирает её тот, кому она адресована.",
+      "locales": {
+        "en": {
+          "path": "tasks/comments.en.md",
+          "title": "Comments",
+          "category": "Tasks",
+          "updated": "2026-08-28",
+          "keywords": [
+            "comments",
+            "discussion",
+            "replies",
+            "thread",
+            "mention",
+            "commands",
+            "quick actions",
+            "task link",
+            "edit",
+            "delete"
+          ],
+          "headings": [
+            {
+              "id": "sending",
+              "text": "Sending",
+              "level": 2
+            },
+            {
+              "id": "reply-threads",
+              "text": "Reply threads",
+              "level": 2
+            },
+            {
+              "id": "mentions",
+              "text": "Mentions",
+              "level": 2
+            },
+            {
+              "id": "task-links-with",
+              "text": "Task links with #",
+              "level": 2
+            },
+            {
+              "id": "commands",
+              "text": "Commands",
+              "level": 2
+            },
+            {
+              "id": "the-hint-before-you-send",
+              "text": "The hint before you send",
+              "level": 3
+            },
+            {
+              "id": "workspace-commands",
+              "text": "Workspace commands",
+              "level": 2
+            }
+          ],
+          "text": "the comments tab is the discussion of a task. comments are written with the same markdown editor as the description, so formatting, images, attachments and diagrams all work in them. on top of that come three things the description doesn't have: reply threads, mentions that notify, and commands. comments: a reply thread and the command hint sending the input is pinned to the bottom of the tab and doesn't scroll away. send it with the button or with ctrl+enter. if the server is unreachable the comment isn't lost: “no connection — retrying (1/3)…” appears under the field and the editor tries three more times with a growing pause. your text stays in the field the whole time, and cancel stops the wait. retries only happen when the network is gone: if the server answered with an error, resending is pointless and no retry is made. your own comments can be edited and deleted — the actions appear on the comment's row on hover. reply threads a reply starts a thread: the root message with the replies indented under it. the reply button is on the root and on every reply inside the thread; the author of the message you are answering is pre-inserted as a mention, so the reply reads as a reply straight away. threads are exactly two levels deep: replying to a reply lands in the same thread rather than nesting further. that keeps a discussion from crawling off to the right by the fifth message. a long thread can be collapsed — the replies are replaced by a “3 replies” line that expands again on click. collapsing lives only in your window and is invisible to everyone else. a reply notifies not only the task's participants but everyone who has already written in that thread. the author of the root message is frequently neither the assignee nor the reporter — without that rule they would simply never learn a discussion had started under their text. mentions @ opens the list of members. you can keep typing a name, and whoever you pick from the list is marked as mentioned and gets a notification. hence a subtlety: only the person you picked from the list is notified. type @ivan by hand without choosing a row in the popup and the text will be highlighted, but no notification is sent — tessera doesn't guess which ivan you meant. on boards linked to gitlab the list also holds members with no tessera account. mentioning them — @login — travels to gitlab with the comment and fires there; a tessera notification for such a person can't exist, there is simply nowhere for it to arrive. task links with # #123 in a finished comment becomes a link to a task. clicking it opens the board with that task — even if it lives in another project of the same workspace. worth knowing: the link is resolved at the moment of the click, not when the comment is sent. so write #123 freely: if the task appears later, the link starts working on its own. an unknown number says so honestly: “task #123 not found”. inside code blocks #123 stays text: a number in a diff is not a link. numbers of up to seven digits are recognised, so long figures don't turn into links. commands a comment can not only talk about a task but change it. a command is a line starting with /. type / at the start of a line and a list appears: every command comes with a description and an example. what a command can do: area commands --- --- assignees /assign @msdnna, /unassign (with no argument — remove everyone) dates and estimate /due 2026-08-14, /start tomorrow, /removedue, /removestart, /estimate 2h30m, /removeestimate fields /priority high, /title a new title tags and milestone /tag backend, urgent, /untag backend, /milestone release 1.0, /removemilestone column and lifecycle /move in progress, /close, /reopen, /archive relations /relate #2591, /blocks #2591, /blockedby #2591, /duplicates #2591, /unlink #2591 hierarchy /subtask write the tests, /parent #2591, /unparent rules that save time: a command takes a whole line and starts it. cd /home and src/utils are ordinary text, not commands. there can be several commands — one per line; they run top to bottom. executed lines don't stay in the comment. a comment must not repeat what has already been done; if there was nothing but commands in it, all that remains is the entry in the history. inside a code block a command is not executed — command examples are safe to write out. dates understand human phrasing: tomorrow, on friday, 2026-08-14. the hint before you send while you type, tessera shows under the field what exactly will happen: “assigned @msdnna”, “moved to ‘in progress’” — or an error if there is no member with that login. the check is run by the very parser that will later execute the command, so the hint can't disagree with the result. partial success is still success: /assign @known @unknown assigns whoever was found and separately says who wasn't. workspace commands besides the built-in ones, a workspace may define its own commands — /approve for a bot, say. tessera recognises but does not execute them: such a line stays in the comment's text (the hint says so — “will stay as text”), and it is parsed by whoever it is addressed to."
+        }
+      }
+    },
+    {
+      "slug": "task-links",
+      "path": "tasks/task-links.md",
+      "title": "Связи задач",
+      "category": "Задачи",
+      "order": 33,
+      "updated": "2026-08-28",
+      "keywords": [
+        "связи",
+        "блокирует",
+        "заблокирована",
+        "дублирует",
+        "связана",
+        "зависимости",
+        "гант",
+        "стрелки",
+        "unlink"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "четыре-типа",
+          "text": "Четыре типа",
+          "level": 2
+        },
+        {
+          "id": "как-поставить",
+          "text": "Как поставить",
+          "level": 2
+        },
+        {
+          "id": "связь-односторонняя-и-это-видно",
+          "text": "Связь односторонняя — и это видно",
+          "level": 2
+        },
+        {
+          "id": "связи-из-интеграции",
+          "text": "Связи из интеграции",
+          "level": 2
+        },
+        {
+          "id": "блокировки-на-диаграмме-ганта",
+          "text": "Блокировки на диаграмме Ганта",
+          "level": 2
+        }
+      ],
+      "text": "связь — это утверждение об отношении двух задач: одна мешает другой, одна повторяет другую или они просто про одно и то же. связи живут во вкладке «связи» окна задачи, а блокировки вдобавок рисуются стрелками на диаграмме ганта. вкладка «связи»: типы связей и выбор задачи четыре типа тип читается как когда ставить --- --- --- связана с «эти две задачи про одно» ни одна не мешает другой, но, работая над одной, стоит помнить о второй. блокирует «пока не сделаю эту, ту не начать» вы держите чужую работу. заблокирована «жду, пока сделают ту» вас держит чужая работа. дублирует «то же самое, что и та» задачу завели дважды. обычно после этого дубликат закрывают, а работу ведут в оригинале. «блокирует» и «заблокирована» — это одна и та же связь с двух сторон. какую из двух выбрать, зависит только от того, из какой задачи вы её ставите. если вы стоите в задаче, которая ждёт, — «заблокирована»; если в той, которую ждут, — «блокирует». как поставить внизу вкладки: слева выбор типа, справа поле поиска. в поле можно ввести номер задачи или начать печатать название — подсказка ищет по всему пространству и группирует найденное по «проект · доска», поэтому одноимённые задачи из разных проектов не перепутаются. связать можно с задачей на любой доске пространства, включая подзадачу: блокировки между подзадачами — обычное дело. строка связи ведёт себя как ссылка: клик открывает связанную задачу. у выполненной задачи название зачёркнуто, так что видно, снята блокировка или нет. крестик справа связь снимает. быстрее всего связи ставятся командами в комментарии: /blocks #2591, /blockedby #2591, /relate #2591, /duplicates #2591, /unlink #2591. связь односторонняя — и это видно тонкость, о которую легко споткнуться. связь хранится у той задачи, из которой её поставили. если из #10 сказать «блокирует #20», то: во вкладке «связи» задачи #10 будет строка «блокирует #20»; во вкладке «связи» задачи #20 зеркальной строки не появится — там будет запись в истории «добавил(а) связь с #10». так что не удивляйтесь пустой вкладке «связи» у заблокированной задачи. если связь должна быть видна с обеих сторон — поставьте её с обеих сторон; повторная связь между теми же задачами не создаёт дубликата. на ганте это ограничение не действует: диаграмма собирает блокировки со всей доски и рисует стрелку независимо от того, с какой стороны связь заведена. связи из интеграции связь, созданную интеграцией (например gitlab), помечает серый значок с названием источника. свои связи ничем не помечены — подпись «tessera» на каждой строке была бы шумом. удалить такую связь можно, но подтверждение честно предупредит: «эта связь вернётся при следующем синке». пока связь есть в gitlab, синхронизация будет восстанавливать её. убирать надо в источнике. блокировки на диаграмме ганта гант — единственное место, где зависимости видно целиком. стрелки. каждая блокировка рисуется дугой от конца блокирующей задачи к началу заблокированной (finish-to-start). стрелки строятся по всем блокировкам доски сразу, а пара, связанная с обеих сторон, даёт одну стрелку, а не две. создание перетаскиванием. у правого края каждого отрезка есть точка привязки. потяните за неё к другому отрезку — за курсором пойдёт живая дуга, а отпускание создаст связь «эта задача блокирует ту». дубли не создаются: если пара уже связана (в любую сторону), перетаскивание ничего не сделает. удаление. наведите на стрелку — в её середине появится крестик. порядок «авто». кнопка «авто» на ганте выстраивает строки по графу зависимостей: блокирующая задача идёт раньше заблокированной, и цепочка a → б → в читается сверху вниз, даже если в исходном списке они лежали вперемешку. задачи из циклической зависимости не теряются — они дописываются в конец в обычном порядке. «авто» — это отдельный режим, а не ещё один уровень сортировки: нажатие на кнопку сбрасывает группировку, сортировку и фильтры. и наоборот — стоит добавить любую группировку или сортировку, режим тихо выключается (а стоит их убрать — возвращается). двух порядков одновременно быть не может, и tessera не делает вид, что может. две вещи, которых гант не делает и делать не должен: стрелки не двигают даты. tessera не пересчитывает расписание за вас: связь показывает зависимость, а решение о переносе остаётся вашим. стрелки не рисуются к подзадачам. подзадачи показаны тонкими под-отрезками внутри строки родителя, и стрелка всегда цепляется за отрезок родителя. саму связь между подзадачами поставить можно — она просто не рисуется дугой. задачи без единой даты в диаграмму не попадают — они собраны в списке «без расписания» под ней, и связи у них по-прежнему видны в окне задачи.",
+      "locales": {
+        "en": {
+          "path": "tasks/task-links.en.md",
+          "title": "Task relations",
+          "category": "Tasks",
+          "updated": "2026-08-28",
+          "keywords": [
+            "relations",
+            "blocks",
+            "blocked by",
+            "duplicates",
+            "relates",
+            "dependencies",
+            "gantt",
+            "arrows",
+            "unlink"
+          ],
+          "headings": [
+            {
+              "id": "the-four-kinds",
+              "text": "The four kinds",
+              "level": 2
+            },
+            {
+              "id": "creating-one",
+              "text": "Creating one",
+              "level": 2
+            },
+            {
+              "id": "a-relation-is-one-directional-and-it-shows",
+              "text": "A relation is one-directional — and it shows",
+              "level": 2
+            },
+            {
+              "id": "relations-from-an-integration",
+              "text": "Relations from an integration",
+              "level": 2
+            },
+            {
+              "id": "blocking-relations-on-the-gantt-chart",
+              "text": "Blocking relations on the Gantt chart",
+              "level": 2
+            }
+          ],
+          "text": "a relation is a statement about how two tasks stand to each other: one holds the other up, one repeats the other, or they are simply about the same thing. relations live in the relations tab of the task window, and blocking ones are additionally drawn as arrows on the gantt chart. the relations tab: relation kinds and the task picker the four kinds kind reads as when to use it --- --- --- relates to “these two are about the same thing” neither holds the other up, but working on one you should remember the other. blocks “until this one is done, that one can't start” you are holding up somebody else's work. blocked by “waiting for that one” somebody else's work is holding you up. duplicates “the same thing as that one” the task was filed twice. usually the duplicate is then closed and the work goes on in the original. “blocks” and “blocked by” are one relation seen from two ends. which of the two you pick depends only on which task you are standing in. in the task that is waiting — “blocked by”; in the one being waited for — “blocks”. creating one at the bottom of the tab: the kind on the left, a search field on the right. you can type a number or start typing a title — the suggestion searches the whole workspace and groups what it finds by “project · board”, so tasks with the same name in different projects don't get confused. you can link to a task on any board of the workspace, subtasks included: blocking dependencies between subtasks are an everyday thing. a relation row behaves like a link: clicking it opens the related task. a completed task has its title struck through, so it's visible whether a block has been lifted. the cross on the right removes the relation. the fastest way to create relations is commands in a comment: /blocks #2591, /blockedby #2591, /relate #2591, /duplicates #2591, /unlink #2591. a relation is one-directional — and it shows an easy thing to trip on. a relation is stored on the task it was created from. if #10 says “blocks #20”, then: the relations tab of task #10 carries the row “blocks #20”; the relations tab of task #20 gets no mirror row — what it gets is an entry in the history, “added a relation to #10”. so don't be surprised by an empty relations tab on a blocked task. if a relation should be visible from both ends, create it from both ends; a repeated relation between the same tasks does not produce a duplicate. on the gantt chart this limitation doesn't apply: the chart collects the blocking relations of the whole board and draws the arrow no matter which side owns the row. relations from an integration a relation created by an integration (gitlab, for instance) is marked with a grey badge naming its source. your own relations carry no badge — a “tessera” label on every row would be noise. such a relation can be deleted, but the confirmation warns you honestly: “this relation will come back on the next sync.” as long as it exists in gitlab, synchronisation will restore it. it has to be removed at the source. blocking relations on the gantt chart the gantt chart is the one place where dependencies are visible as a whole. arrows. every blocking relation is drawn as a curve from the end of the blocking task to the start of the blocked one (finish-to-start). arrows are built from the whole board's relations at once, and a pair linked from both ends produces one arrow, not two. creating by dragging. each bar has an anchor point at its right edge. drag from it to another bar — a live curve follows the cursor, and releasing creates the relation “this task blocks that one”. no duplicates are made: if the pair is already linked (either way), the drag does nothing. deleting. hover an arrow and a cross appears at its midpoint. the “auto” order. the auto button on the gantt chart arranges rows by the dependency graph: a blocking task comes before the one it blocks, and a chain a → b → c reads top to bottom even if the original list had them scattered. tasks caught in a cycle are not lost — they are appended at the end in their ordinary order. “auto” is a mode of its own, not one more sort level: pressing the button clears the grouping, the sorting and the filters. and the other way around — add any grouping or sorting and the mode quietly switches off (remove them and it comes back). two orders cannot be in force at once, and tessera doesn't pretend otherwise. two things the gantt chart does not do, and should not: arrows don't move dates. tessera does not reschedule for you: a relation shows the dependency, and the decision to move something stays yours. arrows aren't drawn to subtasks. subtasks are shown as thin sub-bars inside their parent's row, and an arrow always attaches to the parent bar. the relation between subtasks can still be created — it just isn't drawn as a curve. tasks without a single date don't make it into the chart — they are collected in the “unscheduled” list below it, and their relations are still visible in the task window."
+        }
+      }
+    },
+    {
+      "slug": "task-documents",
+      "path": "tasks/task-documents.md",
+      "title": "Документы задачи",
+      "category": "Задачи",
+      "order": 34,
+      "updated": "2026-08-28",
+      "keywords": [
+        "документы",
+        "связь с документом",
+        "блок",
+        "фрагмент",
+        "цитата",
+        "якорь",
+        "согласование"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "связь-ставится-со-стороны-документа",
+          "text": "Связь ставится со стороны документа",
+          "level": 2
+        },
+        {
+          "id": "связь-на-весь-документ-или-на-один-блок",
+          "text": "Связь на весь документ или на один блок",
+          "level": 2
+        },
+        {
+          "id": "что-видно-во-вкладке",
+          "text": "Что видно во вкладке",
+          "level": 2
+        },
+        {
+          "id": "связи-и-согласование-одна-панель",
+          "text": "Связи и согласование — одна панель",
+          "level": 2
+        }
+      ],
+      "text": "вкладка «документы» в окне задачи отвечает на один вопрос: какие документы говорят об этой задаче. техническое задание, протокол встречи, регламент — всё, откуда задача выросла или чем она регулируется. вкладка «документы» окна задачи связь ставится со стороны документа это главное, что нужно знать: во вкладке «документы» нет кнопки «добавить». связь создаётся в самом документе — в панели «связи и согласование» (значок цепочки в шапке документа), кнопкой «связать задачу». так сделано намеренно. связь имеет смысл там, где есть контекст: вы читаете абзац про импорт данных и ставите рядом задачу про импорт. из окна задачи не видно, к какому именно месту документа она относится, — а это и есть самое ценное в такой связи. вкладка задачи — второй конец той же связи. здесь можно открыть документ и снять связь; и то и другое работает с любой стороны, строка связи одна. связь на весь документ или на один блок в документе связь можно поставить двумя способами: на весь документ — если ничего не выбрано. обычный случай: «эта задача про этот регламент». на конкретный блок — если в документе выбран абзац, пункт списка или заголовок. такая связь отвечает на вопрос «про какой именно пункт задача». у связи, привязанной к блоку, во вкладке задачи рядом с названием документа стоит серая цитата — короткий фрагмент того самого абзаца. цитата снимается в момент создания связи и дальше не меняется. это не недоработка: абзац потом правят, и текст, ради которого связь была поставлена, исчезает. сохранённая цитата — единственное, что через полгода объяснит, о чём шла речь. если фрагмент переписали целиком, связь стоит переставить. что видно во вкладке каждая строка — значок или эмодзи документа, его название и (для связи с блоком) цитата. клик по строке закрывает задачу и открывает документ. открывается он с начала: цитата в строке — это то, что подскажет, какой абзац искать. уже связанные задачи не предлагаются в выборе на стороне документа — повторная связь ничего не изменила бы, и кнопка, которая как будто не работает, только сбивала бы с толку. связи и согласование — одна панель в документе связи с задачами лежат в одной панели с протоколами согласования, и это не случайность: маршрут согласования поднимается по документу, а задачи — причина, по которой документ вообще существует. подробнее о самих документах — импорте и экспорте, истории версий, согласованиях, оглавлении и обсуждениях — в разделе документы.",
+      "locales": {
+        "en": {
+          "path": "tasks/task-documents.en.md",
+          "title": "A task's documents",
+          "category": "Tasks",
+          "updated": "2026-08-28",
+          "keywords": [
+            "documents",
+            "document link",
+            "block",
+            "fragment",
+            "quote",
+            "anchor",
+            "approval"
+          ],
+          "headings": [
+            {
+              "id": "the-link-is-made-from-the-document-s-side",
+              "text": "The link is made from the document's side",
+              "level": 2
+            },
+            {
+              "id": "the-whole-document-or-one-block",
+              "text": "The whole document, or one block",
+              "level": 2
+            },
+            {
+              "id": "what-the-tab-shows",
+              "text": "What the tab shows",
+              "level": 2
+            },
+            {
+              "id": "links-and-approvals-share-one-panel",
+              "text": "Links and approvals share one panel",
+              "level": 2
+            }
+          ],
+          "text": "the documents tab of the task window answers one question: which documents talk about this task. a specification, the minutes of a meeting, a policy — anything the task grew out of or is governed by. the documents tab of the task window the link is made from the document's side that's the main thing to know: there is no “add” button in the documents tab. the link is created in the document itself — in the links and approvals panel (the chain icon in the document header), with the link a task button. that's deliberate. a link means something where the context is: you are reading the paragraph about data import and you attach the import task next to it. from the task window there is no way to see which part of the document it refers to — and that is precisely what is most valuable about such a link. the task's tab is the other end of the same link. here you can open the document and remove the link; both work from either side, there is one row for one link. the whole document, or one block in a document a link can be made two ways: to the whole document — when nothing is selected. the common case: “this task is about this policy”. to a specific block — when a paragraph, a list item or a heading is selected in the document. such a link answers the question “which clause exactly is the task about”. a link anchored to a block shows a grey quote next to the document title in the task's tab — a short fragment of that very paragraph. the quote is taken at the moment the link is created and doesn't change afterwards. that isn't an oversight: the paragraph gets edited later, and the text the link was made for disappears. the stored quote is the only thing that will explain, half a year on, what this was about. if the fragment has been rewritten entirely, it's worth re-creating the link. what the tab shows each row is the document's icon or emoji, its title and — for a block link — the quote. clicking the row closes the task and opens the document. it opens from the top: the quote in the row is what tells you which paragraph to look for. already-linked tasks are not offered in the picker on the document's side — linking the same pair again would change nothing, and a button that appears to do nothing would only be confusing. links and approvals share one panel in a document, task links live in the same panel as the approval routes, and that isn't an accident: a route is raised against the document, and the tasks are the reason the document exists at all. for more about documents themselves — import and export, version history, approvals, the table of contents and discussions — see documents."
+        }
+      }
+    },
+    {
+      "slug": "task-history",
+      "path": "tasks/task-history.md",
+      "title": "История задачи",
+      "category": "Задачи",
+      "order": 35,
+      "updated": "2026-08-28",
+      "keywords": ["история", "журнал", "аудит", "кто изменил", "события", "лог"],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "что-попадает-в-журнал",
+          "text": "Что попадает в журнал",
+          "level": 2
+        },
+        {
+          "id": "что-журнал-не-хранит",
+          "text": "Что журнал не хранит",
+          "level": 2
+        },
+        {
+          "id": "связи-оставляют-след-с-двух-сторон",
+          "text": "Связи оставляют след с двух сторон",
+          "level": 2
+        },
+        {
+          "id": "команды-считаются-одной-записью",
+          "text": "Команды считаются одной записью",
+          "level": 2
+        }
+      ],
+      "text": "вкладка «история» — журнал задачи: кто, что и когда с ней сделал. он ведётся сам, ничего включать не нужно. вкладка «история»: журнал задачи каждая строка — это аватар и имя человека, короткая фраза о том, что произошло, и время. записи идут сверху вниз по времени: первая строка — создание задачи, последняя — то, что случилось только что. что попадает в журнал событие как выглядит --- --- создание создал(а) задачу переименование переименовал(а) → «новое название» правка описания изменил(а) описание приоритет изменил(а) приоритет → высокий срок установил(а) срок · убрал(а) срок завершение отметил(а) выполненной · вернул(а) в работу повтор перенёс(ла) повтор задачи колонка переместил(а) → «в процессе» исполнители назначил(а) исполнителя · снял(а) исполнителя архив отправил(а) в архив · восстановил(а) из архива комментарий оставил(а) комментарий связь добавил(а) связь с #2591 вложение прикрепил(а) файл «отчёт.pdf» что журнал не хранит понимать это так же важно, как и то, что он хранит: не хранит прежние значения. строка говорит «изменил(а) описание», но не показывает, что было до правки. история задачи — не история версий; версии есть у документов, не у задач. не хранит текст комментария. в журнале останется «оставил(а) комментарий», сам текст живёт во вкладке «комментарии» — и если комментарий удалили, из журнала он не восстановится. не удаляется и не правится. записи в журнал только дописываются. связи оставляют след с двух сторон у связей есть особенность, которая объясняет часть записей. сама связь хранится у той задачи, из которой её поставили, а вот в журнал она пишется обеим: у #10 появится «добавил(а) связь с #20», у #20 — «добавил(а) связь с #10». поэтому, если во вкладке «связи» пусто, а в истории есть запись о связи, — всё в порядке. связь существует, просто она заведена с другой стороны. команды считаются одной записью комментарий с командами не заводит по строке на каждую команду: пять команд в одном комментарии дают одну запись о том, что было применено. иначе один комментарий мог бы вытеснить из журнала всю остальную историю задачи.",
+      "locales": {
+        "en": {
+          "path": "tasks/task-history.en.md",
+          "title": "A task's history",
+          "category": "Tasks",
+          "updated": "2026-08-28",
+          "keywords": ["history", "journal", "audit", "who changed", "events", "log"],
+          "headings": [
+            {
+              "id": "what-goes-into-the-journal",
+              "text": "What goes into the journal",
+              "level": 2
+            },
+            {
+              "id": "what-the-journal-does-not-keep",
+              "text": "What the journal does not keep",
+              "level": 2
+            },
+            {
+              "id": "relations-leave-a-trace-on-both-sides",
+              "text": "Relations leave a trace on both sides",
+              "level": 2
+            },
+            {
+              "id": "commands-count-as-one-entry",
+              "text": "Commands count as one entry",
+              "level": 2
+            }
+          ],
+          "text": "the history tab is the task's journal: who did what to it, and when. it is kept automatically — nothing has to be switched on. the history tab: the task's journal each row is an avatar and a name, a short sentence about what happened, and a time. entries run top to bottom in time: the first line is the task being created, the last is whatever just happened. what goes into the journal event how it reads --- --- creation created the task rename renamed → “a new title” description edit changed the description priority changed the priority → high due date set the due date · cleared the due date completion marked it done · reopened it recurrence rescheduled the repeat column moved it → “in progress” assignees assigned someone · unassigned someone archive archived it · restored it from the archive comment left a comment relation added a relation to #2591 attachment attached the file “report.pdf” what the journal does not keep understanding this matters as much as knowing what it does keep: it doesn't keep former values. a row says “changed the description”, but not what it looked like before. a task's history is not a version history; versions belong to documents, not to tasks. it doesn't keep the text of a comment. the journal holds “left a comment”; the text itself lives in the comments tab — and if the comment was deleted, the journal will not bring it back. it is neither deleted nor edited. entries are only ever appended. relations leave a trace on both sides relations have a quirk that explains some of the entries. the relation itself is stored on the task it was created from, but it is written into both journals: #10 gets “added a relation to #20”, #20 gets “added a relation to #10”. so if the relations tab is empty while the history mentions a relation, everything is fine. the relation exists — it was simply created from the other end. commands count as one entry a comment with commands doesn't file a row per command: five commands in one comment produce one entry about what was applied. otherwise a single comment could push the rest of a task's history out of sight."
+        }
+      }
+    },
+    {
       "slug": "documents",
       "path": "documents/documents.md",
       "title": "Документы",

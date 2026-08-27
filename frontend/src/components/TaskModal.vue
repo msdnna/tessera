@@ -1825,7 +1825,7 @@ async function onSubtaskChanged() {
 
               <n-tab-pane name="relations">
                 <template #tab>
-                  <span class="tab-lbl">
+                  <span class="tab-lbl" data-testid="tab-relations">
                     <n-icon :component="GitMergeOutline" :size="15" class="tab-ico tab-ico--out" />
                     <n-icon :component="GitMerge" :size="15" class="tab-ico tab-ico--fill" />
                     {{ t('task.tab.relations') }}
@@ -1890,7 +1890,7 @@ async function onSubtaskChanged() {
 
               <n-tab-pane name="history">
                 <template #tab>
-                  <span class="tab-lbl">
+                  <span class="tab-lbl" data-testid="tab-history">
                     <n-icon :component="TimeOutline" :size="15" class="tab-ico tab-ico--out" />
                     <n-icon :component="Time" :size="15" class="tab-ico tab-ico--fill" />
                     {{ t('task.tab.history') }}

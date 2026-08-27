@@ -248,16 +248,67 @@ for (const scheme of ['light', 'dark']) {
       })
     }
 
-    test('окно задачи', async ({ page }) => {
+    // ── the task window and its tabs (#2823, wave 2) ──
+    // openTask picks a card by its title so each shot lands on the task that has
+    // something to show: the push task carries the thread, the document link and
+    // a journal, the empty-states pass carries the only blocking relation.
+    async function openTask(page, title) {
       await openBoard(page)
-      await page
-        .locator('[data-testid="column"][data-column-name="В процессе"]')
-        .getByTestId('task-card')
-        .first()
-        .click()
+      await page.getByTestId('task-card').filter({ hasText: title }).first().click()
       const modal = page.getByTestId('task-modal')
       await expect(modal).toBeVisible()
+      return modal
+    }
+    const PUSH_TASK = 'Push-уведомления о напоминаниях'
+
+    test('окно задачи', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
       await shoot(page, scheme, 'task-modal')
+    })
+
+    test('полноэкранный редактор', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
+      // The description toolbar sits in the section header. Its buttons are
+      // icon-only and their count depends on the mode — a saved description opens
+      // in preview, where the image and mermaid buttons are not rendered at all,
+      // so an index into the row points at a different button than it does while
+      // writing. Hence a testid: the titles are translated and can't anchor the
+      // English run either.
+      await page.getByTestId('desc-fullscreen').click()
+      // The split editor is what the article is about: text left, live preview
+      // right, so the shot has to wait for the preview pane, not just the modal.
+      await expect(page.locator('.mdfs .md2-preview-side')).toBeVisible()
+      await shoot(page, scheme, 'task-markdown-editor')
+    })
+
+    test('комментарии', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
+      await page.getByTestId('tab-comments').click()
+      // Wait for the reply, not the root: the thread is the picture, and the root
+      // renders one request earlier.
+      await expect(page.locator('.c-reply').first()).toBeVisible()
+      await shoot(page, scheme, 'task-comments')
+    })
+
+    test('связи задачи', async ({ page }) => {
+      await openTask(page, 'Ревизия пустых состояний')
+      await page.getByTestId('tab-relations').click()
+      await expect(page.locator('.relrow').first()).toBeVisible()
+      await shoot(page, scheme, 'task-relations')
+    })
+
+    test('документы задачи', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
+      await page.getByTestId('tab-documents').click()
+      await expect(page.getByTestId('task-doc-link').first()).toBeVisible()
+      await shoot(page, scheme, 'task-documents')
+    })
+
+    test('история задачи', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
+      await page.getByTestId('tab-history').click()
+      await expect(page.locator('.histrow').first()).toBeVisible()
+      await shoot(page, scheme, 'task-history')
     })
 
     test('документы', async ({ page }) => {

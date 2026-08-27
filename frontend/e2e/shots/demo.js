@@ -61,6 +61,11 @@ const CARDS = {
       assign: true,
       subtasks: ['Регистрация токена устройства', 'Отправка при наступлении срока', 'Тихие часы'],
       comment: 'Токены регистрируются, отправка уходит. Осталось окно тихих часов.',
+      // A reply under that comment (#2823, wave 2). The «Комментарии» article is
+      // about threads, and a flat list of one message is a picture of the thing
+      // the article is not describing. The reply is written by the second demo
+      // member, so the shot shows two people talking rather than Аня to herself.
+      reply: 'Тихие часы описаны в спецификации — с 22:00 до 8:00 откладываем до утра.',
     },
     {
       title: 'Фильтры на доске: сохранение пресетов',
@@ -110,6 +115,10 @@ const TAG_COLORS = {
 // ProseMirror JSON (the editor's own format) and the save is guarded by the
 // document's `updated_at` — pass the one the create call just returned, or the
 // backend rejects the write as a concurrent edit.
+// A paragraph is a plain string, or `{ text, id }` when something has to point at
+// it later — a block id is what anchors a task link to one clause instead of to
+// the document as a whole (#2823, wave 2). The editor assigns these ids itself
+// while you type; the seed spells one out so the anchored link is reproducible.
 async function writeDoc(token, doc, paragraphs) {
   return api.patch(
     `/documents/${doc.id}/content`,
@@ -117,10 +126,14 @@ async function writeDoc(token, doc, paragraphs) {
       updated_at: doc.updated_at,
       content: {
         type: 'doc',
-        content: paragraphs.map((text) => ({
-          type: 'paragraph',
-          content: [{ type: 'text', text }],
-        })),
+        content: paragraphs.map((p) => {
+          const { text, id } = typeof p === 'string' ? { text: p } : p
+          return {
+            type: 'paragraph',
+            ...(id ? { attrs: { id } } : {}),
+            content: [{ type: 'text', text }],
+          }
+        }),
       },
     },
     token,
@@ -132,6 +145,9 @@ async function writeDoc(token, doc, paragraphs) {
 // address only when it is taken — that is, on a database that already holds a
 // previous run. Domains are the ones RFC 2606 reserves for documentation.
 const DEMO_EMAIL = 'a.kovaleva@example.com'
+// The second member of the demo workspace — the other voice in the comment
+// thread and the second face in the assignee picker.
+const MATE_EMAIL = 'p.veretennikov@example.com'
 
 // Extra accounts so the admin list is a list and not a single row. They are
 // instance accounts only — not members of the demo workspace — so they change
@@ -346,6 +362,21 @@ export async function seedDemo(runId, base) {
   const get = (p) => api.get(p, t)
 
   const ws = await post('/workspaces', { name: 'Тессера Демо' })
+
+  // A colleague in the same workspace (#2823, wave 2). One-person workspaces make
+  // for lying screenshots: a thread, an @-mention and an assignee picker all read
+  // as features for teams, and all three had exactly one name to offer. Best
+  // effort on purpose — registration is rate-limited per IP, and a workspace of
+  // one is a worse picture, not a broken run.
+  let mate = null
+  try {
+    const m = await registerPresentable(runId, 'Пётр Веретенников', MATE_EMAIL, 'mate')
+    await post(`/workspaces/${ws.id}/members`, { email: m.creds.email, role: 'member' })
+    mate = { ...m, post: (p, b) => api.post(p, b, m.token) }
+  } catch {
+    /* rate limit or a taken address — the shots fall back to a single author */
+  }
+
   const group = await post(`/workspaces/${ws.id}/groups`, { name: 'Продукт' })
   const project = await post(`/workspaces/${ws.id}/projects`, {
     name: 'Мобильное приложение',
@@ -387,7 +418,18 @@ export async function seedDemo(runId, base) {
           title,
         })
       }
-      if (card.comment) await post(`/tasks/${task.id}/comments`, { body: card.comment })
+      if (card.comment) {
+        const root = await post(`/tasks/${task.id}/comments`, { body: card.comment })
+        // The reply is posted by the colleague when there is one; falling back to
+        // the owner still produces a thread, just a one-sided conversation.
+        if (card.reply) {
+          const author = mate || { post }
+          await author.post(`/tasks/${task.id}/comments`, {
+            body: card.reply,
+            parent_id: root.id,
+          })
+        }
+      }
       // Creating a card straight into the done column does not close it — the
       // completion flag is set when a task *moves* there — so the finished ones
       // are marked explicitly, otherwise every board and milestone shot shows
@@ -448,17 +490,25 @@ export async function seedDemo(runId, base) {
   // preview line, and three cards reading «Пустой документ» would be a picture
   // of an empty product. No `icon` is set for the same reason — the headless
   // browser has no emoji font, so an emoji icon comes out as a tofu box.
-  await writeDoc(
-    t,
-    await post(`/workspaces/${ws.id}/documents`, {
-      title: 'Спецификация напоминаний',
-      project_id: project.id,
-    }),
-    [
-      'Напоминание срабатывает в указанное время и приходит push-уведомлением на мобильный клиент.',
-      'Тихие часы: с 22:00 до 8:00 уведомления откладываются до утра.',
-    ],
-  )
+  const QUIET_HOURS_BLOCK = 'demo-quiet-hours'
+  const QUIET_HOURS_TEXT = 'Тихие часы: с 22:00 до 8:00 уведомления откладываются до утра.'
+  const spec = await post(`/workspaces/${ws.id}/documents`, {
+    title: 'Спецификация напоминаний',
+    project_id: project.id,
+  })
+  await writeDoc(t, spec, [
+    'Напоминание срабатывает в указанное время и приходит push-уведомлением на мобильный клиент.',
+    { text: QUIET_HOURS_TEXT, id: QUIET_HOURS_BLOCK },
+  ])
+  // The «Документы задачи» article is about the link between a clause and the work
+  // it produced, and the seed had no link at all to picture. Anchored to the quiet
+  // hours paragraph rather than to the document as a whole: the anchored shape is
+  // the one that needs explaining, since it is the one that carries a quote.
+  await post(`/documents/${spec.id}/tasks`, {
+    task_id: byTitle('Push-уведомления о напоминаниях').id,
+    block_id: QUIET_HOURS_BLOCK,
+    quote: QUIET_HOURS_TEXT,
+  })
   await writeDoc(t, await post(`/workspaces/${ws.id}/documents`, { title: 'Регламент релиза' }), [
     'Релиз собирается в понедельник, выкатывается во вторник.',
     'Ветка замораживается за день до сборки; в заморозку попадают только исправления.',
