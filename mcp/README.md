@@ -1,78 +1,81 @@
-# Tessera MCP server
+<p align="right"><b>Русский</b> · <a href="README.en.md">English</a></p>
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server that exposes a
-Tessera workspace to an AI agent (e.g. Claude Code) as a **priority-ranked queue
-of tasks** — for automated, agentic development driven straight from Tessera.
+# MCP-сервер Tessera
 
-It is a thin **REST client** of the Tessera API (it never touches the database)
-and speaks MCP over **stdio**, so the MCP client launches it as a subprocess.
+Сервер [Model Context Protocol](https://modelcontextprotocol.io), который отдаёт
+рабочее пространство Tessera AI-агенту (например, Claude Code) как **ранжированную
+по приоритету очередь задач** — для автоматизированной агентной разработки прямо из
+Tessera.
 
-## Tools
+Это тонкий **REST-клиент** API Tessera (в базу он не ходит), общается по MCP через
+**stdio**, поэтому MCP-клиент запускает его как подпроцесс.
 
-### Read
+## Инструменты (tools)
 
-| Tool | What it does |
-|------|--------------|
-| `tessera_list_workspaces` | Workspaces the account belongs to |
-| `tessera_list_projects` | Projects in a workspace |
-| `tessera_list_boards` | Boards in a project |
-| `tessera_list_columns` | A board's columns (id, name, position, done flag) |
-| `tessera_resolve_board` | `/project/<slug>/board/<slug>` → board |
-| `tessera_list_tasks` | A board's tasks as a **ranked** queue (optionally scoped to a milestone) |
-| `tessera_my_tasks` | Tasks assigned to you across a workspace, ranked |
-| `tessera_next_task` | The single highest-priority actionable task (skips blocked ones on a board) |
-| `tessera_get_task` | Full task detail: description, tags, assignees, subtasks, comments (with author + `is_agent`), relations, attachments, image refs, GitLab link |
-| `tessera_view_image` | Fetch & return image(s) referenced by a task (inline images + attachments) so the agent can actually see screenshots/diagrams |
+### Чтение
 
-### Write
+| Инструмент | Что делает |
+|------------|------------|
+| `tessera_list_workspaces` | Рабочие пространства, к которым принадлежит аккаунт |
+| `tessera_list_projects` | Проекты в рабочем пространстве |
+| `tessera_list_boards` | Доски в проекте |
+| `tessera_list_columns` | Колонки доски (id, имя, позиция, флаг done) |
+| `tessera_resolve_board` | `/project/<slug>/board/<slug>` → доска |
+| `tessera_list_tasks` | Задачи доски как **ранжированная** очередь (опц. с привязкой к этапу) |
+| `tessera_my_tasks` | Задачи, назначенные на вас в пространстве, ранжированные |
+| `tessera_next_task` | Единственная самая приоритетная выполнимая задача (пропускает заблокированные на доске) |
+| `tessera_get_task` | Полные детали задачи: описание, теги, исполнители, подзадачи, комментарии (с автором + `is_agent`), связи, вложения, ссылки на изображения, GitLab-линк |
+| `tessera_view_image` | Забрать и вернуть изображение(я) задачи (инлайн-картинки + вложения), чтобы агент реально видел скриншоты/схемы |
 
-| Tool | What it does |
-|------|--------------|
-| `tessera_add_comment` | Post a Markdown comment on a task/subtask; optional `image_paths` upload & embed local screenshots inline |
-| `tessera_update_description` | Attach Markdown to the description — `append` (default, under an optional heading) or `replace`; other fields preserved |
-| `tessera_move_task` | Move a task to a column by **name** (`В процессе`, `На рассмотрении`, …) or UUID; the board's done column auto-completes |
-| `tessera_assign_task` | Set assignees by email / name / UUID / `author` / `me`; `replace=true` hands a task back (e.g. `['author']` returns it to its creator and drops the agent) |
-| `tessera_create_task` | Create a task (or a subtask via `parent_number`/`parent_id`) with description, priority, dates, estimate, assignees and tags; column defaults to the board's leftmost |
-| `tessera_create_subtasks` | Create many subtasks under one parent in a single call; a failing item doesn't roll back the rest (`created` / `failed`) |
-| `tessera_update_task` | Partial edit of title / description / priority / dates / estimate / completed; `clear: ["due_date"]` blanks a date or the estimate |
-| `tessera_set_parent` | Make a task a subtask of another, or `detach: true` to promote it back to a top-level card |
-| `tessera_move_description` | Move (or copy) a description between tasks; `cut: true` empties the source **after** the target is written |
-| `tessera_set_tags` | Add/remove tags by name within the task's project; unknown names error unless `create_missing: true` |
-| `tessera_link_tasks` / `tessera_unlink_tasks` | Link two tasks (`relates` \| `blocks` \| `blocked_by` \| `duplicates`) by `#number`; unlink clears the row from **both** ends |
-| `tessera_upload_attachment` / `tessera_download_attachment` | Attach local files to a task (≤ 25 MiB each) / download a task's attachments to a local directory |
+### Запись
 
-Tasks are addressed by `task_id` (a subtask id works too) or by `workspace_id` +
-`number` (e.g. `#252`). Write tools author as the token's owner — mint the token
-for a **dedicated agent user** so its comments are distinguishable from yours
-(`is_agent` on `get_task` comments keys off this).
+| Инструмент | Что делает |
+|------------|------------|
+| `tessera_add_comment` | Оставить Markdown-комментарий к задаче/подзадаче; опц. `image_paths` — загрузить и встроить локальные скриншоты инлайн |
+| `tessera_update_description` | Дописать Markdown в описание — `append` (по умолчанию, под опц. заголовком) или `replace`; остальные поля сохраняются |
+| `tessera_move_task` | Перенести задачу в колонку по **имени** (`В процессе`, `На рассмотрении`, …) или UUID; done-колонка доски авто-завершает задачу |
+| `tessera_assign_task` | Назначить исполнителей по email / имени / UUID / `author` / `me`; `replace=true` возвращает задачу (напр. `['author']` вернёт её создателю и снимет агента) |
+| `tessera_create_task` | Создать задачу (или подзадачу через `parent_number`/`parent_id`) с описанием, приоритетом, датами, оценкой, исполнителями и тегами; колонка по умолчанию — крайняя левая |
+| `tessera_create_subtasks` | Создать много подзадач под одним родителем за один вызов; сбой элемента не откатывает остальные (`created` / `failed`) |
+| `tessera_update_task` | Частичная правка title / description / priority / дат / estimate / completed; `clear: ["due_date"]` очищает дату или оценку |
+| `tessera_set_parent` | Сделать задачу подзадачей другой или `detach: true` — вернуть её на верхний уровень |
+| `tessera_move_description` | Перенести (или скопировать) описание между задачами; `cut: true` очищает источник **после** записи в цель |
+| `tessera_set_tags` | Добавить/убрать теги по имени в рамках проекта задачи; неизвестные имена дают ошибку, если не `create_missing: true` |
+| `tessera_link_tasks` / `tessera_unlink_tasks` | Связать две задачи (`relates` \| `blocks` \| `blocked_by` \| `duplicates`) по `#number`; unlink убирает связь с **обоих** концов |
+| `tessera_upload_attachment` / `tessera_download_attachment` | Приложить локальные файлы к задаче (≤ 25 МиБ каждый) / скачать вложения задачи в локальный каталог |
 
-**Ranking** (in `internal/rank`): incomplete first → overdue first → higher
-priority (4=urgent … 0=none) → earlier due date → board position. Archived tasks
-are excluded; completed tasks are excluded unless `include_completed: true`.
+Задачи адресуются по `task_id` (id подзадачи тоже подходит) или по `workspace_id` +
+`number` (например, `#252`). Инструменты записи действуют от имени владельца токена —
+выпускайте токен для **выделенного агент-пользователя**, чтобы его комментарии
+отличались от ваших (`is_agent` в комментариях `get_task` завязан именно на это).
 
-## Setup
+**Ранжирование** (в `internal/rank`): сначала незавершённые → сначала просроченные →
+выше приоритет (4=срочный … 0=нет) → ближе срок → позиция на доске. Архивные задачи
+исключаются; завершённые исключаются, если не задан `include_completed: true`.
 
-### 1. Mint a Personal Access Token
+## Настройка
 
-Headless clients authenticate with a Tessera **Personal Access Token** (`tsra_…`),
-not a browser session. Mint one locally against your database:
+### 1. Выпустить Personal Access Token
+
+Headless-клиенты аутентифицируются **Personal Access Token** (`tsra_…`) Tessera, а не
+браузерной сессией. Выпустите его локально против своей БД:
 
 ```bash
 cd backend
-go run ./cmd/token -email you@example.com -name mcp        # never expires
-go run ./cmd/token -email you@example.com -name ci -days 90 # expires in 90 days
+go run ./cmd/token -email you@example.com -name mcp        # без срока
+go run ./cmd/token -email you@example.com -name ci -days 90 # истекает через 90 дней
 ```
 
-The plaintext token is printed **once** — store it now. Tokens are revocable via
-`DELETE /api/auth/tokens/:id` (or listed with `GET /api/auth/tokens`).
+Открытый текст токена печатается **один раз** — сохраните сразу. Токены отзываются
+через `DELETE /api/auth/tokens/:id` (список — `GET /api/auth/tokens`).
 
-### 2. Build
+### 2. Сборка
 
 ```bash
 make build-mcp        # → mcp/tessera-mcp
 ```
 
-### 3. Register with Claude Code
+### 3. Регистрация в Claude Code
 
 ```bash
 claude mcp add tessera \
@@ -81,7 +84,7 @@ claude mcp add tessera \
   -- /absolute/path/to/tessera/mcp/tessera-mcp
 ```
 
-or add it to `.mcp.json`:
+или добавьте в `.mcp.json`:
 
 ```json
 {
@@ -97,18 +100,18 @@ or add it to `.mcp.json`:
 }
 ```
 
-## Configuration
+## Конфигурация
 
-| Env var | Default | |
-|---------|---------|-|
-| `TESSERA_BASE_URL` | `http://localhost:8090/api` | API base URL |
-| `TESSERA_TOKEN` | — | Personal access token (`tsra_…`), **required** |
+| Переменная окружения | По умолчанию | |
+|----------------------|--------------|-|
+| `TESSERA_BASE_URL` | `http://localhost:8090/api` | Базовый URL API |
+| `TESSERA_TOKEN` | — | Personal access token (`tsra_…`), **обязателен** |
 
-## Scope
+## Область применения
 
-Read **and** write: the agent can pull a ranked queue, read a task (including
-screenshots via `tessera_view_image`), take it into progress, comment (attaching
-test evidence), send it for review, and ask clarifying questions — a full agentic
-loop. `image_paths` on `tessera_add_comment` are read from the **MCP server's own
-filesystem**, so screenshots must be reachable by that process (fine when the
-server runs on the same host as the agent).
+Чтение **и** запись: агент может забрать ранжированную очередь, прочитать задачу
+(включая скриншоты через `tessera_view_image`), взять её в работу, комментировать
+(прикладывая доказательства тестов), отправить на проверку и задать уточняющие
+вопросы — полный агентный цикл. `image_paths` в `tessera_add_comment` читаются из
+**собственной файловой системы MCP-сервера**, поэтому скриншоты должны быть доступны
+этому процессу (нормально, когда сервер работает на том же хосте, что и агент).

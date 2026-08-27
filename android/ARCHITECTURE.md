@@ -1,80 +1,81 @@
-# Tessera Android — Architecture
+<p align="right"><b>Русский</b> · <a href="ARCHITECTURE.en.md">English</a></p>
 
-Native Jetpack Compose client for the Tessera backend. The visual language
-**replicates the web frontend** (custom design system, not Material 3 styling),
-and the app is **online-first** — it talks to the API directly (like the web
-client), with no offline database or sync engine.
+# Tessera Android — Архитектура
 
-## Stack
+Нативный Jetpack Compose-клиент бэкенда Tessera. Визуальный язык **повторяет
+веб-фронтенд** (собственная дизайн-система, не стилизация Material 3), приложение —
+**online-first**: ходит в API напрямую (как веб-клиент), без офлайн-БД и движка синка.
+
+## Стек
 - Kotlin + Jetpack Compose (Compose BOM 2026.04.01), AGP 9.2, Kotlin 2.3, Gradle 9.4.
-- minSdk 24, targetSdk 36, compileSdk 37, Java 17 toolchain.
-- Retrofit 3 + OkHttp 5 + Gson (REST), OkHttp WebSocket (realtime, later phase).
+- minSdk 24, targetSdk 36, compileSdk 37, тулчейн Java 17.
+- Retrofit 3 + OkHttp 5 + Gson (REST), OkHttp WebSocket (realtime, поздняя фаза).
 - Coroutines/Flow, AndroidX Lifecycle ViewModel, Navigation Compose, DataStore.
-- Coil 2 (+SVG) for media. ktlint + detekt + JUnit4/Robolectric/MockWebServer/MockK.
+- Coil 2 (+SVG) для медиа. ktlint + detekt + JUnit4/Robolectric/MockWebServer/MockK.
 
-## Layers
+## Слои
 ```
 ui/            Compose: theme/, components/, screens/, viewmodels/, navigation/
 data/
-  model/       Gson DTOs mirroring backend JSON
+  model/       Gson-DTO, зеркалящие JSON бэкенда
   api/         ApiService (Retrofit) + RetrofitClient (OkHttp, auth/refresh)
-  repository/  feature repositories — the only callers of ApiService
-  preferences/ AppPreferences (DataStore: session + theme + server override)
-  realtime/    WebSocket client (later phase)
-  AppContainer manual DI: holds prefs + resolves the active ApiService
-util/          error mapping, helpers
+  repository/  репозитории фич — единственные, кто зовёт ApiService
+  preferences/ AppPreferences (DataStore: сессия + тема + override сервера)
+  realtime/    WebSocket-клиент (поздняя фаза)
+  AppContainer ручной DI: держит prefs + резолвит активный ApiService
+util/          маппинг ошибок, хелперы
 ```
 
-Flow: `Screen` → `ViewModel` (StateFlow UI state) → `Repository` → `ApiService`.
-ViewModels never touch Retrofit directly.
+Поток: `Screen` → `ViewModel` (UI-состояние в StateFlow) → `Repository` → `ApiService`.
+ViewModel никогда не трогает Retrofit напрямую.
 
-## Design system (`ui/theme`)
-- `TesseraColors` — neutral palette tokens ported 1:1 from
+## Дизайн-система (`ui/theme`)
+- `TesseraColors` — токены нейтральной палитры, портированы 1:1 из
   `frontend/src/styles/tokens.js` (light + dark).
-- `AccentTheme` — the 7 accent schemes from `stores/theme.js` (purple default).
-- `LocalTessera` CompositionLocal + `Tessera.colors` accessor. Components read
-  this, **never** `MaterialTheme.colorScheme`. Material 3 is wrapped only as a
-  thin host (ripple, text selection, base typography).
-- Custom primitives in `ui/components` (`TButton`, `TTextField`, `TCard`, …)
-  reproduce the web look (8dp radius, bordered inputs, flat no-ripple presses).
+- `AccentTheme` — 7 акцентных схем из `stores/theme.js` (по умолчанию purple).
+- `LocalTessera` CompositionLocal + аксессор `Tessera.colors`. Компоненты читают
+  именно это, **никогда** `MaterialTheme.colorScheme`. Material 3 обёрнут лишь как
+  тонкий хост (ripple, выделение текста, базовая типографика).
+- Свои примитивы в `ui/components` (`TButton`, `TTextField`, `TCard`, …)
+  воспроизводят веб-облик (радиус 8dp, бордерные инпуты, плоские нажатия без ripple).
 
-## Auth & session
-- `/auth/login|register` → `{access_token, refresh_token, user}` persisted in
-  DataStore and pushed into `RetrofitClient`.
-- `RetrofitClient` injects the Bearer token and performs silent refresh-on-401
-  (single coalesced in-flight refresh), mirroring `frontend/src/api/index.js`.
-  On unrecoverable 401 it signals a logout; on refresh it persists the new pair.
-- `AppRoot` is the session gate: splash → auth → main.
+## Аутентификация и сессия
+- `/auth/login|register` → `{access_token, refresh_token, user}` сохраняются в
+  DataStore и пушатся в `RetrofitClient`.
+- `RetrofitClient` подставляет Bearer-токен и делает тихий refresh-on-401
+  (единый коалесцированный in-flight refresh), зеркаля `frontend/src/api/index.js`.
+  На невосстановимый 401 сигналит logout; при refresh сохраняет новую пару.
+- `AppRoot` — гейт сессии: splash → auth → main.
 
-## Server URL
-- `BuildConfig.DEFAULT_BASE_URL` = `https://tessera.website.msdnna` (production).
-- Overridable at runtime (login screen → "Настройки сервера") so the same APK
-  can point at a dev/test backend (`http://10.0.2.2:8090` from the emulator).
+## URL сервера
+- `BuildConfig.DEFAULT_BASE_URL` = `https://tessera.msdnna.website` (прод).
+- Переопределяется в рантайме (экран входа → «Настройки сервера»), так что тот же APK
+  может смотреть на dev/test-бэкенд (`http://10.0.2.2:8090` из эмулятора).
 
-## Localization (#2803)
-- The UI language comes from `user_preferences.language`, **not** the system
-  locale — otherwise an English phone and a Russian web session drift apart.
-- `res/values` is Russian (the base locale), `res/values-en` is English;
-  `util/Languages.kt` normalizes whatever the server sends (`en-US`, unknown,
-  blank → `ru`) and `Context.withLanguage()` builds a localized context for code
-  outside Compose (notifications, toasts).
-- `ui/AppLocale.kt` wraps the tree in `AppRoot` and swaps `LocalResources` +
-  `LocalConfiguration`. `LocalContext` is deliberately left alone: it must stay
-  the Activity for `LocalContext.current as? Activity` call sites. Switching the
-  language is a recomposition, not an Activity recreation.
-- Strings are being extracted in waves. `HardcodedStringsTest` holds the list of
-  files that may still carry Russian literals
-  (`app/src/test/resources/i18n/untranslated.txt`) and compares it exactly — a
-  translated file must leave the list, a new literal must not appear in one that
-  already did. `StringResourcesTest` guards ru/en key parity, plural forms
-  (ru needs one/few/many/other) and format arguments.
+## Локализация (#2803)
+- Язык интерфейса берётся из `user_preferences.language`, а **не** из системной
+  локали — иначе английский телефон и русская веб-сессия разъезжаются.
+- `res/values` — русский (базовая локаль), `res/values-en` — английский;
+  `util/Languages.kt` нормализует всё, что шлёт сервер (`en-US`, неизвестное,
+  пустое → `ru`), а `Context.withLanguage()` строит локализованный контекст для кода
+  вне Compose (уведомления, тосты).
+- `ui/AppLocale.kt` оборачивает дерево в `AppRoot` и подменяет `LocalResources` +
+  `LocalConfiguration`. `LocalContext` намеренно не трогаем: он должен оставаться
+  Activity для мест `LocalContext.current as? Activity`. Смена языка — это
+  рекомпозиция, а не пересоздание Activity.
+- Строки извлекаются волнами. `HardcodedStringsTest` держит список файлов, которым
+  ещё можно нести русские литералы
+  (`app/src/test/resources/i18n/untranslated.txt`) и сверяет его точно — переведённый
+  файл обязан покинуть список, а новый литерал не должен появиться в уже вышедшем.
+  `StringResourcesTest` гарантирует паритет ключей ru/en, формы множественного числа
+  (для ru нужны one/few/many/other) и аргументы форматирования.
 
-## Layout
-Mirrors the web's **mobile** layout: a hamburger opens the sidebar in a 280dp
-drawer; topbar on top; board content below. (A bottom-nav variant may replace
-the drawer later once mobile UX settles — see project notes.)
+## Раскладка
+Повторяет **мобильную** раскладку веба: гамбургер открывает сайдбар в 280dp-drawer;
+топбар сверху; контент доски ниже. (Вариант с bottom-nav может позже заменить drawer,
+когда устаканится мобильный UX — см. заметки проекта.)
 
-## Build & release
-- `android/VERSION` is the single source of truth; `versionCode` derives from it.
-- `make android` (debug) / `make android-release` (signed) — see repo Makefile.
-- APKs are copied into `/apks` for the future in-app self-update feature.
+## Сборка и релиз
+- `android/VERSION` — единственный источник истины; `versionCode` выводится из него.
+- `make android` (debug) / `make android-release` (подписанный) — см. Makefile репо.
+- APK копируются в `/apks` для будущей фичи самообновления внутри приложения.
