@@ -8,6 +8,8 @@ updated: 2026-08-28
 
 The **Relations** tab is the fourth in a task's tab row. The relation types, what they mean and the rules around them are the same as in the browser; what follows is what works differently on a phone.
 
+![The Relations tab of a task](../assets/task-relations-mobile-light.png)
+
 ## Four types
 
 | Type | Reads as |

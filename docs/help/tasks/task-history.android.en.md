@@ -10,6 +10,8 @@ The **History** tab is the task's journal: who did what to it, and when. It is k
 
 Each row is a circle with initials, a short sentence about what happened, and a date with a time on the right. Entries run **top to bottom in time**: the first line is the task being created, the last is whatever just happened. An empty journal reads «No history yet».
 
+![The History tab of a task](../assets/task-history-mobile-light.png)
+
 ## Shorter sentences than in the browser
 
 This is the app's main difference: a row names the **event but not its value**.
