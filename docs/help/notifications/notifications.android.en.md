@@ -14,6 +14,10 @@ External-delivery settings are shared across all your devices: what you set up i
 
 The screen is made of three blocks: **Channels**, **Routing rules**, **Deadlines and reminders**. By default nothing goes out: first you set up a channel, then a rule.
 
+![The notification settings screen on a phone](../assets/notifications-mobile-light.png)
+
+Here the setup is already finished: the phone's own channel, a mail channel beside it, and under both a rule sending assignments and mentions to the mail. Without that bottom row neither channel would receive anything.
+
 ## This device
 
 In the channel list the phone has its own row — a channel of the **System notifications** type with the **this device** label. The app sets it up itself on sign-in; there's no need to add it by hand.

@@ -43,6 +43,10 @@ At the bottom of the sheet there is a “Name” field and a **“Save”** butt
 
 The field is **pre-filled with the name of the current view** if one is loaded. That is how you overwrite: leave the text alone and press “Save” — the current conditions are written back into the same view. There is no separate “Overwrite:” row with name buttons like on the desktop.
 
+![The saved views sheet on a phone](../assets/board-saved-views-mobile-light.png)
+
+In the shot “Urgent first” is loaded: it carries the tick and the accent in the list, and its name sits in the field below. “Release Gantt” shows in the same list even though the board is on kanban right now — that is exactly where the app differs from the browser.
+
 Saving under a name you already have always overwrites it rather than creating a second view with the same name.
 
 **There is no autosave on the phone.** The “Autosave” toggle exists only in the browser; in the app, even with a view loaded, changes to the bar are not written into it by themselves — until you press “Save”, you are editing an unnamed state. Which also means a filter you drop by accident cannot spoil your “reference” view here.
