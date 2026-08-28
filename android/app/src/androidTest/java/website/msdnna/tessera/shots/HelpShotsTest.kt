@@ -29,6 +29,7 @@ import org.junit.Test
 import org.junit.rules.RuleChain
 import website.msdnna.tessera.e2e.E2eBackend
 import website.msdnna.tessera.e2e.E2eRule
+import website.msdnna.tessera.e2e.awaitNoTag
 import website.msdnna.tessera.e2e.awaitTag
 import website.msdnna.tessera.e2e.selectGrouping
 import website.msdnna.tessera.ui.AppLocale
@@ -104,6 +105,38 @@ class HelpShotsTest {
         compose.selectGrouping(TestTags.BOARD_GROUP_TAGS)
 
         compose.shoot("board-tags-mobile")
+    }
+
+    @Test
+    fun boardComposer() {
+        val fixture = e2e.fixture
+        seedBoardContent()
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        // Collapsed the bar is one clipped row of dimmed chips, and its own taps go
+        // to the expand overlay — the article is about the expanded state, so the
+        // shot pays the same first tap the reader does. The overlay disappearing is
+        // what "expanded" means here, hence awaitNoTag rather than a tag to await.
+        compose.onNodeWithTag(TestTags.BOARD_COMPOSER_EXPAND).performClick()
+        compose.awaitNoTag(TestTags.BOARD_COMPOSER_EXPAND)
+
+        compose.shoot("board-composer-mobile")
+    }
+
+    @Test
+    fun boardCustomize() {
+        val fixture = e2e.fixture
+        seedBoardContent()
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        // The gear shares its row with the composer bar and hides while the bar is
+        // expanded, so the shot takes the reader's route: collapsed bar, then tap.
+        compose.onNodeWithTag(TestTags.BOARD_CUSTOMIZE).performClick()
+        compose.awaitTag(TestTags.BOARD_CUSTOMIZE_PANEL)
+
+        compose.shoot("board-customize-mobile")
     }
 
     @Test

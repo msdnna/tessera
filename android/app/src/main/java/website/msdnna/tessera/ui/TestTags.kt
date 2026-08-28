@@ -80,6 +80,18 @@ object TestTags {
     /** The inline field the tile above reveals. */
     const val BOARD_COLUMN_INPUT = "board-column-input"
 
+    // ── right-hand toolbar ─────────────────────────────────────────────────
+
+    /** The gear that opens «Вид доски» ([website.msdnna.tessera.ui.screens]
+     *  `BoardCustomizePanel`), and the folder that opens the saved-views popover.
+     *  Both live in the row that hides while the composer bar is expanded, so a
+     *  spec that wants them must collapse the bar first — same as a reader does. */
+    const val BOARD_CUSTOMIZE = "board-customize"
+    const val BOARD_SAVED_VIEWS = "board-saved-views"
+
+    /** Root of the open «Вид доски» dialog — present exactly while it is open. */
+    const val BOARD_CUSTOMIZE_PANEL = "board-customize-panel"
+
     // ── task modal ─────────────────────────────────────────────────────────
 
     /** Root of the open task modal — present exactly while a task is open. */
