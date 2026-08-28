@@ -10,6 +10,8 @@ A card on the board shows a task in two lines. Everything else — estimate, mil
 
 In the browser the window is split in half: fields on the left, tabs on the right. There is no such split on a phone — the window is **one column you scroll top to bottom**: header, title, fields, tabs. So reaching history or relations means scrolling, not glancing to the right.
 
+![The task window on a phone](../assets/task-modal-mobile-light.png)
+
 ## How it opens
 
 There is no «modal / full screen / side panel» choice in the app: the window always takes up almost the whole screen (leaving a thin margin) and is always the same. The "How to open a task" setting is about monitors, and a phone has nothing to choose from.
