@@ -167,7 +167,8 @@ export function sizeKey(page) {
 export function marginKey(page) {
   const near = (a, b) => Math.abs(a - b) < 0.5
   return (
-    MARGIN_PRESETS.find((m) => ['ml', 'mr', 'mt', 'mb'].every((k) => near(m[k], page[k])))?.key || ''
+    MARGIN_PRESETS.find((m) => ['ml', 'mr', 'mt', 'mb'].every((k) => near(m[k], page[k])))?.key ||
+    ''
   )
 }
 
