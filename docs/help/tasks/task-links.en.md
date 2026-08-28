@@ -27,7 +27,7 @@ At the bottom of the tab: the kind on the left, a search field on the right. You
 
 You can link to a task on any board of the workspace, subtasks included: blocking dependencies between subtasks are an everyday thing.
 
-A relation row behaves like a link: clicking it opens the related task. A completed task has its title struck through, so it's visible whether a block has been lifted. The cross on the right removes the relation.
+A relation row behaves like a link: clicking it opens the related task. A completed task has its title struck through, so it's visible whether a block has been lifted. The cross on the right removes the relation — after a «Remove the relation?» confirmation.
 
 The fastest way to create relations is [commands in a comment](/help/comments): `/blocks #2591`, `/blocked_by #2591`, `/relate #2591`, `/duplicates #2591`, `/unlink #2591`.
 
