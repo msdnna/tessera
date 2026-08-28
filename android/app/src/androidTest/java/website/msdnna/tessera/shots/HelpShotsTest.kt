@@ -21,6 +21,7 @@ import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -38,6 +39,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.BoardViewConfig
+import website.msdnna.tessera.data.model.SortLevel
 import website.msdnna.tessera.data.preferences.AppPreferences
 import website.msdnna.tessera.e2e.E2eBackend
 import website.msdnna.tessera.e2e.E2eRule
@@ -50,6 +53,7 @@ import website.msdnna.tessera.ui.screens.BoardScreen
 import website.msdnna.tessera.ui.screens.DocumentsScreen
 import website.msdnna.tessera.ui.screens.MilestonesScreen
 import website.msdnna.tessera.ui.screens.NotesScreen
+import website.msdnna.tessera.ui.screens.NotificationSettingsScreen
 import website.msdnna.tessera.ui.screens.RemindersScreen
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
@@ -267,6 +271,51 @@ class HelpShotsTest {
         compose.awaitText(busy.first().title)
 
         compose.shoot("board-calendar-mobile")
+    }
+
+    /**
+     * The saved-views popover (`board-saved-views.android`): the list, the tick
+     * and accent on the loaded entry, the trash beside each name, and the
+     * «Название» field already carrying the loaded name — which is the whole of
+     * the article's «перезапись» section in one frame.
+     *
+     * Opened **twice** on purpose. Everything the shot is about — the tick, the
+     * lit folder, the pre-filled field — only exists once a view has been
+     * applied, and tapping a name applies it *and closes the popover*. There is
+     * no stored form of `currentViewName` to seed instead: the view model sets it
+     * at runtime, so the shot walks the reader's own route.
+     *
+     * The applied view is a plain kanban sort deliberately. A filtering one would
+     * empty the board behind the popover, and the Gantt entry below it is there
+     * precisely to stay *unapplied* — it is what shows that the phone lists every
+     * view of the board rather than only the current layout's.
+     */
+    @Test
+    fun boardSavedViews() {
+        val fixture = e2e.fixture
+        seedBoardContent()
+        val urgentFirst = t("Срочное сверху", "Urgent first")
+        E2eBackend.saveBoardView(
+            fixture,
+            urgentFirst,
+            BoardViewConfig(sortLevels = listOf(SortLevel(field = "priority", dir = "desc"))),
+        )
+        E2eBackend.saveBoardView(fixture, t("Гант по релизу", "Release Gantt"), BoardViewConfig(layout = "gantt"))
+        E2eBackend.saveBoardView(fixture, t("По тегам", "By tag"), BoardViewConfig(groupMode = "tag"))
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        compose.onNodeWithTag(TestTags.BOARD_SAVED_VIEWS).performClick()
+        compose.awaitText(urgentFirst)
+        compose.onNodeWithText(urgentFirst).performClick()
+        // The popover leaves the composition on apply, which is also the signal
+        // that the view model has the name: reopening before it is gone would
+        // re-init the field off the old, empty state.
+        compose.awaitNoText(urgentFirst)
+        compose.onNodeWithTag(TestTags.BOARD_SAVED_VIEWS).performClick()
+        compose.awaitText(urgentFirst)
+
+        compose.shoot("board-saved-views-mobile")
     }
 
     @Test
@@ -495,6 +544,37 @@ class HelpShotsTest {
         compose.shoot("reminders-mobile")
     }
 
+    /**
+     * The notification settings screen (`notifications.android`): the phone's own
+     * «Системные уведомления» row carrying the «это устройство» pill, an outward
+     * channel beside it, and a routing rule under both.
+     *
+     * The rule is seeded rather than left out: without one no channel receives
+     * anything, and a screen showing channels alone would illustrate the exact
+     * state the article's troubleshooting list opens with.
+     *
+     * [DEVICE_ID] is handed to the screen *and* used to register the channel —
+     * the «это устройство» pill is drawn by comparing the two, so a channel
+     * registered under any other id would photograph as somebody else's phone.
+     */
+    @Test
+    fun notificationSettings() {
+        val fixture = e2e.fixture
+        E2eBackend.registerDeviceChannel(fixture, DEVICE_ID, t("Pixel Анны", "Anna's Pixel"))
+        val mail = E2eBackend.createNotificationChannel(
+            fixture,
+            type = "email",
+            label = t("Рабочая почта", "Work mail"),
+            config = mapOf("address" to "anna@example.com"),
+        )
+        E2eBackend.createNotificationRoute(fixture, listOf(mail.id), kinds = listOf("assigned", "mention"))
+
+        mount { NotificationSettingsScreen(deviceId = DEVICE_ID) }
+        compose.awaitText(t("Рабочая почта", "Work mail"))
+
+        compose.shoot("notifications-mobile")
+    }
+
     @Test
     fun milestones() {
         val fixture = e2e.fixture
@@ -681,6 +761,11 @@ class HelpShotsTest {
         waitUntil(AWAIT_MS) { onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isNotEmpty() }
     }
 
+    /** Waits for [text] to leave the composition — a popover closing, say. */
+    private fun ComposeContentTestRule.awaitNoText(text: String) {
+        waitUntil(AWAIT_MS) { onAllNodesWithText(text, substring = true).fetchSemanticsNodes().isEmpty() }
+    }
+
     /**
      * Writes `<name>-light.png` and `<name>-dark.png` (`<name>-<scheme>.<lang>.png`
      * outside Russian). The suffixes are not decoration: `helpAssetUrl` (web and
@@ -763,6 +848,10 @@ class HelpShotsTest {
 
         /** The language whose shots carry the bare file name. */
         const val DEFAULT_LANG = "ru"
+
+        /** The device id [notificationSettings] registers its channel under and
+         *  hands to the screen — the pair the «это устройство» pill compares. */
+        const val DEVICE_ID = "help-shots-device"
 
         /** Read from the companion so instance properties can use it in their own
          *  initialisers, whatever order they end up in. */

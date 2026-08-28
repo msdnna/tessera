@@ -14,6 +14,9 @@ import website.msdnna.tessera.data.model.AddTagRequest
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.BoardView
+import website.msdnna.tessera.data.model.BoardViewConfig
+import website.msdnna.tessera.data.model.ChannelRequest
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.CreateCommentRequest
 import website.msdnna.tessera.data.model.CreateGroupRequest
@@ -24,10 +27,17 @@ import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.Note
+import website.msdnna.tessera.data.model.NotificationChannel
+import website.msdnna.tessera.data.model.NotificationRoute
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
+import website.msdnna.tessera.data.model.RegisterDeviceRequest
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.Reminder
+import website.msdnna.tessera.data.model.RouteMatcher
+import website.msdnna.tessera.data.model.RouteOptions
+import website.msdnna.tessera.data.model.RouteRequest
+import website.msdnna.tessera.data.model.SaveBoardViewRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
@@ -457,6 +467,80 @@ object E2eBackend {
         post(
             "reminders",
             mapOf("message" to message, "remind_at" to remindAt),
+            fixture.account.accessToken,
+        )
+
+    /**
+     * Saves a server-side board view — one entry of the folder popover's list.
+     *
+     * Seeded rather than driven through the popover's own «Сохранить»: that
+     * button can only ever write the toolbar state the screen is currently in,
+     * so a list of several differently-configured views would take a round of
+     * chip-tapping per entry to produce.
+     */
+    fun saveBoardView(
+        fixture: Fixture,
+        name: String,
+        config: BoardViewConfig = BoardViewConfig(),
+    ): BoardView =
+        post(
+            "boards/${fixture.board.id}/views",
+            SaveBoardViewRequest(name, config),
+            fixture.account.accessToken,
+        )
+
+    // ── notification router (channels / routes) ────────────────────────────
+
+    /**
+     * Registers a «device» channel by its stable [deviceId] — the row the
+     * settings screen marks «это устройство» when the id matches the one it was
+     * handed. Idempotent server-side, same call the app makes on start.
+     */
+    fun registerDeviceChannel(fixture: Fixture, deviceId: String, label: String): NotificationChannel =
+        post(
+            "notification-devices",
+            RegisterDeviceRequest(deviceId = deviceId, label = label, platform = "android"),
+            fixture.account.accessToken,
+        )
+
+    /**
+     * Creates an outward delivery channel. [config] carries the non-secret
+     * settings the type requires (`address` for email, `chat_id` for telegram,
+     * `url` for webhook); [secret] carries what the server encrypts and never
+     * returns (`bot_token`, `url` for shoutrrr).
+     */
+    fun createNotificationChannel(
+        fixture: Fixture,
+        type: String,
+        label: String,
+        config: Map<String, String> = emptyMap(),
+        secret: Map<String, String> = emptyMap(),
+    ): NotificationChannel =
+        post(
+            "notification-channels",
+            ChannelRequest(type = type, label = label, config = config, secret = secret, enabled = true),
+            fixture.account.accessToken,
+        )
+
+    /**
+     * Creates a routing rule. An empty [kinds] means «any event» — the same
+     * thing the screen prints as «любые события». Without a rule a channel
+     * receives nothing, however many channels exist.
+     */
+    fun createNotificationRoute(
+        fixture: Fixture,
+        channelIds: List<String>,
+        kinds: List<String>? = null,
+        mute: Boolean = false,
+    ): NotificationRoute =
+        post(
+            "notification-routes",
+            RouteRequest(
+                matcher = RouteMatcher(kinds = kinds),
+                channelIds = channelIds,
+                options = RouteOptions(mute = mute),
+                enabled = true,
+            ),
             fixture.account.accessToken,
         )
 
