@@ -12,7 +12,11 @@ You open it from the board menu — the three dots in the top right corner, the 
 
 ## The archive is the same board, read-only
 
-Opening the archive doesn't take you to a separate screen. It is a **scope** of the same board: the same columns, the same grouping, the same filters — only archived tasks are shown instead of live ones. An amber **Archive** chip appears in the [board bar](/help/board-composer); the cross on it returns you to the ordinary board.
+Opening the archive doesn't take you to a separate screen. It is a **scope** of the same board: the same columns, the same grouping, the same filters — only archived tasks are shown instead of live ones. An amber **“Archive (read-only)”** chip appears in the [board bar](/help/board-composer); the cross on it returns you to the ordinary board.
+
+![The board archive on a phone](../assets/board-archive-mobile-light.png)
+
+The chip comes first in the bar, and while the bar is collapsed it pushes the search field past the single visible row — nothing is lost, tap the bar and it unfolds with search and filters intact.
 
 The main rule follows from that: **nothing in the archive can be changed**. Cards don't drag, the “complete” and “add subtask” buttons are taken off them, and the priority, due-date and tag pills stop being buttons: tapping any of them simply opens the task for reading. You can't create a task in the archive either.
 

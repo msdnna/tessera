@@ -28,12 +28,16 @@ Mind the mis-tap: a tap on the name lands in the editor rather than “on the co
 
 ## Column menu: colour, done column, delete
 
-The three dots on the right of the header open the column menu. It holds:
+The three dots on the right of the header open the column menu.
+
+![The column menu on a phone](../assets/board-column-menu-mobile-light.png)
+
+It holds:
 
 - **“Rename”** — the same input field as tapping the name;
 - **a palette of eight colours** — purple, blue, teal, green, amber, red, pink and grey; the selected one has a ring around it. A tap colours the column immediately and closes the menu. The colour goes into the thin strip above the header, into the status icon, and as a barely visible wash into the column's fill and border;
 - **the “Done column” switch** — see below;
-- **“Delete”** — with confirmation.
+- **“Delete column”** — with confirmation.
 
 There is no separate “remove colour” item: the grey swatch is the colour grey, not a reset.
 
