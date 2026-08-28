@@ -28,6 +28,8 @@ A cell fits **up to four** tasks — short chips with a priority-coloured bar on
 
 Tasks **with no due date** are gathered in a «No due date» block under the grid — as ordinary cards, with their «⋮» menu.
 
+![The calendar on a phone](../assets/board-calendar-mobile-light.png)
+
 There is no dragging between cells here, and there is none in the browser either: the layout follows the due date rather than setting it. Change the date inside the task.
 
 ## Timeline
