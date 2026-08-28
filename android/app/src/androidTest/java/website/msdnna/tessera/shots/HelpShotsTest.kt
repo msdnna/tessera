@@ -19,6 +19,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -230,7 +231,7 @@ class HelpShotsTest {
         compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
         compose.onNodeWithTag(TestTags.taskCard(card.id)).performClick()
         compose.awaitTag(TestTags.TASK_TITLE)
-        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_RELATIONS)).performClick()
+        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_RELATIONS)).performScrollTo().performClick()
         // The rows arrive with the task's detail request, which the tab does not
         // wait for — anchoring on the tab itself would photograph the empty state.
         compose.awaitTag(TestTags.taskRelationRow(blocker.id))
@@ -257,7 +258,10 @@ class HelpShotsTest {
         compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
         compose.onNodeWithTag(TestTags.taskCard(card.id)).performClick()
         compose.awaitTag(TestTags.TASK_TITLE)
-        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_HISTORY)).performClick()
+        // Six tabs do not fit a phone: the row scrolls horizontally and История is
+        // the last of them, so a bare performClick lands on the clipped edge and
+        // silently changes nothing — the shot then times out on an empty journal.
+        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_HISTORY)).performScrollTo().performClick()
         compose.awaitTag(TestTags.taskEventRow(newest.id))
 
         compose.shoot("task-history-mobile")
