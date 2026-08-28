@@ -28,7 +28,7 @@ Text is shown with full formatting: headings, lists, tables, images, code blocks
 - Version history and rolling back to an earlier revision.
 - Templates and linking a document to tasks.
 
-Links created on the web are visible from a phone — on the “Relations” tab of the task screen.
+A document's links to tasks are **not visible from a phone at all** — neither in the reader nor in the task window (the “Relations” tab there is about links between tasks). More in [Task documents](/help/task-documents).
 
 ## A document or a note
 

@@ -1681,6 +1681,91 @@
         }
       ],
       "text": "карточка на доске показывает задачу в двух строках. всё остальное — оценка, этап, автор, связи, файлы, история — живёт в окне задачи. оно открывается кликом по карточке и закрывается по esc или клику вне окна. окно задачи: поля слева, вкладки справа окно разделено пополам: слева поля задачи, справа — вкладки с её содержимым. границу между половинами можно потянуть мышью, а двойной клик по ней прячет правую половину целиком (и возвращает обратно). три способа открывать задачу кнопка «как открывать задачу» в шапке окна переключает подачу: модальное окно — привычный диалог по центру. значение по умолчанию. полный экран — окно во весь экран, для задач с длинным описанием. панель справа — задача уезжает в боковую панель, а доска слева остаётся живой: видно, из какой колонки задача и что рядом. выбор запоминается на этом устройстве, а не в вашем профиле: 27-дюймовому монитору идёт панель справа, ноутбуку — модальное окно, и навязывать одно другому было бы неудобно. на узком экране выбора нет — там задача всегда открывается листом на весь экран. шапка окна хлебные крошки «проект · доска» сверху — не просто подпись. клик по ним открывает список досок: так задача переносится в другую доску вместе со всей своей историей. кнопка со стрелкой копирует ссылку на задачу вида /board/<доска>?task=<номер>. такую ссылку можно отправить коллеге: она откроет доску и сразу развернёт нужную задачу. название правится прямо в шапке — это обычное поле ввода, а не отдельная форма. если задача связана с gitlab, рядом появляется ссылка «открыть issue в gitlab». поля слева поле что делает --- --- приоритет пять уровней; цветная точка приоритета видна и на карточке. срок открывает календарь: дата начала, срок, время, а также повтор и уведомления. оценка трудоёмкость задачи в единицах проекта. этап привязка к этапу (milestone); здесь же можно завести новый. автор кто создал задачу. только для чтения. исполнители сколько угодно человек, включая участников из gitlab. теги те же теги, по которым доска умеет раскладываться на колонки. статус колонка доски. рядом — кнопка «сдвинуть →» в следующую колонку и галочка «выполнено». родитель сделать задачу подзадачей другой или открепить от родителя. оценка: то, чего на карточке не поправить оценка задаётся в единицах, настроенных для проекта: время (3д 4ч, 90м, 1н), стори-поинты или свои единицы. если проект работает по шкале (фибоначчи, футболки, линейная), в поповере будет готовый список значений вместо поля ввода. рядом со своей оценкой задача показывает σ — сумму оценок подзадач. это две разные величины, и они намеренно не складываются: σ отвечает на вопрос «сколько уйдёт на детей», собственная оценка — «сколько на саму задачу». на карточке доски оценка и этап показаны чипами только для чтения (если вы не скрыли их в настройке вида). изменить их можно лишь здесь, в окне задачи, — это и есть главная причина открывать окно у задачи, которая на доске выглядит заполненной. срок, повтор и уведомления в календаре среза три части: 1. начало и срок — две даты, каждая со временем. дата начала нужна таймлайну и ганту: без неё задача рисуется точкой, а не отрезком. 2. повтор задачи — ежедневно, еженедельно, ежемесячно, ежегодно или выборочно по датам, отмеченным в календаре. повтор срабатывает по событию: при завершении задачи, при переходе в выбранную колонку или просто по расписанию. можно попросить создавать дубликат (тогда история остаётся у оригинала), пропускать выходные и повторять всегда. 3. уведомления — за сколько напоминать (в срок, за 15 минут, за час, за 3 часа, за день) и повторять ли напоминание. «по умолчанию» берёт настройку из уведомлений. вкладки справа на ярлыке каждой вкладки стоит счётчик, поэтому по закрытой вкладке видно, есть ли там что-нибудь. описание — markdown-редактор с тулбаром, вложениями и диаграммами. комментарии — обсуждение с ветками ответов, упоминаниями и командами. подзадачи — дети этой задачи; их же видно на карточке, если включено раскрытие подзадач. связи — блокировки, дубликаты и просто «связана с». файлы — вложения задачи. сюда же попадают файлы, перетащенные в описание. документы — документы, которые ссылаются на эту задачу. история — журнал изменений. низ окна внизу — «в архив» и «удалить». разница принципиальная: архив сохраняет задачу целиком и позволяет её вернуть, удаление необратимо. если у задачи есть подзадачи, при архивации будет выбор: отправить в архив вместе с детьми или открепить детей и оставить их на доске. архивную задачу окно открывает только на просмотр — внизу прямо об этом написано, а вместо кнопок действий стоит «вернуть из архива».",
+      "android": {
+        "path": "tasks/task-modal.android.md",
+        "updated": "2026-08-28",
+        "keywords": [
+          "задача",
+          "окно",
+          "модалка",
+          "оценка",
+          "этап",
+          "приоритет",
+          "срок",
+          "повтор",
+          "исполнители",
+          "статус",
+          "родитель",
+          "вкладки",
+          "сохранить",
+          "отмена",
+          "назад",
+          "приложение"
+        ],
+        "headings": [
+          {
+            "id": "как-оно-открывается",
+            "text": "Как оно открывается",
+            "level": 2
+          },
+          {
+            "id": "кнопка-назад-работает-в-два-шага",
+            "text": "Кнопка «Назад» работает в два шага",
+            "level": 2
+          },
+          {
+            "id": "шапка",
+            "text": "Шапка",
+            "level": 2
+          },
+          {
+            "id": "что-сохраняется-сразу-а-что-по-кнопке",
+            "text": "Что сохраняется сразу, а что — по кнопке",
+            "level": 2
+          },
+          {
+            "id": "поля",
+            "text": "Поля",
+            "level": 2
+          },
+          {
+            "id": "статус-три-элемента-в-одну-строку",
+            "text": "Статус: три элемента в одну строку",
+            "level": 3
+          },
+          {
+            "id": "оценка-и-σ",
+            "text": "Оценка и Σ",
+            "level": 3
+          },
+          {
+            "id": "срок-повтор-и-уведомления",
+            "text": "Срок, повтор и уведомления",
+            "level": 3
+          },
+          {
+            "id": "теги-и-этап-создание-с-клавиатуры",
+            "text": "Теги и этап: создание с клавиатуры",
+            "level": 3
+          },
+          {
+            "id": "вкладки",
+            "text": "Вкладки",
+            "level": 2
+          },
+          {
+            "id": "gitlab",
+            "text": "GitLab",
+            "level": 2
+          },
+          {
+            "id": "низ-окна",
+            "text": "Низ окна",
+            "level": 2
+          }
+        ],
+        "text": "карточка на доске показывает задачу в двух строках. всё остальное — оценка, этап, автор, связи, файлы, история — живёт в окне задачи. оно открывается касанием по карточке. в браузере окно разделено пополам: слева поля, справа вкладки. на телефоне такого деления нет — окно одно и прокручивается сверху вниз: шапка, название, поля, вкладки. поэтому до истории или связей нужно доскроллить, а не перевести взгляд направо. как оно открывается выбора «модальное окно / полный экран / панель справа» в приложении нет: окно всегда занимает почти весь экран (оставляя тонкую рамку) и всегда одно и то же. настройка «как открывать задачу» — про мониторы, и на телефоне ей нечего выбирать. клавиатура окно не закрывает: пока она открыта, окно ужимается до свободного места над ней. это заметно на комментариях — поле ввода и подсказки команд остаются видимыми. кнопка «назад» работает в два шага системная кнопка «назад» на любой вкладке, кроме первой, возвращает на «описание», а не закрывает задачу. второе нажатие уже закрывает окно. так из «истории» не приходится выпадать на доску, чтобы вернуться к описанию. шапка сверху — хлебные крошки «проект / доска» и справа номер задачи (#123). крошки, как и в браузере, кликабельны: касание открывает список досок, и задача переносится в другую доску вместе со всей историей. кнопки копирования ссылки на задачу в приложении нет — ссылка вида /board/<доска>?task=<номер> собирается в веб-версии. название правится прямо здесь: это обычное поле, пустое подписано «название задачи». что сохраняется сразу, а что — по кнопке это главное отличие от браузера, и его стоит запомнить. внизу окна стоят «отмена» и «сохранить». но сохраняет эта кнопка только название и описание. все остальные поля — приоритет, срок, оценка, исполнители, теги, этап, статус, родитель — применяются в тот момент, когда вы их меняете, и уже уехали на сервер. отсюда следствие: «отмена» не откатывает снятого исполнителя или сменённый приоритет. она отменяет только правку названия и описания. если поле изменено по ошибке, верните прежнее значение тем же способом, каким поменяли. поля поле что делает --- --- приоритет пять уровней; цветная точка приоритета видна и на карточке. срок открывает календарь: начало, срок, время, повтор и уведомления. оценка трудоёмкость в единицах проекта, рядом σ по подзадачам. автор кто создал задачу (для задач из gitlab — автор issue). только для чтения. исполнители сколько угодно человек, включая участников из gitlab. теги те же теги, по которым доска умеет раскладываться на колонки. этап привязка к этапу; новый этап заводится тут же. статус колонка доски, стрелка «в следующую» и кружок «выполнено». родитель «сделать подзадачей…» или «открепить». статус: три элемента в одну строку строка «статус» — это чип с текущей колонкой (касание открывает список колонок), стрелка «›» и кружок: стрелка сдвигает задачу на одну колонку вправо — самый частый переход, ради которого не хочется открывать список; кружок отмечает задачу выполненной. если на доске есть колонка завершения, задача уедет в неё (чтобы сервер записал это в историю); если такой колонки нет, ставится просто отметка «выполнено». пока перенос идёт, и стрелка, и кружок недоступны. оценка и σ оценка задаётся в единицах проекта: время (3д 4ч, 90м), стори-поинты или свои единицы; если проект работает по шкале, вместо поля будет готовый список значений. пустая подписана «не задана». рядом со своей оценкой стоит σ — сумма оценок подзадач. это разные величины, и они намеренно не складываются: σ отвечает на «сколько уйдёт на детей», собственная оценка — «сколько на саму задачу». оценку и этап нельзя поправить с карточки — только отсюда. это и есть главная причина открывать окно у задачи, которая на доске выглядит заполненной. срок, повтор и уведомления строка срока показывает «начало → срок», если задана дата начала, и значок повтора рядом, если задача повторяющаяся. касание открывает календарь с тремя частями: даты со временем, повтор (в том числе выборочные даты и привязка к переходу в колонку) и уведомления. подробности — в статьях напоминания и уведомления. дата начала нужна таймлайну и ганту: без неё задача рисуется точкой, а не отрезком. теги и этап: создание с клавиатуры внизу выбора тегов есть поле «новый тег, enter», у этапа — «новый этап, enter». кнопки рядом с ними нет: и тег, и этап создаются кнопкой подтверждения на экранной клавиатуре. набранное и не подтверждённое имя пропадёт. подробнее про теги — теги, префиксы и управление ими. вкладки вкладок шесть: «описание», «комментарии», «подзадачи», «связи», «файлы», «история». на ярлыках стоят счётчики, поэтому по закрытой вкладке видно, есть ли там что-нибудь. вкладки «документы» в приложении нет. список документов, ссылающихся на задачу, доступен только в браузере — см. документы задачи. описание — редактор с тулбаром и вложениями. комментарии — ветки ответов, упоминания и команды. подзадачи — дети этой задачи; новая заводится полем «+ подзадача (enter)» — снова с клавиатуры. связи — блокировки, дубликаты и «связана с»; задача ищется полем «найти задачу: #№ или название». файлы — вложения; кнопка «прикрепить файл» открывает системный выбор, касание по файлу — «открыть „имя“» в подходящем приложении. gitlab строка «gitlab» в полях показывает одно из двух. если задача уже связана с issue — номер вида !42 со значком ссылки; касание открывает issue в браузере телефона. если issue ещё нет, а привязка доски разрешает его завести, — кнопку «создать issue» и рядом выбор «шаблон» (пустой список честно подписан «шаблонов нет»). выбранный шаблон подставляется в описание задачи, и уже это описание уезжает телом issue. в браузере выбор шаблона живёт над редактором описания, а здесь — в строке полей: описание на телефоне лежит в отдельной вкладке, и кнопка на ней была бы не видна, пока открыта любая другая. строка «автор» у задачи из gitlab показывает автора issue с подписью @логин · gitlab, а не того, кто завёл карточку в tessera. низ окна слева от «отмена» и «сохранить» стоят две иконки: архив и корзина. обе спрашивают подтверждение прямо на месте («архивировать задачу?» / «удалить задачу? это действие необратимо»). разница принципиальная: архив сохраняет задачу целиком и позволяет её вернуть, удаление необратимо. архивную задачу быстрее вернуть с самой карточки — в её меню «⋮» есть «вернуть из архива» и «удалить навсегда»."
+      },
       "locales": {
         "en": {
           "path": "tasks/task-modal.en.md",
@@ -1740,7 +1825,92 @@
               "level": 2
             }
           ],
-          "text": "a card on the board shows a task in two lines. everything else — the estimate, the milestone, the author, the relations, the files, the history — lives in the task window. it opens with a click on the card and closes with esc or a click outside it. the task window: fields on the left, tabs on the right the window is split in half: fields on the left, tabs with the task's content on the right. the divider between the halves can be dragged, and a double click on it hides the right half entirely (and brings it back). three ways to open a task the how to open a task button in the window header switches the presentation: modal window — the familiar centred dialog. the default. full screen — the window fills the screen, for tasks with a long description. side panel — the task moves into a panel on the right and the board stays live on the left: you can see which column the task is in and what sits next to it. the choice is remembered on this device, not in your profile: a 27\" monitor suits the side panel, a laptop the modal, and forcing one on the other would be uncomfortable. on a narrow screen there is no choice — a task always opens as a full-screen sheet. the window header the breadcrumbs “project · board” at the top aren't just a caption. clicking them opens the list of boards: that's how a task is moved to another board, with all of its history. the arrow button copies a link to the task, shaped /board/<board>?task=<number>. send it to a colleague and it opens the board with that task already unfolded. the title is edited right in the header — it's an ordinary input, not a separate form. if the task is linked to gitlab, an open issue in gitlab link appears next to it. the fields on the left field what it does --- --- priority five levels; the coloured priority dot is visible on the card too. due opens the calendar: start date, due date, time, plus recurrence and notifications. estimate how much work the task is, in the project's units. milestone the milestone the task belongs to; a new one can be created here as well. author who created the task. read-only. assignees any number of people, including members from gitlab. tags the same tags the board can lay itself out by. status the board column. next to it: a “move →” button for the next column and a “done” tick. parent make the task a subtask of another one, or detach it from its parent. the estimate: what a card can't edit the estimate is entered in the units configured for the project: time (3d 4h, 90m, 1w), story points or custom units. if the project works on a scale (fibonacci, t-shirts, linear), the popover offers a ready list of values instead of a text field. next to its own estimate a task shows σ — the sum of its subtasks' estimates. these are two different numbers and they are deliberately not added together: σ answers “how much will the children take”, the own estimate “how much the task itself will”. on a board card the estimate and the milestone are shown as read-only chips (unless you have hidden them in customising the board). they can only be changed here, in the task window — which is the main reason to open a task that already looks complete on the board. due date, recurrence and notifications the calendar has three parts: 1. start and due — two dates, each with a time. the start date is what the timeline and the gantt chart need: without it a task is drawn as a point rather than a bar. 2. recurrence — daily, weekly, monthly, yearly, or on selected dates you tick in the calendar. a repeat fires on an event: when the task is completed, when it enters a chosen column, or simply on schedule. you can ask it to create a duplicate (so the history stays with the original), to skip weekends and to repeat forever. 3. notifications — how early to remind (at the due time, 15 minutes, an hour, 3 hours, a day before) and whether to repeat the reminder. “default” takes the setting from notifications. the tabs on the right every tab label carries a counter, so a closed tab still tells you whether there is anything inside. description — the markdown editor with a toolbar, attachments and diagrams. comments — the discussion, with reply threads, mentions and commands. subtasks — this task's children; the same ones the card shows when subtasks are expanded. relations — blocks, duplicates and plain “relates to”. files — the task's attachments. files dropped into the description land here too. documents — documents that point at this task. history — the journal of changes. the bottom of the window at the bottom: archive and delete. the difference matters: the archive keeps the task whole and lets you bring it back, deleting is irreversible. if the task has subtasks, archiving asks what to do with them: archive them along with the parent, or detach them and leave them on the board. an archived task opens read-only — the window says so outright, and instead of the action buttons there is “restore from the archive”."
+          "text": "a card on the board shows a task in two lines. everything else — the estimate, the milestone, the author, the relations, the files, the history — lives in the task window. it opens with a click on the card and closes with esc or a click outside it. the task window: fields on the left, tabs on the right the window is split in half: fields on the left, tabs with the task's content on the right. the divider between the halves can be dragged, and a double click on it hides the right half entirely (and brings it back). three ways to open a task the how to open a task button in the window header switches the presentation: modal window — the familiar centred dialog. the default. full screen — the window fills the screen, for tasks with a long description. side panel — the task moves into a panel on the right and the board stays live on the left: you can see which column the task is in and what sits next to it. the choice is remembered on this device, not in your profile: a 27\" monitor suits the side panel, a laptop the modal, and forcing one on the other would be uncomfortable. on a narrow screen there is no choice — a task always opens as a full-screen sheet. the window header the breadcrumbs “project · board” at the top aren't just a caption. clicking them opens the list of boards: that's how a task is moved to another board, with all of its history. the arrow button copies a link to the task, shaped /board/<board>?task=<number>. send it to a colleague and it opens the board with that task already unfolded. the title is edited right in the header — it's an ordinary input, not a separate form. if the task is linked to gitlab, an open issue in gitlab link appears next to it. the fields on the left field what it does --- --- priority five levels; the coloured priority dot is visible on the card too. due opens the calendar: start date, due date, time, plus recurrence and notifications. estimate how much work the task is, in the project's units. milestone the milestone the task belongs to; a new one can be created here as well. author who created the task. read-only. assignees any number of people, including members from gitlab. tags the same tags the board can lay itself out by. status the board column. next to it: a “move →” button for the next column and a “done” tick. parent make the task a subtask of another one, or detach it from its parent. the estimate: what a card can't edit the estimate is entered in the units configured for the project: time (3d 4h, 90m, 1w), story points or custom units. if the project works on a scale (fibonacci, t-shirts, linear), the popover offers a ready list of values instead of a text field. next to its own estimate a task shows σ — the sum of its subtasks' estimates. these are two different numbers and they are deliberately not added together: σ answers “how much will the children take”, the own estimate “how much the task itself will”. on a board card the estimate and the milestone are shown as read-only chips (unless you have hidden them in customising the board). they can only be changed here, in the task window — which is the main reason to open a task that already looks complete on the board. due date, recurrence and notifications the calendar has three parts: 1. start and due — two dates, each with a time. the start date is what the timeline and the gantt chart need: without it a task is drawn as a point rather than a bar. 2. recurrence — daily, weekly, monthly, yearly, or on selected dates you tick in the calendar. a repeat fires on an event: when the task is completed, when it enters a chosen column, or simply on schedule. you can ask it to create a duplicate (so the history stays with the original), to skip weekends and to repeat forever. 3. notifications — how early to remind (at the due time, 15 minutes, an hour, 3 hours, a day before) and whether to repeat the reminder. “default” takes the setting from notifications. the tabs on the right every tab label carries a counter, so a closed tab still tells you whether there is anything inside. description — the markdown editor with a toolbar, attachments and diagrams. comments — the discussion, with reply threads, mentions and commands. subtasks — this task's children; the same ones the card shows when subtasks are expanded. relations — blocks, duplicates and plain “relates to”. files — the task's attachments. files dropped into the description land here too. documents — documents that point at this task. history — the journal of changes. the bottom of the window at the bottom: archive and delete. the difference matters: the archive keeps the task whole and lets you bring it back, deleting is irreversible. if the task has subtasks, archiving asks what to do with them: archive them along with the parent, or detach them and leave them on the board. an archived task opens read-only — the window says so outright, and instead of the action buttons there is “restore from the archive”.",
+          "android": {
+            "path": "tasks/task-modal.android.en.md",
+            "updated": "2026-08-28",
+            "keywords": [
+              "task",
+              "window",
+              "modal",
+              "estimate",
+              "milestone",
+              "priority",
+              "due",
+              "recurrence",
+              "assignees",
+              "status",
+              "parent",
+              "tabs",
+              "save",
+              "cancel",
+              "back",
+              "app"
+            ],
+            "headings": [
+              {
+                "id": "how-it-opens",
+                "text": "How it opens",
+                "level": 2
+              },
+              {
+                "id": "back-works-in-two-steps",
+                "text": "Back works in two steps",
+                "level": 2
+              },
+              {
+                "id": "the-header",
+                "text": "The header",
+                "level": 2
+              },
+              {
+                "id": "what-saves-immediately-and-what-saves-on-a-button",
+                "text": "What saves immediately and what saves on a button",
+                "level": 2
+              },
+              {
+                "id": "the-fields",
+                "text": "The fields",
+                "level": 2
+              },
+              {
+                "id": "status-three-controls-in-one-row",
+                "text": "Status: three controls in one row",
+                "level": 3
+              },
+              {
+                "id": "estimate-and-σ",
+                "text": "Estimate and Σ",
+                "level": 3
+              },
+              {
+                "id": "due-date-recurrence-and-notifications",
+                "text": "Due date, recurrence and notifications",
+                "level": 3
+              },
+              {
+                "id": "tags-and-milestones-created-from-the-keyboard",
+                "text": "Tags and milestones: created from the keyboard",
+                "level": 3
+              },
+              {
+                "id": "the-tabs",
+                "text": "The tabs",
+                "level": 2
+              },
+              {
+                "id": "gitlab",
+                "text": "GitLab",
+                "level": 2
+              },
+              {
+                "id": "the-bottom-of-the-window",
+                "text": "The bottom of the window",
+                "level": 2
+              }
+            ],
+            "text": "a card on the board shows a task in two lines. everything else — estimate, milestone, author, relations, files, history — lives in the task window, which opens on a tap. in the browser the window is split in half: fields on the left, tabs on the right. there is no such split on a phone — the window is one column you scroll top to bottom: header, title, fields, tabs. so reaching history or relations means scrolling, not glancing to the right. how it opens there is no «modal / full screen / side panel» choice in the app: the window always takes up almost the whole screen (leaving a thin margin) and is always the same. the \"how to open a task\" setting is about monitors, and a phone has nothing to choose from. the keyboard does not cover the window: while it is up, the window shrinks to the space above it. that matters in comments — the input and the command suggestions stay visible. back works in two steps the system back button on any tab other than the first returns to «description» instead of closing the task. a second press then closes the window. that way you don't have to drop out to the board to get from «history» back to the description. the header at the top are the breadcrumbs «project / board» and the task number (#123) on the right. as in the browser, the breadcrumbs are tappable: a tap opens the list of boards, and the task moves to another board with all of its history. there is no copy-link button in the app — a link of the form /board/<board>?task=<number> is assembled in the web version. the title is edited right here: an ordinary field, captioned «task title» when empty. what saves immediately and what saves on a button this is the main difference from the browser, and it's worth remembering. at the bottom of the window sit «cancel» and «save». but that button saves only the title and the description. every other field — priority, due date, estimate, assignees, tags, milestone, status, parent — applies the moment you change it and has already gone to the server. hence: «cancel» does not roll back a removed assignee or a changed priority. it only discards edits to the title and the description. if a field was changed by mistake, set the old value back the same way you changed it. the fields field what it does --- --- priority five levels; the coloured priority dot shows on the card too. due opens the calendar: start, due, time, recurrence and notifications. estimate effort in the project's units, with σ over subtasks next to it. author who created the task (for gitlab tasks, the issue's author). read-only. assignees any number of people, gitlab members included. tags the same tags a board can lay itself out by. milestone the milestone link; a new one can be created here. status the board column, a \"next column\" arrow and a \"done\" circle. parent «make a subtask…» or «detach». status: three controls in one row the «status» row is a chip with the current column (tap it for the column list), a «›» arrow and a circle: the arrow shifts the task one column to the right — the most common move, and not one you want to open a list for; the circle marks the task done. if the board has a done column, the task moves into it (so the server records it in history); if there is no such column, it is simply flagged as done. while a move is in flight, both the arrow and the circle are disabled. estimate and σ the estimate is given in the project's units: time (3d 4h, 90m), story points or custom units; if the project works on a scale, you get a ready list of values instead of a field. an empty one reads «not set». next to your own estimate sits σ — the sum of the subtasks' estimates. they are different numbers and deliberately don't add up: σ answers \"how much will the children take\", the estimate itself \"how much for this task\". the estimate and the milestone cannot be edited from the card — only from here. that is the main reason to open the window on a task that already looks filled in on the board. due date, recurrence and notifications the due row shows «start → due» when a start date is set, and a recurrence glyph next to it when the task repeats. a tap opens the calendar with its three parts: the dates with times, the recurrence (including hand-picked dates and a trigger on moving to a column) and the notifications. details are in reminders and notifications. the start date is what the timeline and the gantt chart need: without it a task is drawn as a point rather than a bar. tags and milestones: created from the keyboard at the bottom of the tag picker there is a «new tag, enter» field; the milestone picker has «new milestone, enter». there is no button beside them: both are created with the confirm key on the on-screen keyboard. a name typed but not confirmed is lost. more about tags in tags, prefixes and how to manage them. the tabs there are six tabs: «description», «comments», «subtasks», «relations», «files», «history». their labels carry counters, so a closed tab still tells you whether there is anything in it. there is no «documents» tab in the app. the list of documents referencing a task is available in the browser only — see task documents. description — the editor with its toolbar and attachments. comments — reply threads, mentions and commands. subtasks — this task's children; a new one comes from the «+ subtask (enter)» field — again, from the keyboard. relations — blocks, duplicates and \"relates to\"; tasks are found with the «find a task: #number or title» field. files — attachments; «attach a file» opens the system picker, and tapping a file offers «open \"name\"» in a suitable app. gitlab the «gitlab» row in the fields shows one of two things. if the task is already linked to an issue — a number like !42 with a link glyph; tapping it opens the issue in the phone's browser. if there is no issue yet and the board's binding allows creating one — a «create an issue» button with a «template» picker next to it (an empty list honestly reads «no templates»). the chosen template is filled into the task's description, and that description becomes the issue's body. in the browser the template picker lives above the description editor; here it sits in the field rows — on a phone the description is a tab of its own, and a button on it would be invisible whenever any other tab is open. for a gitlab task the «author» row shows the issue's author with an @login · gitlab caption, not whoever created the card in tessera. the bottom of the window to the left of «cancel» and «save» are two icons: archive and bin. both ask for confirmation on the spot (\"archive this task?\" / \"delete this task? this cannot be undone.\"). the difference is fundamental: the archive keeps the task whole and lets you bring it back, deletion is irreversible. an archived task is quicker to restore from the card itself — its «⋮» menu has «restore from archive» and «delete forever»."
+          }
         }
       }
     },
@@ -2140,6 +2310,43 @@
         }
       ],
       "text": "вкладка «документы» в окне задачи отвечает на один вопрос: какие документы говорят об этой задаче. техническое задание, протокол встречи, регламент — всё, откуда задача выросла или чем она регулируется. вкладка «документы» окна задачи связь ставится со стороны документа это главное, что нужно знать: во вкладке «документы» нет кнопки «добавить». связь создаётся в самом документе — в панели «связи и согласование» (значок цепочки в шапке документа), кнопкой «связать задачу». так сделано намеренно. связь имеет смысл там, где есть контекст: вы читаете абзац про импорт данных и ставите рядом задачу про импорт. из окна задачи не видно, к какому именно месту документа она относится, — а это и есть самое ценное в такой связи. вкладка задачи — второй конец той же связи. здесь можно открыть документ и снять связь; и то и другое работает с любой стороны, строка связи одна. связь на весь документ или на один блок в документе связь можно поставить двумя способами: на весь документ — если ничего не выбрано. обычный случай: «эта задача про этот регламент». на конкретный блок — если в документе выбран абзац, пункт списка или заголовок. такая связь отвечает на вопрос «про какой именно пункт задача». у связи, привязанной к блоку, во вкладке задачи рядом с названием документа стоит серая цитата — короткий фрагмент того самого абзаца. цитата снимается в момент создания связи и дальше не меняется. это не недоработка: абзац потом правят, и текст, ради которого связь была поставлена, исчезает. сохранённая цитата — единственное, что через полгода объяснит, о чём шла речь. если фрагмент переписали целиком, связь стоит переставить. что видно во вкладке каждая строка — значок или эмодзи документа, его название и (для связи с блоком) цитата. клик по строке закрывает задачу и открывает документ. открывается он с начала: цитата в строке — это то, что подскажет, какой абзац искать. уже связанные задачи не предлагаются в выборе на стороне документа — повторная связь ничего не изменила бы, и кнопка, которая как будто не работает, только сбивала бы с толку. связи и согласование — одна панель в документе связи с задачами лежат в одной панели с протоколами согласования, и это не случайность: маршрут согласования поднимается по документу, а задачи — причина, по которой документ вообще существует. подробнее о самих документах — импорте и экспорте, истории версий, согласованиях, оглавлении и обсуждениях — в разделе документы.",
+      "android": {
+        "path": "tasks/task-documents.android.md",
+        "updated": "2026-08-28",
+        "keywords": [
+          "документы",
+          "связь с документом",
+          "блок",
+          "фрагмент",
+          "цитата",
+          "якорь",
+          "согласование",
+          "приложение"
+        ],
+        "headings": [
+          {
+            "id": "не-путать-с-вкладками-связи-и-файлы",
+            "text": "Не путать с вкладками «Связи» и «Файлы»",
+            "level": 2
+          },
+          {
+            "id": "связь-ставится-со-стороны-документа",
+            "text": "Связь ставится со стороны документа",
+            "level": 2
+          },
+          {
+            "id": "связь-на-весь-документ-или-на-один-блок",
+            "text": "Связь на весь документ или на один блок",
+            "level": 2
+          },
+          {
+            "id": "что-делать-с-телефона",
+            "text": "Что делать с телефона",
+            "level": 2
+          }
+        ],
+        "text": "в браузере у окна задачи есть вкладка «документы» — она отвечает на вопрос «какие документы говорят об этой задаче»: техническое задание, протокол встречи, регламент. в приложении этой вкладки нет. вкладок в окне задачи шесть — «описание», «комментарии», «подзадачи», «связи», «файлы», «история», — и связей с документами среди них не найти. их не показывает и читалка документов: панели «связи и согласование» на телефоне тоже нет. так что ответ короткий: связи задачи с документами живут только в веб-версии — и создаются там, и просматриваются. ниже — что это за связи, чтобы, встретив их в браузере, не пришлось разбираться с нуля. не путать с вкладками «связи» и «файлы» две вкладки в приложении звучат похоже, но это другое: «связи» — связи задачи с другими задачами (блокирует, дублирует, связана с). документов там не бывает. см. связи задач. «файлы» — вложения самой задачи: картинки, pdf, архивы. это файлы, а не документы tessera. документ tessera — запись из раздела «документы», с деревом, версиями и согласованием. связь ставится со стороны документа даже в браузере во вкладке «документы» нет кнопки «добавить». связь создаётся в самом документе — в панели «связи и согласование» (значок цепочки в шапке документа), кнопкой «связать задачу». так сделано намеренно. связь имеет смысл там, где есть контекст: вы читаете абзац про импорт данных и ставите рядом задачу про импорт. из окна задачи не видно, к какому именно месту документа она относится, — а это и есть самое ценное в такой связи. и именно поэтому связь неудобно ставить с телефона: сначала нужно выбрать абзац. связь на весь документ или на один блок в документе связь ставится двумя способами: на весь документ — если ничего не выбрано. обычный случай: «эта задача про этот регламент». на конкретный блок — если выбран абзац, пункт списка или заголовок. такая связь отвечает на вопрос «про какой именно пункт задача». у связи с блоком рядом с названием документа стоит серая цитата — короткий фрагмент того самого абзаца. цитата снимается в момент создания связи и дальше не меняется: абзац потом правят, и сохранённая цитата — единственное, что через полгода объяснит, о чём шла речь. если фрагмент переписали целиком, связь стоит переставить. что делать с телефона прочитать документ можно и здесь: раздел «документы» в боковом меню открывает дерево и читалку. чего в приложении не будет — так это перехода «из задачи в документ» и обратно: связь между ними на телефоне не показана, и найти нужный документ придётся по названию. если задача выросла из документа и это важно помнить с телефона — упомяните документ в описании задачи обычным текстом. описание видно в приложении всегда, в отличие от связи."
+      },
       "locales": {
         "en": {
           "path": "tasks/task-documents.en.md",
@@ -2177,7 +2384,44 @@
               "level": 2
             }
           ],
-          "text": "the documents tab of the task window answers one question: which documents talk about this task. a specification, the minutes of a meeting, a policy — anything the task grew out of or is governed by. the documents tab of the task window the link is made from the document's side that's the main thing to know: there is no “add” button in the documents tab. the link is created in the document itself — in the links and approvals panel (the chain icon in the document header), with the link a task button. that's deliberate. a link means something where the context is: you are reading the paragraph about data import and you attach the import task next to it. from the task window there is no way to see which part of the document it refers to — and that is precisely what is most valuable about such a link. the task's tab is the other end of the same link. here you can open the document and remove the link; both work from either side, there is one row for one link. the whole document, or one block in a document a link can be made two ways: to the whole document — when nothing is selected. the common case: “this task is about this policy”. to a specific block — when a paragraph, a list item or a heading is selected in the document. such a link answers the question “which clause exactly is the task about”. a link anchored to a block shows a grey quote next to the document title in the task's tab — a short fragment of that very paragraph. the quote is taken at the moment the link is created and doesn't change afterwards. that isn't an oversight: the paragraph gets edited later, and the text the link was made for disappears. the stored quote is the only thing that will explain, half a year on, what this was about. if the fragment has been rewritten entirely, it's worth re-creating the link. what the tab shows each row is the document's icon or emoji, its title and — for a block link — the quote. clicking the row closes the task and opens the document. it opens from the top: the quote in the row is what tells you which paragraph to look for. already-linked tasks are not offered in the picker on the document's side — linking the same pair again would change nothing, and a button that appears to do nothing would only be confusing. links and approvals share one panel in a document, task links live in the same panel as the approval routes, and that isn't an accident: a route is raised against the document, and the tasks are the reason the document exists at all. for more about documents themselves — import and export, version history, approvals, the table of contents and discussions — see documents."
+          "text": "the documents tab of the task window answers one question: which documents talk about this task. a specification, the minutes of a meeting, a policy — anything the task grew out of or is governed by. the documents tab of the task window the link is made from the document's side that's the main thing to know: there is no “add” button in the documents tab. the link is created in the document itself — in the links and approvals panel (the chain icon in the document header), with the link a task button. that's deliberate. a link means something where the context is: you are reading the paragraph about data import and you attach the import task next to it. from the task window there is no way to see which part of the document it refers to — and that is precisely what is most valuable about such a link. the task's tab is the other end of the same link. here you can open the document and remove the link; both work from either side, there is one row for one link. the whole document, or one block in a document a link can be made two ways: to the whole document — when nothing is selected. the common case: “this task is about this policy”. to a specific block — when a paragraph, a list item or a heading is selected in the document. such a link answers the question “which clause exactly is the task about”. a link anchored to a block shows a grey quote next to the document title in the task's tab — a short fragment of that very paragraph. the quote is taken at the moment the link is created and doesn't change afterwards. that isn't an oversight: the paragraph gets edited later, and the text the link was made for disappears. the stored quote is the only thing that will explain, half a year on, what this was about. if the fragment has been rewritten entirely, it's worth re-creating the link. what the tab shows each row is the document's icon or emoji, its title and — for a block link — the quote. clicking the row closes the task and opens the document. it opens from the top: the quote in the row is what tells you which paragraph to look for. already-linked tasks are not offered in the picker on the document's side — linking the same pair again would change nothing, and a button that appears to do nothing would only be confusing. links and approvals share one panel in a document, task links live in the same panel as the approval routes, and that isn't an accident: a route is raised against the document, and the tasks are the reason the document exists at all. for more about documents themselves — import and export, version history, approvals, the table of contents and discussions — see documents.",
+          "android": {
+            "path": "tasks/task-documents.android.en.md",
+            "updated": "2026-08-28",
+            "keywords": [
+              "documents",
+              "document link",
+              "block",
+              "fragment",
+              "quote",
+              "anchor",
+              "approval",
+              "app"
+            ],
+            "headings": [
+              {
+                "id": "not-to-be-confused-with-relations-and-files",
+                "text": "Not to be confused with «Relations» and «Files»",
+                "level": 2
+              },
+              {
+                "id": "the-link-is-made-from-the-document-s-side",
+                "text": "The link is made from the document's side",
+                "level": 2
+              },
+              {
+                "id": "a-link-to-the-whole-document-or-to-one-block",
+                "text": "A link to the whole document or to one block",
+                "level": 2
+              },
+              {
+                "id": "what-to-do-from-a-phone",
+                "text": "What to do from a phone",
+                "level": 2
+              }
+            ],
+            "text": "in the browser the task window has a documents tab that answers one question: which documents talk about this task — a spec, a meeting record, a policy. there is no such tab in the app. the task window has six tabs — «description», «comments», «subtasks», «relations», «files», «history» — and document links are not among them. the document reader doesn't show them either: there is no «links and approvals» panel on a phone. so the short answer is: a task's links to documents live in the web version only — they are created there and viewed there. what follows explains what those links are, so that meeting them in the browser doesn't mean starting from scratch. not to be confused with «relations» and «files» two tabs in the app sound similar but are something else: «relations» — the task's links to other tasks (blocks, duplicates, relates to). documents never appear there. see task relations. «files» — the task's own attachments: images, pdfs, archives. those are files, not tessera documents. a tessera document is an entry in the documents section, with its tree, versions and approvals. the link is made from the document's side even in the browser, the documents tab has no \"add\" button. the link is created in the document itself — in the «links and approvals» panel (the chain glyph in the document's header), with the «link a task» button. that is deliberate. a link makes sense where the context is: you are reading the paragraph about data import and attach the import task next to it. from the task window there is no way to see which part of the document it refers to — and that is the most valuable thing about such a link. it is also why the link is awkward to make from a phone: you have to select a paragraph first. a link to the whole document or to one block in a document a link can be made in two ways: to the whole document — when nothing is selected. the usual case: \"this task is about this policy\". to a specific block — when a paragraph, list item or heading is selected. such a link answers \"which clause exactly is the task about\". a block link shows a grey quote next to the document's title — a short fragment of that very paragraph. the quote is captured when the link is created and never changes afterwards: the paragraph gets edited later, and the saved quote is the only thing that will explain what was meant six months on. if the fragment was rewritten entirely, the link is worth remaking. what to do from a phone reading a document works here: the «documents» item in the side menu opens the tree and the reader. what the app won't give you is the hop from a task to its document and back — the link between them isn't shown on a phone, and you'll have to find the document by its title. if a task grew out of a document and that matters on the phone, mention the document in the task's description as plain text. the description is always visible in the app, unlike the link."
+          }
         }
       }
     },
@@ -2213,6 +2457,39 @@
         }
       ],
       "text": "вкладка «история» — журнал задачи: кто, что и когда с ней сделал. он ведётся сам, ничего включать не нужно. вкладка «история»: журнал задачи каждая строка — это аватар и имя человека, короткая фраза о том, что произошло, и время. записи идут сверху вниз по времени: первая строка — создание задачи, последняя — то, что случилось только что. что попадает в журнал событие как выглядит --- --- создание создал(а) задачу переименование переименовал(а) → «новое название» правка описания изменил(а) описание приоритет изменил(а) приоритет → высокий срок установил(а) срок · убрал(а) срок завершение отметил(а) выполненной · вернул(а) в работу повтор перенёс(ла) повтор задачи колонка переместил(а) → «в процессе» исполнители назначил(а) исполнителя · снял(а) исполнителя архив отправил(а) в архив · восстановил(а) из архива комментарий оставил(а) комментарий связь добавил(а) связь с #2591 вложение прикрепил(а) файл «отчёт.pdf» что журнал не хранит понимать это так же важно, как и то, что он хранит: не хранит прежние значения. строка говорит «изменил(а) описание», но не показывает, что было до правки. история задачи — не история версий; версии есть у документов, не у задач. не хранит текст комментария. в журнале останется «оставил(а) комментарий», сам текст живёт во вкладке «комментарии» — и если комментарий удалили, из журнала он не восстановится. не удаляется и не правится. записи в журнал только дописываются. связи оставляют след с двух сторон у связей есть особенность, которая объясняет часть записей. сама связь хранится у той задачи, из которой её поставили, а вот в журнал она пишется обеим: у #10 появится «добавил(а) связь с #20», у #20 — «добавил(а) связь с #10». поэтому, если во вкладке «связи» пусто, а в истории есть запись о связи, — всё в порядке. связь существует, просто она заведена с другой стороны. команды считаются одной записью комментарий с командами не заводит по строке на каждую команду: пять команд в одном комментарии дают одну запись о том, что было применено. иначе один комментарий мог бы вытеснить из журнала всю остальную историю задачи.",
+      "android": {
+        "path": "tasks/task-history.android.md",
+        "updated": "2026-08-28",
+        "keywords": ["история", "журнал", "аудит", "кто изменил", "события", "лог", "приложение"],
+        "headings": [
+          {
+            "id": "фразы-короче-чем-в-браузере",
+            "text": "Фразы короче, чем в браузере",
+            "level": 2
+          },
+          {
+            "id": "что-попадает-в-журнал",
+            "text": "Что попадает в журнал",
+            "level": 2
+          },
+          {
+            "id": "что-журнал-не-хранит",
+            "text": "Что журнал не хранит",
+            "level": 2
+          },
+          {
+            "id": "связи-оставляют-след-с-двух-сторон",
+            "text": "Связи оставляют след с двух сторон",
+            "level": 2
+          },
+          {
+            "id": "команды-считаются-одной-записью",
+            "text": "Команды считаются одной записью",
+            "level": 2
+          }
+        ],
+        "text": "вкладка «история» — журнал задачи: кто, что и когда с ней сделал. он ведётся сам, ничего включать не нужно. вкладка последняя в ряду, так что до неё нужно долистать ряд вкладок вправо. каждая строка — это кружок с инициалами, короткая фраза о том, что произошло, и справа дата со временем. записи идут сверху вниз по времени: первая строка — создание задачи, последняя — то, что случилось только что. пустой журнал подписан «история пуста». фразы короче, чем в браузере это главное отличие приложения: строка называет событие, но не его значение. в браузере в приложении --- --- переименовал(а) → «новое название» переименовал(а) задачу изменил(а) приоритет → высокий сменил(а) приоритет переместил(а) → «в процессе» переместил(а) задачу добавил(а) связь с #2591 добавил(а) связь прикрепил(а) файл «отчёт.pdf» прикрепил(а) файл то есть по журналу на телефоне видно, что задачу переместили и кто, но не видно, куда именно. если нужна эта деталь — откройте задачу в браузере, там та же запись показана с целью. аватар в журнале рисуется инициалами, а не фотографией: в остальном приложении фото подтягиваются, а здесь строка сознательно узкая. что попадает в журнал создание задачи, переименование, правка описания, смена приоритета, изменение срока, завершение и возврат в работу, перенос повтора, перемещение между колонками, назначение и снятие исполнителя, комментарий, связь, вложение, архивация и восстановление. что журнал не хранит понимать это так же важно, как и то, что он хранит: не хранит прежние значения. строка говорит «изменил(а) описание», но не показывает, что было до правки. история задачи — не история версий; версии есть у документов, не у задач. не хранит текст комментария. в журнале останется «оставил(а) комментарий», сам текст живёт во вкладке «комментарии» — и если комментарий удалили, из журнала он не восстановится. не удаляется и не правится. записи в журнал только дописываются. связи оставляют след с двух сторон у связей есть особенность, которая объясняет часть записей. сама связь хранится у той задачи, из которой её поставили, а вот в журнал она пишется обеим: запись «добавил(а) связь» появится у обеих задач. поэтому, если во вкладке «связи» пусто, а в истории есть запись о связи, — всё в порядке. связь существует, просто она заведена с другой стороны. на телефоне это заметнее, чем в браузере: номер второй задачи в строке не показан, и понять, о какой связи речь, можно только по её вкладке. команды считаются одной записью комментарий с командами не заводит по строке на каждую команду: пять команд в одном комментарии дают одну запись о том, что было применено. иначе один комментарий мог бы вытеснить из журнала всю остальную историю задачи."
+      },
       "locales": {
         "en": {
           "path": "tasks/task-history.en.md",
@@ -2242,7 +2519,40 @@
               "level": 2
             }
           ],
-          "text": "the history tab is the task's journal: who did what to it, and when. it is kept automatically — nothing has to be switched on. the history tab: the task's journal each row is an avatar and a name, a short sentence about what happened, and a time. entries run top to bottom in time: the first line is the task being created, the last is whatever just happened. what goes into the journal event how it reads --- --- creation created the task rename renamed → “a new title” description edit changed the description priority changed the priority → high due date set the due date · cleared the due date completion marked it done · reopened it recurrence rescheduled the repeat column moved it → “in progress” assignees assigned someone · unassigned someone archive archived it · restored it from the archive comment left a comment relation added a relation to #2591 attachment attached the file “report.pdf” what the journal does not keep understanding this matters as much as knowing what it does keep: it doesn't keep former values. a row says “changed the description”, but not what it looked like before. a task's history is not a version history; versions belong to documents, not to tasks. it doesn't keep the text of a comment. the journal holds “left a comment”; the text itself lives in the comments tab — and if the comment was deleted, the journal will not bring it back. it is neither deleted nor edited. entries are only ever appended. relations leave a trace on both sides relations have a quirk that explains some of the entries. the relation itself is stored on the task it was created from, but it is written into both journals: #10 gets “added a relation to #20”, #20 gets “added a relation to #10”. so if the relations tab is empty while the history mentions a relation, everything is fine. the relation exists — it was simply created from the other end. commands count as one entry a comment with commands doesn't file a row per command: five commands in one comment produce one entry about what was applied. otherwise a single comment could push the rest of a task's history out of sight."
+          "text": "the history tab is the task's journal: who did what to it, and when. it is kept automatically — nothing has to be switched on. the history tab: the task's journal each row is an avatar and a name, a short sentence about what happened, and a time. entries run top to bottom in time: the first line is the task being created, the last is whatever just happened. what goes into the journal event how it reads --- --- creation created the task rename renamed → “a new title” description edit changed the description priority changed the priority → high due date set the due date · cleared the due date completion marked it done · reopened it recurrence rescheduled the repeat column moved it → “in progress” assignees assigned someone · unassigned someone archive archived it · restored it from the archive comment left a comment relation added a relation to #2591 attachment attached the file “report.pdf” what the journal does not keep understanding this matters as much as knowing what it does keep: it doesn't keep former values. a row says “changed the description”, but not what it looked like before. a task's history is not a version history; versions belong to documents, not to tasks. it doesn't keep the text of a comment. the journal holds “left a comment”; the text itself lives in the comments tab — and if the comment was deleted, the journal will not bring it back. it is neither deleted nor edited. entries are only ever appended. relations leave a trace on both sides relations have a quirk that explains some of the entries. the relation itself is stored on the task it was created from, but it is written into both journals: #10 gets “added a relation to #20”, #20 gets “added a relation to #10”. so if the relations tab is empty while the history mentions a relation, everything is fine. the relation exists — it was simply created from the other end. commands count as one entry a comment with commands doesn't file a row per command: five commands in one comment produce one entry about what was applied. otherwise a single comment could push the rest of a task's history out of sight.",
+          "android": {
+            "path": "tasks/task-history.android.en.md",
+            "updated": "2026-08-28",
+            "keywords": ["history", "journal", "audit", "who changed", "events", "log", "app"],
+            "headings": [
+              {
+                "id": "shorter-sentences-than-in-the-browser",
+                "text": "Shorter sentences than in the browser",
+                "level": 2
+              },
+              {
+                "id": "what-goes-into-the-journal",
+                "text": "What goes into the journal",
+                "level": 2
+              },
+              {
+                "id": "what-the-journal-does-not-keep",
+                "text": "What the journal does not keep",
+                "level": 2
+              },
+              {
+                "id": "relations-leave-a-trace-on-both-sides",
+                "text": "Relations leave a trace on both sides",
+                "level": 2
+              },
+              {
+                "id": "commands-count-as-one-entry",
+                "text": "Commands count as one entry",
+                "level": 2
+              }
+            ],
+            "text": "the history tab is the task's journal: who did what to it, and when. it is kept automatically — nothing has to be switched on. it is the last tab in the row, so you have to scroll the tabs to the right to get to it. each row is a circle with initials, a short sentence about what happened, and a date with a time on the right. entries run top to bottom in time: the first line is the task being created, the last is whatever just happened. an empty journal reads «no history yet». shorter sentences than in the browser this is the app's main difference: a row names the event but not its value. in the browser in the app --- --- renamed → “a new title” renamed the task changed the priority → high changed the priority moved it → “in progress” moved the task added a relation to #2591 added a relation attached the file “report.pdf” attached a file so on a phone the journal tells you that the task was moved and by whom, but not where to. if you need that detail, open the task in the browser — the same entry is shown there with its target. the avatar in the journal is drawn from initials rather than a photo: photos are loaded elsewhere in the app, but this row is deliberately narrow. what goes into the journal creation, renames, description edits, priority changes, due-date changes, completing and reopening, a rescheduled repeat, moves between columns, added and removed assignees, comments, relations, attachments, archiving and restoring. what the journal does not keep understanding this matters as much as knowing what it does keep: it doesn't keep former values. a row says “edited the description”, but not what it looked like before. a task's history is not a version history; versions belong to documents, not to tasks. it doesn't keep the text of a comment. the journal holds “left a comment”; the text itself lives in the comments tab — and if the comment was deleted, the journal will not bring it back. it is neither deleted nor edited. entries are only ever appended. relations leave a trace on both sides relations have a quirk that explains some of the entries. the relation itself is stored on the task it was created from, but it is written into both journals: “added a relation” appears on both tasks. so if the relations tab is empty while the history mentions a relation, everything is fine. the relation exists — it was simply created from the other end. on a phone this is more noticeable than in the browser: the other task's number isn't shown in the row, and the only way to tell which relation is meant is its own tab. commands count as one entry a comment with commands doesn't file a row per command: five commands in one comment produce one entry about what was applied. otherwise a single comment could push the rest of a task's history out of sight."
+          }
         }
       }
     },
@@ -2675,7 +2985,7 @@
             "level": 2
           }
         ],
-        "text": "раздел «документы» — совместный редактор для того, что не помещается в описание задачи: требования, протоколы встреч, инструкции. раздел открывается пунктом «документы» в боковом меню («☰» слева в верхней панели). в приложении документы доступны для чтения. это осознанное решение, а не недоделка: блочный редактор с перетаскиванием блоков, комментариями к абзацам и разбором конфликтов — отдельный проект, и наспех сделанный на телефоне он делал бы больше вреда, чем пользы. читать документ, найти нужный абзац и открыть ссылку с телефона можно; писать — из веб-версии. раздел «документы» в приложении структура документы складываются в дерево — у документа могут быть вложенные, так что раздел ведёт себя как небольшая вики. на телефоне сначала показывается список, а тап по документу выдвигает читалку поверх него; кнопка «‹» слева сверху возвращает к списку, системная «назад» — тоже. что видно при чтении текст показывается с полным форматированием: заголовки, списки, таблицы, изображения, блоки кода, выравнивание. документ, импортированный из word, читается со своими цветами и рамками — в том числе в тёмной теме. что делается только в веб-версии правка текста и структуры документа. комментарии к блокам. импорт .docx и просмотр pdf. история версий и откат к предыдущей редакции. шаблоны и связывание документа с задачами. связи, созданные в вебе, с телефона видны — на вкладке «связи» в экране задачи. документ или заметка если запись нужна только вам и на пару дней — это заметка, и её с телефона можно и писать, и править. документ — для длинного материала, который читают другие."
+        "text": "раздел «документы» — совместный редактор для того, что не помещается в описание задачи: требования, протоколы встреч, инструкции. раздел открывается пунктом «документы» в боковом меню («☰» слева в верхней панели). в приложении документы доступны для чтения. это осознанное решение, а не недоделка: блочный редактор с перетаскиванием блоков, комментариями к абзацам и разбором конфликтов — отдельный проект, и наспех сделанный на телефоне он делал бы больше вреда, чем пользы. читать документ, найти нужный абзац и открыть ссылку с телефона можно; писать — из веб-версии. раздел «документы» в приложении структура документы складываются в дерево — у документа могут быть вложенные, так что раздел ведёт себя как небольшая вики. на телефоне сначала показывается список, а тап по документу выдвигает читалку поверх него; кнопка «‹» слева сверху возвращает к списку, системная «назад» — тоже. что видно при чтении текст показывается с полным форматированием: заголовки, списки, таблицы, изображения, блоки кода, выравнивание. документ, импортированный из word, читается со своими цветами и рамками — в том числе в тёмной теме. что делается только в веб-версии правка текста и структуры документа. комментарии к блокам. импорт .docx и просмотр pdf. история версий и откат к предыдущей редакции. шаблоны и связывание документа с задачами. связи документа с задачами с телефона не видны вовсе — ни в читалке, ни в окне задачи (вкладка «связи» там про связи между задачами). подробнее — документы задачи. документ или заметка если запись нужна только вам и на пару дней — это заметка, и её с телефона можно и писать, и править. документ — для длинного материала, который читают другие."
       },
       "locales": {
         "en": {
@@ -2793,7 +3103,7 @@
                 "level": 2
               }
             ],
-            "text": "the documents section is a collaborative editor for what doesn't fit into a task description: requirements, meeting notes, guides. the section opens from the “documents” item in the side menu (the “☰” on the left of the top bar). in the app, documents are read-only. this is a deliberate choice, not an unfinished corner: a block editor with drag-and-drop blocks, comments on paragraphs and conflict resolution is a project of its own, and thrown together on a phone it would do more harm than good. you can read a document, find the paragraph you need and open a link from your phone; writing is done from the web version. the documents section in the app structure documents are filed into a tree — a document can have nested ones, so the section behaves like a small wiki. on a phone the list is shown first, and a tap on a document slides a reader out over it; the “‹” button at the top left returns to the list, as does the system “back”. what you see when reading text is shown with full formatting: headings, lists, tables, images, code blocks, alignment. a document imported from word reads with its own colours and borders — including in the dark theme. what's only done in the web version editing the text and structure of a document. comments on blocks. importing .docx and viewing pdfs. version history and rolling back to an earlier revision. templates and linking a document to tasks. links created on the web are visible from a phone — on the “relations” tab of the task screen. a document or a note if a record is only for you and only for a couple of days, it's a note, and from a phone you can both write and edit it. a document is for long material that others read."
+            "text": "the documents section is a collaborative editor for what doesn't fit into a task description: requirements, meeting notes, guides. the section opens from the “documents” item in the side menu (the “☰” on the left of the top bar). in the app, documents are read-only. this is a deliberate choice, not an unfinished corner: a block editor with drag-and-drop blocks, comments on paragraphs and conflict resolution is a project of its own, and thrown together on a phone it would do more harm than good. you can read a document, find the paragraph you need and open a link from your phone; writing is done from the web version. the documents section in the app structure documents are filed into a tree — a document can have nested ones, so the section behaves like a small wiki. on a phone the list is shown first, and a tap on a document slides a reader out over it; the “‹” button at the top left returns to the list, as does the system “back”. what you see when reading text is shown with full formatting: headings, lists, tables, images, code blocks, alignment. a document imported from word reads with its own colours and borders — including in the dark theme. what's only done in the web version editing the text and structure of a document. comments on blocks. importing .docx and viewing pdfs. version history and rolling back to an earlier revision. templates and linking a document to tasks. a document's links to tasks are not visible from a phone at all — neither in the reader nor in the task window (the “relations” tab there is about links between tasks). more in task documents. a document or a note if a record is only for you and only for a couple of days, it's a note, and from a phone you can both write and edit it. a document is for long material that others read."
           }
         }
       }
