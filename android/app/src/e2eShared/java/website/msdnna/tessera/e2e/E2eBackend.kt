@@ -9,11 +9,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assume
+import website.msdnna.tessera.data.model.AddRelationRequest
 import website.msdnna.tessera.data.model.AddTagRequest
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Comment
+import website.msdnna.tessera.data.model.CreateCommentRequest
 import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTagRequest
@@ -29,6 +31,7 @@ import website.msdnna.tessera.data.model.Reminder
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
+import website.msdnna.tessera.data.model.TaskEvent
 import website.msdnna.tessera.data.model.UpdateTaskRequest
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
@@ -144,13 +147,20 @@ object E2eBackend {
         val firstColumn: BoardColumn get() = columns.first()
     }
 
-    /** Registers a fresh account. The local part is unique per call, so parallel
-     *  runs against the same `tessera_test` never fight over an email. */
-    fun registerAccount(namePrefix: String = "E2E"): Account {
+    /**
+     * Registers a fresh account. The local part is unique per call, so parallel
+     * runs against the same `tessera_test` never fight over an email.
+     *
+     * [name] is the display name, and specs that only need *an* account can leave
+     * it alone. The help screenshots (`HelpShotsTest`) cannot: whoever registered
+     * signs the seeded comments and the journal rows, and «E2E bot» in a manual
+     * reads as a leaked test fixture.
+     */
+    fun registerAccount(name: String = "E2E bot"): Account {
         val email = "e2e+${UUID.randomUUID()}@test.local"
         val res = post<AuthResponse>(
             path = "auth/register",
-            body = RegisterRequest(email = email, name = "$namePrefix bot", password = PASSWORD),
+            body = RegisterRequest(email = email, name = name, password = PASSWORD),
         )
         return Account(
             email = email,
@@ -210,16 +220,52 @@ object E2eBackend {
 
     /** Puts a tag on a task. The endpoint answers 204, so this reads no body —
      *  going through [post] would fail on parsing the empty response. */
-    fun addTaskTag(fixture: Fixture, taskId: String, tagId: String) {
+    fun addTaskTag(fixture: Fixture, taskId: String, tagId: String) =
+        postDiscarding("tasks/$taskId/tags", AddTagRequest(tagId), fixture, "tag $tagId on task $taskId")
+
+    /**
+     * Writes a comment as the fixture's own user, optionally as a reply to
+     * [parentId].
+     *
+     * The reply is not a plain string: `POST /comments` answers with the row
+     * wrapped next to a `command_summary`, and a body-only comment that held
+     * quick actions stores no row at all. Nothing here needs either, so the
+     * response is discarded and the state read back through [comments].
+     */
+    fun createComment(fixture: Fixture, taskId: String, body: String, parentId: String? = null) =
+        postDiscarding(
+            "tasks/$taskId/comments",
+            CreateCommentRequest(body = body, parentId = parentId),
+            fixture,
+            "comment on task $taskId",
+        )
+
+    /**
+     * Links [taskId] to another task **by its number**, the way the app's own
+     * search-and-tap does — the endpoint takes `#N`, not a UUID, because that is
+     * what a person types.
+     *
+     * [kind] is the relation type (`relates`, `blocks`, `blocked_by`,
+     * `duplicates`); the backend writes the mirror row on the other task itself.
+     */
+    fun linkTasks(fixture: Fixture, taskId: String, relatedNumber: Long, kind: String = "relates") =
+        postDiscarding(
+            "tasks/$taskId/relations",
+            AddRelationRequest(number = relatedNumber, kind = kind),
+            fixture,
+            "relation $kind → #$relatedNumber on task $taskId",
+        )
+
+    /** POSTs [body] and checks the status without parsing the response — for the
+     *  endpoints that answer 204, where [post] would fail on the empty body. */
+    private fun postDiscarding(path: String, body: Any, fixture: Fixture, what: String) {
         val req = Request.Builder()
-            .url(apiUrl + "tasks/$taskId/tags")
-            .post(gson.toJson(AddTagRequest(tagId)).toRequestBody(json))
+            .url(apiUrl + path)
+            .post(gson.toJson(body).toRequestBody(json))
             .header("Authorization", "Bearer ${fixture.account.accessToken}")
             .build()
         http.newCall(req).execute().use { resp ->
-            check(resp.isSuccessful) {
-                "e2e seed tag $tagId on task $taskId failed: HTTP ${resp.code} ${resp.body.string()}"
-            }
+            check(resp.isSuccessful) { "e2e seed $what failed: HTTP ${resp.code} ${resp.body.string()}" }
         }
     }
 
@@ -267,6 +313,11 @@ object E2eBackend {
     /** Comments on a task, as the server has them. */
     fun comments(fixture: Fixture, taskId: String): List<Comment> =
         getList("tasks/$taskId/comments", fixture.account.accessToken)
+
+    /** Journal rows of a task, newest first — the server's own ids, which is what
+     *  a spec needs to point at one row rather than at «some row». */
+    fun events(fixture: Fixture, taskId: String): List<TaskEvent> =
+        getList("tasks/$taskId/events", fixture.account.accessToken)
 
     // ── documents (#2735) ──────────────────────────────────────────────────
     //

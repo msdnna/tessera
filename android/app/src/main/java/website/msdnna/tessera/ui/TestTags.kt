@@ -144,6 +144,17 @@ object TestTags {
     const val TASK_REPLY_INPUT = "task-reply-input"
     const val TASK_REPLY_SUBMIT = "task-reply-submit"
 
+    /**
+     * One row of the Связи / История tabs, keyed by the thing it shows.
+     *
+     * Per row rather than per list on purpose: both tabs render their empty state
+     * inside the same container, so a list-level anchor would already be there
+     * while the detail request is still in flight — and a screenshot taken then
+     * photographs «пока ничего нет».
+     */
+    fun taskRelationRow(relatedTaskId: String) = "task-relation-row:$relatedTaskId"
+    fun taskEventRow(eventId: String) = "task-event-row:$eventId"
+
     // ── documents (read-only, #2735) ───────────────────────────────────────
 
     /** Root of the documents section — the tree of the workspace's documents. */

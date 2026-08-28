@@ -61,7 +61,23 @@ import website.msdnna.tessera.ui.theme.TesseraTheme
  * would re-seed the backend and hand the two shots different data.
  */
 class HelpShotsTest {
-    private val e2e = E2eRule()
+    /**
+     * Which language the run photographs (#2816), from
+     * `-Pandroid.testInstrumentationRunnerArguments.shotsLang`. Russian is the
+     * base set and keeps the bare file name — [langSuffix] is what the resolver
+     * (`HelpAssets.kt`, `helpAssets.js`) tries first for a reader on a translated
+     * article, and what it falls back *from* when a twin has not been shot yet.
+     *
+     * **Declared before [e2e]:** the rule is built with a display name that
+     * depends on it, and Kotlin initialises properties in source order.
+     */
+    private val lang: String = shotsLang()
+
+    private val langSuffix: String = if (lang == DEFAULT_LANG) "" else ".$lang"
+
+    // The seeded user signs every comment and journal row in the shots, so the
+    // screenshot run names them rather than taking E2eRule's fixture default.
+    private val e2e = E2eRule(accountName = t("Анна Морозова", "Anna Morozova"))
     private val compose = createAndroidComposeRule<ComponentActivity>()
 
     @get:Rule
@@ -70,16 +86,14 @@ class HelpShotsTest {
     private val dark = mutableStateOf(false)
 
     /**
-     * Which language the run photographs (#2816), from
-     * `-Pandroid.testInstrumentationRunnerArguments.shotsLang`. Russian is the
-     * base set and keeps the bare file name — [langSuffix] is what the resolver
-     * (`HelpAssets.kt`, `helpAssets.js`) tries first for a reader on a translated
-     * article, and what it falls back *from* when a twin has not been shot yet.
+     * Picks the seed string for the language being photographed.
+     *
+     * The app's own chrome answers in [lang] because [mount] wraps the content in
+     * `AppLocale` — but the *content* comes from the backend, which has no idea a
+     * shot is being taken. Without this the English manual would illustrate itself
+     * with a Russian board.
      */
-    private val lang: String =
-        InstrumentationRegistry.getArguments().getString("shotsLang")?.takeIf { it.isNotBlank() } ?: DEFAULT_LANG
-
-    private val langSuffix: String = if (lang == DEFAULT_LANG) "" else ".$lang"
+    private fun t(ru: String, en: String): String = if (lang == DEFAULT_LANG) ru else en
 
     /** System bar heights of the current mount — the strips [crop] cuts away. */
     private var chrome: Insets = Insets.NONE
@@ -152,12 +166,109 @@ class HelpShotsTest {
         compose.shoot("task-modal-mobile")
     }
 
+    /**
+     * The Комментарии tab with a thread in it (`comments.android`).
+     *
+     * Seeded server-side rather than typed into the composer: the article's scene
+     * is a conversation someone is reading, and the composer only ever produces
+     * one comment signed by the reader.
+     */
+    @Test
+    fun taskComments() {
+        val fixture = e2e.fixture
+        val card = seedBoardContent()
+        E2eBackend.createComment(
+            fixture,
+            card.id,
+            t(
+                "Макет обновился — кнопка входа переехала под поле пароля.",
+                "The mockup changed — the sign-in button moved below the password field.",
+            ),
+        )
+        val root = E2eBackend.comments(fixture, card.id).first()
+        E2eBackend.createComment(
+            fixture,
+            card.id,
+            t("Учла, переделала отступы.", "Noted, redid the spacing."),
+            parentId = root.id,
+        )
+        E2eBackend.createComment(
+            fixture,
+            card.id,
+            t("Остался тёмный вариант, доделаю завтра.", "Only the dark variant is left, I'll finish it tomorrow."),
+        )
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        compose.onNodeWithTag(TestTags.taskCard(card.id)).performClick()
+        compose.awaitTag(TestTags.TASK_TITLE)
+        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_COMMENTS)).performClick()
+        compose.awaitTag(TestTags.TASK_COMMENT_INPUT)
+
+        compose.shoot("task-comments-mobile")
+    }
+
+    /**
+     * The Связи tab (`task-links.android`), showing the three relation kinds the
+     * article names — the mirror rows are written by the backend, so linking one
+     * way is enough to populate both tasks.
+     */
+    @Test
+    fun taskRelations() {
+        val fixture = e2e.fixture
+        val card = seedBoardContent()
+        val blocker = E2eBackend.createTask(fixture, t("Свести токены темы", "Reconcile the theme tokens"))
+        val related = E2eBackend.createTask(fixture, t("Разбор макета в Figma", "Figma mockup walkthrough"))
+        val blockerNumber = blocker.number
+        val relatedNumber = related.number
+        checkNotNull(blockerNumber) { "seeded task has no number" }
+        checkNotNull(relatedNumber) { "seeded task has no number" }
+        E2eBackend.linkTasks(fixture, card.id, blockerNumber, kind = "blocked_by")
+        E2eBackend.linkTasks(fixture, card.id, relatedNumber, kind = "relates")
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        compose.onNodeWithTag(TestTags.taskCard(card.id)).performClick()
+        compose.awaitTag(TestTags.TASK_TITLE)
+        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_RELATIONS)).performClick()
+        // The rows arrive with the task's detail request, which the tab does not
+        // wait for — anchoring on the tab itself would photograph the empty state.
+        compose.awaitTag(TestTags.taskRelationRow(blocker.id))
+
+        compose.shoot("task-relations-mobile")
+    }
+
+    /**
+     * The История tab (`task-history.android`). The journal is a side effect, so
+     * the scene is seeded by *doing* things to the task — renaming it and tagging
+     * it — and then photographing what the server logged.
+     */
+    @Test
+    fun taskHistory() {
+        val fixture = e2e.fixture
+        val card = seedBoardContent()
+        E2eBackend.renameTask(fixture, card.id, t("Экран входа: свести с макетом", "Sign-in screen: match the mockup"))
+        val ready = E2eBackend.createTag(fixture, t("к ревью", "for review"), "#f0a020")
+        E2eBackend.addTaskTag(fixture, card.id, ready.id)
+        val newest = E2eBackend.events(fixture, card.id).firstOrNull()
+        checkNotNull(newest) { "seeded task logged no events" }
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        compose.onNodeWithTag(TestTags.taskCard(card.id)).performClick()
+        compose.awaitTag(TestTags.TASK_TITLE)
+        compose.onNodeWithTag(TestTags.taskTab(TestTags.TASK_TAB_HISTORY)).performClick()
+        compose.awaitTag(TestTags.taskEventRow(newest.id))
+
+        compose.shoot("task-history-mobile")
+    }
+
     @Test
     fun documents() {
         val fixture = e2e.fixture
-        val spec = E2eBackend.createDocument(fixture, "Требования к релизу")
-        E2eBackend.createDocument(fixture, "Протокол встречи")
-        E2eBackend.createDocument(fixture, "Инструкция для новичка", parentId = spec.id)
+        val spec = E2eBackend.createDocument(fixture, t("Требования к релизу", "Release requirements"))
+        E2eBackend.createDocument(fixture, t("Протокол встречи", "Meeting notes"))
+        E2eBackend.createDocument(fixture, t("Инструкция для новичка", "Onboarding guide"), parentId = spec.id)
 
         mount { DocumentsScreen(workspaceId = fixture.workspace.id) }
         compose.awaitTag(TestTags.documentRow(spec.id))
@@ -168,9 +279,17 @@ class HelpShotsTest {
     @Test
     fun notes() {
         val fixture = e2e.fixture
-        E2eBackend.createNote(fixture, "Итоги созвона", "— решили выкатывать в пятницу\n— Аня готовит миграцию")
-        E2eBackend.createNote(fixture, "Вопросы к заказчику")
-        E2eBackend.createNote(fixture, "Черновик анонса")
+        val recap = t("Итоги созвона", "Call recap")
+        E2eBackend.createNote(
+            fixture,
+            recap,
+            t(
+                "— решили выкатывать в пятницу\n— Аня готовит миграцию",
+                "— agreed to ship on Friday\n— Anna is preparing the migration",
+            ),
+        )
+        E2eBackend.createNote(fixture, t("Вопросы к заказчику", "Questions for the client"))
+        E2eBackend.createNote(fixture, t("Черновик анонса", "Announcement draft"))
 
         mount {
             NotesScreen(
@@ -179,7 +298,7 @@ class HelpShotsTest {
                 onPreselectConsumed = {},
             )
         }
-        compose.awaitText("Итоги созвона")
+        compose.awaitText(recap)
 
         compose.shoot("notes-mobile")
     }
@@ -187,11 +306,12 @@ class HelpShotsTest {
     @Test
     fun reminders() {
         val fixture = e2e.fixture
-        E2eBackend.createReminder(fixture, "Позвонить в банк", "2026-09-01T10:00:00Z")
-        E2eBackend.createReminder(fixture, "Отправить отчёт", "2026-09-02T09:30:00Z")
+        val call = t("Позвонить в банк", "Call the bank")
+        E2eBackend.createReminder(fixture, call, "2026-09-01T10:00:00Z")
+        E2eBackend.createReminder(fixture, t("Отправить отчёт", "Send the report"), "2026-09-02T09:30:00Z")
 
         mount { RemindersScreen() }
-        compose.awaitText("Позвонить в банк")
+        compose.awaitText(call)
 
         compose.shoot("reminders-mobile")
     }
@@ -199,17 +319,22 @@ class HelpShotsTest {
     @Test
     fun milestones() {
         val fixture = e2e.fixture
+        val releaseName = t("Релиз 1.0", "Release 1.0")
         val release = E2eBackend.createMilestone(
             fixture,
-            "Релиз 1.0",
+            releaseName,
             startDate = "2026-08-01T00:00:00Z",
             dueDate = "2026-09-15T00:00:00Z",
         )
-        E2eBackend.createMilestone(fixture, "Демо заказчику", dueDate = "2026-10-01T00:00:00Z")
+        E2eBackend.createMilestone(fixture, t("Демо заказчику", "Client demo"), dueDate = "2026-10-01T00:00:00Z")
         // A milestone with no tasks shows «нет задач» instead of a progress bar,
         // so one of the two gets tasks — the shot should show both states.
-        val done = E2eBackend.createTask(fixture, "Собрать релизные заметки", fixture.columns.last())
-        val open = E2eBackend.createTask(fixture, "Прогнать регресс")
+        val done = E2eBackend.createTask(
+            fixture,
+            t("Собрать релизные заметки", "Write the release notes"),
+            fixture.columns.last(),
+        )
+        val open = E2eBackend.createTask(fixture, t("Прогнать регресс", "Run the regression pass"))
         E2eBackend.setTaskMilestone(fixture, done.id, release.id)
         E2eBackend.setTaskMilestone(fixture, open.id, release.id)
 
@@ -222,7 +347,7 @@ class HelpShotsTest {
                 onOpenMilestone = { _, _ -> },
             )
         }
-        compose.awaitText("Релиз 1.0")
+        compose.awaitText(releaseName)
 
         compose.shoot("milestones-mobile")
     }
@@ -236,22 +361,30 @@ class HelpShotsTest {
     private fun seedBoardContent(): website.msdnna.tessera.data.model.Task {
         val fixture = e2e.fixture
         val columns = fixture.columns
-        val design = E2eBackend.createTag(fixture, "дизайн", "#7c5cff")
-        val backend = E2eBackend.createTag(fixture, "бэкенд", "#0eb0a9")
+        val design = E2eBackend.createTag(fixture, t("дизайн", "design"), "#7c5cff")
+        val backend = E2eBackend.createTag(fixture, t("бэкенд", "backend"), "#0eb0a9")
 
-        val hero = E2eBackend.createTask(fixture, "Экран входа: собрать по макету", columns[0])
+        val hero = E2eBackend.createTask(fixture, t("Экран входа: собрать по макету", "Sign-in screen: build from the mockup"), columns[0])
         E2eBackend.addTaskTag(fixture, hero.id, design.id)
-        val second = E2eBackend.createTask(fixture, "Ротация refresh-токена", columns[0])
+        val second = E2eBackend.createTask(fixture, t("Ротация refresh-токена", "Refresh token rotation"), columns[0])
         E2eBackend.addTaskTag(fixture, second.id, backend.id)
         // The phone shows one column at a time, so the first one carries the shot:
         // two cards left it half empty, which reads as «здесь ничего нет».
-        val third = E2eBackend.createTask(fixture, "Оффлайн-режим: план", columns[0])
+        val third = E2eBackend.createTask(fixture, t("Оффлайн-режим: план", "Offline mode: the plan"), columns[0])
         E2eBackend.addTaskTag(fixture, third.id, design.id)
-        E2eBackend.createTask(fixture, "Сверить макеты с вебом", columns[0])
-        val inProgress = E2eBackend.createTask(fixture, "Импорт docx: таблицы", columns.getOrElse(1) { columns[0] })
+        E2eBackend.createTask(fixture, t("Сверить макеты с вебом", "Check the mockups against the web"), columns[0])
+        val inProgress = E2eBackend.createTask(
+            fixture,
+            t("Импорт docx: таблицы", "docx import: tables"),
+            columns.getOrElse(1) { columns[0] },
+        )
         E2eBackend.addTaskTag(fixture, inProgress.id, backend.id)
-        E2eBackend.createTask(fixture, "Пуш-уведомления о напоминаниях", columns.getOrElse(2) { columns[0] })
-        E2eBackend.createTask(fixture, "Тёмная тема в редакторе", columns.last())
+        E2eBackend.createTask(
+            fixture,
+            t("Пуш-уведомления о напоминаниях", "Push notifications for reminders"),
+            columns.getOrElse(2) { columns[0] },
+        )
+        E2eBackend.createTask(fixture, t("Тёмная тема в редакторе", "Dark theme in the editor"), columns.last())
         return hero
     }
 
@@ -408,6 +541,11 @@ class HelpShotsTest {
 
         /** The language whose shots carry the bare file name. */
         const val DEFAULT_LANG = "ru"
+
+        /** Read from the companion so instance properties can use it in their own
+         *  initialisers, whatever order they end up in. */
+        fun shotsLang(): String =
+            InstrumentationRegistry.getArguments().getString("shotsLang")?.takeIf { it.isNotBlank() } ?: DEFAULT_LANG
 
         /** How many times [screen] re-shoots while the frame keeps changing. */
         const val STABLE_TRIES = 12
