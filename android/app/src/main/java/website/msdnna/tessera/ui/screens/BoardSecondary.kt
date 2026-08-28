@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +45,7 @@ import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.WorkspaceCommand
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TButton
@@ -82,7 +84,8 @@ fun TagManagerModal(state: BoardUiState, vm: BoardViewModel, onDismiss: () -> Un
     var editingId by remember { mutableStateOf<String?>(null) }
     Dialog(onDismissRequest = onDismiss) {
         Column(
-            Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg))
+            Modifier.testTag(TestTags.TAG_MANAGER)
+                .popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg))
                 .background(c.surface).clickableNoRipple { editingId = null }.padding(18.dp),
         ) {
             Text(

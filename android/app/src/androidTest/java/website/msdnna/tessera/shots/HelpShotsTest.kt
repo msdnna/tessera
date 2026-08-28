@@ -10,16 +10,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -98,6 +102,9 @@ class HelpShotsTest {
 
     /** System bar heights of the current mount — the strips [crop] cuts away. */
     private var chrome: Insets = Insets.NONE
+
+    /** Focus manager of the current mount, published by [mount] for [dismissKeyboard]. */
+    private var focus: FocusManager? = null
 
     @Test
     fun board() {
@@ -267,6 +274,66 @@ class HelpShotsTest {
         compose.shoot("task-history-mobile")
     }
 
+    /**
+     * The description editor with its format toolbar (`markdown-editor.android`).
+     *
+     * The text is typed rather than seeded: a task that arrives with a description
+     * opens the tab in **preview** (`startInPreview = description.isNotBlank()`),
+     * and preview is the one state this article is not about — plus it renders
+     * through a WebView, which the headless emulator leaves out of the screenshot.
+     * An empty description opens in write mode, which is the toolbar, the
+     * monospaced field and the shevrons the article explains.
+     */
+    @Test
+    fun markdownEditor() {
+        val fixture = e2e.fixture
+        val card = seedBoardContent()
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        compose.onNodeWithTag(TestTags.taskCard(card.id)).performClick()
+        compose.awaitTag(TestTags.TASK_TITLE)
+        compose.onNodeWithTag(TestTags.TASK_DESCRIPTION).performTextInput(
+            t(
+                "## Экран входа\n\nКнопка входа переезжает под поле пароля.\n\n1. свести отступы\n2. тёмный вариант",
+                "## Sign-in screen\n\nThe sign-in button moves below the password field." +
+                    "\n\n1. match the spacing\n2. dark variant",
+            ),
+        )
+        dismissKeyboard()
+
+        compose.shoot("markdown-editor-mobile")
+    }
+
+    /**
+     * The tag manager (`tags.android`). In the app it opens from the board's «⋮»
+     * overflow, which lives in `MainScreen` — above the screen this class mounts.
+     * `BoardScreen` takes the flag as a parameter, so the shot sets it directly
+     * instead of reproducing the host's app bar.
+     */
+    @Test
+    fun tags() {
+        val fixture = e2e.fixture
+        seedBoardContent()
+        // Prefixed tags on top of the plain ones from the seed: the group header
+        // and the «Короткие префиксы» switch below the list only exist once some
+        // tag carries a prefix, and both are what the article describes.
+        val urgent = t("S: срочно", "S: urgent")
+        E2eBackend.createTag(fixture, urgent, "#e0533d")
+        E2eBackend.createTag(fixture, t("S: потом", "S: later"), "#9aa0aa")
+
+        mount {
+            BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id, tagsOpen = true)
+        }
+        compose.awaitTag(TestTags.TAG_MANAGER)
+        // The dialog renders before the board's tag list arrives, so anchoring on
+        // it alone would photograph «тегов пока нет». A pill splits its prefix off,
+        // so the row shows the value alone.
+        compose.awaitText(urgent.substringAfter(": "))
+
+        compose.shoot("tags-mobile")
+    }
+
     @Test
     fun documents() {
         val fixture = e2e.fixture
@@ -420,6 +487,8 @@ class HelpShotsTest {
             // changing it would restart the emulator's own UI mid-run, and the
             // app's language is a profile setting anyway, not a system one.
             AppLocale(language = language) {
+                val focusManager = LocalFocusManager.current
+                SideEffect { focus = focusManager }
                 val density = LocalDensity.current
                 TesseraTheme(isDark = isDark) {
                     Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
@@ -457,6 +526,20 @@ class HelpShotsTest {
     private fun Resources.barHeight(name: String): Int {
         val id = getIdentifier(name, "dimen", "android")
         return if (id > 0) getDimensionPixelSize(id) else 0
+    }
+
+    /**
+     * Drops the field focus, and the on-screen keyboard with it.
+     *
+     * A scene that types has to. The IME slides up on its own schedule, so the
+     * first take of [markdownEditor] came out with the editor visible in one
+     * theme and buried under the keyboard in the other — and while the keyboard
+     * is up the emulator paints its own «See more features» balloon over the app,
+     * which is device chrome the manual should not show.
+     */
+    private fun dismissKeyboard() {
+        compose.runOnUiThread { focus?.clearFocus(force = true) }
+        compose.waitForIdle()
     }
 
     private fun ComposeContentTestRule.awaitText(text: String) {

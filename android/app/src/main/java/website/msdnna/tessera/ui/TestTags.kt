@@ -92,6 +92,11 @@ object TestTags {
     /** Root of the open «Вид доски» dialog — present exactly while it is open. */
     const val BOARD_CUSTOMIZE_PANEL = "board-customize-panel"
 
+    /** Root of the tag manager dialog. Opened from the app bar's overflow, which
+     *  lives above `BoardScreen` — a caller that owns the flag (a spec, the
+     *  screenshot run) can render it without reproducing that menu. */
+    const val TAG_MANAGER = "tag-manager"
+
     // ── task modal ─────────────────────────────────────────────────────────
 
     /** Root of the open task modal — present exactly while a task is open. */
