@@ -14,6 +14,8 @@ The same editor as in the browser: it stores **Markdown**, not some house format
 
 A row of round buttons on the top right, a formatting strip below it.
 
+![The description editor in the task window](../assets/markdown-editor-mobile-light.png)
+
 **The top row** (in edit mode):
 
 | Button | What it does |

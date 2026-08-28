@@ -18,6 +18,8 @@ There is no «Tags» button in the phone's header — management lives in the **
 
 If the project has prefixed tags, the list is split into groups with an upper-case header above each. When there is only one group, no headers are drawn at all.
 
+![The «Manage tags» modal](../assets/tags-mobile-light.png)
+
 ### Create
 
 At the bottom of the modal there is a **«Tag name»** field with a **«Create»** button next to it. Unlike the browser, Enter isn't required here: the button exists and stays disabled while the field is empty. A new tag gets the first palette colour (purple) — the colour is changed separately, while renaming.
