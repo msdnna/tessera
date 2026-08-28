@@ -19,12 +19,12 @@ A view remembers the whole of what you see:
 - the visualization (board, list, calendar, timeline, Gantt, matrix);
 - the grouping, and the tag prefix if the grouping is by prefix;
 - every sort level — with its order and direction;
-- every filter and the subtask expansion;
+- every filter, **including the text in the search box**, and the subtask expansion;
 - which columns are collapsed and whether empty ones auto-collapse;
 - card size, field stacking, showing empty fields and the visibility of each field;
 - the state of autosave.
 
-What is *not* saved: the **scope** (a milestone or the archive) and the text in the search box. Those are where you are right now, not how you are looking.
+What is *not* saved is the **scope** — a milestone or the archive: that is where you are right now, not how you are looking. The search query, on the other hand, goes into the view together with the filters, so clear the box before saving unless you want it back every time.
 
 ## Views belong to a visualization
 
