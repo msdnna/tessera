@@ -80,6 +80,56 @@ func TestCreateTaskRejectsBadInput(t *testing.T) {
 	}
 }
 
+// The by-number path must surface subtasks: the raw by-number endpoint returns a
+// bare row, so resolveTaskDetail has to re-fetch full detail by id. Without this a
+// stateless caller sees "no subtasks" and re-decomposes the task.
+func TestGetTaskByNumberLoadsSubtasks(t *testing.T) {
+	num := int64(2827)
+	full := detail("par", "b1")
+	full.ColumnID = "c1"
+	full.Subtasks = []model.Task{{ID: "st1", Title: "Этап 2", Number: &num}}
+	c, _ := newMux(t, map[string]any{
+		"/api/workspaces/w1/tasks/by-number/2821": model.Task{ID: "par"}, // bare stub
+		"/api/tasks/par":                          full,                  // full detail by id
+	})
+	_, out, err := getTask(c)(context.Background(), nil, getTaskInput{WorkspaceID: "w1", Number: 2821})
+	if err != nil {
+		t.Fatalf("getTask: %v", err)
+	}
+	if len(out.Subtasks) != 1 || out.Subtasks[0].Title != "Этап 2" {
+		t.Fatalf("by-number get_task didn't surface subtasks: %+v", out.Subtasks)
+	}
+}
+
+// Re-running a decomposition must not duplicate children: an item whose title
+// already matches a live subtask (case/space-insensitive) is skipped, not created.
+func TestCreateSubtasksSkipsExistingTitle(t *testing.T) {
+	existing := int64(2827)
+	parent := detail("par", "b1")
+	parent.ColumnID = "c1"
+	parent.Subtasks = []model.Task{{ID: "st1", Title: "Этап 2", Number: &existing}}
+	c, mux := newMux(t, map[string]any{
+		"/api/workspaces/w1/tasks/by-number/2821": model.Task{ID: "par"},
+		"/api/tasks/par":                          parent,
+	})
+	_, out, err := createSubtasks(c)(context.Background(), nil, createSubtasksInput{
+		WorkspaceID: "w1", Number: 2821,
+		Items: []taskFieldsInput{{Title: " этап 2 "}, {Title: "Новая"}},
+	})
+	if err != nil {
+		t.Fatalf("createSubtasks: %v", err)
+	}
+	if len(out.Skipped) != 1 || out.Skipped[0].ExistingID != "st1" {
+		t.Fatalf("expected the existing-title item skipped: %+v", out.Skipped)
+	}
+	if len(out.Created) != 1 {
+		t.Fatalf("expected exactly one fresh subtask created: %+v", out.Created)
+	}
+	if _, ok := mux.writes["POST /api/boards/b1/tasks"]; !ok {
+		t.Fatal("the fresh subtask was not POSTed")
+	}
+}
+
 func TestCreateSubtasksReportsPartialFailure(t *testing.T) {
 	parent := detail("t1", "b1")
 	parent.ColumnID = "c1"
