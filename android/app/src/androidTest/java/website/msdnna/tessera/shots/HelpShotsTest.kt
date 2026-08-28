@@ -29,9 +29,16 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.test.platform.app.InstrumentationRegistry
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+import java.util.TimeZone
+import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.RuleChain
+import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.preferences.AppPreferences
 import website.msdnna.tessera.e2e.E2eBackend
 import website.msdnna.tessera.e2e.E2eRule
 import website.msdnna.tessera.e2e.awaitNoTag
@@ -216,6 +223,50 @@ class HelpShotsTest {
         compose.awaitText(shelved.first().title)
 
         compose.shoot("board-archive-mobile")
+    }
+
+    /**
+     * The calendar layout (`board-layouts.android`): the `‹ Сегодня ›` nav, the
+     * month grid with today circled, a day cell overflowing into «+N» and the
+     * «Без срока» strip under the grid — the article's four claims in one frame.
+     *
+     * The layout is chosen the way the app itself remembers it — by writing the
+     * per-board view JSON the screen reads on load. The visible switcher lives in
+     * the app bar, one level above `BoardScreen`, so driving it would mean
+     * mounting `MainScreen` and photographing a scene the article does not
+     * describe here.
+     *
+     * Dates are relative to the run, not fixed: the grid always opens on the
+     * current month, so a hard-coded August would photograph an empty calendar
+     * from September on.
+     */
+    @Test
+    fun boardCalendar() {
+        val fixture = e2e.fixture
+        seedBoardContent()
+        val cards = E2eBackend.tasks(fixture)
+        check(cards.size >= 7) { "seed produced ${cards.size} tasks, the calendar shot needs 7" }
+        // Five on one day is what makes the cell overflow: four chips fit, the
+        // fifth becomes the «+1» the article explains. The day is today, so the
+        // same cell also carries the accent circle.
+        val busy = cards.take(5)
+        busy.forEachIndexed { i, task ->
+            E2eBackend.scheduleTask(fixture, task.id, dueDate = isoDay(0), priority = 4 - i)
+        }
+        // A second, quieter day two days out — one populated cell reads as a bug.
+        E2eBackend.scheduleTask(fixture, cards[5].id, dueDate = isoDay(2), priority = 2)
+        // cards[6] keeps no due date on purpose: it is what draws «Без срока».
+        prefs { setBoardViewJson(fixture.board.id, """{"layout":"calendar"}""") }
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        // The board paints the kanban first and swaps to the calendar once the
+        // stored view arrives, so the wait is for the weekday header — a label
+        // only the calendar grid draws. The card title alone would pass on the
+        // kanban frame, a whole layout before the shot's scene.
+        compose.awaitText(t("Пн", "Mon"))
+        compose.awaitText(busy.first().title)
+
+        compose.shoot("board-calendar-mobile")
     }
 
     @Test
@@ -479,6 +530,33 @@ class HelpShotsTest {
 
         compose.shoot("milestones-mobile")
     }
+
+    /**
+     * A due date [days] out from the run, in the UTC instant format the API takes.
+     *
+     * Midday rather than midnight: the calendar keys a task by the *local* date of
+     * its due instant, and `00:00Z` lands on the previous day for every reader west
+     * of Greenwich — including the emulator, which runs on the host's zone.
+     */
+    private fun isoDay(days: Int): String {
+        val day = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+            add(Calendar.DAY_OF_YEAR, days)
+            set(Calendar.HOUR_OF_DAY, 12)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US)
+            .apply { timeZone = TimeZone.getTimeZone("UTC") }
+            .format(day.time)
+    }
+
+    /**
+     * Writes into the app's own DataStore — the state a scene needs the screen to
+     * *wake up* in, as opposed to one it can tap its way to.
+     */
+    private fun prefs(block: suspend AppPreferences.() -> Unit) =
+        runBlocking { AppContainer.prefs.block() }
 
     /**
      * Demo-shaped board content: enough cards, tags and columns that the shot

@@ -312,6 +312,38 @@ object E2eBackend {
         )
     }
 
+    /**
+     * Puts dates and a priority on an existing task — what the calendar, the
+     * timeline and the Eisenhower matrix lay their cards out by.
+     *
+     * Same full-replace endpoint as [renameTask], so the current state is read
+     * back first and only the asked-for fields are overwritten; a `null` here
+     * means «leave as it is», not «clear it».
+     */
+    fun scheduleTask(
+        fixture: Fixture,
+        taskId: String,
+        dueDate: String? = null,
+        startDate: String? = null,
+        priority: Int? = null,
+    ): Task {
+        val current = task(fixture, taskId)
+        return patch(
+            "tasks/$taskId",
+            UpdateTaskRequest(
+                title = current.title,
+                description = current.description,
+                priority = priority ?: current.priority,
+                dueDate = dueDate ?: current.dueDate,
+                startDate = startDate ?: current.startDate,
+                estimate = current.estimate,
+                completed = current.isCompleted,
+                recurrence = current.recurrence,
+            ),
+            fixture.account.accessToken,
+        )
+    }
+
     // ── reading state back ─────────────────────────────────────────────────
     //
     // A spec that drives the UI has to confirm the write reached Postgres, not
