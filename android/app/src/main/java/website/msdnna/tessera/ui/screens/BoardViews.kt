@@ -662,7 +662,14 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
     val isDone = lane.id == state.doneColumnId
 
     Box {
-        IonIconButton(Ion.ELLIPSIS_H, onClick = { menu = true }, boxSize = 28.dp, iconSize = 16.dp, tint = c.text3)
+        IonIconButton(
+            Ion.ELLIPSIS_H,
+            onClick = { menu = true },
+            modifier = Modifier.testTag(TestTags.columnMenu(lane.id)),
+            boxSize = 28.dp,
+            iconSize = 16.dp,
+            tint = c.text3,
+        )
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
             TMenuItem(stringResource(R.string.common_rename), icon = Ion.PENCIL, onClick = {
                 menu = false
@@ -676,7 +683,8 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
                 modifier = Modifier.padding(start = 14.dp, top = 6.dp, bottom = 4.dp),
             )
             FlowRow(
-                Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp),
+                Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp)
+                    .testTag(TestTags.COLUMN_MENU_COLORS),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {

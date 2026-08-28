@@ -95,6 +95,10 @@ object E2eBackend {
     private const val JSON_TIMEOUT_S = 20L
 
     private val json = "application/json".toMediaType()
+
+    /** Body for the PATCH endpoints that take none — OkHttp still wants one. */
+    private const val EMPTY_JSON = "{}"
+
     private val gson = Gson()
 
     private val http = OkHttpClient.Builder()
@@ -255,6 +259,24 @@ object E2eBackend {
             fixture,
             "relation $kind → #$relatedNumber on task $taskId",
         )
+
+    /**
+     * Archives (soft-deletes) a task, putting it into the board's archive scope.
+     *
+     * Subtasks go with it unless `detach` is asked for — the same choice the UI
+     * offers; a seed that wants the children left on the board passes it.
+     */
+    fun archiveTask(fixture: Fixture, taskId: String, detachSubtasks: Boolean = false) {
+        val query = if (detachSubtasks) "?subtasks=detach" else ""
+        val req = Request.Builder()
+            .url("${apiUrl}tasks/$taskId/archive$query")
+            .patch(EMPTY_JSON.toRequestBody(json))
+            .header("Authorization", "Bearer ${fixture.account.accessToken}")
+            .build()
+        http.newCall(req).execute().use { resp ->
+            check(resp.isSuccessful) { "e2e seed archive $taskId failed: HTTP ${resp.code} ${resp.body.string()}" }
+        }
+    }
 
     /** POSTs [body] and checks the status without parsing the response — for the
      *  endpoints that answer 204, where [post] would fail on the empty body. */

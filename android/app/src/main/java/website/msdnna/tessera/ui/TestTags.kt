@@ -55,6 +55,16 @@ object TestTags {
     /** Tile at the right end of the status lanes that starts a new column. */
     const val BOARD_ADD_COLUMN = "board-add-column"
 
+    /** The «⋯» in a column header, which opens rename / colour / «Завершающая» /
+     *  delete. Only status lanes carry it: group the board by tags or milestones
+     *  and the headers stop being columns, so the button is gone. */
+    fun columnMenu(id: String) = "column-menu:$id"
+
+    /** The colour swatches inside that menu — the one part of it that is neither a
+     *  labelled row nor a text item, so a spec (and the screenshot run) anchors on
+     *  it to tell «the menu is open» from «the tap missed». */
+    const val COLUMN_MENU_COLORS = "column-menu-colors"
+
     // ── grouping (the killer feature: lanes = tags) ─────────────────────────
 
     /** The transparent overlay over a *collapsed* composer bar, which turns a tap

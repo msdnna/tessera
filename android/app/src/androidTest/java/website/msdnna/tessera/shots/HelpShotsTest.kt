@@ -161,6 +161,63 @@ class HelpShotsTest {
         compose.shoot("board-customize-mobile")
     }
 
+    /**
+     * The column «⋯» menu (`board-columns.android`): rename, the eight swatches,
+     * the «Завершающая» switch and the delete row — the article's whole middle in
+     * one shot.
+     *
+     * Photographed on the *first* column deliberately. The switch reads «off»
+     * there, which is the state the article explains; on the rightmost column it
+     * would be on, and the reader would be looking at the one column whose
+     * paragraph says «уже завершающая».
+     */
+    @Test
+    fun boardColumnMenu() {
+        val fixture = e2e.fixture
+        seedBoardContent()
+
+        mount { BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id) }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        compose.onNodeWithTag(TestTags.columnMenu(fixture.firstColumn.id)).performClick()
+        compose.awaitTag(TestTags.COLUMN_MENU_COLORS)
+
+        compose.shoot("board-column-menu-mobile")
+    }
+
+    /**
+     * The archive scope (`archive.android`): the amber «Архив» chip in the
+     * composer bar and the same columns holding archived cards instead of live
+     * ones.
+     *
+     * `archiveOpen` is a `BoardScreen` parameter, like `tagsOpen` — the entry
+     * point is the app bar's overflow, which lives above this screen, so the shot
+     * sets the scope directly. The cards are archived through the API rather than
+     * through the card menu: the article's scene is an archive someone already
+     * filled, and driving three «⋯» → «В архив» → confirm rounds would photograph
+     * the same thing after a much longer route.
+     */
+    @Test
+    fun archive() {
+        val fixture = e2e.fixture
+        seedBoardContent()
+        // From the first column only: the phone shows one column at a time, so
+        // archiving cards spread across the board would leave the shot's column
+        // holding one card and the archive looking empty.
+        val shelved = E2eBackend.tasks(fixture).filter { it.columnId == fixture.firstColumn.id }.take(3)
+        check(shelved.size == 3) { "seed produced ${shelved.size} tasks to archive" }
+        shelved.forEach { E2eBackend.archiveTask(fixture, it.id) }
+
+        mount {
+            BoardScreen(board = fixture.board, workspaceId = fixture.workspace.id, archiveOpen = true)
+        }
+        compose.awaitTag(TestTags.boardColumn(fixture.firstColumn.id))
+        // The board renders before the archived list arrives, so the column tag
+        // alone would photograph the live board a frame before it is replaced.
+        compose.awaitText(shelved.first().title)
+
+        compose.shoot("board-archive-mobile")
+    }
+
     @Test
     fun taskScreen() {
         val fixture = e2e.fixture
