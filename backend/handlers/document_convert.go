@@ -31,7 +31,11 @@ import (
 // HTML↔blocks step on the side that owns the schema:
 //
 //	import  file -> [sidecar] -> HTML -> (client) TipTap -> blocks
-//	export  blocks -> (server) renderDocHTML -> HTML -> [sidecar] -> file
+//	export  blocks -> (server) renderDocFODT -> .fodt -> [sidecar] -> file
+//
+// Export went through HTML until #2849; it now goes through flat ODF, because
+// HTML has one page geometry and a document with sections needs several. The
+// HTML renderer stays for format=html, which needs no sidecar at all.
 //
 // Parsing stays in the browser because the editor's schema *is* the allow-list
 // (docImport.js says so, and D9's template upload already works this way): a
@@ -335,20 +339,27 @@ func (h *API) ExportDocument(c *gin.Context) {
 			return
 		}
 	}
-	page := renderDocHTML(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID))
+	// format=html is the one export rendered here and handed straight back, so it
+	// keeps the HTML renderer. Everything else goes to the sidecar as .fodt: HTML
+	// carries a single @page rule and would flatten a document's sections onto one
+	// sheet (#2849), which is the whole of what #2827 set out to fix.
+	if format == "html" {
+		out := []byte(renderDocHTML(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID)))
+		c.Header("Content-Disposition", contentDisposition(doc.Title+"."+spec.ext))
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Data(http.StatusOK, spec.mime, out)
+		return
+	}
 
-	out := []byte(page)
-	if format != "html" {
-		if !h.converter.Enabled() {
-			converterUnavailable(c, converter.ErrDisabled)
-			return
-		}
-		converted, err := h.converter.Convert(c, out, "html", format)
-		if err != nil {
-			converterUnavailable(c, err)
-			return
-		}
-		out = converted
+	if !h.converter.Enabled() {
+		converterUnavailable(c, converter.ErrDisabled)
+		return
+	}
+	src := []byte(renderDocFODT(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID)))
+	out, err := h.converter.Convert(c, src, "fodt", format)
+	if err != nil {
+		converterUnavailable(c, err)
+		return
 	}
 
 	c.Header("Content-Disposition", contentDisposition(doc.Title+"."+spec.ext))
