@@ -21,14 +21,18 @@ func registerTasksWrite(s *mcp.Server, c *client.Client) {
 		Description: "Create a task on a board (or a subtask, via parent_number/parent_id). Give it a title plus " +
 			"any of description, priority, due_date, start_date, estimate_hours, assignees and tags. Column defaults " +
 			"to the board's leftmost. Dates are ISO ('2026-08-21') or RFC3339 — relative wording like 'завтра' is not " +
-			"parsed here, resolve it to a date first.",
+			"parsed here, resolve it to a date first. When a parent is given, creating a subtask whose title already " +
+			"matches a live subtask of that parent is rejected (pass allow_duplicate_titles to override) — this keeps " +
+			"a repeated decomposition from spawning duplicates.",
 	}, createTask(c))
 
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "tessera_create_subtasks",
 		Description: "Create several subtasks under one parent in a single call — the way to decompose a big task. " +
 			"Each item takes a title plus optional description, priority, due_date, estimate_hours, assignees and tags. " +
-			"A failing item doesn't roll back the rest: the result lists created and failed separately.",
+			"A failing item doesn't roll back the rest: the result lists created and failed separately. Re-running is " +
+			"safe: an item whose title already matches a live subtask of the parent is skipped (reported under " +
+			"skipped_existing), not duplicated — pass allow_duplicate_titles to force creation.",
 	}, createSubtasks(c))
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -69,12 +73,13 @@ type taskFieldsInput struct {
 }
 
 type createTaskInput struct {
-	BoardID           string `json:"board_id,omitempty" jsonschema:"the board UUID to create on (not needed when a parent is given)"`
-	Column            string `json:"column,omitempty" jsonschema:"target column name or UUID; defaults to the board's leftmost column"`
-	WorkspaceID       string `json:"workspace_id,omitempty" jsonschema:"workspace UUID — needed with parent_number, and to resolve assignee names/emails"`
-	ParentID          string `json:"parent_id,omitempty" jsonschema:"create this as a subtask of the given task UUID"`
-	ParentNumber      int64  `json:"parent_number,omitempty" jsonschema:"create this as a subtask of the given task #number (with workspace_id)"`
-	CreateMissingTags bool   `json:"create_missing_tags,omitempty" jsonschema:"create tags that don't exist in the project yet; default false so a typo can't litter the project"`
+	BoardID              string `json:"board_id,omitempty" jsonschema:"the board UUID to create on (not needed when a parent is given)"`
+	Column               string `json:"column,omitempty" jsonschema:"target column name or UUID; defaults to the board's leftmost column"`
+	WorkspaceID          string `json:"workspace_id,omitempty" jsonschema:"workspace UUID — needed with parent_number, and to resolve assignee names/emails"`
+	ParentID             string `json:"parent_id,omitempty" jsonschema:"create this as a subtask of the given task UUID"`
+	ParentNumber         int64  `json:"parent_number,omitempty" jsonschema:"create this as a subtask of the given task #number (with workspace_id)"`
+	CreateMissingTags    bool   `json:"create_missing_tags,omitempty" jsonschema:"create tags that don't exist in the project yet; default false so a typo can't litter the project"`
+	AllowDuplicateTitles bool   `json:"allow_duplicate_titles,omitempty" jsonschema:"with a parent, allow creating a subtask whose title already matches a live subtask; default false rejects the duplicate"`
 	taskFieldsInput
 }
 
@@ -102,6 +107,15 @@ func createTask(c *client.Client) mcp.ToolHandlerFor[createTaskInput, createdTas
 			parent, err := resolveTaskDetail(ctx, c, in.ParentID, in.WorkspaceID, in.ParentNumber)
 			if err != nil {
 				return nil, createdTaskOut{}, fmt.Errorf("resolve parent: %w", err)
+			}
+			// Idempotency backstop: a stateless re-run that re-reads a task it
+			// already decomposed must not spawn a second child with the same title.
+			if !in.AllowDuplicateTitles {
+				if ex, dup := liveChildTitles(parent)[normTitle(in.Title)]; dup {
+					return nil, createdTaskOut{}, fmt.Errorf(
+						"subtask %q already exists under the parent (%s) — pass allow_duplicate_titles:true to create another",
+						strings.TrimSpace(in.Title), childRef(ex))
+				}
 			}
 			// A subtask lives on its parent's board and column.
 			boardID, columnID = parent.BoardID, parent.ColumnID
@@ -239,11 +253,12 @@ func taskURL(ctx context.Context, c *client.Client, boardID string, t model.Task
 // ── create_subtasks ───────────────────────────────────────────────────────────
 
 type createSubtasksInput struct {
-	TaskID            string            `json:"task_id,omitempty" jsonschema:"the parent task UUID"`
-	WorkspaceID       string            `json:"workspace_id,omitempty" jsonschema:"workspace UUID (with number) to resolve the parent, and to resolve assignee names/emails"`
-	Number            int64             `json:"number,omitempty" jsonschema:"the parent's per-workspace task number, e.g. 252"`
-	Items             []taskFieldsInput `json:"items" jsonschema:"the subtasks to create, in order"`
-	CreateMissingTags bool              `json:"create_missing_tags,omitempty" jsonschema:"create tags that don't exist in the project yet; default false"`
+	TaskID               string            `json:"task_id,omitempty" jsonschema:"the parent task UUID"`
+	WorkspaceID          string            `json:"workspace_id,omitempty" jsonschema:"workspace UUID (with number) to resolve the parent, and to resolve assignee names/emails"`
+	Number               int64             `json:"number,omitempty" jsonschema:"the parent's per-workspace task number, e.g. 252"`
+	Items                []taskFieldsInput `json:"items" jsonschema:"the subtasks to create, in order"`
+	CreateMissingTags    bool              `json:"create_missing_tags,omitempty" jsonschema:"create tags that don't exist in the project yet; default false"`
+	AllowDuplicateTitles bool              `json:"allow_duplicate_titles,omitempty" jsonschema:"create items even when a live subtask of the parent already has the same title; default false skips them into skipped_existing"`
 }
 
 type failedItemOut struct {
@@ -251,9 +266,18 @@ type failedItemOut struct {
 	Error string `json:"error"`
 }
 
+// skippedItemOut is an item that was not created because a live subtask of the
+// parent already carried the same title — the anti-duplicate guard.
+type skippedItemOut struct {
+	Title          string `json:"title"`
+	ExistingID     string `json:"existing_id"`
+	ExistingNumber *int64 `json:"existing_number,omitempty"`
+}
+
 type createSubtasksOut struct {
 	ParentID string           `json:"parent_id"`
 	Created  []createdTaskOut `json:"created,omitempty"`
+	Skipped  []skippedItemOut `json:"skipped_existing,omitempty"`
 	Failed   []failedItemOut  `json:"failed,omitempty"`
 }
 
@@ -267,8 +291,25 @@ func createSubtasks(c *client.Client) mcp.ToolHandlerFor[createSubtasksInput, cr
 			return nil, createSubtasksOut{}, err
 		}
 
+		// Index the parent's existing live children so a re-run — the night
+		// agent's stateless passes re-read the task and re-decompose it — skips
+		// what it already made instead of duplicating it. Newly created items are
+		// folded in too, so identical titles within one batch collapse as well.
+		var seen map[string]model.Task
+		if !in.AllowDuplicateTitles {
+			seen = liveChildTitles(parent)
+		}
+
 		out := createSubtasksOut{ParentID: parent.ID}
 		for _, item := range in.Items {
+			if seen != nil {
+				if ex, dup := seen[normTitle(item.Title)]; dup {
+					out.Skipped = append(out.Skipped, skippedItemOut{
+						Title: item.Title, ExistingID: ex.ID, ExistingNumber: ex.Number,
+					})
+					continue
+				}
+			}
 			spec, sErr := buildTaskSpec(ctx, c, parent.BoardID, in.WorkspaceID, item, in.CreateMissingTags)
 			if sErr != nil {
 				out.Failed = append(out.Failed, failedItemOut{Title: item.Title, Error: sErr.Error()})
@@ -283,9 +324,41 @@ func createSubtasks(c *client.Client) mcp.ToolHandlerFor[createSubtasksInput, cr
 				ID: created.task.ID, Number: created.task.Number, Title: created.task.Title,
 				ParentID: parent.ID, Warnings: created.warnings,
 			})
+			if seen != nil {
+				seen[normTitle(created.task.Title)] = model.Task{
+					ID: created.task.ID, Title: created.task.Title, Number: created.task.Number,
+				}
+			}
 		}
 		return nil, out, nil
 	}
+}
+
+// normTitle collapses a title to a comparison key so a re-run doesn't create a
+// second child that only differs by case or surrounding whitespace.
+func normTitle(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
+
+// liveChildTitles indexes a parent's non-archived subtasks by normalized title.
+// It backs the create-time anti-duplicate guard; archived children are ignored so
+// re-creating a title that was deliberately archived still works.
+func liveChildTitles(parent model.TaskDetail) map[string]model.Task {
+	m := make(map[string]model.Task, len(parent.Subtasks))
+	for _, st := range parent.Subtasks {
+		if st.ArchivedAt != nil {
+			continue
+		}
+		m[normTitle(st.Title)] = st
+	}
+	return m
+}
+
+// childRef renders an existing child as #number when known, else its id — for
+// the "already exists" message.
+func childRef(t model.Task) string {
+	if t.Number != nil {
+		return fmt.Sprintf("#%d", *t.Number)
+	}
+	return t.ID
 }
 
 // ── update_task ───────────────────────────────────────────────────────────────

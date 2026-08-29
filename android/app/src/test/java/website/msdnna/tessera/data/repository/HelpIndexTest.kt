@@ -27,6 +27,19 @@ class HelpIndexTest {
     private val imageRe = Regex("""!\[[^]]*]\(([^)\s]+)""")
     private val languages = listOf("ru", "en")
 
+    /**
+     * Markdown as the reader sees it — code stripped out.
+     *
+     * An article about the editor quotes the syntax it teaches: `![имя](адрес)`
+     * in a backtick span is a specimen, not a picture, and «адрес» is not a file
+     * anyone can bundle. The same holds for a fenced block. Only what renders as
+     * a real image or a real link is this suite's business.
+     */
+    private fun prose(markdown: String): String =
+        markdown
+            .replace(Regex("""(?s)```.*?```"""), "")
+            .replace(Regex("""`[^`\n]*`"""), "")
+
     @Test
     fun `the index is bundled and not empty`() {
         assertThat(repo.articles()).isNotEmpty()
@@ -75,7 +88,7 @@ class HelpIndexTest {
         assertThat(names).isNotEmpty()
         for (lang in languages) {
             for (a in repo.articles()) {
-                val body = repo.body(a.content(lang).path) ?: continue
+                val body = prose(repo.body(a.content(lang).path) ?: continue)
                 for (m in imageRe.findAll(body)) {
                     val src = m.groupValues[1]
                     if (src.startsWith("http") || src.startsWith("//") || src.startsWith("data:")) continue
@@ -115,13 +128,19 @@ class HelpIndexTest {
 
     @Test
     fun `cross-links between articles point at slugs that exist`() {
-        val slugs = repo.articles().map { it.slug }.toSet()
+        // The manual is one text for both clients, so an article the app ships can
+        // legitimately link to one it does not (the admin topics are web-only).
+        // What must never happen is a link to nothing at all: a typo'd slug is
+        // dead on the site too. `RichContent` keeps the web-only ones as ordinary
+        // server links — a tap opens the manual on the site.
+        val all = repo.index().articles.map { it.slug }.toSet()
+        assertThat(all).isNotEmpty()
         for (lang in languages) {
             for (a in repo.articles()) {
-                val body = repo.body(a.content(lang).path) ?: continue
+                val body = prose(repo.body(a.content(lang).path) ?: continue)
                 for (m in linkRe.findAll(body)) {
                     val target = m.groupValues[1].removePrefix("/help/")
-                    assertThat(slugs).contains(target)
+                    assertThat(all).contains(target)
                 }
             }
         }

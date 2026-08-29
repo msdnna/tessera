@@ -14,7 +14,9 @@ import website.msdnna.tessera.data.preferences.dataStore
 /**
  * Puts the app into a known state in front of a live e2e backend: server URL
  * pointed at :8092, DataStore wiped, and (by default) a freshly seeded
- * workspace with the account already logged in.
+ * workspace with the account already logged in. [accountName] overrides the
+ * seeded user's display name — it is visible in comment and journal rows, so the
+ * screenshot run picks its own instead of the default fixture name.
  *
  * The reset is not optional bookkeeping. [AppContainer], [RetrofitClient] and the
  * `preferencesDataStore` delegate are all singletons, and both tiers share their
@@ -26,6 +28,7 @@ import website.msdnna.tessera.data.preferences.dataStore
 class E2eRule(
     private val seed: Boolean = true,
     private val login: Boolean = true,
+    private val accountName: String? = null,
 ) : TestRule {
 
     /** The seeded workspace/board. Only valid when the rule was built with `seed = true`. */
@@ -45,7 +48,10 @@ class E2eRule(
                 runBlocking { AppContainer.prefs.setServerUrl(E2eBackend.serverUrl) }
 
                 if (seed) {
-                    fixture = E2eBackend.seedBoard(E2eBackend.registerAccount())
+                    val account = accountName
+                        ?.let { E2eBackend.registerAccount(it) }
+                        ?: E2eBackend.registerAccount()
+                    fixture = E2eBackend.seedBoard(account)
                     if (login) authenticate()
                 }
 

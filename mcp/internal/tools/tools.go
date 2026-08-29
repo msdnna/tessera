@@ -10,7 +10,6 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"tessera-mcp/internal/client"
-	"tessera-mcp/internal/model"
 	"tessera-mcp/internal/rank"
 )
 
@@ -361,16 +360,9 @@ func nextTask(c *client.Client) mcp.ToolHandlerFor[nextTaskInput, nextTaskOut] {
 
 func getTask(c *client.Client) mcp.ToolHandlerFor[getTaskInput, taskDetailOut] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in getTaskInput) (*mcp.CallToolResult, taskDetailOut, error) {
-		var d model.TaskDetail
-		var err error
-		switch {
-		case in.TaskID != "":
-			d, err = c.GetTask(ctx, in.TaskID)
-		case in.WorkspaceID != "" && in.Number != 0:
-			d, err = c.GetTaskByNumber(ctx, in.WorkspaceID, in.Number)
-		default:
-			return nil, taskDetailOut{}, fmt.Errorf("provide task_id, or workspace_id + number")
-		}
+		// resolveTaskDetail loads full detail (subtasks/tags/assignees) for both the
+		// by-id and by-number paths — the raw by-number endpoint returns a stub.
+		d, err := resolveTaskDetail(ctx, c, in.TaskID, in.WorkspaceID, in.Number)
 		if err != nil {
 			return nil, taskDetailOut{}, err
 		}

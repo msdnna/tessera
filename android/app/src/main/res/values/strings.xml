@@ -585,8 +585,11 @@
     <string name="notif_routes_hint">Сверху вниз — срабатывает первое подходящее.</string>
     <string name="notif_section_schedule">Дедлайны и напоминания</string>
     <string name="notif_add_action">Добавить %1$s</string>
-    <string name="notif_add_channel">Канал</string>
-    <string name="notif_add_rule">Правило</string>
+    <!-- Строчные: слово подставляется в середину «Добавить %1$s», а не стоит
+         отдельной подписью — с заглавной получалось «Добавить Канал». Веб
+         (locales/ru/settings.json) пишет «Добавить канал». -->
+    <string name="notif_add_channel">канал</string>
+    <string name="notif_add_rule">правило</string>
 
     <!-- Уведомления: карточка канала -->
     <string name="notif_type_device">Системные уведомления</string>
