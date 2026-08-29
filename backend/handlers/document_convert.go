@@ -193,9 +193,9 @@ func (h *API) ImportDocument(c *gin.Context) {
 	// with the editor's schema and saves it through the ordinary content
 	// endpoint, so an import is validated by exactly the same code as typing.
 	//
-	// The page geometry travels *beside* the HTML rather than in it, because it
-	// is not in the HTML to begin with — see importedPageSetup.
-	page, differ := importedPageSetup(ext, src, doc, name)
+	// The page geometry is read from the source bytes rather than from the HTML,
+	// because it is not in the HTML to begin with — see importedPageSetup.
+	body, page, differ := importedPageSetup(body, ext, src, doc, name)
 	c.JSON(http.StatusCreated, gin.H{
 		"document":               viewDocument(doc),
 		"html":                   body,
@@ -208,21 +208,26 @@ func (h *API) ImportDocument(c *gin.Context) {
 	})
 }
 
-// importedPageSetup reads the source file's page geometry, reduced to the one
-// sheet this stage of #2821 gives a document.
+// importedPageSetup gives the imported body its page geometry: a section break
+// per boundary the source file had, and the first section's geometry for the
+// document node.
 //
 // Read from the original bytes, not from the converted HTML, because the
 // conversion is where it is lost: LibreOffice emits an @page rule for the first
 // section only, so a file whose landscape section holds the wide table arrives
-// as portrait HTML and the table hangs off the sheet. Widest() picks the section
-// that fits the most, and `differ` is handed to the client so it can say the
-// sheet is a reduction rather than a copy.
+// as portrait HTML with nothing but a page break where the boundary was.
+// LayoutSections puts the geometry back at that break (#2848).
+//
+// When the breaks cannot be matched to the sections it falls back to what
+// #2821 did — one sheet, the widest section — and returns `differ` so the client
+// can say the sheet is a reduction of the file rather than a copy of it. A laid
+// out document is not a reduction, so it never carries that warning.
 //
 // A file we cannot read geometry from is not an error: .doc, .rtf, .txt and
 // .html have none to give, and the client falls back to the editor's default.
 // Returns nil in that case, so the response carries `page: null` and the client
 // has one thing to test rather than a zero geometry to second-guess.
-func importedPageSetup(ext string, src []byte, doc db.Document, name string) (*office.PageSetup, bool) {
+func importedPageSetup(body, ext string, src []byte, doc db.Document, name string) (string, *office.PageSetup, bool) {
 	setups, err := office.PageSetups(ext, src)
 	if err != nil {
 		if !errors.Is(err, office.ErrNoPageSetup) {
@@ -231,13 +236,19 @@ func importedPageSetup(ext string, src []byte, doc db.Document, name string) (*o
 			// cosmetic one.
 			log.Printf("document import %s (%q): page setup unreadable: %v", doc.ID, name, err)
 		}
-		return nil, false
+		return body, nil, false
+	}
+	if office.SectionsInDocumentOrder(ext) {
+		if out, ok := office.LayoutSections(body, setups); ok {
+			first := setups[0]
+			return out, &first, false
+		}
 	}
 	widest, ok := office.Widest(setups)
 	if !ok {
-		return nil, false
+		return body, nil, false
 	}
-	return &widest, office.Differ(setups)
+	return body, &widest, office.Differ(setups)
 }
 
 // createImportedDocument makes the empty document an import will fill in, doing

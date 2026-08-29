@@ -119,6 +119,43 @@ describe('importOfficeFile', () => {
     expect(body).toContain('vm.max_map_count=262144')
   })
 
+  it('reads the section breaks the server laid out into the body (#2848)', async () => {
+    // The contract between the two halves of the import, pinned from the side
+    // that has to parse it: the server puts a break where the source file
+    // changed page geometry, written exactly like this
+    // (internal/office/sections.go), and the geometry of the *first* section
+    // arrives as `page` for the document node.
+    const api = stubApi({
+      importFile: vi.fn(async () => ({
+        data: {
+          document: { id: 'doc-1', updated_at: 'v1' },
+          html:
+            '<p>Портретная часть.</p>' +
+            `<div data-section-break="" data-page='{"w":297,"h":210,"ml":10,"mr":10,"mt":15,"mb":15}'></div>` +
+            '<p>Альбомная часть с широкой таблицей.</p>',
+          page: { w: 210, h: 297, ml: 20, mr: 20, mt: 20, mb: 20 },
+          sections_differ: false,
+        },
+      })),
+    })
+    const { sectionsDiffer } = await importOfficeFile(api, 'ws-1', fakeFile('Договор.docx'))
+    const content = api.updateContent.mock.calls[0][1]
+
+    const kinds = content.content.map((n) => n.type)
+    expect(kinds).toEqual(['paragraph', 'sectionBreak', 'paragraph'])
+    expect(content.content[1].attrs.page).toEqual({
+      w: 297,
+      h: 210,
+      ml: 10,
+      mr: 10,
+      mt: 15,
+      mb: 15,
+    })
+    expect(content.attrs.page).toEqual({ w: 210, h: 297, ml: 20, mr: 20, mt: 20, mb: 20 })
+    // Nothing was reduced to one sheet, so the import must not warn that it was.
+    expect(sectionsDiffer).toBe(false)
+  })
+
   it('passes the folder the user is looking at', async () => {
     const api = stubApi()
     await importOfficeFile(api, 'ws-1', fakeFile('a.docx'), { parentId: 'parent-9' })

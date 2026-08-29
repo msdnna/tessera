@@ -288,8 +288,8 @@ func odtPageSetups(raw []byte) ([]PageSetup, error) {
 // in named page layouts rather than inline with the text, so these come back in
 // declaration order — which is not document order. That is good enough for what
 // the caller does with them (widest wins, and "do they differ" is order-free)
-// and is the reason the multi-section work of stage 2 will need the .fodt
-// rewrite rather than an extension of this.
+// but not for laying the sections back over the body, which is why
+// SectionsInDocumentOrder refuses ODF.
 func odfPageSetups(r io.Reader) ([]PageSetup, error) {
 	dec := xml.NewDecoder(r)
 	var out []PageSetup
