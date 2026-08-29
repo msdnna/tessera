@@ -188,6 +188,22 @@ export function contentWidthMM(page) {
 // width is the difference between fitting and not.
 export const GUTTER_LANE_PX = 88
 
+const px = (v) => `${Math.round(v * 100) / 100}px`
+
+/** The sheet's left padding: the document's margin, or the gutter lane if wider. */
+function leftPadPx(page) {
+  return Math.max(mmToPx(page.ml), GUTTER_LANE_PX)
+}
+
+/**
+ * How wide the sheet is drawn — the paper plus whatever the gutter lane added to
+ * its left padding, so that the content column keeps the document's own
+ * printable width (see GUTTER_LANE_PX).
+ */
+export function sheetWidthPx(page) {
+  return mmToPx(page.w) + (leftPadPx(page) - mmToPx(page.ml))
+}
+
 /**
  * CSS custom properties that size the sheet in the editor.
  *
@@ -199,13 +215,132 @@ export const GUTTER_LANE_PX = 88
  * @returns {Record<string,string>} custom properties, px values
  */
 export function pageStyleVars(page) {
-  const px = (v) => `${Math.round(v * 100) / 100}px`
-  const left = Math.max(mmToPx(page.ml), GUTTER_LANE_PX)
   return {
-    '--doc-sheet-w': px(mmToPx(page.w) + (left - mmToPx(page.ml))),
-    '--doc-sheet-pl': px(left),
+    '--doc-sheet-w': px(sheetWidthPx(page)),
+    '--doc-sheet-pl': px(leftPadPx(page)),
     '--doc-sheet-pr': px(mmToPx(page.mr)),
     '--doc-sheet-pt': px(mmToPx(page.mt)),
     '--doc-sheet-pb': px(mmToPx(page.mb)),
   }
+}
+
+// ---------------------------------------------------------------------------
+// Sections (#2827)
+//
+// A document with a section break has more than one geometry: the doc node's
+// own attribute covers everything up to the first break, and each break carries
+// the geometry of what follows it. Section geometry lives here, next to the
+// single-page one, because the two answer the same question — how wide is the
+// column this block is laid out in — and the editor must not have two different
+// ideas of that.
+
+/** Node type of a section break. Named here so docPage has no import cycle. */
+export const SECTION_BREAK = 'sectionBreak'
+
+/**
+ * The document's top-level blocks, as plain `{ type, attrs }` pairs.
+ *
+ * Takes either a ProseMirror node or the stored JSON, because both are handed
+ * around here — the editor plugin has a node, the Vue component has the value it
+ * was given as a prop, and both ask the same questions about sections. A node
+ * carries a Fragment in `content`, so the array check tells the two apart.
+ *
+ * @param {*} doc document node or its JSON
+ * @returns {Array<{type:string,attrs:object}>}
+ */
+export function topBlocks(doc) {
+  if (!doc) return []
+  if (Array.isArray(doc.content)) {
+    return doc.content.map((n) => ({ type: n?.type, attrs: n?.attrs || {} }))
+  }
+  const out = []
+  doc.forEach?.((node) => out.push({ type: node.type?.name, attrs: node.attrs || {} }))
+  return out
+}
+
+/**
+ * The geometry of every section, in document order.
+ *
+ * The first entry is always the doc node's own geometry (or the default), so a
+ * document without a single break yields exactly one section and everything
+ * below behaves as it did before #2827.
+ *
+ * @param {Array<{type?:string,attrs?:object}>} blocks top-level blocks
+ * @param {*} docPage stored doc.attrs.page
+ * @returns {Array<object>} normalised geometries, one per section
+ */
+export function sectionPages(blocks, docPage) {
+  const pages = [normalizePage(docPage)]
+  for (const b of blocks || []) {
+    if (b?.type === SECTION_BREAK) pages.push(normalizePage(b.attrs?.page))
+  }
+  return pages
+}
+
+/**
+ * Which section each top-level block belongs to.
+ *
+ * The break itself is counted as the first block of the section it opens — it
+ * is where the new geometry starts, and drawing it at the old width would put a
+ * "Альбомная, A4" caption on a portrait band.
+ *
+ * @param {Array<{type?:string}>} blocks top-level blocks
+ * @returns {number[]} section index per block
+ */
+export function sectionIndexes(blocks) {
+  let section = 0
+  return (blocks || []).map((b) => {
+    if (b?.type === SECTION_BREAK) section += 1
+    return section
+  })
+}
+
+/**
+ * The widest of the given geometries — the one the sheet is sized to.
+ *
+ * The sheet is a single element (ProseMirror owns it), so its width has to
+ * cover the widest band; narrower sections are drawn inside it, each with its
+ * own paper edge.
+ *
+ * @param {Array<object>} pages normalised geometries
+ * @returns {object} the widest one
+ */
+export function widestPage(pages) {
+  let widest = pages?.[0] || { ...DEFAULT_PAGE }
+  for (const p of pages || []) if (sheetWidthPx(p) > sheetWidthPx(widest)) widest = p
+  return widest
+}
+
+/**
+ * Inline style for one top-level block, laid out as a band of its section.
+ *
+ * The band is the block itself: ProseMirror has no decoration that wraps a
+ * *range* of top-level nodes, so there is no element to be the section's sheet.
+ * Each block therefore carries its own paper — its width is the section's sheet,
+ * its horizontal padding the section's margins — and the bands stack into a
+ * continuous page. That only works with the vertical spacing moved inside the
+ * background (DocEditor.vue, `.sectioned`), because a margin between two blocks
+ * would show the work area through the paper.
+ *
+ * @param {object} page the section's geometry, normalised
+ * @param {boolean} [first] first block of its section — takes the top margin
+ * @param {boolean} [last] last block of its section — takes the bottom margin
+ * @returns {Record<string,string>} CSS declarations
+ */
+export function bandStyle(page, first = false, last = false) {
+  const style = {
+    width: px(sheetWidthPx(page)),
+    'padding-left': px(leftPadPx(page)),
+    'padding-right': px(mmToPx(page.mr)),
+  }
+  if (first) style['padding-top'] = px(mmToPx(page.mt))
+  if (last) style['padding-bottom'] = px(mmToPx(page.mb))
+  return style
+}
+
+/** A style object as a `style` attribute value — what a decoration takes. */
+export function styleAttr(style) {
+  return Object.entries(style)
+    .map(([k, v]) => `${k}: ${v}`)
+    .join('; ')
 }

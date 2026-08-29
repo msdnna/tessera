@@ -230,6 +230,15 @@ func renderDocNode(b *strings.Builder, n docNode, ctx docRenderCtx) {
 		b.WriteString("</code></pre>\n")
 	case "horizontalRule":
 		b.WriteString("<hr>\n")
+	case "sectionBreak":
+		// All the HTML route can carry of a section (#2827) is the page break.
+		// The geometry cannot come with it: LibreOffice ignores named @page rules
+		// when it imports HTML, so a second geometry written here would be
+		// dropped and the export would claim a landscape section it did not
+		// produce (measured in #2821). A break that lands on a new page is
+		// therefore the honest half of the feature this renderer can deliver;
+		// carrying the geometry too is what the .fodt renderer is for.
+		b.WriteString(`<div style="page-break-before: always"></div>` + "\n")
 	case "hardBreak":
 		b.WriteString("<br>")
 	case "image":

@@ -40,6 +40,10 @@ var allowedDocNodes = map[string]bool{
 	// which is worse than useless as a block tree. So it stays a file and the
 	// document holds a reference to it — one atom block rendered by pdf.js.
 	"pdfEmbed": true,
+	// Boundary between two page geometries inside one document (#2827). It is
+	// the second node allowed to carry "page", and the reason checkDocPage is
+	// reached from two places below rather than only from the doc node.
+	"sectionBreak": true,
 }
 
 var allowedDocMarks = map[string]bool{
@@ -181,8 +185,13 @@ func checkDocNode(n docNode, depth int, count *int) error {
 		}
 	}
 	if raw, ok := n.Attrs["page"]; ok {
-		if n.Type != "doc" {
-			return errors.New(`attribute "page" is only allowed on the doc node`)
+		// Two carriers, and only two: the doc node holds the geometry of
+		// everything up to the first section break, each break holds the
+		// geometry of what follows it (#2827). A "page" anywhere else is a
+		// client writing into a place nothing reads, which would then be
+		// exported blind the day something did.
+		if n.Type != "doc" && n.Type != "sectionBreak" {
+			return errors.New(`attribute "page" is only allowed on the doc and sectionBreak nodes`)
 		}
 		if err := checkDocPage(raw); err != nil {
 			return err

@@ -11,7 +11,7 @@ import {
   ReorderTwoOutline,
 } from '@vicons/ionicons5'
 import { docExtensions, editableDoc } from '@/utils/docSchema'
-import { normalizePage, pageStyleVars, samePage } from '@/utils/docPage'
+import { pageStyleVars, samePage, sectionPages, topBlocks, widestPage } from '@/utils/docPage'
 import { BLOCK_ID_META, ensureBlockIds } from '@/utils/docExtensions/blockId'
 import {
   blockAtClientY,
@@ -127,10 +127,10 @@ function build() {
       if (transaction?.getMeta(REMOTE_META)) return
       emit('change', json)
     },
-    onTransaction: ({ editor: e }) => {
+    onTransaction: ({ editor: e, transaction: tr }) => {
       syncSlash(e)
       reportBlock(e)
-      syncPage(e)
+      syncPage(e, !!tr?.docChanged)
     },
     onBlur: () => {
       // The parent gives the block back on blur, so forget which one we claimed —
@@ -149,12 +149,27 @@ build()
 // transaction: onTransaction fires on each keystroke, and re-rendering the
 // wrapper's style object that often would put a full style recalculation into
 // the typing path for a value that changes when a dialog is used.
-const page = ref(normalizePage(props.modelValue?.attrs?.page))
-function syncPage(e) {
-  const next = normalizePage(e.state.doc.attrs.page)
-  if (!samePage(next, page.value)) page.value = next
+//
+// With section breaks (#2827) the sheet is sized to the *widest* section rather
+// than to the document's own geometry: ProseMirror owns a single element for the
+// whole document, so that element has to cover the widest band, and the bands
+// themselves are drawn on the blocks (sectionBreak.js). `sectioned` switches the
+// stylesheet between the two renderings — a document without a break must look
+// exactly as it did before this existed.
+function sheetOf(doc) {
+  const pages = sectionPages(topBlocks(doc), doc?.attrs?.page)
+  return { page: widestPage(pages), sectioned: pages.length > 1 }
 }
-const pageStyle = computed(() => pageStyleVars(page.value))
+const sheet = ref(sheetOf(props.modelValue))
+function syncPage(e, docChanged) {
+  // The geometry lives in the tree, so only a change to the tree can move it.
+  if (!docChanged) return
+  const next = sheetOf(e.state.doc)
+  if (next.sectioned !== sheet.value.sectioned || !samePage(next.page, sheet.value.page)) {
+    sheet.value = next
+  }
+}
+const pageStyle = computed(() => pageStyleVars(sheet.value.page))
 
 // The block the caret is in, reported on change so the parent can claim it.
 // Emitting only on change keeps a lock refresh from being sent on every
@@ -631,6 +646,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
            this task set out to avoid. -->
       <editor-content
         class="doc-content md"
+        :class="{ sectioned: sheet.sectioned }"
         :style="pageStyle"
         :editor="editor"
         @scroll="onScroll"
@@ -861,9 +877,10 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
    with 20mm margins — the sheet still draws if the style object is missing, as
    it is in a unit test that mounts the editor without a document.
    Still no pagination: the sheet is one continuous page, which is why there are
-   no page breaks and no running headers here (the per-section version of this
-   is задача 2826 — written without the hash, because the theming guard in
-   cx-doc-editor.spec.js reads four hex digits after one as a literal colour). */
+   no page breaks and no running headers here. Sections — several geometries in
+   one document — are задача 2827 below (task numbers are written without the
+   hash, because the theming guard in cx-doc-editor.spec.js reads four hex digits
+   after one as a literal colour). */
 .doc-content :deep(.ProseMirror) {
   outline: none;
   box-sizing: border-box;
@@ -877,6 +894,70 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   min-height: 480px;
   color: var(--t-text1);
   line-height: 1.6;
+}
+/* Sectioned rendering (задача 2827). A document with a section break has more
+   than one page geometry, and one element cannot be two sheets — so the paper
+   moves off the ProseMirror element and onto the blocks: each top-level block is
+   a band of its section, as wide as that section's sheet and padded by its
+   margins (sectionBreak.js builds the decorations, docPage.js bandStyle the
+   numbers). The bands stack into a continuous page.
+   That is also why the vertical spacing has to move out of the margins here: a
+   margin between two blocks is outside both backgrounds, so it would show a
+   strip of the work area through the middle of the sheet. The padding below
+   replaces the per-element margins of the single-sheet rendering — uniform,
+   because it now has to be a number this file knows rather than whatever each
+   element inherited.
+   Everything is scoped to .sectioned on purpose: a document without a break must
+   render byte-for-byte as it did before, and the cheapest guarantee of that is
+   that none of these rules apply to it. */
+.doc-content.sectioned :deep(.ProseMirror) {
+  max-width: none;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.doc-content.sectioned :deep(.ProseMirror > *) {
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding-top: 8px;
+  border-left: 1px solid var(--t-border);
+  border-right: 1px solid var(--t-border);
+  background: var(--t-surface);
+}
+.doc-content.sectioned :deep(.ProseMirror > h1),
+.doc-content.sectioned :deep(.ProseMirror > h2),
+.doc-content.sectioned :deep(.ProseMirror > h3) {
+  padding-top: 14px;
+}
+/* The sheet's own top and bottom edges. Mid-document the bands meet, so only the
+   first and last block close the paper. */
+.doc-content.sectioned :deep(.ProseMirror > *:first-child) {
+  border-top: 1px solid var(--t-border);
+  border-radius: 8px 8px 0 0;
+}
+.doc-content.sectioned :deep(.ProseMirror > *:last-child) {
+  border-bottom: 1px solid var(--t-border);
+  border-radius: 0 0 8px 8px;
+}
+/* The break itself: a labelled rule that says what the section after it is. It
+   is a band like any other block, so the caption sits inside the new section's
+   margins and its width already shows the reader what changed. */
+.doc-content :deep(.doc-section-break) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-top: 1px dashed var(--t-border);
+  color: var(--t-text2);
+  font-size: 12px;
+  user-select: none;
+}
+.doc-content :deep(.doc-section-break .sb-caption) {
+  padding: 4px 8px;
+}
+.doc-content :deep(.doc-section-break.ProseMirror-selectednode) {
+  outline: 2px solid var(--t-primary);
+  outline-offset: -2px;
 }
 .doc-content :deep(.ProseMirror p.is-editor-empty:first-child::before) {
   content: attr(data-placeholder);

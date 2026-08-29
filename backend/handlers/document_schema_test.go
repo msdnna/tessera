@@ -48,6 +48,14 @@ func TestValidateDocContent(t *testing.T) {
 		{"page too large", `{"type":"doc","attrs":{"page":{"w":210,"h":99999,"ml":20,"mr":20,"mt":20,"mb":20}},"content":[]}`, true},
 		{"negative margin", `{"type":"doc","attrs":{"page":{"w":210,"h":297,"ml":-20,"mr":20,"mt":20,"mb":20}},"content":[]}`, true},
 		{"margins leave no column", `{"type":"doc","attrs":{"page":{"w":210,"h":297,"ml":110,"mr":110,"mt":20,"mb":20}},"content":[]}`, true},
+		// Section breaks (#2827): the second — and last — node allowed to carry a
+		// geometry, held to exactly the same shape as the doc node's. A break
+		// whose geometry went unchecked would reach the export just as directly.
+		{"section break", `{"type":"doc","content":[{"type":"paragraph"},{"type":"sectionBreak","attrs":{"page":{"w":297,"h":210,"ml":15,"mr":15,"mt":20,"mb":20}}},{"type":"paragraph"}]}`, false},
+		{"section break without a geometry", `{"type":"doc","content":[{"type":"sectionBreak","attrs":{"page":null}}]}`, false},
+		{"section break with a broken geometry", `{"type":"doc","content":[{"type":"sectionBreak","attrs":{"page":{"w":297,"h":210,"ml":200,"mr":200,"mt":20,"mb":20}}}]}`, true},
+		{"section break with a non-numeric side", `{"type":"doc","content":[{"type":"sectionBreak","attrs":{"page":{"w":"297mm","h":210,"ml":15,"mr":15,"mt":20,"mb":20}}}]}`, true},
+		{"page on a table cell", `{"type":"doc","content":[{"type":"table","content":[{"type":"tableRow","content":[{"type":"tableCell","attrs":{"page":{"w":210,"h":297,"ml":20,"mr":20,"mt":20,"mb":20}},"content":[{"type":"paragraph"}]}]}]}]}`, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

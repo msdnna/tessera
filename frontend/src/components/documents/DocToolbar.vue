@@ -18,6 +18,7 @@ import {
   withOrientation,
   withSize,
 } from '@/utils/docPage'
+import { sectionAt } from '@/utils/docExtensions/sectionBreak'
 
 const { t } = useI18n()
 
@@ -168,9 +169,17 @@ const pickers = computed(() => {
 // settings changed once and then left alone, and putting them in the row beside
 // bold and italic would give the least-used controls the same weight as the
 // most-used ones.
+//
+// Since #2827 the panel edits the geometry of the section the caret is in
+// rather than the document's. For a document without a section break the two
+// are the same thing (sectionAt returns the doc attribute as section 0), so
+// nothing changes for it; for one with breaks this is what makes the panel
+// usable at all — a second popover hanging off the break would be the same four
+// controls twice, and the caret already says which section is meant.
 const page = computed(() => {
   void tick.value
-  return normalizePage(props.editor?.state?.doc?.attrs?.page)
+  const state = props.editor?.state
+  return state ? sectionAt(state).page : normalizePage(null)
 })
 const landscape = computed(() => isLandscape(page.value))
 
@@ -213,10 +222,16 @@ const marginOptions = computed(() =>
 )
 
 function applyPage(next) {
-  props.editor?.chain().focus().setDocPage(next).run()
+  props.editor?.chain().focus().setSectionPage(next).run()
 }
 function setOrientation(v) {
   applyPage(withOrientation(page.value, v))
+}
+// Closes the panel: the break lands below the caret, and a popover left open
+// over it would hide the thing the click just produced.
+function insertBreak() {
+  openPicker.value = ''
+  props.editor?.chain().focus().insertSectionBreak().run()
 }
 
 // One popover open at a time, and it closes on pick: naive's own click trigger
@@ -384,6 +399,20 @@ function pick(picker, value) {
                that matches no preset legible instead of leaving every chip
                unlit with no explanation. -->
           <p class="ps-current" data-testid="doc-page-dims">{{ pageDims }}</p>
+          <!-- The break belongs here rather than in the toolbar row: what the
+               three pickers above change is *this* section, and the only way to
+               get a second one is from the same panel (#2827). It is drawn as a
+               full-width action instead of a chip because it inserts something
+               into the document rather than setting a value. -->
+          <button
+            type="button"
+            class="ps-action"
+            data-testid="doc-section-break"
+            @click="insertBreak()"
+          >
+            {{ $t('documents.toolbar.page.sectionBreak') }}
+          </button>
+          <p class="ps-hint">{{ $t('documents.toolbar.page.sectionHint') }}</p>
         </div>
       </n-popover>
     </div>
@@ -553,5 +582,27 @@ function pick(picker, value) {
   color: var(--t-text3);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+/* The section break, behind its own divider: everything above sets a value on
+   the current section, this one adds another section (задача 2827). */
+.ps-action {
+  width: 100%;
+  margin-top: 2px;
+  padding: 6px 9px;
+  border: 1px solid var(--t-border);
+  border-top-width: 1px;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t-text1);
+  font-size: 12px;
+  cursor: pointer;
+}
+.ps-action:hover {
+  background: var(--t-hover);
+}
+.ps-hint {
+  margin: 0;
+  color: var(--t-text3);
+  font-size: 11px;
 }
 </style>

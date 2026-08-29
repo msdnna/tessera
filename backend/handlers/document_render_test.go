@@ -44,6 +44,15 @@ var nodeRendering = map[string]struct {
 	"tableRow":       {docNode{Type: "tableRow"}, "<tr></tr>"},
 	"tableHeader":    {docNode{Type: "tableHeader", Content: []docNode{txt("H")}}, "<th>H</th>"},
 	"tableCell":      {docNode{Type: "tableCell", Attrs: map[string]any{"colspan": float64(2)}}, `<td colspan="2">`},
+	// The geometry deliberately does not appear in the markup — see the case in
+	// renderDocNode for why writing it here would be a lie.
+	"sectionBreak": {
+		docNode{Type: "sectionBreak", Attrs: map[string]any{"page": map[string]any{
+			"w": float64(297), "h": float64(210),
+			"ml": float64(15), "mr": float64(15), "mt": float64(20), "mb": float64(20),
+		}}},
+		`<div style="page-break-before: always"></div>`,
+	},
 	"pdfEmbed": {
 		docNode{Type: "pdfEmbed", Attrs: map[string]any{"src": "/api/documents/asset?doc=1", "name": "смета.pdf"}},
 		`<a href="/api/documents/asset?doc=1">PDF: смета.pdf</a>`,

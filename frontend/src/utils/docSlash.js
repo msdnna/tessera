@@ -8,6 +8,7 @@ import {
   ListOutline,
   RemoveOutline,
   ReorderFourOutline,
+  TabletLandscapeOutline,
   TextOutline,
 } from '@vicons/ionicons5'
 import { i18n } from '@/i18n'
@@ -112,6 +113,25 @@ const SLASH_DEFS = [
     icon: RemoveOutline,
     keywords: ['разделитель', 'линия', 'hr', 'divider', 'rule'],
     apply: (chain) => chain.setHorizontalRule().run(),
+  },
+  {
+    key: 'sectionBreak',
+    group: 'insert',
+    icon: TabletLandscapeOutline,
+    // The word people reach for is the thing they want to change, not the
+    // mechanism: "альбомная" and "landscape" find this before "разрыв" does.
+    keywords: [
+      'раздел',
+      'секция',
+      'разрыв',
+      'ориентация',
+      'альбомная',
+      'section',
+      'break',
+      'orientation',
+      'landscape',
+    ],
+    apply: (chain) => chain.insertSectionBreak().run(),
   },
   {
     key: 'codeBlock',
