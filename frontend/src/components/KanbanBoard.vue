@@ -60,6 +60,7 @@ import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
 import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
+import { countWithSubtasks } from '@/utils/boardCounts'
 import { filterBoardTasks } from '@/utils/taskFilter'
 import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
@@ -1062,6 +1063,38 @@ function tagColumnName(tag) {
 // Estimation rollup per milestone column: Σ of the column's tasks' own estimates,
 // formatted in the project's unit. Shown only when grouped by milestone.
 const estCfg = computed(() => wsStore.estimationFor(board.value?.project_id))
+// Header counts per column: cards, and cards + all their subtasks (#2850). Built
+// once per list/filter change rather than per render — each entry walks the whole
+// subtask tree.
+//
+// Neither map alone is enough. The filtered one is keyed by TOP-LEVEL tasks only
+// (see utils/taskFilter), so walking it would stop one level down and undercount
+// a deeper tree; the raw one knows every level but ignores the composer, so a
+// filter-narrowed parent would still report all of its children. Merged, the
+// narrowed list wins where the filter produced one and the raw map supplies the
+// levels below it.
+const countSubtaskMap = computed(() => ({
+  ...subtasksByParent.value,
+  ...filteredSubtasksByParent.value,
+}))
+const countsByCol = computed(() => {
+  const out = {}
+  for (const [key, arr] of Object.entries(lists.value)) {
+    out[key] = countWithSubtasks(arr, countSubtaskMap.value)
+  }
+  return out
+})
+const EMPTY_COUNTS = { tasks: 0, total: 0 }
+function colCounts(dcol) {
+  return countsByCol.value[dcol.key] || EMPTY_COUNTS
+}
+function colCountTitle(dcol) {
+  const c = colCounts(dcol)
+  return c.total > c.tasks
+    ? t('board.column.countTitle', { tasks: c.tasks, total: c.total })
+    : t('board.column.countTitleFlat', { tasks: c.tasks })
+}
+
 function columnEstimate(dcol) {
   if (groupMode.value !== 'milestone') return ''
   const v = sumEstimates(lists.value[dcol.key] || [])
@@ -1808,11 +1841,14 @@ async function restoreFromArchive(taskId) {
               >
                 <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
                 <span class="strip-title">{{ dcol.name }}</span>
-                <span class="strip-count">{{ (lists[dcol.key] || []).length }}</span>
+                <span class="strip-count" :title="colCountTitle(dcol)">{{
+                  colCounts(dcol).tasks
+                }}</span>
               </div>
               <ColumnHeader
                 :dcol="dcol"
-                :count="(lists[dcol.key] || []).length"
+                :count="colCounts(dcol).tasks"
+                :total="colCounts(dcol).total"
                 :estimate="columnEstimate(dcol)"
                 :editable="groupMode === 'status'"
                 :is-done="groupMode === 'status' && dcol.key === doneColumnId"

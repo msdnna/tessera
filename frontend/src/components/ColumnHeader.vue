@@ -20,7 +20,8 @@ const { t } = useI18n()
 
 const props = defineProps({
   dcol: { type: Object, required: true },
-  count: { type: Number, default: 0 },
+  count: { type: Number, default: 0 }, // cards in the column
+  total: { type: Number, default: 0 }, // same, with every subtask folded in (#2850)
   estimate: { type: String, default: '' }, // Σ estimate (milestone grouping); '' = hide
   editable: { type: Boolean, default: false }, // status columns only
   isDone: { type: Boolean, default: false }, // task-completing column
@@ -51,6 +52,16 @@ const statusVariant = computed(() => (props.isDone ? 'filled' : 'outline'))
 // Tint the glyph with the column colour; fall back to the accent (same as the
 // column's top bar) rather than a dull grey so the icon always reads as coloured.
 const statusColor = computed(() => props.dcol.color || 'var(--t-primary)')
+
+// The count chip reads `5 (12)`: cards before the brackets, the total including
+// subtasks inside them. A column whose cards have no children would only show
+// `5 (5)`, so there the brackets are dropped instead of repeating the number.
+const showTotal = computed(() => props.total > props.count)
+const countTitle = computed(() =>
+  showTotal.value
+    ? t('board.column.countTitle', { tasks: props.count, total: props.total })
+    : t('board.column.countTitleFlat', { tasks: props.count }),
+)
 
 function toggleDone() {
   emit('set-done', props.isDone ? null : props.dcol.key)
@@ -170,7 +181,9 @@ async function removeCol() {
       @blur="commitRename"
     />
     <span v-else class="col-title col-drag" @dblclick="startRename">{{ dcol.name }}</span>
-    <span class="count">{{ count }}</span>
+    <span class="count" :title="countTitle" data-testid="column-count"
+      >{{ count }}<span v-if="showTotal" class="count-sub">{{ ' (' + total + ')' }}</span></span
+    >
     <span v-if="estimate" class="col-est" :title="t('board.column.estimateTitle')"
       >Σ {{ estimate }}</span
     >
@@ -265,6 +278,10 @@ async function removeCol() {
   background: var(--t-hover);
   border-radius: 10px;
   padding: 0 7px;
+  white-space: nowrap;
+}
+.count-sub {
+  opacity: 0.7;
 }
 .col-est {
   font-size: 11px;
