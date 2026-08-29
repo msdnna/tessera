@@ -136,11 +136,15 @@ img { max-width: 100%; }
 `
 
 // defaultDocPage is the geometry of a document that has never been through the
-// page dialog: A4 with 20 mm margins, which is what LibreOffice assumed on its
-// own before this rule existed. Keeping the two in step is deliberate — an
-// export of an untouched document has to come out looking exactly as it did
-// before #2821, or the feature would silently reformat every archived document
-// the first time it was re-exported.
+// page dialog: A4 with 20 mm margins, which is what the editor's own sheet shows
+// (DEFAULT_PAGE in utils/docPage.js). Screen and export agree on purpose.
+//
+// It is NOT what an export produced before #2821: with no @page rule at all
+// LibreOffice falls back to A4 with 20/10/10/10 mm — measured against the
+// sidecar, not assumed. So the sheet size of an untouched document is unchanged
+// while its margins widen slightly (print column 180 mm → 170 mm) the first time
+// it is re-exported. Matching the editor was judged the better of the two, since
+// the old asymmetry was LibreOffice's default rather than anyone's choice.
 var defaultDocPage = map[string]float64{"w": 210, "h": 297, "ml": 20, "mr": 20, "mt": 20, "mb": 20}
 
 // docPageCSS turns the doc node's page geometry into the @page rule the
@@ -151,7 +155,7 @@ var defaultDocPage = map[string]float64{"w": 210, "h": 297, "ml": 20, "mr": 20, 
 // sidecar rather than assumed. Named page rules (@page landscape { … }), which
 // is how CSS expresses more than one geometry per document, are dropped by the
 // same importer — that limit is what makes per-section orientation a separate
-// job (#2826) instead of a longer version of this function.
+// job (#2827) instead of a longer version of this function.
 func docPageCSS(attrs map[string]any) string {
 	page := defaultDocPage
 	if given, ok := attrs["page"].(map[string]any); ok {

@@ -200,7 +200,7 @@ func TestDocxRejectsImpossibleGeometry(t *testing.T) {
 	}
 }
 
-// Flat ODF is the format stage 2 will export through (#2826), and it is already
+// Flat ODF is the format stage 2 will export through (#2827), and it is already
 // an accepted import — so its geometry is read by the same entry point.
 func TestFodtPageSetup(t *testing.T) {
 	raw := []byte(`<?xml version="1.0"?>
