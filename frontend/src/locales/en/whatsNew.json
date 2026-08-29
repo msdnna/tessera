@@ -1,4 +1,11 @@
 {
+  "helpDeepDive": {
+    "title": "A much bigger manual: boards, tasks, tags and milestones",
+    "item1": "“Working with tasks” is no longer a catch-all: documents, notes, reminders, milestones and notifications are sections in their own right now, and boards got a section of their own. It holds six new articles — the board bar, columns, view setup, saved views, a walkthrough of every visualisation (list, calendar, timeline, Gantt, matrix) and the archive.",
+    "item2": "Tasks are covered in depth too: the task window and the fields a card doesn't show, the description editor with its toolbar, attachments, mermaid diagrams and full-screen mode, threaded comments with mentions, every link type, task documents and the change history.",
+    "item3": "There is a new article on tags — prefixes, colours, two-segment pills and the one catch: a tag in the task window is created with Enter. “Milestones” now covers managing them, and “Documents” was rewritten to be about the section itself: the tree, the table of contents, discussions, version history, approvals, import and export.",
+    "item4": "The sign-in and sign-up screens gained an RU/EN switch, and on first visit the language follows your browser settings."
+  },
   "helpEnglish": {
     "title": "The help centre in English",
     "item1": "With the interface in English, help centre articles now open in English. An article that hasn't been translated yet stays in Russian, so nothing goes missing from the manual.",
