@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
-	"mime/multipart"
 	"regexp"
 	"sort"
 	"strings"
@@ -21,6 +21,7 @@ import (
 
 	"tessera/internal/converter"
 	"tessera/internal/db"
+	"tessera/internal/office"
 	"tessera/middleware"
 )
 
@@ -30,7 +31,11 @@ import (
 // HTML↔blocks step on the side that owns the schema:
 //
 //	import  file -> [sidecar] -> HTML -> (client) TipTap -> blocks
-//	export  blocks -> (server) renderDocHTML -> HTML -> [sidecar] -> file
+//	export  blocks -> (server) renderDocFODT -> .fodt -> [sidecar] -> file
+//
+// Export went through HTML until #2849; it now goes through flat ODF, because
+// HTML has one page geometry and a document with sections needs several. The
+// HTML renderer stays for format=html, which needs no sidecar at all.
 //
 // Parsing stays in the browser because the editor's schema *is* the allow-list
 // (docImport.js says so, and D9's template upload already works this way): a
@@ -191,6 +196,10 @@ func (h *API) ImportDocument(c *gin.Context) {
 	// The body comes back as HTML rather than as blocks: the client parses it
 	// with the editor's schema and saves it through the ordinary content
 	// endpoint, so an import is validated by exactly the same code as typing.
+	//
+	// The page geometry is read from the source bytes rather than from the HTML,
+	// because it is not in the HTML to begin with — see importedPageSetup.
+	body, page, differ := importedPageSetup(body, ext, src, doc, name)
 	c.JSON(http.StatusCreated, gin.H{
 		"document":               viewDocument(doc),
 		"html":                   body,
@@ -198,7 +207,52 @@ func (h *API) ImportDocument(c *gin.Context) {
 		"images_dropped_reason":  images.summary(),
 		"images_dropped_reasons": images.counts(),
 		"source_file_name":       name,
+		"page":                   page,
+		"sections_differ":        differ,
 	})
+}
+
+// importedPageSetup gives the imported body its page geometry: a section break
+// per boundary the source file had, and the first section's geometry for the
+// document node.
+//
+// Read from the original bytes, not from the converted HTML, because the
+// conversion is where it is lost: LibreOffice emits an @page rule for the first
+// section only, so a file whose landscape section holds the wide table arrives
+// as portrait HTML with nothing but a page break where the boundary was.
+// LayoutSections puts the geometry back at that break (#2848).
+//
+// When the breaks cannot be matched to the sections it falls back to what
+// #2821 did — one sheet, the widest section — and returns `differ` so the client
+// can say the sheet is a reduction of the file rather than a copy of it. A laid
+// out document is not a reduction, so it never carries that warning.
+//
+// A file we cannot read geometry from is not an error: .doc, .rtf, .txt and
+// .html have none to give, and the client falls back to the editor's default.
+// Returns nil in that case, so the response carries `page: null` and the client
+// has one thing to test rather than a zero geometry to second-guess.
+func importedPageSetup(body, ext string, src []byte, doc db.Document, name string) (string, *office.PageSetup, bool) {
+	setups, err := office.PageSetups(ext, src)
+	if err != nil {
+		if !errors.Is(err, office.ErrNoPageSetup) {
+			// Worth a line but not a failed import: the document's text converted
+			// fine, and refusing it over its margins would trade a real import for a
+			// cosmetic one.
+			log.Printf("document import %s (%q): page setup unreadable: %v", doc.ID, name, err)
+		}
+		return body, nil, false
+	}
+	if office.SectionsInDocumentOrder(ext) {
+		if out, ok := office.LayoutSections(body, setups); ok {
+			first := setups[0]
+			return out, &first, false
+		}
+	}
+	widest, ok := office.Widest(setups)
+	if !ok {
+		return body, nil, false
+	}
+	return body, &widest, office.Differ(setups)
 }
 
 // createImportedDocument makes the empty document an import will fill in, doing
@@ -285,20 +339,27 @@ func (h *API) ExportDocument(c *gin.Context) {
 			return
 		}
 	}
-	page := renderDocHTML(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID))
+	// format=html is the one export rendered here and handed straight back, so it
+	// keeps the HTML renderer. Everything else goes to the sidecar as .fodt: HTML
+	// carries a single @page rule and would flatten a document's sections onto one
+	// sheet (#2849), which is the whole of what #2827 set out to fix.
+	if format == "html" {
+		out := []byte(renderDocHTML(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID)))
+		c.Header("Content-Disposition", contentDisposition(doc.Title+"."+spec.ext))
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Data(http.StatusOK, spec.mime, out)
+		return
+	}
 
-	out := []byte(page)
-	if format != "html" {
-		if !h.converter.Enabled() {
-			converterUnavailable(c, converter.ErrDisabled)
-			return
-		}
-		converted, err := h.converter.Convert(c, out, "html", format)
-		if err != nil {
-			converterUnavailable(c, err)
-			return
-		}
-		out = converted
+	if !h.converter.Enabled() {
+		converterUnavailable(c, converter.ErrDisabled)
+		return
+	}
+	src := []byte(renderDocFODT(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID)))
+	out, err := h.converter.Convert(c, src, "fodt", format)
+	if err != nil {
+		converterUnavailable(c, err)
+		return
 	}
 
 	c.Header("Content-Disposition", contentDisposition(doc.Title+"."+spec.ext))

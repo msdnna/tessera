@@ -108,8 +108,15 @@ describe('document sheet', () => {
   // field: a bounded, centred surface standing on a differently coloured work
   // area. Without a shadow token to lean on, that pair of backgrounds is the
   // only thing carrying the contrast, so both halves are asserted.
+  // The bound is a custom property now that the sheet is sized from the
+  // document's own page geometry (задача 2821), but it still has to be a bound:
+  // the fallback is asserted alongside it because the style object is absent
+  // whenever the editor is mounted without a document, and a sheet that grows to
+  // the full work area in that case is the unbounded text field this guards.
   it('bounds the editing surface and stands it on the work area', () => {
-    expect(css).toMatch(/\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*max-width:\s*\d+px/)
+    expect(css).toMatch(
+      /\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*max-width:\s*var\(--doc-sheet-w,\s*\d+px\)/,
+    )
     expect(css).toMatch(
       /\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*background:\s*var\(--t-surface\)/,
     )

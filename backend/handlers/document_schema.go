@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
+
+	"tessera/internal/office"
 )
 
 // The document body is a ProseMirror tree (documents.content, jsonb). On the
@@ -37,6 +40,10 @@ var allowedDocNodes = map[string]bool{
 	// which is worse than useless as a block tree. So it stays a file and the
 	// document holds a reference to it — one atom block rendered by pdf.js.
 	"pdfEmbed": true,
+	// Boundary between two page geometries inside one document (#2827). It is
+	// the second node allowed to carry "page", and the reason checkDocPage is
+	// reached from two places below rather than only from the doc node.
+	"sectionBreak": true,
 }
 
 var allowedDocMarks = map[string]bool{
@@ -89,9 +96,21 @@ var allowedDocAttrs = map[string]bool{
 	// Fill and grid of a table cell, kept from an imported document (#2756).
 	"backgroundColor": true,
 	"borderColor":     true,
-	"name":       true, // pdfEmbed — the original file name, shown in its header
-	"size":       true, // pdfEmbed — byte size, shown before the file is fetched
+	"name":            true, // pdfEmbed — the original file name, shown in its header
+	"size":            true, // pdfEmbed — byte size, shown before the file is fetched
+	// Page geometry, on the doc node only (#2821). Unlike every other entry here
+	// it carries an object rather than a scalar, and it is the one attribute that
+	// leaves the document: the export writes it into an @page rule LibreOffice
+	// obeys. checkDocPage below is therefore stricter than the bare membership
+	// test the rest of this list gets.
+	"page": true,
 }
+
+// docPageKeys are the six numbers a page geometry consists of, in millimetres:
+// the sheet and its four margins. Exactly these — no more (an unknown key is a
+// client writing something we would then export blind) and no fewer (a partial
+// geometry has no sensible completion, since "the rest of A4" is a guess).
+var docPageKeys = []string{"w", "h", "ml", "mr", "mt", "mb"}
 
 const (
 	maxDocDepth       = 32
@@ -165,6 +184,19 @@ func checkDocNode(n docNode, depth int, count *int) error {
 			return fmt.Errorf("attribute %q is not allowed on %s", k, n.Type)
 		}
 	}
+	if raw, ok := n.Attrs["page"]; ok {
+		// Two carriers, and only two: the doc node holds the geometry of
+		// everything up to the first section break, each break holds the
+		// geometry of what follows it (#2827). A "page" anywhere else is a
+		// client writing into a place nothing reads, which would then be
+		// exported blind the day something did.
+		if n.Type != "doc" && n.Type != "sectionBreak" {
+			return errors.New(`attribute "page" is only allowed on the doc and sectionBreak nodes`)
+		}
+		if err := checkDocPage(raw); err != nil {
+			return err
+		}
+	}
 	for _, m := range n.Marks {
 		if !allowedDocMarks[m.Type] {
 			return fmt.Errorf("mark type %q is not allowed", m.Type)
@@ -185,6 +217,57 @@ func checkDocNode(n docNode, depth int, count *int) error {
 		if err := checkDocNode(child, depth+1, count); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkDocPage validates the page geometry carried on the doc node.
+//
+// It is checked here rather than only in the editor because this value is the
+// one piece of document content the export turns into CSS the sidecar acts on:
+// `@page { size: <w>mm <h>mm }` built from an unchecked number is how a document
+// body ends up steering LibreOffice. A null is fine and common — ProseMirror
+// serialises an unset attribute rather than omitting it, so every document saved
+// by the editor carries `page: null` until the user opens the page dialog.
+func checkDocPage(raw any) error {
+	if raw == nil {
+		return nil
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return errors.New("page must be an object")
+	}
+	if len(obj) != len(docPageKeys) {
+		return fmt.Errorf("page must have exactly %d keys", len(docPageKeys))
+	}
+	vals := make(map[string]float64, len(docPageKeys))
+	for _, k := range docPageKeys {
+		v, ok := obj[k]
+		if !ok {
+			return fmt.Errorf("page is missing %q", k)
+		}
+		// Only float64: JSON numbers decode as float64, so anything else is a
+		// string or a bool dressed up as a measurement.
+		f, ok := v.(float64)
+		if !ok || math.IsNaN(f) || math.IsInf(f, 0) {
+			return fmt.Errorf("page.%s must be a number", k)
+		}
+		vals[k] = f
+	}
+	for _, k := range []string{"w", "h"} {
+		if vals[k] < office.MinSide || vals[k] > office.MaxSide {
+			return fmt.Errorf("page.%s must be between %g and %g mm", k, office.MinSide, office.MaxSide)
+		}
+	}
+	for _, k := range []string{"ml", "mr", "mt", "mb"} {
+		if vals[k] < 0 {
+			return fmt.Errorf("page.%s must not be negative", k)
+		}
+	}
+	// Margins that meet leave no column to print in — a geometry the sheet cannot
+	// render and the export would turn into an empty page.
+	if vals["ml"]+vals["mr"] >= vals["w"] || vals["mt"]+vals["mb"] >= vals["h"] {
+		return errors.New("page margins leave no printable area")
 	}
 	return nil
 }

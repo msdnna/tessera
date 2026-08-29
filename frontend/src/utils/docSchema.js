@@ -11,9 +11,11 @@ import { BlockComments } from './docExtensions/blockComments'
 import { BlockLocks } from './docExtensions/blockLocks'
 import { BlockMove } from './docExtensions/blockMove'
 import { BlockStyle, STYLED_TYPES } from './docExtensions/blockStyle'
+import { DocPage } from './docExtensions/docPage'
 import { ImageDrop } from './docExtensions/imageDrop'
 import { InternalLink } from './docExtensions/internalLink'
 import { PdfEmbed } from './docExtensions/pdfEmbed'
+import { SectionBreak } from './docExtensions/sectionBreak'
 import { SlashMenu } from './docExtensions/slashMenu'
 import { darkSheetFill, darkSheetInk, darkSheetLine, hexColor } from './docColor'
 import { i18n } from '@/i18n'
@@ -53,6 +55,10 @@ export const ALLOWED_NODES = [
   // A PDF stays a file and is read in place (#2733) — see docPdf.js for why it
   // is not converted into blocks like every other imported format.
   'pdfEmbed',
+  // Where one page geometry ends and the next begins (#2827). An atom block,
+  // not a mark or a doc attribute, because a section boundary is a place in the
+  // document — see sectionBreak.js.
+  'sectionBreak',
 ]
 
 export const ALLOWED_MARKS = ['bold', 'italic', 'strike', 'underline', 'code', 'link', 'textStyle']
@@ -85,6 +91,10 @@ export const ALLOWED_ATTRS = [
   'level',
   'lineHeight',
   'name',
+  // Page geometry on the doc node (#2821) — the one attribute here that carries
+  // an object rather than a scalar, and the one the server validates by shape
+  // (checkDocPage) because the export turns it into an @page rule.
+  'page',
   'rel',
   'rowspan',
   'size',
@@ -332,6 +342,10 @@ export function docExtensions(opts = {}) {
     TextAlign.configure({ types: STYLED_TYPES }),
     BlockId,
     BlockStyle,
+    // Sheet size, orientation and margins, stored on the doc node (#2821).
+    DocPage,
+    // …and a second, third, … geometry inside the same document (#2827).
+    SectionBreak,
     BlockMove,
     BlockLocks.configure({ onBlocked: opts.onBlocked || (() => {}) }),
     BlockComments.configure({ onSelect: opts.onSelectComments || (() => {}) }),

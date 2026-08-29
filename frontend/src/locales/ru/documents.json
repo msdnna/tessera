@@ -81,6 +81,7 @@
     "taskList": { "label": "Список задач", "hint": "Чекбоксы" },
     "table": { "label": "Таблица 3×3", "hint": "С шапкой" },
     "horizontalRule": { "label": "Разделитель", "hint": "Горизонтальная линия" },
+    "sectionBreak": { "label": "Разрыв раздела", "hint": "Своя ориентация дальше" },
     "codeBlock": { "label": "Блок кода", "hint": "Моноширинный блок" },
     "image": { "label": "Изображение", "hint": "Выбрать файл" },
     "pdf": { "label": "PDF", "hint": "Вставить файл для чтения" }
@@ -124,6 +125,31 @@
       "system": "Системный",
       "serif": "С засечками",
       "mono": "Моноширинный"
+    },
+    "page": {
+      "title": "Параметры страницы: {size}, {orientation}",
+      "size": "Размер",
+      "orientation": "Ориентация",
+      "portrait": "Книжная",
+      "landscape": "Альбомная",
+      "marginsLabel": "Поля",
+      "sectionBreak": "Разрыв раздела",
+      "sectionHint": "Дальше начнётся новый раздел — со своими размером, ориентацией и полями",
+      "dims": "{w} × {h} мм, поля {margins} мм",
+      "sizes": {
+        "a3": "A3",
+        "a4": "A4",
+        "a5": "A5",
+        "custom": "свой размер",
+        "legal": "Legal",
+        "letter": "Letter"
+      },
+      "margins": {
+        "moderate": "Средние",
+        "narrow": "Узкие",
+        "normal": "Обычные",
+        "wide": "Широкие"
+      }
     }
   },
   "templates": {
@@ -208,7 +234,8 @@
       "templateSaved": "Шаблон сохранён",
       "imported": "Документ импортирован",
       "importedImagesDropped": "Документ импортирован, изображений пропущено: {count}",
-      "importedImagesDroppedWhy": "Документ импортирован, изображений пропущено: {count} ({reason})"
+      "importedImagesDroppedWhy": "Документ импортирован, изображений пропущено: {count} ({reason})",
+      "importedSectionsDiffer": "В исходном файле страницы разной ориентации или размера. Документ получил один лист — по самой широкой странице; проверьте параметры страницы."
     },
     "importedTitle": "Импортированный документ",
     "error": {
@@ -320,6 +347,9 @@
     "noSrc": "в блоке нет ссылки на файл",
     "noLink": "Сервер не вернул ссылку на файл",
     "unit": { "b": "Б", "kb": "КБ", "mb": "МБ", "gb": "ГБ" }
+  },
+  "section": {
+    "caption": "Дальше — {orientation} {size}"
   },
   "file": {
     "notPicked": "Файл не выбран",

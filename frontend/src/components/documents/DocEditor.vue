@@ -11,6 +11,7 @@ import {
   ReorderTwoOutline,
 } from '@vicons/ionicons5'
 import { docExtensions, editableDoc } from '@/utils/docSchema'
+import { pageStyleVars, samePage, sectionPages, topBlocks, widestPage } from '@/utils/docPage'
 import { BLOCK_ID_META, ensureBlockIds } from '@/utils/docExtensions/blockId'
 import {
   blockAtClientY,
@@ -126,9 +127,10 @@ function build() {
       if (transaction?.getMeta(REMOTE_META)) return
       emit('change', json)
     },
-    onTransaction: ({ editor: e }) => {
+    onTransaction: ({ editor: e, transaction: tr }) => {
       syncSlash(e)
       reportBlock(e)
+      syncPage(e, !!tr?.docChanged)
     },
     onBlur: () => {
       // The parent gives the block back on blur, so forget which one we claimed —
@@ -141,6 +143,33 @@ function build() {
 }
 
 build()
+
+// The sheet's geometry, mirrored out of the document into Vue so the CSS can
+// follow it (#2821). Compared before assigning rather than recomputed on every
+// transaction: onTransaction fires on each keystroke, and re-rendering the
+// wrapper's style object that often would put a full style recalculation into
+// the typing path for a value that changes when a dialog is used.
+//
+// With section breaks (#2827) the sheet is sized to the *widest* section rather
+// than to the document's own geometry: ProseMirror owns a single element for the
+// whole document, so that element has to cover the widest band, and the bands
+// themselves are drawn on the blocks (sectionBreak.js). `sectioned` switches the
+// stylesheet between the two renderings — a document without a break must look
+// exactly as it did before this existed.
+function sheetOf(doc) {
+  const pages = sectionPages(topBlocks(doc), doc?.attrs?.page)
+  return { page: widestPage(pages), sectioned: pages.length > 1 }
+}
+const sheet = ref(sheetOf(props.modelValue))
+function syncPage(e, docChanged) {
+  // The geometry lives in the tree, so only a change to the tree can move it.
+  if (!docChanged) return
+  const next = sheetOf(e.state.doc)
+  if (next.sectioned !== sheet.value.sectioned || !samePage(next.page, sheet.value.page)) {
+    sheet.value = next
+  }
+}
+const pageStyle = computed(() => pageStyleVars(sheet.value.page))
 
 // The block the caret is in, reported on change so the parent can claim it.
 // Emitting only on change keeps a lock refresh from being sent on every
@@ -615,7 +644,13 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
            main.css). Reusing it is the point: a document whose code blocks and
            links look different from a task description is exactly the mismatch
            this task set out to avoid. -->
-      <editor-content class="doc-content md" :editor="editor" @scroll="onScroll" />
+      <editor-content
+        class="doc-content md"
+        :class="{ sectioned: sheet.sectioned }"
+        :style="pageStyle"
+        :editor="editor"
+        @scroll="onScroll"
+      />
       <div
         v-if="slash.active"
         class="slash-menu"
@@ -835,21 +870,94 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
    the width of the three gutter buttons — 3×24 plus two 4px gaps plus the inset.
    The asymmetry is deliberate and maintained by hand: a lane narrower than the
    row would put the buttons on top of the first characters.
-   The width is visual only — this is still a block document, and page size,
-   margins and orientation remain export-time settings (задача 2733), so there
-   are no page breaks here. */
+   Width and padding come from the document's own page geometry (задача 2821):
+   pageStyleVars turns doc.attrs.page into the custom properties below, so a
+   landscape document gets a landscape sheet and an imported table laid out for
+   a 297mm page has the column it was measured against. The fallbacks are A4
+   with 20mm margins — the sheet still draws if the style object is missing, as
+   it is in a unit test that mounts the editor without a document.
+   Still no pagination: the sheet is one continuous page, which is why there are
+   no page breaks and no running headers here. Sections — several geometries in
+   one document — are задача 2827 below (task numbers are written without the
+   hash, because the theming guard in cx-doc-editor.spec.js reads four hex digits
+   after one as a literal colour). */
 .doc-content :deep(.ProseMirror) {
   outline: none;
   box-sizing: border-box;
-  max-width: 820px;
+  max-width: var(--doc-sheet-w, 820px);
   margin: 0 auto;
-  padding: 40px 40px 56px 88px;
+  padding: var(--doc-sheet-pt, 40px) var(--doc-sheet-pr, 40px) var(--doc-sheet-pb, 56px)
+    var(--doc-sheet-pl, 88px);
   border: 1px solid var(--t-border);
   border-radius: 8px;
   background: var(--t-surface);
   min-height: 480px;
   color: var(--t-text1);
   line-height: 1.6;
+}
+/* Sectioned rendering (задача 2827). A document with a section break has more
+   than one page geometry, and one element cannot be two sheets — so the paper
+   moves off the ProseMirror element and onto the blocks: each top-level block is
+   a band of its section, as wide as that section's sheet and padded by its
+   margins (sectionBreak.js builds the decorations, docPage.js bandStyle the
+   numbers). The bands stack into a continuous page.
+   That is also why the vertical spacing has to move out of the margins here: a
+   margin between two blocks is outside both backgrounds, so it would show a
+   strip of the work area through the middle of the sheet. The padding below
+   replaces the per-element margins of the single-sheet rendering — uniform,
+   because it now has to be a number this file knows rather than whatever each
+   element inherited.
+   Everything is scoped to .sectioned on purpose: a document without a break must
+   render byte-for-byte as it did before, and the cheapest guarantee of that is
+   that none of these rules apply to it. */
+.doc-content.sectioned :deep(.ProseMirror) {
+  max-width: none;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.doc-content.sectioned :deep(.ProseMirror > *) {
+  box-sizing: border-box;
+  margin: 0 auto;
+  padding-top: 8px;
+  border-left: 1px solid var(--t-border);
+  border-right: 1px solid var(--t-border);
+  background: var(--t-surface);
+}
+.doc-content.sectioned :deep(.ProseMirror > h1),
+.doc-content.sectioned :deep(.ProseMirror > h2),
+.doc-content.sectioned :deep(.ProseMirror > h3) {
+  padding-top: 14px;
+}
+/* The sheet's own top and bottom edges. Mid-document the bands meet, so only the
+   first and last block close the paper. */
+.doc-content.sectioned :deep(.ProseMirror > *:first-child) {
+  border-top: 1px solid var(--t-border);
+  border-radius: 8px 8px 0 0;
+}
+.doc-content.sectioned :deep(.ProseMirror > *:last-child) {
+  border-bottom: 1px solid var(--t-border);
+  border-radius: 0 0 8px 8px;
+}
+/* The break itself: a labelled rule that says what the section after it is. It
+   is a band like any other block, so the caption sits inside the new section's
+   margins and its width already shows the reader what changed. */
+.doc-content :deep(.doc-section-break) {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-top: 1px dashed var(--t-border);
+  color: var(--t-text2);
+  font-size: 12px;
+  user-select: none;
+}
+.doc-content :deep(.doc-section-break .sb-caption) {
+  padding: 4px 8px;
+}
+.doc-content :deep(.doc-section-break.ProseMirror-selectednode) {
+  outline: 2px solid var(--t-primary);
+  outline-offset: -2px;
 }
 .doc-content :deep(.ProseMirror p.is-editor-empty:first-child::before) {
   content: attr(data-placeholder);
@@ -913,6 +1021,23 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   width: 100%;
   margin: 10px 0;
   table-layout: fixed;
+}
+/* Last resort for a table that is wider than the printable column even after
+   the sheet has been given the document's real geometry — an imported table
+   whose author let it run into the margins in Word too, say.
+   It is scroll containment and not a proportional squeeze, and that is a
+   limit of CSS rather than a choice: prosemirror-tables writes the authored
+   column widths into a <colgroup> and an inline `width` on the table, and per
+   CSS 2.1 §17.5.2 a table's used width is the *greater* of its own width and
+   the sum of its columns — so `max-width` on the table is inert here. Measured
+   in Chromium rather than assumed (задача 2821): with max-width:100% the 933px
+   table stayed 934px wide and hung 244px past the column; with this rule it is
+   clipped at the column edge and scrolls.
+   Squeezing the columns for real would mean overriding prosemirror-tables'
+   TableView and re-deriving the widths on every resize drag, which trades a
+   sticking-out table for a fight with upstream on every column drag. */
+.doc-content :deep(.ProseMirror .tableWrapper) {
+  overflow-x: auto;
 }
 .doc-content :deep(.ProseMirror th),
 .doc-content :deep(.ProseMirror td) {
