@@ -47,6 +47,8 @@
     "doneTitle": "Completing column",
     "dragTitle": "Drag by the header",
     "estimateTitle": "Total estimate of the milestone tasks",
+    "countTitle": "Tasks in the column: {tasks}; in brackets — {total} including subtasks",
+    "countTitleFlat": "Tasks in the column: {tasks}",
     "colorDefault": "Default",
     "rename": "Rename",
     "setDone": "Make it completing",
