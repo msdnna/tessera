@@ -1095,6 +1095,24 @@ function colCountTitle(dcol) {
     : t('board.column.countTitleFlat', { tasks: c.tasks })
 }
 
+// Composer-bar "showing" counter (#2851): how much the current facet set leaves
+// on the board, across every layout. Counted from filteredTasks rather than by
+// summing the column headers — with tag grouping a task carrying two column tags
+// sits in both lists, and the arithmetic sum would count it twice.
+const shownCounts = computed(() => countWithSubtasks(filteredTasks.value, countSubtaskMap.value))
+const shownCountLabel = computed(() => {
+  const c = shownCounts.value
+  return c.total > c.tasks
+    ? t('board.composer.shown', { tasks: c.tasks, total: c.total })
+    : t('board.composer.shownFlat', { tasks: c.tasks })
+})
+const shownCountTitle = computed(() => {
+  const c = shownCounts.value
+  return c.total > c.tasks
+    ? t('board.composer.shownTitle', { tasks: c.tasks, total: c.total })
+    : t('board.composer.shownTitleFlat', { tasks: c.tasks })
+})
+
 function columnEstimate(dcol) {
   if (groupMode.value !== 'milestone') return ''
   const v = sumEstimates(lists.value[dcol.key] || [])
@@ -1601,6 +1619,9 @@ async function restoreFromArchive(taskId) {
             data-testid="board-search"
             :placeholder="t('board.composer.search')"
           />
+          <span class="composer-count" data-testid="composer-count" :title="shownCountTitle">
+            {{ shownCountLabel }}
+          </span>
           <button
             v-if="hasClearableFacets"
             class="facet-clear"
@@ -2190,6 +2211,15 @@ async function restoreFromArchive(taskId) {
 .composer-search::placeholder {
   color: var(--t-text3);
 }
+/* Reference figure, not a control — flat neutral grey, no accent gradient. */
+.composer-count {
+  flex: none;
+  color: var(--t-text3);
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  padding-left: 6px;
+}
 .facet-clear {
   flex: none;
   border: none;
@@ -2352,6 +2382,10 @@ async function restoreFromArchive(taskId) {
   /* On mobile the search is shrinkable so it never forces horizontal overflow. */
   .composer-search {
     min-width: 0;
+  }
+  /* The bar is already squeezed there; the counter is the first thing to drop. */
+  .composer-count {
+    display: none;
   }
 }
 .vp {

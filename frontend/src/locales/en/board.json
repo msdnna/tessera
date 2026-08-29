@@ -17,7 +17,11 @@
     "add": "Add grouping / sorting / filter",
     "search": "Search by title…",
     "clear": "Clear all",
-    "back": "Back"
+    "back": "Back",
+    "shown": "showing: {tasks} ({total})",
+    "shownFlat": "showing: {tasks}",
+    "shownTitle": "Tasks shown: {tasks}; in brackets — {total} including subtasks",
+    "shownTitleFlat": "Tasks shown: {tasks} (no subtasks)"
   },
   "tools": {
     "autoOn": "Auto-sort by dependencies (on)",
