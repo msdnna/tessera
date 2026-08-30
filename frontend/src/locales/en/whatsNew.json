@@ -1,4 +1,14 @@
 {
+  "taskCounts": {
+    "title": "Task counts: in columns and in the filter",
+    "item1": "A column's header counter now shows not just its own cards but the total including subtasks at every level — `3 (6)`: cards before the brackets, the full total inside. With no subtasks the brackets are dropped; hovering explains both numbers (the same tooltip on a collapsed column).",
+    "item2": "The filter row gained a `shown: 2 (4)` readout — how many tasks are visible right now, subtasks included. It counts the filtered tasks and is shared across every layout (board, list, calendar, timeline, Gantt, matrix); when grouping by tags, a task with two tags is counted once."
+  },
+  "pageLayout": {
+    "title": "Document page setup and sections",
+    "item1": "The document editor toolbar gained a “Page setup” button: sheet size (A3/A4/A5/Letter/Legal), portrait or landscape orientation and margins. The geometry lives in the document itself — it survives copying, versions and restore, and a landscape sheet is drawn landscape. Importing `.docx`/`.odt` now takes the page size and orientation from the source file.",
+    "item2": "Section breaks arrived: from that point on the document starts a new section with its own sheet size, orientation and margins — a landscape table no longer flips the whole document. Sections are visible right in the editor, and the three pickers edit the section the caret sits in."
+  },
   "helpDeepDive": {
     "title": "A much bigger manual: boards, tasks, tags and milestones",
     "item1": "“Working with tasks” is no longer a catch-all: documents, notes, reminders, milestones and notifications are sections in their own right now, and boards got a section of their own. It holds six new articles — the board bar, columns, view setup, saved views, a walkthrough of every visualisation (list, calendar, timeline, Gantt, matrix) and the archive.",
