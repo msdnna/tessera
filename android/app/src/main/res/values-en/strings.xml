@@ -574,8 +574,11 @@
     <string name="notif_routes_hint">Top to bottom — the first matching rule wins.</string>
     <string name="notif_section_schedule">Due dates and reminders</string>
     <string name="notif_add_action">Add %1$s</string>
-    <string name="notif_add_channel">Channel</string>
-    <string name="notif_add_rule">Rule</string>
+    <!-- Lower case: the word is substituted into «Add %1$s», it is not a label
+         of its own — capitalised it read «Add Channel». The web
+         (locales/en/settings.json) says «Add channel». -->
+    <string name="notif_add_channel">channel</string>
+    <string name="notif_add_rule">rule</string>
 
     <!-- Notifications: channel row -->
     <string name="notif_type_device">System notifications</string>

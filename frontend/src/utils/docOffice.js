@@ -1,5 +1,6 @@
 import { htmlToDoc } from './docImport'
 import { normalizeOfficeHtml } from './docOfficeHtml'
+import { isPageSetup } from './docPage'
 import { PDF_EXTENSION, formatFileSize, isPdfFile, pdfDocument } from './docPdf'
 import { i18n } from '@/i18n'
 
@@ -86,7 +87,7 @@ export function importAccept(extra = ['.md', '.markdown', '.json']) {
  * @param {string} wsId workspace id
  * @param {File} file picked file
  * @param {{parentId?: string}} [opts]
- * @returns {Promise<{document: object, imagesDropped: number, imagesDroppedReason: string}>}
+ * @returns {Promise<{document: object, sectionsDiffer: boolean, imagesDropped: number, imagesDroppedReason: string}>}
  */
 export async function importOfficeFile(api, wsId, file, opts = {}) {
   if (!file) throw new Error(i18n.global.t('documents.file.notPicked'))
@@ -117,16 +118,43 @@ export async function importOfficeFile(api, wsId, file, opts = {}) {
   // blocks of the source document are dropped at parse time (#2755).
   const content = res.data?.pdf
     ? pdfDocument(res.data.pdf)
-    : htmlToDoc(normalizeOfficeHtml(res.data.html || ''))
+    : withImportedPage(htmlToDoc(normalizeOfficeHtml(res.data.html || '')), res.data.page)
   const saved = await api.updateContent(doc.id, content, doc.updated_at)
   return {
     document: saved?.data?.updated_at ? { ...doc, updated_at: saved.data.updated_at } : doc,
+    // True when the source file's sections disagreed about page geometry, so the
+    // caller can say the sheet is a reduction of the file rather than a copy of
+    // it. Absent on an older backend, hence the coercion (#2821).
+    sectionsDiffer: !!res.data.sections_differ,
     imagesDropped: Number(res.data.images_dropped) || 0,
     // Why they were dropped, phrased by the server (it is the side that knows
     // whether the bytes were an unsupported format or a ceiling was hit). An
     // older backend does not send it, so the caller must treat it as optional.
     imagesDroppedReason: String(res.data.images_dropped_reason || ''),
   }
+}
+
+/**
+ * Puts the source file's page geometry on the imported document (#2821).
+ *
+ * The geometry comes from the server as a field beside the HTML rather than
+ * from the HTML itself, and that is the whole point: LibreOffice keeps the
+ * @page rule of the *first* section only, so a file whose landscape section
+ * holds a wide table converts to portrait markup with nothing left of the
+ * section but a page break. The server reads it out of the original bytes
+ * instead (internal/office) and picks the widest section.
+ *
+ * A geometry the server could not read (a .doc, a .txt, a file without a
+ * sectPr) arrives as null and the document keeps the editor's default — which
+ * is what every document had before this existed, so nothing regresses.
+ *
+ * @param {object} doc parsed ProseMirror document
+ * @param {*} page geometry from the import response, or null
+ * @returns {object} the document, with the geometry applied when there is one
+ */
+export function withImportedPage(doc, page) {
+  if (!isPageSetup(page)) return doc
+  return { ...doc, attrs: { ...(doc.attrs || {}), page: { ...page } } }
 }
 
 /**

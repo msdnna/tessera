@@ -29,19 +29,24 @@ const CARDS = {
       description:
         'Собрать финальные тексты трёх шагов и заменить временные иллюстрации на отрисованные.',
       priority: 2,
+      start: 1,
       due: 6,
-      tags: ['дизайн'],
+      tags: ['дизайн', 'T: улучшение'],
     },
     {
       title: 'Импорт задач из CSV',
       description: 'Разобрать формат, показать предпросмотр перед импортом.',
       priority: 1,
-      tags: ['бэкенд'],
+      start: 5,
+      due: 9,
+      tags: ['бэкенд', 'Сложность::высокая'],
     },
     {
       title: 'Ревизия пустых состояний',
       priority: 0,
-      tags: ['дизайн'],
+      start: -3,
+      due: 1,
+      tags: ['дизайн', 'T: баг'],
     },
   ],
   'В процессе': [
@@ -50,16 +55,23 @@ const CARDS = {
       description:
         'Доставка через мобильный клиент: регистрация токена, отправка, тихие часы.\n\nОсталось: тихие часы и повтор при ошибке доставки.',
       priority: 3,
+      start: -5,
       due: 2,
       tags: ['мобильное', 'бэкенд'],
       assign: true,
       subtasks: ['Регистрация токена устройства', 'Отправка при наступлении срока', 'Тихие часы'],
       comment: 'Токены регистрируются, отправка уходит. Осталось окно тихих часов.',
+      // A reply under that comment (#2823, wave 2). The «Комментарии» article is
+      // about threads, and a flat list of one message is a picture of the thing
+      // the article is not describing. The reply is written by the second demo
+      // member, so the shot shows two people talking rather than Аня to herself.
+      reply: 'Тихие часы описаны в спецификации — с 22:00 до 8:00 откладываем до утра.',
     },
     {
       title: 'Фильтры на доске: сохранение пресетов',
       description: 'Пресеты фильтров хранятся локально и переживают перезагрузку.',
       priority: 2,
+      start: -2,
       due: 4,
       tags: ['фронтенд'],
       assign: true,
@@ -70,6 +82,7 @@ const CARDS = {
       title: 'Экспорт документа в PDF',
       description: 'Печатная вёрстка с оглавлением и колонтитулами.',
       priority: 2,
+      start: -8,
       due: -1,
       tags: ['фронтенд'],
       assign: true,
@@ -96,12 +109,29 @@ const TAG_COLORS = {
   фронтенд: '#7c5cff',
   бэкенд: '#2f80ed',
   мобильное: '#18a058',
+  // Prefixed tags (#2823, wave 3). The tags article is largely about prefixes —
+  // two-segment pills, grouped pickers, friendly prefix names — and a seed of
+  // four bare tags pictures none of it. Both separators are represented on
+  // purpose: `T: ` is the short form the friendly name below renames, `::` the
+  // long one left as-is, so one screenshot shows a named prefix and a raw one.
+  'T: баг': '#e0533d',
+  'T: улучшение': '#0eb0a9',
+  'Сложность::высокая': '#eb2f96',
 }
+
+// Friendly name for the short prefix, set on the project like a user would in
+// the tag popover. Without it `T` stays `T` and the «Имена префиксов» section
+// has nothing to show. Key is the canonical prefix (handlers/tag_prefixes.go).
+const TAG_PREFIX_NAMES = [{ prefix: 'T:', label: 'Тип' }]
 
 // writeDoc fills a freshly created document with paragraphs. The content is
 // ProseMirror JSON (the editor's own format) and the save is guarded by the
 // document's `updated_at` — pass the one the create call just returned, or the
 // backend rejects the write as a concurrent edit.
+// A paragraph is a plain string, or `{ text, id }` when something has to point at
+// it later — a block id is what anchors a task link to one clause instead of to
+// the document as a whole (#2823, wave 2). The editor assigns these ids itself
+// while you type; the seed spells one out so the anchored link is reproducible.
 async function writeDoc(token, doc, paragraphs) {
   return api.patch(
     `/documents/${doc.id}/content`,
@@ -109,10 +139,14 @@ async function writeDoc(token, doc, paragraphs) {
       updated_at: doc.updated_at,
       content: {
         type: 'doc',
-        content: paragraphs.map((text) => ({
-          type: 'paragraph',
-          content: [{ type: 'text', text }],
-        })),
+        content: paragraphs.map((p) => {
+          const { text, id } = typeof p === 'string' ? { text: p } : p
+          return {
+            type: 'paragraph',
+            ...(id ? { attrs: { id } } : {}),
+            content: [{ type: 'text', text }],
+          }
+        }),
       },
     },
     token,
@@ -124,6 +158,9 @@ async function writeDoc(token, doc, paragraphs) {
 // address only when it is taken — that is, on a database that already holds a
 // previous run. Domains are the ones RFC 2606 reserves for documentation.
 const DEMO_EMAIL = 'a.kovaleva@example.com'
+// The second member of the demo workspace — the other voice in the comment
+// thread and the second face in the assignee picker.
+const MATE_EMAIL = 'p.veretennikov@example.com'
 
 // Extra accounts so the admin list is a list and not a single row. They are
 // instance accounts only — not members of the demo workspace — so they change
@@ -335,9 +372,25 @@ export async function seedDemo(runId, base) {
   const { creds, token, user } = await registerPresentable(runId, 'Аня Ковалёва', DEMO_EMAIL)
   const t = token
   const post = (p, b) => api.post(p, b, t)
+  const put = (p, b) => api.put(p, b, t)
   const get = (p) => api.get(p, t)
 
   const ws = await post('/workspaces', { name: 'Тессера Демо' })
+
+  // A colleague in the same workspace (#2823, wave 2). One-person workspaces make
+  // for lying screenshots: a thread, an @-mention and an assignee picker all read
+  // as features for teams, and all three had exactly one name to offer. Best
+  // effort on purpose — registration is rate-limited per IP, and a workspace of
+  // one is a worse picture, not a broken run.
+  let mate = null
+  try {
+    const m = await registerPresentable(runId, 'Пётр Веретенников', MATE_EMAIL, 'mate')
+    await post(`/workspaces/${ws.id}/members`, { email: m.creds.email, role: 'member' })
+    mate = { ...m, post: (p, b) => api.post(p, b, m.token) }
+  } catch {
+    /* rate limit or a taken address — the shots fall back to a single author */
+  }
+
   const group = await post(`/workspaces/${ws.id}/groups`, { name: 'Продукт' })
   const project = await post(`/workspaces/${ws.id}/projects`, {
     name: 'Мобильное приложение',
@@ -354,6 +407,7 @@ export async function seedDemo(runId, base) {
   for (const [name, color] of Object.entries(TAG_COLORS)) {
     tags[name] = await post(`/projects/${project.id}/tags`, { name, color })
   }
+  await put(`/projects/${project.id}/tag-prefixes`, { prefixes: TAG_PREFIX_NAMES })
 
   const created = []
   for (const [columnName, cards] of Object.entries(CARDS)) {
@@ -366,6 +420,7 @@ export async function seedDemo(runId, base) {
         description: card.description || '',
         priority: card.priority ?? 0,
         ...(card.due === undefined ? {} : { due_date: iso(base, card.due) }),
+        ...(card.start === undefined ? {} : { start_date: iso(base, card.start) }),
       })
       for (const tag of card.tags || []) {
         await post(`/tasks/${task.id}/tags`, { tag_id: tags[tag].id })
@@ -378,7 +433,18 @@ export async function seedDemo(runId, base) {
           title,
         })
       }
-      if (card.comment) await post(`/tasks/${task.id}/comments`, { body: card.comment })
+      if (card.comment) {
+        const root = await post(`/tasks/${task.id}/comments`, { body: card.comment })
+        // The reply is posted by the colleague when there is one; falling back to
+        // the owner still produces a thread, just a one-sided conversation.
+        if (card.reply) {
+          const author = mate || { post }
+          await author.post(`/tasks/${task.id}/comments`, {
+            body: card.reply,
+            parent_id: root.id,
+          })
+        }
+      }
       // Creating a card straight into the done column does not close it — the
       // completion flag is set when a task *moves* there — so the finished ones
       // are marked explicitly, otherwise every board and milestone shot shows
@@ -386,6 +452,23 @@ export async function seedDemo(runId, base) {
       if (card.completed) await api.patch(`/tasks/${task.id}`, { completed: true }, t)
       created.push(task)
     }
+  }
+
+  // Task relations (#2823). Without a single blocking edge the Gantt shot shows
+  // bars and no arrows — exactly the half of the view its article is about. The
+  // pair is picked to read as real work: the empty-state pass gates the
+  // onboarding screen, and the CSV import is merely adjacent to the PDF export.
+  const byTitle = (title) => {
+    const found = created.find((x) => x.title === title)
+    if (!found) throw new Error(`демо-сид: нет задачи «${title}» для связи`)
+    return found
+  }
+  const RELATIONS = [
+    ['Ревизия пустых состояний', 'Экран онбординга: тексты и иллюстрации', 'blocks'],
+    ['Импорт задач из CSV', 'Экспорт документа в PDF', 'relates'],
+  ]
+  for (const [from, to, kind] of RELATIONS) {
+    await post(`/tasks/${byTitle(from).id}/relations`, { number: byTitle(to).number, kind })
   }
 
   const release = await post(`/projects/${project.id}/milestones`, {
@@ -422,17 +505,25 @@ export async function seedDemo(runId, base) {
   // preview line, and three cards reading «Пустой документ» would be a picture
   // of an empty product. No `icon` is set for the same reason — the headless
   // browser has no emoji font, so an emoji icon comes out as a tofu box.
-  await writeDoc(
-    t,
-    await post(`/workspaces/${ws.id}/documents`, {
-      title: 'Спецификация напоминаний',
-      project_id: project.id,
-    }),
-    [
-      'Напоминание срабатывает в указанное время и приходит push-уведомлением на мобильный клиент.',
-      'Тихие часы: с 22:00 до 8:00 уведомления откладываются до утра.',
-    ],
-  )
+  const QUIET_HOURS_BLOCK = 'demo-quiet-hours'
+  const QUIET_HOURS_TEXT = 'Тихие часы: с 22:00 до 8:00 уведомления откладываются до утра.'
+  const spec = await post(`/workspaces/${ws.id}/documents`, {
+    title: 'Спецификация напоминаний',
+    project_id: project.id,
+  })
+  await writeDoc(t, spec, [
+    'Напоминание срабатывает в указанное время и приходит push-уведомлением на мобильный клиент.',
+    { text: QUIET_HOURS_TEXT, id: QUIET_HOURS_BLOCK },
+  ])
+  // The «Документы задачи» article is about the link between a clause and the work
+  // it produced, and the seed had no link at all to picture. Anchored to the quiet
+  // hours paragraph rather than to the document as a whole: the anchored shape is
+  // the one that needs explaining, since it is the one that carries a quote.
+  await post(`/documents/${spec.id}/tasks`, {
+    task_id: byTitle('Push-уведомления о напоминаниях').id,
+    block_id: QUIET_HOURS_BLOCK,
+    quote: QUIET_HOURS_TEXT,
+  })
   await writeDoc(t, await post(`/workspaces/${ws.id}/documents`, { title: 'Регламент релиза' }), [
     'Релиз собирается в понедельник, выкатывается во вторник.',
     'Ветка замораживается за день до сборки; в заморозку попадают только исправления.',

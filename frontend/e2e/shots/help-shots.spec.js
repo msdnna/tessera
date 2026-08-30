@@ -178,16 +178,137 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'board-tags')
     })
 
-    test('окно задачи', async ({ page }) => {
+    // ── the board's own controls (#2823) ──
+    // These six are driven by structure, not by captions: the composer chips, the
+    // column menu and the layout switcher all carry translated labels, so every
+    // locator below is a class, a testid or an index into a fixed list. That is
+    // what lets the same spec produce both the Russian and the English set.
+
+    test('панель доски: меню добавления', async ({ page }) => {
       await openBoard(page)
-      await page
-        .locator('[data-testid="column"][data-column-name="В процессе"]')
-        .getByTestId('task-card')
-        .first()
-        .click()
+      // The add menu renders in a detached dropdown layer, so the frame is the
+      // whole page — cropping to the bar would cut the menu the shot is about.
+      await page.locator('.facet-add').click()
+      await expect(page.locator('.n-dropdown-option').first()).toBeVisible()
+      await shoot(page, scheme, 'board-composer')
+    })
+
+    test('меню колонки', async ({ page }) => {
+      await openBoard(page)
+      await page.locator('[data-testid="column"]').first().locator('.col-menu').click()
+      await expect(page.getByTestId('column-delete')).toBeVisible()
+      await shoot(page, scheme, 'board-columns')
+    })
+
+    test('настройка вида', async ({ page }) => {
+      await openBoard(page)
+      await page.locator('[data-tour="board-customize"]').click()
+      await expect(page.locator('.n-drawer')).toBeVisible()
+      await shoot(page, scheme, 'board-customize')
+    })
+
+    test('сохранённые представления', async ({ page }) => {
+      await openBoard(page)
+      // An empty list would picture the empty state, not the feature — so the
+      // shot saves a view first, then opens the list that now has it. The two
+      // buttons are the last pair of `.bar-tools` (folder, then disk).
+      const tools = page.locator('.bar-tools .bar-btn')
+      await tools.nth(2).click()
+      await page.locator('.views-pop input').fill('Мой спринт')
+      await page.locator('.views-pop input').press('Enter')
+      await tools.nth(1).click()
+      await expect(page.locator('.views-pop .view-name')).toBeVisible()
+      await shoot(page, scheme, 'board-views')
+    })
+
+    test('архив доски', async ({ page }) => {
+      await openBoard(page)
+      // The archive is a scope of the same board, reached by a query parameter —
+      // no caption to click, and the amber scope chip is what has to be in frame.
+      await page.goto(`${new URL(page.url()).pathname}?archived=1`)
+      await expect(page.locator('.facet-archive')).toBeVisible()
+      await shoot(page, scheme, 'board-archive')
+    })
+
+    // The switcher lists the visualizations in a fixed order (board, list,
+    // calendar, timeline, gantt, matrix), so an index beats a caption here.
+    const LAYOUTS = [
+      { idx: 1, name: 'board-list', ready: '.list-view' },
+      { idx: 2, name: 'board-calendar', ready: '.cal-cell' },
+      { idx: 3, name: 'board-timeline', ready: '.tl-toolbar' },
+      { idx: 4, name: 'board-gantt', ready: '.tl-toolbar' },
+      { idx: 5, name: 'board-matrix', ready: '.m-colhead' },
+    ]
+    for (const layout of LAYOUTS) {
+      test(`визуализация: ${layout.name}`, async ({ page }) => {
+        await openBoard(page)
+        await page.locator('[data-tour="board-layout"] button').nth(layout.idx).click()
+        await expect(page.locator(layout.ready).first()).toBeVisible()
+        await shoot(page, scheme, layout.name)
+      })
+    }
+
+    // ── the task window and its tabs (#2823, wave 2) ──
+    // openTask picks a card by its title so each shot lands on the task that has
+    // something to show: the push task carries the thread, the document link and
+    // a journal, the empty-states pass carries the only blocking relation.
+    async function openTask(page, title) {
+      await openBoard(page)
+      await page.getByTestId('task-card').filter({ hasText: title }).first().click()
       const modal = page.getByTestId('task-modal')
       await expect(modal).toBeVisible()
+      return modal
+    }
+    const PUSH_TASK = 'Push-уведомления о напоминаниях'
+
+    test('окно задачи', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
       await shoot(page, scheme, 'task-modal')
+    })
+
+    test('полноэкранный редактор', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
+      // The description toolbar sits in the section header. Its buttons are
+      // icon-only and their count depends on the mode — a saved description opens
+      // in preview, where the image and mermaid buttons are not rendered at all,
+      // so an index into the row points at a different button than it does while
+      // writing. Hence a testid: the titles are translated and can't anchor the
+      // English run either.
+      await page.getByTestId('desc-fullscreen').click()
+      // The split editor is what the article is about: text left, live preview
+      // right, so the shot has to wait for the preview pane, not just the modal.
+      await expect(page.locator('.mdfs .md2-preview-side')).toBeVisible()
+      await shoot(page, scheme, 'task-markdown-editor')
+    })
+
+    test('комментарии', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
+      await page.getByTestId('tab-comments').click()
+      // Wait for the reply, not the root: the thread is the picture, and the root
+      // renders one request earlier.
+      await expect(page.locator('.c-reply').first()).toBeVisible()
+      await shoot(page, scheme, 'task-comments')
+    })
+
+    test('связи задачи', async ({ page }) => {
+      await openTask(page, 'Ревизия пустых состояний')
+      await page.getByTestId('tab-relations').click()
+      await expect(page.locator('.relrow').first()).toBeVisible()
+      await shoot(page, scheme, 'task-relations')
+    })
+
+    test('документы задачи', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
+      await page.getByTestId('tab-documents').click()
+      await expect(page.getByTestId('task-doc-link').first()).toBeVisible()
+      await shoot(page, scheme, 'task-documents')
+    })
+
+    test('история задачи', async ({ page }) => {
+      await openTask(page, PUSH_TASK)
+      await page.getByTestId('tab-history').click()
+      await expect(page.locator('.histrow').first()).toBeVisible()
+      await shoot(page, scheme, 'task-history')
     })
 
     test('документы', async ({ page }) => {
@@ -216,6 +337,33 @@ for (const scheme of ['light', 'dark']) {
       await page.goto('/milestones')
       await expect(page.getByText('Релиз 2.4')).toBeVisible()
       await shoot(page, scheme, 'milestones')
+    })
+
+    // ── tags and milestone management (#2823, wave 3) ──
+
+    test('управление тегами', async ({ page }) => {
+      await openBoard(page)
+      // The tag popover hangs off the first button of `.board-actions`; the
+      // caption is translated, so the anchor is the position in that row.
+      await page.locator('.board-actions button').first().click()
+      await expect(page.locator('.tagmgr')).toBeVisible()
+      // Double-click is what opens the rename field and the colour swatches under
+      // it — the gesture the article exists to document, so the shot has to show
+      // its result rather than the resting list.
+      await page.locator('.tagmgr .chip').first().dblclick()
+      await expect(page.locator('.tagmgr .swatches')).toBeVisible()
+      await shoot(page, scheme, 'tags-manager')
+    })
+
+    test('управление этапами', async ({ page }) => {
+      await page.goto('/milestones')
+      await page.locator('.ms-manage').first().click()
+      const card = page.locator('.m-card')
+      await expect(card).toBeVisible()
+      // The rows arrive in their own request; waiting for one keeps the shutter
+      // off the empty state, which is a picture of nothing.
+      await expect(card.locator('.m-row').first()).toBeVisible()
+      await shoot(page, scheme, 'milestones-manage')
     })
 
     // Admin screens (#2810). They exist only for a global admin, and the backend

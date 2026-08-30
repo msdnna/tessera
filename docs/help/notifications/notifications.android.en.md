@@ -1,6 +1,6 @@
 ---
 title: Notifications
-category: Working with tasks
+category: Notifications
 order: 70
 keywords: notifications, channels, email, telegram, webhook, shoutrrr, routing, rules, quiet hours, digest, deadline, reminders, template, app, push, permissions
 updated: 2026-08-25
@@ -13,6 +13,10 @@ External-delivery settings are shared across all your devices: what you set up i
 **Where it's configured.** The side menu (the “☰” button at the left of the top bar) → the **bell** in the row of icons above the project list. Don't confuse it with the bell in the very top bar — that one opens the notification feed, not the settings.
 
 The screen is made of three blocks: **Channels**, **Routing rules**, **Deadlines and reminders**. By default nothing goes out: first you set up a channel, then a rule.
+
+![The notification settings screen on a phone](../assets/notifications-mobile-light.png)
+
+Here the setup is already finished: the phone's own channel, a mail channel beside it, and under both a rule sending assignments and mentions to the mail. Without that bottom row neither channel would receive anything.
 
 ## This device
 

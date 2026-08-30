@@ -686,7 +686,15 @@ async function importOffice(file) {
     document: doc,
     imagesDropped,
     imagesDroppedReason,
+    sectionsDiffer,
   } = await importOfficeFile(docsApi, wsStore.currentId, file, { parentId: parentId.value })
+  // A file whose sections had different page geometries got one sheet, sized to
+  // the widest of them (#2821). Said out loud for the same reason the dropped
+  // pictures are: the document is a faithful import of its text and a reduction
+  // of its layout, and the only way to know that is to be told.
+  if (sectionsDiffer) {
+    message.warning(t('documents.view.toast.importedSectionsDiffer'), { duration: 8000 })
+  }
   // Dropped pictures are said out loud, and with the reason: a bare count told
   // the user something was lost without telling them whether re-inserting the
   // figure as PNG would help or whether it is ours to fix (#2755). The warning

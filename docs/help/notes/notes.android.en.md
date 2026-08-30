@@ -1,7 +1,7 @@
 ---
 title: Notes
-category: Working with tasks
-order: 40
+category: Notes
+order: 50
 keywords: notes, records, draft, markdown, project, search, app
 updated: 2026-08-24
 ---

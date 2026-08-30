@@ -8,6 +8,7 @@ import helpIndex from '@/data/helpIndex.json'
 import { buildIndex } from '../scripts/build-help-index.mjs'
 import { uniqueHeadingId } from '@/utils/helpSlug'
 import { useHelpStore } from '@/stores/help'
+import { withoutCode } from './helpers/helpMarkdown'
 import { i18n } from '@/i18n'
 
 // Localisation of the help manual (#2809). The articles are hand-written in
@@ -97,7 +98,7 @@ describe('help i18n: паритет переводов (#2809)', () => {
 
   it('ссылки на скриншоты в переводах указывают на существующие файлы', () => {
     for (const path of enBodyPaths) {
-      const md = readFileSync(join(HELP_DIR, path), 'utf8')
+      const md = withoutCode(readFileSync(join(HELP_DIR, path), 'utf8'))
       for (const m of md.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)) {
         const src = m[1]
         if (/^(https?:)?\/\//.test(src)) continue

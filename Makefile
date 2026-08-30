@@ -305,14 +305,21 @@ android-emulator-up: ## Boot the AVD headless and wait for it (needed by android
 # The mobile counterpart of `make help-shots` (#2795): the help centre's Android
 # screenshots, taken on the emulator against the same throwaway backend the e2e
 # tiers use.
+SHOTS_CLASS := website.msdnna.tessera.shots.HelpShotsTest
+
+# A new scene rarely comes out right the first time, and re-shooting the whole
+# manual costs minutes per attempt — `make android-shots SHOTS=tags,markdownEditor`
+# runs just those test methods. Empty (the default) means the whole class.
+SHOTS_FILTER = $(if $(SHOTS),$(shell echo '$(SHOTS)' | tr ',' '\n' | sed 's|^|$(SHOTS_CLASS)\#|' | paste -sd,),$(SHOTS_CLASS))
+
 .PHONY: android-shots
-android-shots: ## Re-take the mobile help screenshots (needs `make e2e-backend-up`)
+android-shots: ## Re-take the mobile help screenshots (needs `make e2e-backend-up`; SHOTS=a,b for some)
 	@$(MAKE) android-emulator-up
 	@# `leaveApksInstalledAfterRun`: by default AGP uninstalls both APKs when the
 	@# run ends, and the app's data directory — where the shots are — goes with
 	@# them. The run stays green and the fetch below finds nothing.
 	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest \
-	  -Pandroid.testInstrumentationRunnerArguments.class=website.msdnna.tessera.shots.HelpShotsTest \
+	  -Pandroid.testInstrumentationRunnerArguments.class=$(SHOTS_FILTER) \
 	  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 	@$(MAKE) android-shots-pull
 
@@ -321,10 +328,10 @@ android-shots: ## Re-take the mobile help screenshots (needs `make e2e-backend-u
 # and applied through the same `AppLocale` wrapper the app switches with — no
 # emulator locale change, no restart.
 .PHONY: android-shots-en
-android-shots-en: ## Re-take the mobile help screenshots in English (needs `make e2e-backend-up`)
+android-shots-en: ## Re-take the mobile help screenshots in English (needs `make e2e-backend-up`; SHOTS=a,b)
 	@$(MAKE) android-emulator-up
 	@$(ANDROID_GRADLE) :app:connectedDebugAndroidTest \
-	  -Pandroid.testInstrumentationRunnerArguments.class=website.msdnna.tessera.shots.HelpShotsTest \
+	  -Pandroid.testInstrumentationRunnerArguments.class=$(SHOTS_FILTER) \
 	  -Pandroid.testInstrumentationRunnerArguments.shotsLang=en \
 	  -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true
 	@$(MAKE) android-shots-pull
@@ -337,6 +344,13 @@ android-shots-pull: ## Fetch the screenshots the last android-shots run left on 
 	@# read on its own since Android 11 — neither in `/data/data/<pkg>` nor in
 	@# `/sdcard/Android/data/<pkg>`, where a pull comes back silently empty. The
 	@# AVD runs a `google_apis` (userdebug) image, so `adb root` is the way in.
+	@#
+	@# The fetch stages into `build/` and only then copies into the tree. Pulling
+	@# straight into `docs/help/assets` overwrote a good committed shot with a
+	@# zero-byte one before the emptiness check could fire: killing the emulator
+	@# loses the page cache, and the shots of the interrupted run stay behind as
+	@# empty files with their original mtime. Empty shots are now reported (and
+	@# fail the target) without touching what is already in the tree.
 	@ANDROID_HOME="$${ANDROID_HOME:-$$HOME/Android/Sdk}"; \
 	 ADB="$$ANDROID_HOME/platform-tools/adb"; \
 	 SRC=/data/data/website.msdnna.tessera/files/help-shots; \
@@ -344,11 +358,18 @@ android-shots-pull: ## Fetch the screenshots the last android-shots run left on 
 	 FILES="$$($$ADB shell ls $$SRC 2>&1 | tr -d '\r')"; \
 	 case "$$FILES" in *"No such file"*|*"denied"*|"") \
 	   echo "android-shots: кадры не читаются ($$SRC): $$FILES" >&2; exit 1;; esac; \
+	 STAGE=$(ANDROID_DIR)/app/build/help-shots; rm -rf $$STAGE; mkdir -p $$STAGE; \
+	 KEPT=0; EMPTY=""; \
 	 for f in $$FILES; do \
-	   $$ADB pull "$$SRC/$$f" docs/help/assets/$$f >/dev/null || exit 1; \
-	   [ -s docs/help/assets/$$f ] || { echo "android-shots: пустой кадр $$f" >&2; exit 1; }; \
+	   $$ADB pull "$$SRC/$$f" $$STAGE/$$f >/dev/null || exit 1; \
+	   [ -s $$STAGE/$$f ] || { EMPTY="$$EMPTY $$f"; continue; }; \
+	   cp $$STAGE/$$f docs/help/assets/$$f || exit 1; KEPT=$$((KEPT+1)); \
 	 done; \
-	 echo "android-shots: $$(echo $$FILES | wc -w) кадров → docs/help/assets"
+	 echo "android-shots: $$KEPT кадров → docs/help/assets"; \
+	 [ -z "$$EMPTY" ] || { \
+	   echo "android-shots: пустые кадры на устройстве:$$EMPTY" >&2; \
+	   echo "android-shots: снимите их заново или уберите остатки —" >&2; \
+	   echo "  $$ADB shell rm $$SRC/<имя>" >&2; exit 1; }
 
 .PHONY: android-emulator-down
 android-emulator-down: ## Shut the AVD down

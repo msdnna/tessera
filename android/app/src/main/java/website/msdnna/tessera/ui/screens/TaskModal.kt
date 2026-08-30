@@ -1931,7 +1931,10 @@ private fun RelationsTab(
             )
         }
         relations.forEach { r ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 6.dp).testTag(TestTags.taskRelationRow(r.relatedTaskId)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(relKindLabel(r.kind), color = c.text3, fontSize = 12.sp, modifier = Modifier.width(90.dp))
                 if (isExternalSource(r.source)) {
                     SourceBadge(sourceMeta(r.source))
@@ -2159,7 +2162,10 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
             )
         }
         events.forEach { e ->
-            Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 6.dp).testTag(TestTags.taskEventRow(e.id)),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Box(Modifier.size(22.dp).clip(CircleShape).background(c.surfaceAlt), contentAlignment = Alignment.Center) {
                     Text(initials(e.actorName ?: "?"), color = c.text2, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
                 }

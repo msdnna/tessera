@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import helpIndex from '@/data/helpIndex.json'
 import { buildIndex } from '../scripts/build-help-index.mjs'
 import { uniqueHeadingId } from '@/utils/helpSlug'
+import { withoutCode } from './helpers/helpMarkdown'
 
 // Guards the help content itself (#2792). The articles are hand-written
 // Markdown, so the things that break are content mistakes — a link to a renamed
@@ -75,7 +76,7 @@ describe('help index', () => {
 
   it('ссылки на скриншоты указывают на существующие файлы', () => {
     for (const path of bodyPaths) {
-      const md = readFileSync(join(HELP_DIR, path), 'utf8')
+      const md = withoutCode(readFileSync(join(HELP_DIR, path), 'utf8'))
       for (const m of md.matchAll(/!\[[^\]]*\]\(([^)\s]+)/g)) {
         const src = m[1]
         if (/^(https?:)?\/\//.test(src)) continue // external image

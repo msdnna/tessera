@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -662,7 +663,14 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
     val isDone = lane.id == state.doneColumnId
 
     Box {
-        IonIconButton(Ion.ELLIPSIS_H, onClick = { menu = true }, boxSize = 28.dp, iconSize = 16.dp, tint = c.text3)
+        IonIconButton(
+            Ion.ELLIPSIS_H,
+            onClick = { menu = true },
+            modifier = Modifier.testTag(TestTags.columnMenu(lane.id)),
+            boxSize = 28.dp,
+            iconSize = 16.dp,
+            tint = c.text3,
+        )
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
             TMenuItem(stringResource(R.string.common_rename), icon = Ion.PENCIL, onClick = {
                 menu = false
@@ -676,7 +684,8 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
                 modifier = Modifier.padding(start = 14.dp, top = 6.dp, bottom = 4.dp),
             )
             FlowRow(
-                Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp),
+                Modifier.padding(horizontal = 12.dp).padding(bottom = 6.dp)
+                    .testTag(TestTags.COLUMN_MENU_COLORS),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -861,7 +870,14 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
                 }
             }
             cells.chunked(7).forEach { week ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                // IntrinsicSize.Min + fillMaxHeight in the cell: a day with four chips
+                // and a «+N» makes its week taller than the 88dp minimum, and without
+                // this the six quiet cells keep their own height — the backing colour
+                // shows through under them as a grey band across the row.
+                Row(
+                    Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                    horizontalArrangement = Arrangement.spacedBy(1.dp),
+                ) {
                     week.forEach { cell ->
                         DayCell(cell, byDay[cell.key].orEmpty(), cell.key == todayKey, state, onOpenTask)
                     }
@@ -894,7 +910,7 @@ private fun RowScope.DayCell(
 ) {
     val c = Tessera.colors
     Column(
-        Modifier.weight(1f).heightIn(min = 88.dp)
+        Modifier.weight(1f).fillMaxHeight().heightIn(min = 88.dp)
             .background(if (cell.inMonth) c.surface else c.surfaceAlt)
             .padding(4.dp),
         verticalArrangement = Arrangement.spacedBy(3.dp),

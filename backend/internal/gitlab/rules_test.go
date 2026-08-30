@@ -149,6 +149,30 @@ func TestResolve_UnmappedStatusFallsBackToDefault(t *testing.T) {
 	}
 }
 
+// StatusSet separates "the issue asked for this column" from "nobody asked, so it is
+// the default". The sync of a grouped parent's children reads it to decide whether a
+// child moves to its own column or stays in its parent's (#2819) — with only
+// ColumnName to go on, the two cases are indistinguishable.
+func TestResolve_StatusSet(t *testing.T) {
+	rs := DefaultRules()
+	if got := rs.Resolve(labels("S: Done")); !got.StatusSet || got.ColumnName != "Готово" {
+		t.Errorf("S: Done → StatusSet=%v column=%q, want true/Готово", got.StatusSet, got.ColumnName)
+	}
+	// No status label at all: ColumnName is the default, and StatusSet says so.
+	got := rs.Resolve(labels("T: bug", "P: High"))
+	if got.StatusSet {
+		t.Errorf("StatusSet = true with no status label: %v", got)
+	}
+	if got.ColumnName != rs.DefaultColumn {
+		t.Errorf("column = %q, want default %q", got.ColumnName, rs.DefaultColumn)
+	}
+	// A status label whose value maps to nothing also leaves the default in place —
+	// nothing was actually chosen, so this must not read as "set" either.
+	if got := rs.Resolve(labels("S: Unknown")); got.StatusSet {
+		t.Errorf("unmapped status counted as set: %v", got)
+	}
+}
+
 // TestResolvesToGroup guards the "make this a grouped task" button (#2592): the label
 // it writes must be one the pull reads back as grouping, under THIS integration's
 // rules. Without the check the button would look like it worked and the label would

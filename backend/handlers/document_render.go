@@ -4,11 +4,13 @@ import (
 	"encoding/base64"
 	"fmt"
 	"html"
+	"math"
 	"mime"
 	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/google/uuid"
@@ -66,7 +68,7 @@ func renderDocHTML(title string, root docNode, resolveImage func(string) string)
 	// mojibake in the exported PDF.
 	b.WriteString(`<meta charset="utf-8">` + "\n")
 	b.WriteString("<title>" + html.EscapeString(title) + "</title>\n")
-	b.WriteString("<style>\n" + docExportCSS + "</style>\n")
+	b.WriteString("<style>\n" + docPageCSS(root.Attrs) + docExportCSS + "</style>\n")
 	b.WriteString("</head><body>\n")
 	if strings.TrimSpace(title) != "" {
 		b.WriteString("<h1 class=\"doc-title\">" + html.EscapeString(title) + "</h1>\n")
@@ -133,6 +135,51 @@ td, th { border: 0.5pt solid #999999; padding: 3pt; }
 img { max-width: 100%; }
 `
 
+// defaultDocPage is the geometry of a document that has never been through the
+// page dialog: A4 with 20 mm margins, which is what the editor's own sheet shows
+// (DEFAULT_PAGE in utils/docPage.js). Screen and export agree on purpose.
+//
+// It is NOT what an export produced before #2821: with no @page rule at all
+// LibreOffice falls back to A4 with 20/10/10/10 mm — measured against the
+// sidecar, not assumed. So the sheet size of an untouched document is unchanged
+// while its margins widen slightly (print column 180 mm → 170 mm) the first time
+// it is re-exported. Matching the editor was judged the better of the two, since
+// the old asymmetry was LibreOffice's default rather than anyone's choice.
+var defaultDocPage = map[string]float64{"w": 210, "h": 297, "ml": 20, "mr": 20, "mt": 20, "mb": 20}
+
+// docPageCSS turns the doc node's page geometry into the @page rule the
+// LibreOffice import obeys.
+//
+// It obeys exactly this much: an unnamed @page with `size` and `margin` reaches
+// the produced .docx as <w:pgSz>/<w:pgMar>, which was verified against the
+// sidecar rather than assumed. Named page rules (@page landscape { … }), which
+// is how CSS expresses more than one geometry per document, are dropped by the
+// same importer — that limit is what makes per-section orientation a separate
+// job (#2827) instead of a longer version of this function.
+func docPageCSS(attrs map[string]any) string {
+	page := defaultDocPage
+	if given, ok := attrs["page"].(map[string]any); ok {
+		// Validated on write by checkDocPage, and re-read defensively here: a body
+		// can predate a validation rule, and this value becomes CSS.
+		if err := checkDocPage(given); err == nil {
+			page = map[string]float64{}
+			for k, v := range given {
+				page[k], _ = v.(float64)
+			}
+		}
+	}
+	return fmt.Sprintf("@page { size: %smm %smm; margin: %smm %smm %smm %smm; }\n",
+		mmValue(page["w"]), mmValue(page["h"]),
+		mmValue(page["mt"]), mmValue(page["mr"]), mmValue(page["mb"]), mmValue(page["ml"]))
+}
+
+// mmValue formats a millimetre measurement without the exponent or the trailing
+// zeros %v would produce — "29.7", not "29.700000000000003" and not "2.97e+01",
+// neither of which is a CSS length.
+func mmValue(v float64) string {
+	return strconv.FormatFloat(math.Round(v*10)/10, 'f', -1, 64)
+}
+
 func renderDocNodes(b *strings.Builder, nodes []docNode, ctx docRenderCtx) {
 	for _, n := range nodes {
 		renderDocNode(b, n, ctx)
@@ -187,6 +234,15 @@ func renderDocNode(b *strings.Builder, n docNode, ctx docRenderCtx) {
 		b.WriteString("</code></pre>\n")
 	case "horizontalRule":
 		b.WriteString("<hr>\n")
+	case "sectionBreak":
+		// All the HTML route can carry of a section (#2827) is the page break.
+		// The geometry cannot come with it: LibreOffice ignores named @page rules
+		// when it imports HTML, so a second geometry written here would be
+		// dropped and the export would claim a landscape section it did not
+		// produce (measured in #2821). A break that lands on a new page is
+		// therefore the honest half of the feature this renderer can deliver;
+		// carrying the geometry too is what the .fodt renderer is for.
+		b.WriteString(`<div style="page-break-before: always"></div>` + "\n")
 	case "hardBreak":
 		b.WriteString("<br>")
 	case "image":

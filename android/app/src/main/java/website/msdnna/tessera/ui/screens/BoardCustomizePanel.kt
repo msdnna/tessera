@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -27,6 +28,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Board
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.ColumnScopePicker
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TSwitch
@@ -82,7 +84,8 @@ fun BoardCustomizePanel(
     val emptyLaneIds = state.columns.filter { state.tasksIn(it.id).isEmpty() }.map { it.id }.toSet()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
-            Modifier.fillMaxWidth(0.94f).fillMaxHeight(0.9f)
+            Modifier.testTag(TestTags.BOARD_CUSTOMIZE_PANEL)
+                .fillMaxWidth(0.94f).fillMaxHeight(0.9f)
                 .clip(RoundedCornerShape(RadiusLg))
                 .background(c.surface)
                 .padding(20.dp),

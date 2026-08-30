@@ -86,7 +86,16 @@ func resolveTaskDetail(ctx context.Context, c *client.Client, taskID, workspaceI
 	case taskID != "":
 		return c.GetTask(ctx, taskID)
 	case workspaceID != "" && number != 0:
-		return c.GetTaskByNumber(ctx, workspaceID, number)
+		// GET .../tasks/by-number/:n returns only a bare task row — no subtasks,
+		// tags or assignees (the web/Android clients resolve number→id, then load
+		// full detail by id). Do the same second hop so every caller — get_task,
+		// create_subtasks' dedup, links — sees the complete task, not a stub that
+		// looks like it has no children.
+		d, err := c.GetTaskByNumber(ctx, workspaceID, number)
+		if err != nil || d.ID == "" {
+			return d, err
+		}
+		return c.GetTask(ctx, d.ID)
 	default:
 		return model.TaskDetail{}, fmt.Errorf("provide task_id, or workspace_id + number")
 	}

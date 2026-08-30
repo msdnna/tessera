@@ -53,6 +53,7 @@ type Tag struct {
 // Resolution is the board state derived from an issue's labels.
 type Resolution struct {
 	ColumnName string // target column name (DefaultColumn if no status matched)
+	StatusSet  bool   // a status label matched (ColumnName is the issue's own, not the default)
 	Priority   int32  // 0 when no priority matched
 	Tags       []Tag  // labels to attach as tags (deduped, in order)
 	BoardID    string // target board id when a board rule matched, else ""
@@ -142,7 +143,7 @@ func (r *Rule) lookup(value string) (string, bool) {
 // first-match-wins across all labels.
 func (rs Rules) Resolve(labels []Label) Resolution {
 	res := Resolution{ColumnName: rs.DefaultColumn}
-	statusSet, prioSet, boardSet := false, false, false
+	prioSet, boardSet := false, false
 	seen := map[string]struct{}{}
 
 	addTag := func(title, color string, keepPrefix bool) {
@@ -175,9 +176,9 @@ func (rs Rules) Resolve(labels []Label) Resolution {
 			matched = true
 			switch rule.Action {
 			case "status":
-				if !statusSet {
+				if !res.StatusSet {
 					if col, ok := rule.lookup(value); ok {
-						res.ColumnName, statusSet = col, true
+						res.ColumnName, res.StatusSet = col, true
 					}
 				}
 			case "priority":

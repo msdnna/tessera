@@ -94,6 +94,7 @@ const emptyDescVar = computed(() => JSON.stringify(t('task.desc.placeholder')))
           </template>
           <button
             class="desc-act"
+            data-testid="desc-fullscreen"
             :title="t('task.desc.fullscreen')"
             @click="descEditor?.openFullscreen()"
           >

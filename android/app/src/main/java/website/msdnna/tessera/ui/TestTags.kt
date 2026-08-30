@@ -55,6 +55,16 @@ object TestTags {
     /** Tile at the right end of the status lanes that starts a new column. */
     const val BOARD_ADD_COLUMN = "board-add-column"
 
+    /** The «⋯» in a column header, which opens rename / colour / «Завершающая» /
+     *  delete. Only status lanes carry it: group the board by tags or milestones
+     *  and the headers stop being columns, so the button is gone. */
+    fun columnMenu(id: String) = "column-menu:$id"
+
+    /** The colour swatches inside that menu — the one part of it that is neither a
+     *  labelled row nor a text item, so a spec (and the screenshot run) anchors on
+     *  it to tell «the menu is open» from «the tap missed». */
+    const val COLUMN_MENU_COLORS = "column-menu-colors"
+
     // ── grouping (the killer feature: lanes = tags) ─────────────────────────
 
     /** The transparent overlay over a *collapsed* composer bar, which turns a tap
@@ -79,6 +89,23 @@ object TestTags {
 
     /** The inline field the tile above reveals. */
     const val BOARD_COLUMN_INPUT = "board-column-input"
+
+    // ── right-hand toolbar ─────────────────────────────────────────────────
+
+    /** The gear that opens «Вид доски» ([website.msdnna.tessera.ui.screens]
+     *  `BoardCustomizePanel`), and the folder that opens the saved-views popover.
+     *  Both live in the row that hides while the composer bar is expanded, so a
+     *  spec that wants them must collapse the bar first — same as a reader does. */
+    const val BOARD_CUSTOMIZE = "board-customize"
+    const val BOARD_SAVED_VIEWS = "board-saved-views"
+
+    /** Root of the open «Вид доски» dialog — present exactly while it is open. */
+    const val BOARD_CUSTOMIZE_PANEL = "board-customize-panel"
+
+    /** Root of the tag manager dialog. Opened from the app bar's overflow, which
+     *  lives above `BoardScreen` — a caller that owns the flag (a spec, the
+     *  screenshot run) can render it without reproducing that menu. */
+    const val TAG_MANAGER = "tag-manager"
 
     // ── task modal ─────────────────────────────────────────────────────────
 
@@ -131,6 +158,17 @@ object TestTags {
     /** The in-thread reply composer — at most one is open at a time. */
     const val TASK_REPLY_INPUT = "task-reply-input"
     const val TASK_REPLY_SUBMIT = "task-reply-submit"
+
+    /**
+     * One row of the Связи / История tabs, keyed by the thing it shows.
+     *
+     * Per row rather than per list on purpose: both tabs render their empty state
+     * inside the same container, so a list-level anchor would already be there
+     * while the detail request is still in flight — and a screenshot taken then
+     * photographs «пока ничего нет».
+     */
+    fun taskRelationRow(relatedTaskId: String) = "task-relation-row:$relatedTaskId"
+    fun taskEventRow(eventId: String) = "task-event-row:$eventId"
 
     // ── documents (read-only, #2735) ───────────────────────────────────────
 

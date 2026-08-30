@@ -48,6 +48,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -59,6 +60,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -454,13 +456,21 @@ private fun BoardToolbar(
                 // customize panel (gear) keeps the same toggle as a labelled row.
                 // Saved server-side views — popover (web folder button).
                 Box {
-                    ToolIcon(Ion.FOLDER, active = state.currentViewName != null) { viewsMenu = true }
+                    ToolIcon(
+                        Ion.FOLDER,
+                        active = state.currentViewName != null,
+                        modifier = Modifier.testTag(TestTags.BOARD_SAVED_VIEWS),
+                    ) { viewsMenu = true }
                     TDropdown(expanded = viewsMenu, onDismiss = { viewsMenu = false }) {
                         SavedViewsPopover(state = state, vm = vm, onClose = { viewsMenu = false })
                     }
                 }
                 // Board appearance: card density / fields / columns (web gear panel).
-                ToolIcon(Ion.SETTINGS, active = customizeOpen) { customizeOpen = true }
+                ToolIcon(
+                    Ion.SETTINGS,
+                    active = customizeOpen,
+                    modifier = Modifier.testTag(TestTags.BOARD_CUSTOMIZE),
+                ) { customizeOpen = true }
             }
         }
     }
@@ -469,10 +479,10 @@ private fun BoardToolbar(
 /** A 36dp icon toolbar button on a flat neutral fill (web quaternary parity); the
  *  background stays grey, only the glyph picks up the accent gradient when [active]. */
 @Composable
-private fun ToolIcon(icon: String, active: Boolean, onClick: () -> Unit) {
+private fun ToolIcon(icon: String, active: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = Tessera.colors
     Box(
-        Modifier.size(36.dp).clip(RoundedCornerShape(RadiusSm))
+        modifier.size(36.dp).clip(RoundedCornerShape(RadiusSm))
             .background(c.surfaceAlt)
             .clickableNoRipple(onClick = onClick),
         contentAlignment = Alignment.Center,

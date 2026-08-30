@@ -24,9 +24,14 @@ import (
 var pngFixture = append([]byte("\x89PNG\r\n\x1a\n"), make([]byte, 24)...)
 
 type stubConverter struct {
-	srv      *httptest.Server
-	lastHTML string
-	fail     bool
+	srv *httptest.Server
+	// What the export handed the sidecar, and the format it declared it to be.
+	// Both matter since #2849: the body is flat ODF rather than HTML, and a
+	// mismatched `from` is refused by the real converter with a 415 that a stub
+	// ignoring the parameter would never reproduce.
+	lastSource string
+	lastFrom   string
+	fail       bool
 }
 
 func newStubConverter(t *testing.T) *stubConverter {
@@ -48,7 +53,8 @@ func newStubConverter(t *testing.T) *stubConverter {
 			_, _ = w.Write([]byte(`<html><body><p>Импортированный текст</p><img src="data:image/png;base64,` +
 				base64.StdEncoding.EncodeToString(pngFixture) + `"></body></html>`))
 		default:
-			s.lastHTML = string(body)
+			s.lastSource = string(body)
+			s.lastFrom = r.URL.Query().Get("from")
 			_, _ = w.Write([]byte("%PDF-1.4 stub"))
 		}
 	}))
@@ -166,14 +172,22 @@ func TestDocumentExportRendersStoredContent(t *testing.T) {
 	// What the sidecar received is the point of the whole server-side renderer:
 	// the export carries the document's own text and title, not a client's idea
 	// of them.
-	if !strings.Contains(stub.lastHTML, "Строка протокола") {
-		t.Fatalf("rendered page did not reach the converter: %q", stub.lastHTML)
+	if !strings.Contains(stub.lastSource, "Строка протокола") {
+		t.Fatalf("rendered page did not reach the converter: %q", stub.lastSource)
 	}
-	if !strings.Contains(stub.lastHTML, "Протокол") {
-		t.Fatalf("document title missing from the rendered page: %q", stub.lastHTML)
+	if !strings.Contains(stub.lastSource, "Протокол") {
+		t.Fatalf("document title missing from the rendered page: %q", stub.lastSource)
 	}
-	if !strings.Contains(stub.lastHTML, `<meta charset="utf-8">`) {
-		t.Fatal("no charset declaration — LibreOffice would guess and mangle the Cyrillic")
+	// Flat ODF since #2849, not HTML: HTML carries one page geometry and would
+	// flatten a document's sections onto a single sheet.
+	if stub.lastFrom != "fodt" {
+		t.Fatalf("export declared source format %q, want fodt", stub.lastFrom)
+	}
+	if !strings.HasPrefix(stub.lastSource, `<?xml version="1.0" encoding="UTF-8"?>`) {
+		t.Fatalf("no XML encoding declaration — LibreOffice would guess and mangle the Cyrillic: %q", stub.lastSource)
+	}
+	if !strings.Contains(stub.lastSource, "<office:text>") {
+		t.Fatalf("the body the converter got is not an ODF document: %q", stub.lastSource)
 	}
 }
 

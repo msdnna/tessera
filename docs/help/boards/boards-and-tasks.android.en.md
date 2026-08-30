@@ -1,6 +1,6 @@
 ---
-title: Boards and tasks
-category: Working with tasks
+title: The board: basics
+category: Boards
 order: 20
 keywords: board, kanban, columns, tags, grouping, filter, views, task, subtasks, priority, due date, app
 updated: 2026-08-24

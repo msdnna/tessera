@@ -9,11 +9,16 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assume
+import website.msdnna.tessera.data.model.AddRelationRequest
 import website.msdnna.tessera.data.model.AddTagRequest
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.BoardView
+import website.msdnna.tessera.data.model.BoardViewConfig
+import website.msdnna.tessera.data.model.ChannelRequest
 import website.msdnna.tessera.data.model.Comment
+import website.msdnna.tessera.data.model.CreateCommentRequest
 import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTagRequest
@@ -22,13 +27,21 @@ import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.Note
+import website.msdnna.tessera.data.model.NotificationChannel
+import website.msdnna.tessera.data.model.NotificationRoute
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
+import website.msdnna.tessera.data.model.RegisterDeviceRequest
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.Reminder
+import website.msdnna.tessera.data.model.RouteMatcher
+import website.msdnna.tessera.data.model.RouteOptions
+import website.msdnna.tessera.data.model.RouteRequest
+import website.msdnna.tessera.data.model.SaveBoardViewRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
+import website.msdnna.tessera.data.model.TaskEvent
 import website.msdnna.tessera.data.model.UpdateTaskRequest
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
@@ -92,6 +105,10 @@ object E2eBackend {
     private const val JSON_TIMEOUT_S = 20L
 
     private val json = "application/json".toMediaType()
+
+    /** Body for the PATCH endpoints that take none — OkHttp still wants one. */
+    private const val EMPTY_JSON = "{}"
+
     private val gson = Gson()
 
     private val http = OkHttpClient.Builder()
@@ -144,13 +161,20 @@ object E2eBackend {
         val firstColumn: BoardColumn get() = columns.first()
     }
 
-    /** Registers a fresh account. The local part is unique per call, so parallel
-     *  runs against the same `tessera_test` never fight over an email. */
-    fun registerAccount(namePrefix: String = "E2E"): Account {
+    /**
+     * Registers a fresh account. The local part is unique per call, so parallel
+     * runs against the same `tessera_test` never fight over an email.
+     *
+     * [name] is the display name, and specs that only need *an* account can leave
+     * it alone. The help screenshots (`HelpShotsTest`) cannot: whoever registered
+     * signs the seeded comments and the journal rows, and «E2E bot» in a manual
+     * reads as a leaked test fixture.
+     */
+    fun registerAccount(name: String = "E2E bot"): Account {
         val email = "e2e+${UUID.randomUUID()}@test.local"
         val res = post<AuthResponse>(
             path = "auth/register",
-            body = RegisterRequest(email = email, name = "$namePrefix bot", password = PASSWORD),
+            body = RegisterRequest(email = email, name = name, password = PASSWORD),
         )
         return Account(
             email = email,
@@ -210,16 +234,70 @@ object E2eBackend {
 
     /** Puts a tag on a task. The endpoint answers 204, so this reads no body —
      *  going through [post] would fail on parsing the empty response. */
-    fun addTaskTag(fixture: Fixture, taskId: String, tagId: String) {
+    fun addTaskTag(fixture: Fixture, taskId: String, tagId: String) =
+        postDiscarding("tasks/$taskId/tags", AddTagRequest(tagId), fixture, "tag $tagId on task $taskId")
+
+    /**
+     * Writes a comment as the fixture's own user, optionally as a reply to
+     * [parentId].
+     *
+     * The reply is not a plain string: `POST /comments` answers with the row
+     * wrapped next to a `command_summary`, and a body-only comment that held
+     * quick actions stores no row at all. Nothing here needs either, so the
+     * response is discarded and the state read back through [comments].
+     */
+    fun createComment(fixture: Fixture, taskId: String, body: String, parentId: String? = null) =
+        postDiscarding(
+            "tasks/$taskId/comments",
+            CreateCommentRequest(body = body, parentId = parentId),
+            fixture,
+            "comment on task $taskId",
+        )
+
+    /**
+     * Links [taskId] to another task **by its number**, the way the app's own
+     * search-and-tap does — the endpoint takes `#N`, not a UUID, because that is
+     * what a person types.
+     *
+     * [kind] is the relation type (`relates`, `blocks`, `blocked_by`,
+     * `duplicates`); the backend writes the mirror row on the other task itself.
+     */
+    fun linkTasks(fixture: Fixture, taskId: String, relatedNumber: Long, kind: String = "relates") =
+        postDiscarding(
+            "tasks/$taskId/relations",
+            AddRelationRequest(number = relatedNumber, kind = kind),
+            fixture,
+            "relation $kind → #$relatedNumber on task $taskId",
+        )
+
+    /**
+     * Archives (soft-deletes) a task, putting it into the board's archive scope.
+     *
+     * Subtasks go with it unless `detach` is asked for — the same choice the UI
+     * offers; a seed that wants the children left on the board passes it.
+     */
+    fun archiveTask(fixture: Fixture, taskId: String, detachSubtasks: Boolean = false) {
+        val query = if (detachSubtasks) "?subtasks=detach" else ""
         val req = Request.Builder()
-            .url(apiUrl + "tasks/$taskId/tags")
-            .post(gson.toJson(AddTagRequest(tagId)).toRequestBody(json))
+            .url("${apiUrl}tasks/$taskId/archive$query")
+            .patch(EMPTY_JSON.toRequestBody(json))
             .header("Authorization", "Bearer ${fixture.account.accessToken}")
             .build()
         http.newCall(req).execute().use { resp ->
-            check(resp.isSuccessful) {
-                "e2e seed tag $tagId on task $taskId failed: HTTP ${resp.code} ${resp.body.string()}"
-            }
+            check(resp.isSuccessful) { "e2e seed archive $taskId failed: HTTP ${resp.code} ${resp.body.string()}" }
+        }
+    }
+
+    /** POSTs [body] and checks the status without parsing the response — for the
+     *  endpoints that answer 204, where [post] would fail on the empty body. */
+    private fun postDiscarding(path: String, body: Any, fixture: Fixture, what: String) {
+        val req = Request.Builder()
+            .url(apiUrl + path)
+            .post(gson.toJson(body).toRequestBody(json))
+            .header("Authorization", "Bearer ${fixture.account.accessToken}")
+            .build()
+        http.newCall(req).execute().use { resp ->
+            check(resp.isSuccessful) { "e2e seed $what failed: HTTP ${resp.code} ${resp.body.string()}" }
         }
     }
 
@@ -236,6 +314,38 @@ object E2eBackend {
                 priority = current.priority,
                 dueDate = current.dueDate,
                 startDate = current.startDate,
+                estimate = current.estimate,
+                completed = current.isCompleted,
+                recurrence = current.recurrence,
+            ),
+            fixture.account.accessToken,
+        )
+    }
+
+    /**
+     * Puts dates and a priority on an existing task — what the calendar, the
+     * timeline and the Eisenhower matrix lay their cards out by.
+     *
+     * Same full-replace endpoint as [renameTask], so the current state is read
+     * back first and only the asked-for fields are overwritten; a `null` here
+     * means «leave as it is», not «clear it».
+     */
+    fun scheduleTask(
+        fixture: Fixture,
+        taskId: String,
+        dueDate: String? = null,
+        startDate: String? = null,
+        priority: Int? = null,
+    ): Task {
+        val current = task(fixture, taskId)
+        return patch(
+            "tasks/$taskId",
+            UpdateTaskRequest(
+                title = current.title,
+                description = current.description,
+                priority = priority ?: current.priority,
+                dueDate = dueDate ?: current.dueDate,
+                startDate = startDate ?: current.startDate,
                 estimate = current.estimate,
                 completed = current.isCompleted,
                 recurrence = current.recurrence,
@@ -267,6 +377,11 @@ object E2eBackend {
     /** Comments on a task, as the server has them. */
     fun comments(fixture: Fixture, taskId: String): List<Comment> =
         getList("tasks/$taskId/comments", fixture.account.accessToken)
+
+    /** Journal rows of a task, newest first — the server's own ids, which is what
+     *  a spec needs to point at one row rather than at «some row». */
+    fun events(fixture: Fixture, taskId: String): List<TaskEvent> =
+        getList("tasks/$taskId/events", fixture.account.accessToken)
 
     // ── documents (#2735) ──────────────────────────────────────────────────
     //
@@ -352,6 +467,80 @@ object E2eBackend {
         post(
             "reminders",
             mapOf("message" to message, "remind_at" to remindAt),
+            fixture.account.accessToken,
+        )
+
+    /**
+     * Saves a server-side board view — one entry of the folder popover's list.
+     *
+     * Seeded rather than driven through the popover's own «Сохранить»: that
+     * button can only ever write the toolbar state the screen is currently in,
+     * so a list of several differently-configured views would take a round of
+     * chip-tapping per entry to produce.
+     */
+    fun saveBoardView(
+        fixture: Fixture,
+        name: String,
+        config: BoardViewConfig = BoardViewConfig(),
+    ): BoardView =
+        post(
+            "boards/${fixture.board.id}/views",
+            SaveBoardViewRequest(name, config),
+            fixture.account.accessToken,
+        )
+
+    // ── notification router (channels / routes) ────────────────────────────
+
+    /**
+     * Registers a «device» channel by its stable [deviceId] — the row the
+     * settings screen marks «это устройство» when the id matches the one it was
+     * handed. Idempotent server-side, same call the app makes on start.
+     */
+    fun registerDeviceChannel(fixture: Fixture, deviceId: String, label: String): NotificationChannel =
+        post(
+            "notification-devices",
+            RegisterDeviceRequest(deviceId = deviceId, label = label, platform = "android"),
+            fixture.account.accessToken,
+        )
+
+    /**
+     * Creates an outward delivery channel. [config] carries the non-secret
+     * settings the type requires (`address` for email, `chat_id` for telegram,
+     * `url` for webhook); [secret] carries what the server encrypts and never
+     * returns (`bot_token`, `url` for shoutrrr).
+     */
+    fun createNotificationChannel(
+        fixture: Fixture,
+        type: String,
+        label: String,
+        config: Map<String, String> = emptyMap(),
+        secret: Map<String, String> = emptyMap(),
+    ): NotificationChannel =
+        post(
+            "notification-channels",
+            ChannelRequest(type = type, label = label, config = config, secret = secret, enabled = true),
+            fixture.account.accessToken,
+        )
+
+    /**
+     * Creates a routing rule. An empty [kinds] means «any event» — the same
+     * thing the screen prints as «любые события». Without a rule a channel
+     * receives nothing, however many channels exist.
+     */
+    fun createNotificationRoute(
+        fixture: Fixture,
+        channelIds: List<String>,
+        kinds: List<String>? = null,
+        mute: Boolean = false,
+    ): NotificationRoute =
+        post(
+            "notification-routes",
+            RouteRequest(
+                matcher = RouteMatcher(kinds = kinds),
+                channelIds = channelIds,
+                options = RouteOptions(mute = mute),
+                enabled = true,
+            ),
             fixture.account.accessToken,
         )
 

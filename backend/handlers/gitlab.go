@@ -997,6 +997,15 @@ func (r *syncRun) resolveBoardCol(ctx context.Context, issue gitlab.Issue, res g
 	if berr != nil {
 		bc = r.boards[r.integ.BoardID] // fall back to the default board
 	}
+	col, completedAt := bc.resolveColumn(issue, res)
+	return bc, col, completedAt
+}
+
+// resolveColumn maps a resolution onto one column of this board — the status label's
+// column, or the done column when the issue is closed — plus the completion timestamp
+// that goes with landing in done. Split out of resolveBoardCol so a grouped parent's
+// children can be placed by their OWN labels on the parent's board (#2819).
+func (bc *syncBoard) resolveColumn(issue gitlab.Issue, res gitlab.Resolution) (db.BoardColumn, *time.Time) {
 	col, found := bc.byName[res.ColumnName]
 	if !found {
 		// Display-name matching stays primary: a seeded column keeps its Russian
@@ -1028,7 +1037,7 @@ func (r *syncRun) resolveBoardCol(ctx context.Context, issue gitlab.Issue, res g
 		now := time.Now()
 		completedAt = &now
 	}
-	return bc, col, completedAt
+	return col, completedAt
 }
 
 // fetchGroupedChildren is the pre-pass for grouped parents: it fetches their GitLab
@@ -1155,20 +1164,23 @@ func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claim
 }
 
 // mirrorChildren mirrors a grouped parent's GitLab children as subtasks of parentID,
-// onto the parent's own board and column. Completion follows each child's own state.
+// onto the parent's own board. A child carrying its own status label (or closed) gets
+// the column that label resolves to; one with no status of its own stays in the
+// parent's column rather than falling back to the default (#2819 — that fallback would
+// yank every statusless child to "К работе" on each pull). Completion follows the
+// column the child actually lands in, so `completed` and the column cannot disagree.
 func (r *syncRun) mirrorChildren(ctx context.Context, kids []gitlab.Issue, parentID uuid.UUID, bc *syncBoard, col db.BoardColumn) (created, updated int, syncedIIDs []int64) {
 	for _, kid := range kids {
 		kres := r.rules.Resolve(kid.Labels)
-		var kdone *time.Time
-		if kid.State == "closed" {
-			now := time.Now()
-			kdone = &now
+		kcol, kdone := col, (*time.Time)(nil)
+		if kres.StatusSet || kid.State == "closed" {
+			kcol, kdone = bc.resolveColumn(kid, kres)
 		}
 		kdue := effectiveDue(kid, r.integ.DueSource)
 		kstart := effectiveStart(kid, r.integ.StartSource)
 		kest := effectiveEstimate(kid, r.estimateUnit)
 		pid := parentID
-		ktid, kc, kok := r.h.syncOneIssue(ctx, r.integ, kid, kres, r.integ.WorkspaceID, bc.id, col.ID, resolveParentRef(&pid, true), kdone, kdue, kstart, kest, r.actorID, col.Name, r.j)
+		ktid, kc, kok := r.h.syncOneIssue(ctx, r.integ, kid, kres, r.integ.WorkspaceID, bc.id, kcol.ID, resolveParentRef(&pid, true), kdone, kdue, kstart, kest, r.actorID, kcol.Name, r.j)
 		if !kok {
 			continue
 		}

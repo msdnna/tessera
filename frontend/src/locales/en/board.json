@@ -17,7 +17,11 @@
     "add": "Add grouping / sorting / filter",
     "search": "Search by title…",
     "clear": "Clear all",
-    "back": "Back"
+    "back": "Back",
+    "shown": "showing: {tasks} ({total})",
+    "shownFlat": "showing: {tasks}",
+    "shownTitle": "Tasks shown: {tasks}; in brackets — {total} including subtasks",
+    "shownTitleFlat": "Tasks shown: {tasks} (no subtasks)"
   },
   "tools": {
     "autoOn": "Auto-sort by dependencies (on)",
@@ -47,6 +51,8 @@
     "doneTitle": "Completing column",
     "dragTitle": "Drag by the header",
     "estimateTitle": "Total estimate of the milestone tasks",
+    "countTitle": "Tasks in the column: {tasks}; in brackets — {total} including subtasks",
+    "countTitleFlat": "Tasks in the column: {tasks}",
     "colorDefault": "Default",
     "rename": "Rename",
     "setDone": "Make it completing",

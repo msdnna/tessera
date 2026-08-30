@@ -71,6 +71,10 @@ fun RichContent(
     // report the slug instead of opening the site in a browser (#2795). Off
     // everywhere else, where such a path is an ordinary server link.
     helpLinks: Boolean = false,
+    // The slugs this build actually bundles. A cross-link to an article the app
+    // does not ship (the admin topics are web-only) is left as an ordinary server
+    // link, so a tap opens it in the manual on the site instead of doing nothing.
+    helpSlugs: List<String> = emptyList(),
     onHelpLink: ((String) -> Unit)? = null,
 ) {
     val c = Tessera.colors
@@ -95,10 +99,10 @@ fun RichContent(
     val lastLoaded = remember { mutableStateOf<String?>(null) }
 
     // Rebuild the document whenever the source, theme, mentions or mode changes.
-    val html = remember(source, c.isDark, mentions, interactive, mentionCards, taskRefs, helpLinks) {
+    val html = remember(source, c.isDark, mentions, interactive, mentionCards, taskRefs, helpLinks, helpSlugs) {
         // Both handles a person can be written by are matched, longer first.
         val handles = mentions.flatMap { listOf(it.insert, it.display) }.filter { it.isNotBlank() }.distinct()
-        buildRichHtml(source, c, serverRoot, handles, interactive, mentionCards, taskRefs, helpLinks)
+        buildRichHtml(source, c, serverRoot, handles, interactive, mentionCards, taskRefs, helpLinks, helpSlugs)
     }
 
     Box(modifier.fillMaxWidth()) {
@@ -260,11 +264,13 @@ private fun buildRichHtml(
     mentionCards: Boolean,
     taskRefs: Boolean,
     helpLinks: Boolean,
+    helpSlugs: List<String> = emptyList(),
 ): String {
     val hljsTheme = if (c.isDark) "github-dark" else "github"
     val src = JSONObject.quote(source)
     val root = JSONObject.quote(serverRoot)
     val mentionsJson = org.json.JSONArray(mentions).toString()
+    val helpSlugsJson = org.json.JSONArray(helpSlugs).toString()
     // Accent gradient colours for links and mentions (mirrors AccentGradient.kt)
     val strength = 0.14f
     val accentDarker = lerp(c.primary, Color.Black, strength)
@@ -324,6 +330,7 @@ private fun buildRichHtml(
 <script>
   var SRC = $src, ROOT = $root, MENTIONS = $mentionsJson, INTERACTIVE = $interactive;
   var MENTION_CARDS = $mentionCards, TASK_REFS = $taskRefs, HELP_LINKS = $helpLinks;
+  var HELP_SLUGS = $helpSlugsJson;
   marked.setOptions({breaks:true, gfm:true});
   // Wrap "@Name" tokens for known members in a .mention span (mirrors the web
   // utils/markdown.js highlightMentions: text boundaries only, longer names first).
@@ -369,12 +376,16 @@ private fun buildRichHtml(
   });
   // Help articles cross-link as "/help/<slug>". Claim those before the
   // root-relative rewrite below, or they would become site URLs and a tap would
-  // leave the app for a browser.
+  // leave the app for a browser. A slug this build does not bundle is left
+  // unclaimed on purpose: the app has no page to open, so the rewrite below
+  // turns it into the site's own manual rather than a link that does nothing.
   if (HELP_LINKS) {
     el.querySelectorAll('a').forEach(function(an){
       var h = an.getAttribute('href')||'';
       if (h.indexOf('/help/') !== 0) return;
-      an.setAttribute('data-help-slug', h.slice(6).split('#')[0]);
+      var slug = h.slice(6).split('#')[0];
+      if (HELP_SLUGS.indexOf(slug) < 0) return;
+      an.setAttribute('data-help-slug', slug);
       an.setAttribute('href', '#');
     });
   }

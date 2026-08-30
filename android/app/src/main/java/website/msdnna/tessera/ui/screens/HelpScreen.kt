@@ -170,6 +170,7 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
                 loading = loading,
                 dark = c.isDark,
                 assetNames = assetNames,
+                slugs = articles.map { it.slug },
                 onBack = { openSlug = null },
                 onOpenSlug = { slug -> if (articles.any { it.slug == slug }) openSlug = slug },
             )
@@ -184,6 +185,7 @@ private fun HelpArticleReader(
     loading: Boolean,
     dark: Boolean,
     assetNames: Set<String>,
+    slugs: List<String>,
     onBack: () -> Unit,
     onOpenSlug: (String) -> Unit,
 ) {
@@ -254,6 +256,7 @@ private fun HelpArticleReader(
                     RichContent(
                         source = md,
                         helpLinks = true,
+                        helpSlugs = slugs,
                         onHelpLink = onOpenSlug,
                     )
                 }
