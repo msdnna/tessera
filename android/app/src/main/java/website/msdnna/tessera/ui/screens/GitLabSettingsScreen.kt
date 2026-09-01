@@ -61,6 +61,7 @@ import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.dashedBorder
 import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.ConflictAmber
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -399,7 +400,7 @@ private fun BindingRow(
             Text(
                 stringResource(
                     R.string.gitlab_last_sync,
-                    integ.lastSyncedAt?.let { localDateTimeLabel(LocalResources.current, it) }
+                    integ.lastSyncedAt?.let { localDateTimeLabel(LocalResources.current, it, LocalDateFormat.current) }
                         .takeUnless { it.isNullOrBlank() } ?: "—",
                 ),
                 color = c.text3, fontSize = 12.sp,

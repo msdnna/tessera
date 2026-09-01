@@ -59,6 +59,7 @@ import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -185,7 +186,7 @@ private fun ProjectHeader(name: String, count: Int, onManage: () -> Unit) {
 @Composable
 private fun MilestoneRow(m: WorkspaceMilestone, estimateText: String, onClick: () -> Unit) {
     val c = Tessera.colors
-    val range = Milestones.range(LocalResources.current, m.startDate, m.dueDate)
+    val range = Milestones.range(LocalResources.current, m.startDate, m.dueDate, LocalDateFormat.current)
     val pct = if (m.taskCount > 0) (m.doneCount.toFloat() / m.taskCount.toFloat()).coerceIn(0f, 1f) else 0f
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
@@ -398,7 +399,7 @@ private fun ManagerRow(vm: MilestoneViewModel, m: Milestone, glCapable: Boolean)
                             GitlabBadge()
                         }
                     }
-                    val range = Milestones.range(LocalResources.current, m.startDate, m.dueDate)
+                    val range = Milestones.range(LocalResources.current, m.startDate, m.dueDate, LocalDateFormat.current)
                     if (range.isNotEmpty()) {
                         Text(range, color = c.text3, fontSize = 12.sp)
                     }
@@ -523,7 +524,7 @@ private fun MilestoneEditor(
 private fun DateChip(label: String, iso: String?, onPick: (String?) -> Unit, modifier: Modifier = Modifier) {
     val c = Tessera.colors
     var open by remember { mutableStateOf(false) }
-    val text = if (iso != null) longDate(LocalResources.current, iso) else label
+    val text = if (iso != null) longDate(LocalResources.current, iso, LocalDateFormat.current) else label
     Box(modifier) {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusSm)).border(1.dp, c.border, RoundedCornerShape(RadiusSm))

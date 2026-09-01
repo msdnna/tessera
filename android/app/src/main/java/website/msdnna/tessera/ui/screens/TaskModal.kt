@@ -114,6 +114,7 @@ import website.msdnna.tessera.ui.components.UnderlineTabs
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -915,8 +916,8 @@ private fun DueValue(
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
     val res = LocalResources.current
-    val dueText = dueLabel(res, dueIso)
-    val startText = dueLabel(res, startIso)
+    val dueText = dueLabel(res, dueIso, fmt = LocalDateFormat.current)
+    val startText = dueLabel(res, startIso, fmt = LocalDateFormat.current)
     // Show the bar as «начало → срок» when a start is set.
     val label = when {
         startText.isNotBlank() && dueText.isNotBlank() -> "$startText → $dueText"
@@ -1387,7 +1388,7 @@ private fun MilestoneValue(
                 Text(stringResource(R.string.task_milestone_none), color = c.text3, fontSize = 14.sp)
             } else {
                 val range = website.msdnna.tessera.util.Milestones.range(
-                    LocalResources.current, chosen.startDate, chosen.dueDate,
+                    LocalResources.current, chosen.startDate, chosen.dueDate, LocalDateFormat.current,
                 )
                 Box(Modifier.alpha(if (chosen.isClosed) 0.6f else 1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1409,7 +1410,7 @@ private fun MilestoneValue(
             })
             milestones.forEach { m ->
                 val range = website.msdnna.tessera.util.Milestones.range(
-                    LocalResources.current, m.startDate, m.dueDate,
+                    LocalResources.current, m.startDate, m.dueDate, LocalDateFormat.current,
                 )
                 val label = if (range.isEmpty()) m.title else "${m.title}  ·  $range"
                 TMenuItem(label, onClick = {
@@ -1550,7 +1551,7 @@ private fun CommentRow(
                     Text("· GitLab", color = c.text3, fontSize = 11.sp)
                 }
                 Spacer(Modifier.width(6.dp))
-                Text(whenLabel(LocalResources.current, cm.createdAt), color = c.text3, fontSize = 11.sp)
+                Text(whenLabel(LocalResources.current, cm.createdAt, LocalDateFormat.current), color = c.text3, fontSize = 11.sp)
                 if (cm.authorId != null && cm.authorId == meId) {
                     Spacer(Modifier.weight(1f))
                     IonIconButton(Ion.PENCIL, onStartEdit, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
@@ -2177,7 +2178,7 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f),
                 )
-                Text(whenLabel(LocalResources.current, e.createdAt), color = c.text3, fontSize = 11.sp)
+                Text(whenLabel(LocalResources.current, e.createdAt, LocalDateFormat.current), color = c.text3, fontSize = 11.sp)
             }
         }
     }

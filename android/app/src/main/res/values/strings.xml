@@ -572,10 +572,32 @@
     <string name="dates_short">%1$d %2$s</string>
     <string name="dates_short_year">%1$d %2$s %3$d</string>
     <string name="dates_long">%1$d %2$s. %3$d г.</string>
-    <string name="dates_full">%1$d %2$s %3$d</string>
     <string name="dates_at_time">%1$s, %2$s</string>
     <string name="dates_with_time">%1$s %2$s</string>
     <string name="dates_clock">%1$02d:%2$02d</string>
+    <!-- Пресеты полной даты (#2857): short — цифрами, long — с полным месяцем;
+         medium берёт dates_long, iso собирается в коде и локали не знает. -->
+    <string name="dates_preset_short">%1$02d.%2$02d.%3$d</string>
+    <string name="dates_preset_long">%1$d %2$s %3$d г.</string>
+    <string name="dates_clock_12">%1$d:%2$02d %3$s</string>
+    <string name="dates_am">AM</string>
+    <string name="dates_pm">PM</string>
+    <!-- Полные названия месяцев в родительном падеже: «31 декабря 2026 г.».
+         Именительные из calendar_months («Декабрь») в подпись даты не годятся. -->
+    <string-array name="dates_months_full">
+        <item>января</item>
+        <item>февраля</item>
+        <item>марта</item>
+        <item>апреля</item>
+        <item>мая</item>
+        <item>июня</item>
+        <item>июля</item>
+        <item>августа</item>
+        <item>сентября</item>
+        <item>октября</item>
+        <item>ноября</item>
+        <item>декабря</item>
+    </string-array>
 
     <!-- Уведомления: шапка и разделы -->
     <string name="notif_title">Уведомления</string>

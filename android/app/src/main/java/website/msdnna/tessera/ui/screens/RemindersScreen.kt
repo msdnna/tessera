@@ -43,6 +43,7 @@ import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
@@ -82,7 +83,7 @@ fun RemindersScreen() {
                     IonIcon(Ion.TIME, size = 16.dp, tint = c.text3)
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        pickedIso?.let { localDateTimeLabel(LocalResources.current, it) }
+                        pickedIso?.let { localDateTimeLabel(LocalResources.current, it, LocalDateFormat.current) }
                             ?: stringResource(R.string.reminders_pick_time),
                         color = if (pickedIso != null) c.text1 else c.placeholder,
                         fontSize = 14.sp,
@@ -175,7 +176,7 @@ private fun ReminderRow(reminder: Reminder, onToggle: () -> Unit, onDelete: () -
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                localDateTimeLabel(LocalResources.current, reminder.remindAt),
+                localDateTimeLabel(LocalResources.current, reminder.remindAt, LocalDateFormat.current),
                 color = if (overdue) TesseraDanger else c.text3,
                 fontSize = 12.sp,
             )

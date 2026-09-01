@@ -48,10 +48,12 @@ import website.msdnna.tessera.ui.components.TCard
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.GitlabJournalViewModel
+import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.dueLabel
 import website.msdnna.tessera.util.localDateTimeLabel
@@ -145,6 +147,7 @@ private fun RunRow(
     // Дату, подпись триггера и счётчики собирают обычные функции — ресурсы берём из
     // композиции, где их уже подменил AppLocale на язык профиля.
     val res = LocalResources.current
+    val fmt = LocalDateFormat.current
     Column {
         Row(
             Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusSm)).clickableNoRipple(onClick = onToggle)
@@ -154,7 +157,7 @@ private fun RunRow(
             KindChip(run.kind)
             Spacer(Modifier.width(8.dp))
             Column(Modifier.weight(1f)) {
-                Text(localDateTimeLabel(res, run.startedAt), color = c.text1, fontSize = 13.sp)
+                Text(localDateTimeLabel(res, run.startedAt, fmt), color = c.text1, fontSize = 13.sp)
                 Text(
                     res.getString(R.string.gljournal_run_meta, triggerLabel(res, run.trigger), runCounts(res, run)),
                     color = c.text3, fontSize = 11.sp,
@@ -206,6 +209,7 @@ private fun ActionDetailDialog(
     // Даты в журнале рисует обычная функция — ресурсы берём из композиции, где их
     // уже подменил AppLocale на язык профиля.
     val res = LocalResources.current
+    val fmt = LocalDateFormat.current
     val isPush = action.direction == "push"
     val canRetry = isPush && action.status == "fail"
     val detail = action.detail ?: JsonObject()
@@ -229,9 +233,9 @@ private fun ActionDetailDialog(
                         val f = fields.objOrNull(k) ?: return@forEach
                         Row(Modifier.padding(vertical = 3.dp)) {
                             Text(fieldLabel(res, k), color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
-                            Text(fmtVal(res, k, f.get("before")), color = ERR, fontSize = 12.5.sp)
+                            Text(fmtVal(res, k, f.get("before"), fmt), color = ERR, fontSize = 12.5.sp)
                             Text(" → ", color = c.text3, fontSize = 12.5.sp)
-                            Text(fmtVal(res, k, f.get("after")), color = c.text1, fontSize = 12.5.sp)
+                            Text(fmtVal(res, k, f.get("after"), fmt), color = c.text1, fontSize = 12.5.sp)
                         }
                     }
                 }
@@ -242,7 +246,7 @@ private fun ActionDetailDialog(
                     orderedKeys(after).forEach { k ->
                         Row(Modifier.padding(vertical = 3.dp)) {
                             Text(fieldLabel(res, k), color = c.text3, fontSize = 12.sp, modifier = Modifier.width(96.dp))
-                            Text(fmtVal(res, k, after.get(k)), color = c.text1, fontSize = 12.5.sp)
+                            Text(fmtVal(res, k, after.get(k), fmt), color = c.text1, fontSize = 12.5.sp)
                         }
                     }
                 }
@@ -381,14 +385,19 @@ internal fun runCounts(res: Resources, run: GitlabSyncRun): String {
 
 private fun orderedKeys(obj: JsonObject): List<String> = FieldOrder.filter { obj.has(it) }
 
-internal fun fmtVal(res: Resources, key: String, el: com.google.gson.JsonElement?): String {
+internal fun fmtVal(
+    res: Resources,
+    key: String,
+    el: com.google.gson.JsonElement?,
+    fmt: DateFormatPrefs = DateFormatPrefs.Default,
+): String {
     if (el == null || el.isJsonNull) return "—"
     val raw = if (el.isJsonPrimitive) el.asString else el.toString()
     if (raw.isBlank()) return "—"
     return when (key) {
         "priority" -> priorityLabel(res, raw.toDoubleOrNull()?.toInt() ?: -1) ?: raw
         "completed" -> res.getString(if (raw == "true") R.string.task_status_completed else R.string.task_status_active)
-        "due", "start" -> dueLabel(res, raw)
+        "due", "start" -> dueLabel(res, raw, fmt = fmt)
         else -> raw
     }
 }

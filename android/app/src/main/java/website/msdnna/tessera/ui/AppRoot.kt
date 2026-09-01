@@ -57,6 +57,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.theme.accentByKey
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.isAuthError
 
 /** Upper bound on the startup session check before the splash gives up. */
@@ -207,7 +208,14 @@ fun AppRoot(
     // Language comes from the profile, not the device — the whole tree below
     // resolves its strings in it (#2803).
     AppLocale(language = preferences.language) {
-        TesseraTheme(accent = accentByKey(accentKey), isDark = isDark, tagPrefixMode = tagPrefixMode) {
+        // Дата/время следуют префам профиля (#2857) — их вместе с палитрой раздаёт
+        // тема, чтобы каждый рендер даты не тащил префы параметром.
+        TesseraTheme(
+            accent = accentByKey(accentKey),
+            isDark = isDark,
+            tagPrefixMode = tagPrefixMode,
+            dateFormat = DateFormatPrefs.of(preferences),
+        ) {
             Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
                 when {
                     boot is Boot.Loading -> BootLoading()
