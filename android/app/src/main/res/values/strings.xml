@@ -481,6 +481,16 @@
     <string name="board_column_delete">Удалить колонку</string>
     <string name="board_column_delete_confirm">Удалить «%1$s» и задачи в ней?</string>
 
+    <!-- Доска: счётчики колонки и бара (веб-паритет #2850/#2851). В скобках —
+         итог с учётом подзадач; подсказка открывается долгим нажатием. -->
+    <string name="board_column_count">%1$d (%2$d)</string>
+    <string name="board_column_count_title">Задач в колонке: %1$d, в скобках — итог с учётом подзадач: %2$d</string>
+    <string name="board_column_count_title_flat">Задач в колонке: %1$d</string>
+    <string name="board_composer_shown">показано: %1$d (%2$d)</string>
+    <string name="board_composer_shown_flat">показано: %1$d</string>
+    <string name="board_composer_shown_title">Показано задач: %1$d, в скобках — итог с учётом подзадач: %2$d</string>
+    <string name="board_composer_shown_title_flat">Показано задач: %1$d (подзадач нет)</string>
+
     <!-- Доска: подписи дорожек в режимах группировки -->
     <string name="board_lane_no_tag">Без тега</string>
     <string name="board_lane_unassigned">Не назначено</string>

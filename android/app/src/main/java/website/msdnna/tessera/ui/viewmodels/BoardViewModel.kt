@@ -292,6 +292,24 @@ data class BoardUiState(
 
     fun subtaskCount(parentId: String): Int = subtasks.count { it.parentId == parentId }
 
+    /** Parent id → children for the lane/composer counters (web `countSubtaskMap`).
+     *
+     *  Neither map alone is enough. The filtered one only carries the parents that
+     *  survived the filter, so walking it alone would stop one level down and
+     *  undercount a deeper tree; the raw one knows every level but ignores the
+     *  composer, so a filter-narrowed parent would still report all of its children.
+     *  Overlaid, the narrowed list wins where the filter produced one and the raw map
+     *  supplies the levels below it. With no filter both maps are the same one. */
+    val countSubtasksByParent: Map<String, List<Task>> by lazy {
+        subtasks.groupBy { it.parentId.orEmpty() } + filteredBoard.subtasksByParent
+    }
+
+    /** Top-level cards the composer leaves on the board, board-wide (web
+     *  `filteredTasks`) — the source of the «показано» counter. Counted from this
+     *  list rather than by summing the lanes: with tag grouping a task carrying two
+     *  column tags sits in both lanes, and the arithmetic sum would count it twice. */
+    val visibleTasks: List<Task> get() = applyFilterSort(tasks)
+
     val sortedColumns: List<BoardColumn> get() = columns.sortedBy { it.position }
 }
 

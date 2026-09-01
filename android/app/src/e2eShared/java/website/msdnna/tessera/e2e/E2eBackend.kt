@@ -211,10 +211,18 @@ object E2eBackend {
 
     /** Creates a task from the outside — for asserting that the app renders (or
      *  live-updates over the websocket) data it did not create itself. */
-    fun createTask(fixture: Fixture, title: String, column: BoardColumn = fixture.firstColumn): Task =
+    fun createTask(
+        fixture: Fixture,
+        title: String,
+        column: BoardColumn = fixture.firstColumn,
+        // A subtask straight from the API — the board's own nesting path is a drag
+        // (see DragDropE2eTest), which is a poor way to *set up* a tree for a spec
+        // about something else.
+        parentId: String? = null,
+    ): Task =
         post(
             "boards/${fixture.board.id}/tasks",
-            CreateTaskRequest(columnId = column.id, title = title),
+            CreateTaskRequest(columnId = column.id, title = title, parentId = parentId),
             fixture.account.accessToken,
         )
 

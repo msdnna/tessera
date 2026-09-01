@@ -65,6 +65,11 @@ object TestTags {
      *  it to tell «the menu is open» from «the tap missed». */
     const val COLUMN_MENU_COLORS = "column-menu-colors"
 
+    /** The «3 (6)» counter in a column header (#2850). Per-column, because the point
+     *  of a spec here is «THIS column folds in its subtasks», not «some header shows
+     *  a number». */
+    fun columnCount(id: String) = "column-count:$id"
+
     // ── grouping (the killer feature: lanes = tags) ─────────────────────────
 
     /** The transparent overlay over a *collapsed* composer bar, which turns a tap
@@ -73,6 +78,10 @@ object TestTags {
      *  can both tell the state apart and take the same route a user takes: the chips
      *  below only answer taps once it is gone. */
     const val BOARD_COMPOSER_EXPAND = "board-composer-expand"
+
+    /** The bar's «показано: 2 (4)» counter (#2851) — one per board, unlike the
+     *  per-column headers: it reports the whole filtered board. */
+    const val BOARD_COMPOSER_COUNT = "board-composer-count"
 
     /** The always-present grouping chip in the composer bar; opens the mode menu. */
     const val BOARD_GROUP = "board-group"

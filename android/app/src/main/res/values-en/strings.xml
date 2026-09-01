@@ -472,6 +472,16 @@
     <string name="board_column_delete">Delete column</string>
     <string name="board_column_delete_confirm">Delete “%1$s” and the tasks in it?</string>
 
+    <!-- Board: column / composer counters (web parity #2850/#2851). The bracketed
+         number folds in every subtask; the hint opens on a long press. -->
+    <string name="board_column_count">%1$d (%2$d)</string>
+    <string name="board_column_count_title">Tasks in the column: %1$d; in brackets — %2$d including subtasks</string>
+    <string name="board_column_count_title_flat">Tasks in the column: %1$d</string>
+    <string name="board_composer_shown">showing: %1$d (%2$d)</string>
+    <string name="board_composer_shown_flat">showing: %1$d</string>
+    <string name="board_composer_shown_title">Tasks shown: %1$d; in brackets — %2$d including subtasks</string>
+    <string name="board_composer_shown_title_flat">Tasks shown: %1$d (no subtasks)</string>
+
     <!-- Board: lane labels in grouping modes -->
     <string name="board_lane_no_tag">No tag</string>
     <string name="board_lane_unassigned">Unassigned</string>

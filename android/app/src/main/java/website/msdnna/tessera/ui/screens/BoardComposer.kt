@@ -69,6 +69,7 @@ import androidx.compose.ui.zIndex
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.ui.TestTags
+import website.msdnna.tessera.ui.components.CountWithHint
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.MemberAvatar
@@ -95,6 +96,7 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.boardGitlabAuthors
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnCaption
+import website.msdnna.tessera.util.countWithSubtasks
 import website.msdnna.tessera.util.prefixLabel
 import website.msdnna.tessera.util.tagNamespace
 
@@ -289,6 +291,11 @@ fun BoardComposerBar(
                 )
             }
             AddFacetButton(state, vm)
+            // «показано: 2 (4)» — how much the current facet set leaves on the board
+            // (web `.composer-count`, #2851). It sits BEFORE the search field, unlike
+            // the web bar: the field carries weight(1f) and eats the rest of its flow
+            // row, so anything after it would be pushed onto a row of its own.
+            ComposerShownCount(state)
             // Collapsed the field is inert anyway (the overlay below eats its taps),
             // so it is swapped for a plain label — that keeps the weighted text field
             // out of the layout while the bar is collapsing. See [ComposerRowHeight].
@@ -899,6 +906,38 @@ private fun FacetChip(
             ) { Text("×", color = if (tinted) ink else c.text3, fontSize = 14.sp) }
         }
     }
+}
+
+/**
+ * The bar's «показано» counter (web `shownCountLabel`, #2851): cards left on the
+ * board by the current facet set, and — in brackets — the same with every subtask
+ * folded in. A long press explains the pair.
+ *
+ * Counted from the board-wide filtered list rather than by summing the lane headers:
+ * with tag grouping a task carrying two column tags sits in both lanes, and the
+ * arithmetic sum would count it twice (the web composer says the same).
+ */
+@Composable
+private fun ComposerShownCount(state: BoardUiState) {
+    val counts = remember(state.tasks, state.countSubtasksByParent, state.filter, state.sortLevels) {
+        countWithSubtasks(state.visibleTasks, state.countSubtasksByParent)
+    }
+    CountWithHint(
+        label = if (counts.hasSubtasks) {
+            stringResource(R.string.board_composer_shown, counts.tasks, counts.total)
+        } else {
+            stringResource(R.string.board_composer_shown_flat, counts.tasks)
+        },
+        hint = if (counts.hasSubtasks) {
+            stringResource(R.string.board_composer_shown_title, counts.tasks, counts.total)
+        } else {
+            stringResource(R.string.board_composer_shown_title_flat, counts.tasks)
+        },
+        modifier = Modifier.height(FacetChipHeight).wrapContentHeight(Alignment.CenterVertically)
+            .padding(horizontal = 4.dp)
+            .testTag(TestTags.BOARD_COMPOSER_COUNT),
+        fontSize = 12.sp,
+    )
 }
 
 /**
