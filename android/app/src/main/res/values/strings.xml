@@ -31,6 +31,7 @@
     <string name="auth_server_title">Сервер</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Применяется сразу. Пусто — сервер по умолчанию.</string>
+    <string name="auth_language_switch_to">Переключить на %1$s</string>
     <string name="auth_browser_failed">Не удалось открыть браузер для входа</string>
 
     <!-- Ошибки OAuth-редиректа (коды приходят от бэкенда) -->

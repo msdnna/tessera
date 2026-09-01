@@ -16,6 +16,7 @@ import website.msdnna.tessera.BuildConfig
 import website.msdnna.tessera.data.model.Preferences as UserPrefs
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.util.normalizeLanguage
+import website.msdnna.tessera.util.resolveLanguage
 
 val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "tessera")
 
@@ -51,6 +52,11 @@ class AppPreferences(private val context: Context) {
         // "name" (friendly prefix label) | "raw" (bare prefix) on scoped tag pills
         // — device preference, web `tessera_tag_prefix_mode`.
         val TAG_PREFIX_MODE = stringPreferencesKey("tag_prefix_mode")
+
+        // До-авторизационный выбор языка тумблером на экране входа (#2855). Живёт
+        // отдельно от PREFS_JSON: тот — кэш профиля и чистится при выходе, а этот
+        // выбор человек сделал для устройства и он должен пережить logout.
+        val LANGUAGE = stringPreferencesKey("language")
         val LAST_DEST = stringPreferencesKey("last_dest")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val RECENT_ASSIGNEES = stringPreferencesKey("recent_assignees")
@@ -125,10 +131,33 @@ class AppPreferences(private val context: Context) {
         prefs[Keys.PREFS_JSON]?.let { runCatching { gson.fromJson(it, UserPrefs::class.java) }.getOrNull() } ?: UserPrefs()
     }
 
-    /** Язык интерфейса из профиля, уже нормализованный. Отдельным потоком — за ним
-     *  ходят из фона (уведомления, будильники напоминаний), где нет ни композиции,
-     *  ни живой ViewModel, а нужен ровно этот одно поле. */
-    val language: Flow<String> = preferences.map { normalizeLanguage(it.language) }
+    /** До-авторизационный выбор языка (тумблер на экране входа), "" = не выбирали. */
+    val languageOverride: Flow<String> = context.dataStore.data.map { it[Keys.LANGUAGE] ?: "" }
+
+    suspend fun setLanguage(language: String) {
+        context.dataStore.edit { it[Keys.LANGUAGE] = normalizeLanguage(language) }
+    }
+
+    /** Язык интерфейса: профиль → выбор на экране входа → локаль телефона (#2855).
+     *  Отдельным потоком — за ним ходят из фона (уведомления, будильники напоминаний),
+     *  где нет ни композиции, ни живой ViewModel, а нужно ровно это одно поле.
+     *
+     *  Язык профиля читается из сырого JSON, а не из распарсенной модели: у
+     *  [UserPrefs] поле `language` по умолчанию не пустое ("ru"), так что через модель
+     *  «профиля ещё нет» и «в профиле выбран русский» неразличимы, и системная локаль
+     *  не сработала бы никогда. */
+    val language: Flow<String> = context.dataStore.data.map { prefs ->
+        val fromProfile = prefs[Keys.PREFS_JSON]
+            ?.let { runCatching { gson.fromJson(it, UserPrefs::class.java) }.getOrNull() }
+            ?.language
+        resolveLanguage(server = fromProfile, device = prefs[Keys.LANGUAGE], system = systemLanguage())
+    }
+
+    /** Локаль телефона. Берётся у контекста приложения — его конфигурацию мы не
+     *  подменяем (это делает `AppLocale` только для дерева Compose), так что здесь
+     *  действительно системное значение, а не уже выбранный язык приложения. */
+    private fun systemLanguage(): String =
+        context.resources.configuration.locales[0]?.language.orEmpty()
 
     val accentKey: Flow<String> = context.dataStore.data.map { it[Keys.ACCENT_KEY] ?: "purple" }
     val darkMode: Flow<Boolean> = context.dataStore.data.map { it[Keys.DARK_MODE] ?: false }

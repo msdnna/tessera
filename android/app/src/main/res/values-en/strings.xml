@@ -27,6 +27,7 @@
     <string name="auth_server_title">Server</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Applied immediately. Empty means the default server.</string>
+    <string name="auth_language_switch_to">Switch to %1$s</string>
     <string name="auth_browser_failed">Couldn\'t open a browser to sign in</string>
 
     <!-- OAuth redirect errors (codes come from the backend) -->

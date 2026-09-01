@@ -27,6 +27,9 @@ object TestTags {
     const val AUTH_SERVER_TOGGLE = "auth-server-toggle"
     const val AUTH_SERVER_FIELD = "auth-server-field"
 
+    /** Pre-login RU/EN cycle button (web `data-testid="auth-lang-toggle"`). */
+    const val AUTH_LANG_TOGGLE = "auth-lang-toggle"
+
     // ── shell ──────────────────────────────────────────────────────────────
 
     /** Present exactly when the session gate has let us past the auth screen. */
