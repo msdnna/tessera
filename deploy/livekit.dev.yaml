@@ -1,0 +1,32 @@
+# LiveKit SFU — dev config (#2866), used by the repo-root docker-compose.yml.
+# Production config is deploy/livekit.yaml; keep the two in step.
+#
+# Same no-secrets rule: the dev key/secret come from LIVEKIT_KEYS in compose
+# (defaulted there, so `make up` works without touching .env).
+
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  # Off in dev, unlike production: STUN discovery would hand the browser this
+  # box's public IP, which nothing here listens on. With it off the SFU offers
+  # its compose-network address, which the dev host routes to directly.
+  #
+  # If you develop against a stack on ANOTHER machine, set LIVEKIT_NODE_IP to
+  # that machine's address instead of flipping this on (see docker-compose.yml).
+  use_external_ip: false
+
+room:
+  # Same as production, and for the same reason — a dev stack that auto-creates
+  # rooms hides the bug where the backend forgot to create one.
+  auto_create: false
+  max_participants: 30
+  empty_timeout: 300
+  departure_timeout: 20
+
+logging:
+  # Louder than production on purpose: in dev the join/leave lines are how you
+  # see whether a participant actually reached the SFU.
+  level: info
+  pion_level: error

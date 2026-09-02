@@ -66,6 +66,18 @@ services:
       - SENTRY_ENV=${SENTRY_ENV:-}
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-}
       - SENTRY_FRONTEND_TRACES_SAMPLE_RATE=${SENTRY_FRONTEND_TRACES_SAMPLE_RATE:-}
+      # Conferences (#2864). LIVEKIT_URL is where the backend calls RoomService
+      # (compose network); LIVEKIT_PUBLIC_URL is what it hands the browser —
+      # empty means "same origin + /livekit". The secret signs access tokens and
+      # must never be sent to a client.
+      # Note the compose-service-name-vs-HTTP_PROXY trap below: with HTTP_PROXY
+      # set, Go would send `http://livekit:7880` to the proxy and get a 502 —
+      # NO_PROXY's CIDRs do not cover a bare hostname, so the RoomService client
+      # bypasses the proxy explicitly instead of relying on this env.
+      - LIVEKIT_URL=${LIVEKIT_URL:-http://livekit:7880}
+      - LIVEKIT_PUBLIC_URL=${LIVEKIT_PUBLIC_URL:-}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-devsecret_at_least_32_characters_long}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
@@ -117,6 +129,43 @@ services:
       # latest.json here (tools/build-android-release.sh); nginx serves /apks/.
       - ./apks:/usr/share/nginx/html/apks:ro
       - ./desktop-dist:/usr/share/nginx/html/desktop:ro
+
+  # LiveKit SFU — media server for conferences (#2864, #2866). Dev twin of the
+  # production service in deploy/docker-compose.yml; config in
+  # deploy/livekit.dev.yaml.
+  #
+  # Started by default (the image is ~40 MB, unlike the converter's gigabyte) so
+  # the conferences section works after a plain `make up`. The dev key/secret are
+  # defaulted below — override in .env with the same values you put in the
+  # backend's LIVEKIT_* if you want prod-like credentials.
+  #
+  # Unlike production, 7880 IS published here: the Vite dev server on :5174 has
+  # no nginx in front of it, so the browser talks to the SFU directly. On the
+  # docker frontend (:8083) the /livekit/ location in frontend/nginx.conf covers
+  # the same path as Caddy does in production.
+  livekit:
+    image: livekit/livekit-server:v1.13.6
+    container_name: tessera-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      # LiveKit reads "key: secret" pairs from this one variable. The quotes are
+      # load-bearing: unquoted, the ": " inside makes YAML read the whole entry
+      # as a mapping instead of a string, and compose rejects the file.
+      - "LIVEKIT_KEYS=${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_characters_long}"
+      # Set to the LAN address of this box when a phone or a second machine
+      # joins a dev call — otherwise the SFU advertises its compose-network
+      # address, which only this host can route to.
+      - NODE_IP=${LIVEKIT_NODE_IP:-}
+      - TZ=${TZ:-Europe/Moscow}
+    ports:
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    volumes:
+      - ./deploy/livekit.dev.yaml:/etc/livekit.yaml:ro
+    networks:
+      - tessera-network
 
   # Headless LibreOffice behind a small HTTP API, for document import/export
   # (#2733). Declared here but NOT started by default — it sits behind a compose

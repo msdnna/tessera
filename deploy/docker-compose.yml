@@ -7,9 +7,13 @@
 #   docker compose --env-file .env up -d
 #   docker compose exec backend /migrate      # apply migrations (distroless: binary exec, no shell)
 #
-# Naming: only Caddy publishes host ports (80/443). Postgres and backend have
-# NO host ports — they are reachable only inside the compose network. This is
-# the primary data-confidentiality boundary; do not add `ports:` to them.
+# Naming: host ports are published by Caddy (80/443) and — since conferences
+# (#2864) — by LiveKit, but ONLY its media transport (7881/tcp, 7882/udp).
+# Postgres, backend and LiveKit's own signalling/API port (7880) have NO host
+# ports: they are reachable only inside the compose network. This is the primary
+# data-confidentiality boundary; do not add `ports:` to them. Publishing 7880
+# would put LiveKit's RoomService API (create room, kick, list participants) on
+# the internet — it is meant to be called by our backend only.
 
 services:
   postgres:
@@ -78,6 +82,13 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-}
+      # Conferences (#2864). The backend mints LiveKit access tokens and drives
+      # rooms over the compose network; the browser only ever sees the token and
+      # the public /livekit/ URL. LIVEKIT_API_SECRET must never reach the client.
+      - LIVEKIT_URL=${LIVEKIT_URL:-http://livekit:7880}
+      - LIVEKIT_PUBLIC_URL=${LIVEKIT_PUBLIC_URL:-}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-}
     expose:
       - "8080"
     volumes:
@@ -105,6 +116,42 @@ services:
       - ./apks:/usr/share/nginx/html/apks:ro
       - ./desktop-dist:/usr/share/nginx/html/desktop:ro
 
+  # LiveKit SFU — media server for conferences (#2864, #2866). Every participant
+  # publishes one stream up and subscribes to what they need, instead of the
+  # N−1 uploads a mesh would push through the corporate VPN.
+  #
+  # Ports, and why exactly these:
+  #   7880  signalling + RoomService HTTP API — NOT published, Caddy fronts it at
+  #         /livekit/* over the existing certificate (see Caddyfile).
+  #   7881  ICE over TCP, published — the fallback for clients whose firewall
+  #         blocks UDP. Cannot sit behind Caddy: it is raw ICE, not HTTP.
+  #   7882  media over UDP, published. One port only, thanks to udp mux in
+  #         livekit.yaml. This is the one that carries the calls.
+  #
+  # No healthcheck: the image is a bare static binary (entrypoint
+  # /livekit-server) with no shell, wget or curl to run a probe with. Liveness is
+  # visible from the backend's token endpoint instead.
+  livekit:
+    image: livekit/livekit-server:v1.13.6
+    container_name: tessera-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      # "key: secret" — supplied by env so no secret lands in the mounted config.
+      # Quoted deliberately: the ": " inside would otherwise make YAML parse this
+      # list item as a mapping, and compose refuses a non-string here.
+      - "LIVEKIT_KEYS=${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}"
+      - TZ=${TZ:-Europe/Moscow}
+    ports:
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    expose:
+      - "7880"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    networks:
+      - tessera-network
+
   caddy:
     image: caddy:2-alpine
     container_name: tessera-caddy
@@ -122,6 +169,7 @@ services:
       - caddy_config:/config
     depends_on:
       - frontend
+      - livekit
     networks:
       - tessera-network
 

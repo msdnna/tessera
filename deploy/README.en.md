@@ -10,7 +10,9 @@ source tree or a build toolchain. (Later: push to GHCR and `docker pull` instead
 ┌────────── VDS (Ubuntu 24.04) ───────────┐
 │  Caddy :80/:443  ──TLS──► frontend(nginx)│
 │                            │ /api ─► backend (distroless) ─► postgres │
-│  only 80/443 published; DB + backend internal-only                    │
+│                    └ /livekit ─► livekit (signalling, no host port)   │
+│  livekit :7881/tcp + :7882/udp — call media only                      │
+│  80/443 + media ports published; DB + backend internal-only           │
 └──────────────────────────────────────────┘
 ```
 
@@ -22,6 +24,7 @@ source tree or a build toolchain. (Later: push to GHCR and `docker pull` instead
 | `server-bootstrap.sh` | server (once) | OS hardening + Docker install |
 | `docker-compose.yml` | server | image-based prod stack |
 | `Caddyfile` | server | TLS edge + reverse proxy |
+| `livekit.yaml` | server | video-call SFU config (no secrets — those live in `.env`) |
 | `.env.example` | server | copy to `.env`, fill secrets |
 
 ## First-time deploy
@@ -40,7 +43,7 @@ ssh user@server 'sudo bash /tmp/server-bootstrap.sh'
 ```bash
 bash deploy/build-and-save.sh
 scp deploy/dist/tessera-images-*.tar.gz user@server:/opt/tessera/
-scp deploy/{docker-compose.yml,Caddyfile,.env.example} user@server:/opt/tessera/
+scp deploy/{docker-compose.yml,Caddyfile,livekit.yaml,.env.example} user@server:/opt/tessera/
 ```
 
 **3. Configure** (server, `/opt/tessera`):
@@ -95,6 +98,43 @@ To verify, the backend log should carry `uploads: каталог доступе�
 startup. A `uploads: каталог НЕ доступен на запись` line means the step is still
 needed.
 
+## Video calls (LiveKit)
+
+Calls and meetings run through an **SFU** — the `livekit` container: every
+participant uploads a single track to the server instead of one per peer.
+Without it a four-way call is capped by the weakest participant's uplink.
+
+**Firewall ports to open** (`ufw allow` — `server-bootstrap.sh` deliberately
+leaves these closed so hosts without conferences don't expose them):
+
+| Port | For | If closed |
+|------|-----|-----------|
+| `7882/udp` | all call media (one port, thanks to UDP mux) | calls fall back to TCP: higher latency, worse quality |
+| `7881/tcp` | ICE over TCP — the fallback where UDP is blocked | participants behind strict corporate firewalls can't connect at all |
+
+```bash
+sudo ufw allow 7882/udp && sudo ufw allow 7881/tcp
+```
+
+The signalling port **7880 is not published**, and it should not be: it is
+proxied by Caddy as `https://<DOMAIN>/livekit/*` on the certificate you already
+have. That is not cosmetic — 7880 also serves LiveKit's management HTTP API
+(create room, kick a participant, list who is present), which only our backend
+is meant to call.
+
+**Secrets.** `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` go in `.env`, and without
+them `docker compose up` fails on purpose with an explicit error — there is no
+default secret. The secret signs participant passes: whoever holds it can join
+any meeting on this server. Treat it like `JWT_SECRET`.
+
+**Updating an existing deployment.** Besides the new images, copy `livekit.yaml`
+over and add the four `LIVEKIT_*` entries from `.env.example` to `.env` — the
+stack will not start otherwise.
+
+**Check after startup:** `docker compose logs livekit` shows `starting LiveKit
+server`, and `curl -sf https://<DOMAIN>/livekit/` answers something (a protocol
+error is fine) rather than 502.
+
 ## Backups (do this — confidentiality isn't complete without it)
 
 ```bash
@@ -144,9 +184,13 @@ PG_RANDOM_PAGE_COST=1.1         # SSD; leave at 4 only for spinning disks
 
 ## Security posture (built in)
 
-- Postgres + backend have **no host ports** — internet-unreachable by design.
+- Postgres, backend and LiveKit's signalling port (7880, which also carries its
+  management API) have **no host ports** — internet-unreachable by design. Only
+  LiveKit's media ports 7881/7882 face outward, and they serve nothing but the
+  encrypted tracks of an already-authorised participant.
 - Backend image is **distroless, non-root**, static binary.
 - `APP_ENV=production` **fails closed** without `JWT_SECRET` / `ENCRYPTION_KEY` /
   `DATABASE_URL` / `PUBLIC_URL`.
 - TLS everywhere via Caddy (auto-renewing Let's Encrypt).
-- SSH: key-only, root login disabled, fail2ban; ufw allows only 22/80/443.
+- SSH: key-only, root login disabled, fail2ban; ufw allows only 22/80/443 (plus
+  7881/tcp and 7882/udp if you enable calls — see the LiveKit section).
