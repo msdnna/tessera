@@ -56,6 +56,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -72,6 +73,7 @@ import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -161,6 +163,8 @@ fun Sidebar(
     // Server version shown next to the app's in the footer (#2766), and the
     // one-shot hint to draw at a nav item — null while there is none to show.
     apiVersion: String = "",
+    /** Tap on that version line — opens the full changelog (#2858). */
+    onOpenHistory: () -> Unit = {},
     spotlight: WhatsNewSpotlight? = null,
     onDismissSpotlight: (String) -> Unit = {},
 ) {
@@ -362,7 +366,7 @@ fun Sidebar(
 
             HorizontalDivider(color = c.border)
             if (updateVersion != null) SidebarUpdateRow(updateVersion, onUpdate)
-            SidebarFooter(user, apiVersion, onOpenSettings, onLogout)
+            SidebarFooter(user, apiVersion, onOpenSettings, onOpenHistory, onLogout)
         }
 
         // Drag overlay (insertion line at projected depth + floating clone).
@@ -1050,7 +1054,13 @@ private fun SidebarUpdateRow(version: String, onUpdate: () -> Unit) {
 }
 
 @Composable
-private fun SidebarFooter(user: User?, apiVersion: String, onOpenSettings: () -> Unit, onLogout: () -> Unit) {
+private fun SidebarFooter(
+    user: User?,
+    apiVersion: String,
+    onOpenSettings: () -> Unit,
+    onOpenHistory: () -> Unit,
+    onLogout: () -> Unit,
+) {
     val c = Tessera.colors
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1079,9 +1089,20 @@ private fun SidebarFooter(user: User?, apiVersion: String, onOpenSettings: () ->
                 if (email.isNotBlank()) Text(email, color = c.text3, fontSize = 12.sp, maxLines = 1)
                 // App version, plus the server's own once it answers /version —
                 // when they disagree it's the first thing worth seeing (#2766).
+                // Tapping it opens the full changelog (#2858): a nested clickable
+                // inside the user block, so the inner one wins and «open settings»
+                // no longer swallows this row. The gesture and the tag sit on the
+                // SAME node deliberately — `clickable` merges its subtree, and a
+                // tag on the parent would end up on a node without the text.
                 val versions = "v${website.msdnna.tessera.BuildConfig.VERSION_NAME}" +
                     if (apiVersion.isNotBlank()) " · API $apiVersion" else ""
-                Text(versions, color = c.text3, fontSize = 11.sp, maxLines = 1)
+                Text(
+                    versions,
+                    color = c.text3,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    modifier = Modifier.clickableNoRipple(onClick = onOpenHistory).testTag(TestTags.SIDEBAR_VERSION),
+                )
             }
         }
         IonIconButton(Ion.SETTINGS, onClick = onOpenSettings)

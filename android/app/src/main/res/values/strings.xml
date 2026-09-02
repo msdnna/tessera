@@ -1109,6 +1109,15 @@
     <string name="update_download_failed">Не удалось загрузить</string>
     <string name="whats_new_title">Что нового</string>
     <string name="whats_new_subtitle">Обновление применено — вот что изменилось</string>
+    <!-- Та же карточка, открытая вручную из строки версии в футере (#2858): весь
+         список релизов, а не «что вы пропустили». -->
+    <string name="whats_new_history_title">История изменений</string>
+    <string name="whats_new_history_subtitle">Все обновления Tessera</string>
+    <!-- Сноска о запущенной сборке в конце истории изменений (#2859). -->
+    <string name="version_client">Клиент</string>
+    <string name="version_server">Сервер</string>
+    <string name="version_commit">коммит %1$s</string>
+    <string name="version_built">сборка %1$s</string>
 
     <!-- Редактор Markdown. Подписи-заглушки («текст», «Скрытый текст») попадают
          в сам документ: это заготовка от интерфейса, поэтому язык берётся тот же,

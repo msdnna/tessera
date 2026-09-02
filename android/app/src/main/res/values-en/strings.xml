@@ -1080,6 +1080,12 @@
     <string name="update_download_failed">Download failed</string>
     <string name="whats_new_title">What\'s new</string>
     <string name="whats_new_subtitle">The update is applied — here is what changed</string>
+    <string name="whats_new_history_title">Changelog</string>
+    <string name="whats_new_history_subtitle">All Tessera updates</string>
+    <string name="version_client">Client</string>
+    <string name="version_server">Server</string>
+    <string name="version_commit">commit %1$s</string>
+    <string name="version_built">built %1$s</string>
 
     <!-- Markdown editor. The placeholder captions ("text", "Hidden text") end up
          inside the document itself: they are a starter written by the UI, so they

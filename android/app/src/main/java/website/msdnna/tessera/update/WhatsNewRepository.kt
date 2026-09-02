@@ -2,6 +2,7 @@ package website.msdnna.tessera.update
 
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.AckRequest
+import website.msdnna.tessera.util.VersionStamp
 
 /**
  * Thin wrapper over the acknowledgement + version endpoints. Sits in `update/`
@@ -19,6 +20,9 @@ class WhatsNewRepository {
         api.acknowledge(AckRequest(key))
     }
 
-    /** The API's own version (`0.85.1`), or "" when the server doesn't answer. */
-    suspend fun apiVersion(): String = api.apiVersion().api
+    /** The API's own build stamp — version plus, on a release backend, the commit
+     *  and build date it was cut from (#2859). Throws when the server doesn't answer. */
+    suspend fun apiStamp(): VersionStamp = api.apiVersion().let {
+        VersionStamp(version = it.api, commit = it.commit, builtAt = it.builtAt)
+    }
 }

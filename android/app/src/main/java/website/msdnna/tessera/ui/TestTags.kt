@@ -228,4 +228,13 @@ object TestTags {
     /** The sidebar hint that follows the card, and its «Понятно». One at a time. */
     const val SPOTLIGHT_CARD = "spotlight-card"
     const val SPOTLIGHT_DISMISS = "spotlight-dismiss"
+
+    /** The top bar's hamburger — the only way into the sidebar drawer, so a spec
+     *  that needs anything in the sidebar starts here. */
+    const val TOP_MENU = "top-menu"
+
+    /** The version line in the sidebar footer — a button opening the full
+     *  changelog (#2858), and the build stamp only that mode renders (#2859). */
+    const val SIDEBAR_VERSION = "sidebar-version"
+    const val WHATS_NEW_BUILD = "whats-new-build"
 }
