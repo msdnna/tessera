@@ -508,6 +508,23 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/document-approvals/:id/decide", rh.DecideDocumentApproval)
 			protected.POST("/document-approvals/:id/cancel", rh.CancelDocumentApproval)
 
+			// Conferences (#2864). Media goes to the LiveKit SFU, not through
+			// these routes — what lives here is the meeting itself: the plan,
+			// the invitees and the attendance stamps. Start is implicit in
+			// /join (the first arrival opens the room); ending is explicit,
+			// because hanging up for everyone is a moderator's decision.
+			protected.POST("/workspaces/:id/conferences", rh.CreateConference)
+			protected.GET("/workspaces/:id/conferences", rh.ListConferences)
+			protected.GET("/tasks/:id/conferences", rh.ListTaskConferences)
+			protected.GET("/conferences/:id", rh.GetConference)
+			protected.PATCH("/conferences/:id", rh.UpdateConference)
+			protected.DELETE("/conferences/:id", rh.DeleteConference)
+			protected.POST("/conferences/:id/join", rh.JoinConference)
+			protected.POST("/conferences/:id/leave", rh.LeaveConference)
+			protected.POST("/conferences/:id/end", rh.EndConference)
+			protected.POST("/conferences/:id/invite", rh.InviteConference)
+			protected.GET("/conferences/:id/participants", rh.ListConferenceParticipants)
+
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)

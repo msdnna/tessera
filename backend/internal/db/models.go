@@ -46,6 +46,52 @@ type BoardView struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Conference struct {
+	ID               uuid.UUID  `json:"id"`
+	WorkspaceID      uuid.UUID  `json:"workspace_id"`
+	TaskID           *uuid.UUID `json:"task_id"`
+	CreatedBy        *uuid.UUID `json:"created_by"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	ScheduledAt      *time.Time `json:"scheduled_at"`
+	StartedAt        *time.Time `json:"started_at"`
+	EndedAt          *time.Time `json:"ended_at"`
+	Status           string     `json:"status"`
+	RecordingTtlDays int32      `json:"recording_ttl_days"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+type ConferenceMessage struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID uuid.UUID  `json:"conference_id"`
+	UserID       *uuid.UUID `json:"user_id"`
+	Body         string     `json:"body"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+type ConferenceParticipant struct {
+	ConferenceID uuid.UUID  `json:"conference_id"`
+	UserID       uuid.UUID  `json:"user_id"`
+	Role         string     `json:"role"`
+	InvitedAt    time.Time  `json:"invited_at"`
+	JoinedAt     *time.Time `json:"joined_at"`
+	LeftAt       *time.Time `json:"left_at"`
+	ForceMuted   bool       `json:"force_muted"`
+}
+
+type ConferenceRecording struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID uuid.UUID  `json:"conference_id"`
+	FilePath     string     `json:"file_path"`
+	FileName     string     `json:"file_name"`
+	SizeBytes    int64      `json:"size_bytes"`
+	DurationSec  int32      `json:"duration_sec"`
+	StartedAt    time.Time  `json:"started_at"`
+	ExpiresAt    *time.Time `json:"expires_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
 type Document struct {
 	ID          uuid.UUID  `json:"id"`
 	WorkspaceID uuid.UUID  `json:"workspace_id"`
