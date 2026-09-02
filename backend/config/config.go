@@ -74,6 +74,19 @@ type Config struct {
 	// as unavailable. Deliberately empty by default — the sidecar is close to a
 	// gigabyte, and an install that does not want it should not have to opt out.
 	ConverterURL string
+	// LiveKit SFU, which carries conference media (#2864). Optional in the same
+	// way the converter is: with any of these empty the client reports itself
+	// disabled and only conferences become unavailable.
+	//
+	// LiveKitURL is the backend's own path to the RoomService API — a compose
+	// service name, never published outside. LiveKitPublicURL is the signalling
+	// address handed to the browser, which goes through Caddy on 443 and is
+	// therefore a different address, not a rewrite of the first. The secret is
+	// used to sign join tokens and must never reach a client.
+	LiveKitURL       string
+	LiveKitPublicURL string
+	LiveKitAPIKey    string
+	LiveKitAPISecret string
 	// Request body ceilings, in bytes. MaxBodyBytes is the blanket limit;
 	// uploads and attachments get their own, larger, budgets.
 	MaxBodyBytes       int64
@@ -202,6 +215,22 @@ func New() *Config {
 		sentryEnv = "development"
 	}
 
+	// LiveKit credentials. A half-filled pair is worth a word: the SFU would be
+	// running and the section visible, while every join fails on a token the
+	// server refuses — a failure that looks like broken media, not like a
+	// missing setting. Not fail-closed, because conferences are optional and an
+	// install should not be kept down by them.
+	lkKey := strings.TrimSpace(os.Getenv("LIVEKIT_API_KEY"))
+	lkSecret := strings.TrimSpace(os.Getenv("LIVEKIT_API_SECRET"))
+	switch {
+	case (lkKey == "") != (lkSecret == ""):
+		log.Println("WARNING: only one of LIVEKIT_API_KEY/LIVEKIT_API_SECRET is set — conferences stay disabled")
+	case lkSecret != "" && len(lkSecret) < 32:
+		// livekit-server refuses to start on a shorter secret, so this pair can
+		// never work — say so here rather than in the SFU's container log.
+		log.Printf("WARNING: LIVEKIT_API_SECRET is shorter than 32 chars (%d) — livekit-server will refuse it", len(lkSecret))
+	}
+
 	return &Config{
 		DatabaseURL:    dbURL,
 		Port:           getEnv("PORT", "8080"),
@@ -226,6 +255,10 @@ func New() *Config {
 		RateLimitEnabled:   getEnvBool("RATE_LIMIT_ENABLED", true),
 		MediaRequireAuth:   getEnvBool("MEDIA_REQUIRE_AUTH", false),
 		ConverterURL:       getEnv("CONVERTER_URL", ""),
+		LiveKitURL:         strings.TrimSpace(os.Getenv("LIVEKIT_URL")),
+		LiveKitPublicURL:   strings.TrimSpace(os.Getenv("LIVEKIT_PUBLIC_URL")),
+		LiveKitAPIKey:      lkKey,
+		LiveKitAPISecret:   lkSecret,
 		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
 		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
 		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),
