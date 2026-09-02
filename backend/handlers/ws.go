@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 
+	"tessera/internal/confroom"
 	"tessera/internal/db"
 	"tessera/internal/docroom"
 	"tessera/internal/realtime"
@@ -28,25 +29,28 @@ const bearerSubprotocol = "bearer"
 // user's workspaces *before* the upgrade, so an unauthenticated client never
 // gets a socket and an authenticated one never sees another workspace's events.
 type WSHandler struct {
-	hub      *realtime.Hub
-	rooms    *docroom.Rooms // per-document presence/locks (ConnectDocument)
-	q        *db.Queries
-	secret   string
-	upgrader websocket.Upgrader
+	hub       *realtime.Hub
+	rooms     *docroom.Rooms  // per-document presence/locks (ConnectDocument)
+	confRooms *confroom.Rooms // per-conference room state (ConnectConference)
+	q         *db.Queries
+	secret    string
+	upgrader  websocket.Upgrader
 }
 
-// NewWSHandler returns a WSHandler backed by the given hub and document-room
-// registry. allowedOrigins is the browser-origin allowlist (the CORS origin plus
-// any desktop origins); requests from other browser origins are refused to block
-// cross-site WebSocket hijacking. Native clients (Android, CLI) send no Origin at
-// all and are admitted on their bearer credential alone.
-func NewWSHandler(hub *realtime.Hub, rooms *docroom.Rooms, q *db.Queries, secret string, allowedOrigins ...string) *WSHandler {
+// NewWSHandler returns a WSHandler backed by the given hub and the two room
+// registries (documents, conferences). allowedOrigins is the browser-origin
+// allowlist (the CORS origin plus any desktop origins); requests from other
+// browser origins are refused to block cross-site WebSocket hijacking. Native
+// clients (Android, CLI) send no Origin at all and are admitted on their bearer
+// credential alone.
+func NewWSHandler(hub *realtime.Hub, rooms *docroom.Rooms, confRooms *confroom.Rooms, q *db.Queries, secret string, allowedOrigins ...string) *WSHandler {
 	allowed, wildcard := originAllowlist(allowedOrigins)
 	return &WSHandler{
-		hub:    hub,
-		rooms:  rooms,
-		q:      q,
-		secret: secret,
+		hub:       hub,
+		rooms:     rooms,
+		confRooms: confRooms,
+		q:         q,
+		secret:    secret,
 		upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
 			WriteBufferSize: 1024,

@@ -291,6 +291,7 @@ func (h *API) DeleteConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	h.dropConfRoom(conf.ID, "deleted")
 	h.broadcastAs(c, conf.WorkspaceID, "conference.deleted", gin.H{"id": conf.ID})
 	c.Status(http.StatusNoContent)
 }
@@ -370,6 +371,7 @@ func (h *API) LeaveConference(c *gin.Context) {
 		ended, err := h.q.EndConference(c, conf.ID)
 		if err == nil {
 			conf = ended
+			h.dropConfRoom(conf.ID, "ended")
 			h.broadcast(conf.WorkspaceID, "conference.ended", conf)
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			fail(c, err)
@@ -399,6 +401,9 @@ func (h *API) EndConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// Empty the live room too (#2869): everyone still connected is told the call
+	// is over instead of sitting in a room whose conference has ended.
+	h.dropConfRoom(conf.ID, "ended")
 	h.broadcastAs(c, conf.WorkspaceID, "conference.ended", ended)
 	c.JSON(http.StatusOK, ended)
 }

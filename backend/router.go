@@ -14,6 +14,7 @@ import (
 
 	"tessera/config"
 	"tessera/handlers"
+	"tessera/internal/confroom"
 	"tessera/internal/converter"
 	"tessera/internal/db"
 	"tessera/internal/docroom"
@@ -98,13 +99,19 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// document socket too; its sweeper goroutine ends when rh.CloseDocRooms does.
 	rooms := docroom.New()
 	go rooms.Run()
-	wsHandler := handlers.NewWSHandler(hub, rooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
+	// Per-conference room state (#2869): presence, the screen-share queue and
+	// moderation. Created here for the same reason as the document rooms; its
+	// sweeper goroutine ends when rh.CloseConfRooms does.
+	confRooms := confroom.New()
+	go confRooms.Run()
+	wsHandler := handlers.NewWSHandler(hub, rooms, confRooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	// Reports itself disabled when no frontend DSN is configured, so the two
 	// routes below stay wired in every install and simply answer "off".
 	sentryConfigHandler := handlers.NewSentryConfigHandler(cfg.SentryFrontendDSN, cfg.SentryEnv, cfg.SentryFrontendTracesRate)
 	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL, cfg.FCMCredentialsFile)
 	rh.WireDocRooms(rooms)
+	rh.WireConfRooms(confRooms)
 	// Document import/export sidecar (#2733). converter.New tolerates an empty
 	// URL and reports itself disabled, so nothing here has to branch on whether
 	// the operator deployed LibreOffice.
@@ -200,6 +207,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// the handler authenticates and checks workspace membership against the
 		// document *before* upgrading.
 		api.GET("/documents/:id/ws", wsHandler.ConnectDocument)
+
+		// The conference room socket (#2869) — presence, hands, the screen-share
+		// queue and moderation. Outside the protected group for the same reason
+		// as the two above; it authenticates and checks membership in the
+		// conference's workspace before upgrading.
+		api.GET("/conferences/:id/ws", wsHandler.ConnectConference)
 
 		// Inline images embedded in descriptions/comments. Outside the protected
 		// group because an <img> can't send the bearer header: MediaAuth accepts

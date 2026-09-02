@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"tessera/internal/confroom"
 	"tessera/internal/converter"
 	"tessera/internal/db"
 	"tessera/internal/docroom"
@@ -41,6 +42,7 @@ type API struct {
 	senders   map[string]notify.Sender // notification channel transports, keyed by type
 	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
 	docRooms  *docroom.Rooms           // per-document presence/locks (nil until WireDocRooms)
+	confRooms *confroom.Rooms          // per-conference room state (nil until WireConfRooms)
 	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
 	converter *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
 	version   string                   // build version, surfaced by the readiness/metrics probes
@@ -73,6 +75,30 @@ func (h *API) WireDocRooms(rooms *docroom.Rooms) { h.docRooms = rooms }
 func (h *API) CloseDocRooms() {
 	if h.docRooms != nil {
 		h.docRooms.Close()
+	}
+}
+
+// WireConfRooms injects the per-conference room registry (#2869). As with
+// documents, the resource layer needs it only to empty a room — when the call
+// ends or the conference is deleted — while the socket itself lives on
+// WSHandler.
+func (h *API) WireConfRooms(rooms *confroom.Rooms) { h.confRooms = rooms }
+
+// CloseConfRooms stops the stage sweeper and disconnects everyone still in a
+// call, so a restart doesn't leave clients waiting on a screen-share stage that
+// no process can release.
+func (h *API) CloseConfRooms() {
+	if h.confRooms != nil {
+		h.confRooms.Close()
+	}
+}
+
+// dropConfRoom empties a conference's room, telling whoever is still connected
+// why. Guarded because the registry is optional wiring — the GitLab and job
+// tests build an API without it.
+func (h *API) dropConfRoom(confID uuid.UUID, reason string) {
+	if h.confRooms != nil {
+		h.confRooms.Drop(confID, reason)
 	}
 }
 
