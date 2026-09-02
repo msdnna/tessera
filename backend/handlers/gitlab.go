@@ -1804,14 +1804,20 @@ func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []
 		// This avoids re-importing it as a duplicate gitlab-sourced comment when a
 		// pull races the push. Strip an optional Tessera marker footer so the stored
 		// (unmarked) body still matches.
-		claimBody := strings.TrimSuffix(n.Body, tesseraCommentMarker)
+		//
+		// The comparison runs on the *rewritten* body, not the raw GitLab one: our
+		// own comment carries "/api/uploads/…" links, while the copy in GitLab
+		// carries the mirrored "/uploads/…" ones. Comparing before the rewrite meant
+		// a comment with an attachment could never be claimed, and was imported as a
+		// duplicate — exactly the screenshot in task #2865.
+		body := h.rewriteAssets(ctx, n.Body, wsID)
+		claimBody := strings.TrimSuffix(body, tesseraCommentMarker)
 		if claimed, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
 			TaskID: taskID, GlNoteID: &noteID, Body: claimBody, GlDiscussionID: n.DiscussionID,
 		}); cerr == nil {
 			local[noteID] = claimed
 			continue // claimed our own pushed comment — nothing to insert
 		}
-		body := h.rewriteAssets(ctx, n.Body, wsID)
 		inserted, err := h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
 			TaskID: taskID, Body: body, GlNoteID: &noteID,
 			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name,

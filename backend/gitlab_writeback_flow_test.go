@@ -11,12 +11,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -39,11 +42,73 @@ type wbFake struct {
 	wmu   sync.Mutex
 	calls []restCall
 	fail  int // fail the next N REST mutations with a 500
+	// noteSeq hands every created note its own id. It used to be a constant 4242,
+	// which was invisible here but fatal in the de-dup tests: idx_task_comments_gl_note
+	// is unique across the whole table, so two parallel tests pushing "note 4242"
+	// collide on gl_note_id (task #2865).
+	noteSeq  int64
+	noteBase int64
+}
+
+// wbFakeSeq gives each fake a disjoint note-id range (see nextNoteID).
+var wbFakeSeq atomic.Int64
+
+// nextNoteID allocates a note id unique within this fake. The base is derived from
+// the fake's own address space via a package counter so ids never collide across
+// the parallel tests sharing one database.
+func (w *wbFake) nextNoteID() int64 {
+	w.wmu.Lock()
+	defer w.wmu.Unlock()
+	w.noteSeq++
+	return w.noteBase + w.noteSeq
+}
+
+// recordNote stores a note the write-back just created on the inner fake's issue,
+// so the next pull reads back exactly what GitLab would now hold. Without this the
+// push/pull round trip — the one that duplicated comments — cannot be tested at all.
+func (w *wbFake) recordNote(iid int64, n glNote) {
+	is := w.findIssue(iid)
+	if is == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	is.Notes = append(is.Notes, n)
+	is.UpdatedAt = time.Now().UTC()
+}
+
+// discussionIDFromPath recovers the note-id suffix this fake encodes into a
+// discussion id ("d15cu5510n<id>"), so a reply lands in its parent's thread. Zero
+// for a bare note path, which is what glNote treats as "own thread".
+func discussionIDFromPath(p string) int64 {
+	for _, seg := range strings.Split(p, "/") {
+		if rest, ok := strings.CutPrefix(seg, "d15cu5510n"); ok {
+			id, _ := strconv.ParseInt(rest, 10, 64)
+			return id
+		}
+	}
+	return 0
+}
+
+// issueIIDFromPath pulls the issue iid out of a REST path like
+// "/api/v4/projects/<path>/issues/7/discussions[...]".
+func issueIIDFromPath(p string) int64 {
+	parts := strings.Split(p, "/")
+	for i, seg := range parts {
+		if seg == "issues" && i+1 < len(parts) {
+			iid, _ := strconv.ParseInt(parts[i+1], 10, 64)
+			return iid
+		}
+	}
+	return 0
 }
 
 func newWBFake(t *testing.T, username, projectPath string) *wbFake {
 	t.Helper()
-	w := &wbFake{fakeGitlab: newFakeGitlab(t, username, projectPath)}
+	w := &wbFake{
+		fakeGitlab: newFakeGitlab(t, username, projectPath),
+		noteBase:   1_000_000 + 10_000*wbFakeSeq.Add(1),
+	}
 	w.outer = httptest.NewServer(w)
 	t.Cleanup(w.outer.Close)
 	return w
@@ -65,17 +130,29 @@ func (w *wbFake) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// A root comment opens a discussion, so the response carries both the
-		// discussion id (a later reply aims at it) and the opening note's id.
+		// discussion id (a later reply aims at it) and the opening note's id. The
+		// note is also stored on the issue: from here on GitLab holds it, and the
+		// next pull must recognise it as ours rather than import a copy.
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/discussions") {
+			id := w.nextNoteID()
+			w.recordNote(issueIIDFromPath(r.URL.Path), glNote{
+				ID: id, Body: form.Get("body"), AuthorLogin: w.username, Discussion: id,
+			})
 			writeJSON(rw, http.StatusCreated, map[string]any{
-				"id":    "d15cu5510n5ha",
-				"notes": []map[string]any{{"id": 4242}},
+				"id":    fmt.Sprintf("d15cu5510n%d", id),
+				"notes": []map[string]any{{"id": id}},
 			})
 			return
 		}
-		// Notes get a real id so CreateIssueNote can tag the source comment.
+		// Notes get a real id so CreateIssueNote can tag the source comment. A reply
+		// posted into an existing discussion keeps that discussion's grouping.
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/notes") {
-			writeJSON(rw, http.StatusCreated, map[string]any{"id": 4242})
+			id := w.nextNoteID()
+			w.recordNote(issueIIDFromPath(r.URL.Path), glNote{
+				ID: id, Body: form.Get("body"), AuthorLogin: w.username,
+				Discussion: discussionIDFromPath(r.URL.Path),
+			})
+			writeJSON(rw, http.StatusCreated, map[string]any{"id": id})
 			return
 		}
 		r.Body = io.NopCloser(strings.NewReader(string(body)))
