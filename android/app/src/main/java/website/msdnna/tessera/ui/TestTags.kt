@@ -216,4 +216,14 @@ object TestTags {
     /** The sidebar hint that follows the card, and its «Понятно». One at a time. */
     const val SPOTLIGHT_CARD = "spotlight-card"
     const val SPOTLIGHT_DISMISS = "spotlight-dismiss"
+
+    // ── get started guide (#2860) ──────────────────────────────────────────
+    //
+    // The card of the running step. What it points at is addressed by the guide's
+    // own anchor keys (`util/Tour.kt`, `TourKeys`), not from here: those are read
+    // by the overlay at runtime, while a test tag is only ever read by a spec.
+
+    const val TOUR_CARD = "tour-card"
+    const val TOUR_NEXT = "tour-next"
+    const val TOUR_SKIP = "tour-skip"
 }
