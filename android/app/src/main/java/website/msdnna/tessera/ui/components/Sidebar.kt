@@ -76,9 +76,11 @@ import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.WhatsNewSpotlight
 import website.msdnna.tessera.util.workspaceCaption
 
@@ -241,7 +243,9 @@ fun Sidebar(
                         }
                     }
                 }
-                IonIconButton(Ion.NOTIFICATIONS, onClick = onOpenNotifications)
+                Box(Modifier.tourAnchor(TourKeys.FOOTER_NOTIFICATIONS)) {
+                    IonIconButton(Ion.NOTIFICATIONS, onClick = onOpenNotifications)
+                }
                 IonIconButton(Ion.PEOPLE, onClick = onOpenMembers)
                 IonIconButton(Ion.PALETTE, onClick = { showTheme = true })
             }
@@ -251,7 +255,7 @@ fun Sidebar(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.weight(1f)) {
+                Box(Modifier.weight(1f).tourAnchor(TourKeys.WS_SWITCH)) {
                     Row(
                         Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusSm))
                             .border(1.dp, c.border, RoundedCornerShape(RadiusSm))
@@ -292,12 +296,12 @@ fun Sidebar(
             }
 
             Spacer(Modifier.padding(top = 2.dp))
-            NavRow(Ion.HOME, stringResource(R.string.nav_home), activeNav == "home", onOpenHome, spotSink("home"))
-            NavRow(Ion.ROCKET, stringResource(R.string.nav_milestones), activeNav == "milestones", onOpenMilestones, spotSink("milestones"))
-            NavRow(Ion.ALARM, stringResource(R.string.nav_reminders), activeNav == "reminders", onOpenReminders, spotSink("reminders"))
-            NavRow(Ion.DOCUMENT_TEXT, stringResource(R.string.nav_notes), activeNav == "notes", onOpenNotes, spotSink("notes"))
-            NavRow(Ion.BOOK, stringResource(R.string.nav_documents), activeNav == "documents", onOpenDocuments, spotSink("documents"))
-            NavRow(Ion.HELP_CIRCLE, stringResource(R.string.nav_help), activeNav == "help", onOpenHelp, spotSink("help"))
+            NavRow(Ion.HOME, stringResource(R.string.nav_home), activeNav == "home", onOpenHome, spotSink("home"), "home")
+            NavRow(Ion.ROCKET, stringResource(R.string.nav_milestones), activeNav == "milestones", onOpenMilestones, spotSink("milestones"), "milestones")
+            NavRow(Ion.ALARM, stringResource(R.string.nav_reminders), activeNav == "reminders", onOpenReminders, spotSink("reminders"), "reminders")
+            NavRow(Ion.DOCUMENT_TEXT, stringResource(R.string.nav_notes), activeNav == "notes", onOpenNotes, spotSink("notes"), "notes")
+            NavRow(Ion.BOOK, stringResource(R.string.nav_documents), activeNav == "documents", onOpenDocuments, spotSink("documents"), "documents")
+            NavRow(Ion.HELP_CIRCLE, stringResource(R.string.nav_help), activeNav == "help", onOpenHelp, spotSink("help"), "help")
             if (user?.isAdmin == true) {
                 NavRow(
                     Ion.SHIELD_CHECKMARK,
@@ -305,6 +309,7 @@ fun Sidebar(
                     active = activeNav == "admin",
                     onClick = onOpenAdmin,
                     spotlight = spotSink("admin"),
+                    navKey = "admin",
                 )
             }
 
@@ -317,17 +322,27 @@ fun Sidebar(
                     stringResource(R.string.sidebar_projects_header),
                     color = c.text3, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f),
                 )
-                Box {
+                Box(Modifier.tourAnchor(TourKeys.PROJ_ADD)) {
                     IonIconButton(Ion.ADD, onClick = { addMenu = true }, boxSize = 28.dp, iconSize = 16.dp, tint = c.text3)
                     TDropdown(expanded = addMenu, onDismiss = { addMenu = false }) {
-                        TMenuItem(stringResource(R.string.sidebar_add_project), icon = Ion.GRID, onClick = {
-                            addMenu = false
-                            creating = Creating.Project(null)
-                        })
-                        TMenuItem(stringResource(R.string.sidebar_add_group), icon = Ion.FOLDER, onClick = {
-                            addMenu = false
-                            creating = Creating.Group(null)
-                        })
+                        TMenuItem(
+                            stringResource(R.string.sidebar_add_project),
+                            icon = Ion.GRID,
+                            modifier = Modifier.tourAnchor(TourKeys.MENU_PROJECT),
+                            onClick = {
+                                addMenu = false
+                                creating = Creating.Project(null)
+                            },
+                        )
+                        TMenuItem(
+                            stringResource(R.string.sidebar_add_group),
+                            icon = Ion.FOLDER,
+                            modifier = Modifier.tourAnchor(TourKeys.MENU_GROUP),
+                            onClick = {
+                                addMenu = false
+                                creating = Creating.Group(null)
+                            },
+                        )
                     }
                 }
             }
@@ -348,7 +363,7 @@ fun Sidebar(
                 }
                 state.projectsInGroup(null).forEach { key(it.id) { ProjectNode(it, 0, ctx) } }
                 if (rootCreate is Creating.Project && rootCreate.groupId == null) {
-                    InlineCreateRow(stringResource(R.string.sidebar_project_name_hint), onDismiss = { creating = null }) {
+                    InlineCreateRow(stringResource(R.string.sidebar_project_name_hint), TourKeys.PROJECT_NAME, onDismiss = { creating = null }) {
                         ctx.commitProject(it, null)
                     }
                 }
@@ -473,11 +488,14 @@ private fun NavRow(
     // reports its window rect to the overlay and sways towards the hint. The
     // reporting box stays still — measuring the swaying row would jitter the arrow.
     spotlight: ((Rect) -> Unit)? = null,
+    // The guide's anchor for this row is `nav-<navKey>` — the same key the sidebar
+    // already uses for the active-row highlight and for the one-shot hint above.
+    navKey: String = "",
 ) {
     val c = Tessera.colors
     val sway = if (spotlight != null) navSway() else 0f
     Box(
-        Modifier.fillMaxWidth().onGloballyPositioned { coords ->
+        Modifier.fillMaxWidth().tourAnchor("nav-$navKey").onGloballyPositioned { coords ->
             spotlight?.invoke(Rect(coords.positionInWindow(), coords.size.toSize()))
         },
     ) {
@@ -554,6 +572,7 @@ private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
         },
         deleteMessage = stringResource(R.string.sidebar_group_delete_message, group.name),
         onDelete = { ctx.vm.deleteGroup(group.id) },
+        tourKey = TourKeys.groupRow(group.id),
     )
     if (expanded) {
         IndentedChildren {
@@ -566,7 +585,7 @@ private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
             }
             ctx.state.projectsInGroup(group.id).forEach { key(it.id) { ProjectNode(it, depth + 1, ctx) } }
             if (create is Creating.Project && create.groupId == group.id) {
-                InlineCreateRow(stringResource(R.string.sidebar_project_name_hint), onDismiss = { ctx.setCreating(null) }) {
+                InlineCreateRow(stringResource(R.string.sidebar_project_name_hint), TourKeys.PROJECT_NAME, onDismiss = { ctx.setCreating(null) }) {
                     ctx.commitProject(it, group.id)
                 }
             }
@@ -659,6 +678,9 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
             ctx.host.onProjectGone(project.id)
         },
         confirmName = project.name,
+        tourKey = TourKeys.projectRow(project.id),
+        tourPlace = project.groupId,
+        tourMenuKey = TourKeys.boardAdd(project.id),
     )
     if (estimating) {
         EstimationDialog(
@@ -736,7 +758,7 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
                 }
                 val create = ctx.creating
                 if (create is Creating.Board && create.projectId == project.id) {
-                    InlineCreateRow(stringResource(R.string.sidebar_board_name_hint), onDismiss = { ctx.setCreating(null) }) {
+                    InlineCreateRow(stringResource(R.string.sidebar_board_name_hint), TourKeys.BOARD_NAME, onDismiss = { ctx.setCreating(null) }) {
                         ctx.vm.addBoard(project.id, it)
                         ctx.setCreating(null)
                     }
@@ -838,6 +860,7 @@ private fun BoardRow(board: Board, projectId: String, ctx: TreeCtx) {
     val renaming = ctx.renaming == board.id
     Row(
         Modifier.fillMaxWidth().animatePlacement().clip(RoundedCornerShape(RadiusSm))
+            .tourAnchor(TourKeys.boardRow(board.id))
             .then(if (!renaming) Modifier.clickableNoRipple { ctx.clickRow { ctx.host.onOpenBoard(board) } } else Modifier)
             .padding(end = 6.dp, top = 7.dp, bottom = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -906,6 +929,13 @@ private fun TreeRow(
     deleteMessage: String,
     onDelete: () -> Unit,
     confirmName: String? = null,
+    // The guide's anchor for this row, and — for the project row the `dnd-project`
+    // step tracks — the group it currently sits in, which is what tells that step
+    // the drag actually landed somewhere new.
+    tourKey: String = "",
+    tourPlace: String? = null,
+    // The row's «⋯», when a step points at it (that is where «Добавить доску» is).
+    tourMenuKey: String = "",
 ) {
     val c = Tessera.colors
     var menuOpen by remember { mutableStateOf(false) }
@@ -916,6 +946,7 @@ private fun TreeRow(
     Row(
         Modifier.fillMaxWidth()
             .animatePlacement()
+            .tourAnchor(tourKey, tourPlace)
             .sidebarDragDim(dragging)
             .clip(RoundedCornerShape(RadiusSm))
             .then(if (!renaming) Modifier.clickableNoRipple(onClick = onClick) else Modifier)
@@ -948,7 +979,7 @@ private fun TreeRow(
         } else {
             Text(node.name, color = c.text1, fontSize = 14.sp, maxLines = 1, modifier = Modifier.weight(1f))
         }
-        Box {
+        Box(Modifier.tourAnchor(tourMenuKey)) {
             IonIconButton(Ion.ELLIPSIS_H, onClick = { menuOpen = true }, boxSize = 26.dp, iconSize = 17.dp, tint = c.text3)
             TDropdown(expanded = menuOpen, onDismiss = { menuOpen = false }) {
                 menu { menuOpen = false }
@@ -1012,10 +1043,18 @@ private fun IndentedChildren(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
-/** An inline single-line creator placed in the tree (no modal). */
+/** An inline single-line creator placed in the tree (no modal). [tourKey] is the
+ *  guide's anchor for it — the web asks for a name in a dialog with a slug field
+ *  and a «Создать» button, here it is this one field, so the step's extra arrows
+ *  simply find nothing and are skipped. */
 @Composable
-private fun InlineCreateRow(placeholder: String, onDismiss: () -> Unit, onCommit: (String) -> Unit) {
-    Box(Modifier.fillMaxWidth().padding(end = 8.dp, top = 3.dp, bottom = 3.dp)) {
+private fun InlineCreateRow(
+    placeholder: String,
+    tourKey: String = "",
+    onDismiss: () -> Unit,
+    onCommit: (String) -> Unit,
+) {
+    Box(Modifier.fillMaxWidth().padding(end = 8.dp, top = 3.dp, bottom = 3.dp).tourAnchor(tourKey)) {
         InlineCreateField(
             placeholder = placeholder,
             onCommit = onCommit,
@@ -1053,7 +1092,7 @@ private fun SidebarUpdateRow(version: String, onUpdate: () -> Unit) {
 private fun SidebarFooter(user: User?, apiVersion: String, onOpenSettings: () -> Unit, onLogout: () -> Unit) {
     val c = Tessera.colors
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp).tourAnchor(TourKeys.SB_FOOTER),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Tapping the user (avatar/name) opens account settings.
@@ -1084,7 +1123,9 @@ private fun SidebarFooter(user: User?, apiVersion: String, onOpenSettings: () ->
                 Text(versions, color = c.text3, fontSize = 11.sp, maxLines = 1)
             }
         }
-        IonIconButton(Ion.SETTINGS, onClick = onOpenSettings)
+        Box(Modifier.tourAnchor(TourKeys.FOOTER_SETTINGS)) {
+            IonIconButton(Ion.SETTINGS, onClick = onOpenSettings)
+        }
         IonIconButton(Ion.LOGOUT, onClick = onLogout)
     }
 }

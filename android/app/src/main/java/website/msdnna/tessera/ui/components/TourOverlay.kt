@@ -40,7 +40,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -98,10 +98,10 @@ fun TourOverlay(
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .onGloballyPositioned { origin = it.positionInWindow() },
+            .onGloballyPositioned { origin = it.positionOnScreen() },
     ) {
-        // Anchors are measured in window coordinates (see TourAnchors) — bring them
-        // into this overlay's own space, which is offset by the system bars.
+        // Anchors are measured in screen coordinates (see TourAnchors) — bring them
+        // into this overlay's own space, wherever on the screen its window sits.
         fun local(key: String): Rect? =
             anchors.find(key)?.rect?.translate(-origin.x, -origin.y)
 

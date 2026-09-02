@@ -154,10 +154,12 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
@@ -437,6 +439,11 @@ fun KanbanView(
                         Column(
                             Modifier.animatePlacement().width(colWidth).fillMaxHeight()
                                 .testTag(TestTags.boardColumn(lane.id))
+                                // Keyed by the column's own (server) name, not its
+                                // localised caption: the guide asks for a card to be
+                                // dropped into «В процессе», and that is the name the
+                                // seeded column carries in the database.
+                                .tourAnchor(TourKeys.column(lane.rawTitle))
                                 .dragDim(lane.id == draggingColId),
                         ) {
                             Column(
@@ -571,6 +578,7 @@ fun KanbanView(
                                                 conflictTaskIds = conflictTaskIds,
                                                 onOpenConflict = onOpenConflict,
                                                 anchored = true,
+                                                tourPlace = lane.rawTitle,
                                             )
                                         }
                                     }
@@ -593,7 +601,9 @@ fun KanbanView(
                                                 } else {
                                                     CreateText(
                                                         stringResource(R.string.board_add_task),
-                                                        modifier = Modifier.testTag(TestTags.columnAddTask(lane.id)),
+                                                        modifier = Modifier
+                                                            .testTag(TestTags.columnAddTask(lane.id))
+                                                            .tourAnchor(TourKeys.columnAdd(lane.id)),
                                                     ) { addingColumn = lane.id }
                                                 }
                                             }

@@ -122,10 +122,14 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.theme.accentGradientTint
+import website.msdnna.tessera.ui.tour.TourHost
+import website.msdnna.tessera.ui.tour.TourLayer
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
@@ -389,6 +393,7 @@ fun TaskModal(
 
                         Spacer(Modifier.height(18.dp))
                         UnderlineTabs(
+                            modifier = Modifier.tourAnchor(TourKeys.TM_TABS),
                             tabs = listOf(
                                 TabItem(
                                     stringResource(R.string.task_tab_description),
@@ -445,15 +450,23 @@ fun TaskModal(
                             // the field to type in.
                             tabState.SaveableStateProvider("${detail.id}:$t") {
                                 when (t) {
-                                    0 -> DescriptionTab(
-                                        value = description,
-                                        onValueChange = { description = it },
-                                        startInPreview = detail.description.isNotBlank(),
-                                        onBlur = { vm.saveDescription(description) },
-                                        uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
-                                        mentions = buildMentionItems(members, gitlabMembers),
-                                        onTaskRef = openTaskRef,
-                                    )
+                                    0 -> Box(
+                                        Modifier
+                                            .tourAnchor(TourKeys.TM_DESCRIPTION)
+                                            .tourAnchor(
+                                                if (description.isNotBlank()) TourKeys.set(TourKeys.TM_DESCRIPTION) else "",
+                                            ),
+                                    ) {
+                                        DescriptionTab(
+                                            value = description,
+                                            onValueChange = { description = it },
+                                            startInPreview = detail.description.isNotBlank(),
+                                            onBlur = { vm.saveDescription(description) },
+                                            uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
+                                            mentions = buildMentionItems(members, gitlabMembers),
+                                            onTaskRef = openTaskRef,
+                                        )
+                                    }
 
                                     1 -> CommentsTab(
                                         vm = vm,
@@ -524,11 +537,19 @@ fun TaskModal(
                 Spacer(Modifier.weight(1f))
                 TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = { close() })
                 Spacer(Modifier.width(8.dp))
-                TButton(stringResource(R.string.common_save), modifier = Modifier.testTag(TestTags.TASK_SAVE), onClick = {
-                    vm.saveCore(title, description)
-                    onClose(true)
-                })
+                TButton(
+                    stringResource(R.string.common_save),
+                    modifier = Modifier.testTag(TestTags.TASK_SAVE).tourAnchor(TourKeys.TM_SAVE),
+                    onClick = {
+                        vm.saveCore(title, description)
+                        onClose(true)
+                    },
+                )
             }
+
+            // The task form is its own window, above the shell's overlay — so while
+            // it is up the guide is drawn from in here (see [TourHost]).
+            TourHost(TourLayer.TASK_MODAL)
         }
     }
 
@@ -634,8 +655,18 @@ private fun PropertyGrid(
         else -> null
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        PropRow(Ion.FLAG, stringResource(R.string.task_prop_priority)) { PriorityValue(priority) { vm.setPriority(it) } }
-        PropRow(Ion.CALENDAR, stringResource(R.string.task_prop_due)) {
+        PropRow(
+            Ion.FLAG,
+            stringResource(R.string.task_prop_priority),
+            tourKey = TourKeys.TM_PRIORITY,
+            tourSet = priority > 0,
+        ) { PriorityValue(priority) { vm.setPriority(it) } }
+        PropRow(
+            Ion.CALENDAR,
+            stringResource(R.string.task_prop_due),
+            tourKey = TourKeys.TM_DUE,
+            tourSet = !dueIso.isNullOrBlank(),
+        ) {
             DueValue(
                 dueIso, startIso, recurrence, columns, notifyEnabled, notifyLead, notifyRepeat,
                 onApply = { iso, start, rec -> vm.setDueAndRecurrence(iso, start, rec) },
@@ -665,7 +696,12 @@ private fun PropertyGrid(
                 )
             }
         }
-        PropRow(Ion.PEOPLE, stringResource(R.string.task_prop_assignees)) {
+        PropRow(
+            Ion.PEOPLE,
+            stringResource(R.string.task_prop_assignees),
+            tourKey = TourKeys.TM_ASSIGNEES,
+            tourSet = assignees.isNotEmpty() || gitlabAssignees.isNotEmpty(),
+        ) {
             AssigneesValue(assignees, gitlabAssignees, members, gitlabMembers, { vm.toggleAssignee(it) }, { vm.toggleGitlabAssignee(it) })
         }
         if (gitlab != null) {
@@ -685,7 +721,12 @@ private fun PropertyGrid(
                 )
             }
         }
-        PropRow(Ion.PRICETAG, stringResource(R.string.task_prop_tags)) {
+        PropRow(
+            Ion.PRICETAG,
+            stringResource(R.string.task_prop_tags),
+            tourKey = TourKeys.TM_TAGS,
+            tourSet = taskTagIds.isNotEmpty(),
+        ) {
             TagsValue(taskTagIds, tags, prefixNames, metaTagPrefixes, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} })
         }
         if (milestones.isNotEmpty() || milestoneId != null) {
@@ -733,7 +774,16 @@ private fun PropertyGrid(
 }
 
 @Composable
-private fun PropRow(icon: String, label: String, value: @Composable () -> Unit) {
+private fun PropRow(
+    icon: String,
+    label: String,
+    // The guide's anchor for this property, and whether it currently holds a value:
+    // the `tm-*` steps end when the field is filled, and the way a field reports
+    // that is by registering a second anchor, `<key>:set` (see [TourAnchors]).
+    tourKey: String = "",
+    tourSet: Boolean = false,
+    value: @Composable () -> Unit,
+) {
     val c = Tessera.colors
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.width(140.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -741,7 +791,11 @@ private fun PropRow(icon: String, label: String, value: @Composable () -> Unit) 
             Spacer(Modifier.width(8.dp))
             Text(label, color = c.text2, fontSize = 14.sp)
         }
-        Box(Modifier.weight(1f)) { value() }
+        Box(
+            Modifier.weight(1f)
+                .tourAnchor(tourKey)
+                .tourAnchor(if (tourSet && tourKey.isNotEmpty()) TourKeys.set(tourKey) else ""),
+        ) { value() }
     }
 }
 

@@ -1198,9 +1198,9 @@
     <string name="tour_menu_project_title">Выберите «Проект»</string>
     <string name="tour_menu_project_body">Группа пригодится позже, когда проектов станет много.</string>
     <string name="tour_project_create_title">Назовите проект</string>
-    <string name="tour_project_create_body">Название решает и адрес проекта: /project/название. Адрес назначается один раз — если он важен, задайте его вручную.</string>
+    <string name="tour_project_create_body">Введите название и подтвердите — проект появится в дереве. Адрес проекта сервер соберёт из названия сам.</string>
     <string name="tour_board_add_title">Добавьте доску</string>
-    <string name="tour_board_add_body">Задачи живут на досках, у проекта их может быть несколько. Нажмите «+» у проекта.</string>
+    <string name="tour_board_add_body">Задачи живут на досках, у проекта их может быть несколько. Откройте меню «⋯» у проекта и выберите «Добавить доску».</string>
     <string name="tour_board_create_title">Назовите доску</string>
     <string name="tour_board_create_body">Введите название и подтвердите — доска появится в дереве с четырьмя колонками.</string>
     <string name="tour_board_open_title">Откройте доску</string>

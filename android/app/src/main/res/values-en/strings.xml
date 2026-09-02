@@ -1166,9 +1166,9 @@
     <string name="tour_menu_project_title">Pick “Project”</string>
     <string name="tour_menu_project_body">A group will come in handy later, once there are many projects.</string>
     <string name="tour_project_create_title">Name the project</string>
-    <string name="tour_project_create_body">The name also decides the project address: /project/name. The address is assigned once — if it matters to you, set it by hand.</string>
+    <string name="tour_project_create_body">Type a name and confirm — the project appears in the tree. Its address is derived from the name by the server.</string>
     <string name="tour_board_add_title">Add a board</string>
-    <string name="tour_board_add_body">Tasks live on boards, and a project may have several. Press “+” next to the project.</string>
+    <string name="tour_board_add_body">Tasks live on boards, and a project may have several. Open the project’s “⋯” menu and pick “Add board”.</string>
     <string name="tour_board_create_title">Name the board</string>
     <string name="tour_board_create_body">Type a name and confirm — the board appears in the tree with four columns.</string>
     <string name="tour_board_open_title">Open the board</string>

@@ -41,10 +41,14 @@ object TourKeys {
     const val BOARD_COMPOSER = "board-composer"
     const val BOARD_CUSTOMIZE = "board-customize"
     const val WS_SEARCH = "ws-search"
-    const val CARD_PRIORITY = "card-priority"
-    const val CARD_DUE = "card-due"
-    const val CARD_TAGS = "card-tags"
-    const val CARD_ASSIGNEES = "card-assignees"
+
+    /* The card fields are prefixes, not plain keys: every card on the board carries
+     * its own set (`card-due:<task>`), so the arrow lands on the one card the step
+     * is about instead of on whichever card happened to register last. */
+    const val CARD_PRIORITY = "card-priority:"
+    const val CARD_DUE = "card-due:"
+    const val CARD_TAGS = "card-tags:"
+    const val CARD_ASSIGNEES = "card-assignees:"
     const val TM_DUE = "tm-due"
     const val TM_ASSIGNEES = "tm-assignees"
     const val TM_PRIORITY = "tm-priority"
@@ -56,7 +60,9 @@ object TourKeys {
     const val FOOTER_SETTINGS = "footer-settings"
     const val FOOTER_NOTIFICATIONS = "footer-notifications"
 
-    /** The «+» that adds a board, on the row of project [id]. */
+    /** What adds a board to project [id]. The web has a dedicated «+» on the row;
+     *  here it is the row's «⋯» menu, which is where «Добавить доску» lives — hence
+     *  the wording of the step differs from the web's (see `tour_board_add_body`). */
     fun boardAdd(id: String) = "board-add:$id"
 
     /** A board row in the tree. */
@@ -68,8 +74,13 @@ object TourKeys {
     /** A group row in the tree. */
     fun groupRow(id: String) = "group-row:$id"
 
-    /** «Создать задачу» at the foot of column [id]. */
-    fun columnAdd(id: String) = "column-add:$id"
+    /** «Создать задачу» at the foot of column [id]. The scenario points at the bare
+     *  prefix [COLUMN_ADD] — the registry then resolves it to the leftmost column,
+     *  which is the first one a freshly seeded board shows («К работе»). */
+    fun columnAdd(id: String) = "$COLUMN_ADD$id"
+
+    /** A field of the card [id] — one of the [CARD_PRIORITY] family. */
+    fun cardField(prefix: String, id: String) = "$prefix$id"
 
     /** A card on the board. Its `place` is the name of the column it sits in.
      *  With an empty [id] this is the bare prefix, which the registry resolves to
@@ -84,6 +95,7 @@ object TourKeys {
     const val PROJECT_ROW = "project-row:"
     const val BOARD_ROW = "board-row:"
     const val TASK_CARD = "task-card:"
+    const val COLUMN_ADD = "column-add:"
 
     /** A field of the task modal reports itself filled with `<key>:set`. */
     fun set(key: String) = "$key:set"
@@ -166,7 +178,6 @@ data class TourContext(
     val projectId: String = "",
     val boardId: String = "",
     val groupId: String = "",
-    val columnId: String = "",
 )
 
 const val TOUR_PREFIX = "getstarted:"
@@ -180,7 +191,6 @@ const val TOUR_SKIPPED = TOUR_PREFIX + "skipped"
 private const val PROJECT_TOKEN = "{project}"
 private const val BOARD_TOKEN = "{board}"
 private const val GROUP_TOKEN = "{group}"
-private const val COLUMN_TOKEN = "{column}"
 
 /*
  * The columns a new board is seeded with, by name: the scenario points the first
@@ -268,7 +278,11 @@ val GET_STARTED: List<TourStep> = listOf(
     ),
     TourStep(
         id = "task-create",
-        anchor = TourKeys.columnAdd(COLUMN_TOKEN),
+        // The leftmost «Создать задачу», i.e. the first column of the board that was
+        // just created. Deliberately not a `{column}` token: the id of that column is
+        // known to the board's ViewModel and to nobody the guide talks to, and the
+        // registry already resolves a prefix by position (topmost, then leftmost).
+        anchor = TourKeys.COLUMN_ADD,
         titleRes = R.string.tour_task_create_title,
         bodyRes = R.string.tour_task_create_body,
         mode = TourMode.ACTION,
@@ -499,14 +513,13 @@ class TourEngine(private val onAck: (String) -> Unit = {}) {
         )
     }
 
-    /** Expands the `{project}` / `{board}` / `{group}` / `{column}` tokens. A token
-     *  with no id yet collapses to an empty tail, which matches no registered
-     *  anchor — the step waits for the entity instead of grabbing a stray row. */
+    /** Expands the `{project}` / `{board}` / `{group}` tokens. A token with no id yet
+     *  collapses to an empty tail, which matches no registered anchor — the step
+     *  waits for the entity instead of grabbing a stray row. */
     fun resolve(key: String): String = key
         .replace(PROJECT_TOKEN, context.projectId)
         .replace(BOARD_TOKEN, context.boardId)
         .replace(GROUP_TOKEN, context.groupId)
-        .replace(COLUMN_TOKEN, context.columnId)
 
     /** The host reports the entity it just created, so the arrow lands on it. */
     fun noteCreated(next: TourContext.() -> TourContext) {

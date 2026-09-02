@@ -7,11 +7,12 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerInputScope
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.unit.toSize
 
 /**
@@ -19,9 +20,14 @@ import androidx.compose.ui.unit.toSize
  *
  * The web resolves an anchor by querying the DOM for `data-tour="<key>"`. Compose
  * has no such thing, so an element registers itself: [Modifier.tourAnchor] reports
- * its rect (in **window** coordinates — the same convention `SidebarDrag` uses for
- * `rootOffset`, so a rect measured inside the drawer is comparable with one
- * measured on the board) and drops it again when it leaves composition.
+ * its rect and drops it again when it leaves composition.
+ *
+ * Rects are in **screen** coordinates, not window ones. Half the anchors the
+ * scenario names live outside the activity's window — the «⋯» menus are `Popup`s
+ * and the task form is a `Dialog`, each its own window with its own origin — so
+ * window coordinates would put an arrow pointing at a menu item somewhere near the
+ * top-left of the screen. The overlay subtracts its own screen origin, so both
+ * sides speak the same units whichever window they are drawn in.
  *
  * The registry is also how the engine's rules are fed, without a line of reporting
  * code at the call sites:
@@ -103,6 +109,10 @@ val LocalTourTap = staticCompositionLocalOf<(String) -> Unit> { {} }
  */
 @Composable
 fun Modifier.tourAnchor(key: String, place: String? = null): Modifier {
+    // A blank key is how a shared row says "not a target of the guide" (a nav row
+    // outside the scenario, a creator the steps don't name). Registering it would
+    // have every such row fight over one entry, rewriting it on each scroll frame.
+    if (key.isBlank()) return this
     val anchors = LocalTourAnchors.current
     val onTap = LocalTourTap.current
     DisposableEffect(anchors, key) {
@@ -110,7 +120,10 @@ fun Modifier.tourAnchor(key: String, place: String? = null): Modifier {
     }
     return this
         .onGloballyPositioned { coords ->
-            anchors.put(key, TourAnchor(Rect(coords.positionInWindow(), coords.size.toSize()), place))
+            val at = coords.positionOnScreen()
+            // Unspecified while the node is laid out but not attached to a window
+            // yet; a rect built from NaN would blow up the mask's cutout.
+            if (at.isSpecified) anchors.put(key, TourAnchor(Rect(at, coords.size.toSize()), place))
         }
         .pointerInput(key, onTap) { observeTaps { onTap(key) } }
 }
