@@ -1,0 +1,76 @@
+{
+  "title": "Conferences",
+  "hint": "Stand-ups and calls of this workspace",
+  "schedule": "Schedule",
+  "filter": {
+    "all": "All",
+    "scheduled": "Scheduled",
+    "live": "Live now",
+    "ended": "Finished"
+  },
+  "status": {
+    "scheduled": "Scheduled",
+    "live": "Live now",
+    "ended": "Finished"
+  },
+  "empty": "No conferences yet",
+  "emptyFiltered": "Nothing under this filter",
+  "noWorkspace": "Pick a workspace",
+  "row": {
+    "participantCount": "Invited: {count}",
+    "activeCount": "In the room: {count}",
+    "author": "Created by: {name}",
+    "authorUnknown": "Author unknown",
+    "scheduledAt": "Starts: {when}",
+    "startedAt": "Started: {when}",
+    "endedAt": "Finished: {when}",
+    "noTime": "No start time"
+  },
+  "actions": {
+    "open": "Open",
+    "join": "Join",
+    "leave": "Leave",
+    "end": "End",
+    "delete": "Delete",
+    "back": "Back to the list"
+  },
+  "create": {
+    "title": "New conference",
+    "name": "Title",
+    "namePlaceholder": "Daily stand-up",
+    "description": "Description",
+    "descriptionPlaceholder": "Agenda, links, what to discuss",
+    "at": "Start",
+    "atHint": "Leave empty if the time is not set yet",
+    "submit": "Schedule",
+    "cancel": "Cancel",
+    "required": "Enter a title",
+    "created": "Conference scheduled"
+  },
+  "detail": {
+    "participants": "Participants",
+    "noParticipants": "Nobody yet",
+    "roomTitle": "Room",
+    "roomPending": "Video and audio arrive in the next update of this section. For now it shows who plans to come and who is already in the room.",
+    "notFound": "Conference not found"
+  },
+  "role": {
+    "host": "Host",
+    "member": "Participant"
+  },
+  "presence": {
+    "inRoom": "in the room",
+    "invited": "invited",
+    "left": "left"
+  },
+  "confirm": {
+    "delete": "Delete the conference? Its chat and recordings go with it.",
+    "end": "End the conference for everyone?"
+  },
+  "toast": {
+    "joined": "You joined",
+    "left": "You left the conference",
+    "ended": "Conference ended",
+    "deleted": "Conference deleted"
+  }
+}

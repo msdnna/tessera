@@ -470,6 +470,31 @@ export const documents = {
   cancelApproval: (approvalId) => api.post(`/document-approvals/${approvalId}/cancel`),
 }
 
+// Conferences (#2864). Media never comes through here — it goes to the LiveKit
+// SFU — so this module is only the bookkeeping the section screen needs: which
+// meetings exist, who is invited and who is in the room right now.
+export const conferences = {
+  // status filters to 'scheduled' | 'live' | 'ended'; omit it for everything.
+  list: (wsId, status) =>
+    api.get(`/workspaces/${wsId}/conferences`, status ? { params: { status } } : {}),
+  create: (wsId, data) => api.post(`/workspaces/${wsId}/conferences`, data),
+  // Answers { conference, participants } in one round trip — the room screen
+  // needs both, and fetching them apart shows an empty roster for one paint.
+  get: (id) => api.get(`/conferences/${id}`),
+  update: (id, data) => api.patch(`/conferences/${id}`, data),
+  remove: (id) => api.delete(`/conferences/${id}`),
+  // join/leave answer { conference, participant }: the first arrival flips a
+  // scheduled call to live and the last exit ends it, so the caller gets the
+  // conference back rather than having to refetch it to learn the new status.
+  join: (id) => api.post(`/conferences/${id}/join`),
+  leave: (id) => api.post(`/conferences/${id}/leave`),
+  end: (id) => api.post(`/conferences/${id}/end`),
+  invite: (id, userIds, role) => api.post(`/conferences/${id}/invite`, { user_ids: userIds, role }),
+  participants: (id) => api.get(`/conferences/${id}/participants`, { skipLoader: true }),
+  // Conferences held about a task — for the task page's "discussed in" link.
+  byTask: (taskId) => api.get(`/tasks/${taskId}/conferences`, { skipLoader: true }),
+}
+
 export const reminders = {
   list: () => api.get('/reminders'),
   create: (data) => api.post('/reminders', data),

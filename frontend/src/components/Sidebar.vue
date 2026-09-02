@@ -19,6 +19,7 @@ import {
   HomeOutline,
   DocumentTextOutline,
   DocumentsOutline,
+  VideocamOutline,
   AlarmOutline,
   RibbonOutline,
   AddOutline,
@@ -272,6 +273,17 @@ async function deleteWorkspace() {
           </router-link>
         </template>
         {{ t('shell.nav.documents') }}
+      </n-tooltip>
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <router-link to="/conferences" class="nav-link" data-nav="conferences">
+            <n-icon :component="VideocamOutline" :size="18" />
+            <span v-if="!collapsed" class="nav-label">
+              {{ t('shell.nav.conferences') }}<sup class="nav-badge">alpha</sup>
+            </span>
+          </router-link>
+        </template>
+        {{ t('shell.nav.conferences') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>

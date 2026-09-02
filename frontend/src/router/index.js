@@ -56,6 +56,10 @@ const routes = [
       // the open route shares its record. As two records, opening a document
       // switched the record and the «Документы» item went dark (#2727).
       { path: 'documents/:slug?', component: () => import('@/views/DocumentsView.vue') },
+      // Same one-record-with-an-optional-param shape as documents above, and for
+      // the same reason (#2727): opening a conference must not take the
+      // «Конференции» item in the sidebar dark.
+      { path: 'conferences/:id?', component: () => import('@/views/ConferencesView.vue') },
       { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
       // No help route (#2792): the help centre is a modal mounted in AppLayout,
       // opened from the sidebar's «Помощь» menu. Cross-links between articles are
