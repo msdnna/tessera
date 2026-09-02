@@ -89,5 +89,27 @@
     "left": "You left the conference",
     "ended": "Conference ended",
     "deleted": "Conference deleted"
+  },
+  "panel": {
+    "title": "In the room: {count}",
+    "empty": "Nobody is in the room yet",
+    "handUp": "Hand raised",
+    "micOff": "microphone off",
+    "speaking": "microphone on",
+    "forceMuted": "muted by a host",
+    "muteForMe": "Mute for me",
+    "unmuteForMe": "Unmute for me",
+    "forceMute": "Mute for everyone",
+    "unforceMute": "Give the microphone back",
+    "kick": "Remove",
+    "confirmKick": "Remove {name} from the conference? They will not be able to come straight back.",
+    "raiseHand": "Raise hand",
+    "lowerHand": "Lower hand",
+    "youAreForceMuted": "A host has muted your microphone",
+    "denied": {
+      "kick": "Only a host may remove participants",
+      "mute": "Only a host may mute participants",
+      "other": "The server refused the action"
+    }
   }
 }

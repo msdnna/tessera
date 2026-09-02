@@ -126,6 +126,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		APIKey:    cfg.LiveKitAPIKey,
 		APISecret: cfg.LiveKitAPISecret,
 	}))
+	// Moderation sink (#2872), installed after the SFU client because it uses it:
+	// a kick or a force-mute decided inside a room is persisted and carried to
+	// LiveKit through here. Set once, before any room exists — rooms copy it as
+	// they are created.
+	confRooms.SetEnforcer(rh.ConfEnforcer())
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 

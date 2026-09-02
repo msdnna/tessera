@@ -22,13 +22,12 @@
 //     skipped — a dropped frame would leave the stage shown as held by someone
 //     who left ten minutes ago, and nothing would ever correct it.
 //
-// What is *not* here, on purpose: the durable side of moderation. A kick sets a
-// short cooldown in memory and the force-mute flag is broadcast for clients to
-// obey, but persisting either to conference_participants and enforcing the mute
-// at the SFU (RoomService.MutePublishedTrack) belongs to the participants
-// subtask (#2872). A client that ignores the flag is still publishing audio
-// until that lands — the flag makes the UI honest, it does not yet make the
-// microphone silent.
+// The durable side of moderation is not here either, but it is no longer
+// missing: a decision taken in this package is handed to an Enforcer (#2872),
+// which persists it to conference_participants and carries it to the SFU. That
+// indirection is what keeps this file free of both the database and LiveKit
+// while still making a force-mute silence a real microphone rather than only
+// the badge above it.
 package confroom
 
 import (
@@ -62,11 +61,10 @@ const (
 	// *unobserved* stale presenter stays on screen.
 	SweepEvery = 5 * time.Second
 
-	// KickCooldown is how long a kicked user is kept out. A kick that the client
-	// can undo by pressing "join" a second later is not a moderation tool, and
-	// the durable exclusion (a participant row + RemoveParticipant at the SFU)
-	// arrives with #2872 — until then this is what makes the button mean
-	// something.
+	// KickCooldown is how long a kicked user is kept out of the presence room and
+	// refused a media token. The durable half — clearing the participant row and
+	// removing them from the SFU — is the Enforcer's job; this is what keeps them
+	// from simply walking back in while it happens.
 	KickCooldown = 5 * time.Minute
 
 	// sendBuffer is how many frames may queue for one participant before it is
@@ -177,9 +175,28 @@ type stage struct {
 	expires time.Time
 }
 
+// Enforcer carries a moderation decision out of this process: to the database,
+// so it survives a reconnect, and to the SFU, so it applies to the media stream
+// this package deliberately knows nothing about.
+//
+// Both methods are called *after* the room's lock is released and must not
+// block the caller — they run on a socket's read pump, and a wedged SFU must not
+// be able to freeze a participant's connection. The implementation owns its own
+// goroutine and timeout.
+//
+// A nil Enforcer is legal and means "in-memory only": every test that exercises
+// arbitration, and any install without an SFU, runs that way.
+type Enforcer interface {
+	// Kicked is called once a kick has taken effect in the room.
+	Kicked(confID, userID uuid.UUID)
+	// Muted is called when a user's force-mute flag was flipped either way.
+	Muted(confID, userID uuid.UUID, muted bool)
+}
+
 // Room is the live state of one conference.
 type Room struct {
-	confID uuid.UUID
+	confID  uuid.UUID
+	enforce Enforcer
 
 	mu      sync.Mutex
 	members map[*Participant]struct{}
@@ -191,9 +208,10 @@ type Room struct {
 	queue  []*Participant
 }
 
-func newRoom(confID uuid.UUID) *Room {
+func newRoom(confID uuid.UUID, enforce Enforcer) *Room {
 	return &Room{
 		confID:  confID,
+		enforce: enforce,
 		members: map[*Participant]struct{}{},
 		muted:   map[uuid.UUID]bool{},
 		kicked:  map[uuid.UUID]time.Time{},
@@ -263,10 +281,18 @@ type deniedMsg struct {
 }
 
 // join adds a participant, welcomes it and broadcasts the new state.
-func (r *Room) join(p *Participant, now time.Time) {
+//
+// forceMuted is the flag as stored on the participant's row. Seeding it here is
+// what makes a force-mute survive an empty room: the last person leaving throws
+// the in-memory flag away with it, and without this the muted participant would
+// get their microphone back simply by being the first to rejoin.
+func (r *Room) join(p *Participant, forceMuted bool, now time.Time) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	p.joinedAt = now
+	if forceMuted {
+		r.muted[p.UserID] = true
+	}
 	r.members[p] = struct{}{}
 	p.deliver(encode(welcomeMsg{
 		Type:         TypeWelcome,
@@ -415,6 +441,20 @@ func (r *Room) ReleaseScreen(p *Participant, now time.Time) {
 // Kicking another host is refused too: moderators must not be able to eject
 // each other, which is how a call ends up with nobody able to run it.
 func (r *Room) Kick(actor *Participant, target uuid.UUID, now time.Time) bool {
+	if !r.kick(actor, target, now) {
+		return false
+	}
+	// Outside the lock on purpose: the enforcer talks to Postgres and the SFU,
+	// and holding the room's mutex across either would stall every other
+	// participant's snapshot behind a network round trip.
+	if r.enforce != nil {
+		r.enforce.Kicked(r.confID, target)
+	}
+	return true
+}
+
+// kick applies the kick to the room's own state, reporting whether it took.
+func (r *Room) kick(actor *Participant, target uuid.UUID, now time.Time) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if actor.Role != RoleHost {
@@ -453,19 +493,36 @@ func (r *Room) Kick(actor *Participant, target uuid.UUID, now time.Time) bool {
 
 // SetMuted force-mutes or unmutes a user for everyone. Hosts only.
 //
-// The flag is authoritative for the UI and for what this room will accept in
-// SetMedia; silencing the actual track at the SFU is #2872. Until then a
-// modified client could keep publishing, which is why this is a flag and not a
-// promise.
+// The flag decides what this room will accept in SetMedia and what the roster
+// paints; the Enforcer is what makes it true of the microphone itself, by
+// muting the published track and narrowing the participant's publish
+// permission at the SFU. Both halves are needed: without the flag the UI lies
+// about state it cannot see, and without the enforcement a modified client
+// keeps talking.
+//
+// Unmuting is not the mirror image. It restores the permission to publish a
+// microphone, and stops there — turning somebody's microphone back on from the
+// server is not moderation, it is eavesdropping, so the participant has to
+// unmute themselves.
 func (r *Room) SetMuted(actor *Participant, target uuid.UUID, muted bool) bool {
+	changed, ok := r.setMuted(actor, target, muted)
+	if ok && changed && r.enforce != nil {
+		r.enforce.Muted(r.confID, target, muted)
+	}
+	return ok
+}
+
+// setMuted flips the flag in the room, reporting whether it was allowed and
+// whether anything actually changed.
+func (r *Room) setMuted(actor *Participant, target uuid.UUID, muted bool) (changed, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if actor.Role != RoleHost {
 		actor.deliver(encode(deniedMsg{Type: TypeDenied, Action: TypeMute, Reason: "not a host"}))
-		return false
+		return false, false
 	}
 	if r.muted[target] == muted {
-		return true
+		return false, true
 	}
 	if muted {
 		r.muted[target] = true
@@ -478,7 +535,7 @@ func (r *Room) SetMuted(actor *Participant, target uuid.UUID, muted bool) bool {
 		delete(r.muted, target)
 	}
 	r.broadcastLocked()
-	return true
+	return true, true
 }
 
 // Muted reports whether a user is force-muted in this room.
@@ -699,15 +756,25 @@ func encode(v any) []byte {
 // empty room alive until it elapses, because forgetting the room is the same as
 // forgetting the kick.
 type Rooms struct {
-	mu    sync.Mutex
-	rooms map[uuid.UUID]*Room
-	done  chan struct{}
-	once  sync.Once
+	mu      sync.Mutex
+	rooms   map[uuid.UUID]*Room
+	enforce Enforcer
+	done    chan struct{}
+	once    sync.Once
 }
 
 // New returns an empty registry. Call Run once to start the sweeper.
 func New() *Rooms {
 	return &Rooms{rooms: map[uuid.UUID]*Room{}, done: make(chan struct{})}
+}
+
+// SetEnforcer installs the sink for moderation decisions (#2872). Call it once
+// during wiring, before any room exists: rooms copy the enforcer as they are
+// created, so one set afterwards would only reach conferences opened later.
+func (rs *Rooms) SetEnforcer(e Enforcer) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	rs.enforce = e
 }
 
 // KickedUntil reports whether a user is still serving a kick cooldown for a
@@ -724,15 +791,17 @@ func (rs *Rooms) KickedUntil(confID, userID uuid.UUID) (time.Time, bool) {
 }
 
 // Join puts a participant into a conference's room, creating it if needed.
-func (rs *Rooms) Join(confID uuid.UUID, p *Participant) *Room {
+// forceMuted is the flag from their participant row — see Room.join for why the
+// caller has to supply it rather than the room remembering.
+func (rs *Rooms) Join(confID uuid.UUID, p *Participant, forceMuted bool) *Room {
 	rs.mu.Lock()
 	room, ok := rs.rooms[confID]
 	if !ok {
-		room = newRoom(confID)
+		room = newRoom(confID, rs.enforce)
 		rs.rooms[confID] = room
 	}
 	rs.mu.Unlock()
-	room.join(p, time.Now())
+	room.join(p, forceMuted, time.Now())
 	return room
 }
 

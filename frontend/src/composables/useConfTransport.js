@@ -33,10 +33,17 @@ export function mediaSupported() {
   return typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
 }
 
+// Volume bounds for the per-participant slider (#2872). Above 1 is real gain,
+// not just a louder UI number — the quiet colleague on a laptop microphone is
+// the whole reason the control exists — but it is capped, because past roughly
+// twice the source level the clipping is worse than the quietness.
+export const VOLUME_MAX = 2
+export const VOLUME_DEFAULT = 1
+
 // A participant as the UI sees one. Flat and plain on purpose: the tiles diff
 // this, and handing them live SDK objects would make every re-render depend on
 // SDK internals mutating in place.
-function describe(p, local) {
+function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
   // v2 exposes publications by source; the track is absent until subscribed,
   // which is exactly when the tile should still be showing the avatar.
   const cam = p.getTrackPublication?.('camera')
@@ -44,6 +51,11 @@ function describe(p, local) {
   return {
     id: p.identity,
     sid: p.sid,
+    // How loudly *we* hear them, and whether we silenced them for ourselves.
+    // Both are local-only; a host's force-mute is a different thing and arrives
+    // through the room socket.
+    volume,
+    localMuted: muted,
     // LiveKit carries the display name we minted server-side alongside the
     // token; falling back to the identity would put a raw UUID on a tile.
     name: p.name || p.identity,
@@ -82,6 +94,15 @@ export function useConfTransport() {
   const audioBlocked = ref(false)
   const devices = ref({ audioinput: [], videoinput: [], audiooutput: [] })
   const selected = ref({ audioinput: '', videoinput: '', audiooutput: '' })
+  // Per-participant playback, entirely local (#2872): turning someone down here
+  // changes nothing for anyone else in the call, which is the difference between
+  // this and the host's force-mute. Keyed by identity rather than sid so it
+  // survives that person reconnecting — the annoying background noise is still
+  // the same person after their wifi blipped.
+  const volumes = ref({})
+  // Kept apart from a volume of zero so unmuting restores the level that was
+  // set before, instead of snapping everyone back to the default.
+  const localMuted = ref({})
 
   // Not a ref: the room is an event emitter we hold, never something we render.
   let room = null
@@ -102,11 +123,26 @@ export function useConfTransport() {
   const others = computed(() => peers.value.filter((p) => p !== dominant.value))
   const connected = computed(() => status.value === LIVE)
 
+  // The level this participant should be played at, folding the local mute in.
+  function levelFor(identity) {
+    if (localMuted.value[identity]) return 0
+    const v = volumes.value[identity]
+    return typeof v === 'number' ? v : VOLUME_DEFAULT
+  }
+
   function sync() {
     if (!room) return
     const local = room.localParticipant
     const list = local ? [describe(local, true)] : []
-    for (const p of room.remoteParticipants?.values?.() || []) list.push(describe(p, false))
+    for (const p of room.remoteParticipants?.values?.() || []) {
+      const level = levelFor(p.identity)
+      // Reapplied on every snapshot, not only when the slider moves: the SDK
+      // attaches volume to the audio track, and a participant who reconnects or
+      // republishes arrives at full volume again. Without this, turning someone
+      // down would quietly undo itself the first time their microphone flickers.
+      applyVolume(p, level)
+      list.push(describe(p, false, levelFor(p.identity), !!localMuted.value[p.identity]))
+    }
     peers.value = list
     micOn.value = !!local?.isMicrophoneEnabled
     camOn.value = !!local?.isCameraEnabled
@@ -288,6 +324,55 @@ export function useConfTransport() {
   const toggleMic = () => setMic(!micOn.value)
   const toggleCam = () => setCam(!camOn.value)
 
+  // setVolume is a v2 method on RemoteParticipant; guarded because the local
+  // participant does not have it and a stubbed room in a test need not.
+  function applyVolume(p, level) {
+    try {
+      p.setVolume?.(level)
+    } catch {
+      // A participant whose audio track has already gone: the next snapshot
+      // will not include them, and there is nothing to report.
+    }
+  }
+
+  function remoteByIdentity(identity) {
+    for (const p of room?.remoteParticipants?.values?.() || []) {
+      if (p.identity === identity) return p
+    }
+    return null
+  }
+
+  /**
+   * Set how loudly we hear one participant (#2872).
+   *
+   * Purely local: nobody else's call changes, and the person being turned down
+   * is not told. That is deliberate — this is the volume knob, not moderation,
+   * and a "someone muted you" signal would make it one.
+   *
+   * @param {string} identity the participant's user id
+   * @param {number} level 0…VOLUME_MAX, where 1 is the source level
+   */
+  function setPeerVolume(identity, level) {
+    const v = Math.min(VOLUME_MAX, Math.max(0, Number(level) || 0))
+    volumes.value = { ...volumes.value, [identity]: v }
+    // Moving the slider off zero is the same intent as unmuting; leaving the
+    // mute set would make the control look broken.
+    if (v > 0 && localMuted.value[identity]) {
+      localMuted.value = { ...localMuted.value, [identity]: false }
+    }
+    const p = remoteByIdentity(identity)
+    if (p) applyVolume(p, levelFor(identity))
+    sync()
+  }
+
+  /** Silence one participant for ourselves only, keeping their level for later. */
+  function togglePeerMute(identity) {
+    localMuted.value = { ...localMuted.value, [identity]: !localMuted.value[identity] }
+    const p = remoteByIdentity(identity)
+    if (p) applyVolume(p, levelFor(identity))
+    sync()
+  }
+
   /**
    * Pick an input or output device.
    *
@@ -335,10 +420,15 @@ export function useConfTransport() {
     audioBlocked,
     devices,
     selected,
+    volumes,
+    localMuted,
     join,
     leave,
     toggleMic,
     toggleCam,
+    setMic,
+    setPeerVolume,
+    togglePeerMute,
     selectDevice,
     unblockAudio,
   }

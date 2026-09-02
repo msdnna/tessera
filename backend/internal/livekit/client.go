@@ -284,6 +284,51 @@ func (c *Client) MuteTrack(ctx context.Context, room, identity, trackSID string)
 	}, nil)
 }
 
+// Track sources, as protojson renders LiveKit's TrackSource enum. They are the
+// vocabulary of SetPublishSources below — a force-mute is expressed as "you may
+// publish everything except MICROPHONE", not as a blanket publish ban, because
+// taking someone's voice away must not also take away their screen share.
+const (
+	SourceCamera      = "CAMERA"
+	SourceMicrophone  = "MICROPHONE"
+	SourceScreenShare = "SCREEN_SHARE"
+	SourceScreenAudio = "SCREEN_SHARE_AUDIO"
+)
+
+// AllSources is what an unrestricted participant may publish.
+func AllSources() []string {
+	return []string{SourceCamera, SourceMicrophone, SourceScreenShare, SourceScreenAudio}
+}
+
+// SourcesWithoutMic is AllSources minus the microphone — the permission set of a
+// force-muted participant.
+func SourcesWithoutMic() []string {
+	return []string{SourceCamera, SourceScreenShare, SourceScreenAudio}
+}
+
+// SetPublishSources restricts what a participant may publish from now on.
+//
+// This is the half of force-mute that MuteTrack cannot do. MutePublishedTrack
+// silences the track that exists *right now*; nothing stops the client from
+// publishing a fresh one a second later, and a modified client will. Narrowing
+// the permission is what makes the silence hold, and LiveKit applies it to the
+// live connection — the participant does not have to reconnect for it to bite.
+//
+// The list is passed explicitly in both directions: an *empty* canPublishSources
+// means "no restriction" to LiveKit, so lifting a force-mute has to name every
+// source rather than clearing the field.
+func (c *Client) SetPublishSources(ctx context.Context, room, identity string, sources []string) error {
+	return c.call(ctx, "UpdateParticipant", room, map[string]any{
+		"room": room, "identity": identity,
+		"permission": map[string]any{
+			"canSubscribe":      true,
+			"canPublish":        true,
+			"canPublishData":    true,
+			"canPublishSources": sources,
+		},
+	}, nil)
+}
+
 // DeleteRoom ends a conference for everyone and disconnects the participants.
 func (c *Client) DeleteRoom(ctx context.Context, room string) error {
 	return c.call(ctx, "DeleteRoom", room, map[string]any{"room": room}, nil)

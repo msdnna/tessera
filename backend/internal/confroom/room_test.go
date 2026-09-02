@@ -42,7 +42,7 @@ func lastOfType(p *Participant, want string) map[string]any {
 // in the room.
 func join(rs *Rooms, confID uuid.UUID, name, role string) *Participant {
 	p := NewParticipant(uuid.New(), name, role)
-	rs.Join(confID, p)
+	rs.Join(confID, p, false)
 	return p
 }
 
@@ -93,7 +93,7 @@ func TestJoinWelcomesAndCountsTabs(t *testing.T) {
 
 	// Same user, second tab.
 	second := NewParticipant(host.UserID, "Хост", RoleHost)
-	rs.Join(confID, second)
+	rs.Join(confID, second, false)
 
 	state := rs.rooms[confID].State(time.Now())
 	if len(state.Participants) != 1 {
@@ -112,7 +112,7 @@ func TestMediaFlagsAggregateOverTabs(t *testing.T) {
 	rs, confID := New(), uuid.New()
 	first := join(rs, confID, "Ира", RoleMember)
 	second := NewParticipant(first.UserID, "Ира", RoleMember)
-	rs.Join(confID, second)
+	rs.Join(confID, second, false)
 	room := rs.rooms[confID]
 
 	room.SetMedia(second, true, false)

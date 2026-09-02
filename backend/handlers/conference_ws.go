@@ -79,32 +79,43 @@ func (h *WSHandler) ConnectConference(c *gin.Context) {
 	if err != nil {
 		return // Upgrade already wrote an error response.
 	}
-	p := confroom.NewParticipant(uid, h.displayName(c, uid), h.conferenceRole(c, conf, uid, role))
-	room := h.confRooms.Join(confID, p)
+	seatRole, forceMuted := h.conferenceSeat(c, conf, uid, role)
+	p := confroom.NewParticipant(uid, h.displayName(c, uid), seatRole)
+	room := h.confRooms.Join(confID, p, forceMuted)
 	go h.confWritePump(conn, p)
 	go h.confReadPump(conn, p, room, confID)
 }
 
-// conferenceRole decides who may kick and force-mute inside the call. It
-// mirrors handlers.canManageConference — the creator, a participant enrolled as
-// host, or a workspace owner/admin — so a moderator does not gain or lose
-// rights depending on whether they are looking at the REST surface or the
-// socket. Resolved once, at join: a role change mid-call takes effect on the
+// conferenceSeat resolves what this connection is allowed to do and what was
+// already done to it: the role that decides who may kick and force-mute, and
+// whether a host has silenced this user before.
+//
+// The role mirrors handlers.canManageConference — the creator, a participant
+// enrolled as host, or a workspace owner/admin — so a moderator does not gain
+// or lose rights depending on whether they are looking at the REST surface or
+// the socket. Resolved once, at join: a role change mid-call takes effect on the
 // next connection, which is what makes the room's own checks cheap.
-func (h *WSHandler) conferenceRole(c *gin.Context, conf db.Conference, uid uuid.UUID, wsRole string) string {
-	if conf.CreatedBy != nil && *conf.CreatedBy == uid {
-		return confroom.RoleHost
-	}
-	if wsRole == "owner" || wsRole == "admin" {
-		return confroom.RoleHost
+//
+// The force-mute flag has to be read here because the room forgets it when the
+// last person leaves (#2872). Without this a muted participant would only have
+// to wait out the call and rejoin first to have their microphone back.
+func (h *WSHandler) conferenceSeat(c *gin.Context, conf db.Conference, uid uuid.UUID, wsRole string) (role string, forceMuted bool) {
+	role = confroom.RoleMember
+	if (conf.CreatedBy != nil && *conf.CreatedBy == uid) || wsRole == "owner" || wsRole == "admin" {
+		role = confroom.RoleHost
 	}
 	part, err := h.q.GetConferenceParticipant(c, db.GetConferenceParticipantParams{
 		ConferenceID: conf.ID, UserID: uid,
 	})
-	if err == nil && part.Role == confroom.RoleHost {
-		return confroom.RoleHost
+	if err != nil {
+		// No row yet — a member walking into an open call before the join request
+		// lands. They cannot have been muted, and the role above stands.
+		return role, false
 	}
-	return confroom.RoleMember
+	if part.Role == confroom.RoleHost {
+		role = confroom.RoleHost
+	}
+	return role, part.ForceMuted
 }
 
 // confReadPump handles room commands until the socket dies, then takes the
