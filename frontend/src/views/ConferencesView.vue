@@ -7,9 +7,10 @@
 // shares its record, so as two records opening a conference would take the
 // sidebar item dark (the same trap documents fell into, #2727).
 //
-// Media is deliberately absent here: it belongs to the LiveKit SFU and arrives
-// with the media core. What this screen owns is the bookkeeping — who is
-// invited, who is in the room, and when the call happens.
+// Media lives in ConferenceRoom (#2871) and talks to the LiveKit SFU directly.
+// What stays here is the bookkeeping — who is invited, who is in the room and
+// when the call happens — and the single source of truth for membership: this
+// screen's join/leave drives the room's `active`, never the reverse.
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -41,6 +42,7 @@ import { useFormat } from '@/composables/useFormat'
 import { useRealtime } from '@/composables/useRealtime'
 import { hueGrad, tagPillBg } from '@/utils/gradient'
 import EmptyState from '@/components/EmptyState.vue'
+import ConferenceRoom from '@/components/conference/ConferenceRoom.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -428,10 +430,11 @@ onMounted(() => {
 
           <div class="panes">
             <n-card size="small" :title="$t('conferences.detail.roomTitle')" class="room">
-              <empty-state
-                :icon="VideocamOutline"
-                size="small"
-                :text="$t('conferences.detail.roomPending')"
+              <conference-room
+                :conference-id="detail.conference.id"
+                :active="inRoom"
+                :ended="detail.conference.status === 'ended'"
+                @hangup="leave"
               />
             </n-card>
 

@@ -1,0 +1,345 @@
+import { computed, getCurrentInstance, onBeforeUnmount, ref, shallowRef } from 'vue'
+import { conferences as confApi } from '@/api'
+
+// The seam between the conference UI and the SFU (#2864, subtask #2871).
+//
+// Everything the room screen knows about media goes through here, and nothing
+// above this file imports `livekit-client`. That is not ceremony: the SDK is the
+// one dependency in this feature we do not control, and its participant/track
+// API has already been renamed once across a major version. Keeping it behind a
+// plain `{ status, peers, micOn, … }` surface means a version bump touches one
+// file instead of five components.
+//
+// The SDK is loaded with a dynamic import on the first join, not statically:
+// it is ~400 KB that nobody who never opens a call should pay for, and it also
+// keeps it out of the vendor chunk the whole app boots from.
+
+// Statuses the UI branches on.
+//
+// `unavailable` is deliberately not `error`. It means the browser will not hand
+// out a camera or a microphone at all — no secure context — and no retry will
+// change that. On the dev stand (`:8083`, plain http, by IP) this is the normal
+// state, so the room must explain it rather than show a broken call.
+export const IDLE = 'idle'
+export const CONNECTING = 'connecting'
+export const LIVE = 'live'
+export const ERROR = 'error'
+export const UNAVAILABLE = 'unavailable'
+
+// getUserMedia and enumerateDevices only exist in a secure context. Checking for
+// the object rather than calling it keeps the failure quiet and instant — asking
+// first and catching would surface a console error on every dev page load.
+export function mediaSupported() {
+  return typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia
+}
+
+// A participant as the UI sees one. Flat and plain on purpose: the tiles diff
+// this, and handing them live SDK objects would make every re-render depend on
+// SDK internals mutating in place.
+function describe(p, local) {
+  // v2 exposes publications by source; the track is absent until subscribed,
+  // which is exactly when the tile should still be showing the avatar.
+  const cam = p.getTrackPublication?.('camera')
+  const mic = p.getTrackPublication?.('microphone')
+  return {
+    id: p.identity,
+    sid: p.sid,
+    // LiveKit carries the display name we minted server-side alongside the
+    // token; falling back to the identity would put a raw UUID on a tile.
+    name: p.name || p.identity,
+    local,
+    speaking: !!p.isSpeaking,
+    micOn: !!p.isMicrophoneEnabled,
+    camOn: !!p.isCameraEnabled,
+    // shallow-held elsewhere: these are SDK objects with their own lifecycle,
+    // and making them deeply reactive would have Vue walk a MediaStreamTrack.
+    videoTrack: cam?.isSubscribed === false ? null : cam?.track || null,
+    // The local mic is never attached — that is a feedback loop, not monitoring.
+    audioTrack: local ? null : mic?.track || null,
+  }
+}
+
+/**
+ * Media core for one conference room (#2871).
+ *
+ * The caller drives it with `join(conferenceId)` / `leave()` and reads `peers`.
+ * State is rebuilt as a whole snapshot on every SDK event instead of patched
+ * per-event — the same shape `internal/confroom` uses on the wire, and for the
+ * same reason: a missed event can then never leave a phantom tile behind.
+ *
+ * @returns {object} state refs plus `join`, `leave`, `toggleMic`, `toggleCam`,
+ *   `selectDevice`, `unblockAudio`
+ */
+export function useConfTransport() {
+  const status = ref(IDLE)
+  const error = ref('')
+  const peers = shallowRef([])
+  const micOn = ref(false)
+  const camOn = ref(false)
+  // Browsers refuse to play audio until the page has been interacted with. The
+  // SDK reports that instead of silently dropping sound, and the room turns it
+  // into a "включить звук" button — otherwise a whole call is mute with no clue.
+  const audioBlocked = ref(false)
+  const devices = ref({ audioinput: [], videoinput: [], audiooutput: [] })
+  const selected = ref({ audioinput: '', videoinput: '', audiooutput: '' })
+
+  // Not a ref: the room is an event emitter we hold, never something we render.
+  let room = null
+  let sdk = null
+  // Guards the window between "join started" and "room connected" — a user who
+  // clicks away in that window must not end up in a call with no UI attached.
+  let leaving = false
+
+  // The loudest speaker gets the big tile. Ties and silence fall back to the
+  // first remote peer so the stage never blinks empty mid-call; with nobody
+  // else in the room it is the local tile, which is also the join preview.
+  const dominant = computed(() => {
+    const list = peers.value
+    if (!list.length) return null
+    const remote = list.filter((p) => !p.local)
+    return remote.find((p) => p.speaking) || remote[0] || list[0]
+  })
+  const others = computed(() => peers.value.filter((p) => p !== dominant.value))
+  const connected = computed(() => status.value === LIVE)
+
+  function sync() {
+    if (!room) return
+    const local = room.localParticipant
+    const list = local ? [describe(local, true)] : []
+    for (const p of room.remoteParticipants?.values?.() || []) list.push(describe(p, false))
+    peers.value = list
+    micOn.value = !!local?.isMicrophoneEnabled
+    camOn.value = !!local?.isCameraEnabled
+    audioBlocked.value = room.canPlaybackAudio === false
+  }
+
+  // Every room event collapses into one snapshot rebuild, so the list of events
+  // is a coverage question, not a correctness one: a missed event costs a stale
+  // tile until the next one, never a wrong one.
+  function listen(RoomEvent) {
+    const events = [
+      RoomEvent.ParticipantConnected,
+      RoomEvent.ParticipantDisconnected,
+      RoomEvent.TrackSubscribed,
+      RoomEvent.TrackUnsubscribed,
+      RoomEvent.TrackMuted,
+      RoomEvent.TrackUnmuted,
+      RoomEvent.LocalTrackPublished,
+      RoomEvent.LocalTrackUnpublished,
+      RoomEvent.ActiveSpeakersChanged,
+      RoomEvent.ParticipantNameChanged,
+      RoomEvent.AudioPlaybackStatusChanged,
+      RoomEvent.ConnectionStateChanged,
+    ].filter(Boolean)
+    for (const e of events) room.on(e, sync)
+    if (RoomEvent.Disconnected) room.on(RoomEvent.Disconnected, onDisconnected)
+    if (RoomEvent.MediaDevicesChanged) room.on(RoomEvent.MediaDevicesChanged, refreshDevices)
+  }
+
+  // A disconnect we did not ask for — the SFU restarted, the call ended, or the
+  // token expired mid-reconnect. Falling back to idle (not error) keeps the room
+  // screen usable: the join button comes back instead of a dead-end message.
+  function onDisconnected() {
+    room = null
+    peers.value = []
+    micOn.value = false
+    camOn.value = false
+    detachUnload()
+    if (status.value === LIVE) status.value = IDLE
+  }
+
+  async function refreshDevices() {
+    if (!sdk || !mediaSupported()) return
+    try {
+      const kinds = ['audioinput', 'videoinput', 'audiooutput']
+      const next = { audioinput: [], videoinput: [], audiooutput: [] }
+      for (const kind of kinds) {
+        const found = await sdk.Room.getLocalDevices(kind, false)
+        next[kind] = (found || [])
+          .filter((d) => d.deviceId)
+          .map((d) => ({ id: d.deviceId, label: d.label }))
+      }
+      devices.value = next
+    } catch {
+      // Enumeration failing is not worth breaking a working call over: the menu
+      // just shows nothing and the browser default keeps being used.
+    }
+  }
+
+  // The camera indicator stays lit until the tracks are actually stopped, and a
+  // closed tab never runs onBeforeUnmount — so the teardown is wired to both.
+  // Without the pagehide half, leaving the page mid-call leaves the user
+  // watching their own webcam light stay on.
+  const onUnload = () => {
+    try {
+      room?.disconnect()
+    } catch {
+      // The page is going away; a failed disconnect has nowhere to be reported.
+    }
+  }
+  function attachUnload() {
+    if (typeof window === 'undefined') return
+    window.addEventListener('pagehide', onUnload)
+    window.addEventListener('beforeunload', onUnload)
+  }
+  function detachUnload() {
+    if (typeof window === 'undefined') return
+    window.removeEventListener('pagehide', onUnload)
+    window.removeEventListener('beforeunload', onUnload)
+  }
+
+  /**
+   * Enter the conference's media room.
+   *
+   * Order matters: the token is asked for first, because the server is the one
+   * that decides whether this user may be here at all (and a kicked user is
+   * refused there, not here). Only then do we touch the camera — asking for
+   * hardware before knowing the answer would pop a permission prompt at someone
+   * who is about to be told "no".
+   *
+   * @param {string} conferenceId
+   * @param {{mic?: boolean, cam?: boolean}} want initial device state
+   */
+  async function join(conferenceId, want = {}) {
+    if (status.value === CONNECTING || status.value === LIVE) return
+    if (!mediaSupported()) {
+      status.value = UNAVAILABLE
+      return
+    }
+    leaving = false
+    status.value = CONNECTING
+    error.value = ''
+    try {
+      const { data } = await confApi.token(conferenceId)
+      sdk = await import('livekit-client')
+      if (leaving) {
+        status.value = IDLE
+        return
+      }
+      room = new sdk.Room({
+        // adaptiveStream drops the resolution of a tile nobody is looking at,
+        // and dynacast stops publishing layers nobody subscribes to. Both matter
+        // more here than usual: this runs over a corporate wireguard link.
+        adaptiveStream: true,
+        dynacast: true,
+        audioCaptureDefaults: selected.value.audioinput
+          ? { deviceId: selected.value.audioinput }
+          : undefined,
+        videoCaptureDefaults: selected.value.videoinput
+          ? { deviceId: selected.value.videoinput }
+          : undefined,
+      })
+      listen(sdk.RoomEvent)
+      await room.connect(data.url, data.token)
+      if (leaving) {
+        await room.disconnect()
+        room = null
+        status.value = IDLE
+        return
+      }
+      attachUnload()
+      // Mic on, camera off is the honest default for a daily standup: audio is
+      // why people are here, and a camera that turns itself on is a surprise.
+      await setMic(want.mic !== false)
+      if (want.cam) await setCam(true)
+      status.value = LIVE
+      sync()
+      refreshDevices()
+    } catch (e) {
+      // A refusal from our own API is the interesting case and already carries a
+      // sentence a human wrote (503 not configured, 409 ended, 403 kicked).
+      error.value = e.response?.data?.error || e.message || String(e)
+      status.value = ERROR
+      try {
+        await room?.disconnect()
+      } catch {
+        // Already down; the status above is what the user acts on.
+      }
+      room = null
+    }
+  }
+
+  async function leave() {
+    leaving = true
+    detachUnload()
+    const r = room
+    room = null
+    peers.value = []
+    micOn.value = false
+    camOn.value = false
+    status.value = IDLE
+    try {
+      await r?.disconnect()
+    } catch {
+      // Nothing to do — we have already dropped our side of the room.
+    }
+  }
+
+  async function setMic(on) {
+    if (!room) return
+    await room.localParticipant.setMicrophoneEnabled(on)
+    sync()
+  }
+  async function setCam(on) {
+    if (!room) return
+    await room.localParticipant.setCameraEnabled(on)
+    sync()
+  }
+  const toggleMic = () => setMic(!micOn.value)
+  const toggleCam = () => setCam(!camOn.value)
+
+  /**
+   * Pick an input or output device.
+   *
+   * Remembered even when called before joining, so the choice made in the lobby
+   * survives into the call — `join` feeds it to the capture defaults.
+   *
+   * @param {'audioinput'|'videoinput'|'audiooutput'} kind
+   * @param {string} deviceId
+   */
+  async function selectDevice(kind, deviceId) {
+    selected.value = { ...selected.value, [kind]: deviceId }
+    if (!room) return
+    try {
+      await room.switchActiveDevice(kind, deviceId)
+    } catch (e) {
+      error.value = e.message || String(e)
+    }
+  }
+
+  // Answers the browser's autoplay policy: it only accepts this from inside a
+  // real user gesture, which is why it is a button and not something we retry.
+  async function unblockAudio() {
+    try {
+      await room?.startAudio()
+      audioBlocked.value = room?.canPlaybackAudio === false
+    } catch {
+      // Still blocked — the button stays, the user can try again.
+    }
+  }
+
+  // Guarded because the transport is also driven straight from tests, where
+  // there is no component to unmount — the SDK stub would otherwise be torn
+  // down by a lifecycle hook Vue refuses to register.
+  if (getCurrentInstance()) onBeforeUnmount(leave)
+
+  return {
+    status,
+    error,
+    peers,
+    dominant,
+    others,
+    connected,
+    micOn,
+    camOn,
+    audioBlocked,
+    devices,
+    selected,
+    join,
+    leave,
+    toggleMic,
+    toggleCam,
+    selectDevice,
+    unblockAudio,
+  }
+}

@@ -493,6 +493,11 @@ export const conferences = {
   participants: (id) => api.get(`/conferences/${id}/participants`, { skipLoader: true }),
   // Conferences held about a task — for the task page's "discussed in" link.
   byTask: (taskId) => api.get(`/tasks/${taskId}/conferences`, { skipLoader: true }),
+  // The one media call: a short-lived LiveKit join warrant, minted only after
+  // the server has checked membership. Answers { url, token, room, identity,
+  // expires_in }; the API key never leaves the backend. skipLoader because the
+  // room screen shows its own connecting state — the global bar would flash.
+  token: (id) => api.post(`/conferences/${id}/token`, {}, { skipLoader: true }),
 }
 
 export const reminders = {

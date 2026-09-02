@@ -51,8 +51,25 @@
     "participants": "Participants",
     "noParticipants": "Nobody yet",
     "roomTitle": "Room",
-    "roomPending": "Video and audio arrive in the next update of this section. For now it shows who plans to come and who is already in the room.",
     "notFound": "Conference not found"
+  },
+  "media": {
+    "notJoined": "Join the conference to enter the room",
+    "connecting": "Connecting…",
+    "insecure": "The browser will not grant camera or microphone access: this page is not served over HTTPS. Open Tessera on a secure address.",
+    "failed": "Could not connect to the room",
+    "retry": "Retry",
+    "audioBlocked": "The browser blocked audio until you interact with the page",
+    "enableAudio": "Enable audio",
+    "muteMic": "Mute microphone",
+    "unmuteMic": "Unmute microphone",
+    "camOn": "Turn camera on",
+    "camOff": "Turn camera off",
+    "hangup": "Leave the room",
+    "mics": "Microphone",
+    "cams": "Camera",
+    "speakers": "Speakers",
+    "deviceFallback": "Device {n}"
   },
   "role": {
     "host": "Host",

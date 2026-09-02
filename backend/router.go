@@ -18,6 +18,7 @@ import (
 	"tessera/internal/converter"
 	"tessera/internal/db"
 	"tessera/internal/docroom"
+	"tessera/internal/livekit"
 	"tessera/internal/mail"
 	"tessera/internal/realtime"
 	"tessera/middleware"
@@ -116,6 +117,15 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// URL and reports itself disabled, so nothing here has to branch on whether
 	// the operator deployed LibreOffice.
 	rh.WireConverter(converter.New(cfg.ConverterURL))
+	// Conference SFU (#2864). Same shape as the converter: an unset LIVEKIT_*
+	// yields a disabled client rather than a nil one, so conferences degrade to
+	// "not configured on this server" instead of panicking a request goroutine.
+	rh.WireLiveKit(livekit.New(livekit.Config{
+		URL:       cfg.LiveKitURL,
+		PublicURL: cfg.LiveKitPublicURL,
+		APIKey:    cfg.LiveKitAPIKey,
+		APISecret: cfg.LiveKitAPISecret,
+	}))
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 
@@ -537,6 +547,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/conferences/:id/end", rh.EndConference)
 			protected.POST("/conferences/:id/invite", rh.InviteConference)
 			protected.GET("/conferences/:id/participants", rh.ListConferenceParticipants)
+			// The one media-adjacent route: it hands out a short-lived LiveKit
+			// warrant after our own checks, and creates the SFU room
+			// (auto_create is off) so the token has somewhere to go.
+			protected.POST("/conferences/:id/token", rh.ConferenceToken)
 
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).

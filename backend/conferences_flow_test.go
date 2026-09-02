@@ -175,6 +175,41 @@ func TestConferenceIsScopedToItsWorkspace(t *testing.T) {
 	}
 }
 
+// TestConferenceTokenIsGatedBeforeTheSFU checks the media seam (#2871) from the
+// only side that matters: nobody gets a LiveKit warrant without passing our own
+// checks first. A join token is a bearer credential for the room — once minted
+// it is out of our hands, so every refusal has to happen before it exists.
+//
+// This suite runs without LIVEKIT_* configured, which makes the not-configured
+// branch the observable one. That is the point: the assertion is that an
+// unconfigured install answers 503 rather than handing out a token signed with
+// an empty secret, and that the membership and lifecycle refusals are reached
+// *before* the SFU is ever consulted — an outsider must see 403, not 503.
+func TestConferenceTokenIsGatedBeforeTheSFU(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	_, confID := mkConference(t, owner, "Летучка с видео")
+
+	// Ordering, not just the code: an outsider is turned away by the workspace
+	// check, so the answer must not leak whether an SFU exists at all.
+	outsider := signup(t)
+	if r := outsider.post("/conferences/"+confID+"/token", nil); r.Status != http.StatusForbidden {
+		t.Fatalf("outsider asking for a media token: status %d, want 403\n%s", r.Status, r.Body)
+	}
+
+	// A member of the workspace gets past authorization and lands on the real
+	// answer for this install — no SFU deployed.
+	if r := owner.post("/conferences/"+confID+"/token", nil); r.Status != http.StatusServiceUnavailable {
+		t.Fatalf("token without LIVEKIT_* configured: status %d, want 503\n%s", r.Status, r.Body)
+	}
+
+	// The remaining refusals — ended conference, kick cooldown — sit *behind* the
+	// not-configured check in the handler, so this suite cannot tell them from
+	// the 503 above and deliberately does not pretend to. They are exercised on a
+	// stand with LIVEKIT_* set; asserting them here would only assert the 503
+	// twice.
+}
+
 // TestConferenceInviteIsIdempotent covers the race the ON CONFLICT clause is
 // there for: invitations are sent from several places at once (the dialog, a
 // notification, an /invite call), and the loser must not get a 500 — nor should

@@ -22,6 +22,7 @@ import (
 	"tessera/internal/db"
 	"tessera/internal/docroom"
 	"tessera/internal/jobs"
+	"tessera/internal/livekit"
 	"tessera/internal/mail"
 	"tessera/internal/notify"
 	"tessera/internal/realtime"
@@ -43,6 +44,7 @@ type API struct {
 	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
 	docRooms  *docroom.Rooms           // per-document presence/locks (nil until WireDocRooms)
 	confRooms *confroom.Rooms          // per-conference room state (nil until WireConfRooms)
+	livekit   *livekit.Client          // SFU control plane + join tokens; disabled when LIVEKIT_* unset
 	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
 	converter *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
 	version   string                   // build version, surfaced by the readiness/metrics probes
@@ -83,6 +85,12 @@ func (h *API) CloseDocRooms() {
 // ends or the conference is deleted — while the socket itself lives on
 // WSHandler.
 func (h *API) WireConfRooms(rooms *confroom.Rooms) { h.confRooms = rooms }
+
+// WireLiveKit injects the SFU client (#2871). livekit.New tolerates an empty
+// config and reports itself disabled, so an install without LIVEKIT_* set gets a
+// non-nil client that answers "off" — the token handler turns that into a 503
+// instead of every call site nil-checking.
+func (h *API) WireLiveKit(c *livekit.Client) { h.livekit = c }
 
 // CloseConfRooms stops the stage sweeper and disconnects everyone still in a
 // call, so a restart doesn't leave clients waiting on a screen-share stage that

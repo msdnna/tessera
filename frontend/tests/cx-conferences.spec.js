@@ -23,6 +23,10 @@ const api = {
   end: vi.fn(),
   remove: vi.fn(),
   participants: vi.fn(),
+  // The embedded room (#2871) reaches for a media token. jsdom has no
+  // navigator.mediaDevices, so the transport stops before ever calling it —
+  // stubbed anyway so a change in that order fails loudly instead of throwing.
+  token: vi.fn(() => Promise.reject(new Error('no media in jsdom'))),
 }
 // getAccessToken is what useRealtime reads on mount; null keeps the socket from
 // ever opening in jsdom (it retries on a timer, which unmount clears).
