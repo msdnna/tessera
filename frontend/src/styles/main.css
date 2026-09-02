@@ -571,6 +571,26 @@ body {
   background: color-mix(in srgb, var(--t-text3) 45%, transparent);
   background-clip: padding-box;
 }
+/* Firefox styles none of the -webkit- scrollbar pseudo-elements, so the reset above
+   leaves it with the SYSTEM scrollbar — thick and high-contrast (#2863). Give it the
+   same auto-hiding model through the standard properties instead. Chrome/Safari do
+   support them, never enter this block, and keep behaving exactly as before — the
+   "colour jitter" the reset was made for cannot come back.
+   The query names ::-webkit-scrollbar-THUMB on purpose: Firefox parses the bare
+   ::-webkit-scrollbar as a web-compat alias and answers `selector(::-webkit-scrollbar)`
+   with TRUE (verified on Firefox 153), which would make this block dead code there.
+   It rejects every child pseudo-element, and the thumb is what we actually style. */
+@supports not selector(::-webkit-scrollbar-thumb) {
+  .t-hoverscroll {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+    transition: scrollbar-color 0.15s ease;
+  }
+  .t-hoverscroll:hover,
+  .t-hoverscroll:focus-within {
+    scrollbar-color: color-mix(in srgb, var(--t-text3) 45%, transparent) transparent;
+  }
+}
 
 /* Mobile composer "+" drill-in menu: full-width rows so the right-side drill
    arrow («›») right-aligns, a roomier «‹ Назад» header, and a vertical slide
