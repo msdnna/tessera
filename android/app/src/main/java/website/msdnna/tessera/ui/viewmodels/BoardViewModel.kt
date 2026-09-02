@@ -90,6 +90,9 @@ data class BoardUiState(
      *  task modal's «GitLab → Создать issue» row and its template picker. */
     val gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps =
         website.msdnna.tessera.util.GitlabCreateCaps(),
+    /** The same binding pushes subtasks into the issue hierarchy — gates the modal's
+     *  «Группировка» badge and the GitLab state of each subtask row. */
+    val gitlabCanGroup: Boolean = false,
     /** Resolved estimation unit config for this board's project (drives the
      *  estimate input/chip/aggregates). Falls back to the built-in default. */
     val estimation: website.msdnna.tessera.data.model.EstimationConfig =
@@ -397,6 +400,7 @@ class BoardViewModel(
                     prefixNames = prefixNames,
                     metaTagPrefixes = gitlabCaps.metaTagPrefixes,
                     gitlabCreate = gitlabCaps.create,
+                    gitlabCanGroup = gitlabCaps.canGroup,
                     estimation = estimation,
                     members = members,
                     gitlabMembers = gitlabMembers,
@@ -553,10 +557,12 @@ class BoardViewModel(
     }
 
     /** What this board's GitLab bindings imply for the UI: the meta-label prefixes to
-     *  hide from the tag-picker, and whether an issue can be created from a task. */
+     *  hide from the tag-picker, whether an issue can be created from a task, and
+     *  whether subtasks are pushed into the issue hierarchy. */
     private data class GitlabBoardCaps(
         val metaTagPrefixes: Set<String> = emptySet(),
         val create: website.msdnna.tessera.util.GitlabCreateCaps = website.msdnna.tessera.util.GitlabCreateCaps(),
+        val canGroup: Boolean = false,
     )
 
     /** Both of the above from ONE integrations call (best-effort). Computed once on
@@ -571,6 +577,7 @@ class BoardViewModel(
                 .flatMap { website.msdnna.tessera.util.metaPrefixesFromRules(it.labelRules.rules) }
                 .toSet(),
             create = website.msdnna.tessera.util.gitlabCreateCaps(integrations, boardId),
+            canGroup = website.msdnna.tessera.util.gitlabCanGroup(integrations, boardId),
         )
     }
 

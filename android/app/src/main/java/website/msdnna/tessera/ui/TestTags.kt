@@ -158,6 +158,13 @@ object TestTags {
     const val TASK_GITLAB_CREATE = "task-gitlab-create"
     const val TASK_GITLAB_TEMPLATE = "task-gitlab-template"
 
+    /** «Сгруппированная» badge on a linked issue that carries the grouping label, and
+     *  the per-subtask GitLab hierarchy marker / «родитель не сгруппирован» hint in the
+     *  subtasks tab. All three only exist on a binding with `push_children`. */
+    const val TASK_GITLAB_GROUPED = "task-gitlab-grouped"
+    const val TASK_SUBTASK_GL_CHIP = "task-subtask-gl-chip"
+    const val TASK_SUBTASK_GL_HINT = "task-subtask-gl-hint"
+
     /** The priority chip and its picker rows, keyed by level (0 = none). */
     const val TASK_PRIORITY = "task-priority"
 

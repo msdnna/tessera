@@ -260,6 +260,7 @@ fun BoardScreen(
             members = state.members,
             gitlabMembers = state.gitlabMembers,
             gitlabCreate = state.gitlabCreate,
+            gitlabCanGroup = state.gitlabCanGroup,
             milestones = state.milestones,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
             boardTasks = state.tasks,

@@ -210,6 +210,9 @@
     <string name="task_gitlab_creating">Создание…</string>
     <string name="task_gitlab_template">Шаблон</string>
     <string name="task_gitlab_templates_empty">Шаблонов нет</string>
+    <!-- Пометка «сгруппированная задача» на issue с меткой группировки (#2592) -->
+    <string name="task_prop_grouping">Группировка</string>
+    <string name="task_gitlab_grouped">Сгруппированная</string>
     <string name="task_archive_confirm">Архивировать задачу?</string>
     <string name="task_archive_action">В архив</string>
     <string name="task_delete_confirm">Удалить задачу? Это действие необратимо.</string>
@@ -268,6 +271,10 @@
     <!-- Модалка задачи: подзадачи и связи -->
     <string name="task_subtasks_empty">Подзадач пока нет</string>
     <string name="task_subtask_new_hint">+ подзадача (Enter)</string>
+    <!-- Состояние подзадачи в иерархии GitLab (#2592) -->
+    <string name="task_subtasks_gl_detached">вне иерархии</string>
+    <string name="task_subtasks_gl_absent">не в GitLab</string>
+    <string name="task_subtasks_parent_not_grouped">Родитель не помечен как сгруппированная задача — подзадачи не попадут в GitLab.</string>
     <string name="task_relations_empty">Связей пока нет</string>
     <string name="task_relation_relates">связана с</string>
     <string name="task_relation_blocks">блокирует</string>

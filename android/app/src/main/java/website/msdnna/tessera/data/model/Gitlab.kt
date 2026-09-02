@@ -85,6 +85,11 @@ data class GitlabWriteback(
     @SerializedName("push_estimate") val pushEstimate: Boolean = false,
     @SerializedName("push_create") val pushCreate: Boolean = false,
     @SerializedName("fetch_templates") val fetchTemplates: Boolean = false,
+    // Subtasks may be pushed into the parent issue's work-item hierarchy (#2592). Not
+    // editable here (the toggle lives on web) but read by the task modal's grouping
+    // badge — and, like `push_create`, round-tripped so saving a binding from Android
+    // can't silently clear what web configured.
+    @SerializedName("push_children") val pushChildren: Boolean = false,
     @SerializedName("bindings") val bindings: List<GitlabBinding>? = null,
 )
 

@@ -204,6 +204,9 @@
     <string name="task_gitlab_creating">Creating…</string>
     <string name="task_gitlab_template">Template</string>
     <string name="task_gitlab_templates_empty">No templates</string>
+    <!-- The "grouped task" badge on an issue carrying the grouping label (#2592) -->
+    <string name="task_prop_grouping">Grouping</string>
+    <string name="task_gitlab_grouped">Grouped</string>
     <string name="task_archive_confirm">Archive this task?</string>
     <string name="task_archive_action">Archive</string>
     <string name="task_delete_confirm">Delete this task? This cannot be undone.</string>
@@ -260,6 +263,10 @@
     <!-- Task modal: subtasks and relations -->
     <string name="task_subtasks_empty">No subtasks yet</string>
     <string name="task_subtask_new_hint">+ subtask (Enter)</string>
+    <!-- The subtask's place in the GitLab hierarchy (#2592) -->
+    <string name="task_subtasks_gl_detached">outside the hierarchy</string>
+    <string name="task_subtasks_gl_absent">not in GitLab</string>
+    <string name="task_subtasks_parent_not_grouped">The parent is not marked as a grouped task — subtasks will not reach GitLab.</string>
     <string name="task_relations_empty">No relations yet</string>
     <string name="task_relation_relates">relates to</string>
     <string name="task_relation_blocks">blocks</string>

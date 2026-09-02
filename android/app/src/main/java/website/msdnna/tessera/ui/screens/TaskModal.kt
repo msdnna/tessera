@@ -200,6 +200,9 @@ fun TaskModal(
      *  an integration, so the row simply doesn't appear. */
     gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps =
         website.msdnna.tessera.util.GitlabCreateCaps(),
+    /** Whether the board's binding pushes subtasks into the GitLab issue hierarchy —
+     *  gates the «Группировка» badge and the GitLab state of the subtask rows. */
+    gitlabCanGroup: Boolean = false,
     milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
     parentCandidates: List<Task>,
     /** Every card of the host board — only used to work out a moved task's landing
@@ -370,6 +373,7 @@ fun TaskModal(
                             createdBy = detail.createdBy,
                             gitlab = detail.gitlab,
                             gitlabCreate = gitlabCreate,
+                            gitlabCanGroup = gitlabCanGroup,
                             glCreating = state.glCreating,
                             glTemplates = state.glTemplates,
                             onLoadTemplates = { vm.loadGitlabTemplates(gitlabCreate.integrationId) },
@@ -468,7 +472,11 @@ fun TaskModal(
                                         onTaskRef = openTaskRef,
                                     )
 
-                                    2 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
+                                    2 -> SubtasksTab(
+                                        vm, detail.columnId, detail.subtasks, state.columns,
+                                        showGitlab = gitlabCanGroup && detail.gitlab != null,
+                                        parentGrouped = detail.gitlab?.isGroup == true,
+                                    ) { currentId = it }
 
                                     3 -> RelationsTab(
                                         vm = vm,
@@ -611,6 +619,7 @@ private fun PropertyGrid(
     /** Whether this board's GitLab binding allows creating an issue from a task (and
      *  prefilling it from a repo template) — resolved by the board view-model. */
     gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps,
+    gitlabCanGroup: Boolean,
     glCreating: Boolean,
     glTemplates: List<website.msdnna.tessera.data.model.GitlabIssueTemplate>,
     onLoadTemplates: () -> Unit,
@@ -628,6 +637,7 @@ private fun PropertyGrid(
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
     parentCandidates: List<Task>,
 ) {
+    val c = Tessera.colors
     // Author (read-only): GitLab issue author for synced tasks, else the creator.
     val authorName: String? = when {
         gitlab?.author?.isNotBlank() == true -> gitlab.authorName.ifBlank { gitlab.author }
@@ -683,6 +693,27 @@ private fun PropertyGrid(
                     onOpenTemplates = onLoadTemplates,
                     onPickTemplate = onApplyTemplate,
                     onCreate = onCreateIssue,
+                )
+            }
+        }
+        // Grouped-task marker (#2592): the parent half of the GitLab hierarchy. Shown
+        // only when the issue actually carries the label — web pairs the badge with a
+        // set/clear button, so its row is worth keeping even when empty; here the row
+        // would be blank, and the subtasks tab already says «родитель не сгруппирован»
+        // with the consequence spelled out. So: a badge when there is one, no row when
+        // there isn't.
+        if (gitlab != null && gitlabCanGroup && gitlab.isGroup) {
+            // ALBUMS is the closest glyph the icon pack has to web's «layers» — the
+            // pack is curated by hand, and one badge doesn't justify a new asset.
+            PropRow(Ion.ALBUMS, stringResource(R.string.task_prop_grouping)) {
+                Text(
+                    stringResource(R.string.task_gitlab_grouped),
+                    color = c.text2,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .testTag(TestTags.TASK_GITLAB_GROUPED)
+                        .border(1.dp, c.border, RoundedCornerShape(999.dp))
+                        .padding(horizontal = 7.dp, vertical = 1.dp),
                 )
             }
         }
@@ -1845,6 +1876,10 @@ private fun SubtasksTab(
     columnId: String,
     subtasks: List<Task>,
     columns: List<BoardColumn>,
+    /** The parent is a linked issue on a binding that pushes children — without both
+     *  no row here can say anything true about GitLab, so the whole column is hidden. */
+    showGitlab: Boolean,
+    parentGrouped: Boolean,
     onOpen: (String) -> Unit,
 ) {
     val c = Tessera.colors
@@ -1886,6 +1921,14 @@ private fun SubtasksTab(
                     Text(due, color = c.text3, fontSize = 11.sp)
                     Spacer(Modifier.width(8.dp))
                 }
+                // GitLab hierarchy state of the subtask (#2592). The `child` chip is a
+                // link to the issue; the other two are read-only here — web offers a
+                // retry-push on them, which is a mutation this task doesn't cover.
+                // They stay hidden while the parent isn't grouped: nothing there could
+                // succeed anyway, and the hint below says so once instead of per row.
+                if (showGitlab) {
+                    GlSubtaskChip(sub, parentGrouped)
+                }
                 // Status of the subtask, changeable without opening it.
                 if (columns.isNotEmpty()) {
                     ColumnChipPicker(
@@ -1898,7 +1941,69 @@ private fun SubtasksTab(
             }
             Spacer(Modifier.height(6.dp))
         }
+        // The one case the per-row chips cannot express: the parent is linked but not a
+        // grouped issue, so no subtask here can reach the GitLab hierarchy at all.
+        if (showGitlab && !parentGrouped && subtasks.isNotEmpty()) {
+            Text(
+                stringResource(R.string.task_subtasks_parent_not_grouped),
+                color = c.text3,
+                fontSize = 11.sp,
+                modifier = Modifier.testTag(TestTags.TASK_SUBTASK_GL_HINT).padding(vertical = 4.dp),
+            )
+        }
         InlineEnterField(stringResource(R.string.task_subtask_new_hint)) { vm.addSubtask(columnId, it) }
+    }
+}
+
+/**
+ * The GitLab hierarchy state of one subtask row: an issue link when it really is a
+ * child work item over there, a plain marker in the two states that are not that yet.
+ *
+ * Only the linked state is offered while the parent isn't grouped — see the caller.
+ */
+@Composable
+private fun GlSubtaskChip(sub: Task, parentGrouped: Boolean) {
+    val c = Tessera.colors
+    val ctx = LocalContext.current
+    val state = website.msdnna.tessera.util.glSubtaskState(sub)
+    val border = Modifier.border(1.dp, c.border, RoundedCornerShape(999.dp))
+        .padding(horizontal = 6.dp, vertical = 1.dp)
+    when (state) {
+        website.msdnna.tessera.util.GlSubtaskState.CHILD -> {
+            val url = sub.glWebUrl.orEmpty()
+            Text(
+                "!${sub.glIid}",
+                fontSize = 11.sp,
+                style = TextStyle(brush = accentGradient(c.primary)),
+                modifier = Modifier
+                    .testTag(TestTags.TASK_SUBTASK_GL_CHIP)
+                    .clickableNoRipple {
+                        if (url.isNotBlank()) {
+                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
+                    }
+                    .then(border),
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+
+        website.msdnna.tessera.util.GlSubtaskState.DETACHED, website.msdnna.tessera.util.GlSubtaskState.ABSENT -> {
+            if (parentGrouped) {
+                Text(
+                    stringResource(
+                        if (state == website.msdnna.tessera.util.GlSubtaskState.DETACHED) {
+                            R.string.task_subtasks_gl_detached
+                        } else {
+                            R.string.task_subtasks_gl_absent
+                        },
+                    ),
+                    color = c.text3,
+                    fontSize = 11.sp,
+                    modifier = Modifier.testTag(TestTags.TASK_SUBTASK_GL_CHIP).then(border),
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+        }
     }
 }
 

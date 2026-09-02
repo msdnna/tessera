@@ -68,6 +68,9 @@ data class GitlabLink(
     @SerializedName("author_name") val authorName: String = "",
     @SerializedName("author_avatar_url") val authorAvatarUrl: String = "",
     @SerializedName("project_path") val projectPath: String = "",
+    // The issue carries the grouping label, i.e. subtasks pushed from here become its
+    // child work items (#2592). Rides along on the link so the badge costs no request.
+    @SerializedName("is_group") val isGroup: Boolean = false,
 )
 
 /** An external GitLab assignee (no Tessera account) — display-only. */
