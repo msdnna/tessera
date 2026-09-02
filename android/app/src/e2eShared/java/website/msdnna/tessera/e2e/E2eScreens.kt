@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performClick
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.screens.BoardScreen
 import website.msdnna.tessera.ui.screens.DocumentsScreen
+import website.msdnna.tessera.ui.screens.MainScreen
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
 
@@ -54,6 +55,36 @@ fun ComposeContentTestRule.openTaskModal(fixture: E2eBackend.Fixture, taskId: St
     setBoardContent(fixture)
     onNodeWithTag(TestTags.taskCard(taskId)).performClick()
     awaitTag(TestTags.TASK_TITLE)
+}
+
+/**
+ * Mounts the whole app shell — topbar, drawer, sidebar, Home — logged in as the
+ * fixture's account, and waits until it is up.
+ *
+ * The other helpers here compose a single screen on purpose; this one exists for
+ * the specs whose subject *is* the shell (the Get Started guide, #2860, lives in
+ * its drawer and paints over everything the drawer opens onto). Nothing is stubbed:
+ * `MainScreen` boots on Home and loads the workspace tree over the real API, so a
+ * spec that reaches the sidebar has proved the shell reaches it too.
+ */
+fun ComposeContentTestRule.setShellContent(fixture: E2eBackend.Fixture) {
+    setContent {
+        TesseraTheme {
+            Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
+                MainScreen(
+                    user = fixture.account.user,
+                    isDark = false,
+                    accentKey = "default",
+                    openTaskId = null,
+                    onOpenTaskHandled = {},
+                    onAccentChange = {},
+                    onToggleDark = {},
+                    onLogout = {},
+                )
+            }
+        }
+    }
+    awaitTag(TestTags.MAIN_SHELL)
 }
 
 /**

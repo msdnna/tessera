@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.Assume
+import website.msdnna.tessera.data.model.Acknowledgement
 import website.msdnna.tessera.data.model.AddRelationRequest
 import website.msdnna.tessera.data.model.AddTagRequest
 import website.msdnna.tessera.data.model.AuthResponse
@@ -382,6 +383,12 @@ object E2eBackend {
      *  a spec needs to point at one row rather than at «some row». */
     fun events(fixture: Fixture, taskId: String): List<TaskEvent> =
         getList("tasks/$taskId/events", fixture.account.accessToken)
+
+    /** The keys this account has acknowledged (`whatsnew:*`, `spotlight:*`,
+     *  `getstarted:*`). The Get Started guide records its outcome here, so this is
+     *  how a spec sees that a guide actually ended rather than just left the screen. */
+    fun acknowledgements(fixture: Fixture): List<String> =
+        getList<Acknowledgement>("users/me/acknowledgements", fixture.account.accessToken).map { it.key }
 
     // ── documents (#2735) ──────────────────────────────────────────────────
     //

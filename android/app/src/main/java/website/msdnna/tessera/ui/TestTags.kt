@@ -32,6 +32,9 @@ object TestTags {
     /** Present exactly when the session gate has let us past the auth screen. */
     const val MAIN_SHELL = "main-shell"
 
+    /** The topbar's hamburger, i.e. the only way into the sidebar drawer. */
+    const val TOPBAR_MENU = "topbar-menu"
+
     // ── board ──────────────────────────────────────────────────────────────
     //
     // Board anchors are per-entity: the id comes from the seeded fixture, so a
@@ -226,4 +229,7 @@ object TestTags {
     const val TOUR_CARD = "tour-card"
     const val TOUR_NEXT = "tour-next"
     const val TOUR_SKIP = "tour-skip"
+
+    /** «Обучение» in the sidebar footer — the guide's only entry point. */
+    const val TOUR_START = "tour-start"
 }
