@@ -140,11 +140,14 @@ export function useConfTransport() {
   // Guards the window between "join started" and "room connected" — a user who
   // clicks away in that window must not end up in a call with no UI attached.
   let leaving = false
-  // WebAudio plumbing for the own-mic meter, torn down and rebuilt as the mic
-  // turns on/off or the input device changes.
-  let micRAF = null
+  // WebAudio plumbing for the own-mic meter (analyser rebuilt as the mic turns
+  // on/off or the device changes) plus the single media loop that drives both the
+  // meter and the active-speaker pick.
+  let mediaRAF = null
+  let lastSpeakerAt = 0
   let audioCtx = null
   let analyser = null
+  let analyserBuf = null
   let micSource = null
 
   // The loudest speaker gets the big tile, and it follows the conversation
@@ -246,7 +249,7 @@ export function useConfTransport() {
     micOn.value = false
     camOn.value = false
     screenOn.value = false
-    stopMicMeter()
+    stopMediaLoop()
     detachUnload()
     if (status.value === LIVE) status.value = IDLE
   }
@@ -259,14 +262,14 @@ export function useConfTransport() {
     return pub?.track?.mediaStreamTrack || null
   }
 
-  // Start measuring our own mic level with a WebAudio analyser. Rebuilt from
-  // scratch each time because the source track changes (mute/unmute, device
-  // switch), and a MediaStreamSource is bound to one track for its life.
-  function startMicMeter() {
-    stopMicMeter()
+  // Build a WebAudio analyser over our own mic track. Rebuilt whenever the source
+  // changes (mute/unmute, device switch), because a MediaStreamSource is bound to
+  // one track for its life. The media loop below reads it every frame.
+  function setupAnalyser() {
+    teardownAnalyser()
     const track = localMicTrack()
     const Ctx = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext)
-    if (!track || !Ctx || typeof requestAnimationFrame === 'undefined') return
+    if (!track || !Ctx) return
     try {
       audioCtx = new Ctx()
       micSource = audioCtx.createMediaStreamSource(new MediaStream([track]))
@@ -275,29 +278,12 @@ export function useConfTransport() {
       // 48kHz is ~10ms — well under one animation frame.
       analyser.fftSize = 512
       micSource.connect(analyser)
-      const buf = new Uint8Array(analyser.fftSize)
-      const tick = () => {
-        if (!analyser) return
-        analyser.getByteTimeDomainData(buf)
-        let sum = 0
-        for (let i = 0; i < buf.length; i++) {
-          const v = (buf[i] - 128) / 128
-          sum += v * v
-        }
-        // RMS, boosted: conversational speech sits well below full scale, and an
-        // unboosted meter would barely twitch at a normal talking volume.
-        micLevel.value = Math.min(1, Math.sqrt(sum / buf.length) * 2.5)
-        micRAF = requestAnimationFrame(tick)
-      }
-      tick()
+      analyserBuf = new Uint8Array(analyser.fftSize)
     } catch {
-      // No analyser (autoplay policy, closed context): the meter just stays flat.
-      stopMicMeter()
+      teardownAnalyser()
     }
   }
-  function stopMicMeter() {
-    if (micRAF !== null && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(micRAF)
-    micRAF = null
+  function teardownAnalyser() {
     try {
       micSource?.disconnect()
     } catch {
@@ -305,6 +291,7 @@ export function useConfTransport() {
     }
     micSource = null
     analyser = null
+    analyserBuf = null
     if (audioCtx) {
       try {
         audioCtx.close()
@@ -314,6 +301,60 @@ export function useConfTransport() {
       audioCtx = null
     }
     micLevel.value = 0
+  }
+
+  // One rAF loop, running for the whole call, doing two jobs:
+  //   - our own mic level from the analyser, every frame, so the toolbar meter is
+  //     smooth (#2883);
+  //   - the loudest speaker, throttled, so the big tile follows the conversation
+  //     (#2887). This reads participant.audioLevel directly rather than the SDK's
+  //     activeSpeakers event, which proved unreliable at picking a winner.
+  function mediaTick(ts) {
+    if (!room) {
+      mediaRAF = null
+      return
+    }
+    if (analyser && analyserBuf) {
+      analyser.getByteTimeDomainData(analyserBuf)
+      let sum = 0
+      for (let i = 0; i < analyserBuf.length; i++) {
+        const v = (analyserBuf[i] - 128) / 128
+        sum += v * v
+      }
+      // RMS with a small noise-floor cut, then boosted: conversational speech
+      // sits low on the scale, so a raw meter barely twitches at a normal volume.
+      const rms = Math.sqrt(sum / analyserBuf.length)
+      micLevel.value = Math.min(1, Math.max(0, rms - 0.02) * 6)
+    }
+    if (ts - lastSpeakerAt >= 120) {
+      lastSpeakerAt = ts
+      // Threshold keeps the stage from chasing keyboard clicks and room hum.
+      let loudest = null
+      let max = 0.08
+      const consider = (p) => {
+        const l = p?.audioLevel || 0
+        if (l > max) {
+          max = l
+          loudest = p.identity
+        }
+      }
+      consider(room.localParticipant)
+      for (const p of room.remoteParticipants?.values?.() || []) consider(p)
+      // Sticky: only move on a real speaker, so a silence holds the last one.
+      if (loudest) activeSpeakerId.value = loudest
+    }
+    mediaRAF = requestAnimationFrame(mediaTick)
+  }
+  function startMediaLoop() {
+    if (mediaRAF !== null || typeof requestAnimationFrame === 'undefined') return
+    lastSpeakerAt = 0
+    mediaRAF = requestAnimationFrame(mediaTick)
+  }
+  function stopMediaLoop() {
+    if (mediaRAF !== null && typeof cancelAnimationFrame !== 'undefined')
+      cancelAnimationFrame(mediaRAF)
+    mediaRAF = null
+    teardownAnalyser()
   }
 
   async function refreshDevices() {
@@ -390,9 +431,16 @@ export function useConfTransport() {
         // more here than usual: this runs over a corporate wireguard link.
         adaptiveStream: true,
         dynacast: true,
-        audioCaptureDefaults: selected.value.audioinput
-          ? { deviceId: selected.value.audioinput }
-          : undefined,
+        // Browser-native cleanup on the mic (#2883): echo cancellation, noise
+        // suppression and auto gain are the baseline every call app turns on, and
+        // AGC also lifts a quiet speaker so the level meter has something to show.
+        // Heavier suppression (RNNoise/Krisp-class) is a separate task.
+        audioCaptureDefaults: {
+          ...(selected.value.audioinput ? { deviceId: selected.value.audioinput } : {}),
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         videoCaptureDefaults: selected.value.videoinput
           ? { deviceId: selected.value.videoinput }
           : undefined,
@@ -413,7 +461,8 @@ export function useConfTransport() {
       status.value = LIVE
       sync()
       refreshDevices()
-      if (micOn.value) startMicMeter()
+      startMediaLoop()
+      if (micOn.value) setupAnalyser()
     } catch (e) {
       // A refusal from our own API is the interesting case and already carries a
       // sentence a human wrote (503 not configured, 409 ended, 403 kicked).
@@ -431,7 +480,7 @@ export function useConfTransport() {
   async function leave() {
     leaving = true
     detachUnload()
-    stopMicMeter()
+    stopMediaLoop()
     const r = room
     room = null
     peers.value = []
@@ -451,8 +500,8 @@ export function useConfTransport() {
     await room.localParticipant.setMicrophoneEnabled(on)
     sync()
     // The meter follows the track: a fresh publication means a fresh analyser.
-    if (on) startMicMeter()
-    else stopMicMeter()
+    if (on) setupAnalyser()
+    else teardownAnalyser()
   }
   async function setCam(on) {
     if (!room) return
@@ -590,7 +639,7 @@ export function useConfTransport() {
     try {
       await room.switchActiveDevice(kind, deviceId)
       // A new mic track needs a fresh analyser bound to it.
-      if (kind === 'audioinput' && micOn.value) startMicMeter()
+      if (kind === 'audioinput' && micOn.value) setupAnalyser()
     } catch (e) {
       error.value = e.message || String(e)
     }

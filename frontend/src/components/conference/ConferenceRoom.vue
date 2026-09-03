@@ -263,7 +263,14 @@ watch(
   },
 )
 
-onBeforeUnmount(() => clearInterval(heartbeat))
+// Leaving the section (navigating to tasks/documents) unmounts this component
+// without the active-watcher ever firing, so the room socket has to be closed
+// here too — otherwise the server keeps our presence and everyone else sees us
+// hanging in the call. Media is torn down by the transport's own unmount hook.
+onBeforeUnmount(() => {
+  clearInterval(heartbeat)
+  room.close()
+})
 
 // The stage shows a shared screen when there is one, and the speaker otherwise.
 // A screen is always the thing people are looking at — that is why it was
@@ -807,13 +814,16 @@ watch(
 .notice.turn {
   justify-content: center;
 }
-/* Auto-fill, not a fixed count: the same strip has to hold two people and ten,
-   and a wrapping grid degrades to a single column on the mobile layout for
-   free. */
+/* Small fixed-size tiles, centred and wrapping (#2881). NOT 1fr: stretching the
+   tracks to fill made each tile grow, and with the tile's 16:9 aspect-ratio a
+   wide tile also grew tall, swallowing the gap — the strip read as one solid
+   block. A bounded width keeps the tiles compact (like the mockup) and the gap
+   visible. The stage tile is separate, so a shared screen still fills its own. */
 .strip {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 176px));
+  justify-content: center;
+  gap: 14px;
 }
 .toolbar {
   display: flex;
@@ -822,13 +832,13 @@ watch(
   gap: 14px;
   padding-top: 4px;
 }
-/* Toolbar controls ~1.5× larger (#2864 round 2): they are the call's primary
-   actions, and big enough that the mic meter inside the button reads. The icons
-   have no explicit size, so they follow the button's font-size. */
+/* Toolbar controls ~1.25× the default (#2886): larger than stock so the mic
+   meter inside the button reads, but not the oversized 1.5× first tried. The
+   icons have no explicit size, so they follow the button's font-size. */
 .toolbar :deep(.n-button) {
-  width: 50px;
-  height: 50px;
-  font-size: 23px;
+  width: 42px;
+  height: 42px;
+  font-size: 20px;
 }
 /* Own-mic meter (#2883 round 2): a ghosted outline under a solid copy that fills
    from the bottom as clip-path uncovers it. Sized to the button's icon em. */

@@ -295,8 +295,10 @@ describe('useConfTransport — devices', () => {
 
     await t.join('c1')
     // The lobby choice has to survive into the call — otherwise the user picks a
-    // headset, joins, and is back on the laptop mic.
-    expect(lk.state.rooms[0].options.audioCaptureDefaults).toEqual({ deviceId: 'm1' })
+    // headset, joins, and is back on the laptop mic. The browser cleanup flags
+    // (#2883) ride alongside it.
+    expect(lk.state.rooms[0].options.audioCaptureDefaults).toMatchObject({ deviceId: 'm1' })
+    expect(lk.state.rooms[0].options.audioCaptureDefaults.noiseSuppression).toBe(true)
   })
 
   it('switches a live device through the room', async () => {
