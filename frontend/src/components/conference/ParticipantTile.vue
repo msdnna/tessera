@@ -5,8 +5,8 @@
 // camera on, so the tile is designed around the avatar and merely makes room for
 // a stream when one shows up.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { NIcon } from 'naive-ui'
-import { MicOffOutline, DesktopOutline } from '@vicons/ionicons5'
+import { NIcon, NTooltip } from 'naive-ui'
+import { MicOffOutline, DesktopOutline, CellularOutline } from '@vicons/ionicons5'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const props = defineProps({
@@ -26,6 +26,12 @@ const props = defineProps({
 // stage is held by a presenter whose first frame is simply still in flight.
 const video = computed(() => (props.screen ? props.peer.screenTrack : props.peer.videoTrack))
 const audio = computed(() => (props.screen ? props.peer.screenAudioTrack : props.peer.audioTrack))
+
+// Only surface a link that is actually struggling (#2884), and never on a screen
+// tile — the presenter's face tile already carries their signal.
+const weakConn = computed(
+  () => !props.screen && (props.peer.quality === 'poor' || props.peer.quality === 'lost'),
+)
 
 const videoEl = ref(null)
 const audioEl = ref(null)
@@ -79,6 +85,16 @@ onBeforeUnmount(() => {
          feedback loop through the room's speakers. -->
     <video v-show="video" ref="videoEl" class="v" autoplay playsinline muted />
     <audio v-if="!peer.local" ref="audioEl" autoplay />
+
+    <!-- Weak-signal badge, top-left, amber for poor and red for lost (#2884). -->
+    <n-tooltip v-if="weakConn">
+      <template #trigger>
+        <div class="conn" :class="peer.quality" data-testid="conference-quality">
+          <n-icon :component="CellularOutline" :size="13" />
+        </div>
+      </template>
+      {{ $t(`conferences.quality.${peer.quality}`) }}
+    </n-tooltip>
 
     <div v-if="!video" class="face">
       <!-- Nothing to show yet. On a screen tile that is the presenter's first
@@ -149,6 +165,26 @@ onBeforeUnmount(() => {
 }
 .waiting {
   color: var(--t-text3);
+}
+/* Weak-signal badge (#2884): a dark scrim so the coloured glyph reads over both a
+   video frame and a flat avatar tile. */
+.conn {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 45%);
+  z-index: 1;
+}
+.conn.poor {
+  color: #f0a020;
+}
+.conn.lost {
+  color: #e88080;
 }
 .src-icon {
   flex: none;

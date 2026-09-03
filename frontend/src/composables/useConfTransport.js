@@ -68,6 +68,10 @@ function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
     speaking: !!p.isSpeaking,
     micOn: !!p.isMicrophoneEnabled,
     camOn: !!p.isCameraEnabled,
+    // Connection quality as the SFU rates it (#2884): 'excellent'|'good'|'poor'|
+    // 'lost'|'unknown'. The tile only surfaces it when it goes bad, the way
+    // Telemost does — a green bar on every tile is noise.
+    quality: p.connectionQuality || 'unknown',
     // shallow-held elsewhere: these are SDK objects with their own lifecycle,
     // and making them deeply reactive would have Vue walk a MediaStreamTrack.
     videoTrack: cam?.isSubscribed === false ? null : cam?.track || null,
@@ -193,6 +197,9 @@ export function useConfTransport() {
       RoomEvent.ParticipantNameChanged,
       RoomEvent.AudioPlaybackStatusChanged,
       RoomEvent.ConnectionStateChanged,
+      // Repaints the per-tile weak-signal indicator when the SFU re-rates a
+      // participant's link (#2884).
+      RoomEvent.ConnectionQualityChanged,
     ].filter(Boolean)
     for (const e of events) room.on(e, sync)
     if (RoomEvent.Disconnected) room.on(RoomEvent.Disconnected, onDisconnected)

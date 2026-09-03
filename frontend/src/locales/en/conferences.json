@@ -87,6 +87,10 @@
     "host": "Host",
     "member": "Participant"
   },
+  "quality": {
+    "poor": "Weak connection",
+    "lost": "Connection lost"
+  },
   "presence": {
     "inRoom": "in the room",
     "invited": "invited",
