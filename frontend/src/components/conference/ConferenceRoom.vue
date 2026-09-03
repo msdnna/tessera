@@ -412,7 +412,7 @@ watch(
             :people="room.participants.value"
             :peers="peers"
             :me-id="room.userId.value"
-            :can-moderate="room.isHost.value"
+            :can-moderate="room.canModerate.value"
             @volume="setPeerVolume"
             @local-mute="togglePeerMute"
             @kick="room.kick"
@@ -425,7 +425,7 @@ watch(
             :conference-id="conferenceId"
             :nudge="room.chatNudge.value"
             :readonly="ended"
-            :can-moderate="room.isHost.value"
+            :can-moderate="room.canModerate.value"
             :visible="rail === 'chat'"
           />
         </aside>

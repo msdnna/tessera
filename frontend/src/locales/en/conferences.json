@@ -92,7 +92,7 @@
   },
   "confirm": {
     "delete": "Delete the conference? Its chat and recordings go with it.",
-    "end": "End the conference for everyone?"
+    "end": "End the current session for everyone? The conference can be started again."
   },
   "toast": {
     "joined": "You joined",
@@ -130,8 +130,8 @@
     "lowerHand": "Lower hand",
     "youAreForceMuted": "A host has muted your microphone",
     "denied": {
-      "kick": "Only a host may remove participants",
-      "mute": "Only a host may mute participants",
+      "kick": "Only a host or a workspace admin may remove participants",
+      "mute": "Only a host or a workspace admin may mute participants",
       "other": "The server refused the action"
     }
   },

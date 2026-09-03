@@ -40,6 +40,10 @@ export function useConfRoom() {
   const connId = ref('')
   const userId = ref('')
   const role = ref('member')
+  // Whether the server will accept a kick/force-mute from us (#2878). Kept apart
+  // from the host role: a workspace admin is a plain member of the call but may
+  // still moderate it, so the panel shows its controls on this, not on isHost.
+  const canModerate = ref(false)
   // The last refusal from the server: {action, reason}. Shown once and cleared
   // by the caller — a stale "not a host" under a button nobody pressed is worse
   // than no message at all.
@@ -149,6 +153,7 @@ export function useConfRoom() {
       connId.value = msg.conn_id || ''
       userId.value = msg.user_id || ''
       role.value = msg.role || 'member'
+      canModerate.value = !!msg.can_moderate
       if (msg.stage_ttl_ms > 0) stageTtlMs.value = msg.stage_ttl_ms
       // A reconnect is a fresh connection to the server, which knows nothing
       // about the devices we already have open.
@@ -239,6 +244,9 @@ export function useConfRoom() {
       ws = null
     }
     connected.value = false
+    // Drop the moderation grant with the socket: a stale "true" would flash the
+    // kick controls for a beat when the next room opens before its welcome lands.
+    canModerate.value = false
     participants.value = []
     stage.value = null
     queue.value = []
@@ -253,6 +261,7 @@ export function useConfRoom() {
     userId,
     role,
     isHost,
+    canModerate,
     self,
     forceMuted,
     presenting,

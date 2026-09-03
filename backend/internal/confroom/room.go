@@ -106,6 +106,12 @@ type Participant struct {
 	UserID uuid.UUID
 	Name   string
 	Role   string
+	// CanModerate is the right to kick and force-mute, kept apart from Role on
+	// purpose (#2878): a workspace admin may moderate a call without being its
+	// host. Role is the label the room paints and the kick-immunity that protects
+	// a host; CanModerate is only "may issue moderation commands". Set once before
+	// Join, then read under the room lock like the fields below.
+	CanModerate bool
 
 	// Guarded by the room's mutex, not by the participant: every read of these
 	// happens while building a snapshot, which already holds it.
@@ -131,8 +137,11 @@ func NewParticipant(userID uuid.UUID, name, role string) *Participant {
 		UserID: userID,
 		Name:   name,
 		Role:   role,
-		send:   make(chan []byte, sendBuffer),
-		closed: make(chan struct{}),
+		// A host moderates by default; the admin-who-is-a-member case is the one
+		// the caller opts into by flipping CanModerate on afterwards (#2878).
+		CanModerate: role == RoleHost,
+		send:        make(chan []byte, sendBuffer),
+		closed:      make(chan struct{}),
 	}
 }
 
@@ -267,6 +276,10 @@ type welcomeMsg struct {
 	ConnID       string `json:"conn_id"`
 	UserID       string `json:"user_id"`
 	Role         string `json:"role"`
+	// CanModerate travels alongside Role so the client shows the kick/force-mute
+	// controls to a workspace admin who is a plain member of the call (#2878) —
+	// Role alone would hide them.
+	CanModerate  bool   `json:"can_moderate"`
 	ConferenceID string `json:"conference_id"`
 	StageTTLMs   int64  `json:"stage_ttl_ms"`
 }
@@ -299,6 +312,7 @@ func (r *Room) join(p *Participant, forceMuted bool, now time.Time) {
 		ConnID:       p.ID.String(),
 		UserID:       p.UserID.String(),
 		Role:         p.Role,
+		CanModerate:  p.CanModerate,
 		ConferenceID: r.confID.String(),
 		StageTTLMs:   StageTTL.Milliseconds(),
 	}))
@@ -435,11 +449,13 @@ func (r *Room) ReleaseScreen(p *Participant, now time.Time) {
 }
 
 // Kick removes every connection of a user from the room and keeps them out for
-// KickCooldown. Hosts only; a refusal is answered to the caller rather than
-// silently ignored, so the UI can say why the button did nothing.
+// KickCooldown. Moderators only (a host or a workspace admin, #2878); a refusal
+// is answered to the caller rather than silently ignored, so the UI can say why
+// the button did nothing.
 //
-// Kicking another host is refused too: moderators must not be able to eject
-// each other, which is how a call ends up with nobody able to run it.
+// Kicking a host is refused: the host is the call's owner and ejecting them is
+// how a meeting ends up with nobody able to run it. A moderator who is only an
+// admin (Role member) is not protected — they can be kicked like anyone else.
 func (r *Room) Kick(actor *Participant, target uuid.UUID, now time.Time) bool {
 	if !r.kick(actor, target, now) {
 		return false
@@ -457,8 +473,8 @@ func (r *Room) Kick(actor *Participant, target uuid.UUID, now time.Time) bool {
 func (r *Room) kick(actor *Participant, target uuid.UUID, now time.Time) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if actor.Role != RoleHost {
-		actor.deliver(encode(deniedMsg{Type: TypeDenied, Action: TypeKick, Reason: "not a host"}))
+	if !actor.CanModerate {
+		actor.deliver(encode(deniedMsg{Type: TypeDenied, Action: TypeKick, Reason: "not a moderator"}))
 		return false
 	}
 	if target == actor.UserID {
@@ -491,7 +507,8 @@ func (r *Room) kick(actor *Participant, target uuid.UUID, now time.Time) bool {
 	return true
 }
 
-// SetMuted force-mutes or unmutes a user for everyone. Hosts only.
+// SetMuted force-mutes or unmutes a user for everyone. Moderators only (a host
+// or a workspace admin, #2878).
 //
 // The flag decides what this room will accept in SetMedia and what the roster
 // paints; the Enforcer is what makes it true of the microphone itself, by
@@ -517,8 +534,8 @@ func (r *Room) SetMuted(actor *Participant, target uuid.UUID, muted bool) bool {
 func (r *Room) setMuted(actor *Participant, target uuid.UUID, muted bool) (changed, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if actor.Role != RoleHost {
-		actor.deliver(encode(deniedMsg{Type: TypeDenied, Action: TypeMute, Reason: "not a host"}))
+	if !actor.CanModerate {
+		actor.deliver(encode(deniedMsg{Type: TypeDenied, Action: TypeMute, Reason: "not a moderator"}))
 		return false, false
 	}
 	if r.muted[target] == muted {

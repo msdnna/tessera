@@ -79,43 +79,56 @@ func (h *WSHandler) ConnectConference(c *gin.Context) {
 	if err != nil {
 		return // Upgrade already wrote an error response.
 	}
-	seatRole, forceMuted := h.conferenceSeat(c, conf, uid, role)
+	seatRole, canModerate, forceMuted := h.conferenceSeat(c, conf, uid, role)
 	p := confroom.NewParticipant(uid, h.displayName(c, uid), seatRole)
+	p.CanModerate = canModerate
 	room := h.confRooms.Join(confID, p, forceMuted)
 	go h.confWritePump(conn, p)
 	go h.confReadPump(conn, p, room, confID)
 }
 
 // conferenceSeat resolves what this connection is allowed to do and what was
-// already done to it: the role that decides who may kick and force-mute, and
-// whether a host has silenced this user before.
+// already done to it: the role the room paints, whether this user may moderate,
+// and whether a host has silenced them before.
 //
-// The role mirrors handlers.canManageConference — the creator, a participant
-// enrolled as host, or a workspace owner/admin — so a moderator does not gain
-// or lose rights depending on whether they are looking at the REST surface or
-// the socket. Resolved once, at join: a role change mid-call takes effect on the
-// next connection, which is what makes the room's own checks cheap.
+// Role and moderation are two different things (#2878). The "host" label — with
+// its kick-immunity and screen-share priority — belongs to the call's owner
+// alone: the creator, or a participant explicitly enrolled as host. A workspace
+// owner/admin may *moderate* any call (kick, force-mute) to match
+// handlers.canManageConference, but that does not make them a host — they sit in
+// the call as a plain member who happens to hold the moderation controls, and
+// can be kicked like anyone else. Conflating the two is what made every admin
+// show as "Ведущий" and left a two-admin call with nobody kickable.
+//
+// Resolved once, at join: a role change mid-call takes effect on the next
+// connection, which is what makes the room's own checks cheap.
 //
 // The force-mute flag has to be read here because the room forgets it when the
 // last person leaves (#2872). Without this a muted participant would only have
 // to wait out the call and rejoin first to have their microphone back.
-func (h *WSHandler) conferenceSeat(c *gin.Context, conf db.Conference, uid uuid.UUID, wsRole string) (role string, forceMuted bool) {
+func (h *WSHandler) conferenceSeat(c *gin.Context, conf db.Conference, uid uuid.UUID, wsRole string) (role string, canModerate, forceMuted bool) {
 	role = confroom.RoleMember
-	if (conf.CreatedBy != nil && *conf.CreatedBy == uid) || wsRole == "owner" || wsRole == "admin" {
+	isCreator := conf.CreatedBy != nil && *conf.CreatedBy == uid
+	if isCreator {
 		role = confroom.RoleHost
 	}
+	// Moderation, unlike the host label, follows the workspace manager rights.
+	canModerate = isCreator || wsRole == "owner" || wsRole == "admin"
 	part, err := h.q.GetConferenceParticipant(c, db.GetConferenceParticipantParams{
 		ConferenceID: conf.ID, UserID: uid,
 	})
 	if err != nil {
 		// No row yet — a member walking into an open call before the join request
-		// lands. They cannot have been muted, and the role above stands.
-		return role, false
+		// lands. They cannot have been muted, and the seat above stands.
+		return role, canModerate, false
 	}
+	// An explicitly enrolled host is the call's owner too: they get the label and
+	// the moderation rights that come with it.
 	if part.Role == confroom.RoleHost {
 		role = confroom.RoleHost
+		canModerate = true
 	}
-	return role, part.ForceMuted
+	return role, canModerate, part.ForceMuted
 }
 
 // confReadPump handles room commands until the socket dies, then takes the
