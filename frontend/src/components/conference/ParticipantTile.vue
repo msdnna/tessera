@@ -6,7 +6,7 @@
 // a stream when one shows up.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NIcon, NTooltip } from 'naive-ui'
-import { Mic, MicOutline, MicOffOutline, DesktopOutline, CellularOutline } from '@vicons/ionicons5'
+import { MicOffOutline, DesktopOutline, CellularOutline } from '@vicons/ionicons5'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const props = defineProps({
@@ -19,9 +19,6 @@ const props = defineProps({
   // the stage, their face in the strip — which is why this is a prop rather
   // than something derived from the peer.
   screen: { type: Boolean, default: false },
-  // Live microphone level, 0…1 (#2883), fed from the transport's poll. Drives the
-  // filling-microphone meter so a speaker can see they are actually being heard.
-  level: { type: Number, default: 0 },
 })
 
 // Which of the peer's two publications this tile is showing. A screen tile with
@@ -35,17 +32,6 @@ const audio = computed(() => (props.screen ? props.peer.screenAudioTrack : props
 const weakConn = computed(
   () => !props.screen && (props.peer.quality === 'poor' || props.peer.quality === 'lost'),
 )
-
-// How full to draw the microphone (#2883). The raw level rarely tops ~0.5 for
-// normal speech, so it is boosted before clamping — otherwise the meter would
-// barely move at a conversational volume. Only meaningful when the mic is live.
-const micFill = computed(() => {
-  if (props.screen || !props.peer.micOn) return 0
-  return Math.min(1, Math.max(0, props.level) * 1.8)
-})
-// clip-path hides the filled icon from the top down, so a higher level reveals
-// more of it from the bottom — a microphone that fills as you speak.
-const micClip = computed(() => `inset(${Math.round((1 - micFill.value) * 100)}% 0 0 0)`)
 
 const videoEl = ref(null)
 const audioEl = ref(null)
@@ -127,14 +113,6 @@ onBeforeUnmount(() => {
         :size="14"
         class="muted-icon"
       />
-      <!-- Live mic: a base outline with a green fill clipped to the level, so the
-           microphone visibly fills as this person speaks (#2883). -->
-      <span v-else-if="!screen" class="mic-level" data-testid="conference-mic-level">
-        <n-icon :component="MicOutline" :size="14" class="mic-base" />
-        <span class="mic-fill" :style="{ clipPath: micClip }">
-          <n-icon :component="Mic" :size="14" />
-        </span>
-      </span>
     </div>
   </div>
 </template>
@@ -269,26 +247,5 @@ onBeforeUnmount(() => {
 .muted-icon {
   flex: none;
   opacity: 0.85;
-}
-/* Filling microphone (#2883): the base outline sits under a green copy clipped to
-   the current level, so the glyph fills from the bottom as the level rises. */
-.mic-level {
-  position: relative;
-  flex: none;
-  width: 14px;
-  height: 14px;
-  display: inline-flex;
-  opacity: 0.9;
-}
-.mic-base {
-  position: absolute;
-  inset: 0;
-}
-.mic-fill {
-  position: absolute;
-  inset: 0;
-  display: inline-flex;
-  color: #18a058;
-  transition: clip-path 90ms linear;
 }
 </style>

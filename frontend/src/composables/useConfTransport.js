@@ -121,12 +121,18 @@ export function useConfTransport() {
   // Kept apart from a volume of zero so unmuting restores the level that was
   // set before, instead of snapping everyone back to the default.
   const localMuted = ref({})
-  // Live microphone level per participant, identity → 0…1 (#2883). Polled on a
-  // rAF loop rather than folded into the peer snapshot: it changes many times a
-  // second and rebuilding every tile that often would be wasteful, so the meter
-  // reads this small map instead. The local participant is in it too, which is
-  // what makes the toolbar and the own tile a working "is my mic picking up".
-  const audioLevels = ref({})
+  // Our own microphone level, 0…1 (#2883). Measured locally with a WebAudio
+  // analyser tapped straight off the mic track — not read from the SFU's
+  // per-participant `audioLevel`, which lags by the network round trip and made
+  // the meter feel disconnected from one's own voice. Only our own level: the
+  // meter is a "is my mic picking me up" self-check, and other people's speech is
+  // already shown by the ring around their tile.
+  const micLevel = ref(0)
+  // Identity of the loudest current speaker, kept sticky (#2864 round 2): when
+  // everyone falls silent we hold the last speaker on the big tile rather than
+  // blinking to whoever happens to be first in the list. Updated from the SDK's
+  // activeSpeakers, which is already sorted loudest-first and includes us.
+  const activeSpeakerId = ref('')
 
   // Not a ref: the room is an event emitter we hold, never something we render.
   let room = null
@@ -134,19 +140,30 @@ export function useConfTransport() {
   // Guards the window between "join started" and "room connected" — a user who
   // clicks away in that window must not end up in a call with no UI attached.
   let leaving = false
-  // The audio-level poll handle and its last tick, so the loop runs at ~15fps
-  // rather than every animation frame.
-  let levelRAF = null
-  let lastLevelAt = 0
+  // WebAudio plumbing for the own-mic meter, torn down and rebuilt as the mic
+  // turns on/off or the input device changes.
+  let micRAF = null
+  let audioCtx = null
+  let analyser = null
+  let micSource = null
 
-  // The loudest speaker gets the big tile. Ties and silence fall back to the
-  // first remote peer so the stage never blinks empty mid-call; with nobody
-  // else in the room it is the local tile, which is also the join preview.
+  // The loudest speaker gets the big tile, and it follows the conversation
+  // (#2864 round 2): whoever is speaking — including us — steps up, and the last
+  // speaker stays there through a silence rather than the stage snapping to an
+  // arbitrary peer. Falls back to a remote (then local) only until the first word
+  // is spoken, so a fresh call still shows a face instead of nothing.
   const dominant = computed(() => {
     const list = peers.value
     if (!list.length) return null
+    const active = list.find((p) => p.id === activeSpeakerId.value)
+    if (active) return active
+    // No active-speaker signal (none yet, or an SDK/mocks without the sorted
+    // list): fall back to whoever is flagged speaking, then to a remote, then to
+    // us — so a fresh call still shows a face rather than nothing.
+    const speaking = list.find((p) => p.speaking)
+    if (speaking) return speaking
     const remote = list.filter((p) => !p.local)
-    return remote.find((p) => p.speaking) || remote[0] || list[0]
+    return remote[0] || list[0]
   })
   const others = computed(() => peers.value.filter((p) => p !== dominant.value))
   const connected = computed(() => status.value === LIVE)
@@ -181,6 +198,10 @@ export function useConfTransport() {
     camOn.value = !!local?.isCameraEnabled
     screenOn.value = !!local?.isScreenShareEnabled
     audioBlocked.value = room.canPlaybackAudio === false
+    // Remember the loudest speaker; keep the last one through a silence so the
+    // big tile does not blink between people every time the room goes quiet.
+    const speakers = room.activeSpeakers || []
+    if (speakers.length && speakers[0]?.identity) activeSpeakerId.value = speakers[0].identity
   }
 
   // Every room event collapses into one snapshot rebuild, so the list of events
@@ -225,42 +246,74 @@ export function useConfTransport() {
     micOn.value = false
     camOn.value = false
     screenOn.value = false
-    stopLevels()
+    stopMicMeter()
     detachUnload()
     if (status.value === LIVE) status.value = IDLE
   }
 
-  // Sample every participant's microphone level into `audioLevels`. Throttled to
-  // ~15fps: the meter is a coarse "are you being heard", not a waveform, and a
-  // full map rebuild on every frame is wasted work for a dozen tiles.
-  function pollLevels(ts) {
-    if (!room) {
-      levelRAF = null
-      return
-    }
-    if (ts - lastLevelAt >= 66) {
-      lastLevelAt = ts
-      const next = {}
-      const local = room.localParticipant
-      if (local) next[local.identity] = local.audioLevel || 0
-      for (const p of room.remoteParticipants?.values?.() || []) {
-        next[p.identity] = p.audioLevel || 0
+  // The raw MediaStreamTrack of our own microphone, or null. LiveKit's local
+  // track exposes it as `mediaStreamTrack`; the analyser taps that directly so
+  // the meter reflects the mic itself, not what came back from the SFU.
+  function localMicTrack() {
+    const pub = room?.localParticipant?.getTrackPublication?.('microphone')
+    return pub?.track?.mediaStreamTrack || null
+  }
+
+  // Start measuring our own mic level with a WebAudio analyser. Rebuilt from
+  // scratch each time because the source track changes (mute/unmute, device
+  // switch), and a MediaStreamSource is bound to one track for its life.
+  function startMicMeter() {
+    stopMicMeter()
+    const track = localMicTrack()
+    const Ctx = typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext)
+    if (!track || !Ctx || typeof requestAnimationFrame === 'undefined') return
+    try {
+      audioCtx = new Ctx()
+      micSource = audioCtx.createMediaStreamSource(new MediaStream([track]))
+      analyser = audioCtx.createAnalyser()
+      // Small window: we want responsiveness, not spectral detail. 512 samples at
+      // 48kHz is ~10ms — well under one animation frame.
+      analyser.fftSize = 512
+      micSource.connect(analyser)
+      const buf = new Uint8Array(analyser.fftSize)
+      const tick = () => {
+        if (!analyser) return
+        analyser.getByteTimeDomainData(buf)
+        let sum = 0
+        for (let i = 0; i < buf.length; i++) {
+          const v = (buf[i] - 128) / 128
+          sum += v * v
+        }
+        // RMS, boosted: conversational speech sits well below full scale, and an
+        // unboosted meter would barely twitch at a normal talking volume.
+        micLevel.value = Math.min(1, Math.sqrt(sum / buf.length) * 2.5)
+        micRAF = requestAnimationFrame(tick)
       }
-      audioLevels.value = next
+      tick()
+    } catch {
+      // No analyser (autoplay policy, closed context): the meter just stays flat.
+      stopMicMeter()
     }
-    levelRAF = requestAnimationFrame(pollLevels)
   }
-  function startLevels() {
-    if (levelRAF !== null || typeof requestAnimationFrame === 'undefined') return
-    lastLevelAt = 0
-    levelRAF = requestAnimationFrame(pollLevels)
-  }
-  function stopLevels() {
-    if (levelRAF !== null && typeof cancelAnimationFrame !== 'undefined') {
-      cancelAnimationFrame(levelRAF)
+  function stopMicMeter() {
+    if (micRAF !== null && typeof cancelAnimationFrame !== 'undefined') cancelAnimationFrame(micRAF)
+    micRAF = null
+    try {
+      micSource?.disconnect()
+    } catch {
+      // Source already detached with its track; nothing to clean up.
     }
-    levelRAF = null
-    audioLevels.value = {}
+    micSource = null
+    analyser = null
+    if (audioCtx) {
+      try {
+        audioCtx.close()
+      } catch {
+        // Context already closed.
+      }
+      audioCtx = null
+    }
+    micLevel.value = 0
   }
 
   async function refreshDevices() {
@@ -360,7 +413,7 @@ export function useConfTransport() {
       status.value = LIVE
       sync()
       refreshDevices()
-      startLevels()
+      if (micOn.value) startMicMeter()
     } catch (e) {
       // A refusal from our own API is the interesting case and already carries a
       // sentence a human wrote (503 not configured, 409 ended, 403 kicked).
@@ -378,7 +431,7 @@ export function useConfTransport() {
   async function leave() {
     leaving = true
     detachUnload()
-    stopLevels()
+    stopMicMeter()
     const r = room
     room = null
     peers.value = []
@@ -397,6 +450,9 @@ export function useConfTransport() {
     if (!room) return
     await room.localParticipant.setMicrophoneEnabled(on)
     sync()
+    // The meter follows the track: a fresh publication means a fresh analyser.
+    if (on) startMicMeter()
+    else stopMicMeter()
   }
   async function setCam(on) {
     if (!room) return
@@ -533,6 +589,8 @@ export function useConfTransport() {
     if (!room) return
     try {
       await room.switchActiveDevice(kind, deviceId)
+      // A new mic track needs a fresh analyser bound to it.
+      if (kind === 'audioinput' && micOn.value) startMicMeter()
     } catch (e) {
       error.value = e.message || String(e)
     }
@@ -570,7 +628,7 @@ export function useConfTransport() {
     selected,
     volumes,
     localMuted,
-    audioLevels,
+    micLevel,
     join,
     leave,
     toggleMic,
