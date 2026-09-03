@@ -47,6 +47,16 @@
     "required": "Enter a title",
     "created": "Conference scheduled"
   },
+  "invite": {
+    "button": "Invite",
+    "title": "Invite participants",
+    "placeholder": "Pick workspace members",
+    "allInvited": "Everyone in the workspace is already invited",
+    "required": "Select at least one member",
+    "submit": "Invite",
+    "cancel": "Cancel",
+    "sent": "Invited: {count}"
+  },
   "detail": {
     "participants": "Participants",
     "noParticipants": "Nobody yet",

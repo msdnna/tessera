@@ -25,6 +25,7 @@ import {
   NRadioButton,
   NPopconfirm,
   NSpin,
+  NSelect,
   NTooltip,
   useMessage,
 } from 'naive-ui'
@@ -33,9 +34,10 @@ import {
   TrashOutline,
   ArrowBackOutline,
   PeopleOutline,
+  PersonAddOutline,
   TimeOutline,
 } from '@vicons/ionicons5'
-import { conferences as confApi } from '@/api'
+import { conferences as confApi, workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useFormat } from '@/composables/useFormat'
@@ -138,6 +140,58 @@ async function remove(conf) {
     else await load()
   } catch (e) {
     message.error(e.response?.data?.error || e.message)
+  }
+}
+
+// ── invite ─────────────────────────────────────────────────────────────
+// The invitation notification/push/deep-link is #2875; this is its trigger. Any
+// workspace member may invite (as a member) — the backend only gates handing out
+// a host seat — so the button is shown to everyone in the room, not just hosts.
+const inviteDlg = ref({ show: false, saving: false, selected: [] })
+const members = ref([])
+
+// Workspace members who are not currently in the call: those with no seat, plus
+// anyone who joined and left (re-inviting them is a fresh call — mirrors the
+// backend's «fresh» rule, #2875). An open, un-left invitation is skipped so we
+// don't offer to ring someone who is already being rung.
+const invitable = computed(() => {
+  const held = new Set(
+    (detail.value?.participants || []).filter((p) => !p.left_at).map((p) => p.user_id),
+  )
+  return members.value.filter((m) => !held.has(m.user_id))
+})
+const inviteOptions = computed(() =>
+  invitable.value.map((m) => ({ label: m.name || m.email, value: m.user_id })),
+)
+const canInvite = computed(() => detail.value && detail.value.conference.status !== 'ended')
+
+async function openInvite() {
+  inviteDlg.value = { show: true, saving: false, selected: [] }
+  try {
+    const { data } = await wsApi.members(ws.currentId)
+    members.value = data || []
+  } catch (e) {
+    message.error(e.response?.data?.error || e.message)
+  }
+}
+
+async function sendInvite() {
+  const ids = inviteDlg.value.selected
+  if (!ids.length) {
+    message.warning(t('conferences.invite.required'))
+    return
+  }
+  inviteDlg.value.saving = true
+  try {
+    await confApi.invite(detail.value.conference.id, ids)
+    const { data: parts } = await confApi.participants(detail.value.conference.id)
+    detail.value.participants = parts || []
+    inviteDlg.value.show = false
+    message.success(t('conferences.invite.sent', { count: ids.length }))
+  } catch (e) {
+    message.error(e.response?.data?.error || e.message)
+  } finally {
+    inviteDlg.value.saving = false
   }
 }
 
@@ -439,6 +493,18 @@ onMounted(() => {
             </n-card>
 
             <n-card size="small" :title="$t('conferences.detail.participants')" class="people">
+              <template #header-extra>
+                <n-button
+                  v-if="canInvite"
+                  size="tiny"
+                  quaternary
+                  data-testid="conference-invite"
+                  @click="openInvite"
+                >
+                  <template #icon><n-icon :component="PersonAddOutline" /></template>
+                  {{ $t('conferences.invite.button') }}
+                </n-button>
+              </template>
               <div v-if="detail.participants.length" class="plist">
                 <div v-for="p in detail.participants" :key="p.user_id" class="person">
                   <div class="person-name">{{ p.user_name }}</div>
@@ -508,6 +574,45 @@ onMounted(() => {
             @click="submit"
           >
             {{ $t('conferences.create.submit') }}
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
+
+    <!-- INVITE -->
+    <n-modal
+      v-model:show="inviteDlg.show"
+      preset="card"
+      style="max-width: 460px"
+      :bordered="false"
+      :title="$t('conferences.invite.title')"
+    >
+      <div class="form">
+        <n-select
+          v-model:value="inviteDlg.selected"
+          multiple
+          filterable
+          :options="inviteOptions"
+          :placeholder="$t('conferences.invite.placeholder')"
+          data-testid="conference-invite-select"
+        />
+        <div v-if="!inviteOptions.length" class="hint">
+          {{ $t('conferences.invite.allInvited') }}
+        </div>
+      </div>
+      <template #footer>
+        <div class="foot">
+          <n-button quaternary @click="inviteDlg.show = false">
+            {{ $t('conferences.invite.cancel') }}
+          </n-button>
+          <n-button
+            type="primary"
+            :loading="inviteDlg.saving"
+            :disabled="!inviteDlg.selected.length"
+            data-testid="conference-invite-submit"
+            @click="sendInvite"
+          >
+            {{ $t('conferences.invite.submit') }}
           </n-button>
         </div>
       </template>
