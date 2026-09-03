@@ -274,6 +274,41 @@ func TestConferenceInviteIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestConferenceReInviteAfterLeaveClearsAttendance: a person who joined, left and
+// was invited back must read as "invited", not "still present" (#2875). Without
+// clearing the stale joined_at the re-invited row would have joined_at set and
+// left_at NULL — the shape of someone in the room — and they would show in
+// neither the roster nor the invited list.
+func TestConferenceReInviteAfterLeaveClearsAttendance(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	s, confID := mkConference(t, owner, "Летучка с возвратом")
+	guest := addMember(t, owner, s.WS)
+
+	guest.expect(t, guest.post("/conferences/"+confID+"/join", nil), http.StatusOK)
+	guest.expect(t, guest.post("/conferences/"+confID+"/leave", nil), http.StatusOK)
+	owner.expect(t, owner.post("/conferences/"+confID+"/invite",
+		map[string]any{"user_ids": []string{guest.UserID}}), http.StatusOK)
+
+	parts := owner.get("/conferences/" + confID + "/participants").listBody(t)
+	var found bool
+	for _, p := range parts {
+		if p["user_id"] != guest.UserID {
+			continue
+		}
+		found = true
+		if p["joined_at"] != nil {
+			t.Fatalf("re-invited guest still carries joined_at %v — reads as present", p["joined_at"])
+		}
+		if p["left_at"] != nil {
+			t.Fatalf("re-invite did not reopen the invitation: left_at %v", p["left_at"])
+		}
+	}
+	if !found {
+		t.Fatalf("re-invited guest missing from participants: %#v", parts)
+	}
+}
+
 // TestConferenceValidation pins the input the handlers refuse: an unknown status
 // filter (a typo would otherwise silently return everything), a negative
 // recording TTL, and an empty invite list.

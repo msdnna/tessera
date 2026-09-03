@@ -1,17 +1,21 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/confroom"
 	"tessera/internal/db"
 	"tessera/internal/observability"
+	"tessera/internal/realtime"
 )
 
 const (
@@ -141,6 +145,11 @@ func (h *WSHandler) confReadPump(conn *websocket.Conn, p *confroom.Participant, 
 	defer func() {
 		h.confRooms.Leave(confID, p)
 		_ = conn.Close()
+		// Reconcile the durable roster with the dropped socket (#2864): a user who
+		// navigated to another section — or closed the tab — without pressing
+		// «Выйти» must stop counting as present, or the call never pauses and
+		// everyone else keeps seeing them in the room.
+		h.reconcileConferenceLeave(confID, p.UserID)
 	}()
 	conn.SetReadLimit(confReadLimit)
 	_ = conn.SetReadDeadline(time.Now().Add(confPongWait))
@@ -185,6 +194,57 @@ func (h *WSHandler) confReadPump(conn *websocket.Conn, p *confroom.Participant, 
 			}
 		}
 	}
+}
+
+// reconcileConferenceLeave stamps a user's exit in the database when their last
+// socket to a conference drops, and pauses the call if the room is now empty.
+// This is the server-authoritative counterpart to the REST /leave: a client that
+// simply navigates away never calls it, so without this the participant row keeps
+// claiming they are present and the conference is stuck «live» forever.
+//
+// It runs off the read pump's deferred cleanup, detached from any request, so it
+// uses a background context and reports nothing back to the (already gone) socket.
+func (h *WSHandler) reconcileConferenceLeave(confID, userID uuid.UUID) {
+	// Another tab of the same user still open → they are still in the call.
+	if h.confRooms.UserPresent(confID, userID) {
+		return
+	}
+	ctx := context.Background()
+	conf, err := h.q.GetConference(ctx, confID)
+	if err != nil {
+		return
+	}
+	part, err := h.q.LeaveConferenceParticipant(ctx, db.LeaveConferenceParticipantParams{
+		ConferenceID: confID, UserID: userID,
+	})
+	if err != nil {
+		// No participant row (a member who opened the socket before the join
+		// request landed, then left) — nothing durable to reconcile.
+		return
+	}
+	h.broadcastConf(conf.WorkspaceID, "conference.participant.left", part)
+	left, err := h.q.CountActiveConferenceParticipants(ctx, confID)
+	if err != nil {
+		return
+	}
+	if left == 0 && conf.Status == "live" {
+		paused, perr := h.q.PauseConference(ctx, confID)
+		if perr == nil {
+			h.broadcastConf(conf.WorkspaceID, "conference.ended", paused)
+		} else if !errors.Is(perr, pgx.ErrNoRows) {
+			observability.CaptureError("conf-reconcile-pause", perr)
+		}
+	}
+}
+
+// broadcastConf fans a conference event out to a workspace over the hub. Used
+// from the socket layer, which has no gin.Context and so no acting user.
+func (h *WSHandler) broadcastConf(workspaceID uuid.UUID, eventType string, payload any) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return
+	}
+	h.hub.Broadcast(realtime.Event{Scope: workspaceID.String(), Type: eventType, Data: data})
 }
 
 // confWritePump writes room snapshots and keeps the socket alive through

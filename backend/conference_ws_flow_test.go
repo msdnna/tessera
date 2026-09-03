@@ -302,3 +302,46 @@ func TestConferenceWSEndEmptiesTheRoom(t *testing.T) {
 		t.Fatal("the reused room did not welcome the returning participant")
 	}
 }
+
+// TestConferenceWSDisconnectReleasesPresence: dropping the socket without a REST
+// «Выйти» (navigating to another section, or closing the tab) must reconcile the
+// durable roster (#2864) — the participant is stamped as gone and, with the room
+// now empty, the call pauses. Without it the person hangs in the call forever.
+func TestConferenceWSDisconnectReleasesPresence(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	_, confID := mkConference(t, owner, "Летучка с обрывом")
+	owner.expect(t, owner.post("/conferences/"+confID+"/join", nil), http.StatusOK)
+
+	conn, status := dialConfWS(t, owner.token, confID)
+	if conn == nil {
+		t.Fatalf("handshake = %d", status)
+	}
+	if awaitConfFrame(t, conn, "welcome", 5*time.Second) == nil {
+		t.Fatal("no welcome")
+	}
+	// No REST leave — just drop the socket, the way navigating away does.
+	conn.Close()
+
+	// The reconcile runs off the read pump's deferred cleanup, so poll for it.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		got := owner.expect(t, owner.get("/conferences/"+confID), http.StatusOK)
+		conf := got["conference"].(map[string]any)
+		parts := got["participants"].([]any)
+		present := false
+		for _, raw := range parts {
+			p := raw.(map[string]any)
+			if p["user_id"] == owner.UserID && p["joined_at"] != nil && p["left_at"] == nil {
+				present = true
+			}
+		}
+		if conf["status"] == "scheduled" && !present {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("socket drop not reconciled: status %v, still present %v", conf["status"], present)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}

@@ -955,6 +955,26 @@ func (rs *Rooms) Close() {
 	}
 }
 
+// UserPresent reports whether a user still has at least one live connection in a
+// conference. The socket handler checks this after a disconnect to tell "closed
+// one of two tabs" (still in the call) from "left the call" (reconcile the DB).
+func (rs *Rooms) UserPresent(confID, userID uuid.UUID) bool {
+	rs.mu.Lock()
+	room, ok := rs.rooms[confID]
+	rs.mu.Unlock()
+	if !ok {
+		return false
+	}
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	for m := range room.members {
+		if m.UserID == userID {
+			return true
+		}
+	}
+	return false
+}
+
 // Count reports how many conferences currently have a live room.
 func (rs *Rooms) Count() int {
 	rs.mu.Lock()

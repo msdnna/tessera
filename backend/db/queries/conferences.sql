@@ -84,11 +84,21 @@ SELECT workspace_id FROM conferences WHERE id = $1;
 -- several places at once (the dialog, the notification, an /invite call) and
 -- the loser of that race must not get a unique-violation 500. The role is left
 -- alone on conflict — re-inviting the host must not demote them to member.
+--
+-- Re-inviting someone who had already left also clears their stale joined_at, so
+-- they read as "invited" again rather than as "still present" (#2875): otherwise
+-- a person who joined once, left, and was invited back would have joined_at set
+-- and left_at NULL, and show up in neither the roster nor the invited list. Only
+-- a row that had actually left is reset — someone currently in the room keeps
+-- their joined_at.
 -- name: InviteConferenceParticipant :one
 INSERT INTO conference_participants (conference_id, user_id, role)
 VALUES ($1, $2, $3)
 ON CONFLICT (conference_id, user_id) DO UPDATE
-SET invited_at = now(), left_at = NULL
+SET invited_at = now(),
+    left_at = NULL,
+    joined_at = CASE WHEN conference_participants.left_at IS NOT NULL
+                     THEN NULL ELSE conference_participants.joined_at END
 RETURNING *;
 
 -- name: GetConferenceParticipant :one
