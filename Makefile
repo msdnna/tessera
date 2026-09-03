@@ -140,6 +140,11 @@ test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.h
 # `backend/middleware/ratelimit_test.go`, so nothing goes untested.
 E2E_PORT ?= 8092
 E2E_DB_URL ?= postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+# Where this backend keeps uploads. A variable rather than a literal because the
+# recording stand (#2877) has to mount the SAME directory into the egress
+# container: the backend and the recorder name the file by one absolute path, and
+# a mismatch there is invisible until the mp4 does not appear.
+E2E_UPLOAD_DIR ?= /tmp/tessera-e2e-uploads
 
 # Conferences (#2876). Left empty by default, which makes the token endpoint
 # answer its documented 503 and the media tier of conferences.spec.js skip with
@@ -166,7 +171,7 @@ e2e-backend-up: ## Start a throwaway backend on :8092 against tessera_test (for 
 	cd backend && $(GO) build -o /tmp/tessera-e2e-bin .
 	@LK_SECRET="$(LIVEKIT_API_SECRET)"; LK_FILE="$(LIVEKIT_SECRET_FILE)"; \
 	if [ -n "$$LK_FILE" ]; then LK_SECRET=$$(tr -d '\n' < "$$LK_FILE"); fi; \
-	PORT=$(E2E_PORT) UPLOAD_DIR=/tmp/tessera-e2e-uploads JWT_SECRET=e2e \
+	PORT=$(E2E_PORT) UPLOAD_DIR=$(E2E_UPLOAD_DIR) JWT_SECRET=e2e \
 		DATABASE_URL="$(E2E_DB_URL)" \
 		RATE_LIMIT_ENABLED=false \
 		LIVEKIT_URL="$(LIVEKIT_URL)" LIVEKIT_PUBLIC_URL="$(LIVEKIT_PUBLIC_URL)" \
@@ -181,6 +186,78 @@ e2e-backend-up: ## Start a throwaway backend on :8092 against tessera_test (for 
 e2e-backend-down: ## Stop the throwaway e2e backend
 	@fuser -k $(E2E_PORT)/tcp 2>/dev/null || true
 	@echo "e2e backend on :$(E2E_PORT) stopped"
+
+# ── Recording stand (#2877) ────────────────────────────────
+# Server-side recording is the one part of conferences whose failure modes live
+# entirely between containers — Redis dispatch, a headless Chrome joining the
+# room, an mp4 written into a directory the backend and egress reach under
+# different uids. None of that exists in a unit test, so it gets a stand:
+#
+#   make recording-e2e-up          # redis + SFU + egress, own project, shifted ports
+#   make e2e-backend-up LIVEKIT_URL=http://localhost:$(REC_E2E_PORT) \
+#     LIVEKIT_PUBLIC_URL=ws://localhost:$(REC_E2E_PORT) \
+#     LIVEKIT_API_KEY=$(REC_E2E_KEY) LIVEKIT_SECRET_FILE=~/.livekit-e2e-secret
+#   make recording-e2e-down
+#
+# No UPLOAD_DIR override is needed: REC_E2E_UPLOAD_DIR defaults to the backend's
+# own E2E_UPLOAD_DIR, and the stand mounts it into egress at the same absolute
+# path, so both sides name the finished file identically.
+#
+# It is deliberately NOT `docker compose --profile recording`: that profile turns
+# recording on for the *production* SFU by setting LIVEKIT_REDIS_HOST, i.e. moves
+# live conferences into multi-node mode. See deploy/recording.e2e.yml for what
+# this stand keeps faithful to production and what it does not.
+#
+# The secret goes through a file, not a make variable, for the same reason as
+# LIVEKIT_SECRET_FILE above: a variable lands in shell history and in the `ps`
+# line of every process the recipe starts.
+# 7955/7956, not the 7945/7946 of livekit.e2e.yaml: that pair belongs to the
+# media tier of the web suite, and a box that has run it recently still has a
+# container holding those ports (they also leak — see livekit.e2e.yaml). If this
+# pair is taken too, shift both; nothing else depends on the numbers.
+REC_E2E_PORT ?= 7955
+REC_E2E_RTC_PORT ?= 7956
+REC_E2E_KEY ?= devkey
+REC_E2E_SECRET_FILE ?= $(HOME)/.livekit-e2e-secret
+# Deliberately derived from E2E_UPLOAD_DIR rather than repeated: the throwaway
+# backend and the egress container must agree on this path exactly, and two
+# defaults that merely happen to match would drift the first time one is changed.
+REC_E2E_UPLOAD_DIR ?= $(E2E_UPLOAD_DIR)
+
+# The environment both recipes need. Kept in one variable so `up` and `down`
+# cannot drift: compose resolves the project's containers from the same
+# interpolated file, and a `down` with different values would look at a
+# different stack and report success having stopped nothing.
+REC_E2E_ENV = REC_E2E_UID=$$(id -u) \
+	REC_E2E_KEY=$(REC_E2E_KEY) \
+	REC_E2E_SECRET=$$(tr -d '\n' < "$(REC_E2E_SECRET_FILE)") \
+	REC_E2E_PORT=$(REC_E2E_PORT) \
+	REC_E2E_RTC_PORT=$(REC_E2E_RTC_PORT) \
+	REC_E2E_UPLOAD_DIR=$(REC_E2E_UPLOAD_DIR)
+
+.PHONY: recording-e2e-up
+recording-e2e-up: ## Start the throwaway recording stand (redis + SFU + egress) for #2877
+	@test -f "$(REC_E2E_SECRET_FILE)" || { \
+		echo "no $(REC_E2E_SECRET_FILE); create it with:" >&2; \
+		echo "  printf devsecret_at_least_32_characters_long > $(REC_E2E_SECRET_FILE)" >&2; \
+		exit 1; }
+	@grep -qx "port: $(REC_E2E_PORT)" deploy/livekit.recording.e2e.yaml && \
+		grep -qx "  tcp_port: $(REC_E2E_RTC_PORT)" deploy/livekit.recording.e2e.yaml || { \
+		echo "REC_E2E_PORT/REC_E2E_RTC_PORT ($(REC_E2E_PORT)/$(REC_E2E_RTC_PORT)) do not match" >&2; \
+		echo "deploy/livekit.recording.e2e.yaml. They are published one-to-one because" >&2; \
+		echo "node_ip is loopback, so both places have to say the same number." >&2; \
+		exit 1; }
+	@mkdir -p $(REC_E2E_UPLOAD_DIR)
+	cd deploy && $(REC_E2E_ENV) $(COMPOSE) -f recording.e2e.yml up -d
+	@echo "recording stand up: SFU on :$(REC_E2E_PORT), recordings in $(REC_E2E_UPLOAD_DIR)/rec"
+
+.PHONY: recording-e2e-down
+recording-e2e-down: ## Stop the throwaway recording stand
+	cd deploy && $(REC_E2E_ENV) $(COMPOSE) -f recording.e2e.yml down --remove-orphans
+
+.PHONY: recording-e2e-logs
+recording-e2e-logs: ## Tail the recording stand's logs
+	cd deploy && $(REC_E2E_ENV) $(COMPOSE) -f recording.e2e.yml logs -f
 
 # Both knobs are needed and they are NOT the same one: the suite's own API client
 # talks to the backend directly (E2E_API_URL), while the preview server proxies
