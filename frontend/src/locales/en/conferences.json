@@ -121,6 +121,7 @@
   },
   "panel": {
     "title": "In the room: {count}",
+    "invitedTitle": "Invited",
     "empty": "Nobody is in the room yet",
     "handUp": "Hand raised",
     "micOff": "microphone off",

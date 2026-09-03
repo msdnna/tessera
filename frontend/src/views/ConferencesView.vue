@@ -11,7 +11,7 @@
 // What stays here is the bookkeeping — who is invited, who is in the room and
 // when the call happens — and the single source of truth for membership: this
 // screen's join/leave drives the room's `active`, never the reverse.
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import {
@@ -19,7 +19,6 @@ import {
   NIcon,
   NInput,
   NModal,
-  NCard,
   NDatePicker,
   NRadioGroup,
   NRadioButton,
@@ -239,6 +238,22 @@ const canModerate = computed(() => {
   if (!conf) return false
   return conf.created_by === me.value || myPart.value?.role === 'host' || auth.isAdmin
 })
+// Invited but not in the room yet — never joined, or an open invitation (#2875).
+// The room's rail lists these so an invitation is visible somewhere again after
+// the standalone participants column was dropped (#2881).
+const invited = computed(() =>
+  (detail.value?.participants || []).filter((p) => !p.joined_at && !p.left_at),
+)
+
+// The conference controls live in the app topbar (#2864 round 2), but only when
+// that shell is present and wide enough; otherwise the teleports fall back inline.
+const topbarSlots = ref(false)
+const narrow = ref(false)
+const inTopbar = computed(() => topbarSlots.value && !narrow.value)
+let mq = null
+function onMq(e) {
+  narrow.value = e.matches
+}
 
 // Neutral greys stay flat per the design language, so a finished call has no
 // hue at all; the two states that still matter carry the same-hue gradient.
@@ -316,9 +331,18 @@ useRealtime(
 )
 
 onMounted(() => {
+  // The topbar teleport targets exist only inside the app shell; detect them so
+  // a bare mount (unit test) renders the controls inline instead of throwing.
+  topbarSlots.value = !!document.getElementById('tb-slot-left')
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    mq = window.matchMedia('(max-width: 900px)')
+    narrow.value = mq.matches
+    mq.addEventListener?.('change', onMq)
+  }
   load()
   if (openId.value) loadDetail(openId.value)
 })
+onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
 </script>
 
 <template>
@@ -418,10 +442,15 @@ onMounted(() => {
 
     <!-- ONE CONFERENCE -->
     <template v-else>
-      <n-button text class="back" @click="backToList">
-        <template #icon><n-icon :component="ArrowBackOutline" /></template>
-        {{ $t('conferences.actions.back') }}
-      </n-button>
+      <!-- Back sits in the app topbar, left of the search, like Documents (#2864
+           round 2). It falls back to rendering inline when the topbar slots are
+           absent — a narrow screen, or a unit test with no shell. -->
+      <teleport to="#tb-slot-left" :disabled="!inTopbar">
+        <n-button quaternary size="small" class="back" @click="backToList">
+          <template #icon><n-icon :component="ArrowBackOutline" /></template>
+          {{ $t('conferences.actions.back') }}
+        </n-button>
+      </teleport>
 
       <n-spin :show="detailLoading">
         <empty-state
@@ -430,12 +459,10 @@ onMounted(() => {
           :text="$t('conferences.detail.notFound')"
         />
         <div v-else-if="detail" class="detail">
-          <div class="head">
-            <div class="head-text">
-              <h2 class="h">{{ detail.conference.title }}</h2>
-              <div class="sub">{{ timeLine(detail.conference) }}</div>
-            </div>
-            <div class="head-actions">
+          <!-- Status and the call's controls go to the topbar, right of the search
+               and left of the help icon (same fallback as the back button). -->
+          <teleport to="#tb-slot-right" :disabled="!inTopbar">
+            <span class="call-actions">
               <span class="pill" :style="pillStyle(detail.conference.status)">
                 <span
                   :class="{ 'accent-grad-text': !!statusHue(detail.conference.status) }"
@@ -449,13 +476,20 @@ onMounted(() => {
               <n-button
                 v-if="!inRoom"
                 type="primary"
+                size="small"
                 :loading="busy"
                 data-testid="conference-join"
                 @click="join"
               >
                 {{ $t('conferences.actions.join') }}
               </n-button>
-              <n-button v-else :loading="busy" data-testid="conference-leave" @click="leave">
+              <n-button
+                v-else
+                size="small"
+                :loading="busy"
+                data-testid="conference-leave"
+                @click="leave"
+              >
                 {{ $t('conferences.actions.leave') }}
               </n-button>
               <!-- "Завершить" ends the ongoing session for everyone; it only makes
@@ -466,31 +500,37 @@ onMounted(() => {
                 @positive-click="end"
               >
                 <template #trigger>
-                  <n-button quaternary>{{ $t('conferences.actions.end') }}</n-button>
+                  <n-button quaternary size="small">{{ $t('conferences.actions.end') }}</n-button>
                 </template>
                 {{ $t('conferences.confirm.end') }}
               </n-popconfirm>
-            </div>
+            </span>
+          </teleport>
+
+          <div class="head">
+            <h2 class="h">{{ detail.conference.title }}</h2>
+            <!-- The one time line moved out from under the title to its right, now
+                 that the action buttons vacated that corner for the topbar. -->
+            <div class="head-time">{{ timeLine(detail.conference) }}</div>
           </div>
 
           <p v-if="detail.conference.description" class="desc">
             {{ detail.conference.description }}
           </p>
 
-          <!-- One pane now (#2881): the room's own «В комнате» tab already lists
-               who is present, so the separate participants column that duplicated
-               it is gone and the room takes the full width. Inviting moved into
-               the room's rail — the button is emitted up from there. -->
-          <n-card size="small" :title="$t('conferences.detail.roomTitle')" class="room">
+          <!-- No «Комната» card any more (#2864 round 2): after the right column
+               was removed the frame and its title only boxed in the one pane. -->
+          <div class="room">
             <conference-room
               :conference-id="detail.conference.id"
               :active="inRoom"
               :ended="detail.conference.status === 'ended'"
               :can-invite="canInvite"
+              :invited="invited"
               @hangup="leave"
               @invite="openInvite"
             />
-          </n-card>
+          </div>
         </div>
       </n-spin>
     </template>
@@ -663,8 +703,27 @@ onMounted(() => {
   white-space: nowrap;
   color: var(--t-text3);
 }
+/* No bottom margin: the button now lives in the flex topbar (and, inline on a
+   narrow screen, sits directly above the title where a gap is unwanted). */
 .back {
-  margin-bottom: 12px;
+  margin-bottom: 0;
+}
+/* The call's status pill + join/leave/end, as one flex group so they read the
+   same whether teleported into the topbar or rendered inline as a fallback. */
+.call-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Start time, right of the title now that the buttons moved to the topbar. */
+.head-time {
+  flex: none;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+/* Plain pane, no card frame — the room owns its own borders. */
+.room {
+  width: 100%;
 }
 .desc {
   margin: 0 0 16px;

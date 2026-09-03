@@ -25,6 +25,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NBadge, NButton, NIcon, NSpin, NTooltip } from 'naive-ui'
 import {
+  Mic,
   MicOutline,
   MicOffOutline,
   VideocamOutline,
@@ -51,6 +52,7 @@ import ParticipantTile from './ParticipantTile.vue'
 import ParticipantsPanel from './ParticipantsPanel.vue'
 import ConferenceChat from './ConferenceChat.vue'
 import DeviceMenu from './DeviceMenu.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 
 const props = defineProps({
   conferenceId: { type: String, required: true },
@@ -63,6 +65,10 @@ const props = defineProps({
   // Whether the «Пригласить» control belongs in the rail (#2881). The invite
   // dialog itself lives in the parent view, so pressing it only emits upward.
   canInvite: { type: Boolean, default: false },
+  // People invited to the call who are not in the room yet (#2875): the roster
+  // now lives only in this rail, so without listing them here an invitation would
+  // show nowhere. [{ user_id, user_name, role }]
+  invited: { type: Array, default: () => [] },
 })
 // `hangup` asks the parent to leave the roster too; the parent flipping `active`
 // is what actually drops the media session, through the watcher below. One
@@ -84,7 +90,7 @@ const {
   audioBlocked,
   devices,
   selected,
-  audioLevels,
+  micLevel,
   join,
   leave,
   toggleMic,
@@ -147,6 +153,13 @@ watch(
 const handUp = computed(() => !!room.self.value?.hand_at)
 const supported = mediaSupported()
 const busy = computed(() => status.value === CONNECTING)
+
+// Own microphone meter on the toolbar button (#2883 round 2): the mic glyph fills
+// from the bottom with our own live level. clip-path hides the filled copy from
+// the top down, so a louder voice reveals more of it.
+const micClip = computed(
+  () => `inset(${Math.round((1 - Math.min(1, micLevel.value)) * 100)}% 0 0 0)`,
+)
 
 // ── screen share (#2874) ────────────────────────────────────────────────
 // We asked for the stage and have not given up on it — which is not the same as
@@ -381,7 +394,6 @@ watch(
               :peer="stagePeer"
               stage
               :screen="!!screenPeer"
-              :level="audioLevels[stagePeer.id] || 0"
             />
             <div v-else class="notice idle">{{ $t('conferences.media.connecting') }}</div>
 
@@ -431,12 +443,7 @@ watch(
             </div>
 
             <div v-if="stripPeers.length" class="strip" data-testid="conference-strip">
-              <participant-tile
-                v-for="p in stripPeers"
-                :key="p.sid || p.id"
-                :peer="p"
-                :level="audioLevels[p.id] || 0"
-              />
+              <participant-tile v-for="p in stripPeers" :key="p.sid || p.id" :peer="p" />
             </div>
           </div>
         </n-spin>
@@ -485,17 +492,28 @@ watch(
             </n-button>
           </div>
 
-          <participants-panel
-            v-show="rail === 'people'"
-            :people="room.participants.value"
-            :peers="peers"
-            :me-id="room.userId.value"
-            :can-moderate="room.canModerate.value"
-            @volume="setPeerVolume"
-            @local-mute="togglePeerMute"
-            @kick="room.kick"
-            @force-mute="room.forceMute"
-          />
+          <div v-show="rail === 'people'" class="people-tab">
+            <participants-panel
+              :people="room.participants.value"
+              :peers="peers"
+              :me-id="room.userId.value"
+              :can-moderate="room.canModerate.value"
+              @volume="setPeerVolume"
+              @local-mute="togglePeerMute"
+              @kick="room.kick"
+              @force-mute="room.forceMute"
+            />
+            <!-- Invited but not in the room yet (#2875). Kept apart from the live
+                 roster above so «в комнате» stays an honest count. -->
+            <div v-if="invited.length" class="invited" data-testid="conference-invited">
+              <div class="invited-h">{{ $t('conferences.panel.invitedTitle') }}</div>
+              <div v-for="p in invited" :key="p.user_id" class="invited-row">
+                <user-avatar :user-id="p.user_id" :name="p.user_name" class="iav" />
+                <span class="iname">{{ p.user_name }}</span>
+                <span class="itag">{{ $t('conferences.presence.invited') }}</span>
+              </div>
+            </div>
+          </div>
           <!-- v-show, not v-if: switching back to the chat must not throw away
                the loaded history and refetch it every time. -->
           <conference-chat
@@ -532,7 +550,19 @@ watch(
               data-testid="conference-mic"
               @click="toggleMic()"
             >
-              <n-icon :component="micOn ? MicOutline : MicOffOutline" />
+              <!-- Live level while the mic is on and not force-muted: a ghosted
+                   base outline with a solid copy filling from the bottom. -->
+              <span
+                v-if="micOn && !room.forceMuted.value"
+                class="mic-meter"
+                data-testid="conference-mic-level"
+              >
+                <n-icon :component="MicOutline" class="mic-base" />
+                <span class="mic-fill" :style="{ clipPath: micClip }">
+                  <n-icon :component="Mic" />
+                </span>
+              </span>
+              <n-icon v-else :component="micOn ? MicOutline : MicOffOutline" />
             </n-button>
           </template>
           {{
@@ -681,6 +711,52 @@ watch(
 .rail-tabs .invite {
   margin-left: auto;
 }
+.people-tab {
+  display: flex;
+  flex-direction: column;
+}
+/* Invited-but-absent list (#2875), set off from the live roster by a divider so
+   «в комнате» stays a count of who is actually present. */
+.invited {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--t-border);
+}
+.invited-h {
+  padding: 0 8px 4px;
+  font-size: 11px;
+  color: var(--t-text3);
+}
+.invited-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+}
+.iav {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: #fff;
+  background: var(--t-accent-grad);
+  opacity: 0.7;
+}
+.iname {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.itag {
+  flex: none;
+  font-size: 11px;
+  color: var(--t-text3);
+}
 @media (max-width: 900px) {
   .body {
     flex-direction: column;
@@ -737,13 +813,40 @@ watch(
 .strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 .toolbar {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 14px;
   padding-top: 4px;
+}
+/* Toolbar controls ~1.5× larger (#2864 round 2): they are the call's primary
+   actions, and big enough that the mic meter inside the button reads. The icons
+   have no explicit size, so they follow the button's font-size. */
+.toolbar :deep(.n-button) {
+  width: 50px;
+  height: 50px;
+  font-size: 23px;
+}
+/* Own-mic meter (#2883 round 2): a ghosted outline under a solid copy that fills
+   from the bottom as clip-path uncovers it. Sized to the button's icon em. */
+.mic-meter {
+  position: relative;
+  display: inline-flex;
+  width: 1em;
+  height: 1em;
+}
+.mic-base {
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+}
+.mic-fill {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  transition: clip-path 60ms linear;
 }
 </style>
