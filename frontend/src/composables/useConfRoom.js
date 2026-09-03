@@ -26,7 +26,7 @@ const RECONNECT_MAX = 15000 // ms
  *
  * The caller drives it with `open(conferenceId)` / `close()`, reads
  * `participants` / `stage` / `queue`, and acts through `setMedia`, `raiseHand`,
- * `kick` and `forceMute`. Permission is never checked here: a member's kick is
+ * `requestScreen` / `releaseScreen`, `kick` and `forceMute`. Permission is never checked here: a member's kick is
  * sent, refused by the server and answered with `denied`. Hiding the button is
  * a courtesy to honest users, not a security boundary.
  *
@@ -51,6 +51,14 @@ export function useConfRoom() {
   // design: messages are fetched over HTTP, so a nudge lost to a reconnect
   // costs a stale panel rather than a phantom message.
   const chatNudge = ref(0)
+  // Counts snapshots (#2874). The screen-share flow needs to tell "the server
+  // has not answered my request yet" from "the server answered and the stage is
+  // someone else's" — the two look identical in `stage` alone, and acting on the
+  // first would kill a share the moment it started.
+  const stateSeq = ref(0)
+  // How long the stage survives without a refresh, straight from the server, so
+  // the presenter's heartbeat cannot drift out of step with the TTL it feeds.
+  const stageTtlMs = ref(30000)
 
   let ws = null
   let confId = ''
@@ -67,6 +75,12 @@ export function useConfRoom() {
   const self = computed(() => participants.value.find((p) => p.user_id === userId.value) || null)
   /** Whether a host has silenced me. The room refuses my mic while it is true. */
   const forceMuted = computed(() => !!self.value?.force_muted)
+  // The stage belongs to a *connection*, not a person: the same user with the
+  // call open in two tabs must not have the second one believe it is presenting
+  // and offer a stop-sharing button for a screen it is not publishing.
+  const presenting = computed(() => !!stage.value && stage.value.conn_id === connId.value)
+  /** Our place in the line, 1-based; 0 when we are not waiting for the stage. */
+  const queuePos = computed(() => queue.value.findIndex((q) => q.conn_id === connId.value) + 1)
 
   function send(msg) {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg))
@@ -88,6 +102,28 @@ export function useConfRoom() {
   /** Raise or lower a hand; the server orders the list by when it went up. */
   function raiseHand(up) {
     send({ type: 'hand', up: !!up })
+  }
+
+  /**
+   * Ask for the screen-share stage (#2874).
+   *
+   * The answer arrives as a snapshot, never as a return value: the server is the
+   * only arbiter, and a client that assumed it had the stage because it asked is
+   * exactly how two people end up presenting at once. A host asking while a
+   * member presents preempts them — that decision is the server's too.
+   */
+  function requestScreen() {
+    send({ type: 'screen.request' })
+  }
+
+  /** Keep our hold on the stage alive; ignored by the server for anyone else. */
+  function refreshScreen() {
+    send({ type: 'screen.refresh' })
+  }
+
+  /** Give the stage up, or drop out of the queue if we were only waiting. */
+  function releaseScreen() {
+    send({ type: 'screen.release' })
   }
 
   /** Remove someone from the call (hosts only — the server decides). */
@@ -113,6 +149,7 @@ export function useConfRoom() {
       connId.value = msg.conn_id || ''
       userId.value = msg.user_id || ''
       role.value = msg.role || 'member'
+      if (msg.stage_ttl_ms > 0) stageTtlMs.value = msg.stage_ttl_ms
       // A reconnect is a fresh connection to the server, which knows nothing
       // about the devices we already have open.
       if (media.mic || media.cam) send({ type: 'media', ...media })
@@ -122,6 +159,7 @@ export function useConfRoom() {
       participants.value = msg.participants || []
       stage.value = msg.stage || null
       queue.value = msg.queue || []
+      stateSeq.value += 1
       return
     }
     if (msg.type === 'denied') {
@@ -217,6 +255,10 @@ export function useConfRoom() {
     isHost,
     self,
     forceMuted,
+    presenting,
+    queuePos,
+    stateSeq,
+    stageTtlMs,
     denied,
     ended,
     chatNudge,
@@ -224,6 +266,9 @@ export function useConfRoom() {
     close,
     setMedia,
     raiseHand,
+    requestScreen,
+    refreshScreen,
+    releaseScreen,
     kick,
     forceMute: forceMuteUser,
   }

@@ -124,5 +124,17 @@
       "mute": "Only a host may mute participants",
       "other": "The server refused the action"
     }
+  },
+  "screen": {
+    "share": "Share screen",
+    "stop": "Stop sharing",
+    "cancel": "Leave the queue",
+    "start": "Start sharing",
+    "youPresent": "You are sharing your screen",
+    "stageYours": "The stage is yours",
+    "presenting": "{name} is sharing a screen",
+    "yourTurn": "Your turn to share the screen",
+    "queued": "You are number {n} in the queue",
+    "waiting": "Waiting in the queue: {count}"
   }
 }

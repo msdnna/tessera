@@ -4,9 +4,9 @@
 // Video is the exception here, not the rule: we are told the team rarely turns a
 // camera on, so the tile is designed around the avatar and merely makes room for
 // a stream when one shows up.
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NIcon } from 'naive-ui'
-import { MicOffOutline } from '@vicons/ionicons5'
+import { MicOffOutline, DesktopOutline } from '@vicons/ionicons5'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const props = defineProps({
@@ -14,7 +14,18 @@ const props = defineProps({
   peer: { type: Object, required: true },
   // The dominant-speaker tile: same markup, more room.
   stage: { type: Boolean, default: false },
+  // Show this peer's shared screen instead of their camera (#2874). The same
+  // person is legitimately on screen twice while presenting — their screen on
+  // the stage, their face in the strip — which is why this is a prop rather
+  // than something derived from the peer.
+  screen: { type: Boolean, default: false },
 })
+
+// Which of the peer's two publications this tile is showing. A screen tile with
+// nothing shared yet stays blank rather than falling back to the camera: the
+// stage is held by a presenter whose first frame is simply still in flight.
+const video = computed(() => (props.screen ? props.peer.screenTrack : props.peer.videoTrack))
+const audio = computed(() => (props.screen ? props.peer.screenAudioTrack : props.peer.audioTrack))
 
 const videoEl = ref(null)
 const audioEl = ref(null)
@@ -29,7 +40,7 @@ function bind(track, el) {
 }
 
 watch(
-  () => [props.peer.videoTrack, videoEl.value],
+  () => [video.value, videoEl.value],
   ([track], prev) => {
     const old = prev?.[0]
     // Detaching only our own element, not everywhere: the same camera track is
@@ -41,7 +52,7 @@ watch(
 )
 
 watch(
-  () => [props.peer.audioTrack, audioEl.value],
+  () => [audio.value, audioEl.value],
   ([track], prev) => {
     const old = prev?.[0]
     if (old && old !== track) old.detach(audioEl.value)
@@ -53,29 +64,39 @@ watch(
 onBeforeUnmount(() => {
   // A tile that goes away without detaching leaves the SDK believing someone is
   // still watching, and the stream keeps being paid for.
-  if (props.peer.videoTrack && videoEl.value) props.peer.videoTrack.detach(videoEl.value)
-  if (props.peer.audioTrack && audioEl.value) props.peer.audioTrack.detach(audioEl.value)
+  if (video.value && videoEl.value) video.value.detach(videoEl.value)
+  if (audio.value && audioEl.value) audio.value.detach(audioEl.value)
 })
 </script>
 
 <template>
   <div
     class="tile"
-    :class="{ stage, speaking: peer.speaking, video: !!peer.videoTrack }"
-    data-testid="conference-tile"
+    :class="{ stage, speaking: !screen && peer.speaking, video: !!video, screen }"
+    :data-testid="screen ? 'conference-screen-tile' : 'conference-tile'"
   >
     <!-- muted on the local tile is not cosmetic: an unmuted self-view is a
          feedback loop through the room's speakers. -->
-    <video v-show="peer.videoTrack" ref="videoEl" class="v" autoplay playsinline muted />
+    <video v-show="video" ref="videoEl" class="v" autoplay playsinline muted />
     <audio v-if="!peer.local" ref="audioEl" autoplay />
 
-    <div v-if="!peer.videoTrack" class="face">
-      <user-avatar :user-id="peer.id" :name="peer.name" class="av" />
+    <div v-if="!video" class="face">
+      <!-- Nothing to show yet. On a screen tile that is the presenter's first
+           frame still in flight, not a person without a camera, so it says so
+           instead of putting their avatar where their screen belongs. -->
+      <n-icon v-if="screen" :component="DesktopOutline" :size="32" class="waiting" />
+      <user-avatar v-else :user-id="peer.id" :name="peer.name" class="av" />
     </div>
 
     <div class="bar">
+      <n-icon v-if="screen" :component="DesktopOutline" :size="14" class="src-icon" />
       <span class="name">{{ peer.name }}</span>
-      <n-icon v-if="!peer.micOn" :component="MicOffOutline" :size="14" class="muted-icon" />
+      <n-icon
+        v-if="!screen && !peer.micOn"
+        :component="MicOffOutline"
+        :size="14"
+        class="muted-icon"
+      />
     </div>
   </div>
 </template>
@@ -114,6 +135,24 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+/* A shared screen is the one thing here that must not be cropped: `cover` on a
+   4:3 spreadsheet in a 16:9 tile cuts off exactly the rows being pointed at.
+   Letterboxing is the honest trade. */
+.tile.screen .v {
+  object-fit: contain;
+}
+/* The presenter's screen gets more room than a face does — a shared IDE at the
+   dominant-tile height is unreadable. */
+.tile.screen.stage {
+  max-height: 62vh;
+}
+.waiting {
+  color: var(--t-text3);
+}
+.src-icon {
+  flex: none;
+  opacity: 0.85;
 }
 .face {
   display: flex;

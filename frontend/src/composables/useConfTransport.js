@@ -48,6 +48,11 @@ function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
   // which is exactly when the tile should still be showing the avatar.
   const cam = p.getTrackPublication?.('camera')
   const mic = p.getTrackPublication?.('microphone')
+  // Screen share is a second publication on the same participant (#2874), not a
+  // second participant: the presenter keeps their tile and their camera while
+  // the stage shows what they are sharing.
+  const screen = p.getTrackPublication?.('screen_share')
+  const screenAudio = p.getTrackPublication?.('screen_share_audio')
   return {
     id: p.identity,
     sid: p.sid,
@@ -68,6 +73,10 @@ function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
     videoTrack: cam?.isSubscribed === false ? null : cam?.track || null,
     // The local mic is never attached — that is a feedback loop, not monitoring.
     audioTrack: local ? null : mic?.track || null,
+    screenTrack: screen?.isSubscribed === false ? null : screen?.track || null,
+    // Same reason as the microphone: playing our own shared tab back into the
+    // room is a feedback loop, and a loud one — the tab is usually a video.
+    screenAudioTrack: local ? null : screenAudio?.track || null,
   }
 }
 
@@ -80,7 +89,7 @@ function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
  * same reason: a missed event can then never leave a phantom tile behind.
  *
  * @returns {object} state refs plus `join`, `leave`, `toggleMic`, `toggleCam`,
- *   `selectDevice`, `unblockAudio`
+ *   `startScreen`, `stopScreen`, `selectDevice`, `unblockAudio`
  */
 export function useConfTransport() {
   const status = ref(IDLE)
@@ -88,6 +97,11 @@ export function useConfTransport() {
   const peers = shallowRef([])
   const micOn = ref(false)
   const camOn = ref(false)
+  // Whether *we* are publishing a screen (#2874). Read from the SDK on every
+  // snapshot rather than remembered from the click: the browser's own "stop
+  // sharing" bar ends the capture without telling us, and a flag we set
+  // ourselves would leave the toolbar claiming a share that ended minutes ago.
+  const screenOn = ref(false)
   // Browsers refuse to play audio until the page has been interacted with. The
   // SDK reports that instead of silently dropping sound, and the room turns it
   // into a "включить звук" button — otherwise a whole call is mute with no clue.
@@ -122,6 +136,11 @@ export function useConfTransport() {
   })
   const others = computed(() => peers.value.filter((p) => p !== dominant.value))
   const connected = computed(() => status.value === LIVE)
+  // Whoever is actually publishing a screen right now. The room socket also has
+  // an opinion — it holds the stage and the queue — but this one is the media
+  // fact: the stage says who *may* present, this says whose pixels have arrived.
+  // The tile is only useful once they have, so the layout follows this one.
+  const screenPeer = computed(() => peers.value.find((p) => p.screenTrack) || null)
 
   // The level this participant should be played at, folding the local mute in.
   function levelFor(identity) {
@@ -146,6 +165,7 @@ export function useConfTransport() {
     peers.value = list
     micOn.value = !!local?.isMicrophoneEnabled
     camOn.value = !!local?.isCameraEnabled
+    screenOn.value = !!local?.isScreenShareEnabled
     audioBlocked.value = room.canPlaybackAudio === false
   }
 
@@ -180,6 +200,7 @@ export function useConfTransport() {
     peers.value = []
     micOn.value = false
     camOn.value = false
+    screenOn.value = false
     detachUnload()
     if (status.value === LIVE) status.value = IDLE
   }
@@ -303,6 +324,7 @@ export function useConfTransport() {
     peers.value = []
     micOn.value = false
     camOn.value = false
+    screenOn.value = false
     status.value = IDLE
     try {
       await r?.disconnect()
@@ -323,6 +345,46 @@ export function useConfTransport() {
   }
   const toggleMic = () => setMic(!micOn.value)
   const toggleCam = () => setCam(!camOn.value)
+
+  /**
+   * Start publishing a screen (#2874). Reports whether the capture actually
+   * began.
+   *
+   * Must be called straight from a click: `getDisplayMedia` is only granted
+   * inside a user gesture, and an await before it (asking our server for the
+   * stage first, say) spends that gesture and has the browser refuse the picker
+   * outright. So the room is asked in parallel, and a share that turns out not
+   * to hold the stage is stopped again — see the watcher in ConferenceRoom.
+   *
+   * A cancelled picker is not an error: the user changed their mind, and the
+   * room screen has nothing to report.
+   */
+  async function startScreen() {
+    if (!room) return false
+    try {
+      // Audio too: sharing a tab with a video and having it play silently for
+      // everyone else is the classic screen-share disappointment.
+      await room.localParticipant.setScreenShareEnabled(true, { audio: true })
+    } catch (e) {
+      // NotAllowedError is the cancelled picker; anything else is worth saying
+      // out loud, because the button will otherwise look simply broken.
+      if (e?.name !== 'NotAllowedError') error.value = e?.message || String(e)
+    }
+    sync()
+    return screenOn.value
+  }
+
+  /** Stop publishing our screen. Safe to call when we are not sharing. */
+  async function stopScreen() {
+    if (!room) return
+    try {
+      await room.localParticipant.setScreenShareEnabled(false)
+    } catch {
+      // The capture is already gone (the browser's own stop button, or the tab
+      // being closed); the snapshot below is what the UI reads either way.
+    }
+    sync()
+  }
 
   // setVolume is a v2 method on RemoteParticipant; guarded because the local
   // participant does not have it and a stubbed room in a test need not.
@@ -415,8 +477,10 @@ export function useConfTransport() {
     dominant,
     others,
     connected,
+    screenPeer,
     micOn,
     camOn,
+    screenOn,
     audioBlocked,
     devices,
     selected,
@@ -426,6 +490,8 @@ export function useConfTransport() {
     leave,
     toggleMic,
     toggleCam,
+    startScreen,
+    stopScreen,
     setMic,
     setPeerVolume,
     togglePeerMute,

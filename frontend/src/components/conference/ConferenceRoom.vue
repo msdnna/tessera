@@ -15,9 +15,14 @@
 //
 // The right-hand rail carries both the roster and the chat (#2873), switched by
 // a tab rather than stacked: at 264px they would each get half a panel, and the
-// participant rows already have a fixed ideal width. Screen share lands in
-// #2874.
-import { computed, ref, watch } from 'vue'
+// participant rows already have a fixed ideal width.
+//
+// Screen share (#2874) is the third thing that meets here, and the only one
+// where the two connections disagree by design: our server owns the *stage* (who
+// may present, who waits, and a host preempting a member), the SFU owns the
+// *pixels*. This file is what keeps them honest — a capture that turns out not
+// to hold the stage is stopped rather than published alongside someone else's.
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NBadge, NButton, NIcon, NSpin, NTooltip } from 'naive-ui'
 import {
   MicOutline,
@@ -28,6 +33,8 @@ import {
   HandRightOutline,
   VolumeHighOutline,
   WarningOutline,
+  DesktopOutline,
+  StopCircleOutline,
 } from '@vicons/ionicons5'
 import {
   useConfTransport,
@@ -63,8 +70,10 @@ const {
   dominant,
   others,
   connected,
+  screenPeer,
   micOn,
   camOn,
+  screenOn,
   audioBlocked,
   devices,
   selected,
@@ -72,6 +81,8 @@ const {
   leave,
   toggleMic,
   toggleCam,
+  startScreen,
+  stopScreen,
   setMic,
   setPeerVolume,
   togglePeerMute,
@@ -128,6 +139,117 @@ watch(
 const handUp = computed(() => !!room.self.value?.hand_at)
 const supported = mediaSupported()
 const busy = computed(() => status.value === CONNECTING)
+
+// ── screen share (#2874) ────────────────────────────────────────────────
+// We asked for the stage and have not given up on it — which is not the same as
+// holding it (the server decides that) and not the same as capturing (the
+// browser does). Keeping the three apart is what lets the queue work: waiting
+// for a turn, holding a turn we have not started capturing for, and actually
+// sharing are three different buttons.
+const wantScreen = ref(false)
+// The snapshot number our request was sent at, so a stage that is not ours can
+// be told from a stage the server has not answered about yet. Without it the
+// very first watcher tick would stop the capture we just started.
+let askedAt = 0
+let heartbeat = null
+
+/** Someone else is presenting: their pixels, or their claim on the stage. */
+const otherPresenter = computed(() => {
+  if (room.presenting.value) return null
+  if (screenPeer.value && !screenPeer.value.local) return screenPeer.value.name
+  return room.stage.value?.name || null
+})
+// The stage is ours, the capture is not running: the queue reached us while we
+// were waiting. The picker cannot be reopened without a fresh click — a browser
+// only grants getDisplayMedia inside a gesture — so this is a prompt, not
+// something the code can do on the user's behalf.
+const myTurn = computed(() => wantScreen.value && room.presenting.value && !screenOn.value)
+
+/**
+ * Toggle our screen share.
+ *
+ * Runs directly off the click, and the order inside matters. The room is told
+ * first because it is the arbiter; the capture is started in the same tick
+ * because `getDisplayMedia` is only granted inside a user gesture and any await
+ * before it spends that gesture. When the stage is visibly held by someone else
+ * we skip the picker entirely — making the user choose a window only to have it
+ * stopped a moment later is worse than telling them they are in the queue.
+ */
+async function toggleScreen() {
+  if (screenOn.value) {
+    wantScreen.value = false
+    await stopScreen()
+    room.releaseScreen()
+    return
+  }
+  if (wantScreen.value && !room.presenting.value) {
+    // Cancelling a wait: "never mind" drops us out of the queue.
+    wantScreen.value = false
+    room.releaseScreen()
+    return
+  }
+  wantScreen.value = true
+  askedAt = room.stateSeq.value
+  if (!room.presenting.value) room.requestScreen()
+  if (room.stage.value && !room.presenting.value) return // queued; wait our turn
+  if (!(await startScreen())) {
+    // The picker was dismissed. Holding the stage after that would park the
+    // queue behind a share that never starts.
+    wantScreen.value = false
+    room.releaseScreen()
+  }
+}
+
+// The stage went to someone else while we were capturing — a host preempting a
+// member, or our hold expiring after a network stall. Stopping here rather than
+// waiting for the user is the whole point of having one arbiter: two screens
+// published at once is exactly what the queue exists to prevent.
+watch(
+  () => [room.stateSeq.value, room.presenting.value, screenOn.value],
+  () => {
+    if (screenOn.value && !room.presenting.value && room.stateSeq.value > askedAt) {
+      wantScreen.value = false
+      stopScreen()
+    }
+  },
+)
+
+// Hold the stage while we are actually sharing. The server expires a hold that
+// stops being refreshed, which is what frees the queue when a presenter's laptop
+// lid closes without the socket noticing.
+watch(
+  () => [screenOn.value, room.presenting.value, room.stageTtlMs.value],
+  ([sharing, mine, ttl]) => {
+    clearInterval(heartbeat)
+    heartbeat = null
+    if (!sharing || !mine) return
+    // A third of the TTL: two beats may be lost to a stalled connection before
+    // the stage is taken away from someone who is still presenting.
+    heartbeat = setInterval(() => room.refreshScreen(), Math.max(1000, ttl / 3))
+  },
+  { immediate: true },
+)
+
+// Leaving the call takes the stage with it: the socket is closing, and a hold
+// nobody refreshes would keep the queue waiting out the TTL for nothing.
+watch(
+  () => [props.active, props.ended],
+  ([active, ended]) => {
+    if (active && !ended) return
+    wantScreen.value = false
+    clearInterval(heartbeat)
+    heartbeat = null
+  },
+)
+
+onBeforeUnmount(() => clearInterval(heartbeat))
+
+// The stage shows a shared screen when there is one, and the speaker otherwise.
+// A screen is always the thing people are looking at — that is why it was
+// shared — so the dominant speaker steps down into the strip rather than
+// competing with it.
+const stagePeer = computed(() => screenPeer.value || dominant.value)
+const stripPeers = computed(() => (screenPeer.value ? peers.value : others.value))
 
 // Which half of the rail is showing. The roster opens first: knowing who is in
 // the call is what you need at second zero, the chat is what you need at minute
@@ -194,11 +316,62 @@ watch(
       <div class="body">
         <n-spin :show="busy" class="stage-col">
           <div class="stage-wrap">
-            <participant-tile v-if="dominant" :peer="dominant" stage />
+            <participant-tile
+              v-if="stagePeer"
+              :key="screenPeer ? `screen-${stagePeer.id}` : stagePeer.sid || stagePeer.id"
+              :peer="stagePeer"
+              stage
+              :screen="!!screenPeer"
+            />
             <div v-else class="notice idle">{{ $t('conferences.media.connecting') }}</div>
 
-            <div v-if="others.length" class="strip" data-testid="conference-strip">
-              <participant-tile v-for="p in others" :key="p.sid || p.id" :peer="p" />
+            <!-- Who holds the stage and who is behind them. The queue is the
+                 server's, not a local guess: a member who asked while a host was
+                 presenting has to see that they are waiting, not that their
+                 click did nothing. -->
+            <div
+              v-if="room.stage.value || room.queuePos.value"
+              class="stage-note"
+              data-testid="conference-stage-note"
+            >
+              <n-icon :component="DesktopOutline" :size="14" />
+              <!-- Holding the stage is not the same as filling it. Between the
+                   queue reaching us and the picker being answered the stage is
+                   already ours while nothing is captured, and saying "you are
+                   presenting" there contradicts the "start sharing" prompt
+                   printed directly underneath. -->
+              <span v-if="room.presenting.value && screenOn">
+                {{ $t('conferences.screen.youPresent') }}
+              </span>
+              <span v-else-if="room.presenting.value">
+                {{ $t('conferences.screen.stageYours') }}
+              </span>
+              <span v-else-if="otherPresenter">
+                {{ $t('conferences.screen.presenting', { name: otherPresenter }) }}
+              </span>
+              <span
+                v-if="room.queuePos.value"
+                class="qpos"
+                data-testid="conference-screen-queuepos"
+              >
+                {{ $t('conferences.screen.queued', { n: room.queuePos.value }) }}
+              </span>
+              <span v-else-if="room.queue.value.length" class="qpos">
+                {{ $t('conferences.screen.waiting', { count: room.queue.value.length }) }}
+              </span>
+            </div>
+
+            <!-- Our turn came up while we waited. The browser will only reopen
+                 the picker inside a click, so this has to be a button. -->
+            <div v-if="myTurn" class="notice turn" data-testid="conference-screen-turn">
+              <span>{{ $t('conferences.screen.yourTurn') }}</span>
+              <n-button size="tiny" type="primary" @click="startScreen()">
+                {{ $t('conferences.screen.start') }}
+              </n-button>
+            </div>
+
+            <div v-if="stripPeers.length" class="strip" data-testid="conference-strip">
+              <participant-tile v-for="p in stripPeers" :key="p.sid || p.id" :peer="p" />
             </div>
           </div>
         </n-spin>
@@ -323,6 +496,30 @@ watch(
           {{ camOn ? $t('conferences.media.camOff') : $t('conferences.media.camOn') }}
         </n-tooltip>
 
+        <n-tooltip>
+          <template #trigger>
+            <!-- Enabled even while someone else presents: pressing it is how you
+                 get into the queue, and a disabled button would read as "screen
+                 share is broken" rather than "wait your turn". -->
+            <n-button
+              circle
+              :type="screenOn ? 'primary' : wantScreen ? 'warning' : 'default'"
+              :disabled="!connected"
+              data-testid="conference-screen"
+              @click="toggleScreen()"
+            >
+              <n-icon :component="screenOn ? StopCircleOutline : DesktopOutline" />
+            </n-button>
+          </template>
+          {{
+            screenOn
+              ? $t('conferences.screen.stop')
+              : wantScreen
+                ? $t('conferences.screen.cancel')
+                : $t('conferences.screen.share')
+          }}
+        </n-tooltip>
+
         <device-menu
           :devices="devices"
           :selected="selected"
@@ -413,6 +610,23 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+/* The stage caption: who is presenting and who is behind them. Wraps rather
+   than truncates — the Russian strings are long, and "вы в очереди: 2" is the
+   half that must not be the half that disappears. */
+.stage-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text2);
+}
+.qpos {
+  color: var(--t-text3);
+}
+.notice.turn {
+  justify-content: center;
 }
 /* Auto-fill, not a fixed count: the same strip has to hold two people and ten,
    and a wrapping grid degrades to a single column on the mobile layout for
