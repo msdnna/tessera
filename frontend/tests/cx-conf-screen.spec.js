@@ -127,6 +127,7 @@ class FakeSocket {
 
 const { useConfTransport } = await import('@/composables/useConfTransport')
 const { useConfRoom } = await import('@/composables/useConfRoom')
+const { useConferenceSession } = await import('@/stores/conference')
 const { default: ParticipantTile } = await import('@/components/conference/ParticipantTile.vue')
 const { default: ConferenceRoom } = await import('@/components/conference/ConferenceRoom.vue')
 
@@ -146,6 +147,10 @@ beforeEach(() => {
   })
 })
 afterEach(() => {
+  // The session lives in the store now (#2888), so it no longer stops when a
+  // ConferenceRoom unmounts — tear it down explicitly so its media loop and
+  // socket do not leak into the next test.
+  useConferenceSession().stop()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
@@ -382,6 +387,10 @@ describe('ParticipantTile — screen mode', () => {
 
 describe('ConferenceRoom — the queue in practice', () => {
   async function room(props = {}) {
+    // The store owns the session now (#2888): it opens the socket and joins the
+    // SFU, and ConferenceRoom is the view over it. Start it before mounting, the
+    // way ConferencesView does when membership is confirmed.
+    useConferenceSession().start('c1', 'Тест')
     const w = mount(ConferenceRoom, {
       props: { conferenceId: 'c1', active: true, ended: false, ...props },
       global: {

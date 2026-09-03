@@ -9,6 +9,7 @@ import { naivePack } from '@/i18n/naive'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
 import UpdateToast from '@/components/UpdateToast.vue'
+import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
 import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
 
 const theme = useThemeStore()
@@ -111,6 +112,10 @@ onUnmounted(() => unlistenOAuth?.())
           <component :is="Component" />
         </transition>
       </router-view>
+      <!-- Minimised conference (#2888): a floating window that keeps a call alive
+           across route changes. Paints nothing unless a session is live and the
+           open route is not that call's own room. -->
+      <conference-mini-window />
     </n-message-provider>
     <!-- Global "server slow / unreachable" overlay (branded loader + retry). -->
     <app-connection-overlay />

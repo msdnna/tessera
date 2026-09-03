@@ -83,6 +83,9 @@
     "speakers": "Динамики",
     "deviceFallback": "Устройство {n}"
   },
+  "mini": {
+    "expand": "Развернуть"
+  },
   "role": {
     "host": "Ведущий",
     "member": "Участник"

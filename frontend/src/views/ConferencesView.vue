@@ -37,6 +37,7 @@ import {
 import { conferences as confApi, workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
+import { useConferenceSession } from '@/stores/conference'
 import { useFormat } from '@/composables/useFormat'
 import { useRealtime } from '@/composables/useRealtime'
 import { hueGrad, tagPillBg } from '@/utils/gradient'
@@ -48,6 +49,7 @@ const router = useRouter()
 const { t } = useI18n()
 const ws = useWorkspacesStore()
 const auth = useAuthStore()
+const session = useConferenceSession()
 const message = useMessage()
 const { firstDayOfWeek, dateTimePattern, formatDateTime } = useFormat()
 
@@ -296,6 +298,20 @@ watch(openId, (id) => {
     detailMissing.value = false
   }
 })
+
+// Membership drives the shared session (#2888). Joining this call starts it,
+// leaving stops it — and because the session lives in the store, navigating away
+// from this view leaves the call running for the mini-window rather than dropping
+// it. Only our own call is stopped here: opening another conference's lobby while
+// in a call must not tear the call down.
+watch(
+  [inRoom, () => detail.value?.conference?.id, () => detail.value?.conference?.title],
+  ([joined, id, title]) => {
+    if (joined && id) session.start(id, title)
+    else if (id && session.activeId === id) session.stop()
+  },
+  { immediate: true },
+)
 watch(filter, load)
 watch(
   () => ws.currentId,

@@ -35,6 +35,7 @@ vi.mock('@/api', () => ({ conferences: api, getAccessToken: () => null }))
 const { default: ConferencesView } = await import('@/views/ConferencesView.vue')
 const { useWorkspacesStore } = await import('@/stores/workspaces')
 const { useAuthStore } = await import('@/stores/auth')
+const { useConferenceSession } = await import('@/stores/conference')
 
 const conf = (over = {}) => ({
   id: 'c1',
@@ -103,6 +104,9 @@ afterEach(() => {
   // A wrapper left mounted keeps re-rendering on later mounts and then throws
   // inside the scheduler, which silently drops the render under test.
   while (mounted.length) mounted.pop().unmount()
+  // Membership can have started the shared session (#2888); it outlives the view
+  // by design, so stop it here to clear its reconnect timer between tests.
+  useConferenceSession().stop()
   document.body.innerHTML = ''
 })
 

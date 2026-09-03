@@ -83,6 +83,9 @@
     "speakers": "Speakers",
     "deviceFallback": "Device {n}"
   },
+  "mini": {
+    "expand": "Expand"
+  },
   "role": {
     "host": "Host",
     "member": "Participant"

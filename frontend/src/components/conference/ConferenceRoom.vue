@@ -40,14 +40,8 @@ import {
   ExpandOutline,
   ContractOutline,
 } from '@vicons/ionicons5'
-import {
-  useConfTransport,
-  mediaSupported,
-  CONNECTING,
-  ERROR,
-  UNAVAILABLE,
-} from '@/composables/useConfTransport'
-import { useConfRoom } from '@/composables/useConfRoom'
+import { mediaSupported, CONNECTING, ERROR, UNAVAILABLE } from '@/composables/useConfTransport'
+import { useConferenceSession } from '@/stores/conference'
 import ParticipantTile from './ParticipantTile.vue'
 import ParticipantsPanel from './ParticipantsPanel.vue'
 import ConferenceChat from './ConferenceChat.vue'
@@ -76,6 +70,12 @@ const props = defineProps({
 // parent's invite dialog — the roster moved in here, so the button did too.
 const emit = defineEmits(['hangup', 'invite'])
 
+// The session lives in the store now (#2888): one long-lived transport + room
+// pair the whole app shares, so leaving this view for another section no longer
+// drops the call — the floating ConferenceMiniWindow keeps it going. This
+// component is the full-screen view of that same session; the open/join and the
+// device/force-mute coordination moved up to the store, which outlives it.
+const session = useConferenceSession()
 const {
   status,
   error,
@@ -92,63 +92,17 @@ const {
   selected,
   micLevel,
   join,
-  leave,
   toggleMic,
   toggleCam,
   startScreen,
   stopScreen,
-  setMic,
   setPeerVolume,
   togglePeerMute,
   selectDevice,
   unblockAudio,
-} = useConfTransport()
+} = session.transport
 
-const room = useConfRoom()
-
-watch(
-  () => [props.active, props.ended, props.conferenceId],
-  ([active, ended]) => {
-    if (active && !ended) {
-      // The room socket opens even where media cannot: on the dev stand there
-      // is no camera to be had, and a roster that still works is more useful
-      // than a screen that gives up entirely.
-      room.open(props.conferenceId)
-      join(props.conferenceId)
-    } else {
-      room.close()
-      leave()
-    }
-  },
-  { immediate: true },
-)
-
-// Tell the room what our devices are doing. The SFU knows, but the roster is
-// built from the room socket, and a badge that waits for the first audio packet
-// shows everyone as muted for the first second of every call.
-watch([micOn, camOn], ([mic, cam]) => room.setMedia(mic, cam))
-
-// Obey a force-mute locally instead of only painting it. The server has already
-// narrowed our publish permission at the SFU, so the microphone is going quiet
-// either way — doing it here as well is what makes the toolbar button agree with
-// what the room can hear, rather than showing an active mic that publishes
-// nothing.
-watch(
-  () => room.forceMuted.value,
-  (forced) => {
-    if (forced && micOn.value) setMic(false)
-  },
-)
-
-// The call ended, or we were removed. Either way the media session has to go:
-// the room socket is already closed, and leaving the SFU connection up would
-// keep publishing into a meeting we are no longer part of.
-watch(
-  () => room.ended.value,
-  (over) => {
-    if (over) leave()
-  },
-)
+const room = session.room
 
 const handUp = computed(() => !!room.self.value?.hand_at)
 const supported = mediaSupported()
@@ -263,13 +217,11 @@ watch(
   },
 )
 
-// Leaving the section (navigating to tasks/documents) unmounts this component
-// without the active-watcher ever firing, so the room socket has to be closed
-// here too — otherwise the server keeps our presence and everyone else sees us
-// hanging in the call. Media is torn down by the transport's own unmount hook.
+// Leaving the section no longer tears the call down — the session lives in the
+// store and the mini-window takes over (#2888). Only this view's own screen-share
+// heartbeat is local to the component, so that is all there is to clean up here.
 onBeforeUnmount(() => {
   clearInterval(heartbeat)
-  room.close()
 })
 
 // The stage shows a shared screen when there is one, and the speaker otherwise.
