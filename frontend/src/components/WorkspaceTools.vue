@@ -17,6 +17,7 @@ import EmptyState from '@/components/EmptyState.vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { notificationText } from '@/utils/notificationText'
+import { notificationRoute } from '@/utils/notificationRoute'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { hueGrad } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -54,6 +55,10 @@ const showGitlab = ref(false)
 const showEstimation = ref(false)
 const showCommands = ref(false)
 const showJobs = ref(false)
+// Notifications popover: bound so opening a notification can close the feed
+// before navigating — a conference invite (#2875) opens a whole page the popover
+// would otherwise sit on top of.
+const showFeed = ref(false)
 // Browser Back closes these modals instead of leaving the board.
 useOverlayBack(showMembers, () => (showMembers.value = false))
 useOverlayBack(showGitlab, () => (showGitlab.value = false))
@@ -109,9 +114,13 @@ function openNotification(n) {
   if (n.workspace_id && n.workspace_id !== ws.currentId) {
     ws.selectWorkspace(n.workspace_id)
   }
-  if (n.task_id && n.task_board_id) {
-    router.push(`/board/${n.task_board_id}?task=${n.task_id}`)
-  }
+  const to = notificationRoute(n)
+  if (!to) return
+  // Close the feed before navigating: a task opens in a modal the popover merely
+  // overlapped, but a conference invitation (#2875) opens a whole page, and the
+  // popover would sit on top of the room it just opened.
+  showFeed.value = false
+  router.push(to)
 }
 function fmtTime(d) {
   return formatTime(d)
@@ -188,7 +197,7 @@ function noteText(n) {
     </n-tooltip>
 
     <!-- Notifications -->
-    <n-popover trigger="click" :placement="placement">
+    <n-popover v-model:show="showFeed" trigger="click" :placement="placement">
       <template #trigger>
         <n-button
           quaternary

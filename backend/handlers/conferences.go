@@ -412,8 +412,11 @@ func (h *API) EndConference(c *gin.Context) {
 // members of the same workspace: an invitation is also a permission to see the
 // meeting, and inviting an outsider would hand them one.
 //
-// The notification and push for the invitee arrive with the invitations
-// subtask; this endpoint owns the rows.
+// Each newly invited member is notified (#2875) — in-app, and through whatever
+// external channels their routing rules point at. "Newly" is the operative word:
+// the endpoint is idempotent by design (the dialog, a retry and a parallel
+// /invite call all land here), so only a row that was not already an open
+// invitation raises one.
 func (h *API) InviteConference(c *gin.Context) {
 	conf, ok := h.conferenceScope(c)
 	if !ok {
@@ -445,12 +448,24 @@ func (h *API) InviteConference(c *gin.Context) {
 		return
 	}
 	invited := make([]db.ConferenceParticipant, 0, len(req.UserIDs))
+	fresh := map[uuid.UUID]bool{}
 	err := h.inTx(c, func(q *db.Queries) error {
 		for _, uid := range req.UserIDs {
 			if _, err := q.GetMembership(c, db.GetMembershipParams{
 				WorkspaceID: conf.WorkspaceID, UserID: uid,
 			}); err != nil {
 				return err
+			}
+			// Read the seat before the upsert overwrites it: afterwards there is
+			// no way to tell a first invitation from the third retry of one, and
+			// notifying on every call would ring the same person repeatedly. A
+			// member who had left counts as fresh — re-inviting them back into a
+			// call they walked out of is a new invitation.
+			prev, perr := q.GetConferenceParticipant(c, db.GetConferenceParticipantParams{
+				ConferenceID: conf.ID, UserID: uid,
+			})
+			if errIsNoRows(perr) || (perr == nil && prev.LeftAt != nil) {
+				fresh[uid] = true
 			}
 			p, err := q.InviteConferenceParticipant(c, db.InviteConferenceParticipantParams{
 				ConferenceID: conf.ID, UserID: uid, Role: role,
@@ -470,8 +485,14 @@ func (h *API) InviteConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	msg := msgConferenceInvited(h.actorName(c), conf.Title, conf.ID.String())
 	for _, p := range invited {
 		h.broadcastAs(c, conf.WorkspaceID, "conference.participant.invited", p)
+		if fresh[p.UserID] {
+			// nil task: the notification points at the call, whose id travels in
+			// the payload. notify() skips the inviter themselves.
+			h.notify(c, p.UserID, conf.WorkspaceID, nil, kindConferenceInvite, msg)
+		}
 	}
 	c.JSON(http.StatusOK, invited)
 }

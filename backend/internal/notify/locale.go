@@ -30,8 +30,8 @@ type bundle struct {
 	fields       map[string]string
 	kinds        map[string]string
 	defaultNames map[string]string // captions for server-seeded names, by name_key (#2800)
-	fallbackKind string // subject for a kind this bundle doesn't know
-	listSep      string // how a list of changed fields is joined
+	fallbackKind string            // subject for a kind this bundle doesn't know
+	listSep      string            // how a list of changed fields is joined
 	digestTitle  string
 	digestHeader string // holds {count}
 	instant      string // duration under a second
@@ -56,6 +56,7 @@ var bundles = map[string]bundle{
 			"integration_sync_ok":      "{label}: +{created} новых, ~{updated} обновлено, за {took}",
 			"integration_sync_partial": "{label}: +{created} новых, ~{updated} обновлено, за {took} (часть действий с ошибками)",
 			"integration_sync_failed":  "{label}: синхронизация не удалась — {reason} (за {took})",
+			"conference_invited":       "{actor} приглашает вас в конференцию{ctx}",
 		},
 		fields: map[string]string{
 			"title":       "название",
@@ -71,15 +72,16 @@ var bundles = map[string]bundle{
 			"personal": "Личное пространство",
 		},
 		kinds: map[string]string{
-			"assigned":         "Назначена задача",
-			"comment":          "Новый комментарий",
-			"mention":          "Вас упомянули",
-			"updated":          "Задача изменена",
-			"moved":            "Задача перемещена",
-			"archived":         "Задача архивирована",
-			"due_soon":         "Скоро дедлайн",
-			"reminder":         "Напоминание",
-			"integration_sync": "Синхронизация завершена",
+			"assigned":          "Назначена задача",
+			"comment":           "Новый комментарий",
+			"mention":           "Вас упомянули",
+			"updated":           "Задача изменена",
+			"moved":             "Задача перемещена",
+			"archived":          "Задача архивирована",
+			"due_soon":          "Скоро дедлайн",
+			"reminder":          "Напоминание",
+			"integration_sync":  "Синхронизация завершена",
+			"conference_invite": "Приглашение в конференцию",
 		},
 		fallbackKind: "Уведомление",
 		listSep:      ", ",
@@ -105,6 +107,7 @@ var bundles = map[string]bundle{
 			"integration_sync_ok":      "{label}: +{created} new, ~{updated} updated, in {took}",
 			"integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
 			"integration_sync_failed":  "{label}: sync failed — {reason} (after {took})",
+			"conference_invited":       "{actor} invited you to a conference{ctx}",
 		},
 		fields: map[string]string{
 			"title":       "title",
@@ -120,15 +123,16 @@ var bundles = map[string]bundle{
 			"personal": "Personal space",
 		},
 		kinds: map[string]string{
-			"assigned":         "Task assigned",
-			"comment":          "New comment",
-			"mention":          "You were mentioned",
-			"updated":          "Task updated",
-			"moved":            "Task moved",
-			"archived":         "Task archived",
-			"due_soon":         "Deadline approaching",
-			"reminder":         "Reminder",
-			"integration_sync": "Sync finished",
+			"assigned":          "Task assigned",
+			"comment":           "New comment",
+			"mention":           "You were mentioned",
+			"updated":           "Task updated",
+			"moved":             "Task moved",
+			"archived":          "Task archived",
+			"due_soon":          "Deadline approaching",
+			"reminder":          "Reminder",
+			"integration_sync":  "Sync finished",
+			"conference_invite": "Conference invitation",
 		},
 		fallbackKind: "Notification",
 		listSep:      ", ",

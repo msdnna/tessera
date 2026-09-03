@@ -3,6 +3,8 @@ package handlers
 import (
 	"encoding/json"
 	"testing"
+
+	"tessera/internal/db"
 )
 
 // The legacy `text` is what old clients (and every row written before migration
@@ -96,6 +98,51 @@ func TestNotifyMsgPayload(t *testing.T) {
 func TestNotifyMsgEmptyJSON(t *testing.T) {
 	if got := string(notifyMsg{text: "плоский текст"}.json()); got != "{}" {
 		t.Fatalf("empty payload = %s, want {}", got)
+	}
+}
+
+// A conference invitation (#2875) is the one event that points at something
+// other than a task, so the id to open travels in the payload — and every
+// destination (the bell feed, the desktop deep link, the push) reads it there.
+func TestMsgConferenceInvited(t *testing.T) {
+	m := msgConferenceInvited("Алиса", "Летучка", "c-1")
+	p := decode(t, m)
+	if p["event"] != evConfInvited {
+		t.Fatalf("event = %v, want %s", p["event"], evConfInvited)
+	}
+	if p["conference_id"] != "c-1" {
+		t.Fatalf("conference_id = %v, want c-1", p["conference_id"])
+	}
+	if p["title"] != "Летучка" {
+		t.Fatalf("title = %v, want the conference title", p["title"])
+	}
+	if _, ok := p["task_number"]; ok {
+		t.Fatalf("an invitation is about no task, got task_number %v", p["task_number"])
+	}
+	if m.text != "Алиса приглашает вас в конференцию «Летучка»" {
+		t.Fatalf("legacy text = %q", m.text)
+	}
+}
+
+// notifyLink turns that payload into the URL an email or push opens. A task
+// notification keeps landing on the app root; only the invitation deep-links,
+// because it is the one that goes stale.
+func TestNotifyLinkDeepLinksAConference(t *testing.T) {
+	invite := db.Notification{Payload: msgConferenceInvited("Алиса", "Летучка", "c-1").json()}
+	if got := notifyLink("https://app/", invite); got != "https://app/conferences/c-1" {
+		t.Fatalf("conference link = %q", got)
+	}
+	// No public URL configured: there is no base to hang a path on, and half a
+	// URL is worse than none.
+	if got := notifyLink("", invite); got != "" {
+		t.Fatalf("link without a public URL = %q, want empty", got)
+	}
+	task := db.Notification{Payload: msgAssigned("Алиса", nil, "Полить цветы").json()}
+	if got := notifyLink("https://app/", task); got != "https://app/" {
+		t.Fatalf("task link = %q, want the app root", got)
+	}
+	if got := notifyLink("https://app/", db.Notification{}); got != "https://app/" {
+		t.Fatalf("payload-less link = %q, want the app root", got)
 	}
 }
 

@@ -12,7 +12,8 @@
     "reminder": "Reminder",
     "integration_sync_ok": "{label}: +{created} new, ~{updated} updated, in {took}",
     "integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
-    "integration_sync_failed": "{label}: sync failed — {reason} (after {took})"
+    "integration_sync_failed": "{label}: sync failed — {reason} (after {took})",
+    "conference_invited": "{actor} invited you to a conference{ctx}"
   },
   "field": {
     "title": "title",
@@ -33,7 +34,8 @@
     "archived": "Task archived",
     "due_soon": "Deadline approaching",
     "reminder": "Reminder",
-    "integration_sync": "Sync finished"
+    "integration_sync": "Sync finished",
+    "conference_invite": "Conference invitation"
   },
   "duration": {
     "instant": "less than a second",

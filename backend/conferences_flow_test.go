@@ -294,3 +294,76 @@ func TestConferenceValidation(t *testing.T) {
 		t.Fatalf("deleted conference: status %d, want 404\n%s", r.Status, r.Body)
 	}
 }
+
+// TestConferenceInviteNotifies covers the invitation notification (#2875): the
+// invitee learns about the call, and the row carries the id to open it by.
+//
+// Its second half is the part worth a test at all. The endpoint is idempotent by
+// design — the dialog, a retry and a parallel /invite call all land on the same
+// ON CONFLICT — so a naive "notify everyone in the request" would ring the same
+// person on every one of those.
+func TestConferenceInviteNotifies(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	s, confID := mkConference(t, owner, "Летучка")
+	guest := addMember(t, owner, s.WS)
+
+	owner.expect(t, owner.post("/conferences/"+confID+"/invite",
+		map[string]any{"user_ids": []string{guest.UserID}}), http.StatusOK)
+
+	n := waitNotification(t, guest, "conference_invite")
+	// The conference is not a task, so task_id stays empty and the id to navigate
+	// by lives in the payload instead.
+	if n["task_id"] != nil {
+		t.Fatalf("a conference invitation is task-scoped: %v", n)
+	}
+	p, _ := n["payload"].(map[string]any)
+	if p["event"] != "conference_invited" {
+		t.Fatalf("payload event = %v, want conference_invited: %v", p["event"], p)
+	}
+	if p["conference_id"] != confID {
+		t.Fatalf("payload conference_id = %v, want %s", p["conference_id"], confID)
+	}
+	// The title rides in the same key the client inlines everywhere else, so the
+	// invitee sees which meeting this is without opening it.
+	if p["title"] != "Летучка" {
+		t.Fatalf("payload title = %v, want the conference title", p["title"])
+	}
+
+	// A repeat of the same invitation is a no-op, not a second ring.
+	owner.expect(t, owner.post("/conferences/"+confID+"/invite",
+		map[string]any{"user_ids": []string{guest.UserID}}), http.StatusOK)
+	if got := countNotifications(t, guest, "conference_invite"); got != 1 {
+		t.Fatalf("re-inviting the same member produced %d notifications, want 1", got)
+	}
+
+	// Inviting yourself never notifies you — the inviter is the actor.
+	owner.expect(t, owner.post("/conferences/"+confID+"/invite",
+		map[string]any{"user_ids": []string{owner.UserID}}), http.StatusOK)
+	if got := countNotifications(t, owner, "conference_invite"); got != 0 {
+		t.Fatalf("inviting yourself produced %d notifications, want 0", got)
+	}
+
+	// Someone who joined and walked out is a fresh invitation again: being asked
+	// back into a call you left is news, unlike a duplicate of an invite that is
+	// still standing.
+	guest.expect(t, guest.post("/conferences/"+confID+"/join", nil), http.StatusOK)
+	guest.expect(t, guest.post("/conferences/"+confID+"/leave", nil), http.StatusOK)
+	owner.expect(t, owner.post("/conferences/"+confID+"/invite",
+		map[string]any{"user_ids": []string{guest.UserID}}), http.StatusOK)
+	if got := countNotifications(t, guest, "conference_invite"); got != 2 {
+		t.Fatalf("re-inviting someone who had left produced %d notifications, want 2", got)
+	}
+}
+
+// countNotifications counts the caller's notifications of one kind.
+func countNotifications(t *testing.T, c *client, kind string) int {
+	t.Helper()
+	n := 0
+	for _, row := range c.get("/notifications").listBody(t) {
+		if row["kind"] == kind {
+			n++
+		}
+	}
+	return n
+}
