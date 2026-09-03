@@ -186,7 +186,8 @@ describe('one conference', () => {
     expect(api.get).toHaveBeenCalledWith('c1')
     expect(w.find('[data-testid="conference-row"]').exists()).toBe(false)
     expect(w.text()).toContain('Ежедневная летучка')
-    expect(w.text()).toContain('Ведущий')
+    // The roster now lives in the room's own «В комнате» rail (#2881), not a
+    // separate column, so the lobby offers to join rather than listing roles.
     expect(w.find('[data-testid="conference-join"]').exists()).toBe(true)
     expect(w.find('[data-testid="conference-leave"]').exists()).toBe(false)
   })
@@ -207,7 +208,7 @@ describe('one conference', () => {
     expect(w.text()).toContain('Идёт сейчас')
   })
 
-  it('cannot join a conference that has ended', async () => {
+  it('lets you rejoin an ended conference — the room is reusable (#2879)', async () => {
     api.get.mockResolvedValue({
       data: {
         conference: conf({ status: 'ended', ended_at: '2026-09-01T10:00:00Z' }),
@@ -215,7 +216,10 @@ describe('one conference', () => {
       },
     })
     const { w } = await mountAt('/conferences/c1')
-    expect(w.find('[data-testid="conference-join"]').attributes('disabled')).toBeDefined()
+    const join = w.find('[data-testid="conference-join"]')
+    expect(join.exists()).toBe(true)
+    // Enabled: a daily standup is started again by joining, not blocked as finished.
+    expect(join.attributes('disabled')).toBeUndefined()
   })
 
   it('offers «Завершить» to the creator and withholds it from a plain member', async () => {

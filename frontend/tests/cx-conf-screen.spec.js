@@ -248,8 +248,12 @@ describe('useConfTransport — publishing a screen', () => {
     expect(await t.startScreen()).toBe(true)
 
     // Audio too: a shared tab playing a video silently for everyone else is the
-    // classic screen-share disappointment.
-    expect(room.localParticipant.screenCalls[0]).toEqual({ on: true, opts: { audio: true } })
+    // classic screen-share disappointment. Plus the quality knobs (#2885): the
+    // 'detail' content hint keeps a shared screen sharp for the remote viewers.
+    const call = room.localParticipant.screenCalls[0]
+    expect(call.on).toBe(true)
+    expect(call.opts.audio).toBe(true)
+    expect(call.opts.contentHint).toBe('detail')
     expect(t.screenOn.value).toBe(true)
     expect(t.screenPeer.value.id).toBe('me')
   })

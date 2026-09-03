@@ -266,8 +266,7 @@ const stripPeers = computed(() => (screenPeer.value ? peers.value : others.value
 // fullscreenchange so the button label follows Esc as well as our own toggle.
 const stageWrapEl = ref(null)
 const isFullscreen = ref(false)
-const fullscreenSupported =
-  typeof document !== 'undefined' && (document.fullscreenEnabled ?? false)
+const fullscreenSupported = typeof document !== 'undefined' && (document.fullscreenEnabled ?? false)
 
 function onFsChange() {
   isFullscreen.value = typeof document !== 'undefined' && !!document.fullscreenElement
@@ -354,11 +353,12 @@ watch(
         <n-spin :show="busy" class="stage-col">
           <div ref="stageWrapEl" class="stage-wrap">
             <!-- Fullscreen lives on the stage itself (#2882), most useful while a
-                 screen is shared. It fullscreens this column, not one <video>. -->
-            <n-tooltip>
+                 screen is shared. It fullscreens this column, not one <video>.
+                 v-if on the tooltip, not the button: an empty trigger slot (when
+                 fullscreen is unsupported) makes naive throw. -->
+            <n-tooltip v-if="fullscreenSupported && stagePeer">
               <template #trigger>
                 <n-button
-                  v-if="fullscreenSupported && stagePeer"
                   class="fs-btn"
                   circle
                   size="small"
@@ -369,7 +369,11 @@ watch(
                   <n-icon :component="isFullscreen ? ContractOutline : ExpandOutline" />
                 </n-button>
               </template>
-              {{ isFullscreen ? $t('conferences.media.exitFullscreen') : $t('conferences.media.fullscreen') }}
+              {{
+                isFullscreen
+                  ? $t('conferences.media.exitFullscreen')
+                  : $t('conferences.media.fullscreen')
+              }}
             </n-tooltip>
             <participant-tile
               v-if="stagePeer"
