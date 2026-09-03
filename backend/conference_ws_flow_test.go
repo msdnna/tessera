@@ -290,11 +290,15 @@ func TestConferenceWSEndEmptiesTheRoom(t *testing.T) {
 	if ended := awaitConfFrame(t, conn, "ended", 5*time.Second); ended == nil || ended["reason"] != "ended" {
 		t.Fatalf("the room was not told the call is over: %#v", ended)
 	}
-	// And a stale tab cannot dial back into it in the morning.
-	if again, status := dialConfWS(t, owner.token, confID); status != http.StatusConflict {
-		if again != nil {
-			again.Close()
-		}
-		t.Fatalf("re-dialling an ended conference: status %d, want 409", status)
+	// The room is reusable (#2879): ending it emptied the old session, but dialling
+	// back in starts a fresh one rather than being refused — this is what lets the
+	// same conference host tomorrow's standup.
+	again, status := dialConfWS(t, owner.token, confID)
+	if again == nil {
+		t.Fatalf("re-dialling a reusable conference: status %d, want a fresh connection", status)
+	}
+	defer again.Close()
+	if awaitConfFrame(t, again, "welcome", 5*time.Second) == nil {
+		t.Fatal("the reused room did not welcome the returning participant")
 	}
 }

@@ -296,19 +296,16 @@ func (h *API) DeleteConference(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// JoinConference records that the caller entered the room and flips a scheduled
-// conference to live on the first arrival.
+// JoinConference records that the caller entered the room and (re)activates the
+// conference on the first arrival.
 //
-// It answers 409 for an ended conference rather than silently reopening it: a
-// stale tab that reconnects an hour after the meeting finished must not put the
-// call back on the board as live.
+// A conference is a reusable room (#2879): joining one that is scheduled — or one
+// that a previous session left paused, or a legacy ended one — brings it live
+// again, so a daily standup lives on one conference instead of a graveyard of
+// finished ones.
 func (h *API) JoinConference(c *gin.Context) {
 	conf, ok := h.conferenceScope(c)
 	if !ok {
-		return
-	}
-	if conf.Status == "ended" {
-		c.JSON(http.StatusConflict, gin.H{"error": "conference has ended"})
 		return
 	}
 	uid := middleware.CurrentUser(c)
@@ -322,7 +319,7 @@ func (h *API) JoinConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if conf.Status == "scheduled" {
+	if conf.Status != "live" {
 		started, err := h.q.StartConference(c, conf.ID)
 		switch {
 		case err == nil:
@@ -343,8 +340,10 @@ func (h *API) JoinConference(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"conference": conf, "participant": part})
 }
 
-// LeaveConference stamps the caller's exit and ends the conference when the
-// room empties, so a call nobody is in stops showing as live on the board.
+// LeaveConference stamps the caller's exit and pauses the conference when the
+// room empties, so a call nobody is in stops showing as live on the board — but
+// stays reusable (#2879): the room drops back to 'scheduled', not 'ended', and
+// the next arrival brings it live again.
 func (h *API) LeaveConference(c *gin.Context) {
 	conf, ok := h.conferenceScope(c)
 	if !ok {
@@ -368,10 +367,12 @@ func (h *API) LeaveConference(c *gin.Context) {
 		return
 	}
 	if left == 0 && conf.Status == "live" {
-		ended, err := h.q.EndConference(c, conf.ID)
+		paused, err := h.q.PauseConference(c, conf.ID)
 		if err == nil {
-			conf = ended
-			h.dropConfRoom(conf.ID, "ended")
+			conf = paused
+			// No dropConfRoom here: the room is already empty (we were the last to
+			// leave), and the presence socket closes itself. Broadcasting the pause
+			// is enough to take the call off the board as "live".
 			h.broadcast(conf.WorkspaceID, "conference.ended", conf)
 		} else if !errors.Is(err, pgx.ErrNoRows) {
 			fail(c, err)
@@ -381,8 +382,13 @@ func (h *API) LeaveConference(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"conference": conf, "participant": part})
 }
 
-// EndConference closes a call for everyone. Moderators only — otherwise any
-// participant could hang up the meeting on the rest of the room.
+// EndConference ends the current session for everyone — a moderator hanging the
+// call up on the whole room — but keeps the conference reusable (#2879). It does
+// not archive anything: the room is paused back to 'scheduled', every attendee
+// is stamped as gone so no client bounces itself back in, and the live room is
+// dropped so connected sockets disconnect. Starting the same conference again is
+// a fresh join. Moderators only, so a plain member cannot end the meeting on the
+// rest of the room; the only irreversible action is deletion.
 func (h *API) EndConference(c *gin.Context) {
 	conf, ok := h.conferenceScope(c)
 	if !ok {
@@ -391,21 +397,27 @@ func (h *API) EndConference(c *gin.Context) {
 	if !h.requireConferenceManager(c, conf) {
 		return
 	}
-	ended, err := h.q.EndConference(c, conf.ID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Already ended — the desired state, so this is a success, not a 404.
-		c.JSON(http.StatusOK, conf)
-		return
-	}
-	if err != nil {
+	// Pause a live call back to scheduled; an already-idle one returns no row,
+	// which is not an error — "end" is still meaningful there (people may be
+	// connected to the room before the DB flipped to live).
+	paused, err := h.q.PauseConference(c, conf.ID)
+	switch {
+	case err == nil:
+		conf = paused
+	case !errors.Is(err, pgx.ErrNoRows):
 		fail(c, err)
 		return
 	}
-	// Empty the live room too (#2869): everyone still connected is told the call
-	// is over instead of sitting in a room whose conference has ended.
+	// Clear the roster and empty the live room (#2869) regardless: everyone still
+	// connected is told the session is over and their participant row stops
+	// claiming they are present, instead of a client flipping itself back in.
+	if err := h.q.EndAllConferenceParticipants(c, conf.ID); err != nil {
+		fail(c, err)
+		return
+	}
 	h.dropConfRoom(conf.ID, "ended")
-	h.broadcastAs(c, conf.WorkspaceID, "conference.ended", ended)
-	c.JSON(http.StatusOK, ended)
+	h.broadcastAs(c, conf.WorkspaceID, "conference.ended", conf)
+	c.JSON(http.StatusOK, conf)
 }
 
 // InviteConference adds workspace members to a conference. Invitees must be

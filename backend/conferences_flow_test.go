@@ -25,9 +25,10 @@ func addMember(t *testing.T, owner *client, wsID string) *client {
 }
 
 // TestConferenceLifecycle walks the whole call: scheduled → live on the first
-// join → ended when the room empties. The status is what the list screen colours
-// a row by, so each transition is checked where it actually happens rather than
-// inferred from the endpoint returning 200.
+// join → back to scheduled when the room empties, because a conference is a
+// reusable room (#2879) rather than a one-shot meeting. The status is what the
+// list screen colours a row by, so each transition is checked where it actually
+// happens rather than inferred from the endpoint returning 200.
 func TestConferenceLifecycle(t *testing.T) {
 	t.Parallel()
 	owner := signup(t)
@@ -54,28 +55,35 @@ func TestConferenceLifecycle(t *testing.T) {
 	}
 
 	left := owner.expect(t, owner.post("/conferences/"+confID+"/leave", nil), http.StatusOK)
-	if st := left["conference"].(map[string]any)["status"]; st != "ended" {
-		t.Fatalf("status after the room emptied = %q, want ended", st)
+	if st := left["conference"].(map[string]any)["status"]; st != "scheduled" {
+		t.Fatalf("status after the room emptied = %q, want scheduled (reusable room)", st)
 	}
 
-	// A stale tab that reconnects after the meeting is over must not put the
-	// call back on the board as live.
-	if r := owner.post("/conferences/"+confID+"/join", nil); r.Status != http.StatusConflict {
-		t.Fatalf("re-joining an ended conference: status %d, want 409\n%s", r.Status, r.Body)
+	// The room is reusable: joining the same conference again brings it back to
+	// life instead of being refused as finished — this is what lets a daily
+	// standup live on one conference.
+	rejoined := owner.expect(t, owner.post("/conferences/"+confID+"/join", nil), http.StatusOK)
+	if st := rejoined["conference"].(map[string]any)["status"]; st != "live" {
+		t.Fatalf("re-joining a paused conference = %q, want live", st)
 	}
+	owner.expect(t, owner.post("/conferences/"+confID+"/leave", nil), http.StatusOK)
 
-	list := owner.get("/workspaces/" + s.WS + "/conferences?status=ended").listBody(t)
+	list := owner.get("/workspaces/" + s.WS + "/conferences?status=scheduled").listBody(t)
 	if len(list) != 1 || list[0]["id"] != confID {
-		t.Fatalf("status filter did not return the ended conference: %#v", list)
+		t.Fatalf("status filter did not return the reusable conference: %#v", list)
+	}
+	if ended := owner.get("/workspaces/" + s.WS + "/conferences?status=ended").listBody(t); len(ended) != 0 {
+		t.Fatalf("a reusable conference must not show up as ended: %#v", ended)
 	}
 	if live := owner.get("/workspaces/" + s.WS + "/conferences?status=live").listBody(t); len(live) != 0 {
-		t.Fatalf("ended conference still listed as live: %#v", live)
+		t.Fatalf("an empty conference still listed as live: %#v", live)
 	}
 }
 
-// TestConferenceRoomEmptiesOnlyWhenEveryoneLeft guards the rule that ends a call
-// automatically: it is "the room is empty", not "somebody left". Getting this
-// wrong drops the remaining participants out of a meeting that is still running.
+// TestConferenceRoomEmptiesOnlyWhenEveryoneLeft guards the rule that pauses a
+// call automatically: it is "the room is empty", not "somebody left". Getting
+// this wrong drops the remaining participants out of a meeting that is still
+// running.
 func TestConferenceRoomEmptiesOnlyWhenEveryoneLeft(t *testing.T) {
 	t.Parallel()
 	owner := signup(t)
@@ -91,8 +99,8 @@ func TestConferenceRoomEmptiesOnlyWhenEveryoneLeft(t *testing.T) {
 	}
 
 	last := guest.expect(t, guest.post("/conferences/"+confID+"/leave", nil), http.StatusOK)
-	if st := last["conference"].(map[string]any)["status"]; st != "ended" {
-		t.Fatalf("status after the last participant left = %q, want ended", st)
+	if st := last["conference"].(map[string]any)["status"]; st != "scheduled" {
+		t.Fatalf("status after the last participant left = %q, want scheduled (reusable room)", st)
 	}
 }
 
@@ -125,11 +133,13 @@ func TestConferenceModerationIsServerSide(t *testing.T) {
 	member.expect(t, member.post("/conferences/"+confID+"/invite",
 		map[string]any{"user_ids": []string{owner.UserID}}), http.StatusOK)
 
+	// Ending the session pauses the reusable room back to scheduled (#2879), not
+	// to a terminal "ended" — the meeting can be started again.
 	ended := owner.expect(t, owner.post("/conferences/"+confID+"/end", nil), http.StatusOK)
-	if ended["status"] != "ended" {
-		t.Fatalf("host ending the call: status %q", ended["status"])
+	if ended["status"] != "scheduled" {
+		t.Fatalf("host ending the call: status %q, want scheduled", ended["status"])
 	}
-	// Ending an already-ended call is the desired state, not a 404 — the button
+	// Ending an already-idle call is the desired state, not a 404 — the button
 	// may well be clicked twice, or by two moderators at once.
 	owner.expect(t, owner.post("/conferences/"+confID+"/end", nil), http.StatusOK)
 }

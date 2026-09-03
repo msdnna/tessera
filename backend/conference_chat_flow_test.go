@@ -327,22 +327,24 @@ func TestConferenceChatNudgesTheRoom(t *testing.T) {
 	}
 }
 
-// TestConferenceChatIsReadOnlyAfterTheCall stops a tab left open overnight from
-// appending to a meeting nobody will look at again. Reading stays open: the
-// chat is the closest thing the call has to a protocol.
-func TestConferenceChatIsReadOnlyAfterTheCall(t *testing.T) {
+// TestConferenceChatSurvivesEndingTheSession: a conference is a reusable room
+// (#2879), so ending a session pauses it rather than archiving it — the chat, the
+// closest thing the call has to a protocol, stays writable and keeps its history
+// for the next session on the same conference.
+func TestConferenceChatSurvivesEndingTheSession(t *testing.T) {
 	t.Parallel()
 	owner := signup(t)
-	_, confID := mkConference(t, owner, "Завершённая летучка")
+	_, confID := mkConference(t, owner, "Ежедневная летучка")
 	owner.expect(t, owner.post("/conferences/"+confID+"/messages",
 		map[string]any{"body": "во время"}), http.StatusCreated)
 	owner.expect(t, owner.post("/conferences/"+confID+"/end", nil), http.StatusOK)
 
-	if r := owner.post("/conferences/"+confID+"/messages", map[string]any{"body": "после"}); r.Status != http.StatusConflict {
-		t.Fatalf("posting to an ended call: status %d, want 409\n%s", r.Status, r.Body)
-	}
+	// The room can be used again, so the chat is not sealed: a follow-up message
+	// lands and the earlier one is still there.
+	owner.expect(t, owner.post("/conferences/"+confID+"/messages",
+		map[string]any{"body": "после"}), http.StatusCreated)
 	msgs, _ := chatPage(t, owner, "/conferences/"+confID+"/messages")
-	if len(msgs) != 1 {
-		t.Fatalf("an ended call's chat has %d messages, want the 1 sent during it", len(msgs))
+	if len(msgs) != 2 {
+		t.Fatalf("the reusable call's chat has %d messages, want both", len(msgs))
 	}
 }

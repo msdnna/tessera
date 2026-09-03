@@ -452,11 +452,12 @@ onMounted(() => {
                   {{ $t(`conferences.status.${detail.conference.status}`) }}
                 </span>
               </span>
+              <!-- Always enabled: a conference is a reusable room (#2879), so even
+                   a legacy "ended" one is joined rather than being a dead end. -->
               <n-button
                 v-if="!inRoom"
                 type="primary"
                 :loading="busy"
-                :disabled="detail.conference.status === 'ended'"
                 data-testid="conference-join"
                 @click="join"
               >
@@ -465,8 +466,10 @@ onMounted(() => {
               <n-button v-else :loading="busy" data-testid="conference-leave" @click="leave">
                 {{ $t('conferences.actions.leave') }}
               </n-button>
+              <!-- "Завершить" ends the ongoing session for everyone; it only makes
+                   sense while the call is live (an idle room is already ended). -->
               <n-popconfirm
-                v-if="canModerate && detail.conference.status !== 'ended'"
+                v-if="canModerate && detail.conference.status === 'live'"
                 :positive-text="$t('conferences.actions.end')"
                 @positive-click="end"
               >

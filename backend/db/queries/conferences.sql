@@ -39,21 +39,39 @@ SET title = $2, description = $3, scheduled_at = $4, task_id = $5, recording_ttl
 WHERE id = $1
 RETURNING *;
 
--- StartConference is idempotent on purpose: everyone's client calls join at
--- once when a meeting begins, and the first caller is whoever's network was
--- fastest. The WHERE keeps started_at at the true first join instead of letting
--- the last racer overwrite it, and refuses to resurrect a call that has ended.
+-- StartConference (re)activates a room. It is idempotent on purpose: everyone's
+-- client calls join at once when a meeting begins, and the first caller is
+-- whoever's network was fastest — the COALESCE keeps started_at at that first
+-- join instead of letting the last racer overwrite it. status <> 'live' (rather
+-- than = 'scheduled') is what makes a conference reusable (#2879): a call that
+-- was paused back to 'scheduled' — or a legacy 'ended' one — starts again on the
+-- next join instead of being a dead room. ended_at is cleared so a restarted
+-- call does not carry the previous session's end time.
 -- name: StartConference :one
 UPDATE conferences
-SET status = 'live', started_at = COALESCE(started_at, now()), updated_at = now()
-WHERE id = $1 AND status = 'scheduled'
+SET status = 'live', started_at = COALESCE(started_at, now()), ended_at = NULL, updated_at = now()
+WHERE id = $1 AND status <> 'live'
 RETURNING *;
 
--- name: EndConference :one
+-- PauseConference ends the current session without ending the conference
+-- (#2879): the room goes back to 'scheduled' so it can be joined again, which is
+-- what lets one conference serve a daily standup. started_at/ended_at are wiped
+-- so the next session is timed from its own start. Only a live call is paused;
+-- an already-idle one returns no row, which the caller treats as success.
+-- name: PauseConference :one
 UPDATE conferences
-SET status = 'ended', ended_at = COALESCE(ended_at, now()), updated_at = now()
-WHERE id = $1 AND status <> 'ended'
+SET status = 'scheduled', started_at = NULL, ended_at = NULL, updated_at = now()
+WHERE id = $1 AND status = 'live'
 RETURNING *;
+
+-- EndAllConferenceParticipants stamps everyone still in the room as gone, used
+-- when a moderator ends the session for all (#2879). Without it the participant
+-- rows keep saying people are present, and each client would flip itself back to
+-- "in room" and rejoin the call the End button just closed.
+-- name: EndAllConferenceParticipants :exec
+UPDATE conference_participants
+SET left_at = now()
+WHERE conference_id = $1 AND joined_at IS NOT NULL AND left_at IS NULL;
 
 -- name: DeleteConference :exec
 DELETE FROM conferences WHERE id = $1;
