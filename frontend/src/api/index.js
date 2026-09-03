@@ -498,6 +498,36 @@ export const conferences = {
   // expires_in }; the API key never leaves the backend. skipLoader because the
   // room screen shows its own connecting state — the global bar would flash.
   token: (id) => api.post(`/conferences/${id}/token`, {}, { skipLoader: true }),
+
+  // In-call chat (#2873). Answers { messages, has_more }, oldest first — the
+  // rail draws top to bottom. Paging back is a (created_at, id) cursor rather
+  // than an offset: the conversation grows while it is read, and an offset
+  // would skip or repeat a line every time somebody sends one.
+  messages: (id, params) => api.get(`/conferences/${id}/messages`, { params, skipLoader: true }),
+  // Text only — the common case, and it should not pay for a multipart encoder.
+  postMessage: (id, body) =>
+    api.post(`/conferences/${id}/messages`, { body }, { skipLoader: true }),
+  // With files. FormData, so the browser sets its own multipart boundary — do
+  // not add a Content-Type header here, an explicit one arrives without it and
+  // the server cannot parse the form.
+  postMessageWithFiles: (id, body, files) => {
+    const fd = new FormData()
+    fd.append('body', body)
+    for (const f of files) fd.append('files', f)
+    return api.post(`/conferences/${id}/messages`, fd, { skipLoader: true })
+  },
+  removeMessage: (messageId) => api.delete(`/conference-messages/${messageId}`),
+  // The bytes of one attachment, fetched with our bearer credential. Images are
+  // rendered from the blob this returns rather than through an <img src> at the
+  // API: an <img> can send neither a header nor a cookie the desktop client has,
+  // and the alternative — serving call attachments from a public URL guarded
+  // only by an unguessable name — is a weaker guarantee than a private meeting
+  // deserves.
+  attachment: (attachmentId) =>
+    api.get(`/conference-attachments/${attachmentId}`, {
+      responseType: 'blob',
+      skipLoader: true,
+    }),
 }
 
 export const reminders = {

@@ -70,6 +70,17 @@ type ConferenceMessage struct {
 	CreatedAt    time.Time  `json:"created_at"`
 }
 
+type ConferenceMessageAttachment struct {
+	ID          uuid.UUID  `json:"id"`
+	MessageID   uuid.UUID  `json:"message_id"`
+	UploaderID  *uuid.UUID `json:"uploader_id"`
+	Filename    string     `json:"filename"`
+	ContentType string     `json:"content_type"`
+	Size        int64      `json:"size"`
+	StoragePath string     `json:"storage_path"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
 type ConferenceParticipant struct {
 	ConferenceID uuid.UUID  `json:"conference_id"`
 	UserID       uuid.UUID  `json:"user_id"`

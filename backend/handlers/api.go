@@ -110,6 +110,20 @@ func (h *API) dropConfRoom(confID uuid.UUID, reason string) {
 	}
 }
 
+// notifyConfRoom nudges everyone currently in a conference that something they
+// are looking at changed outside the socket — today the chat (#2873).
+//
+// The frame carries no payload on purpose: the room evicts a participant whose
+// buffer overflows, so putting message bodies (let alone attachments) on that
+// channel would let a busy conversation disconnect the people having it. A
+// conference nobody has open has no room and this is a no-op, which is correct —
+// the next arrival loads the chat over HTTP anyway.
+func (h *API) notifyConfRoom(confID uuid.UUID, msgType string) {
+	if h.confRooms != nil {
+		h.confRooms.Notify(confID, msgType)
+	}
+}
+
 // NewAPI wires the shared handler dependencies, building the secret sealer from
 // the configured encryption key.
 func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, encryptionKey string, mailer mail.Mailer, publicURL, fcmCredentialsFile string) *API {

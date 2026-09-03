@@ -90,6 +90,19 @@
     "ended": "Conference ended",
     "deleted": "Conference deleted"
   },
+  "chat": {
+    "tab": "Chat",
+    "empty": "No messages yet",
+    "placeholder": "Write to the chat…",
+    "attach": "Attach a file",
+    "download": "Download",
+    "delete": "Delete message",
+    "loadOlder": "Show earlier messages",
+    "unknownAuthor": "Unknown author",
+    "closed": "The conference has ended — the chat is read-only",
+    "fileTooBig": "“{name}” is larger than 25 MB",
+    "tooManyFiles": "At most {count} files per message"
+  },
   "panel": {
     "title": "In the room: {count}",
     "empty": "Nobody is in the room yet",

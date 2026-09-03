@@ -557,6 +557,19 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// (auto_create is off) so the token has somewhere to go.
 			protected.POST("/conferences/:id/token", rh.ConferenceToken)
 
+			// In-call chat (#2873). It is plain HTTP rather than more frames on
+			// the room socket: that socket evicts a participant whose buffer
+			// overflows, and chat bodies on it would let a busy conversation
+			// disconnect the people having it. The socket only nudges.
+			//
+			// Deleting a message and downloading its file hang off their own ids,
+			// not off /conferences/:id — gin's tree would read the second :id in
+			// one path as the first one in another.
+			protected.GET("/conferences/:id/messages", rh.ListConferenceMessages)
+			protected.POST("/conferences/:id/messages", rh.PostConferenceMessage)
+			protected.DELETE("/conference-messages/:id", rh.DeleteConferenceMessage)
+			protected.GET("/conference-attachments/:id", rh.DownloadConferenceMessageAttachment)
+
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)

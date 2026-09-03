@@ -13,10 +13,12 @@
 // roster can paint it, and it obeys a force-mute the room reports by actually
 // stopping the microphone.
 //
-// The chat rail lands in #2873 and screen share in #2874; the layout already
-// leaves room for them rather than being rebuilt later.
-import { computed, watch } from 'vue'
-import { NButton, NIcon, NSpin, NTooltip } from 'naive-ui'
+// The right-hand rail carries both the roster and the chat (#2873), switched by
+// a tab rather than stacked: at 264px they would each get half a panel, and the
+// participant rows already have a fixed ideal width. Screen share lands in
+// #2874.
+import { computed, ref, watch } from 'vue'
+import { NBadge, NButton, NIcon, NSpin, NTooltip } from 'naive-ui'
 import {
   MicOutline,
   MicOffOutline,
@@ -37,6 +39,7 @@ import {
 import { useConfRoom } from '@/composables/useConfRoom'
 import ParticipantTile from './ParticipantTile.vue'
 import ParticipantsPanel from './ParticipantsPanel.vue'
+import ConferenceChat from './ConferenceChat.vue'
 import DeviceMenu from './DeviceMenu.vue'
 
 const props = defineProps({
@@ -125,6 +128,33 @@ watch(
 const handUp = computed(() => !!room.self.value?.hand_at)
 const supported = mediaSupported()
 const busy = computed(() => status.value === CONNECTING)
+
+// Which half of the rail is showing. The roster opens first: knowing who is in
+// the call is what you need at second zero, the chat is what you need at minute
+// three.
+const rail = ref('people')
+// Unread count while the chat is hidden. The room's nudge is payload-free, so
+// this counts nudges, not messages — close enough for a dot that only says
+// "something was said", and it costs no extra request.
+const unread = ref(0)
+watch(
+  () => room.chatNudge.value,
+  () => {
+    if (rail.value !== 'chat') unread.value += 1
+  },
+)
+watch(rail, (tab) => {
+  if (tab === 'chat') unread.value = 0
+})
+// Leaving the call resets the badge: a "3 unread" carried into the next meeting
+// would point at a conversation this rail is no longer showing.
+watch(
+  () => props.active,
+  () => {
+    unread.value = 0
+    rail.value = 'people'
+  },
+)
 </script>
 
 <template>
@@ -174,10 +204,38 @@ const busy = computed(() => status.value === CONNECTING)
         </n-spin>
 
         <aside class="rail">
-          <div class="rail-title">
-            {{ $t('conferences.panel.title', { count: room.participants.value.length }) }}
+          <div class="rail-tabs">
+            <!-- `ngrad` opts these out of the accent-gradient rule in main.css:
+                 it paints any primary button that is not ghost/dashed/secondary
+                 with a solid gradient, and on a *quaternary* primary that lands
+                 accent text on an accent block — the active tab loses its label
+                 entirely. -->
+            <n-button
+              size="tiny"
+              :type="rail === 'people' ? 'primary' : 'default'"
+              quaternary
+              class="ngrad"
+              data-testid="conference-rail-people"
+              @click="rail = 'people'"
+            >
+              {{ $t('conferences.panel.title', { count: room.participants.value.length }) }}
+            </n-button>
+            <n-badge :value="unread" :max="9" :show="rail !== 'chat' && unread > 0" dot>
+              <n-button
+                size="tiny"
+                :type="rail === 'chat' ? 'primary' : 'default'"
+                quaternary
+                class="ngrad"
+                data-testid="conference-rail-chat"
+                @click="rail = 'chat'"
+              >
+                {{ $t('conferences.chat.tab') }}
+              </n-button>
+            </n-badge>
           </div>
+
           <participants-panel
+            v-show="rail === 'people'"
             :people="room.participants.value"
             :peers="peers"
             :me-id="room.userId.value"
@@ -186,6 +244,16 @@ const busy = computed(() => status.value === CONNECTING)
             @local-mute="togglePeerMute"
             @kick="room.kick"
             @force-mute="room.forceMute"
+          />
+          <!-- v-show, not v-if: switching back to the chat must not throw away
+               the loaded history and refetch it every time. -->
+          <conference-chat
+            v-show="rail === 'chat'"
+            :conference-id="conferenceId"
+            :nudge="room.chatNudge.value"
+            :readonly="ended"
+            :can-moderate="room.isHost.value"
+            :visible="rail === 'chat'"
           />
         </aside>
       </div>
@@ -312,8 +380,13 @@ const busy = computed(() => status.value === CONNECTING)
   flex: 1;
   min-width: 0;
 }
+/* A column, not a plain block: the chat inside brings its own scroller for the
+   log and has to keep its composer pinned under it. overflow-y stays for the
+   roster, which is a flat list and does want to scroll as a whole. */
 .rail {
   flex: none;
+  display: flex;
+  flex-direction: column;
   width: 264px;
   max-height: 60vh;
   overflow-y: auto;
@@ -321,10 +394,11 @@ const busy = computed(() => status.value === CONNECTING)
   border: 1px solid var(--t-border);
   border-radius: 10px;
 }
-.rail-title {
-  padding: 0 8px 6px;
-  font-size: 12px;
-  color: var(--t-text3);
+.rail-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px 6px;
 }
 @media (max-width: 900px) {
   .body {
