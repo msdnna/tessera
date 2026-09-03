@@ -74,20 +74,35 @@ type FileInfo struct {
 func (f FileInfo) Length() time.Duration { return time.Duration(f.Duration) }
 
 // EgressInfo is one recording job, at whatever stage it has reached.
+//
+// THE TAGS ARE PROTO NAMES (snake_case), not the lowerCamelCase JSON names of
+// the same proto — livekit-server serialises its twirp replies with proto
+// names, so `egress_id` is what arrives and `egressId` matches nothing. The
+// request side is unaffected and stays camelCase: protojson's *parser* accepts
+// either spelling, and only the replies are one-sided.
+//
+// This was not a typo caught in review; it cost a whole diagnosis. A reply
+// parsed under camelCase tags is not an error — it is a zero-valued struct with
+// a plausible Status (single-word keys spell the same in both conventions), so
+// a start call returned "success" with an empty EgressID, the recording row was
+// written with no handle on its job, and the stop that followed reported
+// "recording was never started" while the egress kept writing an mp4 nobody was
+// tracking. Whatever else changes here, keep the round-trip test that pins a
+// real captured reply.
 type EgressInfo struct {
-	EgressID string `json:"egressId"`
-	RoomName string `json:"roomName"`
+	EgressID string `json:"egress_id"`
+	RoomName string `json:"room_name"`
 	Status   string `json:"status"`
 	// StartedAt and EndedAt are unix NANOSECONDS, unlike Room.CreationTime
 	// next door, which is unix seconds. Use the Time methods.
-	StartedAt nanoSt `json:"startedAt"`
-	EndedAt   nanoSt `json:"endedAt"`
+	StartedAt nanoSt `json:"started_at"`
+	EndedAt   nanoSt `json:"ended_at"`
 	// Error carries the worker's reason for a failed egress. Worth storing:
 	// it is the only place a "Chrome could not join" ever shows up on our side.
 	Error string `json:"error"`
 	// Files holds one entry per file output. We always request exactly one, so
 	// File() is the accessor to use.
-	Files []FileInfo `json:"fileResults"`
+	Files []FileInfo `json:"file_results"`
 }
 
 // File returns the single output we asked for, or a zero FileInfo while the

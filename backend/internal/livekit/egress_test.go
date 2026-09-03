@@ -40,7 +40,7 @@ func serveEgress(t *testing.T, status int, reply string) (*Client, *struct {
 }
 
 func TestStartEgressUsesEgressServiceAndRecordGrant(t *testing.T) {
-	c, got := serveEgress(t, http.StatusOK, `{"egressId":"EG_1","roomName":"conf_x"}`)
+	c, got := serveEgress(t, http.StatusOK, `{"egress_id":"EG_1","room_name":"conf_x"}`)
 	info, err := c.StartRoomCompositeEgress(context.Background(), "conf_x", EgressOptions{
 		Filepath: "/data/uploads/conf/abc/rec-1.mp4",
 	})
@@ -68,7 +68,7 @@ func TestStartEgressUsesEgressServiceAndRecordGrant(t *testing.T) {
 }
 
 func TestStartEgressRequestShape(t *testing.T) {
-	c, got := serveEgress(t, http.StatusOK, `{"egressId":"EG_1"}`)
+	c, got := serveEgress(t, http.StatusOK, `{"egress_id":"EG_1"}`)
 	if _, err := c.StartRoomCompositeEgress(context.Background(), "conf_x", EgressOptions{
 		Filepath: "/data/uploads/conf/abc/rec-1.mp4",
 	}); err != nil {
@@ -117,7 +117,7 @@ func TestStartingEgressHasNoStatusField(t *testing.T) {
 	// fields, so a just-accepted egress arrives with no "status" key at all.
 	// Left raw that is an empty string no switch matches, and a poller would
 	// treat a healthy recording as being in an unknown state.
-	c, _ := serveEgress(t, http.StatusOK, `{"egressId":"EG_1","roomName":"conf_x"}`)
+	c, _ := serveEgress(t, http.StatusOK, `{"egress_id":"EG_1","room_name":"conf_x"}`)
 	info, err := c.StartRoomCompositeEgress(context.Background(), "conf_x", EgressOptions{Filepath: "/x.mp4"})
 	if err != nil {
 		t.Fatalf("StartRoomCompositeEgress: %v", err)
@@ -137,10 +137,10 @@ func TestEgressInfoDecodesProtojsonInt64s(t *testing.T) {
 	// started_at, so it is a nanosecond span rather than seconds.
 	const startedNs = int64(1756848000_000000000)
 	c, _ := serveEgress(t, http.StatusOK, `{"items":[{
-		"egressId":"EG_1","roomName":"conf_x","status":"EGRESS_COMPLETE",
-		"startedAt":"1756848000000000000","endedAt":"1756848120000000000",
-		"fileResults":[{"filename":"/data/uploads/conf/abc/rec-1.mp4",
-		                "size":"10485760","duration":"120000000000"}]}]}`)
+		"egress_id":"EG_1","room_name":"conf_x","status":"EGRESS_COMPLETE",
+		"started_at":"1756848000000000000","ended_at":"1756848120000000000",
+		"file_results":[{"filename":"/data/uploads/conf/abc/rec-1.mp4",
+		                 "size":"10485760","duration":"120000000000"}]}]}`)
 
 	info, err := c.GetEgress(context.Background(), "EG_1")
 	if err != nil {
@@ -158,6 +158,46 @@ func TestEgressInfoDecodesProtojsonInt64s(t *testing.T) {
 	}
 	if file.Length() != 2*time.Minute {
 		t.Errorf("duration = %v, want 2m — nanoseconds read as some other unit", file.Length())
+	}
+}
+
+// lkListEgressReply is a reply captured verbatim from livekit-server v1.13.6 on
+// the recording stand (#2877, `make recording-e2e-up`), trimmed only of the
+// fields we never read. It is here because the field NAMES are the point: every
+// fixture above could be rewritten in whatever spelling the code happens to
+// expect, and the tests would stay green while the client read nothing.
+const lkListEgressReply = `{"items":[{"egress_id":"EG_FcGa6u6e35LH",
+  "room_id":"RM_uHHCRYTMuCNz", "room_name":"conf_57236268-dd7d-46ad-9fef-5b0c130d5f8f",
+  "source_type":"EGRESS_SOURCE_TYPE_WEB", "status":"EGRESS_COMPLETE",
+  "started_at":"1788477633147899026", "ended_at":"1788477663147899026",
+  "file_results":[{"filename":"/uploads/rec/57236268/1f787e4c.mp4",
+                   "started_at":"1788477636756122716", "ended_at":"1788477663147899026",
+                   "duration":"30000000000", "size":"524288", "location":""}],
+  "error":"", "error_code":0, "details":""}], "next_page_token":null}`
+
+func TestEgressInfoDecodesARealLiveKitReply(t *testing.T) {
+	// The regression this pins: livekit-server writes twirp replies with PROTO
+	// names, so `egress_id` arrives and camelCase tags match nothing. Decoding
+	// such a reply does not fail — it yields a zero-valued struct whose Status
+	// still looks sane, because single-word keys spell the same either way. On
+	// the stand that meant a start call "succeeded" with an empty egress id,
+	// the recording row lost its only handle on the job, and the stop that
+	// followed reported "recording was never started" while an untracked egress
+	// went on writing an mp4.
+	c, _ := serveEgress(t, http.StatusOK, lkListEgressReply)
+	info, err := c.GetEgress(context.Background(), "EG_FcGa6u6e35LH")
+	if err != nil {
+		t.Fatalf("GetEgress on a real reply: %v", err)
+	}
+	if info.RoomName != "conf_57236268-dd7d-46ad-9fef-5b0c130d5f8f" {
+		t.Errorf("room = %q", info.RoomName)
+	}
+	if info.StartedAt.Time().IsZero() || info.EndedAt.Time().IsZero() {
+		t.Errorf("timestamps unread: started=%v ended=%v", info.StartedAt.Time(), info.EndedAt.Time())
+	}
+	file := info.File()
+	if file.Filename == "" || file.Size != 512<<10 || file.Length() != 30*time.Second {
+		t.Errorf("file = %+v, want the captured mp4", file)
 	}
 }
 

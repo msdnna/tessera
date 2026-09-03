@@ -102,7 +102,7 @@ func TestListParticipantsDecodesProtojsonTimestamps(t *testing.T) {
 	// unmarshal string", and the whole participant list is lost over a
 	// timestamp nobody asked for.
 	c, _ := serve(t, `{"participants":[
-		{"sid":"PA_1","identity":"user-uuid","name":"Иван","state":"ACTIVE","joinedAt":"1756848000",
+		{"sid":"PA_1","identity":"user-uuid","name":"Иван","state":"ACTIVE","joined_at":"1756848000",
 		 "tracks":[{"sid":"TR_1","type":"AUDIO","source":"MICROPHONE","muted":false}]}]}`)
 
 	people, err := c.ListParticipants(context.Background(), "conf_x")
@@ -124,13 +124,20 @@ func TestListParticipantsDecodesProtojsonTimestamps(t *testing.T) {
 }
 
 func TestCreateRoomOmitsUnsetCeilings(t *testing.T) {
-	c, got := serve(t, `{"sid":"RM_1","name":"conf_x","numParticipants":0,"creationTime":"1756848000"}`)
+	// Reply captured from livekit-server v1.13.6 (#2877): PROTO field names, not
+	// the camelCase JSON names of the same proto. Read under camelCase tags this
+	// decodes without error into zeros, which is how an empty egress id once
+	// reached the database — see TestEgressInfoDecodesARealLiveKitReply.
+	c, got := serve(t, `{"sid":"RM_1","name":"conf_x","num_participants":2,"creation_time":"1756848000"}`)
 	room, err := c.CreateRoom(context.Background(), "conf_x", RoomOptions{})
 	if err != nil {
 		t.Fatalf("CreateRoom: %v", err)
 	}
 	if room.SID != "RM_1" || room.Name != "conf_x" {
 		t.Errorf("room = %+v", room)
+	}
+	if room.NumParticipants != 2 || room.CreationTime.Time().Unix() != 1756848000 {
+		t.Errorf("room = %+v — multi-word fields read as zero", room)
 	}
 	// Sending zeros would override the server config (deploy/livekit.yaml) with
 	// "no participants allowed, tear down immediately", which is not what an

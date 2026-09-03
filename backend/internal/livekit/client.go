@@ -188,11 +188,17 @@ func twirpError(status int, body []byte) error {
 }
 
 // Room is the subset of LiveKit's Room we care about.
+//
+// Multi-word tags are PROTO NAMES (snake_case): livekit-server writes its twirp
+// replies with proto names, so `num_participants` is the key that arrives and
+// `numParticipants` silently reads as zero. See the EgressInfo comment in
+// egress.go for what that costs. Requests stay camelCase — protojson's parser
+// takes either.
 type Room struct {
 	SID             string  `json:"sid"`
 	Name            string  `json:"name"`
-	NumParticipants int     `json:"numParticipants"`
-	CreationTime    epochSt `json:"creationTime"`
+	NumParticipants int     `json:"num_participants"`
+	CreationTime    epochSt `json:"creation_time"`
 }
 
 // RoomOptions are the per-room ceilings passed at creation. Zero values mean
@@ -250,7 +256,7 @@ type Participant struct {
 	Identity string      `json:"identity"`
 	Name     string      `json:"name"`
 	State    string      `json:"state"`
-	JoinedAt epochSt     `json:"joinedAt"`
+	JoinedAt epochSt     `json:"joined_at"`
 	Tracks   []TrackInfo `json:"tracks"`
 	Metadata string      `json:"metadata"`
 }

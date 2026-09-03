@@ -23,13 +23,21 @@
 #
 #   faithful — the egress image and its config file (deploy/egress.yaml, mounted
 #     verbatim), Chrome sandboxing with the widened seccomp profile, the Redis
-#     dispatch path, and the uid/gid arrangement on the recordings directory
-#     (owner = the backend, group 0, setgid) that lets two containers with no
-#     shared identity write into one folder;
-#   not faithful — ports, ICE (TCP only, see livekit.e2e.yaml), and the uploads
+#     dispatch path, egress sitting next to the SFU as an ordinary container, and
+#     the uid/gid arrangement on the recordings directory (owner = the backend,
+#     group 0, setgid) that lets two containers with no shared identity write
+#     into one folder;
+#   not faithful — ports; the publisher, which in production is a real
+#     participant's browser and here is livekit-cli's demo track; and the uploads
 #     directory, which is a host bind here instead of a named volume so the
 #     throwaway backend from `make e2e-backend-up` — a plain host process — can
 #     read the finished mp4 back.
+#
+# THE MEDIA PLANE DOES NOT REACH THE HOST, and that is deliberate — see the
+# header of livekit.recording.e2e.yaml for why a loopback SFU address makes the
+# recording structurally impossible. Everything that carries media (publisher,
+# SFU, egress) is a container on this network; the host only speaks signalling
+# and twirp through the one published port.
 name: tessera-recording-e2e
 
 services:
@@ -47,14 +55,14 @@ services:
       timeout: 2s
       retries: 15
 
-  # deploy/livekit.recording.e2e.yaml — the throwaway SFU of the web suite's media
-  # tier on a second port pair, so both can run at once. Recording adds exactly one
-  # thing to that config: REDIS_HOST, which is what puts the server into the
-  # multi-node mode where an egress store exists at all.
+  # deploy/livekit.recording.e2e.yaml — a throwaway SFU on its own port, so this
+  # can run beside the web suite's media tier. Recording adds exactly one thing to
+  # that config: REDIS_HOST, which is what puts the server into the multi-node
+  # mode where an egress store exists at all.
   #
-  # The publishes are one-to-one on purpose and must stay that way: node_ip is
-  # loopback, so the ICE candidate handed to the browser carries the container's
-  # own port number. Read the header of that config before changing either number.
+  # Only the signalling/twirp port is published, and it is published one-to-one
+  # because the `port:` line inside the config has to name the same number. No RTC
+  # port is published at all: media never crosses to the host here.
   livekit:
     image: livekit/livekit-server:v1.13.6
     container_name: tessera-recording-e2e-livekit
@@ -67,7 +75,6 @@ services:
       REDIS_HOST: redis:6379
     ports:
       - "${REC_E2E_PORT:?set REC_E2E_PORT}:${REC_E2E_PORT:?set REC_E2E_PORT}"
-      - "${REC_E2E_RTC_PORT:?set REC_E2E_RTC_PORT}:${REC_E2E_RTC_PORT:?set REC_E2E_RTC_PORT}"
     volumes:
       - ./livekit.recording.e2e.yaml:/etc/livekit.yaml:ro
 
@@ -92,16 +99,12 @@ services:
     volumes:
       - ${REC_E2E_UPLOAD_DIR:?set REC_E2E_UPLOAD_DIR}:/data/uploads
 
-  # network_mode: service:livekit — egress shares the SFU's network namespace
-  # rather than sitting next to it. This is not an optimisation; livekit.e2e.yaml
-  # advertises node_ip: 127.0.0.1, so 127.0.0.1 is the only address of that SFU
-  # anyone can reach. From its own namespace a sibling container would resolve the
-  # signalling URL fine and then find no route for the ICE candidate — a failure
-  # that looks like "the recording starts and produces nothing".
-  #
-  # Sharing the namespace keeps DNS from the compose network, so `redis:6379` in
-  # deploy/egress.yaml resolves here exactly as it does in production, and the
-  # config file needs no e2e variant.
+  # An ordinary container on the network, exactly as in production: it reaches the
+  # SFU by service name and its Chrome pairs with the address that SFU advertises.
+  # An earlier revision had it share the SFU's network namespace to compensate for
+  # a loopback node_ip; that arrangement is what made the recording impossible
+  # (livekit.recording.e2e.yaml explains the ICE side), and sharing the namespace
+  # would also have hidden a whole class of DNS/routing faults production has.
   #
   # The uploads bind is mounted at the SAME absolute path the backend uses, so
   # LIVEKIT_EGRESS_UPLOAD_DIR is unnecessary: both sides name the file identically
@@ -114,14 +117,44 @@ services:
         condition: service_healthy
       rec-init:
         condition: service_completed_successfully
-    network_mode: "service:livekit"
     environment:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
       LIVEKIT_API_KEY: "${REC_E2E_KEY:?set REC_E2E_KEY}"
       LIVEKIT_API_SECRET: "${REC_E2E_SECRET:?set REC_E2E_SECRET}"
-      LIVEKIT_WS_URL: "ws://127.0.0.1:${REC_E2E_PORT:?set REC_E2E_PORT}"
+      LIVEKIT_WS_URL: "ws://livekit:${REC_E2E_PORT:?set REC_E2E_PORT}"
     security_opt:
       - seccomp:./chrome-sandboxing-seccomp-profile.json
     volumes:
       - ./egress.yaml:/etc/egress.yaml:ro
       - ${REC_E2E_UPLOAD_DIR:?set REC_E2E_UPLOAD_DIR}:${REC_E2E_UPLOAD_DIR:?set REC_E2E_UPLOAD_DIR}
+
+  # The participant being recorded. In production this is somebody's browser; the
+  # host cannot be one here (no route from the host into this network), so the
+  # stand publishes livekit-cli's demo track instead — a real encoded video track
+  # over a real PeerConnection, which is what egress needs and what a mocked
+  # publisher could never provide.
+  #
+  # Behind a profile: `up` must not start it, because the room has to exist first
+  # (auto_create is off, so the backend creates it when a conference starts) and
+  # because which room to join is a per-run decision. Start it with
+  # `make recording-e2e-publish REC_E2E_ROOM=<room>`.
+  #
+  # Credentials come through the environment, not the argv the CLI would otherwise
+  # take them on: an api-secret in a command line is readable in `docker inspect`
+  # and in every ps listing inside the container.
+  publisher:
+    image: livekit/livekit-cli:v2.4.0
+    container_name: tessera-recording-e2e-publisher
+    profiles: ["publish"]
+    restart: "no"
+    environment:
+      LIVEKIT_URL: "ws://livekit:${REC_E2E_PORT:?set REC_E2E_PORT}"
+      LIVEKIT_API_KEY: "${REC_E2E_KEY:?set REC_E2E_KEY}"
+      LIVEKIT_API_SECRET: "${REC_E2E_SECRET:?set REC_E2E_SECRET}"
+    command:
+      - room
+      - join
+      - --identity
+      - rec-publisher
+      - --publish-demo
+      - "${REC_E2E_ROOM:-rec-smoke}"

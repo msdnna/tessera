@@ -40,7 +40,11 @@ import (
 // answering from a table the test fills in.
 type fakeEgress struct {
 	mu      sync.Mutex
-	items   []map[string]any // as protojson would render EgressInfo
+	// items are rendered the way livekit-server renders them: PROTO field
+	// names (egress_id, file_results), not the camelCase JSON names. A stub
+	// that answers in camelCase is worse than no stub — it agrees with a client
+	// that reads nothing, which is exactly the bug the recording stand caught.
+	items   []map[string]any
 	stopped []string         // egress ids StopEgress was called with
 }
 
@@ -50,12 +54,12 @@ type fakeEgress struct {
 func (f *fakeEgress) add(egressID, room, status string, fileSize int64, fileNanos int64) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	item := map[string]any{"egressId": egressID, "roomName": room}
+	item := map[string]any{"egress_id": egressID, "room_name": room}
 	if status != "" {
 		item["status"] = status
 	}
 	if fileSize > 0 || fileNanos > 0 {
-		item["fileResults"] = []map[string]any{{
+		item["file_results"] = []map[string]any{{
 			"filename": "/data/uploads/rec/x.mp4",
 			// Strings, not numbers: protojson renders int64 as a JSON string,
 			// and a client that assumed otherwise would fail to decode every
@@ -94,13 +98,15 @@ func (f *fakeEgress) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	switch r.URL.Path {
 	case "/twirp/livekit.Egress/ListEgress":
+		// Requests keep the camelCase spelling our client sends: protojson's
+		// parser accepts either, so only the replies above are one-sided.
 		id, room := str("egressId"), str("roomName")
 		out := []map[string]any{}
 		for _, it := range f.items {
-			if id != "" && it["egressId"] != id {
+			if id != "" && it["egress_id"] != id {
 				continue
 			}
-			if room != "" && it["roomName"] != room {
+			if room != "" && it["room_name"] != room {
 				continue
 			}
 			out = append(out, it)
@@ -112,7 +118,7 @@ func (f *fakeEgress) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		id := str("egressId")
 		f.stopped = append(f.stopped, id)
 		for _, it := range f.items {
-			if it["egressId"] == id {
+			if it["egress_id"] == id {
 				_ = json.NewEncoder(w).Encode(it)
 				return
 			}
