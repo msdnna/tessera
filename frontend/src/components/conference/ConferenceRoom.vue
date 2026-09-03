@@ -39,7 +39,10 @@ import {
   PersonAddOutline,
   ExpandOutline,
   ContractOutline,
+  RadioButtonOnOutline,
+  SquareOutline,
 } from '@vicons/ionicons5'
+import { conferences as confApi } from '@/api'
 import { mediaSupported, CONNECTING, ERROR, UNAVAILABLE } from '@/composables/useConfTransport'
 import { useConferenceSession } from '@/stores/conference'
 import ParticipantTile from './ParticipantTile.vue'
@@ -262,6 +265,35 @@ async function toggleFullscreen() {
   }
 }
 
+// ── recording (#2877) ───────────────────────────────────────────────────
+// The button is a request, never a state: what it shows comes from the room's
+// snapshot, the same source everyone else's red dot comes from. That is what
+// keeps the host's own screen honest — a button that flipped to "recording" on
+// the click would say we are recording during the second the egress worker is
+// still failing to start.
+const recBusy = ref(false)
+// The server's refusal, verbatim and inline rather than as a toast: this
+// component has no message provider (it is mounted inside the mini-window's
+// session too), and "recording is not configured on this server" is a sentence
+// the person pressing the button needs to keep reading, not a flash.
+const recError = ref('')
+const recording = computed(() => room.recording.value)
+
+async function toggleRecording() {
+  if (recBusy.value) return
+  recBusy.value = true
+  recError.value = ''
+  try {
+    if (recording.value) await confApi.stopRecording(props.conferenceId)
+    else await confApi.startRecording(props.conferenceId)
+    // The dot is not set here on purpose — it arrives in the next snapshot.
+  } catch (e) {
+    recError.value = e.response?.data?.error || e.message
+  } finally {
+    recBusy.value = false
+  }
+}
+
 // Which half of the rail is showing. The roster opens first: knowing who is in
 // the call is what you need at second zero, the chat is what you need at minute
 // three.
@@ -324,9 +356,30 @@ watch(
         <span>{{ $t(`conferences.panel.denied.${room.denied.value.action || 'other'}`) }}</span>
       </div>
 
+      <!-- Recording refused by the server (#2877): a server without the egress
+           profile running answers here, and the moderator who pressed the button
+           is the only one who sees it. -->
+      <div v-if="recError" class="notice err" data-testid="conference-recording-error">
+        <n-icon :component="WarningOutline" :size="16" />
+        <span>{{ recError }}</span>
+      </div>
+
       <div class="body">
         <n-spin :show="busy" class="stage-col">
           <div ref="stageWrapEl" class="stage-wrap">
+            <!-- «Идёт запись», for everyone in the call and not only for whoever
+                 may stop it (#2877). Overlaid on the stage rather than placed in
+                 the notice strip above it so it survives fullscreen — that is
+                 where a shared screen is watched, and it is exactly where a
+                 recording notice must not disappear. The name answers the
+                 question people actually ask, which is by whom. -->
+            <div v-if="recording" class="rec-badge" data-testid="conference-recording-dot">
+              <span class="rec-dot" />
+              <span>{{ $t('conferences.rec.live') }}</span>
+              <span v-if="recording.started_by" class="rec-by">
+                {{ $t('conferences.rec.by', { name: recording.started_by }) }}
+              </span>
+            </div>
             <!-- Fullscreen lives on the stage itself (#2882), most useful while a
                  screen is shared. It fullscreens this column, not one <video>.
                  v-if on the tooltip, not the button: an empty trigger slot (when
@@ -590,6 +643,26 @@ watch(
           }}
         </n-tooltip>
 
+        <!-- Recording (#2877) — moderators only, because only they may press it.
+             Hidden rather than disabled: unlike the microphone, an ordinary
+             participant has nothing to learn from a control they can never use,
+             and the red dot already tells them the thing that concerns them. -->
+        <n-tooltip v-if="room.canModerate.value">
+          <template #trigger>
+            <n-button
+              circle
+              :type="recording ? 'error' : 'default'"
+              :loading="recBusy"
+              :disabled="!room.connected.value || recBusy"
+              data-testid="conference-record"
+              @click="toggleRecording()"
+            >
+              <n-icon :component="recording ? SquareOutline : RadioButtonOnOutline" />
+            </n-button>
+          </template>
+          {{ recording ? $t('conferences.rec.stop') : $t('conferences.rec.start') }}
+        </n-tooltip>
+
         <device-menu
           :devices="devices"
           :selected="selected"
@@ -754,6 +827,48 @@ watch(
 }
 .stage-wrap:fullscreen :deep(.tile.stage) {
   max-height: 92vh;
+}
+/* «Идёт запись» over the stage's top-left corner (#2877), opposite the
+   fullscreen button. Its own dark scrim rather than a theme surface: it sits on
+   video, which is dark in both themes, and a light pill there would vanish
+   against a bright slide. */
+.rec-badge {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.rec-by {
+  opacity: 0.75;
+}
+.rec-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d03050;
+  animation: rec-pulse 1.6s ease-in-out infinite;
+}
+/* Held still under prefers-reduced-motion: a blinking dot is exactly the kind of
+   thing that setting exists for, and the badge reads without the animation. */
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot {
+    animation: none;
+  }
+}
+@keyframes rec-pulse {
+  50% {
+    opacity: 0.25;
+  }
 }
 /* The stage caption: who is presenting and who is behind them. Wraps rather
    than truncates — the Russian strings are long, and "вы в очереди: 2" is the

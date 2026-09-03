@@ -20,6 +20,7 @@ import {
   NInput,
   NModal,
   NDatePicker,
+  NInputNumber,
   NRadioGroup,
   NRadioButton,
   NPopconfirm,
@@ -43,6 +44,7 @@ import { useRealtime } from '@/composables/useRealtime'
 import { hueGrad, tagPillBg } from '@/utils/gradient'
 import EmptyState from '@/components/EmptyState.vue'
 import ConferenceRoom from '@/components/conference/ConferenceRoom.vue'
+import ConferenceRecordings from '@/components/conference/ConferenceRecordings.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -62,6 +64,11 @@ const detail = ref(null)
 const detailLoading = ref(false)
 const detailMissing = ref(false)
 const busy = ref(false)
+// Bumped when the server says a recording started or finished (#2877); the
+// recordings panel refetches on it. A counter rather than the payload: the list
+// endpoint is the one place that knows the whole truth, and a panel patched from
+// an event would drift from it after the first missed frame.
+const recNudge = ref(0)
 
 const openId = computed(() => route.params.id || '')
 
@@ -195,10 +202,29 @@ async function sendInvite() {
 }
 
 // ── schedule dialog ────────────────────────────────────────────────────
-const dlg = ref({ show: false, saving: false, title: '', description: '', at: null })
+// `ttl` is how many days a recording of this call is kept (#2877); 0 means keep
+// it indefinitely. Defaulted to the server's own 30 rather than left null so the
+// number in the box is the number that will apply — a blank field that silently
+// becomes 30 is how people find out about a retention policy by losing a file.
+const RECORDING_TTL_DEFAULT = 30
+const dlg = ref({
+  show: false,
+  saving: false,
+  title: '',
+  description: '',
+  at: null,
+  ttl: RECORDING_TTL_DEFAULT,
+})
 
 function openDialog() {
-  dlg.value = { show: true, saving: false, title: '', description: '', at: null }
+  dlg.value = {
+    show: true,
+    saving: false,
+    title: '',
+    description: '',
+    at: null,
+    ttl: RECORDING_TTL_DEFAULT,
+  }
 }
 
 async function submit() {
@@ -213,6 +239,10 @@ async function submit() {
       title,
       description: dlg.value.description.trim(),
       scheduled_at: dlg.value.at ? new Date(dlg.value.at).toISOString() : null,
+      // Cleared field (n-input-number answers null) falls back to the server's
+      // own default rather than being sent as 0 — «хранить вечно» is a decision,
+      // not something an empty box should make on the user's behalf.
+      recording_ttl_days: Number.isFinite(dlg.value.ttl) ? dlg.value.ttl : RECORDING_TTL_DEFAULT,
     })
     dlg.value.show = false
     message.success(t('conferences.create.created'))
@@ -340,6 +370,13 @@ watch(
 useRealtime(
   (ev) => {
     if (ev.scope !== ws.currentId || !ev.type?.startsWith('conference')) return
+    // A recording starting or finishing changes one panel, not the page: the
+    // conference itself is untouched, so refetching it (and the list behind it)
+    // would repaint the whole screen every time an egress worker reports in.
+    if (ev.type.startsWith('conference.recording')) {
+      if (openId.value) recNudge.value += 1
+      return
+    }
     load()
     if (openId.value && ev.type.includes('participant')) {
       confApi
@@ -354,7 +391,12 @@ useRealtime(
   },
   () => {
     load()
-    if (openId.value) loadDetail(openId.value)
+    if (openId.value) {
+      loadDetail(openId.value)
+      // A gap in the stream may have swallowed a recording event; the panel has
+      // to catch up with the rest of the page rather than stay at its last frame.
+      recNudge.value += 1
+    }
   },
 )
 
@@ -565,6 +607,15 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               @invite="openInvite"
             />
           </div>
+
+          <!-- Recordings of this call (#2877). Below the room, not inside it: they
+               are what is left of past meetings, and the room is about the one
+               happening now. Renders nothing until there is something to list. -->
+          <conference-recordings
+            :conference-id="detail.conference.id"
+            :can-moderate="canModerate"
+            :nudge="recNudge"
+          />
         </div>
       </n-spin>
     </template>
@@ -601,6 +652,14 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
           :placeholder="$t('conferences.create.at')"
         />
         <div class="hint">{{ $t('conferences.create.atHint') }}</div>
+        <!-- Retention for this call's recordings (#2877). It lives in the
+             scheduling dialog because it is a property of the meeting, and
+             because the moment to decide how long a recording is kept is before
+             one exists — not while looking at the file you are about to lose. -->
+        <n-input-number v-model:value="dlg.ttl" :min="0" :max="3650" data-testid="conference-ttl">
+          <template #prefix>{{ $t('conferences.create.ttl') }}</template>
+        </n-input-number>
+        <div class="hint">{{ $t('conferences.create.ttlHint') }}</div>
       </div>
       <template #footer>
         <div class="foot">

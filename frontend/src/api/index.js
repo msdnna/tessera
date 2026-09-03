@@ -528,6 +528,24 @@ export const conferences = {
       responseType: 'blob',
       skipLoader: true,
     }),
+
+  // Server-side recording (#2877). Start/stop are moderation and answer the row;
+  // the red dot that everyone sees does NOT come from here — it rides the room
+  // snapshot, so a participant who never pressed anything still learns they are
+  // being recorded. skipLoader on both: the button carries its own pending state.
+  startRecording: (id) => api.post(`/conferences/${id}/recording/start`, {}, { skipLoader: true }),
+  stopRecording: (id) => api.post(`/conferences/${id}/recording/stop`, {}, { skipLoader: true }),
+  recordings: (id) => api.get(`/conferences/${id}/recordings`, { skipLoader: true }),
+  // The mp4 itself, fetched with our bearer credential and played or saved from a
+  // blob — same reasoning as the chat attachments above: an <img>/<video> src
+  // cannot carry a header, and serving a private meeting from an unguessable
+  // public URL is a weaker guarantee than the meeting deserves.
+  recording: (recordingId) =>
+    api.get(`/conference-recordings/${recordingId}/download`, {
+      responseType: 'blob',
+      skipLoader: true,
+    }),
+  removeRecording: (recordingId) => api.delete(`/conference-recordings/${recordingId}`),
 }
 
 export const reminders = {

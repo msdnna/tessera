@@ -42,6 +42,8 @@
     "descriptionPlaceholder": "Agenda, links, what to discuss",
     "at": "Start",
     "atHint": "Leave empty if the time is not set yet",
+    "ttl": "Keep recordings, days",
+    "ttlHint": "Recordings of this conference are deleted automatically after this many days. 0 keeps them indefinitely.",
     "submit": "Schedule",
     "cancel": "Cancel",
     "required": "Enter a title",
@@ -146,6 +148,19 @@
       "mute": "Only a host or a workspace admin may mute participants",
       "other": "The server refused the action"
     }
+  },
+  "rec": {
+    "start": "Start recording",
+    "stop": "Stop recording",
+    "live": "Recording",
+    "short": "Rec",
+    "by": "started by {name}",
+    "title": "Recordings",
+    "download": "Download",
+    "delete": "Delete",
+    "confirmDelete": "Delete this recording? The file is erased for good.",
+    "failed": "Recording failed",
+    "expires": "deleted {when}"
   },
   "screen": {
     "share": "Share screen",

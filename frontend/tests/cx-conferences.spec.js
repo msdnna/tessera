@@ -23,6 +23,8 @@ const api = {
   end: vi.fn(),
   remove: vi.fn(),
   participants: vi.fn(),
+  // The recordings panel under the room (#2877); empty here, it has its own spec.
+  recordings: vi.fn(() => Promise.resolve({ data: [] })),
   // The embedded room (#2871) reaches for a media token. jsdom has no
   // navigator.mediaDevices, so the transport stops before ever calling it —
   // stubbed anyway so a change in that order fails loudly instead of throwing.
@@ -170,7 +172,23 @@ describe('scheduling', () => {
       title: 'Ретро',
       description: '',
       scheduled_at: null,
+      // The retention the dialog defaults to (#2877) — sent explicitly so the
+      // number the user saw is the number that applies.
+      recording_ttl_days: 30,
     })
+  })
+
+  it('falls back to the default retention when the field is cleared', async () => {
+    // n-input-number answers null for an empty box. Sending that through as 0
+    // would read as «хранить вечно» — a decision an empty field must not make.
+    api.create.mockResolvedValue({ data: conf({ id: 'new2' }) })
+    const { w } = await mountAt('/conferences')
+    w.vm.openDialog()
+    w.vm.dlg.title = 'Ретро'
+    w.vm.dlg.ttl = null
+    await flushPromises()
+    await w.vm.submit()
+    expect(api.create.mock.calls[0][1].recording_ttl_days).toBe(30)
   })
 
   it('refuses an empty title without calling the API', async () => {

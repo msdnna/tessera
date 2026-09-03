@@ -63,6 +63,11 @@ export function useConfRoom() {
   // How long the stage survives without a refresh, straight from the server, so
   // the presenter's heartbeat cannot drift out of step with the TTL it feeds.
   const stageTtlMs = ref(30000)
+  // The red dot (#2877): {id, started_at, started_by}, or null when nothing is
+  // being recorded. It arrives in the snapshot rather than in a reply to whoever
+  // pressed the button, which is the whole point — the people who did NOT start
+  // it are the ones who have to be told.
+  const recording = shallowRef(null)
 
   let ws = null
   let confId = ''
@@ -164,6 +169,7 @@ export function useConfRoom() {
       participants.value = msg.participants || []
       stage.value = msg.stage || null
       queue.value = msg.queue || []
+      recording.value = msg.recording || null
       stateSeq.value += 1
       return
     }
@@ -214,6 +220,13 @@ export function useConfRoom() {
       participants.value = []
       stage.value = null
       queue.value = []
+      // The recording dot is the one thing NOT cleared here, and the asymmetry is
+      // deliberate (#2877). This socket carries bookkeeping; the media goes to the
+      // SFU on a connection of its own, so losing this one does not stop the
+      // recording — it only stops us hearing about it. Clearing the dot would
+      // tell the room the recording ended when the only thing that ended was our
+      // own connection, and people say things off the record they would not say
+      // on it. The next snapshot after a reconnect corrects it either way.
       scheduleReconnect()
     }
     ws.onerror = () => ws && ws.close()
@@ -250,6 +263,10 @@ export function useConfRoom() {
     participants.value = []
     stage.value = null
     queue.value = []
+    // Cleared here, unlike on a dropped socket above: this is leaving the call,
+    // not losing touch with it, and a dot carried into the next room would
+    // announce a recording that belongs to a meeting we are no longer in.
+    recording.value = null
   }
 
   return {
@@ -268,6 +285,7 @@ export function useConfRoom() {
     queuePos,
     stateSeq,
     stageTtlMs,
+    recording,
     denied,
     ended,
     chatNudge,

@@ -265,7 +265,20 @@ watch(
 
     <!-- The meeting's name, top-left, so a minimised call still says which one.
          Scrim only over a dark video/screen tile — flat over the avatar. -->
-    <div class="mini-cap" :class="{ 'on-dark': darkTile }">{{ title }}</div>
+    <div class="mini-cap" :class="{ 'on-dark': darkTile }">
+      <!-- The recording dot follows the call into the minimised window (#2877).
+           Minimising is the state in which a recording is easiest to forget —
+           the call is out of sight in a corner — so this is the last place the
+           indicator may be dropped. Labelled, not a bare dot, and it takes the
+           width it needs: the meeting's name is what gets ellipsised at 220px,
+           because a name half-read still identifies the call while a red dot
+           with no word next to it identifies nothing. -->
+      <span v-if="room.recording.value" class="mini-rec" data-testid="conference-mini-recording">
+        <span class="mini-rec-dot" />
+        {{ $t('conferences.rec.short') }}
+      </span>
+      <span class="mini-cap-text">{{ title }}</span>
+    </div>
 
     <!-- Hover toolbar along the bottom: mic, camera, hand, leave. -->
     <div class="mini-bar no-drag">
@@ -400,17 +413,54 @@ watch(
   top: 0;
   left: 0;
   right: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 4px 10px;
   font-size: 12px;
   color: var(--t-text2);
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
+}
+/* The title, and only the title, is what gives way when the window is narrow. */
+.mini-cap-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mini-cap.on-dark {
   color: #fff;
   background: linear-gradient(to bottom, rgb(0 0 0 / 42%), transparent);
+}
+/* Recording label (#2877). Its own red, not the caption's colour: over a light
+   avatar tile the caption is grey, and a grey "запись" is not a warning. */
+.mini-rec {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #d03050;
+}
+.mini-cap.on-dark .mini-rec {
+  color: #ff7a90;
+}
+.mini-rec-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentcolor;
+  animation: mini-rec-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .mini-rec-dot {
+    animation: none;
+  }
+}
+@keyframes mini-rec-pulse {
+  50% {
+    opacity: 0.25;
+  }
 }
 /* Expand-to-full lives dead centre, revealed on hover so it does not sit over
    the speaker the whole time. */
