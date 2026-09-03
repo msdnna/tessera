@@ -81,7 +81,9 @@
     "mics": "Микрофон",
     "cams": "Камера",
     "speakers": "Динамики",
-    "deviceFallback": "Устройство {n}"
+    "deviceFallback": "Устройство {n}",
+    "processing": "Обработка звука",
+    "denoise": "Шумоподавление"
   },
   "mini": {
     "expand": "Развернуть"

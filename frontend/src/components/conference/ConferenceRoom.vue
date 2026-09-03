@@ -91,9 +91,12 @@ const {
   devices,
   selected,
   micLevel,
+  denoise,
+  denoiseAvailable,
   join,
   toggleMic,
   toggleCam,
+  toggleDenoise,
   startScreen,
   stopScreen,
   setPeerVolume,
@@ -591,7 +594,10 @@ watch(
           :devices="devices"
           :selected="selected"
           :disabled="!connected"
+          :denoise="denoise"
+          :denoise-available="denoiseAvailable"
           @select="selectDevice"
+          @toggle-denoise="toggleDenoise"
         />
 
         <n-tooltip>

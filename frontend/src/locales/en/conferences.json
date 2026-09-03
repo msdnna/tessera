@@ -81,7 +81,9 @@
     "mics": "Microphone",
     "cams": "Camera",
     "speakers": "Speakers",
-    "deviceFallback": "Device {n}"
+    "deviceFallback": "Device {n}",
+    "processing": "Audio processing",
+    "denoise": "Noise suppression"
   },
   "mini": {
     "expand": "Expand"

@@ -14,8 +14,13 @@ const props = defineProps({
   devices: { type: Object, required: true },
   selected: { type: Object, required: true },
   disabled: { type: Boolean, default: false },
+  // Advanced noise suppression (#2889). It lives here rather than on the toolbar
+  // because it is set once for a room and then forgotten — the same reason the
+  // device pickers are behind this button.
+  denoise: { type: Boolean, default: false },
+  denoiseAvailable: { type: Boolean, default: false },
 })
-const emit = defineEmits(['select'])
+const emit = defineEmits(['select', 'toggle-denoise'])
 
 const { t } = useI18n()
 
@@ -48,10 +53,32 @@ const options = computed(() => {
       label: (props.selected[kind] === d.id ? '● ' : '') + label(d, i),
     }))
   }
+  // Hidden outright where AudioWorklet is missing: a toggle that cannot do
+  // anything is worse than no toggle.
+  if (props.denoiseAvailable) {
+    if (out.length) out.push({ key: 'sep-denoise', type: 'divider' })
+    out.push({
+      key: 'h-denoise',
+      type: 'group',
+      label: t('conferences.media.processing'),
+      children: [
+        {
+          key: 'denoise|toggle',
+          // Same '● ' marker as a chosen device — one visual language for
+          // "this is the one that is on" inside a single menu.
+          label: (props.denoise ? '● ' : '') + t('conferences.media.denoise'),
+        },
+      ],
+    })
+  }
   return out
 })
 
 function pick(key) {
+  if (key === 'denoise|toggle') {
+    emit('toggle-denoise')
+    return
+  }
   const [kind, id] = String(key).split('|')
   if (kind && id) emit('select', kind, id)
 }

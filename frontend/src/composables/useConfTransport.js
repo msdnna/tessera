@@ -1,5 +1,6 @@
 import { computed, getCurrentInstance, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { conferences as confApi } from '@/api'
+import { createNoiseFilter, denoiseSupported } from '@/utils/denoise'
 
 // The seam between the conference UI and the SFU (#2864, subtask #2871).
 //
@@ -39,6 +40,20 @@ export function mediaSupported() {
 // twice the source level the clipping is worse than the quietness.
 export const VOLUME_MAX = 2
 export const VOLUME_DEFAULT = 1
+
+// Advanced noise suppression (#2889). Remembered per browser rather than per
+// call: whether a room is noisy is a property of where someone sits, not of the
+// meeting, so asking again every morning would be the wrong question.
+export const DENOISE_KEY = 'tessera_conf_denoise'
+
+function storedDenoise() {
+  try {
+    return localStorage.getItem(DENOISE_KEY) === '1'
+  } catch {
+    // Private mode or storage disabled — off is the safe default.
+    return false
+  }
+}
 
 // A participant as the UI sees one. Flat and plain on purpose: the tiles diff
 // this, and handing them live SDK objects would make every re-render depend on
@@ -128,6 +143,11 @@ export function useConfTransport() {
   // meter is a "is my mic picking me up" self-check, and other people's speech is
   // already shown by the ring around their tile.
   const micLevel = ref(0)
+  // Whether our own microphone is running through the spectral gate (#2889).
+  // `denoiseAvailable` is separate because a browser without AudioWorklet must
+  // hide the control rather than offer one that silently does nothing.
+  const denoise = ref(storedDenoise())
+  const denoiseAvailable = denoiseSupported()
   // Identity of the loudest current speaker, kept sticky (#2864 round 2): when
   // everyone falls silent we hold the last speaker on the big tile rather than
   // blinking to whoever happens to be first in the list. Updated from the SDK's
@@ -149,6 +169,10 @@ export function useConfTransport() {
   let analyser = null
   let analyserBuf = null
   let micSource = null
+  // The attached noise filter, and the AudioContext we fall back to when the SDK
+  // has not put one on the track yet (#2889).
+  let filter = null
+  let ownCtx = null
 
   // The loudest speaker gets the big tile, and it follows the conversation
   // (#2864 round 2): whoever is speaking — including us — steps up, and the last
@@ -258,9 +282,84 @@ export function useConfTransport() {
   // track exposes it as `mediaStreamTrack`; the analyser taps that directly so
   // the meter reflects the mic itself, not what came back from the SFU.
   function localMicTrack() {
-    const pub = room?.localParticipant?.getTrackPublication?.('microphone')
-    return pub?.track?.mediaStreamTrack || null
+    return localMicPub()?.mediaStreamTrack || null
   }
+
+  /** Our own published microphone track, or null. */
+  function localMicPub() {
+    return room?.localParticipant?.getTrackPublication?.('microphone')?.track || null
+  }
+
+  // livekit-client refuses to attach an audio processor to a track that carries
+  // no AudioContext. It normally sets one when publishing, but that happens only
+  // once the room has acquired a context of its own, which the browser's autoplay
+  // policy can defer. Retrying with our own is cheaper than losing the feature.
+  async function attachFilter(track) {
+    try {
+      await track.setProcessor(filter)
+    } catch (e) {
+      if (!/audio context/i.test(e?.message || '')) throw e
+      const Ctx =
+        typeof window !== 'undefined' && (window.AudioContext || window.webkitAudioContext)
+      if (!Ctx || !track.setAudioContext) throw e
+      ownCtx = ownCtx || new Ctx()
+      track.setAudioContext(ownCtx)
+      await track.setProcessor(filter)
+    }
+  }
+
+  /**
+   * Put the noise filter on our microphone, or take it off (#2889).
+   *
+   * It goes on the track, not on the room: LiveKit hands the processed
+   * MediaStreamTrack to the sender, so the SFU — and through it everyone else —
+   * only ever receives cleaned audio. Our own meter reads
+   * `track.mediaStreamTrack`, which *is* the processed track once a processor is
+   * set, so the toolbar level shows what the room hears rather than what the
+   * microphone picked up. That is what the plan asked for: measure after
+   * suppression, otherwise the meter twitches at noise the others cannot hear.
+   */
+  async function applyDenoise() {
+    if (!denoiseAvailable) return
+    const track = localMicPub()
+    if (!track?.setProcessor) return
+    try {
+      if (denoise.value) {
+        filter = filter || createNoiseFilter()
+        await attachFilter(track)
+      } else if (filter) {
+        await track.stopProcessor()
+        filter = null
+      }
+    } catch {
+      // A filter that will not start must not take the call down with it — the
+      // microphone still works, it is only noisier. Flipping the flag back keeps
+      // the toggle honest about what is actually running.
+      denoise.value = false
+      filter = null
+    }
+  }
+
+  /**
+   * Turn advanced noise suppression on or off, now and for next time.
+   *
+   * @param {boolean} on
+   */
+  async function setDenoise(on) {
+    denoise.value = !!on
+    await applyDenoise()
+    try {
+      // Written from the flag *after* applying, so a filter that failed to start
+      // is not remembered as enabled.
+      localStorage.setItem(DENOISE_KEY, denoise.value ? '1' : '0')
+    } catch {
+      // No storage — the choice simply lasts for this call.
+    }
+    // The analyser is bound to whichever track was current when it was built;
+    // attaching or removing the processor swaps that track underneath it.
+    if (micOn.value) setupAnalyser()
+  }
+  const toggleDenoise = () => setDenoise(!denoise.value)
 
   // Build a WebAudio analyser over our own mic track. Rebuilt whenever the source
   // changes (mute/unmute, device switch), because a MediaStreamSource is bound to
@@ -434,7 +533,8 @@ export function useConfTransport() {
         // Browser-native cleanup on the mic (#2883): echo cancellation, noise
         // suppression and auto gain are the baseline every call app turns on, and
         // AGC also lifts a quiet speaker so the level meter has something to show.
-        // Heavier suppression (RNNoise/Krisp-class) is a separate task.
+        // Heavier suppression sits on top of this as an opt-in track processor
+        // (#2889) — these stay on either way, they are cheap and never hurt.
         audioCaptureDefaults: {
           ...(selected.value.audioinput ? { deviceId: selected.value.audioinput } : {}),
           echoCancellation: true,
@@ -488,6 +588,17 @@ export function useConfTransport() {
     camOn.value = false
     screenOn.value = false
     status.value = IDLE
+    // The filter's nodes die with the track, but the fallback context is ours to
+    // close — a leaked AudioContext keeps the audio hardware awake after the call.
+    filter = null
+    if (ownCtx) {
+      try {
+        await ownCtx.close()
+      } catch {
+        // Already closed.
+      }
+      ownCtx = null
+    }
     try {
       await r?.disconnect()
     } catch {
@@ -499,9 +610,12 @@ export function useConfTransport() {
     if (!room) return
     await room.localParticipant.setMicrophoneEnabled(on)
     sync()
-    // The meter follows the track: a fresh publication means a fresh analyser.
-    if (on) setupAnalyser()
-    else teardownAnalyser()
+    // A first unmute publishes the track the filter attaches to, so the filter
+    // goes on before the analyser is built over it (#2889).
+    if (on) {
+      await applyDenoise()
+      setupAnalyser()
+    } else teardownAnalyser()
   }
   async function setCam(on) {
     if (!room) return
@@ -678,10 +792,14 @@ export function useConfTransport() {
     volumes,
     localMuted,
     micLevel,
+    denoise,
+    denoiseAvailable,
     join,
     leave,
     toggleMic,
     toggleCam,
+    setDenoise,
+    toggleDenoise,
     startScreen,
     stopScreen,
     setMic,
