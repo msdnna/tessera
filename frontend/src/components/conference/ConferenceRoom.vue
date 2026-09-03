@@ -822,7 +822,9 @@ watch(
 .strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 176px));
-  justify-content: center;
+  /* Left-aligned, not centred: with a couple of tiles a centred row drifts off
+     the left edge and reads as misaligned against the stage above it. */
+  justify-content: start;
   gap: 14px;
 }
 .toolbar {
