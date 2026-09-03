@@ -121,6 +121,12 @@ export function useConfTransport() {
   // Kept apart from a volume of zero so unmuting restores the level that was
   // set before, instead of snapping everyone back to the default.
   const localMuted = ref({})
+  // Live microphone level per participant, identity → 0…1 (#2883). Polled on a
+  // rAF loop rather than folded into the peer snapshot: it changes many times a
+  // second and rebuilding every tile that often would be wasteful, so the meter
+  // reads this small map instead. The local participant is in it too, which is
+  // what makes the toolbar and the own tile a working "is my mic picking up".
+  const audioLevels = ref({})
 
   // Not a ref: the room is an event emitter we hold, never something we render.
   let room = null
@@ -128,6 +134,10 @@ export function useConfTransport() {
   // Guards the window between "join started" and "room connected" — a user who
   // clicks away in that window must not end up in a call with no UI attached.
   let leaving = false
+  // The audio-level poll handle and its last tick, so the loop runs at ~15fps
+  // rather than every animation frame.
+  let levelRAF = null
+  let lastLevelAt = 0
 
   // The loudest speaker gets the big tile. Ties and silence fall back to the
   // first remote peer so the stage never blinks empty mid-call; with nobody
@@ -215,8 +225,42 @@ export function useConfTransport() {
     micOn.value = false
     camOn.value = false
     screenOn.value = false
+    stopLevels()
     detachUnload()
     if (status.value === LIVE) status.value = IDLE
+  }
+
+  // Sample every participant's microphone level into `audioLevels`. Throttled to
+  // ~15fps: the meter is a coarse "are you being heard", not a waveform, and a
+  // full map rebuild on every frame is wasted work for a dozen tiles.
+  function pollLevels(ts) {
+    if (!room) {
+      levelRAF = null
+      return
+    }
+    if (ts - lastLevelAt >= 66) {
+      lastLevelAt = ts
+      const next = {}
+      const local = room.localParticipant
+      if (local) next[local.identity] = local.audioLevel || 0
+      for (const p of room.remoteParticipants?.values?.() || []) {
+        next[p.identity] = p.audioLevel || 0
+      }
+      audioLevels.value = next
+    }
+    levelRAF = requestAnimationFrame(pollLevels)
+  }
+  function startLevels() {
+    if (levelRAF !== null || typeof requestAnimationFrame === 'undefined') return
+    lastLevelAt = 0
+    levelRAF = requestAnimationFrame(pollLevels)
+  }
+  function stopLevels() {
+    if (levelRAF !== null && typeof cancelAnimationFrame !== 'undefined') {
+      cancelAnimationFrame(levelRAF)
+    }
+    levelRAF = null
+    audioLevels.value = {}
   }
 
   async function refreshDevices() {
@@ -316,6 +360,7 @@ export function useConfTransport() {
       status.value = LIVE
       sync()
       refreshDevices()
+      startLevels()
     } catch (e) {
       // A refusal from our own API is the interesting case and already carries a
       // sentence a human wrote (503 not configured, 409 ended, 403 kicked).
@@ -333,6 +378,7 @@ export function useConfTransport() {
   async function leave() {
     leaving = true
     detachUnload()
+    stopLevels()
     const r = room
     room = null
     peers.value = []
@@ -500,6 +546,7 @@ export function useConfTransport() {
     selected,
     volumes,
     localMuted,
+    audioLevels,
     join,
     leave,
     toggleMic,

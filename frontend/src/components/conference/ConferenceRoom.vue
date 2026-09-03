@@ -84,6 +84,7 @@ const {
   audioBlocked,
   devices,
   selected,
+  audioLevels,
   join,
   leave,
   toggleMic,
@@ -376,6 +377,7 @@ watch(
               :peer="stagePeer"
               stage
               :screen="!!screenPeer"
+              :level="audioLevels[stagePeer.id] || 0"
             />
             <div v-else class="notice idle">{{ $t('conferences.media.connecting') }}</div>
 
@@ -425,7 +427,12 @@ watch(
             </div>
 
             <div v-if="stripPeers.length" class="strip" data-testid="conference-strip">
-              <participant-tile v-for="p in stripPeers" :key="p.sid || p.id" :peer="p" />
+              <participant-tile
+                v-for="p in stripPeers"
+                :key="p.sid || p.id"
+                :peer="p"
+                :level="audioLevels[p.id] || 0"
+              />
             </div>
           </div>
         </n-spin>
