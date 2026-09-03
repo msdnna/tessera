@@ -154,10 +154,19 @@ onBeforeUnmount(() => {
   flex: none;
   opacity: 0.85;
 }
+/* The avatar is nudged up so it clears the name caption at the bottom of the
+   tile (#2881): on a short strip tile the two otherwise sit almost touching.
+   Margin on a centred flex item shifts its box up by that much. */
 .face {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin-bottom: 22px;
+}
+/* The stage tile is tall enough that the avatar already clears the caption, so
+   it keeps a true centre rather than riding high. */
+.stage .face {
+  margin-bottom: 0;
 }
 /* Same circular avatar as everywhere else in the app, just larger. The gradient
    comes from the accent-gradient helper on the shared component. */

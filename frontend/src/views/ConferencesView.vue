@@ -26,7 +26,6 @@ import {
   NPopconfirm,
   NSpin,
   NSelect,
-  NTooltip,
   useMessage,
 } from 'naive-ui'
 import {
@@ -34,7 +33,6 @@ import {
   TrashOutline,
   ArrowBackOutline,
   PeopleOutline,
-  PersonAddOutline,
   TimeOutline,
 } from '@vicons/ionicons5'
 import { conferences as confApi, workspaces as wsApi } from '@/api'
@@ -275,12 +273,6 @@ function timeLine(c) {
   return t('conferences.row.noTime')
 }
 
-function presence(p) {
-  if (p.left_at) return t('conferences.presence.left')
-  if (p.joined_at) return t('conferences.presence.inRoom')
-  return t('conferences.presence.invited')
-}
-
 // ── wiring ─────────────────────────────────────────────────────────────
 watch(openId, (id) => {
   if (id) loadDetail(id)
@@ -427,7 +419,7 @@ onMounted(() => {
     <!-- ONE CONFERENCE -->
     <template v-else>
       <n-button text class="back" @click="backToList">
-        <n-icon :component="ArrowBackOutline" />
+        <template #icon><n-icon :component="ArrowBackOutline" /></template>
         {{ $t('conferences.actions.back') }}
       </n-button>
 
@@ -485,49 +477,20 @@ onMounted(() => {
             {{ detail.conference.description }}
           </p>
 
-          <div class="panes">
-            <n-card size="small" :title="$t('conferences.detail.roomTitle')" class="room">
-              <conference-room
-                :conference-id="detail.conference.id"
-                :active="inRoom"
-                :ended="detail.conference.status === 'ended'"
-                @hangup="leave"
-              />
-            </n-card>
-
-            <n-card size="small" :title="$t('conferences.detail.participants')" class="people">
-              <template #header-extra>
-                <n-button
-                  v-if="canInvite"
-                  size="tiny"
-                  quaternary
-                  data-testid="conference-invite"
-                  @click="openInvite"
-                >
-                  <template #icon><n-icon :component="PersonAddOutline" /></template>
-                  {{ $t('conferences.invite.button') }}
-                </n-button>
-              </template>
-              <div v-if="detail.participants.length" class="plist">
-                <div v-for="p in detail.participants" :key="p.user_id" class="person">
-                  <div class="person-name">{{ p.user_name }}</div>
-                  <div class="person-meta">
-                    <n-tooltip>
-                      <template #trigger>
-                        <span class="role">{{ $t(`conferences.role.${p.role}`) }}</span>
-                      </template>
-                      {{ p.user_email }}
-                    </n-tooltip>
-                    <span class="dot">·</span>
-                    <span :class="['presence', { live: p.joined_at && !p.left_at }]">
-                      {{ presence(p) }}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <div v-else class="none">{{ $t('conferences.detail.noParticipants') }}</div>
-            </n-card>
-          </div>
+          <!-- One pane now (#2881): the room's own «В комнате» tab already lists
+               who is present, so the separate participants column that duplicated
+               it is gone and the room takes the full width. Inviting moved into
+               the room's rail — the button is emitted up from there. -->
+          <n-card size="small" :title="$t('conferences.detail.roomTitle')" class="room">
+            <conference-room
+              :conference-id="detail.conference.id"
+              :active="inRoom"
+              :ended="detail.conference.status === 'ended'"
+              :can-invite="canInvite"
+              @hangup="leave"
+              @invite="openInvite"
+            />
+          </n-card>
         </div>
       </n-spin>
     </template>
@@ -707,38 +670,6 @@ onMounted(() => {
   margin: 0 0 16px;
   color: var(--t-text2);
   white-space: pre-wrap;
-}
-.panes {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 12px;
-  align-items: start;
-}
-@media (max-width: 760px) {
-  .panes {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-.plist {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.person-name {
-  color: var(--t-text1);
-}
-.person-meta {
-  display: flex;
-  gap: 5px;
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.presence.live {
-  color: #18a058;
-}
-.none {
-  font-size: 12px;
-  color: var(--t-text3);
 }
 .form {
   display: flex;

@@ -35,6 +35,7 @@ import {
   WarningOutline,
   DesktopOutline,
   StopCircleOutline,
+  PersonAddOutline,
 } from '@vicons/ionicons5'
 import {
   useConfTransport,
@@ -57,11 +58,15 @@ const props = defineProps({
   // would still be heard by everyone in the call.
   active: { type: Boolean, default: false },
   ended: { type: Boolean, default: false },
+  // Whether the «Пригласить» control belongs in the rail (#2881). The invite
+  // dialog itself lives in the parent view, so pressing it only emits upward.
+  canInvite: { type: Boolean, default: false },
 })
 // `hangup` asks the parent to leave the roster too; the parent flipping `active`
 // is what actually drops the media session, through the watcher below. One
-// direction of control, so the two halves cannot disagree.
-const emit = defineEmits(['hangup'])
+// direction of control, so the two halves cannot disagree. `invite` opens the
+// parent's invite dialog — the roster moved in here, so the button did too.
+const emit = defineEmits(['hangup', 'invite'])
 
 const {
   status,
@@ -405,6 +410,19 @@ watch(
                 {{ $t('conferences.chat.tab') }}
               </n-button>
             </n-badge>
+            <!-- Invite lives here now (#2881), pushed to the far end of the tab
+                 row so it reads as an action rather than a third tab. -->
+            <n-button
+              v-if="canInvite"
+              size="tiny"
+              quaternary
+              class="invite"
+              data-testid="conference-invite"
+              @click="emit('invite')"
+            >
+              <template #icon><n-icon :component="PersonAddOutline" /></template>
+              {{ $t('conferences.invite.button') }}
+            </n-button>
           </div>
 
           <participants-panel
@@ -580,11 +598,13 @@ watch(
 /* A column, not a plain block: the chat inside brings its own scroller for the
    log and has to keep its composer pinned under it. overflow-y stays for the
    roster, which is a flat list and does want to scroll as a whole. */
+/* Wider now that it is the only side panel (#2881): the participants column that
+   used to sit beside it is gone, so the roster and chat get its room. */
 .rail {
   flex: none;
   display: flex;
   flex-direction: column;
-  width: 264px;
+  width: 320px;
   max-height: 60vh;
   overflow-y: auto;
   padding: 8px;
@@ -596,6 +616,10 @@ watch(
   align-items: center;
   gap: 4px;
   padding: 0 4px 6px;
+}
+/* The invite action sits at the far end of the tab row, away from the two tabs. */
+.rail-tabs .invite {
+  margin-left: auto;
 }
 @media (max-width: 900px) {
   .body {
@@ -634,7 +658,7 @@ watch(
 .strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px;
+  gap: 12px;
 }
 .toolbar {
   display: flex;
