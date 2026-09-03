@@ -101,6 +101,11 @@ type ConferenceRecording struct {
 	StartedAt    time.Time  `json:"started_at"`
 	ExpiresAt    *time.Time `json:"expires_at"`
 	CreatedAt    time.Time  `json:"created_at"`
+	EgressID     string     `json:"egress_id"`
+	Status       string     `json:"status"`
+	Error        string     `json:"error"`
+	StartedBy    *uuid.UUID `json:"started_by"`
+	EndedAt      *time.Time `json:"ended_at"`
 }
 
 type Document struct {
