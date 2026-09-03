@@ -25,7 +25,6 @@ const props = defineProps({
 // nothing shared yet stays blank rather than falling back to the camera: the
 // stage is held by a presenter whose first frame is simply still in flight.
 const video = computed(() => (props.screen ? props.peer.screenTrack : props.peer.videoTrack))
-const audio = computed(() => (props.screen ? props.peer.screenAudioTrack : props.peer.audioTrack))
 
 // Only surface a link that is actually struggling (#2884), and never on a screen
 // tile — the presenter's face tile already carries their signal.
@@ -34,7 +33,6 @@ const weakConn = computed(
 )
 
 const videoEl = ref(null)
-const audioEl = ref(null)
 
 // attach/detach rather than assigning srcObject: the SDK keeps its own list of
 // attached elements and uses it to decide whether a track is still being
@@ -57,21 +55,10 @@ watch(
   { immediate: true, flush: 'post' },
 )
 
-watch(
-  () => [audio.value, audioEl.value],
-  ([track], prev) => {
-    const old = prev?.[0]
-    if (old && old !== track) old.detach(audioEl.value)
-    bind(track, audioEl.value)
-  },
-  { immediate: true, flush: 'post' },
-)
-
 onBeforeUnmount(() => {
   // A tile that goes away without detaching leaves the SDK believing someone is
   // still watching, and the stream keeps being paid for.
   if (video.value && videoEl.value) video.value.detach(videoEl.value)
-  if (audio.value && audioEl.value) audio.value.detach(audioEl.value)
 })
 </script>
 
@@ -82,9 +69,10 @@ onBeforeUnmount(() => {
     :data-testid="screen ? 'conference-screen-tile' : 'conference-tile'"
   >
     <!-- muted on the local tile is not cosmetic: an unmuted self-view is a
-         feedback loop through the room's speakers. -->
+         feedback loop through the room's speakers. Audio is not played here at
+         all: it lives in the always-mounted ConferenceAudioSink (#2888), so a
+         minimised call — which renders only one tile — is not left silent. -->
     <video v-show="video" ref="videoEl" class="v" autoplay playsinline muted />
-    <audio v-if="!peer.local" ref="audioEl" autoplay />
 
     <!-- Weak-signal badge, top-left, amber for poor and red for lost (#2884). -->
     <n-tooltip v-if="weakConn">

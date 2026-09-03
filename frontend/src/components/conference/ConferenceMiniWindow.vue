@@ -44,6 +44,16 @@ const show = computed(() => session.active && String(route.params.id || '') !== 
 const stagePeer = computed(() => screenPeer.value || dominant.value)
 const handUp = computed(() => !!room.self.value?.hand_at)
 
+// Whether the tile is currently a dark video/screen or a flat (light in the light
+// theme) avatar. The caption's scrim only makes sense over the former; over the
+// avatar a dark band reads as a stray smudge, so it is dropped there (#2888 v2).
+const tileVideo = computed(() => {
+  const p = stagePeer.value
+  if (!p) return null
+  return screenPeer.value ? p.screenTrack : p.videoTrack
+})
+const darkTile = computed(() => !!tileVideo.value)
+
 // ── geometry ─────────────────────────────────────────────────────────────
 // The window keeps a fixed 16:9 shape, so a resize is one number: the width, with
 // the height following. That is what makes «тянуть за любой бордер» change both
@@ -253,8 +263,9 @@ watch(
       {{ $t('conferences.mini.expand') }}
     </n-tooltip>
 
-    <!-- The meeting's name, top-left, so a minimised call still says which one. -->
-    <div class="mini-cap">{{ title }}</div>
+    <!-- The meeting's name, top-left, so a minimised call still says which one.
+         Scrim only over a dark video/screen tile — flat over the avatar. -->
+    <div class="mini-cap" :class="{ 'on-dark': darkTile }">{{ title }}</div>
 
     <!-- Hover toolbar along the bottom: mic, camera, hand, leave. -->
     <div class="mini-bar no-drag">
@@ -264,6 +275,7 @@ watch(
             circle
             size="tiny"
             :type="micOn ? 'primary' : 'default'"
+            :secondary="!micOn"
             :disabled="!connected || room.forceMuted.value"
             data-testid="conference-mini-mic"
             @click="session.transport.toggleMic()"
@@ -280,6 +292,7 @@ watch(
             circle
             size="tiny"
             :type="camOn ? 'primary' : 'default'"
+            :secondary="!camOn"
             :disabled="!connected"
             data-testid="conference-mini-cam"
             @click="session.transport.toggleCam()"
@@ -296,6 +309,7 @@ watch(
             circle
             size="tiny"
             :type="handUp ? 'warning' : 'default'"
+            :secondary="!handUp"
             :disabled="!room.connected.value"
             data-testid="conference-mini-hand"
             @click="room.raiseHand(!handUp)"
@@ -379,6 +393,8 @@ watch(
   color: var(--t-text3);
   background: var(--t-hover);
 }
+/* Flat over the avatar tile (neutrals stay flat per the design language); the
+   scrim is added back only over a dark video/screen, where white text needs it. */
 .mini-cap {
   position: absolute;
   top: 0;
@@ -386,12 +402,15 @@ watch(
   right: 0;
   padding: 4px 10px;
   font-size: 12px;
-  color: #fff;
-  background: linear-gradient(to bottom, rgb(0 0 0 / 55%), transparent);
+  color: var(--t-text2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   pointer-events: none;
+}
+.mini-cap.on-dark {
+  color: #fff;
+  background: linear-gradient(to bottom, rgb(0 0 0 / 42%), transparent);
 }
 /* Expand-to-full lives dead centre, revealed on hover so it does not sit over
    the speaker the whole time. */
@@ -408,17 +427,24 @@ watch(
   border: none;
   border-radius: 50%;
   color: #fff;
-  background: rgb(0 0 0 / 45%);
+  background: rgb(0 0 0 / 42%);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition:
+    opacity 0.12s ease,
+    background 0.12s ease;
 }
 .mini:hover .mini-expand {
   opacity: 1;
 }
+/* Neutral on hover, not accent: the cursor already says it is clickable, and an
+   accent fill merged into the accent-gradient avatar behind it (#2888 v2). */
 .mini-expand:hover {
-  background: var(--t-primary);
+  background: rgb(0 0 0 / 62%);
 }
+/* A soft theme surface instead of a hard dark gradient, so the buttons sit on a
+   consistent backdrop that reads over both a light avatar and a dark screen, and
+   the inactive (secondary) buttons no longer melt into the tile (#2888 v2). */
 .mini-bar {
   position: absolute;
   left: 0;
@@ -429,7 +455,9 @@ watch(
   justify-content: center;
   gap: 6px;
   padding: 6px;
-  background: linear-gradient(to top, rgb(0 0 0 / 60%), transparent);
+  background: color-mix(in srgb, var(--t-surface) 80%, transparent);
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--t-border);
   opacity: 0;
   transition: opacity 0.12s ease;
 }

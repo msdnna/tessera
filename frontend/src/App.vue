@@ -10,6 +10,7 @@ import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
 import UpdateToast from '@/components/UpdateToast.vue'
 import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
+import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
 import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
 
 const theme = useThemeStore()
@@ -116,6 +117,10 @@ onUnmounted(() => unlistenOAuth?.())
            across route changes. Paints nothing unless a session is live and the
            open route is not that call's own room. -->
       <conference-mini-window />
+      <!-- The call's audio, mounted for the life of the session so it plays on
+           every route — the mini-window shows one tile, but the room must still
+           be heard in full (#2888). -->
+      <conference-audio-sink />
     </n-message-provider>
     <!-- Global "server slow / unreachable" overlay (branded loader + retry). -->
     <app-connection-overlay />

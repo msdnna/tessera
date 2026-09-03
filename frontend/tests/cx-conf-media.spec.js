@@ -358,10 +358,15 @@ describe('ParticipantTile', () => {
     expect(v.detach).toHaveBeenCalledTimes(1)
   })
 
-  it('renders no audio element for the local tile', () => {
-    const w = mount(ParticipantTile, { props: { peer: peer({ local: true }) } })
-    expect(w.find('audio').exists()).toBe(false)
-    w.unmount()
+  it('renders no audio element at all — audio lives in the session sink (#2888)', () => {
+    // Playback moved out of the tile so a minimised call (one tile) is not
+    // silenced; the tile is video-only now, local or remote.
+    const local = mount(ParticipantTile, { props: { peer: peer({ local: true }) } })
+    expect(local.find('audio').exists()).toBe(false)
+    local.unmount()
+    const remote = mount(ParticipantTile, { props: { peer: peer({ audioTrack: track() }) } })
+    expect(remote.find('audio').exists()).toBe(false)
+    remote.unmount()
   })
 
   it('marks the muted and speaking states', () => {

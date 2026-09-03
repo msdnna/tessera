@@ -46,9 +46,10 @@ class FakeSocket {
 }
 
 const { useConferenceSession } = await import('@/stores/conference')
-const { default: ConferenceMiniWindow } = await import(
-  '@/components/conference/ConferenceMiniWindow.vue'
-)
+const { default: ConferenceMiniWindow } =
+  await import('@/components/conference/ConferenceMiniWindow.vue')
+const { default: ConferenceAudioSink } =
+  await import('@/components/conference/ConferenceAudioSink.vue')
 const { useAuthStore } = await import('@/stores/auth')
 
 beforeEach(() => {
@@ -121,7 +122,9 @@ describe('useConferenceSession — lifecycle', () => {
 describe('useConferenceSession — restore after reload', () => {
   it('walks back into a still-live call remembered in sessionStorage', async () => {
     sessionStorage.setItem('tessera_conf_active', 'c9')
-    api.get.mockResolvedValue({ data: { conference: { id: 'c9', title: 'Ретро', status: 'live' } } })
+    api.get.mockResolvedValue({
+      data: { conference: { id: 'c9', title: 'Ретро', status: 'live' } },
+    })
     const s = useConferenceSession()
     await s.restore()
     expect(api.get).toHaveBeenCalledWith('c9')
@@ -131,7 +134,9 @@ describe('useConferenceSession — restore after reload', () => {
 
   it('forgets a call that has since ended rather than rejoining it', async () => {
     sessionStorage.setItem('tessera_conf_active', 'c9')
-    api.get.mockResolvedValue({ data: { conference: { id: 'c9', title: 'Ретро', status: 'ended' } } })
+    api.get.mockResolvedValue({
+      data: { conference: { id: 'c9', title: 'Ретро', status: 'ended' } },
+    })
     const s = useConferenceSession()
     await s.restore()
     expect(s.active).toBe(false)
@@ -205,5 +210,40 @@ describe('ConferenceMiniWindow', () => {
     await w.find('[data-testid="conference-mini-hangup"]').trigger('click')
     await flushPromises()
     expect(api.leave).toHaveBeenCalledWith('c1')
+  })
+})
+
+describe('ConferenceAudioSink — audio decoupled from tiles (#2888)', () => {
+  const track = () => ({ attach: vi.fn(), detach: vi.fn() })
+
+  it('plays every remote source and skips the local mic, whatever tiles are up', async () => {
+    const s = useConferenceSession()
+    const mic = track()
+    const scr = track()
+    // Peers as the transport exposes them; the sink reads this ref directly.
+    s.transport.peers.value = [
+      { id: 'me', local: true, audioTrack: track(), screenAudioTrack: null },
+      { id: 'a', local: false, audioTrack: mic, screenAudioTrack: null },
+      { id: 'b', local: false, audioTrack: null, screenAudioTrack: scr },
+    ]
+    const w = mount(ConferenceAudioSink)
+    await flushPromises()
+    // One element for a's mic, one for b's shared audio — none for the local mic.
+    expect(w.findAll('audio')).toHaveLength(2)
+    expect(mic.attach).toHaveBeenCalledTimes(1)
+    expect(scr.attach).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  it('detaches a source when the participant drops it', async () => {
+    const s = useConferenceSession()
+    const mic = track()
+    s.transport.peers.value = [{ id: 'a', local: false, audioTrack: mic, screenAudioTrack: null }]
+    const w = mount(ConferenceAudioSink)
+    await flushPromises()
+    s.transport.peers.value = []
+    await flushPromises()
+    expect(mic.detach).toHaveBeenCalled()
+    w.unmount()
   })
 })
