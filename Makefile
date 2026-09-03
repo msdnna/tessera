@@ -132,13 +132,36 @@ test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.h
 E2E_PORT ?= 8092
 E2E_DB_URL ?= postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
 
+# Conferences (#2876). Left empty by default, which makes the token endpoint
+# answer its documented 503 and the media tier of conferences.spec.js skip with
+# a printed reason — the room/chat/roster tiers still run. To exercise the media
+# path too, start the throwaway SFU and point these at it; both commands are in
+# the header of deploy/livekit.e2e.yaml, and they look like:
+#   make e2e-backend-up LIVEKIT_URL=http://localhost:7945 \
+#     LIVEKIT_PUBLIC_URL=ws://localhost:7945 \
+#     LIVEKIT_API_KEY=devkey LIVEKIT_SECRET_FILE=~/.livekit-e2e-secret
+# LIVEKIT_PUBLIC_URL is what the *browser* dials, so it has to be an address the
+# host can reach (ws:// is fine from http://localhost, which is a secure context).
+# The secret goes through a FILE rather than LIVEKIT_API_SECRET= on the command
+# line: a make variable lands in the shell history and, worse, in the `ps` line of
+# every process this recipe starts. Both are still accepted.
+LIVEKIT_URL ?=
+LIVEKIT_PUBLIC_URL ?=
+LIVEKIT_API_KEY ?=
+LIVEKIT_API_SECRET ?=
+LIVEKIT_SECRET_FILE ?=
+
 .PHONY: e2e-backend-up
 e2e-backend-up: ## Start a throwaway backend on :8092 against tessera_test (for web e2e)
 	cd backend && DATABASE_URL="$(E2E_DB_URL)" $(GO) run ./cmd/migrate
 	cd backend && $(GO) build -o /tmp/tessera-e2e-bin .
-	@PORT=$(E2E_PORT) UPLOAD_DIR=/tmp/tessera-e2e-uploads JWT_SECRET=e2e \
+	@LK_SECRET="$(LIVEKIT_API_SECRET)"; LK_FILE="$(LIVEKIT_SECRET_FILE)"; \
+	if [ -n "$$LK_FILE" ]; then LK_SECRET=$$(tr -d '\n' < "$$LK_FILE"); fi; \
+	PORT=$(E2E_PORT) UPLOAD_DIR=/tmp/tessera-e2e-uploads JWT_SECRET=e2e \
 		DATABASE_URL="$(E2E_DB_URL)" \
 		RATE_LIMIT_ENABLED=false \
+		LIVEKIT_URL="$(LIVEKIT_URL)" LIVEKIT_PUBLIC_URL="$(LIVEKIT_PUBLIC_URL)" \
+		LIVEKIT_API_KEY="$(LIVEKIT_API_KEY)" LIVEKIT_API_SECRET="$$LK_SECRET" \
 		nohup /tmp/tessera-e2e-bin > /tmp/tessera-e2e-backend.log 2>&1 & \
 		for i in $$(seq 1 40); do sleep 0.5; \
 			curl -sf http://localhost:$(E2E_PORT)/api/health > /dev/null && \
@@ -150,9 +173,21 @@ e2e-backend-down: ## Stop the throwaway e2e backend
 	@fuser -k $(E2E_PORT)/tcp 2>/dev/null || true
 	@echo "e2e backend on :$(E2E_PORT) stopped"
 
+# Both knobs are needed and they are NOT the same one: the suite's own API client
+# talks to the backend directly (E2E_API_URL), while the preview server proxies
+# the browser's /api there (TESSERA_API_TARGET). Deriving both from E2E_PORT keeps
+# a non-default `make e2e-backend-up E2E_PORT=…` from leaving the suite pointed at
+# :8092 — at somebody else's backend, or at nothing.
+# E2E_ARGS is passed through to playwright: `make test-e2e-frontend E2E_ARGS=conferences`
+# runs one spec instead of the whole suite.
+E2E_ARGS ?=
+
 .PHONY: test-e2e-frontend
 test-e2e-frontend: ## Run the Playwright web e2e suite (needs `make e2e-backend-up`)
-	cd frontend && corepack yarn build && corepack yarn e2e
+	cd frontend && corepack yarn build
+	cd frontend && E2E_API_URL=http://localhost:$(E2E_PORT)/api \
+		TESSERA_API_TARGET=http://localhost:$(E2E_PORT) \
+		corepack yarn e2e $(E2E_ARGS)
 
 .PHONY: locale-shots
 locale-shots: ## Visual pass over both locales into frontend/e2e/.auth/locale-shots (needs `make e2e-backend-up`)

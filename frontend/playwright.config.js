@@ -35,7 +35,37 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], baseURL },
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL,
+        // Fake camera/microphone for the conference specs (#2876). Without these
+        // the headless browser has no capture devices at all, so `getUserMedia`
+        // rejects with NotFoundError and the call never reaches LIVE — a failure
+        // that looks exactly like a broken transport.
+        //   --use-fake-device-for-media-stream  a synthetic 640×480 rolling
+        //     pattern + a 440 Hz tone, so `audioLevel` is non-zero and the
+        //     speaker/level assertions have something real to measure;
+        //   --use-fake-ui-for-media-stream      auto-grants the permission
+        //     prompt, which headless Chrome would otherwise leave hanging;
+        //   --autoplay-policy                   lets the remote <audio> element
+        //     start without a gesture, so `audioBlocked` stays false;
+        //   --allow-loopback-in-peer-connection makes Chrome gather a 127.0.0.1
+        //     ICE candidate. It refuses to on a box with other interfaces, and an
+        //     SFU on this machine's loopback is then unpairable — it offers
+        //     127.0.0.1 and the browser has no socket to answer from, so the room
+        //     hangs at "could not establish pc connection" with both sides
+        //     apparently healthy.
+        // Harmless for every other spec: nothing else asks for a device.
+        launchOptions: {
+          args: [
+            '--use-fake-device-for-media-stream',
+            '--use-fake-ui-for-media-stream',
+            '--autoplay-policy=no-user-gesture-required',
+            '--allow-loopback-in-peer-connection',
+          ],
+        },
+        permissions: ['camera', 'microphone'],
+      },
     },
   ],
   // The suite owns the preview server; the backend is expected to be up already

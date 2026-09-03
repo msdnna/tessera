@@ -379,7 +379,12 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
             </n-radio-button>
             <n-radio-button value="ended">{{ $t('conferences.filter.ended') }}</n-radio-button>
           </n-radio-group>
-          <n-button type="primary" :disabled="!ws.currentId" @click="openDialog">
+          <n-button
+            type="primary"
+            :disabled="!ws.currentId"
+            data-testid="conference-schedule"
+            @click="openDialog"
+          >
             {{ $t('conferences.schedule') }}
           </n-button>
         </div>
