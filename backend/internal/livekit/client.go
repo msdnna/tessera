@@ -117,9 +117,8 @@ func (e *Error) NotFound() bool {
 // allocation.
 const maxResponseBytes = 4 << 20
 
-// call performs one twirp request. LiveKit's RoomService is plain JSON over
-// HTTP at /twirp/livekit.RoomService/<Method>, authenticated with the same JWT
-// as a join token but carrying the administrative grants (serviceToken).
+// call performs one RoomService request, authenticated with the same JWT as a
+// join token but carrying the administrative grants (serviceToken).
 func (c *Client) call(ctx context.Context, method, room string, in, out any) error {
 	if !c.Enabled() {
 		return ErrDisabled
@@ -128,11 +127,20 @@ func (c *Client) call(ctx context.Context, method, room string, in, out any) err
 	if err != nil {
 		return err
 	}
+	return c.twirp(ctx, "livekit.RoomService", method, token, in, out)
+}
+
+// twirp performs one twirp request. LiveKit's APIs are plain JSON over HTTP at
+// /twirp/<service>/<Method> — RoomService for rooms and participants,
+// livekit.Egress for recording (egress.go). service is separate from method
+// because the two carry *different* grants: a token good for RoomService is
+// refused by Egress and vice versa, so the caller mints its own.
+func (c *Client) twirp(ctx context.Context, service, method, token string, in, out any) error {
 	body, err := json.Marshal(in)
 	if err != nil {
 		return err
 	}
-	endpoint := c.baseURL + "/twirp/livekit.RoomService/" + method
+	endpoint := c.baseURL + "/twirp/" + service + "/" + method
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -343,17 +351,23 @@ func (c *Client) DeleteRoom(ctx context.Context, room string) error {
 type epochSt int64
 
 func (e *epochSt) UnmarshalJSON(b []byte) error {
-	s := strings.Trim(string(b), `"`)
-	if s == "" || s == "null" {
-		*e = 0
-		return nil
-	}
-	v, err := strconv.ParseInt(s, 10, 64)
+	v, err := parseProtoInt64(b)
 	if err != nil {
 		return err
 	}
 	*e = epochSt(v)
 	return nil
+}
+
+// parseProtoInt64 decodes one protojson int64 — quoted or bare, with an absent
+// or null field meaning zero. Shared with egress.go, whose int64 fields are byte
+// counts and nanosecond durations rather than timestamps.
+func parseProtoInt64(b []byte) (int64, error) {
+	s := strings.Trim(string(b), `"`)
+	if s == "" || s == "null" {
+		return 0, nil
+	}
+	return strconv.ParseInt(s, 10, 64)
 }
 
 // Time renders the timestamp; zero stays a zero Time rather than 1970.

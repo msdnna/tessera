@@ -43,9 +43,10 @@ const MinSecretLen = 32
 
 // Grants is the permission set carried inside a join token. It is intentionally
 // a small closed struct rather than a free-form map: the dangerous LiveKit
-// grants (roomAdmin, roomCreate, roomList) have no field here at all, so no
-// call site can hand them to a browser by accident. Room administration is done
-// by our backend through RoomService, where our own role checks run first.
+// grants (roomAdmin, roomCreate, roomList, roomRecord) have no field here at
+// all, so no call site can hand them to a browser by accident. Room
+// administration is done by our backend through RoomService, and recording
+// through the Egress API, where our own role checks run first.
 type Grants struct {
 	// Room is the one room this token may join. Required — a video grant with
 	// no room name is accepted by LiveKit as "any room".
@@ -70,6 +71,7 @@ type videoGrant struct {
 	RoomAdmin      bool   `json:"roomAdmin,omitempty"`
 	RoomCreate     bool   `json:"roomCreate,omitempty"`
 	RoomList       bool   `json:"roomList,omitempty"`
+	RoomRecord     bool   `json:"roomRecord,omitempty"`
 	CanPublish     bool   `json:"canPublish"`
 	CanSubscribe   bool   `json:"canSubscribe"`
 	CanPublishData bool   `json:"canPublishData"`
