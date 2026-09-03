@@ -36,6 +36,8 @@ import {
   DesktopOutline,
   StopCircleOutline,
   PersonAddOutline,
+  ExpandOutline,
+  ContractOutline,
 } from '@vicons/ionicons5'
 import {
   useConfTransport,
@@ -256,6 +258,35 @@ onBeforeUnmount(() => clearInterval(heartbeat))
 const stagePeer = computed(() => screenPeer.value || dominant.value)
 const stripPeers = computed(() => (screenPeer.value ? peers.value : others.value))
 
+// ── fullscreen (#2882) ──────────────────────────────────────────────────
+// Fullscreen the whole stage column — the shared screen plus the strip — rather
+// than a single <video>: a presenter's IDE is the point of going fullscreen, and
+// the faces are still worth seeing next to it. Driven off the browser's own
+// fullscreenchange so the button label follows Esc as well as our own toggle.
+const stageWrapEl = ref(null)
+const isFullscreen = ref(false)
+const fullscreenSupported =
+  typeof document !== 'undefined' && (document.fullscreenEnabled ?? false)
+
+function onFsChange() {
+  isFullscreen.value = typeof document !== 'undefined' && !!document.fullscreenElement
+}
+if (typeof document !== 'undefined') document.addEventListener('fullscreenchange', onFsChange)
+onBeforeUnmount(() => {
+  if (typeof document !== 'undefined') document.removeEventListener('fullscreenchange', onFsChange)
+})
+
+async function toggleFullscreen() {
+  const el = stageWrapEl.value
+  if (!el) return
+  try {
+    if (document.fullscreenElement) await document.exitFullscreen()
+    else await el.requestFullscreen?.()
+  } catch {
+    // Refused by policy or already changing; the button state follows the event.
+  }
+}
+
 // Which half of the rail is showing. The roster opens first: knowing who is in
 // the call is what you need at second zero, the chat is what you need at minute
 // three.
@@ -320,7 +351,25 @@ watch(
 
       <div class="body">
         <n-spin :show="busy" class="stage-col">
-          <div class="stage-wrap">
+          <div ref="stageWrapEl" class="stage-wrap">
+            <!-- Fullscreen lives on the stage itself (#2882), most useful while a
+                 screen is shared. It fullscreens this column, not one <video>. -->
+            <n-tooltip>
+              <template #trigger>
+                <n-button
+                  v-if="fullscreenSupported && stagePeer"
+                  class="fs-btn"
+                  circle
+                  size="small"
+                  secondary
+                  data-testid="conference-fullscreen"
+                  @click="toggleFullscreen"
+                >
+                  <n-icon :component="isFullscreen ? ContractOutline : ExpandOutline" />
+                </n-button>
+              </template>
+              {{ isFullscreen ? $t('conferences.media.exitFullscreen') : $t('conferences.media.fullscreen') }}
+            </n-tooltip>
             <participant-tile
               v-if="stagePeer"
               :key="screenPeer ? `screen-${stagePeer.id}` : stagePeer.sid || stagePeer.id"
@@ -631,9 +680,28 @@ watch(
   }
 }
 .stage-wrap {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+/* Overlaid on the stage tile's top-right corner (#2882). z-index clears the
+   video, and the tile's own rounded corners sit under it. */
+.fs-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+}
+/* In fullscreen the column owns the whole screen, so the stage tile is let off
+   its viewport cap and the padding keeps it clear of the edges. */
+.stage-wrap:fullscreen {
+  justify-content: center;
+  padding: 16px;
+  background: var(--t-bg);
+}
+.stage-wrap:fullscreen :deep(.tile.stage) {
+  max-height: 92vh;
 }
 /* The stage caption: who is presenting and who is behind them. Wraps rather
    than truncates — the Russian strings are long, and "вы в очереди: 2" is the

@@ -75,6 +75,8 @@
     "unmuteMic": "Unmute microphone",
     "camOn": "Turn camera on",
     "camOff": "Turn camera off",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen",
     "hangup": "Leave the room",
     "mics": "Microphone",
     "cams": "Camera",
