@@ -252,6 +252,18 @@ const invited = computed(() =>
 const topbarSlots = ref(false)
 const narrow = ref(false)
 const inTopbar = computed(() => topbarSlots.value && !narrow.value)
+// …and the teleports themselves are not rendered until this view is mounted
+// (#2876). A <teleport> resolves its target ONCE, on its own mount, and keeps
+// the result for the rest of its life. On a deep link into a room — the link an
+// invitation sends — the view's first render happens while the shell is still
+// being built, so `#tb-slot-left` is not in the document yet: the teleport binds
+// to a null target, and the moment `inTopbar` flips true (onMounted, one tick
+// later) Vue tries to move its children into that null and throws
+// «Cannot read properties of null (reading 'insertBefore')». The patch dies
+// mid-tree, and everything after it stops updating — visibly, the theme switch
+// no longer repaints the layout. Mounting after onMounted means the target is
+// looked up when it actually exists.
+const ready = ref(false)
 let mq = null
 function onMq(e) {
   narrow.value = e.matches
@@ -350,6 +362,7 @@ onMounted(() => {
   // The topbar teleport targets exist only inside the app shell; detect them so
   // a bare mount (unit test) renders the controls inline instead of throwing.
   topbarSlots.value = !!document.getElementById('tb-slot-left')
+  ready.value = true
   if (typeof window !== 'undefined' && window.matchMedia) {
     mq = window.matchMedia('(max-width: 900px)')
     narrow.value = mq.matches
@@ -466,7 +479,7 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
       <!-- Back sits in the app topbar, left of the search, like Documents (#2864
            round 2). It falls back to rendering inline when the topbar slots are
            absent — a narrow screen, or a unit test with no shell. -->
-      <teleport to="#tb-slot-left" :disabled="!inTopbar">
+      <teleport v-if="ready" to="#tb-slot-left" :disabled="!inTopbar">
         <n-button quaternary size="small" class="back" @click="backToList">
           <template #icon><n-icon :component="ArrowBackOutline" /></template>
           {{ $t('conferences.actions.back') }}
@@ -482,7 +495,7 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
         <div v-else-if="detail" class="detail">
           <!-- Status and the call's controls go to the topbar, right of the search
                and left of the help icon (same fallback as the back button). -->
-          <teleport to="#tb-slot-right" :disabled="!inTopbar">
+          <teleport v-if="ready" to="#tb-slot-right" :disabled="!inTopbar">
             <span class="call-actions">
               <span class="pill" :style="pillStyle(detail.conference.status)">
                 <span

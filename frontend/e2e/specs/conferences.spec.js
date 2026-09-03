@@ -161,6 +161,52 @@ test('конференция: приглашённый виден в комна�
   }
 })
 
+// The link an invitation sends lands here — cold, on the room itself — and that
+// is the one entry the rest of the suite never takes (it schedules, or clicks a
+// row, with the shell already up). It used to break the page: the view's topbar
+// teleports resolved their target during the very first render, before the shell
+// was in the document, and the flip to "controls live in the topbar" then moved
+// their children into that null target. Vue threw inside the patch, the render
+// tree stopped there, and everything downstream quietly froze — most visibly the
+// theme, which kept the light layout under dark tokens (#2876).
+//
+// Asserting on the *theme* rather than on the exception is deliberate: it is the
+// symptom a user reports, and it stays true whatever the internals do next.
+test('конференция: комната по прямой ссылке переживает смену темы', async ({ page, seed }) => {
+  const title = `E2E прямая ссылка ${seed.runId}`
+  await openConferences(page, seed.workspaceId)
+  const id = await schedule(page, title)
+
+  const crashes = []
+  page.on('pageerror', (e) => crashes.push(e.message.split('\n')[0]))
+
+  // A full navigation, not an in-app click: this is the cold boot.
+  await page.goto(`/conferences/${id}`)
+  await expect(page.getByTestId('conference-join')).toBeVisible()
+
+  // The layout paints from the Naive theme; the tokens come from the store. Both
+  // follow the same switch, so after it they have to agree — a frozen tree shows
+  // up here as a white pane under a dark `--t-bg`.
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const hex = (rgb) =>
+          `#${rgb
+            .match(/\d+/g)
+            .slice(0, 3)
+            .map((n) => Number(n).toString(16).padStart(2, '0'))
+            .join('')}`
+        const pane = hex(getComputedStyle(document.querySelector('.work-pane')).backgroundColor)
+        const want = getComputedStyle(document.documentElement).getPropertyValue('--t-bg').trim()
+        return pane === want ? 'ok' : `пейн ${pane}, а --t-bg ${want}`
+      }),
+    )
+    .toBe('ok')
+
+  expect(crashes).toEqual([])
+})
+
 test('конференция: медиа через фейковые устройства', async ({ page, backend, seed }) => {
   const title = `E2E медиа ${seed.runId}`
   await openConferences(page, seed.workspaceId)

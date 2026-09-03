@@ -259,4 +259,41 @@ describe('routing', () => {
       .filter((p) => p.includes('conferences'))
     expect(paths).toEqual(['/conferences/:id?'])
   })
+
+  // The cold entry — a full page load straight onto a room, which is what the
+  // link in an invitation does. Every other test here mounts the view on its
+  // own, so none of them ever reproduced it (#2876).
+  //
+  // The shell renders the topbar slots the room's controls teleport into, and
+  // it renders them in the SAME pass as the view. A <teleport> looks its target
+  // up once, while rendering — and at that moment the shell's tree is still
+  // being built in memory, so `document.getElementById` cannot see it and the
+  // teleport binds to null. One tick later `onMounted` finds the slot for real,
+  // `inTopbar` flips true, and Vue moves the teleport's children into that null:
+  // «Cannot read properties of null (reading 'insertBefore')», thrown from
+  // inside the patch. The render tree dies there and everything after it stops
+  // updating — the symptom users see is a room that no longer follows the theme.
+  it('survives being the first thing rendered under the topbar slots (#2876)', async () => {
+    api.get.mockResolvedValue({ data: { conference: conf(), participants: [part()] } })
+    const router = makeRouter()
+    router.push('/conferences/c1')
+    await router.isReady()
+
+    const Shell = {
+      components: { ConferencesView },
+      template: `<div>
+        <div id="tb-slot-left" /><div id="tb-slot-right" />
+        <ConferencesView />
+      </div>`,
+    }
+    // attachTo is the whole point: the slots have to be real document nodes by
+    // the time onMounted runs, and absent from it while the view renders.
+    const w = mount(Shell, { attachTo: document.body, global: { plugins: [router] } })
+    mounted.push(w)
+    await flushPromises()
+
+    // Rendered, and rendered into the topbar rather than inline.
+    expect(document.getElementById('tb-slot-left').textContent).toContain('К списку')
+    expect(w.text()).toContain('Ежедневная летучка')
+  })
 })
