@@ -248,7 +248,7 @@ func (q *Queries) GetConferenceRecording(ctx context.Context, id uuid.UUID) (Con
 }
 
 const listActiveRecordings = `-- name: ListActiveRecordings :many
-SELECT r.id, r.conference_id, r.file_path, r.file_name, r.size_bytes, r.duration_sec, r.started_at, r.expires_at, r.created_at, r.egress_id, r.status, r.error, r.started_by, r.ended_at, c.recording_ttl_days
+SELECT r.id, r.conference_id, r.file_path, r.file_name, r.size_bytes, r.duration_sec, r.started_at, r.expires_at, r.created_at, r.egress_id, r.status, r.error, r.started_by, r.ended_at, c.recording_ttl_days, c.workspace_id
 FROM conference_recordings r
 JOIN conferences c ON c.id = r.conference_id
 WHERE r.status = 'active'
@@ -271,12 +271,14 @@ type ListActiveRecordingsRow struct {
 	StartedBy        *uuid.UUID `json:"started_by"`
 	EndedAt          *time.Time `json:"ended_at"`
 	RecordingTtlDays int32      `json:"recording_ttl_days"`
+	WorkspaceID      uuid.UUID  `json:"workspace_id"`
 }
 
 // ListActiveRecordings feeds the poller: every row still believed to be running,
-// with the TTL it will need at the finish line. The TTL is carried along rather
-// than fetched per row because the poller would otherwise do one GetConference
-// per recording every minute to read a single integer.
+// with the TTL it will need at the finish line and the workspace it has to
+// announce the finish to. Both are carried along rather than fetched per row
+// because the poller would otherwise do one GetConference per recording every
+// minute to read a single integer and a single id.
 func (q *Queries) ListActiveRecordings(ctx context.Context) ([]ListActiveRecordingsRow, error) {
 	rows, err := q.db.Query(ctx, listActiveRecordings)
 	if err != nil {
@@ -302,6 +304,7 @@ func (q *Queries) ListActiveRecordings(ctx context.Context) ([]ListActiveRecordi
 			&i.StartedBy,
 			&i.EndedAt,
 			&i.RecordingTtlDays,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -407,11 +410,31 @@ func (q *Queries) ListConferenceRecordings(ctx context.Context, conferenceID uui
 }
 
 const listExpiredRecordings = `-- name: ListExpiredRecordings :many
-SELECT id, conference_id, file_path, file_name, size_bytes, duration_sec, started_at, expires_at, created_at, egress_id, status, error, started_by, ended_at FROM conference_recordings
-WHERE expires_at IS NOT NULL AND expires_at < now()
-ORDER BY expires_at
+SELECT r.id, r.conference_id, r.file_path, r.file_name, r.size_bytes, r.duration_sec, r.started_at, r.expires_at, r.created_at, r.egress_id, r.status, r.error, r.started_by, r.ended_at, c.workspace_id
+FROM conference_recordings r
+JOIN conferences c ON c.id = r.conference_id
+WHERE r.expires_at IS NOT NULL AND r.expires_at < now()
+ORDER BY r.expires_at
 LIMIT $1
 `
+
+type ListExpiredRecordingsRow struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID uuid.UUID  `json:"conference_id"`
+	FilePath     string     `json:"file_path"`
+	FileName     string     `json:"file_name"`
+	SizeBytes    int64      `json:"size_bytes"`
+	DurationSec  int32      `json:"duration_sec"`
+	StartedAt    time.Time  `json:"started_at"`
+	ExpiresAt    *time.Time `json:"expires_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	EgressID     string     `json:"egress_id"`
+	Status       string     `json:"status"`
+	Error        string     `json:"error"`
+	StartedBy    *uuid.UUID `json:"started_by"`
+	EndedAt      *time.Time `json:"ended_at"`
+	WorkspaceID  uuid.UUID  `json:"workspace_id"`
+}
 
 // ListExpiredRecordings drives the TTL sweeper. Limited on purpose: a tick that
 // has to delete a thousand files should take a thousand files' worth of ticks
@@ -420,15 +443,19 @@ LIMIT $1
 // Failed rows are swept as well — a recording that died mid-way still left a
 // partial file in the uploads volume, and it is the one nobody will ever ask to
 // keep.
-func (q *Queries) ListExpiredRecordings(ctx context.Context, limit int32) ([]ConferenceRecording, error) {
+//
+// The workspace comes along for the same reason as in ListActiveRecordings: the
+// sweeper announces each deletion so an open recordings list stops offering a
+// download that would now 404.
+func (q *Queries) ListExpiredRecordings(ctx context.Context, limit int32) ([]ListExpiredRecordingsRow, error) {
 	rows, err := q.db.Query(ctx, listExpiredRecordings, limit)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []ConferenceRecording
+	var items []ListExpiredRecordingsRow
 	for rows.Next() {
-		var i ConferenceRecording
+		var i ListExpiredRecordingsRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.ConferenceID,
@@ -444,6 +471,7 @@ func (q *Queries) ListExpiredRecordings(ctx context.Context, limit int32) ([]Con
 			&i.Error,
 			&i.StartedBy,
 			&i.EndedAt,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}

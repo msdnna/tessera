@@ -122,6 +122,11 @@ func TestMain(m *testing.M) {
 	go rh.RunNotificationWorker(workerCtx)
 	go rh.RunNotificationScanner(workerCtx)
 	go rh.RunRecurrenceWorker(workerCtx)
+	// The recording worker runs here too, as production does. Its polling half
+	// is inert in this harness — no LIVEKIT_* means no SFU to ask — so what it
+	// exercises is the TTL sweep; the polling half gets its own stub SFU in
+	// conference_recording_worker_test.go.
+	go rh.RunConferenceRecordingWorker(workerCtx)
 
 	code := m.Run()
 	stopWorkers()

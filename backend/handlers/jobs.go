@@ -13,6 +13,7 @@ const (
 	jobNotifyDelivery  = "notify_delivery"
 	jobNotifyScanner   = "notify_scanner"
 	jobRecurrence      = "recurrence"
+	jobConfRecordings  = "conference_recordings"
 )
 
 // backgroundWorkers is the fixed roster of tick-loop workers, in display order.
@@ -27,6 +28,7 @@ var backgroundWorkers = []struct {
 	{jobNotifyDelivery, "Доставка уведомлений", 10},
 	{jobNotifyScanner, "Сканирование сроков и напоминаний", 60},
 	{jobRecurrence, "Повторяющиеся задачи", 60},
+	{jobConfRecordings, "Записи конференций", 60},
 }
 
 // RegisterBackgroundWorkers records the tick-loop workers as heartbeat entries so
@@ -47,14 +49,17 @@ const (
 	opDelivery   = "delivery"
 	opDueScan    = "due_scan"
 	opRecurrence = "recurrence"
+
+	opRecordingSweep = "recording_sweep"
 )
 
 var workerOps = map[string]string{
-	opSyncScan:   "проверка интеграций к синхронизации",
-	opWriteback:  "выгрузка изменений в GitLab",
-	opDelivery:   "рассылка уведомлений",
-	opDueScan:    "проверка сроков и напоминаний",
-	opRecurrence: "продвижение повторяющихся задач",
+	opSyncScan:       "проверка интеграций к синхронизации",
+	opWriteback:      "выгрузка изменений в GitLab",
+	opDelivery:       "рассылка уведомлений",
+	opDueScan:        "проверка сроков и напоминаний",
+	opRecurrence:     "продвижение повторяющихся задач",
+	opRecordingSweep: "проверка записей конференций и уборка по сроку",
 }
 
 // tick refreshes a worker's heartbeat; a thin wrapper so worker loops don't import

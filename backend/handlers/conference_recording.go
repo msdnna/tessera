@@ -81,6 +81,54 @@ const (
 	recordingOpTimeout = 30 * time.Second
 )
 
+// Reasons written to conference_recordings.error. Shared with the background
+// worker, which reaches the same two conclusions from its own tick — and the
+// user reading the list should not be able to tell which of us got there first.
+const (
+	errRecordingLost         = "recording was lost by the media server"
+	errRecordingNeverStarted = "recording was never started"
+)
+
+// recordingOwner is the little of a conference that closing a recording needs:
+// the TTL to stamp on the file, the room whose red dot goes out, and the
+// workspace to announce it to.
+//
+// A struct rather than a db.Conference because the background worker (#2877,
+// the polling half) reaches a recording through its own listing query and never
+// has the conference row — and passing three loose uuids and an int is how a
+// workspace id ends up in the ttl argument.
+type recordingOwner struct {
+	ConferenceID uuid.UUID
+	WorkspaceID  uuid.UUID
+	TTLDays      int32
+}
+
+func ownerOf(conf db.Conference) recordingOwner {
+	return recordingOwner{
+		ConferenceID: conf.ID, WorkspaceID: conf.WorkspaceID, TTLDays: conf.RecordingTtlDays,
+	}
+}
+
+// recordingResult is what closing a row needs to know about the file, in our
+// own units.
+//
+// Not livekit.EgressInfo, because the worker sometimes closes a row from
+// evidence LiveKit never gave it — a file on disk whose egress the server has
+// already forgotten — and a synthesised EgressInfo would be a claim about what
+// the SFU said. It also keeps protojson's string-encoded int64s and nanosecond
+// durations on the far side of the package boundary, where they belong.
+type recordingResult struct {
+	Size     int64
+	Duration time.Duration
+	Err      string
+}
+
+func resultOf(info livekit.EgressInfo) recordingResult {
+	return recordingResult{
+		Size: int64(info.File().Size), Duration: info.File().Length(), Err: info.Error,
+	}
+}
+
 // recordingView is one recording as clients see it.
 //
 // file_path is deliberately absent: it is a path on the server's disk, of no use
@@ -250,7 +298,7 @@ func (h *API) StopConferenceRecording(c *gin.Context) {
 	// attaching the job. There is nothing to stop, and leaving the row active
 	// would block every future recording of this conference on the unique index.
 	if active.EgressID == "" {
-		h.finishRecording(c, active.ID, conf, "failed", livekit.EgressInfo{Error: "recording was never started"})
+		h.finishRecording(c, active.ID, ownerOf(conf), "failed", recordingResult{Err: errRecordingNeverStarted})
 		c.JSON(http.StatusOK, gin.H{"status": "failed"})
 		return
 	}
@@ -260,7 +308,7 @@ func (h *API) StopConferenceRecording(c *gin.Context) {
 	case errors.Is(err, livekit.ErrEgressGone):
 		// LiveKit has forgotten this job, so nothing will ever report on it
 		// again. Close the row now instead of polling something that is gone.
-		h.finishRecording(c, active.ID, conf, "failed", livekit.EgressInfo{Error: "recording was lost by the media server"})
+		h.finishRecording(c, active.ID, ownerOf(conf), "failed", recordingResult{Err: errRecordingLost})
 		c.JSON(http.StatusOK, gin.H{"status": "failed"})
 		return
 	default:
@@ -273,7 +321,7 @@ func (h *API) StopConferenceRecording(c *gin.Context) {
 			return
 		}
 	}
-	h.pollRecordingDone(active.ID, active.EgressID, conf)
+	h.pollRecordingDone(active.ID, active.EgressID, ownerOf(conf))
 	c.JSON(http.StatusAccepted, gin.H{"status": "stopping"})
 }
 
@@ -284,7 +332,7 @@ func (h *API) StopConferenceRecording(c *gin.Context) {
 // answer immediately, and nothing about finishing the row needs their
 // connection. Bounded, because an egress that never reports is exactly the case
 // the background worker exists for — this is the fast path, not the guarantee.
-func (h *API) pollRecordingDone(recID uuid.UUID, egressID string, conf db.Conference) {
+func (h *API) pollRecordingDone(recID uuid.UUID, egressID string, owner recordingOwner) {
 	go func() {
 		defer observability.Recover("conf-recording.finalize")
 		deadline := time.Now().Add(recordingPollFor)
@@ -296,7 +344,7 @@ func (h *API) pollRecordingDone(recID uuid.UUID, egressID string, conf db.Confer
 			switch {
 			case errors.Is(err, livekit.ErrEgressGone):
 				ctx, cancel := context.WithTimeout(context.Background(), recordingOpTimeout)
-				h.finishRecording(ctx, recID, conf, "failed", livekit.EgressInfo{Error: "recording was lost by the media server"})
+				h.finishRecording(ctx, recID, owner, "failed", recordingResult{Err: errRecordingLost})
 				cancel()
 				return
 			case err != nil:
@@ -309,7 +357,7 @@ func (h *API) pollRecordingDone(recID uuid.UUID, egressID string, conf db.Confer
 				status = "completed"
 			}
 			ctx, cancel = context.WithTimeout(context.Background(), recordingOpTimeout)
-			h.finishRecording(ctx, recID, conf, status, info)
+			h.finishRecording(ctx, recID, owner, status, resultOf(info))
 			cancel()
 			return
 		}
@@ -322,19 +370,19 @@ func (h *API) pollRecordingDone(recID uuid.UUID, egressID string, conf db.Confer
 // race with the background worker. FinishConferenceRecording only touches rows
 // that are still active, so the loser updates nothing — which is the point, as
 // the winner has already set ended_at and the expiry the sweeper reads.
-func (h *API) finishRecording(ctx context.Context, recID uuid.UUID, conf db.Conference, status string, info livekit.EgressInfo) {
+func (h *API) finishRecording(ctx context.Context, recID uuid.UUID, owner recordingOwner, status string, res recordingResult) {
 	rec, err := h.q.FinishConferenceRecording(ctx, db.FinishConferenceRecordingParams{
 		ID:          recID,
 		Status:      status,
-		SizeBytes:   int64(info.File().Size),
-		DurationSec: int32(info.File().Length() / time.Second),
-		Error:       info.Error,
-		TtlDays:     conf.RecordingTtlDays,
+		SizeBytes:   res.Size,
+		DurationSec: int32(res.Duration / time.Second),
+		Error:       res.Err,
+		TtlDays:     owner.TTLDays,
 	})
 	if errIsNoRows(err) {
 		// Somebody else closed it first. The dot is theirs to clear too, but
 		// clearing it again is idempotent and costs one comparison.
-		h.clearConfRecording(conf.ID, recID.String())
+		h.clearConfRecording(owner.ConferenceID, recID.String())
 		return
 	}
 	if err != nil {
@@ -347,8 +395,8 @@ func (h *API) finishRecording(ctx context.Context, recID uuid.UUID, conf db.Conf
 	if status == "failed" {
 		_ = os.Remove(rec.FilePath)
 	}
-	h.clearConfRecording(conf.ID, recID.String())
-	h.broadcast(conf.WorkspaceID, "conference.recording.finished", viewRecording(rec))
+	h.clearConfRecording(owner.ConferenceID, recID.String())
+	h.broadcast(owner.WorkspaceID, "conference.recording.finished", viewRecording(rec))
 }
 
 // ListConferenceRecordings returns a conference's recordings, newest first.

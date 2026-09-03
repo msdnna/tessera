@@ -40,11 +40,12 @@ LEFT JOIN users u ON u.id = r.started_by
 WHERE r.conference_id = $1 AND r.status = 'active';
 
 -- ListActiveRecordings feeds the poller: every row still believed to be running,
--- with the TTL it will need at the finish line. The TTL is carried along rather
--- than fetched per row because the poller would otherwise do one GetConference
--- per recording every minute to read a single integer.
+-- with the TTL it will need at the finish line and the workspace it has to
+-- announce the finish to. Both are carried along rather than fetched per row
+-- because the poller would otherwise do one GetConference per recording every
+-- minute to read a single integer and a single id.
 -- name: ListActiveRecordings :many
-SELECT r.*, c.recording_ttl_days
+SELECT r.*, c.recording_ttl_days, c.workspace_id
 FROM conference_recordings r
 JOIN conferences c ON c.id = r.conference_id
 WHERE r.status = 'active'
@@ -81,10 +82,16 @@ RETURNING *;
 -- Failed rows are swept as well — a recording that died mid-way still left a
 -- partial file in the uploads volume, and it is the one nobody will ever ask to
 -- keep.
+--
+-- The workspace comes along for the same reason as in ListActiveRecordings: the
+-- sweeper announces each deletion so an open recordings list stops offering a
+-- download that would now 404.
 -- name: ListExpiredRecordings :many
-SELECT * FROM conference_recordings
-WHERE expires_at IS NOT NULL AND expires_at < now()
-ORDER BY expires_at
+SELECT r.*, c.workspace_id
+FROM conference_recordings r
+JOIN conferences c ON c.id = r.conference_id
+WHERE r.expires_at IS NOT NULL AND r.expires_at < now()
+ORDER BY r.expires_at
 LIMIT $1;
 
 -- name: DeleteConferenceRecording :exec
