@@ -422,9 +422,33 @@ export function useConfTransport() {
   async function startScreen() {
     if (!room) return false
     try {
-      // Audio too: sharing a tab with a video and having it play silently for
-      // everyone else is the classic screen-share disappointment.
-      await room.localParticipant.setScreenShareEnabled(true, { audio: true })
+      // Quality knobs for the shared screen (#2885). The presenter always sees a
+      // crisp picture because that is their own raw capture; everyone else sees
+      // the *encoded* stream, so the only lever we have on their end is how much
+      // the encoder is allowed to spend. Three settings move it the most:
+      //   - contentHint 'detail' tells the encoder this is a screen, not a
+      //     webcam, so it keeps edges sharp instead of smoothing them;
+      //   - a high resolution cap at a modest frame rate — text does not need
+      //     30fps, and the saved frames buy per-frame sharpness;
+      //   - degradationPreference 'maintain-resolution' so that when the link is
+      //     tight the frame rate drops before the resolution does — a laggier but
+      //     readable screen beats a smooth blur.
+      // It cannot make the remote picture match the local one, but it raises the
+      // ceiling well above the SDK's webcam-tuned default.
+      await room.localParticipant.setScreenShareEnabled(
+        true,
+        {
+          // Audio too: sharing a tab with a video and having it play silently for
+          // everyone else is the classic screen-share disappointment.
+          audio: true,
+          resolution: { width: 1920, height: 1080, frameRate: 15 },
+          contentHint: 'detail',
+        },
+        {
+          screenShareEncoding: { maxBitrate: 3_000_000, maxFramerate: 15 },
+          degradationPreference: 'maintain-resolution',
+        },
+      )
     } catch (e) {
       // NotAllowedError is the cancelled picker; anything else is worth saying
       // out loud, because the button will otherwise look simply broken.
