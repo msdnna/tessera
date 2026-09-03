@@ -87,8 +87,31 @@ func (h *WSHandler) ConnectConference(c *gin.Context) {
 	p := confroom.NewParticipant(uid, h.displayName(c, uid), seatRole)
 	p.CanModerate = canModerate
 	room := h.confRooms.Join(confID, p, forceMuted)
+	h.seedRecording(c, confID, room)
 	go h.confWritePump(conn, p)
 	go h.confReadPump(conn, p, room, confID)
+}
+
+// seedRecording puts the red dot back after the room has forgotten it (#2877).
+//
+// The room is in-memory and exists only while somebody is in it, so the first
+// socket to arrive during a recording would otherwise see a snapshot that says
+// nothing is being recorded — which is precisely the lie this indicator exists
+// to prevent. Read after Join rather than before: a room that does not exist yet
+// has nowhere to put the answer.
+//
+// A stale read (the recording ended between the query and here) cannot stick:
+// Room.SetRecording refuses any recording the room has already seen finish.
+func (h *WSHandler) seedRecording(c *gin.Context, confID uuid.UUID, room *confroom.Room) {
+	rec, err := h.q.ActiveConferenceRecording(c, confID)
+	if err != nil {
+		return // no row is the ordinary case; a failed read is not worth a refused socket
+	}
+	view := confroom.RecordingView{ID: rec.ID.String(), StartedAt: rec.StartedAt}
+	if rec.StartedByName != nil {
+		view.StartedBy = *rec.StartedByName
+	}
+	room.SetRecording(&view)
 }
 
 // conferenceSeat resolves what this connection is allowed to do and what was

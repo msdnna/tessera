@@ -87,6 +87,16 @@ type Config struct {
 	LiveKitPublicURL string
 	LiveKitAPIKey    string
 	LiveKitAPISecret string
+	// EgressUploadDir is UploadDir as the *egress container* sees it (#2877).
+	//
+	// The recorder writes the mp4 itself, into the volume both services share, so
+	// the path we ask it for is a path in its filesystem — not ours. In the
+	// shipped compose the two mounts agree (/data/uploads on both), which is why
+	// this defaults to UploadDir and nobody has to set it; the knob exists for the
+	// install that mounts the volume somewhere else in one of the two containers,
+	// where the failure would otherwise be a recording that starts, runs and
+	// writes its file where nothing can find it.
+	EgressUploadDir string
 	// Request body ceilings, in bytes. MaxBodyBytes is the blanket limit;
 	// uploads and attachments get their own, larger, budgets.
 	MaxBodyBytes       int64
@@ -259,6 +269,7 @@ func New() *Config {
 		LiveKitPublicURL:   strings.TrimSpace(os.Getenv("LIVEKIT_PUBLIC_URL")),
 		LiveKitAPIKey:      lkKey,
 		LiveKitAPISecret:   lkSecret,
+		EgressUploadDir:    getEnv("LIVEKIT_EGRESS_UPLOAD_DIR", getEnv("UPLOAD_DIR", "./uploads")),
 		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
 		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
 		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),

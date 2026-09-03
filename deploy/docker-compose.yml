@@ -201,21 +201,33 @@ services:
       timeout: 3s
       retries: 5
 
-  # The backend container runs as root and creates backend_uploads root:root
-  # 0755; egress runs as uid 1001 and cannot write a byte into it. Verified on a
-  # throwaway stand, and the failure is the nasty kind — the recording starts,
-  # Chrome joins, and only the final write fails.
+  # One directory in the uploads volume has two writers: the backend (uid 65532,
+  # `USER nonroot` in backend/Dockerfile.prod) creates the per-conference folder
+  # and later deletes expired files, and egress (uid 1001, gid 0) writes the mp4
+  # into it. Neither can be given the other's identity, so they meet on group 0.
   #
-  # So the directory egress writes into is prepared here instead of being
-  # assumed. 2775 = group-writable (egress's gid IS 0) plus setgid, so the mp4
-  # it creates stays group root and the backend can still serve and delete it.
+  #   owner 65532 → the backend creates and removes entries;
+  #   group 0, group-writable → egress writes the file;
+  #   setgid → the folders the backend creates keep group 0, so the arrangement
+  #            survives one level down, where the mp4 actually lands.
+  #
+  # Verified as a chain, not assumed: 65532 mkdir, 1001:0 write, 65532 read and
+  # unlink. Getting it wrong fails late and quietly — the recording starts, Chrome
+  # joins the call, and only the final write is refused.
+  #
+  # `rec`, not `conf`: the chat's attachments live in conf/ and are written by the
+  # backend alone. Handing that directory to a shared group would change the
+  # ownership of a tree the backend already creates subdirectories in — and an
+  # earlier revision of this file did exactly that with `chown 0:0`, which locks
+  # uid 65532 out of conf/ and breaks chat uploads for every new conference.
+  #
   # Runs to completion on every `up` and is a no-op after the first.
   egress-init:
     image: alpine:3.21
     container_name: tessera-egress-init
     profiles: [recording]
     restart: "no"
-    command: ["sh", "-c", "mkdir -p /data/uploads/conf && chown 0:0 /data/uploads/conf && chmod 2775 /data/uploads/conf"]
+    command: ["sh", "-c", "mkdir -p /data/uploads/rec && chown 65532:0 /data/uploads/rec && chmod 2775 /data/uploads/rec"]
     volumes:
       - backend_uploads:/data/uploads
     networks:
@@ -225,8 +237,9 @@ services:
   # the participant grid, then muxing that to mp4. Three details worth knowing:
   #
   #   • It shares backend_uploads with the backend and writes the mp4 straight
-  #     into it, so the file lands where attachments already live and is served
-  #     back through the existing download handler — no S3, no copy step.
+  #     into /data/uploads/rec/<conference>/, so the file lands next to where
+  #     attachments already live and is served back through a download handler of
+  #     the same shape — no S3, no copy step.
   #   • It runs as uid 1001, NOT root — hence egress-init above.
   #   • security_opt is what lets Chrome keep its sandbox. The profile is the
   #     stock Docker seccomp profile plus `clone` and `unshare` — strictly

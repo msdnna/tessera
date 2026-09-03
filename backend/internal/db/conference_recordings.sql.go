@@ -454,3 +454,51 @@ func (q *Queries) ListExpiredRecordings(ctx context.Context, limit int32) ([]Con
 	}
 	return items, nil
 }
+
+const setConferenceRecordingEgress = `-- name: SetConferenceRecordingEgress :one
+UPDATE conference_recordings
+SET egress_id = $2
+WHERE id = $1 AND status = 'active'
+RETURNING id, conference_id, file_path, file_name, size_bytes, duration_sec, started_at, expires_at, created_at, egress_id, status, error, started_by, ended_at
+`
+
+type SetConferenceRecordingEgressParams struct {
+	ID       uuid.UUID `json:"id"`
+	EgressID string    `json:"egress_id"`
+}
+
+// SetConferenceRecordingEgress attaches LiveKit's job id to a row that was
+// inserted before the egress was started.
+//
+// The order is deliberate, and it is what makes the one-active index worth
+// having: the row is claimed first, so a second host pressing record loses on
+// the unique violation *before* a second headless Chrome joins the call.
+// Starting first would mean the loser has to stop a worker it already spawned,
+// and a stop that fails leaves an untracked file growing in the uploads volume.
+//
+// The price of that order is this statement: between the INSERT and here the row
+// names no egress, so a process that dies in the gap leaves an active row the
+// poller cannot ask about. That is recoverable — ListEgress on the room reports
+// what LiveKit is actually recording — and it is a much better failure than an
+// orphaned worker nobody holds a handle for.
+func (q *Queries) SetConferenceRecordingEgress(ctx context.Context, arg SetConferenceRecordingEgressParams) (ConferenceRecording, error) {
+	row := q.db.QueryRow(ctx, setConferenceRecordingEgress, arg.ID, arg.EgressID)
+	var i ConferenceRecording
+	err := row.Scan(
+		&i.ID,
+		&i.ConferenceID,
+		&i.FilePath,
+		&i.FileName,
+		&i.SizeBytes,
+		&i.DurationSec,
+		&i.StartedAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+		&i.EgressID,
+		&i.Status,
+		&i.Error,
+		&i.StartedBy,
+		&i.EndedAt,
+	)
+	return i, err
+}

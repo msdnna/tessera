@@ -215,15 +215,22 @@ type Room struct {
 	kicked map[uuid.UUID]time.Time // user id -> cooldown expiry
 	stage  *stage
 	queue  []*Participant
+	// recording is what the red dot shows; nil means nothing is being recorded.
+	recording *RecordingView
+	// recEnded remembers which recordings this room has already seen finish, so
+	// a seed that was read from the database a moment before the stop landed
+	// cannot resurrect the dot. See SetRecording.
+	recEnded map[string]struct{}
 }
 
 func newRoom(confID uuid.UUID, enforce Enforcer) *Room {
 	return &Room{
-		confID:  confID,
-		enforce: enforce,
-		members: map[*Participant]struct{}{},
-		muted:   map[uuid.UUID]bool{},
-		kicked:  map[uuid.UUID]time.Time{},
+		confID:   confID,
+		enforce:  enforce,
+		members:  map[*Participant]struct{}{},
+		muted:    map[uuid.UUID]bool{},
+		kicked:   map[uuid.UUID]time.Time{},
+		recEnded: map[string]struct{}{},
 	}
 }
 
@@ -259,6 +266,20 @@ type QueueView struct {
 	Role   string `json:"role"`
 }
 
+// RecordingView is the "this call is being recorded" indicator, and everybody
+// in the room gets it — not just whoever may press the button (#2877). Recording
+// a meeting without telling the people in it is the one behaviour this feature
+// must never have, so the flag travels in the snapshot rather than in a reply to
+// the host's own request.
+//
+// StartedBy is a display name and not an id: an anonymous red dot answers "am I
+// being recorded" but not "by whom", which is the question people actually ask.
+type RecordingView struct {
+	ID        string    `json:"id"`
+	StartedAt time.Time `json:"started_at"`
+	StartedBy string    `json:"started_by"`
+}
+
 // StateMsg is the whole-room snapshot. Sending everything on every change
 // (rather than add/remove deltas) is what makes a reconnect enough to recover.
 type StateMsg struct {
@@ -266,6 +287,10 @@ type StateMsg struct {
 	Participants []PersonView `json:"participants"`
 	Stage        *StageView   `json:"stage"`
 	Queue        []QueueView  `json:"queue"`
+	// Recording is nil when nothing is being recorded. Carried in the snapshot
+	// for the same reason as everything else here: a client that reconnects
+	// re-reads the truth instead of holding a dot that has nothing to clear it.
+	Recording *RecordingView `json:"recording"`
 }
 
 // welcomeMsg tells a fresh participant which connection it is. A client needs
@@ -716,6 +741,12 @@ func (r *Room) stateLocked() StateMsg {
 		})
 	}
 	msg := StateMsg{Type: TypeState, Participants: people, Queue: queue}
+	if r.recording != nil {
+		// Copied, not aliased: a caller that mutated the snapshot's recording
+		// would be editing the room's own state from outside the lock.
+		rec := *r.recording
+		msg.Recording = &rec
+	}
 	if r.stage != nil {
 		msg.Stage = &StageView{
 			UserID: r.stage.p.UserID.String(),
@@ -749,6 +780,56 @@ func (r *Room) notify(msgType string) {
 	for p := range r.members {
 		p.deliver(frame)
 	}
+}
+
+// SetRecording turns the red dot on (#2877). It is called twice for the same
+// recording on purpose: once by the handler that started it, and again by every
+// socket that joins afterwards, which seeds the state from the database because
+// the room forgets everything when the last person leaves.
+//
+// Two guards make that double duty safe:
+//
+//   - an unchanged value broadcasts nothing, so a joining participant does not
+//     make the whole room repaint;
+//   - a recording this room has already seen end is refused outright. Without
+//     that, a socket whose database read happened a moment before the stop
+//     committed would put the dot back on a call that is no longer being
+//     recorded — and nothing would ever take it off again, because the stop has
+//     already been and gone.
+func (r *Room) SetRecording(v *RecordingView) {
+	if v == nil || v.ID == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ended := r.recEnded[v.ID]; ended {
+		return
+	}
+	if r.recording != nil && *r.recording == *v {
+		return
+	}
+	rec := *v
+	r.recording = &rec
+	r.broadcastLocked()
+}
+
+// ClearRecording turns the dot off and remembers that this recording is over.
+//
+// Keyed by id rather than a bare "clear" so a stop that arrives late — the
+// poller and the host's own button race each other by design — cannot switch off
+// a *different* recording that has since started.
+func (r *Room) ClearRecording(id string) {
+	if id == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.recEnded[id] = struct{}{}
+	if r.recording == nil || r.recording.ID != id {
+		return
+	}
+	r.recording = nil
+	r.broadcastLocked()
 }
 
 // Size reports the number of open sockets in this conference.
@@ -889,13 +970,35 @@ func (rs *Rooms) Drop(confID uuid.UUID, reason string) {
 // nobody has open has no room and the call is a no-op — which is correct: the
 // next arrival loads the current state over HTTP anyway.
 func (rs *Rooms) Notify(confID uuid.UUID, msgType string) {
-	rs.mu.Lock()
-	room, ok := rs.rooms[confID]
-	rs.mu.Unlock()
-	if !ok {
-		return
+	if room := rs.lookup(confID); room != nil {
+		room.notify(msgType)
 	}
-	room.notify(msgType)
+}
+
+// SetRecording tells everyone in a conference that it is being recorded.
+//
+// A conference nobody has open has no room, and this is then a no-op — which is
+// correct rather than a lost update: the first socket to arrive seeds the dot
+// from the database, so the state is reconstructed exactly when there is
+// somebody to show it to.
+func (rs *Rooms) SetRecording(confID uuid.UUID, v *RecordingView) {
+	if room := rs.lookup(confID); room != nil {
+		room.SetRecording(v)
+	}
+}
+
+// ClearRecording takes the dot off a conference once its recording has ended.
+func (rs *Rooms) ClearRecording(confID uuid.UUID, id string) {
+	if room := rs.lookup(confID); room != nil {
+		room.ClearRecording(id)
+	}
+}
+
+// lookup returns the live room for a conference, or nil when nobody is in it.
+func (rs *Rooms) lookup(confID uuid.UUID) *Room {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
+	return rs.rooms[confID]
 }
 
 // Run sweeps abandoned stages and elapsed cooldowns until Close. Call it once,

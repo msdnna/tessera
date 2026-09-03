@@ -126,6 +126,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		APIKey:    cfg.LiveKitAPIKey,
 		APISecret: cfg.LiveKitAPISecret,
 	}))
+	// Where the egress recorder sees the uploads volume (#2877). Not part of the
+	// SFU client: it is our own filesystem as another container mounts it.
+	rh.WireRecording(cfg.EgressUploadDir)
 	// Moderation sink (#2872), installed after the SFU client because it uses it:
 	// a kick or a force-mute decided inside a room is persisted and carried to
 	// LiveKit through here. Set once, before any room exists — rooms copy it as
@@ -569,6 +572,16 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/conferences/:id/messages", rh.PostConferenceMessage)
 			protected.DELETE("/conference-messages/:id", rh.DeleteConferenceMessage)
 			protected.GET("/conference-attachments/:id", rh.DownloadConferenceMessageAttachment)
+
+			// Server-side recording (#2877). Start and stop are moderation, the
+			// list is not: everyone who could have attended the meeting may
+			// watch it back. Download and delete hang off the recording's own id
+			// for the same gin-tree reason as the chat routes above.
+			protected.POST("/conferences/:id/recording/start", rh.StartConferenceRecording)
+			protected.POST("/conferences/:id/recording/stop", rh.StopConferenceRecording)
+			protected.GET("/conferences/:id/recordings", rh.ListConferenceRecordings)
+			protected.GET("/conference-recordings/:id/download", rh.DownloadConferenceRecording)
+			protected.DELETE("/conference-recordings/:id", rh.DeleteConferenceRecording)
 
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).

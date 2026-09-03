@@ -48,6 +48,7 @@ type API struct {
 	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
 	converter *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
 	version   string                   // build version, surfaced by the readiness/metrics probes
+	egressDir string                   // uploadDir as the egress recorder sees it (#2877); empty falls back to uploadDir
 }
 
 // WireOps injects the ops-observability dependencies that live outside NewAPI's
@@ -121,6 +122,26 @@ func (h *API) dropConfRoom(confID uuid.UUID, reason string) {
 func (h *API) notifyConfRoom(confID uuid.UUID, msgType string) {
 	if h.confRooms != nil {
 		h.confRooms.Notify(confID, msgType)
+	}
+}
+
+// WireRecording injects the path prefix the egress recorder uses for the shared
+// uploads volume (#2877). Separate from WireLiveKit because it is not the SFU's
+// business: it is our own filesystem, seen from another container.
+func (h *API) WireRecording(egressUploadDir string) { h.egressDir = egressUploadDir }
+
+// setConfRecording / clearConfRecording move the room's recording indicator.
+// Guarded like the calls above — the GitLab and job tests build an API with no
+// room registry at all.
+func (h *API) setConfRecording(confID uuid.UUID, v *confroom.RecordingView) {
+	if h.confRooms != nil {
+		h.confRooms.SetRecording(confID, v)
+	}
+}
+
+func (h *API) clearConfRecording(confID uuid.UUID, recordingID string) {
+	if h.confRooms != nil {
+		h.confRooms.ClearRecording(confID, recordingID)
 	}
 }
 

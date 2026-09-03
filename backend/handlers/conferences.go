@@ -3,6 +3,7 @@ package handlers
 import (
 	"errors"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -287,9 +288,21 @@ func (h *API) DeleteConference(c *gin.Context) {
 	if !h.requireConferenceManager(c, conf) {
 		return
 	}
+	// Read the recording paths before the delete: ON DELETE CASCADE takes the
+	// rows with it, and after that nothing remembers where the files are. A
+	// recording is the largest thing this app ever writes to disk, so leaving
+	// them behind is not a rounding error (#2877).
+	recordings, err := h.q.ListConferenceRecordingPaths(c, conf.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	if err := h.q.DeleteConference(c, conf.ID); err != nil {
 		fail(c, err)
 		return
+	}
+	for _, p := range recordings {
+		_ = os.Remove(p) // best-effort; the rows are already gone
 	}
 	h.dropConfRoom(conf.ID, "deleted")
 	h.broadcastAs(c, conf.WorkspaceID, "conference.deleted", gin.H{"id": conf.ID})

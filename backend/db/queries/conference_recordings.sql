@@ -104,3 +104,23 @@ WHERE r.id = $1;
 -- why the paths have to be read *before* the delete.
 -- name: ListConferenceRecordingPaths :many
 SELECT file_path FROM conference_recordings WHERE conference_id = $1;
+
+-- SetConferenceRecordingEgress attaches LiveKit's job id to a row that was
+-- inserted before the egress was started.
+--
+-- The order is deliberate, and it is what makes the one-active index worth
+-- having: the row is claimed first, so a second host pressing record loses on
+-- the unique violation *before* a second headless Chrome joins the call.
+-- Starting first would mean the loser has to stop a worker it already spawned,
+-- and a stop that fails leaves an untracked file growing in the uploads volume.
+--
+-- The price of that order is this statement: between the INSERT and here the row
+-- names no egress, so a process that dies in the gap leaves an active row the
+-- poller cannot ask about. That is recoverable — ListEgress on the room reports
+-- what LiveKit is actually recording — and it is a much better failure than an
+-- orphaned worker nobody holds a handle for.
+-- name: SetConferenceRecordingEgress :one
+UPDATE conference_recordings
+SET egress_id = $2
+WHERE id = $1 AND status = 'active'
+RETURNING *;
