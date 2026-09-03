@@ -87,9 +87,17 @@ test-e2e-backend-docker: ## E2e including the image tier (docker build + run; se
 help-index: ## Rebuild the help-centre index from docs/help
 	cd frontend && node scripts/build-help-index.mjs
 
+# Same two-address story as test-e2e-frontend below, and SHOTS_ARGS goes through
+# to playwright — `make help-shots SHOTS_ARGS='-g конференц'` repaints one article's
+# pictures instead of all of them, which keeps an unrelated diff out of the commit.
+SHOTS_ARGS ?=
+SHOTS_ENV = E2E_API_URL=http://localhost:$(E2E_PORT)/api \
+	TESSERA_API_TARGET=http://localhost:$(E2E_PORT)
+
 .PHONY: help-shots
 help-shots: ## Re-take the help-centre screenshots into docs/help/assets (needs `make e2e-backend-up`)
-	cd frontend && corepack yarn build && corepack yarn docs:shots
+	cd frontend && corepack yarn build
+	cd frontend && $(SHOTS_ENV) corepack yarn docs:shots $(SHOTS_ARGS)
 
 # The English twins (#2816): same run, same seed, the interface switched through
 # the account's own language preference. They land next to the Russian set as
@@ -99,7 +107,8 @@ help-shots: ## Re-take the help-centre screenshots into docs/help/assets (needs 
 # hands admin to the instance's first account.
 .PHONY: help-shots-en
 help-shots-en: ## Re-take the help-centre screenshots in English (needs a clean `make e2e-backend-up`)
-	cd frontend && corepack yarn build && TESSERA_SHOTS_LANG=en corepack yarn docs:shots
+	cd frontend && corepack yarn build
+	cd frontend && TESSERA_SHOTS_LANG=en $(SHOTS_ENV) corepack yarn docs:shots $(SHOTS_ARGS)
 
 .PHONY: lint-frontend
 lint-frontend: ## Lint + format-check frontend
