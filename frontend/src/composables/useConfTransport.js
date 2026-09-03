@@ -176,6 +176,13 @@ export function useConfTransport() {
     const events = [
       RoomEvent.ParticipantConnected,
       RoomEvent.ParticipantDisconnected,
+      // Publish/unpublish of a *remote* track, distinct from subscribe events:
+      // when a presenter stops sharing, TrackUnpublished is the authoritative
+      // signal that the screen publication is gone. Without it a snapshot could
+      // keep a dead screenTrack, leaving the stage black for everyone else until
+      // a reload (#2880).
+      RoomEvent.TrackPublished,
+      RoomEvent.TrackUnpublished,
       RoomEvent.TrackSubscribed,
       RoomEvent.TrackUnsubscribed,
       RoomEvent.TrackMuted,
