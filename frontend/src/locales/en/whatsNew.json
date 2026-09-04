@@ -1,4 +1,12 @@
 {
+  "conferences": {
+    "title": "Conferences: calls, screen sharing and recording",
+    "item1": "The sidebar gained a «Conferences» section: schedule a meeting or start one right away, and link it to a task if you like. Inside there's a video/audio call, a chat with attachments, screen sharing and a participants panel; the host can mute someone's mic or remove them from the call.",
+    "item2": "A meeting can be recorded. The server does the recording, not your browser, so it doesn't depend on your connection and survives closing the tab. While recording is on everyone in the room sees a red dot, and the finished file shows up in the conference's recordings list to download later.",
+    "item3": "The call window collapses into a floating mini-window, so you can keep working in other sections without dropping the connection. There's also mic noise suppression and avatars instead of black tiles for people with the camera off.",
+    "spotlightTitle": "Here it is — «Conferences»",
+    "spotlightBody": "A new sidebar section: video calls with screen sharing, chat and meeting recording."
+  },
   "taskCounts": {
     "title": "Task counts: in columns and in the filter",
     "item1": "A column's header counter now shows not just its own cards but the total including subtasks at every level — `3 (6)`: cards before the brackets, the full total inside. With no subtasks the brackets are dropped; hovering explains both numbers (the same tooltip on a collapsed column).",

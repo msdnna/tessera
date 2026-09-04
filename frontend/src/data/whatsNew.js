@@ -26,6 +26,21 @@
 //              elements.
 export const WHATS_NEW = [
   {
+    version: '0.183.0',
+    date: '2026-09-04',
+    titleKey: 'whatsNew.conferences.title',
+    itemKeys: [
+      'whatsNew.conferences.item1',
+      'whatsNew.conferences.item2',
+      'whatsNew.conferences.item3',
+    ],
+    spotlight: {
+      navKey: 'conferences',
+      titleKey: 'whatsNew.conferences.spotlightTitle',
+      bodyKey: 'whatsNew.conferences.spotlightBody',
+    },
+  },
+  {
     version: '0.182.0',
     date: '2026-08-30',
     titleKey: 'whatsNew.taskCounts.title',
