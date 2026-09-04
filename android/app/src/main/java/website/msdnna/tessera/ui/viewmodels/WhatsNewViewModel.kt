@@ -14,10 +14,13 @@ import website.msdnna.tessera.BuildConfig
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.update.WhatsNewEntries
 import website.msdnna.tessera.update.WhatsNewRepository
+import website.msdnna.tessera.util.ChangelogSheet
 import website.msdnna.tessera.util.SPOTLIGHT_PREFIX
+import website.msdnna.tessera.util.VersionStamp
 import website.msdnna.tessera.util.WHATSNEW_ANDROID_PREFIX
 import website.msdnna.tessera.util.WhatsNewEntry
 import website.msdnna.tessera.util.WhatsNewSpotlight
+import website.msdnna.tessera.util.changelogSheet
 import website.msdnna.tessera.util.planWhatsNew
 
 /**
@@ -35,17 +38,36 @@ class WhatsNewViewModel(app: Application) : AndroidViewModel(app) {
     private val acked = mutableSetOf<String>()
 
     private val _releases = MutableStateFlow<List<WhatsNewEntry>>(emptyList())
-    val releases: StateFlow<List<WhatsNewEntry>> = _releases.asStateFlow()
 
     private val _queue = MutableStateFlow<List<WhatsNewSpotlight>>(emptyList())
 
-    private val _apiVersion = MutableStateFlow("")
-    val apiVersion: StateFlow<String> = _apiVersion.asStateFlow()
+    /** The API's own build stamp (version + commit + built_at), null until it answers. */
+    private val _api = MutableStateFlow<VersionStamp?>(null)
+    val api: StateFlow<VersionStamp?> = _api.asStateFlow()
 
-    /** The hint to draw right now, or null while the card is still up. */
-    val spotlight: StateFlow<WhatsNewSpotlight?> =
-        combine(_releases, _queue) { releases, queue -> if (releases.isEmpty()) queue.firstOrNull() else null }
+    /** The full changelog, opened by hand from the version stamp in the footer (#2858). */
+    private val _historyOpen = MutableStateFlow(false)
+
+    /** What the single changelog sheet renders — the update card, the history, or nothing. */
+    val sheet: StateFlow<ChangelogSheet?> =
+        combine(_releases, _historyOpen) { releases, history -> changelogSheet(releases, history, WhatsNewEntries) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    /** The hint to draw right now, or null while a sheet is still up: an arrow
+     *  drawn behind the card's scrim points at nothing. */
+    val spotlight: StateFlow<WhatsNewSpotlight?> =
+        combine(sheet, _queue) { sheet, queue -> if (sheet == null) queue.firstOrNull() else null }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun openHistory() {
+        _historyOpen.value = true
+    }
+
+    /** Closing the history acknowledges **nothing**: it was opened deliberately, and
+     *  advancing the baseline here would silently eat the next real What's New. */
+    fun closeHistory() {
+        _historyOpen.value = false
+    }
 
     /** Guards against re-running on every recomposition / user-flow emission. */
     private var loadedFor: String? = null
@@ -56,7 +78,7 @@ class WhatsNewViewModel(app: Application) : AndroidViewModel(app) {
         if (loadedFor == id) return
         loadedFor = id
         viewModelScope.launch {
-            _apiVersion.value = runCatching { repo.apiVersion() }.getOrDefault("")
+            _api.value = runCatching { repo.apiStamp() }.getOrNull()
             // Offline / unauthorised: surface nothing rather than risk showing a
             // release the user already dismissed elsewhere.
             val keys = runCatching { repo.acknowledged() }.getOrNull() ?: return@launch

@@ -24,6 +24,8 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.UpdateState
 import website.msdnna.tessera.update.WhatsNewEntries
+import website.msdnna.tessera.util.ChangelogSheet
+import website.msdnna.tessera.util.VersionStamp
 import website.msdnna.tessera.util.WhatsNewEntry
 import website.msdnna.tessera.util.withLanguage
 
@@ -116,13 +118,16 @@ class ComponentLocaleTest {
     fun `whats new sheet renders in english`() {
         render("en") {
             WhatsNewSheet(
-                releases = listOf(
-                    WhatsNewEntry(
-                        version = "1.2.3",
-                        date = "2026-08-23",
-                        titleRes = R.string.whats_new_title,
-                        itemsRes = R.array.task_priority_labels,
+                sheet = ChangelogSheet(
+                    entries = listOf(
+                        WhatsNewEntry(
+                            version = "1.2.3",
+                            date = "2026-08-23",
+                            titleRes = R.string.whats_new_title,
+                            itemsRes = R.array.task_priority_labels,
+                        ),
                     ),
+                    history = false,
                 ),
                 onDismiss = {},
             )
@@ -136,7 +141,7 @@ class ComponentLocaleTest {
      *  `values-en` у реальной записи, а не в выдуманной. */
     @Test
     fun `release highlights come from resources in both locales`() {
-        render("en") { WhatsNewSheet(releases = WhatsNewEntries, onDismiss = {}) }
+        render("en") { WhatsNewSheet(sheet = ChangelogSheet(WhatsNewEntries, history = false), onDismiss = {}) }
         compose.onNodeWithText("Tasks, as on the web").assertIsDisplayed()
         compose.onNodeWithText("Workspace documents").assertIsDisplayed()
         compose.onNodeWithText(
@@ -146,11 +151,49 @@ class ComponentLocaleTest {
 
     @Test
     fun `release highlights render in russian`() {
-        render("ru") { WhatsNewSheet(releases = WhatsNewEntries, onDismiss = {}) }
+        render("ru") { WhatsNewSheet(sheet = ChangelogSheet(WhatsNewEntries, history = false), onDismiss = {}) }
         compose.onNodeWithText("Задачи — как в вебе").assertIsDisplayed()
         compose.onNodeWithText(
             "На телефоне документы пока только для чтения — редактирование остаётся в вебе.",
         ).assertIsDisplayed()
+    }
+
+    /**
+     * История изменений (#2858) — та же карточка, но с другими подписями и с
+     * блоком «какой билд запущен» (#2859). Проверяем в обеих локалях: подписи и
+     * слова «коммит»/«сборка» — ресурсы, а их легко забыть в `values-en`.
+     */
+    @Test
+    fun `the changelog history renders its own wording and the build stamp in english`() {
+        render("en") { WhatsNewSheet(sheet = historySheet(), onDismiss = {}, api = apiStamp()) }
+        compose.onNodeWithText("Changelog").assertIsDisplayed()
+        compose.onNodeWithText("All Tessera updates").assertIsDisplayed()
+        // «Close», не «Got it»: история ничего не подтверждает.
+        compose.onNodeWithText("Close").assertIsDisplayed()
+        compose.onNodeWithText("Server 0.85.1").assertIsDisplayed()
+        compose.onNodeWithText("commit def5678").assertIsDisplayed()
+    }
+
+    @Test
+    fun `the changelog history renders in russian`() {
+        render("ru") { WhatsNewSheet(sheet = historySheet(), onDismiss = {}, api = apiStamp()) }
+        compose.onNodeWithText("История изменений").assertIsDisplayed()
+        compose.onNodeWithText("Все обновления Tessera").assertIsDisplayed()
+        compose.onNodeWithText("Закрыть").assertIsDisplayed()
+        compose.onNodeWithText("коммит def5678").assertIsDisplayed()
+    }
+
+    private fun historySheet() = ChangelogSheet(WhatsNewEntries.take(1), history = true)
+
+    private fun apiStamp() = VersionStamp("0.85.1", "def5678", "2026-08-30T10:00:00Z")
+
+    /** Сервер не ответил — блок сервера пропадает целиком, а не показывает «Сервер ». */
+    @Test
+    fun `the build stamp omits the server when it has not answered`() {
+        render("en") {
+            WhatsNewSheet(sheet = ChangelogSheet(WhatsNewEntries.take(1), history = true), onDismiss = {}, api = null)
+        }
+        compose.onNodeWithText("Server", substring = true).assertDoesNotExist()
     }
 
     private fun release() = LatestRelease(version = "1.2.3", versionCode = 123)

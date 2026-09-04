@@ -67,6 +67,7 @@ import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.theme.ConflictAmber
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -959,7 +960,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
 private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val due = dueShort(LocalResources.current, task.dueDate)
+    val due = dueShort(LocalResources.current, task.dueDate, LocalDateFormat.current)
     // Overdue (past due, not done) → red tint, like the web.
     val overdue = !task.isCompleted && isOverdue(task.dueDate)
     val overdueColor = Color(0xFFE0533D)

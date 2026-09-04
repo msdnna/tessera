@@ -38,6 +38,20 @@ fun ComposeContentTestRule.awaitTextIn(tag: String, text: String, timeoutMillis:
     waitUntilExactlyOneExists(hasAnyAncestor(hasTestTag(tag)) and hasText(text), timeoutMillis)
 }
 
+/**
+ * Waits for the node [tag] to itself read [text] (substring match).
+ *
+ * The counterpart of [awaitTextIn] for a node whose text is its *own*, merged
+ * semantics rather than a descendant's — a counter, a badge, a chip label. The
+ * match is on a substring because such a label usually wraps the interesting part
+ * in localised chrome («показано: 2 (4)»), and a spec should assert the numbers,
+ * not the wording around them.
+ */
+@OptIn(ExperimentalTestApi::class)
+fun ComposeContentTestRule.awaitTextOn(tag: String, text: String, timeoutMillis: Long = AWAIT_TIMEOUT_MS) {
+    waitUntilExactlyOneExists(hasTestTag(tag) and hasText(text, substring = true), timeoutMillis)
+}
+
 /** Waits for [tag] to leave the tree — the counterpart of [awaitTag] for a node
  *  whose disappearance is the observable effect (an overlay, a loader). */
 @OptIn(ExperimentalTestApi::class)

@@ -123,9 +123,10 @@ fun MainScreen(
     val conflictsState by conflictsVm.state.collectAsStateWithLifecycle()
     val updateState by updateVm.state.collectAsStateWithLifecycle()
     val updateAvailable by updateVm.available.collectAsStateWithLifecycle()
-    val whatsNew by whatsNewVm.releases.collectAsStateWithLifecycle()
+    val whatsNew by whatsNewVm.sheet.collectAsStateWithLifecycle()
     val spotlight by whatsNewVm.spotlight.collectAsStateWithLifecycle()
-    val apiVersion by whatsNewVm.apiVersion.collectAsStateWithLifecycle()
+    val apiStamp by whatsNewVm.api.collectAsStateWithLifecycle()
+    val apiVersion = apiStamp?.version.orEmpty()
     val boardRepo = remember { BoardRepository() }
     val gitlabRepo = remember { website.msdnna.tessera.data.repository.GitlabRepository() }
 
@@ -360,6 +361,12 @@ fun MainScreen(
                         updateVm.startDownload()
                     },
                     apiVersion = apiVersion,
+                    // The changelog draws over the shell, so the drawer that
+                    // launched it has to get out of the way first (#2858).
+                    onOpenHistory = {
+                        scope.launch { drawerState.close() }
+                        whatsNewVm.openHistory()
+                    },
                     // The hint only makes sense once the drawer is on its way open —
                     // its arrow points at a row that is otherwise off-screen, and
                     // drawing it earlier would spend the animation behind the shell.
@@ -495,8 +502,17 @@ fun MainScreen(
             }
 
             // Post-update changelog — declared before the update prompt so that a
-            // pending update (the more urgent of the two) draws on top of it.
-            WhatsNewSheet(releases = whatsNew, onDismiss = { whatsNewVm.dismissCard() })
+            // pending update (the more urgent of the two) draws on top of it. The
+            // same sheet serves the hand-opened history (#2858); which one it is
+            // decides what dismissing means, so the branch lives here and not in
+            // the composable.
+            WhatsNewSheet(
+                sheet = whatsNew,
+                onDismiss = {
+                    if (whatsNew?.history == true) whatsNewVm.closeHistory() else whatsNewVm.dismissCard()
+                },
+                api = apiStamp,
+            )
 
             UpdateDialog(
                 state = updateState,
@@ -738,7 +754,7 @@ private fun TopBar(
         Modifier.fillMaxWidth().background(c.surface).padding(horizontal = 8.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IonIconButton(Ion.MENU, onClick = onMenu, boxSize = 40.dp)
+        IonIconButton(Ion.MENU, onClick = onMenu, boxSize = 40.dp, modifier = Modifier.testTag(TestTags.TOP_MENU))
         Spacer(Modifier.width(4.dp))
         when {
             boardId != null -> BoardTitleSwitcher(boardId, title, projectBoards, onSelectBoard, Modifier.weight(1f))

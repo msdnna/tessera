@@ -27,6 +27,7 @@
     <string name="auth_server_title">Server</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Applied immediately. Empty means the default server.</string>
+    <string name="auth_language_switch_to">Switch to %1$s</string>
     <string name="auth_browser_failed">Couldn\'t open a browser to sign in</string>
 
     <!-- OAuth redirect errors (codes come from the backend) -->
@@ -203,6 +204,9 @@
     <string name="task_gitlab_creating">Creating…</string>
     <string name="task_gitlab_template">Template</string>
     <string name="task_gitlab_templates_empty">No templates</string>
+    <!-- The "grouped task" badge on an issue carrying the grouping label (#2592) -->
+    <string name="task_prop_grouping">Grouping</string>
+    <string name="task_gitlab_grouped">Grouped</string>
     <string name="task_archive_confirm">Archive this task?</string>
     <string name="task_archive_action">Archive</string>
     <string name="task_delete_confirm">Delete this task? This cannot be undone.</string>
@@ -259,6 +263,10 @@
     <!-- Task modal: subtasks and relations -->
     <string name="task_subtasks_empty">No subtasks yet</string>
     <string name="task_subtask_new_hint">+ subtask (Enter)</string>
+    <!-- The subtask's place in the GitLab hierarchy (#2592) -->
+    <string name="task_subtasks_gl_detached">outside the hierarchy</string>
+    <string name="task_subtasks_gl_absent">not in GitLab</string>
+    <string name="task_subtasks_parent_not_grouped">The parent is not marked as a grouped task — subtasks will not reach GitLab.</string>
     <string name="task_relations_empty">No relations yet</string>
     <string name="task_relation_relates">relates to</string>
     <string name="task_relation_blocks">blocks</string>
@@ -472,6 +480,16 @@
     <string name="board_column_delete">Delete column</string>
     <string name="board_column_delete_confirm">Delete “%1$s” and the tasks in it?</string>
 
+    <!-- Board: column / composer counters (web parity #2850/#2851). The bracketed
+         number folds in every subtask; the hint opens on a long press. -->
+    <string name="board_column_count">%1$d (%2$d)</string>
+    <string name="board_column_count_title">Tasks in the column: %1$d; in brackets — %2$d including subtasks</string>
+    <string name="board_column_count_title_flat">Tasks in the column: %1$d</string>
+    <string name="board_composer_shown">showing: %1$d (%2$d)</string>
+    <string name="board_composer_shown_flat">showing: %1$d</string>
+    <string name="board_composer_shown_title">Tasks shown: %1$d; in brackets — %2$d including subtasks</string>
+    <string name="board_composer_shown_title_flat">Tasks shown: %1$d (no subtasks)</string>
+
     <!-- Board: lane labels in grouping modes -->
     <string name="board_lane_no_tag">No tag</string>
     <string name="board_lane_unassigned">Unassigned</string>
@@ -561,10 +579,30 @@
     <string name="dates_short">%2$s %1$d</string>
     <string name="dates_short_year">%2$s %1$d, %3$d</string>
     <string name="dates_long">%2$s %1$d, %3$d</string>
-    <string name="dates_full">%2$s %1$d, %3$d</string>
     <string name="dates_at_time">%1$s, %2$s</string>
     <string name="dates_with_time">%1$s %2$s</string>
     <string name="dates_clock">%1$02d:%2$02d</string>
+    <!-- Full-date presets (#2857). en-GB order (day first), matching the web,
+         which picks en-GB so every locale we ship keeps day-before-month. -->
+    <string name="dates_preset_short">%1$02d/%2$02d/%3$d</string>
+    <string name="dates_preset_long">%1$d %2$s %3$d</string>
+    <string name="dates_clock_12">%1$d:%2$02d %3$s</string>
+    <string name="dates_am">AM</string>
+    <string name="dates_pm">PM</string>
+    <string-array name="dates_months_full">
+        <item>January</item>
+        <item>February</item>
+        <item>March</item>
+        <item>April</item>
+        <item>May</item>
+        <item>June</item>
+        <item>July</item>
+        <item>August</item>
+        <item>September</item>
+        <item>October</item>
+        <item>November</item>
+        <item>December</item>
+    </string-array>
 
     <!-- Notifications: header and sections -->
     <string name="notif_title">Notifications</string>
@@ -1049,6 +1087,12 @@
     <string name="update_download_failed">Download failed</string>
     <string name="whats_new_title">What\'s new</string>
     <string name="whats_new_subtitle">The update is applied — here is what changed</string>
+    <string name="whats_new_history_title">Changelog</string>
+    <string name="whats_new_history_subtitle">All Tessera updates</string>
+    <string name="version_client">Client</string>
+    <string name="version_server">Server</string>
+    <string name="version_commit">commit %1$s</string>
+    <string name="version_built">built %1$s</string>
 
     <!-- Markdown editor. The placeholder captions ("text", "Hidden text") end up
          inside the document itself: they are a starter written by the UI, so they

@@ -36,6 +36,7 @@ import website.msdnna.tessera.ui.components.BelowAnchorPositionProvider
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.components.softShadow
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
@@ -138,7 +139,7 @@ private fun NotificationItem(item: Notification, onClick: () -> Unit) {
                 fontSize = 13.sp,
                 fontWeight = if (item.isUnread) FontWeight.SemiBold else FontWeight.Normal,
             )
-            val time = whenLabel(LocalResources.current, item.createdAt)
+            val time = whenLabel(LocalResources.current, item.createdAt, LocalDateFormat.current)
             if (time.isNotEmpty()) {
                 Spacer(Modifier.padding(top = 2.dp))
                 Text(time, color = c.text3, fontSize = 11.sp)

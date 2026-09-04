@@ -31,6 +31,7 @@
     <string name="auth_server_title">Сервер</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Применяется сразу. Пусто — сервер по умолчанию.</string>
+    <string name="auth_language_switch_to">Переключить на %1$s</string>
     <string name="auth_browser_failed">Не удалось открыть браузер для входа</string>
 
     <!-- Ошибки OAuth-редиректа (коды приходят от бэкенда) -->
@@ -209,6 +210,9 @@
     <string name="task_gitlab_creating">Создание…</string>
     <string name="task_gitlab_template">Шаблон</string>
     <string name="task_gitlab_templates_empty">Шаблонов нет</string>
+    <!-- Пометка «сгруппированная задача» на issue с меткой группировки (#2592) -->
+    <string name="task_prop_grouping">Группировка</string>
+    <string name="task_gitlab_grouped">Сгруппированная</string>
     <string name="task_archive_confirm">Архивировать задачу?</string>
     <string name="task_archive_action">В архив</string>
     <string name="task_delete_confirm">Удалить задачу? Это действие необратимо.</string>
@@ -267,6 +271,10 @@
     <!-- Модалка задачи: подзадачи и связи -->
     <string name="task_subtasks_empty">Подзадач пока нет</string>
     <string name="task_subtask_new_hint">+ подзадача (Enter)</string>
+    <!-- Состояние подзадачи в иерархии GitLab (#2592) -->
+    <string name="task_subtasks_gl_detached">вне иерархии</string>
+    <string name="task_subtasks_gl_absent">не в GitLab</string>
+    <string name="task_subtasks_parent_not_grouped">Родитель не помечен как сгруппированная задача — подзадачи не попадут в GitLab.</string>
     <string name="task_relations_empty">Связей пока нет</string>
     <string name="task_relation_relates">связана с</string>
     <string name="task_relation_blocks">блокирует</string>
@@ -481,6 +489,16 @@
     <string name="board_column_delete">Удалить колонку</string>
     <string name="board_column_delete_confirm">Удалить «%1$s» и задачи в ней?</string>
 
+    <!-- Доска: счётчики колонки и бара (веб-паритет #2850/#2851). В скобках —
+         итог с учётом подзадач; подсказка открывается долгим нажатием. -->
+    <string name="board_column_count">%1$d (%2$d)</string>
+    <string name="board_column_count_title">Задач в колонке: %1$d, в скобках — итог с учётом подзадач: %2$d</string>
+    <string name="board_column_count_title_flat">Задач в колонке: %1$d</string>
+    <string name="board_composer_shown">показано: %1$d (%2$d)</string>
+    <string name="board_composer_shown_flat">показано: %1$d</string>
+    <string name="board_composer_shown_title">Показано задач: %1$d, в скобках — итог с учётом подзадач: %2$d</string>
+    <string name="board_composer_shown_title_flat">Показано задач: %1$d (подзадач нет)</string>
+
     <!-- Доска: подписи дорожек в режимах группировки -->
     <string name="board_lane_no_tag">Без тега</string>
     <string name="board_lane_unassigned">Не назначено</string>
@@ -572,10 +590,32 @@
     <string name="dates_short">%1$d %2$s</string>
     <string name="dates_short_year">%1$d %2$s %3$d</string>
     <string name="dates_long">%1$d %2$s. %3$d г.</string>
-    <string name="dates_full">%1$d %2$s %3$d</string>
     <string name="dates_at_time">%1$s, %2$s</string>
     <string name="dates_with_time">%1$s %2$s</string>
     <string name="dates_clock">%1$02d:%2$02d</string>
+    <!-- Пресеты полной даты (#2857): short — цифрами, long — с полным месяцем;
+         medium берёт dates_long, iso собирается в коде и локали не знает. -->
+    <string name="dates_preset_short">%1$02d.%2$02d.%3$d</string>
+    <string name="dates_preset_long">%1$d %2$s %3$d г.</string>
+    <string name="dates_clock_12">%1$d:%2$02d %3$s</string>
+    <string name="dates_am">AM</string>
+    <string name="dates_pm">PM</string>
+    <!-- Полные названия месяцев в родительном падеже: «31 декабря 2026 г.».
+         Именительные из calendar_months («Декабрь») в подпись даты не годятся. -->
+    <string-array name="dates_months_full">
+        <item>января</item>
+        <item>февраля</item>
+        <item>марта</item>
+        <item>апреля</item>
+        <item>мая</item>
+        <item>июня</item>
+        <item>июля</item>
+        <item>августа</item>
+        <item>сентября</item>
+        <item>октября</item>
+        <item>ноября</item>
+        <item>декабря</item>
+    </string-array>
 
     <!-- Уведомления: шапка и разделы -->
     <string name="notif_title">Уведомления</string>
@@ -1076,6 +1116,15 @@
     <string name="update_download_failed">Не удалось загрузить</string>
     <string name="whats_new_title">Что нового</string>
     <string name="whats_new_subtitle">Обновление применено — вот что изменилось</string>
+    <!-- Та же карточка, открытая вручную из строки версии в футере (#2858): весь
+         список релизов, а не «что вы пропустили». -->
+    <string name="whats_new_history_title">История изменений</string>
+    <string name="whats_new_history_subtitle">Все обновления Tessera</string>
+    <!-- Сноска о запущенной сборке в конце истории изменений (#2859). -->
+    <string name="version_client">Клиент</string>
+    <string name="version_server">Сервер</string>
+    <string name="version_commit">коммит %1$s</string>
+    <string name="version_built">сборка %1$s</string>
 
     <!-- Редактор Markdown. Подписи-заглушки («текст», «Скрытый текст») попадают
          в сам документ: это заготовка от интерфейса, поэтому язык берётся тот же,

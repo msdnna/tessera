@@ -13,9 +13,14 @@ import website.msdnna.tessera.data.model.Milestone
  */
 object Milestones {
     /** Human-readable start–due window (either side may be missing). "" when neither. */
-    fun range(res: Resources, start: String?, due: String?): String {
-        val s = longDate(res, start)
-        val d = longDate(res, due)
+    fun range(
+        res: Resources,
+        start: String?,
+        due: String?,
+        fmt: DateFormatPrefs = DateFormatPrefs.Default,
+    ): String {
+        val s = longDate(res, start, fmt)
+        val d = longDate(res, due, fmt)
         return when {
             s.isNotEmpty() && d.isNotEmpty() -> res.getString(R.string.milestones_range, s, d)
             d.isNotEmpty() -> res.getString(R.string.milestones_range_until, d)
@@ -24,6 +29,6 @@ object Milestones {
         }
     }
 
-    fun range(res: Resources, m: Milestone?): String =
-        if (m == null) "" else range(res, m.startDate, m.dueDate)
+    fun range(res: Resources, m: Milestone?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String =
+        if (m == null) "" else range(res, m.startDate, m.dueDate, fmt)
 }

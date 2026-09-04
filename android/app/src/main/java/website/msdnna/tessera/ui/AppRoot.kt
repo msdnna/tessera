@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,7 +58,9 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.theme.accentByKey
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.isAuthError
+import website.msdnna.tessera.util.normalizeLanguage
 
 /** Upper bound on the startup session check before the splash gives up. */
 private const val VERIFY_TIMEOUT_MS = 30_000L
@@ -114,6 +117,12 @@ fun AppRoot(
     val isDark by prefs.darkMode.collectAsStateWithLifecycle(initialValue = false)
     val tagPrefixMode by prefs.tagPrefixMode.collectAsStateWithLifecycle(initialValue = "name")
     val preferences by prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences())
+    // Профиль → выбор на экране входа → локаль телефона (#2855). Стартовое значение —
+    // системная локаль, а не «ru»: иначе телефон на английском мигнул бы русским,
+    // пока DataStore читается с диска.
+    val language by prefs.language.collectAsStateWithLifecycle(
+        initialValue = normalizeLanguage(LocalConfiguration.current.locales[0].language),
+    )
     val token by prefs.authToken.collectAsStateWithLifecycle(initialValue = "")
     val user by prefs.user.collectAsStateWithLifecycle(initialValue = null)
     val serverUrl by prefs.serverUrl.collectAsStateWithLifecycle(initialValue = AppContainer.serverUrl)
@@ -205,9 +214,17 @@ fun AppRoot(
     }
 
     // Language comes from the profile, not the device — the whole tree below
-    // resolves its strings in it (#2803).
-    AppLocale(language = preferences.language) {
-        TesseraTheme(accent = accentByKey(accentKey), isDark = isDark, tagPrefixMode = tagPrefixMode) {
+    // resolves its strings in it (#2803). До логина профиля нет, и его место
+    // занимает выбор на экране входа, а при первом запуске — локаль телефона (#2855).
+    AppLocale(language = language) {
+        // Дата/время следуют префам профиля (#2857) — их вместе с палитрой раздаёт
+        // тема, чтобы каждый рендер даты не тащил префы параметром.
+        TesseraTheme(
+            accent = accentByKey(accentKey),
+            isDark = isDark,
+            tagPrefixMode = tagPrefixMode,
+            dateFormat = DateFormatPrefs.of(preferences),
+        ) {
             Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
                 when {
                     boot is Boot.Loading -> BootLoading()
@@ -238,6 +255,10 @@ fun AppRoot(
                         // Pre-login the theme lives only in local prefs (no user yet);
                         // it's reconciled with the server pref after sign-in.
                         onToggleTheme = { scope.launch { prefs.setDarkMode(!isDark) } },
+                        language = language,
+                        // Тоже только в локальные префы: сессии ещё нет, PUT настроек
+                        // слать некуда. После входа профиль перебьёт этот выбор.
+                        onCycleLanguage = { scope.launch { prefs.setLanguage(it) } },
                         oauthErrorCode = oauthError,
                         onOAuthErrorShown = { oauthError = null },
                     )

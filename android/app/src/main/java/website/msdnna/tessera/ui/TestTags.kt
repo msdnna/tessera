@@ -27,6 +27,9 @@ object TestTags {
     const val AUTH_SERVER_TOGGLE = "auth-server-toggle"
     const val AUTH_SERVER_FIELD = "auth-server-field"
 
+    /** Pre-login RU/EN cycle button (web `data-testid="auth-lang-toggle"`). */
+    const val AUTH_LANG_TOGGLE = "auth-lang-toggle"
+
     // ── shell ──────────────────────────────────────────────────────────────
 
     /** Present exactly when the session gate has let us past the auth screen. */
@@ -65,6 +68,11 @@ object TestTags {
      *  it to tell «the menu is open» from «the tap missed». */
     const val COLUMN_MENU_COLORS = "column-menu-colors"
 
+    /** The «3 (6)» counter in a column header (#2850). Per-column, because the point
+     *  of a spec here is «THIS column folds in its subtasks», not «some header shows
+     *  a number». */
+    fun columnCount(id: String) = "column-count:$id"
+
     // ── grouping (the killer feature: lanes = tags) ─────────────────────────
 
     /** The transparent overlay over a *collapsed* composer bar, which turns a tap
@@ -73,6 +81,10 @@ object TestTags {
      *  can both tell the state apart and take the same route a user takes: the chips
      *  below only answer taps once it is gone. */
     const val BOARD_COMPOSER_EXPAND = "board-composer-expand"
+
+    /** The bar's «показано: 2 (4)» counter (#2851) — one per board, unlike the
+     *  per-column headers: it reports the whole filtered board. */
+    const val BOARD_COMPOSER_COUNT = "board-composer-count"
 
     /** The always-present grouping chip in the composer bar; opens the mode menu. */
     const val BOARD_GROUP = "board-group"
@@ -146,6 +158,13 @@ object TestTags {
     const val TASK_GITLAB_CREATE = "task-gitlab-create"
     const val TASK_GITLAB_TEMPLATE = "task-gitlab-template"
 
+    /** «Сгруппированная» badge on a linked issue that carries the grouping label, and
+     *  the per-subtask GitLab hierarchy marker / «родитель не сгруппирован» hint in the
+     *  subtasks tab. All three only exist on a binding with `push_children`. */
+    const val TASK_GITLAB_GROUPED = "task-gitlab-grouped"
+    const val TASK_SUBTASK_GL_CHIP = "task-subtask-gl-chip"
+    const val TASK_SUBTASK_GL_HINT = "task-subtask-gl-hint"
+
     /** The priority chip and its picker rows, keyed by level (0 = none). */
     const val TASK_PRIORITY = "task-priority"
 
@@ -216,4 +235,13 @@ object TestTags {
     /** The sidebar hint that follows the card, and its «Понятно». One at a time. */
     const val SPOTLIGHT_CARD = "spotlight-card"
     const val SPOTLIGHT_DISMISS = "spotlight-dismiss"
+
+    /** The top bar's hamburger — the only way into the sidebar drawer, so a spec
+     *  that needs anything in the sidebar starts here. */
+    const val TOP_MENU = "top-menu"
+
+    /** The version line in the sidebar footer — a button opening the full
+     *  changelog (#2858), and the build stamp only that mode renders (#2859). */
+    const val SIDEBAR_VERSION = "sidebar-version"
+    const val WHATS_NEW_BUILD = "whats-new-build"
 }

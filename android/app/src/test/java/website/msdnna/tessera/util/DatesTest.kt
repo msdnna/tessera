@@ -22,7 +22,24 @@ class DatesTest {
     private val ru: Resources get() = res("ru")
     private val en: Resources get() = res("en")
 
+    /** Форма полной даты до #2857 — теперь это пресет `medium`, а дефолт — `short`. */
+    private val medium = DateFormatPrefs(datePreset = DatePresets.MEDIUM)
+    private val h12 = DateFormatPrefs(time12h = true, datePreset = DatePresets.MEDIUM)
+
     private fun currentYear() = Calendar.getInstance().get(Calendar.YEAR).toString()
+
+    /**
+     * ISO момента, который в зоне устройства читается как [hour]:[minute] числа
+     * [day].[month] [year]. Часовые подписи рисуются в локальной зоне, поэтому
+     * зашитый в тест `…T14:30:00Z` проверял бы зону хоста, а не формат.
+     */
+    private fun isoAtLocal(year: Int, month: Int, day: Int, hour: Int, minute: Int): String {
+        val cal = Calendar.getInstance().apply {
+            clear()
+            set(year, month - 1, day, hour, minute, 0)
+        }
+        return millisToUtcIso(cal.timeInMillis)
+    }
 
     // ── shortDate ────────────────────────────────────────────────────────────
     @Test
@@ -60,13 +77,13 @@ class DatesTest {
     // ── longDate ─────────────────────────────────────────────────────────────
     @Test
     fun `longDate formats with year and g suffix`() {
-        assertThat(longDate(ru, "2026-06-04T00:00:00Z")).isEqualTo("4 июн. 2026 г.")
-        assertThat(longDate(ru, "2020-01-31")).isEqualTo("31 янв. 2020 г.")
+        assertThat(longDate(ru, "2026-06-04T00:00:00Z", medium)).isEqualTo("4 июн. 2026 г.")
+        assertThat(longDate(ru, "2020-01-31", medium)).isEqualTo("31 янв. 2020 г.")
     }
 
     @Test
     fun `longDate in English drops the year suffix`() {
-        assertThat(longDate(en, "2026-06-04T00:00:00Z")).isEqualTo("Jun 4, 2026")
+        assertThat(longDate(en, "2026-06-04T00:00:00Z", medium)).isEqualTo("Jun 4, 2026")
     }
 
     @Test
@@ -135,17 +152,17 @@ class DatesTest {
     // ── dueLabel (UTC-midnight date-only path is zone-independent) ────────────
     @Test
     fun `dueLabel date-only renders UTC calendar date without time`() {
-        assertThat(dueLabel(ru, "2026-06-04T00:00:00Z")).isEqualTo("4 июн. 2026 г.")
+        assertThat(dueLabel(ru, "2026-06-04T00:00:00Z", fmt = medium)).isEqualTo("4 июн. 2026 г.")
         // even with +03:00 offset representing the same UTC-midnight instant
-        assertThat(dueLabel(ru, "2026-06-04T03:00:00+03:00")).isEqualTo("4 июн. 2026 г.")
-        assertThat(dueLabel(en, "2026-06-04T00:00:00Z")).isEqualTo("Jun 4, 2026")
+        assertThat(dueLabel(ru, "2026-06-04T03:00:00+03:00", fmt = medium)).isEqualTo("4 июн. 2026 г.")
+        assertThat(dueLabel(en, "2026-06-04T00:00:00Z", fmt = medium)).isEqualTo("Jun 4, 2026")
     }
 
     @Test
     fun `dueLabel blank empty and unparseable falls back to longDate`() {
         assertThat(dueLabel(ru, null)).isEmpty()
         // unparseable instant → longDate
-        assertThat(dueLabel(ru, "2026-06-04")).isEqualTo("4 июн. 2026 г.")
+        assertThat(dueLabel(ru, "2026-06-04", fmt = medium)).isEqualTo("4 июн. 2026 г.")
     }
 
     // ── dueShort (UTC-midnight path) ─────────────────────────────────────────
@@ -221,10 +238,73 @@ class DatesTest {
     @Test
     fun `localDateTimeLabel formats a full instant`() {
         // Format is "<day> <mon> <year>, HH:mm" in local zone; assert shape.
-        val out = localDateTimeLabel(ru, "2026-06-15T14:30:00Z")
-        assertThat(out).matches("""\d+ \S+ 2026, \d{2}:\d{2}""")
+        val out = localDateTimeLabel(ru, "2026-06-15T14:30:00Z", medium)
+        assertThat(out).matches("""\d+ \S+ 2026 г\., \d{2}:\d{2}""")
         // English reorders to "<mon> <day>, <year>, HH:mm".
-        assertThat(localDateTimeLabel(en, "2026-06-15T14:30:00Z"))
+        assertThat(localDateTimeLabel(en, "2026-06-15T14:30:00Z", medium))
             .matches("""\S+ \d+, 2026, \d{2}:\d{2}""")
+    }
+
+    // ── пресеты даты и 12-часовое время (#2857) ───────────────────────────────
+    @Test
+    fun `longDate renders every date preset`() {
+        val iso = "2026-12-31"
+        assertThat(longDate(ru, iso, DateFormatPrefs(datePreset = DatePresets.SHORT))).isEqualTo("31.12.2026")
+        assertThat(longDate(ru, iso, DateFormatPrefs(datePreset = DatePresets.MEDIUM))).isEqualTo("31 дек. 2026 г.")
+        assertThat(longDate(ru, iso, DateFormatPrefs(datePreset = DatePresets.LONG))).isEqualTo("31 декабря 2026 г.")
+        assertThat(longDate(ru, iso, DateFormatPrefs(datePreset = DatePresets.ISO))).isEqualTo("2026-12-31")
+    }
+
+    /** English keeps day-before-month (en-GB, как на вебе), а `iso` локали не знает. */
+    @Test
+    fun `longDate presets keep the English field order`() {
+        val iso = "2026-12-31"
+        assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.SHORT))).isEqualTo("31/12/2026")
+        assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.MEDIUM))).isEqualTo("Dec 31, 2026")
+        assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.LONG))).isEqualTo("31 December 2026")
+        assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.ISO))).isEqualTo("2026-12-31")
+    }
+
+    /** Значение из чужого клиента не должно рисовать битую дату. */
+    @Test
+    fun `longDate falls back to short on an unknown preset`() {
+        val fmt = DateFormatPrefs(datePreset = "totally-unknown")
+        assertThat(longDate(ru, "2026-12-31", fmt)).isEqualTo("31.12.2026")
+        assertThat(longDate(ru, "2026-13-31", fmt)).isEmpty()
+    }
+
+    @Test
+    fun `dueLabel follows the 12h preference`() {
+        val iso = isoAtLocal(2026, 6, 4, 14, 30)
+        assertThat(dueLabel(ru, iso, fmt = h12)).isEqualTo("4 июн. 2026 г., 2:30 PM")
+        assertThat(dueLabel(ru, iso, fmt = medium)).isEqualTo("4 июн. 2026 г., 14:30")
+    }
+
+    /** Полночь и полдень — «12», а не «0»: остаток от деления назвал бы их 0:30. */
+    @Test
+    fun `12h clock names midnight and noon as 12`() {
+        assertThat(dueLabel(ru, isoAtLocal(2026, 6, 4, 0, 30), fmt = h12)).isEqualTo("4 июн. 2026 г., 12:30 AM")
+        assertThat(dueLabel(ru, isoAtLocal(2026, 6, 4, 12, 30), fmt = h12)).isEqualTo("4 июн. 2026 г., 12:30 PM")
+    }
+
+    @Test
+    fun `dueShort keeps the compact date but follows the 12h preference`() {
+        // Дата остаётся коротким «день + месяц» (веб-паритет), меняются только часы.
+        val iso = isoAtLocal(2020, 3, 10, 14, 30)
+        assertThat(dueShort(ru, iso, h12)).isEqualTo("10 мар 2020 2:30 PM")
+        assertThat(dueShort(ru, iso, medium)).isEqualTo("10 мар 2020 14:30")
+    }
+
+    @Test
+    fun `whenLabel follows the 12h preference`() {
+        val yr = currentYear()
+        assertThat(whenLabel(ru, "$yr-06-04T14:30:00Z", h12)).isEqualTo("4 июн, 2:30 PM")
+        assertThat(whenLabel(ru, "$yr-06-04T14:30:00Z", medium)).isEqualTo("4 июн, 14:30")
+    }
+
+    @Test
+    fun `localDateTimeLabel follows the date preset`() {
+        assertThat(localDateTimeLabel(ru, "2026-06-15T14:30:00Z", DateFormatPrefs(datePreset = DatePresets.ISO)))
+            .matches("""2026-06-1\d, \d{2}:\d{2}""")
     }
 }
