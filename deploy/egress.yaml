@@ -44,6 +44,16 @@ template_port: 7980
 # bearing: this flag without the profile and Chrome fails to start at all.
 enable_chrome_sandbox: true
 
+# Extra flags for the recording Chrome. --disable-features=Translate,TranslateUI
+# stops Chrome offering to translate the (Russian) recording page and rendering
+# that bubble straight INTO the capture (#2877): the page-level notranslate is
+# too late, Chrome decides during the first parse, so this kills it at the
+# source. Key verified in the egress v1.14.1 binary itself
+# (grep -a chrome_flags /usr/bin/egress ⇒ present), because an unknown egress
+# config key is dropped in silence and would leave the bubble in the recording.
+chrome_flags:
+  disable-features: "Translate,TranslateUI"
+
 session_limits:
   # A meeting whose host forgot to press stop would otherwise record until the
   # room empties — overnight, at ~1 GB/hour into the uploads volume. Two hours
