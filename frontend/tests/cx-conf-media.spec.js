@@ -27,7 +27,9 @@ const lk = vi.hoisted(() => {
 
   function participant(identity, over = {}) {
     const pubs = {}
-    if (over.video) pubs.camera = { isSubscribed: true, track: over.video }
+    // A muted camera keeps its publication and its track — the SDK mutes it in
+    // place (unlike screen share, which it unpublishes). over.camMuted models that.
+    if (over.video) pubs.camera = { isSubscribed: true, isMuted: !!over.camMuted, track: over.video }
     if (over.audio) pubs.microphone = { isSubscribed: true, track: over.audio }
     const p = {
       identity,
@@ -213,6 +215,23 @@ describe('useConfTransport — room snapshot', () => {
     room.fire('trackMuted')
     // Attaching it would route the room's speakers back into the room.
     expect(t.peers.value[0].audioTrack).toBeNull()
+  })
+
+  it('drops the video of a muted camera so the tile shows the avatar (#2890)', async () => {
+    const { t, room } = await joined()
+    const cam = { id: 'cam-a' }
+    const a = lk.participant('u-a', { name: 'Аня', video: cam, camMuted: true })
+    room.remoteParticipants.set('a', a)
+    room.fire('participantConnected')
+
+    // Publication and track are both still there, but muted — the tile must NOT
+    // treat that as a live video (it would paint a black rect over the avatar).
+    expect(t.peers.value.find((p) => p.id === 'u-a').videoTrack).toBeNull()
+
+    // Unmute (TrackUnmuted is already in the rebuild list) → the video returns.
+    a.getTrackPublication('camera').isMuted = false
+    room.fire('trackUnmuted')
+    expect(t.peers.value.find((p) => p.id === 'u-a').videoTrack).toBe(cam)
   })
 
   it('drops a participant that leaves', async () => {

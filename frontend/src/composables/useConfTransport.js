@@ -89,10 +89,18 @@ function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
     quality: p.connectionQuality || 'unknown',
     // shallow-held elsewhere: these are SDK objects with their own lifecycle,
     // and making them deeply reactive would have Vue walk a MediaStreamTrack.
-    videoTrack: cam?.isSubscribed === false ? null : cam?.track || null,
+    // A muted camera keeps its publication AND its `.track` object — the SDK's
+    // setTrackEnabled mutes the camera in place but *unpublishes* screen share
+    // ("screenshare cannot be muted"), so subscription alone still reads as "has
+    // video" and the tile paints a black rect over the avatar (#2890). Treat a
+    // muted publication like an absent one: nothing to show. TrackMuted/Unmuted
+    // are already in the rebuild list above, so this flips back on unmute.
+    videoTrack: cam && !cam.isMuted && cam.isSubscribed !== false ? cam.track || null : null,
     // The local mic is never attached — that is a feedback loop, not monitoring.
     audioTrack: local ? null : mic?.track || null,
-    screenTrack: screen?.isSubscribed === false ? null : screen?.track || null,
+    // Symmetric with the camera for readability, though screen share is muted by
+    // unpublishing (see above), so isMuted here is effectively always false.
+    screenTrack: screen && !screen.isMuted && screen.isSubscribed !== false ? screen.track || null : null,
     // Same reason as the microphone: playing our own shared tab back into the
     // room is a feedback loop, and a loud one — the tab is usually a video.
     screenAudioTrack: local ? null : screenAudio?.track || null,
