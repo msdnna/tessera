@@ -448,18 +448,13 @@ describe('DeviceMenu — noise suppression entry', () => {
   })
 
   it('marks the entry the same way a chosen device is marked', () => {
-    // The mark is now an accent checkmark rendered by render-label (var(--t-primary)),
-    // not a '●' in the text nor a black icon in the prefix column (#2891).
+    // Accent checkmark via the NIcon `color` PROP (var(--t-primary)), like the
+    // board dropdowns — not a '●' in the text nor a colourless icon (#2891).
     const w = menu({ denoiseAvailable: true, denoise: true })
-    const on = denoiseEntry(w)
-    expect(on.checked).toBe(true)
-    expect(dropdown(w).props('renderLabel')(on).children[1].props.style).toContain('--t-primary')
+    expect(denoiseEntry(w).icon().props.color).toBe('var(--t-primary)')
     w.unmount()
     const w2 = menu({ denoiseAvailable: true, denoise: false })
-    const off = denoiseEntry(w2)
-    expect(off.checked).toBe(false)
-    // Unchecked → the plain label, no checkmark vnode.
-    expect(dropdown(w2).props('renderLabel')(off)).toBe(off.label)
+    expect(denoiseEntry(w2).icon).toBeUndefined()
     w2.unmount()
   })
 

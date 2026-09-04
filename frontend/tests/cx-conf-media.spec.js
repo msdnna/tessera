@@ -453,14 +453,10 @@ describe('DeviceMenu', () => {
       .find((o) => o.type === 'group').children
     // Labels are clean text now — no '●' glued in front of the chosen one.
     expect(rows.map((r) => r.label)).toEqual(['Гарнитура', 'Ноутбук'])
-    expect(rows.map((r) => r.checked)).toEqual([false, true])
-    // render-label marks the chosen row with an ACCENT checkmark (var(--t-primary)),
-    // not the black one naive would paint in the icon column; others stay plain.
-    const rl = dropdown(w).props('renderLabel')
-    // Unchecked row → plain label string; checked row → a vnode carrying the
-    // accent checkmark as its second child.
-    expect(rl(rows[0])).toBe(rows[0].label)
-    expect(rl(rows[1]).children[1].props.style).toContain('--t-primary')
+    // Chosen row carries an accent checkmark via the NIcon `color` PROP
+    // (var(--t-primary), like the board dropdowns' primIcon); others have none.
+    expect(rows[0].icon).toBeUndefined()
+    expect(rows[1].icon().props.color).toBe('var(--t-primary)')
     w.unmount()
   })
 
