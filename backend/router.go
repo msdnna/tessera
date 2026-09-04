@@ -128,7 +128,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	}))
 	// Where the egress recorder sees the uploads volume (#2877). Not part of the
 	// SFU client: it is our own filesystem as another container mounts it.
-	rh.WireRecording(cfg.EgressUploadDir)
+	rh.WireRecording(cfg.EgressUploadDir, cfg.RecordingTemplateURL)
 	// Moderation sink (#2872), installed after the SFU client because it uses it:
 	// a kick or a force-mute decided inside a room is persisted and carried to
 	// LiveKit through here. Set once, before any room exists — rooms copy it as

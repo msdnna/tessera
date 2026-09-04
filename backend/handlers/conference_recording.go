@@ -61,6 +61,12 @@ const (
 	// breaks chat uploads, which have nothing to do with recording.
 	recordingSubdir = "rec"
 
+	// recordingPreset is the livekit.EncodingOptionsPreset used with our own
+	// recording template (#2877). 1080p30, because the point of the custom
+	// template is a legible shared screen and the 720p default is what made its
+	// text unreadable. Only applied when a template URL is configured.
+	recordingPreset = "H264_1080P_30"
+
 	// recordingDirMode is group-writable on purpose: the backend creates the
 	// per-conference directory, the egress worker creates the file inside it.
 	// deploy/docker-compose.yml sets the setgid bit on the parent so the group
@@ -218,9 +224,17 @@ func (h *API) StartConferenceRecording(c *gin.Context) {
 	// path.Join, not filepath.Join: this one is a path inside the egress
 	// container, which is Linux regardless of what the backend runs on.
 	target := path.Join(h.egressUploadDir(), recordingSubdir, conf.ID.String(), diskName)
-	info, err := h.livekit.StartRoomCompositeEgress(c, livekit.RoomName(conf.ID), livekit.EgressOptions{
-		Filepath: target,
-	})
+	opts := livekit.EgressOptions{Filepath: target}
+	// Our own recording page when configured (#2877): the mp4 then looks like the
+	// room in the browser — screen full-bleed, cameras as PiP, avatars for
+	// no-video — instead of egress's dark grid, and 1080p keeps a shared screen's
+	// text legible where the 720p default crushes it. Left empty ⇒ built-in grid,
+	// so an install that has not set RECORDING_TEMPLATE_URL records as before.
+	if h.recTemplateURL != "" {
+		opts.CustomBaseURL = h.recTemplateURL
+		opts.Preset = recordingPreset
+	}
+	info, err := h.livekit.StartRoomCompositeEgress(c, livekit.RoomName(conf.ID), opts)
 	if err != nil {
 		h.releaseRecordingClaim(c, rec.ID)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "recording could not be started: " + err.Error()})

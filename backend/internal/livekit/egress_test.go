@@ -79,9 +79,13 @@ func TestStartEgressRequestShape(t *testing.T) {
 	}
 	// A layout nobody chose must not be sent: an empty string is a *value* to
 	// LiveKit, not an absent field, and it would replace egress's own default
-	// with a template name that does not exist.
-	if _, present := got.Body["layout"]; present {
-		t.Errorf("empty layout sent as an override: %v", got.Body)
+	// with a template name that does not exist. Same for the custom template URL
+	// and the encoding preset — absent when unset, so the default install keeps
+	// egress's built-in grid at its default resolution.
+	for _, k := range []string{"layout", "customBaseUrl", "preset"} {
+		if _, present := got.Body[k]; present {
+			t.Errorf("empty %s sent as an override: %v", k, got.Body)
+		}
 	}
 
 	outputs, ok := got.Body["fileOutputs"].([]any)
@@ -96,6 +100,30 @@ func TestStartEgressRequestShape(t *testing.T) {
 	// the backend serves attachments from.
 	if out["disableManifest"] != true {
 		t.Errorf("manifest not disabled: %v", out)
+	}
+}
+
+// With a custom template configured (#2877) the request carries the base URL,
+// the layout and the encoding preset — the three things that turn egress's dark
+// 720p grid into our own room-shaped 1080p recording.
+func TestStartEgressCarriesCustomTemplateAndPreset(t *testing.T) {
+	c, got := serveEgress(t, http.StatusOK, `{"egress_id":"EG_1"}`)
+	if _, err := c.StartRoomCompositeEgress(context.Background(), "conf_x", EgressOptions{
+		Filepath:      "/data/uploads/rec/abc/rec-1.mp4",
+		CustomBaseURL: "http://frontend/rec/egress",
+		Layout:        "speaker",
+		Preset:        "H264_1080P_30",
+	}); err != nil {
+		t.Fatalf("StartRoomCompositeEgress: %v", err)
+	}
+	if got.Body["customBaseUrl"] != "http://frontend/rec/egress" {
+		t.Errorf("customBaseUrl = %v", got.Body["customBaseUrl"])
+	}
+	if got.Body["layout"] != "speaker" {
+		t.Errorf("layout = %v", got.Body["layout"])
+	}
+	if got.Body["preset"] != "H264_1080P_30" {
+		t.Errorf("preset = %v", got.Body["preset"])
 	}
 }
 

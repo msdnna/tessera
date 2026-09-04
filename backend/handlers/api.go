@@ -32,23 +32,24 @@ import (
 
 // API holds the dependencies shared by all resource handlers.
 type API struct {
-	q         *db.Queries
-	pool      *pgxpool.Pool // for multi-statement transactions (e.g. project transfer)
-	hub       *realtime.Hub
-	uploadDir string
-	sealer    *secrets.Sealer          // encrypts secrets at rest (GitLab PATs, channel secrets)
-	assetKey  []byte                   // HMAC key for signed GitLab asset-proxy URLs
-	mailer    mail.Mailer              // transactional email (invitations); no-op when SMTP unset
-	publicURL string                   // external base URL for links in emails
-	senders   map[string]notify.Sender // notification channel transports, keyed by type
-	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
-	docRooms  *docroom.Rooms           // per-document presence/locks (nil until WireDocRooms)
-	confRooms *confroom.Rooms          // per-conference room state (nil until WireConfRooms)
-	livekit   *livekit.Client          // SFU control plane + join tokens; disabled when LIVEKIT_* unset
-	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
-	converter *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
-	version   string                   // build version, surfaced by the readiness/metrics probes
-	egressDir string                   // uploadDir as the egress recorder sees it (#2877); empty falls back to uploadDir
+	q              *db.Queries
+	pool           *pgxpool.Pool // for multi-statement transactions (e.g. project transfer)
+	hub            *realtime.Hub
+	uploadDir      string
+	sealer         *secrets.Sealer          // encrypts secrets at rest (GitLab PATs, channel secrets)
+	assetKey       []byte                   // HMAC key for signed GitLab asset-proxy URLs
+	mailer         mail.Mailer              // transactional email (invitations); no-op when SMTP unset
+	publicURL      string                   // external base URL for links in emails
+	senders        map[string]notify.Sender // notification channel transports, keyed by type
+	jobs           *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
+	docRooms       *docroom.Rooms           // per-document presence/locks (nil until WireDocRooms)
+	confRooms      *confroom.Rooms          // per-conference room state (nil until WireConfRooms)
+	livekit        *livekit.Client          // SFU control plane + join tokens; disabled when LIVEKIT_* unset
+	metrics        *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
+	converter      *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
+	version        string                   // build version, surfaced by the readiness/metrics probes
+	egressDir      string                   // uploadDir as the egress recorder sees it (#2877); empty falls back to uploadDir
+	recTemplateURL string                   // internal url of our egress recording page (#2877); empty ⇒ egress's built-in grid
 }
 
 // WireOps injects the ops-observability dependencies that live outside NewAPI's
@@ -128,7 +129,10 @@ func (h *API) notifyConfRoom(confID uuid.UUID, msgType string) {
 // WireRecording injects the path prefix the egress recorder uses for the shared
 // uploads volume (#2877). Separate from WireLiveKit because it is not the SFU's
 // business: it is our own filesystem, seen from another container.
-func (h *API) WireRecording(egressUploadDir string) { h.egressDir = egressUploadDir }
+func (h *API) WireRecording(egressUploadDir, templateURL string) {
+	h.egressDir = egressUploadDir
+	h.recTemplateURL = templateURL
+}
 
 // setConfRecording / clearConfRecording move the room's recording indicator.
 // Guarded like the calls above — the GitLab and job tests build an API with no

@@ -58,7 +58,7 @@ function storedDenoise() {
 // A participant as the UI sees one. Flat and plain on purpose: the tiles diff
 // this, and handing them live SDK objects would make every re-render depend on
 // SDK internals mutating in place.
-function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
+export function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
   // v2 exposes publications by source; the track is absent until subscribed,
   // which is exactly when the tile should still be showing the avatar.
   const cam = p.getTrackPublication?.('camera')

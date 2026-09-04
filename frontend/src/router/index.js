@@ -36,6 +36,15 @@ const routes = [
     component: () => import('@/views/OAuthCallbackView.vue'),
     meta: { open: true },
   },
+  // Server-side recording template (#2877), opened only by egress's headless
+  // Chrome — never a person. `open` because egress carries no Tessera session,
+  // only a LiveKit token in the URL; standalone (outside AppLayout) so the
+  // recording is the call and nothing else — no sidebar, no topbar.
+  {
+    path: '/rec/egress',
+    component: () => import('@/views/RecorderView.vue'),
+    meta: { open: true },
+  },
   {
     path: '/',
     component: () => import('@/components/AppLayout.vue'),

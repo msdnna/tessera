@@ -97,6 +97,14 @@ type Config struct {
 	// where the failure would otherwise be a recording that starts, runs and
 	// writes its file where nothing can find it.
 	EgressUploadDir string
+	// RecordingTemplateURL points egress at our own recording page (#2877), so a
+	// recording is composed the way the room looks in the browser — screen
+	// full-bleed, cameras as PiP, avatars where there is no video — instead of
+	// egress's dark built-in grid. It is an INTERNAL url the egress container
+	// reaches over the compose network (e.g. http://frontend/rec/egress), never
+	// a public one. Empty leaves the built-in template, so an install that does
+	// not set it keeps recording exactly as before.
+	RecordingTemplateURL string
 	// Request body ceilings, in bytes. MaxBodyBytes is the blanket limit;
 	// uploads and attachments get their own, larger, budgets.
 	MaxBodyBytes       int64
@@ -259,20 +267,21 @@ func New() *Config {
 
 		FCMCredentialsFile: strings.TrimSpace(os.Getenv("FCM_CREDENTIALS_FILE")),
 
-		GracefulTimeout:    getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
-		PATTouchInterval:   getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
-		TrustedProxies:     splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
-		RateLimitEnabled:   getEnvBool("RATE_LIMIT_ENABLED", true),
-		MediaRequireAuth:   getEnvBool("MEDIA_REQUIRE_AUTH", false),
-		ConverterURL:       getEnv("CONVERTER_URL", ""),
-		LiveKitURL:         strings.TrimSpace(os.Getenv("LIVEKIT_URL")),
-		LiveKitPublicURL:   strings.TrimSpace(os.Getenv("LIVEKIT_PUBLIC_URL")),
-		LiveKitAPIKey:      lkKey,
-		LiveKitAPISecret:   lkSecret,
-		EgressUploadDir:    getEnv("LIVEKIT_EGRESS_UPLOAD_DIR", getEnv("UPLOAD_DIR", "./uploads")),
-		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
-		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
-		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),
+		GracefulTimeout:      getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
+		PATTouchInterval:     getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
+		TrustedProxies:       splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
+		RateLimitEnabled:     getEnvBool("RATE_LIMIT_ENABLED", true),
+		MediaRequireAuth:     getEnvBool("MEDIA_REQUIRE_AUTH", false),
+		ConverterURL:         getEnv("CONVERTER_URL", ""),
+		LiveKitURL:           strings.TrimSpace(os.Getenv("LIVEKIT_URL")),
+		LiveKitPublicURL:     strings.TrimSpace(os.Getenv("LIVEKIT_PUBLIC_URL")),
+		LiveKitAPIKey:        lkKey,
+		LiveKitAPISecret:     lkSecret,
+		EgressUploadDir:      getEnv("LIVEKIT_EGRESS_UPLOAD_DIR", getEnv("UPLOAD_DIR", "./uploads")),
+		RecordingTemplateURL: strings.TrimSpace(os.Getenv("RECORDING_TEMPLATE_URL")),
+		MaxBodyBytes:         getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
+		MaxUploadBytes:       getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
+		MaxAttachmentBytes:   getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),
 
 		SentryDSN: strings.TrimSpace(os.Getenv("SENTRY_DSN")),
 		SentryEnv: sentryEnv,

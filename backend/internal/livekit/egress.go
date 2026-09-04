@@ -156,8 +156,22 @@ type EgressOptions struct {
 	// we would not know what to put in the database.
 	Filepath string
 	// Layout is the grid template, e.g. "grid" or "speaker". Empty leaves
-	// egress's own default, which is what we want unless a user asks.
+	// egress's own default, which is what we want unless a user asks. When
+	// CustomBaseURL is set it is passed to that template as its ?layout= query.
 	Layout string
+	// CustomBaseURL points egress at OUR OWN recording page instead of its
+	// built-in grid template (#2877). Egress opens
+	// `<CustomBaseURL>?url=&token=&layout=` in headless Chrome and records
+	// whatever it renders — which is how the mp4 comes out looking like the
+	// conference does in the browser (screen full-bleed, cameras as PiP,
+	// avatars for participants with no video) rather than egress's dark grid.
+	// Empty falls back to the built-in template.
+	CustomBaseURL string
+	// Preset is a livekit.EncodingOptionsPreset name, e.g. "H264_1080P_30".
+	// Empty leaves egress's default (720p), which crushes a shared screen's
+	// text; a recording of a presentation wants the higher preset. It sets the
+	// `preset` arm of the request's encoding oneof.
+	Preset string
 	// AudioOnly drops the video track: a much smaller file for a call that was
 	// a conversation rather than a screen share.
 	AudioOnly bool
@@ -194,6 +208,14 @@ func (c *Client) StartRoomCompositeEgress(ctx context.Context, room string, opts
 	}
 	if opts.Layout != "" {
 		req["layout"] = opts.Layout
+	}
+	if opts.CustomBaseURL != "" {
+		req["customBaseUrl"] = opts.CustomBaseURL
+	}
+	if opts.Preset != "" {
+		// `preset` is one arm of the request's encoding oneof; protojson reads
+		// the enum by name, so the constant string is what belongs here.
+		req["preset"] = opts.Preset
 	}
 	return c.egressCall(ctx, "StartRoomCompositeEgress", req)
 }

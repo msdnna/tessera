@@ -78,6 +78,12 @@ services:
       - LIVEKIT_PUBLIC_URL=${LIVEKIT_PUBLIC_URL:-}
       - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
       - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-devsecret_at_least_32_characters_long}
+      # Server-side recording layout (#2877). Points egress at our own recording
+      # page so the mp4 looks like the room in the browser (screen full-bleed,
+      # camera PiP, avatars) at 1080p, instead of egress's dark 720p grid. It is
+      # an INTERNAL url egress reaches over the compose network — the `frontend`
+      # container serves the SPA. Set empty to fall back to the built-in grid.
+      - RECORDING_TEMPLATE_URL=${RECORDING_TEMPLATE_URL:-http://frontend/rec/egress}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
