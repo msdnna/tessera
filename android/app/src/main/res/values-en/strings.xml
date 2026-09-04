@@ -713,11 +713,27 @@
 
     <!-- Documents -->
     <string name="docs_empty">No documents yet</string>
-    <string name="docs_empty_hint">Documents are created in the web app</string>
+    <string name="docs_empty_nested">Nothing inside yet</string>
+    <string name="docs_empty_hint">Create the first one with the button above</string>
     <string name="docs_untitled">Untitled</string>
+    <string name="docs_empty_preview">Empty document</string>
     <string name="docs_reader_untitled">Document</string>
     <string name="docs_reader_empty">This document is empty</string>
     <string name="docs_image_alt">Document image</string>
+    <!-- Grid: breadcrumbs, create, nested count on a tile -->
+    <string name="docs_crumb_root">Documents</string>
+    <string name="docs_create">New document</string>
+    <string name="docs_create_confirm">Create</string>
+    <string name="docs_nested_count">nested: %1$d</string>
+    <!-- The reader's «⋯» menu -->
+    <string name="docs_action_nested">Nested document</string>
+    <string name="docs_action_children">Show nested (%1$d)</string>
+    <string name="docs_action_rename">Rename</string>
+    <string name="docs_action_remove">Delete the document</string>
+    <string name="docs_rename_title">Rename the document</string>
+    <string name="docs_remove_title">Delete the document?</string>
+    <string name="docs_remove_single">The document will be deleted.</string>
+    <string name="docs_remove_with_children">The document will be deleted along with the nested ones (%1$d).</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

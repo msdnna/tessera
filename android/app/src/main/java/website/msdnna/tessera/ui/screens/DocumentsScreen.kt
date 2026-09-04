@@ -24,7 +24,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -55,8 +57,11 @@ import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TesseraLoader
-import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.screens.documents.DocDraft
+import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
+import website.msdnna.tessera.ui.screens.documents.DocumentComposer
+import website.msdnna.tessera.ui.screens.documents.DocumentsList
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.DocumentsViewModel
@@ -70,54 +75,47 @@ import website.msdnna.tessera.util.DocParagraph
 import website.msdnna.tessera.util.DocQuote
 import website.msdnna.tessera.util.DocSpan
 import website.msdnna.tessera.util.DocTable
-import website.msdnna.tessera.util.DocTreeRow
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.docChildCount
 
 /**
- * Documents module (web `DocumentsView`), **read-only** — see #2735. A tree of
- * the workspace's documents; tapping one slides a reader over it, the same
- * master/detail shape [NotesScreen] uses. Editing is deliberately out of scope:
- * a block editor with drag handles and per-block locks is its own project.
+ * Documents module (web `DocumentsView`) — see #2735, #2894. A grid of one
+ * nesting level; tapping a tile slides a reader over it, the same master/detail
+ * shape [NotesScreen] uses. Creating, renaming, nesting and deleting live here
+ * too; writing the *body* is the editor's job and arrives with §4 of #2894.
  */
 @Composable
 fun DocumentsScreen(workspaceId: String) {
     val c = Tessera.colors
     val vm: DocumentsViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
+    var draft by remember { mutableStateOf<DocDraft?>(null) }
 
     LaunchedEffect(workspaceId) {
         if (workspaceId.isNotBlank()) vm.load(workspaceId)
     }
 
     // The reader is an inline overlay, not a Dialog, so Back would otherwise
-    // fall through to the nav back-stack.
+    // fall through to the nav back-stack. Inside a container Back walks the
+    // trail out one level instead of leaving the section.
     BackHandler(enabled = state.openId != null) { vm.close() }
+    BackHandler(enabled = state.openId == null && state.trail.isNotEmpty()) {
+        vm.crumbTo(state.trail.lastIndex - 1)
+    }
 
     Box(Modifier.fillMaxSize().background(c.bg).testTag(TestTags.DOCUMENTS_SCREEN)) {
-        when {
-            state.loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                TesseraLoader()
-            }
-
-            state.rows.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    IonIcon(Ion.BOOK, size = 40.dp, tint = c.text3)
-                    Spacer(Modifier.height(10.dp))
-                    Text(stringResource(R.string.docs_empty), color = c.text3, fontSize = 14.sp)
-                    Spacer(Modifier.height(4.dp))
-                    Text(stringResource(R.string.docs_empty_hint), color = c.placeholder, fontSize = 12.sp)
-                }
-            }
-
-            else -> LazyColumn(
-                Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(state.rows, key = { it.doc.id }) { row ->
-                    DocumentRow(row, onClick = { vm.open(row.doc) })
-                }
-                item { Spacer(Modifier.height(16.dp)) }
-            }
+        if (state.loading) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
+        } else {
+            DocumentsList(
+                tiles = state.tiles,
+                trail = state.trail,
+                childCount = { id -> docChildCount(state.docs, id) },
+                busy = state.busy,
+                onCrumb = vm::crumbTo,
+                onOpen = vm::open,
+                onCreate = { draft = DocDraft.Create },
+            )
         }
 
         state.error?.let { message ->
@@ -132,44 +130,33 @@ fun DocumentsScreen(workspaceId: String) {
                 icon = state.open?.icon.orEmpty(),
                 blocks = state.blocks,
                 loading = state.opening,
+                childCount = state.openChildCount,
                 onBack = { vm.close() },
+                onDraft = { draft = it },
+                onChildren = { state.open?.let(vm::drillInto) },
             )
         }
-    }
-}
 
-@Composable
-private fun DocumentRow(row: DocTreeRow, onClick: () -> Unit) {
-    val c = Tessera.colors
-    Row(
-        Modifier.fillMaxWidth().padding(start = (row.depth * 16).dp)
-            .clip(RoundedCornerShape(RadiusMd)).background(c.cardSurface)
-            .border(1.dp, c.border, RoundedCornerShape(RadiusMd))
-            .clickableNoRipple(onClick = onClick).padding(12.dp)
-            .testTag(TestTags.documentRow(row.doc.id)),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        // `icon` is an emoji on the web; fall back to the section's own glyph.
-        if (row.doc.icon.isNotBlank()) {
-            Text(row.doc.icon, fontSize = 16.sp)
-        } else {
-            IonIcon(Ion.BOOK, size = 18.dp, tint = c.text3)
-        }
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                row.doc.title.ifBlank { stringResource(R.string.docs_untitled) },
-                color = c.text1,
-                fontSize = 15.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-            )
-            val snippet = row.doc.preview.replace("\n", " ").take(80)
-            if (snippet.isNotBlank()) {
-                Spacer(Modifier.height(3.dp))
-                Text(snippet, color = c.text3, fontSize = 12.sp, maxLines = 1)
-            }
-        }
+        DocumentComposer(
+            draft = draft,
+            onDismiss = { draft = null },
+            onCreate = { title ->
+                draft = null
+                vm.create(title)
+            },
+            onNested = { title ->
+                draft = null
+                vm.createNested(title)
+            },
+            onRename = { title ->
+                draft = null
+                vm.rename(title)
+            },
+            onRemove = {
+                draft = null
+                vm.remove()
+            },
+        )
     }
 }
 
@@ -179,9 +166,13 @@ private fun DocumentReader(
     icon: String,
     blocks: List<DocBlock>,
     loading: Boolean,
+    childCount: Int,
     onBack: () -> Unit,
+    onDraft: (DocDraft) -> Unit,
+    onChildren: () -> Unit,
 ) {
     val c = Tessera.colors
+    var menuOpen by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().background(c.surface).testTag(TestTags.DOCUMENT_READER)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -191,7 +182,7 @@ private fun DocumentReader(
                 Ion.CHEVRON_FORWARD,
                 onClick = onBack,
                 boxSize = 40.dp,
-                modifier = Modifier.graphicsLayer { scaleX = -1f },
+                modifier = Modifier.graphicsLayer { scaleX = -1f }.testTag(TestTags.DOCUMENT_BACK),
             )
             Spacer(Modifier.width(4.dp))
             if (icon.isNotBlank()) {
@@ -206,6 +197,37 @@ private fun DocumentReader(
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
             )
+            // The menu is a sibling of its trigger inside this Box: TDropdown
+            // positions itself against the anchor's bounds.
+            Box {
+                IonIconButton(
+                    Ion.ELLIPSIS_V,
+                    onClick = { menuOpen = true },
+                    boxSize = 40.dp,
+                    modifier = Modifier.testTag(TestTags.DOCUMENT_ACTIONS),
+                )
+                DocumentActionsMenu(
+                    expanded = menuOpen,
+                    childCount = childCount,
+                    onDismiss = { menuOpen = false },
+                    onNested = {
+                        menuOpen = false
+                        onDraft(DocDraft.Nested)
+                    },
+                    onChildren = {
+                        menuOpen = false
+                        onChildren()
+                    },
+                    onRename = {
+                        menuOpen = false
+                        onDraft(DocDraft.Rename(title))
+                    },
+                    onRemove = {
+                        menuOpen = false
+                        onDraft(DocDraft.Remove(childCount))
+                    },
+                )
+            }
         }
         HorizontalDivider(color = c.border)
 

@@ -726,11 +726,27 @@
 
     <!-- Документы -->
     <string name="docs_empty">Документов пока нет</string>
-    <string name="docs_empty_hint">Создать документ можно в веб-версии</string>
+    <string name="docs_empty_nested">Внутри пока пусто</string>
+    <string name="docs_empty_hint">Создайте первый — кнопка выше</string>
     <string name="docs_untitled">Без названия</string>
+    <string name="docs_empty_preview">Пустой документ</string>
     <string name="docs_reader_untitled">Документ</string>
     <string name="docs_reader_empty">Документ пуст</string>
     <string name="docs_image_alt">Изображение документа</string>
+    <!-- Сетка: крошки, создание, число вложенных на плитке -->
+    <string name="docs_crumb_root">Документы</string>
+    <string name="docs_create">Новый документ</string>
+    <string name="docs_create_confirm">Создать</string>
+    <string name="docs_nested_count">вложенных: %1$d</string>
+    <!-- Меню «⋯» в читалке -->
+    <string name="docs_action_nested">Вложенный документ</string>
+    <string name="docs_action_children">Показать вложенные (%1$d)</string>
+    <string name="docs_action_rename">Переименовать</string>
+    <string name="docs_action_remove">Удалить документ</string>
+    <string name="docs_rename_title">Переименовать документ</string>
+    <string name="docs_remove_title">Удалить документ?</string>
+    <string name="docs_remove_single">Документ будет удалён.</string>
+    <string name="docs_remove_with_children">Документ будет удалён вместе с вложенными (%1$d).</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

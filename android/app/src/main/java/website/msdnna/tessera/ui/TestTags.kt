@@ -189,17 +189,42 @@ object TestTags {
     fun taskRelationRow(relatedTaskId: String) = "task-relation-row:$relatedTaskId"
     fun taskEventRow(eventId: String) = "task-event-row:$eventId"
 
-    // ── documents (read-only, #2735) ───────────────────────────────────────
+    // ── documents (#2735, #2894) ───────────────────────────────────────────
 
-    /** Root of the documents section — the tree of the workspace's documents. */
+    /** Root of the documents section — the grid of one nesting level. */
     const val DOCUMENTS_SCREEN = "documents-screen"
 
-    /** The reader that slides over the tree; present exactly while one is open. */
+    /** The reader that slides over the grid; present exactly while one is open. */
     const val DOCUMENT_READER = "document-reader"
 
-    /** One row of that tree, keyed by document id — so a spec asserts «this
-     *  document», not «the second row», and a nesting regression is visible. */
+    /** One tile of that grid, keyed by document id — so a spec asserts «this
+     *  document», not «the second tile», and a nesting regression is visible. */
     fun documentRow(id: String) = "document-row:$id"
+
+    /** «Новый документ», and the crumb that returns the grid to the root. */
+    const val DOCUMENTS_CREATE = "documents-create"
+    const val DOCUMENTS_CRUMB_ROOT = "documents-crumb-root"
+
+    /** One breadcrumb step, keyed by the container it walks back to. */
+    fun documentCrumb(id: String) = "documents-crumb:$id"
+
+    /** The reader's back arrow — «К списку» on the web. */
+    const val DOCUMENT_BACK = "document-back"
+
+    /** The reader's «⋯» menu and its items. Anchored per action rather than per
+     *  menu: their wording lives in the locale files and is not an anchor. */
+    const val DOCUMENT_ACTIONS = "document-actions"
+    const val DOCUMENT_ACTION_NESTED = "document-action-nested"
+    const val DOCUMENT_ACTION_CHILDREN = "document-action-children"
+    const val DOCUMENT_ACTION_RENAME = "document-action-rename"
+    const val DOCUMENT_ACTION_REMOVE = "document-action-remove"
+
+    /** The title field of the create / rename dialog, and its confirm button. */
+    const val DOCUMENT_TITLE_INPUT = "document-title-input"
+    const val DOCUMENT_TITLE_CONFIRM = "document-title-confirm"
+
+    /** Confirm button of the delete dialog. */
+    const val DOCUMENT_REMOVE_CONFIRM = "document-remove-confirm"
 
     // ── help centre (#2795) ────────────────────────────────────────────────
 
