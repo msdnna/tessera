@@ -9,9 +9,11 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -32,12 +34,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionOnScreen
@@ -61,8 +64,14 @@ import website.msdnna.tessera.util.TourMode
 import website.msdnna.tessera.util.TourSnapshot
 
 private val CardInset = 12.dp
-private val CardGap = 14.dp
+private val CardGap = 10.dp
 private val CutPadding = 6.dp
+
+/** The tooltip nub: how wide its base is, how far it sticks out, and how close to
+ *  the card's rounded corner it is allowed to slide. */
+private val NubWidth = 18.dp
+private val NubHeight = 9.dp
+private val NubMargin = 16.dp
 
 /** How long a step waits for its anchor before giving up on it. The anchor may be
  *  a row that hasn't been laid out yet (the drawer is still sliding open), so this
@@ -70,13 +79,64 @@ private val CutPadding = 6.dp
  *  have would pin the card to nothing forever. */
 private const val AnchorTimeoutMs = 4000L
 
+/** Where the step card ended up relative to what it points at — which edge carries
+ *  the nub, or neither when the card had to be parked (a target under the keyboard,
+ *  a card taller than the space left over). */
+enum class TourNubSide { ABOVE, BELOW, NONE }
+
+/** The geometry of one step, in the overlay's own pixels. Computed by
+ *  [tourCardLayout] so the placement rules can be asserted on the JVM — they are the
+ *  half of this file a screenshot test would be a poor way to pin down. */
+data class TourCardLayout(val top: Float, val nubSide: TourNubSide, val nubCenterX: Float)
+
+/**
+ * Places the step card against [target] the way a tooltip places itself.
+ *
+ * Below the target when it fits, above it otherwise, and pinned to the bottom of
+ * what is left when neither works. [bottomLimit] is the last usable row of pixels —
+ * the viewport minus the keyboard, because a card the keyboard covers is a card the
+ * user cannot press «Понятно» on (#2860 rework, point 3).
+ *
+ * The nub sits on the edge facing the target and is centred on it, clamped so it
+ * cannot slide onto the card's rounded corners. When the card is parked there is
+ * nothing honest to point at, so it gets no nub at all rather than one aimed at
+ * whatever happens to be under it.
+ */
+fun tourCardLayout(
+    target: Rect,
+    cardHeight: Float,
+    cardLeft: Float,
+    cardRight: Float,
+    bottomLimit: Float,
+    gap: Float,
+    nubMargin: Float,
+): TourCardLayout {
+    val below = target.bottom + gap
+    val above = target.top - gap - cardHeight
+    val side = when {
+        below + cardHeight <= bottomLimit -> TourNubSide.BELOW
+        above >= 0f -> TourNubSide.ABOVE
+        else -> TourNubSide.NONE
+    }
+    val top = when (side) {
+        TourNubSide.BELOW -> below
+        TourNubSide.ABOVE -> above
+        TourNubSide.NONE -> (bottomLimit - cardHeight).coerceAtLeast(0f)
+    }
+    // A card narrower than its own corners is not a thing that happens, but the
+    // clamp has to survive it rather than produce a reversed range.
+    val slack = (cardRight - cardLeft - 2 * nubMargin).coerceAtLeast(0f)
+    val lo = cardLeft + (cardRight - cardLeft - slack) / 2
+    return TourCardLayout(top, side, target.center.x.coerceIn(lo, lo + slack))
+}
+
 /**
  * The Get Started guide, drawn (#2860, web `TourOverlay.vue`).
  *
  * Mounted at the top of the app shell, above the board *and* above the task form,
  * because the scenario walks through both. It draws three things: the dimming mask
- * with a cutout around what the step points at, one [SpotlightArrow] per anchor,
- * and the step card.
+ * with a cutout around what the step points at, a tooltip nub from the card to that
+ * cutout, and the step card itself.
  *
  * Nothing here consumes the pointer except the card itself — the mask is a
  * drawing, not a shield (`pointer-events: none` on the web). An action step ends
@@ -94,6 +154,9 @@ fun TourOverlay(
     val density = LocalDensity.current
     var origin by remember { mutableStateOf(Offset.Zero) }
     var cardHeight by remember { mutableIntStateOf(0) }
+    // Read through the inset, not through `imePadding()`: the mask has to keep
+    // covering the whole surface while the card moves out of the keyboard's way.
+    val imeBottom = WindowInsets.ime.getBottom(density)
 
     BoxWithConstraints(
         Modifier
@@ -118,64 +181,130 @@ fun TourOverlay(
         }
         if (target == null) return@BoxWithConstraints
 
-        TourMask(cuts = listOf(target) + extras + cuts)
+        // The primary anchor is ringed — that is what the step is about. The extras
+        // are only un-dimmed: one card carries one nub, and three arrows fanning out
+        // of it was exactly what made this look like scribble on a phone (#2860
+        // rework, points 1-2).
+        TourMask(ring = target, cuts = extras + cuts)
 
-        val gap = with(density) { CardGap.toPx() }
         val inset = with(density) { CardInset.toPx() }
-        // Below the target by default; above it when the card would fall off the
-        // bottom — the same rule the one-shot sidebar hint plays by.
-        val below = target.bottom + gap
-        val fitsBelow = below + cardHeight <= constraints.maxHeight
-        val cardTop = if (fitsBelow) below else (target.top - gap - cardHeight).coerceAtLeast(0f)
-        val cardEdge = if (fitsBelow) cardTop - 4f else cardTop + cardHeight + 4f
-
-        for (rect in listOf(target) + extras) {
-            SpotlightArrow(
-                start = Offset(inset + with(density) { 26.dp.toPx() }, cardEdge),
-                tip = Offset(
-                    rect.center.x.coerceIn(rect.left + 6f, rect.right - 6f),
-                    if (rect.top > cardTop) rect.top - 3f else rect.bottom + 3f,
-                ),
-                target = rect,
-                // An arbitrary control (a chip, a card field) is its own width —
-                // unlike a full-width sidebar row, there is no side padding to
-                // discount, and insetting the ring would cut into the target.
-                ringInset = 0.dp,
-            )
-        }
+        val gap = with(density) { CardGap.toPx() + NubHeight.toPx() + CutPadding.toPx() }
+        val layout = tourCardLayout(
+            target = target,
+            cardHeight = cardHeight.toFloat(),
+            cardLeft = inset,
+            cardRight = constraints.maxWidth - inset,
+            bottomLimit = (constraints.maxHeight - imeBottom).toFloat(),
+            gap = gap,
+            nubMargin = with(density) { NubMargin.toPx() },
+        )
 
         Box(
             Modifier
-                .offset { IntOffset(0, cardTop.toInt()) }
+                .offset { IntOffset(0, layout.top.toInt()) }
                 .padding(horizontal = CardInset)
                 .onSizeChanged { cardHeight = it.height },
         ) {
             TourCard(snapshot, onNext = onNext, onSkip = onSkip)
         }
+        if (layout.nubSide != TourNubSide.NONE && cardHeight > 0) {
+            TourNub(
+                side = layout.nubSide,
+                centerX = layout.nubCenterX,
+                cardTop = layout.top,
+                cardBottom = layout.top + cardHeight,
+            )
+        }
     }
 }
 
-/** The dimming mask: everything but [cuts] goes dark, so the eye has one place to
- *  land. Drawn into an offscreen layer — that is what makes BlendMode.Clear punch
- *  a hole instead of painting black. */
+/** A cutout: the anchor's rect, grown by [pad] on every side and rounded, which is
+ *  what both the hole in the mask and the ring around it are drawn from. */
+fun tourCutout(rect: Rect, pad: Float, radius: Float) = RoundRect(
+    Rect(rect.left - pad, rect.top - pad, rect.right + pad, rect.bottom + pad),
+    CornerRadius(radius),
+)
+
+/**
+ * The mask's silhouette: the whole [size], minus a cutout over each of [cuts].
+ *
+ * One even-odd path rather than a black rect punched through with `BlendMode.Clear`:
+ * clearing only works inside an offscreen layer, which makes the mask depend on
+ * where in the hierarchy it happens to be composed — and the guide draws itself from
+ * three different surfaces (#2860 rework, point 4). A path has no such dependency.
+ *
+ * Pulled out of the drawing so the shape can be asserted directly (`TourMaskTest`):
+ * this is the one part of the overlay where "it composed without throwing" says
+ * nothing at all — the version this replaces composed fine and dimmed nothing.
+ */
+fun tourMaskPath(size: Size, cuts: List<Rect>, pad: Float, radius: Float): Path =
+    Path().apply {
+        fillType = PathFillType.EvenOdd
+        addRect(Rect(Offset.Zero, size))
+        for (rect in cuts) addRoundRect(tourCutout(rect, pad, radius))
+    }
+
+/**
+ * The dimming mask: everything but the cutouts goes dark, so the eye has one place
+ * to land, and [ring] — what the step actually points at — is outlined.
+ */
 @Composable
-private fun TourMask(cuts: List<Rect>) {
+private fun TourMask(ring: Rect, cuts: List<Rect>) {
+    val c = Tessera.colors
+    Canvas(Modifier.fillMaxSize()) {
+        val pad = CutPadding.toPx()
+        val radius = RadiusSm.toPx()
+        drawPath(
+            tourMaskPath(size, listOf(ring) + cuts, pad, radius),
+            Color.Black.copy(alpha = 0.5f),
+        )
+        drawPath(
+            Path().apply { addRoundRect(tourCutout(ring, pad, radius)) },
+            color = c.primary,
+            style = Stroke(width = 2.dp.toPx()),
+        )
+    }
+}
+
+/** The tooltip's nub, on the card edge that faces the target. Its base overlaps the
+ *  card by a hair so the card's own border does not show through as a seam. */
+@Composable
+private fun TourNub(side: TourNubSide, centerX: Float, cardTop: Float, cardBottom: Float) {
+    val c = Tessera.colors
+    val density = LocalDensity.current
+    val h = with(density) { NubHeight.toPx() }
+    val halfWidth = with(density) { NubWidth.toPx() } / 2
+    val up = side == TourNubSide.BELOW
+    val top = if (up) cardTop - h else cardBottom
     Canvas(
         Modifier
-            .fillMaxSize()
-            .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
+            .offset { IntOffset((centerX - halfWidth).toInt(), top.toInt()) }
+            .size(NubWidth, NubHeight),
     ) {
-        drawRect(Color.Black.copy(alpha = 0.5f))
-        val pad = CutPadding.toPx()
-        for (rect in cuts) {
-            drawRoundRect(
-                color = Color.Transparent,
-                topLeft = Offset(rect.left - pad, rect.top - pad),
-                size = Size(rect.width + pad * 2, rect.height + pad * 2),
-                cornerRadius = CornerRadius(RadiusSm.toPx()),
-                blendMode = BlendMode.Clear,
-            )
-        }
+        val w = size.width
+        val tipY = if (up) 0f else size.height
+        val baseY = if (up) size.height else 0f
+        val overlap = if (up) 1.dp.toPx() else -1.dp.toPx()
+        drawPath(
+            Path().apply {
+                moveTo(0f, baseY)
+                lineTo(w / 2, tipY)
+                lineTo(w, baseY)
+                lineTo(w, baseY + overlap)
+                lineTo(0f, baseY + overlap)
+                close()
+            },
+            color = c.surface,
+        )
+        drawPath(
+            Path().apply {
+                moveTo(0f, baseY)
+                lineTo(w / 2, tipY)
+                lineTo(w, baseY)
+            },
+            color = c.primary.copy(alpha = 0.55f),
+            style = Stroke(width = 1.dp.toPx()),
+        )
     }
 }
 

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -373,7 +374,16 @@ fun MainScreen(
                 drawerState = drawerState,
                 gesturesEnabled = !boardTimelineLike || drawerState.isOpen,
                 drawerContent = {
-                    ModalDrawerSheet(drawerContainerColor = c.surface, modifier = Modifier.width(280.dp)) {
+                    // imePadding, because the window does not resize for the keyboard
+                    // (enableEdgeToEdge turns decorFitsSystemWindows off): without it
+                    // the inline «название проекта» field the guide asks the user to
+                    // fill in sits *under* the keyboard, and the tree cannot scroll it
+                    // into view because as far as it knows nothing is covering it
+                    // (#2860 rework, point 3).
+                    ModalDrawerSheet(
+                        drawerContainerColor = c.surface,
+                        modifier = Modifier.width(280.dp).imePadding(),
+                    ) {
                         // Sidebar navigation: push onto the back-stack and close the drawer.
                         fun go(d: MainDest) {
                             navTo(d)

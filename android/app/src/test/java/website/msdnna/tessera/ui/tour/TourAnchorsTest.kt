@@ -8,11 +8,16 @@ import org.junit.Test
  * The anchor registry of the Get Started guide (#2860).
  *
  * The rules that pick *which* element a step points at live here rather than in the
- * engine, and two steps of the scenario lean on them entirely: «Создайте задачу»
- * points at the bare `column-add:` prefix and must land on the leftmost column (the
- * first one of a freshly seeded board), and the card-field steps point at
- * `card-priority:` and must land on the topmost card. Both are resolved by position,
- * not by insertion order — a hash map promises nothing about the latter.
+ * engine, and the scenario leans on them wherever it names a family rather than one
+ * element: «Откройте задачу» points at the bare `task-card:` prefix and must land on
+ * the card the user just made, and the card-field steps point at `card-priority:`
+ * and must land on the topmost card. Resolved by position, not by insertion order —
+ * a hash map promises nothing about the latter.
+ *
+ * «Создайте задачу» used to be resolved this way too and no longer is: columns sit
+ * side by side, so "topmost, then leftmost" walked off to the neighbouring column
+ * the moment the first one held a card (#2860 rework, point 5). It names its column
+ * outright now; the prefix rules below are still what the other steps ride on.
  */
 class TourAnchorsTest {
     private fun at(left: Float, top: Float) = Rect(left, top, left + 100f, top + 40f)

@@ -93,6 +93,38 @@ class TourTest {
         assertThat(e.current?.id).isEqualTo("info")
     }
 
+    @Test
+    fun `a step anchored on a bare prefix ends on a tap on any of its family`() {
+        // «Откройте задачу» points at `task-card:` — the card the user has just
+        // made, whose id the scenario cannot know — while the tap arrives under the
+        // full key. Comparing the two for equality never matched, so the step never
+        // ended: the guide stayed up over the opened form and the user could not get
+        // past it (#2860 rework, point 6).
+        val e = engine()
+        e.start(listOf(step("open", "task-card:", advanceOn = AdvanceOn.Tap()), info))
+
+        e.tapped("board-row:b-1")
+        assertThat(e.current?.id).isEqualTo("open")
+        e.tapped("task-card:t-42")
+        assertThat(e.current?.id).isEqualTo("info")
+    }
+
+    @Test
+    fun `an unresolved token does not turn a step into a prefix match`() {
+        // `board-row:{board}` with no board created yet collapses to a trailing
+        // colon too — but that step is about one specific row, so a tap on any other
+        // must not run it ahead of the user.
+        val e = engine()
+        e.start(listOf(step("open", "board-row:{board}", advanceOn = AdvanceOn.Tap()), info))
+
+        e.tapped("board-row:someone-elses")
+        assertThat(e.current?.id).isEqualTo("open")
+
+        e.noteCreated { copy(boardId = "b-9") }
+        e.tapped("board-row:b-9")
+        assertThat(e.current?.id).isEqualTo("info")
+    }
+
     // ── count ───────────────────────────────────────────────────────────────
 
     @Test

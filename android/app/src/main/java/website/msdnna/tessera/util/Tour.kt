@@ -74,10 +74,18 @@ object TourKeys {
     /** A group row in the tree. */
     fun groupRow(id: String) = "group-row:$id"
 
-    /** «Создать задачу» at the foot of column [id]. The scenario points at the bare
-     *  prefix [COLUMN_ADD] — the registry then resolves it to the leftmost column,
-     *  which is the first one a freshly seeded board shows («К работе»). */
-    fun columnAdd(id: String) = "$COLUMN_ADD$id"
+    /**
+     * «Создать задачу» at the foot of the column *named* [name].
+     *
+     * By name and not by id, and not as a bare prefix either (#2860 rework). A
+     * prefix resolves by position — topmost, then leftmost — and columns sit side by
+     * side, so the moment the first one holds a card its «Создать задачу» is pushed
+     * *below* the empty neighbour's and the step starts pointing at «В процессе».
+     * The board the guide walks the user through creating is seeded server-side with
+     * [TOUR_TODO_COLUMN] first (`defaultColumns` in `handlers/boards.go`), so the
+     * name is something the scenario can name outright; the id is not.
+     */
+    fun columnAdd(name: String) = "$COLUMN_ADD$name"
 
     /** A field of the card [id] — one of the [CARD_PRIORITY] family. */
     fun cardField(prefix: String, id: String) = "$prefix$id"
@@ -278,11 +286,9 @@ val GET_STARTED: List<TourStep> = listOf(
     ),
     TourStep(
         id = "task-create",
-        // The leftmost «Создать задачу», i.e. the first column of the board that was
-        // just created. Deliberately not a `{column}` token: the id of that column is
-        // known to the board's ViewModel and to nobody the guide talks to, and the
-        // registry already resolves a prefix by position (topmost, then leftmost).
-        anchor = TourKeys.COLUMN_ADD,
+        // «Создать задачу» of the first column of the freshly seeded board, named
+        // outright — see [TourKeys.columnAdd] for why not a prefix.
+        anchor = TourKeys.columnAdd(TOUR_TODO_COLUMN),
         titleRes = R.string.tour_task_create_title,
         bodyRes = R.string.tour_task_create_body,
         mode = TourMode.ACTION,
@@ -583,12 +589,23 @@ class TourEngine(private val onAck: (String) -> Unit = {}) {
         next()
     }
 
-    /** The user tapped an anchored element. */
+    /**
+     * The user tapped an anchored element.
+     *
+     * A step may name a bare prefix (`task-card:` — "the card you just made",
+     * whichever id it got), and the tap always arrives under the full per-entity
+     * key. So a declared prefix matches by prefix. Deliberately keyed off what the
+     * step *declares*, not off the resolved string: a `{project}` token with no id
+     * yet also collapses to a trailing `:`, and matching that by prefix would let a
+     * tap on any row of that kind run the step ahead of the user.
+     */
     fun tapped(key: String) {
         val step = current ?: return
         if (step.mode != TourMode.ACTION) return
         val on = step.advanceOn as? AdvanceOn.Tap ?: return
-        if (key == resolve(on.key ?: step.anchor)) next()
+        val declared = on.key ?: step.anchor
+        val hit = if (declared.endsWith(":")) key.startsWith(declared) else key == resolve(declared)
+        if (hit) next()
     }
 
     /** How many anchors currently match the step's [AdvanceOn.Count] prefix (or

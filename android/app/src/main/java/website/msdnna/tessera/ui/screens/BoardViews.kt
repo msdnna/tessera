@@ -603,7 +603,7 @@ fun KanbanView(
                                                         stringResource(R.string.board_add_task),
                                                         modifier = Modifier
                                                             .testTag(TestTags.columnAddTask(lane.id))
-                                                            .tourAnchor(TourKeys.columnAdd(lane.id)),
+                                                            .tourAnchor(TourKeys.columnAdd(lane.rawTitle)),
                                                     ) { addingColumn = lane.id }
                                                 }
                                             }
