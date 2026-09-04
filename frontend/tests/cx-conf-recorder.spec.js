@@ -180,13 +180,6 @@ describe('RecorderView — egress recording template', () => {
     w.unmount()
   })
 
-  it('suppresses the Google-Translate offer so it stays out of the recording', async () => {
-    const w = await mountRecorder()
-    // The bubble renders into the captured viewport otherwise (#2877 rework).
-    expect(document.documentElement.getAttribute('translate')).toBe('no')
-    expect(document.querySelector('meta[name="google"][content="notranslate"]')).not.toBeNull()
-    w.unmount()
-  })
 
   it('tells egress END_RECORDING when the room closes', async () => {
     const w = await mountRecorder()

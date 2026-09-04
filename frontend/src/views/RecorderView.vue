@@ -104,18 +104,8 @@ function syncAudio() {
   }
 }
 
-// Egress runs Chrome in a locale that differs from the room's language, so it
-// offers to translate the page — and that bubble lands IN the recording. Tell
-// Chrome not to (#2877 rework). Only this page, not the whole app.
-function suppressTranslate() {
-  const html = document.documentElement
-  html.setAttribute('translate', 'no')
-  html.classList.add('notranslate')
-  const m = document.createElement('meta')
-  m.name = 'google'
-  m.content = 'notranslate'
-  document.head.appendChild(m)
-}
+// The Google-Translate bubble that egress would otherwise capture is suppressed
+// in index.html, at first parse — too late from here (see the comment there).
 
 async function connect() {
   const q = new URLSearchParams(window.location.search)
@@ -168,10 +158,7 @@ async function connect() {
   })
 }
 
-onMounted(() => {
-  suppressTranslate()
-  connect()
-})
+onMounted(connect)
 onBeforeUnmount(() => {
   for (const [t, el] of audioEls) {
     try {
