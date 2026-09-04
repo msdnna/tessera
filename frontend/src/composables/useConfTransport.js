@@ -100,7 +100,8 @@ export function describe(p, local, volume = VOLUME_DEFAULT, muted = false) {
     audioTrack: local ? null : mic?.track || null,
     // Symmetric with the camera for readability, though screen share is muted by
     // unpublishing (see above), so isMuted here is effectively always false.
-    screenTrack: screen && !screen.isMuted && screen.isSubscribed !== false ? screen.track || null : null,
+    screenTrack:
+      screen && !screen.isMuted && screen.isSubscribed !== false ? screen.track || null : null,
     // Same reason as the microphone: playing our own shared tab back into the
     // room is a feedback loop, and a loud one — the tab is usually a video.
     screenAudioTrack: local ? null : screenAudio?.track || null,

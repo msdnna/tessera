@@ -186,10 +186,7 @@ watch(
        a component with one root. A second sibling root (e.g. the conflict modal)
        turns this into a fragment, and the leave callback never fires when AppLayout
        unmounts on logout — leaving a blank screen until a hard refresh. -->
-  <div
-    class="app-shell"
-    :style="{ '--app-content-left': isMobile ? '0px' : layoutWidth + 'px' }"
-  >
+  <div class="app-shell" :style="{ '--app-content-left': isMobile ? '0px' : layoutWidth + 'px' }">
     <!-- Desktop: fixed sider + content -->
     <n-layout
       v-if="!isMobile"

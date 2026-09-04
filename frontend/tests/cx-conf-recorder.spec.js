@@ -155,7 +155,10 @@ describe('RecorderView — egress recording template', () => {
     const w = await mountRecorder()
     const room = lk.rooms[0]
     room.remoteParticipants.set('a', lk.participant('u-a', { name: 'Аня', video: mediaTrack('a') }))
-    room.remoteParticipants.set('b', lk.participant('u-b', { name: 'Боря', video: mediaTrack('b') }))
+    room.remoteParticipants.set(
+      'b',
+      lk.participant('u-b', { name: 'Боря', video: mediaTrack('b') }),
+    )
     room.fire('participantConnected')
     await nextTick()
 
@@ -179,7 +182,6 @@ describe('RecorderView — egress recording template', () => {
     expect(w.find('.rec-audio').element.children.length).toBe(1)
     w.unmount()
   })
-
 
   it('tells egress END_RECORDING when the room closes', async () => {
     const w = await mountRecorder()

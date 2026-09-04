@@ -335,7 +335,9 @@ watch(
 // where a collapse toggle is meaningless, so it is hidden there and the rail
 // always shows (`railVisible`).
 const RAIL_KEY = 'tessera_conf_rail'
-const railOpen = ref((typeof localStorage !== 'undefined' ? localStorage.getItem(RAIL_KEY) : null) !== '0')
+const railOpen = ref(
+  (typeof localStorage !== 'undefined' ? localStorage.getItem(RAIL_KEY) : null) !== '0',
+)
 const roomNarrow = ref(false)
 let railMq = null
 function onRailMq(e) {
@@ -535,7 +537,9 @@ function onInviteShow(show) {
           type="button"
           class="rail-toggle"
           data-testid="conference-rail-toggle"
-          :aria-label="railOpen ? $t('conferences.panel.hideRail') : $t('conferences.panel.showRail')"
+          :aria-label="
+            railOpen ? $t('conferences.panel.hideRail') : $t('conferences.panel.showRail')
+          "
           @click="toggleRail"
         >
           <n-icon :component="railOpen ? ChevronForwardOutline : ChevronBackOutline" :size="16" />

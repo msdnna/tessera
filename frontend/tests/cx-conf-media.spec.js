@@ -29,7 +29,8 @@ const lk = vi.hoisted(() => {
     const pubs = {}
     // A muted camera keeps its publication and its track — the SDK mutes it in
     // place (unlike screen share, which it unpublishes). over.camMuted models that.
-    if (over.video) pubs.camera = { isSubscribed: true, isMuted: !!over.camMuted, track: over.video }
+    if (over.video)
+      pubs.camera = { isSubscribed: true, isMuted: !!over.camMuted, track: over.video }
     if (over.audio) pubs.microphone = { isSubscribed: true, track: over.audio }
     const p = {
       identity,
