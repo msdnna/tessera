@@ -75,8 +75,20 @@ A minimised call **survives a page reload**: the active conference is remembered
 
 You leave a call only with **Leave** (in the room or in the mini window) or by closing the tab. Moving to another section does not drop the call — and it does not mislead the others either: if the tab closes, you disappear from the list on your own.
 
+## Recording
+
+A call can be recorded whole — a single video file with every participant and the screen share in it. The **server** does the recording, not your browser: the quality does not depend on your uplink, and you can close the tab.
+
+Recording is started and stopped by the **host or a moderator**, with a button in the room toolbar. While it runs, **every participant sees a red dot**: a call cannot be recorded unnoticed, and that is deliberate.
+
+Finished recordings sit in a list **under the room**: download, size and duration. A file appears there a few seconds after you stop — that is how long muxing the video takes.
+
+**Retention is chosen up front**, when the conference is scheduled: by default a recording lives for 30 days and is then deleted by itself. It is decided before the meeting rather than after, so nobody has to rule on a file's fate while watching a countdown.
+
+Recording is an **optional instance feature**: the administrator enables it separately. If it is not enabled, the button answers with an error — a question for your administrator, not a fault on your side.
+
 ## Worth knowing
 
 - Conferences need a **secure connection** (`https://`). Over a plain address the browser will not hand over the microphone and camera at all, and the room says so plainly instead of quietly failing.
 - If your administrator has not configured the media server, joining a call returns an error — that is a question for the instance administrator, not a fault on your side.
-- **There is no call recording yet** — it is being worked on. Anything worth keeping is best dropped into the conference chat or into the description of the linked task as you go.
+- Recording is **not a substitute for minutes**: there is no transcript or auto-summary yet, so decisions made along the way are still best dropped into the conference chat or into the description of the linked task.
