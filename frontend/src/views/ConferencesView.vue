@@ -708,6 +708,21 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  max-width: 100%;
+}
+/* The row already wrapped; what didn't is the filter group inside it. Four joined
+   radio buttons («Все» / «Идут» / «Запланированные» / «Завершённые») are one
+   inline-flex box ~470px wide with no break opportunity, so on a 393px phone it
+   pushed the whole pane 90px sideways (#2893). It can't wrap without breaking
+   the joined border radii, so it scrolls on its own instead — the standard
+   filter-strip behaviour — and stops dragging the page with it. */
+.head-actions :deep(.n-radio-group) {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.head-actions :deep(.n-radio-group::-webkit-scrollbar) {
+  display: none;
 }
 .rows {
   display: flex;

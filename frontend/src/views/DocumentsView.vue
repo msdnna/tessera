@@ -1576,6 +1576,13 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  /* The three action buttons («Импорт» / «Из шаблона» / «Новый») are ~330px of
+     unshrinkable content, so on a phone this row ran 42px past the pane and the
+     «Новый» button was simply unreachable (задача 2893 — номер словом, а не через
+     решётку: гвард «no literal colours» в tests/cx-doc-editor.spec.js принимает
+     решётку с четырьмя цифрами за hex-цвет). Wrapping costs nothing on a wide
+     screen — there the row has never needed a second line. */
+  flex-wrap: wrap;
 }
 /* Both halves teleport into the app header on a wide screen; what stays behind
    is an empty flex row that would still spend the .docs gap. */
