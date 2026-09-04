@@ -25,7 +25,6 @@ import {
   NRadioButton,
   NPopconfirm,
   NSpin,
-  NSelect,
   useMessage,
 } from 'naive-ui'
 import {
@@ -96,6 +95,9 @@ async function loadDetail(id) {
   try {
     const { data } = await confApi.get(id)
     detail.value = data
+    // Prefetch the workspace roster so the room's invite popover is ready before
+    // it is opened; skipped for an ended call, which cannot be invited to.
+    if (canInvite.value) loadMembers()
   } catch (e) {
     // A deleted (or foreign-workspace) conference answers 404 — say so on the
     // page instead of leaving the previous conference on screen under a new id.
@@ -152,8 +154,12 @@ async function remove(conf) {
 // ── invite ─────────────────────────────────────────────────────────────
 // The invitation notification/push/deep-link is #2875; this is its trigger. Any
 // workspace member may invite (as a member) — the backend only gates handing out
-// a host seat — so the button is shown to everyone in the room, not just hosts.
-const inviteDlg = ref({ show: false, saving: false, selected: [] })
+// a host seat — so the control is shown to everyone in the room, not just hosts.
+//
+// The picker is a popover in the room's rail now (#2891), like the assignee
+// picker: the list of invitable members is fed to the room as a prop, one click
+// invites that person immediately (no batch «Отправить»), and the parent's
+// refetch drops them out of `invitable` and into the room's «приглашённые» list.
 const members = ref([])
 
 // Workspace members who are not currently in the call: those with no seat, plus
@@ -166,38 +172,32 @@ const invitable = computed(() => {
   )
   return members.value.filter((m) => !held.has(m.user_id))
 })
-const inviteOptions = computed(() =>
-  invitable.value.map((m) => ({ label: m.name || m.email, value: m.user_id })),
-)
 const canInvite = computed(() => detail.value && detail.value.conference.status !== 'ended')
 
-async function openInvite() {
-  inviteDlg.value = { show: true, saving: false, selected: [] }
+// Loaded once the lobby opens, so the popover's list is ready on the first click.
+// Silent on failure: the popover just shows an empty list until it succeeds —
+// nothing the person opening a call needs a red toast about.
+async function loadMembers() {
+  if (!wsApi?.members || !ws.currentId) return
   try {
     const { data } = await wsApi.members(ws.currentId)
     members.value = data || []
-  } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+  } catch {
+    // non-fatal; invitable stays empty
   }
 }
 
-async function sendInvite() {
-  const ids = inviteDlg.value.selected
-  if (!ids.length) {
-    message.warning(t('conferences.invite.required'))
-    return
-  }
-  inviteDlg.value.saving = true
+// One click = one invite (the room's popover has no batch select). The API still
+// takes an array, so this sends a single-element one and keeps the signature.
+async function inviteOne(userId) {
+  if (!detail.value) return
   try {
-    await confApi.invite(detail.value.conference.id, ids)
+    await confApi.invite(detail.value.conference.id, [userId])
     const { data: parts } = await confApi.participants(detail.value.conference.id)
     detail.value.participants = parts || []
-    inviteDlg.value.show = false
-    message.success(t('conferences.invite.sent', { count: ids.length }))
+    message.success(t('conferences.invite.sent', { count: 1 }))
   } catch (e) {
     message.error(e.response?.data?.error || e.message)
-  } finally {
-    inviteDlg.value.saving = false
   }
 }
 
@@ -436,6 +436,7 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
           </n-radio-group>
           <n-button
             type="primary"
+            size="small"
             :disabled="!ws.currentId"
             data-testid="conference-schedule"
             @click="openDialog"
@@ -602,9 +603,10 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               :active="inRoom"
               :ended="detail.conference.status === 'ended'"
               :can-invite="canInvite"
+              :invitable="invitable"
               :invited="invited"
               @hangup="leave"
-              @invite="openInvite"
+              @invite="inviteOne"
             />
           </div>
 
@@ -673,45 +675,6 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
             @click="submit"
           >
             {{ $t('conferences.create.submit') }}
-          </n-button>
-        </div>
-      </template>
-    </n-modal>
-
-    <!-- INVITE -->
-    <n-modal
-      v-model:show="inviteDlg.show"
-      preset="card"
-      style="max-width: 460px"
-      :bordered="false"
-      :title="$t('conferences.invite.title')"
-    >
-      <div class="form">
-        <n-select
-          v-model:value="inviteDlg.selected"
-          multiple
-          filterable
-          :options="inviteOptions"
-          :placeholder="$t('conferences.invite.placeholder')"
-          data-testid="conference-invite-select"
-        />
-        <div v-if="!inviteOptions.length" class="hint">
-          {{ $t('conferences.invite.allInvited') }}
-        </div>
-      </div>
-      <template #footer>
-        <div class="foot">
-          <n-button quaternary @click="inviteDlg.show = false">
-            {{ $t('conferences.invite.cancel') }}
-          </n-button>
-          <n-button
-            type="primary"
-            :loading="inviteDlg.saving"
-            :disabled="!inviteDlg.selected.length"
-            data-testid="conference-invite-submit"
-            @click="sendInvite"
-          >
-            {{ $t('conferences.invite.submit') }}
           </n-button>
         </div>
       </template>
@@ -785,14 +748,19 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   gap: 4px;
 }
 /* The status pill: flat interior, same-hue gradient on the border-box so it
-   follows the corner radius, and the same hue again on the glyphs. */
+   follows the corner radius, and the same hue again on the glyphs. Shaped like a
+   button, not a capsule (#2891): the theme's 8px button radius, and a 28px box
+   (inline-flex + fixed height) so it lines up with the small buttons beside it
+   in the call topbar. */
 .pill {
   flex: none;
-  padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
   border: 1px solid transparent;
-  border-radius: 999px;
+  border-radius: 8px;
   font-size: 11px;
-  line-height: 18px;
   white-space: nowrap;
   color: var(--t-text3);
 }
@@ -813,6 +781,11 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   flex: none;
   font-size: 12px;
   color: var(--t-text3);
+}
+/* Bottom clearance for the room's fixed control bar (#2891), so the recordings
+   panel and description can scroll clear of it instead of hiding underneath. */
+.detail {
+  padding-bottom: 84px;
 }
 /* Plain pane, no card frame — the room owns its own borders. */
 .room {

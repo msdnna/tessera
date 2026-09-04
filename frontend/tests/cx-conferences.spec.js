@@ -30,9 +30,11 @@ const api = {
   // stubbed anyway so a change in that order fails loudly instead of throwing.
   token: vi.fn(() => Promise.reject(new Error('no media in jsdom'))),
 }
+// The invite popover (#2891) prefetches the workspace roster when a lobby opens.
+const wsApi = { members: vi.fn(() => Promise.resolve({ data: [] })) }
 // getAccessToken is what useRealtime reads on mount; null keeps the socket from
 // ever opening in jsdom (it retries on a timer, which unmount clears).
-vi.mock('@/api', () => ({ conferences: api, getAccessToken: () => null }))
+vi.mock('@/api', () => ({ conferences: api, workspaces: wsApi, getAccessToken: () => null }))
 
 const { default: ConferencesView } = await import('@/views/ConferencesView.vue')
 const { useWorkspacesStore } = await import('@/stores/workspaces')

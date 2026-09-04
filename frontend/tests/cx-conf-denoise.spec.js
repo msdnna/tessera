@@ -448,11 +448,13 @@ describe('DeviceMenu — noise suppression entry', () => {
   })
 
   it('marks the entry the same way a chosen device is marked', () => {
+    // The mark is now an accent checkmark in the icon column, not a '●' in the
+    // label text (#2891) — same visual language as a chosen device.
     const w = menu({ denoiseAvailable: true, denoise: true })
-    expect(denoiseEntry(w).label.startsWith('● ')).toBe(true)
+    expect(denoiseEntry(w).icon().props.style).toContain('--t-primary')
     w.unmount()
     const off = menu({ denoiseAvailable: true, denoise: false })
-    expect(denoiseEntry(off).label.startsWith('● ')).toBe(false)
+    expect(denoiseEntry(off).icon().props.style).toContain('opacity:0')
     off.unmount()
   })
 

@@ -4,9 +4,9 @@
 // One dropdown for all three kinds rather than three buttons: a standup toolbar
 // has room for the two things people press constantly (mic, camera) and not for
 // the thing they touch once a month.
-import { computed } from 'vue'
+import { computed, h } from 'vue'
 import { NButton, NDropdown, NIcon } from 'naive-ui'
-import { SettingsOutline } from '@vicons/ionicons5'
+import { SettingsOutline, CheckmarkOutline } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 
 const props = defineProps({
@@ -36,6 +36,19 @@ const KINDS = [
   { kind: 'audiooutput', title: 'conferences.media.speakers' },
 ]
 
+// The chosen row is marked with an accent checkmark in the icon column — the
+// app's shared language for "selected" (assignee picker, board menus), not a
+// black '●' glued into the label (#2891). Unselected rows carry the same
+// checkmark at opacity 0 so the icon column is reserved for the whole group and
+// labels don't shift horizontally as it appears.
+function checkIcon(on) {
+  return () =>
+    h(NIcon, {
+      component: CheckmarkOutline,
+      style: on ? 'color:var(--t-primary)' : 'opacity:0',
+    })
+}
+
 const options = computed(() => {
   const out = []
   for (const { kind, title } of KINDS) {
@@ -50,7 +63,8 @@ const options = computed(() => {
       // The kind travels in the key because the handler only gets the key back,
       // and a device id alone would not say which slot to switch.
       key: `${kind}|${d.id}`,
-      label: (props.selected[kind] === d.id ? '● ' : '') + label(d, i),
+      icon: checkIcon(props.selected[kind] === d.id),
+      label: label(d, i),
     }))
   }
   // Hidden outright where AudioWorklet is missing: a toggle that cannot do
@@ -64,9 +78,10 @@ const options = computed(() => {
       children: [
         {
           key: 'denoise|toggle',
-          // Same '● ' marker as a chosen device — one visual language for
+          // Same accent checkmark as a chosen device — one visual language for
           // "this is the one that is on" inside a single menu.
-          label: (props.denoise ? '● ' : '') + t('conferences.media.denoise'),
+          icon: checkIcon(props.denoise),
+          label: t('conferences.media.denoise'),
         },
       ],
     })

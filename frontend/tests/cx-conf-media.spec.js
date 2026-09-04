@@ -436,7 +436,7 @@ describe('DeviceMenu', () => {
     w.unmount()
   })
 
-  it('marks the device currently in use', () => {
+  it('marks the device in use with an accent check, not a text marker (#2891)', () => {
     const w = mountMenu(
       {
         audioinput: [
@@ -451,7 +451,13 @@ describe('DeviceMenu', () => {
     const rows = dropdown(w)
       .props('options')
       .find((o) => o.type === 'group').children
-    expect(rows.map((r) => r.label)).toEqual(['Гарнитура', '● Ноутбук'])
+    // Labels are clean text now — no '●' glued in front of the chosen one.
+    expect(rows.map((r) => r.label)).toEqual(['Гарнитура', 'Ноутбук'])
+    // The chosen row renders a visible accent checkmark; the others reserve the
+    // icon column at opacity 0 so labels don't shift.
+    const style = (r) => r.icon().props.style
+    expect(style(rows[1])).toContain('--t-primary')
+    expect(style(rows[0])).toContain('opacity:0')
     w.unmount()
   })
 

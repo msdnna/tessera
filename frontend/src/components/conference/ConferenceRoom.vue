@@ -22,8 +22,8 @@
 // may present, who waits, and a host preempting a member), the SFU owns the
 // *pixels*. This file is what keeps them honest — a capture that turns out not
 // to hold the stage is stopped rather than published alongside someone else's.
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { NBadge, NButton, NIcon, NSpin, NTooltip } from 'naive-ui'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { NBadge, NButton, NIcon, NInput, NPopover, NSpin, NTooltip } from 'naive-ui'
 import {
   Mic,
   MicOutline,
@@ -41,6 +41,8 @@ import {
   ContractOutline,
   RadioButtonOnOutline,
   SquareOutline,
+  ChevronForwardOutline,
+  ChevronBackOutline,
 } from '@vicons/ionicons5'
 import { conferences as confApi } from '@/api'
 import { mediaSupported, CONNECTING, ERROR, UNAVAILABLE } from '@/composables/useConfTransport'
@@ -59,9 +61,12 @@ const props = defineProps({
   // would still be heard by everyone in the call.
   active: { type: Boolean, default: false },
   ended: { type: Boolean, default: false },
-  // Whether the «Пригласить» control belongs in the rail (#2881). The invite
-  // dialog itself lives in the parent view, so pressing it only emits upward.
+  // Whether the «Пригласить» control belongs in the rail (#2881). The picker is
+  // a popover here now (#2891); the parent still owns the invite call.
   canInvite: { type: Boolean, default: false },
+  // Workspace members who can still be invited (#2891): fed from the parent so
+  // the popover's list is ready on click. [{ user_id, name, email }]
+  invitable: { type: Array, default: () => [] },
   // People invited to the call who are not in the room yet (#2875): the roster
   // now lives only in this rail, so without listing them here an invitation would
   // show nowhere. [{ user_id, user_name, role }]
@@ -69,8 +74,9 @@ const props = defineProps({
 })
 // `hangup` asks the parent to leave the roster too; the parent flipping `active`
 // is what actually drops the media session, through the watcher below. One
-// direction of control, so the two halves cannot disagree. `invite` opens the
-// parent's invite dialog — the roster moved in here, so the button did too.
+// direction of control, so the two halves cannot disagree. `invite` carries the
+// user id of the person to invite — the popover is here, the API call is the
+// parent's (#2891).
 const emit = defineEmits(['hangup', 'invite'])
 
 // The session lives in the store now (#2888): one long-lived transport + room
@@ -320,6 +326,64 @@ watch(
     rail.value = 'people'
   },
 )
+
+// ── rail collapse (#2891) ────────────────────────────────────────────────
+// Fold the roster/chat rail away like the app sidebar, so the stage takes the
+// whole width when you just want to watch. Remembered in localStorage (non-
+// critical UX state, per the project's convention) — refolding it on every join
+// would be a chore. On a narrow screen the rail already stacks under the stage,
+// where a collapse toggle is meaningless, so it is hidden there and the rail
+// always shows (`railVisible`).
+const RAIL_KEY = 'tessera_conf_rail'
+const railOpen = ref((typeof localStorage !== 'undefined' ? localStorage.getItem(RAIL_KEY) : null) !== '0')
+const roomNarrow = ref(false)
+let railMq = null
+function onRailMq(e) {
+  roomNarrow.value = e.matches
+}
+onMounted(() => {
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    railMq = window.matchMedia('(max-width: 900px)')
+    roomNarrow.value = railMq.matches
+    railMq.addEventListener?.('change', onRailMq)
+  }
+})
+onBeforeUnmount(() => railMq?.removeEventListener?.('change', onRailMq))
+watch(railOpen, (open) => {
+  try {
+    localStorage.setItem(RAIL_KEY, open ? '1' : '0')
+  } catch {
+    // private mode / storage disabled — the toggle still works this session
+  }
+})
+// The rail is on screen when it is not collapsed, or when the layout is narrow
+// enough that it stacks under the stage regardless of the toggle.
+const railVisible = computed(() => railOpen.value || roomNarrow.value)
+function toggleRail() {
+  railOpen.value = !railOpen.value
+}
+
+// ── invite popover (#2891) ───────────────────────────────────────────────
+// A click-popover in the rail, like the assignee picker: search over the
+// workspace members the parent says are still invitable, one click invites that
+// person. No batch select and no «Отправить» — the parent refetches the roster,
+// so the invited person drops out of `invitable` (this list) and appears in the
+// «приглашённые» block below on the next tick.
+const inviteSearch = ref('')
+const invitableFiltered = computed(() => {
+  const q = inviteSearch.value.trim().toLowerCase()
+  if (!q) return props.invitable
+  return props.invitable.filter((m) => (m.name || m.email || '').toLowerCase().includes(q))
+})
+function pickInvite(m) {
+  emit('invite', m.user_id)
+  // Clear the query so the now-shorter list is visible, not filtered by a name
+  // that just left it.
+  inviteSearch.value = ''
+}
+function onInviteShow(show) {
+  if (!show) inviteSearch.value = ''
+}
 </script>
 
 <template>
@@ -463,7 +527,21 @@ watch(
           </div>
         </n-spin>
 
-        <aside class="rail">
+        <!-- Fold the rail away like the app sidebar (#2891). Hidden on a narrow
+             layout, where the rail stacks under the stage and there is nothing to
+             fold. Sits in the seam between stage and rail. -->
+        <button
+          v-if="!roomNarrow"
+          type="button"
+          class="rail-toggle"
+          data-testid="conference-rail-toggle"
+          :aria-label="railOpen ? $t('conferences.panel.hideRail') : $t('conferences.panel.showRail')"
+          @click="toggleRail"
+        >
+          <n-icon :component="railOpen ? ChevronForwardOutline : ChevronBackOutline" :size="16" />
+        </button>
+
+        <aside v-show="railVisible" class="rail">
           <div class="rail-tabs">
             <!-- `ngrad` opts these out of the accent-gradient rule in main.css:
                  it paints any primary button that is not ghost/dashed/secondary
@@ -493,18 +571,51 @@ watch(
               </n-button>
             </n-badge>
             <!-- Invite lives here now (#2881), pushed to the far end of the tab
-                 row so it reads as an action rather than a third tab. -->
-            <n-button
+                 row so it reads as an action rather than a third tab. The picker
+                 is a click-popover (#2891), like the assignee picker. -->
+            <n-popover
               v-if="canInvite"
-              size="tiny"
-              quaternary
-              class="invite"
-              data-testid="conference-invite"
-              @click="emit('invite')"
+              trigger="click"
+              placement="bottom-end"
+              class="invite-pop"
+              @update:show="onInviteShow"
             >
-              <template #icon><n-icon :component="PersonAddOutline" /></template>
-              {{ $t('conferences.invite.button') }}
-            </n-button>
+              <template #trigger>
+                <n-button size="tiny" quaternary class="invite" data-testid="conference-invite">
+                  <template #icon><n-icon :component="PersonAddOutline" /></template>
+                  {{ $t('conferences.invite.button') }}
+                </n-button>
+              </template>
+              <div class="invite-body">
+                <n-input
+                  v-model:value="inviteSearch"
+                  size="small"
+                  clearable
+                  :placeholder="$t('conferences.invite.search')"
+                  data-testid="conference-invite-search"
+                />
+                <div class="invite-list">
+                  <button
+                    v-for="m in invitableFiltered"
+                    :key="m.user_id"
+                    type="button"
+                    class="invite-item"
+                    data-testid="conference-invite-item"
+                    @click="pickInvite(m)"
+                  >
+                    <user-avatar :user-id="m.user_id" :name="m.name || m.email" class="iiav" />
+                    <span class="iiname">{{ m.name || m.email }}</span>
+                  </button>
+                  <div v-if="!invitableFiltered.length" class="invite-empty">
+                    {{
+                      invitable.length
+                        ? $t('conferences.invite.noMatch')
+                        : $t('conferences.invite.allInvited')
+                    }}
+                  </div>
+                </div>
+              </div>
+            </n-popover>
           </div>
 
           <div v-show="rail === 'people'" class="people-tab">
@@ -749,6 +860,83 @@ watch(
 .rail-tabs .invite {
   margin-left: auto;
 }
+/* Split-pane divider that folds the rail away (#2891), styled like the app
+   sidebar's resizer: a slim full-height bar in the seam between stage and rail. */
+.rail-toggle {
+  flex: none;
+  align-self: stretch;
+  width: 18px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+  color: var(--t-text3);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+.rail-toggle:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+/* Invite popover (#2891): search + a scrollable list of avatar rows. */
+.invite-body {
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.invite-list {
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.invite-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t-text1);
+  text-align: left;
+  cursor: pointer;
+}
+.invite-item:hover {
+  background: var(--t-hover);
+}
+.iiav {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  font-size: 12px;
+  color: #fff;
+  background: var(--t-accent-grad);
+}
+.iiname {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.invite-empty {
+  padding: 8px;
+  font-size: 12px;
+  color: var(--t-text3);
+  text-align: center;
+}
 .people-tab {
   display: flex;
   flex-direction: column;
@@ -900,12 +1088,24 @@ watch(
   justify-content: start;
   gap: 14px;
 }
+/* The call controls sit in a bar pinned to the bottom of the window (#2891),
+   spanning the content area — everything right of the app sidebar — so they stay
+   reachable however far the page is scrolled instead of floating directly under
+   the tiles. `left` is fed by the app shell: --app-content-left is the sidebar's
+   current width, 0 on mobile. */
 .toolbar {
+  position: fixed;
+  left: var(--app-content-left, 0);
+  right: 0;
+  bottom: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 14px;
-  padding-top: 4px;
+  padding: 10px 14px;
+  background: var(--t-surface);
+  border-top: 1px solid var(--t-border);
 }
 /* Toolbar controls ~1.25× the default (#2886): larger than stock so the mic
    meter inside the button reads, but not the oversized 1.5× first tried. The

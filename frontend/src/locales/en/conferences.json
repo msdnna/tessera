@@ -53,6 +53,8 @@
     "button": "Invite",
     "title": "Invite participants",
     "placeholder": "Pick workspace members",
+    "search": "Search members",
+    "noMatch": "No matches",
     "allInvited": "Everyone in the workspace is already invited",
     "required": "Select at least one member",
     "submit": "Invite",
@@ -128,6 +130,8 @@
   },
   "panel": {
     "title": "In the room: {count}",
+    "hideRail": "Collapse panel",
+    "showRail": "Expand panel",
     "invitedTitle": "Invited",
     "empty": "Nobody is in the room yet",
     "handUp": "Hand raised",

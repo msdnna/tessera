@@ -304,6 +304,79 @@ describe('ConferenceRoom — the button and the dot', () => {
   })
 })
 
+describe('ConferenceRoom — rail collapse and invite popover (#2891)', () => {
+  async function room(extraProps = {}) {
+    useConferenceSession().start('c1', 'Тест')
+    await flushPromises()
+    const w = mount(ConferenceRoom, {
+      props: { conferenceId: 'c1', active: true, ended: false, ...extraProps },
+      global: {
+        stubs: {
+          ConferenceChat: { template: '<div/>' },
+          ParticipantsPanel: { template: '<div/>' },
+        },
+      },
+    })
+    await flushPromises()
+    const ws = sockets.at(-1)
+    ws.onopen()
+    ws.deliver({
+      type: 'welcome',
+      conn_id: 'c-1',
+      user_id: 'me',
+      role: 'member',
+      can_moderate: false,
+      stage_ttl_ms: 3000,
+    })
+    await flushPromises()
+    return { w, ws }
+  }
+
+  it('folds the rail away like the sidebar and remembers the choice', async () => {
+    const { w } = await room()
+    // v-show toggles the inline display; read that rather than isVisible(), which
+    // needs the tree attached to the document to compute styles.
+    expect(w.find('.rail').attributes('style') || '').not.toContain('display: none')
+
+    await w.find('[data-testid="conference-rail-toggle"]').trigger('click')
+    // The rail stays in the DOM (v-show) but is hidden; the stage takes over.
+    expect(w.find('.rail').attributes('style')).toContain('display: none')
+    // Non-critical UX state lives in localStorage, not the DB (project convention).
+    expect(localStorage.getItem('tessera_conf_rail')).toBe('0')
+    w.unmount()
+  })
+
+  it('invites a member from the popover with one click, filtered by search', async () => {
+    const { w } = await room({
+      canInvite: true,
+      invitable: [
+        { user_id: 'u2', name: 'Борис' },
+        { user_id: 'u3', name: 'Вика' },
+      ],
+    })
+    // Open the click-popover in the rail.
+    await w.find('[data-testid="conference-invite"]').trigger('click')
+    await flushPromises()
+    // Content is teleported to the body, so query the document rather than w.
+    let items = document.querySelectorAll('[data-testid="conference-invite-item"]')
+    expect(items.length).toBe(2)
+
+    // Search narrows the list without a batch select.
+    const input = document.querySelector('[data-testid="conference-invite-search"] input')
+    input.value = 'Вик'
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+    await flushPromises()
+    items = document.querySelectorAll('[data-testid="conference-invite-item"]')
+    expect(items.length).toBe(1)
+
+    // One click invites that person — a single id, not a batch.
+    items[0].click()
+    await flushPromises()
+    expect(w.emitted('invite')[0]).toEqual(['u3'])
+    w.unmount()
+  })
+})
+
 describe('ConferenceMiniWindow — the dot follows the call out of sight', () => {
   async function mountMini() {
     const router = createRouter({
