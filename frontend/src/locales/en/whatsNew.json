@@ -1,4 +1,9 @@
 {
+  "parentAndScrollbars": {
+    "title": "The parent's title, and Firefox scrollbars",
+    "item1": "The task window's «Parent» field now shows the parent task's title instead of just its number: it takes the full width of the row, a long one is cut with an ellipsis (the full text is in the tooltip), and clicking it opens the parent. On an archived task the «Detach» button is no longer shown.",
+    "item2": "In Firefox the board columns, the GitLab window panes and the background-jobs list no longer draw a thick system scrollbar: the bar is thin and appears on hover, just like in Chrome."
+  },
   "conferences": {
     "title": "Conferences: calls, screen sharing and recording",
     "item1": "The sidebar gained a «Conferences» section: schedule a meeting or start one right away, and link it to a task if you like. Inside there's a video/audio call, a chat with attachments, screen sharing and a participants panel; the host can mute someone's mic or remove them from the call.",
