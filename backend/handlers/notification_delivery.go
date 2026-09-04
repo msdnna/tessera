@@ -237,10 +237,11 @@ func (h *API) deliverOne(ctx context.Context, d db.NotificationDelivery) error {
 		// A broken template can't fix itself between retries.
 		return notify.Permanent(fmt.Errorf("template render: %w", err))
 	}
-	msg := notify.Message{Kind: n.Kind, Title: notify.Title(n.Kind, lang), Body: body, Link: h.publicURL, ID: n.ID.String()}
+	msg := notify.Message{Kind: n.Kind, Title: notify.Title(n.Kind, lang), Body: body, Link: h.notifyLink(n), ID: n.ID.String()}
 	if n.TaskID != nil {
 		msg.TaskID = n.TaskID.String()
 	}
+	msg.ConferenceID = conferenceOf(n)
 	err = sender.Send(ctx, ch, msg)
 	if errors.Is(err, notify.ErrPushUnregistered) {
 		h.dropPushToken(ctx, row)
@@ -288,7 +289,7 @@ func (h *API) templateData(ctx context.Context, n db.Notification, lang string) 
 		Kind:  n.Kind,
 		Title: notify.Title(n.Kind, lang),
 		Text:  notifySentence(n, lang),
-		Link:  h.publicURL,
+		Link:  h.notifyLink(n),
 	}
 	if n.TaskID != nil {
 		if t, err := h.q.GetTask(ctx, *n.TaskID); err == nil {
@@ -345,4 +346,34 @@ func notifySentence(n db.Notification, lang string) string {
 		}
 	}
 	return notify.Sentence(p, lang, n.Text)
+}
+
+// conferenceOf returns the conference a notification points at, or "" for the
+// task- and workspace-scoped kinds. The id lives in the payload rather than in a
+// column of its own: `notifications.task_id` is a foreign key to tasks, and a
+// conference is not one (#2875).
+func conferenceOf(n db.Notification) string {
+	if len(n.Payload) == 0 {
+		return ""
+	}
+	p := map[string]any{}
+	if err := json.Unmarshal(n.Payload, &p); err != nil {
+		return ""
+	}
+	id, _ := p["conference_id"].(string)
+	return id
+}
+
+// notifyLink is the URL an external delivery (email, telegram, webhook, push)
+// should open. Task notifications land on the app root — the client opens the
+// task from the in-app feed — but a conference invitation is time-boxed, so it
+// links straight into the call instead of asking the reader to find it.
+func (h *API) notifyLink(n db.Notification) string { return notifyLink(h.publicURL, n) }
+
+func notifyLink(publicURL string, n db.Notification) string {
+	confID := conferenceOf(n)
+	if confID == "" || publicURL == "" {
+		return publicURL
+	}
+	return strings.TrimRight(publicURL, "/") + "/conferences/" + confID
 }

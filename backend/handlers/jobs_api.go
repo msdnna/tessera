@@ -177,6 +177,7 @@ func (h *API) workerRunners() map[string]func(context.Context) {
 			h.scanDueTasks(ctx)
 			h.scanReminders(ctx)
 		},
-		jobRecurrence: h.advanceScheduleDue,
+		jobRecurrence:     h.advanceScheduleDue,
+		jobConfRecordings: h.SweepConferenceRecordings,
 	}
 }

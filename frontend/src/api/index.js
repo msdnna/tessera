@@ -470,6 +470,84 @@ export const documents = {
   cancelApproval: (approvalId) => api.post(`/document-approvals/${approvalId}/cancel`),
 }
 
+// Conferences (#2864). Media never comes through here — it goes to the LiveKit
+// SFU — so this module is only the bookkeeping the section screen needs: which
+// meetings exist, who is invited and who is in the room right now.
+export const conferences = {
+  // status filters to 'scheduled' | 'live' | 'ended'; omit it for everything.
+  list: (wsId, status) =>
+    api.get(`/workspaces/${wsId}/conferences`, status ? { params: { status } } : {}),
+  create: (wsId, data) => api.post(`/workspaces/${wsId}/conferences`, data),
+  // Answers { conference, participants } in one round trip — the room screen
+  // needs both, and fetching them apart shows an empty roster for one paint.
+  get: (id) => api.get(`/conferences/${id}`),
+  update: (id, data) => api.patch(`/conferences/${id}`, data),
+  remove: (id) => api.delete(`/conferences/${id}`),
+  // join/leave answer { conference, participant }: the first arrival flips a
+  // scheduled call to live and the last exit ends it, so the caller gets the
+  // conference back rather than having to refetch it to learn the new status.
+  join: (id) => api.post(`/conferences/${id}/join`),
+  leave: (id) => api.post(`/conferences/${id}/leave`),
+  end: (id) => api.post(`/conferences/${id}/end`),
+  invite: (id, userIds, role) => api.post(`/conferences/${id}/invite`, { user_ids: userIds, role }),
+  participants: (id) => api.get(`/conferences/${id}/participants`, { skipLoader: true }),
+  // Conferences held about a task — for the task page's "discussed in" link.
+  byTask: (taskId) => api.get(`/tasks/${taskId}/conferences`, { skipLoader: true }),
+  // The one media call: a short-lived LiveKit join warrant, minted only after
+  // the server has checked membership. Answers { url, token, room, identity,
+  // expires_in }; the API key never leaves the backend. skipLoader because the
+  // room screen shows its own connecting state — the global bar would flash.
+  token: (id) => api.post(`/conferences/${id}/token`, {}, { skipLoader: true }),
+
+  // In-call chat (#2873). Answers { messages, has_more }, oldest first — the
+  // rail draws top to bottom. Paging back is a (created_at, id) cursor rather
+  // than an offset: the conversation grows while it is read, and an offset
+  // would skip or repeat a line every time somebody sends one.
+  messages: (id, params) => api.get(`/conferences/${id}/messages`, { params, skipLoader: true }),
+  // Text only — the common case, and it should not pay for a multipart encoder.
+  postMessage: (id, body) =>
+    api.post(`/conferences/${id}/messages`, { body }, { skipLoader: true }),
+  // With files. FormData, so the browser sets its own multipart boundary — do
+  // not add a Content-Type header here, an explicit one arrives without it and
+  // the server cannot parse the form.
+  postMessageWithFiles: (id, body, files) => {
+    const fd = new FormData()
+    fd.append('body', body)
+    for (const f of files) fd.append('files', f)
+    return api.post(`/conferences/${id}/messages`, fd, { skipLoader: true })
+  },
+  removeMessage: (messageId) => api.delete(`/conference-messages/${messageId}`),
+  // The bytes of one attachment, fetched with our bearer credential. Images are
+  // rendered from the blob this returns rather than through an <img src> at the
+  // API: an <img> can send neither a header nor a cookie the desktop client has,
+  // and the alternative — serving call attachments from a public URL guarded
+  // only by an unguessable name — is a weaker guarantee than a private meeting
+  // deserves.
+  attachment: (attachmentId) =>
+    api.get(`/conference-attachments/${attachmentId}`, {
+      responseType: 'blob',
+      skipLoader: true,
+    }),
+
+  // Server-side recording (#2877). Start/stop are moderation and answer the row;
+  // the red dot that everyone sees does NOT come from here — it rides the room
+  // snapshot, so a participant who never pressed anything still learns they are
+  // being recorded. skipLoader on both: the button carries its own pending state.
+  startRecording: (id) => api.post(`/conferences/${id}/recording/start`, {}, { skipLoader: true }),
+  stopRecording: (id) => api.post(`/conferences/${id}/recording/stop`, {}, { skipLoader: true }),
+  recordings: (id) => api.get(`/conferences/${id}/recordings`, { skipLoader: true }),
+  // The mp4 itself, fetched with our bearer credential and played or saved from a
+  // blob — same reasoning as the chat attachments above: an <img>/<video> src
+  // cannot carry a header, and serving a private meeting from an unguessable
+  // public URL is a weaker guarantee than the meeting deserves.
+  recording: (recordingId) =>
+    api.get(`/conference-recordings/${recordingId}/download`, {
+      responseType: 'blob',
+      skipLoader: true,
+    }),
+  removeRecording: (recordingId) => api.delete(`/conference-recordings/${recordingId}`),
+}
+
 export const reminders = {
   list: () => api.get('/reminders'),
   create: (data) => api.post('/reminders', data),

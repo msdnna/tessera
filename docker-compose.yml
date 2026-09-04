@@ -66,6 +66,24 @@ services:
       - SENTRY_ENV=${SENTRY_ENV:-}
       - SENTRY_TRACES_SAMPLE_RATE=${SENTRY_TRACES_SAMPLE_RATE:-}
       - SENTRY_FRONTEND_TRACES_SAMPLE_RATE=${SENTRY_FRONTEND_TRACES_SAMPLE_RATE:-}
+      # Conferences (#2864). LIVEKIT_URL is where the backend calls RoomService
+      # (compose network); LIVEKIT_PUBLIC_URL is what it hands the browser —
+      # empty means "same origin + /livekit". The secret signs access tokens and
+      # must never be sent to a client.
+      # Note the compose-service-name-vs-HTTP_PROXY trap below: with HTTP_PROXY
+      # set, Go would send `http://livekit:7880` to the proxy and get a 502 —
+      # NO_PROXY's CIDRs do not cover a bare hostname, so the RoomService client
+      # bypasses the proxy explicitly instead of relying on this env.
+      - LIVEKIT_URL=${LIVEKIT_URL:-http://livekit:7880}
+      - LIVEKIT_PUBLIC_URL=${LIVEKIT_PUBLIC_URL:-}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-devsecret_at_least_32_characters_long}
+      # Server-side recording layout (#2877). Points egress at our own recording
+      # page so the mp4 looks like the room in the browser (screen full-bleed,
+      # camera PiP, avatars) at 1080p, instead of egress's dark 720p grid. It is
+      # an INTERNAL url egress reaches over the compose network — the `frontend`
+      # container serves the SPA. Set empty to fall back to the built-in grid.
+      - RECORDING_TEMPLATE_URL=${RECORDING_TEMPLATE_URL:-http://frontend/rec/egress}
       - HTTP_PROXY=${HTTP_PROXY:-}
       - HTTPS_PROXY=${HTTPS_PROXY:-}
       - NO_PROXY=${NO_PROXY:-localhost,127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
@@ -117,6 +135,133 @@ services:
       # latest.json here (tools/build-android-release.sh); nginx serves /apks/.
       - ./apks:/usr/share/nginx/html/apks:ro
       - ./desktop-dist:/usr/share/nginx/html/desktop:ro
+
+  # LiveKit SFU — media server for conferences (#2864, #2866). Dev twin of the
+  # production service in deploy/docker-compose.yml; config in
+  # deploy/livekit.dev.yaml.
+  #
+  # Started by default (the image is ~40 MB, unlike the converter's gigabyte) so
+  # the conferences section works after a plain `make up`. The dev key/secret are
+  # defaulted below — override in .env with the same values you put in the
+  # backend's LIVEKIT_* if you want prod-like credentials.
+  #
+  # Unlike production, 7880 IS published here: the Vite dev server on :5174 has
+  # no nginx in front of it, so the browser talks to the SFU directly. On the
+  # docker frontend (:8083) the /livekit/ location in frontend/nginx.conf covers
+  # the same path as Caddy does in production.
+  livekit:
+    image: livekit/livekit-server:v1.13.6
+    container_name: tessera-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      # LiveKit reads "key: secret" pairs from this one variable. The quotes are
+      # load-bearing: unquoted, the ": " inside makes YAML read the whole entry
+      # as a mapping instead of a string, and compose rejects the file.
+      - "LIVEKIT_KEYS=${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-devsecret_at_least_32_characters_long}"
+      # Set to the LAN address of this box when a phone or a second machine
+      # joins a dev call — otherwise the SFU advertises its compose-network
+      # address, which only this host can route to.
+      - NODE_IP=${LIVEKIT_NODE_IP:-}
+      # Empty (the default) = single-node mode, no Redis in the picture. Set to
+      # `redis:6379` ONLY together with `--profile recording` (see the recording
+      # block below): egress requests reach the workers through Redis and there
+      # is no other channel, so recording without it silently never starts. The
+      # trade-off is the same as in production — a non-empty value flips the SFU
+      # into multi-node mode, making Redis a dependency of conferences as a whole.
+      - REDIS_HOST=${LIVEKIT_REDIS_HOST:-}
+      - TZ=${TZ:-Europe/Moscow}
+    ports:
+      - "7880:7880/tcp"
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    volumes:
+      - ./deploy/livekit.dev.yaml:/etc/livekit.yaml:ro
+    networks:
+      - tessera-network
+
+  # --- server-side conference recording (#2877), dev twin -----------------------
+  # Same shape as the production block in deploy/docker-compose.yml, adapted to
+  # the dev stack (root-uid backend, uploads_data volume, config files under
+  # deploy/). All three services sit behind `profiles: [recording]`, so a plain
+  # `make up` never starts them. Turn recording on with the one command that
+  # flips BOTH the profile and the SFU's mode — one without the other is broken:
+  #
+  #   LIVEKIT_REDIS_HOST=redis:6379 docker compose --profile recording up -d
+  #
+  # (or `make up` with LIVEKIT_REDIS_HOST + COMPOSE_PROFILES=recording in .env).
+  # Off = the same without either. Reusing egress.yaml/seccomp from deploy/ keeps
+  # dev and prod recording behaviour identical — the only per-env knobs are here.
+
+  # Redis is the ONLY channel between livekit-server and egress (requests, worker
+  # registration, status), not a cache — hence no volume and `--save ""`.
+  redis:
+    image: redis:7-alpine
+    container_name: tessera-redis
+    restart: unless-stopped
+    profiles: [recording]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    networks:
+      - tessera-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Prepares /data/uploads/rec so two writers can share it: the dev backend runs
+  # as root (uid 0 — backend/Dockerfile has no USER, unlike Dockerfile.prod's
+  # 65532) and egress writes the mp4 as uid 1001, gid 0. They meet on group 0,
+  # setgid so the folders the backend creates keep it. `chown 0:0` is correct
+  # HERE precisely because the dev backend is root — do NOT copy this into prod,
+  # where it would lock uid 65532 out of the chat's conf/ tree. Runs to
+  # completion once; a no-op on later `up`s.
+  egress-init:
+    image: alpine:3.21
+    container_name: tessera-egress-init
+    profiles: [recording]
+    restart: "no"
+    command: ["sh", "-c", "mkdir -p /data/uploads/rec && chown 0:0 /data/uploads/rec && chmod 2775 /data/uploads/rec"]
+    volumes:
+      - uploads_data:/data/uploads
+    networks:
+      - tessera-network
+
+  # Egress joins the call with a headless Chrome, renders the participant grid and
+  # muxes it to mp4 straight into the shared uploads volume (no S3, no copy step).
+  # Runs as uid 1001, not root — hence egress-init. security_opt keeps Chrome's
+  # sandbox: the stock Docker seccomp profile widened by clone+unshare (drop it
+  # and enable_chrome_sandbox in egress.yaml must go too). No host ports: only its
+  # own Chrome reaches the grid templates it serves on 7980.
+  egress:
+    image: livekit/egress:v1.14.1
+    container_name: tessera-egress
+    restart: unless-stopped
+    profiles: [recording]
+    environment:
+      - EGRESS_CONFIG_FILE=/etc/egress.yaml
+      # Same credentials as the SFU — egress joins the room as a participant and
+      # signs its own token. Defaulted to match the dev livekit key/secret.
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-devsecret_at_least_32_characters_long}
+      - LIVEKIT_WS_URL=${LIVEKIT_EGRESS_WS_URL:-ws://livekit:7880}
+      - TZ=${TZ:-Europe/Moscow}
+    security_opt:
+      - seccomp=./deploy/chrome-sandboxing-seccomp-profile.json
+    volumes:
+      - ./deploy/egress.yaml:/etc/egress.yaml:ro
+      - uploads_data:/data/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+      egress-init:
+        condition: service_completed_successfully
+      livekit:
+        condition: service_started
+    networks:
+      - tessera-network
 
   # Headless LibreOffice behind a small HTTP API, for document import/export
   # (#2733). Declared here but NOT started by default — it sits behind a compose

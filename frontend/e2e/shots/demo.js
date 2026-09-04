@@ -533,6 +533,32 @@ export async function seedDemo(runId, base) {
     'Вторая неделя: первая задача в спринте и знакомство с поддержкой.',
   ])
 
+  // Conferences (#2876). Three of them, because the list screen's whole shape is
+  // its «Идут сейчас / Запланированы / Завершённые» filter, and a section that
+  // can only ever show one row documents nothing. The daily stand-up is pinned to
+  // the sprint's task on purpose — that link is what the article calls the point
+  // of scheduling a call from the tracker rather than from a chat.
+  //
+  // None of them is *live*: starting one would need a browser to sit in the room
+  // and an SFU behind the backend, and the room shot is taken at the lobby, which
+  // is the state a reader arrives at anyway.
+  const standup = await post(`/workspaces/${ws.id}/conferences`, {
+    title: 'Ежедневная летучка',
+    description: 'Статус по спринту 14: что вчера, что сегодня, где застряли.',
+    scheduled_at: iso(base, 1),
+    task_id: byTitle('Push-уведомления о напоминаниях').id,
+  })
+  if (mate) await post(`/conferences/${standup.id}/invite`, { user_ids: [mate.user.id] })
+  await post(`/workspaces/${ws.id}/conferences`, {
+    title: 'Демо релиза 2.4',
+    description: 'Показываем напоминания и экспорт документов.',
+    scheduled_at: iso(base, 4),
+  })
+  await post(`/workspaces/${ws.id}/conferences`, {
+    title: 'Ретроспектива спринта 13',
+    scheduled_at: iso(base, -6),
+  })
+
   await post('/reminders', {
     remind_at: iso(base, 1),
     message: 'Созвон по релизу 2.4 в 11:00',
@@ -557,6 +583,7 @@ export async function seedDemo(runId, base) {
     workspaceId: ws.id,
     projectId: project.id,
     boardId: board.id,
+    conferenceId: standup.id,
     columns: columns.map((c) => ({ id: c.id, name: c.name })),
   }
 }

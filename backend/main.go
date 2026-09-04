@@ -139,6 +139,11 @@ func main() {
 	// Idle until a task carries a "schedule"-trigger recurrence rule.
 	spawn("recurrence", rh.RunRecurrenceWorker)
 
+	// Background worker — finishes conference recordings whose egress ended with
+	// nobody watching, and deletes recordings past their TTL (#2877). Idle until
+	// somebody records a call.
+	spawn("conference_recordings", rh.RunConferenceRecordingWorker)
+
 	// Explicit server so we can bound the header read and idle keep-alive without
 	// capping ReadTimeout/WriteTimeout — those would forcibly cut long-lived
 	// WebSocket connections and large attachment up/downloads. ReadHeaderTimeout
@@ -171,6 +176,10 @@ func main() {
 	// connected here would be shown as "editing" by everyone who reconnects to
 	// the replacement process, with nobody able to release it (#2729).
 	rh.CloseDocRooms()
+	// Conference rooms for the same reason: an in-memory stage held by a
+	// connection this process is about to forget would show as "presenting" to
+	// everyone who reconnects, with nobody able to release it (#2869).
+	rh.CloseConfRooms()
 	drain(srv, &workers, hub, &hubWG, cfg.GracefulTimeout)
 	// pool.Close runs deferred, after everything that could still use it.
 }

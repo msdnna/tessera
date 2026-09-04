@@ -36,6 +36,15 @@ const routes = [
     component: () => import('@/views/OAuthCallbackView.vue'),
     meta: { open: true },
   },
+  // Server-side recording template (#2877), opened only by egress's headless
+  // Chrome — never a person. `open` because egress carries no Tessera session,
+  // only a LiveKit token in the URL; standalone (outside AppLayout) so the
+  // recording is the call and nothing else — no sidebar, no topbar.
+  {
+    path: '/rec/egress',
+    component: () => import('@/views/RecorderView.vue'),
+    meta: { open: true },
+  },
   {
     path: '/',
     component: () => import('@/components/AppLayout.vue'),
@@ -56,6 +65,10 @@ const routes = [
       // the open route shares its record. As two records, opening a document
       // switched the record and the «Документы» item went dark (#2727).
       { path: 'documents/:slug?', component: () => import('@/views/DocumentsView.vue') },
+      // Same one-record-with-an-optional-param shape as documents above, and for
+      // the same reason (#2727): opening a conference must not take the
+      // «Конференции» item in the sidebar dark.
+      { path: 'conferences/:id?', component: () => import('@/views/ConferencesView.vue') },
       { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
       // No help route (#2792): the help centre is a modal mounted in AppLayout,
       // opened from the sidebar's «Помощь» menu. Cross-links between articles are

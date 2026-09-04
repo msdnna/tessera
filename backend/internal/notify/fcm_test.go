@@ -119,6 +119,42 @@ func TestFCMSendOmitsAbsentTask(t *testing.T) {
 	if _, ok := got.Message.Data["task_id"]; ok {
 		t.Fatalf("task_id should be absent, data = %v", got.Message.Data)
 	}
+	if _, ok := got.Message.Data["conference_id"]; ok {
+		t.Fatalf("conference_id should be absent, data = %v", got.Message.Data)
+	}
+}
+
+// TestFCMSendCarriesConference: a conference invitation (#2875) deep-links by
+// conference id instead of a task id, and the link points at the call itself —
+// an invitation is time-boxed, so landing on the app root is landing too late.
+func TestFCMSendCarriesConference(t *testing.T) {
+	var hits int32
+	var auth, payload string
+	srv := fcmStub(http.StatusOK, "{}", &hits, &auth, &payload)
+	defer srv.Close()
+
+	msg := Message{
+		Kind: "conference_invite", ID: "n-3", ConferenceID: "c-1",
+		Link: "https://app/conferences/c-1",
+	}
+	if err := fcmAgainst(srv).Send(context.Background(), deviceChannel("tok"), msg); err != nil {
+		t.Fatalf("Send = %v", err)
+	}
+	var got struct {
+		Message struct {
+			Data map[string]string `json:"data"`
+		} `json:"message"`
+	}
+	_ = json.Unmarshal([]byte(payload), &got)
+	if got.Message.Data["conference_id"] != "c-1" {
+		t.Fatalf("data[conference_id] = %q, want c-1", got.Message.Data["conference_id"])
+	}
+	if _, ok := got.Message.Data["task_id"]; ok {
+		t.Fatalf("a conference invitation must carry no task_id, data = %v", got.Message.Data)
+	}
+	if got.Message.Data["link"] != "https://app/conferences/c-1" {
+		t.Fatalf("data[link] = %q, want the conference URL", got.Message.Data["link"])
+	}
 }
 
 // TestFCMSendNoToken: a device channel that never registered a push token (a

@@ -49,6 +49,7 @@
     "axios": "^1.19.0",
     "dompurify": "^3.4.7",
     "highlight.js": "^11.11.1",
+    "livekit-client": "2.22.2",
     "marked": "^18.0.4",
     "marked-highlight": "^2.2.4",
     "mermaid": "^11.15.0",

@@ -14,9 +14,11 @@ import (
 
 	"tessera/config"
 	"tessera/handlers"
+	"tessera/internal/confroom"
 	"tessera/internal/converter"
 	"tessera/internal/db"
 	"tessera/internal/docroom"
+	"tessera/internal/livekit"
 	"tessera/internal/mail"
 	"tessera/internal/realtime"
 	"tessera/middleware"
@@ -98,17 +100,40 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// document socket too; its sweeper goroutine ends when rh.CloseDocRooms does.
 	rooms := docroom.New()
 	go rooms.Run()
-	wsHandler := handlers.NewWSHandler(hub, rooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
+	// Per-conference room state (#2869): presence, the screen-share queue and
+	// moderation. Created here for the same reason as the document rooms; its
+	// sweeper goroutine ends when rh.CloseConfRooms does.
+	confRooms := confroom.New()
+	go confRooms.Run()
+	wsHandler := handlers.NewWSHandler(hub, rooms, confRooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	// Reports itself disabled when no frontend DSN is configured, so the two
 	// routes below stay wired in every install and simply answer "off".
 	sentryConfigHandler := handlers.NewSentryConfigHandler(cfg.SentryFrontendDSN, cfg.SentryEnv, cfg.SentryFrontendTracesRate)
 	rh := handlers.NewAPI(queries, pool, hub, cfg.UploadDir, cfg.EncryptionKey, mailer, cfg.PublicURL, cfg.FCMCredentialsFile)
 	rh.WireDocRooms(rooms)
+	rh.WireConfRooms(confRooms)
 	// Document import/export sidecar (#2733). converter.New tolerates an empty
 	// URL and reports itself disabled, so nothing here has to branch on whether
 	// the operator deployed LibreOffice.
 	rh.WireConverter(converter.New(cfg.ConverterURL))
+	// Conference SFU (#2864). Same shape as the converter: an unset LIVEKIT_*
+	// yields a disabled client rather than a nil one, so conferences degrade to
+	// "not configured on this server" instead of panicking a request goroutine.
+	rh.WireLiveKit(livekit.New(livekit.Config{
+		URL:       cfg.LiveKitURL,
+		PublicURL: cfg.LiveKitPublicURL,
+		APIKey:    cfg.LiveKitAPIKey,
+		APISecret: cfg.LiveKitAPISecret,
+	}))
+	// Where the egress recorder sees the uploads volume (#2877). Not part of the
+	// SFU client: it is our own filesystem as another container mounts it.
+	rh.WireRecording(cfg.EgressUploadDir, cfg.RecordingTemplateURL)
+	// Moderation sink (#2872), installed after the SFU client because it uses it:
+	// a kick or a force-mute decided inside a room is persisted and carried to
+	// LiveKit through here. Set once, before any room exists — rooms copy it as
+	// they are created.
+	confRooms.SetEnforcer(rh.ConfEnforcer())
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 
@@ -200,6 +225,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// the handler authenticates and checks workspace membership against the
 		// document *before* upgrading.
 		api.GET("/documents/:id/ws", wsHandler.ConnectDocument)
+
+		// The conference room socket (#2869) — presence, hands, the screen-share
+		// queue and moderation. Outside the protected group for the same reason
+		// as the two above; it authenticates and checks membership in the
+		// conference's workspace before upgrading.
+		api.GET("/conferences/:id/ws", wsHandler.ConnectConference)
 
 		// Inline images embedded in descriptions/comments. Outside the protected
 		// group because an <img> can't send the bearer header: MediaAuth accepts
@@ -507,6 +538,50 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/documents/:id/approvals", rh.CreateDocumentApproval)
 			protected.POST("/document-approvals/:id/decide", rh.DecideDocumentApproval)
 			protected.POST("/document-approvals/:id/cancel", rh.CancelDocumentApproval)
+
+			// Conferences (#2864). Media goes to the LiveKit SFU, not through
+			// these routes — what lives here is the meeting itself: the plan,
+			// the invitees and the attendance stamps. Start is implicit in
+			// /join (the first arrival opens the room); ending is explicit,
+			// because hanging up for everyone is a moderator's decision.
+			protected.POST("/workspaces/:id/conferences", rh.CreateConference)
+			protected.GET("/workspaces/:id/conferences", rh.ListConferences)
+			protected.GET("/tasks/:id/conferences", rh.ListTaskConferences)
+			protected.GET("/conferences/:id", rh.GetConference)
+			protected.PATCH("/conferences/:id", rh.UpdateConference)
+			protected.DELETE("/conferences/:id", rh.DeleteConference)
+			protected.POST("/conferences/:id/join", rh.JoinConference)
+			protected.POST("/conferences/:id/leave", rh.LeaveConference)
+			protected.POST("/conferences/:id/end", rh.EndConference)
+			protected.POST("/conferences/:id/invite", rh.InviteConference)
+			protected.GET("/conferences/:id/participants", rh.ListConferenceParticipants)
+			// The one media-adjacent route: it hands out a short-lived LiveKit
+			// warrant after our own checks, and creates the SFU room
+			// (auto_create is off) so the token has somewhere to go.
+			protected.POST("/conferences/:id/token", rh.ConferenceToken)
+
+			// In-call chat (#2873). It is plain HTTP rather than more frames on
+			// the room socket: that socket evicts a participant whose buffer
+			// overflows, and chat bodies on it would let a busy conversation
+			// disconnect the people having it. The socket only nudges.
+			//
+			// Deleting a message and downloading its file hang off their own ids,
+			// not off /conferences/:id — gin's tree would read the second :id in
+			// one path as the first one in another.
+			protected.GET("/conferences/:id/messages", rh.ListConferenceMessages)
+			protected.POST("/conferences/:id/messages", rh.PostConferenceMessage)
+			protected.DELETE("/conference-messages/:id", rh.DeleteConferenceMessage)
+			protected.GET("/conference-attachments/:id", rh.DownloadConferenceMessageAttachment)
+
+			// Server-side recording (#2877). Start and stop are moderation, the
+			// list is not: everyone who could have attended the meeting may
+			// watch it back. Download and delete hang off the recording's own id
+			// for the same gin-tree reason as the chat routes above.
+			protected.POST("/conferences/:id/recording/start", rh.StartConferenceRecording)
+			protected.POST("/conferences/:id/recording/stop", rh.StopConferenceRecording)
+			protected.GET("/conferences/:id/recordings", rh.ListConferenceRecordings)
+			protected.GET("/conference-recordings/:id/download", rh.DownloadConferenceRecording)
+			protected.DELETE("/conference-recordings/:id", rh.DeleteConferenceRecording)
 
 			// GitLab integration: per-user connection (PAT), per-workspace
 			// config + manual pull sync (Phase A, pull-only).

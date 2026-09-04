@@ -10,6 +10,25 @@
 }
 
 {$DOMAIN} {
-	encode zstd gzip
-	reverse_proxy frontend:80
+	# LiveKit signalling for conferences (#2864, #2866). Fronting it here is what
+	# lets the SFU keep its API port unpublished: the WebSocket rides the
+	# certificate we already have, on 443, and the RoomService HTTP API stays
+	# unreachable from the internet.
+	#
+	# handle_path, NOT handle — it strips the /livekit prefix. livekit-client
+	# appends /rtc (and /rtc/v1) to whatever base URL it is given, so the browser
+	# asks for /livekit/rtc/v1 and LiveKit must receive /rtc/v1. With plain
+	# handle{} the prefix survives, LiveKit 404s the handshake, and the client
+	# reports it as a generic connection failure.
+	#
+	# No `encode` on this route: signalling is a WebSocket carrying protobuf, and
+	# compressing it only burns CPU.
+	handle_path /livekit/* {
+		reverse_proxy livekit:7880
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy frontend:80
+	}
 }

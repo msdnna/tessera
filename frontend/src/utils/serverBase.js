@@ -61,6 +61,14 @@ export function docWsURL(docId) {
   return `${wsOrigin()}/api/documents/${docId}/ws`
 }
 
+// confWsURL builds the per-conference room socket URL (#2869): presence, hands,
+// the screen-share queue and moderation. Media does not go through it — that is
+// a direct connection to the SFU, whose address the backend hands out with the
+// join token.
+export function confWsURL(confId) {
+  return `${wsOrigin()}/api/conferences/${confId}/ws`
+}
+
 // wsOrigin is ws(s)://<host> — the current origin on web, the stored base on
 // desktop.
 function wsOrigin() {

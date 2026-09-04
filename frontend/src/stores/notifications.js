@@ -57,7 +57,13 @@ export const useNotificationsStore = defineStore('notifications', () => {
             title,
             body,
             // Carried back on click for deep-linking (see useDesktopDeepLink).
-            extra: { task_board_id: n.task_board_id, task_number: n.task_number },
+            // A conference invitation carries a call id instead of a board
+            // (#2875) — it is about no task.
+            extra: {
+              task_board_id: n.task_board_id,
+              task_number: n.task_number,
+              conference_id: n.payload?.conference_id,
+            },
           })
         return
       }

@@ -85,10 +85,13 @@ type Message struct {
 	Title string
 	Body  string
 	Link  string // optional deep link to the originating task
-	// ID and TaskID identify the originating notification. Text transports
-	// ignore them; the push sender carries them in the payload so the client can
-	// deep-link into the task and collapse a push that duplicates a message the
-	// open app already received over the socket.
-	ID     string
-	TaskID string
+	// ID, TaskID and ConferenceID identify the originating notification. Text
+	// transports ignore them; the push sender carries them in the payload so the
+	// client can deep-link into what the notification is about and collapse a
+	// push that duplicates a message the open app already received over the
+	// socket. Exactly one of TaskID / ConferenceID is set (or neither, for a
+	// workspace-level event like a sync report).
+	ID           string
+	TaskID       string
+	ConferenceID string
 }

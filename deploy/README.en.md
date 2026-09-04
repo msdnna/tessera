@@ -10,7 +10,9 @@ source tree or a build toolchain. (Later: push to GHCR and `docker pull` instead
 ┌────────── VDS (Ubuntu 24.04) ───────────┐
 │  Caddy :80/:443  ──TLS──► frontend(nginx)│
 │                            │ /api ─► backend (distroless) ─► postgres │
-│  only 80/443 published; DB + backend internal-only                    │
+│                    └ /livekit ─► livekit (signalling, no host port)   │
+│  livekit :7881/tcp + :7882/udp — call media only                      │
+│  80/443 + media ports published; DB + backend internal-only           │
 └──────────────────────────────────────────┘
 ```
 
@@ -22,6 +24,9 @@ source tree or a build toolchain. (Later: push to GHCR and `docker pull` instead
 | `server-bootstrap.sh` | server (once) | OS hardening + Docker install |
 | `docker-compose.yml` | server | image-based prod stack |
 | `Caddyfile` | server | TLS edge + reverse proxy |
+| `livekit.yaml` | server | video-call SFU config (no secrets — those live in `.env`) |
+| `egress.yaml` | server | conference recording config (only needed with the `recording` profile) |
+| `chrome-sandboxing-seccomp-profile.json` | server | seccomp profile for egress's Chrome sandbox (same) |
 | `.env.example` | server | copy to `.env`, fill secrets |
 
 ## First-time deploy
@@ -40,7 +45,7 @@ ssh user@server 'sudo bash /tmp/server-bootstrap.sh'
 ```bash
 bash deploy/build-and-save.sh
 scp deploy/dist/tessera-images-*.tar.gz user@server:/opt/tessera/
-scp deploy/{docker-compose.yml,Caddyfile,.env.example} user@server:/opt/tessera/
+scp deploy/{docker-compose.yml,Caddyfile,livekit.yaml,.env.example} user@server:/opt/tessera/
 ```
 
 **3. Configure** (server, `/opt/tessera`):
@@ -95,6 +100,99 @@ To verify, the backend log should carry `uploads: каталог доступе�
 startup. A `uploads: каталог НЕ доступен на запись` line means the step is still
 needed.
 
+## Video calls (LiveKit)
+
+Calls and meetings run through an **SFU** — the `livekit` container: every
+participant uploads a single track to the server instead of one per peer.
+Without it a four-way call is capped by the weakest participant's uplink.
+
+**Firewall ports to open** (`ufw allow` — `server-bootstrap.sh` deliberately
+leaves these closed so hosts without conferences don't expose them):
+
+| Port | For | If closed |
+|------|-----|-----------|
+| `7882/udp` | all call media (one port, thanks to UDP mux) | calls fall back to TCP: higher latency, worse quality |
+| `7881/tcp` | ICE over TCP — the fallback where UDP is blocked | participants behind strict corporate firewalls can't connect at all |
+
+```bash
+sudo ufw allow 7882/udp && sudo ufw allow 7881/tcp
+```
+
+The signalling port **7880 is not published**, and it should not be: it is
+proxied by Caddy as `https://<DOMAIN>/livekit/*` on the certificate you already
+have. That is not cosmetic — 7880 also serves LiveKit's management HTTP API
+(create room, kick a participant, list who is present), which only our backend
+is meant to call.
+
+**Secrets.** `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET` go in `.env`, and without
+them `docker compose up` fails on purpose with an explicit error — there is no
+default secret. The secret signs participant passes: whoever holds it can join
+any meeting on this server. Treat it like `JWT_SECRET`.
+
+**Updating an existing deployment.** Besides the new images, copy `livekit.yaml`
+over and add the four `LIVEKIT_*` entries from `.env.example` to `.env` — the
+stack will not start otherwise.
+
+**Check after startup:** `docker compose logs livekit` shows `starting LiveKit
+server`, and `curl -sf https://<DOMAIN>/livekit/` answers something (a protocol
+error is fine) rather than 502.
+
+## Conference recording (optional, off by default)
+
+Recording is done by the **server**, not by a participant's browser: the `egress`
+container joins the meeting as a hidden participant, renders the grid in a headless
+Chrome and writes the mp4 straight into the `backend_uploads` volume
+(`rec/<conference>/`), from where the ordinary download route serves it. Turn
+nothing on and you pay nothing — both containers sit behind the `recording`
+profile, and a plain `docker compose up -d` never starts them.
+
+**Turning it on is one command, and it changes two things at once:**
+
+```bash
+LIVEKIT_REDIS_HOST=redis:6379 docker compose --profile recording up -d
+```
+
+Halves do not work, and they fail differently: the profile without the variable
+starts an egress the SFU cannot reach, and the variable without the profile points
+the SFU at a Redis that is not running, so it does not start at all. Turning it off
+is the same command without either. Keep both halves together on every stack
+update: `LIVEKIT_REDIS_HOST` in `.env` without the profile on the command line is
+the same trap, merely deferred to the next `docker compose up -d`.
+
+**The price, to be accepted deliberately.** Redis is not a cache here but the only
+channel between `livekit-server` and egress: the server files a recording request
+into `RedisStore` only — with the local store `getEgressStore` returns `nil`, there
+is nowhere to put the request, and the recording silently never starts. There is no
+way around it. And a non-empty `REDIS_HOST` puts the SFU into multi-node mode: room
+state moves out of the process and into Redis, so a Redis outage takes down
+**conferences as a whole**, not just recording. That is why recording is a
+deployment option rather than always-on.
+
+If recording is not enabled, the button does not disappear from the UI: the SFU
+answers the backend with `egress not connected (redis required)` and the moderator
+sees an error. The clean "recording is not configured" (503) happens only when
+LiveKit itself is unconfigured.
+
+**No new ports to open.** Egress only talks inside the compose network, and it
+serves the grid templates to itself on 7980 inside the container — nothing leaves
+the host, so no third party learns when you hold a meeting.
+
+**Disk.** Budget roughly 1 GB per hour of a recorded room, all in the
+`backend_uploads` volume (the same one as attachments — so the same backup).
+Retention is per conference, set when scheduling it (`recording_ttl_days`, 30 days
+by default; `0` means keep indefinitely), and expired files are deleted by a
+background worker in the backend. A separate safety net is
+`session_limits.file_output_max_duration: 2h` in `egress.yaml`: a recording nobody
+pressed Stop on would otherwise run all night.
+
+**Check after startup:** `docker compose --profile recording ps` — `tessera-egress`
+is `Up` and `tessera-egress-init` is `Exited (0)` (it prepares the `rec/` directory
+for its two writers — the backend and egress — once, and is not needed afterwards).
+The real check is a live one: start recording in a running meeting, the red dot must
+appear for **every** participant, and after Stop the recording shows up in the list
+under the room within seconds. If it shows up as failed, look at `docker compose
+logs egress` — it is quiet at `warn` by default, so errors are what you see.
+
 ## Backups (do this — confidentiality isn't complete without it)
 
 ```bash
@@ -144,9 +242,13 @@ PG_RANDOM_PAGE_COST=1.1         # SSD; leave at 4 only for spinning disks
 
 ## Security posture (built in)
 
-- Postgres + backend have **no host ports** — internet-unreachable by design.
+- Postgres, backend and LiveKit's signalling port (7880, which also carries its
+  management API) have **no host ports** — internet-unreachable by design. Only
+  LiveKit's media ports 7881/7882 face outward, and they serve nothing but the
+  encrypted tracks of an already-authorised participant.
 - Backend image is **distroless, non-root**, static binary.
 - `APP_ENV=production` **fails closed** without `JWT_SECRET` / `ENCRYPTION_KEY` /
   `DATABASE_URL` / `PUBLIC_URL`.
 - TLS everywhere via Caddy (auto-renewing Let's Encrypt).
-- SSH: key-only, root login disabled, fail2ban; ufw allows only 22/80/443.
+- SSH: key-only, root login disabled, fail2ban; ufw allows only 22/80/443 (plus
+  7881/tcp and 7882/udp if you enable calls — see the LiveKit section).

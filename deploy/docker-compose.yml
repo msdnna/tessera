@@ -7,9 +7,13 @@
 #   docker compose --env-file .env up -d
 #   docker compose exec backend /migrate      # apply migrations (distroless: binary exec, no shell)
 #
-# Naming: only Caddy publishes host ports (80/443). Postgres and backend have
-# NO host ports — they are reachable only inside the compose network. This is
-# the primary data-confidentiality boundary; do not add `ports:` to them.
+# Naming: host ports are published by Caddy (80/443) and — since conferences
+# (#2864) — by LiveKit, but ONLY its media transport (7881/tcp, 7882/udp).
+# Postgres, backend and LiveKit's own signalling/API port (7880) have NO host
+# ports: they are reachable only inside the compose network. This is the primary
+# data-confidentiality boundary; do not add `ports:` to them. Publishing 7880
+# would put LiveKit's RoomService API (create room, kick, list participants) on
+# the internet — it is meant to be called by our backend only.
 
 services:
   postgres:
@@ -78,6 +82,19 @@ services:
       - SMTP_USER=${SMTP_USER:-}
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-}
+      # Conferences (#2864). The backend mints LiveKit access tokens and drives
+      # rooms over the compose network; the browser only ever sees the token and
+      # the public /livekit/ URL. LIVEKIT_API_SECRET must never reach the client.
+      - LIVEKIT_URL=${LIVEKIT_URL:-http://livekit:7880}
+      - LIVEKIT_PUBLIC_URL=${LIVEKIT_PUBLIC_URL:-}
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-}
+      # Recording layout (#2877): points egress at our own recording page so the
+      # mp4 is composed like the room in the browser (screen full-bleed at 1080p,
+      # camera PiP, avatars) instead of egress's dark 720p grid. INTERNAL url —
+      # the `frontend` container serves the SPA over the compose network. Only
+      # matters under `--profile recording`; empty ⇒ egress's built-in grid.
+      - RECORDING_TEMPLATE_URL=${RECORDING_TEMPLATE_URL:-http://frontend/rec/egress}
     expose:
       - "8080"
     volumes:
@@ -105,6 +122,167 @@ services:
       - ./apks:/usr/share/nginx/html/apks:ro
       - ./desktop-dist:/usr/share/nginx/html/desktop:ro
 
+  # LiveKit SFU — media server for conferences (#2864, #2866). Every participant
+  # publishes one stream up and subscribes to what they need, instead of the
+  # N−1 uploads a mesh would push through the corporate VPN.
+  #
+  # Ports, and why exactly these:
+  #   7880  signalling + RoomService HTTP API — NOT published, Caddy fronts it at
+  #         /livekit/* over the existing certificate (see Caddyfile).
+  #   7881  ICE over TCP, published — the fallback for clients whose firewall
+  #         blocks UDP. Cannot sit behind Caddy: it is raw ICE, not HTTP.
+  #   7882  media over UDP, published. One port only, thanks to udp mux in
+  #         livekit.yaml. This is the one that carries the calls.
+  #
+  # No healthcheck: the image is a bare static binary (entrypoint
+  # /livekit-server) with no shell, wget or curl to run a probe with. Liveness is
+  # visible from the backend's token endpoint instead.
+  livekit:
+    image: livekit/livekit-server:v1.13.6
+    container_name: tessera-livekit
+    restart: unless-stopped
+    command: --config /etc/livekit.yaml
+    environment:
+      # "key: secret" — supplied by env so no secret lands in the mounted config.
+      # Quoted deliberately: the ": " inside would otherwise make YAML parse this
+      # list item as a mapping, and compose refuses a non-string here.
+      - "LIVEKIT_KEYS=${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}: ${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}"
+      # Empty (the default) = single-node mode, room state in process, no Redis
+      # in the picture at all. Set to `redis:6379` ONLY together with the
+      # `recording` profile below — egress requests are dispatched through Redis
+      # and there is no other channel. Read the trade-off in the egress comment
+      # before setting it: this switches the SFU to multi-node mode, which makes
+      # Redis a dependency of CONFERENCES, not just of recording.
+      - REDIS_HOST=${LIVEKIT_REDIS_HOST:-}
+      - TZ=${TZ:-Europe/Moscow}
+    ports:
+      - "7881:7881/tcp"
+      - "7882:7882/udp"
+    expose:
+      - "7880"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+    networks:
+      - tessera-network
+
+  # --- server-side conference recording (#2877) --------------------------------
+  # Everything below is gated behind `profiles: [recording]`, so a plain
+  # `docker compose up -d` never starts it and the stack costs nothing extra.
+  # Turning recording ON is one command, and it deliberately changes two things
+  # at once — the profile AND the SFU's mode:
+  #
+  #   LIVEKIT_REDIS_HOST=redis:6379 docker compose --profile recording up -d
+  #
+  # Turning it off is the same command without either. Do not set one without
+  # the other: the profile alone gives you an egress nobody can reach, and
+  # LIVEKIT_REDIS_HOST alone points the SFU at a Redis that is not running.
+  #
+  # THE TRADE-OFF, because it is not reversible mid-call: a non-empty REDIS_HOST
+  # puts livekit-server into multi-node mode, moving room state out of process
+  # and into Redis. A Redis outage then takes down CONFERENCES, not just
+  # recording. That is why this is opt-in per deployment rather than always-on.
+  #
+  # And it cannot be worked around: the server stores egress requests through
+  # EgressStore, and its getEgressStore returns nil for anything but RedisStore.
+  # With the default local store there is nowhere to put the request, so nothing
+  # is dispatched — no error, just a recording that never starts.
+
+  # Redis is not a cache here and holds no application data — it is the only
+  # channel between livekit-server and egress (requests, worker registration,
+  # status updates). Hence no volume and `--save ""`: a dump would only persist
+  # in-flight jobs that are meaningless after a restart anyway.
+  redis:
+    image: redis:7-alpine
+    container_name: tessera-redis
+    restart: unless-stopped
+    profiles: [recording]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    networks:
+      - tessera-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # One directory in the uploads volume has two writers: the backend (uid 65532,
+  # `USER nonroot` in backend/Dockerfile.prod) creates the per-conference folder
+  # and later deletes expired files, and egress (uid 1001, gid 0) writes the mp4
+  # into it. Neither can be given the other's identity, so they meet on group 0.
+  #
+  #   owner 65532 → the backend creates and removes entries;
+  #   group 0, group-writable → egress writes the file;
+  #   setgid → the folders the backend creates keep group 0, so the arrangement
+  #            survives one level down, where the mp4 actually lands.
+  #
+  # Verified as a chain, not assumed: 65532 mkdir, 1001:0 write, 65532 read and
+  # unlink. Getting it wrong fails late and quietly — the recording starts, Chrome
+  # joins the call, and only the final write is refused.
+  #
+  # `rec`, not `conf`: the chat's attachments live in conf/ and are written by the
+  # backend alone. Handing that directory to a shared group would change the
+  # ownership of a tree the backend already creates subdirectories in — and an
+  # earlier revision of this file did exactly that with `chown 0:0`, which locks
+  # uid 65532 out of conf/ and breaks chat uploads for every new conference.
+  #
+  # Runs to completion on every `up` and is a no-op after the first.
+  egress-init:
+    image: alpine:3.21
+    container_name: tessera-egress-init
+    profiles: [recording]
+    restart: "no"
+    command: ["sh", "-c", "mkdir -p /data/uploads/rec && chown 65532:0 /data/uploads/rec && chmod 2775 /data/uploads/rec"]
+    volumes:
+      - backend_uploads:/data/uploads
+    networks:
+      - tessera-network
+
+  # Egress records a meeting by joining it with a headless Chrome that renders
+  # the participant grid, then muxing that to mp4. Three details worth knowing:
+  #
+  #   • It shares backend_uploads with the backend and writes the mp4 straight
+  #     into /data/uploads/rec/<conference>/, so the file lands next to where
+  #     attachments already live and is served back through a download handler of
+  #     the same shape — no S3, no copy step.
+  #   • It runs as uid 1001, NOT root — hence egress-init above.
+  #   • security_opt is what lets Chrome keep its sandbox. The profile is the
+  #     stock Docker seccomp profile plus `clone` and `unshare` — strictly
+  #     tighter than the `seccomp:unconfined` upstream's own instructions imply.
+  #     Drop it and enable_chrome_sandbox in egress.yaml must go too.
+  #
+  # No host ports: the grid templates are served by egress to its own Chrome on
+  # 7980 inside the container, and nothing outside needs to reach it.
+  egress:
+    image: livekit/egress:v1.14.1
+    container_name: tessera-egress
+    restart: unless-stopped
+    profiles: [recording]
+    environment:
+      - EGRESS_CONFIG_FILE=/etc/egress.yaml
+      # Same credentials as the SFU — egress joins the room as a participant and
+      # signs its own token. Kept in env for the same reason as everywhere else:
+      # the mounted config stays secret-free and committable.
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:?set LIVEKIT_API_KEY}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:?set LIVEKIT_API_SECRET}
+      - LIVEKIT_WS_URL=${LIVEKIT_EGRESS_WS_URL:-ws://livekit:7880}
+      - TZ=${TZ:-Europe/Moscow}
+    security_opt:
+      - seccomp=./chrome-sandboxing-seccomp-profile.json
+    volumes:
+      - ./egress.yaml:/etc/egress.yaml:ro
+      - backend_uploads:/data/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+      egress-init:
+        condition: service_completed_successfully
+      livekit:
+        condition: service_started
+    networks:
+      - tessera-network
+
   caddy:
     image: caddy:2-alpine
     container_name: tessera-caddy
@@ -122,6 +300,7 @@ services:
       - caddy_config:/config
     depends_on:
       - frontend
+      - livekit
     networks:
       - tessera-network
 
