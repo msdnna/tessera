@@ -743,6 +743,18 @@ interface ApiService {
         @Part file: MultipartBody.Part,
     ): website.msdnna.tessera.data.model.DocumentImportResult
 
+    /**
+     * A document asset by its stored URL (#2894 §3).
+     *
+     * Assets are not addressed by id: the body carries the whole signed URL the
+     * server minted (`/api/documents/asset?doc=…&sig=…`), and the signature is
+     * what authorises the read. So this takes the link as it stands rather than
+     * rebuilding a route the client would have to keep in sync with the server's.
+     */
+    @retrofit2.http.Streaming
+    @GET
+    suspend fun downloadDocumentAsset(@retrofit2.http.Url url: String): okhttp3.ResponseBody
+
     /** Streaming: the response is a file, and buffering a PDF through Gson corrupts it. */
     @retrofit2.http.Streaming
     @GET("documents/{id}/export")

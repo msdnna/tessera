@@ -2,10 +2,9 @@ package website.msdnna.tessera.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,11 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,57 +23,40 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.LinkAnnotation
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLinkStyles
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withLink
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
+import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
-import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.ui.TestTags
-import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.screens.documents.DocBlockView
 import website.msdnna.tessera.ui.screens.documents.DocDraft
+import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
 import website.msdnna.tessera.ui.screens.documents.DocumentsList
-import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.DocumentsViewModel
 import website.msdnna.tessera.util.DocBlock
-import website.msdnna.tessera.util.DocCode
-import website.msdnna.tessera.util.DocDivider
-import website.msdnna.tessera.util.DocHeading
-import website.msdnna.tessera.util.DocImage
-import website.msdnna.tessera.util.DocListRow
-import website.msdnna.tessera.util.DocParagraph
-import website.msdnna.tessera.util.DocQuote
-import website.msdnna.tessera.util.DocSpan
-import website.msdnna.tessera.util.DocTable
+import website.msdnna.tessera.util.DocPage
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.docBlockIndex
 import website.msdnna.tessera.util.docChildCount
+import website.msdnna.tessera.util.docOutline
+import website.msdnna.tessera.util.docSectionPages
+import website.msdnna.tessera.util.docSideInsetDp
 
 /**
  * Documents module (web `DocumentsView`) — see #2735, #2894. A grid of one
@@ -129,6 +109,7 @@ fun DocumentsScreen(workspaceId: String) {
                 title = state.open?.title.orEmpty(),
                 icon = state.open?.icon.orEmpty(),
                 blocks = state.blocks,
+                page = state.page,
                 loading = state.opening,
                 childCount = state.openChildCount,
                 onBack = { vm.close() },
@@ -165,6 +146,7 @@ private fun DocumentReader(
     title: String,
     icon: String,
     blocks: List<DocBlock>,
+    page: DocPage,
     loading: Boolean,
     childCount: Int,
     onBack: () -> Unit,
@@ -173,6 +155,14 @@ private fun DocumentReader(
 ) {
     val c = Tessera.colors
     var menuOpen by remember { mutableStateOf(false) }
+    var tocOpen by remember { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    val outline = remember(blocks) { docOutline(blocks) }
+    // One geometry per block: a section break switches it for everything after
+    // it, and a document without one has the single geometry it always had.
+    val pages = remember(blocks, page) { docSectionPages(blocks, page) }
+
     Column(Modifier.fillMaxSize().background(c.surface).testTag(TestTags.DOCUMENT_READER)) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
@@ -196,6 +186,12 @@ private fun DocumentReader(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
+            )
+            IonIconButton(
+                Ion.LIST,
+                onClick = { tocOpen = true },
+                boxSize = 40.dp,
+                modifier = Modifier.testTag(TestTags.DOCUMENT_TOC_OPEN),
             )
             // The menu is a sibling of its trigger inside this Box: TDropdown
             // positions itself against the anchor's bounds.
@@ -238,211 +234,39 @@ private fun DocumentReader(
                 Text(stringResource(R.string.docs_reader_empty), color = c.text3, fontSize = 14.sp)
             }
 
-            else -> LazyColumn(
-                Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item { Spacer(Modifier.height(8.dp)) }
-                items(blocks, key = { it.id }) { block -> DocBlockView(block) }
-                item { Spacer(Modifier.height(24.dp)) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DocBlockView(block: DocBlock) {
-    val c = Tessera.colors
-    when (block) {
-        is DocParagraph -> Text(
-            annotate(block.spans),
-            color = c.text1,
-            fontSize = 15.sp,
-            textAlign = alignOf(block.align),
-            modifier = Modifier.fillMaxWidth().padding(start = (block.indent * 16).dp),
-        )
-
-        is DocHeading -> Text(
-            annotate(block.spans),
-            color = c.text1,
-            fontSize = headingSize(block.level),
-            fontWeight = FontWeight.Bold,
-            textAlign = alignOf(block.align),
-            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-        )
-
-        is DocListRow -> Row(Modifier.fillMaxWidth().padding(start = (12 + block.depth * 16).dp)) {
-            when {
-                block.checked != null -> {
-                    IonIcon(
-                        if (block.checked == true) Ion.CHECK_CIRCLE else Ion.ELLIPSE,
-                        size = 16.dp,
-                        tint = if (block.checked == true) c.primary else c.text3,
-                        modifier = Modifier.padding(top = 3.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                }
-
-                else -> {
-                    Text(
-                        block.marker,
-                        color = c.text3,
-                        fontSize = 15.sp,
-                        modifier = Modifier.widthIn(min = 18.dp),
-                    )
-                    Spacer(Modifier.width(4.dp))
-                }
-            }
-            Text(annotate(block.spans), color = c.text1, fontSize = 15.sp, modifier = Modifier.weight(1f))
-        }
-
-        is DocQuote -> Row(Modifier.fillMaxWidth()) {
-            Box(Modifier.width(3.dp).height(20.dp).background(c.primary))
-            Spacer(Modifier.width(10.dp))
-            Text(annotate(block.spans), color = c.text2, fontSize = 15.sp, fontStyle = FontStyle.Italic)
-        }
-
-        is DocCode -> Column(
-            Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusMd)).background(c.surfaceAlt)
-                .border(1.dp, c.border, RoundedCornerShape(RadiusMd)).padding(12.dp),
-        ) {
-            if (block.language.isNotBlank()) {
-                Text(block.language, color = c.text3, fontSize = 11.sp)
-                Spacer(Modifier.height(4.dp))
-            }
-            // Code must not wrap silently — an indented block reads as different
-            // code once it reflows, so it scrolls instead.
-            Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                Text(block.text, color = c.text1, fontSize = 13.sp, fontFamily = FontFamily.Monospace, softWrap = false)
-            }
-        }
-
-        is DocDivider -> HorizontalDivider(color = c.border, modifier = Modifier.padding(vertical = 4.dp))
-
-        is DocImage -> DocImageView(block)
-
-        is DocTable -> DocTableView(block)
-    }
-}
-
-@Composable
-private fun DocImageView(block: DocImage) {
-    val c = Tessera.colors
-    // Document assets are served from our own origin behind a signature, and the
-    // stored src is the path only — Coil needs it absolute.
-    val model = remember(block.src) {
-        when {
-            block.src.isBlank() -> null
-            block.src.startsWith("http") || block.src.startsWith("data:") -> block.src
-            else -> RetrofitClient.serverRoot + block.src
-        }
-    }
-    if (model == null) return
-    Column(Modifier.fillMaxWidth()) {
-        AsyncImage(
-            model = model,
-            contentDescription = block.alt.ifBlank { stringResource(R.string.docs_image_alt) },
-            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusMd)),
-        )
-        if (block.alt.isNotBlank()) {
-            Spacer(Modifier.height(4.dp))
-            Text(block.alt, color = c.text3, fontSize = 12.sp)
-        }
-    }
-}
-
-@Composable
-private fun DocTableView(block: DocTable) {
-    val c = Tessera.colors
-    // Tables are authored for a desktop width; scrolling sideways keeps cells
-    // readable instead of squeezing every column into the phone's width.
-    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-        Column(
-            Modifier.clip(RoundedCornerShape(RadiusMd)).border(1.dp, c.border, RoundedCornerShape(RadiusMd)),
-        ) {
-            block.rows.forEachIndexed { index, row ->
-                if (index > 0) HorizontalDivider(color = c.border)
-                Row {
-                    row.cells.forEachIndexed { cellIndex, cell ->
-                        if (cellIndex > 0) {
-                            Box(Modifier.width(1.dp).height(36.dp).background(c.border))
-                        }
-                        Text(
-                            annotate(cell.spans),
-                            color = if (cell.header) c.text1 else c.text2,
-                            fontSize = 13.sp,
-                            fontWeight = if (cell.header) FontWeight.SemiBold else FontWeight.Normal,
-                            modifier = Modifier.widthIn(min = 96.dp, max = 220.dp)
-                                .background(if (cell.header) c.surfaceAlt else Color.Transparent)
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                        )
+            else -> BoxWithConstraints(Modifier.fillMaxSize()) {
+                val available = maxWidth.value.toDouble()
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item { Spacer(Modifier.height(8.dp)) }
+                    itemsIndexed(blocks, key = { _, block -> block.id }) { index, block ->
+                        // The document's own margins, as a share of its sheet —
+                        // see docSideInsetDp for why a phone cannot take them in
+                        // millimetres.
+                        val inset = docSideInsetDp(pages[index], available).dp
+                        Box(Modifier.fillMaxWidth().padding(horizontal = inset)) { DocBlockView(block) }
                     }
+                    item { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
     }
-}
 
-/** Renders inline runs with their marks; links stay tappable. */
-@Composable
-private fun annotate(spans: List<DocSpan>) = buildAnnotatedString {
-    val c = Tessera.colors
-    val uriHandler = LocalUriHandler.current
-    for (span in spans) {
-        val style = SpanStyle(
-            fontWeight = if (span.bold) FontWeight.Bold else null,
-            fontStyle = if (span.italic) FontStyle.Italic else null,
-            fontFamily = if (span.code) FontFamily.Monospace else null,
-            color = parseHex(span.color) ?: if (span.code) c.primary else Color.Unspecified,
-            textDecoration = decorationOf(span),
+    if (tocOpen) {
+        DocTocPanel(
+            rows = outline,
+            onDismiss = { tocOpen = false },
+            onJump = { row ->
+                tocOpen = false
+                val index = docBlockIndex(blocks, row.id)
+                // +1 for the leading spacer item; a heading that is no longer in
+                // the body (the outline was built from an older parse) simply
+                // does not move the list.
+                if (index >= 0) scope.launch { listState.scrollToItem(index + 1) }
+            },
         )
-        val href = span.href
-        if (href.isNullOrBlank()) {
-            withStyle(style) { append(span.text) }
-        } else {
-            val link = LinkAnnotation.Url(
-                href,
-                TextLinkStyles(style.copy(color = c.primary, textDecoration = TextDecoration.Underline)),
-            ) { runCatching { uriHandler.openUri(href) } }
-            withLink(link) { append(span.text) }
-        }
     }
-}
-
-private fun decorationOf(span: DocSpan): TextDecoration? = when {
-    span.underline && span.strike -> TextDecoration.combine(
-        listOf(TextDecoration.Underline, TextDecoration.LineThrough),
-    )
-
-    span.underline -> TextDecoration.Underline
-
-    span.strike -> TextDecoration.LineThrough
-
-    else -> null
-}
-
-/** `#rgb` / `#rrggbb` from the editor's colour picker; anything else is ignored. */
-private fun parseHex(value: String?): Color? {
-    val hex = value?.trim()?.removePrefix("#") ?: return null
-    val full = when (hex.length) {
-        3 -> hex.map { "$it$it" }.joinToString("")
-        6 -> hex
-        else -> return null
-    }
-    val rgb = full.toLongOrNull(16) ?: return null
-    return Color(0xFF000000L or rgb)
-}
-
-private fun headingSize(level: Int) = when (level) {
-    1 -> 24.sp
-    2 -> 20.sp
-    3 -> 18.sp
-    else -> 16.sp
-}
-
-private fun alignOf(value: String?) = when (value) {
-    "center" -> TextAlign.Center
-    "right" -> TextAlign.End
-    "justify" -> TextAlign.Justify
-    else -> TextAlign.Start
 }

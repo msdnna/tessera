@@ -226,6 +226,23 @@ object TestTags {
     /** Confirm button of the delete dialog. */
     const val DOCUMENT_REMOVE_CONFIRM = "document-remove-confirm"
 
+    /** The reader's outline: the toggle, the panel, its close button, one row. */
+    const val DOCUMENT_TOC_OPEN = "document-toc-open"
+    const val DOCUMENT_TOC = "document-toc"
+    const val DOCUMENT_TOC_CLOSE = "document-toc-close"
+
+    /** Keyed by the heading's block id — the same anchor the jump scrolls to. */
+    fun documentTocRow(blockId: String) = "document-toc-row:$blockId"
+
+    /** A PDF block, its rendered page and the two page arrows (#2733). */
+    const val DOCUMENT_PDF = "document-pdf"
+    const val DOCUMENT_PDF_PAGE = "document-pdf-page"
+    const val DOCUMENT_PDF_PREV = "document-pdf-prev"
+    const val DOCUMENT_PDF_NEXT = "document-pdf-next"
+
+    /** A section boundary — where the page geometry changes (#2827). */
+    const val DOCUMENT_SECTION_BREAK = "document-section-break"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

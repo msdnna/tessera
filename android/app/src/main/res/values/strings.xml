@@ -747,6 +747,20 @@
     <string name="docs_remove_title">Удалить документ?</string>
     <string name="docs_remove_single">Документ будет удалён.</string>
     <string name="docs_remove_with_children">Документ будет удалён вместе с вложенными (%1$d).</string>
+    <string name="docs_toc_title">Оглавление</string>
+    <string name="docs_toc_empty">Добавьте заголовки — они соберутся в оглавление.</string>
+    <string name="docs_toc_untitled">Без заголовка</string>
+    <string name="docs_pdf_untitled">Документ PDF</string>
+    <string name="docs_pdf_failed">Не удалось открыть PDF</string>
+    <string name="docs_pdf_page">Стр. %1$d из %2$d</string>
+    <string name="docs_size_b">Б</string>
+    <string name="docs_size_kb">КБ</string>
+    <string name="docs_size_mb">МБ</string>
+    <string name="docs_size_gb">ГБ</string>
+    <string name="docs_page_portrait">Книжная</string>
+    <string name="docs_page_landscape">Альбомная</string>
+    <string name="docs_page_size_custom">свой размер</string>
+    <string name="docs_section_caption">Дальше — %1$s %2$s</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

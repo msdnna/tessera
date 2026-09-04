@@ -263,4 +263,125 @@ class DocBlocksTest {
         )
         assertThat(text).isEqualTo("Заголовок\nтекст")
     }
+
+    // ── §3 of #2894: the blocks and attributes the reader used to drop ────────
+
+    @Test
+    fun `a PDF block survives instead of leaving an empty document`() {
+        // An imported PDF is a document whose whole body is one pdfEmbed node.
+        // Skipping it (an atom has no children to fall back on) rendered the
+        // document as blank — the reader said «Документ пуст» about a 12 MB scan.
+        val blocks = parse(
+            """
+            {"type":"doc","content":[{"type":"pdfEmbed","attrs":{
+              "id":"pdf-1","src":"/api/documents/asset?doc=1&n=a.pdf&sig=x",
+              "name":"Договор.pdf","size":1258291}}]}
+            """.trimIndent(),
+        )
+        val pdf = blocks.single() as DocPdf
+        assertThat(pdf.id).isEqualTo("pdf-1")
+        assertThat(pdf.src).isEqualTo("/api/documents/asset?doc=1&n=a.pdf&sig=x")
+        assertThat(pdf.name).isEqualTo("Договор.pdf")
+        assertThat(pdf.size).isEqualTo(1258291L)
+    }
+
+    @Test
+    fun `a section break keeps its geometry, and keeps the boundary without one`() {
+        val blocks = parse(
+            """
+            {"type":"doc","content":[
+              {"type":"sectionBreak","attrs":{"id":"br-1",
+                "page":{"w":297,"h":210,"ml":13,"mr":13,"mt":13,"mb":13}}},
+              {"type":"sectionBreak","attrs":{"id":"br-2"}}
+            ]}
+            """.trimIndent(),
+        )
+        val first = blocks[0] as DocSectionBreak
+        assertThat(first.page).isEqualTo(DocPage(297.0, 210.0, 13.0, 13.0, 13.0, 13.0))
+        // A break whose geometry did not survive a paste is still a break:
+        // losing it would silently merge two sections of the document.
+        assertThat((blocks[1] as DocSectionBreak).page).isEqualTo(DEFAULT_DOC_PAGE)
+    }
+
+    @Test
+    fun `textStyle carries the font and size beside the colour`() {
+        val blocks = parse(
+            """
+            {"type":"doc","content":[{"type":"paragraph","content":[
+              {"type":"text","text":"крупно","marks":[{"type":"textStyle","attrs":{
+                "fontSize":"24px","fontFamily":"Georgia, \"Times New Roman\", serif","color":"#1f4e79"}}]}
+            ]}]}
+            """.trimIndent(),
+        )
+        val span = (blocks.single() as DocParagraph).spans.single()
+        assertThat(span.fontSize).isEqualTo("24px")
+        assertThat(docFontSizeSp(span.fontSize)).isEqualTo(24f)
+        assertThat(docFontKind(span.fontFamily)).isEqualTo(DocFontKind.SERIF)
+        assertThat(span.color).isEqualTo("#1f4e79")
+    }
+
+    @Test
+    fun `line spacing and indentation reach every styled block`() {
+        val blocks = parse(
+            """
+            {"type":"doc","content":[
+              {"type":"paragraph","attrs":{"id":"p","lineHeight":"1.5","indent":2},
+               "content":[{"type":"text","text":"а"}]},
+              {"type":"heading","attrs":{"id":"h","level":2,"lineHeight":"2","indent":1},
+               "content":[{"type":"text","text":"б"}]},
+              {"type":"blockquote","attrs":{"id":"q","lineHeight":"1.15","indent":3},
+               "content":[{"type":"paragraph","content":[{"type":"text","text":"в"}]}]}
+            ]}
+            """.trimIndent(),
+        )
+        assertThat((blocks[0] as DocParagraph).lineHeight).isEqualTo(1.5f)
+        assertThat((blocks[1] as DocHeading).lineHeight).isEqualTo(2f)
+        assertThat((blocks[1] as DocHeading).indent).isEqualTo(1)
+        // Spacing is an attribute of the quote, not of the paragraphs inside it,
+        // so every row it flattens into carries the quote's own values.
+        assertThat((blocks[2] as DocQuote).lineHeight).isEqualTo(1.15f)
+        assertThat((blocks[2] as DocQuote).indent).isEqualTo(3)
+    }
+
+    @Test
+    fun `a spacing or size that is not a multiplier is dropped, not guessed at`() {
+        val blocks = parse(
+            """
+            {"type":"doc","content":[
+              {"type":"paragraph","attrs":{"id":"a","lineHeight":"20px"},"content":[{"type":"text","text":"а"}]},
+              {"type":"paragraph","attrs":{"id":"b","lineHeight":"40"},"content":[{"type":"text","text":"б"}]}
+            ]}
+            """.trimIndent(),
+        )
+        // 20px read as a multiplier would scroll one paragraph off the screen.
+        assertThat((blocks[0] as DocParagraph).lineHeight).isNull()
+        assertThat((blocks[1] as DocParagraph).lineHeight).isNull()
+        assertThat(docFontSizeSp("640px")).isNull()
+        assertThat(docFontSizeSp("large")).isNull()
+        assertThat(docFontSizeSp(null)).isNull()
+    }
+
+    @Test
+    fun `a font stack is classified by its generic family`() {
+        // An imported document names fonts this device does not have, but the
+        // stack still ends in the family the author chose.
+        assertThat(docFontKind("ui-monospace, SFMono-Regular, Menlo, monospace"))
+            .isEqualTo(DocFontKind.MONO)
+        // "sans-serif" contains "serif" — the wider match has to win.
+        assertThat(docFontKind("system-ui, -apple-system, Segoe UI, Roboto, sans-serif"))
+            .isEqualTo(DocFontKind.SANS)
+        assertThat(docFontKind("Cambria, Georgia, serif")).isEqualTo(DocFontKind.SERIF)
+        assertThat(docFontKind("")).isEqualTo(DocFontKind.DEFAULT)
+        assertThat(docFontKind(null)).isEqualTo(DocFontKind.DEFAULT)
+    }
+
+    @Test
+    fun `docPlainText names a PDF rather than calling the document empty`() {
+        val text = docPlainText(
+            JsonParser.parseString(
+                """{"type":"doc","content":[{"type":"pdfEmbed","attrs":{"name":"Смета.pdf","src":"/x"}}]}""",
+            ),
+        )
+        assertThat(text).isEqualTo("Смета.pdf")
+    }
 }

@@ -734,6 +734,20 @@
     <string name="docs_remove_title">Delete the document?</string>
     <string name="docs_remove_single">The document will be deleted.</string>
     <string name="docs_remove_with_children">The document will be deleted along with the nested ones (%1$d).</string>
+    <string name="docs_toc_title">Outline</string>
+    <string name="docs_toc_empty">Add headings — they will build the outline.</string>
+    <string name="docs_toc_untitled">Untitled heading</string>
+    <string name="docs_pdf_untitled">PDF document</string>
+    <string name="docs_pdf_failed">Could not open the PDF</string>
+    <string name="docs_pdf_page">Page %1$d of %2$d</string>
+    <string name="docs_size_b">B</string>
+    <string name="docs_size_kb">KB</string>
+    <string name="docs_size_mb">MB</string>
+    <string name="docs_size_gb">GB</string>
+    <string name="docs_page_portrait">Portrait</string>
+    <string name="docs_page_landscape">Landscape</string>
+    <string name="docs_page_size_custom">custom size</string>
+    <string name="docs_section_caption">From here: %1$s %2$s</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

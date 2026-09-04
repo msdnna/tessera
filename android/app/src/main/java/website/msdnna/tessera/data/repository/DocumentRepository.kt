@@ -125,6 +125,44 @@ class DocumentRepository {
     suspend fun uploadPdf(id: String, bytes: ByteArray, filename: String): JsonObject =
         api.uploadDocumentPdf(id, filePart(bytes, filename, "application/pdf"))
 
+    /**
+     * Pulls an asset into the cache and returns the file (#2894 §3).
+     *
+     * `PdfRenderer` reads through a [android.os.ParcelFileDescriptor] and does
+     * random access over it, so a PDF has to become a real file before it can be
+     * rendered at all — it cannot be handed a stream. The name is derived from
+     * the URL rather than from the block's caption, which is the author's title
+     * and may repeat across documents.
+     *
+     * A file already in the cache is reused: the asset is immutable (a new
+     * upload gets a new name), and re-downloading a 12 MB scan on every scroll
+     * back to the block is the difference between a reader and a progress bar.
+     */
+    suspend fun downloadAsset(cacheDir: java.io.File, src: String, cacheKey: String): java.io.File {
+        val dir = java.io.File(cacheDir, "documents").apply { mkdirs() }
+        val out = java.io.File(dir, cacheKey.replace(Regex("[^A-Za-z0-9._-]"), "_"))
+        if (out.isFile && out.length() > 0) return out
+        // Partial writes must not be mistaken for a cached file on the next open.
+        val part = java.io.File(dir, out.name + ".part")
+        api.downloadDocumentAsset(absoluteAssetUrl(src)).use { body ->
+            body.byteStream().use { input -> part.outputStream().use { input.copyTo(it) } }
+        }
+        if (!part.renameTo(out)) {
+            part.delete()
+            // An IOException, so it reaches the user as «нет соединения» rather
+            // than as a raw sentence (Errors.kt) — the cache is not something a
+            // reader can act on.
+            throw java.io.IOException("document asset cache write failed")
+        }
+        return out
+    }
+
+    /** The stored `src` is a path on our own origin; Retrofit's `@Url` needs it whole. */
+    private fun absoluteAssetUrl(src: String): String = when {
+        src.startsWith("http://") || src.startsWith("https://") -> src
+        else -> website.msdnna.tessera.data.api.RetrofitClient.serverRoot + src
+    }
+
     // ── Office import / export (#2733) ────────────────────────────────────────
     suspend fun converterStatus(): DocumentConverterStatus = api.documentConverterStatus()
 

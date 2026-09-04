@@ -10,12 +10,15 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.repository.DocumentRepository
 import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.util.DEFAULT_DOC_PAGE
 import website.msdnna.tessera.util.DocBlock
 import website.msdnna.tessera.util.DocCrumb
+import website.msdnna.tessera.util.DocPage
 import website.msdnna.tessera.util.docChildCount
 import website.msdnna.tessera.util.docTiles
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.parseDocBlocks
+import website.msdnna.tessera.util.parseDocPage
 import website.msdnna.tessera.util.pruneCrumbs
 
 data class DocumentsUiState(
@@ -34,6 +37,8 @@ data class DocumentsUiState(
     val opening: Boolean = false,
     val open: Document? = null,
     val blocks: List<DocBlock> = emptyList(),
+    /** Page geometry of the open document — the reader's margins (#2821, #2827). */
+    val page: DocPage = DEFAULT_DOC_PAGE,
     /** Children of the open document — the reader's «показать вложенные». */
     val openChildCount: Int = 0,
 )
@@ -76,6 +81,7 @@ class DocumentsViewModel(
                 opening = true,
                 open = doc,
                 blocks = emptyList(),
+                page = DEFAULT_DOC_PAGE,
                 error = null,
                 openChildCount = docChildCount(it.docs, doc.id),
             )
@@ -87,7 +93,12 @@ class DocumentsViewModel(
                     // Ignore a body that arrives after the reader moved on.
                     if (_state.value.openId != doc.id) return@fold
                     _state.update {
-                        it.copy(opening = false, open = full, blocks = parseDocBlocks(full.content))
+                        it.copy(
+                            opening = false,
+                            open = full,
+                            blocks = parseDocBlocks(full.content),
+                            page = parseDocPage(full.content),
+                        )
                     }
                 },
                 onFailure = { e ->
@@ -100,11 +111,13 @@ class DocumentsViewModel(
         }
     }
 
-    fun close() = _state.update { it.copy(openId = null, open = null, blocks = emptyList(), opening = false) }
+    fun close() = _state.update {
+        it.copy(openId = null, open = null, blocks = emptyList(), page = DEFAULT_DOC_PAGE, opening = false)
+    }
 
     /** Walks into a container: the grid shows its children, the reader closes. */
     fun drillInto(doc: Document) = _state.update {
-        it.copy(openId = null, open = null, blocks = emptyList(), opening = false)
+        it.copy(openId = null, open = null, blocks = emptyList(), page = DEFAULT_DOC_PAGE, opening = false)
             .withTrail(it.trail + DocCrumb(doc.id, doc.title))
     }
 
