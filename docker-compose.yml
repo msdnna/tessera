@@ -157,6 +157,13 @@ services:
       # joins a dev call — otherwise the SFU advertises its compose-network
       # address, which only this host can route to.
       - NODE_IP=${LIVEKIT_NODE_IP:-}
+      # Empty (the default) = single-node mode, no Redis in the picture. Set to
+      # `redis:6379` ONLY together with `--profile recording` (see the recording
+      # block below): egress requests reach the workers through Redis and there
+      # is no other channel, so recording without it silently never starts. The
+      # trade-off is the same as in production — a non-empty value flips the SFU
+      # into multi-node mode, making Redis a dependency of conferences as a whole.
+      - REDIS_HOST=${LIVEKIT_REDIS_HOST:-}
       - TZ=${TZ:-Europe/Moscow}
     ports:
       - "7880:7880/tcp"
@@ -164,6 +171,89 @@ services:
       - "7882:7882/udp"
     volumes:
       - ./deploy/livekit.dev.yaml:/etc/livekit.yaml:ro
+    networks:
+      - tessera-network
+
+  # --- server-side conference recording (#2877), dev twin -----------------------
+  # Same shape as the production block in deploy/docker-compose.yml, adapted to
+  # the dev stack (root-uid backend, uploads_data volume, config files under
+  # deploy/). All three services sit behind `profiles: [recording]`, so a plain
+  # `make up` never starts them. Turn recording on with the one command that
+  # flips BOTH the profile and the SFU's mode — one without the other is broken:
+  #
+  #   LIVEKIT_REDIS_HOST=redis:6379 docker compose --profile recording up -d
+  #
+  # (or `make up` with LIVEKIT_REDIS_HOST + COMPOSE_PROFILES=recording in .env).
+  # Off = the same without either. Reusing egress.yaml/seccomp from deploy/ keeps
+  # dev and prod recording behaviour identical — the only per-env knobs are here.
+
+  # Redis is the ONLY channel between livekit-server and egress (requests, worker
+  # registration, status), not a cache — hence no volume and `--save ""`.
+  redis:
+    image: redis:7-alpine
+    container_name: tessera-redis
+    restart: unless-stopped
+    profiles: [recording]
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    expose:
+      - "6379"
+    networks:
+      - tessera-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # Prepares /data/uploads/rec so two writers can share it: the dev backend runs
+  # as root (uid 0 — backend/Dockerfile has no USER, unlike Dockerfile.prod's
+  # 65532) and egress writes the mp4 as uid 1001, gid 0. They meet on group 0,
+  # setgid so the folders the backend creates keep it. `chown 0:0` is correct
+  # HERE precisely because the dev backend is root — do NOT copy this into prod,
+  # where it would lock uid 65532 out of the chat's conf/ tree. Runs to
+  # completion once; a no-op on later `up`s.
+  egress-init:
+    image: alpine:3.21
+    container_name: tessera-egress-init
+    profiles: [recording]
+    restart: "no"
+    command: ["sh", "-c", "mkdir -p /data/uploads/rec && chown 0:0 /data/uploads/rec && chmod 2775 /data/uploads/rec"]
+    volumes:
+      - uploads_data:/data/uploads
+    networks:
+      - tessera-network
+
+  # Egress joins the call with a headless Chrome, renders the participant grid and
+  # muxes it to mp4 straight into the shared uploads volume (no S3, no copy step).
+  # Runs as uid 1001, not root — hence egress-init. security_opt keeps Chrome's
+  # sandbox: the stock Docker seccomp profile widened by clone+unshare (drop it
+  # and enable_chrome_sandbox in egress.yaml must go too). No host ports: only its
+  # own Chrome reaches the grid templates it serves on 7980.
+  egress:
+    image: livekit/egress:v1.14.1
+    container_name: tessera-egress
+    restart: unless-stopped
+    profiles: [recording]
+    environment:
+      - EGRESS_CONFIG_FILE=/etc/egress.yaml
+      # Same credentials as the SFU — egress joins the room as a participant and
+      # signs its own token. Defaulted to match the dev livekit key/secret.
+      - LIVEKIT_API_KEY=${LIVEKIT_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_API_SECRET:-devsecret_at_least_32_characters_long}
+      - LIVEKIT_WS_URL=${LIVEKIT_EGRESS_WS_URL:-ws://livekit:7880}
+      - TZ=${TZ:-Europe/Moscow}
+    security_opt:
+      - seccomp=./deploy/chrome-sandboxing-seccomp-profile.json
+    volumes:
+      - ./deploy/egress.yaml:/etc/egress.yaml:ro
+      - uploads_data:/data/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+      egress-init:
+        condition: service_completed_successfully
+      livekit:
+        condition: service_started
     networks:
       - tessera-network
 
