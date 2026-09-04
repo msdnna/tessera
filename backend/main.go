@@ -124,6 +124,11 @@ func main() {
 	// positive sync interval).
 	spawn("gitlab_sync_cron", rh.RunSyncWorker)
 
+	// Background GitLab webhook worker (#2594) — runs a debounced incremental pull
+	// for integrations poked by a delivery. Idle until a binding has a webhook
+	// configured and GitLab actually fires it.
+	spawn("gitlab_webhook_cron", rh.RunWebhookSyncWorker)
+
 	// Background GitLab write-back worker — drains the outbox of task changes to
 	// push to linked issues. Idle until a user enables write-back on an integration.
 	spawn("gitlab_writeback", rh.RunGitlabWriteBackWorker)

@@ -48,6 +48,7 @@ type API struct {
 	metrics        *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
 	converter      *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
 	version        string                   // build version, surfaced by the readiness/metrics probes
+	webhooks       webhookQueue             // debounced dirty set of GitLab integrations poked by a webhook (#2594)
 	egressDir      string                   // uploadDir as the egress recorder sees it (#2877); empty falls back to uploadDir
 	recTemplateURL string                   // internal url of our egress recording page (#2877); empty ⇒ egress's built-in grid
 }

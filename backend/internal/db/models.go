@@ -239,6 +239,9 @@ type GitlabIntegration struct {
 	MembersSyncedAt     *time.Time `json:"members_synced_at"`
 	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
 	RelationsSync       string     `json:"relations_sync"`
+	WebhookSecretEnc    string     `json:"webhook_secret_enc"`
+	WebhookEnabled      bool       `json:"webhook_enabled"`
+	LastWebhookAt       *time.Time `json:"last_webhook_at"`
 }
 
 type GitlabIssueLink struct {

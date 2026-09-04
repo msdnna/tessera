@@ -114,6 +114,29 @@ WHERE enabled
   AND sync_interval_sec > 0
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec));
 
+-- ── Webhook (near-realtime trigger, #2594) ─────────────────
+
+-- SetGitlabWebhook stores a freshly generated shared secret (already encrypted by
+-- the sealer) and turns the hook on. Rotating simply overwrites the old secret.
+-- name: SetGitlabWebhook :one
+UPDATE gitlab_integrations
+SET webhook_secret_enc = $2, webhook_enabled = true, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- ClearGitlabWebhook turns the hook off and wipes the stored secret, so a delivery
+-- that still carries the old token is rejected rather than silently accepted.
+-- name: ClearGitlabWebhook :one
+UPDATE gitlab_integrations
+SET webhook_secret_enc = '', webhook_enabled = false, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
+-- MarkGitlabWebhookSeen stamps the last accepted delivery, so the UI can tell a
+-- live hook from one GitLab has quietly disabled.
+-- name: MarkGitlabWebhookSeen :exec
+UPDATE gitlab_integrations SET last_webhook_at = now() WHERE id = $1;
+
 -- ── Task ↔ work item link ──────────────────────────────────
 
 -- name: GetGitlabLinkByGlobalID :one

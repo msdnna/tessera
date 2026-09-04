@@ -246,6 +246,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// links work, fetched with the integration owner's token).
 		api.GET("/gitlab/asset", rh.GitlabAsset)
 
+		// GitLab webhook receiver (#2594) — public because GitLab has no Tessera
+		// session; the caller authenticates with the binding's own shared secret in
+		// X-Gitlab-Token. Answers immediately and syncs in the background: GitLab
+		// times a delivery out after 10 s and disables a hook that keeps failing.
+		api.POST("/gitlab/webhook/:integrationId", rh.GitlabWebhook)
+
 		// Signed serve for images embedded in documents. Public for the same
 		// reason as the route above (an <img> can't authenticate), but unlike
 		// /uploads/:name the capability is the HMAC, not the filename —
@@ -595,6 +601,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PUT("/workspaces/:id/gitlab/integrations/:integrationId", rh.UpdateGitlabIntegration)
 			protected.DELETE("/workspaces/:id/gitlab/integrations/:integrationId", rh.DeleteGitlabIntegration)
 			protected.POST("/workspaces/:id/gitlab/integrations/:integrationId/sync", rh.SyncGitlab)
+			// Webhook secret management (#2594): generate/rotate returns the secret
+			// once, delete wipes it. Admin-only, like the other binding mutations.
+			protected.POST("/workspaces/:id/gitlab/integrations/:integrationId/webhook", rh.EnableGitlabWebhook)
+			protected.DELETE("/workspaces/:id/gitlab/integrations/:integrationId/webhook", rh.DisableGitlabWebhook)
 			protected.GET("/workspaces/:id/gitlab/members", rh.ListGitlabMembers)
 			protected.GET("/workspaces/:id/gitlab/issue-templates", rh.ListGitlabIssueTemplates)
 			// Sync journal: run/action history + retry of failed pushes.
