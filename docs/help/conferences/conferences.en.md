@@ -83,7 +83,7 @@ Recording is started and stopped by the **host or a moderator**, with a button i
 
 Finished recordings sit in a list **under the room**: download, size and duration. A file appears there a few seconds after you stop — that is how long muxing the video takes.
 
-**Retention is chosen up front**, when the conference is scheduled: by default a recording lives for 30 days and is then deleted by itself. It is decided before the meeting rather than after, so nobody has to rule on a file's fate while watching a countdown.
+**Retention is chosen up front**, when the conference is scheduled: by default a recording lives for 30 days and is then deleted by itself. It is decided before the meeting rather than after, so nobody has to rule on a file's fate while watching a countdown. Zero means "keep indefinitely". The setting can be changed later in the conference settings, but it only applies to future recordings: a finished recording gets its deletion date stamped when it completes.
 
 Recording is an **optional instance feature**: the administrator enables it separately. If it is not enabled, the button answers with an error — a question for your administrator, not a fault on your side.
 
