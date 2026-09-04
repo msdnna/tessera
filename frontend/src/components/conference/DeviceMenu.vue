@@ -36,19 +36,6 @@ const KINDS = [
   { kind: 'audiooutput', title: 'conferences.media.speakers' },
 ]
 
-// The chosen row is marked with an accent checkmark in the icon column — the
-// app's shared language for "selected" (assignee picker, board menus), not a
-// black '●' glued into the label (#2891). Unselected rows carry the same
-// checkmark at opacity 0 so the icon column is reserved for the whole group and
-// labels don't shift horizontally as it appears.
-function checkIcon(on) {
-  return () =>
-    h(NIcon, {
-      component: CheckmarkOutline,
-      style: on ? 'color:var(--t-primary)' : 'opacity:0',
-    })
-}
-
 const options = computed(() => {
   const out = []
   for (const { kind, title } of KINDS) {
@@ -63,8 +50,8 @@ const options = computed(() => {
       // The kind travels in the key because the handler only gets the key back,
       // and a device id alone would not say which slot to switch.
       key: `${kind}|${d.id}`,
-      icon: checkIcon(props.selected[kind] === d.id),
       label: label(d, i),
+      checked: props.selected[kind] === d.id,
     }))
   }
   // Hidden outright where AudioWorklet is missing: a toggle that cannot do
@@ -78,16 +65,35 @@ const options = computed(() => {
       children: [
         {
           key: 'denoise|toggle',
-          // Same accent checkmark as a chosen device — one visual language for
-          // "this is the one that is on" inside a single menu.
-          icon: checkIcon(props.denoise),
           label: t('conferences.media.denoise'),
+          checked: props.denoise,
         },
       ],
     })
   }
   return out
 })
+
+// The chosen row is marked with an accent checkmark at the end of its label —
+// the app's shared language for "selected" (the board dropdowns, #2891), not a
+// black '●' glued into the text. Done through render-label, NOT the option
+// `icon` slot: naive forces the prefix-icon colour to the menu text colour, so a
+// checkmark placed there comes out black — the exact bug this is fixing.
+function renderLabel(option) {
+  if (!option.checked) return option.label
+  return h(
+    'div',
+    { style: 'display:flex;align-items:center;justify-content:space-between;gap:24px' },
+    [
+      h('span', option.label),
+      h(
+        NIcon,
+        { size: 15, style: 'color:var(--t-primary)' },
+        { default: () => h(CheckmarkOutline) },
+      ),
+    ],
+  )
+}
 
 function pick(key) {
   if (key === 'denoise|toggle') {
@@ -103,6 +109,7 @@ function pick(key) {
   <n-dropdown
     trigger="click"
     :options="options"
+    :render-label="renderLabel"
     :disabled="disabled || !options.length"
     @select="pick"
   >

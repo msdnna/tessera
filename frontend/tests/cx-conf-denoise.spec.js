@@ -448,14 +448,19 @@ describe('DeviceMenu — noise suppression entry', () => {
   })
 
   it('marks the entry the same way a chosen device is marked', () => {
-    // The mark is now an accent checkmark in the icon column, not a '●' in the
-    // label text (#2891) — same visual language as a chosen device.
+    // The mark is now an accent checkmark rendered by render-label (var(--t-primary)),
+    // not a '●' in the text nor a black icon in the prefix column (#2891).
     const w = menu({ denoiseAvailable: true, denoise: true })
-    expect(denoiseEntry(w).icon().props.style).toContain('--t-primary')
+    const on = denoiseEntry(w)
+    expect(on.checked).toBe(true)
+    expect(dropdown(w).props('renderLabel')(on).children[1].props.style).toContain('--t-primary')
     w.unmount()
-    const off = menu({ denoiseAvailable: true, denoise: false })
-    expect(denoiseEntry(off).icon().props.style).toContain('opacity:0')
-    off.unmount()
+    const w2 = menu({ denoiseAvailable: true, denoise: false })
+    const off = denoiseEntry(w2)
+    expect(off.checked).toBe(false)
+    // Unchecked → the plain label, no checkmark vnode.
+    expect(dropdown(w2).props('renderLabel')(off)).toBe(off.label)
+    w2.unmount()
   })
 
   it('emits a toggle instead of trying to switch to a device called "toggle"', async () => {
