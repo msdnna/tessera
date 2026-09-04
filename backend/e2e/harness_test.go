@@ -40,6 +40,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"tessera/internal/testutil"
 )
 
 const (
@@ -96,10 +98,10 @@ func runSuite(m *testing.M) int {
 	defer cancel()
 
 	// Mirror the in-process harness: an unreachable database is a skip, not a
-	// red run — the suite has to be a no-op on a box with no Postgres.
+	// red run — the suite has to be a no-op on a box with no Postgres. It is
+	// still announced loudly, and TESSERA_TEST_REQUIRE_DB turns it red (#2736).
 	if err := pingDB(ctx, adminDBURL); err != nil {
-		log.Printf("e2e: no database reachable at %s (%v) — skipping the e2e suite", redactDBURL(adminDBURL), err)
-		return 0
+		return testutil.SkipOrFail("e2e", fmt.Errorf("no database reachable at %s: %w", redactDBURL(adminDBURL), err))
 	}
 
 	runID = fmt.Sprintf("%d_%d", os.Getpid(), time.Now().UnixNano()%1_000_000)

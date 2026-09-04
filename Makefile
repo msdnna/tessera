@@ -56,9 +56,34 @@ tidy: ## go mod tidy
 lint-backend: ## Run golangci-lint
 	cd backend && golangci-lint run ./...
 
+# show_skips runs a go test command and then surfaces any tier that skipped
+# itself for want of a database (#2736). The indirection is not decoration:
+# go test throws away a *passing* package's output, and a soft skip passes, so
+# the harness's banner cannot reach this terminal on its own — it goes to the
+# file named by TESSERA_TEST_SKIP_LOG and we print it here. $$rc is preserved so
+# the target still fails when the tests do.
+define show_skips
+	@skiplog=$$(mktemp -t tessera-skiplog.XXXXXX); \
+	export TESSERA_TEST_SKIP_LOG=$$skiplog; \
+	$(1); rc=$$?; \
+	if [ -s $$skiplog ]; then cat $$skiplog; fi; \
+	rm -f $$skiplog; \
+	exit $$rc
+endef
+
 .PHONY: test-backend
 test-backend: ## Run backend tests
-	cd backend && $(GO) test ./...
+	@echo "cd backend && $(GO) test ./..."
+	$(call show_skips, cd backend && $(GO) test ./...)
+
+# The integration tier skips itself when Postgres is unreachable, and a skip is
+# the right default on a box without one — but it is then indistinguishable from
+# a pass (#2736). These targets are the ones to run when "green" has to mean
+# something: TESSERA_TEST_REQUIRE_DB makes the skip red, and -count=1 defeats the
+# cached `ok` that go test prints in 0s without running anything.
+.PHONY: test-backend-strict
+test-backend-strict: ## Like test-backend, but a missing database fails instead of skipping
+	cd backend && TESSERA_TEST_REQUIRE_DB=1 $(GO) test -count=1 ./...
 
 .PHONY: test-backend-cover
 test-backend-cover: ## Backend tests with coverage (backend/coverage.out + cover.html); needs tessera_test DB
@@ -77,7 +102,12 @@ test-backend-cover: ## Backend tests with coverage (backend/coverage.out + cover
 test-e2e-backend: ## Black-box e2e: real binaries as subprocesses on a throwaway DB (needs Postgres)
 	@# Build-tagged, so it is not part of test-backend. E2E_GO hands the suite the
 	@# pinned toolchain — it shells out to build the binaries it then runs.
-	cd backend && E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/...
+	@echo "cd backend && E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/..."
+	$(call show_skips, cd backend && E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/...)
+
+.PHONY: test-e2e-backend-strict
+test-e2e-backend-strict: ## Like test-e2e-backend, but a missing database fails instead of skipping
+	cd backend && TESSERA_TEST_REQUIRE_DB=1 E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/...
 
 .PHONY: test-e2e-backend-docker
 test-e2e-backend-docker: ## E2e including the image tier (docker build + run; several minutes)
