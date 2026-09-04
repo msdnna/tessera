@@ -210,6 +210,43 @@ type Note struct {
 	RootGID string
 }
 
+// CanonNoteGID reduces a GitLab note global id to one canonical form,
+// "gid://gitlab/Note/<numeric id>".
+//
+// This exists because the two directions disagree on the class name (task #2865).
+// A note we create through POST /discussions comes back from REST as a bare
+// numeric id, which we render as ".../Note/<id>"; the same note read back through
+// GraphQL carries GitLab's own class name, and a note belonging to a discussion is
+// a DiscussionNote — "gid://gitlab/DiscussionNote/<id>". Both name the same note,
+// but task_comments.gl_note_id is unique and upserted with ON CONFLICT, so the two
+// spellings deduplicate as two comments: the user's own, plus a GitLab-sourced
+// copy nobody can edit.
+//
+// The numeric tail is the identity, so canonicalisation ignores the class name
+// entirely and is correct whatever GitLab decides to call the class. A value that
+// carries no numeric tail (already-bare junk, an empty string) is returned
+// unchanged rather than mangled.
+func CanonNoteGID(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	tail := s
+	if i := strings.LastIndex(tail, "/"); i >= 0 {
+		tail = tail[i+1:]
+	}
+	id, err := strconv.ParseInt(tail, 10, 64)
+	if err != nil || id <= 0 {
+		return s
+	}
+	return formatNoteGID(id)
+}
+
+// formatNoteGID renders a numeric REST note id in the canonical global-id form.
+// Single source of that shape: everything that stores a note id goes through here
+// or through CanonNoteGID.
+func formatNoteGID(id int64) string { return fmt.Sprintf("gid://gitlab/Note/%d", id) }
+
 // Issue is a GitLab issue reduced to the fields the sync needs.
 type Issue struct {
 	GlobalID       string
@@ -453,8 +490,13 @@ func (n issueNode) toIssue(base string) Issue {
 			if note.System || note.ID == "" {
 				continue // skip system notes ("changed status…")
 			}
+			// GraphQL spells a note inside a discussion "gid://gitlab/DiscussionNote/<id>",
+			// while the REST create path stores "gid://gitlab/Note/<id>" for the very
+			// same note. Canonicalise on the way in so gl_note_id has one spelling and
+			// the pull's upsert recognises a comment we pushed ourselves (task #2865).
+			gid := CanonNoteGID(note.ID)
 			nt := Note{
-				GlobalID: note.ID, Body: note.Body, CreatedAt: note.CreatedAt,
+				GlobalID: gid, Body: note.Body, CreatedAt: note.CreatedAt,
 				DiscussionID: disc.ID, RootGID: rootGID,
 			}
 			if note.Author != nil {
@@ -464,7 +506,7 @@ func (n issueNode) toIssue(base string) Issue {
 				}
 			}
 			if rootGID == "" {
-				rootGID = note.ID // this note opens the thread; the rest reply to it
+				rootGID = gid // this note opens the thread; the rest reply to it
 			}
 			issue.Notes = append(issue.Notes, nt)
 		}
@@ -975,7 +1017,7 @@ func (c *Client) CreateIssueNote(ctx context.Context, projectPath string, iid in
 	if uerr := json.Unmarshal(out, &resp); uerr != nil || resp.ID == 0 {
 		return "", nil
 	}
-	return fmt.Sprintf("gid://gitlab/Note/%d", resp.ID), nil
+	return formatNoteGID(resp.ID), nil
 }
 
 // CreateIssueDiscussion opens a new discussion (thread) on the issue and returns
@@ -1000,7 +1042,7 @@ func (c *Client) CreateIssueDiscussion(ctx context.Context, projectPath string, 
 		return "", "", nil
 	}
 	if len(resp.Notes) > 0 && resp.Notes[0].ID != 0 {
-		noteGID = fmt.Sprintf("gid://gitlab/Note/%d", resp.Notes[0].ID)
+		noteGID = formatNoteGID(resp.Notes[0].ID)
 	}
 	return resp.ID, noteGID, nil
 }
@@ -1020,7 +1062,7 @@ func (c *Client) CreateIssueDiscussionNote(ctx context.Context, projectPath stri
 	if uerr := json.Unmarshal(out, &resp); uerr != nil || resp.ID == 0 {
 		return "", nil
 	}
-	return fmt.Sprintf("gid://gitlab/Note/%d", resp.ID), nil
+	return formatNoteGID(resp.ID), nil
 }
 
 // UpdateIssueNote edits an existing note's body (PUT .../notes/<noteID>). noteID is

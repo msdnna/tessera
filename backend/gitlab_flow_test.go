@@ -410,8 +410,18 @@ func (f *fakeGitlab) issueNode(is *glIssue) map[string]any {
 		if _, seen := discNotes[key]; !seen {
 			discOrder = append(discOrder, key)
 		}
+		// GitLab builds a global id out of the note's Ruby class, and a note that
+		// belongs to a discussion is a DiscussionNote — which is exactly what a
+		// comment we pushed through POST /discussions becomes. The class name
+		// therefore differs from the "…/Note/<id>" the push stored, and that
+		// mismatch is the whole of task #2865. The fake used to spell everything
+		// "Note", which is why the bug shipped past a green suite.
+		class := "Note"
+		if n.Discussion != 0 {
+			class = "DiscussionNote"
+		}
 		discNotes[key] = append(discNotes[key], map[string]any{
-			"id": fmt.Sprintf("gid://gitlab/Note/%d", n.ID), "body": n.Body, "system": n.System,
+			"id": fmt.Sprintf("gid://gitlab/%s/%d", class, n.ID), "body": n.Body, "system": n.System,
 			"createdAt": n.CreatedAt.UTC().Format(time.RFC3339),
 			"author":    map[string]any{"username": n.AuthorLogin, "name": "User " + n.AuthorLogin, "avatarUrl": ""},
 		})
