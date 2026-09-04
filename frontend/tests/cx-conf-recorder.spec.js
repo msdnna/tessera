@@ -26,6 +26,7 @@ const lk = vi.hoisted(() => {
     const pubs = {}
     if (over.video) pubs.camera = { isSubscribed: true, isMuted: false, track: over.video }
     if (over.screen) pubs.screen_share = { isSubscribed: true, isMuted: false, track: over.screen }
+    if (over.audio) pubs.microphone = { isSubscribed: true, isMuted: false, track: over.audio }
     return {
       identity,
       sid: `sid-${identity}`,
@@ -62,6 +63,14 @@ const lk = vi.hoisted(() => {
 vi.mock('livekit-client', () => ({ Room: lk.Room, RoomEvent: lk.RoomEvent }))
 
 const { default: RecorderView } = await import('@/views/RecorderView.vue')
+
+// A fake SDK track: attach(el) binds video to the passed element; attach() with
+// no arg (audio sink) returns a fresh element the way livekit-client does.
+const mediaTrack = (id) => ({
+  id,
+  attach: vi.fn((el) => el || document.createElement('audio')),
+  detach: vi.fn(),
+})
 
 function setSearch(qs) {
   Object.defineProperty(window, 'location', {
@@ -121,22 +130,23 @@ describe('RecorderView — egress recording template', () => {
     w.unmount()
   })
 
-  it('fills the frame with the shared screen and the presenter camera as a PiP', async () => {
+  it('attaches the shared screen to the full-frame video, with a camera PiP', async () => {
     const w = await mountRecorder()
     const room = lk.rooms[0]
+    const scr = mediaTrack('scr')
     room.remoteParticipants.set(
       'a',
-      lk.participant('u-a', { name: 'Аня', screen: { id: 'scr' }, video: { id: 'cam' } }),
+      lk.participant('u-a', { name: 'Аня', screen: scr, video: mediaTrack('cam') }),
     )
     room.fire('participantConnected')
     await nextTick()
 
-    // Screen tile carries screen=true; the PiP is a plain (camera) tile.
-    const screen = w.find('.rec-screen')
-    expect(screen.exists()).toBe(true)
-    expect(screen.attributes('data-screen')).toBe('true')
+    // The screen goes to the bare full-frame <video> (no ParticipantTile cap),
+    // via attach() — the height limit this rework removed lived on the tile.
+    expect(scr.attach).toHaveBeenCalled()
+    expect(w.find('.rec-screen-vid').exists()).toBe(true)
+    // A camera PiP over it; no grid while a screen is shared.
     expect(w.find('.rec-pip').exists()).toBe(true)
-    // No grid while a screen is shared.
     expect(w.find('.rec-grid').exists()).toBe(false)
     w.unmount()
   })
@@ -144,14 +154,37 @@ describe('RecorderView — egress recording template', () => {
   it('shows the grid of tiles when nobody is sharing a screen', async () => {
     const w = await mountRecorder()
     const room = lk.rooms[0]
-    room.remoteParticipants.set('a', lk.participant('u-a', { name: 'Аня' }))
-    room.remoteParticipants.set('b', lk.participant('u-b', { name: 'Боря' }))
+    room.remoteParticipants.set('a', lk.participant('u-a', { name: 'Аня', video: mediaTrack('a') }))
+    room.remoteParticipants.set('b', lk.participant('u-b', { name: 'Боря', video: mediaTrack('b') }))
     room.fire('participantConnected')
     await nextTick()
 
-    expect(w.find('.rec-screen').exists()).toBe(false)
+    expect(w.find('.rec-pip').exists()).toBe(false)
     expect(w.find('.rec-grid').exists()).toBe(true)
     expect(w.findAll('.rec-cell')).toHaveLength(2)
+    w.unmount()
+  })
+
+  it('plays every participant audio, or egress records silence (#2888 removed the tile sink)', async () => {
+    const w = await mountRecorder()
+    const room = lk.rooms[0]
+    const mic = mediaTrack('mic')
+    room.remoteParticipants.set('a', lk.participant('u-a', { name: 'Аня', audio: mic }))
+    room.fire('participantConnected')
+    await nextTick()
+
+    // The custom template records the tab's sound, so a remote mic must actually
+    // play here — ParticipantTile stopped rendering audio at #2888.
+    expect(mic.attach).toHaveBeenCalled()
+    expect(w.find('.rec-audio').element.children.length).toBe(1)
+    w.unmount()
+  })
+
+  it('suppresses the Google-Translate offer so it stays out of the recording', async () => {
+    const w = await mountRecorder()
+    // The bubble renders into the captured viewport otherwise (#2877 rework).
+    expect(document.documentElement.getAttribute('translate')).toBe('no')
+    expect(document.querySelector('meta[name="google"][content="notranslate"]')).not.toBeNull()
     w.unmount()
   })
 

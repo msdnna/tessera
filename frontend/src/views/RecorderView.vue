@@ -17,18 +17,18 @@
 // ready for the capture to begin, END_RECORDING when the room closes so egress
 // finalises the file. Nothing here calls our API — egress owns the token, we own
 // the pixels.
-import { ref, computed, onMounted, onBeforeUnmount, shallowRef } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, shallowRef, watch } from 'vue'
 import { describe } from '@/composables/useConfTransport'
 import ParticipantTile from '@/components/conference/ParticipantTile.vue'
 
 // A shallowRef of plain descriptors: describe() hands back flat objects (never
 // live SDK handles), and the tiles diff these.
 const peers = shallowRef([])
-const connected = ref(false)
 const fatal = ref('')
+const screenVideoEl = ref(null)
+const audioSink = ref(null)
 
 let room = null
-let sdk = null
 
 // The presenter's screen, if anyone is sharing — it takes the whole frame.
 const screenPeer = computed(() => peers.value.find((p) => p.screenTrack) || null)
@@ -51,6 +51,70 @@ function rebuild() {
   const out = []
   for (const p of room.remoteParticipants.values()) out.push(describe(p, false))
   peers.value = out
+  syncAudio()
+}
+
+// The shared screen is a bare, full-frame <video>, NOT a ParticipantTile: the
+// tile caps a screen at 62vh (.tile.screen.stage) to leave room for the room's
+// strip, which in a recording is just empty letterbox bands (#2877 rework).
+// attach()/detach() like the tile does, so the SDK counts the element as watched.
+watch(
+  [() => screenPeer.value?.screenTrack || null, screenVideoEl],
+  ([track, el], prev) => {
+    const old = prev?.[0]
+    if (old && old !== track && el) old.detach(el)
+    if (track && el) track.attach(el)
+    else if (el && el.srcObject) el.srcObject = null
+  },
+  { flush: 'post' },
+)
+
+// Audio playback for the capture. Egress records the browser TAB's sound, so
+// every participant's audio has to actually play on this page — and it will not
+// on its own: ParticipantTile stopped rendering audio at #2888, when it moved to
+// the room's shared session sink, which this standalone page does not have. So we
+// keep our own sink of <audio> elements, one per live audio (mic + shared-tab),
+// idempotent by track so a rebuild does not stack duplicates.
+const audioEls = new Map()
+function syncAudio() {
+  const sink = audioSink.value
+  if (!sink) return
+  const live = new Set()
+  for (const p of peers.value) {
+    for (const t of [p.audioTrack, p.screenAudioTrack]) {
+      if (!t) continue
+      live.add(t)
+      if (!audioEls.has(t)) {
+        const el = t.attach()
+        el.autoplay = true
+        sink.appendChild(el)
+        audioEls.set(t, el)
+      }
+    }
+  }
+  for (const [t, el] of [...audioEls]) {
+    if (live.has(t)) continue
+    try {
+      t.detach(el)
+    } catch {
+      // track already gone; drop the element regardless
+    }
+    el.remove()
+    audioEls.delete(t)
+  }
+}
+
+// Egress runs Chrome in a locale that differs from the room's language, so it
+// offers to translate the page — and that bubble lands IN the recording. Tell
+// Chrome not to (#2877 rework). Only this page, not the whole app.
+function suppressTranslate() {
+  const html = document.documentElement
+  html.setAttribute('translate', 'no')
+  html.classList.add('notranslate')
+  const m = document.createElement('meta')
+  m.name = 'google'
+  m.content = 'notranslate'
+  document.head.appendChild(m)
 }
 
 async function connect() {
@@ -63,7 +127,7 @@ async function connect() {
     fatal.value = 'recorder: missing url or token'
     return
   }
-  sdk = await import('livekit-client')
+  const sdk = await import('livekit-client')
   const { Room, RoomEvent } = sdk
   room = new Room({
     // The opposite of the room's own client: adaptiveStream downgrades a tile
@@ -96,7 +160,6 @@ async function connect() {
     fatal.value = 'recorder: ' + (e?.message || 'connect failed')
     return
   }
-  connected.value = true
   rebuild()
   // Ready — let egress begin capturing. Deferred one frame so the first tiles
   // are painted before the recording starts, or the opening moment is blank.
@@ -105,35 +168,51 @@ async function connect() {
   })
 }
 
-onMounted(connect)
+onMounted(() => {
+  suppressTranslate()
+  connect()
+})
 onBeforeUnmount(() => {
+  for (const [t, el] of audioEls) {
+    try {
+      t.detach(el)
+    } catch {
+      // already detached
+    }
+    el.remove()
+  }
+  audioEls.clear()
   if (room) room.disconnect()
 })
 </script>
 
 <template>
   <div class="rec">
-    <div v-if="fatal" class="rec-msg">{{ fatal }}</div>
+    <template v-if="!fatal">
+      <!-- Hidden audio sink: the tab's sound is what egress records. -->
+      <div ref="audioSink" class="rec-audio" aria-hidden="true" />
 
-    <!-- Screen shared → it fills the frame at its own resolution, one camera PiP
-         in the bottom-right corner over it. -->
-    <template v-else-if="screenPeer">
-      <participant-tile
-        :key="`screen-${screenPeer.id}`"
-        :peer="screenPeer"
-        stage
-        screen
-        class="rec-screen"
+      <!-- Shared screen, full frame. Always in the DOM (v-show) so its ref is
+           stable for attach/detach; hidden when nobody is sharing. -->
+      <video
+        v-show="screenPeer"
+        ref="screenVideoEl"
+        class="rec-screen-vid"
+        autoplay
+        muted
+        playsinline
       />
-      <div v-if="pipPeer" class="rec-pip">
+      <div v-if="screenPeer && pipPeer" class="rec-pip">
         <participant-tile :key="`pip-${pipPeer.id}`" :peer="pipPeer" />
+      </div>
+
+      <!-- No screen → the grid of tiles, the way the room looks in the browser. -->
+      <div v-if="!screenPeer" class="rec-grid" :data-count="gridPeers.length">
+        <participant-tile v-for="p in gridPeers" :key="p.sid || p.id" :peer="p" class="rec-cell" />
       </div>
     </template>
 
-    <!-- No screen → the grid of tiles, the way the room looks in the browser. -->
-    <div v-else class="rec-grid" :data-count="gridPeers.length">
-      <participant-tile v-for="p in gridPeers" :key="p.sid || p.id" :peer="p" class="rec-cell" />
-    </div>
+    <div v-else class="rec-msg">{{ fatal }}</div>
   </div>
 </template>
 
@@ -156,16 +235,22 @@ onBeforeUnmount(() => {
   color: #9aa;
   font-size: 20px;
 }
-/* The shared screen: whole frame, letterboxed (contain) so a presenter's slides
-   are never cropped. */
-.rec-screen {
+.rec-audio {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+/* The shared screen: the WHOLE frame. contain (not cover) so a presenter's slide
+   is letterboxed rather than cropped when its aspect differs from 16:9; when it
+   matches — the common case — it fills edge to edge with no bands, which is the
+   height cap this rework removed. */
+.rec-screen-vid {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-}
-.rec-screen :deep(video) {
-  object-fit: contain !important;
+  object-fit: contain;
   background: #000;
 }
 /* Camera picture-in-picture, bottom-right over the screen. 22vw keeps it small
