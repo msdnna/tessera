@@ -998,6 +998,10 @@
     <string name="notif_channel_device_desc">Task notifications</string>
     <string name="notif_channel_reminders_name">Reminders</string>
     <string name="notif_channel_reminders_desc">Task reminder alarms</string>
+    <string name="notif_channel_conference_name">Conferences</string>
+    <string name="notif_channel_conference_desc">An ongoing call while the app is in the background</string>
+    <string name="conf_call_ongoing">Conference in progress</string>
+    <string name="conf_call_ongoing_hint">Tap to return to the call</string>
     <string name="reminder_push_title">Reminder</string>
     <string name="reminder_push_default_body">Time to get to the task</string>
     <string name="push_title_assigned">Task assigned</string>

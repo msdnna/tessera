@@ -1022,6 +1022,10 @@
     <string name="notif_channel_device_desc">Уведомления о задачах</string>
     <string name="notif_channel_reminders_name">Напоминания</string>
     <string name="notif_channel_reminders_desc">Срабатывания напоминаний по задачам</string>
+    <string name="notif_channel_conference_name">Конференции</string>
+    <string name="notif_channel_conference_desc">Идущий звонок, пока приложение свёрнуто</string>
+    <string name="conf_call_ongoing">Идёт конференция</string>
+    <string name="conf_call_ongoing_hint">Нажмите, чтобы вернуться в звонок</string>
     <string name="reminder_push_title">Напоминание</string>
     <string name="reminder_push_default_body">Пора заняться задачей</string>
     <string name="push_title_assigned">Назначена задача</string>

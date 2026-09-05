@@ -10,6 +10,16 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // livekit-android's audio routing dependency (audioswitch) is published
+        // only on JitPack, and pinned to a commit hash rather than a release —
+        // without this the SDK does not resolve at all (#2896 §4).
+        // Scoped to that one group on purpose: JitPack builds arbitrary GitHub
+        // repos on demand, so an unrestricted entry here would let any typo'd
+        // coordinate resolve to somebody's source tree.
+        maven {
+            url 'https://jitpack.io'
+            content { includeGroup 'com.github.davidliu' }
+        }
     }
 }
 

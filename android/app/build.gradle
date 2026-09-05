@@ -225,6 +225,15 @@ dependencies {
     implementation 'io.coil-kt:coil-compose:2.7.0'
     implementation 'io.coil-kt:coil-svg:2.7.0'
 
+    // Conference media (#2896 §4). The SFU client, native rather than in a
+    // WebView: a call has to keep its audio while the app is backgrounded, follow
+    // the headset/speaker routing the phone decides, and survive an incoming
+    // phone call — none of which a WebView gets to participate in.
+    // Major matches the web's livekit-client 2.x, so both clients speak the same
+    // protocol to the same server. It brings a prebuilt WebRTC (~20 MB of native
+    // libs) — the size increase is accepted for this task, see the plan.
+    implementation 'io.livekit:livekit-android:2.28.1'
+
     // ── Unit tests ──────────────────────────────────────────────────────────
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'io.mockk:mockk:1.14.11'
