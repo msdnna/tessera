@@ -73,6 +73,8 @@ class ConferenceRoomTest {
         onRetry: () -> Unit = {},
         onHangup: () -> Unit = {},
         onToggleStageOnly: () -> Unit = {},
+        chatUnread: Int = 0,
+        onOpenChat: () -> Unit = {},
     ) {
         compose.setContent {
             TesseraTheme {
@@ -87,6 +89,8 @@ class ConferenceRoomTest {
                     onToggleStageOnly = onToggleStageOnly,
                     onRetry = onRetry,
                     onHangup = onHangup,
+                    chatUnread = chatUnread,
+                    onOpenChat = onOpenChat,
                 )
             }
         }
@@ -313,5 +317,46 @@ class ConferenceRoomTest {
 
         compose.onNodeWithTag(TestTags.CONFERENCE_PEOPLE).assertIsNotEnabled()
         compose.onNodeWithTag(TestTags.CONFERENCE_HAND).assertIsNotEnabled()
+        // The chat is HTTP, but its nudges are not: without the socket the badge
+        // would never move, so the button waits with the rest of them (§7).
+        compose.onNodeWithTag(TestTags.CONFERENCE_CHAT_OPEN).assertIsNotEnabled()
     }
+
+    @Test
+    fun `the chat button badges unread lines and opens the sheet`() {
+        var opened = 0
+        mount(connected(), chatUnread = 3, onOpenChat = { opened += 1 })
+
+        compose.onNodeWithTag(TestTags.CONFERENCE_CHAT_UNREAD).assertTextEquals("3")
+        compose.onNodeWithTag(TestTags.CONFERENCE_CHAT_OPEN).performClick()
+        assertThat(opened).isEqualTo(1)
+    }
+
+    @Test
+    fun `a chat nobody has spoken in carries no badge`() {
+        mount(connected(), chatUnread = 0)
+
+        // Same shape as the hands badge: the button stays, the badge is what a
+        // quiet chat has to lose.
+        compose.onNodeWithTag(TestTags.CONFERENCE_CHAT_OPEN).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.CONFERENCE_CHAT_UNREAD).assertDoesNotExist()
+    }
+
+    /**
+     * Eight controls at 48dp with 10dp between them are 454dp wide, and this
+     * screen is 411dp. A `Row` would clip the overflow in silence — and what it
+     * clips is the button on the end, which is «Завершить».
+     */
+    @Test
+    fun `the toolbar keeps every control on a phone-width screen`() {
+        mount(connected(), chatUnread = 1)
+
+        compose.onNodeWithTag(TestTags.CONFERENCE_MIC).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.CONFERENCE_CHAT_OPEN).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.CONFERENCE_HANGUP).assertIsDisplayed()
+    }
+
+    private fun connected() = live(peer("me", "Я", local = true)).copy(
+        room = ConfRoomState(connected = true, meId = "me", people = listOf(ConfPerson(userId = "me", name = "Я"))),
+    )
 }

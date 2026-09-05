@@ -815,6 +815,25 @@
     <string name="conf_route_wired">Наушники</string>
     <string name="conf_route_speaker">Динамик</string>
     <string name="conf_route_earpiece">Разговорный динамик</string>
+    <string name="conf_chat_title">Чат</string>
+    <string name="conf_chat_open">Открыть чат</string>
+    <string name="conf_chat_close">Закрыть чат</string>
+    <string name="conf_chat_empty">Сообщений пока нет</string>
+    <string name="conf_chat_placeholder">Написать в чат…</string>
+    <string name="conf_chat_attach">Прикрепить файл</string>
+    <string name="conf_chat_send">Отправить</string>
+    <string name="conf_chat_download">Скачать</string>
+    <string name="conf_chat_delete">Удалить сообщение</string>
+    <string name="conf_chat_delete_confirm">Удалить сообщение? Оно исчезнет у всех участников.</string>
+    <string name="conf_chat_remove_file">Убрать файл</string>
+    <string name="conf_chat_load_older">Показать более ранние</string>
+    <string name="conf_chat_unknown_author">Неизвестный автор</string>
+    <string name="conf_chat_file_too_big">«%1$s» больше 25 МБ</string>
+    <string name="conf_chat_too_many_files">К одному сообщению можно приложить не больше %1$d файлов</string>
+    <string name="conf_chat_too_long">Сообщение длиннее %1$d символов</string>
+    <string name="conf_chat_size_b">%1$s Б</string>
+    <string name="conf_chat_size_kb">%1$s КБ</string>
+    <string name="conf_chat_size_mb">%1$s МБ</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

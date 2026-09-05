@@ -157,13 +157,6 @@ class ConferenceRepository {
         return api.conferenceMessages(id, beforeAt, beforeId, limit)
     }
 
-    /** The page older than [page]'s first message, or null when there is none. */
-    suspend fun olderMessages(id: String, page: ConferenceMessagePage, limit: Int? = null): ConferenceMessagePage? {
-        val oldest = page.messages.firstOrNull() ?: return null
-        if (!page.hasMore) return null
-        return messages(id, oldest.createdAt, oldest.id, limit)
-    }
-
     suspend fun postMessage(id: String, body: String): ConferenceMessage =
         api.postConferenceMessage(id, PostConferenceMessageRequest(body))
 
@@ -184,7 +177,24 @@ class ConferenceRepository {
 
     suspend fun deleteMessage(messageId: String) = api.deleteConferenceMessage(messageId)
 
-    suspend fun downloadAttachment(attachmentId: String) = api.downloadConferenceAttachment(attachmentId)
+    /**
+     * Streams a chat attachment into the cache, returning the file.
+     *
+     * A file rather than the bytes: the thing that opens it is the system viewer
+     * behind our `FileProvider`, exactly as task attachments do it, and a
+     * `ByteArray` would have to be written out anyway — after being held whole,
+     * at up to 25 MB, on top of a running call.
+     */
+    suspend fun downloadAttachment(cacheDir: java.io.File, attachmentId: String, filename: String): java.io.File {
+        val body = api.downloadConferenceAttachment(attachmentId)
+        val dir = java.io.File(cacheDir, "conference-attachments").apply { mkdirs() }
+        // The name comes from whoever uploaded it: a «../» in it would otherwise
+        // write outside the directory we chose.
+        val safe = filename.ifBlank { attachmentId }.replace(Regex("[/\\\\]"), "_")
+        val out = java.io.File(dir, safe)
+        body.byteStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+        return out
+    }
 
     // ── Recording ─────────────────────────────────────────────────────────────
 

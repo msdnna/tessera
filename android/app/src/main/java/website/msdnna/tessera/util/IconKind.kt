@@ -134,6 +134,9 @@ object Ion {
     // Participants and moderation (#2896 §6).
     const val HAND_RIGHT = "hand_right"
     const val VOLUME_MUTE = "volume_mute"
+
+    // In-call chat (#2896 §7).
+    const val CHATBUBBLES = "chatbubbles"
 }
 
 fun classifyIcon(icon: String?): IconKind {

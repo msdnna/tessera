@@ -301,6 +301,48 @@ object TestTags {
 
     fun conferenceVolume(userId: String) = "conference-volume:$userId"
 
+    // ── in-call chat (#2896 §7) ────────────────────────────────────────────
+
+    const val CONFERENCE_CHAT = "conference-chat"
+    const val CONFERENCE_CHAT_OPEN = "conference-chat-open"
+    const val CONFERENCE_CHAT_CLOSE = "conference-chat-close"
+    const val CONFERENCE_CHAT_LOG = "conference-chat-log"
+    const val CONFERENCE_CHAT_EMPTY = "conference-chat-empty"
+    const val CONFERENCE_CHAT_OLDER = "conference-chat-older"
+    const val CONFERENCE_CHAT_INPUT = "conference-chat-input"
+    const val CONFERENCE_CHAT_SEND = "conference-chat-send"
+    const val CONFERENCE_CHAT_ATTACH = "conference-chat-attach"
+
+    /** A refused pick (too big, too many). Separate from the error line: one is
+     *  about the file the user just chose, the other about the server. */
+    const val CONFERENCE_CHAT_REFUSAL = "conference-chat-refusal"
+
+    /** Unread lines on the closed sheet. Like the hands badge, only there when
+     *  it has something to say. */
+    const val CONFERENCE_CHAT_UNREAD = "conference-chat-unread"
+
+    /** One message, keyed by id — the list grows at both ends, so an index would
+     *  name a different line after every «показать более ранние». */
+    fun conferenceChatMessage(id: String) = "conference-chat-message:$id"
+
+    /** Delete, per message. Only on the ones this phone may remove, which is the
+     *  whole point of asserting on it. */
+    fun conferenceChatDelete(id: String) = "conference-chat-delete:$id"
+
+    /** The confirm button of the delete dialog — the press that actually reaches
+     *  the server, and the only one a spec should be able to make. */
+    const val CONFERENCE_CHAT_DELETE_CONFIRM = "conference-chat-delete-confirm"
+
+    /** An attachment on a message, and the picked-but-unsent file in the
+     *  composer — different lifetimes, different tags. */
+    fun conferenceChatAttachment(id: String) = "conference-chat-attachment:$id"
+
+    fun conferenceChatPending(uri: String) = "conference-chat-pending:$uri"
+
+    /** Takes a picked file back off the message before it is sent — the only way
+     *  out of a wrong pick, since the picker replaces nothing. */
+    fun conferenceChatPendingRemove(uri: String) = "conference-chat-pending-remove:$uri"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

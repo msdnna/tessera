@@ -801,6 +801,25 @@
     <string name="conf_route_wired">Headphones</string>
     <string name="conf_route_speaker">Speaker</string>
     <string name="conf_route_earpiece">Earpiece</string>
+    <string name="conf_chat_title">Chat</string>
+    <string name="conf_chat_open">Open chat</string>
+    <string name="conf_chat_close">Close chat</string>
+    <string name="conf_chat_empty">No messages yet</string>
+    <string name="conf_chat_placeholder">Write to the chat…</string>
+    <string name="conf_chat_attach">Attach a file</string>
+    <string name="conf_chat_send">Send</string>
+    <string name="conf_chat_download">Download</string>
+    <string name="conf_chat_delete">Delete message</string>
+    <string name="conf_chat_delete_confirm">Delete this message? It disappears for everyone.</string>
+    <string name="conf_chat_remove_file">Remove file</string>
+    <string name="conf_chat_load_older">Show earlier messages</string>
+    <string name="conf_chat_unknown_author">Unknown author</string>
+    <string name="conf_chat_file_too_big">“%1$s” is larger than 25 MB</string>
+    <string name="conf_chat_too_many_files">At most %1$d files per message</string>
+    <string name="conf_chat_too_long">The message is longer than %1$d characters</string>
+    <string name="conf_chat_size_b">%1$s B</string>
+    <string name="conf_chat_size_kb">%1$s KB</string>
+    <string name="conf_chat_size_mb">%1$s MB</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -54,6 +55,7 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.TesseraWarning
+import website.msdnna.tessera.ui.viewmodels.ConferenceChatViewModel
 import website.msdnna.tessera.ui.viewmodels.ConferenceRoomUiState
 import website.msdnna.tessera.ui.viewmodels.ConferenceRoomViewModel
 import website.msdnna.tessera.util.ConfAudioRoute
@@ -82,6 +84,8 @@ import website.msdnna.tessera.util.confHandCount
 fun ConferenceRoom(conferenceId: String, onHangup: () -> Unit) {
     val vm: ConferenceRoomViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
+    val chatVm: ConferenceChatViewModel = viewModel()
+    val chat by chatVm.state.collectAsStateWithLifecycle()
     val ctx = LocalContext.current
 
     // Asked for from here rather than at startup: a microphone permission
@@ -122,39 +126,55 @@ fun ConferenceRoom(conferenceId: String, onHangup: () -> Unit) {
         if (state.room.ended != ConfRoomEnd.NONE) onHangup()
     }
 
-    ConferenceRoomBody(
-        state = state,
-        onToggleMic = {
-            if (state.grant.mic) vm.toggleMic() else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
-        },
-        onToggleCam = {
-            when {
-                state.session.cam -> vm.setCam(false)
-                state.grant.cam -> vm.setCam(true)
-                else -> camLauncher.launch(Manifest.permission.CAMERA)
-            }
-        },
-        onSwitchCamera = { vm.switchCamera() },
-        onOpenRoutes = { vm.openRouteMenu() },
-        onCloseRoutes = { vm.closeRouteMenu() },
-        onSelectRoute = { vm.selectRoute(it) },
-        onToggleStageOnly = { vm.toggleStageOnly() },
-        onRetry = { vm.retry() },
-        onHangup = {
-            vm.exit()
-            onHangup()
-        },
-        onToggleHand = { vm.toggleHand() },
-        onOpenPanel = { vm.openPanel() },
-        onClosePanel = { vm.closePanel() },
-        onForceMute = { id, muted -> vm.forceMute(id, muted) },
-        onAskKick = { vm.askKick(it) },
-        onCancelKick = { vm.cancelKick() },
-        onConfirmKick = { vm.confirmKick() },
-        onLocalMute = { vm.toggleLocalMute(it) },
-        onVolume = { id, v -> vm.setPeerVolume(id, v) },
-        onDismissDenied = { vm.clearDenied() },
-    )
+    // Bound to the call, not to the sheet: the badge has to count while the chat
+    // is closed, which it cannot do without the list behind it.
+    LaunchedEffect(conferenceId, state.room.canModerate) {
+        chatVm.bind(conferenceId, state.room.canModerate)
+    }
+    LaunchedEffect(state.room.chatNudge) { chatVm.onNudge(state.room.chatNudge) }
+
+    Box(Modifier.fillMaxSize()) {
+        ConferenceRoomBody(
+            state = state,
+            onToggleMic = {
+                if (state.grant.mic) vm.toggleMic() else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            },
+            onToggleCam = {
+                when {
+                    state.session.cam -> vm.setCam(false)
+                    state.grant.cam -> vm.setCam(true)
+                    else -> camLauncher.launch(Manifest.permission.CAMERA)
+                }
+            },
+            onSwitchCamera = { vm.switchCamera() },
+            onOpenRoutes = { vm.openRouteMenu() },
+            onCloseRoutes = { vm.closeRouteMenu() },
+            onSelectRoute = { vm.selectRoute(it) },
+            onToggleStageOnly = { vm.toggleStageOnly() },
+            onRetry = { vm.retry() },
+            onHangup = {
+                vm.exit()
+                onHangup()
+            },
+            onToggleHand = { vm.toggleHand() },
+            onOpenPanel = { vm.openPanel() },
+            onClosePanel = { vm.closePanel() },
+            onForceMute = { id, muted -> vm.forceMute(id, muted) },
+            onAskKick = { vm.askKick(it) },
+            onCancelKick = { vm.cancelKick() },
+            onConfirmKick = { vm.confirmKick() },
+            onLocalMute = { vm.toggleLocalMute(it) },
+            onVolume = { id, v -> vm.setPeerVolume(id, v) },
+            onDismissDenied = { vm.clearDenied() },
+            chatUnread = chat.unread,
+            onOpenChat = { chatVm.open() },
+        )
+
+        // Over the room rather than inside its body: the sheet needs a picker, a
+        // resolver and a view model, none of which the body — which a spec mounts
+        // against a call that never existed — is allowed to know about.
+        if (chat.open) ConferenceChatHost(chatVm, chat)
+    }
 }
 
 private fun android.content.Context.hasPermission(name: String): Boolean =
@@ -187,6 +207,8 @@ internal fun ConferenceRoomBody(
     onLocalMute: (String) -> Unit = {},
     onVolume: (String, Float) -> Unit = { _, _ -> },
     onDismissDenied: () -> Unit = {},
+    chatUnread: Int = 0,
+    onOpenChat: () -> Unit = {},
 ) {
     val c = Tessera.colors
     val layout = state.stage
@@ -266,6 +288,8 @@ internal fun ConferenceRoomBody(
                     onToggleHand = onToggleHand,
                     onOpenPanel = onOpenPanel,
                     onHangup = onHangup,
+                    chatUnread = chatUnread,
+                    onOpenChat = onOpenChat,
                 )
             }
         }
@@ -411,13 +435,19 @@ private fun ConferenceToolbar(
     onToggleHand: () -> Unit,
     onOpenPanel: () -> Unit,
     onHangup: () -> Unit,
+    chatUnread: Int,
+    onOpenChat: () -> Unit,
 ) {
     val c = Tessera.colors
     val controls = state.controls
-    Row(
+    // A flow, not a row: eight 48dp controls with gaps between them are wider
+    // than a 411dp phone, and a Row overflowing does not shrink or scroll — it
+    // clips, and the button it clips is the one on the end. Wrapping costs a
+    // second line on a narrow screen and keeps «Завершить» reachable on every one.
+    FlowRow(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         RoundControl(
             icon = if (controls.micOn) Ion.MIC else Ion.MIC_OFF,
@@ -507,6 +537,31 @@ private fun ConferenceToolbar(
                         .background(TesseraWarning)
                         .padding(horizontal = 5.dp, vertical = 1.dp)
                         .testTag(TestTags.CONFERENCE_HANDS),
+                )
+            }
+        }
+        Box {
+            RoundControl(
+                icon = Ion.CHATBUBBLES,
+                active = false,
+                // Same reasoning as the roster: the chat is HTTP, and a call
+                // whose media never came up can still be typed in.
+                enabled = state.room.connected,
+                tag = TestTags.CONFERENCE_CHAT_OPEN,
+                description = stringResource(R.string.conf_chat_open),
+                onClick = onOpenChat,
+            )
+            if (chatUnread > 0) {
+                Text(
+                    chatUnread.toString(),
+                    color = c.onPrimary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                        .clip(CircleShape)
+                        .background(c.primary)
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                        .testTag(TestTags.CONFERENCE_CHAT_UNREAD),
                 )
             }
         }
