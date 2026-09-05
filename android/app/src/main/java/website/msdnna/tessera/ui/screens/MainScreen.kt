@@ -77,6 +77,7 @@ sealed interface MainDest {
     data object Home : MainDest
     data object Notes : MainDest
     data object Documents : MainDest
+    data object Conferences : MainDest
     data object Reminders : MainDest
     data object Milestones : MainDest
     data object GitLabSettings : MainDest
@@ -261,6 +262,8 @@ fun MainScreen(
 
                 saved == "documents" -> dest = MainDest.Documents
 
+                saved == "conferences" -> dest = MainDest.Conferences
+
                 saved == "reminders" -> dest = MainDest.Reminders
 
                 saved == "milestones" -> dest = MainDest.Milestones
@@ -284,6 +287,7 @@ fun MainScreen(
                 is MainDest.Home -> "home"
                 is MainDest.Notes -> "notes"
                 is MainDest.Documents -> "documents"
+                is MainDest.Conferences -> "conferences"
                 is MainDest.Reminders -> "reminders"
                 is MainDest.Milestones -> "milestones"
                 is MainDest.GitLabSettings -> "gitlab"
@@ -332,6 +336,7 @@ fun MainScreen(
                     onOpenReminders = { go(MainDest.Reminders) },
                     onOpenNotes = { go(MainDest.Notes) },
                     onOpenDocuments = { go(MainDest.Documents) },
+                    onOpenConferences = { go(MainDest.Conferences) },
                     onOpenMilestones = { go(MainDest.Milestones) },
                     onOpenHelp = { go(MainDest.Help()) },
                     onOpenMembers = {
@@ -425,6 +430,8 @@ fun MainScreen(
                             )
 
                             is MainDest.Documents -> DocumentsScreen(workspaceId = state.currentId)
+
+                            is MainDest.Conferences -> ConferencesScreen(workspaceId = state.currentId)
 
                             is MainDest.Reminders -> RemindersScreen()
 
@@ -700,6 +707,7 @@ internal fun titleFor(dest: MainDest): UiText = when (dest) {
     is MainDest.Home -> UiText.Res(R.string.nav_home)
     is MainDest.Notes -> UiText.Res(R.string.nav_notes)
     is MainDest.Documents -> UiText.Res(R.string.nav_documents)
+    is MainDest.Conferences -> UiText.Res(R.string.nav_conferences)
     is MainDest.Reminders -> UiText.Res(R.string.nav_reminders)
     is MainDest.Milestones -> UiText.Res(R.string.nav_milestones)
     is MainDest.GitLabSettings -> UiText.Raw("GitLab")
@@ -716,6 +724,7 @@ private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "home"
     is MainDest.Notes -> "notes"
     is MainDest.Documents -> "documents"
+    is MainDest.Conferences -> "conferences"
     is MainDest.Reminders -> "reminders"
     is MainDest.Milestones -> "milestones"
     is MainDest.GitLabSettings -> "gitlab"

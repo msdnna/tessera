@@ -131,6 +131,7 @@
     <string name="nav_reminders">Напоминания</string>
     <string name="nav_notes">Заметки</string>
     <string name="nav_documents">Документы</string>
+    <string name="nav_conferences">Конференции</string>
     <string name="nav_help">Помощь</string>
     <string name="nav_admin">Администрирование</string>
 
@@ -731,6 +732,42 @@
     <string name="docs_reader_untitled">Документ</string>
     <string name="docs_reader_empty">Документ пуст</string>
     <string name="docs_image_alt">Изображение документа</string>
+
+    <!-- Конференции (#2896). Подписи строки: время у карточки одно, и какое
+         именно — зависит от состояния встречи, см. conferenceTimeLine. -->
+    <string name="conf_schedule">Запланировать</string>
+    <string name="conf_untitled">Без названия</string>
+    <string name="conf_empty">Конференций пока нет</string>
+    <string name="conf_empty_filtered">В этом фильтре пусто</string>
+    <string name="conf_no_workspace">Выберите пространство</string>
+    <string name="conf_filter_all">Все</string>
+    <string name="conf_filter_live">Идут сейчас</string>
+    <string name="conf_filter_scheduled">Запланированные</string>
+    <string name="conf_filter_ended">Завершённые</string>
+    <string name="conf_status_live">Идёт сейчас</string>
+    <string name="conf_status_scheduled">Запланирована</string>
+    <string name="conf_status_ended">Завершена</string>
+    <string name="conf_row_invited">Приглашено: %1$d</string>
+    <string name="conf_row_in_room">В комнате: %1$d</string>
+    <string name="conf_row_author">Создал: %1$s</string>
+    <string name="conf_row_author_unknown">Автор неизвестен</string>
+    <string name="conf_row_scheduled_at">Начало: %1$s</string>
+    <string name="conf_row_started_at">Началась: %1$s</string>
+    <string name="conf_row_ended_at">Завершилась: %1$s</string>
+    <string name="conf_row_no_time">Без времени начала</string>
+    <string name="conf_confirm_delete">Удалить конференцию? Чат и записи удалятся вместе с ней.</string>
+    <string name="conf_create_title">Новая конференция</string>
+    <string name="conf_create_name">Название</string>
+    <string name="conf_create_name_placeholder">Ежедневная встреча</string>
+    <string name="conf_create_description">Описание</string>
+    <string name="conf_create_description_placeholder">Повестка, ссылки, что обсуждаем</string>
+    <string name="conf_create_at">Начало</string>
+    <string name="conf_create_at_empty">Время не назначено</string>
+    <string name="conf_create_at_hint">Оставьте пустым, если время заранее не назначено</string>
+    <string name="conf_create_ttl">Хранить записи, дней</string>
+    <string name="conf_create_ttl_hint">Записи этой конференции удалятся автоматически через столько дней. 0 — хранить без срока.</string>
+    <string name="conf_create_ttl_invalid">Введите число дней: 0 или больше</string>
+    <string name="conf_create_submit">Запланировать</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

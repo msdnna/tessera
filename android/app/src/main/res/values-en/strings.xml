@@ -127,6 +127,7 @@
     <string name="nav_reminders">Reminders</string>
     <string name="nav_notes">Notes</string>
     <string name="nav_documents">Documents</string>
+    <string name="nav_conferences">Conferences</string>
     <string name="nav_help">Help</string>
     <string name="nav_admin">Administration</string>
 
@@ -718,6 +719,41 @@
     <string name="docs_reader_untitled">Document</string>
     <string name="docs_reader_empty">This document is empty</string>
     <string name="docs_image_alt">Document image</string>
+
+    <!-- Conferences (#2896) -->
+    <string name="conf_schedule">Schedule</string>
+    <string name="conf_untitled">Untitled</string>
+    <string name="conf_empty">No conferences yet</string>
+    <string name="conf_empty_filtered">Nothing in this filter</string>
+    <string name="conf_no_workspace">Pick a workspace</string>
+    <string name="conf_filter_all">All</string>
+    <string name="conf_filter_live">Live</string>
+    <string name="conf_filter_scheduled">Scheduled</string>
+    <string name="conf_filter_ended">Ended</string>
+    <string name="conf_status_live">Live now</string>
+    <string name="conf_status_scheduled">Scheduled</string>
+    <string name="conf_status_ended">Ended</string>
+    <string name="conf_row_invited">Invited: %1$d</string>
+    <string name="conf_row_in_room">In the room: %1$d</string>
+    <string name="conf_row_author">Created by %1$s</string>
+    <string name="conf_row_author_unknown">Author unknown</string>
+    <string name="conf_row_scheduled_at">Starts: %1$s</string>
+    <string name="conf_row_started_at">Started: %1$s</string>
+    <string name="conf_row_ended_at">Ended: %1$s</string>
+    <string name="conf_row_no_time">No start time</string>
+    <string name="conf_confirm_delete">Delete this conference? Its chat and recordings go with it.</string>
+    <string name="conf_create_title">New conference</string>
+    <string name="conf_create_name">Title</string>
+    <string name="conf_create_name_placeholder">Daily standup</string>
+    <string name="conf_create_description">Description</string>
+    <string name="conf_create_description_placeholder">Agenda, links, what we discuss</string>
+    <string name="conf_create_at">Start</string>
+    <string name="conf_create_at_empty">No time set</string>
+    <string name="conf_create_at_hint">Leave empty if the time is not fixed yet</string>
+    <string name="conf_create_ttl">Keep recordings, days</string>
+    <string name="conf_create_ttl_hint">Recordings of this conference are deleted automatically after that many days. 0 keeps them indefinitely.</string>
+    <string name="conf_create_ttl_invalid">Enter a number of days: 0 or more</string>
+    <string name="conf_create_submit">Schedule</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

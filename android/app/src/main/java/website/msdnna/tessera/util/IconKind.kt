@@ -85,6 +85,7 @@ object Ion {
     const val DOCUMENT_TEXT = "document_text"
     const val ALARM = "alarm"
     const val TIME = "time"
+    const val VIDEOCAM = "videocam"
     const val IMAGE = "image"
     const val ATTACH = "attach"
     const val DOWNLOAD = "download"

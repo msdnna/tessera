@@ -201,6 +201,24 @@ object TestTags {
      *  document», not «the second row», and a nesting regression is visible. */
     fun documentRow(id: String) = "document-row:$id"
 
+    // ── conferences (#2896) ────────────────────────────────────────────────
+
+    /** Root of the conferences section — the workspace's calls. */
+    const val CONFERENCES_SCREEN = "conferences-screen"
+
+    /** The «Запланировать» button and the dialog it opens. */
+    const val CONFERENCE_SCHEDULE = "conference-schedule"
+    const val CONFERENCE_SCHEDULE_DIALOG = "conference-schedule-dialog"
+    const val CONFERENCE_CREATE_NAME = "conference-create-name"
+    const val CONFERENCE_CREATE_TTL = "conference-create-ttl"
+    const val CONFERENCE_CREATE_SUBMIT = "conference-create-submit"
+
+    /** One call in the list, and its delete button — keyed by id, so a spec says
+     *  «this conference» and a sorting change doesn't rewrite what it checks. */
+    fun conferenceRow(id: String) = "conference-row:$id"
+
+    fun conferenceDelete(id: String) = "conference-delete:$id"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

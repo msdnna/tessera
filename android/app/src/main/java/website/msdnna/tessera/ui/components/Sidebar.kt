@@ -147,6 +147,7 @@ fun Sidebar(
     onOpenReminders: () -> Unit,
     onOpenNotes: () -> Unit,
     onOpenDocuments: () -> Unit,
+    onOpenConferences: () -> Unit,
     onOpenMilestones: () -> Unit,
     onOpenHelp: () -> Unit,
     onOpenMembers: () -> Unit,
@@ -301,6 +302,7 @@ fun Sidebar(
             NavRow(Ion.ALARM, stringResource(R.string.nav_reminders), activeNav == "reminders", onOpenReminders, spotSink("reminders"))
             NavRow(Ion.DOCUMENT_TEXT, stringResource(R.string.nav_notes), activeNav == "notes", onOpenNotes, spotSink("notes"))
             NavRow(Ion.BOOK, stringResource(R.string.nav_documents), activeNav == "documents", onOpenDocuments, spotSink("documents"))
+            NavRow(Ion.VIDEOCAM, stringResource(R.string.nav_conferences), activeNav == "conferences", onOpenConferences, spotSink("conferences"))
             NavRow(Ion.HELP_CIRCLE, stringResource(R.string.nav_help), activeNav == "help", onOpenHelp, spotSink("help"))
             if (user?.isAdmin == true) {
                 NavRow(
