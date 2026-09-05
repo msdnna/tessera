@@ -241,7 +241,15 @@
     <string name="task_tab_subtasks">Subtasks</string>
     <string name="task_tab_relations">Relations</string>
     <string name="task_tab_files">Files</string>
+    <string name="task_tab_documents">Documents</string>
     <string name="task_tab_history">History</string>
+
+    <!-- The «Documents» tab (#2894 §7) -->
+    <string name="task_docs_empty">No document refers to this task.</string>
+    <string name="task_docs_untitled">Untitled</string>
+    <string name="task_docs_fragment">a fragment of the document</string>
+    <string name="task_docs_unlink">Remove the link?</string>
+    <string name="task_docs_unlink_confirm">The document stays where it is — only the link to the task goes.</string>
 
     <!-- Task modal: description and comments -->
     <string name="task_description_placeholder">Add a description…</string>
@@ -818,6 +826,51 @@
     <string name="docs_history_status_changed">changed</string>
     <string name="docs_history_status_moved">moved</string>
     <string name="docs_history_diff_image">[image]</string>
+
+    <!-- Task links and approval routes (#2894 §7) -->
+    <string name="docs_links_title">Links</string>
+    <string name="docs_links_open">Links and approvals</string>
+    <string name="docs_links_tasks">Tasks</string>
+    <string name="docs_links_empty">No task is linked to this document.</string>
+    <string name="docs_links_task">Task</string>
+    <string name="docs_links_fragment">a fragment of the document</string>
+    <string name="docs_links_link_task">Link a task</string>
+    <string name="docs_links_link_block">Link this block to a task</string>
+    <string name="docs_links_search_hint">Task number or title</string>
+    <string name="docs_links_nothing_found">Nothing found.</string>
+    <string name="docs_links_unlink">Remove the link?</string>
+    <string name="docs_links_unlink_confirm">The task stays where it is — only the link to the document goes.</string>
+    <string name="docs_links_anchor_fallback">A link to a block of the document</string>
+    <string name="docs_links_unpin">Unpin</string>
+
+    <string name="docs_links_approvals">Approval</string>
+    <string name="docs_links_no_approvals">The document has not been sent for approval yet.</string>
+    <string name="docs_links_raise">Send for approval</string>
+    <string name="docs_links_raise_disabled">An approval is already under way — wait for it or cancel it.</string>
+    <string name="docs_links_route_title_hint">What is being agreed</string>
+    <string name="docs_links_approvers">Approvers — the signing order</string>
+    <string name="docs_links_no_members">There are no other members in this workspace.</string>
+    <string name="docs_links_mode_sequential">In turn</string>
+    <string name="docs_links_mode_parallel">All at once</string>
+    <string name="docs_links_submit">Send</string>
+    <string name="docs_links_progress">signed: %1$d of %2$d</string>
+    <string name="docs_links_meta">Version %1$d · %2$s</string>
+    <string name="docs_links_unknown_author">Unknown author</string>
+    <string name="docs_links_sign">Sign</string>
+    <string name="docs_links_comment_hint">A remark (optional)</string>
+    <string name="docs_links_approve">Approve</string>
+    <string name="docs_links_reject">Reject</string>
+    <string name="docs_links_cancel_route">Cancel the approval</string>
+    <string name="docs_links_cancel_confirm">The route closes; the signatures collected stay in the history.</string>
+    <string name="docs_links_status_pending">Under approval</string>
+    <string name="docs_links_status_approved">Approved</string>
+    <string name="docs_links_status_rejected">Rejected</string>
+    <string name="docs_links_status_cancelled">Cancelled</string>
+    <string name="docs_links_status_unknown">Unknown status</string>
+    <string name="docs_links_step_signed">signed</string>
+    <string name="docs_links_step_rejected">rejected</string>
+    <string name="docs_links_step_current">their turn now</string>
+    <string name="docs_links_step_waiting">waiting their turn</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

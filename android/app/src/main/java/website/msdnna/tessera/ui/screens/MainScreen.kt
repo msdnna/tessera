@@ -138,6 +138,9 @@ fun MainScreen(
     // «В GitLab» on milestones of that project (resolved from the integration board).
     var glProjectId by remember { mutableStateOf<String?>(null) }
     var notesPreselectId by remember { mutableStateOf<String?>(null) }
+    // A document to open on arrival — the task modal's «Документы» tab walking
+    // the link to its other end (#2894 §7).
+    var documentsPreselectId by remember { mutableStateOf<String?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
     var membersOpen by remember { mutableStateOf(false) }
@@ -424,7 +427,20 @@ fun MainScreen(
                                 onPreselectConsumed = { notesPreselectId = null },
                             )
 
-                            is MainDest.Documents -> DocumentsScreen(workspaceId = state.currentId)
+                            is MainDest.Documents -> DocumentsScreen(
+                                workspaceId = state.currentId,
+                                preselectDocumentId = documentsPreselectId,
+                                onPreselectConsumed = { documentsPreselectId = null },
+                                // A link points at a task by id alone; which board
+                                // it lives on is a lookup, and openTask already
+                                // does exactly that for the reminder deep-link.
+                                onOpenTask = { taskId ->
+                                    scope.launch {
+                                        val boardId = runCatching { boardRepo.taskBoardId(taskId) }.getOrNull()
+                                        if (boardId != null) openTask(boardId, taskId)
+                                    }
+                                },
+                            )
 
                             is MainDest.Reminders -> RemindersScreen()
 
@@ -470,6 +486,10 @@ fun MainScreen(
                                 onCloseCommands = { boardCommandsOpen = false },
                                 onTimelineLikeChanged = { boardTimelineLike = it },
                                 onBoardGone = { if (dest is MainDest.BoardView) dest = MainDest.Home },
+                                onOpenDocument = { documentId ->
+                                    documentsPreselectId = documentId
+                                    navTo(MainDest.Documents)
+                                },
                             )
                         }
                     }

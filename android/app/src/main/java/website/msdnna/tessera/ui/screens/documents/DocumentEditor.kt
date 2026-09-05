@@ -61,11 +61,14 @@ fun DocumentEditor(
     /** Open discussions, for the badge on the bar — the sheet itself belongs to
      *  the screen, since the reader opens the same one (§5). */
     commentCount: Int,
+    /** Linked tasks, for the badge on the bar — same reasoning as [commentCount]. */
+    linkCount: Int,
     /** Owned by the screen: the version journal (§6) restores into the same
      *  document this surface is editing, and has to be able to reload it. */
     controller: DocEditorController,
     onComments: (DocAnnotateTarget?) -> Unit,
     onHistory: () -> Unit,
+    onLinks: (DocAnnotateTarget?) -> Unit,
     onClose: () -> Unit,
 ) {
     val c = Tessera.colors
@@ -130,6 +133,7 @@ fun DocumentEditor(
                 modifier = Modifier.testTag(TestTags.DOCUMENT_EDITOR_STATUS),
             )
             DocCommentsButton(count = commentCount, onClick = { onComments(null) })
+            DocLinksButton(count = linkCount, onClick = { onLinks(null) })
             // Whatever is still in the debounce is written before the journal
             // opens: the entry the reader is about to compare against should be
             // the text on screen, not the text of a minute ago — and a rollback

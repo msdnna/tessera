@@ -247,7 +247,16 @@
     <string name="task_tab_subtasks">Подзадачи</string>
     <string name="task_tab_relations">Связи</string>
     <string name="task_tab_files">Файлы</string>
+    <string name="task_tab_documents">Документы</string>
     <string name="task_tab_history">История</string>
+
+    <!-- Вкладка «Документы» (#2894 §7): другой конец связи, которую заводят из
+         документа. Читающая по замыслу — связь ставят там, где есть контекст. -->
+    <string name="task_docs_empty">Документы не ссылаются на эту задачу.</string>
+    <string name="task_docs_untitled">Без названия</string>
+    <string name="task_docs_fragment">фрагмент документа</string>
+    <string name="task_docs_unlink">Убрать связь?</string>
+    <string name="task_docs_unlink_confirm">Документ останется на месте — исчезнет только связь с задачей.</string>
 
     <!-- Модалка задачи: описание и комментарии -->
     <string name="task_description_placeholder">Добавьте описание…</string>
@@ -840,6 +849,54 @@
     <string name="docs_history_status_changed">изменено</string>
     <string name="docs_history_status_moved">перемещено</string>
     <string name="docs_history_diff_image">[изображение]</string>
+
+    <!-- Связи с задачами и согласования (#2894 §7). Панель поверх документа, а не
+         рядом с ним, поэтому якорь связи приходится проговаривать словами: цитата
+         блока и есть единственное, что отвечает «о каком пункте задача», когда
+         пункт уже переписали. -->
+    <string name="docs_links_title">Связи</string>
+    <string name="docs_links_open">Связи и согласования</string>
+    <string name="docs_links_tasks">Задачи</string>
+    <string name="docs_links_empty">Ни одна задача не связана с документом.</string>
+    <string name="docs_links_task">Задача</string>
+    <string name="docs_links_fragment">фрагмент документа</string>
+    <string name="docs_links_link_task">Связать с задачей</string>
+    <string name="docs_links_link_block">Связать блок с задачей</string>
+    <string name="docs_links_search_hint">Номер или название задачи</string>
+    <string name="docs_links_nothing_found">Ничего не найдено.</string>
+    <string name="docs_links_unlink">Убрать связь?</string>
+    <string name="docs_links_unlink_confirm">Задача останется на месте — исчезнет только связь с документом.</string>
+    <string name="docs_links_anchor_fallback">Связь с блоком документа</string>
+    <string name="docs_links_unpin">Открепить</string>
+
+    <string name="docs_links_approvals">Согласование</string>
+    <string name="docs_links_no_approvals">Документ ещё не отправляли на согласование.</string>
+    <string name="docs_links_raise">Отправить на согласование</string>
+    <string name="docs_links_raise_disabled">Уже идёт согласование — дождитесь его завершения или отмените.</string>
+    <string name="docs_links_route_title_hint">Что согласовываем</string>
+    <string name="docs_links_approvers">Согласующие — порядок подписания</string>
+    <string name="docs_links_no_members">В пространстве нет других участников.</string>
+    <string name="docs_links_mode_sequential">По очереди</string>
+    <string name="docs_links_mode_parallel">Одновременно</string>
+    <string name="docs_links_submit">Отправить</string>
+    <string name="docs_links_progress">подписей: %1$d из %2$d</string>
+    <string name="docs_links_meta">Версия %1$d · %2$s</string>
+    <string name="docs_links_unknown_author">Неизвестный автор</string>
+    <string name="docs_links_sign">Подписать</string>
+    <string name="docs_links_comment_hint">Замечание (необязательно)</string>
+    <string name="docs_links_approve">Согласовать</string>
+    <string name="docs_links_reject">Отклонить</string>
+    <string name="docs_links_cancel_route">Отменить согласование</string>
+    <string name="docs_links_cancel_confirm">Маршрут закроется, собранные подписи останутся в истории.</string>
+    <string name="docs_links_status_pending">На согласовании</string>
+    <string name="docs_links_status_approved">Согласовано</string>
+    <string name="docs_links_status_rejected">Отклонено</string>
+    <string name="docs_links_status_cancelled">Отменено</string>
+    <string name="docs_links_status_unknown">Статус неизвестен</string>
+    <string name="docs_links_step_signed">подписал</string>
+    <string name="docs_links_step_rejected">отклонил</string>
+    <string name="docs_links_step_current">сейчас его очередь</string>
+    <string name="docs_links_step_waiting">ждёт очереди</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

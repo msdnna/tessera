@@ -9,9 +9,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Document
+import website.msdnna.tessera.data.model.DocumentApproval
 import website.msdnna.tessera.data.model.DocumentComment
+import website.msdnna.tessera.data.model.DocumentTaskLink
 import website.msdnna.tessera.data.model.DocumentVersion
+import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.data.repository.DocumentRepository
+import website.msdnna.tessera.data.repository.TaskRepository
+import website.msdnna.tessera.data.repository.WorkspaceRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.DEFAULT_DOC_PAGE
 import website.msdnna.tessera.util.DocAnnotateTarget
@@ -21,10 +27,12 @@ import website.msdnna.tessera.util.DocPage
 import website.msdnna.tessera.util.DocThread
 import website.msdnna.tessera.util.DocThreadGroups
 import website.msdnna.tessera.util.buildDocThreads
+import website.msdnna.tessera.util.canRaiseApproval
 import website.msdnna.tessera.util.docBlockIdsInOrder
 import website.msdnna.tessera.util.docChildCount
 import website.msdnna.tessera.util.docOpenThreadCount
 import website.msdnna.tessera.util.docTiles
+import website.msdnna.tessera.util.documentApprovalState
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.parseDocBlocks
 import website.msdnna.tessera.util.parseDocPage
@@ -56,6 +64,8 @@ data class DocumentsUiState(
     val comments: DocCommentsState = DocCommentsState(),
     /** Version journal of the open document (§6) — loaded only while it is up. */
     val history: DocHistoryState = DocHistoryState(),
+    /** Task links and approval routes of the open document (§7). */
+    val links: DocLinksState = DocLinksState(),
 )
 
 /**
@@ -167,6 +177,65 @@ data class DocHistoryState(
 }
 
 /**
+ * Task links and approval routes of the open document (#2732, §7 of #2894).
+ *
+ * The two live in one state because they arrive on one panel and are read as one
+ * question: a route is raised against the document, and the tasks it came from
+ * are the reason it was. Both lists are refetched whole after every write rather
+ * than patched from the response — a link is a row joined to a task's title and
+ * a route is joined to its steps, and rebuilding either from a mutation's answer
+ * means keeping a second copy of the server's join here, which is exactly the
+ * thing that goes stale without saying so.
+ *
+ * The pickers ([tasks], [members]) are fetched once, lazily, and kept: composing
+ * a route is a rare act, and a workspace's task list is not something to pull on
+ * every document opened.
+ */
+data class DocLinksState(
+    val sheetOpen: Boolean = false,
+    val loading: Boolean = false,
+    /** A write is in flight; the panel stays readable. */
+    val busy: Boolean = false,
+    val error: UiText? = null,
+    val links: List<DocumentTaskLink> = emptyList(),
+    /** Newest first, as the server returns them. */
+    val approvals: List<DocumentApproval> = emptyList(),
+    /** The block a new link would be pinned to, and the text it held at the tap. */
+    val anchorBlockId: String = "",
+    val anchorQuote: String = "",
+    /** Candidates for the pickers — empty until the panel needs them. */
+    val tasks: List<WorkspaceTask> = emptyList(),
+    val members: List<Member> = emptyList(),
+) {
+    /** One open route per document. */
+    val canRaise: Boolean get() = canRaiseApproval(approvals)
+
+    /** The route the document is judged by — see [documentApprovalState]. */
+    val current: DocumentApproval? get() = documentApprovalState(approvals)
+
+    /** What the button over the document counts: links, since that is the number
+     *  that means something before the panel is open. A route's status is a word,
+     *  not a count, and belongs inside. */
+    val linkCount: Int get() = links.size
+
+    /** Already-linked tasks are dropped from the picker rather than offered and
+     *  refused: re-linking the same pair is a no-op server-side, so offering it
+     *  would be a button that appears to do nothing. */
+    fun candidates(query: String): List<WorkspaceTask> {
+        val linked = links.mapTo(mutableSetOf()) { it.taskId }
+        val q = query.trim().lowercase()
+        return tasks.asSequence()
+            .filter { it.number != null && it.id !in linked }
+            .filter { q.isEmpty() || "#${it.number}".contains(q) || it.title.lowercase().contains(q) }
+            .take(MAX_LINK_CANDIDATES)
+            .toList()
+    }
+}
+
+/** As many task rows as the picker offers at once — the same cap the web uses. */
+private const val MAX_LINK_CANDIDATES = 50
+
+/**
  * Documents module (#2718, #2894). A grid of one nesting level plus a
  * breadcrumb trail, mirroring the web view after the review of #2726: a tile
  * always opens the document, and nesting is walked from the reader.
@@ -177,6 +246,10 @@ data class DocHistoryState(
  */
 class DocumentsViewModel(
     private val repo: DocumentRepository = DocumentRepository(),
+    // The two pickers of the links panel (§7) ask for things that are not
+    // documents: the workspace's tasks and its members.
+    private val taskRepo: TaskRepository = TaskRepository(),
+    private val wsRepo: WorkspaceRepository = WorkspaceRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(DocumentsUiState())
     val state: StateFlow<DocumentsUiState> = _state.asStateFlow()
@@ -209,6 +282,7 @@ class DocumentsViewModel(
                 openChildCount = docChildCount(it.docs, doc.id),
                 comments = DocCommentsState(),
                 history = DocHistoryState(),
+                links = DocLinksState(tasks = it.links.tasks, members = it.links.members),
             )
         }
         viewModelScope.launch {
@@ -227,6 +301,11 @@ class DocumentsViewModel(
                         )
                     }
                     loadComments(doc.id)
+                    // Loaded with the body, not with the panel: the button over
+                    // the document carries the number of linked tasks, and a
+                    // count that only appears once the panel has been opened is
+                    // a count nobody sees.
+                    loadLinks(doc.id)
                 },
                 onFailure = { e ->
                     if (_state.value.openId != doc.id) return@fold
@@ -274,6 +353,10 @@ class DocumentsViewModel(
             opening = false,
             comments = DocCommentsState(),
             history = DocHistoryState(),
+            // The pickers survive the close: they describe the workspace, not
+            // this document, and refetching a whole task list per document
+            // opened is a request nobody asked for.
+            links = DocLinksState(tasks = it.links.tasks, members = it.links.members),
         )
     }
 
@@ -442,6 +525,146 @@ class DocumentsViewModel(
                     history = st.history.copy(selectedId = "", restoreTick = st.history.restoreTick + 1),
                 )
             }
+        }
+    }
+
+    // ── Task links and approvals (§7) ─────────────────────────────────────────
+
+    /**
+     * Opens the links panel.
+     *
+     * [target] is the tap that got here, exactly as for the discussions: a new
+     * link is pinned to the block that was tapped, with the text it held at that
+     * moment. Opened from the bar instead, the link is filed against the document
+     * as a whole.
+     */
+    fun openLinks(target: DocAnnotateTarget? = null) {
+        val id = _state.value.openId ?: return
+        _state.update {
+            it.copy(
+                links = it.links.copy(
+                    sheetOpen = true,
+                    loading = true,
+                    error = null,
+                    anchorBlockId = target?.blockId.orEmpty(),
+                    anchorQuote = target?.quote.orEmpty(),
+                ),
+            )
+        }
+        loadLinks(id)
+        ensureLinkPickers()
+    }
+
+    /** Closes the panel. The lists stay loaded — the badge behind it counts them. */
+    fun closeLinks() = _state.update {
+        it.copy(links = it.links.copy(sheetOpen = false, anchorBlockId = "", anchorQuote = "", error = null))
+    }
+
+    /** Drops the anchor without closing — the same «Открепить» the discussions
+     *  have, for filing a link against the document while standing on a block. */
+    fun clearLinkAnchor() = _state.update {
+        it.copy(links = it.links.copy(anchorBlockId = "", anchorQuote = ""))
+    }
+
+    fun linkTask(taskId: String) = writeLinks { docId ->
+        val l = _state.value.links
+        repo.linkTask(docId, taskId, blockId = l.anchorBlockId, quote = l.anchorQuote)
+    }
+
+    fun unlinkTask(linkId: String) = writeLinks { repo.unlinkTask(linkId) }
+
+    fun raiseApproval(title: String, mode: String, approvers: List<String>) = writeLinks { docId ->
+        if (approvers.isEmpty()) return@writeLinks
+        repo.createApproval(docId, approvers = approvers, title = title.trim(), mode = mode)
+    }
+
+    /**
+     * Records the caller's signature. Whose turn it is stays the server's call;
+     * the panel only avoids offering the button when it already knows it is not
+     * theirs — see [canDecideNow].
+     */
+    fun decideApproval(approvalId: String, decision: String, comment: String = "") = writeLinks {
+        repo.decideApproval(approvalId, decision, comment.trim())
+    }
+
+    fun cancelApproval(approvalId: String) = writeLinks { repo.cancelApproval(approvalId) }
+
+    /**
+     * Loads the tasks and members the pickers offer, once.
+     *
+     * Failures are swallowed on purpose, as on the web: the panel still lists
+     * what is linked and what is being agreed — it just cannot compose anything
+     * new. An error banner here would fire on a list only needed by the two
+     * buttons at the bottom.
+     */
+    private fun ensureLinkPickers() {
+        if (workspaceId.isBlank()) return
+        val l = _state.value.links
+        if (l.tasks.isEmpty()) {
+            viewModelScope.launch {
+                runCatching { taskRepo.workspaceTasks(workspaceId) }.getOrNull()?.let { tasks ->
+                    _state.update { it.copy(links = it.links.copy(tasks = tasks)) }
+                }
+            }
+        }
+        if (l.members.isEmpty()) {
+            viewModelScope.launch {
+                runCatching { wsRepo.members(workspaceId) }.getOrNull()?.let { members ->
+                    _state.update { it.copy(links = it.links.copy(members = members)) }
+                }
+            }
+        }
+    }
+
+    private fun loadLinks(docId: String) {
+        _state.update { it.copy(links = it.links.copy(loading = true)) }
+        viewModelScope.launch {
+            // One await for both, not two: the panel draws links and routes
+            // together, and sequencing them would show it half-built for a round
+            // trip.
+            val result = runCatching {
+                val links = repo.taskLinks(docId)
+                val approvals = repo.approvals(docId)
+                links to approvals
+            }
+            _state.update { st ->
+                if (st.openId != docId) {
+                    st
+                } else {
+                    result.fold(
+                        onSuccess = { (links, approvals) ->
+                            st.copy(
+                                links = st.links.copy(
+                                    loading = false,
+                                    error = null,
+                                    links = links,
+                                    approvals = approvals,
+                                ),
+                            )
+                        },
+                        onFailure = { e ->
+                            st.copy(links = st.links.copy(loading = false, error = errorMessage(e)))
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    /** Runs one write and re-reads both lists — same reasoning as [writeComment]. */
+    private fun writeLinks(block: suspend (docId: String) -> Unit) {
+        val docId = _state.value.openId ?: return
+        if (_state.value.links.busy) return
+        _state.update { it.copy(links = it.links.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            val result = runCatching { block(docId) }
+            _state.update { it.copy(links = it.links.copy(busy = false)) }
+            result.fold(
+                onSuccess = { if (_state.value.openId == docId) loadLinks(docId) },
+                onFailure = { e ->
+                    _state.update { it.copy(links = it.links.copy(error = errorMessage(e))) }
+                },
+            )
         }
     }
 

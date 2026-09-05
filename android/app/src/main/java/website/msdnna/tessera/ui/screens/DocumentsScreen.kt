@@ -50,6 +50,8 @@ import website.msdnna.tessera.ui.screens.documents.DocCommentsSheet
 import website.msdnna.tessera.ui.screens.documents.DocDraft
 import website.msdnna.tessera.ui.screens.documents.DocHistoryButton
 import website.msdnna.tessera.ui.screens.documents.DocHistorySheet
+import website.msdnna.tessera.ui.screens.documents.DocLinksButton
+import website.msdnna.tessera.ui.screens.documents.DocLinksSheet
 import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
@@ -74,7 +76,16 @@ import website.msdnna.tessera.util.docSideInsetDp
  * in a WebView (§4 of #2894) — see the note there for why it is not native.
  */
 @Composable
-fun DocumentsScreen(workspaceId: String) {
+fun DocumentsScreen(
+    workspaceId: String,
+    /** A document to open straight away — the task modal's «Документы» tab
+     *  navigating to the other end of a link (§7). */
+    preselectDocumentId: String? = null,
+    onPreselectConsumed: () -> Unit = {},
+    /** Opens a linked task. Null keeps the links panel read-only, which is what
+     *  a host with nowhere to navigate to should get. */
+    onOpenTask: ((String) -> Unit)? = null,
+) {
     val c = Tessera.colors
     val vm: DocumentsViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
@@ -94,12 +105,25 @@ fun DocumentsScreen(workspaceId: String) {
         if (workspaceId.isNotBlank()) vm.load(workspaceId)
     }
 
+    // Opened from a task's «Документы» tab. Waits for the list: the reader is
+    // handed a Document, and the id alone is a tile that does not exist yet.
+    // A document that is not in the list (deleted, or in another workspace) is
+    // consumed all the same — a preselect that never clears would reopen on
+    // every visit to the section.
+    LaunchedEffect(preselectDocumentId, state.docs) {
+        val wanted = preselectDocumentId ?: return@LaunchedEffect
+        if (state.docs.isEmpty()) return@LaunchedEffect
+        state.docs.firstOrNull { it.id == wanted }?.let(vm::open)
+        onPreselectConsumed()
+    }
+
     // The reader is an inline overlay, not a Dialog, so Back would otherwise
     // fall through to the nav back-stack. Inside a container Back walks the
     // trail out one level instead of leaving the section. The comments sheet
     // handles Back itself — closing it must not also close the reader beneath.
     BackHandler(
-        enabled = state.openId != null && !editing && !state.comments.sheetOpen && !state.history.sheetOpen,
+        enabled = state.openId != null && !editing && !state.comments.sheetOpen &&
+            !state.history.sheetOpen && !state.links.sheetOpen,
     ) { vm.close() }
     BackHandler(enabled = state.openId == null && state.trail.isNotEmpty()) {
         vm.crumbTo(state.trail.lastIndex - 1)
@@ -135,12 +159,14 @@ fun DocumentsScreen(workspaceId: String) {
                 loading = state.opening,
                 childCount = state.openChildCount,
                 commentCount = state.comments.openCount,
+                linkCount = state.links.linkCount,
                 onBack = { vm.close() },
                 onDraft = { draft = it },
                 onChildren = { state.open?.let(vm::drillInto) },
                 onEdit = { editing = true },
                 onComments = { vm.openComments() },
                 onHistory = { vm.openHistory() },
+                onLinks = { vm.openLinks() },
             )
         }
 
@@ -156,9 +182,11 @@ fun DocumentsScreen(workspaceId: String) {
                 workspaceId = workspaceId,
                 serverRoot = RetrofitClient.serverRoot,
                 commentCount = state.comments.openCount,
+                linkCount = state.links.linkCount,
                 controller = editorController,
                 onComments = { target -> vm.openComments(target) },
                 onHistory = { vm.openHistory() },
+                onLinks = { target -> vm.openLinks(target) },
                 onClose = {
                     editing = false
                     // The reader under it is showing the text from before the edit.
@@ -181,6 +209,21 @@ fun DocumentsScreen(workspaceId: String) {
                 onEdit = { id, body -> vm.editComment(id, body) },
                 onResolve = { id, resolved -> vm.resolveComment(id, resolved) },
                 onDelete = { id -> vm.deleteComment(id) },
+            )
+        }
+
+        if (state.links.sheetOpen) {
+            DocLinksSheet(
+                state = state.links,
+                meId = me?.id,
+                onDismiss = { vm.closeLinks() },
+                onClearAnchor = { vm.clearLinkAnchor() },
+                onLink = { taskId -> vm.linkTask(taskId) },
+                onUnlink = { linkId -> vm.unlinkTask(linkId) },
+                onRaise = { title, mode, approvers -> vm.raiseApproval(title, mode, approvers) },
+                onDecide = { id, decision, comment -> vm.decideApproval(id, decision, comment) },
+                onCancel = { id -> vm.cancelApproval(id) },
+                onOpenTask = onOpenTask?.let { open -> { link -> open(link.taskId) } },
             )
         }
 
@@ -233,12 +276,14 @@ private fun DocumentReader(
     loading: Boolean,
     childCount: Int,
     commentCount: Int,
+    linkCount: Int,
     onBack: () -> Unit,
     onDraft: (DocDraft) -> Unit,
     onChildren: () -> Unit,
     onEdit: () -> Unit,
     onComments: () -> Unit,
     onHistory: () -> Unit,
+    onLinks: () -> Unit,
 ) {
     val c = Tessera.colors
     var menuOpen by remember { mutableStateOf(false) }
@@ -281,6 +326,7 @@ private fun DocumentReader(
                 modifier = Modifier.testTag(TestTags.DOCUMENT_EDIT),
             )
             DocCommentsButton(count = commentCount, onClick = onComments)
+            DocLinksButton(count = linkCount, onClick = onLinks)
             DocHistoryButton(onClick = onHistory)
             IonIconButton(
                 Ion.LIST,

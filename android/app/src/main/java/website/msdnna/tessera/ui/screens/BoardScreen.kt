@@ -104,6 +104,9 @@ fun BoardScreen(
     onCloseCommands: () -> Unit = {},
     onTimelineLikeChanged: (Boolean) -> Unit = {},
     onBoardGone: () -> Unit = {},
+    /** Leaves for a document linked to the open task (#2894 §7). Null in a host
+     *  that has no documents section to leave for. */
+    onOpenDocument: ((documentId: String) -> Unit)? = null,
 ) {
     val vm: BoardViewModel = viewModel(key = "board-${board.id}")
     val state by vm.state.collectAsStateWithLifecycle()
@@ -267,6 +270,15 @@ fun BoardScreen(
             breadcrumb = breadcrumb,
             estimation = state.estimation,
             commands = state.commandRows,
+            // Leaving for a document closes the modal: the documents section is a
+            // top-level destination, and a modal left open over it would come
+            // back on top of the reader when the section is left again.
+            onOpenDocument = onOpenDocument?.let { open ->
+                { documentId ->
+                    openTaskId = null
+                    open(documentId)
+                }
+            },
             onClose = { changed ->
                 openTaskId = null
                 if (changed) vm.reload()

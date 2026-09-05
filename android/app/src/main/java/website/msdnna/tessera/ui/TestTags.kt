@@ -138,6 +138,7 @@ object TestTags {
     const val TASK_TAB_SUBTASKS = "subtasks"
     const val TASK_TAB_RELATIONS = "relations"
     const val TASK_TAB_FILES = "files"
+    const val TASK_TAB_DOCUMENTS = "documents"
     const val TASK_TAB_HISTORY = "history"
 
     /** Footer button that commits title + description. */
@@ -315,6 +316,54 @@ object TestTags {
     /** Keyed by the version, like the comment rows: a journal is asserted by
      *  which entry, not by «the second row» — retention changes that. */
     fun documentVersionRow(id: String) = "document-version-row:$id"
+
+    /** Task links and approval routes (#2894 §7): the way in — from the reader
+     *  and from the editor bar — and the panel itself. */
+    const val DOCUMENT_LINKS_OPEN = "document-links-open"
+    const val DOCUMENT_LINKS_BADGE = "document-links-badge"
+    const val DOCUMENT_LINKS = "document-links"
+    const val DOCUMENT_LINKS_CLOSE = "document-links-close"
+    const val DOCUMENT_LINKS_EMPTY = "document-links-empty"
+
+    /** The block a new link is pinned to, and the way to drop that anchor. */
+    const val DOCUMENT_LINKS_ANCHOR = "document-links-anchor"
+    const val DOCUMENT_LINKS_UNPIN = "document-links-unpin"
+
+    /** Linking a task: the way in and the picker's query. */
+    const val DOCUMENT_LINK_ADD = "document-link-add"
+    const val DOCUMENT_LINK_QUERY = "document-link-query"
+    const val DOCUMENT_LINK_REMOVE_CONFIRM = "document-link-remove-confirm"
+
+    /** Raising a route, and composing it. */
+    const val DOCUMENT_APPROVALS_EMPTY = "document-approvals-empty"
+    const val DOCUMENT_APPROVAL_RAISE = "document-approval-raise"
+    const val DOCUMENT_APPROVAL_COMPOSER = "document-approval-composer"
+    const val DOCUMENT_APPROVAL_TITLE = "document-approval-title"
+    const val DOCUMENT_APPROVAL_MODE_SEQUENTIAL = "document-approval-mode-sequential"
+    const val DOCUMENT_APPROVAL_MODE_PARALLEL = "document-approval-mode-parallel"
+    const val DOCUMENT_APPROVAL_SUBMIT = "document-approval-submit"
+
+    /** Signing: the way in, the remark, and the two outcomes. */
+    const val DOCUMENT_APPROVAL_SIGN = "document-approval-sign"
+    const val DOCUMENT_APPROVAL_COMMENT = "document-approval-comment"
+    const val DOCUMENT_APPROVAL_APPROVE = "document-approval-approve"
+    const val DOCUMENT_APPROVAL_REJECT = "document-approval-reject"
+    const val DOCUMENT_APPROVAL_CANCEL_CONFIRM = "document-approval-cancel-confirm"
+
+    /** Keyed by the row they belong to, for the same reason the versions are:
+     *  a link and a route are asserted by which one, never by position. */
+    fun documentLinkRow(id: String) = "document-link-row:$id"
+    fun documentLinkRemove(id: String) = "document-link-remove:$id"
+    fun documentLinkCandidate(taskId: String) = "document-link-candidate:$taskId"
+    fun documentApprovalCard(id: String) = "document-approval-card:$id"
+    fun documentApprovalStatus(id: String) = "document-approval-status:$id"
+    fun documentApprovalStep(id: String) = "document-approval-step:$id"
+    fun documentApprovalCancel(id: String) = "document-approval-cancel:$id"
+    fun documentApproverRow(userId: String) = "document-approver-row:$userId"
+
+    /** The task modal's «Документы» tab — the other end of the same link row. */
+    fun taskDocumentRow(id: String) = "task-document-row:$id"
+    fun taskDocumentRemove(id: String) = "task-document-remove:$id"
 
     // ── help centre (#2795) ────────────────────────────────────────────────
 

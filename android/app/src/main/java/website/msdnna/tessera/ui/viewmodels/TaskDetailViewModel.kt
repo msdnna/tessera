@@ -21,6 +21,7 @@ import website.msdnna.tessera.data.model.TaskDetail
 import website.msdnna.tessera.data.model.TaskEvent
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.data.repository.BoardRepository
+import website.msdnna.tessera.data.repository.DocumentRepository
 import website.msdnna.tessera.data.repository.TaskRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.MoveNeighbors
@@ -39,6 +40,9 @@ data class TaskDetailUiState(
     val relations: List<Relation> = emptyList(),
     val attachments: List<Attachment> = emptyList(),
     val events: List<TaskEvent> = emptyList(),
+    /** Documents that refer to this task (#2732, §7 of #2894) — the other end of
+     *  the link made from the document's own panel. */
+    val documents: List<website.msdnna.tessera.data.model.TaskDocumentLink> = emptyList(),
     /** The task's board columns — for the status row, recurrence selects and
      *  the subtask column chips. */
     val columns: List<BoardColumn> = emptyList(),
@@ -82,6 +86,9 @@ data class TaskDetailUiState(
 class TaskDetailViewModel(
     private val taskRepo: TaskRepository = TaskRepository(),
     private val boardRepo: BoardRepository = BoardRepository(),
+    // The «Документы» tab reads the link table from the task's side; the rows
+    // themselves belong to the documents module.
+    private val docRepo: DocumentRepository = DocumentRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(TaskDetailUiState())
     val state: StateFlow<TaskDetailUiState> = _state.asStateFlow()
@@ -114,7 +121,23 @@ class TaskDetailViewModel(
             _state.update { it.copy(relations = runCatching { taskRepo.relations(taskId) }.getOrDefault(emptyList())) }
             _state.update { it.copy(attachments = runCatching { taskRepo.attachments(taskId) }.getOrDefault(emptyList())) }
             _state.update { it.copy(events = runCatching { taskRepo.events(taskId) }.getOrDefault(emptyList())) }
+            _state.update {
+                it.copy(documents = runCatching { docRepo.documentsOfTask(taskId) }.getOrDefault(emptyList()))
+            }
         }
+    }
+
+    // ── linked documents (#2732, §7 of #2894) ────────────────────────────────
+
+    /**
+     * Drops one link. It goes through the link row's own endpoint — one row, one
+     * id, whichever end it is being looked at from — and the list is re-read
+     * rather than spliced: the document panel is the other reader of the same
+     * table, and it may have added a link since this modal opened.
+     */
+    fun unlinkDocument(linkId: String) = mutate {
+        docRepo.unlinkTask(linkId)
+        _state.update { it.copy(documents = docRepo.documentsOfTask(taskId), changed = true) }
     }
 
     private suspend fun reloadDetail() {
