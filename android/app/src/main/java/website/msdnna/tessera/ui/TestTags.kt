@@ -221,6 +221,15 @@ object TestTags {
 
     fun conferenceDelete(id: String) = "conference-delete:$id"
 
+    /** The confirm of the delete popover — the press that actually reaches the
+     *  server. The row's own button only asks. */
+    const val CONFERENCE_DELETE_CONFIRM = "conference-delete-confirm"
+
+    /** One status tab, keyed by the value it sends to the server (`live`,
+     *  `scheduled`, `ended`; blank for «Все») rather than by its position —
+     *  a reordered tab strip must not quietly rewrite what a spec asserts. */
+    fun conferenceFilter(status: String?) = "conference-filter:${status.orEmpty().ifBlank { "all" }}"
+
     /** The lobby of one call (#2896 §3) and its controls. */
     const val CONFERENCE_LOBBY = "conference-lobby"
     const val CONFERENCE_BACK = "conference-back"
@@ -387,6 +396,26 @@ object TestTags {
 
     /** The list's own error line; the row buttons report their failures here. */
     const val CONFERENCE_RECORDINGS_ERROR = "conference-recordings-error"
+
+    // ── the minimised call (#2896 §9) ─────────────────────────────────────
+
+    /** The bar over the rest of the app while a call is off-screen. Its absence
+     *  is as much an assertion as its presence: it must not draw over the room. */
+    const val CONFERENCE_MINI = "conference-mini"
+
+    /** The line it says about the call — one tag, because a spec asserts on the
+     *  text, and «идёт звонок» where «связь потеряна» belongs is the bug. */
+    const val CONFERENCE_MINI_LINE = "conference-mini-line"
+
+    /** How many others are in the call. Absent when nobody else is — a lone «0»
+     *  next to a people icon reads as a broken counter. */
+    const val CONFERENCE_MINI_COUNT = "conference-mini-count"
+
+    /** Its own microphone and hang-up. The second is the only way out of a call
+     *  whose lobby is nowhere on screen. */
+    const val CONFERENCE_MINI_MIC = "conference-mini-mic"
+
+    const val CONFERENCE_MINI_HANGUP = "conference-mini-hangup"
 
     // ── help centre (#2795) ────────────────────────────────────────────────
 

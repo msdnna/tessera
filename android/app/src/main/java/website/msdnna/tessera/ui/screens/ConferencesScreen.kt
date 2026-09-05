@@ -81,13 +81,27 @@ import website.msdnna.tessera.util.parseTtlDays
  * roster and joining — is §3.
  */
 @Composable
-fun ConferencesScreen(workspaceId: String) {
+fun ConferencesScreen(
+    workspaceId: String,
+    /** A call to open the lobby of straight away — the minimised bar's return (§9). */
+    preselectConferenceId: String? = null,
+    onPreselectConsumed: () -> Unit = {},
+) {
     val c = Tessera.colors
     val vm: ConferencesViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(workspaceId) {
         if (workspaceId.isNotBlank()) vm.load(workspaceId)
+    }
+
+    // Separate from the load above, and not conditional on it: the lobby fetches
+    // the call by its own id, so returning to a meeting must not wait on a list
+    // that may still be loading — or be lost because the filter excludes it.
+    LaunchedEffect(preselectConferenceId) {
+        val id = preselectConferenceId ?: return@LaunchedEffect
+        vm.openById(id)
+        onPreselectConsumed()
     }
 
     // The lobby is an inline overlay, not a Dialog, so Back would otherwise fall
@@ -101,7 +115,9 @@ fun ConferencesScreen(workspaceId: String) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 UnderlineTabs(
-                    tabs = ConferenceStatus.FILTERS.map { TabItem(label = filterLabel(it)) },
+                    tabs = ConferenceStatus.FILTERS.map {
+                        TabItem(label = filterLabel(it), testTag = TestTags.conferenceFilter(it))
+                    },
                     selected = ConferenceStatus.FILTERS.indexOf(state.filter).coerceAtLeast(0),
                     onSelect = { vm.setFilter(ConferenceStatus.FILTERS[it]) },
                     modifier = Modifier.weight(1f),
@@ -251,6 +267,7 @@ internal fun ConferenceRow(
                 message = stringResource(R.string.conf_confirm_delete),
                 onConfirm = onConfirmDelete,
                 onDismiss = onCancelDelete,
+                confirmTag = TestTags.CONFERENCE_DELETE_CONFIRM,
             )
         }
     }

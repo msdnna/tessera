@@ -70,7 +70,20 @@ class ConferencesViewModel(
 
     // ── the lobby (§3) ────────────────────────────────────────────────────
 
-    fun open(conference: Conference) = _state.update { it.copy(openId = conference.id) }
+    fun open(conference: Conference) = openById(conference.id)
+
+    /**
+     * Open a lobby by id alone — the minimised bar's way back (#2896 §9).
+     *
+     * By id rather than by row because the call the bar points at need not be in
+     * the list at all: the filter may be «Запланированные», or the section may
+     * never have been opened in this session. The lobby loads itself from the id,
+     * so the list is not a precondition for returning to a meeting.
+     */
+    fun openById(conferenceId: String) {
+        if (conferenceId.isBlank()) return
+        _state.update { it.copy(openId = conferenceId) }
+    }
 
     fun closeLobby() = _state.update { it.copy(openId = null) }
 

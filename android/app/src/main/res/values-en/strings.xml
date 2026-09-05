@@ -849,6 +849,16 @@
     <string name="conf_rec_err_forbidden">Only a conference moderator may start a recording</string>
     <string name="conf_rec_err_conflict">Another moderator has already changed the recording</string>
 
+    <!-- The minimised call (#2896 §9) -->
+    <string name="conf_mini_live">Call in progress</string>
+    <string name="conf_mini_reconnecting">Reconnecting…</string>
+    <string name="conf_mini_lost">Connection lost</string>
+    <string name="conf_mini_others">Others in the call: %1$d</string>
+    <string name="conf_mini_return">Back to the call</string>
+    <string name="conf_mini_hangup">Leave the call</string>
+    <string name="conf_mini_mic_on">Mute the microphone</string>
+    <string name="conf_mini_mic_off">Unmute the microphone</string>
+
     <!-- Workspace members -->
     <string name="members_title">Members</string>
     <string name="members_invitations">Invitations</string>

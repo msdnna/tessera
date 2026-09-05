@@ -86,7 +86,7 @@ import website.msdnna.tessera.util.confHandCount
  * menu instead of three dropdowns of hardware ids.
  */
 @Composable
-fun ConferenceRoom(conferenceId: String, onHangup: () -> Unit) {
+fun ConferenceRoom(conferenceId: String, title: String, onHangup: () -> Unit) {
     val vm: ConferenceRoomViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
     val chatVm: ConferenceChatViewModel = viewModel()
@@ -133,15 +133,18 @@ fun ConferenceRoom(conferenceId: String, onHangup: () -> Unit) {
         // Connect either way. A call joined without a microphone is a call you
         // can still listen to, and the banner says why nobody can hear you —
         // far better than a lobby button that appears to do nothing.
-        vm.enter(conferenceId, ConfMediaGrant(mic = mic, cam = false))
+        vm.enter(conferenceId, ConfMediaGrant(mic = mic, cam = false), title)
         if (!mic) micLauncher.launch(Manifest.permission.RECORD_AUDIO)
     }
 
-    // Until §9's minimised bar exists there is nowhere for a call to live
-    // without a screen, so leaving this one ends it. Tied to composition rather
-    // than to the view model: the model is scoped to the activity and would
-    // outlive the room by the whole session.
-    DisposableEffect(conferenceId) { onDispose { vm.exit() } }
+    // Leaving this screen no longer ends the call (#2896 §9) — it minimises it
+    // into the bar over the rest of the app, which is what this reports. The
+    // call itself lives in the engine and the seat on the server, both of which
+    // outlast a composition; hanging up is now a press, not a navigation.
+    DisposableEffect(Unit) {
+        vm.onRoomShown()
+        onDispose { vm.onRoomHidden() }
+    }
 
     val view = LocalView.current
     DisposableEffect(Unit) {

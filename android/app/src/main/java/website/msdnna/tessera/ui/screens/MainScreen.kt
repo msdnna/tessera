@@ -112,6 +112,11 @@ fun MainScreen(
     updateVm: UpdateViewModel = viewModel(),
     conflictsVm: website.msdnna.tessera.ui.viewmodels.ConflictsViewModel = viewModel(),
     whatsNewVm: website.msdnna.tessera.ui.viewmodels.WhatsNewViewModel = viewModel(),
+    // The call, not the room screen (#2896 §9): resolved here so the shell can
+    // draw the minimised bar over every destination. Same activity-scoped
+    // instance the room itself gets — which is what lets a meeting survive
+    // navigating away from it, and what makes «hang up» reach the real call.
+    callVm: website.msdnna.tessera.ui.viewmodels.ConferenceRoomViewModel = viewModel(),
 ) {
     val c = Tessera.colors
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -126,6 +131,7 @@ fun MainScreen(
     val updateAvailable by updateVm.available.collectAsStateWithLifecycle()
     val whatsNew by whatsNewVm.sheet.collectAsStateWithLifecycle()
     val spotlight by whatsNewVm.spotlight.collectAsStateWithLifecycle()
+    val call by callVm.state.collectAsStateWithLifecycle()
     val apiStamp by whatsNewVm.api.collectAsStateWithLifecycle()
     val apiVersion = apiStamp?.version.orEmpty()
     val boardRepo = remember { BoardRepository() }
@@ -139,6 +145,8 @@ fun MainScreen(
     // «В GitLab» on milestones of that project (resolved from the integration board).
     var glProjectId by remember { mutableStateOf<String?>(null) }
     var notesPreselectId by remember { mutableStateOf<String?>(null) }
+    // Which call to reopen the lobby of — set by the minimised bar (#2896 §9).
+    var conferencePreselectId by remember { mutableStateOf<String?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
     var membersOpen by remember { mutableStateOf(false) }
@@ -431,7 +439,11 @@ fun MainScreen(
 
                             is MainDest.Documents -> DocumentsScreen(workspaceId = state.currentId)
 
-                            is MainDest.Conferences -> ConferencesScreen(workspaceId = state.currentId)
+                            is MainDest.Conferences -> ConferencesScreen(
+                                workspaceId = state.currentId,
+                                preselectConferenceId = conferencePreselectId,
+                                onPreselectConsumed = { conferencePreselectId = null },
+                            )
 
                             is MainDest.Reminders -> RemindersScreen()
 
@@ -480,6 +492,34 @@ fun MainScreen(
                             )
                         }
                     }
+                }
+            }
+
+            // The minimised call, over whatever section is open (#2896 §9).
+            //
+            // At the bottom rather than under the top bar: its two controls are
+            // meant for a thumb, and the top of the screen already belongs to the
+            // destination. Over the content and not above it in the column — a bar
+            // that resized every screen it appeared on would reflow a board
+            // mid-drag, and it comes and goes with a phone call's timing.
+            call.mini?.let { line ->
+                Box(
+                    Modifier.align(Alignment.BottomCenter)
+                        .windowInsetsPadding(WindowInsets.safeDrawing),
+                ) {
+                    ConferenceMiniBar(
+                        line = line,
+                        title = call.session.title,
+                        others = call.miniOthers,
+                        micOn = call.session.mic,
+                        micEnabled = call.miniMicEnabled,
+                        onReturn = {
+                            conferencePreselectId = call.session.conferenceId
+                            navTo(MainDest.Conferences)
+                        },
+                        onToggleMic = { callVm.toggleMic() },
+                        onHangup = { callVm.hangUp() },
+                    )
                 }
             }
 

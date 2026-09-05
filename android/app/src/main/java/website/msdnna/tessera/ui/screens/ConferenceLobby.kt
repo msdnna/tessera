@@ -148,7 +148,14 @@ fun ConferenceLobby(conferenceId: String, onBack: () -> Unit) {
     // roster coming back without us is what closes this — so a room the server
     // no longer counts us in cannot stay on screen still publishing.
     if (state.inRoom) {
-        ConferenceRoom(conferenceId = conferenceId, onHangup = { vm.leave() })
+        ConferenceRoom(
+            conferenceId = conferenceId,
+            // Carried down rather than fetched again: this is where the call's
+            // name is already known, and the minimised bar (§9) names the meeting
+            // from screens that have never heard of it.
+            title = state.conference?.title.orEmpty(),
+            onHangup = { vm.leave() },
+        )
     }
 }
 

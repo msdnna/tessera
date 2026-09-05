@@ -76,6 +76,14 @@ data class ConfPeer(
 /** Everything a screen needs to know about the call it is showing. */
 data class ConfSession(
     val conferenceId: String = "",
+    /**
+     * The call's name, carried from whoever started it (#2896 §9).
+     *
+     * Held on the session rather than fetched where it is needed: the minimised
+     * bar names the meeting from anywhere in the app, and the only other way to
+     * put a title there is a request per join for a string the lobby already had.
+     */
+    val title: String = "",
     val status: ConfMediaStatus = ConfMediaStatus.IDLE,
     val reason: ConfJoinReason = ConfJoinReason.NONE,
     /** The server's own sentence, when it sent one. */
@@ -172,6 +180,9 @@ object ConferenceEngine {
     private var want = ConfMediaWant()
     private var grant = ConfMediaGrant()
 
+    /** The call's name for the minimised bar (§9); re-applied on every reconnect. */
+    private var title = ""
+
     /** A host silenced us (#2878). Held here so a reconnect re-applies it. */
     private var forceMuted = false
 
@@ -185,11 +196,12 @@ object ConferenceEngine {
      * and stays server state. This is the media half: a token, an SFU connection
      * and the tracks.
      */
-    fun join(conferenceId: String, want: ConfMediaWant, grant: ConfMediaGrant) {
+    fun join(conferenceId: String, want: ConfMediaWant, grant: ConfMediaGrant, title: String = "") {
         val status = _session.value.status
         if (status == ConfMediaStatus.CONNECTING || status == ConfMediaStatus.LIVE) return
         this.want = want
         this.grant = grant
+        this.title = title
         leaving = false
         ended = false
         attempt = 0
@@ -204,7 +216,15 @@ object ConferenceEngine {
         // Here rather than at startup — this is the first moment we are in a
         // coroutine and the profile's language is readable.
         if (serviceEnabled) runCatching { ConferenceCallService.ensureChannel(AppContainer.appContext) }
-        set { it.copy(conferenceId = conferenceId, status = ConfMediaStatus.CONNECTING, error = "", reason = ConfJoinReason.NONE) }
+        set {
+            it.copy(
+                conferenceId = conferenceId,
+                title = title,
+                status = ConfMediaStatus.CONNECTING,
+                error = "",
+                reason = ConfJoinReason.NONE,
+            )
+        }
         val plan = try {
             confJoinPlan(repo.token(conferenceId))
         } catch (e: Exception) {

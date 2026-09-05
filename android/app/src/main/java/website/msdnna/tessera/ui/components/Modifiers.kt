@@ -11,12 +11,20 @@ import androidx.compose.ui.composed
  * Click handling without the Material ripple — the web UI uses flat hover/press
  * states, so a ripple would look out of place. Disabled clicks are inert.
  */
-fun Modifier.clickableNoRipple(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
+fun Modifier.clickableNoRipple(
+    enabled: Boolean = true,
+    // What the tap does, for a screen reader. Only worth passing where the tap
+    // target's own text does not already say it — a whole row whose visible
+    // content describes a thing rather than the action it performs.
+    onClickLabel: String? = null,
+    onClick: () -> Unit,
+): Modifier = composed {
     val interaction = remember { MutableInteractionSource() }
     clickable(
         interactionSource = interaction,
         indication = null,
         enabled = enabled,
+        onClickLabel = onClickLabel,
         onClick = onClick,
     )
 }

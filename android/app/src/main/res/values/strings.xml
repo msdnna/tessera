@@ -863,6 +863,16 @@
     <string name="conf_rec_err_forbidden">Запись может включить только модератор конференции</string>
     <string name="conf_rec_err_conflict">Состояние записи уже изменил другой модератор</string>
 
+    <!-- Свёрнутый звонок (#2896 §9) -->
+    <string name="conf_mini_live">Идёт звонок</string>
+    <string name="conf_mini_reconnecting">Переподключаемся…</string>
+    <string name="conf_mini_lost">Связь потеряна</string>
+    <string name="conf_mini_others">Ещё в звонке: %1$d</string>
+    <string name="conf_mini_return">Вернуться в звонок</string>
+    <string name="conf_mini_hangup">Выйти из звонка</string>
+    <string name="conf_mini_mic_on">Выключить микрофон</string>
+    <string name="conf_mini_mic_off">Включить микрофон</string>
+
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>
     <string name="members_invitations">Приглашения</string>

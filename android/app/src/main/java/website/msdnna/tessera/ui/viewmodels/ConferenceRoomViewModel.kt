@@ -24,6 +24,7 @@ import website.msdnna.tessera.util.ConfControls
 import website.msdnna.tessera.util.ConfDeniedKind
 import website.msdnna.tessera.util.ConfMediaGrant
 import website.msdnna.tessera.util.ConfMediaWant
+import website.msdnna.tessera.util.ConfMiniLine
 import website.msdnna.tessera.util.ConfRecordingFailure
 import website.msdnna.tessera.util.ConfRecordingPress
 import website.msdnna.tessera.util.ConfRowActions
@@ -37,6 +38,9 @@ import website.msdnna.tessera.util.confControls
 import website.msdnna.tessera.util.confDeniedKind
 import website.msdnna.tessera.util.confHasLocalAudio
 import website.msdnna.tessera.util.confLastSpeaker
+import website.msdnna.tessera.util.confMiniLine
+import website.msdnna.tessera.util.confMiniMicEnabled
+import website.msdnna.tessera.util.confMiniOthers
 import website.msdnna.tessera.util.confPanelOrder
 import website.msdnna.tessera.util.confQueuePosition
 import website.msdnna.tessera.util.confRecordingFailure
@@ -93,6 +97,16 @@ data class ConferenceRoomUiState(
     val recordingError: ConfRecordingFailure? = null,
     /** A recording call is in flight; the button must not be pressed twice. */
     val recordingBusy: Boolean = false,
+    /**
+     * The room screen is composed right now (#2896 §9).
+     *
+     * The minimised bar's other half: since §9 a call outlives the screen, so
+     * «is there a call» no longer answers «should the bar be drawn». Reported by
+     * the screen itself rather than derived from the shell's destination — the
+     * section, the lobby and the call are three layers of one screen, and a bar
+     * keyed to the destination would paint itself over the call it links to.
+     */
+    val roomOnScreen: Boolean = false,
 ) {
     val stage: ConfStage<ConfPeer> get() = confStage(session.peers, lastSpeaker)
 
@@ -147,6 +161,18 @@ data class ConferenceRoomUiState(
     /** Whether this row gets the local volume controls — media, not roster. */
     fun hasLocalAudio(person: ConfPerson): Boolean =
         confHasLocalAudio(person.userId, room.meId, session.peers.map { it.identity })
+
+    // ── the minimised call (§9) ───────────────────────────────────────────
+
+    /** What the bar over the rest of the app says, or null for no bar. */
+    val mini: ConfMiniLine?
+        get() = confMiniLine(session.status, session.reconnecting, roomOnScreen)
+
+    /** How many other people are in it — ourselves excluded. */
+    val miniOthers: Int get() = confMiniOthers(session.peers)
+
+    /** The bar's microphone button, answering exactly as the toolbar's does. */
+    val miniMicEnabled: Boolean get() = confMiniMicEnabled(session.status, session.forceMuted)
 }
 
 /**
@@ -164,7 +190,7 @@ data class ConferenceRoomUiState(
  */
 class ConferenceRoomViewModel(
     private val socket: ConferenceRoomSocket = ConferenceRoomSocket(),
-    private val recordings: ConferenceRepository = ConferenceRepository(),
+    private val repo: ConferenceRepository = ConferenceRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConferenceRoomUiState())
     val state: StateFlow<ConferenceRoomUiState> = _state.asStateFlow()
@@ -291,15 +317,45 @@ class ConferenceRoomViewModel(
      * whenever a permission answer changes the grant, and a second `join` for a
      * call already connecting would tear down the first one's token.
      */
-    fun enter(conferenceId: String, grant: ConfMediaGrant) {
+    fun enter(conferenceId: String, grant: ConfMediaGrant, title: String = "") {
         val fresh = this.conferenceId != conferenceId
         this.conferenceId = conferenceId
         _state.update { it.copy(grant = grant) }
-        ConferenceEngine.join(conferenceId, ConfMediaWant(mic = grant.mic, cam = false), grant)
+        ConferenceEngine.join(conferenceId, ConfMediaWant(mic = grant.mic, cam = false), grant, title)
         if (fresh) {
             reported = null
             socket.open(conferenceId)
         }
+    }
+
+    /**
+     * The room screen appeared or went away (#2896 §9).
+     *
+     * Only bookkeeping for the bar — nothing here touches the call, which is the
+     * entire point of §9: navigating off a meeting minimises it instead of
+     * hanging up.
+     */
+    fun onRoomShown() = _state.update { it.copy(roomOnScreen = true) }
+
+    fun onRoomHidden() = _state.update { it.copy(roomOnScreen = false) }
+
+    /**
+     * Hang up from the minimised bar (§9).
+     *
+     * Drops the seat as well as the media. The room screen's own button leaves
+     * that to the lobby — it is on screen, it owns membership and it re-reads the
+     * roster afterwards — but a bar pressed from the board has no lobby behind
+     * it, and media alone would leave the room counting somebody who is gone.
+     *
+     * The media goes first and does not wait for the request: the microphone
+     * should stop on the press, not on the reply, and a `leave` that fails still
+     * leaves a call the user has quit.
+     */
+    fun hangUp() {
+        val id = conferenceId
+        exit()
+        if (id.isBlank()) return
+        viewModelScope.launch { runCatching { repo.leave(id) } }
     }
 
     /**
@@ -513,9 +569,9 @@ class ConferenceRoomViewModel(
         viewModelScope.launch {
             val result = runCatching {
                 if (press == ConfRecordingPress.STOP) {
-                    recordings.stopRecording(conferenceId)
+                    repo.stopRecording(conferenceId)
                 } else {
-                    recordings.startRecording(conferenceId)
+                    repo.startRecording(conferenceId)
                 }
             }
             _state.update {
@@ -539,7 +595,15 @@ class ConferenceRoomViewModel(
     /** Whether the room threw us out or ended under us — the screen leaves on it. */
     val roomEnd: ConfRoomEnd get() = _state.value.room.ended
 
+    /**
+     * The shell itself is going away — end the call with it (#2896 §9).
+     *
+     * Since §9 nothing else does: leaving the room screen minimises the meeting
+     * instead of hanging up, so this is the last thing standing between a swiped
+     * -away app and a microphone still publishing behind a notification nobody
+     * connects to a screen they closed.
+     */
     override fun onCleared() {
-        socket.close()
+        exit()
     }
 }
