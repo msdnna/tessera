@@ -21,9 +21,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.util.DocAnnotateTarget
 import website.msdnna.tessera.util.DocEditorReady
 import website.msdnna.tessera.util.DocEditorSignal
 import website.msdnna.tessera.util.DocSaveStatus
+import website.msdnna.tessera.util.parseDocAnnotate
 import website.msdnna.tessera.util.parseDocEditorReady
 import website.msdnna.tessera.util.parseDocEditorSignal
 
@@ -83,6 +85,7 @@ fun DocEditorWebView(
     onStatus: (DocEditorSignal) -> Unit = {},
     onBlocked: (String) -> Unit = {},
     onRemoteChange: () -> Unit = {},
+    onAnnotate: (DocAnnotateTarget) -> Unit = {},
     onLoadFailed: () -> Unit = {},
 ) {
     val ctx = LocalContext.current
@@ -92,6 +95,7 @@ fun DocEditorWebView(
     val statusCb by rememberUpdatedState(onStatus)
     val blockedCb by rememberUpdatedState(onBlocked)
     val remoteCb by rememberUpdatedState(onRemoteChange)
+    val annotateCb by rememberUpdatedState(onAnnotate)
     val failedCb by rememberUpdatedState(onLoadFailed)
     val held = rememberUpdatedState(controller)
 
@@ -134,6 +138,15 @@ fun DocEditorWebView(
                         @JavascriptInterface
                         fun onRemoteChange() {
                             post { remoteCb() }
+                        }
+
+                        /** The user asked to discuss a block — from the block
+                         *  handle, or by tapping the count the margin paints on
+                         *  a block that already has a discussion. The threads
+                         *  themselves are native (§5). */
+                        @JavascriptInterface
+                        fun onAnnotate(payload: String) {
+                            post { annotateCb(parseDocAnnotate(payload)) }
                         }
 
                         /** The page's access token expired. The refresh token is

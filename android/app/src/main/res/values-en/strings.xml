@@ -764,6 +764,29 @@
     <string name="docs_editor_failed">Could not open the editor</string>
     <string name="docs_editor_blocked">%1$s is editing this block</string>
     <string name="docs_editor_blocked_someone">someone else</string>
+    <!-- Annotations (#2894 §5). -->
+    <string name="docs_comments_title">Discussion</string>
+    <string name="docs_comments_empty">No comments yet. Open a block in the editor and tap the discussion icon to start one.</string>
+    <string name="docs_comments_section_focus">Selected block</string>
+    <string name="docs_comments_section_blocks">On blocks</string>
+    <string name="docs_comments_section_document">On the document</string>
+    <string name="docs_comments_section_detached">Block deleted</string>
+    <string name="docs_comments_anchor_fallback">the selected block</string>
+    <string name="docs_comments_unpin">Unpin</string>
+    <string name="docs_comments_reply">Reply</string>
+    <string name="docs_comments_resolve">Resolve</string>
+    <string name="docs_comments_reopen">Reopen</string>
+    <string name="docs_comments_resolved">resolved</string>
+    <string name="docs_comments_reply_placeholder">Reply…</string>
+    <string name="docs_comments_edit_placeholder">Edit the comment…</string>
+    <string name="docs_comments_draft_block">Comment on the block…</string>
+    <string name="docs_comments_draft_doc">Comment on the document…</string>
+    <string name="docs_comments_send">Send</string>
+    <string name="docs_comments_someone">Member</string>
+    <string name="docs_comments_remove_title">Delete the comment?</string>
+    <string name="docs_comments_remove_confirm">The comment will be deleted.</string>
+    <string name="docs_comments_remove_thread_title">Delete the discussion?</string>
+    <string name="docs_comments_remove_thread_confirm">The discussion and its replies (%1$d) will be deleted.</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

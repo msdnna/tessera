@@ -254,6 +254,46 @@ object TestTags {
     const val DOCUMENT_EDITOR_FAILED = "document-editor-failed"
     const val DOCUMENT_EDITOR_BLOCKED = "document-editor-blocked"
 
+    /** Annotations (#2894 §5): the way in — from the reader and from the editor
+     *  bar — and the sheet itself. */
+    const val DOCUMENT_COMMENTS_OPEN = "document-comments-open"
+    const val DOCUMENT_COMMENTS = "document-comments"
+    const val DOCUMENT_COMMENTS_CLOSE = "document-comments-close"
+
+    /** Open discussions: on the way-in button, and again in the sheet header.
+     *  Two tags because a spec asserting the badge must not pass on the header. */
+    const val DOCUMENT_COMMENTS_BADGE = "document-comments-badge"
+    const val DOCUMENT_COMMENTS_COUNT = "document-comments-count"
+
+    const val DOCUMENT_COMMENTS_EMPTY = "document-comments-empty"
+
+    /** The block a new thread will hang on — the quote, and the way to drop it. */
+    const val DOCUMENT_COMMENTS_ANCHOR = "document-comments-anchor"
+    const val DOCUMENT_COMMENTS_UNPIN = "document-comments-unpin"
+
+    /** The three composers: a new thread, an answer, and an edit of one's own. */
+    const val DOCUMENT_COMMENT_DRAFT = "document-comment-draft"
+    const val DOCUMENT_COMMENT_SEND = "document-comment-send"
+    const val DOCUMENT_COMMENT_REPLY_DRAFT = "document-comment-reply-draft"
+    const val DOCUMENT_COMMENT_REPLY_SEND = "document-comment-reply-send"
+    const val DOCUMENT_COMMENT_EDIT_DRAFT = "document-comment-edit-draft"
+    const val DOCUMENT_COMMENT_EDIT_SAVE = "document-comment-edit-save"
+    const val DOCUMENT_COMMENT_REMOVE_CONFIRM = "document-comment-remove-confirm"
+
+    /** Keyed by the comment they belong to: a thread is asserted by identity,
+     *  not by «the second card» — which is exactly what re-ordering changes. */
+    fun documentCommentThread(id: String) = "document-comment-thread:$id"
+
+    fun documentCommentReply(id: String) = "document-comment-reply:$id"
+
+    fun documentCommentResolve(id: String) = "document-comment-resolve:$id"
+
+    fun documentCommentResolved(id: String) = "document-comment-resolved:$id"
+
+    fun documentCommentEdit(id: String) = "document-comment-edit:$id"
+
+    fun documentCommentRemove(id: String) = "document-comment-remove:$id"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

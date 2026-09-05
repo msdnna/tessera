@@ -779,6 +779,30 @@
     <string name="docs_editor_failed">Не удалось открыть редактор</string>
     <string name="docs_editor_blocked">Блок редактирует %1$s</string>
     <string name="docs_editor_blocked_someone">другой участник</string>
+    <!-- Annotations (#2894 §5). The sections say what the web draws with lines
+         from a card to its block — a phone has no column to draw them in. -->
+    <string name="docs_comments_title">Обсуждение</string>
+    <string name="docs_comments_empty">Комментариев пока нет. Откройте блок в редакторе и нажмите на значок обсуждения, чтобы начать.</string>
+    <string name="docs_comments_section_focus">Выбранный блок</string>
+    <string name="docs_comments_section_blocks">К блокам</string>
+    <string name="docs_comments_section_document">К документу</string>
+    <string name="docs_comments_section_detached">Блок удалён</string>
+    <string name="docs_comments_anchor_fallback">выбранный блок</string>
+    <string name="docs_comments_unpin">Открепить</string>
+    <string name="docs_comments_reply">Ответить</string>
+    <string name="docs_comments_resolve">Решено</string>
+    <string name="docs_comments_reopen">Вернуть</string>
+    <string name="docs_comments_resolved">решено</string>
+    <string name="docs_comments_reply_placeholder">Ответить…</string>
+    <string name="docs_comments_edit_placeholder">Изменить комментарий…</string>
+    <string name="docs_comments_draft_block">Комментарий к блоку…</string>
+    <string name="docs_comments_draft_doc">Комментарий к документу…</string>
+    <string name="docs_comments_send">Отправить</string>
+    <string name="docs_comments_someone">Участник</string>
+    <string name="docs_comments_remove_title">Удалить комментарий?</string>
+    <string name="docs_comments_remove_confirm">Комментарий будет удалён.</string>
+    <string name="docs_comments_remove_thread_title">Удалить обсуждение?</string>
+    <string name="docs_comments_remove_thread_confirm">Обсуждение будет удалено вместе с ответами (%1$d).</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

@@ -37,12 +37,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.screens.documents.DocBlockView
+import website.msdnna.tessera.ui.screens.documents.DocCommentsButton
+import website.msdnna.tessera.ui.screens.documents.DocCommentsSheet
 import website.msdnna.tessera.ui.screens.documents.DocDraft
 import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
@@ -72,6 +75,8 @@ fun DocumentsScreen(workspaceId: String) {
     val c = Tessera.colors
     val vm: DocumentsViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
+    // Who «me» is — only one's own comments offer edit and delete (§5).
+    val me by AppContainer.prefs.user.collectAsStateWithLifecycle(initialValue = null)
     var draft by remember { mutableStateOf<DocDraft?>(null) }
     // The editor is a surface over the reader, not a route: the reader is where
     // it came from and where closing it lands, and the back stack has no idea
@@ -84,8 +89,9 @@ fun DocumentsScreen(workspaceId: String) {
 
     // The reader is an inline overlay, not a Dialog, so Back would otherwise
     // fall through to the nav back-stack. Inside a container Back walks the
-    // trail out one level instead of leaving the section.
-    BackHandler(enabled = state.openId != null && !editing) { vm.close() }
+    // trail out one level instead of leaving the section. The comments sheet
+    // handles Back itself — closing it must not also close the reader beneath.
+    BackHandler(enabled = state.openId != null && !editing && !state.comments.sheetOpen) { vm.close() }
     BackHandler(enabled = state.openId == null && state.trail.isNotEmpty()) {
         vm.crumbTo(state.trail.lastIndex - 1)
     }
@@ -119,10 +125,12 @@ fun DocumentsScreen(workspaceId: String) {
                 page = state.page,
                 loading = state.opening,
                 childCount = state.openChildCount,
+                commentCount = state.comments.openCount,
                 onBack = { vm.close() },
                 onDraft = { draft = it },
                 onChildren = { state.open?.let(vm::drillInto) },
                 onEdit = { editing = true },
+                onComments = { vm.openComments() },
             )
         }
 
@@ -137,11 +145,30 @@ fun DocumentsScreen(workspaceId: String) {
                 slug = open.slug,
                 workspaceId = workspaceId,
                 serverRoot = RetrofitClient.serverRoot,
+                commentCount = state.comments.openCount,
+                onComments = { target -> vm.openComments(target) },
                 onClose = {
                     editing = false
                     // The reader under it is showing the text from before the edit.
                     vm.refreshOpen()
                 },
+            )
+        }
+
+        // Above the editor on purpose: a discussion is opened *from* it, and the
+        // page underneath must not be the thing that takes the tap. Closing the
+        // sheet lands back on whichever of the two was showing.
+        if (state.comments.sheetOpen) {
+            DocCommentsSheet(
+                state = state.comments,
+                meId = me?.id,
+                onDismiss = { vm.closeComments() },
+                onClearAnchor = { vm.clearCommentAnchor() },
+                onAdd = { body -> vm.addComment(body) },
+                onReply = { parentId, body -> vm.replyComment(parentId, body) },
+                onEdit = { id, body -> vm.editComment(id, body) },
+                onResolve = { id, resolved -> vm.resolveComment(id, resolved) },
+                onDelete = { id -> vm.deleteComment(id) },
             )
         }
 
@@ -176,10 +203,12 @@ private fun DocumentReader(
     page: DocPage,
     loading: Boolean,
     childCount: Int,
+    commentCount: Int,
     onBack: () -> Unit,
     onDraft: (DocDraft) -> Unit,
     onChildren: () -> Unit,
     onEdit: () -> Unit,
+    onComments: () -> Unit,
 ) {
     val c = Tessera.colors
     var menuOpen by remember { mutableStateOf(false) }
@@ -221,6 +250,7 @@ private fun DocumentReader(
                 boxSize = 40.dp,
                 modifier = Modifier.testTag(TestTags.DOCUMENT_EDIT),
             )
+            DocCommentsButton(count = commentCount, onClick = onComments)
             IonIconButton(
                 Ion.LIST,
                 onClick = { tocOpen = true },

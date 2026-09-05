@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { embedStatus, parseEmbedParams, sendToHost } from '@/utils/docEmbed'
+import { annotatePayload, embedStatus, parseEmbedParams, sendToHost } from '@/utils/docEmbed'
 
 // The contract with the Android app (#2894 §4). Every rule here fails silently
 // when it breaks — a dropped parameter gives a blank editor, a wrong status word
@@ -90,5 +90,62 @@ describe('sendToHost', () => {
       },
     }
     expect(sendToHost('onStatus', { status: 'saving' }, host)).toBe(false)
+  })
+})
+
+// The tap that opens a native discussion (#2894 §5). Everything the phone needs
+// leaves with it: there is no panel beside the text to look anything up in.
+describe('annotatePayload', () => {
+  const doc = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        attrs: { id: 'p1' },
+        content: [{ type: 'text', text: 'Первый  абзац ' }],
+      },
+      {
+        type: 'bulletList',
+        attrs: { id: 'l1' },
+        content: [
+          {
+            type: 'listItem',
+            content: [
+              {
+                type: 'paragraph',
+                attrs: { id: 'p2' },
+                content: [{ type: 'text', text: 'пункт' }],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  }
+
+  it('carries the anchor, the block text as it stands, and the reading order', () => {
+    const payload = annotatePayload(doc, 'p1')
+    expect(payload.block_id).toBe('p1')
+    // Whitespace collapsed: the quote is a one-line label on a phone, not a
+    // copy of the paragraph's formatting.
+    expect(payload.quote).toBe('Первый абзац')
+    // Reading order, including the paragraph nested inside the list — that is
+    // what tells an anchored thread from a detached one on the host side.
+    expect(payload.blocks).toEqual(['p1', 'l1', 'p2'])
+  })
+
+  it('quotes nothing when the block is already gone', () => {
+    // A tap on the margin count of a block deleted meanwhile: the thread is
+    // detached, and an empty quote is the honest answer rather than a stale one.
+    const payload = annotatePayload(doc, 'vanished')
+    expect(payload.block_id).toBe('vanished')
+    expect(payload.quote).toBe('')
+    expect(payload.blocks).toEqual(['p1', 'l1', 'p2'])
+  })
+
+  it('without a block, the sheet opens on the document', () => {
+    const payload = annotatePayload(doc, '')
+    expect(payload.block_id).toBe('')
+    expect(payload.quote).toBe('')
   })
 })

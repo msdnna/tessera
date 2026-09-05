@@ -8,18 +8,27 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Document
+import website.msdnna.tessera.data.model.DocumentComment
 import website.msdnna.tessera.data.repository.DocumentRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.DEFAULT_DOC_PAGE
+import website.msdnna.tessera.util.DocAnnotateTarget
 import website.msdnna.tessera.util.DocBlock
 import website.msdnna.tessera.util.DocCrumb
 import website.msdnna.tessera.util.DocPage
+import website.msdnna.tessera.util.DocThread
+import website.msdnna.tessera.util.DocThreadGroups
+import website.msdnna.tessera.util.buildDocThreads
+import website.msdnna.tessera.util.docBlockIdsInOrder
 import website.msdnna.tessera.util.docChildCount
+import website.msdnna.tessera.util.docOpenThreadCount
 import website.msdnna.tessera.util.docTiles
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.parseDocBlocks
 import website.msdnna.tessera.util.parseDocPage
 import website.msdnna.tessera.util.pruneCrumbs
+import website.msdnna.tessera.util.sortDocThreads
+import website.msdnna.tessera.util.splitDocThreads
 
 data class DocumentsUiState(
     val loading: Boolean = true,
@@ -41,7 +50,55 @@ data class DocumentsUiState(
     val page: DocPage = DEFAULT_DOC_PAGE,
     /** Children of the open document — the reader's «показать вложенные». */
     val openChildCount: Int = 0,
+    /** Annotations on the open document (§5) — the badge and the sheet. */
+    val comments: DocCommentsState = DocCommentsState(),
 )
+
+/**
+ * Annotation threads for the open document (#2730, §5 of #2894).
+ *
+ * The list is refetched after every write rather than patched in place, exactly
+ * as the web panel does it: the same document is open for several people at
+ * once, so a locally spliced list is stale the moment a colleague replies — and
+ * this is a handful of rows, not a feed.
+ */
+data class DocCommentsState(
+    /** The sheet is up. Threads are loaded whether it is or not — the reader's
+     *  badge has to say how many discussions are waiting before it is opened. */
+    val sheetOpen: Boolean = false,
+    val loading: Boolean = false,
+    /** A write is in flight; the sheet stays readable and the composer waits. */
+    val busy: Boolean = false,
+    val error: UiText? = null,
+    val threads: List<DocThread> = emptyList(),
+    val groups: DocThreadGroups = DocThreadGroups(),
+    /** The block the sheet was opened on; blank means the whole document. */
+    val focusBlockId: String = "",
+    /** The block's text as it read at the moment of the tap — stored with a new
+     *  thread so a rewritten paragraph still says what was discussed. */
+    val quote: String = "",
+    /** Block ids in document order, for telling an anchor apart from a deleted one. */
+    val blockIds: List<String> = emptyList(),
+) {
+    val openCount: Int get() = docOpenThreadCount(threads)
+
+    /** Adopts a freshly loaded list: threading, ordering and grouping all hang
+     *  off it, and deriving them here keeps the three in step. */
+    internal fun withComments(comments: List<DocumentComment>): DocCommentsState {
+        val threads = sortDocThreads(buildDocThreads(comments))
+        return copy(
+            loading = false,
+            error = null,
+            threads = threads,
+            groups = splitDocThreads(threads, blockIds),
+        )
+    }
+
+    /** Re-groups the threads already loaded against a new set of block ids —
+     *  what an edit to the document changes without touching a single comment. */
+    internal fun regrouped(blockIds: List<String>): DocCommentsState =
+        copy(blockIds = blockIds, groups = splitDocThreads(threads, blockIds))
+}
 
 /**
  * Documents module (#2718, #2894). A grid of one nesting level plus a
@@ -84,6 +141,7 @@ class DocumentsViewModel(
                 page = DEFAULT_DOC_PAGE,
                 error = null,
                 openChildCount = docChildCount(it.docs, doc.id),
+                comments = DocCommentsState(),
             )
         }
         viewModelScope.launch {
@@ -98,8 +156,10 @@ class DocumentsViewModel(
                             open = full,
                             blocks = parseDocBlocks(full.content),
                             page = parseDocPage(full.content),
+                            comments = it.comments.copy(blockIds = docBlockIdsInOrder(full.content)),
                         )
                     }
+                    loadComments(doc.id)
                 },
                 onFailure = { e ->
                     if (_state.value.openId != doc.id) return@fold
@@ -124,14 +184,29 @@ class DocumentsViewModel(
                 if (it.openId != doc.id) {
                     it
                 } else {
-                    it.copy(open = full, blocks = parseDocBlocks(full.content), page = parseDocPage(full.content))
+                    it.copy(
+                        open = full,
+                        blocks = parseDocBlocks(full.content),
+                        page = parseDocPage(full.content),
+                        // A block deleted in the editor turns its thread from
+                        // anchored into detached, and the sheet says so.
+                        comments = it.comments.regrouped(blockIds = docBlockIdsInOrder(full.content)),
+                    )
                 }
             }
+            loadComments(doc.id)
         }
     }
 
     fun close() = _state.update {
-        it.copy(openId = null, open = null, blocks = emptyList(), page = DEFAULT_DOC_PAGE, opening = false)
+        it.copy(
+            openId = null,
+            open = null,
+            blocks = emptyList(),
+            page = DEFAULT_DOC_PAGE,
+            opening = false,
+            comments = DocCommentsState(),
+        )
     }
 
     /** Walks into a container: the grid shows its children, the reader closes. */
@@ -187,6 +262,106 @@ class DocumentsViewModel(
         close()
         // The trail may have been standing on it (or on one of its children).
         refresh()
+    }
+
+    // ── Annotations (§5) ──────────────────────────────────────────────────────
+
+    /**
+     * Opens the discussion sheet.
+     *
+     * [target] is the tap that got here: the block, the text it held at that
+     * moment, and the document's block ids as the *editor* sees them right now.
+     * Called without one (the reader's button, or the editor's bar) the sheet
+     * shows everything and a new thread hangs off the document.
+     */
+    fun openComments(target: DocAnnotateTarget? = null) = _state.update { st ->
+        val ids = target?.blockIds?.takeIf { it.isNotEmpty() } ?: st.comments.blockIds
+        st.copy(
+            comments = st.comments.copy(
+                sheetOpen = true,
+                focusBlockId = target?.blockId.orEmpty(),
+                quote = target?.quote.orEmpty(),
+                error = null,
+            ).regrouped(ids),
+        )
+    }
+
+    /** Closes the sheet. The threads stay loaded — the badge behind it counts them. */
+    fun closeComments() = _state.update {
+        it.copy(comments = it.comments.copy(sheetOpen = false, focusBlockId = "", quote = "", error = null))
+    }
+
+    /** Drops the anchor without closing: the same «Открепить» the web panel has,
+     *  for writing a remark about the document while standing on a block. */
+    fun clearCommentAnchor() = _state.update {
+        it.copy(comments = it.comments.copy(focusBlockId = "", quote = ""))
+    }
+
+    fun reloadComments() {
+        val id = _state.value.openId ?: return
+        loadComments(id)
+    }
+
+    /** Starts a thread on the focused block, or on the document when none is. */
+    fun addComment(body: String) = writeComment { docId ->
+        val c = _state.value.comments
+        repo.addComment(docId, body.trim(), blockId = c.focusBlockId, quote = c.quote)
+    }
+
+    fun replyComment(parentId: String, body: String) = writeComment { docId ->
+        // The anchor comes from the root on the server side, so a reply carries
+        // no block of its own.
+        repo.addComment(docId, body.trim(), parentId = parentId)
+    }
+
+    fun editComment(commentId: String, body: String) = writeComment { repo.editComment(commentId, body.trim()) }
+
+    fun resolveComment(commentId: String, resolved: Boolean) =
+        writeComment { repo.resolveComment(commentId, resolved) }
+
+    fun deleteComment(commentId: String) = writeComment { repo.deleteComment(commentId) }
+
+    private fun loadComments(docId: String) {
+        _state.update { it.copy(comments = it.comments.copy(loading = true)) }
+        viewModelScope.launch {
+            val result = runCatching { repo.comments(docId) }
+            _state.update { st ->
+                // The reader moved on while the list was in flight.
+                if (st.openId != docId) {
+                    st
+                } else {
+                    result.fold(
+                        onSuccess = { st.copy(comments = st.comments.withComments(it)) },
+                        onFailure = { e ->
+                            st.copy(comments = st.comments.copy(loading = false, error = errorMessage(e)))
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Runs one write and re-reads the list, the way the web panel does. The list
+     * is not patched from the reply: the document is open elsewhere too, and the
+     * only list that is certainly right is the one the server just sent.
+     */
+    private fun writeComment(block: suspend (docId: String) -> Unit) {
+        val docId = _state.value.openId ?: return
+        if (_state.value.comments.busy) return
+        _state.update { it.copy(comments = it.comments.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            val result = runCatching { block(docId) }
+            result.fold(
+                onSuccess = {
+                    _state.update { it.copy(comments = it.comments.copy(busy = false)) }
+                    if (_state.value.openId == docId) loadComments(docId)
+                },
+                onFailure = { e ->
+                    _state.update { it.copy(comments = it.comments.copy(busy = false, error = errorMessage(e))) }
+                },
+            )
+        }
     }
 
     fun clearError() = _state.update { it.copy(error = null) }

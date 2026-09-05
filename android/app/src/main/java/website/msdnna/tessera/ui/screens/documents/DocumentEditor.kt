@@ -38,6 +38,7 @@ import website.msdnna.tessera.ui.components.DocEditorController
 import website.msdnna.tessera.ui.components.DocEditorWebView
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.util.DocAnnotateTarget
 import website.msdnna.tessera.util.DocSaveStatus
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.docEmbedUrl
@@ -57,6 +58,10 @@ fun DocumentEditor(
     slug: String,
     workspaceId: String,
     serverRoot: String,
+    /** Open discussions, for the badge on the bar — the sheet itself belongs to
+     *  the screen, since the reader opens the same one (§5). */
+    commentCount: Int,
+    onComments: (DocAnnotateTarget?) -> Unit,
     onClose: () -> Unit,
 ) {
     val c = Tessera.colors
@@ -121,6 +126,7 @@ fun DocumentEditor(
                 fontSize = 12.sp,
                 modifier = Modifier.testTag(TestTags.DOCUMENT_EDITOR_STATUS),
             )
+            DocCommentsButton(count = commentCount, onClick = { onComments(null) })
         }
         HorizontalDivider(color = c.border)
 
@@ -203,6 +209,9 @@ fun DocumentEditor(
                 onStatus = { signal -> status = signal.status },
                 onBlocked = { name -> blockedBy = name },
                 onRemoteChange = { remoteChanged = true },
+                // A tap on the block handle's comment icon, or on the count the
+                // margin paints — either way the threads open natively.
+                onAnnotate = { target -> onComments(target) },
                 onLoadFailed = { failed = true },
             )
         }

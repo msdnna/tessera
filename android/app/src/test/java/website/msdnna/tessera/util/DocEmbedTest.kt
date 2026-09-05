@@ -97,6 +97,26 @@ class DocEmbedTest {
     }
 
     @Test
+    fun `a tap on a block brings the anchor, the quote and the document's blocks`() {
+        val target = parseDocAnnotate(
+            """{"block_id":"b2","quote":"Второй абзац","blocks":["b1","b2","b3"]}""",
+        )
+        assertThat(target.blockId).isEqualTo("b2")
+        assertThat(target.quote).isEqualTo("Второй абзац")
+        assertThat(target.blockIds).containsExactly("b1", "b2", "b3").inOrder()
+    }
+
+    @Test
+    fun `an unreadable tap opens the whole document rather than a wrong block`() {
+        // Anchoring a new remark to a block the page never named would attach it
+        // to whatever the app happened to remember — an empty target opens the
+        // sheet on the document, which is merely less specific.
+        assertThat(parseDocAnnotate("not json").blockId).isEmpty()
+        assertThat(parseDocAnnotate("{}").blockIds).isEmpty()
+        assertThat(parseDocAnnotate("""{"block_id":"b1"}""").quote).isEmpty()
+    }
+
+    @Test
     fun `the ready report names the document`() {
         val ready = parseDocEditorReady("""{"id":"doc-1","title":"План"}""")
         assertThat(ready.id).isEqualTo("doc-1")

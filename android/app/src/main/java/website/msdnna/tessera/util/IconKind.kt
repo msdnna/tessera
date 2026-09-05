@@ -83,6 +83,10 @@ object Ion {
     const val PERSON_ADD = "person_add"
     const val RIBBON = "ribbon"
     const val DOCUMENT_TEXT = "document_text"
+
+    /** Discussions on a document block (#2894 §5) — the web panel's
+     *  `ChatbubbleEllipsesOutline`, the same ionicons-5 glyph. */
+    const val CHATBUBBLE = "chatbubble"
     const val ALARM = "alarm"
     const val TIME = "time"
     const val IMAGE = "image"

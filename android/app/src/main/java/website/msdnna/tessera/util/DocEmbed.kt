@@ -92,3 +92,33 @@ fun parseDocEditorReady(payload: String): DocEditorReady {
     val obj = runCatching { JSONObject(payload) }.getOrNull() ?: return DocEditorReady()
     return DocEditorReady(obj.optString("id"), obj.optString("title"))
 }
+
+/**
+ * A block the user asked to discuss (§5): the anchor, the text as it stands
+ * right now, and the document's block ids in reading order.
+ *
+ * The quote is taken by the page at the moment of the tap, because that is the
+ * only moment it is certainly the text the remark is about — the block goes on
+ * being edited afterwards and the annotation writes nothing into the document.
+ *
+ * [blockIds] travels with the tap rather than being read off the reader
+ * underneath: the reader holds the body as it was when the document was opened,
+ * so a thread on a paragraph typed during this very session would otherwise be
+ * shown as pointing at a block that no longer exists.
+ */
+data class DocAnnotateTarget(
+    val blockId: String = "",
+    val quote: String = "",
+    val blockIds: List<String> = emptyList(),
+)
+
+fun parseDocAnnotate(payload: String): DocAnnotateTarget {
+    val obj = runCatching { JSONObject(payload) }.getOrNull() ?: return DocAnnotateTarget()
+    val ids = obj.optJSONArray("blocks")
+    val blocks = buildList {
+        for (i in 0 until (ids?.length() ?: 0)) {
+            ids?.optString(i)?.takeIf { it.isNotBlank() }?.let { add(it) }
+        }
+    }
+    return DocAnnotateTarget(obj.optString("block_id"), obj.optString("quote"), blocks)
+}

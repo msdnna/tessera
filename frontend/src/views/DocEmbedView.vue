@@ -22,7 +22,7 @@ import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { setI18nLocale } from '@/i18n'
 import { toDocJSON } from '@/utils/docSchema'
-import { embedStatus, parseEmbedParams, sendToHost } from '@/utils/docEmbed'
+import { annotatePayload, embedStatus, parseEmbedParams, sendToHost } from '@/utils/docEmbed'
 import { userColor } from '@/utils/userColor'
 import { onColor } from '@/utils/gradient'
 
@@ -139,8 +139,16 @@ function onBlocked(held) {
   sendToHost('onBlocked', held?.name || '')
 }
 
+// Both ways into a discussion end up here: the block handle's comment button,
+// and a tap on the count the margin paints on a block that already has one. The
+// host cannot tell them apart and does not need to — it opens the same sheet on
+// the same block, with the existing threads and a composer for a new one.
 function onAnnotate(payload) {
-  sendToHost('onAnnotate', { block_id: payload?.blockId || '', quote: payload?.quote || '' })
+  sendToHost('onAnnotate', annotatePayload(content.value, payload?.blockId || ''))
+}
+
+function onSelectComments(blockId) {
+  sendToHost('onAnnotate', annotatePayload(content.value, blockId || ''))
 }
 
 async function uploadImage(file) {
@@ -261,6 +269,7 @@ onBeforeUnmount(() => {
       @block-focus="claimBlock"
       @blocked="onBlocked"
       @annotate="onAnnotate"
+      @select-comments="onSelectComments"
     />
   </div>
 </template>

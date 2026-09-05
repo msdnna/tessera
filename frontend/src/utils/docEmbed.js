@@ -8,6 +8,7 @@
 // object, so every argument crosses as a *string*; host → page goes through
 // `window.tesseraEmbed`, installed by the view.
 import { SUPPORTED_LOCALES } from '@/i18n'
+import { blockIdsInOrder, blockNodeById, quoteFromBlock } from '@/utils/docComments'
 
 /** The bridge object Android injects. Absent in a desktop browser — opening the
  *  embed URL by hand is how the page is developed, and it must still work. */
@@ -56,6 +57,38 @@ export function embedStatus({ saving = false, dirty = false, conflict = false, e
   if (saving) return 'saving'
   if (dirty) return 'dirty'
   return 'saved'
+}
+
+/**
+ * The payload of a "discuss this block" tap (#2894 §5).
+ *
+ * The threads themselves are drawn natively — there is no room beside the text
+ * on a phone for the panel the web has — so everything the host needs to show
+ * them has to leave with the tap:
+ *
+ * - `quote`: the block's text *now*, because that is the only moment it is
+ *   certainly the text the remark is about; the block goes on being edited and
+ *   the annotation writes nothing into the document.
+ * - `blocks`: every block id in reading order, so the host can tell a thread
+ *   anchored to a live block from one whose block has been deleted, and lay the
+ *   anchored ones out in document order. It travels with the tap rather than
+ *   being read off the app's own copy of the body: that copy is the last *saved*
+ *   version, so a paragraph typed a second ago would not be in it.
+ *
+ * @param {object} json ProseMirror document JSON
+ * @param {string} blockId the block that was tapped
+ * @returns {{block_id: string, quote: string, blocks: Array<string>}}
+ */
+export function annotatePayload(json, blockId) {
+  const id = str(blockId)
+  const node = id ? blockNodeById(json, id) : null
+  return {
+    block_id: id,
+    // A tap that finds no node means the block is already gone — the thread is
+    // detached, and an empty quote is the honest answer rather than a stale one.
+    quote: node ? quoteFromBlock(node) : '',
+    blocks: blockIdsInOrder(json),
+  }
 }
 
 /**
