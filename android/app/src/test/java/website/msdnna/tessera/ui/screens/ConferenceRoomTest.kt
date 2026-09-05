@@ -2,6 +2,8 @@ package website.msdnna.tessera.ui.screens
 
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -15,6 +17,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.conference.ConfPeer
+import website.msdnna.tessera.data.conference.ConfPerson
+import website.msdnna.tessera.data.conference.ConfRoomState
 import website.msdnna.tessera.data.conference.ConfSession
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.theme.TesseraTheme
@@ -263,5 +267,51 @@ class ConferenceRoomTest {
 
         compose.onNodeWithTag(TestTags.CONFERENCE_FULLSCREEN).performClick()
         assertThat(toggles).isEqualTo(1)
+    }
+
+    // ── the roster's half of the toolbar (#2896 §6) ───────────────────────
+
+    /** The count is the hands and not the heads: a badge reading «5» on every
+     *  call is a badge nobody looks at. */
+    @Test
+    fun `the toolbar badges how many hands are up`() {
+        mount(
+            live(peer("me", "Я", local = true)).copy(
+                room = ConfRoomState(
+                    connected = true,
+                    meId = "me",
+                    people = listOf(
+                        ConfPerson(userId = "me", name = "Я"),
+                        ConfPerson(userId = "ann", name = "Аня", handAt = "2026-09-05T10:01:00Z"),
+                        ConfPerson(userId = "bob", name = "Боря", handAt = "2026-09-05T10:02:00Z"),
+                    ),
+                ),
+            ),
+        )
+
+        compose.onNodeWithTag(TestTags.CONFERENCE_HANDS).assertTextEquals("2")
+    }
+
+    @Test
+    fun `nobody waiting means no badge at all`() {
+        mount(
+            live(peer("me", "Я", local = true)).copy(
+                room = ConfRoomState(connected = true, meId = "me", people = listOf(ConfPerson(userId = "me", name = "Я"))),
+            ),
+        )
+
+        // The button is there either way — it is the badge that has to go.
+        compose.onNodeWithTag(TestTags.CONFERENCE_PEOPLE).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.CONFERENCE_HANDS).assertDoesNotExist()
+    }
+
+    /** Nothing in the roster half works without the room socket, and a control
+     *  that only ever fails teaches that controls do not work. */
+    @Test
+    fun `the roster controls wait for the room socket`() {
+        mount(live(peer("me", "Я", local = true)))
+
+        compose.onNodeWithTag(TestTags.CONFERENCE_PEOPLE).assertIsNotEnabled()
+        compose.onNodeWithTag(TestTags.CONFERENCE_HAND).assertIsNotEnabled()
     }
 }

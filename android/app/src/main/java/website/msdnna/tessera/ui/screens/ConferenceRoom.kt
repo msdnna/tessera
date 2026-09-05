@@ -43,6 +43,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.conference.ConfPeer
+import website.msdnna.tessera.data.conference.ConfRoomEnd
 import website.msdnna.tessera.data.conference.ConfVideo
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
@@ -61,6 +62,7 @@ import website.msdnna.tessera.util.ConfMediaGrant
 import website.msdnna.tessera.util.ConfQuality
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.confCanRetry
+import website.msdnna.tessera.util.confHandCount
 
 /**
  * The call itself (#2896 §5, web `ConferenceRoom.vue`): the stage, the strip of
@@ -113,6 +115,13 @@ fun ConferenceRoom(conferenceId: String, onHangup: () -> Unit) {
         onDispose { view.keepScreenOn = false }
     }
 
+    // The room threw us out, or it ended for everyone. Leaving is not a choice
+    // at that point — the socket refuses to reconnect and the media is already
+    // gone, so a screen that stayed would be a still photograph of a call.
+    LaunchedEffect(state.room.ended) {
+        if (state.room.ended != ConfRoomEnd.NONE) onHangup()
+    }
+
     ConferenceRoomBody(
         state = state,
         onToggleMic = {
@@ -135,6 +144,16 @@ fun ConferenceRoom(conferenceId: String, onHangup: () -> Unit) {
             vm.exit()
             onHangup()
         },
+        onToggleHand = { vm.toggleHand() },
+        onOpenPanel = { vm.openPanel() },
+        onClosePanel = { vm.closePanel() },
+        onForceMute = { id, muted -> vm.forceMute(id, muted) },
+        onAskKick = { vm.askKick(it) },
+        onCancelKick = { vm.cancelKick() },
+        onConfirmKick = { vm.confirmKick() },
+        onLocalMute = { vm.toggleLocalMute(it) },
+        onVolume = { id, v -> vm.setPeerVolume(id, v) },
+        onDismissDenied = { vm.clearDenied() },
     )
 }
 
@@ -158,82 +177,110 @@ internal fun ConferenceRoomBody(
     onToggleStageOnly: () -> Unit,
     onRetry: () -> Unit,
     onHangup: () -> Unit,
+    onToggleHand: () -> Unit = {},
+    onOpenPanel: () -> Unit = {},
+    onClosePanel: () -> Unit = {},
+    onForceMute: (String, Boolean) -> Unit = { _, _ -> },
+    onAskKick: (String) -> Unit = {},
+    onCancelKick: () -> Unit = {},
+    onConfirmKick: () -> Unit = {},
+    onLocalMute: (String) -> Unit = {},
+    onVolume: (String, Float) -> Unit = { _, _ -> },
+    onDismissDenied: () -> Unit = {},
 ) {
     val c = Tessera.colors
     val layout = state.stage
 
-    Column(
-        Modifier.fillMaxSize().background(c.bg).testTag(TestTags.CONFERENCE_ROOM),
-    ) {
-        if (!state.stageOnly) ConferenceBanner(state.banner, state.session.error, onRetry)
-
-        // Folding is the button's job, not the stage's. A `clickable` here would
-        // merge the semantics of everything under it, and the tiles' own tags —
-        // the thing every spec selects by — would vanish into this node.
-        Box(
-            Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp),
-            contentAlignment = Alignment.Center,
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.fillMaxSize().background(c.bg).testTag(TestTags.CONFERENCE_ROOM),
         ) {
-            val stage = layout.stage
-            if (stage == null) {
-                Text(
-                    stringResource(R.string.conf_media_no_one),
-                    color = c.text3,
-                    fontSize = 13.sp,
-                )
-            } else {
-                // The marker is a wrapper rather than a second `testTag` on the
-                // tile: two of them on one node keep the outer value, and the
-                // tile would stop answering to the identity every spec uses.
-                Box(Modifier.fillMaxSize().testTag(TestTags.CONFERENCE_STAGE)) {
-                    ConferenceTile(peer = stage, screen = layout.screen, modifier = Modifier.fillMaxSize())
-                }
-            }
-            // Same affordance as the web's fullscreen button, doing the local
-            // equivalent: there is no browser chrome to escape here, so it folds
-            // away ours.
-            IonIcon(
-                if (state.stageOnly) Ion.CONTRACT else Ion.EXPAND,
-                size = 18.dp,
-                tint = c.text2,
-                modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
-                    .clip(CircleShape)
-                    .background(c.surface.copy(alpha = 0.85f))
-                    .clickableNoRipple(onClick = onToggleStageOnly)
-                    .padding(7.dp)
-                    .testTag(TestTags.CONFERENCE_FULLSCREEN),
-            )
-        }
+            if (!state.stageOnly) ConferenceBanner(state.banner, state.session.error, onRetry)
 
-        if (!state.stageOnly && layout.strip.isNotEmpty()) {
-            LazyRow(
-                Modifier.fillMaxWidth().height(96.dp).padding(horizontal = 10.dp, vertical = 6.dp)
-                    .testTag(TestTags.CONFERENCE_STRIP),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            // Folding is the button's job, not the stage's. A `clickable` here would
+            // merge the semantics of everything under it, and the tiles' own tags —
+            // the thing every spec selects by — would vanish into this node.
+            Box(
+                Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                items(layout.strip.size, key = { layout.strip[it].identity }) { i ->
-                    ConferenceTile(
-                        peer = layout.strip[i],
-                        screen = false,
-                        // Height-first: a `fillMaxSize` inside a row that scrolls
-                        // horizontally has no width to fill, and the tile comes
-                        // out zero-wide — present in the tree, invisible on screen.
-                        modifier = Modifier.fillMaxHeight().aspectRatio(RATIO_16_9),
+                val stage = layout.stage
+                if (stage == null) {
+                    Text(
+                        stringResource(R.string.conf_media_no_one),
+                        color = c.text3,
+                        fontSize = 13.sp,
                     )
+                } else {
+                    // The marker is a wrapper rather than a second `testTag` on the
+                    // tile: two of them on one node keep the outer value, and the
+                    // tile would stop answering to the identity every spec uses.
+                    Box(Modifier.fillMaxSize().testTag(TestTags.CONFERENCE_STAGE)) {
+                        ConferenceTile(peer = stage, screen = layout.screen, modifier = Modifier.fillMaxSize())
+                    }
                 }
+                // Same affordance as the web's fullscreen button, doing the local
+                // equivalent: there is no browser chrome to escape here, so it folds
+                // away ours.
+                IonIcon(
+                    if (state.stageOnly) Ion.CONTRACT else Ion.EXPAND,
+                    size = 18.dp,
+                    tint = c.text2,
+                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp)
+                        .clip(CircleShape)
+                        .background(c.surface.copy(alpha = 0.85f))
+                        .clickableNoRipple(onClick = onToggleStageOnly)
+                        .padding(7.dp)
+                        .testTag(TestTags.CONFERENCE_FULLSCREEN),
+                )
+            }
+
+            if (!state.stageOnly && layout.strip.isNotEmpty()) {
+                LazyRow(
+                    Modifier.fillMaxWidth().height(96.dp).padding(horizontal = 10.dp, vertical = 6.dp)
+                        .testTag(TestTags.CONFERENCE_STRIP),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    items(layout.strip.size, key = { layout.strip[it].identity }) { i ->
+                        ConferenceTile(
+                            peer = layout.strip[i],
+                            screen = false,
+                            // Height-first: a `fillMaxSize` inside a row that scrolls
+                            // horizontally has no width to fill, and the tile comes
+                            // out zero-wide — present in the tree, invisible on screen.
+                            modifier = Modifier.fillMaxHeight().aspectRatio(RATIO_16_9),
+                        )
+                    }
+                }
+            }
+
+            if (!state.stageOnly) {
+                ConferenceToolbar(
+                    state = state,
+                    onToggleMic = onToggleMic,
+                    onToggleCam = onToggleCam,
+                    onSwitchCamera = onSwitchCamera,
+                    onOpenRoutes = onOpenRoutes,
+                    onCloseRoutes = onCloseRoutes,
+                    onSelectRoute = onSelectRoute,
+                    onToggleHand = onToggleHand,
+                    onOpenPanel = onOpenPanel,
+                    onHangup = onHangup,
+                )
             }
         }
 
-        if (!state.stageOnly) {
-            ConferenceToolbar(
+        if (state.panelOpen) {
+            ConferenceParticipantsPanel(
                 state = state,
-                onToggleMic = onToggleMic,
-                onToggleCam = onToggleCam,
-                onSwitchCamera = onSwitchCamera,
-                onOpenRoutes = onOpenRoutes,
-                onCloseRoutes = onCloseRoutes,
-                onSelectRoute = onSelectRoute,
-                onHangup = onHangup,
+                onClose = onClosePanel,
+                onForceMute = onForceMute,
+                onAskKick = onAskKick,
+                onCancelKick = onCancelKick,
+                onConfirmKick = onConfirmKick,
+                onLocalMute = onLocalMute,
+                onVolume = onVolume,
+                onDismissDenied = onDismissDenied,
             )
         }
     }
@@ -361,6 +408,8 @@ private fun ConferenceToolbar(
     onOpenRoutes: () -> Unit,
     onCloseRoutes: () -> Unit,
     onSelectRoute: (ConfAudioRoute) -> Unit,
+    onToggleHand: () -> Unit,
+    onOpenPanel: () -> Unit,
     onHangup: () -> Unit,
 ) {
     val c = Tessera.colors
@@ -417,6 +466,50 @@ private fun ConferenceToolbar(
                 }
             }
         }
+        // Raising a hand needs no microphone and no camera, so it stays enabled
+        // wherever the toolbar is: a force-muted participant asking to speak is
+        // exactly who this control is for.
+        RoundControl(
+            icon = Ion.HAND_RIGHT,
+            active = state.room.handUp,
+            enabled = state.room.connected,
+            tag = TestTags.CONFERENCE_HAND,
+            // Named by what the press will do, not by what is on screen: a
+            // toolbar of icons says nothing about which of them is already on.
+            description = stringResource(
+                if (state.room.handUp) R.string.conf_panel_lower_hand else R.string.conf_panel_raise_hand,
+            ),
+            onClick = onToggleHand,
+        )
+        Box {
+            RoundControl(
+                icon = Ion.PEOPLE,
+                active = false,
+                // The roster comes from the room socket, not the SFU: the panel
+                // opens on a call whose media never connected, which is when
+                // «кто вообще здесь» is asked most.
+                enabled = state.room.connected,
+                tag = TestTags.CONFERENCE_PEOPLE,
+                onClick = onOpenPanel,
+            )
+            // Hands are the one thing in the roster that is waiting on somebody,
+            // so the count on the closed panel is the hands and not the heads —
+            // a badge reading «5» on every call is a badge nobody looks at.
+            val hands = confHandCount(state.room.people)
+            if (hands > 0) {
+                Text(
+                    hands.toString(),
+                    color = c.onPrimary,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                        .clip(CircleShape)
+                        .background(TesseraWarning)
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                        .testTag(TestTags.CONFERENCE_HANDS),
+                )
+            }
+        }
         RoundControl(
             icon = Ion.CALL,
             active = false,
@@ -437,6 +530,7 @@ private fun RoundControl(
     tag: String,
     onClick: () -> Unit,
     danger: Boolean = false,
+    description: String? = null,
 ) {
     val c = Tessera.colors
     val bg = when {
@@ -456,7 +550,12 @@ private fun RoundControl(
             .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
-        IonIcon(icon, size = 21.dp, tint = if (enabled) fg else fg.copy(alpha = 0.5f))
+        IonIcon(
+            icon,
+            size = 21.dp,
+            tint = if (enabled) fg else fg.copy(alpha = 0.5f),
+            description = description,
+        )
     }
 }
 

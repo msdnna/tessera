@@ -29,6 +29,11 @@ import website.msdnna.tessera.ui.theme.accentGradientTint
  * Set [gradient] when the [tint] is an accent/entity colour: the glyph then
  * carries the soft diagonal accent gradient (same contract as `accentGradient`)
  * instead of a flat tint. Leave it off for neutral (text2/text3) icons.
+ *
+ * [description] labels a glyph that is the only thing saying what a control does
+ * — an icon-only button, or a marker with no text beside it. Left null for the
+ * ordinary case, where the icon decorates a label that already says it and a
+ * second reading would just be the same thing twice.
  */
 @Composable
 fun IonIcon(
@@ -37,6 +42,7 @@ fun IonIcon(
     size: Dp = 20.dp,
     tint: Color = Tessera.colors.text2,
     gradient: Boolean = false,
+    description: String? = null,
 ) {
     val ctx = LocalContext.current
     val px = with(LocalDensity.current) { size.roundToPx().coerceAtLeast(1) }
@@ -48,7 +54,7 @@ fun IonIcon(
     }
     AsyncImage(
         model = request,
-        contentDescription = null,
+        contentDescription = description,
         colorFilter = ColorFilter.tint(tint),
         contentScale = ContentScale.Fit,
         modifier = modifier

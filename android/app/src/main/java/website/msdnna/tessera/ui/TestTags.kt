@@ -265,6 +265,42 @@ object TestTags {
     /** One output in the routing menu. */
     fun conferenceRoute(route: ConfAudioRoute) = "conference-route:${route.name.lowercase()}"
 
+    // ── participants and moderation (#2896 §6) ─────────────────────────────
+
+    const val CONFERENCE_HAND = "conference-hand"
+    const val CONFERENCE_PEOPLE = "conference-people"
+    const val CONFERENCE_PANEL = "conference-panel"
+    const val CONFERENCE_PANEL_EMPTY = "conference-panel-empty"
+    const val CONFERENCE_PANEL_CLOSE = "conference-panel-close"
+    const val CONFERENCE_DENIED = "conference-denied"
+    const val CONFERENCE_KICK_CONFIRM = "conference-kick-confirm"
+
+    /** The count of raised hands on the closed panel. Separate from the button,
+     *  which is there on every call — the badge is only there when somebody is
+     *  waiting, so asserting on the button would say nothing about it. */
+    const val CONFERENCE_HANDS = "conference-hands"
+
+    /** One roster row, keyed by user — the order changes with the hands. */
+    fun conferencePerson(userId: String) = "conference-person:$userId"
+
+    /** The «поднял руку» marker. Separate from the row: the row is there either
+     *  way, so asserting on it would pass in a build that lost the marker. */
+    fun conferenceHandUp(userId: String) = "conference-hand-up:$userId"
+
+    /** «Заглушён ведущим» — the badge that says a silence was not their choice. */
+    fun conferenceForced(userId: String) = "conference-forced:$userId"
+
+    /** Moderation. Two tags, because the server treats them differently: a host
+     *  may be force-muted and may not be kicked. */
+    fun conferenceForceMute(userId: String) = "conference-force-mute:$userId"
+
+    fun conferenceKick(userId: String) = "conference-kick:$userId"
+
+    /** Local playback — this phone only, never the room. */
+    fun conferenceLocalMute(userId: String) = "conference-local-mute:$userId"
+
+    fun conferenceVolume(userId: String) = "conference-volume:$userId"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

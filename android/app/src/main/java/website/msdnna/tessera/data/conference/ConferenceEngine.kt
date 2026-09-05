@@ -14,6 +14,7 @@ import io.livekit.android.room.participant.ConnectionQuality
 import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.track.LocalVideoTrack
+import io.livekit.android.room.track.RemoteAudioTrack
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.VideoTrack
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.repository.ConferenceRepository
+import website.msdnna.tessera.util.CONF_VOLUME_DEFAULT
 import website.msdnna.tessera.util.ConfAudioRoute
 import website.msdnna.tessera.util.ConfJoinReason
 import website.msdnna.tessera.util.ConfMediaGrant
@@ -35,6 +37,7 @@ import website.msdnna.tessera.util.ConfMediaStatus
 import website.msdnna.tessera.util.ConfMediaWant
 import website.msdnna.tessera.util.ConfQuality
 import website.msdnna.tessera.util.ConfStagePerson
+import website.msdnna.tessera.util.confClampVolume
 import website.msdnna.tessera.util.confJoinPlan
 import website.msdnna.tessera.util.confReconnectDelay
 import website.msdnna.tessera.util.needsCallService
@@ -97,8 +100,24 @@ data class ConfSession(
      * merely off looks like our own last press.
      */
     val forceMuted: Boolean = false,
+    /**
+     * Local playback volume per identity, as a multiplier; anyone absent is at
+     * [CONF_VOLUME_DEFAULT]. Nothing here reaches the server or the other
+     * person — this is «I cannot hear them», not «nobody may hear them», and the
+     * two are kept apart all the way down (#2896 §6).
+     */
+    val volumes: Map<String, Float> = emptyMap(),
+    /**
+     * Who we have silenced for ourselves. Held apart from a zero in [volumes] so
+     * un-muting returns the slider where it was rather than to the default.
+     */
+    val localMuted: Set<String> = emptySet(),
 ) {
     val live: Boolean get() = status == ConfMediaStatus.LIVE
+
+    /** What this phone actually plays them at, mute folded in. */
+    fun volumeOf(identity: String): Float =
+        if (identity in localMuted) 0f else volumes[identity] ?: CONF_VOLUME_DEFAULT
 }
 
 /**
@@ -319,6 +338,49 @@ object ConferenceEngine {
         scope.launch { applyMedia() }
     }
 
+    /**
+     * Set how loudly this phone plays one participant (#2896 §6).
+     *
+     * Local only: the SFU never hears about it and neither does the person. The
+     * setting is remembered in the session rather than written straight to the
+     * track, because the track is not the durable thing — a colleague who drops
+     * out of the tunnel and resubscribes arrives as a fresh publication, and a
+     * volume that lived only on the old one would come back at full blast.
+     */
+    fun setPeerVolume(identity: String, volume: Float) {
+        if (identity.isBlank()) return
+        set { it.copy(volumes = it.volumes + (identity to confClampVolume(volume))) }
+        applyVolumes()
+    }
+
+    /** Silence one participant for ourselves, or give them their volume back. */
+    fun setPeerLocalMuted(identity: String, muted: Boolean) {
+        if (identity.isBlank()) return
+        set {
+            it.copy(localMuted = if (muted) it.localMuted + identity else it.localMuted - identity)
+        }
+        applyVolumes()
+    }
+
+    /**
+     * Push the local playback settings onto whatever is subscribed right now.
+     *
+     * Re-run from [rebuild] as well as from the two setters above: a track that
+     * arrives after the choice was made — a late joiner, a resubscribe after a
+     * reconnect — has never been told about it, and would be the one voice in
+     * the call ignoring the slider.
+     */
+    private fun applyVolumes() {
+        val r = room ?: return
+        val s = _session.value
+        r.remoteParticipants.values.forEach { p ->
+            val id = p.identity?.value.orEmpty()
+            if (id.isBlank()) return@forEach
+            val track = p.getTrackPublication(Track.Source.MICROPHONE)?.track as? RemoteAudioTrack
+            runCatching { track?.setVolume(s.volumeOf(id).toDouble()) }
+        }
+    }
+
     /** Send the call to a particular output; the menu in §5 drives this. */
     fun selectRoute(route: ConfAudioRoute) {
         val handler = audio ?: return
@@ -401,6 +463,7 @@ object ConferenceEngine {
             r.remoteParticipants.values.forEach { add(describe(it, local = false)) }
         }
         set { it.copy(peers = peers, route = currentRoute(), routes = availableRoutes()) }
+        applyVolumes()
     }
 
     private fun describe(p: Participant, local: Boolean): ConfPeer {

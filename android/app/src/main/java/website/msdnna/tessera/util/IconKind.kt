@@ -130,6 +130,10 @@ object Ion {
     const val WARNING = "warning"
     const val CONTRACT = "contract"
     const val CALL = "call"
+
+    // Participants and moderation (#2896 §6).
+    const val HAND_RIGHT = "hand_right"
+    const val VOLUME_MUTE = "volume_mute"
 }
 
 fun classifyIcon(icon: String?): IconKind {
