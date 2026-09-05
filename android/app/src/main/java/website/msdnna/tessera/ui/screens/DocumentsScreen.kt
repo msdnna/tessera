@@ -581,7 +581,12 @@ private fun DocumentReader(
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
 
             blocks.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(stringResource(R.string.docs_reader_empty), color = c.text3, fontSize = 14.sp)
+                Text(
+                    stringResource(R.string.docs_reader_empty),
+                    color = c.text3,
+                    fontSize = 14.sp,
+                    modifier = Modifier.testTag(TestTags.DOCUMENT_READER_EMPTY),
+                )
             }
 
             else -> BoxWithConstraints(Modifier.fillMaxSize()) {

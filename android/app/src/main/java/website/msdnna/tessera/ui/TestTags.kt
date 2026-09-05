@@ -198,6 +198,12 @@ object TestTags {
     /** The reader that slides over the grid; present exactly while one is open. */
     const val DOCUMENT_READER = "document-reader"
 
+    /** «Документ пуст» — the reader's answer for a document with no blocks.
+     *  Tagged rather than matched by its words: from the outside an empty body
+     *  and a body that never loaded look the same, so a spec has to be able to
+     *  tell them apart, and the sentence itself is localised. */
+    const val DOCUMENT_READER_EMPTY = "document-reader-empty"
+
     /** One tile of that grid, keyed by document id — so a spec asserts «this
      *  document», not «the second tile», and a nesting regression is visible. */
     fun documentRow(id: String) = "document-row:$id"

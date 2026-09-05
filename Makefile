@@ -400,9 +400,15 @@ format-android: ## Auto-format Kotlin sources via ktlint
 test-android: ## Run Android unit tests
 	@$(ANDROID_GRADLE) :app:testDebugUnitTest
 
+# Which specs of the tier to run. Narrowing it (`make test-e2e-android
+# E2E_ANDROID_TESTS='*DocumentsE2eTest*'`) is how a red spec is diagnosed without
+# paying for the whole tier on every attempt — each run is a couple of minutes
+# against a live backend.
+E2E_ANDROID_TESTS ?= website.msdnna.tessera.e2e.*
+
 .PHONY: test-e2e-android
 test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e-backend-up`)
-	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests 'website.msdnna.tessera.e2e.*'
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests '$(E2E_ANDROID_TESTS)'
 
 # The instrumented smoke tier: needs a connected device or a running emulator,
 # and reaches the throwaway backend through the emulator's 10.0.2.2 host alias
