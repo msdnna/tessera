@@ -413,8 +413,21 @@ empty :=
 space := $(empty) $(empty)
 e2e_android_filters = $(foreach t,$(subst $(comma),$(space),$(E2E_ANDROID_TESTS)),--tests '$(t)')
 
+# The address the harness itself resolves (`E2eBackend.serverUrl`), so the guard
+# below probes what the specs will probe rather than a second, drifting default.
+e2e_android_url = $(if $(TESSERA_E2E_URL),$(TESSERA_E2E_URL),http://localhost:$(E2E_PORT))
+
 .PHONY: test-e2e-android
 test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e-backend-up`)
+	@# Without the backend every spec `Assume`s itself away, and the tier still
+	@# exits 0 with «BUILD SUCCESSFUL» — indistinguishable from a real green run
+	@# unless you count SKIPPED lines. That silence has already been mistaken for
+	@# evidence here (a bisect round read as 8/8 green while nothing ran), so this
+	@# target refuses to start rather than hand back a green that means nothing.
+	@curl -sf -m 5 $(e2e_android_url)/api/health > /dev/null || { \
+		echo "e2e backend is not reachable at $(e2e_android_url) — run 'make e2e-backend-up'." >&2; \
+		echo "(Running anyway would SKIP every spec and still report BUILD SUCCESSFUL.)" >&2; \
+		exit 1; }
 	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e $(e2e_android_filters)
 
 # The instrumented smoke tier: needs a connected device or a running emulator,
