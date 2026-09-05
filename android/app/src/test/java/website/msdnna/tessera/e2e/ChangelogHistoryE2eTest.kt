@@ -28,7 +28,11 @@ import website.msdnna.tessera.ui.TestTags
  * низ drawer'а, и тап по футеру терялся бы за кромкой без единой ошибки.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(qualifiers = "w800dp-h1200dp")
+// The «+» is load-bearing: without it these qualifiers *replace* the tier's set
+// (`e2e/robolectric.properties`) instead of adding to it, so the class would
+// quietly lose the `ru` locale pin and `xhdpi` along with the screen size it
+// actually wanted. It also costs a third Robolectric sandbox in the tier.
+@Config(qualifiers = "+w800dp-h1200dp")
 class ChangelogHistoryE2eTest {
     private val e2e = E2eRule()
     private val compose = createComposeRule()
