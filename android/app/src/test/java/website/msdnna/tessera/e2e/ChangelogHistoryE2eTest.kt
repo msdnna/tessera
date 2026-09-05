@@ -43,7 +43,10 @@ class ChangelogHistoryE2eTest {
     @Test
     fun `tapping the version in the sidebar footer opens the full changelog`() {
         compose.setContent { AppRoot() }
-        compose.awaitTag(TestTags.MAIN_SHELL)
+        // `awaitShell`, not `awaitTag`: this is the tier's only spec that boots the
+        // real gate with a live session, so its first frame waits on a network call
+        // and a stalled connect leaves a retry screen that never resolves itself.
+        compose.awaitShell()
 
         compose.onNodeWithTag(TestTags.TOP_MENU).performClick()
         compose.awaitTag(TestTags.SIDEBAR_VERSION)

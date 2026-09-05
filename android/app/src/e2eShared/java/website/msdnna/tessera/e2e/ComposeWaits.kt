@@ -8,6 +8,9 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.printToString
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -93,6 +96,43 @@ fun ComposeContentTestRule.awaitEnabled(tag: String, timeoutMillis: Long = AWAIT
     withRootsOnTimeout("tag «$tag» to become enabled", timeoutMillis) {
         waitUntilExactlyOneExists(hasTestTag(tag) and isEnabled(), timeoutMillis)
     }
+}
+
+/**
+ * Waits for the app shell, tapping «Попробовать ещё раз» if the launch gate lands
+ * on its connect-error screen first.
+ *
+ * Only a spec that boots [website.msdnna.tessera.ui.AppRoot] with a *live* session
+ * needs this: that is the one path where the first frame is gated on a network call
+ * (`authRepo.verify()`), so a stalled TCP connect turns into a screen that never
+ * becomes the shell. And the connect really does stall on this host — a connect to
+ * a closed loopback port hangs for the full timeout instead of being refused, which
+ * is why the spec that parks a dead port costs a flat 15.9s. When the same stall
+ * lands on the *live* port, `verify()` dies on the client's 15s connect timeout,
+ * `Boot.ConnectError` paints, and a plain [awaitTag] then burns its remaining 5s
+ * against a screen that will never change on its own: the gate is terminal until
+ * someone taps retry (#2908).
+ *
+ * Retrying is what a user does, and it re-runs the same bootstrap, so nothing about
+ * the spec's subject is weakened — a shell that only appears because the session is
+ * valid still only appears because the session is valid. What it drops is a failure
+ * mode that says «the shell never rendered» about a host-level network stall.
+ */
+@OptIn(ExperimentalTestApi::class)
+fun ComposeContentTestRule.awaitShell(retries: Int = 1) {
+    for (i in 0 until retries) {
+        // Neither tag showing up is not this helper's failure to report: fall
+        // through to `awaitTag` below, whose dump names the roots and the address.
+        runCatching {
+            waitUntilAtLeastOneExists(
+                hasTestTag(TestTags.MAIN_SHELL) or hasTestTag(TestTags.BOOT_RETRY),
+                AWAIT_TIMEOUT_MS,
+            )
+        }
+        if (onAllNodesWithTag(TestTags.BOOT_RETRY).fetchSemanticsNodes().isEmpty()) break
+        onNodeWithTag(TestTags.BOOT_RETRY).performClick()
+    }
+    awaitTag(TestTags.MAIN_SHELL)
 }
 
 /**

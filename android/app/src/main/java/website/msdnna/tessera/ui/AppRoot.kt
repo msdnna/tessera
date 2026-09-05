@@ -30,6 +30,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -362,6 +363,7 @@ private fun BootPrimaryButton(text: String, onClick: () -> Unit) {
             .background(Color.White, RoundedCornerShape(RadiusMd))
             .clickableNoRipple(onClick = onClick)
             .heightIn(min = 48.dp)
+            .testTag(TestTags.BOOT_RETRY)
             .padding(horizontal = 18.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {

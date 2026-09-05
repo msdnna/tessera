@@ -35,6 +35,12 @@ object TestTags {
     /** Present exactly when the session gate has let us past the auth screen. */
     const val MAIN_SHELL = "main-shell"
 
+    /**
+     * «Попробовать ещё раз» on the launch gate's error screens — the only way out
+     * of `Boot.ConnectError`, which is a terminal state until someone taps it.
+     */
+    const val BOOT_RETRY = "boot-retry"
+
     // ── board ──────────────────────────────────────────────────────────────
     //
     // Board anchors are per-entity: the id comes from the seeded fixture, so a
