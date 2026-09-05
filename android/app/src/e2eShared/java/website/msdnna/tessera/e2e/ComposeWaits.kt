@@ -5,6 +5,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.printToString
@@ -48,6 +49,27 @@ private fun ComposeContentTestRule.withRootsOnTimeout(what: String, timeoutMilli
             onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE)
         }.getOrElse { "<the tree could not be read: $it>" }
         throw AssertionError("timed out after ${timeoutMillis}ms waiting for $what; roots:\n$roots", e)
+    }
+}
+
+/**
+ * Waits for exactly one node carrying [tag] to exist **and be enabled**.
+ *
+ * The distinction is not pedantic: a disabled `Modifier.clickable` keeps its
+ * `OnClick` semantics and only adds `Disabled`, so [awaitTag] is already
+ * satisfied by a control that will drop the next tap on the floor. Compose does
+ * not reject that tap — it silently does nothing — and the spec goes on to fail
+ * twenty seconds later on whatever the click was meant to produce, pointing at
+ * the wrong screen entirely. Screens here load in two waves (the modal renders
+ * off the task, then fills in board columns, comments, attachments), so any
+ * control gated on the second wave has a real window of being present but dead.
+ * Waiting on `isEnabled()` fails inside that window instead, and names the
+ * control that never came alive.
+ */
+@OptIn(ExperimentalTestApi::class)
+fun ComposeContentTestRule.awaitEnabled(tag: String, timeoutMillis: Long = AWAIT_TIMEOUT_MS) {
+    withRootsOnTimeout("tag «$tag» to become enabled", timeoutMillis) {
+        waitUntilExactlyOneExists(hasTestTag(tag) and isEnabled(), timeoutMillis)
     }
 }
 
