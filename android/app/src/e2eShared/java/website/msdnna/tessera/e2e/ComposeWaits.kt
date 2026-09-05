@@ -5,7 +5,9 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
+import androidx.compose.ui.test.printToString
 import website.msdnna.tessera.ui.TestTags
 
 /** How long a spec waits on a screen that is round-tripping to the backend. */
@@ -22,7 +24,31 @@ private const val AWAIT_TIMEOUT_MS = 20_000L
  */
 @OptIn(ExperimentalTestApi::class)
 fun ComposeContentTestRule.awaitTag(tag: String, timeoutMillis: Long = AWAIT_TIMEOUT_MS) {
-    waitUntilExactlyOneExists(hasTestTag(tag), timeoutMillis)
+    withRootsOnTimeout("tag «$tag»", timeoutMillis) { waitUntilExactlyOneExists(hasTestTag(tag), timeoutMillis) }
+}
+
+/**
+ * Runs [wait] and, if it times out, re-throws with every semantics root dumped
+ * into the message.
+ *
+ * A timed-out `awaitTag` says only «condition never became true», which reads the
+ * same whether the node is absent, present twice, or present in a window this
+ * assertion cannot see. That last case is not hypothetical here: a `Popup` is a
+ * window of its own, so a picker that opened fine still leaves the main root
+ * looking untouched. Dumping *all* roots — [useUnmergedTree] so a merged parent
+ * cannot hide the tagged child — is what separates «the tap was swallowed» from
+ * «the popup is up and the matcher is wrong», which are one-line fixes in
+ * opposite files.
+ */
+private fun ComposeContentTestRule.withRootsOnTimeout(what: String, timeoutMillis: Long, wait: () -> Unit) {
+    try {
+        wait()
+    } catch (e: ComposeTimeoutException) {
+        val roots = runCatching {
+            onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE)
+        }.getOrElse { "<the tree could not be read: $it>" }
+        throw AssertionError("timed out after ${timeoutMillis}ms waiting for $what; roots:\n$roots", e)
+    }
 }
 
 /**
