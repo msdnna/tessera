@@ -59,6 +59,16 @@ class DocEditorController {
     /** Answers the page's `requestToken`, or pushes a token refreshed meanwhile. */
     fun pushToken(token: String) =
         call("window.tesseraEmbed && window.tesseraEmbed.setToken(${JSONObject.quote(token)})")
+
+    /**
+     * Hands a converted office file to the page, which parses it with the
+     * editor's own schema and lets autosave write it (§8 of #2894).
+     *
+     * The app uploaded the file and owns the document that came back; what it
+     * cannot do is turn HTML into blocks — see `applyImport` in DocEmbedView.
+     */
+    fun applyImport(payload: String) =
+        call("window.tesseraEmbed && window.tesseraEmbed.applyImport(${JSONObject.quote(payload)})")
 }
 
 /**

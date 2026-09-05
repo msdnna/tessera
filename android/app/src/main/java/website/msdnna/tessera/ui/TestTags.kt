@@ -365,6 +365,34 @@ object TestTags {
     fun taskDocumentRow(id: String) = "task-document-row:$id"
     fun taskDocumentRemove(id: String) = "task-document-remove:$id"
 
+    /** Templates, file import and export (#2894 §8): the way into the gallery,
+     *  the gallery itself, and the picker that lives in it. */
+    const val DOCUMENTS_TEMPLATES_OPEN = "documents-templates-open"
+    const val DOCUMENT_TEMPLATES = "document-templates"
+    const val DOCUMENT_TEMPLATES_CLOSE = "document-templates-close"
+    const val DOCUMENT_TEMPLATES_SEARCH = "document-templates-search"
+    const val DOCUMENT_TEMPLATES_EMPTY = "document-templates-empty"
+    const val DOCUMENT_TEMPLATES_UPLOAD = "document-templates-upload"
+    const val DOCUMENT_TEMPLATE_REMOVE_CONFIRM = "document-template-remove-confirm"
+
+    /** What the picker will take — the line that changes when the sidecar is
+     *  down, and therefore the one a spec asserts degradation by. */
+    const val DOCUMENT_IMPORT_HINT = "document-import-hint"
+
+    /** What the conversion could not carry over — the line a finished import
+     *  leaves behind, and the only place the reason appears. */
+    const val DOCUMENT_IMPORT_NOTICE = "document-import-notice"
+
+    /** Export lives in the reader's «…» menu; one entry per offered format. */
+    const val DOCUMENT_ACTION_EXPORT = "document-action-export"
+    fun documentExportFormat(format: String) = "document-export-format:$format"
+
+    /** Gallery rows are keyed by card id — a saved template by its own id, a
+     *  built-in by `builtin:<key>` — so a spec names the template it means. */
+    fun documentTemplateRow(id: String) = "document-template-row:$id"
+    fun documentTemplateUse(id: String) = "document-template-use:$id"
+    fun documentTemplateRemove(id: String) = "document-template-remove:$id"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

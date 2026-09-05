@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
-import { annotatePayload, embedStatus, parseEmbedParams, sendToHost } from '@/utils/docEmbed'
+import {
+  annotatePayload,
+  embedStatus,
+  parseEmbedParams,
+  parseImportPayload,
+  sendToHost,
+} from '@/utils/docEmbed'
 
 // The contract with the Android app (#2894 §4). Every rule here fails silently
 // when it breaks — a dropped parameter gives a blank editor, a wrong status word
@@ -147,5 +153,54 @@ describe('annotatePayload', () => {
     const payload = annotatePayload(doc, '')
     expect(payload.block_id).toBe('')
     expect(payload.quote).toBe('')
+  })
+})
+
+// The office import the phone hands over (#2894 §8). The payload crosses the
+// bridge as a string, so nothing about it is guaranteed — and the failure it
+// guards against is the loud one: applying an empty body to an open document
+// replaces the text with nothing and then autosaves that.
+describe('parseImportPayload', () => {
+  it('takes the converted html and the page geometry beside it', () => {
+    const payload = parseImportPayload(
+      JSON.stringify({ html: '<p>Абзац</p>', page: { format: 'A4', orientation: 'portrait' } }),
+    )
+    expect(payload.html).toBe('<p>Абзац</p>')
+    expect(payload.page).toEqual({ format: 'A4', orientation: 'portrait' })
+    expect(payload.pdf).toBeNull()
+  })
+
+  it('accepts an object as readily as its serialized form', () => {
+    // The bridge stringifies, but a WebView message handler need not — the two
+    // call sites must not disagree about which one works.
+    expect(parseImportPayload({ html: '<p>x</p>' }).html).toBe('<p>x</p>')
+  })
+
+  it('carries a stored pdf, which arrives with no html at all', () => {
+    // A PDF is never converted, so an html-only rule would reject the one
+    // import that works on an install with no sidecar deployed.
+    const payload = parseImportPayload({ pdf: { src: '/api/documents/1/assets/a.pdf' } })
+    expect(payload.pdf).toEqual({ src: '/api/documents/1/assets/a.pdf' })
+    expect(payload.html).toBe('')
+  })
+
+  it('refuses a payload with nothing to apply', () => {
+    // Each of these would reach the editor as "an import happened"; applying
+    // any of them blanks the document the user has open.
+    expect(parseImportPayload('not json')).toBeNull()
+    expect(parseImportPayload('')).toBeNull()
+    expect(parseImportPayload(null)).toBeNull()
+    expect(parseImportPayload({})).toBeNull()
+    expect(parseImportPayload({ html: '' })).toBeNull()
+    expect(parseImportPayload({ html: '   ' })).toBeNull()
+    // A pdf without a source is not a block anything can render.
+    expect(parseImportPayload({ pdf: {} })).toBeNull()
+    expect(parseImportPayload({ pdf: 'a.pdf' })).toBeNull()
+  })
+
+  it('drops page geometry that is not an object rather than passing it on', () => {
+    // withImportedPage reads fields off it; a string here would throw inside
+    // the editor, after the html had already been parsed.
+    expect(parseImportPayload({ html: '<p>x</p>', page: 'A4' }).page).toBeNull()
   })
 })

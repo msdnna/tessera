@@ -871,6 +871,43 @@
     <string name="docs_links_step_rejected">rejected</string>
     <string name="docs_links_step_current">their turn now</string>
     <string name="docs_links_step_waiting">waiting their turn</string>
+    <!-- D8: template gallery, file import and export (#2734, #2733) -->
+    <string name="docs_templates_open">Templates</string>
+    <string name="docs_templates_title">Document templates</string>
+    <string name="docs_templates_search">Search</string>
+    <string name="docs_templates_upload">Upload a file</string>
+    <string name="docs_templates_use">Create</string>
+    <string name="docs_templates_builtin">Built-in</string>
+    <string name="docs_templates_no_description">No description</string>
+    <string name="docs_templates_empty">Nothing found. Save a document as a template, or upload a file.</string>
+    <string name="docs_templates_remove_title">Delete this template?</string>
+    <string name="docs_templates_remove_confirm">Documents created from it are kept.</string>
+    <!-- Import: what the picker takes, refusals, and warnings after a conversion -->
+    <string name="docs_import_hint">Formats: %1$s</string>
+    <string name="docs_import_hint_limited">Without a converter only %1$s (%2$s)</string>
+    <string name="docs_import_no_converter">no converter deployed</string>
+    <string name="docs_import_unsupported">That file format is not supported</string>
+    <string name="docs_import_too_large">The file is larger than %1$d MB</string>
+    <string name="docs_import_not_a_document">This is not a Tessera document</string>
+    <string name="docs_import_title">Imported document</string>
+    <string name="docs_import_images_dropped">Pictures not carried over: %1$d</string>
+    <string name="docs_import_images_dropped_why">Pictures not carried over: %1$d (%2$s)</string>
+    <string name="docs_import_sections_differ">The file\'s sections disagreed about page geometry — the document uses the widest one.</string>
+    <!-- Export: the menu entry, the fallback file name, the system share sheet -->
+    <string name="docs_export">Export</string>
+    <string name="docs_export_name">Document</string>
+    <string name="docs_export_share">Share “%1$s”</string>
+    <string name="docs_export_unavailable">The converter is unavailable — try HTML</string>
+    <!-- Built-in templates. The bodies are Markdown, parsed by DocMarkdown.kt -->
+    <string name="docs_template_meeting_title">Meeting notes</string>
+    <string name="docs_template_meeting_description">Attendees, agenda, decisions and follow-up tasks</string>
+    <string name="docs_template_meeting_body"># Meeting notes\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1. \n2. \n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due\n\n## Follow-up tasks\n\n- [ ] \n</string>
+    <string name="docs_template_spec_title">Specification</string>
+    <string name="docs_template_spec_description">The problem, the scope, acceptance criteria and risks</string>
+    <string name="docs_template_spec_body"># Specification\n\n## The problem\n\n## In scope\n\n- \n\n## Out of scope\n\n- \n\n## Acceptance criteria\n\n- [ ] \n\n## Risks and open questions\n\n| Question | Owner |\n|---|---|\n|  |  |\n</string>
+    <string name="docs_template_retro_title">Retrospective</string>
+    <string name="docs_template_retro_description">What went well, what got in the way, what we change</string>
+    <string name="docs_template_retro_body"># Retrospective\n\n**Period:**\n\n## What went well\n\n- \n\n## What got in the way\n\n- \n\n## What we change\n\n- [ ] Action — owner\n</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

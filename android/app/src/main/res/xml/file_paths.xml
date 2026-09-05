@@ -5,4 +5,8 @@
     <cache-path name="attachments" path="attachments/" />
     <!-- Self-update APKs downloaded to cacheDir/updates, handed to the installer. -->
     <cache-path name="updates" path="updates/" />
+    <!-- Exported documents (#2894 §8) land in cacheDir/exports and are handed to
+         the system share sheet — a phone has no downloads folder we may write
+         to unasked, so an export is sent on rather than left somewhere. -->
+    <cache-path name="exports" path="exports/" />
 </paths>

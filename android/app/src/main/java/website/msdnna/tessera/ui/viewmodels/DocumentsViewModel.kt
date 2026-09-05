@@ -3,18 +3,25 @@ package website.msdnna.tessera.ui.viewmodels
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.JsonElement
+import com.google.gson.JsonObject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.model.DocumentApproval
 import website.msdnna.tessera.data.model.DocumentComment
+import website.msdnna.tessera.data.model.DocumentConverterStatus
+import website.msdnna.tessera.data.model.DocumentImportResult
 import website.msdnna.tessera.data.model.DocumentTaskLink
+import website.msdnna.tessera.data.model.DocumentTemplate
 import website.msdnna.tessera.data.model.DocumentVersion
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.WorkspaceTask
+import website.msdnna.tessera.data.repository.DocContentSave
 import website.msdnna.tessera.data.repository.DocumentRepository
 import website.msdnna.tessera.data.repository.TaskRepository
 import website.msdnna.tessera.data.repository.WorkspaceRepository
@@ -23,6 +30,8 @@ import website.msdnna.tessera.util.DEFAULT_DOC_PAGE
 import website.msdnna.tessera.util.DocAnnotateTarget
 import website.msdnna.tessera.util.DocBlock
 import website.msdnna.tessera.util.DocCrumb
+import website.msdnna.tessera.util.DocFileFormatException
+import website.msdnna.tessera.util.DocImportRoute
 import website.msdnna.tessera.util.DocPage
 import website.msdnna.tessera.util.DocThread
 import website.msdnna.tessera.util.DocThreadGroups
@@ -30,11 +39,15 @@ import website.msdnna.tessera.util.buildDocThreads
 import website.msdnna.tessera.util.canRaiseApproval
 import website.msdnna.tessera.util.docBlockIdsInOrder
 import website.msdnna.tessera.util.docChildCount
+import website.msdnna.tessera.util.docExportFormats
+import website.msdnna.tessera.util.docImportLimit
+import website.msdnna.tessera.util.docImportRoute
 import website.msdnna.tessera.util.docOpenThreadCount
 import website.msdnna.tessera.util.docTiles
 import website.msdnna.tessera.util.documentApprovalState
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.parseDocBlocks
+import website.msdnna.tessera.util.parseDocFile
 import website.msdnna.tessera.util.parseDocPage
 import website.msdnna.tessera.util.pruneCrumbs
 import website.msdnna.tessera.util.sortDocThreads
@@ -66,7 +79,67 @@ data class DocumentsUiState(
     val history: DocHistoryState = DocHistoryState(),
     /** Task links and approval routes of the open document (§7). */
     val links: DocLinksState = DocLinksState(),
+    /** The template gallery, file import and export (§8). */
+    val templates: DocTemplatesState = DocTemplatesState(),
+    /** A converted file waiting for the editor to parse it — see [DocPendingImport]. */
+    val pendingImport: DocPendingImport? = null,
 )
+
+/**
+ * A server-side import that has been uploaded but not yet turned into text
+ * (§8 of #2894).
+ *
+ * The document exists at this point — the endpoint created it — but its body is
+ * HTML (or a stored PDF), and nothing in the app can parse that into blocks.
+ * The web editor can, so the payload rides along until the editor opens on that
+ * document and the bridge hands it over. If the handoff never happens (the user
+ * backs out) the document survives as an empty one, which is the same outcome
+ * the web accepts and for the same reason: deleting something the user just
+ * watched appear is worse than an empty page they can fill.
+ */
+data class DocPendingImport(
+    val documentId: String,
+    /** The `{html, page, pdf}` payload, already serialized for the bridge. */
+    val payload: String,
+)
+
+/**
+ * The template gallery, file import and export (#2733, #2734 — §8 of #2894).
+ *
+ * The saved templates are fetched when the gallery opens rather than with the
+ * list: a workspace's templates are a rare need, and the section is opened to
+ * read documents. The converter status is fetched once and kept — it decides
+ * whether the office half of the picker is offered at all, and a section that
+ * asked again on every import would be answering the same question all day.
+ */
+data class DocTemplatesState(
+    val sheetOpen: Boolean = false,
+    val loading: Boolean = false,
+    /** Card id whose «Создать» is in flight — the gallery disables itself so an
+     *  impatient second tap does not create a second document. */
+    val busy: String = "",
+    val error: UiText? = null,
+    val saved: List<DocumentTemplate> = emptyList(),
+    /** Null until the status has been asked for; absent is not "unavailable". */
+    val converter: DocumentConverterStatus? = null,
+    val importing: Boolean = false,
+    /** Format being exported, empty when nothing is. */
+    val exporting: String = "",
+    /** Something the user has to be told about a finished import — pictures the
+     *  converter dropped, or a file whose sections disagreed about geometry.
+     *  Said out loud because it is the only way to know the document is a
+     *  reduction of the file rather than a copy of it. */
+    val notice: UiText? = null,
+) {
+    /** The office formats are offered only when the sidecar answered. */
+    val converterAvailable: Boolean get() = converter?.available == true
+
+    /** Why it is not, in the server's own words — it is the side that knows. */
+    val converterReason: String get() = converter?.reason.orEmpty()
+
+    /** Export formats, `html` always among them (see [docExportFormats]). */
+    val exportFormats: List<String> get() = docExportFormats(converter)
+}
 
 /**
  * Annotation threads for the open document (#2730, §5 of #2894).
@@ -234,6 +307,9 @@ data class DocLinksState(
 
 /** As many task rows as the picker offers at once — the same cap the web uses. */
 private const val MAX_LINK_CANDIDATES = 50
+
+/** What the backend answers with when the export sidecar is not there (§8). */
+private const val HTTP_UNAVAILABLE = 503
 
 /**
  * Documents module (#2718, #2894). A grid of one nesting level plus a
@@ -780,6 +856,290 @@ class DocumentsViewModel(
                     _state.update { it.copy(comments = it.comments.copy(busy = false, error = errorMessage(e))) }
                 },
             )
+        }
+    }
+
+    // ── Templates, import and export (§8) ─────────────────────────────────────
+
+    /**
+     * Asks once whether the office sidecar is deployed.
+     *
+     * A failure here is answered with «нет конвертера» rather than surfaced: it
+     * decides which half of one picker is offered, and an error line over the
+     * document list because an optional service is down would be noise.
+     */
+    fun loadConverter() {
+        if (_state.value.templates.converter != null) return
+        viewModelScope.launch {
+            val status = runCatching { repo.converterStatus() }
+                .getOrDefault(DocumentConverterStatus(available = false))
+            _state.update { it.copy(templates = it.templates.copy(converter = status)) }
+        }
+    }
+
+    fun openTemplates() {
+        _state.update { it.copy(templates = it.templates.copy(sheetOpen = true, error = null)) }
+        if (workspaceId.isBlank()) return
+        _state.update { it.copy(templates = it.templates.copy(loading = true)) }
+        viewModelScope.launch {
+            val result = runCatching { repo.templates(workspaceId) }
+            _state.update { st ->
+                result.fold(
+                    onSuccess = { saved ->
+                        st.copy(templates = st.templates.copy(loading = false, saved = saved))
+                    },
+                    onFailure = { e ->
+                        st.copy(templates = st.templates.copy(loading = false, error = errorMessage(e)))
+                    },
+                )
+            }
+        }
+    }
+
+    fun closeTemplates() = _state.update {
+        it.copy(templates = it.templates.copy(sheetOpen = false, error = null, busy = ""))
+    }
+
+    fun clearTemplatesNotice() = _state.update {
+        it.copy(templates = it.templates.copy(notice = null))
+    }
+
+    /**
+     * Creates a document from a gallery card and opens it.
+     *
+     * The two kinds of card are one call on purpose. A saved template is applied
+     * *server-side* ([templateId]) — the body lives there and copying it through
+     * the phone would be a round trip for nothing. A built-in has no server side
+     * at all: its text is a string resource, so the caller hands the parsed body
+     * in and it is written through the ordinary content endpoint, which is the
+     * same path typing takes.
+     */
+    fun useTemplate(cardId: String, title: String, templateId: String?, content: JsonElement?) {
+        if (_state.value.templates.busy.isNotEmpty() || workspaceId.isBlank()) return
+        _state.update { it.copy(templates = it.templates.copy(busy = cardId, error = null)) }
+        val parentId = _state.value.trail.lastOrNull()?.id
+        viewModelScope.launch {
+            val result = runCatching {
+                val doc = repo.create(
+                    workspaceId = workspaceId,
+                    title = title,
+                    parentId = parentId,
+                    templateId = templateId,
+                )
+                if (content == null) doc else applyBody(doc, content)
+            }
+            _state.update { it.copy(templates = it.templates.copy(busy = "")) }
+            result.fold(
+                onSuccess = { doc ->
+                    _state.update { it.copy(templates = it.templates.copy(sheetOpen = false)) }
+                    refreshThenOpen(doc)
+                },
+                onFailure = { e ->
+                    _state.update { it.copy(templates = it.templates.copy(error = errorMessage(e))) }
+                },
+            )
+        }
+    }
+
+    /** Deletes a saved template. Documents made from it are untouched — the body
+     *  was copied at creation, not referenced. */
+    fun deleteTemplate(templateId: String) {
+        if (_state.value.templates.busy.isNotEmpty()) return
+        _state.update { it.copy(templates = it.templates.copy(busy = templateId, error = null)) }
+        viewModelScope.launch {
+            val result = runCatching {
+                repo.deleteTemplate(templateId)
+                repo.templates(workspaceId)
+            }
+            _state.update { st ->
+                result.fold(
+                    onSuccess = { saved -> st.copy(templates = st.templates.copy(busy = "", saved = saved)) },
+                    onFailure = { e ->
+                        st.copy(templates = st.templates.copy(busy = "", error = errorMessage(e)))
+                    },
+                )
+            }
+        }
+    }
+
+    /**
+     * Turns a picked file into a document (#2733, #2734).
+     *
+     * Which road it takes is decided by the file name alone, because that is all
+     * the picker gives us before the bytes are read — see [docImportRoute]:
+     *
+     *  - `.md` / `.json` are parsed here and saved like any body, so they work on
+     *    an install with no converter deployed;
+     *  - office formats are uploaded, converted server-side, and the HTML that
+     *    comes back is left for the editor to parse (see [DocPendingImport]);
+     *  - a PDF travels the same endpoint but is stored rather than converted,
+     *    which is why it is not gated on the converter either.
+     *
+     * [fallbackTitle] names a file whose contents suggest nothing.
+     */
+    fun importFile(fileName: String, bytes: ByteArray, mime: String?, fallbackTitle: String) {
+        if (_state.value.templates.importing || workspaceId.isBlank()) return
+        val route = docImportRoute(fileName)
+        if (route == DocImportRoute.UNSUPPORTED) {
+            return failImport(UiText.Res(R.string.docs_import_unsupported))
+        }
+        if (bytes.size > docImportLimit(route)) {
+            return failImport(
+                UiText.Res(R.string.docs_import_too_large, listOf(docImportLimit(route) / (1024 * 1024))),
+            )
+        }
+        if (route == DocImportRoute.OFFICE && !_state.value.templates.converterAvailable) {
+            val reason = _state.value.templates.converterReason
+            return failImport(
+                if (reason.isNotBlank()) UiText.Raw(reason) else UiText.Res(R.string.docs_import_no_converter),
+            )
+        }
+        _state.update { it.copy(templates = it.templates.copy(importing = true, error = null)) }
+        val parentId = _state.value.trail.lastOrNull()?.id
+        viewModelScope.launch {
+            val result = runCatching {
+                if (route == DocImportRoute.LOCAL) {
+                    importLocalFile(fileName, bytes, fallbackTitle, parentId)
+                } else {
+                    importThroughServer(fileName, bytes, mime)
+                }
+            }
+            _state.update { it.copy(templates = it.templates.copy(importing = false)) }
+            result.fold(
+                onSuccess = { doc ->
+                    _state.update { it.copy(templates = it.templates.copy(sheetOpen = false)) }
+                    refreshThenOpen(doc)
+                },
+                onFailure = { e ->
+                    val text = if (e is DocFileFormatException) {
+                        UiText.Res(R.string.docs_import_not_a_document)
+                    } else {
+                        errorMessage(e)
+                    }
+                    _state.update { it.copy(templates = it.templates.copy(error = text)) }
+                },
+            )
+        }
+    }
+
+    /** The editor took the converted body (or the user left without opening it). */
+    fun clearPendingImport() = _state.update { it.copy(pendingImport = null) }
+
+    /**
+     * Exports the open document and hands the file to [onFile], which shares it.
+     *
+     * Sharing rather than saving is the phone's shape of this: there is no
+     * folder an app may write to unasked, and a file the user has to go looking
+     * for is a file they do not find.
+     */
+    fun exportOpen(cacheDir: java.io.File, format: String, fileName: String, onFile: (java.io.File) -> Unit) {
+        val docId = _state.value.openId ?: return
+        if (_state.value.templates.exporting.isNotEmpty()) return
+        _state.update { it.copy(templates = it.templates.copy(exporting = format, error = null)) }
+        viewModelScope.launch {
+            val result = runCatching { repo.exportToFile(cacheDir, docId, format, fileName) }
+            _state.update { it.copy(templates = it.templates.copy(exporting = "")) }
+            result.fold(
+                onSuccess = onFile,
+                onFailure = { e ->
+                    // The failure the reader can act on is «конвертер не отвечает»;
+                    // everything else is the ordinary network message.
+                    val text = if (e is HttpException && e.code() == HTTP_UNAVAILABLE) {
+                        UiText.Res(R.string.docs_export_unavailable)
+                    } else {
+                        errorMessage(e)
+                    }
+                    _state.update { it.copy(error = text) }
+                },
+            )
+        }
+    }
+
+    private fun failImport(text: UiText) {
+        _state.update { it.copy(templates = it.templates.copy(error = text)) }
+    }
+
+    /** `.md` / `.json`: parsed on the phone, then created and saved like typing. */
+    private suspend fun importLocalFile(
+        fileName: String,
+        bytes: ByteArray,
+        fallbackTitle: String,
+        parentId: String?,
+    ): Document {
+        val draft = parseDocFile(fileName, bytes.toString(Charsets.UTF_8))
+        val doc = repo.create(
+            workspaceId = workspaceId,
+            title = draft.title.ifBlank { fallbackTitle },
+            icon = draft.icon,
+            parentId = parentId,
+        )
+        return applyBody(doc, draft.content)
+    }
+
+    /**
+     * Office and PDF: the server creates the document, the editor fills it.
+     *
+     * The payload is parked in the state rather than applied here — see
+     * [DocPendingImport] for why the phone does not parse the HTML itself.
+     */
+    private suspend fun importThroughServer(fileName: String, bytes: ByteArray, mime: String?): Document {
+        val result = repo.import(workspaceId, bytes, fileName, mime)
+        val payload = JsonObject().apply {
+            addProperty("html", result.html)
+            result.page?.let { add("page", it) }
+            result.pdf?.let { add("pdf", it) }
+        }
+        _state.update {
+            it.copy(
+                pendingImport = DocPendingImport(result.document.id, payload.toString()),
+                templates = it.templates.copy(notice = importNotice(result)),
+            )
+        }
+        return result.document
+    }
+
+    /**
+     * What the reader has to be told about a finished conversion.
+     *
+     * Both cases mean the document is a faithful import of the *text* and a
+     * reduction of the file, and the only way to know that is to be told (#2755,
+     * #2821). The reason travels with the count because a bare number says
+     * something was lost without saying whether re-inserting the figure as PNG
+     * would help.
+     */
+    private fun importNotice(result: DocumentImportResult): UiText? = when {
+        result.imagesDropped > 0 && result.imagesDroppedReason.isNotBlank() -> UiText.Res(
+            R.string.docs_import_images_dropped_why,
+            listOf(result.imagesDropped, result.imagesDroppedReason),
+        )
+
+        result.imagesDropped > 0 -> UiText.Res(
+            R.string.docs_import_images_dropped,
+            listOf(result.imagesDropped),
+        )
+
+        result.sectionsDiffer -> UiText.Res(R.string.docs_import_sections_differ)
+
+        else -> null
+    }
+
+    /** Writes a freshly created document's body, keeping the version stamp in
+     *  step so the first edit after it does not answer with a conflict. */
+    private suspend fun applyBody(doc: Document, content: JsonElement): Document =
+        when (val saved = repo.saveContent(doc.id, content, doc.updatedAt)) {
+            is DocContentSave.Saved -> doc.copy(updatedAt = saved.result.updatedAt)
+
+            // Nobody else can be editing a document created a moment ago; if the
+            // stamp is somehow stale the document still exists with its body
+            // unwritten, and saying so beats pretending it worked.
+            is DocContentSave.Conflict -> throw java.io.IOException("document body write conflicted")
+        }
+
+    /** Re-reads the list so the new tile exists, then opens it. */
+    private fun refreshThenOpen(doc: Document) {
+        launchCatching {
+            refresh()
+            open(doc)
         }
     }
 

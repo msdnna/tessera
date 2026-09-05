@@ -173,6 +173,32 @@ class DocumentRepository {
     suspend fun export(id: String, format: String): ByteArray =
         api.exportDocument(id, format).use { it.bytes() }
 
+    /**
+     * Exports into a file the system share sheet can be handed (§8 of #2894).
+     *
+     * It lands under `cacheDir/exports`, which is what `file_paths.xml` exposes
+     * through the FileProvider — a phone has no "downloads folder" we may write
+     * to unasked, so an export is something the user sends on rather than
+     * something that appears somewhere they have to go looking.
+     *
+     * The name is the document's own, so the file arrives in the other app
+     * called what it is called here; a previous export under the same name is
+     * overwritten rather than suffixed, since two copies of one document is not
+     * what «поделиться» means.
+     */
+    suspend fun exportToFile(
+        cacheDir: java.io.File,
+        id: String,
+        format: String,
+        fileName: String,
+    ): java.io.File {
+        val bytes = export(id, format)
+        val dir = java.io.File(cacheDir, "exports").apply { mkdirs() }
+        val out = java.io.File(dir, fileName.replace(java.io.File.separatorChar, '_'))
+        out.writeBytes(bytes)
+        return out
+    }
+
     // ── Block comments (#2730) ────────────────────────────────────────────────
     suspend fun comments(id: String): List<DocumentComment> = api.documentComments(id).orEmpty()
 

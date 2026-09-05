@@ -897,6 +897,43 @@
     <string name="docs_links_step_rejected">отклонил</string>
     <string name="docs_links_step_current">сейчас его очередь</string>
     <string name="docs_links_step_waiting">ждёт очереди</string>
+    <!-- §8: галерея шаблонов, импорт файлов и экспорт (#2734, #2733) -->
+    <string name="docs_templates_open">Шаблоны</string>
+    <string name="docs_templates_title">Шаблоны документов</string>
+    <string name="docs_templates_search">Поиск</string>
+    <string name="docs_templates_upload">Загрузить файл</string>
+    <string name="docs_templates_use">Создать</string>
+    <string name="docs_templates_builtin">Встроенный</string>
+    <string name="docs_templates_no_description">Без описания</string>
+    <string name="docs_templates_empty">Ничего не нашлось. Сохраните документ как шаблон или загрузите файл.</string>
+    <string name="docs_templates_remove_title">Удалить шаблон?</string>
+    <string name="docs_templates_remove_confirm">Документы, созданные по нему, останутся.</string>
+    <!-- Импорт: подсказка о форматах, отказы и предупреждения после конвертации -->
+    <string name="docs_import_hint">Форматы: %1$s</string>
+    <string name="docs_import_hint_limited">Без конвертера доступны только %1$s (%2$s)</string>
+    <string name="docs_import_no_converter">конвертер не подключён</string>
+    <string name="docs_import_unsupported">Такой формат файла не поддерживается</string>
+    <string name="docs_import_too_large">Файл больше %1$d МБ</string>
+    <string name="docs_import_not_a_document">Это не документ Tessera</string>
+    <string name="docs_import_title">Импортированный документ</string>
+    <string name="docs_import_images_dropped">Картинок не перенесено: %1$d</string>
+    <string name="docs_import_images_dropped_why">Картинок не перенесено: %1$d (%2$s)</string>
+    <string name="docs_import_sections_differ">У разделов файла была разная геометрия страницы — документ собран по самому широкому.</string>
+    <!-- Экспорт: пункт меню, имя файла по умолчанию, системный диалог «поделиться» -->
+    <string name="docs_export">Экспорт</string>
+    <string name="docs_export_name">Документ</string>
+    <string name="docs_export_share">Поделиться «%1$s»</string>
+    <string name="docs_export_unavailable">Конвертер недоступен — попробуйте HTML</string>
+    <!-- Встроенные шаблоны. Тела — Markdown: их разбирает DocMarkdown.kt -->
+    <string name="docs_template_meeting_title">Протокол совещания</string>
+    <string name="docs_template_meeting_description">Участники, повестка, решения и задачи по итогам</string>
+    <string name="docs_template_meeting_body"># Протокол совещания\n\n**Дата:**\n**Участники:**\n\n## Повестка\n\n1. \n2. \n\n## Обсуждение\n\n## Решения\n\n- [ ] Решение — ответственный, срок\n\n## Задачи по итогам\n\n- [ ] \n</string>
+    <string name="docs_template_spec_title">Техническое задание</string>
+    <string name="docs_template_spec_description">Задача, объём работ, критерии приёмки и риски</string>
+    <string name="docs_template_spec_body"># Техническое задание\n\n## Постановка задачи\n\n## Что входит в объём\n\n- \n\n## Что не входит\n\n- \n\n## Критерии приёмки\n\n- [ ] \n\n## Риски и открытые вопросы\n\n| Вопрос | Кто отвечает |\n|---|---|\n|  |  |\n</string>
+    <string name="docs_template_retro_title">Ретроспектива</string>
+    <string name="docs_template_retro_description">Что получилось, что мешало, что меняем</string>
+    <string name="docs_template_retro_body"># Ретроспектива\n\n**Период:**\n\n## Что получилось\n\n- \n\n## Что мешало\n\n- \n\n## Что меняем\n\n- [ ] Действие — ответственный\n</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

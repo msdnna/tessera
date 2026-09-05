@@ -1,7 +1,10 @@
 package website.msdnna.tessera.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -28,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -35,7 +40,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
@@ -48,10 +55,12 @@ import website.msdnna.tessera.ui.screens.documents.DocBlockView
 import website.msdnna.tessera.ui.screens.documents.DocCommentsButton
 import website.msdnna.tessera.ui.screens.documents.DocCommentsSheet
 import website.msdnna.tessera.ui.screens.documents.DocDraft
+import website.msdnna.tessera.ui.screens.documents.DocExportMenu
 import website.msdnna.tessera.ui.screens.documents.DocHistoryButton
 import website.msdnna.tessera.ui.screens.documents.DocHistorySheet
 import website.msdnna.tessera.ui.screens.documents.DocLinksButton
 import website.msdnna.tessera.ui.screens.documents.DocLinksSheet
+import website.msdnna.tessera.ui.screens.documents.DocTemplatesSheet
 import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
@@ -59,14 +68,21 @@ import website.msdnna.tessera.ui.screens.documents.DocumentEditor
 import website.msdnna.tessera.ui.screens.documents.DocumentsList
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.DocumentsViewModel
+import website.msdnna.tessera.util.DOC_IMPORT_MIME_TYPES
 import website.msdnna.tessera.util.DocBlock
+import website.msdnna.tessera.util.DocBuiltinTemplate
 import website.msdnna.tessera.util.DocPage
+import website.msdnna.tessera.util.DocTemplateCard
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.builtinTemplateCard
 import website.msdnna.tessera.util.docBlockIndex
 import website.msdnna.tessera.util.docChildCount
+import website.msdnna.tessera.util.docExportFileName
 import website.msdnna.tessera.util.docOutline
 import website.msdnna.tessera.util.docSectionPages
 import website.msdnna.tessera.util.docSideInsetDp
+import website.msdnna.tessera.util.docTemplateGallery
+import website.msdnna.tessera.util.markdownToDocJson
 
 /**
  * Documents module (web `DocumentsView`) — see #2735, #2894. A grid of one
@@ -100,9 +116,53 @@ fun DocumentsScreen(
     // reach the surface that is holding the pre-rollback text, and the journal
     // is a sibling of the editor rather than a child of it.
     val editorController = remember { DocEditorController() }
+    val ctx = LocalContext.current
+    // Both are read in the composition and used outside it: the share sheet is
+    // shown from a callback, where `ctx.getString` would give the system's
+    // language rather than the one set in the profile.
+    val res = LocalResources.current
+    val exportFallbackName = stringResource(R.string.docs_export_name)
+    val importFallbackTitle = stringResource(R.string.docs_import_title)
+    val builtinBodies = builtinTemplateBodies()
+    val scope = rememberCoroutineScope()
+
+    // One picker for every import: which road a file takes is decided from its
+    // name (docImportRoute), and a stricter MIME filter would grey out files the
+    // server would have accepted.
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            val bytes = withContext(Dispatchers.IO) {
+                ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }
+            if (bytes == null || bytes.isEmpty()) return@launch
+            vm.importFile(
+                fileName = pickedFileName(ctx, uri),
+                bytes = bytes,
+                mime = ctx.contentResolver.getType(uri),
+                fallbackTitle = importFallbackTitle,
+            )
+        }
+    }
 
     LaunchedEffect(workspaceId) {
-        if (workspaceId.isNotBlank()) vm.load(workspaceId)
+        if (workspaceId.isNotBlank()) {
+            vm.load(workspaceId)
+            // Asked once, with the list: it decides which formats the export
+            // menu offers and which files the picker will take, and both of
+            // those are needed before the user reaches for them.
+            vm.loadConverter()
+        }
+    }
+
+    // A converted file is waiting for the editor to parse it (§8). Opening the
+    // editor is the *only* way that body gets written, so it is opened here
+    // rather than offered — the alternative is a document the user watched
+    // appear and then found empty.
+    LaunchedEffect(state.pendingImport, state.openId) {
+        if (state.pendingImport != null && state.openId == state.pendingImport?.documentId) {
+            editing = true
+        }
     }
 
     // Opened from a task's «Документы» tab. Waits for the list: the reader is
@@ -141,6 +201,7 @@ fun DocumentsScreen(
                 onCrumb = vm::crumbTo,
                 onOpen = vm::open,
                 onCreate = { draft = DocDraft.Create },
+                onTemplates = { vm.openTemplates() },
             )
         }
 
@@ -167,6 +228,15 @@ fun DocumentsScreen(
                 onComments = { vm.openComments() },
                 onHistory = { vm.openHistory() },
                 onLinks = { vm.openLinks() },
+                exportFormats = state.templates.exportFormats,
+                onExport = { format ->
+                    val title = state.open?.title.orEmpty()
+                    vm.exportOpen(
+                        cacheDir = ctx.cacheDir,
+                        format = format,
+                        fileName = docExportFileName(title, format, exportFallbackName),
+                    ) { file -> shareExportedFile(ctx, file, res.getString(R.string.docs_export_share, file.name)) }
+                },
             )
         }
 
@@ -184,6 +254,11 @@ fun DocumentsScreen(
                 commentCount = state.comments.openCount,
                 linkCount = state.links.linkCount,
                 controller = editorController,
+                // Handed over once the page says it is up: the bridge is
+                // installed on mount, and calling into it before that is a
+                // no-op that would lose the import silently.
+                pendingImport = state.pendingImport?.takeIf { it.documentId == open.id }?.payload,
+                onImportApplied = { vm.clearPendingImport() },
                 onComments = { target -> vm.openComments(target) },
                 onHistory = { vm.openHistory() },
                 onLinks = { target -> vm.openLinks(target) },
@@ -244,6 +319,54 @@ fun DocumentsScreen(
             if (state.history.restoreTick > 0 && editing) editorController.reload()
         }
 
+        if (state.templates.sheetOpen) {
+            DocTemplatesSheet(
+                cards = docTemplateGallery(state.templates.saved, builtinTemplateCards()),
+                loading = state.templates.loading,
+                importing = state.templates.importing,
+                busy = state.templates.busy,
+                error = state.templates.error,
+                converterAvailable = state.templates.converterAvailable,
+                converterReason = state.templates.converterReason,
+                onDismiss = { vm.closeTemplates() },
+                // A saved template is applied server-side (its body lives there);
+                // a built-in has no server side at all, so its Markdown is
+                // parsed here and written through the ordinary content endpoint.
+                onUse = { card ->
+                    if (card.builtin) {
+                        vm.useTemplate(
+                            cardId = card.id,
+                            title = card.title,
+                            templateId = null,
+                            content = markdownToDocJson(builtinBodies[card.builtinKey].orEmpty()),
+                        )
+                    } else {
+                        vm.useTemplate(card.id, card.title, card.id, null)
+                    }
+                },
+                onRemove = { card -> vm.deleteTemplate(card.id) },
+                onPickFile = { filePicker.launch(DOC_IMPORT_MIME_TYPES) },
+            )
+        }
+
+        // What the conversion could not carry over. A line rather than a toast:
+        // it is the only place the reason appears, and a document that is a
+        // reduction of its file should say so until it is read.
+        state.templates.notice?.let { notice ->
+            Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
+                Text(
+                    notice.resolve(),
+                    color = c.text2,
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .background(c.surfaceAlt)
+                        .clickable { vm.clearTemplatesNotice() }
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
+                        .testTag(TestTags.DOCUMENT_IMPORT_NOTICE),
+                )
+            }
+        }
+
         DocumentComposer(
             draft = draft,
             onDismiss = { draft = null },
@@ -267,6 +390,76 @@ fun DocumentsScreen(
     }
 }
 
+/**
+ * The built-in starters as gallery cards, with their text taken from the
+ * resources — an English document must not open with Russian headings (#2799).
+ */
+@Composable
+private fun builtinTemplateCards(): List<DocTemplateCard> = DocBuiltinTemplate.entries.map { tpl ->
+    builtinTemplateCard(
+        template = tpl,
+        title = stringResource(builtinTitle(tpl)),
+        description = stringResource(builtinDescription(tpl)),
+    )
+}
+
+/** Their Markdown bodies, keyed the same way the cards are. */
+@Composable
+private fun builtinTemplateBodies(): Map<String, String> =
+    DocBuiltinTemplate.entries.associate { it.key to stringResource(builtinBody(it)) }
+
+private fun builtinTitle(tpl: DocBuiltinTemplate): Int = when (tpl) {
+    DocBuiltinTemplate.MEETING -> R.string.docs_template_meeting_title
+    DocBuiltinTemplate.SPEC -> R.string.docs_template_spec_title
+    DocBuiltinTemplate.RETRO -> R.string.docs_template_retro_title
+}
+
+private fun builtinDescription(tpl: DocBuiltinTemplate): Int = when (tpl) {
+    DocBuiltinTemplate.MEETING -> R.string.docs_template_meeting_description
+    DocBuiltinTemplate.SPEC -> R.string.docs_template_spec_description
+    DocBuiltinTemplate.RETRO -> R.string.docs_template_retro_description
+}
+
+private fun builtinBody(tpl: DocBuiltinTemplate): Int = when (tpl) {
+    DocBuiltinTemplate.MEETING -> R.string.docs_template_meeting_body
+    DocBuiltinTemplate.SPEC -> R.string.docs_template_spec_body
+    DocBuiltinTemplate.RETRO -> R.string.docs_template_retro_body
+}
+
+/**
+ * Hands an exported file to the system share sheet.
+ *
+ * [chooserTitle] is resolved in the composition: the dialog is shown from
+ * outside it, where `ctx.getString` would answer in the system's language
+ * rather than the one set in the profile.
+ */
+private fun shareExportedFile(ctx: android.content.Context, file: java.io.File, chooserTitle: String) {
+    val uri = androidx.core.content.FileProvider.getUriForFile(
+        ctx,
+        "${ctx.packageName}.fileprovider",
+        file,
+    )
+    val send = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = ctx.contentResolver.getType(uri) ?: "application/octet-stream"
+        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+        addFlags(
+            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                android.content.Intent.FLAG_ACTIVITY_NEW_TASK,
+        )
+    }
+    val chooser = android.content.Intent.createChooser(send, chooserTitle)
+        .apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
+    runCatching { ctx.startActivity(chooser) }
+}
+
+/** The picked file's display name — the whole of what decides its import road. */
+private fun pickedFileName(ctx: android.content.Context, uri: android.net.Uri): String = runCatching {
+    ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+        if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+    }
+}.getOrNull() ?: uri.lastPathSegment.orEmpty()
+
 @Composable
 private fun DocumentReader(
     title: String,
@@ -277,6 +470,7 @@ private fun DocumentReader(
     childCount: Int,
     commentCount: Int,
     linkCount: Int,
+    exportFormats: List<String>,
     onBack: () -> Unit,
     onDraft: (DocDraft) -> Unit,
     onChildren: () -> Unit,
@@ -284,9 +478,11 @@ private fun DocumentReader(
     onComments: () -> Unit,
     onHistory: () -> Unit,
     onLinks: () -> Unit,
+    onExport: (String) -> Unit,
 ) {
     val c = Tessera.colors
     var menuOpen by remember { mutableStateOf(false) }
+    var exportOpen by remember { mutableStateOf(false) }
     var tocOpen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -359,9 +555,22 @@ private fun DocumentReader(
                         menuOpen = false
                         onDraft(DocDraft.Rename(title))
                     },
+                    onExport = {
+                        menuOpen = false
+                        exportOpen = true
+                    },
                     onRemove = {
                         menuOpen = false
                         onDraft(DocDraft.Remove(childCount))
+                    },
+                )
+                DocExportMenu(
+                    expanded = exportOpen,
+                    formats = exportFormats,
+                    onDismiss = { exportOpen = false },
+                    onPick = { format ->
+                        exportOpen = false
+                        onExport(format)
                     },
                 )
             }

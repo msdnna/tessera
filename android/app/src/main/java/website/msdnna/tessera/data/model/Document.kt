@@ -312,10 +312,15 @@ data class DocumentConverterStatus(
  * The body comes back as [html] rather than as blocks: the client parses it with
  * the editor's schema and saves it through the ordinary content endpoint, so an
  * import is validated by exactly the same code as typing.
+ *
+ * A PDF takes the same endpoint but is *stored* rather than converted, so it
+ * arrives as [pdf] with [html] empty — that branch is what makes importing a
+ * PDF work on an install with no converter deployed.
  */
 data class DocumentImportResult(
     @SerializedName("document") val document: Document = Document(),
     @SerializedName("html") val html: String = "",
+    @SerializedName("pdf") val pdf: JsonElement? = null,
     @SerializedName("images_dropped") val imagesDropped: Int = 0,
     @SerializedName("images_dropped_reason") val imagesDroppedReason: String = "",
     @SerializedName("source_file_name") val sourceFileName: String = "",

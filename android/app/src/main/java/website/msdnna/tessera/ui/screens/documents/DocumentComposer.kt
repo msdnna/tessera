@@ -12,6 +12,7 @@ import website.msdnna.tessera.ui.components.TInputDialog
 import website.msdnna.tessera.ui.components.TMenuDivider
 import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.docExportLabel
 
 /**
  * What the composer is asking about. One value rather than a flag per dialog:
@@ -122,6 +123,7 @@ fun DocumentActionsMenu(
     onNested: () -> Unit,
     onChildren: () -> Unit,
     onRename: () -> Unit,
+    onExport: () -> Unit,
     onRemove: () -> Unit,
 ) = TDropdown(expanded = expanded, onDismiss = onDismiss) {
     TMenuItem(
@@ -144,6 +146,12 @@ fun DocumentActionsMenu(
         onClick = onRename,
         modifier = Modifier.testTag(TestTags.DOCUMENT_ACTION_RENAME),
     )
+    TMenuItem(
+        stringResource(R.string.docs_export),
+        icon = Ion.DOWNLOAD,
+        onClick = onExport,
+        modifier = Modifier.testTag(TestTags.DOCUMENT_ACTION_EXPORT),
+    )
     TMenuDivider()
     TMenuItem(
         stringResource(R.string.docs_action_remove),
@@ -152,4 +160,29 @@ fun DocumentActionsMenu(
         onClick = onRemove,
         modifier = Modifier.testTag(TestTags.DOCUMENT_ACTION_REMOVE),
     )
+}
+
+/**
+ * Which format to export in (§8 of #2894).
+ *
+ * A menu of its own rather than a submenu inside the actions one: the list is
+ * short and the choice is the *whole* of this interaction, so putting it a level
+ * deeper would be a tap spent on nothing. `html` is always in [formats] even
+ * when the sidecar is down — see [docExportFormats].
+ */
+@Composable
+fun DocExportMenu(
+    expanded: Boolean,
+    formats: List<String>,
+    onDismiss: () -> Unit,
+    onPick: (String) -> Unit,
+) = TDropdown(expanded = expanded, onDismiss = onDismiss) {
+    formats.forEach { format ->
+        TMenuItem(
+            docExportLabel(format),
+            icon = Ion.DOWNLOAD,
+            onClick = { onPick(format) },
+            modifier = Modifier.testTag(TestTags.documentExportFormat(format)),
+        )
+    }
 }

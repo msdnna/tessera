@@ -92,6 +92,48 @@ export function annotatePayload(json, blockId) {
 }
 
 /**
+ * Reads the payload of an office import the host is handing over (#2894 §8).
+ *
+ * The phone uploads the file itself — the endpoint creates the document, which
+ * is the app's business — but the HTML that comes back is parsed *here*, by the
+ * editor's own schema, and saved through its ordinary autosave. The alternative
+ * was a second HTML→blocks walk in Kotlin, which is exactly the drift #2755
+ * spent a task undoing on the one converter we already had.
+ *
+ * Everything is validated because it crosses as a string: a payload that is not
+ * an object, or carries no HTML, must leave the open document alone rather than
+ * blank it.
+ *
+ * A PDF comes back from the same endpoint as a *stored file* rather than as
+ * HTML (it is never converted), so it is carried here too — one handoff for
+ * every server-side import, as on the web.
+ *
+ * @param {string|object} raw the JSON the host passed
+ * @returns {{html: string, page: object|null, pdf: object|null}|null} null when
+ *   there is nothing to apply
+ */
+export function parseImportPayload(raw) {
+  let parsed = raw
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw)
+    } catch {
+      return null
+    }
+  }
+  if (!parsed || typeof parsed !== 'object') return null
+  const pdf =
+    parsed.pdf && typeof parsed.pdf === 'object' && str(parsed.pdf.src) ? parsed.pdf : null
+  const html = str(parsed.html)
+  if (!html && !pdf) return null
+  // The geometry is optional (a .doc or a .txt has none the server could read)
+  // and is passed on untouched — withImportedPage is the side that knows what a
+  // valid page setup looks like.
+  const page = parsed.page && typeof parsed.page === 'object' ? parsed.page : null
+  return { html, page, pdf }
+}
+
+/**
  * Calls a bridge method if the host provides it.
  *
  * Every miss is silent and returns false: the same page opens in a browser

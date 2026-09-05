@@ -36,6 +36,7 @@ import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
+import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -62,9 +63,16 @@ fun DocumentsList(
     onCrumb: (Int) -> Unit,
     onOpen: (Document) -> Unit,
     onCreate: () -> Unit,
+    onTemplates: () -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        DocumentsHead(trail = trail, busy = busy, onCrumb = onCrumb, onCreate = onCreate)
+        DocumentsHead(
+            trail = trail,
+            busy = busy,
+            onCrumb = onCrumb,
+            onCreate = onCreate,
+            onTemplates = onTemplates,
+        )
         if (tiles.isEmpty()) {
             DocumentsEmpty(nested = trail.isNotEmpty())
         } else {
@@ -83,13 +91,14 @@ fun DocumentsList(
     }
 }
 
-/** Breadcrumbs on the left, the create button on the right. */
+/** Breadcrumbs on the left, the two ways to start a document on the right. */
 @Composable
 private fun DocumentsHead(
     trail: List<DocCrumb>,
     busy: Boolean,
     onCrumb: (Int) -> Unit,
     onCreate: () -> Unit,
+    onTemplates: () -> Unit,
 ) {
     val c = Tessera.colors
     Row(
@@ -119,6 +128,15 @@ private fun DocumentsHead(
             }
         }
         Spacer(Modifier.width(8.dp))
+        // The gallery is an icon rather than a second labelled button: two of
+        // those side by side on a phone leave the breadcrumb trail no room, and
+        // starting from a blank page is the commoner of the two.
+        IonIconButton(
+            Ion.ALBUMS,
+            onClick = onTemplates,
+            boxSize = 40.dp,
+            modifier = Modifier.testTag(TestTags.DOCUMENTS_TEMPLATES_OPEN),
+        )
         TButton(
             stringResource(R.string.docs_create),
             onClick = onCreate,

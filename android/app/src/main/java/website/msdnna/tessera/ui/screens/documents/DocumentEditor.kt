@@ -66,6 +66,10 @@ fun DocumentEditor(
     /** Owned by the screen: the version journal (§6) restores into the same
      *  document this surface is editing, and has to be able to reload it. */
     controller: DocEditorController,
+    /** A converted file this document is waiting for (§8). Serialized already —
+     *  the app cannot parse it, and the page can; see [DocEditorController.applyImport]. */
+    pendingImport: String? = null,
+    onImportApplied: () -> Unit = {},
     onComments: (DocAnnotateTarget?) -> Unit,
     onHistory: () -> Unit,
     onLinks: (DocAnnotateTarget?) -> Unit,
@@ -223,6 +227,15 @@ fun DocumentEditor(
                 controller = controller,
                 scope = scope,
                 modifier = Modifier.fillMaxSize(),
+                // The handoff waits for `onReady`, not for the WebView to
+                // exist: the bridge is installed when the page mounts, and a
+                // call before that is a silent no-op — the import would be
+                // lost and the document would stay empty with no error.
+                onReady = {
+                    val payload = pendingImport ?: return@DocEditorWebView
+                    controller.applyImport(payload)
+                    onImportApplied()
+                },
                 onStatus = { signal -> status = signal.status },
                 onBlocked = { name -> blockedBy = name },
                 onRemoteChange = { remoteChanged = true },

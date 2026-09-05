@@ -22,7 +22,17 @@ import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { setI18nLocale } from '@/i18n'
 import { toDocJSON } from '@/utils/docSchema'
-import { annotatePayload, embedStatus, parseEmbedParams, sendToHost } from '@/utils/docEmbed'
+import {
+  annotatePayload,
+  embedStatus,
+  parseEmbedParams,
+  parseImportPayload,
+  sendToHost,
+} from '@/utils/docEmbed'
+import { htmlToDoc } from '@/utils/docImport'
+import { normalizeOfficeHtml } from '@/utils/docOfficeHtml'
+import { withImportedPage } from '@/utils/docOffice'
+import { pdfDocument } from '@/utils/docPdf'
 import { userColor } from '@/utils/userColor'
 import { onColor } from '@/utils/gradient'
 
@@ -232,6 +242,29 @@ onMounted(async () => {
      *  editor, so the last keystrokes are never the ones that get lost. */
     save: () => flushSave(),
     reload,
+    /**
+     * Pours a converted office file into the (empty) document this page was
+     * opened on — §8. The host has already uploaded the file and created the
+     * document; what it cannot do is turn the returned HTML into blocks.
+     *
+     * It goes through the same normalize→parse pair the web import uses, so a
+     * .docx opened on a phone loses exactly as little as one opened in a
+     * browser, and is then saved by the ordinary autosave rather than by a
+     * second write path.
+     */
+    applyImport(raw) {
+      const payload = parseImportPayload(raw)
+      if (!payload || !doc.value?.id) return false
+      // A PDF was stored, not converted: there is no HTML to parse, and the
+      // body is the single block that points at the file.
+      const json = payload.pdf
+        ? pdfDocument(payload.pdf)
+        : withImportedPage(htmlToDoc(normalizeOfficeHtml(payload.html)), payload.page)
+      content.value = json
+      comments.setDoc(json)
+      scheduleSave(json)
+      return true
+    },
     setTheme(dark) {
       theme.setThemeMode(dark ? 'dark' : 'light')
     },
