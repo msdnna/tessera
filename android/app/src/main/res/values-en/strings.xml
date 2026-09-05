@@ -821,6 +821,34 @@
     <string name="conf_chat_size_kb">%1$s KB</string>
     <string name="conf_chat_size_mb">%1$s MB</string>
 
+    <!-- Screen share and recordings (#2896 §8) -->
+    <string name="conf_share">Share screen</string>
+    <string name="conf_share_stop">Stop sharing</string>
+    <string name="conf_share_cancel">Leave the queue</string>
+    <string name="conf_share_start">Start sharing</string>
+    <string name="conf_share_you">You are sharing your screen</string>
+    <string name="conf_share_stage_yours">The stage is yours</string>
+    <string name="conf_share_by">%1$s is sharing a screen</string>
+    <string name="conf_share_queued">You are number %1$d in the queue</string>
+    <string name="conf_share_waiting">Waiting in the queue: %1$d</string>
+    <string name="conf_share_ongoing">Screen sharing</string>
+    <string name="conf_share_ongoing_hint">Everyone in the call sees this phone\'s screen</string>
+    <string name="conf_rec_start">Start recording</string>
+    <string name="conf_rec_stop">Stop recording</string>
+    <string name="conf_rec_live">Recording</string>
+    <string name="conf_rec_by">started by %1$s</string>
+    <string name="conf_rec_title">Recordings</string>
+    <string name="conf_rec_download">Download</string>
+    <string name="conf_rec_delete">Delete</string>
+    <string name="conf_rec_delete_confirm">Delete this recording? The file is erased for good.</string>
+    <string name="conf_rec_failed">Recording failed</string>
+    <string name="conf_rec_running">Writing…</string>
+    <string name="conf_rec_length">%1$02d:%2$02d</string>
+    <string name="conf_rec_length_hours">%1$d:%2$02d:%3$02d</string>
+    <string name="conf_rec_err_unavailable">Recording is unavailable: this server has no recording service running</string>
+    <string name="conf_rec_err_forbidden">Only a conference moderator may start a recording</string>
+    <string name="conf_rec_err_conflict">Another moderator has already changed the recording</string>
+
     <!-- Workspace members -->
     <string name="members_title">Members</string>
     <string name="members_invitations">Invitations</string>

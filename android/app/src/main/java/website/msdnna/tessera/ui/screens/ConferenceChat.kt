@@ -509,24 +509,5 @@ private fun fileSizeLabel(bytes: Long): String {
     )
 }
 
-/** Opens a downloaded attachment through our `FileProvider`, as the task modal
- *  does — [chooserTitle] is resolved in composition so the dialog speaks the
- *  profile's language rather than the system's. */
-private fun openDownloadedFile(
-    ctx: android.content.Context,
-    file: File,
-    mime: String?,
-    chooserTitle: String,
-) {
-    val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-    val view = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-        setDataAndType(uri, mime?.takeIf { it.isNotBlank() } ?: "*/*")
-        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    val chooser = android.content.Intent.createChooser(view, chooserTitle)
-        .apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-    runCatching { ctx.startActivity(chooser) }
-}
-
 private const val SCRIM_WEIGHT = 2f
 private const val SHEET_WEIGHT = 8f

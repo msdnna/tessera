@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -34,6 +35,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Conference
 import website.msdnna.tessera.data.model.ConferenceParticipant
+import website.msdnna.tessera.data.model.ConferenceRecording
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
@@ -41,6 +43,7 @@ import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.MemberAvatar
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
+import website.msdnna.tessera.ui.components.TConfirmDialog
 import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TesseraLoader
@@ -48,10 +51,13 @@ import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraWarning
 import website.msdnna.tessera.ui.viewmodels.ConferenceLobbyUiState
 import website.msdnna.tessera.ui.viewmodels.ConferenceLobbyViewModel
 import website.msdnna.tessera.util.ConfTimeKind
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.confRecordingDownloadable
+import website.msdnna.tessera.util.confRecordingLength
 import website.msdnna.tessera.util.conferenceTimeLine
 import website.msdnna.tessera.util.label
 import website.msdnna.tessera.util.localDateTimeLabel
@@ -70,6 +76,10 @@ fun ConferenceLobby(conferenceId: String, onBack: () -> Unit) {
     val c = Tessera.colors
     val vm: ConferenceLobbyViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
+    val ctx = LocalContext.current
+    // Resolved in composition so the system chooser speaks the profile's
+    // language rather than the phone's, as the chat's downloads do.
+    val chooserTitle = stringResource(R.string.conf_rec_download)
 
     LaunchedEffect(conferenceId) { vm.load(conferenceId) }
 
@@ -121,6 +131,14 @@ fun ConferenceLobby(conferenceId: String, onBack: () -> Unit) {
                 onConfirmEnd = { vm.confirmEnd() },
                 onCancelEnd = { vm.cancelEnd() },
                 onInvite = { vm.invite(it) },
+                onDownloadRecording = { recording ->
+                    vm.downloadRecording(ctx.cacheDir, recording) { file ->
+                        openDownloadedFile(ctx, file, MP4_MIME, chooserTitle)
+                    }
+                },
+                onAskDeleteRecording = { vm.askDeleteRecording(it) },
+                onCancelDeleteRecording = { vm.cancelDeleteRecording() },
+                onConfirmDeleteRecording = { vm.confirmDeleteRecording() },
             )
         }
     }
@@ -148,6 +166,10 @@ internal fun ConferenceLobbyBody(
     onConfirmEnd: () -> Unit,
     onCancelEnd: () -> Unit,
     onInvite: (String) -> Unit,
+    onDownloadRecording: (ConferenceRecording) -> Unit = {},
+    onAskDeleteRecording: (String) -> Unit = {},
+    onCancelDeleteRecording: () -> Unit = {},
+    onConfirmDeleteRecording: () -> Unit = {},
 ) {
     val c = Tessera.colors
     val conference = state.conference ?: return
@@ -196,6 +218,39 @@ internal fun ConferenceLobbyBody(
             item { SectionLabel(stringResource(R.string.conf_section_invited)) }
             items(state.invited.size, key = { state.invited[it].userId }) { i ->
                 SeatRow(state.invited[i], showHost = false)
+            }
+        }
+
+        // Only when there is something to show. A team that never records must
+        // not carry a permanent «Записей пока нет» under every conference.
+        if (state.recordingRows.isNotEmpty()) {
+            item {
+                Box(Modifier.testTag(TestTags.CONFERENCE_RECORDINGS)) {
+                    SectionLabel(stringResource(R.string.conf_rec_title))
+                }
+            }
+            items(state.recordingRows.size, key = { state.recordingRows[it].id }) { i ->
+                val recording = state.recordingRows[i]
+                RecordingRow(
+                    recording = recording,
+                    canModerate = state.canModerate,
+                    busy = state.recordingBusyId == recording.id,
+                    confirming = state.confirmingDeleteId == recording.id,
+                    onDownload = { onDownloadRecording(recording) },
+                    onAskDelete = { onAskDeleteRecording(recording.id) },
+                    onCancelDelete = onCancelDeleteRecording,
+                    onConfirmDelete = onConfirmDeleteRecording,
+                )
+            }
+            state.recordingsError?.let { message ->
+                item {
+                    Text(
+                        message.resolve(),
+                        color = c.text3,
+                        fontSize = 12.sp,
+                        modifier = Modifier.testTag(TestTags.CONFERENCE_RECORDINGS_ERROR),
+                    )
+                }
             }
         }
 
@@ -333,6 +388,108 @@ private fun SeatRow(participant: ConferenceParticipant, showHost: Boolean) {
     }
 }
 
+/**
+ * One recording (#2896 §8).
+ *
+ * A failed row is shown rather than filtered out — «запись не удалась» is what
+ * people came to this list to find out, and a row that silently disappeared
+ * would have them asking the server admin instead. It carries no download for
+ * the same reason it is shown: there are no bytes behind it.
+ *
+ * Delete sits behind a confirmation and only for a moderator, mirroring exactly
+ * who may start one. Unlike a deleted message, which at least existed in
+ * somebody's scroll, the file is gone from the disk.
+ */
+@Composable
+private fun RecordingRow(
+    recording: ConferenceRecording,
+    canModerate: Boolean,
+    busy: Boolean,
+    confirming: Boolean,
+    onDownload: () -> Unit,
+    onAskDelete: () -> Unit,
+    onCancelDelete: () -> Unit,
+    onConfirmDelete: () -> Unit,
+) {
+    val c = Tessera.colors
+    val length = confRecordingLength(recording)
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 3.dp)
+            .testTag(TestTags.conferenceRecordingRow(recording.id)),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IonIcon(
+            if (recording.isFailed) Ion.WARNING else Ion.VIDEOCAM,
+            size = 15.dp,
+            tint = if (recording.isFailed) TesseraWarning else c.text3,
+        )
+        Spacer(Modifier.width(8.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                localDateTimeLabel(LocalResources.current, recording.startedAt, LocalDateFormat.current),
+                color = c.text1,
+                fontSize = 13.sp,
+                maxLines = 1,
+            )
+            val detail = when {
+                recording.isRunning -> stringResource(R.string.conf_rec_running)
+
+                // The server's own sentence when it sent one: it knows why the
+                // egress gave up better than a generic line does.
+                recording.isFailed ->
+                    recording.error.ifBlank { stringResource(R.string.conf_rec_failed) }
+
+                length != null && length.hours > 0 -> stringResource(
+                    R.string.conf_rec_length_hours,
+                    length.hours,
+                    length.minutes,
+                    length.seconds,
+                )
+
+                length != null -> stringResource(R.string.conf_rec_length, length.minutes, length.seconds)
+
+                else -> ""
+            }
+            if (detail.isNotBlank()) {
+                Text(detail, color = c.text3, fontSize = 11.sp, maxLines = 1)
+            }
+        }
+        if (confRecordingDownloadable(recording)) {
+            IonIconButton(
+                Ion.DOWNLOAD,
+                onClick = onDownload,
+                enabled = !busy,
+                boxSize = 34.dp,
+                description = stringResource(R.string.conf_rec_download),
+                modifier = Modifier.testTag(TestTags.conferenceRecordingDownload(recording.id)),
+            )
+        }
+        if (canModerate) {
+            IonIconButton(
+                Ion.TRASH,
+                onClick = onAskDelete,
+                enabled = !busy,
+                boxSize = 34.dp,
+                description = stringResource(R.string.conf_rec_delete),
+                modifier = Modifier.testTag(TestTags.conferenceRecordingDelete(recording.id)),
+            )
+            // A dialog rather than the popover «Завершить» uses: this one erases
+            // a file for good, and the confirm has to be reachable by a spec —
+            // which is what the tagged button in `TConfirmDialog` is for.
+            if (confirming) {
+                TConfirmDialog(
+                    title = stringResource(R.string.conf_rec_delete),
+                    message = stringResource(R.string.conf_rec_delete_confirm),
+                    confirmText = stringResource(R.string.conf_rec_delete),
+                    confirmTag = TestTags.CONFERENCE_RECORDING_DELETE_CONFIRM,
+                    onConfirm = onConfirmDelete,
+                    onDismiss = onCancelDelete,
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SectionLabel(text: String) {
     val c = Tessera.colors
@@ -357,3 +514,12 @@ private fun lobbyTimeLine(conference: Conference): String {
         else -> stringResource(R.string.conf_row_scheduled_at, at)
     }
 }
+
+/**
+ * What a recording is handed to the system viewer as (#2896 §8).
+ *
+ * Stated rather than read off the row: the egress worker writes mp4 and the API
+ * sends no content type with the row, so guessing from the file name would leave
+ * a recording the server named oddly with no player willing to open it.
+ */
+private const val MP4_MIME = "video/mp4"

@@ -63,7 +63,14 @@ fun IonIcon(
     )
 }
 
-/** Tappable ionicon inside a square hit-target (no ripple, flat like the web). */
+/**
+ * Tappable ionicon inside a square hit-target (no ripple, flat like the web).
+ *
+ * [description] is what the button *is*: nothing else here says so, since the
+ * glyph is the whole control. [enabled] dims it and stops the press together —
+ * a button that still looks alive while a call is in flight invites the second
+ * press that duplicates the request.
+ */
 @Composable
 fun IonIconButton(
     name: String,
@@ -72,11 +79,21 @@ fun IonIconButton(
     boxSize: Dp = 36.dp,
     iconSize: Dp = 20.dp,
     tint: Color = Tessera.colors.text2,
+    enabled: Boolean = true,
+    description: String? = null,
 ) {
     Box(
-        modifier.size(boxSize).clip(RoundedCornerShape(RadiusSm)).clickableNoRipple(onClick = onClick),
+        modifier.size(boxSize).clip(RoundedCornerShape(RadiusSm))
+            .clickableNoRipple(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        IonIcon(name, size = iconSize, tint = tint)
+        IonIcon(
+            name,
+            size = iconSize,
+            tint = if (enabled) tint else tint.copy(alpha = DISABLED_ALPHA),
+            description = description,
+        )
     }
 }
+
+private const val DISABLED_ALPHA = 0.5f

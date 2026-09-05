@@ -14,6 +14,7 @@ import retrofit2.HttpException
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Conference
 import website.msdnna.tessera.data.model.ConferenceParticipant
+import website.msdnna.tessera.data.model.ConferenceRecording
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.realtime.ConfEvent
 import website.msdnna.tessera.data.realtime.RealtimeClient
@@ -26,6 +27,9 @@ import website.msdnna.tessera.util.canInviteToConference
 import website.msdnna.tessera.util.canModerateConference
 import website.msdnna.tessera.util.confInvitable
 import website.msdnna.tessera.util.confInvited
+import website.msdnna.tessera.util.confRecordingDownloadable
+import website.msdnna.tessera.util.confRecordingFileName
+import website.msdnna.tessera.util.confRecordingOrder
 import website.msdnna.tessera.util.confRoster
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.isInConfRoom
@@ -45,6 +49,21 @@ data class ConferenceLobbyUiState(
     /** A join/leave/end is in flight — the pair of buttons is one control. */
     val busy: Boolean = false,
     val confirmingEnd: Boolean = false,
+    /**
+     * This conference's recordings (#2896 §8), failed rows included: a recording
+     * that never arrived is the one people ask about.
+     */
+    val recordings: List<ConferenceRecording> = emptyList(),
+    /**
+     * A download or delete that failed, printed under the list rather than
+     * toasted — this panel is below the fold, and a toast about a list nobody is
+     * looking at is noise.
+     */
+    val recordingsError: UiText? = null,
+    /** The row with a call in flight; blank when none is. */
+    val recordingBusyId: String = "",
+    /** Which recording a delete confirmation is about; blank when none is. */
+    val confirmingDeleteId: String = "",
 ) {
     val inRoom: Boolean get() = isInConfRoom(participants, meId)
 
@@ -58,6 +77,13 @@ data class ConferenceLobbyUiState(
     val invited: List<ConferenceParticipant> get() = confInvited(participants)
 
     val invitable: List<Member> get() = if (canInvite) confInvitable(members, participants) else emptyList()
+
+    /** Newest first, with a running recording pinned to the top. */
+    val recordingRows: List<ConferenceRecording> get() = confRecordingOrder(recordings)
+
+    /** The row a delete confirmation is about, or null once it has gone. */
+    val deleteTarget: ConferenceRecording?
+        get() = recordings.firstOrNull { it.id == confirmingDeleteId }
 }
 
 /**
@@ -109,6 +135,7 @@ class ConferenceLobbyViewModel(
                         )
                     }
                     ensureRealtime(detail.conference.workspaceId)
+                    loadRecordings()
                     loadMembers(detail.conference.workspaceId)
                 },
                 onFailure = { e ->
@@ -204,6 +231,72 @@ class ConferenceLobbyViewModel(
 
     fun clearError() = _state.update { it.copy(error = null) }
 
+    // ── recordings (#2896 §8) ─────────────────────────────────────────────
+
+    /**
+     * Everyone who may enter the call may see this list — the recording *is* the
+     * meeting, and whoever could have attended can watch it back. Only a
+     * moderator may delete a row, which mirrors exactly who may start one.
+     *
+     * Silent on failure. A server without the egress worker has no recordings
+     * endpoint worth a red line under a lobby that reads perfectly well; the
+     * honest refusal belongs on the button that tried to start one (§8, room).
+     */
+    private suspend fun loadRecordings() {
+        val id = conferenceId
+        val rows = runCatching { repo.recordings(id) }.getOrNull() ?: return
+        if (conferenceId != id) return
+        _state.update { it.copy(recordings = rows) }
+    }
+
+    /**
+     * Fetches an mp4 into the cache and hands the file to the screen, which opens
+     * it through our `FileProvider` — the same path the chat's attachments take,
+     * and for the same reason: a bare `GET` at the API carries no credential.
+     */
+    fun downloadRecording(cacheDir: java.io.File, recording: ConferenceRecording, onReady: (java.io.File) -> Unit) {
+        if (!confRecordingDownloadable(recording)) return
+        _state.update { it.copy(recordingBusyId = recording.id, recordingsError = null) }
+        viewModelScope.launch {
+            val result = runCatching {
+                repo.downloadRecordingTo(cacheDir, recording.id, confRecordingFileName(recording))
+            }
+            _state.update { it.copy(recordingBusyId = "") }
+            result.fold(
+                onSuccess = onReady,
+                onFailure = { e -> _state.update { it.copy(recordingsError = errorMessage(e)) } },
+            )
+        }
+    }
+
+    fun askDeleteRecording(id: String) = _state.update { it.copy(confirmingDeleteId = id) }
+
+    fun cancelDeleteRecording() = _state.update { it.copy(confirmingDeleteId = "") }
+
+    /** Behind a confirmation: the file is erased server-side and nothing brings
+     *  it back — unlike a message, which at least existed in somebody's scroll. */
+    fun confirmDeleteRecording() {
+        val id = _state.value.confirmingDeleteId
+        _state.update { it.copy(confirmingDeleteId = "") }
+        if (id.isBlank()) return
+        _state.update { it.copy(recordingBusyId = id, recordingsError = null) }
+        viewModelScope.launch {
+            val result = runCatching { repo.deleteRecording(id) }
+            _state.update {
+                it.copy(
+                    recordingBusyId = "",
+                    // Dropped from the list on success rather than refetched: the
+                    // row is gone either way, and a refetch that raced the delete
+                    // would put it back for a second.
+                    recordings = if (result.isSuccess) it.recordings.filterNot { r -> r.id == id } else it.recordings,
+                    recordingsError = result.exceptionOrNull()?.let(::errorMessage),
+                )
+            }
+        }
+    }
+
+    fun clearRecordingsError() = _state.update { it.copy(recordingsError = null) }
+
     // ── realtime ──────────────────────────────────────────────────────────
 
     private fun ensureRealtime(workspaceId: String) {
@@ -215,9 +308,13 @@ class ConferenceLobbyViewModel(
      * A colleague joining or ending the call has to land here without a refresh —
      * the roster is the whole content of this screen.
      *
-     * Recording events are ignored: the egress worker reports in repeatedly
-     * during a call and none of it is on this screen (§8 adds the panel that
-     * cares). A roster event refetches the participants only, while anything else
+     * A recording starting or finishing refetches the list and nothing else
+     * (§8): the row is written by an egress worker this client never talks to,
+     * so the only way a finished file appears under the lobby is the server
+     * saying so. The roster and the conference are untouched by it — a recording
+     * does not change who is in the call.
+     *
+     * A roster event refetches the participants only, while anything else
      * conference-shaped refetches the conference too — «Идёт сейчас» and the end
      * button both hang off its status.
      */
@@ -225,7 +322,8 @@ class ConferenceLobbyViewModel(
         when (classifyConfEvent(ev.type, ev.scope, workspaceId)) {
             ConfEvent.PARTICIPANTS -> scheduleReload(withConference = false)
             ConfEvent.LIST -> scheduleReload(withConference = true)
-            ConfEvent.RECORDING, ConfEvent.OTHER -> Unit
+            ConfEvent.RECORDING -> viewModelScope.launch { loadRecordings() }
+            ConfEvent.OTHER -> Unit
         }
     }
 

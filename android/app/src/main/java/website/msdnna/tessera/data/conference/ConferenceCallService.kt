@@ -76,6 +76,14 @@ class ConferenceCallService : android.app.Service() {
         private const val NOTIFICATION_ID = 4201
 
         /**
+         * The entry the SDK's own `mediaProjection` service posts while we are
+         * sharing (#2896 §8). A second id, not this service's: the two run at the
+         * same time and reusing the id would leave one of them replacing the
+         * other's text — including the call entry that is the way back in.
+         */
+        const val SHARE_NOTIFICATION_ID = 4202
+
+        /**
          * Start or stop the service as the call needs it.
          *
          * Starting is wrapped because Android refuses a microphone-typed
@@ -91,6 +99,37 @@ class ConferenceCallService : android.app.Service() {
             } else {
                 runCatching { context.stopService(intent) }
             }
+        }
+
+        /**
+         * The shade entry for a screen being shared (#2896 §8).
+         *
+         * Handed to the LiveKit SDK, which owns the `mediaProjection` foreground
+         * service the platform requires for a capture. Built here anyway, with
+         * our channel and our words: while the display is being shared this app
+         * is by definition not the thing on screen, and the shade is the only
+         * surface that can say what is being captured — and that it is going to a
+         * meeting rather than to a recording.
+         */
+        fun shareNotification(context: Context): Notification {
+            ensureChannelIfMissing(context)
+            val open = PendingIntent.getActivity(
+                context,
+                0,
+                Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                },
+                PendingIntent.FLAG_IMMUTABLE,
+            )
+            return NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_stat_reminder)
+                .setContentTitle(context.getString(R.string.conf_share_ongoing))
+                .setContentText(context.getString(R.string.conf_share_ongoing_hint))
+                .setContentIntent(open)
+                .setOngoing(true)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
         }
 
         /**

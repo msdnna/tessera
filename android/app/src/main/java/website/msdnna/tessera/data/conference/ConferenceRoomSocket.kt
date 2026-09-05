@@ -115,6 +115,20 @@ data class ConfRoomState(
      * costs a stale panel rather than a message that never existed.
      */
     val chatNudge: Int = 0,
+    /**
+     * How many snapshots this connection has seen (§8).
+     *
+     * The screen-share flow needs to tell «the server has not answered my
+     * request yet» from «the server answered and the stage is somebody else's» —
+     * the two are identical in [stage] alone, and acting on the first would kill
+     * a capture the moment it started.
+     */
+    val stateSeq: Int = 0,
+    /**
+     * How long the stage survives without a refresh, straight from the server's
+     * welcome, so our heartbeat cannot drift out of step with the TTL it feeds.
+     */
+    val stageTtlMs: Long = DEFAULT_STAGE_TTL_MS,
 ) {
     /** Me, as the room sees me — the source of truth for my own force-mute. */
     val self: ConfPerson? get() = people.firstOrNull { it.userId == meId }
@@ -124,10 +138,29 @@ data class ConfRoomState(
 
     /** Whether my hand is up, as the room has it — not as we last pressed. */
     val handUp: Boolean get() = self?.handAt != null
+
+    /**
+     * Whether *this connection* holds the stage (§8).
+     *
+     * By connection and not by user: the same person may have the call open on a
+     * phone and a laptop, and the second one must not believe it is presenting
+     * and offer to stop a screen it is not publishing.
+     */
+    val presenting: Boolean get() = stage != null && stage.connId == connId
+
+    /** The queue as connection ids, in the order the server will serve them. */
+    val queueConns: List<String> get() = queue.map { it.connId }
 }
 
 const val ROLE_HOST = "host"
 const val ROLE_MEMBER = "member"
+
+/**
+ * The stage TTL assumed until the welcome says otherwise — the same 30s
+ * `internal/confroom` uses. A default rather than a zero: a snapshot that
+ * arrives before the welcome would otherwise set the heartbeat to «never».
+ */
+const val DEFAULT_STAGE_TTL_MS = 30_000L
 
 /**
  * The per-conference room socket.
@@ -222,6 +255,25 @@ class ConferenceRoomSocket {
         send(mapOf("type" to TYPE_MUTE, "user_id" to userId, "muted" to muted))
     }
 
+    // ── the screen-share stage (§8) ───────────────────────────────────────
+
+    /**
+     * Ask for the stage.
+     *
+     * The answer arrives as a snapshot, never as a return value: the server is
+     * the only arbiter, and a client that started capturing because it asked is
+     * how two screens end up published at once. Asking while somebody else
+     * presents queues us — unless we may preempt them, which is also the
+     * server's call and not ours.
+     */
+    fun requestScreen() = send(mapOf("type" to TYPE_SCREEN_REQUEST))
+
+    /** Keep our hold alive; the server ignores it from anyone else. */
+    fun refreshScreen() = send(mapOf("type" to TYPE_SCREEN_REFRESH))
+
+    /** Give the stage up, or step out of the queue if we were only waiting. */
+    fun releaseScreen() = send(mapOf("type" to TYPE_SCREEN_RELEASE))
+
     /** Drop a refusal once it has been read — a stale one under an untouched
      *  button is worse than no message at all. */
     fun clearDenied() = _state.update { it.copy(denied = null) }
@@ -295,6 +347,9 @@ class ConferenceRoomSocket {
                         meId = msg.userId,
                         role = msg.role.ifBlank { ROLE_MEMBER },
                         canModerate = msg.canModerate,
+                        // A server that did not send one keeps the default; a
+                        // zero TTL would turn the heartbeat into a busy loop.
+                        stageTtlMs = msg.stageTtlMs.takeIf { it > 0 } ?: it.stageTtlMs,
                     )
                 }
                 // A reconnect is a fresh connection to a server that knows
@@ -311,6 +366,7 @@ class ConferenceRoomSocket {
                         stage = msg.stage,
                         queue = msg.queue.orEmpty(),
                         recording = msg.recording,
+                        stateSeq = it.stateSeq + 1,
                     )
                 }
             }
@@ -367,6 +423,7 @@ class ConferenceRoomSocket {
         @SerializedName("user_id") val userId: String = "",
         @SerializedName("role") val role: String = "",
         @SerializedName("can_moderate") val canModerate: Boolean = false,
+        @SerializedName("stage_ttl_ms") val stageTtlMs: Long = 0,
     )
 
     private data class StateMsg(
@@ -394,6 +451,9 @@ class ConferenceRoomSocket {
         const val TYPE_HAND = "hand"
         const val TYPE_KICK = "kick"
         const val TYPE_MUTE = "mute"
+        const val TYPE_SCREEN_REQUEST = "screen.request"
+        const val TYPE_SCREEN_REFRESH = "screen.refresh"
+        const val TYPE_SCREEN_RELEASE = "screen.release"
 
         const val REASON_KICKED = "kicked"
         const val REASON_DELETED = "deleted"

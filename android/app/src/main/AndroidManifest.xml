@@ -30,6 +30,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
 
+    <!-- Sharing the screen (#2896 §8) captures through MediaProjection, which the
+         platform only grants to a foreground service of this type. The service
+         itself is the LiveKit SDK's — it owns the capturer — and its manifest
+         declares both; stated again here because a permission that only appears
+         after a dependency merge is one nobody reviewing this file can see. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
     <!-- Neither is required: a tablet without a camera, or a device without a
          microphone, still joins and listens. Left implicit, the permissions above
          would make both into install-time requirements. -->

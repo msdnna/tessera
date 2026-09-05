@@ -17,6 +17,7 @@ import io.livekit.android.room.track.LocalVideoTrack
 import io.livekit.android.room.track.RemoteAudioTrack
 import io.livekit.android.room.track.Track
 import io.livekit.android.room.track.VideoTrack
+import io.livekit.android.room.track.screencapture.ScreenCaptureParams
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -112,6 +113,17 @@ data class ConfSession(
      * un-muting returns the slider where it was rather than to the default.
      */
     val localMuted: Set<String> = emptySet(),
+    /**
+     * This phone is capturing its display and publishing it (#2896 §8).
+     *
+     * Separate from the room's «the stage is ours»: the stage is a permission and
+     * this is a MediaProjection, and between them sits a full-screen consent
+     * dialog the user may dismiss. They also part company from the other end —
+     * Android's own «Остановить» in the cast notification stops the capture
+     * without telling the server a thing, which is exactly why this is published
+     * rather than kept private to the engine.
+     */
+    val screenShare: Boolean = false,
 ) {
     val live: Boolean get() = status == ConfMediaStatus.LIVE
 
@@ -318,6 +330,59 @@ object ConferenceEngine {
         scope.launch { applyMedia() }
     }
 
+    /**
+     * Start or stop publishing this phone's display (#2896 §8).
+     *
+     * [permission] is the answer to Android's own consent dialog and is required
+     * to start: the platform mints it per capture, refuses to let it be reused
+     * from Android 14 on, and there is no way to obtain one without the user
+     * seeing the warning. So the engine never asks — the screen does, from a
+     * press, once the server has given us the stage.
+     *
+     * The capture is *not* the stage and does not take it: this publishes to the
+     * SFU, and who may publish is decided over the room socket by whoever calls
+     * this. Two things run over two connections on purpose, and this is the half
+     * that has pixels in it.
+     */
+    fun setScreenShare(on: Boolean, permission: android.content.Intent? = null) {
+        scope.launch { applyScreenShare(on, permission) }
+    }
+
+    private suspend fun applyScreenShare(on: Boolean, permission: android.content.Intent?) {
+        val local = room?.localParticipant
+        if (!on || local == null) {
+            // Stopping, or a room with nothing to publish onto.
+            if (local != null) runCatching { local.setScreenShareEnabled(false) }
+            set { it.copy(screenShare = false) }
+            return
+        }
+        // A start without consent is not a start, and it says so rather than
+        // going quiet: «not sharing» is what lets the room screen hand the stage
+        // back instead of parking the queue behind a phone that never got past
+        // the dialog.
+        val consent = permission ?: run {
+            set { it.copy(screenShare = false) }
+            return
+        }
+        val params = ScreenCaptureParams(
+            mediaProjectionPermissionResultData = consent,
+            notificationId = ConferenceCallService.SHARE_NOTIFICATION_ID,
+            // Our own notification rather than the SDK's placeholder: while the
+            // display is being captured this app is not on screen to be read, and
+            // the shade is the only place that can say what is being shared and
+            // to which meeting.
+            notification = ConferenceCallService.shareNotification(AppContainer.appContext),
+            // Android's own «Остановить» — from the cast chip, not from our
+            // toolbar. It stops the projection and tells the server nothing, so
+            // publishing the flip is what lets the room screen release the stage.
+            onStop = { setScreenShare(false) },
+        )
+        runCatching { local.setScreenShareEnabled(true, params) }.fold(
+            onSuccess = { set { it.copy(screenShare = true) } },
+            onFailure = { set { it.copy(screenShare = false) } },
+        )
+    }
+
     /** Front/back. Silently does nothing without a camera published. */
     fun switchCamera() {
         val track = room?.localParticipant?.getTrackPublication(Track.Source.CAMERA)?.track
@@ -441,7 +506,18 @@ object ConferenceEngine {
     private fun onDisconnected(event: RoomEvent.Disconnected) {
         val id = _session.value.conferenceId
         teardown()
-        set { it.copy(status = ConfMediaStatus.IDLE, peers = emptyList(), mic = false, cam = false, reconnecting = false) }
+        set {
+            it.copy(
+                status = ConfMediaStatus.IDLE,
+                peers = emptyList(),
+                mic = false,
+                cam = false,
+                reconnecting = false,
+                // The projection went with the room. Left standing it would offer
+                // «остановить показ» for a capture that no longer exists.
+                screenShare = false,
+            )
+        }
         if (event.error != null) scheduleRetry(id)
     }
 

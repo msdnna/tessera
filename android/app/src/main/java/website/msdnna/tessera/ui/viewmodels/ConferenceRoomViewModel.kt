@@ -2,10 +2,13 @@ package website.msdnna.tessera.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.conference.ConfPeer
 import website.msdnna.tessera.data.conference.ConfPerson
@@ -14,22 +17,38 @@ import website.msdnna.tessera.data.conference.ConfRoomState
 import website.msdnna.tessera.data.conference.ConfSession
 import website.msdnna.tessera.data.conference.ConferenceEngine
 import website.msdnna.tessera.data.conference.ConferenceRoomSocket
+import website.msdnna.tessera.data.repository.ConferenceRepository
 import website.msdnna.tessera.util.ConfAudioRoute
 import website.msdnna.tessera.util.ConfBanner
 import website.msdnna.tessera.util.ConfControls
 import website.msdnna.tessera.util.ConfDeniedKind
 import website.msdnna.tessera.util.ConfMediaGrant
 import website.msdnna.tessera.util.ConfMediaWant
+import website.msdnna.tessera.util.ConfRecordingFailure
+import website.msdnna.tessera.util.ConfRecordingPress
 import website.msdnna.tessera.util.ConfRowActions
+import website.msdnna.tessera.util.ConfShare
+import website.msdnna.tessera.util.ConfSharePress
 import website.msdnna.tessera.util.ConfStage
+import website.msdnna.tessera.util.ConfStageLine
 import website.msdnna.tessera.util.confBanner
+import website.msdnna.tessera.util.confCanShare
 import website.msdnna.tessera.util.confControls
 import website.msdnna.tessera.util.confDeniedKind
 import website.msdnna.tessera.util.confHasLocalAudio
 import website.msdnna.tessera.util.confLastSpeaker
 import website.msdnna.tessera.util.confPanelOrder
+import website.msdnna.tessera.util.confQueuePosition
+import website.msdnna.tessera.util.confRecordingFailure
+import website.msdnna.tessera.util.confRecordingPress
 import website.msdnna.tessera.util.confRowActions
+import website.msdnna.tessera.util.confShareAutoCapture
+import website.msdnna.tessera.util.confShareHeartbeatMs
+import website.msdnna.tessera.util.confSharePreempted
+import website.msdnna.tessera.util.confSharePress
+import website.msdnna.tessera.util.confShareState
 import website.msdnna.tessera.util.confStage
+import website.msdnna.tessera.util.confStageLine
 
 data class ConferenceRoomUiState(
     val session: ConfSession = ConfSession(),
@@ -50,6 +69,30 @@ data class ConferenceRoomUiState(
     val panelOpen: Boolean = false,
     /** Whose kick is waiting on a confirmation; blank when none is. */
     val confirmingKick: String = "",
+    /**
+     * We want the stage and have not given up on it (#2896 §8).
+     *
+     * Not the same as holding it and not the same as capturing: the three are
+     * kept apart because that is what makes the queue work — waiting is a state
+     * with a control of its own («Выйти из очереди»), not an absence.
+     */
+    val wantScreen: Boolean = false,
+    /**
+     * The snapshot number our request went out at, so «the stage is not ours»
+     * can be told from «the server has not answered yet». Acting on the second
+     * would stop a capture the instant it started.
+     */
+    val askedStageAt: Int = 0,
+    /**
+     * The consent dialog may follow the request without a second press, because
+     * the stage was free when it was pressed. Consumed by the screen the moment
+     * the turn arrives — see [website.msdnna.tessera.util.confShareAutoCapture].
+     */
+    val autoCapture: Boolean = false,
+    /** A recording start/stop the server refused, until it is read. */
+    val recordingError: ConfRecordingFailure? = null,
+    /** A recording call is in flight; the button must not be pressed twice. */
+    val recordingBusy: Boolean = false,
 ) {
     val stage: ConfStage<ConfPeer> get() = confStage(session.peers, lastSpeaker)
 
@@ -67,6 +110,36 @@ data class ConferenceRoomUiState(
     /** The person a kick confirmation is about, or null once they have gone. */
     val kickTarget: ConfPerson?
         get() = room.people.firstOrNull { it.userId == confirmingKick }
+
+    // ── screen share (§8) ─────────────────────────────────────────────────
+
+    /** Where we are between «не показываю» and «идут пиксели». */
+    val share: ConfShare
+        get() = confShareState(wantScreen, room.presenting, session.screenShare)
+
+    /** Our 1-based place in the line for the stage; 0 when we are not in it. */
+    val queuePosition: Int get() = confQueuePosition(room.queueConns, room.connId)
+
+    /** The one line above the tiles about who is showing what. */
+    val stageLine: ConfStageLine
+        get() = confStageLine(
+            share = share,
+            stageName = room.stage?.name.orEmpty(),
+            stageIsMine = room.presenting,
+            position = queuePosition,
+            waiting = room.queue.size,
+        )
+
+    val canShare: Boolean get() = confCanShare(room.connected)
+
+    // ── recording (§8) ────────────────────────────────────────────────────
+
+    /** Start, stop, or nothing at all — a member never sees the control. */
+    val recordingPress: ConfRecordingPress
+        get() = confRecordingPress(room.canModerate, room.recording != null)
+
+    /** Who started the recording that is running, for the notice; blank if none. */
+    val recordingBy: String get() = room.recording?.startedBy.orEmpty()
 
     fun rowActions(person: ConfPerson): ConfRowActions =
         confRowActions(person, room.meId, room.canModerate)
@@ -91,6 +164,7 @@ data class ConferenceRoomUiState(
  */
 class ConferenceRoomViewModel(
     private val socket: ConferenceRoomSocket = ConferenceRoomSocket(),
+    private val recordings: ConferenceRepository = ConferenceRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConferenceRoomUiState())
     val state: StateFlow<ConferenceRoomUiState> = _state.asStateFlow()
@@ -100,6 +174,33 @@ class ConferenceRoomViewModel(
     /** What we last told the room, so an unchanged snapshot sends nothing. */
     private var reported: Pair<Boolean, Boolean>? = null
 
+    /**
+     * Keeps our hold on the stage alive while the capture runs (§8).
+     *
+     * A job on the model's own scope rather than an effect in the composable,
+     * unlike the web's `watch`: sharing a screen means this app is *not* the
+     * thing on screen, so a heartbeat tied to the room's composition would stop
+     * at the very moment it matters and the server would collect the stage out
+     * from under a presenter who is still presenting.
+     */
+    private var stageBeat: Job? = null
+
+    /**
+     * Whether the capture was running at the previous snapshot — the only way to
+     * tell «Android stopped it» from «it never started».
+     */
+    private var wasCapturing = false
+
+    /**
+     * The TTL the running heartbeat was built for, so a restart is only paid when
+     * the server changes its mind about it.
+     */
+    private var beatTtl = 0L
+
+    // Both declared above `init` and not beside the code that uses them:
+    // `viewModelScope` dispatches on `Main.immediate`, so the collectors below
+    // run their first snapshot *during* construction — and an initializer that
+    // came later would clobber what that first pass wrote.
     init {
         viewModelScope.launch {
             ConferenceEngine.session.collect { session ->
@@ -115,6 +216,7 @@ class ConferenceRoomViewModel(
                     reported = now
                     socket.setMedia(session.mic, session.cam)
                 }
+                onShareChanged()
             }
         }
         viewModelScope.launch {
@@ -124,6 +226,59 @@ class ConferenceRoomViewModel(
                 // about who may speak, so a client waiting for a track event
                 // would keep transmitting after being silenced.
                 ConferenceEngine.applyForceMute(room.forceMuted)
+                onShareChanged()
+            }
+        }
+    }
+
+    /**
+     * Reconcile the two halves of the stage after either of them moved.
+     *
+     * Three things can part company and each of them is somebody's bad call:
+     *
+     *  - the stage went elsewhere while we were capturing — a host preempted us,
+     *    and the capture stops rather than publishing into a stage that is not
+     *    ours (two screens at once is what the queue exists to prevent);
+     *  - the capture stopped without us asking — Android's own «Остановить» in
+     *    the cast chip, which tells the server nothing, so we hand the stage back
+     *    before the TTL parks the queue behind a share that ended;
+     *  - the stage is ours and the capture is running — keep the hold alive.
+     */
+    private fun onShareChanged() {
+        val s = _state.value
+        if (confSharePreempted(s.session.screenShare, s.room.presenting, s.room.stateSeq, s.askedStageAt)) {
+            _state.update { it.copy(wantScreen = false, autoCapture = false) }
+            ConferenceEngine.setScreenShare(false)
+            beat(false, s.room.stageTtlMs)
+            return
+        }
+        if (s.wantScreen && s.room.presenting && !s.session.screenShare && wasCapturing) {
+            wasCapturing = false
+            _state.update { it.copy(wantScreen = false, autoCapture = false) }
+            socket.releaseScreen()
+            beat(false, s.room.stageTtlMs)
+            return
+        }
+        wasCapturing = s.session.screenShare
+        beat(s.session.screenShare && s.room.presenting, s.room.stageTtlMs)
+    }
+
+    /** The heartbeat, on or off. Restarting it on an unchanged TTL is a no-op. */
+    private fun beat(on: Boolean, ttlMs: Long) {
+        if (!on) {
+            stageBeat?.cancel()
+            stageBeat = null
+            beatTtl = 0
+            return
+        }
+        if (stageBeat?.isActive == true && beatTtl == ttlMs) return
+        stageBeat?.cancel()
+        beatTtl = ttlMs
+        val every = confShareHeartbeatMs(ttlMs)
+        stageBeat = viewModelScope.launch {
+            while (isActive) {
+                delay(every)
+                socket.refreshScreen()
             }
         }
     }
@@ -156,6 +311,11 @@ class ConferenceRoomViewModel(
      * one that ends when you navigate off it.
      */
     fun exit() {
+        // Before the engine goes: a projection outliving the room would keep the
+        // system's cast chip up for a call that has ended.
+        beat(false, 0)
+        wasCapturing = false
+        ConferenceEngine.setScreenShare(false)
         ConferenceEngine.leave()
         socket.close()
         conferenceId = ""
@@ -167,6 +327,11 @@ class ConferenceRoomViewModel(
                 routeMenu = false,
                 panelOpen = false,
                 confirmingKick = "",
+                wantScreen = false,
+                askedStageAt = 0,
+                autoCapture = false,
+                recordingError = null,
+                recordingBusy = false,
             )
         }
     }
@@ -246,6 +411,123 @@ class ConferenceRoomViewModel(
         _state.update { it.copy(confirmingKick = "") }
         if (target.isNotBlank()) socket.kick(target)
     }
+
+    // ── screen share (#2896 §8) ───────────────────────────────────────────
+
+    /**
+     * The share button, in every state it can be pressed in.
+     *
+     * Returns what the screen still has to do, because exactly one branch needs
+     * something this model may not do itself: [ConfSharePress.CAPTURE] ends in
+     * Android's consent dialog, which is an Activity result and belongs to the
+     * composable. Everything else — asking, cancelling, stopping — is finished
+     * here. Null means the press did nothing: the room socket is down, and the
+     * stage is arbitrated over it.
+     */
+    fun pressShare(): ConfSharePress? {
+        val s = _state.value
+        if (!s.canShare) return null
+        return when (val press = confSharePress(s.share)) {
+            ConfSharePress.REQUEST -> {
+                _state.update {
+                    it.copy(
+                        wantScreen = true,
+                        askedStageAt = it.room.stateSeq,
+                        autoCapture = confShareAutoCapture(it.room.stage != null),
+                    )
+                }
+                socket.requestScreen()
+                press
+            }
+
+            ConfSharePress.CANCEL -> {
+                _state.update { it.copy(wantScreen = false, autoCapture = false) }
+                socket.releaseScreen()
+                press
+            }
+
+            ConfSharePress.STOP -> {
+                stopSharing()
+                press
+            }
+
+            // The stage is ours and the dialog is the screen's to open. The flag
+            // is cleared either way: a consent that was auto-followed once must
+            // not be auto-followed again when the user dismisses it.
+            ConfSharePress.CAPTURE -> {
+                _state.update { it.copy(autoCapture = false) }
+                press
+            }
+        }
+    }
+
+    /** The screen has taken the auto-follow; it fires once per request. */
+    fun consumeAutoCapture(): Boolean {
+        val armed = _state.value.autoCapture && _state.value.share == ConfShare.MY_TURN
+        if (armed) _state.update { it.copy(autoCapture = false) }
+        return armed
+    }
+
+    /**
+     * Android answered the consent dialog.
+     *
+     * A dismissal gives the stage straight back rather than holding it: the
+     * queue behind a presenter who never starts is the one thing this whole
+     * arbitration exists to prevent, and the server would only free it after the
+     * TTL — half a minute of everybody waiting on a dialog somebody closed.
+     */
+    fun onCaptureConsent(permission: android.content.Intent?) {
+        if (permission == null) {
+            _state.update { it.copy(wantScreen = false, autoCapture = false) }
+            socket.releaseScreen()
+            return
+        }
+        ConferenceEngine.setScreenShare(true, permission)
+    }
+
+    private fun stopSharing() {
+        _state.update { it.copy(wantScreen = false, autoCapture = false) }
+        ConferenceEngine.setScreenShare(false)
+        socket.releaseScreen()
+    }
+
+    // ── recording (#2896 §8) ──────────────────────────────────────────────
+
+    /**
+     * Start or stop the server-side recording.
+     *
+     * Nothing is captured here: an egress worker joins the call and writes the
+     * file. What this owes the user is the refusal — an install without that
+     * worker answers every start with a 502, and «сервис недоступен» is a fact
+     * about the server rather than something to press again.
+     *
+     * The button never flips itself. `running` comes from the room snapshot, so
+     * the red dot appears when the worker has actually joined — which is also
+     * how everyone who did *not* press it finds out.
+     */
+    fun toggleRecording() {
+        val s = _state.value
+        val press = s.recordingPress
+        if (press == ConfRecordingPress.NONE || s.recordingBusy || conferenceId.isBlank()) return
+        _state.update { it.copy(recordingBusy = true, recordingError = null) }
+        viewModelScope.launch {
+            val result = runCatching {
+                if (press == ConfRecordingPress.STOP) {
+                    recordings.stopRecording(conferenceId)
+                } else {
+                    recordings.startRecording(conferenceId)
+                }
+            }
+            _state.update {
+                it.copy(
+                    recordingBusy = false,
+                    recordingError = result.exceptionOrNull()?.let(::confRecordingFailure),
+                )
+            }
+        }
+    }
+
+    fun clearRecordingError() = _state.update { it.copy(recordingError = null) }
 
     fun setPeerVolume(userId: String, volume: Float) = ConferenceEngine.setPeerVolume(userId, volume)
 

@@ -137,6 +137,11 @@ object Ion {
 
     // In-call chat (#2896 §7).
     const val CHATBUBBLES = "chatbubbles"
+
+    // Screen share and recordings (#2896 §8).
+    const val DESKTOP = "desktop"
+    const val RADIO_BUTTON_ON = "radio_button_on"
+    const val SQUARE = "square"
 }
 
 fun classifyIcon(icon: String?): IconKind {

@@ -1,6 +1,7 @@
 package website.msdnna.tessera.ui.screens
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
@@ -13,8 +14,11 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import website.msdnna.tessera.data.model.Conference
 import website.msdnna.tessera.data.model.ConferenceParticipant
+import website.msdnna.tessera.data.model.ConferenceRecording
 import website.msdnna.tessera.data.model.ConferenceStatus
+import website.msdnna.tessera.data.model.RecordingStatus
 import website.msdnna.tessera.ui.TestTags
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.viewmodels.ConferenceLobbyUiState
 
@@ -70,7 +74,14 @@ class ConferenceLobbyTest {
         workspaceRole = workspaceRole,
     )
 
-    private fun mount(state: ConferenceLobbyUiState, onJoin: () -> Unit = {}, onAskEnd: () -> Unit = {}) {
+    private fun mount(
+        state: ConferenceLobbyUiState,
+        onJoin: () -> Unit = {},
+        onAskEnd: () -> Unit = {},
+        onDownloadRecording: (ConferenceRecording) -> Unit = {},
+        onAskDeleteRecording: (String) -> Unit = {},
+        onConfirmDeleteRecording: () -> Unit = {},
+    ) {
         compose.setContent {
             TesseraTheme {
                 ConferenceLobbyBody(
@@ -81,6 +92,9 @@ class ConferenceLobbyTest {
                     onConfirmEnd = {},
                     onCancelEnd = {},
                     onInvite = {},
+                    onDownloadRecording = onDownloadRecording,
+                    onAskDeleteRecording = onAskDeleteRecording,
+                    onConfirmDeleteRecording = onConfirmDeleteRecording,
                 )
             }
         }
@@ -163,5 +177,149 @@ class ConferenceLobbyTest {
         )
         compose.onNodeWithTag(TestTags.conferenceSeat("u1")).assertIsDisplayed()
         compose.onNodeWithTag(TestTags.conferenceSeat("u2")).assertIsDisplayed()
+    }
+
+    // ── recordings (#2896 §8) ────────────────────────────────────────────
+
+    private fun recording(
+        id: String,
+        status: String = RecordingStatus.COMPLETED,
+        startedAt: String = "2026-09-05T09:30:00Z",
+    ) = ConferenceRecording(
+        id = id,
+        conferenceId = "c1",
+        status = status,
+        startedAt = startedAt,
+        durationSec = 125,
+    )
+
+    @Test
+    fun `a team that never recorded carries no empty section`() {
+        mount(state())
+
+        // A permanent «Записей пока нет» under every conference is a line that
+        // costs a screenful and says nothing.
+        assertThat(exists(TestTags.CONFERENCE_RECORDINGS)).isFalse()
+    }
+
+    @Test
+    fun `a finished recording can be opened`() {
+        var opened = ""
+        mount(
+            state().copy(recordings = listOf(recording("r1"))),
+            onDownloadRecording = { opened = it.id },
+        )
+
+        compose.onNodeWithTag(TestTags.CONFERENCE_RECORDINGS).assertIsDisplayed()
+        compose.onNodeWithTag(TestTags.conferenceRecordingDownload("r1")).performClick()
+        assertThat(opened).isEqualTo("r1")
+    }
+
+    /** Shown rather than filtered out — «запись не удалась» is what people came
+     *  to this list to find out — but there are no bytes behind the row. */
+    @Test
+    fun `a failed recording is listed and offers nothing to download`() {
+        mount(state().copy(recordings = listOf(recording("r1", status = RecordingStatus.FAILED))))
+
+        compose.onNodeWithTag(TestTags.conferenceRecordingRow("r1")).assertIsDisplayed()
+        assertThat(exists(TestTags.conferenceRecordingDownload("r1"))).isFalse()
+    }
+
+    @Test
+    fun `a recording still being written cannot be opened either`() {
+        mount(state().copy(recordings = listOf(recording("r1", status = RecordingStatus.ACTIVE))))
+
+        compose.onNodeWithTag(TestTags.conferenceRecordingRow("r1")).assertIsDisplayed()
+        assertThat(exists(TestTags.conferenceRecordingDownload("r1"))).isFalse()
+    }
+
+    /** Delete mirrors exactly who may start one, and a member is not it. */
+    @Test
+    fun `a member is offered no delete`() {
+        mount(
+            state(participants = listOf(seat(me, joined = "2026-09-05T09:01:00Z")))
+                .copy(recordings = listOf(recording("r1"))),
+        )
+
+        assertThat(exists(TestTags.conferenceRecordingDelete("r1"))).isFalse()
+    }
+
+    /**
+     * Unlike a deleted message, which at least existed in somebody's scroll, the
+     * file is gone from the disk — so the press that erases it is behind a
+     * confirmation and never the one on the row.
+     */
+    @Test
+    fun `a moderator deletes behind a confirmation`() {
+        var asked = ""
+        mount(
+            state(participants = listOf(seat(me, role = "host", joined = "2026-09-05T09:01:00Z")))
+                .copy(recordings = listOf(recording("r1"))),
+            onAskDeleteRecording = { asked = it },
+        )
+
+        compose.onNodeWithTag(TestTags.conferenceRecordingDelete("r1")).performClick()
+        assertThat(asked).isEqualTo("r1")
+        // The row's own press only asks — nothing is erased until the dialog is.
+        assertThat(exists(TestTags.CONFERENCE_RECORDING_DELETE_CONFIRM)).isFalse()
+    }
+
+    @Test
+    fun `the confirmation is what actually erases the file`() {
+        var confirmed = 0
+        mount(
+            state(participants = listOf(seat(me, role = "host", joined = "2026-09-05T09:01:00Z")))
+                .copy(recordings = listOf(recording("r1")), confirmingDeleteId = "r1"),
+            onConfirmDeleteRecording = { confirmed += 1 },
+        )
+
+        compose.onNodeWithTag(TestTags.CONFERENCE_RECORDING_DELETE_CONFIRM).performClick()
+        assertThat(confirmed).isEqualTo(1)
+    }
+
+    @Test
+    fun `a row with a call in flight cannot be pressed twice`() {
+        mount(
+            state(participants = listOf(seat(me, role = "host", joined = "2026-09-05T09:01:00Z")))
+                .copy(recordings = listOf(recording("r1")), recordingBusyId = "r1"),
+        )
+
+        compose.onNodeWithTag(TestTags.conferenceRecordingDownload("r1")).assertIsNotEnabled()
+        compose.onNodeWithTag(TestTags.conferenceRecordingDelete("r1")).assertIsNotEnabled()
+    }
+
+    /** Printed under the list rather than toasted: this panel is below the fold,
+     *  and a toast about a list nobody is looking at is noise. */
+    @Test
+    fun `a failed download is reported under the list`() {
+        mount(
+            state().copy(
+                recordings = listOf(recording("r1")),
+                recordingsError = UiText.Raw("нет связи"),
+            ),
+        )
+
+        compose.onNodeWithTag(TestTags.CONFERENCE_RECORDINGS_ERROR).assertIsDisplayed()
+    }
+
+    @Test
+    fun `a running recording is pinned above the finished ones`() {
+        mount(
+            state().copy(
+                recordings = listOf(
+                    recording("newest", startedAt = "2026-09-05T12:00:00Z"),
+                    recording("live", status = RecordingStatus.ACTIVE, startedAt = "2026-09-04T09:00:00Z"),
+                ),
+            ),
+        )
+
+        // Which order is correct is `ConferenceRecordingsTest`'s business; what
+        // this checks is that the ordered list — and not the raw one — is drawn.
+        val rows = compose.onAllNodesWithTag(TestTags.conferenceRecordingRow("live")).fetchSemanticsNodes()
+        assertThat(rows).isNotEmpty()
+        assertThat(rows.first().positionInRoot.y).isLessThan(
+            compose.onNodeWithTag(TestTags.conferenceRecordingRow("newest"))
+                .fetchSemanticsNode().positionInRoot.y,
+        )
     }
 }

@@ -343,6 +343,51 @@ object TestTags {
      *  out of a wrong pick, since the picker replaces nothing. */
     fun conferenceChatPendingRemove(uri: String) = "conference-chat-pending-remove:$uri"
 
+    // ── screen share and recordings (#2896 §8) ────────────────────────────
+
+    /** The share control. One button through all four states — a spec asserts on
+     *  the notice next to it to tell «в очереди» from «показываю». */
+    const val CONFERENCE_SHARE = "conference-share"
+
+    /** The line above the tiles: who holds the stage, and where we are in the
+     *  queue behind them. */
+    const val CONFERENCE_STAGE_NOTICE = "conference-stage-notice"
+
+    /** Our 1-based place in the queue, only rendered while we are in it. */
+    const val CONFERENCE_QUEUE_POS = "conference-queue-pos"
+
+    /** «Начать показ» — the second press, offered exactly when the stage is ours
+     *  and Android has not been asked for the display yet. */
+    const val CONFERENCE_SHARE_START = "conference-share-start"
+
+    /** Start/stop recording. Absent for a member: only a moderator may press it,
+     *  and a greyed-out one advertises a capability they do not have. */
+    const val CONFERENCE_RECORD = "conference-record"
+
+    /** The red dot — «идёт запись», with the name of whoever started it. Its
+     *  presence follows the room snapshot, never the press. */
+    const val CONFERENCE_RECORD_DOT = "conference-record-dot"
+
+    /** A refused start/stop, including the honest «сервис недоступен» an install
+     *  without the egress worker answers with. */
+    const val CONFERENCE_RECORD_ERROR = "conference-record-error"
+
+    /** The recordings list in the lobby, and one row per recording. */
+    const val CONFERENCE_RECORDINGS = "conference-recordings"
+
+    fun conferenceRecordingRow(id: String) = "conference-recording:$id"
+
+    fun conferenceRecordingDownload(id: String) = "conference-recording-download:$id"
+
+    fun conferenceRecordingDelete(id: String) = "conference-recording-delete:$id"
+
+    /** The confirm of the delete dialog — the press that actually erases the
+     *  file, and the only one a spec should be able to make. */
+    const val CONFERENCE_RECORDING_DELETE_CONFIRM = "conference-recording-delete-confirm"
+
+    /** The list's own error line; the row buttons report their failures here. */
+    const val CONFERENCE_RECORDINGS_ERROR = "conference-recordings-error"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

@@ -210,7 +210,26 @@ class ConferenceRepository {
     suspend fun recordings(id: String): List<ConferenceRecording> =
         api.conferenceRecordings(id).orEmpty()
 
-    suspend fun downloadRecording(recordingId: String) = api.downloadConferenceRecording(recordingId)
+    /**
+     * Streams a recording into the cache, returning the file.
+     *
+     * Same shape as [downloadAttachment] and for a sharper version of the same
+     * reason: an mp4 of a meeting is tens of megabytes, and holding one whole in
+     * a `ByteArray` to then write it out anyway is how a phone runs out of heap
+     * on the way back from a call.
+     */
+    suspend fun downloadRecordingTo(
+        cacheDir: java.io.File,
+        recordingId: String,
+        filename: String,
+    ): java.io.File {
+        val body = api.downloadConferenceRecording(recordingId)
+        val dir = java.io.File(cacheDir, "conference-recordings").apply { mkdirs() }
+        val safe = filename.ifBlank { recordingId }.replace(Regex("[/\\\\]"), "_")
+        val out = java.io.File(dir, safe)
+        body.byteStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+        return out
+    }
 
     suspend fun deleteRecording(recordingId: String) = api.deleteConferenceRecording(recordingId)
 

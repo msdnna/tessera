@@ -62,6 +62,11 @@ import website.msdnna.tessera.util.ConfAudioRoute
 import website.msdnna.tessera.util.ConfBanner
 import website.msdnna.tessera.util.ConfMediaGrant
 import website.msdnna.tessera.util.ConfQuality
+import website.msdnna.tessera.util.ConfRecordingFailure
+import website.msdnna.tessera.util.ConfRecordingPress
+import website.msdnna.tessera.util.ConfShare
+import website.msdnna.tessera.util.ConfSharePress
+import website.msdnna.tessera.util.ConfStageNotice
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.confCanRetry
 import website.msdnna.tessera.util.confHandCount
@@ -97,6 +102,31 @@ fun ConferenceRoom(conferenceId: String, onHangup: () -> Unit) {
     val camLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> vm.setCam(granted, granted) }
+
+    // Sharing the display is not a runtime permission but a consent Activity
+    // (#2896 §8): MediaProjection hands back an Intent that *is* the grant, it
+    // is minted per capture — Android 14 refuses to let one be reused — and a
+    // dismissal comes back as a cancelled result rather than as a «no».
+    val shareLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        vm.onCaptureConsent(
+            result.data?.takeIf { result.resultCode == android.app.Activity.RESULT_OK },
+        )
+    }
+    val askForDisplay = {
+        val manager = ctx.getSystemService(android.media.projection.MediaProjectionManager::class.java)
+        // A device without the service cannot share at all; handing the stage
+        // straight back is what keeps the queue behind us moving.
+        if (manager == null) vm.onCaptureConsent(null) else shareLauncher.launch(manager.createScreenCaptureIntent())
+    }
+
+    // The one press the web does not need: the stage arrived while we were in
+    // the queue, and the consent it was asked with belongs to that press rather
+    // than to the one ten minutes ago that got us in line.
+    LaunchedEffect(state.share, state.autoCapture) {
+        if (vm.consumeAutoCapture()) askForDisplay()
+    }
 
     LaunchedEffect(conferenceId) {
         val mic = ctx.hasPermission(Manifest.permission.RECORD_AUDIO)
@@ -168,6 +198,11 @@ fun ConferenceRoom(conferenceId: String, onHangup: () -> Unit) {
             onDismissDenied = { vm.clearDenied() },
             chatUnread = chat.unread,
             onOpenChat = { chatVm.open() },
+            onPressShare = {
+                if (vm.pressShare() == ConfSharePress.CAPTURE) askForDisplay()
+            },
+            onToggleRecording = { vm.toggleRecording() },
+            onDismissRecordingError = { vm.clearRecordingError() },
         )
 
         // Over the room rather than inside its body: the sheet needs a picker, a
@@ -209,6 +244,9 @@ internal fun ConferenceRoomBody(
     onDismissDenied: () -> Unit = {},
     chatUnread: Int = 0,
     onOpenChat: () -> Unit = {},
+    onPressShare: () -> Unit = {},
+    onToggleRecording: () -> Unit = {},
+    onDismissRecordingError: () -> Unit = {},
 ) {
     val c = Tessera.colors
     val layout = state.stage
@@ -218,6 +256,13 @@ internal fun ConferenceRoomBody(
             Modifier.fillMaxSize().background(c.bg).testTag(TestTags.CONFERENCE_ROOM),
         ) {
             if (!state.stageOnly) ConferenceBanner(state.banner, state.session.error, onRetry)
+
+            // Above the stage and *outside* the fold, unlike everything else on
+            // this screen: a shared screen is exactly what people watch with the
+            // toolbar folded away, and «идёт запись» is the one line that must
+            // not disappear when they do it (#2877 makes the same call on the web).
+            ConferenceRecordingNotice(state, onDismissRecordingError)
+            ConferenceStageNoticeLine(state, onPressShare)
 
             // Folding is the button's job, not the stage's. A `clickable` here would
             // merge the semantics of everything under it, and the tiles' own tags —
@@ -290,6 +335,8 @@ internal fun ConferenceRoomBody(
                     onHangup = onHangup,
                     chatUnread = chatUnread,
                     onOpenChat = onOpenChat,
+                    onPressShare = onPressShare,
+                    onToggleRecording = onToggleRecording,
                 )
             }
         }
@@ -423,6 +470,133 @@ private fun ConferenceBanner(banner: ConfBanner, error: String, onRetry: () -> U
     }
 }
 
+/**
+ * «Идёт запись, включил N», and a refused start under it.
+ *
+ * The dot follows the room snapshot rather than the press (#2896 §8): the egress
+ * worker takes a second or two to actually join the call, and a badge that lit up
+ * on the click would claim a recording during the window where there is none. The
+ * people this line is for are the ones who did *not* press the button.
+ */
+@Composable
+private fun ConferenceRecordingNotice(state: ConferenceRoomUiState, onDismissError: () -> Unit) {
+    val c = Tessera.colors
+    val recording = state.room.recording
+    val failure = state.recordingError
+    if (recording == null && failure == null) return
+
+    Column(Modifier.fillMaxWidth()) {
+        if (recording != null) {
+            Row(
+                Modifier.fillMaxWidth().background(c.surfaceAlt)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .testTag(TestTags.CONFERENCE_RECORD_DOT),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IonIcon(Ion.RADIO_BUTTON_ON, size = 13.dp, tint = TesseraDanger)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.conf_rec_live), color = c.text1, fontSize = 12.sp)
+                // The name answers «кто это включил» without opening a panel, and
+                // it is the first thing asked when a dot appears mid-sentence.
+                if (state.recordingBy.isNotBlank()) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        stringResource(R.string.conf_rec_by, state.recordingBy),
+                        color = c.text3,
+                        fontSize = 12.sp,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+        if (failure != null) {
+            Row(
+                Modifier.fillMaxWidth().background(c.surfaceAlt)
+                    .clickableNoRipple(onClick = onDismissError)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .testTag(TestTags.CONFERENCE_RECORD_ERROR),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IonIcon(Ion.WARNING, size = 13.dp, tint = TesseraWarning)
+                Spacer(Modifier.width(8.dp))
+                Text(recordingFailureText(failure), color = c.text2, fontSize = 12.sp)
+            }
+        }
+    }
+}
+
+/**
+ * Whose screen is on the stage, and where we are in the line behind it.
+ *
+ * Silent while the stage is free and nobody is waiting, which is the normal
+ * state of a call: a permanent «никто не показывает экран» is a line people stop
+ * reading, and this one has to be read the moment it says something.
+ */
+@Composable
+private fun ConferenceStageNoticeLine(state: ConferenceRoomUiState, onPressShare: () -> Unit) {
+    val c = Tessera.colors
+    val line = state.stageLine
+    if (line.notice == ConfStageNotice.NONE) return
+
+    Row(
+        Modifier.fillMaxWidth().background(c.surfaceAlt).padding(horizontal = 12.dp, vertical = 6.dp)
+            .testTag(TestTags.CONFERENCE_STAGE_NOTICE),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IonIcon(Ion.DESKTOP, size = 13.dp, tint = c.text3)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            when (line.notice) {
+                ConfStageNotice.YOU_PRESENT -> stringResource(R.string.conf_share_you)
+                ConfStageNotice.STAGE_YOURS -> stringResource(R.string.conf_share_stage_yours)
+                ConfStageNotice.OTHER_PRESENTS -> stringResource(R.string.conf_share_by, line.name)
+                ConfStageNotice.WAITING -> stringResource(R.string.conf_share_waiting, line.waiting)
+                ConfStageNotice.NONE -> ""
+            },
+            color = c.text2,
+            fontSize = 12.sp,
+            maxLines = 1,
+            modifier = Modifier.weight(1f),
+        )
+        // Only while we are actually in the line: the number is what makes a wait
+        // bearable, and printing a «0» on everybody else's screen would not.
+        if (line.position > 0) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.conf_share_queued, line.position),
+                color = c.text3,
+                fontSize = 12.sp,
+                modifier = Modifier.testTag(TestTags.CONFERENCE_QUEUE_POS),
+            )
+        }
+        // The turn arrived and the display has not been asked for. A second press
+        // rather than an automatic dialog, exactly as on the web — MediaProjection
+        // consent that appears by itself, minutes after the request, reads as an
+        // app helping itself to the screen.
+        if (state.share == ConfShare.MY_TURN) {
+            Spacer(Modifier.width(8.dp))
+            Text(
+                stringResource(R.string.conf_share_start),
+                color = c.primary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.clickableNoRipple(onClick = onPressShare)
+                    .testTag(TestTags.CONFERENCE_SHARE_START),
+            )
+        }
+    }
+}
+
+@Composable
+private fun recordingFailureText(failure: ConfRecordingFailure): String = stringResource(
+    when (failure) {
+        ConfRecordingFailure.UNAVAILABLE -> R.string.conf_rec_err_unavailable
+        ConfRecordingFailure.FORBIDDEN -> R.string.conf_rec_err_forbidden
+        ConfRecordingFailure.CONFLICT -> R.string.conf_rec_err_conflict
+        ConfRecordingFailure.OTHER -> R.string.conf_rec_failed
+    },
+)
+
 @Composable
 private fun ConferenceToolbar(
     state: ConferenceRoomUiState,
@@ -437,6 +611,8 @@ private fun ConferenceToolbar(
     onHangup: () -> Unit,
     chatUnread: Int,
     onOpenChat: () -> Unit,
+    onPressShare: () -> Unit,
+    onToggleRecording: () -> Unit,
 ) {
     val c = Tessera.colors
     val controls = state.controls
@@ -564,6 +740,43 @@ private fun ConferenceToolbar(
                         .testTag(TestTags.CONFERENCE_CHAT_UNREAD),
                 )
             }
+        }
+        // One button through all four states of the stage (#2896 §8). Enabled off
+        // the room socket rather than the media session: the queue is arbitrated
+        // over the socket, and a call whose SFU is still connecting can get in
+        // line — a disabled button would read as «показ экрана не работает».
+        RoundControl(
+            icon = Ion.DESKTOP,
+            active = state.share == ConfShare.SHARING,
+            enabled = state.canShare,
+            tag = TestTags.CONFERENCE_SHARE,
+            // Named by what the press does, which for this control is four
+            // different things and never visible from the icon.
+            description = stringResource(
+                when (state.share) {
+                    ConfShare.SHARING -> R.string.conf_share_stop
+                    ConfShare.QUEUED -> R.string.conf_share_cancel
+                    ConfShare.MY_TURN -> R.string.conf_share_start
+                    ConfShare.OFF -> R.string.conf_share
+                },
+            ),
+            onClick = onPressShare,
+        )
+        // Moderators only, and hidden rather than greyed out for everyone else:
+        // the toolbar already wraps onto a second row on a phone, and a dead
+        // control is the worst thing to spend that room on.
+        if (state.recordingPress != ConfRecordingPress.NONE) {
+            val recording = state.recordingPress == ConfRecordingPress.STOP
+            RoundControl(
+                icon = if (recording) Ion.SQUARE else Ion.RADIO_BUTTON_ON,
+                active = recording,
+                enabled = !state.recordingBusy,
+                tag = TestTags.CONFERENCE_RECORD,
+                description = stringResource(
+                    if (recording) R.string.conf_rec_stop else R.string.conf_rec_start,
+                ),
+                onClick = onToggleRecording,
+            )
         }
         RoundControl(
             icon = Ion.CALL,

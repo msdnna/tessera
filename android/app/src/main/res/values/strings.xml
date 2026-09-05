@@ -835,6 +835,34 @@
     <string name="conf_chat_size_kb">%1$s КБ</string>
     <string name="conf_chat_size_mb">%1$s МБ</string>
 
+    <!-- Демонстрация экрана и записи (#2896 §8) -->
+    <string name="conf_share">Показать экран</string>
+    <string name="conf_share_stop">Остановить показ</string>
+    <string name="conf_share_cancel">Выйти из очереди</string>
+    <string name="conf_share_start">Начать показ</string>
+    <string name="conf_share_you">Вы показываете экран</string>
+    <string name="conf_share_stage_yours">Очередь дошла до вас</string>
+    <string name="conf_share_by">Экран показывает %1$s</string>
+    <string name="conf_share_queued">Вы в очереди: %1$d</string>
+    <string name="conf_share_waiting">Ждут очереди: %1$d</string>
+    <string name="conf_share_ongoing">Показ экрана</string>
+    <string name="conf_share_ongoing_hint">Экран телефона видят участники конференции</string>
+    <string name="conf_rec_start">Начать запись</string>
+    <string name="conf_rec_stop">Остановить запись</string>
+    <string name="conf_rec_live">Идёт запись</string>
+    <string name="conf_rec_by">включил %1$s</string>
+    <string name="conf_rec_title">Записи</string>
+    <string name="conf_rec_download">Скачать</string>
+    <string name="conf_rec_delete">Удалить</string>
+    <string name="conf_rec_delete_confirm">Удалить запись? Файл будет стёрт безвозвратно.</string>
+    <string name="conf_rec_failed">Запись не удалась</string>
+    <string name="conf_rec_running">Пишется…</string>
+    <string name="conf_rec_length">%1$02d:%2$02d</string>
+    <string name="conf_rec_length_hours">%1$d:%2$02d:%3$02d</string>
+    <string name="conf_rec_err_unavailable">Запись недоступна: сервис записи не поднят на этом сервере</string>
+    <string name="conf_rec_err_forbidden">Запись может включить только модератор конференции</string>
+    <string name="conf_rec_err_conflict">Состояние записи уже изменил другой модератор</string>
+
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>
     <string name="members_invitations">Приглашения</string>
