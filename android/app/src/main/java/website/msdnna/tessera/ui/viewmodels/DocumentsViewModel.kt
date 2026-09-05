@@ -2,6 +2,7 @@ package website.msdnna.tessera.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.JsonElement
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -9,6 +10,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.model.DocumentComment
+import website.msdnna.tessera.data.model.DocumentVersion
 import website.msdnna.tessera.data.repository.DocumentRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.DEFAULT_DOC_PAGE
@@ -52,6 +54,8 @@ data class DocumentsUiState(
     val openChildCount: Int = 0,
     /** Annotations on the open document (§5) — the badge and the sheet. */
     val comments: DocCommentsState = DocCommentsState(),
+    /** Version journal of the open document (§6) — loaded only while it is up. */
+    val history: DocHistoryState = DocHistoryState(),
 )
 
 /**
@@ -101,6 +105,68 @@ data class DocCommentsState(
 }
 
 /**
+ * The version journal of the open document (#2731, §6 of #2894).
+ *
+ * Bodies are fetched one version at a time and cached here: the journal lists
+ * fifty entries and a document is up to a megabyte of JSON, so the list endpoint
+ * carries none of them. The cache is never invalidated by age — a version is
+ * immutable once its editing session is over, and the only mutable one (the
+ * session being typed into right now) is dropped from the cache with every
+ * reload of the list.
+ *
+ * Unlike the comments state this one is emptied when the panel closes: nothing
+ * outside it reads the journal, and holding a megabyte of restored bodies for a
+ * panel nobody is looking at buys nothing.
+ */
+data class DocHistoryState(
+    val sheetOpen: Boolean = false,
+    val loading: Boolean = false,
+    /** A snapshot or a restore is in flight; the list stays readable. */
+    val busy: Boolean = false,
+    val error: UiText? = null,
+    /** Newest first, as the server returns them. */
+    val versions: List<DocumentVersion> = emptyList(),
+    /** The entry being compared; blank means the list is just being read. */
+    val selectedId: String = "",
+    val bodies: Map<String, JsonElement?> = emptyMap(),
+    /** Bumped by every completed restore. The editor, if one is open, is holding
+     *  the pre-rollback text — this is what tells the screen to reload it. */
+    val restoreTick: Int = 0,
+) {
+    val selected: DocumentVersion? get() = versions.firstOrNull { it.id == selectedId }
+
+    /** What the selection is compared against: the newest entry, which is the
+     *  question a journal answers most often («что изменилось с тех пор»). */
+    val baseline: DocumentVersion? get() = versions.firstOrNull()
+
+    /** Both bodies in hand. Until then the panel shows its loading state rather
+     *  than an empty comparison, which would read as «изменений нет». */
+    val ready: Boolean
+        get() {
+            val sel = selected ?: return false
+            val base = baseline ?: return false
+            return bodies.containsKey(sel.id) && bodies.containsKey(base.id)
+        }
+
+    /**
+     * Adopts a freshly loaded list.
+     *
+     * The newest entry is the live editing session and its body goes on changing
+     * as people type, so a cached copy of it would show the comparison as it was
+     * some minutes ago and call it current. A selection whose entry is no longer
+     * in the list (pruned by retention) is dropped rather than left pointing at
+     * nothing.
+     */
+    internal fun withVersions(versions: List<DocumentVersion>): DocHistoryState = copy(
+        loading = false,
+        error = null,
+        versions = versions,
+        bodies = versions.firstOrNull()?.let { bodies - it.id } ?: bodies,
+        selectedId = if (versions.any { it.id == selectedId }) selectedId else "",
+    )
+}
+
+/**
  * Documents module (#2718, #2894). A grid of one nesting level plus a
  * breadcrumb trail, mirroring the web view after the review of #2726: a tile
  * always opens the document, and nesting is walked from the reader.
@@ -142,6 +208,7 @@ class DocumentsViewModel(
                 error = null,
                 openChildCount = docChildCount(it.docs, doc.id),
                 comments = DocCommentsState(),
+                history = DocHistoryState(),
             )
         }
         viewModelScope.launch {
@@ -206,6 +273,7 @@ class DocumentsViewModel(
             page = DEFAULT_DOC_PAGE,
             opening = false,
             comments = DocCommentsState(),
+            history = DocHistoryState(),
         )
     }
 
@@ -320,6 +388,134 @@ class DocumentsViewModel(
         writeComment { repo.resolveComment(commentId, resolved) }
 
     fun deleteComment(commentId: String) = writeComment { repo.deleteComment(commentId) }
+
+    // ── Version journal (§6) ──────────────────────────────────────────────────
+
+    /** Opens the journal and loads it. */
+    fun openHistory() {
+        val id = _state.value.openId ?: return
+        _state.update { it.copy(history = DocHistoryState(sheetOpen = true, loading = true)) }
+        loadVersions(id)
+    }
+
+    /** Closes it and drops what it held — see [DocHistoryState]. */
+    fun closeHistory() = _state.update { it.copy(history = DocHistoryState()) }
+
+    /**
+     * Opens a version for comparison, or closes the one already open.
+     *
+     * Both sides are fetched, not just the selected one: the baseline is the
+     * live session, and its body changes as people type.
+     */
+    fun selectVersion(versionId: String) {
+        val next = if (versionId == _state.value.history.selectedId) "" else versionId
+        _state.update { it.copy(history = it.history.copy(selectedId = next, error = null)) }
+        loadDiffBodies()
+    }
+
+    /** Takes a named snapshot of the document as it stands. */
+    fun snapshotVersion(label: String) = writeHistory { docId ->
+        repo.snapshot(docId, label.trim())
+    }
+
+    /**
+     * Rolls the document back to a version.
+     *
+     * The reader under the panel is showing the pre-rollback text, so it is
+     * replaced from the document the server returns rather than left to a
+     * refetch: the restore already answered with the new state, and asking again
+     * would show the old one for as long as the round trip takes.
+     */
+    fun restoreVersion(versionId: String) = writeHistory { docId ->
+        val doc = repo.restoreVersion(versionId)
+        _state.update { st ->
+            if (st.openId != docId) {
+                st
+            } else {
+                st.copy(
+                    open = doc,
+                    blocks = parseDocBlocks(doc.content),
+                    page = parseDocPage(doc.content),
+                    // A rollback brings blocks back and takes others away, which
+                    // is precisely what turns a thread anchored into detached.
+                    comments = st.comments.regrouped(docBlockIdsInOrder(doc.content)),
+                    history = st.history.copy(selectedId = "", restoreTick = st.history.restoreTick + 1),
+                )
+            }
+        }
+    }
+
+    private fun loadVersions(docId: String) {
+        _state.update { it.copy(history = it.history.copy(loading = true)) }
+        viewModelScope.launch {
+            val result = runCatching { repo.versions(docId) }
+            _state.update { st ->
+                if (st.openId != docId || !st.history.sheetOpen) {
+                    st
+                } else {
+                    result.fold(
+                        onSuccess = { versions -> st.copy(history = st.history.withVersions(versions)) },
+                        onFailure = { e ->
+                            st.copy(history = st.history.copy(loading = false, error = errorMessage(e)))
+                        },
+                    )
+                }
+            }
+            // A snapshot taken while a comparison was open moved the baseline,
+            // and reloading the list dropped the live body from the cache — so
+            // the open comparison needs its two sides fetched again. Without
+            // this the panel sits on «загружаем версию» until the reader
+            // happens to tap the entry twice.
+            loadDiffBodies()
+        }
+    }
+
+    /** Fetches whichever of the compared bodies is not cached yet. */
+    private fun loadDiffBodies() {
+        val docId = _state.value.openId ?: return
+        val history = _state.value.history
+        if (history.selectedId.isEmpty()) return
+        val wanted = listOfNotNull(history.selected?.id, history.baseline?.id)
+            .distinct()
+            .filterNot { history.bodies.containsKey(it) }
+        if (wanted.isEmpty()) return
+        viewModelScope.launch {
+            val result = runCatching {
+                wanted.forEach { id ->
+                    val body = repo.version(id).content
+                    _state.update { st ->
+                        st.copy(history = st.history.copy(bodies = st.history.bodies + (id to body)))
+                    }
+                }
+            }
+            result.exceptionOrNull()?.let { e ->
+                _state.update { st ->
+                    if (st.openId != docId) st else st.copy(history = st.history.copy(error = errorMessage(e)))
+                }
+            }
+        }
+    }
+
+    /**
+     * Runs one journal write and re-reads the list. Same reasoning as
+     * [writeComment]: a snapshot and a rollback both add entries of their own
+     * server-side, and the only list that is certainly right is the fresh one.
+     */
+    private fun writeHistory(block: suspend (docId: String) -> Unit) {
+        val docId = _state.value.openId ?: return
+        if (_state.value.history.busy) return
+        _state.update { it.copy(history = it.history.copy(busy = true, error = null)) }
+        viewModelScope.launch {
+            val result = runCatching { block(docId) }
+            _state.update { it.copy(history = it.history.copy(busy = false)) }
+            result.fold(
+                onSuccess = { if (_state.value.openId == docId) loadVersions(docId) },
+                onFailure = { e ->
+                    _state.update { it.copy(history = it.history.copy(error = errorMessage(e))) }
+                },
+            )
+        }
+    }
 
     private fun loadComments(docId: String) {
         _state.update { it.copy(comments = it.comments.copy(loading = true)) }

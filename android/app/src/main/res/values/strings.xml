@@ -804,6 +804,43 @@
     <string name="docs_comments_remove_thread_title">Удалить обсуждение?</string>
     <string name="docs_comments_remove_thread_confirm">Обсуждение будет удалено вместе с ответами (%1$d).</string>
 
+    <!-- Version journal (#2894 §6). The panel is a sheet over the document, so
+         the entries have to say what the web says with a column beside the text:
+         which revision, when, by whom, and what the comparison found. -->
+    <string name="docs_history_title">История</string>
+    <string name="docs_history_open">История версий</string>
+    <string name="docs_history_empty">История появится, когда документ будет сохранён.</string>
+    <string name="docs_history_snapshot">Сохранить версию</string>
+    <string name="docs_history_label_hint">Например: согласованная редакция</string>
+    <string name="docs_history_revision">Версия %1$d</string>
+    <string name="docs_history_span">%1$s–%2$s</string>
+    <string name="docs_history_unknown_author">Неизвестный автор</string>
+    <string name="docs_history_compare">Сравнение с версией %1$d</string>
+    <string name="docs_history_restore">Восстановить</string>
+    <string name="docs_history_restore_title">Восстановить версию?</string>
+    <string name="docs_history_restore_confirm">Документ вернётся к этой версии. Текущее состояние останется в истории.</string>
+    <string name="docs_history_loading_version">Загрузка версии…</string>
+    <string name="docs_history_identical">Версии совпадают.</string>
+    <plurals name="docs_history_added">
+        <item quantity="one">+%1$d блок</item>
+        <item quantity="few">+%1$d блока</item>
+        <item quantity="many">+%1$d блоков</item>
+        <item quantity="other">+%1$d блоков</item>
+    </plurals>
+    <plurals name="docs_history_removed">
+        <item quantity="one">−%1$d блок</item>
+        <item quantity="few">−%1$d блока</item>
+        <item quantity="many">−%1$d блоков</item>
+        <item quantity="other">−%1$d блоков</item>
+    </plurals>
+    <string name="docs_history_changed">изменено: %1$d</string>
+    <string name="docs_history_moved">перемещено: %1$d</string>
+    <string name="docs_history_status_added">добавлено</string>
+    <string name="docs_history_status_removed">удалено</string>
+    <string name="docs_history_status_changed">изменено</string>
+    <string name="docs_history_status_moved">перемещено</string>
+    <string name="docs_history_diff_image">[изображение]</string>
+
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>
     <string name="members_invitations">Приглашения</string>

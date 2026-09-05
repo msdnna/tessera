@@ -89,6 +89,10 @@ object Ion {
     const val CHATBUBBLE = "chatbubble"
     const val ALARM = "alarm"
     const val TIME = "time"
+
+    /** A milestone in the version journal (#2894 §6) — the web panel's
+     *  `BookmarkOutline`, the same ionicons-5 glyph. */
+    const val BOOKMARK = "bookmark"
     const val IMAGE = "image"
     const val ATTACH = "attach"
     const val DOWNLOAD = "download"

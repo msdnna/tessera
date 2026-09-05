@@ -294,6 +294,28 @@ object TestTags {
 
     fun documentCommentRemove(id: String) = "document-comment-remove:$id"
 
+    /** The version journal (#2894 §6): the way in — from the reader and from the
+     *  editor bar — and the panel itself. */
+    const val DOCUMENT_HISTORY_OPEN = "document-history-open"
+    const val DOCUMENT_HISTORY = "document-history"
+    const val DOCUMENT_HISTORY_CLOSE = "document-history-close"
+    const val DOCUMENT_HISTORY_EMPTY = "document-history-empty"
+
+    /** Taking a named snapshot: the way in, the name, and the confirm. */
+    const val DOCUMENT_SNAPSHOT = "document-snapshot"
+    const val DOCUMENT_SNAPSHOT_LABEL = "document-snapshot-label"
+    const val DOCUMENT_SNAPSHOT_SAVE = "document-snapshot-save"
+
+    /** The comparison: its heading, the rollback and its confirmation. */
+    const val DOCUMENT_HISTORY_DIFF = "document-history-diff"
+    const val DOCUMENT_HISTORY_SUMMARY = "document-history-summary"
+    const val DOCUMENT_RESTORE = "document-restore"
+    const val DOCUMENT_RESTORE_CONFIRM = "document-restore-confirm"
+
+    /** Keyed by the version, like the comment rows: a journal is asserted by
+     *  which entry, not by «the second row» — retention changes that. */
+    fun documentVersionRow(id: String) = "document-version-row:$id"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

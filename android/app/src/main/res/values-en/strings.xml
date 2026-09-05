@@ -788,6 +788,37 @@
     <string name="docs_comments_remove_thread_title">Delete the discussion?</string>
     <string name="docs_comments_remove_thread_confirm">The discussion and its replies (%1$d) will be deleted.</string>
 
+    <!-- Version journal (#2894 §6) -->
+    <string name="docs_history_title">History</string>
+    <string name="docs_history_open">Version history</string>
+    <string name="docs_history_empty">The history starts once the document is saved.</string>
+    <string name="docs_history_snapshot">Save a version</string>
+    <string name="docs_history_label_hint">For example: agreed wording</string>
+    <string name="docs_history_revision">Version %1$d</string>
+    <string name="docs_history_span">%1$s–%2$s</string>
+    <string name="docs_history_unknown_author">Unknown author</string>
+    <string name="docs_history_compare">Compared with version %1$d</string>
+    <string name="docs_history_restore">Restore</string>
+    <string name="docs_history_restore_title">Restore this version?</string>
+    <string name="docs_history_restore_confirm">The document goes back to this version. The current state stays in the history.</string>
+    <string name="docs_history_loading_version">Loading the version…</string>
+    <string name="docs_history_identical">The versions are identical.</string>
+    <plurals name="docs_history_added">
+        <item quantity="one">+%1$d block</item>
+        <item quantity="other">+%1$d blocks</item>
+    </plurals>
+    <plurals name="docs_history_removed">
+        <item quantity="one">−%1$d block</item>
+        <item quantity="other">−%1$d blocks</item>
+    </plurals>
+    <string name="docs_history_changed">changed: %1$d</string>
+    <string name="docs_history_moved">moved: %1$d</string>
+    <string name="docs_history_status_added">added</string>
+    <string name="docs_history_status_removed">removed</string>
+    <string name="docs_history_status_changed">changed</string>
+    <string name="docs_history_status_moved">moved</string>
+    <string name="docs_history_diff_image">[image]</string>
+
     <!-- Workspace members -->
     <string name="members_title">Members</string>
     <string name="members_invitations">Invitations</string>

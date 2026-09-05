@@ -40,6 +40,7 @@ import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.ui.TestTags
+import website.msdnna.tessera.ui.components.DocEditorController
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.resolve
@@ -47,6 +48,8 @@ import website.msdnna.tessera.ui.screens.documents.DocBlockView
 import website.msdnna.tessera.ui.screens.documents.DocCommentsButton
 import website.msdnna.tessera.ui.screens.documents.DocCommentsSheet
 import website.msdnna.tessera.ui.screens.documents.DocDraft
+import website.msdnna.tessera.ui.screens.documents.DocHistoryButton
+import website.msdnna.tessera.ui.screens.documents.DocHistorySheet
 import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
@@ -82,6 +85,10 @@ fun DocumentsScreen(workspaceId: String) {
     // it came from and where closing it lands, and the back stack has no idea
     // this section has two layers.
     var editing by remember { mutableStateOf(false) }
+    // Hoisted out of the editor: a rollback taken from the journal (§6) has to
+    // reach the surface that is holding the pre-rollback text, and the journal
+    // is a sibling of the editor rather than a child of it.
+    val editorController = remember { DocEditorController() }
 
     LaunchedEffect(workspaceId) {
         if (workspaceId.isNotBlank()) vm.load(workspaceId)
@@ -91,7 +98,9 @@ fun DocumentsScreen(workspaceId: String) {
     // fall through to the nav back-stack. Inside a container Back walks the
     // trail out one level instead of leaving the section. The comments sheet
     // handles Back itself — closing it must not also close the reader beneath.
-    BackHandler(enabled = state.openId != null && !editing && !state.comments.sheetOpen) { vm.close() }
+    BackHandler(
+        enabled = state.openId != null && !editing && !state.comments.sheetOpen && !state.history.sheetOpen,
+    ) { vm.close() }
     BackHandler(enabled = state.openId == null && state.trail.isNotEmpty()) {
         vm.crumbTo(state.trail.lastIndex - 1)
     }
@@ -131,6 +140,7 @@ fun DocumentsScreen(workspaceId: String) {
                 onChildren = { state.open?.let(vm::drillInto) },
                 onEdit = { editing = true },
                 onComments = { vm.openComments() },
+                onHistory = { vm.openHistory() },
             )
         }
 
@@ -146,7 +156,9 @@ fun DocumentsScreen(workspaceId: String) {
                 workspaceId = workspaceId,
                 serverRoot = RetrofitClient.serverRoot,
                 commentCount = state.comments.openCount,
+                controller = editorController,
                 onComments = { target -> vm.openComments(target) },
+                onHistory = { vm.openHistory() },
                 onClose = {
                     editing = false
                     // The reader under it is showing the text from before the edit.
@@ -170,6 +182,23 @@ fun DocumentsScreen(workspaceId: String) {
                 onResolve = { id, resolved -> vm.resolveComment(id, resolved) },
                 onDelete = { id -> vm.deleteComment(id) },
             )
+        }
+
+        if (state.history.sheetOpen) {
+            DocHistorySheet(
+                state = state.history,
+                onDismiss = { vm.closeHistory() },
+                onSelect = { id -> vm.selectVersion(id) },
+                onSnapshot = { label -> vm.snapshotVersion(label) },
+                onRestore = { id -> vm.restoreVersion(id) },
+            )
+        }
+
+        // A rollback replaced the text under an open editor. Reloading it is not
+        // politeness — the editor is still holding the pre-rollback version, and
+        // its next autosave would answer the rollback with a conflict.
+        LaunchedEffect(state.history.restoreTick) {
+            if (state.history.restoreTick > 0 && editing) editorController.reload()
         }
 
         DocumentComposer(
@@ -209,6 +238,7 @@ private fun DocumentReader(
     onChildren: () -> Unit,
     onEdit: () -> Unit,
     onComments: () -> Unit,
+    onHistory: () -> Unit,
 ) {
     val c = Tessera.colors
     var menuOpen by remember { mutableStateOf(false) }
@@ -251,6 +281,7 @@ private fun DocumentReader(
                 modifier = Modifier.testTag(TestTags.DOCUMENT_EDIT),
             )
             DocCommentsButton(count = commentCount, onClick = onComments)
+            DocHistoryButton(onClick = onHistory)
             IonIconButton(
                 Ion.LIST,
                 onClick = { tocOpen = true },
