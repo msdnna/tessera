@@ -751,4 +751,143 @@ interface ApiService {
         @Path("conflictId") conflictId: String,
         @Body body: website.msdnna.tessera.data.model.ResolveConflictRequest,
     )
+
+    // ── Conferences (#2896 §1, backend #2864) ──────────────────────────────────
+    // Media never comes through here: these routes own the meeting (plan, roster,
+    // attendance), and the one media-adjacent call is [conferenceToken], which
+    // hands out a short-lived LiveKit warrant.
+
+    /** [status] filters by `scheduled`/`live`/`ended`; anything else is a 400. */
+    @GET("workspaces/{id}/conferences")
+    suspend fun conferences(
+        @Path("id") workspaceId: String,
+        @Query("status") status: String? = null,
+    ): List<website.msdnna.tessera.data.model.Conference>?
+
+    /** The conferences held about a task — the task screen's "discussed in" link. */
+    @GET("tasks/{id}/conferences")
+    suspend fun taskConferences(
+        @Path("id") taskId: String,
+    ): List<website.msdnna.tessera.data.model.Conference>?
+
+    /** Conference + roster in one round trip, so the room never paints an empty panel. */
+    @GET("conferences/{id}")
+    suspend fun conference(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceDetail
+
+    @POST("workspaces/{id}/conferences")
+    suspend fun createConference(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateConferenceRequest,
+    ): website.msdnna.tessera.data.model.Conference
+
+    /** Full replace, not a partial patch — the server binds `title` as required. */
+    @PATCH("conferences/{id}")
+    suspend fun updateConference(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.UpdateConferenceRequest,
+    ): website.msdnna.tessera.data.model.Conference
+
+    @DELETE("conferences/{id}")
+    suspend fun deleteConference(@Path("id") conferenceId: String)
+
+    /** Joining a scheduled (or paused) call brings it live again — see [Conference]. */
+    @POST("conferences/{id}/join")
+    suspend fun joinConference(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceMembership
+
+    @POST("conferences/{id}/leave")
+    suspend fun leaveConference(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceMembership
+
+    /** Hangs the call up for the whole room. Moderators only (403 otherwise). */
+    @POST("conferences/{id}/end")
+    suspend fun endConference(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.Conference
+
+    @POST("conferences/{id}/invite")
+    suspend fun inviteConference(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.InviteConferenceRequest,
+    ): List<website.msdnna.tessera.data.model.ConferenceParticipant>?
+
+    @GET("conferences/{id}/participants")
+    suspend fun conferenceParticipants(
+        @Path("id") conferenceId: String,
+    ): List<website.msdnna.tessera.data.model.ConferenceParticipant>?
+
+    /** 503 when the install has no SFU, 409 when the call ended, 403 while kicked. */
+    @POST("conferences/{id}/token")
+    suspend fun conferenceToken(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceToken
+
+    // ── In-call chat (#2873) ────────────────────────────────────────────────────
+    // Plain HTTP rather than frames on the room socket: chat bodies there would
+    // let a busy conversation overflow the buffer and disconnect the people
+    // having it. The socket only nudges.
+
+    /** Pages *backwards*: both cursor halves travel together or neither does. */
+    @GET("conferences/{id}/messages")
+    suspend fun conferenceMessages(
+        @Path("id") conferenceId: String,
+        @Query("before_at") beforeAt: String? = null,
+        @Query("before_id") beforeId: String? = null,
+        @Query("limit") limit: Int? = null,
+    ): website.msdnna.tessera.data.model.ConferenceMessagePage
+
+    @POST("conferences/{id}/messages")
+    suspend fun postConferenceMessage(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.PostConferenceMessageRequest,
+    ): website.msdnna.tessera.data.model.ConferenceMessage
+
+    /** The same route as [postConferenceMessage]; a file cannot travel as JSON. */
+    @Multipart
+    @POST("conferences/{id}/messages")
+    suspend fun postConferenceMessageWithFiles(
+        @Path("id") conferenceId: String,
+        @Part("body") body: okhttp3.RequestBody,
+        @Part files: List<MultipartBody.Part>,
+    ): website.msdnna.tessera.data.model.ConferenceMessage
+
+    @DELETE("conference-messages/{id}")
+    suspend fun deleteConferenceMessage(@Path("id") messageId: String)
+
+    @retrofit2.http.Streaming
+    @GET("conference-attachments/{id}")
+    suspend fun downloadConferenceAttachment(
+        @Path("id") attachmentId: String,
+    ): okhttp3.ResponseBody
+
+    // ── Recording (#2877) ───────────────────────────────────────────────────────
+    // Start and stop are moderation; the list is not — everyone who could have
+    // attended may watch it back.
+
+    @POST("conferences/{id}/recording/start")
+    suspend fun startConferenceRecording(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceRecording
+
+    @POST("conferences/{id}/recording/stop")
+    suspend fun stopConferenceRecording(@Path("id") conferenceId: String)
+
+    @GET("conferences/{id}/recordings")
+    suspend fun conferenceRecordings(
+        @Path("id") conferenceId: String,
+    ): List<website.msdnna.tessera.data.model.ConferenceRecording>?
+
+    /** Streaming: an mp4 buffered whole would be an OOM on a long meeting. */
+    @retrofit2.http.Streaming
+    @GET("conference-recordings/{id}/download")
+    suspend fun downloadConferenceRecording(
+        @Path("id") recordingId: String,
+    ): okhttp3.ResponseBody
+
+    @DELETE("conference-recordings/{id}")
+    suspend fun deleteConferenceRecording(@Path("id") recordingId: String)
 }
