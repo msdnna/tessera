@@ -21,6 +21,25 @@ import website.msdnna.tessera.ui.TestTags
 private const val AWAIT_TIMEOUT_MS = 20_000L
 
 /**
+ * How long *one* pass at the launch gate may take before it counts as lost.
+ *
+ * Sized off the client's connect timeout, not off [AWAIT_TIMEOUT_MS]: on this host
+ * a connect to loopback can stall for the full 15s instead of being refused, so a
+ * shorter window would give up on an attempt that was still going to arrive.
+ */
+private const val BOOT_ATTEMPT_MS = 20_000L
+
+/**
+ * How many passes at the launch gate a spec is willing to sit through.
+ *
+ * Three, because two were demonstrably survivable: the gate lost twice back to back
+ * in one run of the tier (#2908). This is not a number to raise on a hunch — every
+ * attempt is another [BOOT_ATTEMPT_MS] of wall clock on the failure path, and if it
+ * ever needs a fourth, the stall is the bug, not the budget.
+ */
+private const val BOOT_ATTEMPTS = 3
+
+/**
  * Waits for exactly one node carrying [tag] to exist.
  *
  * Specs run against a live server, so every assertion that follows a click has
@@ -117,22 +136,40 @@ fun ComposeContentTestRule.awaitEnabled(tag: String, timeoutMillis: Long = AWAIT
  * the spec's subject is weakened — a shell that only appears because the session is
  * valid still only appears because the session is valid. What it drops is a failure
  * mode that says «the shell never rendered» about a host-level network stall.
+ *
+ * The budget is counted per *attempt*, not once for the whole helper. A single
+ * retry was not enough: the gate can lose twice in a row, and it did — the fast
+ * refusal that opened the error screen was followed by a genuine stall, so the one
+ * retry was spent before the expensive failure even started (#2908). One attempt
+ * costs up to [attemptMillis] because that is what a stalled connect costs, so the
+ * number of attempts has to be multiplied by that, not squeezed inside it.
+ *
+ * [attempts] and [attemptMillis] are open only so the harness can test itself
+ * (`AwaitShellTest`) — with a real gate on the other end, both defaults apply.
  */
 @OptIn(ExperimentalTestApi::class)
-fun ComposeContentTestRule.awaitShell(retries: Int = 1) {
-    for (i in 0 until retries) {
+fun ComposeContentTestRule.awaitShell(attempts: Int = BOOT_ATTEMPTS, attemptMillis: Long = BOOT_ATTEMPT_MS) {
+    for (attempt in 1..attempts) {
         // Neither tag showing up is not this helper's failure to report: fall
         // through to `awaitTag` below, whose dump names the roots and the address.
         runCatching {
             waitUntilAtLeastOneExists(
                 hasTestTag(TestTags.MAIN_SHELL) or hasTestTag(TestTags.BOOT_RETRY),
-                AWAIT_TIMEOUT_MS,
+                attemptMillis,
             )
         }
+        // No retry button means the gate is not on its error screen — either the
+        // shell is up, or nothing rendered at all, and `awaitTag` tells them apart.
         if (onAllNodesWithTag(TestTags.BOOT_RETRY).fetchSemanticsNodes().isEmpty()) break
         onNodeWithTag(TestTags.BOOT_RETRY).performClick()
+        // Wait for the tap to land before looping. The retry re-enters the gate's
+        // loading state, but not within the same frame — and until it does, the
+        // error screen still holds the retry button. Without this the next
+        // iteration would match that stale button instantly and tap it again, so
+        // the whole budget would be spent in milliseconds against one failure.
+        runCatching { waitUntilDoesNotExist(hasTestTag(TestTags.BOOT_RETRY), attemptMillis) }
     }
-    awaitTag(TestTags.MAIN_SHELL)
+    awaitTag(TestTags.MAIN_SHELL, attemptMillis)
 }
 
 /**
