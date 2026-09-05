@@ -8,6 +8,7 @@ import io.livekit.android.RoomOptions
 import io.livekit.android.audio.AudioSwitchHandler
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.events.collect
+import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.Room
 import io.livekit.android.room.participant.ConnectionQuality
 import io.livekit.android.room.participant.Participant
@@ -32,6 +33,8 @@ import website.msdnna.tessera.util.ConfJoinReason
 import website.msdnna.tessera.util.ConfMediaGrant
 import website.msdnna.tessera.util.ConfMediaStatus
 import website.msdnna.tessera.util.ConfMediaWant
+import website.msdnna.tessera.util.ConfQuality
+import website.msdnna.tessera.util.ConfStagePerson
 import website.msdnna.tessera.util.confJoinPlan
 import website.msdnna.tessera.util.confReconnectDelay
 import website.msdnna.tessera.util.needsCallService
@@ -52,17 +55,19 @@ import website.msdnna.tessera.util.shouldConfReconnect
  * that exists.
  */
 data class ConfPeer(
-    val identity: String,
+    override val identity: String,
     val sid: String,
     val name: String,
-    val local: Boolean,
-    val speaking: Boolean,
+    override val local: Boolean,
+    override val speaking: Boolean,
     val micOn: Boolean,
     val camOn: Boolean,
-    val quality: ConnectionQuality,
+    val quality: ConfQuality,
     val videoTrack: VideoTrack? = null,
     val screenTrack: VideoTrack? = null,
-)
+) : ConfStagePerson {
+    override val sharingScreen: Boolean get() = screenTrack != null
+}
 
 /** Everything a screen needs to know about the call it is showing. */
 data class ConfSession(
@@ -80,6 +85,18 @@ data class ConfSession(
     val reconnecting: Boolean = false,
     /** Where the audio is coming out, as the routing menu shows it. */
     val route: ConfAudioRoute = ConfAudioRoute.SPEAKER,
+    /**
+     * The outputs this phone is offering right now. Empty before the call
+     * connects — the handler has nothing to report until it starts — which is
+     * why the menu is disabled rather than showing a made-up list.
+     */
+    val routes: List<ConfAudioRoute> = emptyList(),
+    /**
+     * A host has silenced us (#2878). Published rather than kept private to the
+     * engine because the toolbar has to *say* so: a microphone button that is
+     * merely off looks like our own last press.
+     */
+    val forceMuted: Boolean = false,
 ) {
     val live: Boolean get() = status == ConfMediaStatus.LIVE
 }
@@ -206,7 +223,7 @@ object ConferenceEngine {
             }
             applyMedia()
             attempt = 0
-            set { it.copy(status = ConfMediaStatus.LIVE, reconnecting = false, route = currentRoute()) }
+            set { it.copy(status = ConfMediaStatus.LIVE, reconnecting = false, route = currentRoute(), routes = availableRoutes()) }
             rebuild()
         } catch (e: Exception) {
             teardown()
@@ -237,6 +254,10 @@ object ConferenceEngine {
         leaving = true
         connectJob?.cancel()
         connectJob = null
+        // A host's mute is server state and the room socket restates it on the
+        // next join (#2878, §6). Keeping it here would silence the *next* call
+        // instead, with nothing on screen able to lift it.
+        forceMuted = false
         teardown()
         set {
             ConfSession(conferenceId = it.conferenceId, status = ConfMediaStatus.IDLE)
@@ -264,6 +285,20 @@ object ConferenceEngine {
         scope.launch { applyMedia() }
     }
 
+    /**
+     * Android answered a permission dialog mid-call.
+     *
+     * The grant is normally settled before [join], but the camera is asked for
+     * from the toolbar button — the first person to press it does so in a call
+     * that is already live, and without this the answer would only take effect
+     * on the next join.
+     */
+    fun updateGrant(grant: ConfMediaGrant) {
+        if (this.grant == grant) return
+        this.grant = grant
+        scope.launch { applyMedia() }
+    }
+
     /** Front/back. Silently does nothing without a camera published. */
     fun switchCamera() {
         val track = room?.localParticipant?.getTrackPublication(Track.Source.CAMERA)?.track
@@ -280,6 +315,7 @@ object ConferenceEngine {
     fun applyForceMute(muted: Boolean) {
         if (forceMuted == muted) return
         forceMuted = muted
+        set { it.copy(forceMuted = muted) }
         scope.launch { applyMedia() }
     }
 
@@ -364,7 +400,7 @@ object ConferenceEngine {
             add(describe(r.localParticipant, local = true))
             r.remoteParticipants.values.forEach { add(describe(it, local = false)) }
         }
-        set { it.copy(peers = peers, route = currentRoute()) }
+        set { it.copy(peers = peers, route = currentRoute(), routes = availableRoutes()) }
     }
 
     private fun describe(p: Participant, local: Boolean): ConfPeer {
@@ -380,7 +416,7 @@ object ConferenceEngine {
             speaking = p.isSpeaking,
             micOn = p.isMicrophoneEnabled,
             camOn = p.isCameraEnabled,
-            quality = p.connectionQuality,
+            quality = p.connectionQuality.toConfQuality(),
             // A muted camera keeps both its publication and its track object —
             // the SDK mutes in place instead of unpublishing — so "has a track"
             // alone paints a black rectangle over the avatar of somebody who
@@ -393,8 +429,11 @@ object ConferenceEngine {
     private fun currentRoute(): ConfAudioRoute {
         val handler = audio ?: return ConfAudioRoute.SPEAKER
         handler.selectedAudioDevice?.toRoute()?.let { return it }
-        return preferredAudioRoute(handler.availableAudioDevices.mapNotNull { it.toRoute() })
+        return preferredAudioRoute(availableRoutes())
     }
+
+    private fun availableRoutes(): List<ConfAudioRoute> =
+        audio?.availableAudioDevices?.mapNotNull { it.toRoute() }.orEmpty()
 
     private fun set(block: (ConfSession) -> ConfSession) {
         val next = _session.updateAndGet(block)
@@ -404,6 +443,26 @@ object ConferenceEngine {
     private fun serviceNeeded(needed: Boolean) {
         if (!serviceEnabled) return
         ConferenceCallService.apply(AppContainer.appContext, needed)
+    }
+
+    /**
+     * Hand a freshly created renderer the room's EGL context.
+     *
+     * Internal, and the only reason `data/conference` owns a composable at all:
+     * a renderer that skips this shows a black rectangle for a track that is
+     * arriving perfectly well, which looks exactly like a camera nobody turned
+     * on.
+     */
+    internal fun attachRenderer(view: TextureViewRenderer) {
+        runCatching { room?.initVideoRenderer(view) }
+    }
+
+    private fun ConnectionQuality.toConfQuality(): ConfQuality = when (this) {
+        ConnectionQuality.EXCELLENT -> ConfQuality.EXCELLENT
+        ConnectionQuality.GOOD -> ConfQuality.GOOD
+        ConnectionQuality.POOR -> ConfQuality.POOR
+        ConnectionQuality.LOST -> ConfQuality.LOST
+        ConnectionQuality.UNKNOWN -> ConfQuality.UNKNOWN
     }
 
     /** AudioSwitch's device classes, in the order [preferredAudioRoute] states. */

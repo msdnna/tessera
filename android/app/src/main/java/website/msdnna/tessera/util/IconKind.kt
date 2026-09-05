@@ -119,6 +119,17 @@ object Ion {
     const val SETTINGS = "settings"
     const val SHIELD_CHECKMARK = "shield_checkmark"
     const val HELP_CIRCLE = "help_circle"
+
+    // Conference room (#2896 §5) — the same ionicons the web toolbar uses.
+    const val MIC = "mic"
+    const val MIC_OFF = "mic_off"
+    const val VIDEOCAM_OFF = "videocam_off"
+    const val CAMERA_REVERSE = "camera_reverse"
+    const val VOLUME_HIGH = "volume_high"
+    const val CELLULAR = "cellular"
+    const val WARNING = "warning"
+    const val CONTRACT = "contract"
+    const val CALL = "call"
 }
 
 fun classifyIcon(icon: String?): IconKind {

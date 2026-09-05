@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui
 
+import website.msdnna.tessera.util.ConfAudioRoute
+
 /**
  * Stable anchors for the e2e tier (`app/src/test/.../e2e`).
  *
@@ -233,6 +235,35 @@ object TestTags {
     fun conferenceSeat(userId: String) = "conference-seat:$userId"
 
     fun conferenceInvitee(userId: String) = "conference-invitee:$userId"
+
+    /** The call itself (#2896 §5) — present exactly while we hold a seat. */
+    const val CONFERENCE_ROOM = "conference-room"
+    const val CONFERENCE_STAGE = "conference-stage"
+    const val CONFERENCE_STRIP = "conference-strip"
+    const val CONFERENCE_BANNER = "conference-banner"
+    const val CONFERENCE_RETRY = "conference-retry"
+    const val CONFERENCE_QUALITY = "conference-quality"
+    const val CONFERENCE_FULLSCREEN = "conference-fullscreen"
+
+    /** The room toolbar. */
+    const val CONFERENCE_MIC = "conference-mic"
+    const val CONFERENCE_CAM = "conference-cam"
+    const val CONFERENCE_SWITCH_CAM = "conference-switch-cam"
+    const val CONFERENCE_ROUTE = "conference-route"
+    const val CONFERENCE_HANGUP = "conference-hangup"
+
+    /** One tile, keyed by the participant's identity rather than by position —
+     *  the stage moves with whoever is talking, so an index would assert
+     *  «whoever is second» and pass through a layout that lost the speaker. */
+    fun conferenceTile(identity: String) = "conference-tile:$identity"
+
+    /** The crossed-out microphone on somebody's tile — the only thing on screen
+     *  that says a participant is silent, so it needs an anchor of its own: the
+     *  tile is displayed either way. */
+    fun conferenceTileMuted(identity: String) = "conference-tile-muted:$identity"
+
+    /** One output in the routing menu. */
+    fun conferenceRoute(route: ConfAudioRoute) = "conference-route:${route.name.lowercase()}"
 
     // ── help centre (#2795) ────────────────────────────────────────────────
 

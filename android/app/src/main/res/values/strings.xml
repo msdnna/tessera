@@ -780,6 +780,19 @@
     <string name="conf_section_invited">Приглашены</string>
     <string name="conf_room_empty">Сейчас в комнате никого нет</string>
     <string name="conf_seat_host">ведущий</string>
+    <string name="conf_media_connecting">Подключаемся…</string>
+    <string name="conf_media_reconnecting">Связь пропала, переподключаемся…</string>
+    <string name="conf_media_failed">Не удалось подключиться к комнате</string>
+    <string name="conf_media_retry">Повторить</string>
+    <string name="conf_media_unavailable">На этом сервере не настроены видеозвонки</string>
+    <string name="conf_media_ended">Конференция завершена</string>
+    <string name="conf_media_kicked">Ведущий исключил вас из конференции</string>
+    <string name="conf_media_no_mic">Нет доступа к микрофону — вас никто не слышит</string>
+    <string name="conf_media_no_one">В комнате пока никого нет</string>
+    <string name="conf_route_bluetooth">Bluetooth</string>
+    <string name="conf_route_wired">Наушники</string>
+    <string name="conf_route_speaker">Динамик</string>
+    <string name="conf_route_earpiece">Разговорный динамик</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

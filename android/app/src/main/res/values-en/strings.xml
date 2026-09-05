@@ -766,6 +766,19 @@
     <string name="conf_section_invited">Invited</string>
     <string name="conf_room_empty">Nobody is in the room right now</string>
     <string name="conf_seat_host">host</string>
+    <string name="conf_media_connecting">Connecting…</string>
+    <string name="conf_media_reconnecting">Connection lost, reconnecting…</string>
+    <string name="conf_media_failed">Could not connect to the room</string>
+    <string name="conf_media_retry">Retry</string>
+    <string name="conf_media_unavailable">Video calls are not configured on this server</string>
+    <string name="conf_media_ended">The conference has ended</string>
+    <string name="conf_media_kicked">The host removed you from the conference</string>
+    <string name="conf_media_no_mic">No microphone access — nobody can hear you</string>
+    <string name="conf_media_no_one">Nobody is in the room yet</string>
+    <string name="conf_route_bluetooth">Bluetooth</string>
+    <string name="conf_route_wired">Headphones</string>
+    <string name="conf_route_speaker">Speaker</string>
+    <string name="conf_route_earpiece">Earpiece</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

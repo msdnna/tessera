@@ -124,6 +124,14 @@ fun ConferenceLobby(conferenceId: String, onBack: () -> Unit) {
             )
         }
     }
+
+    // The call itself, over the lobby, exactly while we hold a seat (§5). Media
+    // follows membership and never leads it: hanging up drops the seat, and the
+    // roster coming back without us is what closes this — so a room the server
+    // no longer counts us in cannot stay on screen still publishing.
+    if (state.inRoom) {
+        ConferenceRoom(conferenceId = conferenceId, onHangup = { vm.leave() })
+    }
 }
 
 /**
