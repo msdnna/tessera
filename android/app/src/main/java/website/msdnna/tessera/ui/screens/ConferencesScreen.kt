@@ -1,5 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -89,6 +90,10 @@ fun ConferencesScreen(workspaceId: String) {
         if (workspaceId.isNotBlank()) vm.load(workspaceId)
     }
 
+    // The lobby is an inline overlay, not a Dialog, so Back would otherwise fall
+    // through to the shell's nav back-stack and leave the section entirely.
+    BackHandler(enabled = state.openId != null) { vm.closeLobby() }
+
     Box(Modifier.fillMaxSize().background(c.bg).testTag(TestTags.CONFERENCES_SCREEN)) {
         Column(Modifier.fillMaxSize()) {
             Row(
@@ -131,7 +136,7 @@ fun ConferencesScreen(workspaceId: String) {
                         ConferenceRow(
                             conference = conf,
                             confirmingDelete = state.pendingDelete?.id == conf.id,
-                            onClick = { },
+                            onClick = { vm.open(conf) },
                             onAskDelete = { vm.askDelete(conf) },
                             onConfirmDelete = { vm.confirmDelete() },
                             onCancelDelete = { vm.cancelDelete() },
@@ -146,6 +151,10 @@ fun ConferencesScreen(workspaceId: String) {
             Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
                 Text(message.resolve(), color = c.text3, fontSize = 12.sp)
             }
+        }
+
+        state.openId?.let { id ->
+            ConferenceLobby(conferenceId = id, onBack = { vm.closeLobby() })
         }
 
         if (state.composing) {
@@ -202,7 +211,7 @@ internal fun ConferenceRow(
             .testTag(TestTags.conferenceRow(conference.id)),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StatusPill(conference.status)
+        ConferenceStatusPill(conference.status)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Text(
@@ -265,9 +274,12 @@ private fun timeLineText(conference: Conference): String {
 /**
  * Status chip. Live and scheduled carry the same-hue gradient of the design
  * language; a finished call is neutral, and neutrals stay flat.
+ *
+ * Shared with the lobby (§3) rather than copied: the row and the detail must
+ * never disagree about what «Идёт сейчас» looks like.
  */
 @Composable
-private fun StatusPill(status: String) {
+internal fun ConferenceStatusPill(status: String) {
     val c = Tessera.colors
     val hue = when (status) {
         ConferenceStatus.LIVE -> TesseraLive

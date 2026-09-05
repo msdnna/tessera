@@ -30,6 +30,8 @@ data class ConferencesUiState(
     val createError: UiText? = null,
     /** The row whose delete confirmation is open, if any. */
     val pendingDelete: Conference? = null,
+    /** The conference whose lobby (§3) is open over the list, if any. */
+    val openId: String? = null,
 )
 
 /**
@@ -66,6 +68,12 @@ class ConferencesViewModel(
         if (workspaceId.isNotBlank()) load(workspaceId)
     }
 
+    // ── the lobby (§3) ────────────────────────────────────────────────────
+
+    fun open(conference: Conference) = _state.update { it.copy(openId = conference.id) }
+
+    fun closeLobby() = _state.update { it.copy(openId = null) }
+
     // ── schedule dialog ───────────────────────────────────────────────────
 
     fun compose() = _state.update { it.copy(composing = true, createError = null) }
@@ -94,8 +102,11 @@ class ConferencesViewModel(
                 )
             }
             result.fold(
-                onSuccess = {
-                    _state.update { it.copy(saving = false, composing = false) }
+                onSuccess = { created ->
+                    // Straight into the new call's lobby, as on the web: scheduling
+                    // one is how you get somewhere to invite people, and a list
+                    // that just grew a row leaves that step to be found.
+                    _state.update { it.copy(saving = false, composing = false, openId = created.id) }
                     refetch()
                 },
                 onFailure = { e -> _state.update { it.copy(saving = false, createError = errorMessage(e)) } },
@@ -111,7 +122,9 @@ class ConferencesViewModel(
 
     fun confirmDelete() {
         val target = _state.value.pendingDelete ?: return
-        _state.update { it.copy(pendingDelete = null) }
+        // Close the lobby if it is the one being deleted — it would otherwise sit
+        // over the list showing a call that no longer exists.
+        _state.update { it.copy(pendingDelete = null, openId = it.openId?.takeIf { id -> id != target.id }) }
         launchCatching {
             repo.delete(target.id)
             // Drop the row first, then refetch: the counters of the *other* rows

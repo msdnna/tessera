@@ -768,6 +768,18 @@
     <string name="conf_create_ttl_hint">Записи этой конференции удалятся автоматически через столько дней. 0 — хранить без срока.</string>
     <string name="conf_create_ttl_invalid">Введите число дней: 0 или больше</string>
     <string name="conf_create_submit">Запланировать</string>
+    <string name="conf_back">Назад</string>
+    <string name="conf_detail_not_found">Конференция не найдена</string>
+    <string name="conf_action_join">Войти</string>
+    <string name="conf_action_leave">Выйти</string>
+    <string name="conf_action_end">Завершить</string>
+    <string name="conf_confirm_end">Завершить конференцию для всех?</string>
+    <string name="conf_invite">Пригласить</string>
+    <string name="conf_invite_empty">Приглашать больше некого</string>
+    <string name="conf_section_in_room">В комнате</string>
+    <string name="conf_section_invited">Приглашены</string>
+    <string name="conf_room_empty">Сейчас в комнате никого нет</string>
+    <string name="conf_seat_host">ведущий</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

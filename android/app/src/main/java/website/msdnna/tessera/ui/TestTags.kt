@@ -219,6 +219,21 @@ object TestTags {
 
     fun conferenceDelete(id: String) = "conference-delete:$id"
 
+    /** The lobby of one call (#2896 §3) and its controls. */
+    const val CONFERENCE_LOBBY = "conference-lobby"
+    const val CONFERENCE_BACK = "conference-back"
+    const val CONFERENCE_JOIN = "conference-join"
+    const val CONFERENCE_LEAVE = "conference-leave"
+    const val CONFERENCE_END = "conference-end"
+    const val CONFERENCE_INVITE = "conference-invite"
+
+    /** One seat in the roster and one line of the invite picker, keyed by user —
+     *  the two lists are complementary, so a spec can assert a person is in the
+     *  one and not the other without depending on either's order. */
+    fun conferenceSeat(userId: String) = "conference-seat:$userId"
+
+    fun conferenceInvitee(userId: String) = "conference-invitee:$userId"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

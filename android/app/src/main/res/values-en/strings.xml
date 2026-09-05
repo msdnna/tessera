@@ -754,6 +754,18 @@
     <string name="conf_create_ttl_hint">Recordings of this conference are deleted automatically after that many days. 0 keeps them indefinitely.</string>
     <string name="conf_create_ttl_invalid">Enter a number of days: 0 or more</string>
     <string name="conf_create_submit">Schedule</string>
+    <string name="conf_back">Back</string>
+    <string name="conf_detail_not_found">Conference not found</string>
+    <string name="conf_action_join">Join</string>
+    <string name="conf_action_leave">Leave</string>
+    <string name="conf_action_end">End</string>
+    <string name="conf_confirm_end">End this conference for everyone?</string>
+    <string name="conf_invite">Invite</string>
+    <string name="conf_invite_empty">Nobody left to invite</string>
+    <string name="conf_section_in_room">In the room</string>
+    <string name="conf_section_invited">Invited</string>
+    <string name="conf_room_empty">Nobody is in the room right now</string>
+    <string name="conf_seat_host">host</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>
