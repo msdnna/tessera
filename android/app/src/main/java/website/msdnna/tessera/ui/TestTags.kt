@@ -243,6 +243,17 @@ object TestTags {
     /** A section boundary — where the page geometry changes (#2827). */
     const val DOCUMENT_SECTION_BREAK = "document-section-break"
 
+    /** The editor (#2894 §4): the way in, the surface, and the bar over it. The
+     *  text itself lives in a WebView and has no Compose semantics — what can be
+     *  asserted from here is the shell around it. */
+    const val DOCUMENT_EDIT = "document-edit"
+    const val DOCUMENT_EDITOR = "document-editor"
+    const val DOCUMENT_EDITOR_CLOSE = "document-editor-close"
+    const val DOCUMENT_EDITOR_STATUS = "document-editor-status"
+    const val DOCUMENT_EDITOR_RELOAD = "document-editor-reload"
+    const val DOCUMENT_EDITOR_FAILED = "document-editor-failed"
+    const val DOCUMENT_EDITOR_BLOCKED = "document-editor-blocked"
+
     // ── help centre (#2795) ────────────────────────────────────────────────
 
     /** Root of the help section — the category navigation over the bundled manual. */

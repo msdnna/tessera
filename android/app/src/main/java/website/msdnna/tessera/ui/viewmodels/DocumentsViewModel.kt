@@ -111,6 +111,25 @@ class DocumentsViewModel(
         }
     }
 
+    /**
+     * Re-reads the open document's body. What the editor leaves behind (#2894
+     * §4): the reader underneath it is showing the text as it was before the
+     * edit, and the editor's own copy is the one that changed.
+     */
+    fun refreshOpen() {
+        val doc = _state.value.open ?: return
+        launchCatching {
+            val full = repo.get(doc.id)
+            _state.update {
+                if (it.openId != doc.id) {
+                    it
+                } else {
+                    it.copy(open = full, blocks = parseDocBlocks(full.content), page = parseDocPage(full.content))
+                }
+            }
+        }
+    }
+
     fun close() = _state.update {
         it.copy(openId = null, open = null, blocks = emptyList(), page = DEFAULT_DOC_PAGE, opening = false)
     }

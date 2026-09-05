@@ -761,6 +761,24 @@
     <string name="docs_page_landscape">Альбомная</string>
     <string name="docs_page_size_custom">свой размер</string>
     <string name="docs_section_caption">Дальше — %1$s %2$s</string>
+    <!-- Editor (#2894 §4). docs_embed_lang is not shown anywhere: it is the code
+         of the language this build is currently rendering in, handed to the
+         embedded editor so the web surface speaks the same language as the app
+         around it. It follows whatever picked this resource folder, which is
+         exactly the point — nothing here has to know how the language was set. -->
+    <string name="docs_embed_lang" translatable="false">ru</string>
+    <string name="docs_edit">Редактировать</string>
+    <string name="docs_editor_saved">Сохранено</string>
+    <string name="docs_editor_dirty">Есть изменения</string>
+    <string name="docs_editor_saving">Сохраняем…</string>
+    <string name="docs_editor_conflict_short">Конфликт</string>
+    <string name="docs_editor_error">Не сохранено</string>
+    <string name="docs_editor_conflict">Документ изменён в другом месте — ваши последние правки не сохранены.</string>
+    <string name="docs_editor_remote_change">Документ изменён в другом месте.</string>
+    <string name="docs_editor_reload">Обновить</string>
+    <string name="docs_editor_failed">Не удалось открыть редактор</string>
+    <string name="docs_editor_blocked">Блок редактирует %1$s</string>
+    <string name="docs_editor_blocked_someone">другой участник</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>

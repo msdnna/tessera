@@ -45,6 +45,19 @@ const routes = [
     component: () => import('@/views/RecorderView.vue'),
     meta: { open: true },
   },
+  // The document editor on its own, for the Android app to embed in a WebView
+  // (#2894 §4). Standalone like /rec/egress above and for the same reason — no
+  // sidebar, no topbar, nothing but the editing surface, because the chrome
+  // around it is the app's and is native.
+  //
+  // `open` because the session does not exist yet when this loads: the host
+  // hands over an access token in the URL and the view installs it. The guard
+  // would otherwise bounce the WebView to /login before the view ever runs.
+  {
+    path: '/embed/document/:slug',
+    component: () => import('@/views/DocEmbedView.vue'),
+    meta: { open: true },
+  },
   {
     path: '/',
     component: () => import('@/components/AppLayout.vue'),

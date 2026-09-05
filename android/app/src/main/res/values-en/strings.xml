@@ -748,6 +748,22 @@
     <string name="docs_page_landscape">Landscape</string>
     <string name="docs_page_size_custom">custom size</string>
     <string name="docs_section_caption">From here: %1$s %2$s</string>
+    <!-- Editor (#2894 §4). See the note in values/strings.xml: docs_embed_lang is
+         the code of the language this build renders in, passed to the embedded
+         editor. -->
+    <string name="docs_embed_lang" translatable="false">en</string>
+    <string name="docs_edit">Edit</string>
+    <string name="docs_editor_saved">Saved</string>
+    <string name="docs_editor_dirty">Unsaved changes</string>
+    <string name="docs_editor_saving">Saving…</string>
+    <string name="docs_editor_conflict_short">Conflict</string>
+    <string name="docs_editor_error">Not saved</string>
+    <string name="docs_editor_conflict">The document changed elsewhere — your latest edits were not saved.</string>
+    <string name="docs_editor_remote_change">The document changed elsewhere.</string>
+    <string name="docs_editor_reload">Reload</string>
+    <string name="docs_editor_failed">Could not open the editor</string>
+    <string name="docs_editor_blocked">%1$s is editing this block</string>
+    <string name="docs_editor_blocked_someone">someone else</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>

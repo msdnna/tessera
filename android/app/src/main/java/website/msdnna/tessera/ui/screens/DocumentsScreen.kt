@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TesseraLoader
@@ -46,6 +47,7 @@ import website.msdnna.tessera.ui.screens.documents.DocDraft
 import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
+import website.msdnna.tessera.ui.screens.documents.DocumentEditor
 import website.msdnna.tessera.ui.screens.documents.DocumentsList
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.DocumentsViewModel
@@ -62,7 +64,8 @@ import website.msdnna.tessera.util.docSideInsetDp
  * Documents module (web `DocumentsView`) — see #2735, #2894. A grid of one
  * nesting level; tapping a tile slides a reader over it, the same master/detail
  * shape [NotesScreen] uses. Creating, renaming, nesting and deleting live here
- * too; writing the *body* is the editor's job and arrives with §4 of #2894.
+ * too; writing the *body* happens in [DocumentEditor], the web editor embedded
+ * in a WebView (§4 of #2894) — see the note there for why it is not native.
  */
 @Composable
 fun DocumentsScreen(workspaceId: String) {
@@ -70,6 +73,10 @@ fun DocumentsScreen(workspaceId: String) {
     val vm: DocumentsViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
     var draft by remember { mutableStateOf<DocDraft?>(null) }
+    // The editor is a surface over the reader, not a route: the reader is where
+    // it came from and where closing it lands, and the back stack has no idea
+    // this section has two layers.
+    var editing by remember { mutableStateOf(false) }
 
     LaunchedEffect(workspaceId) {
         if (workspaceId.isNotBlank()) vm.load(workspaceId)
@@ -78,7 +85,7 @@ fun DocumentsScreen(workspaceId: String) {
     // The reader is an inline overlay, not a Dialog, so Back would otherwise
     // fall through to the nav back-stack. Inside a container Back walks the
     // trail out one level instead of leaving the section.
-    BackHandler(enabled = state.openId != null) { vm.close() }
+    BackHandler(enabled = state.openId != null && !editing) { vm.close() }
     BackHandler(enabled = state.openId == null && state.trail.isNotEmpty()) {
         vm.crumbTo(state.trail.lastIndex - 1)
     }
@@ -115,6 +122,26 @@ fun DocumentsScreen(workspaceId: String) {
                 onBack = { vm.close() },
                 onDraft = { draft = it },
                 onChildren = { state.open?.let(vm::drillInto) },
+                onEdit = { editing = true },
+            )
+        }
+
+        // A document with no slug cannot be addressed by the embed URL. That is
+        // not a state the API produces (the slug is assigned on create), but a
+        // reader over a half-loaded tile has no document at all yet — and an
+        // editor opened on nothing would be a blank white screen with a caret.
+        val open = state.open
+        if (editing && open != null && open.slug.isNotBlank()) {
+            DocumentEditor(
+                title = open.title,
+                slug = open.slug,
+                workspaceId = workspaceId,
+                serverRoot = RetrofitClient.serverRoot,
+                onClose = {
+                    editing = false
+                    // The reader under it is showing the text from before the edit.
+                    vm.refreshOpen()
+                },
             )
         }
 
@@ -152,6 +179,7 @@ private fun DocumentReader(
     onBack: () -> Unit,
     onDraft: (DocDraft) -> Unit,
     onChildren: () -> Unit,
+    onEdit: () -> Unit,
 ) {
     val c = Tessera.colors
     var menuOpen by remember { mutableStateOf(false) }
@@ -186,6 +214,12 @@ private fun DocumentReader(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 modifier = Modifier.weight(1f),
+            )
+            IonIconButton(
+                Ion.PENCIL,
+                onClick = onEdit,
+                boxSize = 40.dp,
+                modifier = Modifier.testTag(TestTags.DOCUMENT_EDIT),
             )
             IonIconButton(
                 Ion.LIST,

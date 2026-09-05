@@ -98,6 +98,21 @@ object RetrofitClient {
         synchronized(this) { service = null }
     }
 
+    /**
+     * Trades the refresh token for a fresh access token, right now.
+     *
+     * Blocking, so it belongs on an IO thread. Exists for the embedded document
+     * editor (#2894 §4): that page holds an access token of ours and no refresh
+     * token of its own, so when its token expires mid-edit the *app* is the only
+     * one who can produce a new one. Returns null when there is no session left
+     * to refresh — the caller then has nothing to hand over.
+     */
+    fun refreshAccess(): String? {
+        val baseUrl = currentBaseUrl
+        if (baseUrl.isBlank()) return null
+        return tryRefresh(baseUrl)
+    }
+
     private fun buildApiUrl(url: String): String {
         val trimmed = url.trimEnd('/')
         return if (trimmed.endsWith("/api")) "$trimmed/" else "$trimmed/api/"
