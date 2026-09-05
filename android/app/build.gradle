@@ -118,6 +118,21 @@ android {
                 // -Pe2e (`make test-e2e-android`).
                 if (!project.hasProperty('e2e')) {
                     t.filter { excludeTestsMatching 'website.msdnna.tessera.e2e.*' }
+                } else {
+                    // The e2e tier talks to a live backend, so its result says nothing
+                    // about the inputs Gradle hashes: a second run with a different
+                    // stand (or a rerun hunting a flake) would come back UP-TO-DATE
+                    // and quietly republish the previous XML.
+                    t.outputs.upToDateWhen { false }
+                    // Per-test durations: without them a red tier can't be told apart
+                    // from a JVM that stalled for the whole 20s await window.
+                    t.afterTest { desc, result ->
+                        def seconds = (result.endTime - result.startTime) / 1000.0
+                        logger.lifecycle(String.format(
+                            '[e2e-timing] %6.2fs %s > %s (%s)',
+                            seconds, desc.className, desc.name, result.resultType,
+                        ))
+                    }
                 }
                 jacoco {
                     includeNoLocationClasses = true

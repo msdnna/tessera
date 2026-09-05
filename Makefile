@@ -400,9 +400,15 @@ format-android: ## Auto-format Kotlin sources via ktlint
 test-android: ## Run Android unit tests
 	@$(ANDROID_GRADLE) :app:testDebugUnitTest
 
+# Narrows the e2e tier to one class or method, e.g.
+#   make test-e2e-android E2E_ANDROID_TESTS='website.msdnna.tessera.e2e.TaskModalE2eTest'
+# A tier-only failure that passes in isolation is the signature of cross-test
+# leakage, and this is how the two are told apart.
+E2E_ANDROID_TESTS ?= website.msdnna.tessera.e2e.*
+
 .PHONY: test-e2e-android
 test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e-backend-up`)
-	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests 'website.msdnna.tessera.e2e.*'
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests '$(E2E_ANDROID_TESTS)'
 
 # The instrumented smoke tier: needs a connected device or a running emulator,
 # and reaches the throwaway backend through the emulator's 10.0.2.2 host alias
