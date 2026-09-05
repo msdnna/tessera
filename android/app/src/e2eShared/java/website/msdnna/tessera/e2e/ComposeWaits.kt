@@ -9,6 +9,9 @@ import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.printToString
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.ui.TestTags
 
 /** How long a spec waits on a screen that is round-tripping to the backend. */
@@ -48,9 +51,28 @@ private fun ComposeContentTestRule.withRootsOnTimeout(what: String, timeoutMilli
         val roots = runCatching {
             onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE)
         }.getOrElse { "<the tree could not be read: $it>" }
-        throw AssertionError("timed out after ${timeoutMillis}ms waiting for $what; roots:\n$roots", e)
+        throw AssertionError(
+            "timed out after ${timeoutMillis}ms waiting for $what; ${address()}; roots:\n$roots",
+            e,
+        )
     }
 }
+
+/**
+ * The address the app is *actually* pointed at, next to the one it was set up with.
+ *
+ * A timeout that leaves «нет связи с сервером» on screen has two very different
+ * causes — the stand went away, or the app is dialling somewhere else — and the
+ * tree alone cannot tell them apart. It is not a hypothetical mismatch: one spec
+ * parks a deliberately dead port in DataStore to prove the server field is
+ * honoured, and every later spec shares that DataStore singleton. Printing both
+ * values turns «unreachable» into either «unreachable at the right address» or a
+ * named leak.
+ */
+private fun address(): String = runCatching {
+    "server: client=${AppContainer.serverUrl}, prefs=${runBlocking { AppContainer.prefs.serverUrl.first() }}, " +
+        "expected=${E2eBackend.serverUrl}"
+}.getOrElse { "server: <could not be read: $it>" }
 
 /**
  * Waits for exactly one node carrying [tag] to exist **and be enabled**.
