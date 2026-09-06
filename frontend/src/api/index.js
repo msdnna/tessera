@@ -679,6 +679,13 @@ export const gitlab = {
     api.put(`/workspaces/${wsId}/gitlab/integrations/${integId}`, data),
   deleteIntegration: (wsId, integId) =>
     api.delete(`/workspaces/${wsId}/gitlab/integrations/${integId}`),
+  // Webhook (#2594): generate/rotate the shared secret for a binding, or turn the
+  // hook off. The response of enableWebhook is the ONLY place the secret appears —
+  // it is stored encrypted and never returned by a GET.
+  enableWebhook: (wsId, integId) =>
+    api.post(`/workspaces/${wsId}/gitlab/integrations/${integId}/webhook`),
+  disableWebhook: (wsId, integId) =>
+    api.delete(`/workspaces/${wsId}/gitlab/integrations/${integId}/webhook`),
   // skipLoader: sync is intentionally long and shows its own in-modal loader, so
   // it must not trigger the global slow/offline overlay. mode 'full' forces a full
   // sweep ("Полная синхронизация"); omitted → the default incremental pull.

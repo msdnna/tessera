@@ -176,7 +176,7 @@ function runCounts(run) {
 }
 
 const STATUS_KEYS = ['running', 'ok', 'partial', 'error', 'fail']
-const TRIGGER_KEYS = ['manual', 'auto']
+const TRIGGER_KEYS = ['manual', 'auto', 'webhook']
 
 function statusLabel(status) {
   return STATUS_KEYS.includes(status) ? t(`gitlab.journal.status.${status}`) : status

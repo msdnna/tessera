@@ -41,6 +41,23 @@
       "saved": "Integration settings saved",
       "needProjectAndBoard": "Set the GitLab project path and the target board"
     },
+    "webhook": {
+      "title": "GitLab webhook",
+      "hint": "Sync within seconds instead of waiting for the next poll: GitLab sends an event and Tessera pulls the change. Polling stays on — a webhook never reports issue deletion, and a silent hook would otherwise become a broken sync.",
+      "saveFirst": "Save the binding first — the webhook address contains its id.",
+      "generate": "Generate secret",
+      "rotate": "Regenerate",
+      "disable": "Disable",
+      "url": "URL",
+      "secret": "Secret token",
+      "copy": "Copy",
+      "copied": "Copied",
+      "copyFailed": "Could not copy — select and copy manually",
+      "onceWarning": "The secret is shown once. Paste the URL and token into GitLab: Settings → Webhooks, with the “Issues” and “Comments” events. Lost it? Generate a new one.",
+      "lastEvent": "Last event: {at}",
+      "never": "never",
+      "failed": "Could not change the webhook"
+    },
     "writeback": {
       "title": "Write-back to GitLab",
       "enabled": "Enable write-back",
@@ -261,7 +278,8 @@
     },
     "trigger": {
       "manual": "manual",
-      "auto": "auto"
+      "auto": "auto",
+      "webhook": "webhook"
     },
     "push": {
       "closeIssue": "close the issue",
