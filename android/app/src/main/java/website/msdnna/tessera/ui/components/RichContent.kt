@@ -44,10 +44,12 @@ import website.msdnna.tessera.util.resolveMention
  * A WebView is the faithful (and only sane) way to reproduce mermaid diagrams +
  * syntax highlighting; everything around it (tabs, editor, controls) is native.
  *
- * marked is bundled (assets/richcontent); highlight.js + mermaid load from a CDN
- * on demand (online-first app), so diagrams need connectivity — basic Markdown
- * still renders offline. The view reports its content height back so it sizes to
- * its content inside the scrolling modal.
+ * marked, highlight.js и его тема лежат в `assets/richcontent` — сеть не участвует
+ * в отрисовке вообще (#2897: внешний `<link>` на CDN блокировал первый кадр, и на
+ * телефоне без выхода наружу описание появлялось через десяток секунд). Из сети
+ * тянется только mermaid — он нужен единицам, весит полмегабайта и грузится лениво,
+ * а его отсутствие уже обработано `onerror`. The view reports its content height
+ * back so it sizes to its content inside the scrolling modal.
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -255,7 +257,7 @@ private fun hex(c: Color): String =
     String.format(Locale.US, "#%02X%02X%02X", (c.red * 255).roundToInt(), (c.green * 255).roundToInt(), (c.blue * 255).roundToInt())
 
 /** Builds a self-contained HTML document themed to the current Tessera colours. */
-private fun buildRichHtml(
+internal fun buildRichHtml(
     source: String,
     c: TesseraColors,
     serverRoot: String,
@@ -284,7 +286,7 @@ private fun buildRichHtml(
     return """
 <!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/styles/$hljsTheme.min.css">
+<link rel="stylesheet" href="file:///android_asset/richcontent/hljs-$hljsTheme.min.css">
 <style>
   html,body{margin:0;padding:0;background:transparent;}
   body{color:${hex(c.text1)};font-family:-apple-system,Roboto,sans-serif;font-size:14px;line-height:1.55;
@@ -469,7 +471,7 @@ private fun buildRichHtml(
   // height in every case — measure again regardless.
   window.addEventListener('resize', report);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(report);
-  // The hljs theme is a CDN <link>: it restyles `pre` once it lands.
+  // The hljs theme is a separate <link>: it restyles `pre` once it lands.
   var themeCss = document.querySelector('link[rel=stylesheet]');
   if (themeCss) { themeCss.addEventListener('load', report); themeCss.addEventListener('error', report); }
   // Image loads change height — re-report once they settle.
@@ -480,10 +482,13 @@ private fun buildRichHtml(
       if (!code.classList.contains('language-mermaid') && window.hljs) hljs.highlightElement(code);
     });
   }
+  // The 122 KB highlighter is pulled in only when the text actually has code —
+  // the vast majority of descriptions and comments are plain prose.
   function withHljs(cb){
     if (window.hljs) return cb();
+    if (!el.querySelector('pre code:not(.language-mermaid)')) return cb();
     var s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11.9.0/build/highlight.min.js';
+    s.src = 'file:///android_asset/richcontent/highlight.min.js';
     s.onload = cb; s.onerror = cb; document.head.appendChild(s);
   }
   if (mer.length) {
