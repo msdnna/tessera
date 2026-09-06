@@ -256,12 +256,32 @@ func writebackRows(t *testing.T, taskID string) map[string]wbRow {
 	return out
 }
 
+// drainMu serialises drainOutboxUntil across the package. The outbox is global
+// and the worker guards its drain with a Postgres advisory lock, so two drains
+// never actually overlap — the loser just no-ops silently and burns its own
+// deadline waiting for work nobody is doing. Measured: a single drain holds the
+// lock ~2.4 s, and four parallel tests call this helper
+// (TestGitlabWritebackPushFlow, TestGitlabWritebackAssigneeOAuthUser,
+// TestGitlabWritebackRetry, TestGitlabPulledCommentDoesNotDuplicatePushedOne)
+// plus the background worker from TestMain on the same key — four queued
+// holds alone come to ~9.6 s against what used to be a 10 s deadline. Hence the
+// mutex, and hence it lives next to the helper rather than in one test file:
+// the fourth caller arrived from another file (#2865) and would otherwise have
+// stayed in the race. Only the drain is serialised; building a stand (signup,
+// board, fake GitLab, first sync) stays parallel.
+var drainMu sync.Mutex
+
 // drainOutboxUntil spawns the write-back worker (which drains once at startup)
 // and polls cond; respawns a few times so a row that appeared between drains is
 // still picked up. Fails the test when cond never holds.
 func drainOutboxUntil(t *testing.T, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	drainMu.Lock()
+	defer drainMu.Unlock()
+	// 20 s, not 10: with the drain serialised a test may legitimately wait its
+	// turn behind the other callers before it gets to run at all.
+	deadline := time.Now().Add(20 * time.Second)
+	spawns := 0
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -269,6 +289,7 @@ func drainOutboxUntil(t *testing.T, cond func() bool) {
 			testAPI.RunGitlabWriteBackWorker(ctx)
 			close(done)
 		}()
+		spawns++
 		ok := false
 		for i := 0; i < 20 && !ok; i++ {
 			if cond() {
@@ -283,7 +304,39 @@ func drainOutboxUntil(t *testing.T, cond func() bool) {
 			return
 		}
 	}
-	t.Fatalf("write-back drain condition never met")
+	// "condition never met" on its own sent the last investigation down a wrong
+	// path for weeks: it cannot distinguish "the drain ran and the row is stuck"
+	// from "the drain never got the lock and nothing happened at all". Dump the
+	// outbox so the next reader sees which one it is.
+	t.Fatalf("write-back drain condition never met after %d worker spawns; outbox now: %s",
+		spawns, dumpOutbox(t))
+}
+
+// dumpOutbox renders every outbox row in the database (not just one task's) with
+// the fields that tell a stuck row apart from an untouched one.
+func dumpOutbox(t *testing.T) string {
+	t.Helper()
+	rows, err := testPool.Query(context.Background(),
+		`SELECT task_id, change_kind, status, attempts, COALESCE(last_error, '') FROM gitlab_writebacks ORDER BY task_id, change_kind`)
+	if err != nil {
+		return fmt.Sprintf("<query failed: %v>", err)
+	}
+	defer rows.Close()
+	var b strings.Builder
+	n := 0
+	for rows.Next() {
+		var taskID, kind, status, lastErr string
+		var attempts int32
+		if err := rows.Scan(&taskID, &kind, &status, &attempts, &lastErr); err != nil {
+			return fmt.Sprintf("<scan failed: %v>", err)
+		}
+		n++
+		fmt.Fprintf(&b, "\n  task=%s kind=%s status=%s attempts=%d err=%q", taskID, kind, status, attempts, lastErr)
+	}
+	if n == 0 {
+		return "(empty)"
+	}
+	return b.String()
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────

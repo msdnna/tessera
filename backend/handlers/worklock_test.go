@@ -63,7 +63,11 @@ func TestWithAdvisoryLockSkipsWhenHeld(t *testing.T) {
 	}
 
 	ran := false
-	api.withAdvisoryLock(ctx, name, func() { ran = true })
+	if got := api.withAdvisoryLock(ctx, name, func() { ran = true }); got {
+		_, _ = holder.Exec(ctx, "SELECT pg_advisory_unlock($1)", key)
+		holder.Release()
+		t.Fatal("withAdvisoryLock reported it ran while another session held the lock")
+	}
 	if ran {
 		_, _ = holder.Exec(ctx, "SELECT pg_advisory_unlock($1)", key)
 		holder.Release()
@@ -77,8 +81,71 @@ func TestWithAdvisoryLockSkipsWhenHeld(t *testing.T) {
 	holder.Release()
 
 	ran2 := false
-	api.withAdvisoryLock(ctx, name, func() { ran2 = true })
+	if got := api.withAdvisoryLock(ctx, name, func() { ran2 = true }); !got {
+		t.Fatal("withAdvisoryLock reported a skip after the lock was released")
+	}
 	if !ran2 {
 		t.Fatal("work did not run after the lock was released")
+	}
+}
+
+// The regression this task is about: fn cancels the context it was handed (a
+// worker being torn down mid-tick — exactly what drainOutboxUntil does every
+// couple of seconds). The deferred pg_advisory_unlock must still reach the
+// server; otherwise the connection returns to the pool with the session lock
+// still held and every *other* session silently loses the try-lock from then on.
+// Checked from an independent pool so the probe cannot land on the very
+// connection that leaked (advisory locks are re-entrant within one session and
+// would hide the bug).
+func TestWithAdvisoryLockReleasesOnCancelledContext(t *testing.T) {
+	url := os.Getenv("TEST_DATABASE_URL")
+	if url == "" {
+		url = "postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable"
+	}
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Skipf("no test DB: %v", err)
+	}
+	defer pool.Close()
+	if err := pool.Ping(ctx); err != nil {
+		t.Skipf("no test DB: %v", err)
+	}
+	probePool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		t.Skipf("no test DB: %v", err)
+	}
+	defer probePool.Close()
+
+	api := NewAPI(db.New(pool), pool, realtime.NewHub(), t.TempDir(),
+		"integration-test-encryption-key", mail.New(mail.Config{}), "http://test", "")
+
+	const name = "test-worklock-cancel"
+	key := advisoryKey(name)
+
+	workCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	ran := false
+	if got := api.withAdvisoryLock(workCtx, name, func() { ran = true; cancel() }); !got {
+		t.Fatal("withAdvisoryLock reported a skip on a free lock")
+	}
+	if !ran {
+		t.Fatal("work did not run on a free lock")
+	}
+
+	probe, err := probePool.Acquire(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer probe.Release()
+	var free bool
+	if err := probe.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", key).Scan(&free); err != nil {
+		t.Fatal(err)
+	}
+	if !free {
+		t.Fatal("advisory lock still held after the work returned: the deferred unlock ran on the cancelled context and never reached the server")
+	}
+	if _, err := probe.Exec(ctx, "SELECT pg_advisory_unlock($1)", key); err != nil {
+		t.Fatal(err)
 	}
 }
