@@ -6,7 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ServiceInfo
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -15,6 +15,8 @@ import androidx.core.content.ContextCompat
 import website.msdnna.tessera.MainActivity
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.util.confServiceAllowed
+import website.msdnna.tessera.util.confServiceTypes
 import website.msdnna.tessera.util.normalizeLanguage
 import website.msdnna.tessera.util.withLanguage
 
@@ -28,23 +30,35 @@ import website.msdnna.tessera.util.withLanguage
  * access to the microphone and camera, and the ongoing entry is the user's way
  * back to the call.
  *
- * The type is declared as microphone+camera together because the service starts
- * before we know which the user will turn on, and a service cannot widen its own
- * type later.
+ * The manifest declares microphone+camera because the service starts before we
+ * know which the user will turn on. What it *runs* as is narrower: only the types
+ * whose runtime permission is already granted, re-evaluated on every start, since
+ * Android 14 kills an app that declares a type it has no permission for.
  */
 class ConferenceCallService : android.app.Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        ensureChannelIfMissing(this)
-        // The type is only a concept from Q onwards; below it the argument is
-        // ignored, so one call covers both rather than two branches that drift.
-        val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
-        } else {
-            0
+        // Started anyway on a phone that revoked the microphone between the
+        // decision and this call. Stopping now is what the platform expects —
+        // it is the going-foreground that it refuses, not the service.
+        if (!canRun(this)) {
+            stopSelf()
+            return START_NOT_STICKY
         }
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(this), type)
+        ensureChannelIfMissing(this)
+        // The declared type is what is *granted*, never the full manifest pair:
+        // Android 14 throws out of startForeground for a `camera` service in an
+        // app without the camera permission, and the camera is asked for from the
+        // toolbar — long after the call has already started (#2896).
+        val type = grantedTypes(this)
+        val started = runCatching {
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification(this), type)
+        }.isSuccess
+        // A refusal we did not foresee is a call without background life, not a
+        // crash — but the service has to go, or the platform kills the process
+        // for a foreground service that never went foreground.
+        if (!started) stopSelf()
         // Not sticky: a call the system had to kill is over, and reviving the
         // service without a room would show an ongoing notification for a
         // conference nobody is in.
@@ -94,12 +108,36 @@ class ConferenceCallService : android.app.Service() {
          */
         fun apply(context: Context, needed: Boolean) {
             val intent = Intent(context, ConferenceCallService::class.java)
-            if (needed) {
+            if (needed && canRun(context)) {
                 runCatching { ContextCompat.startForegroundService(context, intent) }
             } else {
                 runCatching { context.stopService(intent) }
             }
         }
+
+        /**
+         * The foreground-service type for the permissions held at this instant.
+         *
+         * Read here rather than remembered from the join: the microphone dialog
+         * is answered *after* the room screen asks to connect, and the camera one
+         * only when somebody presses the button. Every session change re-applies
+         * the service, so a grant that arrives late still widens the type.
+         */
+        internal fun grantedTypes(context: Context): Int = confServiceTypes(
+            micGranted = context.granted(android.Manifest.permission.RECORD_AUDIO),
+            camGranted = context.granted(android.Manifest.permission.CAMERA),
+            sdk = Build.VERSION.SDK_INT,
+        )
+
+        /** Whether starting the service is something the platform will allow. */
+        internal fun canRun(context: Context): Boolean = confServiceAllowed(
+            micGranted = context.granted(android.Manifest.permission.RECORD_AUDIO),
+            camGranted = context.granted(android.Manifest.permission.CAMERA),
+            sdk = Build.VERSION.SDK_INT,
+        )
+
+        private fun Context.granted(permission: String): Boolean =
+            ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
         /**
          * The shade entry for a screen being shared (#2896 §8).

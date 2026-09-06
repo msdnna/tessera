@@ -1,5 +1,6 @@
 package website.msdnna.tessera.util
 
+import android.content.pm.ServiceInfo
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import website.msdnna.tessera.data.model.ConferenceToken
@@ -188,5 +189,39 @@ class ConferenceMediaTest {
         assertThat(needsCallService(ConfMediaStatus.IDLE)).isFalse()
         assertThat(needsCallService(ConfMediaStatus.ERROR)).isFalse()
         assertThat(needsCallService(ConfMediaStatus.UNAVAILABLE)).isFalse()
+    }
+
+    @Test
+    fun `the service type never claims a permission we do not hold`() {
+        // The crash this exists for: the room screen connects first and asks for
+        // the microphone second, and the camera is only ever asked for from the
+        // toolbar — so at the moment the service starts, the camera is not ours.
+        // A `camera` type there is a SecurityException out of startForeground.
+        assertThat(confServiceTypes(micGranted = false, camGranted = false, sdk = 34)).isEqualTo(0)
+        assertThat(confServiceTypes(micGranted = true, camGranted = false, sdk = 34))
+            .isEqualTo(ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE)
+        assertThat(confServiceTypes(micGranted = false, camGranted = true, sdk = 34))
+            .isEqualTo(ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA)
+        // Both, once the toolbar's dialog has been answered: widening is allowed,
+        // the service is restarted on every session change, and by then we hold it.
+        assertThat(confServiceTypes(micGranted = true, camGranted = true, sdk = 34)).isEqualTo(
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA,
+        )
+    }
+
+    @Test
+    fun `types are not a concept before Q`() {
+        assertThat(confServiceTypes(micGranted = true, camGranted = true, sdk = 28)).isEqualTo(0)
+    }
+
+    @Test
+    fun `a listener-only call keeps its service below 14 and loses it on 14`() {
+        // From 14 a zero type falls back to everything the manifest declares —
+        // camera included — so «no permissions» has to mean «no service», not
+        // «an untyped one».
+        assertThat(confServiceAllowed(micGranted = false, camGranted = false, sdk = 34)).isFalse()
+        assertThat(confServiceAllowed(micGranted = false, camGranted = false, sdk = 33)).isTrue()
+        // One permission is enough: that type alone is legal.
+        assertThat(confServiceAllowed(micGranted = true, camGranted = false, sdk = 34)).isTrue()
     }
 }

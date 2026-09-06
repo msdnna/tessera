@@ -1,5 +1,7 @@
 package website.msdnna.tessera.util
 
+import android.content.pm.ServiceInfo
+import android.os.Build
 import website.msdnna.tessera.data.repository.ConfTokenResult
 
 /*
@@ -218,3 +220,42 @@ fun showsVideo(hasTrack: Boolean, muted: Boolean, subscribed: Boolean): Boolean 
  */
 fun needsCallService(status: ConfMediaStatus): Boolean =
     status == ConfMediaStatus.CONNECTING || status == ConfMediaStatus.LIVE
+
+/**
+ * The foreground-service types the call may declare *right now* (#2896 §4).
+ *
+ * A type is not a wish: from Android 14 the platform refuses to start a service
+ * typed `camera` unless the app already holds the `CAMERA` runtime permission,
+ * and `microphone` unless it holds `RECORD_AUDIO` — and it refuses by throwing
+ * out of `startForeground`, on the main thread, which is the app going away.
+ * Both are asked for from inside the call (the microphone on entry, the camera
+ * from the toolbar), so at the moment the service starts we usually hold neither
+ * of them, or only the first.
+ *
+ * Hence the type follows what is granted rather than what the manifest allows.
+ * Widening later is fine — the service is restarted whenever the session changes,
+ * and by then the answer to the dialog is in.
+ */
+fun confServiceTypes(micGranted: Boolean, camGranted: Boolean, sdk: Int): Int {
+    if (sdk < Build.VERSION_CODES.Q) return 0
+    var types = 0
+    if (micGranted) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+    if (camGranted) types = types or ServiceInfo.FOREGROUND_SERVICE_TYPE_CAMERA
+    return types
+}
+
+/**
+ * Whether the call service can run at all with the permissions granted.
+ *
+ * Only Android 14 and up can answer «no»: there a typed service is mandatory and
+ * a zero type falls back to *everything the manifest declares* — camera included
+ * — which is the crash this exists to avoid. Below that a service with no type
+ * is a normal service, so a call joined as a listener still survives the user
+ * switching apps.
+ *
+ * Losing the service on 14+ costs a listener-only call its background life. That
+ * is the honest trade: the alternative is not «a service», it is a process that
+ * dies at the moment somebody joins a meeting.
+ */
+fun confServiceAllowed(micGranted: Boolean, camGranted: Boolean, sdk: Int): Boolean =
+    sdk < Build.VERSION_CODES.UPSIDE_DOWN_CAKE || micGranted || camGranted
