@@ -53,6 +53,7 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.GitlabJournalViewModel
+import website.msdnna.tessera.ui.viewmodels.RunActions
 import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.dueLabel
@@ -123,14 +124,21 @@ fun GitLabJournalScreen(workspaceId: String, vm: GitlabJournalViewModel = viewMo
                     actions = state.actionsByRun[run.id],
                     loadingActions = state.loadingActions && state.expandedRunId == run.id,
                     onToggle = { vm.toggleRun(workspaceId, run) },
-                    onAction = { vm.select(run, it) },
+                    onAction = { vm.select(workspaceId, run, it) },
+                    onLoadMore = { vm.loadMoreActions(workspaceId, run) },
                 )
             }
         }
     }
 
     state.selected?.let { (run, action) ->
-        ActionDetailDialog(run, action, retrying = state.retrying, onRetry = { vm.retry(workspaceId) }, onDismiss = { vm.closeDetail() })
+        ActionDetailDialog(
+            run, action,
+            loadingDetail = state.loadingDetail,
+            retrying = state.retrying,
+            onRetry = { vm.retry(workspaceId) },
+            onDismiss = { vm.closeDetail() },
+        )
     }
 }
 
@@ -138,10 +146,11 @@ fun GitLabJournalScreen(workspaceId: String, vm: GitlabJournalViewModel = viewMo
 private fun RunRow(
     run: GitlabSyncRun,
     expanded: Boolean,
-    actions: List<GitlabSyncAction>?,
+    actions: RunActions?,
     loadingActions: Boolean,
     onToggle: () -> Unit,
     onAction: (GitlabSyncAction) -> Unit,
+    onLoadMore: () -> Unit,
 ) {
     val c = Tessera.colors
     // Дату, подпись триггера и счётчики собирают обычные функции — ресурсы берём из
@@ -168,26 +177,46 @@ private fun RunRow(
         if (expanded) {
             Column(Modifier.padding(start = 14.dp, bottom = 6.dp)) {
                 when {
-                    loadingActions -> Text(stringResource(R.string.common_loading), color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(6.dp))
+                    // Первая страница ещё в пути: пока список пуст, показываем именно
+                    // загрузку, а не «нет действий».
+                    loadingActions && actions == null ->
+                        Text(stringResource(R.string.common_loading), color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(6.dp))
 
-                    actions.isNullOrEmpty() -> Text(
+                    actions == null || actions.items.isEmpty() -> Text(
                         stringResource(R.string.gljournal_no_actions),
                         color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(6.dp),
                     )
 
-                    else -> actions.forEach { a ->
-                        Row(
-                            Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusSm)).clickableNoRipple { onAction(a) }
-                                .padding(vertical = 5.dp, horizontal = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(a.op.uppercase(), color = opColor(a.op), fontSize = 10.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.width(52.dp))
+                    else -> {
+                        actions.items.forEach { a ->
+                            Row(
+                                Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusSm)).clickableNoRipple { onAction(a) }
+                                    .padding(vertical = 5.dp, horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    a.op.uppercase(),
+                                    color = opColor(a.op), fontSize = 10.sp, fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.width(52.dp),
+                                )
+                                Text(
+                                    a.summary,
+                                    color = if (a.status == "fail") ERR else c.text2,
+                                    fontSize = 12.5.sp,
+                                    maxLines = 1,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
+                        // Прогон отдаётся страницами по 500 — без этого длинный
+                        // прогон молча выглядел бы обрезанным.
+                        if (actions.hasMore) {
                             Text(
-                                a.summary,
-                                color = if (a.status == "fail") ERR else c.text2,
-                                fontSize = 12.5.sp,
-                                maxLines = 1,
-                                modifier = Modifier.weight(1f),
+                                stringResource(if (loadingActions) R.string.common_loading else R.string.gljournal_load_more),
+                                color = c.primary, fontSize = 12.sp,
+                                modifier = Modifier.clip(RoundedCornerShape(RadiusSm))
+                                    .clickableNoRipple(enabled = !loadingActions, onClick = onLoadMore)
+                                    .padding(vertical = 6.dp, horizontal = 8.dp),
                             )
                         }
                     }
@@ -201,6 +230,7 @@ private fun RunRow(
 private fun ActionDetailDialog(
     run: GitlabSyncRun,
     action: GitlabSyncAction,
+    loadingDetail: Boolean,
     retrying: Boolean,
     onRetry: () -> Unit,
     onDismiss: () -> Unit,
@@ -225,6 +255,14 @@ private fun ActionDetailDialog(
             )
             Spacer(Modifier.height(2.dp))
             Text(action.summary, color = c.text1, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+
+            // Дифф в списке не приезжает — он догружается по строке, и до его
+            // прихода секции ниже пусты.
+            if (loadingDetail) {
+                DetailSection {
+                    Text(stringResource(R.string.common_loading), color = c.text3, fontSize = 12.5.sp)
+                }
+            }
 
             // pull: changed fields
             detail.objOrNull("fields")?.let { fields ->

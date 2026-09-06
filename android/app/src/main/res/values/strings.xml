@@ -1039,6 +1039,7 @@
          задачи, что показывает модалка. -->
     <string name="gljournal_empty">Журнал пуст — синхронизация ещё не запускалась</string>
     <string name="gljournal_no_actions">Нет записанных действий</string>
+    <string name="gljournal_load_more">Показать ещё</string>
     <string name="gljournal_trigger_manual">вручную</string>
     <string name="gljournal_trigger_auto">авто</string>
     <string name="gljournal_run_meta">%1$s · %2$s</string>

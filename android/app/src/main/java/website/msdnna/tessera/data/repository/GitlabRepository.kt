@@ -44,8 +44,19 @@ class GitlabRepository {
     /** Sync-journal: recent runs, the actions of one run, and retrying a failed push. */
     suspend fun syncRuns(workspaceId: String): List<website.msdnna.tessera.data.model.GitlabSyncRun> =
         api.gitlabSyncRuns(workspaceId).orEmpty()
-    suspend fun syncActions(workspaceId: String, runId: String): List<website.msdnna.tessera.data.model.GitlabSyncAction> =
-        api.gitlabSyncActions(workspaceId, runId).orEmpty()
+
+    /** One page of a run's actions; [afterSeq] = the previous page's cursor (null = first page). */
+    suspend fun syncActions(
+        workspaceId: String,
+        runId: String,
+        afterSeq: Int? = null,
+    ): website.msdnna.tessera.data.model.GitlabSyncActionsPage =
+        api.gitlabSyncActions(workspaceId, runId, afterSeq)
+
+    /** One action's before/after diff, omitted from the list response. */
+    suspend fun syncActionDetail(workspaceId: String, runId: String, actionId: String): com.google.gson.JsonObject =
+        api.gitlabSyncActionDetail(workspaceId, runId, actionId).detail ?: com.google.gson.JsonObject()
+
     suspend fun retryWriteback(workspaceId: String, runId: String, actionId: String) =
         api.gitlabRetryWriteback(workspaceId, runId, actionId)
 
