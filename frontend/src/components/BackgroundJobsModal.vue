@@ -415,4 +415,27 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
   display: flex;
   gap: 8px;
 }
+/* Phone (#2893): `flex: 0 0 320px` refuses to shrink, so on a 393px screen the
+   list eats the row and the detail pane is left with ~40px — it wraps one letter
+   per line rather than overflowing, which is why the width gates stayed green.
+   Stack the two instead. The list's `max-height: 62vh` also has to go here: it is
+   there to keep the desktop side-by-side layout from growing taller than the
+   viewport, but stacked it just clips the list well above the bottom of the
+   screen (the second half of the report's point 2). */
+@media (max-width: 768px) {
+  .bj-panes {
+    flex-direction: column;
+    min-height: 0;
+  }
+  .bj-list {
+    flex: 0 0 auto;
+    max-height: 34vh;
+  }
+  .bj-detail {
+    border-left: none;
+    border-top: 1px solid var(--t-border);
+    padding-left: 0;
+    padding-top: 12px;
+  }
+}
 </style>

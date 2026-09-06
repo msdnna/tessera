@@ -475,6 +475,28 @@ defineExpose({ reload: () => loadRuns() })
   overflow-y: auto;
   padding-left: 16px;
 }
+/* Phone (#2893): 300px + 1fr on a 393px screen leaves the detail pane ~30px of
+   client width, and it does not overflow — it wraps one letter per line, which is
+   why no width gate ever saw it. Stack the panes instead: runs on top, the
+   selected action's detail under them. Both keep their own scroll, and the left
+   one gets a height cap so a long run list can't push the detail off-screen. */
+@media (max-width: 768px) {
+  .j-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .j-left {
+    border-right: none;
+    border-bottom: 1px solid var(--t-border);
+    padding-right: 0;
+    padding-bottom: 8px;
+    max-height: 40vh;
+  }
+  .j-right {
+    padding-left: 0;
+    padding-top: 12px;
+  }
+}
 
 /* runs */
 .j-run + .j-run {

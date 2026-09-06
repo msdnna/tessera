@@ -22,6 +22,7 @@ import { taskBasePatch } from '@/utils/taskPatch'
 import TaskMiniCard from '../TaskMiniCard.vue'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useDateLocale } from '@/composables/useDateLocale'
+import { useResponsive } from '@/composables/useResponsive'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -47,6 +48,16 @@ const membersMap = bv.membersMap
 const tagPrefixNames = bv.prefixNames
 const { formatDue } = useDateLocale()
 const { t } = useI18n()
+// The hover preview is a pointer affordance and on a phone it is actively
+// harmful (#2893): a touch fires `mouseover` but never `mouseleave`, so the card
+// opens on the FIRST tap and stays up. It is placed to the right of a row that
+// already starts ~330px into a 393px screen, so it hangs 205px off the edge and
+// `documentElement.scrollWidth` jumps 393 → 598. Mobile Chrome then sizes the
+// modal's `position: fixed` container against that widened document, so the task
+// modal that the same tap opened is centred on 598 and lands ~110px off to the
+// right, half of it past the screen edge — the report's first screenshot. There
+// is nothing to hover with on touch, so the preview simply doesn't exist there.
+const { isMobile } = useResponsive()
 
 // Mutable mirror for drag-reorder of subtasks; resynced from the prop.
 const subModel = ref([])
@@ -130,7 +141,7 @@ async function toggleSubDone(s) {
              real element per item, so the hover n-popover lives INSIDE it (making
              the popover the item root breaks Sortable → the whole parent card drags). -->
         <div v-else class="subrow-slot">
-          <n-popover trigger="hover" placement="right" :delay="250">
+          <n-popover trigger="hover" placement="right" :delay="250" :disabled="isMobile">
             <template #trigger>
               <div
                 class="subrow"

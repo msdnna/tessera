@@ -75,6 +75,15 @@ const mountCard = async (props = {}, seed = {}) => {
 describe('TaskCard after the pills/subtasks split', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    // The child list asks useResponsive whether it is on a phone (it switches the
+    // hover preview off there — #2893), and jsdom has no matchMedia at all, so
+    // without this the whole card fails to mount. Desktop width: these cases are
+    // about the card's structure, and the mobile behaviour has its own e2e.
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })
     update.mockClear()
   })
 

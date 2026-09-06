@@ -54,7 +54,15 @@ const stubs = {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  // The subtasks tab asks useResponsive whether it is on a phone (the hover
+  // preview is off there — #2893); jsdom has no matchMedia, so the mount would
+  // throw. Desktop width — the mobile behaviour is covered by the e2e tier.
   vi.clearAllMocks()
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })
 })
 
 // ── history ───────────────────────────────────────────────────────────────────
