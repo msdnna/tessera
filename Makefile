@@ -430,9 +430,35 @@ format-android: ## Auto-format Kotlin sources via ktlint
 test-android: ## Run Android unit tests
 	@$(ANDROID_GRADLE) :app:testDebugUnitTest
 
+# Narrows the e2e tier to one class or method, e.g.
+#   make test-e2e-android E2E_ANDROID_TESTS='website.msdnna.tessera.e2e.TaskModalE2eTest'
+# A tier-only failure that passes in isolation is the signature of cross-test
+# leakage, and this is how the two are told apart. Narrowing to a *pair* is the
+# next step of that bisect, so the value is a comma-separated list: Gradle takes
+# one pattern per `--tests`, and a comma inside a single one matches nothing and
+# fails the build with «No tests found» rather than running anything.
+E2E_ANDROID_TESTS ?= website.msdnna.tessera.e2e.*
+comma := ,
+empty :=
+space := $(empty) $(empty)
+e2e_android_filters = $(foreach t,$(subst $(comma),$(space),$(E2E_ANDROID_TESTS)),--tests '$(t)')
+
+# The address the harness itself resolves (`E2eBackend.serverUrl`), so the guard
+# below probes what the specs will probe rather than a second, drifting default.
+e2e_android_url = $(if $(TESSERA_E2E_URL),$(TESSERA_E2E_URL),http://localhost:$(E2E_PORT))
+
 .PHONY: test-e2e-android
 test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e-backend-up`)
-	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests 'website.msdnna.tessera.e2e.*'
+	@# Without the backend every spec `Assume`s itself away, and the tier still
+	@# exits 0 with «BUILD SUCCESSFUL» — indistinguishable from a real green run
+	@# unless you count SKIPPED lines. That silence has already been mistaken for
+	@# evidence here (a bisect round read as 8/8 green while nothing ran), so this
+	@# target refuses to start rather than hand back a green that means nothing.
+	@curl -sf -m 5 $(e2e_android_url)/api/health > /dev/null || { \
+		echo "e2e backend is not reachable at $(e2e_android_url) — run 'make e2e-backend-up'." >&2; \
+		echo "(Running anyway would SKIP every spec and still report BUILD SUCCESSFUL.)" >&2; \
+		exit 1; }
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e $(e2e_android_filters)
 
 # The instrumented smoke tier: needs a connected device or a running emulator,
 # and reaches the throwaway backend through the emulator's 10.0.2.2 host alias
