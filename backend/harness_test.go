@@ -32,6 +32,7 @@ import (
 	"tessera/internal/db"
 	"tessera/internal/mail"
 	"tessera/internal/realtime"
+	"tessera/internal/testutil"
 	"tessera/migrations"
 )
 
@@ -67,8 +68,10 @@ func TestMain(m *testing.M) {
 	}
 	mig, err := migrate.NewWithSourceInstance("iofs", src, toPgx5URL(dbURL))
 	if err != nil {
-		log.Printf("harness: no test database reachable (%v) — skipping integration tests", err)
-		os.Exit(0)
+		// An unreachable database stays a skip by default, but it must not look
+		// like a green run: SkipOrFail prints a banner and honours
+		// TESSERA_TEST_REQUIRE_DB. See internal/testutil/dbgate.go (#2736).
+		os.Exit(testutil.SkipOrFail("integration", err))
 	}
 	if err := mig.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		log.Fatalf("harness: migrate up: %v", err)
