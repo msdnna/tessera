@@ -1,8 +1,12 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover } from 'naive-ui'
-import { TabletLandscapeOutline, TabletPortraitOutline } from '@vicons/ionicons5'
+import {
+  EllipsisHorizontalOutline,
+  TabletLandscapeOutline,
+  TabletPortraitOutline,
+} from '@vicons/ionicons5'
 import TesseraIcon from '@/components/TesseraIcon.vue'
 import { toolbarGroups, lineHeightLabel } from '@/utils/docToolbar'
 import { fontFamilies, FONT_SIZES } from '@/utils/docSchema'
@@ -65,6 +69,63 @@ const groups = computed(() => {
     onPickImage: () => emit('pick-image'),
   })
 })
+
+/* ---- narrow layout (#2893) ----------------------------------------------
+ * Thirty-odd buttons wrap into three rows on a 393px screen, and the third row
+ * pushes the text itself below the fold. So on a phone the row keeps what a
+ * writer reaches for while typing — undo/redo, headings, character formatting —
+ * and everything that acts on the document rather than on the words (alignment,
+ * lists, insertions, the page setup, the font pickers) moves behind one toggle.
+ *
+ * The extra groups expand *in place* rather than into a popover on purpose: the
+ * font, size, line-height and page pickers are popovers themselves, and a
+ * popover opened from inside another one closes its parent on the click that
+ * opens it (naive-ui routes it as a clickoutside).
+ *
+ * The breakpoint matches DocumentsView's NARROW_PX: below it the working area is
+ * a single column, which is exactly when the toolbar has no width to spare.
+ */
+const NARROW_PX = 900
+const narrow = ref(false)
+const moreOpen = ref(false)
+// The groups a writer uses on the text in front of them; the rest are document
+// structure and can wait behind the toggle.
+const PRIMARY_GROUPS = ['history', 'headings', 'format']
+let narrowQuery = null
+
+function onNarrowChange(e) {
+  narrow.value = e.matches
+  // Collapse on the way in only: leaving narrow reveals everything anyway, and
+  // resetting the flag there would reopen the row the next time the window
+  // shrinks.
+  if (e.matches) moreOpen.value = false
+}
+
+onMounted(() => {
+  narrowQuery = window.matchMedia?.(`(max-width: ${NARROW_PX}px)`)
+  if (!narrowQuery) return
+  narrow.value = narrowQuery.matches
+  narrowQuery.addEventListener('change', onNarrowChange)
+})
+onBeforeUnmount(() => narrowQuery?.removeEventListener('change', onNarrowChange))
+
+// What the row actually draws. Wide, or expanded: everything.
+const shownGroups = computed(() =>
+  narrow.value && !moreOpen.value
+    ? groups.value.filter((g) => PRIMARY_GROUPS.includes(g.key))
+    : groups.value,
+)
+// The page setup travels with the hidden groups: it is the most document-level
+// control of the lot.
+const showPage = computed(() => !narrow.value || moreOpen.value)
+
+function toggleMore() {
+  moreOpen.value = !moreOpen.value
+  // A picker whose button is about to unmount would otherwise leave the panel
+  // believing something is open, and the next click on that key would be read
+  // as a second toggle and do nothing.
+  openPicker.value = ''
+}
 
 const fontFamily = computed(() => {
   void tick.value
@@ -252,7 +313,7 @@ function pick(picker, value) {
          width, and with alignment down to icons and the pickers down to glyphs
          everything fits. The separators are what group the tools now. -->
     <div class="row">
-      <template v-for="(g, gi) in groups" :key="g.key">
+      <template v-for="(g, gi) in shownGroups" :key="g.key">
         <span v-if="gi" class="sep" />
         <template v-if="g.kind === 'selects'">
           <n-popover
@@ -315,106 +376,123 @@ function pick(picker, value) {
       <!-- Page setup sits last and behind its own separator: it changes the
            sheet rather than the selection, so it does not belong in any of the
            command groups above. -->
-      <span class="sep" />
-      <n-popover
-        :show="openPicker === 'page'"
-        trigger="manual"
-        placement="bottom-end"
-        :show-arrow="false"
-        @clickoutside="openPicker = ''"
+      <!-- On a phone this is the switch that reveals the groups above; it is
+           the last thing in the row so the tools keep their reading order. -->
+      <button
+        v-if="narrow"
+        type="button"
+        class="doc-tbtn"
+        :class="{ on: moreOpen }"
+        :title="moreOpen ? $t('documents.toolbar.less') : $t('documents.toolbar.more')"
+        :aria-expanded="moreOpen"
+        data-tbtn="more"
+        data-testid="doc-toolbar-more"
+        @click="toggleMore"
       >
-        <template #trigger>
-          <button
-            type="button"
-            class="doc-tbtn"
-            :title="pageTitle"
-            data-tbtn="page"
-            data-testid="doc-page-setup"
-            @click="togglePicker('page')"
-          >
-            <n-icon
-              :component="landscape ? TabletLandscapeOutline : TabletPortraitOutline"
-              :size="15"
-            />
-          </button>
-        </template>
-        <div class="page-setup" data-testid="doc-page-panel">
-          <div class="ps-row">
-            <span class="ps-label">{{ $t('documents.toolbar.page.size') }}</span>
-            <div class="ps-opts">
-              <button
-                v-for="s in sizeOptions"
-                :key="s.key"
-                type="button"
-                class="ps-chip"
-                :class="{ on: s.on }"
-                :data-page-size="s.key"
-                @click="s.apply()"
-              >
-                {{ s.label }}
-              </button>
+        <n-icon :component="EllipsisHorizontalOutline" :size="15" />
+      </button>
+      <template v-if="showPage">
+        <span class="sep" />
+        <n-popover
+          :show="openPicker === 'page'"
+          trigger="manual"
+          placement="bottom-end"
+          :show-arrow="false"
+          @clickoutside="openPicker = ''"
+        >
+          <template #trigger>
+            <button
+              type="button"
+              class="doc-tbtn"
+              :title="pageTitle"
+              data-tbtn="page"
+              data-testid="doc-page-setup"
+              @click="togglePicker('page')"
+            >
+              <n-icon
+                :component="landscape ? TabletLandscapeOutline : TabletPortraitOutline"
+                :size="15"
+              />
+            </button>
+          </template>
+          <div class="page-setup" data-testid="doc-page-panel">
+            <div class="ps-row">
+              <span class="ps-label">{{ $t('documents.toolbar.page.size') }}</span>
+              <div class="ps-opts">
+                <button
+                  v-for="s in sizeOptions"
+                  :key="s.key"
+                  type="button"
+                  class="ps-chip"
+                  :class="{ on: s.on }"
+                  :data-page-size="s.key"
+                  @click="s.apply()"
+                >
+                  {{ s.label }}
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="ps-row">
-            <span class="ps-label">{{ $t('documents.toolbar.page.orientation') }}</span>
-            <div class="ps-opts">
-              <button
-                type="button"
-                class="ps-chip"
-                :class="{ on: !landscape }"
-                data-page-orientation="portrait"
-                @click="setOrientation(false)"
-              >
-                {{ $t('documents.toolbar.page.portrait') }}
-              </button>
-              <button
-                type="button"
-                class="ps-chip"
-                :class="{ on: landscape }"
-                data-page-orientation="landscape"
-                @click="setOrientation(true)"
-              >
-                {{ $t('documents.toolbar.page.landscape') }}
-              </button>
+            <div class="ps-row">
+              <span class="ps-label">{{ $t('documents.toolbar.page.orientation') }}</span>
+              <div class="ps-opts">
+                <button
+                  type="button"
+                  class="ps-chip"
+                  :class="{ on: !landscape }"
+                  data-page-orientation="portrait"
+                  @click="setOrientation(false)"
+                >
+                  {{ $t('documents.toolbar.page.portrait') }}
+                </button>
+                <button
+                  type="button"
+                  class="ps-chip"
+                  :class="{ on: landscape }"
+                  data-page-orientation="landscape"
+                  @click="setOrientation(true)"
+                >
+                  {{ $t('documents.toolbar.page.landscape') }}
+                </button>
+              </div>
             </div>
-          </div>
-          <div class="ps-row">
-            <span class="ps-label">{{ $t('documents.toolbar.page.marginsLabel') }}</span>
-            <div class="ps-opts">
-              <button
-                v-for="m in marginOptions"
-                :key="m.key"
-                type="button"
-                class="ps-chip"
-                :class="{ on: m.on }"
-                :data-page-margins="m.key"
-                @click="m.apply()"
-              >
-                {{ m.label }}
-              </button>
+            <div class="ps-row">
+              <span class="ps-label">{{ $t('documents.toolbar.page.marginsLabel') }}</span>
+              <div class="ps-opts">
+                <button
+                  v-for="m in marginOptions"
+                  :key="m.key"
+                  type="button"
+                  class="ps-chip"
+                  :class="{ on: m.on }"
+                  :data-page-margins="m.key"
+                  @click="m.apply()"
+                >
+                  {{ m.label }}
+                </button>
+              </div>
             </div>
-          </div>
-          <!-- The numbers, read-only. The pickers above cover what a document
+            <!-- The numbers, read-only. The pickers above cover what a document
                needs; showing the millimetres is what makes an imported geometry
                that matches no preset legible instead of leaving every chip
                unlit with no explanation. -->
-          <p class="ps-current" data-testid="doc-page-dims">{{ pageDims }}</p>
-          <!-- The break belongs here rather than in the toolbar row: what the
+            <p class="ps-current" data-testid="doc-page-dims">{{ pageDims }}</p>
+            <!-- The break belongs here rather than in the toolbar row: what the
                three pickers above change is *this* section, and the only way to
                get a second one is from the same panel (#2827). It is drawn as a
                full-width action instead of a chip because it inserts something
                into the document rather than setting a value. -->
-          <button
-            type="button"
-            class="ps-action"
-            data-testid="doc-section-break"
-            @click="insertBreak()"
-          >
-            {{ $t('documents.toolbar.page.sectionBreak') }}
-          </button>
-          <p class="ps-hint">{{ $t('documents.toolbar.page.sectionHint') }}</p>
-        </div>
-      </n-popover>
+            <button
+              type="button"
+              class="ps-action"
+              data-testid="doc-section-break"
+              @click="insertBreak()"
+            >
+              {{ $t('documents.toolbar.page.sectionBreak') }}
+            </button>
+            <p class="ps-hint">{{ $t('documents.toolbar.page.sectionHint') }}</p>
+          </div>
+        </n-popover>
+      </template>
     </div>
   </div>
 </template>
