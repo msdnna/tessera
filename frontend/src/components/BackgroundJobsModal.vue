@@ -2,12 +2,19 @@
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NModal, NButton, NIcon, NTooltip, useMessage } from 'naive-ui'
-import { PlayOutline, StopOutline, ServerOutline, SyncOutline } from '@vicons/ionicons5'
+import {
+  ChevronBackOutline,
+  PlayOutline,
+  StopOutline,
+  ServerOutline,
+  SyncOutline,
+} from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import { admin as adminApi } from '@/api'
 import { runDuration, elapsedSince } from '@/utils/duration'
 import { jobName as jobLabel, jobOpText } from '@/utils/jobLabels'
 import { useFormat } from '@/composables/useFormat'
+import { useResponsive } from '@/composables/useResponsive'
 
 const props = defineProps({ show: { type: Boolean, default: false } })
 const emit = defineEmits(['update:show'])
@@ -26,13 +33,21 @@ let pollTimer = null
 let tickTimer = null
 
 const selected = computed(() => jobs.value.find((j) => j.key === selectedKey.value) || null)
+// Phone layout (#2893): list and detail are two screens, not two stacked panes.
+const { isMobile } = useResponsive()
+const mobileDetail = computed(() => isMobile.value && !!selected.value)
 
 async function load() {
   loading.value = true
   try {
     const { data } = await adminApi.jobs()
     jobs.value = data || []
-    if (!selected.value && jobs.value.length) selectedKey.value = jobs.value[0].key
+    // Pre-selecting the first job is a convenience for the side-by-side layout;
+    // on a phone it would open the detail screen unasked — and, because load()
+    // runs on a 3s poll, it would also drag the user back into it a beat after
+    // they tapped "back".
+    if (!selected.value && jobs.value.length && !isMobile.value)
+      selectedKey.value = jobs.value[0].key
   } catch (e) {
     message.error(e.message)
   } finally {
@@ -173,8 +188,10 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
     </template>
 
     <div class="bj-panes">
-      <!-- Left: job list -->
-      <div class="bj-list t-hoverscroll">
+      <!-- Left: job list. On a phone the list and the detail are two screens (see
+           mobileDetail) — v-show keeps the list's scroll position across a round
+           trip into a job and back. -->
+      <div v-show="!mobileDetail" class="bj-list t-hoverscroll" data-testid="jobs-list">
         <EmptyState v-if="!jobs.length" :icon="ServerOutline" :text="$t('jobs.empty')" />
         <button
           v-for="j in jobs"
@@ -200,10 +217,15 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
         </button>
       </div>
 
-      <!-- Right: details -->
-      <div class="bj-detail">
+      <!-- Right: details. Hidden until a row is picked on a phone — "выберите
+           задачу" is a prompt for a second pane that isn't there. -->
+      <div v-show="!isMobile || mobileDetail" class="bj-detail" data-testid="jobs-detail">
         <EmptyState v-if="!selected" :icon="ServerOutline" :text="$t('jobs.select')" />
         <template v-else>
+          <button v-if="isMobile" class="bj-back" @click="selectedKey = null">
+            <n-icon :component="ChevronBackOutline" :size="15" />
+            {{ $t('jobs.backToList') }}
+          </button>
           <div class="bj-detail-head">
             <span class="bj-dot" :style="{ background: statusMeta(selected.status).color }" />
             <span class="bj-detail-name">{{ jobName(selected) }}</span>
@@ -379,6 +401,23 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
   gap: 8px;
   margin-bottom: 12px;
 }
+/* Back affordance on the detail screen (phone only — see the template). */
+.bj-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+  color: var(--t-text2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.bj-back:hover {
+  background: var(--t-hover);
+}
 .bj-detail-name {
   font-weight: 600;
   font-size: 15px;
@@ -418,24 +457,22 @@ const kindIcon = (j) => (isWorker(j) ? ServerOutline : SyncOutline)
 /* Phone (#2893): `flex: 0 0 320px` refuses to shrink, so on a 393px screen the
    list eats the row and the detail pane is left with ~40px — it wraps one letter
    per line rather than overflowing, which is why the width gates stayed green.
-   Stack the two instead. The list's `max-height: 62vh` also has to go here: it is
-   there to keep the desktop side-by-side layout from growing taller than the
-   viewport, but stacked it just clips the list well above the bottom of the
-   screen (the second half of the report's point 2). */
+   Stacking the two fixed the wrap but not the reading: a capped list scrolling
+   above a full set of facts, inside the modal's own scroller, with a hairline
+   between them. The phone now shows one pane at a time (the switch is in the
+   template) and the pane it shows gets the whole modal body. */
 @media (max-width: 768px) {
   .bj-panes {
     flex-direction: column;
     min-height: 0;
   }
   .bj-list {
-    flex: 0 0 auto;
-    max-height: 34vh;
+    flex: 1 1 auto;
+    max-height: none;
   }
   .bj-detail {
     border-left: none;
-    border-top: 1px solid var(--t-border);
     padding-left: 0;
-    padding-top: 12px;
   }
 }
 </style>

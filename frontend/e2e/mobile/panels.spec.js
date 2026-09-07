@@ -78,7 +78,17 @@ test('мобильная доска: тап по подзадаче не уво�
 // and skips otherwise, because a 403'd run says nothing about the layout. It
 // must never silently pass: a skip is visible in the run summary, a green
 // assertion on an unopened modal would not be.
-test('фоновые задачи на телефоне: панель детали не сплющена', async ({ page, backend }) => {
+// Round 3 rewrote what this asserts. Round 2 stacked the two panes; the report
+// came back with "секции стали совсем запутанными" — a capped list scrolling
+// above an equally long detail, both inside the modal's own scroller, with a
+// hairline to say where one ended. So the phone now shows one pane at a time.
+// The old assertions (a wide detail pane AND a short list, on the same screen)
+// are mutually exclusive under that layout and had to go; the width floor they
+// were protecting survives here, checked on the detail screen where it applies.
+test('фоновые задачи на телефоне: список и деталь — два экрана, а не две панели', async ({
+  page,
+  backend,
+}) => {
   const me = await backend.get('/auth/me')
   test.skip(!me.user?.is_admin, 'нужен админ: экран фоновых задач за админ-гейтом')
 
@@ -90,27 +100,48 @@ test('фоновые задачи на телефоне: панель детал
   await page.locator('.topbar .menu-btn').tap()
   await page.getByTestId('jobs-button').tap()
 
-  const detail = page.locator('.bj-detail')
-  await expect(detail).toBeVisible()
+  const list = page.getByTestId('jobs-list')
+  const detail = page.getByTestId('jobs-detail')
+  await expect(list).toBeVisible()
   await page.waitForTimeout(400)
-  await page.screenshot({ path: resolve(SHOTS, 'jobs-modal.png'), fullPage: false })
+  await page.screenshot({ path: resolve(SHOTS, 'jobs-list.png'), fullPage: false })
 
-  // Side by side, `flex: 0 0 320px` on the list leaves the detail pane ~40px on a
-  // 393px screen: it does not overflow, it wraps one letter per line. The floor
-  // is well under the full width the stacked layout gives it, so restyling the
-  // modal does not make this red for no reason.
+  // Arrival is the list, whole. The detail pane must not be on screen at all:
+  // side by side it would be showing «Выберите задание», which is a prompt for a
+  // second pane — and the modal auto-picks the first job on the desktop, so
+  // without the mobile guard the user would land inside a job they never tapped.
+  await expect(detail).toBeHidden()
+  const vh = await page.evaluate(() => window.innerHeight)
+  const listH = await list.evaluate((el) => el.getBoundingClientRect().height)
+  expect(
+    listH,
+    `список заданий обрезан по высоте: ${Math.round(listH)}px при экране ${vh}px`,
+  ).toBeGreaterThan(vh * 0.3)
+
+  const rows = page.locator('.bj-row')
+  expect(await rows.count(), 'нет ни одного фонового задания — проверять нечего').toBeGreaterThan(0)
+  await rows.first().tap()
+  await page.waitForTimeout(300)
+  await page.screenshot({ path: resolve(SHOTS, 'jobs-detail.png'), fullPage: false })
+
+  await expect(detail).toBeVisible()
+  await expect(list).toBeHidden()
+
+  // The floor from round 2: side by side, `flex: 0 0 320px` on the list left the
+  // detail ~40px on a 393px screen — it did not overflow, it wrapped one letter
+  // per line. On its own screen it gets the whole modal body.
   const w = await detail.evaluate((el) => el.getBoundingClientRect().width)
   expect(
     w,
     `панель детали сжата до ${Math.round(w)}px — текст переносится по букве`,
   ).toBeGreaterThan(240)
 
-  // The second half of the report's point 2: the list was capped at 62vh *inside*
-  // a modal that is itself shorter than the screen, so its rows were cut off well
-  // above the bottom edge. Stacked, the cap only has to leave the detail pane
-  // room — assert the list is not the thing eating the modal.
-  const list = page.locator('.bj-list')
-  const listH = await list.evaluate((el) => el.getBoundingClientRect().height)
-  const vh = await page.evaluate(() => window.innerHeight)
-  expect(listH, `список занимает ${Math.round(listH)}px из ${vh}px экрана`).toBeLessThan(vh * 0.55)
+  // A screen you cannot leave is worse than a cramped pane: the modal's close
+  // button drops the whole thing, not the detail.
+  const back = page.locator('.bj-back')
+  await expect(back).toBeVisible()
+  await back.tap()
+  await page.waitForTimeout(300)
+  await expect(list).toBeVisible()
+  await expect(detail).toBeHidden()
 })
