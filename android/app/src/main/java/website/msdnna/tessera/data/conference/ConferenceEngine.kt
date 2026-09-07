@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.data.repository.ConferenceRepository
 import website.msdnna.tessera.util.CONF_VOLUME_DEFAULT
 import website.msdnna.tessera.util.ConfAudioRoute
@@ -165,6 +166,9 @@ object ConferenceEngine {
     private val repo = ConferenceRepository()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    /** Клиент сигналинга SFU — с той же политикой доверия, что и остальное приложение. */
+    private val liveKitHttp = TlsTrust.Holder()
+
     private var room: Room? = null
     private var audio: AudioSwitchHandler? = null
     private var connectJob: Job? = null
@@ -261,7 +265,17 @@ object ConferenceEngine {
                         autoGainControl = true,
                     ),
                 ),
-                overrides = LiveKitOverrides(audioOptions = AudioOptions(audioHandler = handler)),
+                overrides = LiveKitOverrides(
+                    // Сигналинг SFU — единственный поход в сеть, адрес которого
+                    // выдаёт сервер, а не человек: `wss://…` приходит вместе с
+                    // токеном. Без своего клиента переключатель «не проверять
+                    // сертификат» не достал бы до него, и самоподписанный SFU
+                    // оставался бы недоступным при рабочем остальном приложении
+                    // (#2896). Медиа-поток проверку CA не делает вовсе — там
+                    // DTLS по отпечатку из сигналинга.
+                    okHttpClient = liveKitHttp.get(),
+                    audioOptions = AudioOptions(audioHandler = handler),
+                ),
             )
             room = r
             audio = handler

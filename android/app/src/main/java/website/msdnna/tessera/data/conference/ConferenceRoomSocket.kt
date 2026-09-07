@@ -9,12 +9,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.api.TlsTrust
 
 /*
  * The conference room socket (#2896 §6, web `useConfRoom`) — everything in a
@@ -175,10 +175,10 @@ class ConferenceRoomSocket {
     private val _state = MutableStateFlow(ConfRoomState())
     val state: StateFlow<ConfRoomState> = _state.asStateFlow()
 
-    private val client = OkHttpClient.Builder()
-        .pingInterval(PING_SECONDS, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
+    private val client = TlsTrust.Holder {
+        pingInterval(PING_SECONDS, TimeUnit.SECONDS)
+        retryOnConnectionFailure(true)
+    }
     private val gson = Gson()
 
     @Volatile private var ws: WebSocket? = null
@@ -294,7 +294,7 @@ class ConferenceRoomSocket {
             return
         }
         val req = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
-        ws = client.newWebSocket(
+        ws = client.get().newWebSocket(
             req,
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {

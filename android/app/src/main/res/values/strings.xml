@@ -31,6 +31,9 @@
     <string name="auth_server_title">Сервер</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Применяется сразу. Пусто — сервер по умолчанию.</string>
+    <string name="tls_insecure_label">Не проверять сертификат</string>
+    <string name="tls_insecure_hint_off">Включите, если у сервера самоподписанный сертификат или свой центр сертификации.</string>
+    <string name="tls_insecure_hint_on">Цепочка доверия и имя хоста не проверяются — соединение можно подменить. Только для своего сервера в доверенной сети.</string>
     <string name="auth_language_switch_to">Переключить на %1$s</string>
     <string name="auth_browser_failed">Не удалось открыть браузер для входа</string>
 
@@ -92,6 +95,7 @@
 
     <!-- Настройки: локализация и форматы -->
     <string name="settings_locale_title">Локализация и форматы</string>
+    <string name="settings_connection_title">Подключение</string>
     <string name="settings_language">Язык</string>
     <string name="settings_week_start">Начало недели</string>
     <string name="settings_time_format">Формат времени</string>

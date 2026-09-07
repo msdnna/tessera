@@ -27,6 +27,9 @@
     <string name="auth_server_title">Server</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Applied immediately. Empty means the default server.</string>
+    <string name="tls_insecure_label">Skip certificate check</string>
+    <string name="tls_insecure_hint_off">Turn on if the server uses a self-signed certificate or a private certificate authority.</string>
+    <string name="tls_insecure_hint_on">The trust chain and host name are not verified — the connection can be intercepted. Only for your own server on a trusted network.</string>
     <string name="auth_language_switch_to">Switch to %1$s</string>
     <string name="auth_browser_failed">Couldn\'t open a browser to sign in</string>
 
@@ -88,6 +91,7 @@
 
     <!-- Settings: localization and formats -->
     <string name="settings_locale_title">Localization and formats</string>
+    <string name="settings_connection_title">Connection</string>
     <string name="settings_language">Language</string>
     <string name="settings_week_start">Week starts on</string>
     <string name="settings_time_format">Time format</string>

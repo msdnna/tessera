@@ -30,6 +30,11 @@ class AppPreferences(private val context: Context) {
 
     private object Keys {
         val SERVER_URL = stringPreferencesKey("server_url")
+
+        // Не проверять цепочку доверия TLS (#2896). Настройка устройства, а не
+        // профиля: она про сертификат конкретного сервера и нужна ДО входа —
+        // серверу её хранить негде, пока к нему не подключились.
+        val INSECURE_TLS = booleanPreferencesKey("insecure_tls")
         val AUTH_TOKEN = stringPreferencesKey("auth_token")
         val REFRESH_TOKEN = stringPreferencesKey("refresh_token")
         val USER_ID = stringPreferencesKey("user_id")
@@ -106,6 +111,13 @@ class AppPreferences(private val context: Context) {
     /** User-set server override; falls back to the build's default base URL. */
     val serverUrl: Flow<String> = context.dataStore.data
         .map { it[Keys.SERVER_URL]?.takeIf { url -> url.isNotBlank() } ?: BuildConfig.DEFAULT_BASE_URL }
+
+    /** Не проверять цепочку доверия и имя хоста у TLS-сертификата сервера. */
+    val insecureTls: Flow<Boolean> = context.dataStore.data.map { it[Keys.INSECURE_TLS] ?: false }
+
+    suspend fun setInsecureTls(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.INSECURE_TLS] = enabled }
+    }
 
     val authToken: Flow<String> = context.dataStore.data.map { it[Keys.AUTH_TOKEN] ?: "" }
     val refreshToken: Flow<String> = context.dataStore.data.map { it[Keys.REFRESH_TOKEN] ?: "" }

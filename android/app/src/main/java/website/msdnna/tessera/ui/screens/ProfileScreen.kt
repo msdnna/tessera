@@ -47,9 +47,11 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.model.ProfileUpdate
 import website.msdnna.tessera.data.repository.ProfileRepository
+import website.msdnna.tessera.ui.components.InsecureTlsRow
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
@@ -155,6 +157,38 @@ fun ProfileScreen() {
         PasswordCard(repo, scope)
         AppearanceCard(p, repo, scope)
         LocalizationCard(p, repo, scope)
+        ConnectionCard(prefs, scope)
+    }
+}
+
+/**
+ * Настройки подключения устройства (#2896). Отдельной карточкой, а не в
+ * «Оформлении»: всё остальное на этом экране — настройки профиля, которые
+ * уезжают на сервер и приходят на другой телефон, а эта живёт в DataStore и
+ * описывает сертификат конкретного сервера.
+ */
+@Composable
+private fun ConnectionCard(
+    prefs: website.msdnna.tessera.data.preferences.AppPreferences,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    val c = Tessera.colors
+    val insecure by prefs.insecureTls.collectAsStateWithLifecycle(initialValue = TlsTrust.insecure)
+    TCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                stringResource(R.string.settings_connection_title),
+                color = c.text1,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            InsecureTlsRow(
+                checked = insecure,
+                onCheckedChange = { scope.launch { prefs.setInsecureTls(it) } },
+                labelColor = c.text2,
+                hintColor = c.text3,
+            )
+        }
     }
 }
 

@@ -129,12 +129,14 @@ object RetrofitClient {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .callTimeout(60, TimeUnit.SECONDS)
+            .applyTrustPolicy()
             .build()
 
         refreshHttpClient = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .callTimeout(20, TimeUnit.SECONDS)
+            .applyTrustPolicy()
             .build()
 
         val gson = GsonConverterFactory.create()

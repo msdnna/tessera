@@ -29,6 +29,9 @@ object TestTags {
     const val AUTH_SERVER_TOGGLE = "auth-server-toggle"
     const val AUTH_SERVER_FIELD = "auth-server-field"
 
+    /** «Не проверять сертификат сервера» — общий якорь для экрана входа и настроек. */
+    const val TLS_INSECURE_SWITCH = "tls-insecure-switch"
+
     /** Pre-login RU/EN cycle button (web `data-testid="auth-lang-toggle"`). */
     const val AUTH_LANG_TOGGLE = "auth-lang-toggle"
 

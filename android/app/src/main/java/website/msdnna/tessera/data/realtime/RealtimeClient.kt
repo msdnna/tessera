@@ -5,12 +5,12 @@ import android.os.Looper
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import java.util.concurrent.TimeUnit
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.api.TlsTrust
 
 /** A server→client realtime event. Mirrors `realtime.Event` (`data` ignored — the
  *  client reloads the affected slice rather than patching from the payload). */
@@ -36,10 +36,10 @@ data class RealtimeEvent(
  * token and only sends events for workspaces the user belongs to.
  */
 class RealtimeClient(private val onEvent: (RealtimeEvent) -> Unit) {
-    private val client = OkHttpClient.Builder()
-        .pingInterval(20, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(true)
-        .build()
+    private val client = TlsTrust.Holder {
+        pingInterval(20, TimeUnit.SECONDS)
+        retryOnConnectionFailure(true)
+    }
     private val gson = Gson()
     private val main = Handler(Looper.getMainLooper())
 
@@ -58,7 +58,7 @@ class RealtimeClient(private val onEvent: (RealtimeEvent) -> Unit) {
             return
         }
         val req = Request.Builder().url(url).header("Authorization", "Bearer $token").build()
-        ws = client.newWebSocket(
+        ws = client.get().newWebSocket(
             req,
             object : WebSocketListener() {
                 override fun onMessage(webSocket: WebSocket, text: String) {
