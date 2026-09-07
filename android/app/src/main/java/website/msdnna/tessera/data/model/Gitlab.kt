@@ -246,8 +246,10 @@ data class ResolveConflictRequest(
     @SerializedName("value") val value: Map<String, String>? = null,
 )
 
-/** One action within a run (mirrors backend `syncActionDTO`). `detail` is the raw
- *  before/after (pull) or payload/result (push) blob, rendered ad-hoc by the UI. */
+/** One action within a run (mirrors backend `ListGitlabSyncActionsPageRow`). The
+ *  list response never carries the heavy before/after blob — it only says whether
+ *  one exists ([hasDetail]); [detail] stays null until the row is opened and the
+ *  diff is fetched from `…/actions/{id}/detail`, then caches it back. */
 data class GitlabSyncAction(
     @SerializedName("id") val id: String = "",
     @SerializedName("seq") val seq: Int = 0,
@@ -257,6 +259,22 @@ data class GitlabSyncAction(
     @SerializedName("gl_iid") val glIid: Long? = null,
     @SerializedName("summary") val summary: String = "",
     @SerializedName("detail") val detail: JsonObject? = null,
+    @SerializedName("has_detail") val hasDetail: Boolean = false,
     @SerializedName("status") val status: String = "ok",
     @SerializedName("error") val error: String = "",
+)
+
+/** One keyset page of a run's actions (`{items, has_more, next_after_seq}`). The
+ *  endpoint has shipped this envelope since #2616 — a plain array here is the
+ *  "Expected BEGIN_ARRAY but was BEGIN_OBJECT" crash of #2918. */
+data class GitlabSyncActionsPage(
+    @SerializedName("items") val items: List<GitlabSyncAction>? = null,
+    @SerializedName("has_more") val hasMore: Boolean = false,
+    /** Cursor for the next page: pass as `after_seq`. Null when the run is exhausted. */
+    @SerializedName("next_after_seq") val nextAfterSeq: Int? = null,
+)
+
+/** One action's lazily-fetched diff (`{detail: {…}}`); `{}` when the row has none. */
+data class GitlabSyncActionDetail(
+    @SerializedName("detail") val detail: JsonObject? = null,
 )

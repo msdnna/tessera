@@ -726,11 +726,22 @@ interface ApiService {
         @Path("id") workspaceId: String,
     ): List<website.msdnna.tessera.data.model.GitlabSyncRun>?
 
+    /** Keyset-paginated: the reply is `{items, has_more, next_after_seq}`, and
+     *  [afterSeq] is the cursor (the previous page's `next_after_seq`). Rows come
+     *  without their diffs — fetch one via [gitlabSyncActionDetail]. */
     @GET("workspaces/{id}/gitlab/sync-runs/{runId}/actions")
     suspend fun gitlabSyncActions(
         @Path("id") workspaceId: String,
         @Path("runId") runId: String,
-    ): List<website.msdnna.tessera.data.model.GitlabSyncAction>?
+        @Query("after_seq") afterSeq: Int? = null,
+    ): website.msdnna.tessera.data.model.GitlabSyncActionsPage
+
+    @GET("workspaces/{id}/gitlab/sync-runs/{runId}/actions/{actionId}/detail")
+    suspend fun gitlabSyncActionDetail(
+        @Path("id") workspaceId: String,
+        @Path("runId") runId: String,
+        @Path("actionId") actionId: String,
+    ): website.msdnna.tessera.data.model.GitlabSyncActionDetail
 
     @POST("workspaces/{id}/gitlab/sync-runs/{runId}/actions/{actionId}/retry")
     suspend fun gitlabRetryWriteback(

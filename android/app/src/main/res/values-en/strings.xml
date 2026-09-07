@@ -1012,6 +1012,7 @@
          the task modal shows. -->
     <string name="gljournal_empty">The journal is empty — sync has not run yet</string>
     <string name="gljournal_no_actions">No recorded actions</string>
+    <string name="gljournal_load_more">Show more</string>
     <string name="gljournal_trigger_manual">manual</string>
     <string name="gljournal_trigger_auto">auto</string>
     <string name="gljournal_run_meta">%1$s · %2$s</string>
