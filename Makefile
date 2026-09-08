@@ -316,7 +316,18 @@ test-e2e-frontend: ## Run the Playwright web e2e suite (needs `make e2e-backend-
 	cd frontend && corepack yarn build
 	cd frontend && E2E_API_URL=http://localhost:$(E2E_PORT)/api \
 		TESSERA_API_TARGET=http://localhost:$(E2E_PORT) \
-		corepack yarn e2e $(E2E_ARGS)
+		corepack yarn e2e --project=chromium $(E2E_ARGS)
+
+# The mobile tier (#2893) is a separate target, not an extra project folded into
+# the one above: it re-walks the whole app at 390×844 and roughly doubles the
+# run. Naming the project explicitly in BOTH targets is what keeps that promise —
+# a bare `playwright test` would run every project it finds.
+.PHONY: test-e2e-frontend-mobile
+test-e2e-frontend-mobile: ## Run the mobile-layout Playwright tier at 390x844 (needs `make e2e-backend-up`)
+	cd frontend && corepack yarn build
+	cd frontend && E2E_API_URL=http://localhost:$(E2E_PORT)/api \
+		TESSERA_API_TARGET=http://localhost:$(E2E_PORT) \
+		corepack yarn e2e --project=mobile $(E2E_ARGS)
 
 .PHONY: locale-shots
 locale-shots: ## Visual pass over both locales into frontend/e2e/.auth/locale-shots (needs `make e2e-backend-up`)

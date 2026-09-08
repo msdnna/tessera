@@ -13,6 +13,7 @@ import { PRIORITY_COLORS } from '@/styles/tokens'
 import { sortedColumns, columnById, siblingNeighbors } from '@/utils/status'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
+import { useResponsive } from '@/composables/useResponsive'
 import TaskMiniCard from '../TaskMiniCard.vue'
 import EmptyState from '../EmptyState.vue'
 
@@ -32,6 +33,11 @@ const message = useMessage()
 const { t } = useI18n()
 const bv = useBoardViewStore()
 const { formatDue } = useDateLocale()
+// Same hover preview as on the board card, same reason to switch it off on a
+// phone (#2893) — see the note in TaskCardSubtasks.vue. Here the row lives
+// inside the modal, so the popover overhangs the modal instead of the board, but
+// the tap that opens the child task still leaves a preview stuck on screen.
+const { isMobile } = useResponsive()
 const newSubtask = ref('')
 
 const sortedCols = computed(() => sortedColumns(props.columns))
@@ -130,6 +136,7 @@ async function moveSubtask(sub, columnId) {
       trigger="hover"
       placement="right"
       :delay="250"
+      :disabled="isMobile"
     >
       <template #trigger>
         <div class="subrow" :class="{ done: sub.completed_at }" @click="emit('open', sub.id)">

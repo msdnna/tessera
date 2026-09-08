@@ -26,8 +26,21 @@ const props = defineProps({
   // comment is about the document as a whole.
   pendingQuote: { type: String, default: '' },
   pendingBlock: { type: Boolean, default: false },
+  // On a phone the panel is a sheet over the text rather than a column beside
+  // it, and a sheet has to be dismissible from itself: the toggle that opened it
+  // lives in the top bar, which the sheet covers (#2893).
+  narrow: { type: Boolean, default: false },
 })
-const emit = defineEmits(['add', 'reply', 'edit', 'resolve', 'remove', 'select', 'clear-anchor'])
+const emit = defineEmits([
+  'add',
+  'reply',
+  'edit',
+  'resolve',
+  'remove',
+  'select',
+  'clear-anchor',
+  'close',
+])
 const { formatDateTime } = useFormat()
 
 // One draft per thread, keyed by root id; '' is the document-level box.
@@ -118,11 +131,17 @@ defineExpose({ cardAnchors })
 </script>
 
 <template>
-  <aside class="doc-comments">
+  <aside class="doc-comments" :class="{ narrow }">
     <div class="panel-head">
       <n-icon :component="ChatbubbleEllipsesOutline" :size="16" />
       <span class="panel-title">{{ $t('documents.comments.title') }}</span>
       <n-text v-if="loading" depth="3">…</n-text>
+      <template v-if="narrow">
+        <span class="grow" />
+        <n-button quaternary size="tiny" data-testid="doc-comments-close" @click="emit('close')">{{
+          $t('common.action.close')
+        }}</n-button>
+      </template>
     </div>
 
     <div ref="bodyEl" class="panel-body">
@@ -362,15 +381,24 @@ defineExpose({ cardAnchors })
   padding-left: 12px;
   gap: 8px;
 }
-@media (max-width: 900px) {
-  .doc-comments {
-    width: auto;
-    max-height: 40vh;
-    border-left: none;
-    border-top: 1px solid var(--t-border);
-    padding-left: 0;
-    padding-top: 12px;
-  }
+/* Phone layout: a sheet over the working area, not a block appended under the
+   text. Stacked, the discussion pushed the document off the top of the screen
+   and there was no way to put it away — the outline landed between the two on
+   top of that (задача 2893). Absolute against `.work`, which is the positioned
+   ancestor, so the document stays where it was and comes back on close. */
+.doc-comments.narrow {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  max-height: none;
+  border-left: none;
+  padding: 10px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+  /* Opaque over live content, same edge treatment as the sidebar sheet. */
+  box-shadow: 0 0 20px var(--t-border);
+  z-index: 2;
 }
 .panel-head {
   display: flex;

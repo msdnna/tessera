@@ -2,9 +2,10 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NButton, useMessage } from 'naive-ui'
-import { OpenOutline, RefreshOutline } from '@vicons/ionicons5'
+import { ChevronBackOutline, OpenOutline, RefreshOutline } from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
 import { useFormat } from '@/composables/useFormat'
+import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
 import { runDuration, elapsedSince } from '@/utils/duration'
 import { priorityLabel } from '@/utils/priority'
@@ -20,6 +21,11 @@ const props = defineProps({
 const message = useMessage()
 const { t } = useI18n()
 const { formatDue, formatDateTime } = useFormat()
+// Phone layout (#2893): master/detail as two screens rather than two stacked
+// panes. Stacking put a scroller inside a scroller inside the modal, and the
+// seam between "runs" and "the diff of the run you picked" read as more of the
+// same list — the report called the sections confusing, not cramped.
+const { isMobile } = useResponsive()
 
 const runs = ref([])
 const loading = ref(false)
@@ -31,6 +37,9 @@ const actionsByRun = ref({})
 const loadingActions = ref(false)
 const selectedAction = ref(null) // { ...action, runId, detail? }
 const retrying = ref(false)
+// True while the phone shows the detail screen; the run list is kept mounted
+// behind it so "back" returns to the same scroll position.
+const mobileDetail = computed(() => isMobile.value && !!selectedAction.value)
 
 // reset=false is the live-refresh form (a background run finished): the list is
 // re-fetched in place, keeping whatever the user has expanded/selected and
@@ -262,9 +271,11 @@ defineExpose({ reload: () => loadRuns() })
 
 <template>
   <div class="jp-wrap">
-    <div class="j-body">
-      <!-- LEFT: runs + their actions -->
-      <div class="j-left">
+    <div class="j-body" :class="{ 'j-stacked': isMobile }">
+      <!-- LEFT: runs + their actions. On a phone the two panes are one screen each
+           (see mobileDetail) — v-show, not v-if, so going back restores the run
+           list exactly where it was scrolled. -->
+      <div v-show="!mobileDetail" class="j-left" data-testid="journal-runs">
         <empty-state
           v-if="!loading && !runs.length"
           size="small"
@@ -325,14 +336,20 @@ defineExpose({ reload: () => loadRuns() })
         </div>
       </div>
 
-      <!-- RIGHT: selected action detail / diff -->
-      <div class="j-right">
+      <!-- RIGHT: selected action detail / diff. Hidden outright on a phone until a
+           row is picked — the "выберите действие" placeholder is a second-pane
+           prompt, and there is no second pane there to fill. -->
+      <div v-show="!isMobile || mobileDetail" class="j-right" data-testid="journal-detail">
         <empty-state
           v-if="!selectedAction"
           size="small"
           :text="$t('gitlab.journal.selectAction')"
         />
         <template v-else>
+          <button v-if="isMobile" class="j-back" @click="selectedAction = null">
+            <n-icon :component="ChevronBackOutline" :size="15" />
+            {{ $t('gitlab.journal.backToRuns') }}
+          </button>
           <div class="j-d-head">
             <span class="j-d-dir" :class="selectedAction.direction">
               {{
@@ -474,6 +491,51 @@ defineExpose({ reload: () => loadRuns() })
 .j-right {
   overflow-y: auto;
   padding-left: 16px;
+}
+/* Phone (#2893): 300px + 1fr on a 393px screen leaves the detail pane ~30px of
+   client width, and it does not overflow — it wraps one letter per line, which is
+   why no width gate ever saw it.
+   Stacking the two panes fixed the letter-wrap but produced its own problem: a
+   capped run list scrolling above an equally long diff, both inside the modal's
+   own scroller, with only a hairline to say where one ended and the other began.
+   So the phone gets one pane at a time instead — the visibility switch lives in
+   the template (mobileDetail), and the grid collapses to the single row that is
+   actually mounted. */
+@media (max-width: 768px) {
+  .j-body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .j-left {
+    border-right: none;
+    padding-right: 0;
+  }
+  .j-right {
+    padding-left: 0;
+  }
+  /* Both panes live in row 1 — whichever is visible owns the full height. Without
+     this the hidden one still reserves its implicit row and halves the other. */
+  .j-stacked > .j-left,
+  .j-stacked > .j-right {
+    grid-area: 1 / 1;
+  }
+}
+/* Back affordance on the detail screen (phone only — see the template). */
+.j-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 6px 10px 6px 6px;
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  background: var(--t-surface);
+  color: var(--t-text2);
+  font-size: 13px;
+  cursor: pointer;
+}
+.j-back:hover {
+  background: var(--t-hover);
 }
 
 /* runs */

@@ -2560,23 +2560,19 @@ async function restoreFromArchive(taskId) {
   padding: 0 7px;
   flex: none;
 }
-/* Mobile: columns are one-per-screen, so collapse to a strip would be awkward —
-   keep full width and hide the strip. */
-@media (max-width: 768px) {
-  .col.collapsed {
-    width: var(--col-w, 280px);
-    flex: 0 0 var(--col-w, 280px);
-    padding: 10px;
-  }
-  .col.collapsed :deep(.col-head),
-  .col.collapsed .drop,
-  .col.collapsed .add-btn {
-    display: revert;
-  }
-  .col-strip {
-    display: none;
-  }
-}
+/* Mobile keeps the same 44px strip as the desktop (#2893), with NO override of
+   its own. The one that used to live here ("stay full width on a phone, hide the
+   strip") showed the column's shell but never its cards: a collapsed column
+   renders every card as a bare `.card-ph` spacer (see the template), so revealing
+   `.drop` produced a full-width column with nothing in it. A strip is also what
+   "collapse" is for on the narrowest screen — one column fills the viewport, so
+   folding the ones you aren't using is how you reach the rest.
+   The tempting half-measure — `scroll-snap-align: none` on the strip, so a swipe
+   carries past a run of them instead of catching on each 44px tile — is a trap,
+   and the mobile tier caught it: `.board-scroll` snaps `x mandatory`, so a column
+   with no snap point of its own is not merely skipped by a swipe, it cannot be
+   rested on at all. Collapsing the leftmost column scrolled it off the screen on
+   the spot and there was no way back to it. Strips keep their snap point. */
 .col-head {
   display: flex;
   align-items: center;

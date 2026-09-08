@@ -87,6 +87,8 @@
     "pdf": { "label": "PDF", "hint": "Embed a file to read" }
   },
   "toolbar": {
+    "more": "More tools",
+    "less": "Fewer tools",
     "undo": "Undo (Ctrl+Z)",
     "redo": "Redo (Ctrl+Shift+Z)",
     "heading": "Heading {level}",

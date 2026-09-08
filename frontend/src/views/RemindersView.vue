@@ -135,6 +135,18 @@ onMounted(load)
 .add-row {
   display: flex;
   gap: 8px;
+  flex-wrap: wrap;
+}
+/* Neither field has an intrinsic width to defend, so the row squeezed instead of
+   wrapping: on a 393px phone the date picker was left 43px of usable space —
+   «Выбра…» and the calendar icon, with no room to show the date you picked
+   (#2893). This is the breakage the page-width gate structurally cannot see, as
+   shrinking costs the page no width at all. A floor on each field makes the row
+   break onto a second line instead; on a wide screen both fields are already
+   past it, so the desktop layout is untouched. The button keeps no floor — it
+   sizes to its label and is the one thing that should ride along. */
+.add-row > *:not(button) {
+  min-width: 200px;
 }
 .list {
   display: flex;

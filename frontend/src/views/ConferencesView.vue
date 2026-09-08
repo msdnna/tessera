@@ -33,6 +33,8 @@ import {
   ArrowBackOutline,
   PeopleOutline,
   TimeOutline,
+  LogOutOutline,
+  PowerOutline,
 } from '@vicons/ionicons5'
 import { conferences as confApi, workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -521,13 +523,101 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
     <template v-else>
       <!-- Back sits in the app topbar, left of the search, like Documents (#2864
            round 2). It falls back to rendering inline when the topbar slots are
-           absent — a narrow screen, or a unit test with no shell. -->
-      <teleport v-if="ready" to="#tb-slot-left" :disabled="!inTopbar">
-        <n-button quaternary size="small" class="back" @click="backToList">
-          <template #icon><n-icon :component="ArrowBackOutline" /></template>
-          {{ $t('conferences.actions.back') }}
-        </n-button>
-      </teleport>
+           absent — a narrow screen, or a unit test with no shell.
+           On a phone both teleports fall back, and they used to land in two
+           different parents two rows apart: the back button above the title, the
+           status pill and the call's buttons below it (#2893, round 2). The
+           wrapper puts the whole fallback on ONE row; when the controls really do
+           go to the topbar it is `display: contents` and changes nothing. -->
+      <div v-if="ready" class="call-bar" :class="{ inline: !inTopbar }">
+        <teleport to="#tb-slot-left" :disabled="!inTopbar">
+          <n-button
+            quaternary
+            size="small"
+            class="back"
+            :circle="narrow"
+            :aria-label="$t('conferences.actions.back')"
+            :title="narrow ? $t('conferences.actions.back') : undefined"
+            @click="backToList"
+          >
+            <template #icon><n-icon :component="ArrowBackOutline" /></template>
+            <template v-if="!narrow">{{ $t('conferences.actions.back') }}</template>
+          </n-button>
+        </teleport>
+
+        <!-- Status and the call's controls go to the topbar, right of the search
+             and left of the help icon (same fallback as the back button).
+             On a narrow screen the two actions become icons, as asked in the
+             report: «Выйти» and «Завершить» are the crowded pair, and neither
+             needs its word once the row is a strip of controls. «Войти» keeps its
+             label — it is alone in the row (there is nothing to leave yet) and it
+             is the one thing a person opened the conference to do. The status
+             pill stays text on purpose: it is a state, not a button, and an icon
+             would make it look like a third thing to press. «Завершить» is a
+             power glyph rather than the obvious stop-circle: the call's own
+             toolbar is right below, and its record/stop pair is already a circle
+             and a square — a third round stop up here would read as "stop the
+             recording", which is the one thing this button does not do. -->
+        <teleport v-if="detail" to="#tb-slot-right" :disabled="!inTopbar">
+          <span class="call-actions">
+            <span class="pill" :style="pillStyle(detail.conference.status)">
+              <span
+                :class="{ 'accent-grad-text': !!statusHue(detail.conference.status) }"
+                :style="pillTextStyle(detail.conference.status)"
+              >
+                {{ $t(`conferences.status.${detail.conference.status}`) }}
+              </span>
+            </span>
+            <!-- Always enabled: a conference is a reusable room (#2879), so even
+                 a legacy "ended" one is joined rather than being a dead end. -->
+            <n-button
+              v-if="!inRoom"
+              type="primary"
+              size="small"
+              :loading="busy"
+              data-testid="conference-join"
+              @click="join"
+            >
+              {{ $t('conferences.actions.join') }}
+            </n-button>
+            <n-button
+              v-else
+              size="small"
+              :circle="narrow"
+              :loading="busy"
+              :aria-label="$t('conferences.actions.leave')"
+              :title="narrow ? $t('conferences.actions.leave') : undefined"
+              data-testid="conference-leave"
+              @click="leave"
+            >
+              <template v-if="narrow" #icon><n-icon :component="LogOutOutline" /></template>
+              <template v-if="!narrow">{{ $t('conferences.actions.leave') }}</template>
+            </n-button>
+            <!-- "Завершить" ends the ongoing session for everyone; it only makes
+                 sense while the call is live (an idle room is already ended). -->
+            <n-popconfirm
+              v-if="canModerate && detail.conference.status === 'live'"
+              :positive-text="$t('conferences.actions.end')"
+              @positive-click="end"
+            >
+              <template #trigger>
+                <n-button
+                  quaternary
+                  size="small"
+                  :circle="narrow"
+                  :aria-label="$t('conferences.actions.end')"
+                  :title="narrow ? $t('conferences.actions.end') : undefined"
+                  data-testid="conference-end"
+                >
+                  <template v-if="narrow" #icon><n-icon :component="PowerOutline" /></template>
+                  <template v-if="!narrow">{{ $t('conferences.actions.end') }}</template>
+                </n-button>
+              </template>
+              {{ $t('conferences.confirm.end') }}
+            </n-popconfirm>
+          </span>
+        </teleport>
+      </div>
 
       <n-spin :show="detailLoading">
         <empty-state
@@ -536,54 +626,6 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
           :text="$t('conferences.detail.notFound')"
         />
         <div v-else-if="detail" class="detail">
-          <!-- Status and the call's controls go to the topbar, right of the search
-               and left of the help icon (same fallback as the back button). -->
-          <teleport v-if="ready" to="#tb-slot-right" :disabled="!inTopbar">
-            <span class="call-actions">
-              <span class="pill" :style="pillStyle(detail.conference.status)">
-                <span
-                  :class="{ 'accent-grad-text': !!statusHue(detail.conference.status) }"
-                  :style="pillTextStyle(detail.conference.status)"
-                >
-                  {{ $t(`conferences.status.${detail.conference.status}`) }}
-                </span>
-              </span>
-              <!-- Always enabled: a conference is a reusable room (#2879), so even
-                   a legacy "ended" one is joined rather than being a dead end. -->
-              <n-button
-                v-if="!inRoom"
-                type="primary"
-                size="small"
-                :loading="busy"
-                data-testid="conference-join"
-                @click="join"
-              >
-                {{ $t('conferences.actions.join') }}
-              </n-button>
-              <n-button
-                v-else
-                size="small"
-                :loading="busy"
-                data-testid="conference-leave"
-                @click="leave"
-              >
-                {{ $t('conferences.actions.leave') }}
-              </n-button>
-              <!-- "Завершить" ends the ongoing session for everyone; it only makes
-                   sense while the call is live (an idle room is already ended). -->
-              <n-popconfirm
-                v-if="canModerate && detail.conference.status === 'live'"
-                :positive-text="$t('conferences.actions.end')"
-                @positive-click="end"
-              >
-                <template #trigger>
-                  <n-button quaternary size="small">{{ $t('conferences.actions.end') }}</n-button>
-                </template>
-                {{ $t('conferences.confirm.end') }}
-              </n-popconfirm>
-            </span>
-          </teleport>
-
           <div class="head">
             <h2 class="h">{{ detail.conference.title }}</h2>
             <!-- The one time line moved out from under the title to its right, now
@@ -708,6 +750,21 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  max-width: 100%;
+}
+/* The row already wrapped; what didn't is the filter group inside it. Four joined
+   radio buttons («Все» / «Идут» / «Запланированные» / «Завершённые») are one
+   inline-flex box ~470px wide with no break opportunity, so on a 393px phone it
+   pushed the whole pane 90px sideways (#2893). It can't wrap without breaking
+   the joined border radii, so it scrolls on its own instead — the standard
+   filter-strip behaviour — and stops dragging the page with it. */
+.head-actions :deep(.n-radio-group) {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.head-actions :deep(.n-radio-group::-webkit-scrollbar) {
+  display: none;
 }
 .rows {
   display: flex;
@@ -775,6 +832,19 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   display: flex;
   align-items: center;
   gap: 8px;
+}
+/* The wrapper around both teleports. With the controls in the topbar it must not
+   exist as a box at all — hence `contents`, which leaves the two teleport
+   anchors' comment nodes and nothing else. Only the inline fallback is a row. */
+.call-bar {
+  display: contents;
+}
+.call-bar.inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 /* Start time, right of the title now that the buttons moved to the topbar. */
 .head-time {

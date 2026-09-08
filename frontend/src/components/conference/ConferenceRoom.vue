@@ -987,12 +987,22 @@ function onInviteShow(show) {
   font-size: 11px;
   color: var(--t-text3);
 }
+/* Stacked layout (#2893, round 2). Two things had to change together.
+   `align-items: flex-start` is right for the row — it keeps the rail from
+   stretching to the stage's height — but in a column it makes both children
+   shrink to their content, so the stage ended up 126px wide next to a rail that
+   asked for the full width. And that width was `100%`: nothing in this app sets
+   a global `box-sizing`, so the rail's own 8px padding and 1px border land
+   OUTSIDE the 100%, pushing its right edge to 399px in a 393px viewport — the
+   panel «slightly out to the right» from the report. `stretch` gives both the
+   pane's width with no percentage to overflow past. */
 @media (max-width: 900px) {
   .body {
     flex-direction: column;
+    align-items: stretch;
   }
   .rail {
-    width: 100%;
+    width: auto;
     max-height: none;
   }
 }

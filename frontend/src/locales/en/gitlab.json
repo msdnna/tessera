@@ -236,6 +236,7 @@
     "empty": "The journal is empty — no sync has run yet",
     "noActions": "No recorded actions",
     "selectAction": "Pick an action to see its details",
+    "backToRuns": "Back to runs",
     "more": "Show more",
     "queuedForRetry": "Queued for a retry",
     "retry": "Retry",

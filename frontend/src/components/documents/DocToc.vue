@@ -14,12 +14,17 @@ import { headingLabel } from '@/utils/docToc'
 // the history, and it is what left the text 9px wide with three panels open
 // (#2738). The rail costs 22px and the list of titles is a popover over the
 // text, which is also how a reader uses an outline: glance, jump, gone.
-defineProps({
+const props = defineProps({
   // Rows from docOutline: {id, level, text, depth}.
   rows: { type: Array, default: () => [] },
   // The heading whose section the caret is in, highlighted so a long document
   // says where you are and not only where you can go.
   activeId: { type: String, default: '' },
+  // On a phone the rail is not a control: there is no hover to open it with,
+  // and the popover it opens is anchored `right: 100%` off a rail that sits at
+  // the left edge of the screen — it lands outside the viewport (#2893). So the
+  // whole hover mechanism is dropped there and the outline becomes a sheet.
+  narrow: { type: Boolean, default: false },
 })
 const emit = defineEmits(['go', 'close'])
 
@@ -33,7 +38,11 @@ const emit = defineEmits(['go', 'close'])
 // the focusout that follows would clear the flag the pointer is still holding.
 const hovered = ref(false)
 const focused = ref(false)
-const open = computed(() => hovered.value || focused.value)
+// Narrow forces it open because there the outline is only on screen when the
+// user asked for it: the toolbar toggle mounts this component, so "mounted" and
+// "open" are the same statement. Keeping it hover-gated would render a sheet
+// that never shows its contents.
+const open = computed(() => props.narrow || hovered.value || focused.value)
 
 // A tick is as wide as its heading is shallow, so the rail is a silhouette of
 // the document rather than a row of identical dashes.
@@ -45,6 +54,7 @@ function tickWidth(depth) {
 <template>
   <aside
     class="doc-toc"
+    :class="{ narrow }"
     data-testid="doc-toc"
     @mouseenter="hovered = true"
     @mouseleave="hovered = false"
@@ -157,6 +167,37 @@ function tickWidth(depth) {
   .flyout {
     width: 220px;
   }
+}
+/* Phone layout: a sheet over the working area, the same shape the history and
+   the links panel already take there. Absolute against `.work`, which is the
+   positioned ancestor — the outline must not join the single column, or it
+   lands between the text and the discussion as a strip of ticks nobody can
+   read (задача 2893). */
+.doc-toc.narrow {
+  position: absolute;
+  inset: 0;
+  width: auto;
+  padding: 0;
+  /* Above the annotation layer (1) and level with the sidebar sheet (2). */
+  z-index: 2;
+}
+/* The silhouette is a hover affordance; with the sheet always open there is
+   nothing left for it to hint at. */
+.doc-toc.narrow .rail {
+  display: none;
+}
+.doc-toc.narrow .flyout {
+  position: static;
+  width: 100%;
+  max-height: none;
+  height: 100%;
+  box-shadow: 0 0 20px var(--t-border);
+}
+/* Full-width rows: on a phone the outline is the only thing on screen, so a
+   heading has the whole width instead of an ellipsis after four words. */
+.doc-toc.narrow .entry {
+  padding-top: 8px;
+  padding-bottom: 8px;
 }
 .panel-head {
   display: flex;

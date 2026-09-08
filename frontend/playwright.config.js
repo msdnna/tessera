@@ -35,6 +35,11 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
+      // Stated explicitly so the top-level testDir stays the desktop tier's even
+      // though `mobile` below points somewhere else: without it the desktop
+      // project would also pick up e2e/mobile/** and run every mobile spec at
+      // 1280px, where the whole point of them is gone.
+      testDir: './e2e/specs',
       use: {
         ...devices['Desktop Chrome'],
         baseURL,
@@ -66,6 +71,17 @@ export default defineConfig({
         },
         permissions: ['camera', 'microphone'],
       },
+    },
+    // Mobile tier (#2893): the same app at 390×844 with touch, in its own
+    // directory so `--project=chromium` stays exactly as fast as before. Both
+    // projects share the one seeded board, and with `workers: 1` they run one
+    // after the other, so there is no race — but the run does take roughly twice
+    // as long, which is why `make test-e2e-frontend` still runs the desktop tier
+    // alone and `make test-e2e-frontend-mobile` asks for this one by name.
+    {
+      name: 'mobile',
+      testDir: './e2e/mobile',
+      use: { ...devices['Pixel 5'], baseURL },
     },
   ],
   // The suite owns the preview server; the backend is expected to be up already

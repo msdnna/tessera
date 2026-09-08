@@ -436,6 +436,13 @@ async function showSide(name) {
   const prev = sidePanel.value
   if (next === prev) return
   sidePanel.value = next
+  // On a phone every panel is a sheet over the same working area, so opening
+  // one has to put the others away — otherwise the history lands on top of the
+  // discussion and the document is two overlays deep (#2893).
+  if (next && narrow.value) {
+    commentsOpen.value = false
+    tocOpen.value = false
+  }
   if (prev === 'history') versions.close()
   else if (prev === 'links') links.close()
   if (!selected.value?.id) return
@@ -1096,8 +1103,36 @@ function scheduleLinks() {
   linkFrame = requestAnimationFrame(measureLinks)
 }
 
+// On a phone the outline and the discussion are sheets over the text rather
+// than columns beside it, so a document that opened with both on would show
+// none of itself. They start put away and are opened one at a time from the top
+// bar (#2893); on a wide screen nothing changes — there they fit side by side.
+function closeSheets() {
+  commentsOpen.value = false
+  tocOpen.value = false
+}
+
+function toggleComments() {
+  commentsOpen.value = !commentsOpen.value
+  if (narrow.value && commentsOpen.value) {
+    tocOpen.value = false
+    // Through showSide, not by clearing the ref: the history and the links
+    // panel each hold an open subscription that only their own close() drops.
+    if (sidePanel.value) showSide(sidePanel.value)
+  }
+}
+
+function toggleToc() {
+  tocOpen.value = !tocOpen.value
+  if (narrow.value && tocOpen.value) {
+    commentsOpen.value = false
+    if (sidePanel.value) showSide(sidePanel.value)
+  }
+}
+
 function onNarrowChange(e) {
   narrow.value = e.matches
+  if (e.matches) closeSheets()
 }
 
 // Anything that moves either end invalidates every line, so they are all one
@@ -1145,6 +1180,7 @@ onMounted(async () => {
   narrowQuery = window.matchMedia?.(`(max-width: ${NARROW_PX}px)`)
   if (narrowQuery) {
     narrow.value = narrowQuery.matches
+    if (narrow.value) closeSheets()
     narrowQuery.addEventListener('change', onNarrowChange)
   }
   if (window.ResizeObserver) {
@@ -1327,7 +1363,8 @@ watch(
                   ? $t('documents.view.comments.hide')
                   : $t('documents.view.comments.show')
               "
-              @click="commentsOpen = !commentsOpen"
+              data-testid="doc-comments-toggle"
+              @click="toggleComments"
             >
               <template #icon><n-icon :component="ChatbubbleEllipsesOutline" /></template>
               {{ comments.openCount.value || '' }}
@@ -1337,7 +1374,7 @@ watch(
               size="tiny"
               :title="tocOpen ? $t('documents.view.toc.hide') : $t('documents.view.toc.show')"
               data-testid="doc-toc-toggle"
-              @click="tocOpen = !tocOpen"
+              @click="toggleToc"
             >
               <template #icon><n-icon :component="ListOutline" /></template>
             </n-button>
@@ -1446,6 +1483,7 @@ watch(
             v-if="tocOpen"
             :rows="outline"
             :active-id="activeHeadingId"
+            :narrow="narrow"
             @go="goToHeading"
             @close="tocOpen = false"
           />
@@ -1458,6 +1496,8 @@ watch(
             :loading="comments.loading.value"
             :pending-quote="pendingQuote"
             :pending-block="!!pendingBlockId"
+            :narrow="narrow"
+            @close="commentsOpen = false"
             @add="onCommentAdd"
             @reply="onCommentReply"
             @edit="onCommentEdit"
@@ -1576,6 +1616,13 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  /* The three action buttons («Импорт» / «Из шаблона» / «Новый») are ~330px of
+     unshrinkable content, so on a phone this row ran 42px past the pane and the
+     «Новый» button was simply unreachable (задача 2893 — номер словом, а не через
+     решётку: гвард «no literal colours» в tests/cx-doc-editor.spec.js принимает
+     решётку с четырьмя цифрами за hex-цвет). Wrapping costs nothing on a wide
+     screen — there the row has never needed a second line. */
+  flex-wrap: wrap;
 }
 /* Both halves teleport into the app header on a wide screen; what stays behind
    is an empty flex row that would still spend the .docs gap. */
