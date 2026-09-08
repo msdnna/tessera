@@ -257,6 +257,11 @@ object TestTags {
     const val CONFERENCE_QUALITY = "conference-quality"
     const val CONFERENCE_FULLSCREEN = "conference-fullscreen"
 
+    /** «Сбросить масштаб» over a pinched stage — the only way back to 1× that
+     *  does not need a second pinch, and present only while there is something
+     *  to reset. */
+    const val CONFERENCE_ZOOM_RESET = "conference-zoom-reset"
+
     /** The room toolbar. */
     const val CONFERENCE_MIC = "conference-mic"
     const val CONFERENCE_CAM = "conference-cam"
@@ -284,6 +289,11 @@ object TestTags {
     const val CONFERENCE_PANEL = "conference-panel"
     const val CONFERENCE_PANEL_EMPTY = "conference-panel-empty"
     const val CONFERENCE_PANEL_CLOSE = "conference-panel-close"
+
+    /** The grabber the roster sheet is pulled up by. Its own anchor rather than
+     *  the sheet's: the sheet is displayed at both sizes, so a drag asserted on
+     *  [CONFERENCE_PANEL] would pass without ever having moved anything. */
+    const val CONFERENCE_PANEL_HANDLE = "conference-panel-handle"
     const val CONFERENCE_DENIED = "conference-denied"
     const val CONFERENCE_KICK_CONFIRM = "conference-kick-confirm"
 
@@ -318,6 +328,10 @@ object TestTags {
     const val CONFERENCE_CHAT = "conference-chat"
     const val CONFERENCE_CHAT_OPEN = "conference-chat-open"
     const val CONFERENCE_CHAT_CLOSE = "conference-chat-close"
+
+    /** The grabber the chat sheet is pulled up by — see [CONFERENCE_PANEL_HANDLE]
+     *  for why the sheet's own tag will not do. */
+    const val CONFERENCE_CHAT_HANDLE = "conference-chat-handle"
     const val CONFERENCE_CHAT_LOG = "conference-chat-log"
     const val CONFERENCE_CHAT_EMPTY = "conference-chat-empty"
     const val CONFERENCE_CHAT_OLDER = "conference-chat-older"

@@ -793,6 +793,8 @@
     <string name="conf_media_kicked">Ведущий исключил вас из конференции</string>
     <string name="conf_media_no_mic">Нет доступа к микрофону — вас никто не слышит</string>
     <string name="conf_media_no_one">В комнате пока никого нет</string>
+    <string name="conf_sheet_expand">Потяните, чтобы развернуть</string>
+    <string name="conf_zoom_reset">Сбросить масштаб</string>
     <string name="conf_panel_title">В комнате: %1$d</string>
     <string name="conf_panel_empty">В комнате пока никого</string>
     <string name="conf_panel_close">Закрыть</string>

@@ -7,11 +7,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -19,7 +17,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -52,7 +49,6 @@ import website.msdnna.tessera.ui.components.TFormError
 import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.theme.LocalDateFormat
-import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.ConfUploadSource
 import website.msdnna.tessera.ui.viewmodels.ConferenceChatUiState
@@ -183,9 +179,11 @@ private class ResolverBody(
  * The chat as a bottom sheet, driven purely by [state].
  *
  * A sheet over the call rather than the web's side rail, for the reason the
- * roster gives: a phone has no width beside a video stream. The consequence the
- * web does not have is that the chat covers the call while it is open, which is
- * why the unread badge lives on the toolbar button and not in here.
+ * roster gives: a phone has no width beside a video stream. It opens over half
+ * the screen and pulls up to the whole of it — see [ConferenceSheet] — so the
+ * common case, reading a line without leaving the meeting, costs nothing. The
+ * unread badge still lives on the toolbar button rather than in here: at full
+ * height the chat does cover the call, and that is the case the badge is for.
  */
 @Composable
 internal fun ConferenceChatSheet(
@@ -214,20 +212,12 @@ internal fun ConferenceChatSheet(
         if (state.messages.isNotEmpty()) log.scrollToItem(state.messages.lastIndex)
     }
 
-    // Scrim and sheet as siblings, not nested: a `clickable` wrapped around the
-    // sheet would merge its semantics and every tag inside would stop answering.
-    Column(Modifier.fillMaxSize()) {
-        Box(
-            Modifier.fillMaxWidth().weight(SCRIM_WEIGHT)
-                .background(c.text1.copy(alpha = 0.4f))
-                .clickableNoRipple(onClick = onClose),
-        )
-        Column(
-            Modifier.fillMaxWidth().weight(SHEET_WEIGHT)
-                .clip(RoundedCornerShape(topStart = RadiusMd, topEnd = RadiusMd))
-                .background(c.surface)
-                .testTag(TestTags.CONFERENCE_CHAT),
-        ) {
+    ConferenceSheet(
+        tag = TestTags.CONFERENCE_CHAT,
+        handleTag = TestTags.CONFERENCE_CHAT_HANDLE,
+        handleLabel = stringResource(R.string.conf_sheet_expand),
+        onClose = onClose,
+        header = {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -248,80 +238,80 @@ internal fun ConferenceChatSheet(
                         .testTag(TestTags.CONFERENCE_CHAT_CLOSE),
                 )
             }
-
-            if (state.messages.isEmpty()) {
-                Text(
-                    stringResource(R.string.conf_chat_empty),
-                    color = c.text3,
-                    fontSize = 13.sp,
-                    modifier = Modifier.fillMaxWidth().weight(1f).padding(vertical = 20.dp)
-                        .testTag(TestTags.CONFERENCE_CHAT_EMPTY),
-                )
-            } else {
-                LazyColumn(
-                    Modifier.fillMaxWidth().weight(1f).testTag(TestTags.CONFERENCE_CHAT_LOG),
-                    state = log,
-                ) {
-                    // Inside the log rather than above it: «более ранние» belongs
-                    // at the top of the history it prepends to, and there it
-                    // scrolls away instead of taking a strip of a phone screen
-                    // for the rest of the call.
-                    if (state.hasMore) {
-                        item(key = "older") {
-                            Text(
-                                stringResource(R.string.conf_chat_load_older),
-                                color = c.primary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.fillMaxWidth()
-                                    .clickableNoRipple(onClick = onLoadOlder)
-                                    .padding(horizontal = 14.dp, vertical = 8.dp)
-                                    .testTag(TestTags.CONFERENCE_CHAT_OLDER),
-                            )
-                        }
-                    }
-                    items(state.messages.size, key = { state.messages[it].id }) { i ->
-                        val message = state.messages[i]
-                        MessageRow(
-                            message = message,
-                            removable = state.canRemove(message),
-                            onAskRemove = { onAskRemove(message.id) },
-                            onDownload = onDownload,
+        },
+    ) {
+        if (state.messages.isEmpty()) {
+            Text(
+                stringResource(R.string.conf_chat_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.fillMaxWidth().weight(1f).padding(vertical = 20.dp)
+                    .testTag(TestTags.CONFERENCE_CHAT_EMPTY),
+            )
+        } else {
+            LazyColumn(
+                Modifier.fillMaxWidth().weight(1f).testTag(TestTags.CONFERENCE_CHAT_LOG),
+                state = log,
+            ) {
+                // Inside the log rather than above it: «более ранние» belongs
+                // at the top of the history it prepends to, and there it
+                // scrolls away instead of taking a strip of a phone screen
+                // for the rest of the call.
+                if (state.hasMore) {
+                    item(key = "older") {
+                        Text(
+                            stringResource(R.string.conf_chat_load_older),
+                            color = c.primary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.fillMaxWidth()
+                                .clickableNoRipple(onClick = onLoadOlder)
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                                .testTag(TestTags.CONFERENCE_CHAT_OLDER),
                         )
                     }
                 }
+                items(state.messages.size, key = { state.messages[it].id }) { i ->
+                    val message = state.messages[i]
+                    MessageRow(
+                        message = message,
+                        removable = state.canRemove(message),
+                        onAskRemove = { onAskRemove(message.id) },
+                        onDownload = onDownload,
+                    )
+                }
             }
+        }
 
-            if (state.refusal != ConfPickRefusal.NONE) {
-                // Dismissed by tapping the line itself: a wrapper with the click
-                // on it would swallow the tag the spec selects by.
-                Text(
-                    refusalText(state.refusal, state.refusedName),
-                    color = c.text2,
-                    fontSize = 12.sp,
-                    modifier = Modifier.fillMaxWidth().background(c.surfaceAlt)
-                        .clickableNoRipple(onClick = onDismissRefusal)
-                        .padding(horizontal = 14.dp, vertical = 8.dp)
-                        .testTag(TestTags.CONFERENCE_CHAT_REFUSAL),
-                )
-            }
-
-            if (state.error != null) {
-                TFormError(
-                    state.error,
-                    modifier = Modifier.clickableNoRipple(onClick = onDismissError)
-                        .padding(horizontal = 14.dp, vertical = 4.dp),
-                )
-            }
-
-            Composer(
-                state = state,
-                onDraft = onDraft,
-                onSend = onSend,
-                onAttach = onAttach,
-                onDropPending = onDropPending,
+        if (state.refusal != ConfPickRefusal.NONE) {
+            // Dismissed by tapping the line itself: a wrapper with the click
+            // on it would swallow the tag the spec selects by.
+            Text(
+                refusalText(state.refusal, state.refusedName),
+                color = c.text2,
+                fontSize = 12.sp,
+                modifier = Modifier.fillMaxWidth().background(c.surfaceAlt)
+                    .clickableNoRipple(onClick = onDismissRefusal)
+                    .padding(horizontal = 14.dp, vertical = 8.dp)
+                    .testTag(TestTags.CONFERENCE_CHAT_REFUSAL),
             )
         }
+
+        if (state.error != null) {
+            TFormError(
+                state.error,
+                modifier = Modifier.clickableNoRipple(onClick = onDismissError)
+                    .padding(horizontal = 14.dp, vertical = 4.dp),
+            )
+        }
+
+        Composer(
+            state = state,
+            onDraft = onDraft,
+            onSend = onSend,
+            onAttach = onAttach,
+            onDropPending = onDropPending,
+        )
     }
 
     if (state.removing.isNotBlank()) {
@@ -508,6 +498,3 @@ private fun fileSizeLabel(bytes: Long): String {
         size.amount,
     )
 }
-
-private const val SCRIM_WEIGHT = 2f
-private const val SHEET_WEIGHT = 8f

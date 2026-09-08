@@ -34,6 +34,23 @@ const weakConn = computed(
 
 const videoEl = ref(null)
 
+// A phone is held upright, and it publishes what it sees: 9:16. `cover` fits
+// that to the width of a 16:9 tile and throws away everything above and below —
+// on the desktop the caller's face left the frame entirely (#2896). So a portrait
+// stream is fitted by height instead, for the same reason a shared screen is:
+// letterboxing shows less, cropping shows the wrong thing.
+//
+// Measured from the stream rather than assumed from the device, because nothing
+// here knows what published the track — and a phone turned sideways mid-call
+// becomes an ordinary landscape tile with no reload.
+const portrait = ref(false)
+function measure() {
+  const el = videoEl.value
+  // Both zero until the first frame; `resize` fires again when they are known,
+  // and once more on every rotation.
+  portrait.value = !!el && el.videoWidth > 0 && el.videoHeight > el.videoWidth
+}
+
 // attach/detach rather than assigning srcObject: the SDK keeps its own list of
 // attached elements and uses it to decide whether a track is still being
 // watched — that is what makes adaptiveStream stop paying for a hidden tile.
@@ -51,6 +68,11 @@ watch(
     // legitimately on screen twice while this person holds the stage.
     if (old && old !== track) old.detach(videoEl.value)
     bind(track, videoEl.value)
+    // A tile whose stream went away keeps its last shape otherwise, and the
+    // avatar that replaces it would sit in a frame sized for somebody else's
+    // phone until the next publication.
+    if (!track) portrait.value = false
+    else measure()
   },
   { immediate: true, flush: 'post' },
 )
@@ -65,14 +87,23 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="tile"
-    :class="{ stage, speaking: !screen && peer.speaking, video: !!video, screen }"
+    :class="{ stage, speaking: !screen && peer.speaking, video: !!video, screen, portrait }"
     :data-testid="screen ? 'conference-screen-tile' : 'conference-tile'"
   >
     <!-- muted on the local tile is not cosmetic: an unmuted self-view is a
          feedback loop through the room's speakers. Audio is not played here at
          all: it lives in the always-mounted ConferenceAudioSink (#2888), so a
          minimised call — which renders only one tile — is not left silent. -->
-    <video v-show="video" ref="videoEl" class="v" autoplay playsinline muted />
+    <video
+      v-show="video"
+      ref="videoEl"
+      class="v"
+      autoplay
+      playsinline
+      muted
+      @loadedmetadata="measure"
+      @resize="measure"
+    />
 
     <!-- Weak-signal badge, top-left, amber for poor and red for lost (#2884). -->
     <n-tooltip v-if="weakConn">
@@ -144,6 +175,11 @@ onBeforeUnmount(() => {
    4:3 spreadsheet in a 16:9 tile cuts off exactly the rows being pointed at.
    Letterboxing is the honest trade. */
 .tile.screen .v {
+  object-fit: contain;
+}
+/* Same trade for a phone held upright (#2896): `cover` on a 9:16 stream keeps a
+   vertical sixth of it, which in practice is the caller's chin. */
+.tile.portrait .v {
   object-fit: contain;
 }
 /* The presenter's screen gets more room than a face does — a shared IDE at the

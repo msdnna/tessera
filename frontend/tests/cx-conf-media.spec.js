@@ -401,6 +401,65 @@ describe('ParticipantTile', () => {
     expect(w.find('.muted-icon').exists()).toBe(false)
     w.unmount()
   })
+
+  // jsdom decodes nothing, so the intrinsic size a real element would learn from
+  // the first frame is stated here and announced the way the browser does.
+  function sized(w, width, height) {
+    const el = w.find('video')
+    Object.defineProperty(el.element, 'videoWidth', { value: width, configurable: true })
+    Object.defineProperty(el.element, 'videoHeight', { value: height, configurable: true })
+    return el.trigger('resize')
+  }
+
+  it('fits a phone held upright by height instead of cropping it (#2896)', async () => {
+    const w = mount(ParticipantTile, { props: { peer: peer({ videoTrack: track() }) } })
+    await nextTick()
+    // `cover` on 9:16 in a 16:9 tile keeps a vertical sixth of the picture — on
+    // the desktop that was the caller's chin and nothing else.
+    await sized(w, 720, 1280)
+
+    expect(w.classes()).toContain('portrait')
+    w.unmount()
+  })
+
+  it('leaves an ordinary landscape camera filling its tile', async () => {
+    const w = mount(ParticipantTile, { props: { peer: peer({ videoTrack: track() }) } })
+    await nextTick()
+    await sized(w, 1280, 720)
+
+    // Letterboxing a 16:9 stream in a 16:9 tile would only shrink every face in
+    // the call to buy nothing.
+    expect(w.classes()).not.toContain('portrait')
+    w.unmount()
+  })
+
+  it('follows a phone turned sideways mid-call', async () => {
+    const w = mount(ParticipantTile, { props: { peer: peer({ videoTrack: track() }) } })
+    await nextTick()
+    await sized(w, 720, 1280)
+    expect(w.classes()).toContain('portrait')
+
+    // A rotation republishes at the new size and fires `resize` again; a tile
+    // that only measured once would letterbox this stream for the rest of the
+    // call.
+    await sized(w, 1280, 720)
+    expect(w.classes()).not.toContain('portrait')
+    w.unmount()
+  })
+
+  it('drops the fitted shape when the camera goes off', async () => {
+    const v = track()
+    const w = mount(ParticipantTile, { props: { peer: peer({ videoTrack: v }) } })
+    await nextTick()
+    await sized(w, 720, 1280)
+    expect(w.classes()).toContain('portrait')
+
+    await w.setProps({ peer: peer({ videoTrack: null }) })
+    // Nothing announces a size on the way out, so the tile has to let go of the
+    // last one itself — otherwise the avatar inherits somebody else's frame.
+    expect(w.classes()).not.toContain('portrait')
+    w.unmount()
+  })
 })
 
 describe('DeviceMenu', () => {

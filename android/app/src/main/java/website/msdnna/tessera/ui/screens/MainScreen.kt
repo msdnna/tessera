@@ -322,7 +322,12 @@ fun MainScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !boardTimelineLike || drawerState.isOpen,
+        // Same trade the timeline makes, and for the same reason: the call screen
+        // owns pinch-zoom and pan on the stage (#2896), and an edge-swipe that
+        // pulled the sidebar out from under a two-finger spread turned every
+        // attempt to read a shared screen into a navigation. A drawer already
+        // open still closes by gesture — that one is not competing with anything.
+        gesturesEnabled = (!boardTimelineLike && !call.roomOnScreen) || drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = c.surface, modifier = Modifier.width(280.dp)) {
                 // Sidebar navigation: push onto the back-stack and close the drawer.

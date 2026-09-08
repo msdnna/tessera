@@ -2,18 +2,15 @@ package website.msdnna.tessera.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
@@ -35,7 +32,6 @@ import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TConfirmDialog
 import website.msdnna.tessera.ui.components.clickableNoRipple
-import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.TesseraWarning
@@ -60,7 +56,9 @@ import website.msdnna.tessera.util.confMicBadge
  *
  * A sheet rather than the web's side rail: a phone has no width to spare beside
  * a video call, and the rail's own collapse button exists on the web for exactly
- * that reason.
+ * that reason. Half the screen by default and pulled up to the whole of it (see
+ * [ConferenceSheet]) — «кто говорит» is asked *while* watching, and a roster of
+ * thirty is read with the call out of the way.
  */
 @Composable
 internal fun ConferenceParticipantsPanel(
@@ -77,27 +75,12 @@ internal fun ConferenceParticipantsPanel(
     val c = Tessera.colors
     val roster = state.roster
 
-    // Scrim and sheet are siblings rather than parent and child, and that is not
-    // a layout preference. A `clickable` wrapped around the sheet — the obvious
-    // way to stop a tap on a row reaching the toolbar underneath — makes it a
-    // merging semantics node, and every tag inside it stops answering. Stacked
-    // this way the scrim covers exactly what the sheet does not, so nothing has
-    // to swallow anything.
-    Column(Modifier.fillMaxSize()) {
-        Box(
-            Modifier.fillMaxWidth().weight(SCRIM_WEIGHT)
-                .background(c.text1.copy(alpha = 0.4f))
-                .clickableNoRipple(onClick = onClose),
-        )
-        Column(
-            Modifier.fillMaxWidth()
-                // A share of the height rather than a fixed one: the sheet has to
-                // stay inside a short screen, and the roster scrolls anyway.
-                .weight(PANEL_WEIGHT)
-                .clip(RoundedCornerShape(topStart = RadiusMd, topEnd = RadiusMd))
-                .background(c.surface)
-                .testTag(TestTags.CONFERENCE_PANEL),
-        ) {
+    ConferenceSheet(
+        tag = TestTags.CONFERENCE_PANEL,
+        handleTag = TestTags.CONFERENCE_PANEL_HANDLE,
+        handleLabel = stringResource(R.string.conf_sheet_expand),
+        onClose = onClose,
+        header = {
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -118,51 +101,51 @@ internal fun ConferenceParticipantsPanel(
                         .testTag(TestTags.CONFERENCE_PANEL_CLOSE),
                 )
             }
+        },
+    ) {
+        // Our own force-mute, said out loud. The toolbar shows a microphone
+        // that is merely off, which reads as our own last press.
+        if (state.room.forceMuted) {
+            PanelNotice(stringResource(R.string.conf_panel_you_force_muted), TestTags.CONFERENCE_BANNER)
+        }
 
-            // Our own force-mute, said out loud. The toolbar shows a microphone
-            // that is merely off, which reads as our own last press.
-            if (state.room.forceMuted) {
-                PanelNotice(stringResource(R.string.conf_panel_you_force_muted), TestTags.CONFERENCE_BANNER)
-            }
+        val deniedText = when (state.denied) {
+            ConfDeniedKind.KICK -> stringResource(R.string.conf_denied_kick)
+            ConfDeniedKind.MUTE -> stringResource(R.string.conf_denied_mute)
+            ConfDeniedKind.OTHER -> stringResource(R.string.conf_denied_other)
+            ConfDeniedKind.NONE -> ""
+        }
+        if (deniedText.isNotEmpty()) {
+            // Dismissed by tapping the notice itself, not a wrapper around
+            // it: a `clickable` one node up merges the tag away, which is
+            // the same trap the scrim sidesteps.
+            PanelNotice(deniedText, TestTags.CONFERENCE_DENIED, onDismissDenied)
+        }
 
-            val deniedText = when (state.denied) {
-                ConfDeniedKind.KICK -> stringResource(R.string.conf_denied_kick)
-                ConfDeniedKind.MUTE -> stringResource(R.string.conf_denied_mute)
-                ConfDeniedKind.OTHER -> stringResource(R.string.conf_denied_other)
-                ConfDeniedKind.NONE -> ""
-            }
-            if (deniedText.isNotEmpty()) {
-                // Dismissed by tapping the notice itself, not a wrapper around
-                // it: a `clickable` one node up merges the tag away, which is
-                // the same trap the scrim above sidesteps.
-                PanelNotice(deniedText, TestTags.CONFERENCE_DENIED, onDismissDenied)
-            }
-
-            if (roster.isEmpty()) {
-                Text(
-                    stringResource(R.string.conf_panel_empty),
-                    color = c.text3,
-                    fontSize = 13.sp,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp)
-                        .testTag(TestTags.CONFERENCE_PANEL_EMPTY),
-                )
-            } else {
-                LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
-                    items(roster.size, key = { roster[it].userId }) { i ->
-                        val person = roster[i]
-                        PersonRow(
-                            person = person,
-                            me = person.userId == state.room.meId,
-                            actions = state.rowActions(person),
-                            hasLocalAudio = state.hasLocalAudio(person),
-                            locallyMuted = person.userId in state.session.localMuted,
-                            volume = state.session.volumes[person.userId] ?: 1f,
-                            onForceMute = { onForceMute(person.userId, !person.forceMuted) },
-                            onKick = { onAskKick(person.userId) },
-                            onLocalMute = { onLocalMute(person.userId) },
-                            onVolume = { onVolume(person.userId, it) },
-                        )
-                    }
+        if (roster.isEmpty()) {
+            Text(
+                stringResource(R.string.conf_panel_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp)
+                    .testTag(TestTags.CONFERENCE_PANEL_EMPTY),
+            )
+        } else {
+            LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                items(roster.size, key = { roster[it].userId }) { i ->
+                    val person = roster[i]
+                    PersonRow(
+                        person = person,
+                        me = person.userId == state.room.meId,
+                        actions = state.rowActions(person),
+                        hasLocalAudio = state.hasLocalAudio(person),
+                        locallyMuted = person.userId in state.session.localMuted,
+                        volume = state.session.volumes[person.userId] ?: 1f,
+                        onForceMute = { onForceMute(person.userId, !person.forceMuted) },
+                        onKick = { onAskKick(person.userId) },
+                        onLocalMute = { onLocalMute(person.userId) },
+                        onVolume = { onVolume(person.userId, it) },
+                    )
                 }
             }
         }
@@ -356,6 +339,3 @@ private fun PersonRow(
         }
     }
 }
-
-private const val SCRIM_WEIGHT = 3f
-private const val PANEL_WEIGHT = 7f

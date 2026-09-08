@@ -779,6 +779,8 @@
     <string name="conf_media_kicked">The host removed you from the conference</string>
     <string name="conf_media_no_mic">No microphone access — nobody can hear you</string>
     <string name="conf_media_no_one">Nobody is in the room yet</string>
+    <string name="conf_sheet_expand">Drag to expand</string>
+    <string name="conf_zoom_reset">Reset zoom</string>
     <string name="conf_panel_title">In the room: %1$d</string>
     <string name="conf_panel_empty">Nobody is in the room yet</string>
     <string name="conf_panel_close">Close</string>

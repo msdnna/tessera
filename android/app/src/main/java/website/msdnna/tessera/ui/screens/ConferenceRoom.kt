@@ -6,6 +6,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,10 +30,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -58,6 +65,7 @@ import website.msdnna.tessera.ui.theme.TesseraWarning
 import website.msdnna.tessera.ui.viewmodels.ConferenceChatViewModel
 import website.msdnna.tessera.ui.viewmodels.ConferenceRoomUiState
 import website.msdnna.tessera.ui.viewmodels.ConferenceRoomViewModel
+import website.msdnna.tessera.util.CONF_ZOOM_NONE
 import website.msdnna.tessera.util.ConfAudioRoute
 import website.msdnna.tessera.util.ConfBanner
 import website.msdnna.tessera.util.ConfMediaGrant
@@ -70,6 +78,7 @@ import website.msdnna.tessera.util.ConfStageNotice
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.confCanRetry
 import website.msdnna.tessera.util.confHandCount
+import website.msdnna.tessera.util.confZoomStep
 
 /**
  * The call itself (#2896 §5, web `ConferenceRoom.vue`): the stage, the strip of
@@ -271,7 +280,14 @@ internal fun ConferenceRoomBody(
             // merge the semantics of everything under it, and the tiles' own tags —
             // the thing every spec selects by — would vanish into this node.
             Box(
-                Modifier.fillMaxWidth().weight(1f).padding(horizontal = 10.dp),
+                Modifier.fillMaxWidth().weight(1f).padding(
+                    start = 10.dp,
+                    end = 10.dp,
+                    // Off the app bar. Without it the stage butts straight into the
+                    // shell's header and the call reads as part of the chrome; the
+                    // folded state keeps every pixel, which is what it is for.
+                    top = if (state.stageOnly) 0.dp else 10.dp,
+                ),
                 contentAlignment = Alignment.Center,
             ) {
                 val stage = layout.stage
@@ -285,9 +301,7 @@ internal fun ConferenceRoomBody(
                     // The marker is a wrapper rather than a second `testTag` on the
                     // tile: two of them on one node keep the outer value, and the
                     // tile would stop answering to the identity every spec uses.
-                    Box(Modifier.fillMaxSize().testTag(TestTags.CONFERENCE_STAGE)) {
-                        ConferenceTile(peer = stage, screen = layout.screen, modifier = Modifier.fillMaxSize())
-                    }
+                    ConferenceStage(peer = stage, screen = layout.screen)
                 }
                 // Same affordance as the web's fullscreen button, doing the local
                 // equivalent: there is no browser chrome to escape here, so it folds
@@ -355,6 +369,84 @@ internal fun ConferenceRoomBody(
                 onLocalMute = onLocalMute,
                 onVolume = onVolume,
                 onDismissDenied = onDismissDenied,
+            )
+        }
+    }
+}
+
+/**
+ * The big tile, with a pinch on it.
+ *
+ * A shared desktop is what makes this necessary: 1920 pixels of somebody's IDE
+ * drawn across 391dp is present and unreadable, and «покажи ещё раз, я не вижу»
+ * is the whole of the mobile screen-share experience without a zoom. A camera
+ * gets the same gesture rather than a rule of its own — a face nobody can make
+ * out is the same problem, and two stages that answer a pinch differently would
+ * be the surprising thing.
+ *
+ * The gesture consumes what it handles, which is also how the shell's drawer
+ * stops opening halfway through a two-finger spread (the other half of that is
+ * `MainScreen`, which folds its edge-swipe away for the whole call).
+ */
+@Composable
+private fun ConferenceStage(peer: ConfPeer, screen: Boolean) {
+    val c = Tessera.colors
+    // Dropped when the stage changes hands: a transform carried over would open
+    // the next presenter's screen already panned into a corner, and nothing on
+    // screen would say why.
+    var zoom by remember(peer.identity, screen) { mutableStateOf(CONF_ZOOM_NONE) }
+
+    Box(
+        Modifier.fillMaxSize()
+            // Clipped here rather than left to the tile: the magnified picture is
+            // drawn past its own bounds, and without this it spills over the
+            // strip and the toolbar underneath.
+            .clip(RoundedCornerShape(RadiusMd))
+            .pointerInput(peer.identity, screen) {
+                detectTransformGestures { _, pan, gestureZoom, _ ->
+                    zoom = confZoomStep(
+                        current = zoom,
+                        zoomBy = gestureZoom,
+                        panX = pan.x,
+                        panY = pan.y,
+                        width = size.width.toFloat(),
+                        height = size.height.toFloat(),
+                    )
+                }
+            }
+            .pointerInput(peer.identity, screen) {
+                // The gesture everybody tries first, and the one that costs
+                // nothing to support: a double tap is how a picture goes back to
+                // whole in every gallery on the phone.
+                detectTapGestures(onDoubleTap = { zoom = CONF_ZOOM_NONE })
+            }
+            .testTag(TestTags.CONFERENCE_STAGE),
+    ) {
+        ConferenceTile(
+            peer = peer,
+            screen = screen,
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                scaleX = zoom.scale
+                scaleY = zoom.scale
+                translationX = zoom.x
+                translationY = zoom.y
+            },
+        )
+        // A visible way out, because a pinch is not one: zooming back with two
+        // fingers on a moving picture is fiddly, and a stage stuck at 4× with the
+        // speaker outside the frame is a call somebody leaves.
+        if (zoom.zoomed) {
+            IonIcon(
+                Ion.CONTRACT,
+                size = 18.dp,
+                tint = c.text2,
+                description = stringResource(R.string.conf_zoom_reset),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)
+                    .clip(CircleShape)
+                    .background(c.surface.copy(alpha = 0.85f))
+                    .clickableNoRipple { zoom = CONF_ZOOM_NONE }
+                    .padding(7.dp)
+                    .testTag(TestTags.CONFERENCE_ZOOM_RESET),
             )
         }
     }
