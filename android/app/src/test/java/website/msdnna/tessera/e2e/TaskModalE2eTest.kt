@@ -89,6 +89,15 @@ class TaskModalE2eTest {
         val target = e2e.fixture.columns[1]
 
         compose.openTaskModal(e2e.fixture, task.id)
+        // The chip is composed off the task, but it only becomes clickable once the
+        // *columns* land — a second request the modal fires after the one that
+        // renders the title, i.e. after `openTaskModal` has already returned. Tapping
+        // inside that window is not an error: the disabled `clickable` swallows the
+        // tap and the picker never opens, which then surfaces 20s later as «the
+        // option never appeared» (#2908). Whether it does depends on which side of
+        // the injected down/up the columns arrive on, which is what made this the
+        // tier's one flaky spec.
+        compose.awaitEnabled(TestTags.TASK_STATUS)
         compose.onNodeWithTag(TestTags.TASK_STATUS).performScrollTo().performClick()
         // The picker is a focusable Popup with an appear animation, so it is a
         // window of its own that is not in the tree the frame the tap lands —

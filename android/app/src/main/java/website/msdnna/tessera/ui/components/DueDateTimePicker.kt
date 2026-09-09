@@ -47,6 +47,7 @@ import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.model.Recurrence
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
@@ -243,7 +244,7 @@ fun DueDateTimePicker(
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 TargetTab(
                     label = stringResource(R.string.due_picker_tab_start),
-                    value = dueShort(LocalResources.current, startMillis()?.let { millisToUtcIso(it) })
+                    value = dueShort(LocalResources.current, startMillis()?.let { millisToUtcIso(it) }, LocalDateFormat.current)
                         .ifBlank { stringResource(R.string.due_picker_start_unset) },
                     active = editTarget == "start",
                     modifier = Modifier.weight(1f),
@@ -251,7 +252,7 @@ fun DueDateTimePicker(
                 Text("→", color = c.text3, fontSize = 14.sp, modifier = Modifier.padding(horizontal = 6.dp))
                 TargetTab(
                     label = stringResource(R.string.due_picker_tab_due),
-                    value = dueShort(LocalResources.current, dueMillis()?.let { millisToUtcIso(it) })
+                    value = dueShort(LocalResources.current, dueMillis()?.let { millisToUtcIso(it) }, LocalDateFormat.current)
                         .ifBlank { stringResource(R.string.due_picker_due_unset) },
                     active = editTarget == "due",
                     modifier = Modifier.weight(1f),

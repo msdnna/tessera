@@ -1,0 +1,49 @@
+# Tessera dev edge — self-signed TLS in front of the `make up` stack (#2864).
+#
+# Why this exists: conferences need a *secure context*. `getUserMedia` (camera/
+# mic) and the LiveKit signalling WebSocket both refuse to run on a plain-http
+# origin unless it is loopback — so testing calls by LAN IP, the way a second
+# machine or a VPN client reaches this box, is impossible over the :8083 http
+# frontend. This edge terminates TLS with Caddy's own local CA (trust its root
+# once) and forwards to the same containers, mirroring the production Caddyfile.
+#
+# It is NOT started by `make up` by default: it lives in the git-ignored
+# docker-compose.override.yml so only hosts that opt in pay for it. Production
+# keeps using deploy/Caddyfile (Let's Encrypt on a real domain); this is its
+# loopback-friendly twin.
+#
+# DEV_EDGE_ADDR is the address the cert covers and the browser opens, e.g.
+# https://192.168.100.117 or https://localhost. It also drives LIVEKIT_PUBLIC_URL
+# in .env (wss://<same-host>/livekit), so the two must name the same host.
+
+{
+	# Local CA, not ACME: the address here is a private IP / loopback, which no
+	# public CA will ever sign. `caddy trust` (or exporting the root from the
+	# container) installs it in the OS/browser trust store.
+	local_certs
+
+	# The edge is addressed by IP, and TLS SNI must not carry an IP literal
+	# (RFC 6066) — so browsers and curl send NO server name at all when they open
+	# https://<ip>. Without a default, Caddy has no SNI to pick a certificate by
+	# and aborts the handshake with a TLS "internal error". default_sni tells it
+	# which cert to serve when the client names nothing. Set DEV_EDGE_HOST to the
+	# bare host in DEV_EDGE_ADDR (no scheme, no port).
+	default_sni {$DEV_EDGE_HOST:localhost}
+}
+
+{$DEV_EDGE_ADDR:https://localhost} {
+	tls internal
+
+	# LiveKit signalling — identical to production (deploy/Caddyfile). handle_path
+	# strips the /livekit prefix: livekit-client appends /rtc(/v1) to the base URL
+	# it is given, so the browser asks for /livekit/rtc/v1 and LiveKit must receive
+	# /rtc/v1. No `encode` — it is a protobuf WebSocket, compressing only burns CPU.
+	handle_path /livekit/* {
+		reverse_proxy livekit:7880
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy frontend:80
+	}
+}

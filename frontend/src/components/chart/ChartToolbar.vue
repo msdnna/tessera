@@ -122,9 +122,31 @@ const { t } = useI18n()
   background: var(--t-hover);
   border-radius: 20px;
   padding: 3px 10px;
+  /* A pill is a single token — it may drop off the row, but it must never break
+     inside. Without this the 20px radius turns a two-line "3 просрочено" into a
+     circle (#2893). */
+  white-space: nowrap;
 }
 .tl-counter.overdue {
   color: #e0533d;
   background: color-mix(in srgb, #e0533d 12%, transparent);
+}
+/* Phone (#2893): the toolbar is a nowrap row of four rigid items, so on 393px the
+   Gantt's hint got squeezed into a five-line column and shoved the counters into
+   circles. The hint is dropped rather than wrapped: it describes dragging the
+   link knob, and that knob is revealed by `:hover` at 14px — on a touch screen
+   the affordance it points at does not exist. What stays (today / zoom / collapse
+   / counters) is allowed to wrap onto a second row instead of squeezing. */
+@media (max-width: 768px) {
+  .tl-toolbar {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .tl-hint {
+    display: none;
+  }
+  .tl-counters {
+    flex-wrap: wrap;
+  }
 }
 </style>

@@ -8,11 +8,13 @@ import (
 // Background-worker keys — stable identifiers for the persistent tick loops, used
 // both for their heartbeat entries and for the /admin/jobs "run now" action.
 const (
-	jobGitlabSyncCron  = "gitlab_sync_cron"
-	jobGitlabWriteback = "gitlab_writeback"
+	jobGitlabSyncCron    = "gitlab_sync_cron"
+	jobGitlabWebhookCron = "gitlab_webhook_cron"
+	jobGitlabWriteback   = "gitlab_writeback"
 	jobNotifyDelivery  = "notify_delivery"
 	jobNotifyScanner   = "notify_scanner"
 	jobRecurrence      = "recurrence"
+	jobConfRecordings  = "conference_recordings"
 )
 
 // backgroundWorkers is the fixed roster of tick-loop workers, in display order.
@@ -23,10 +25,12 @@ var backgroundWorkers = []struct {
 	intervalSec int
 }{
 	{jobGitlabSyncCron, "Автосинхронизация GitLab", 30},
+	{jobGitlabWebhookCron, "Синхронизация GitLab по вебхуку", 1},
 	{jobGitlabWriteback, "Выгрузка изменений в GitLab", 10},
 	{jobNotifyDelivery, "Доставка уведомлений", 10},
 	{jobNotifyScanner, "Сканирование сроков и напоминаний", 60},
 	{jobRecurrence, "Повторяющиеся задачи", 60},
+	{jobConfRecordings, "Записи конференций", 60},
 }
 
 // RegisterBackgroundWorkers records the tick-loop workers as heartbeat entries so
@@ -42,19 +46,24 @@ func (h *API) RegisterBackgroundWorkers() {
 // them from its own catalog; workerOps keeps the Russian wording as a fallback for
 // anything reading the API (or the supervisor log) without that catalog.
 const (
-	opSyncScan   = "sync_scan"
+	opSyncScan    = "sync_scan"
+	opWebhookScan = "webhook_scan"
 	opWriteback  = "writeback"
 	opDelivery   = "delivery"
 	opDueScan    = "due_scan"
 	opRecurrence = "recurrence"
+
+	opRecordingSweep = "recording_sweep"
 )
 
 var workerOps = map[string]string{
-	opSyncScan:   "проверка интеграций к синхронизации",
-	opWriteback:  "выгрузка изменений в GitLab",
-	opDelivery:   "рассылка уведомлений",
-	opDueScan:    "проверка сроков и напоминаний",
-	opRecurrence: "продвижение повторяющихся задач",
+	opSyncScan:       "проверка интеграций к синхронизации",
+	opWebhookScan:    "проверка событий вебхука GitLab",
+	opWriteback:      "выгрузка изменений в GitLab",
+	opDelivery:       "рассылка уведомлений",
+	opDueScan:        "проверка сроков и напоминаний",
+	opRecurrence:     "продвижение повторяющихся задач",
+	opRecordingSweep: "проверка записей конференций и уборка по сроку",
 }
 
 // tick refreshes a worker's heartbeat; a thin wrapper so worker loops don't import

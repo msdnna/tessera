@@ -157,6 +157,9 @@ func fcmRequest(token string, msg Message) map[string]any {
 	if msg.TaskID != "" {
 		data["task_id"] = msg.TaskID
 	}
+	if msg.ConferenceID != "" {
+		data["conference_id"] = msg.ConferenceID
+	}
 	return map[string]any{
 		"message": map[string]any{
 			"token": token,

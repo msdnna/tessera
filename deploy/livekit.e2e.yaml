@@ -1,0 +1,64 @@
+# LiveKit SFU — throwaway config for the web e2e media tier (#2876). Production is
+# deploy/livekit.yaml, the `make up` dev stack is deploy/livekit.dev.yaml; this one
+# is neither, and is started by hand only when you want conferences.spec.js to
+# exercise real media instead of skipping that tier:
+#
+#   docker run -d --name tessera-livekit-e2e -p 7945:7945 -p 7946:7946 \
+#     -e LIVEKIT_KEYS="devkey: devsecret_at_least_32_characters_long" \
+#     -v $PWD/deploy/livekit.e2e.yaml:/etc/livekit.yaml:ro \
+#     livekit/livekit-server:v1.13.6 --config /etc/livekit.yaml
+#
+#   printf devsecret_at_least_32_characters_long > ~/.livekit-e2e-secret
+#   make e2e-backend-up LIVEKIT_URL=http://localhost:7945 \
+#     LIVEKIT_PUBLIC_URL=ws://localhost:7945 \
+#     LIVEKIT_API_KEY=devkey LIVEKIT_SECRET_FILE=~/.livekit-e2e-secret
+#   make test-e2e-frontend E2E_ARGS=conferences
+#
+# Same no-secrets rule as its siblings: the key/secret come from LIVEKIT_KEYS, not
+# from this file.
+#
+# Four things here are peculiar to a WSL + Docker Desktop box, and each one cost a
+# debugging round, so they are written down rather than rediscovered:
+#
+#   • ports are shifted off 7880/7881/7882 so this can run beside `make up`'s SFU;
+#   • ICE is TCP-only. Docker here refuses to publish a UDP port at all
+#     (`/forwards/expose returned unexpected status: 500`), and `--network host`
+#     joins the *Docker Desktop VM's* stack rather than the WSL distro the browser
+#     runs in — so the only media port that browser can reach is a TCP one Docker
+#     forwards to the distro's loopback. One is enough for a single publisher;
+#   • `node_ip: 127.0.0.1` for the same reason: loopback is the only address of
+#     this SFU the browser can route to. That in turn is why playwright.config.js
+#     passes `--allow-loopback-in-peer-connection` — Chrome will not gather a
+#     loopback candidate of its own on a box that has other interfaces, and
+#     without one it has no socket to answer a 127.0.0.1 candidate from;
+#   • the same 500 also hits *TCP* on a port some earlier container had forwarded:
+#     the mapping leaks when the container is killed and the port stays unusable
+#     until Docker Desktop restarts. If `docker run` refuses this pair, shift it
+#     and change both numbers below to match — nothing else depends on them.
+
+port: 7945
+
+rtc:
+  tcp_port: 7946
+  # UDP off entirely, not merely unpublished: left at a real port the SFU would
+  # advertise a candidate the browser cannot reach and ICE would spend its whole
+  # timeout on it before falling back to TCP.
+  udp_port: 0
+  port_range_start: 0
+  port_range_end: 0
+  use_external_ip: false
+  node_ip: 127.0.0.1
+
+room:
+  # Same as dev and production: an SFU that auto-creates rooms would hide the bug
+  # where the backend forgot to create one — exactly what this tier is here to catch.
+  auto_create: false
+  max_participants: 30
+  empty_timeout: 300
+  departure_timeout: 20
+
+logging:
+  # Louder than production on purpose: "participant active" in this log is how you
+  # tell a real media connection from a spec that only rendered the right buttons.
+  level: info
+  pion_level: error

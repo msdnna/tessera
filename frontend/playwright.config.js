@@ -35,7 +35,53 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'], baseURL },
+      // Stated explicitly so the top-level testDir stays the desktop tier's even
+      // though `mobile` below points somewhere else: without it the desktop
+      // project would also pick up e2e/mobile/** and run every mobile spec at
+      // 1280px, where the whole point of them is gone.
+      testDir: './e2e/specs',
+      use: {
+        ...devices['Desktop Chrome'],
+        baseURL,
+        // Fake camera/microphone for the conference specs (#2876). Without these
+        // the headless browser has no capture devices at all, so `getUserMedia`
+        // rejects with NotFoundError and the call never reaches LIVE — a failure
+        // that looks exactly like a broken transport.
+        //   --use-fake-device-for-media-stream  a synthetic 640×480 rolling
+        //     pattern + a 440 Hz tone, so `audioLevel` is non-zero and the
+        //     speaker/level assertions have something real to measure;
+        //   --use-fake-ui-for-media-stream      auto-grants the permission
+        //     prompt, which headless Chrome would otherwise leave hanging;
+        //   --autoplay-policy                   lets the remote <audio> element
+        //     start without a gesture, so `audioBlocked` stays false;
+        //   --allow-loopback-in-peer-connection makes Chrome gather a 127.0.0.1
+        //     ICE candidate. It refuses to on a box with other interfaces, and an
+        //     SFU on this machine's loopback is then unpairable — it offers
+        //     127.0.0.1 and the browser has no socket to answer from, so the room
+        //     hangs at "could not establish pc connection" with both sides
+        //     apparently healthy.
+        // Harmless for every other spec: nothing else asks for a device.
+        launchOptions: {
+          args: [
+            '--use-fake-device-for-media-stream',
+            '--use-fake-ui-for-media-stream',
+            '--autoplay-policy=no-user-gesture-required',
+            '--allow-loopback-in-peer-connection',
+          ],
+        },
+        permissions: ['camera', 'microphone'],
+      },
+    },
+    // Mobile tier (#2893): the same app at 390×844 with touch, in its own
+    // directory so `--project=chromium` stays exactly as fast as before. Both
+    // projects share the one seeded board, and with `workers: 1` they run one
+    // after the other, so there is no race — but the run does take roughly twice
+    // as long, which is why `make test-e2e-frontend` still runs the desktop tier
+    // alone and `make test-e2e-frontend-mobile` asks for this one by name.
+    {
+      name: 'mobile',
+      testDir: './e2e/mobile',
+      use: { ...devices['Pixel 5'], baseURL },
     },
   ],
   // The suite owns the preview server; the backend is expected to be up already

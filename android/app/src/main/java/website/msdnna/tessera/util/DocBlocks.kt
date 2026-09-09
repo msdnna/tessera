@@ -25,6 +25,10 @@ data class DocSpan(
     val code: Boolean = false,
     val href: String? = null,
     val color: String? = null,
+    /** The stored CSS font stack of a `textStyle` mark — see [docFontKind]. */
+    val fontFamily: String? = null,
+    /** The stored CSS size of a `textStyle` mark, e.g. `18px` — see [docFontSizeSp]. */
+    val fontSize: String? = null,
 )
 
 /** One rendered row. [id] is the block anchor D4 locks and D5 annotates. */
@@ -37,6 +41,7 @@ data class DocParagraph(
     val spans: List<DocSpan>,
     val align: String? = null,
     val indent: Int = 0,
+    val lineHeight: Float? = null,
 ) : DocBlock
 
 data class DocHeading(
@@ -44,6 +49,8 @@ data class DocHeading(
     val level: Int,
     val spans: List<DocSpan>,
     val align: String? = null,
+    val indent: Int = 0,
+    val lineHeight: Float? = null,
 ) : DocBlock
 
 /**
@@ -58,13 +65,37 @@ data class DocListRow(
     val checked: Boolean? = null,
 ) : DocBlock
 
-data class DocQuote(override val id: String, val spans: List<DocSpan>) : DocBlock
+data class DocQuote(
+    override val id: String,
+    val spans: List<DocSpan>,
+    val indent: Int = 0,
+    val lineHeight: Float? = null,
+) : DocBlock
 
 data class DocCode(override val id: String, val language: String, val text: String) : DocBlock
 
 data class DocDivider(override val id: String) : DocBlock
 
 data class DocImage(override val id: String, val src: String, val alt: String) : DocBlock
+
+/**
+ * A PDF kept as a file rather than converted into blocks (#2733). [size] is the
+ * stored byte count, so the reader can say how big the file is before it has
+ * fetched a byte of it.
+ */
+data class DocPdf(
+    override val id: String,
+    val src: String,
+    val name: String,
+    val size: Long,
+) : DocBlock
+
+/**
+ * Where one page geometry ends and the next begins (#2827). The break carries
+ * the geometry of everything *after* it; the document node carries the geometry
+ * of everything before the first break.
+ */
+data class DocSectionBreak(override val id: String, val page: DocPage) : DocBlock
 
 data class DocTableCell(val spans: List<DocSpan>, val header: Boolean)
 
@@ -109,7 +140,11 @@ fun docPlainText(content: JsonElement?): String =
                 row.cells.joinToString("\t") { cell -> cell.spans.joinToString("") { it.text } }
             }
 
-            is DocDivider -> ""
+            // A PDF's only text is its file name — a preview that said nothing at
+            // all would read as an empty document, which it is not.
+            is DocPdf -> block.name
+
+            is DocDivider, is DocSectionBreak -> ""
         }
     }.trim()
 
@@ -124,9 +159,31 @@ private fun appendNodes(nodes: List<JsonElement>, out: MutableList<DocBlock>, co
 private fun appendNode(node: JsonObject, out: MutableList<DocBlock>, counter: IntArray, depth: Int) {
     val id = blockId(node, counter)
     when (node.str("type")) {
-        "paragraph" -> out += DocParagraph(id, spansOf(node), node.attr("textAlign"), node.attrInt("indent") ?: 0)
+        "paragraph" -> {
+            val spans = spansOf(node)
+            val nested = inlineImages(node)
+            // A paragraph that carries nothing but a picture *is* that picture:
+            // emitting the empty paragraph too would open a blank line above it.
+            if (spans.isNotEmpty() || nested.isEmpty()) {
+                out += DocParagraph(
+                    id,
+                    spans,
+                    node.attr("textAlign"),
+                    node.attrInt("indent") ?: 0,
+                    node.lineHeight(),
+                )
+            }
+            for (image in nested) out += imageBlock(image, counter)
+        }
 
-        "heading" -> out += DocHeading(id, (node.attrInt("level") ?: 1).coerceIn(1, 6), spansOf(node), node.attr("textAlign"))
+        "heading" -> out += DocHeading(
+            id,
+            (node.attrInt("level") ?: 1).coerceIn(1, 6),
+            spansOf(node),
+            node.attr("textAlign"),
+            node.attrInt("indent") ?: 0,
+            node.lineHeight(),
+        )
 
         "bulletList", "orderedList", "taskList" -> appendList(node, out, counter, depth, 0)
 
@@ -139,6 +196,17 @@ private fun appendNode(node: JsonObject, out: MutableList<DocBlock>, counter: In
         "image" -> out += DocImage(id, node.attr("src").orEmpty(), node.attr("alt").orEmpty())
 
         "table" -> out += DocTable(id, tableRows(node))
+
+        "pdfEmbed" -> out += DocPdf(
+            id,
+            node.attr("src").orEmpty(),
+            node.attr("name").orEmpty(),
+            node.attrLong("size") ?: 0L,
+        )
+
+        // A break whose geometry is missing or unusable is still a break: losing
+        // the boundary would silently merge two sections of the document.
+        "sectionBreak" -> out += DocSectionBreak(id, normalizeDocPage(docPageAttr(node)))
 
         // Anything else (a node type this client predates) contributes its
         // children rather than vanishing with them.
@@ -192,14 +260,19 @@ private fun appendList(list: JsonObject, out: MutableList<DocBlock>, counter: In
 
 private fun appendQuote(node: JsonObject, out: MutableList<DocBlock>, counter: IntArray, depth: Int) {
     if (depth > MAX_DEPTH) return
+    // Spacing and indentation are attributes of the quote, not of the paragraphs
+    // inside it (blockStyle.js, STYLED_TYPES), so every row it flattens into
+    // carries the quote's own values.
+    val indent = node.attrInt("indent") ?: 0
+    val lineHeight = node.lineHeight()
     val children = node.nodes("content")
     if (children.isEmpty()) {
-        out += DocQuote(blockId(node, counter), emptyList())
+        out += DocQuote(blockId(node, counter), emptyList(), indent, lineHeight)
         return
     }
     for (element in children) {
         val child = element as? JsonObject ?: continue
-        out += DocQuote(blockId(child, counter), spansOf(child))
+        out += DocQuote(blockId(child, counter), spansOf(child), indent, lineHeight)
     }
 }
 
@@ -225,6 +298,34 @@ private fun inlineSpans(node: JsonObject): List<DocSpan> {
 
 private fun spansOf(node: JsonObject): List<DocSpan> = inlineSpans(node)
 
+/**
+ * Pictures sitting *inside* a paragraph rather than beside it.
+ *
+ * The editor configures `Image` as a block node, so today's documents keep
+ * their pictures at the top level — but the docx converter and older documents
+ * put them inline, and [collectSpans] carries text only. Without this an image
+ * in a paragraph does not fail to draw, it disappears: the paragraph renders as
+ * the (often empty) run of text around it.
+ */
+private fun inlineImages(node: JsonObject): List<JsonObject> {
+    val out = mutableListOf<JsonObject>()
+    collectInlineImages(node.nodes("content"), out, 0)
+    return out
+}
+
+private fun collectInlineImages(nodes: List<JsonElement>, out: MutableList<JsonObject>, depth: Int) {
+    if (depth > MAX_DEPTH) return
+    for (element in nodes) {
+        val node = element as? JsonObject ?: continue
+        if (node.str("type") == "image") out += node else collectInlineImages(node.nodes("content"), out, depth + 1)
+    }
+}
+
+/** The picture as its own row. Its id is the node's, or the next running one —
+ *  the paragraph's own id belongs to the paragraph's text. */
+private fun imageBlock(node: JsonObject, counter: IntArray): DocImage =
+    DocImage(blockId(node, counter), node.attr("src").orEmpty(), node.attr("alt").orEmpty())
+
 private fun collectSpans(nodes: List<JsonElement>, out: MutableList<DocSpan>, depth: Int) {
     if (depth > MAX_DEPTH) return
     for (element in nodes) {
@@ -243,12 +344,25 @@ private fun span(text: String, node: JsonObject): DocSpan {
         val mark = element as? JsonObject ?: continue
         span = when (mark.str("type")) {
             "bold" -> span.copy(bold = true)
+
             "italic" -> span.copy(italic = true)
+
             "underline" -> span.copy(underline = true)
+
             "strike" -> span.copy(strike = true)
+
             "code" -> span.copy(code = true)
+
             "link" -> span.copy(href = mark.attr("href"))
-            "textStyle" -> span.copy(color = mark.attr("color"))
+
+            // One mark carries three attributes; each is optional, and a mark
+            // that sets only the size must not blank the colour set beside it.
+            "textStyle" -> span.copy(
+                color = mark.attr("color") ?: span.color,
+                fontFamily = mark.attr("fontFamily") ?: span.fontFamily,
+                fontSize = mark.attr("fontSize") ?: span.fontSize,
+            )
+
             else -> span
         }
     }
@@ -307,3 +421,69 @@ private fun JsonObject.attrInt(key: String): Int? =
 
 private fun JsonObject.attrBool(key: String): Boolean? =
     attrs()?.get(key)?.takeIf { it.isJsonPrimitive }?.let { runCatching { it.asBoolean }.getOrNull() }
+
+private fun JsonObject.attrLong(key: String): Long? =
+    attrs()?.get(key)?.takeIf { it.isJsonPrimitive }?.let { runCatching { it.asLong }.getOrNull() }
+
+/**
+ * The block's line spacing. Stored as the CSS value the editor writes ('1.15'),
+ * which is a unitless multiplier — anything else (a `20px` pasted in from
+ * elsewhere) is dropped rather than guessed at.
+ */
+private fun JsonObject.lineHeight(): Float? {
+    val raw = attr("lineHeight")?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val value = raw.toFloatOrNull() ?: return null
+    // Bounds of the toolbar's own choices, widened for imports. A multiplier
+    // outside them is a misparsed unit, and applying it would either overlap the
+    // lines or scroll one paragraph off the screen.
+    return value.takeIf { it in MIN_LINE_HEIGHT..MAX_LINE_HEIGHT }
+}
+
+private const val MIN_LINE_HEIGHT = 0.5f
+private const val MAX_LINE_HEIGHT = 4f
+
+/** Which family a stored CSS font stack asks for — see [DocSpan.fontFamily]. */
+enum class DocFontKind { DEFAULT, SANS, SERIF, MONO }
+
+/**
+ * Classifies a CSS font stack.
+ *
+ * Android has no CSS font matching and no Georgia; what a reader can honour is
+ * the *kind* of face the author chose, which is exactly what the picker offers
+ * (docSchema.js, FONT_FAMILY_DEFS). The generic family at the end of the stack
+ * is the reliable part of it — an imported document names fonts this device does
+ * not have, but it still ends in `serif` or `sans-serif`.
+ */
+fun docFontKind(stack: String?): DocFontKind {
+    val value = stack?.lowercase()?.trim().orEmpty()
+    if (value.isEmpty()) return DocFontKind.DEFAULT
+    return when {
+        value.contains("monospace") || value.contains("mono") || value.contains("courier") ->
+            DocFontKind.MONO
+
+        // "sans-serif" contains "serif", so the wider match has to be asked first.
+        value.contains("sans") -> DocFontKind.SANS
+
+        value.contains("serif") || value.contains("georgia") || value.contains("times") ->
+            DocFontKind.SERIF
+
+        else -> DocFontKind.DEFAULT
+    }
+}
+
+/**
+ * A stored `fontSize` as a size in sp, or null for the reader's own size.
+ *
+ * The stored value is CSS pixels at 96 dpi (`FONT_SIZES` in docSchema.js). It is
+ * carried over as sp rather than converted: sp is the reader's unit, and the
+ * point of the attribute is the relation between the sizes the author picked —
+ * 32px is twice 16px, and it has to stay twice it on the phone.
+ */
+fun docFontSizeSp(value: String?): Float? {
+    val raw = value?.trim()?.lowercase()?.removeSuffix("px")?.takeIf { it.isNotEmpty() } ?: return null
+    val size = raw.toFloatOrNull() ?: return null
+    return size.takeIf { it in MIN_FONT_SIZE..MAX_FONT_SIZE }
+}
+
+private const val MIN_FONT_SIZE = 6f
+private const val MAX_FONT_SIZE = 96f

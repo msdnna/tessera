@@ -54,9 +54,12 @@ import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.AccentGradientStrengthSubtle
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 
-enum class TButtonKind { Primary, Secondary, Ghost }
+/** [Danger] is the web's `type="error"`: an outlined red button for an action
+ *  the person on the other end will notice and the presser cannot undo. */
+enum class TButtonKind { Primary, Secondary, Ghost, Danger }
 
 /** Button matching the web's Naive UI buttons (8dp radius, accent fill). */
 @Composable
@@ -73,13 +76,20 @@ fun TButton(
     val bg = when (kind) {
         TButtonKind.Primary -> c.primary
         TButtonKind.Secondary -> c.surfaceAlt
-        TButtonKind.Ghost -> Color.Transparent
+        TButtonKind.Ghost, TButtonKind.Danger -> Color.Transparent
     }
+    // Outlined rather than filled: a solid red block next to a neutral one pulls
+    // the eye to the destructive choice, which is the wrong default.
     val fg = when (kind) {
         TButtonKind.Primary -> c.onPrimary
+        TButtonKind.Danger -> TesseraDanger
         else -> c.text1
     }
-    val border = if (kind == TButtonKind.Secondary) BorderStroke(1.dp, c.border) else null
+    val border = when (kind) {
+        TButtonKind.Secondary -> BorderStroke(1.dp, c.border)
+        TButtonKind.Danger -> BorderStroke(1.dp, TesseraDanger)
+        else -> null
+    }
     val clickable = enabled && !loading
 
     // Accent fill (Primary) gets the soft diagonal gradient; neutral kinds stay flat.

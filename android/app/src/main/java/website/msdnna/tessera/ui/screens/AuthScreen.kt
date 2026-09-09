@@ -64,6 +64,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -72,6 +74,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
@@ -81,6 +84,7 @@ import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.repository.ProfileRepository
 import website.msdnna.tessera.ui.TestTags
+import website.msdnna.tessera.ui.components.InsecureTlsRow
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.MtLogo
 import website.msdnna.tessera.ui.components.TCard
@@ -94,7 +98,10 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.AuthViewModel
+import website.msdnna.tessera.util.DEFAULT_LANGUAGE
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.nextLanguage
+import website.msdnna.tessera.util.normalizeLanguage
 
 /** The fixed brand purple of the launch splash — the auth screen shares it. */
 private val BrandPurple = Color(0xFF7C6CFF)
@@ -109,8 +116,12 @@ private val BrandPurple = Color(0xFF7C6CFF)
 fun AuthScreen(
     serverUrl: String,
     onServerUrlChange: (String) -> Unit,
+    insecureTls: Boolean,
+    onInsecureTlsChange: (Boolean) -> Unit,
     isDark: Boolean = false,
     onToggleTheme: () -> Unit = {},
+    language: String = DEFAULT_LANGUAGE,
+    onCycleLanguage: (String) -> Unit = {},
     oauthErrorCode: String? = null,
     onOAuthErrorShown: () -> Unit = {},
     vm: AuthViewModel = viewModel(),
@@ -162,15 +173,19 @@ fun AuthScreen(
         // Airy drifting aurora over the brand gradient (mirrors the web login).
         AuthAurora(Modifier.fillMaxSize())
 
-        // Theme toggle + server settings — top-right (web AuthLayout has the theme
-        // toggle in the corner; the brand gradient itself stays purple either way).
+        // Language + theme toggles and server settings — top-right (web AuthLayout has
+        // the same cluster in the corner; the brand gradient itself stays purple either way).
         Row(
             Modifier
                 .align(Alignment.TopEnd)
+                // Форма ниже по коду, значит рисуется поверх, и её скролл-контейнер
+                // занимает весь экран — тап по кутовым кнопкам достаётся ему.
+                .zIndex(1f)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            LanguageToggle(language = language, onCycle = onCycleLanguage)
             IonIconButton(
                 Ion.CONTRAST,
                 onClick = onToggleTheme,
@@ -218,6 +233,15 @@ fun AuthScreen(
                                 stringResource(R.string.auth_server_hint),
                                 color = c.text3,
                                 fontSize = 11.sp,
+                            )
+                            // Здесь, а не только в настройках: сертификат, которому
+                            // телефон не верит, ломает уже вход — до настроек с ним
+                            // не дойти (#2896).
+                            InsecureTlsRow(
+                                checked = insecureTls,
+                                onCheckedChange = onInsecureTlsChange,
+                                labelColor = c.text2,
+                                hintColor = c.text3,
                             )
                         }
                     }
@@ -382,6 +406,42 @@ private fun AuthAurora(modifier: Modifier = Modifier) {
         blob(Color(0xFFA99BFF).copy(alpha = 0.55f), w * (0.15f + 0.25f * p1), h * (0.10f + 0.16f * p1), w * (0.85f + 0.20f * p1))
         blob(Color(0xFF6A55E6).copy(alpha = 0.50f), w * (0.90f - 0.22f * p2), h * (0.88f - 0.16f * p2), w * (0.80f + 0.20f * p2))
         blob(Color(0xFFC3B8FF).copy(alpha = 0.45f), w * (0.55f - 0.18f * p3), h * (0.40f + 0.18f * p3), w * (0.70f + 0.15f * p3))
+    }
+}
+
+/**
+ * Тумблер языка до авторизации (#2855, паритет с веб-`AuthLayout`).
+ *
+ * На двух языках кнопка-перебор понятнее списка, а подпись — тег текущего языка
+ * («RU»/«EN»), а не глобус: она сразу говорит и на чём ты сейчас, и что получишь.
+ * Пока сессии нет, выбор ложится только в локальные префы — PUT настроек делать
+ * некому и некуда.
+ *
+ * Жест и `testTag` — на одном узле: `clickable` сливает семантику потомков, и подпись
+ * уехала бы на кликабельный узел мимо тега (та же грабля, что в счётчиках #2853).
+ */
+@Composable
+private fun LanguageToggle(language: String, onCycle: (String) -> Unit) {
+    val next = nextLanguage(language)
+    val switchTo = stringResource(
+        R.string.auth_language_switch_to,
+        stringResource(if (next == "en") R.string.language_en else R.string.language_ru),
+    )
+    Box(
+        Modifier
+            .testTag(TestTags.AUTH_LANG_TOGGLE)
+            .semantics { contentDescription = switchTo }
+            .size(40.dp)
+            .clip(CircleShape)
+            .clickableNoRipple { onCycle(next) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            normalizeLanguage(language).uppercase(),
+            color = Color.White,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 

@@ -102,6 +102,7 @@ import website.msdnna.tessera.ui.components.RichContent
 import website.msdnna.tessera.ui.components.SourceBadge
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
+import website.msdnna.tessera.ui.components.TConfirmDialog
 import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TInputDialog
@@ -114,6 +115,7 @@ import website.msdnna.tessera.ui.components.UnderlineTabs
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -122,10 +124,14 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.theme.accentGradientTint
+import website.msdnna.tessera.ui.tour.TourHost
+import website.msdnna.tessera.ui.tour.TourLayer
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
@@ -163,21 +169,6 @@ private fun relKindLabel(kind: String): String = when (kind) {
 /** Red used for destructive ghost actions (matches the web `--t-danger`). */
 private val DangerRed = Color(0xFFE0533D)
 
-/** Opens a downloaded attachment via the system, sharing it through our FileProvider.
- *  [chooserTitle] приходит из композиции: диалог показывается уже вне неё, а
- *  `ctx.getString` дал бы системную локаль вместо языка профиля. */
-private fun openDownloadedFile(ctx: android.content.Context, file: java.io.File, mime: String?, chooserTitle: String) {
-    val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-    val type = mime?.takeIf { it.isNotBlank() } ?: "*/*"
-    val view = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-        setDataAndType(uri, type)
-        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    val chooser = android.content.Intent.createChooser(view, chooserTitle)
-        .apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-    runCatching { ctx.startActivity(chooser) }
-}
-
 /**
  * The task detail modal (web `TaskModal.vue`), native: borderless title, a
  * property grid (priority / due / assignees / tags / completed / parent), a
@@ -199,6 +190,9 @@ fun TaskModal(
      *  an integration, so the row simply doesn't appear. */
     gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps =
         website.msdnna.tessera.util.GitlabCreateCaps(),
+    /** Whether the board's binding pushes subtasks into the GitLab issue hierarchy —
+     *  gates the «Группировка» badge and the GitLab state of the subtask rows. */
+    gitlabCanGroup: Boolean = false,
     milestones: List<website.msdnna.tessera.data.model.Milestone> = emptyList(),
     parentCandidates: List<Task>,
     /** Every card of the host board — only used to work out a moved task's landing
@@ -210,6 +204,10 @@ fun TaskModal(
         website.msdnna.tessera.util.Estimation.DEFAULT,
     /** Quick-action rows for the comment composer's `/`-popup; empty → no popup. */
     commands: List<CommandItem> = emptyList(),
+    /** Opens a linked document (#2894 §7). Null in a host with nowhere to
+     *  navigate — the tab then lists the documents without pretending the rows
+     *  lead anywhere. */
+    onOpenDocument: ((documentId: String) -> Unit)? = null,
     onClose: (changed: Boolean) -> Unit,
 ) {
     val c = Tessera.colors
@@ -312,223 +310,271 @@ fun TaskModal(
         // Back off a non-default tab returns to the first tab; a second Back (now
         // disabled) falls through to the Dialog's dismiss and closes the modal.
         BackHandler(enabled = tab != 0) { tab = 0 }
-        Column(
-            Modifier
-                .testTag(TestTags.TASK_MODAL)
-                .popupAppear(TransformOrigin.Center)
-                // With decorFitsSystemWindows off the window spans the whole display,
-                // so the modal has to keep clear of the bars itself.
-                .systemBarsPadding()
-                .imePadding()
-                .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.94f)
-                .clip(RoundedCornerShape(RadiusLg))
-                .background(c.surface),
-        ) {
-            // ── scrollable body (loader/error centered in the body until loaded) ──
-            if (state.loading && detail == null) {
-                Box(Modifier.weight(1f).fillMaxWidth()) { LoadingState() }
-            } else if (state.error != null && detail == null) {
-                Box(Modifier.weight(1f).fillMaxWidth()) {
-                    ErrorState(
-                        message = errorText ?: stringResource(R.string.common_error),
-                        onRetry = { vm.load(currentId, workspaceId, projectId) },
-                    )
-                }
-            } else {
-                Column(
-                    Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(18.dp),
-                ) {
-                    if (detail != null) {
-                        HeadRow(breadcrumb, detail.number, onTransfer = { showTransfer = true })
-                        Spacer(Modifier.height(10.dp))
-                        TitleField(title, onChange = { title = it })
-                        Spacer(Modifier.height(14.dp))
-
-                        PropertyGrid(
-                            vm = vm,
-                            taskId = detail.id,
-                            columnId = detail.columnId,
-                            doneColumnId = state.doneColumnId,
-                            moving = state.moving,
-                            boardTasks = boardTasks,
-                            priority = detail.priority,
-                            dueIso = detail.dueDate,
-                            startIso = detail.startDate,
-                            recurrence = detail.recurrence,
-                            estimate = detail.estimate,
-                            estimation = estimation,
-                            subtasks = detail.subtasks,
-                            columns = state.columns,
-                            notifyEnabled = detail.dueNotifyEnabled,
-                            notifyLead = detail.dueLeadMinutes,
-                            notifyRepeat = detail.dueRepeatMinutes,
-                            completed = detail.isCompleted,
-                            assignees = detail.assignees.map { it.id },
-                            gitlabAssignees = detail.gitlabAssignees,
-                            createdBy = detail.createdBy,
-                            gitlab = detail.gitlab,
-                            gitlabCreate = gitlabCreate,
-                            glCreating = state.glCreating,
-                            glTemplates = state.glTemplates,
-                            onLoadTemplates = { vm.loadGitlabTemplates(gitlabCreate.integrationId) },
-                            onApplyTemplate = { description = it },
-                            onCreateIssue = { vm.createGitlabIssue(title, description) },
-                            taskTagIds = detail.tags.map { it.id },
-                            parentId = detail.parentId,
-                            milestoneId = detail.milestoneId,
-                            milestones = allMilestones,
-                            onCreateMilestone = { t -> vm.createMilestoneAndAssign(t) { m -> extraMilestones = extraMilestones + m } },
-                            tags = tags,
-                            prefixNames = prefixNames,
-                            metaTagPrefixes = metaTagPrefixes,
-                            members = members,
-                            gitlabMembers = gitlabMembers,
-                            parentCandidates = parentCandidates,
+        // The guide is drawn *beside* the modal, not inside it. Inside, its overlay
+        // is a Column child that fills the height — and an unweighted child is
+        // measured before the weighted body, so it took the whole form and left the
+        // body zero: the modal opened with its footer at the top and nothing under
+        // it, which is what «модалка недооткрывается» was (#2860 rework, point 6).
+        //
+        // Wrap-content on purpose: this Box is what the dialog window sizes itself
+        // to, and `fillMaxSize()` here blows the window up to the whole display.
+        // The modal then keeps its own 0.96×0.94 but `systemBarsPadding()` starts
+        // finding real insets to apply, everything below the status row shifts, and
+        // the status picker's e2e spec times out on options that are composed but
+        // no longer where the tap lands. Measured, not guessed: with fillMaxSize
+        // TaskModalE2eTest fails twice out of two runs, without it 33/33 pass.
+        Box(contentAlignment = Alignment.Center) {
+            Column(
+                Modifier
+                    .testTag(TestTags.TASK_MODAL)
+                    .popupAppear(TransformOrigin.Center)
+                    // With decorFitsSystemWindows off the window spans the whole display,
+                    // so the modal has to keep clear of the bars itself.
+                    .systemBarsPadding()
+                    .imePadding()
+                    .fillMaxWidth(0.96f)
+                    .fillMaxHeight(0.94f)
+                    .clip(RoundedCornerShape(RadiusLg))
+                    .background(c.surface),
+            ) {
+                // ── scrollable body (loader/error centered in the body until loaded) ──
+                if (state.loading && detail == null) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) { LoadingState() }
+                } else if (state.error != null && detail == null) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        ErrorState(
+                            message = errorText ?: stringResource(R.string.common_error),
+                            onRetry = { vm.load(currentId, workspaceId, projectId) },
                         )
+                    }
+                } else {
+                    Column(
+                        Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(18.dp),
+                    ) {
+                        if (detail != null) {
+                            HeadRow(breadcrumb, detail.number, onTransfer = { showTransfer = true })
+                            Spacer(Modifier.height(10.dp))
+                            TitleField(title, onChange = { title = it })
+                            Spacer(Modifier.height(14.dp))
 
-                        Spacer(Modifier.height(18.dp))
-                        UnderlineTabs(
-                            tabs = listOf(
-                                TabItem(
-                                    stringResource(R.string.task_tab_description),
-                                    testTag = TestTags.taskTab(TestTags.TASK_TAB_DESCRIPTION),
-                                ),
-                                TabItem(
-                                    stringResource(R.string.task_tab_comments),
-                                    state.comments.size,
-                                    TestTags.taskTab(TestTags.TASK_TAB_COMMENTS),
-                                ),
-                                TabItem(
-                                    stringResource(R.string.task_tab_subtasks),
-                                    detail.subtasks.size,
-                                    TestTags.taskTab(TestTags.TASK_TAB_SUBTASKS),
-                                ),
-                                TabItem(
-                                    stringResource(R.string.task_tab_relations),
-                                    state.relations.size,
-                                    TestTags.taskTab(TestTags.TASK_TAB_RELATIONS),
-                                ),
-                                TabItem(
-                                    stringResource(R.string.task_tab_files),
-                                    state.attachments.size,
-                                    TestTags.taskTab(TestTags.TASK_TAB_FILES),
-                                ),
-                                TabItem(
-                                    stringResource(R.string.task_tab_history),
-                                    testTag = TestTags.taskTab(TestTags.TASK_TAB_HISTORY),
-                                ),
-                            ),
-                            selected = tab,
-                            onSelect = { tab = it },
-                        )
-                        Spacer(Modifier.height(12.dp))
-                        AnimatedContent(
-                            targetState = tab,
-                            transitionSpec = {
-                                // Slide toward the direction of travel (right when moving
-                                // to a later tab), with a quick cross-fade.
-                                val dir = if (targetState > initialState) 1 else -1
-                                (slideInHorizontally(tween(220)) { w -> dir * w / 8 } + fadeIn(tween(200))) togetherWith
-                                    (slideOutHorizontally(tween(180)) { w -> -dir * w / 8 } + fadeOut(tween(160)))
-                            },
-                            label = "taskTab",
-                        ) { t ->
-                            // Each tab keeps its own saveable state across switches
-                            // (the description editor's Написать/Просмотр mode above
-                            // all): leaving a tab drops it from the composition, and
-                            // a plain `remember` there would reset on every return.
-                            // Keyed by task too: navigating to a subtask reuses the
-                            // same tab indices, and the description editor's mode is
-                            // seeded from *that* task's text — restoring the previous
-                            // task's «Просмотр» would show an empty preview instead of
-                            // the field to type in.
-                            tabState.SaveableStateProvider("${detail.id}:$t") {
-                                when (t) {
-                                    0 -> DescriptionTab(
-                                        value = description,
-                                        onValueChange = { description = it },
-                                        startInPreview = detail.description.isNotBlank(),
-                                        onBlur = { vm.saveDescription(description) },
-                                        uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
-                                        mentions = buildMentionItems(members, gitlabMembers),
-                                        onTaskRef = openTaskRef,
-                                    )
+                            PropertyGrid(
+                                vm = vm,
+                                taskId = detail.id,
+                                columnId = detail.columnId,
+                                doneColumnId = state.doneColumnId,
+                                moving = state.moving,
+                                boardTasks = boardTasks,
+                                priority = detail.priority,
+                                dueIso = detail.dueDate,
+                                startIso = detail.startDate,
+                                recurrence = detail.recurrence,
+                                estimate = detail.estimate,
+                                estimation = estimation,
+                                subtasks = detail.subtasks,
+                                columns = state.columns,
+                                notifyEnabled = detail.dueNotifyEnabled,
+                                notifyLead = detail.dueLeadMinutes,
+                                notifyRepeat = detail.dueRepeatMinutes,
+                                completed = detail.isCompleted,
+                                assignees = detail.assignees.map { it.id },
+                                gitlabAssignees = detail.gitlabAssignees,
+                                createdBy = detail.createdBy,
+                                gitlab = detail.gitlab,
+                                gitlabCreate = gitlabCreate,
+                                gitlabCanGroup = gitlabCanGroup,
+                                glCreating = state.glCreating,
+                                glTemplates = state.glTemplates,
+                                onLoadTemplates = { vm.loadGitlabTemplates(gitlabCreate.integrationId) },
+                                onApplyTemplate = { description = it },
+                                onCreateIssue = { vm.createGitlabIssue(title, description) },
+                                taskTagIds = detail.tags.map { it.id },
+                                parentId = detail.parentId,
+                                milestoneId = detail.milestoneId,
+                                milestones = allMilestones,
+                                onCreateMilestone = { t -> vm.createMilestoneAndAssign(t) { m -> extraMilestones = extraMilestones + m } },
+                                tags = tags,
+                                prefixNames = prefixNames,
+                                metaTagPrefixes = metaTagPrefixes,
+                                members = members,
+                                gitlabMembers = gitlabMembers,
+                                parentCandidates = parentCandidates,
+                            )
 
-                                    1 -> CommentsTab(
-                                        vm = vm,
-                                        comments = state.comments,
-                                        members = members,
-                                        gitlabMembers = gitlabMembers,
-                                        meId = me?.id,
-                                        commands = commands,
-                                        preview = state.commandPreview,
-                                        previewCustom = state.commandCustom,
-                                        onTaskRef = openTaskRef,
-                                    )
+                            Spacer(Modifier.height(18.dp))
+                            UnderlineTabs(
+                                modifier = Modifier.tourAnchor(TourKeys.TM_TABS),
+                                tabs = listOf(
+                                    TabItem(
+                                        stringResource(R.string.task_tab_description),
+                                        testTag = TestTags.taskTab(TestTags.TASK_TAB_DESCRIPTION),
+                                    ),
+                                    TabItem(
+                                        stringResource(R.string.task_tab_comments),
+                                        state.comments.size,
+                                        TestTags.taskTab(TestTags.TASK_TAB_COMMENTS),
+                                    ),
+                                    TabItem(
+                                        stringResource(R.string.task_tab_subtasks),
+                                        detail.subtasks.size,
+                                        TestTags.taskTab(TestTags.TASK_TAB_SUBTASKS),
+                                    ),
+                                    TabItem(
+                                        stringResource(R.string.task_tab_relations),
+                                        state.relations.size,
+                                        TestTags.taskTab(TestTags.TASK_TAB_RELATIONS),
+                                    ),
+                                    TabItem(
+                                        stringResource(R.string.task_tab_files),
+                                        state.attachments.size,
+                                        TestTags.taskTab(TestTags.TASK_TAB_FILES),
+                                    ),
+                                    TabItem(
+                                        stringResource(R.string.task_tab_documents),
+                                        state.documents.size,
+                                        TestTags.taskTab(TestTags.TASK_TAB_DOCUMENTS),
+                                    ),
+                                    TabItem(
+                                        stringResource(R.string.task_tab_history),
+                                        testTag = TestTags.taskTab(TestTags.TASK_TAB_HISTORY),
+                                    ),
+                                ),
+                                selected = tab,
+                                onSelect = { tab = it },
+                            )
+                            Spacer(Modifier.height(12.dp))
+                            AnimatedContent(
+                                targetState = tab,
+                                transitionSpec = {
+                                    // Slide toward the direction of travel (right when moving
+                                    // to a later tab), with a quick cross-fade.
+                                    val dir = if (targetState > initialState) 1 else -1
+                                    (slideInHorizontally(tween(220)) { w -> dir * w / 8 } + fadeIn(tween(200))) togetherWith
+                                        (slideOutHorizontally(tween(180)) { w -> -dir * w / 8 } + fadeOut(tween(160)))
+                                },
+                                label = "taskTab",
+                            ) { t ->
+                                // Each tab keeps its own saveable state across switches
+                                // (the description editor's Написать/Просмотр mode above
+                                // all): leaving a tab drops it from the composition, and
+                                // a plain `remember` there would reset on every return.
+                                // Keyed by task too: navigating to a subtask reuses the
+                                // same tab indices, and the description editor's mode is
+                                // seeded from *that* task's text — restoring the previous
+                                // task's «Просмотр» would show an empty preview instead of
+                                // the field to type in.
+                                tabState.SaveableStateProvider("${detail.id}:$t") {
+                                    when (t) {
+                                        0 -> Box(
+                                            Modifier
+                                                .tourAnchor(TourKeys.TM_DESCRIPTION)
+                                                .tourAnchor(
+                                                    if (description.isNotBlank()) TourKeys.set(TourKeys.TM_DESCRIPTION) else "",
+                                                ),
+                                        ) {
+                                            DescriptionTab(
+                                                value = description,
+                                                onValueChange = { description = it },
+                                                startInPreview = detail.description.isNotBlank(),
+                                                onBlur = { vm.saveDescription(description) },
+                                                uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
+                                                mentions = buildMentionItems(members, gitlabMembers),
+                                                onTaskRef = openTaskRef,
+                                            )
+                                        }
 
-                                    2 -> SubtasksTab(vm, detail.columnId, detail.subtasks, state.columns) { currentId = it }
+                                        1 -> CommentsTab(
+                                            vm = vm,
+                                            comments = state.comments,
+                                            members = members,
+                                            gitlabMembers = gitlabMembers,
+                                            meId = me?.id,
+                                            commands = commands,
+                                            preview = state.commandPreview,
+                                            previewCustom = state.commandCustom,
+                                            onTaskRef = openTaskRef,
+                                        )
 
-                                    3 -> RelationsTab(
-                                        vm = vm,
-                                        relations = state.relations,
-                                        candidates = state.relationCandidates,
-                                        currentTaskId = detail.id,
-                                        onOpen = { currentId = it },
-                                    )
+                                        2 -> SubtasksTab(
+                                            vm, detail.columnId, detail.subtasks, state.columns,
+                                            showGitlab = gitlabCanGroup && detail.gitlab != null,
+                                            parentGrouped = detail.gitlab?.isGroup == true,
+                                        ) { currentId = it }
 
-                                    4 -> FilesTab(vm, state.attachments)
+                                        3 -> RelationsTab(
+                                            vm = vm,
+                                            relations = state.relations,
+                                            candidates = state.relationCandidates,
+                                            currentTaskId = detail.id,
+                                            onOpen = { currentId = it },
+                                        )
 
-                                    else -> HistoryTab(state.events)
+                                        4 -> FilesTab(vm, state.attachments)
+
+                                        5 -> DocumentsTab(
+                                            vm = vm,
+                                            links = state.documents,
+                                            onOpen = onOpenDocument,
+                                        )
+
+                                        else -> HistoryTab(state.events)
+                                    }
                                 }
                             }
                         }
                     }
                 }
+
+                HorizontalDivider(color = c.border)
+                // ── footer ──
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box {
+                        GhostIconButton(Ion.ARCHIVE, c.primary) { confirmArchive = true }
+                        TConfirmPopover(
+                            expanded = confirmArchive,
+                            message = stringResource(R.string.task_archive_confirm),
+                            confirmText = stringResource(R.string.task_archive_action),
+                            danger = false,
+                            onConfirm = {
+                                confirmArchive = false
+                                vm.archive { close() }
+                            },
+                            onDismiss = { confirmArchive = false },
+                        )
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Box {
+                        GhostIconButton(Ion.TRASH, DangerRed) { confirmDelete = true }
+                        TConfirmPopover(
+                            expanded = confirmDelete,
+                            message = stringResource(R.string.task_delete_confirm),
+                            confirmText = stringResource(R.string.common_delete),
+                            onConfirm = {
+                                confirmDelete = false
+                                vm.delete { close() }
+                            },
+                            onDismiss = { confirmDelete = false },
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = { close() })
+                    Spacer(Modifier.width(8.dp))
+                    TButton(
+                        stringResource(R.string.common_save),
+                        modifier = Modifier.testTag(TestTags.TASK_SAVE).tourAnchor(TourKeys.TM_SAVE),
+                        onClick = {
+                            vm.saveCore(title, description)
+                            onClose(true)
+                        },
+                    )
+                }
             }
 
-            HorizontalDivider(color = c.border)
-            // ── footer ──
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box {
-                    GhostIconButton(Ion.ARCHIVE, c.primary) { confirmArchive = true }
-                    TConfirmPopover(
-                        expanded = confirmArchive,
-                        message = stringResource(R.string.task_archive_confirm),
-                        confirmText = stringResource(R.string.task_archive_action),
-                        danger = false,
-                        onConfirm = {
-                            confirmArchive = false
-                            vm.archive { close() }
-                        },
-                        onDismiss = { confirmArchive = false },
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
-                Box {
-                    GhostIconButton(Ion.TRASH, DangerRed) { confirmDelete = true }
-                    TConfirmPopover(
-                        expanded = confirmDelete,
-                        message = stringResource(R.string.task_delete_confirm),
-                        confirmText = stringResource(R.string.common_delete),
-                        onConfirm = {
-                            confirmDelete = false
-                            vm.delete { close() }
-                        },
-                        onDismiss = { confirmDelete = false },
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = { close() })
-                Spacer(Modifier.width(8.dp))
-                TButton(stringResource(R.string.common_save), modifier = Modifier.testTag(TestTags.TASK_SAVE), onClick = {
-                    vm.saveCore(title, description)
-                    onClose(true)
-                })
-            }
+            // The task form is its own window, above the shell's overlay — so while
+            // it is up the guide is drawn from in here (see [TourHost]).
+            TourHost(TourLayer.TASK_MODAL)
         }
     }
 
@@ -610,6 +656,7 @@ private fun PropertyGrid(
     /** Whether this board's GitLab binding allows creating an issue from a task (and
      *  prefilling it from a repo template) — resolved by the board view-model. */
     gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps,
+    gitlabCanGroup: Boolean,
     glCreating: Boolean,
     glTemplates: List<website.msdnna.tessera.data.model.GitlabIssueTemplate>,
     onLoadTemplates: () -> Unit,
@@ -627,6 +674,7 @@ private fun PropertyGrid(
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
     parentCandidates: List<Task>,
 ) {
+    val c = Tessera.colors
     // Author (read-only): GitLab issue author for synced tasks, else the creator.
     val authorName: String? = when {
         gitlab?.author?.isNotBlank() == true -> gitlab.authorName.ifBlank { gitlab.author }
@@ -634,8 +682,18 @@ private fun PropertyGrid(
         else -> null
     }
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        PropRow(Ion.FLAG, stringResource(R.string.task_prop_priority)) { PriorityValue(priority) { vm.setPriority(it) } }
-        PropRow(Ion.CALENDAR, stringResource(R.string.task_prop_due)) {
+        PropRow(
+            Ion.FLAG,
+            stringResource(R.string.task_prop_priority),
+            tourKey = TourKeys.TM_PRIORITY,
+            tourSet = priority > 0,
+        ) { PriorityValue(priority) { vm.setPriority(it) } }
+        PropRow(
+            Ion.CALENDAR,
+            stringResource(R.string.task_prop_due),
+            tourKey = TourKeys.TM_DUE,
+            tourSet = !dueIso.isNullOrBlank(),
+        ) {
             DueValue(
                 dueIso, startIso, recurrence, columns, notifyEnabled, notifyLead, notifyRepeat,
                 onApply = { iso, start, rec -> vm.setDueAndRecurrence(iso, start, rec) },
@@ -665,7 +723,12 @@ private fun PropertyGrid(
                 )
             }
         }
-        PropRow(Ion.PEOPLE, stringResource(R.string.task_prop_assignees)) {
+        PropRow(
+            Ion.PEOPLE,
+            stringResource(R.string.task_prop_assignees),
+            tourKey = TourKeys.TM_ASSIGNEES,
+            tourSet = assignees.isNotEmpty() || gitlabAssignees.isNotEmpty(),
+        ) {
             AssigneesValue(assignees, gitlabAssignees, members, gitlabMembers, { vm.toggleAssignee(it) }, { vm.toggleGitlabAssignee(it) })
         }
         if (gitlab != null) {
@@ -685,7 +748,33 @@ private fun PropertyGrid(
                 )
             }
         }
-        PropRow(Ion.PRICETAG, stringResource(R.string.task_prop_tags)) {
+        // Grouped-task marker (#2592): the parent half of the GitLab hierarchy. Shown
+        // only when the issue actually carries the label — web pairs the badge with a
+        // set/clear button, so its row is worth keeping even when empty; here the row
+        // would be blank, and the subtasks tab already says «родитель не сгруппирован»
+        // with the consequence spelled out. So: a badge when there is one, no row when
+        // there isn't.
+        if (gitlab != null && gitlabCanGroup && gitlab.isGroup) {
+            // ALBUMS is the closest glyph the icon pack has to web's «layers» — the
+            // pack is curated by hand, and one badge doesn't justify a new asset.
+            PropRow(Ion.ALBUMS, stringResource(R.string.task_prop_grouping)) {
+                Text(
+                    stringResource(R.string.task_gitlab_grouped),
+                    color = c.text2,
+                    fontSize = 11.sp,
+                    modifier = Modifier
+                        .testTag(TestTags.TASK_GITLAB_GROUPED)
+                        .border(1.dp, c.border, RoundedCornerShape(999.dp))
+                        .padding(horizontal = 7.dp, vertical = 1.dp),
+                )
+            }
+        }
+        PropRow(
+            Ion.PRICETAG,
+            stringResource(R.string.task_prop_tags),
+            tourKey = TourKeys.TM_TAGS,
+            tourSet = taskTagIds.isNotEmpty(),
+        ) {
             TagsValue(taskTagIds, tags, prefixNames, metaTagPrefixes, onToggle = { vm.toggleTag(it) }, onCreate = { vm.createTagAndAdd(it) {} })
         }
         if (milestones.isNotEmpty() || milestoneId != null) {
@@ -733,7 +822,16 @@ private fun PropertyGrid(
 }
 
 @Composable
-private fun PropRow(icon: String, label: String, value: @Composable () -> Unit) {
+private fun PropRow(
+    icon: String,
+    label: String,
+    // The guide's anchor for this property, and whether it currently holds a value:
+    // the `tm-*` steps end when the field is filled, and the way a field reports
+    // that is by registering a second anchor, `<key>:set` (see [TourAnchors]).
+    tourKey: String = "",
+    tourSet: Boolean = false,
+    value: @Composable () -> Unit,
+) {
     val c = Tessera.colors
     Row(Modifier.fillMaxWidth().padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Row(Modifier.width(140.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -741,7 +839,11 @@ private fun PropRow(icon: String, label: String, value: @Composable () -> Unit) 
             Spacer(Modifier.width(8.dp))
             Text(label, color = c.text2, fontSize = 14.sp)
         }
-        Box(Modifier.weight(1f)) { value() }
+        Box(
+            Modifier.weight(1f)
+                .tourAnchor(tourKey)
+                .tourAnchor(if (tourSet && tourKey.isNotEmpty()) TourKeys.set(tourKey) else ""),
+        ) { value() }
     }
 }
 
@@ -915,8 +1017,8 @@ private fun DueValue(
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
     val res = LocalResources.current
-    val dueText = dueLabel(res, dueIso)
-    val startText = dueLabel(res, startIso)
+    val dueText = dueLabel(res, dueIso, fmt = LocalDateFormat.current)
+    val startText = dueLabel(res, startIso, fmt = LocalDateFormat.current)
     // Show the bar as «начало → срок» when a start is set.
     val label = when {
         startText.isNotBlank() && dueText.isNotBlank() -> "$startText → $dueText"
@@ -1387,7 +1489,7 @@ private fun MilestoneValue(
                 Text(stringResource(R.string.task_milestone_none), color = c.text3, fontSize = 14.sp)
             } else {
                 val range = website.msdnna.tessera.util.Milestones.range(
-                    LocalResources.current, chosen.startDate, chosen.dueDate,
+                    LocalResources.current, chosen.startDate, chosen.dueDate, LocalDateFormat.current,
                 )
                 Box(Modifier.alpha(if (chosen.isClosed) 0.6f else 1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1409,7 +1511,7 @@ private fun MilestoneValue(
             })
             milestones.forEach { m ->
                 val range = website.msdnna.tessera.util.Milestones.range(
-                    LocalResources.current, m.startDate, m.dueDate,
+                    LocalResources.current, m.startDate, m.dueDate, LocalDateFormat.current,
                 )
                 val label = if (range.isEmpty()) m.title else "${m.title}  ·  $range"
                 TMenuItem(label, onClick = {
@@ -1550,7 +1652,7 @@ private fun CommentRow(
                     Text("· GitLab", color = c.text3, fontSize = 11.sp)
                 }
                 Spacer(Modifier.width(6.dp))
-                Text(whenLabel(LocalResources.current, cm.createdAt), color = c.text3, fontSize = 11.sp)
+                Text(whenLabel(LocalResources.current, cm.createdAt, LocalDateFormat.current), color = c.text3, fontSize = 11.sp)
                 if (cm.authorId != null && cm.authorId == meId) {
                     Spacer(Modifier.weight(1f))
                     IonIconButton(Ion.PENCIL, onStartEdit, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
@@ -1844,6 +1946,10 @@ private fun SubtasksTab(
     columnId: String,
     subtasks: List<Task>,
     columns: List<BoardColumn>,
+    /** The parent is a linked issue on a binding that pushes children — without both
+     *  no row here can say anything true about GitLab, so the whole column is hidden. */
+    showGitlab: Boolean,
+    parentGrouped: Boolean,
     onOpen: (String) -> Unit,
 ) {
     val c = Tessera.colors
@@ -1885,6 +1991,14 @@ private fun SubtasksTab(
                     Text(due, color = c.text3, fontSize = 11.sp)
                     Spacer(Modifier.width(8.dp))
                 }
+                // GitLab hierarchy state of the subtask (#2592). The `child` chip is a
+                // link to the issue; the other two are read-only here — web offers a
+                // retry-push on them, which is a mutation this task doesn't cover.
+                // They stay hidden while the parent isn't grouped: nothing there could
+                // succeed anyway, and the hint below says so once instead of per row.
+                if (showGitlab) {
+                    GlSubtaskChip(sub, parentGrouped)
+                }
                 // Status of the subtask, changeable without opening it.
                 if (columns.isNotEmpty()) {
                     ColumnChipPicker(
@@ -1897,7 +2011,69 @@ private fun SubtasksTab(
             }
             Spacer(Modifier.height(6.dp))
         }
+        // The one case the per-row chips cannot express: the parent is linked but not a
+        // grouped issue, so no subtask here can reach the GitLab hierarchy at all.
+        if (showGitlab && !parentGrouped && subtasks.isNotEmpty()) {
+            Text(
+                stringResource(R.string.task_subtasks_parent_not_grouped),
+                color = c.text3,
+                fontSize = 11.sp,
+                modifier = Modifier.testTag(TestTags.TASK_SUBTASK_GL_HINT).padding(vertical = 4.dp),
+            )
+        }
         InlineEnterField(stringResource(R.string.task_subtask_new_hint)) { vm.addSubtask(columnId, it) }
+    }
+}
+
+/**
+ * The GitLab hierarchy state of one subtask row: an issue link when it really is a
+ * child work item over there, a plain marker in the two states that are not that yet.
+ *
+ * Only the linked state is offered while the parent isn't grouped — see the caller.
+ */
+@Composable
+private fun GlSubtaskChip(sub: Task, parentGrouped: Boolean) {
+    val c = Tessera.colors
+    val ctx = LocalContext.current
+    val state = website.msdnna.tessera.util.glSubtaskState(sub)
+    val border = Modifier.border(1.dp, c.border, RoundedCornerShape(999.dp))
+        .padding(horizontal = 6.dp, vertical = 1.dp)
+    when (state) {
+        website.msdnna.tessera.util.GlSubtaskState.CHILD -> {
+            val url = sub.glWebUrl.orEmpty()
+            Text(
+                "!${sub.glIid}",
+                fontSize = 11.sp,
+                style = TextStyle(brush = accentGradient(c.primary)),
+                modifier = Modifier
+                    .testTag(TestTags.TASK_SUBTASK_GL_CHIP)
+                    .clickableNoRipple {
+                        if (url.isNotBlank()) {
+                            runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+                        }
+                    }
+                    .then(border),
+            )
+            Spacer(Modifier.width(8.dp))
+        }
+
+        website.msdnna.tessera.util.GlSubtaskState.DETACHED, website.msdnna.tessera.util.GlSubtaskState.ABSENT -> {
+            if (parentGrouped) {
+                Text(
+                    stringResource(
+                        if (state == website.msdnna.tessera.util.GlSubtaskState.DETACHED) {
+                            R.string.task_subtasks_gl_detached
+                        } else {
+                            R.string.task_subtasks_gl_absent
+                        },
+                    ),
+                    color = c.text3,
+                    fontSize = 11.sp,
+                    modifier = Modifier.testTag(TestTags.TASK_SUBTASK_GL_CHIP).then(border),
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+        }
     }
 }
 
@@ -2060,6 +2236,99 @@ private fun RelationsTab(
     }
 }
 
+/**
+ * «Документы» tab (#2732, §7 of #2894): the other end of the link the document's
+ * own panel creates.
+ *
+ * Read-mostly by design, exactly as on the web — a link is made where the
+ * context is, next to the clause it is about, and this side is where you find
+ * out which documents mention this task and open them.
+ */
+@Composable
+private fun DocumentsTab(
+    vm: TaskDetailViewModel,
+    links: List<website.msdnna.tessera.data.model.TaskDocumentLink>,
+    onOpen: ((documentId: String) -> Unit)?,
+) {
+    val c = Tessera.colors
+    var confirmUnlink by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.fillMaxWidth()) {
+        if (links.isEmpty()) {
+            Text(
+                stringResource(R.string.task_docs_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+        }
+        links.forEach { link ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    Modifier.weight(1f)
+                        .clip(RoundedCornerShape(RadiusSm))
+                        .then(
+                            if (onOpen != null) {
+                                Modifier.clickableNoRipple { onOpen(link.documentId) }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                        .testTag(TestTags.taskDocumentRow(link.id)),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (link.documentIcon.isNotBlank()) {
+                        Text(link.documentIcon, fontSize = 14.sp)
+                    } else {
+                        IonIcon(Ion.DOCUMENT_TEXT, size = 14.dp, tint = c.text3)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        link.documentTitle.ifBlank { stringResource(R.string.task_docs_untitled) },
+                        color = c.text1,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    // An anchored link says which clause it is about; the quote is
+                    // what still answers that once the clause has been rewritten.
+                    if (link.blockId.isNotBlank()) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            link.quote.ifBlank { stringResource(R.string.task_docs_fragment) },
+                            color = c.text3,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                IonIconButton(
+                    Ion.CLOSE,
+                    onClick = { confirmUnlink = link.id },
+                    boxSize = 32.dp,
+                    modifier = Modifier.testTag(TestTags.taskDocumentRemove(link.id)),
+                )
+            }
+        }
+    }
+
+    confirmUnlink?.let { id ->
+        TConfirmDialog(
+            title = stringResource(R.string.task_docs_unlink),
+            message = stringResource(R.string.task_docs_unlink_confirm),
+            onConfirm = {
+                vm.unlinkDocument(id)
+                confirmUnlink = null
+            },
+            onDismiss = { confirmUnlink = null },
+        )
+    }
+}
+
 @Composable
 private fun FilesTab(vm: TaskDetailViewModel, attachments: List<website.msdnna.tessera.data.model.Attachment>) {
     val c = Tessera.colors
@@ -2177,7 +2446,7 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f),
                 )
-                Text(whenLabel(LocalResources.current, e.createdAt), color = c.text3, fontSize = 11.sp)
+                Text(whenLabel(LocalResources.current, e.createdAt, LocalDateFormat.current), color = c.text3, fontSize = 11.sp)
             }
         }
     }

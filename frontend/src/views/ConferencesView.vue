@@ -1,0 +1,883 @@
+<script setup>
+// Conferences section (#2864, subtask #2870): the list of the workspace's calls,
+// the «Запланировать» dialog and one conference's lobby.
+//
+// The route is `/conferences/:id?` — ONE record with an optional param, not two
+// sibling records. vue-router marks a link active only when the open route
+// shares its record, so as two records opening a conference would take the
+// sidebar item dark (the same trap documents fell into, #2727).
+//
+// Media lives in ConferenceRoom (#2871) and talks to the LiveKit SFU directly.
+// What stays here is the bookkeeping — who is invited, who is in the room and
+// when the call happens — and the single source of truth for membership: this
+// screen's join/leave drives the room's `active`, never the reverse.
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { useI18n } from 'vue-i18n'
+import {
+  NButton,
+  NIcon,
+  NInput,
+  NModal,
+  NDatePicker,
+  NInputNumber,
+  NRadioGroup,
+  NRadioButton,
+  NPopconfirm,
+  NSpin,
+  useMessage,
+} from 'naive-ui'
+import {
+  VideocamOutline,
+  TrashOutline,
+  ArrowBackOutline,
+  PeopleOutline,
+  TimeOutline,
+  LogOutOutline,
+  PowerOutline,
+} from '@vicons/ionicons5'
+import { conferences as confApi, workspaces as wsApi } from '@/api'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { useAuthStore } from '@/stores/auth'
+import { useConferenceSession } from '@/stores/conference'
+import { useFormat } from '@/composables/useFormat'
+import { useRealtime } from '@/composables/useRealtime'
+import { hueGrad, tagPillBg } from '@/utils/gradient'
+import EmptyState from '@/components/EmptyState.vue'
+import ConferenceRoom from '@/components/conference/ConferenceRoom.vue'
+import ConferenceRecordings from '@/components/conference/ConferenceRecordings.vue'
+
+const route = useRoute()
+const router = useRouter()
+const { t } = useI18n()
+const ws = useWorkspacesStore()
+const auth = useAuthStore()
+const session = useConferenceSession()
+const message = useMessage()
+const { firstDayOfWeek, dateTimePattern, formatDateTime } = useFormat()
+
+const list = ref([])
+const loading = ref(false)
+const filter = ref('all')
+
+// The open conference, if the route carries an id: { conference, participants }.
+const detail = ref(null)
+const detailLoading = ref(false)
+const detailMissing = ref(false)
+const busy = ref(false)
+// Bumped when the server says a recording started or finished (#2877); the
+// recordings panel refetches on it. A counter rather than the payload: the list
+// endpoint is the one place that knows the whole truth, and a panel patched from
+// an event would drift from it after the first missed frame.
+const recNudge = ref(0)
+
+const openId = computed(() => route.params.id || '')
+
+// ── list ───────────────────────────────────────────────────────────────
+async function load() {
+  if (!ws.currentId) {
+    list.value = []
+    return
+  }
+  loading.value = true
+  try {
+    const { data } = await confApi.list(ws.currentId, filter.value === 'all' ? '' : filter.value)
+    list.value = data || []
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+// ── one conference ─────────────────────────────────────────────────────
+async function loadDetail(id) {
+  detailLoading.value = true
+  detailMissing.value = false
+  try {
+    const { data } = await confApi.get(id)
+    detail.value = data
+    // Prefetch the workspace roster so the room's invite popover is ready before
+    // it is opened; skipped for an ended call, which cannot be invited to.
+    if (canInvite.value) loadMembers()
+  } catch (e) {
+    // A deleted (or foreign-workspace) conference answers 404 — say so on the
+    // page instead of leaving the previous conference on screen under a new id.
+    detail.value = null
+    detailMissing.value = true
+    if (e.response?.status !== 404 && e.response?.status !== 403) message.error(e.message)
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function open(conf) {
+  router.push(`/conferences/${conf.id}`)
+}
+function backToList() {
+  router.push('/conferences')
+  load()
+}
+
+// ── membership actions ─────────────────────────────────────────────────
+// join/leave answer the refreshed conference, because the first arrival flips a
+// scheduled call to live and the last exit ends it.
+async function act(fn, toast) {
+  if (!detail.value || busy.value) return
+  busy.value = true
+  try {
+    const { data } = await fn(detail.value.conference.id)
+    if (data?.conference) detail.value.conference = data.conference
+    const { data: parts } = await confApi.participants(detail.value.conference.id)
+    detail.value.participants = parts || []
+    if (toast) message.success(t(toast))
+  } catch (e) {
+    message.error(e.response?.data?.error || e.message)
+  } finally {
+    busy.value = false
+  }
+}
+
+const join = () => act(confApi.join, 'conferences.toast.joined')
+const leave = () => act(confApi.leave, 'conferences.toast.left')
+const end = () => act(confApi.end, 'conferences.toast.ended')
+
+async function remove(conf) {
+  try {
+    await confApi.remove(conf.id)
+    message.success(t('conferences.toast.deleted'))
+    if (openId.value === conf.id) backToList()
+    else await load()
+  } catch (e) {
+    message.error(e.response?.data?.error || e.message)
+  }
+}
+
+// ── invite ─────────────────────────────────────────────────────────────
+// The invitation notification/push/deep-link is #2875; this is its trigger. Any
+// workspace member may invite (as a member) — the backend only gates handing out
+// a host seat — so the control is shown to everyone in the room, not just hosts.
+//
+// The picker is a popover in the room's rail now (#2891), like the assignee
+// picker: the list of invitable members is fed to the room as a prop, one click
+// invites that person immediately (no batch «Отправить»), and the parent's
+// refetch drops them out of `invitable` and into the room's «приглашённые» list.
+const members = ref([])
+
+// Workspace members who are not currently in the call: those with no seat, plus
+// anyone who joined and left (re-inviting them is a fresh call — mirrors the
+// backend's «fresh» rule, #2875). An open, un-left invitation is skipped so we
+// don't offer to ring someone who is already being rung.
+const invitable = computed(() => {
+  const held = new Set(
+    (detail.value?.participants || []).filter((p) => !p.left_at).map((p) => p.user_id),
+  )
+  return members.value.filter((m) => !held.has(m.user_id))
+})
+const canInvite = computed(() => detail.value && detail.value.conference.status !== 'ended')
+
+// Loaded once the lobby opens, so the popover's list is ready on the first click.
+// Silent on failure: the popover just shows an empty list until it succeeds —
+// nothing the person opening a call needs a red toast about.
+async function loadMembers() {
+  if (!wsApi?.members || !ws.currentId) return
+  try {
+    const { data } = await wsApi.members(ws.currentId)
+    members.value = data || []
+  } catch {
+    // non-fatal; invitable stays empty
+  }
+}
+
+// One click = one invite (the room's popover has no batch select). The API still
+// takes an array, so this sends a single-element one and keeps the signature.
+async function inviteOne(userId) {
+  if (!detail.value) return
+  try {
+    await confApi.invite(detail.value.conference.id, [userId])
+    const { data: parts } = await confApi.participants(detail.value.conference.id)
+    detail.value.participants = parts || []
+    message.success(t('conferences.invite.sent', { count: 1 }))
+  } catch (e) {
+    message.error(e.response?.data?.error || e.message)
+  }
+}
+
+// ── schedule dialog ────────────────────────────────────────────────────
+// `ttl` is how many days a recording of this call is kept (#2877); 0 means keep
+// it indefinitely. Defaulted to the server's own 30 rather than left null so the
+// number in the box is the number that will apply — a blank field that silently
+// becomes 30 is how people find out about a retention policy by losing a file.
+const RECORDING_TTL_DEFAULT = 30
+const dlg = ref({
+  show: false,
+  saving: false,
+  title: '',
+  description: '',
+  at: null,
+  ttl: RECORDING_TTL_DEFAULT,
+})
+
+function openDialog() {
+  dlg.value = {
+    show: true,
+    saving: false,
+    title: '',
+    description: '',
+    at: null,
+    ttl: RECORDING_TTL_DEFAULT,
+  }
+}
+
+async function submit() {
+  const title = dlg.value.title.trim()
+  if (!title) {
+    message.warning(t('conferences.create.required'))
+    return
+  }
+  dlg.value.saving = true
+  try {
+    const { data } = await confApi.create(ws.currentId, {
+      title,
+      description: dlg.value.description.trim(),
+      scheduled_at: dlg.value.at ? new Date(dlg.value.at).toISOString() : null,
+      // Cleared field (n-input-number answers null) falls back to the server's
+      // own default rather than being sent as 0 — «хранить вечно» is a decision,
+      // not something an empty box should make on the user's behalf.
+      recording_ttl_days: Number.isFinite(dlg.value.ttl) ? dlg.value.ttl : RECORDING_TTL_DEFAULT,
+    })
+    dlg.value.show = false
+    message.success(t('conferences.create.created'))
+    await load()
+    if (data?.id) open(data)
+  } catch (e) {
+    message.error(e.response?.data?.error || e.message)
+  } finally {
+    dlg.value.saving = false
+  }
+}
+
+// ── derived ────────────────────────────────────────────────────────────
+// Naive's success green — the codebase has no token for it, and a live call is
+// the one place in this view that needs a hue other than the accent.
+const LIVE_HUE = '#18a058'
+
+const me = computed(() => auth.user?.id || '')
+const myPart = computed(() =>
+  (detail.value?.participants || []).find((p) => p.user_id === me.value),
+)
+const inRoom = computed(() => !!myPart.value?.joined_at && !myPart.value?.left_at)
+const canModerate = computed(() => {
+  const conf = detail.value?.conference
+  if (!conf) return false
+  return conf.created_by === me.value || myPart.value?.role === 'host' || auth.isAdmin
+})
+// Invited but not in the room yet — never joined, or an open invitation (#2875).
+// The room's rail lists these so an invitation is visible somewhere again after
+// the standalone participants column was dropped (#2881).
+const invited = computed(() =>
+  (detail.value?.participants || []).filter((p) => !p.joined_at && !p.left_at),
+)
+
+// The conference controls live in the app topbar (#2864 round 2), but only when
+// that shell is present and wide enough; otherwise the teleports fall back inline.
+const topbarSlots = ref(false)
+const narrow = ref(false)
+const inTopbar = computed(() => topbarSlots.value && !narrow.value)
+// …and the teleports themselves are not rendered until this view is mounted
+// (#2876). A <teleport> resolves its target ONCE, on its own mount, and keeps
+// the result for the rest of its life. On a deep link into a room — the link an
+// invitation sends — the view's first render happens while the shell is still
+// being built, so `#tb-slot-left` is not in the document yet: the teleport binds
+// to a null target, and the moment `inTopbar` flips true (onMounted, one tick
+// later) Vue tries to move its children into that null and throws
+// «Cannot read properties of null (reading 'insertBefore')». The patch dies
+// mid-tree, and everything after it stops updating — visibly, the theme switch
+// no longer repaints the layout. Mounting after onMounted means the target is
+// looked up when it actually exists.
+const ready = ref(false)
+let mq = null
+function onMq(e) {
+  narrow.value = e.matches
+}
+
+// Neutral greys stay flat per the design language, so a finished call has no
+// hue at all; the two states that still matter carry the same-hue gradient.
+function statusHue(status) {
+  if (status === 'live') return LIVE_HUE
+  if (status === 'scheduled') return 'var(--t-primary)'
+  return null
+}
+function pillStyle(status) {
+  const hue = statusHue(status)
+  return hue ? { background: tagPillBg(hue) } : { borderColor: 'var(--t-border)' }
+}
+// The pill's caption rides the same hue as its border, through the global
+// .accent-grad-text helper (background-clip: text) with --grad overridden.
+function pillTextStyle(status) {
+  const hue = statusHue(status)
+  return hue ? { '--grad': hueGrad(hue) } : {}
+}
+
+function when(ts) {
+  return formatDateTime(ts, { day: '2-digit', month: 'short' })
+}
+
+// The one time line a row shows: a finished call is described by its end, a
+// live one by its start, and a plan by the time it is planned for.
+function timeLine(c) {
+  if (c.status === 'ended' && c.ended_at)
+    return t('conferences.row.endedAt', { when: when(c.ended_at) })
+  if (c.status === 'live' && c.started_at)
+    return t('conferences.row.startedAt', { when: when(c.started_at) })
+  if (c.scheduled_at) return t('conferences.row.scheduledAt', { when: when(c.scheduled_at) })
+  return t('conferences.row.noTime')
+}
+
+// ── wiring ─────────────────────────────────────────────────────────────
+watch(openId, (id) => {
+  if (id) loadDetail(id)
+  else {
+    detail.value = null
+    detailMissing.value = false
+  }
+})
+
+// Membership drives the shared session (#2888). Joining this call starts it,
+// leaving stops it — and because the session lives in the store, navigating away
+// from this view leaves the call running for the mini-window rather than dropping
+// it. Only our own call is stopped here: opening another conference's lobby while
+// in a call must not tear the call down.
+watch(
+  [inRoom, () => detail.value?.conference?.id, () => detail.value?.conference?.title],
+  ([joined, id, title]) => {
+    if (joined && id) session.start(id, title)
+    else if (id && session.activeId === id) session.stop()
+  },
+  { immediate: true },
+)
+watch(filter, load)
+watch(
+  () => ws.currentId,
+  () => {
+    // Switching workspaces while a conference is open leaves that conference
+    // outside the visible scope — go back to the list rather than 403.
+    if (openId.value) router.push('/conferences')
+    load()
+  },
+)
+
+// Live updates: a colleague starting a call must appear in the list without a
+// reload, since «идёт сейчас» is the whole reason to open this section.
+useRealtime(
+  (ev) => {
+    if (ev.scope !== ws.currentId || !ev.type?.startsWith('conference')) return
+    // A recording starting or finishing changes one panel, not the page: the
+    // conference itself is untouched, so refetching it (and the list behind it)
+    // would repaint the whole screen every time an egress worker reports in.
+    if (ev.type.startsWith('conference.recording')) {
+      if (openId.value) recNudge.value += 1
+      return
+    }
+    load()
+    if (openId.value && ev.type.includes('participant')) {
+      confApi
+        .participants(openId.value)
+        .then(({ data }) => {
+          if (detail.value) detail.value.participants = data || []
+        })
+        .catch(() => {})
+    } else if (openId.value) {
+      loadDetail(openId.value)
+    }
+  },
+  () => {
+    load()
+    if (openId.value) {
+      loadDetail(openId.value)
+      // A gap in the stream may have swallowed a recording event; the panel has
+      // to catch up with the rest of the page rather than stay at its last frame.
+      recNudge.value += 1
+    }
+  },
+)
+
+onMounted(() => {
+  // The topbar teleport targets exist only inside the app shell; detect them so
+  // a bare mount (unit test) renders the controls inline instead of throwing.
+  topbarSlots.value = !!document.getElementById('tb-slot-left')
+  ready.value = true
+  if (typeof window !== 'undefined' && window.matchMedia) {
+    mq = window.matchMedia('(max-width: 900px)')
+    narrow.value = mq.matches
+    mq.addEventListener?.('change', onMq)
+  }
+  load()
+  if (openId.value) loadDetail(openId.value)
+})
+onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
+</script>
+
+<template>
+  <div class="conf">
+    <!-- LIST -->
+    <template v-if="!openId">
+      <div class="head">
+        <div class="head-text">
+          <h2 class="h">{{ $t('conferences.title') }}</h2>
+          <div class="sub">{{ $t('conferences.hint') }}</div>
+        </div>
+        <div class="head-actions">
+          <n-radio-group v-model:value="filter" size="small">
+            <n-radio-button value="all">{{ $t('conferences.filter.all') }}</n-radio-button>
+            <n-radio-button value="live">{{ $t('conferences.filter.live') }}</n-radio-button>
+            <n-radio-button value="scheduled">
+              {{ $t('conferences.filter.scheduled') }}
+            </n-radio-button>
+            <n-radio-button value="ended">{{ $t('conferences.filter.ended') }}</n-radio-button>
+          </n-radio-group>
+          <n-button
+            type="primary"
+            size="small"
+            :disabled="!ws.currentId"
+            data-testid="conference-schedule"
+            @click="openDialog"
+          >
+            {{ $t('conferences.schedule') }}
+          </n-button>
+        </div>
+      </div>
+
+      <n-spin :show="loading">
+        <div class="rows">
+          <div
+            v-for="c in list"
+            :key="c.id"
+            class="row"
+            data-testid="conference-row"
+            @click="open(c)"
+          >
+            <span class="pill" :style="pillStyle(c.status)">
+              <span
+                :class="{ 'accent-grad-text': !!statusHue(c.status) }"
+                :style="pillTextStyle(c.status)"
+              >
+                {{ $t(`conferences.status.${c.status}`) }}
+              </span>
+            </span>
+            <div class="row-body">
+              <div class="row-title">{{ c.title }}</div>
+              <div class="row-meta">
+                <span class="meta-item">
+                  <n-icon :component="TimeOutline" :size="13" />{{ timeLine(c) }}
+                </span>
+                <span class="meta-item">
+                  <n-icon :component="PeopleOutline" :size="13" />{{
+                    $t('conferences.row.participantCount', { count: c.participant_count })
+                  }}
+                </span>
+                <span v-if="c.active_count" class="meta-item">
+                  {{ $t('conferences.row.activeCount', { count: c.active_count }) }}
+                </span>
+                <span class="meta-item">
+                  {{
+                    c.created_by_name
+                      ? $t('conferences.row.author', { name: c.created_by_name })
+                      : $t('conferences.row.authorUnknown')
+                  }}
+                </span>
+              </div>
+            </div>
+            <!-- .stop: the row itself navigates, and the confirm popup must not
+                 open the conference behind it. -->
+            <n-popconfirm
+              :positive-button-props="{ type: 'error' }"
+              :positive-text="$t('conferences.actions.delete')"
+              @positive-click="remove(c)"
+            >
+              <template #trigger>
+                <n-button text size="tiny" type="error" @click.stop>
+                  <n-icon :component="TrashOutline" />
+                </n-button>
+              </template>
+              {{ $t('conferences.confirm.delete') }}
+            </n-popconfirm>
+          </div>
+
+          <empty-state
+            v-if="!loading && !list.length"
+            :icon="VideocamOutline"
+            :text="
+              !ws.currentId
+                ? $t('conferences.noWorkspace')
+                : filter === 'all'
+                  ? $t('conferences.empty')
+                  : $t('conferences.emptyFiltered')
+            "
+          />
+        </div>
+      </n-spin>
+    </template>
+
+    <!-- ONE CONFERENCE -->
+    <template v-else>
+      <!-- Back sits in the app topbar, left of the search, like Documents (#2864
+           round 2). It falls back to rendering inline when the topbar slots are
+           absent — a narrow screen, or a unit test with no shell.
+           On a phone both teleports fall back, and they used to land in two
+           different parents two rows apart: the back button above the title, the
+           status pill and the call's buttons below it (#2893, round 2). The
+           wrapper puts the whole fallback on ONE row; when the controls really do
+           go to the topbar it is `display: contents` and changes nothing. -->
+      <div v-if="ready" class="call-bar" :class="{ inline: !inTopbar }">
+        <teleport to="#tb-slot-left" :disabled="!inTopbar">
+          <n-button
+            quaternary
+            size="small"
+            class="back"
+            :circle="narrow"
+            :aria-label="$t('conferences.actions.back')"
+            :title="narrow ? $t('conferences.actions.back') : undefined"
+            @click="backToList"
+          >
+            <template #icon><n-icon :component="ArrowBackOutline" /></template>
+            <template v-if="!narrow">{{ $t('conferences.actions.back') }}</template>
+          </n-button>
+        </teleport>
+
+        <!-- Status and the call's controls go to the topbar, right of the search
+             and left of the help icon (same fallback as the back button).
+             On a narrow screen the two actions become icons, as asked in the
+             report: «Выйти» and «Завершить» are the crowded pair, and neither
+             needs its word once the row is a strip of controls. «Войти» keeps its
+             label — it is alone in the row (there is nothing to leave yet) and it
+             is the one thing a person opened the conference to do. The status
+             pill stays text on purpose: it is a state, not a button, and an icon
+             would make it look like a third thing to press. «Завершить» is a
+             power glyph rather than the obvious stop-circle: the call's own
+             toolbar is right below, and its record/stop pair is already a circle
+             and a square — a third round stop up here would read as "stop the
+             recording", which is the one thing this button does not do. -->
+        <teleport v-if="detail" to="#tb-slot-right" :disabled="!inTopbar">
+          <span class="call-actions">
+            <span class="pill" :style="pillStyle(detail.conference.status)">
+              <span
+                :class="{ 'accent-grad-text': !!statusHue(detail.conference.status) }"
+                :style="pillTextStyle(detail.conference.status)"
+              >
+                {{ $t(`conferences.status.${detail.conference.status}`) }}
+              </span>
+            </span>
+            <!-- Always enabled: a conference is a reusable room (#2879), so even
+                 a legacy "ended" one is joined rather than being a dead end. -->
+            <n-button
+              v-if="!inRoom"
+              type="primary"
+              size="small"
+              :loading="busy"
+              data-testid="conference-join"
+              @click="join"
+            >
+              {{ $t('conferences.actions.join') }}
+            </n-button>
+            <n-button
+              v-else
+              size="small"
+              :circle="narrow"
+              :loading="busy"
+              :aria-label="$t('conferences.actions.leave')"
+              :title="narrow ? $t('conferences.actions.leave') : undefined"
+              data-testid="conference-leave"
+              @click="leave"
+            >
+              <template v-if="narrow" #icon><n-icon :component="LogOutOutline" /></template>
+              <template v-if="!narrow">{{ $t('conferences.actions.leave') }}</template>
+            </n-button>
+            <!-- "Завершить" ends the ongoing session for everyone; it only makes
+                 sense while the call is live (an idle room is already ended). -->
+            <n-popconfirm
+              v-if="canModerate && detail.conference.status === 'live'"
+              :positive-text="$t('conferences.actions.end')"
+              @positive-click="end"
+            >
+              <template #trigger>
+                <n-button
+                  quaternary
+                  size="small"
+                  :circle="narrow"
+                  :aria-label="$t('conferences.actions.end')"
+                  :title="narrow ? $t('conferences.actions.end') : undefined"
+                  data-testid="conference-end"
+                >
+                  <template v-if="narrow" #icon><n-icon :component="PowerOutline" /></template>
+                  <template v-if="!narrow">{{ $t('conferences.actions.end') }}</template>
+                </n-button>
+              </template>
+              {{ $t('conferences.confirm.end') }}
+            </n-popconfirm>
+          </span>
+        </teleport>
+      </div>
+
+      <n-spin :show="detailLoading">
+        <empty-state
+          v-if="detailMissing"
+          :icon="VideocamOutline"
+          :text="$t('conferences.detail.notFound')"
+        />
+        <div v-else-if="detail" class="detail">
+          <div class="head">
+            <h2 class="h">{{ detail.conference.title }}</h2>
+            <!-- The one time line moved out from under the title to its right, now
+                 that the action buttons vacated that corner for the topbar. -->
+            <div class="head-time">{{ timeLine(detail.conference) }}</div>
+          </div>
+
+          <p v-if="detail.conference.description" class="desc">
+            {{ detail.conference.description }}
+          </p>
+
+          <!-- No «Комната» card any more (#2864 round 2): after the right column
+               was removed the frame and its title only boxed in the one pane. -->
+          <div class="room">
+            <conference-room
+              :conference-id="detail.conference.id"
+              :active="inRoom"
+              :ended="detail.conference.status === 'ended'"
+              :can-invite="canInvite"
+              :invitable="invitable"
+              :invited="invited"
+              @hangup="leave"
+              @invite="inviteOne"
+            />
+          </div>
+
+          <!-- Recordings of this call (#2877). Below the room, not inside it: they
+               are what is left of past meetings, and the room is about the one
+               happening now. Renders nothing until there is something to list. -->
+          <conference-recordings
+            :conference-id="detail.conference.id"
+            :can-moderate="canModerate"
+            :nudge="recNudge"
+          />
+        </div>
+      </n-spin>
+    </template>
+
+    <!-- SCHEDULE -->
+    <!-- style, not a scoped rule: naive teleports the modal out of this
+         component, where scoped CSS no longer reaches it. -->
+    <n-modal
+      v-model:show="dlg.show"
+      preset="card"
+      style="max-width: 460px"
+      :bordered="false"
+      :title="$t('conferences.create.title')"
+    >
+      <div class="form">
+        <n-input
+          v-model:value="dlg.title"
+          :placeholder="$t('conferences.create.namePlaceholder')"
+          data-testid="conference-title"
+          @keyup.enter="submit"
+        />
+        <n-input
+          v-model:value="dlg.description"
+          type="textarea"
+          :rows="3"
+          :placeholder="$t('conferences.create.descriptionPlaceholder')"
+        />
+        <n-date-picker
+          v-model:value="dlg.at"
+          type="datetime"
+          clearable
+          :first-day-of-week="firstDayOfWeek"
+          :format="dateTimePattern"
+          :placeholder="$t('conferences.create.at')"
+        />
+        <div class="hint">{{ $t('conferences.create.atHint') }}</div>
+        <!-- Retention for this call's recordings (#2877). It lives in the
+             scheduling dialog because it is a property of the meeting, and
+             because the moment to decide how long a recording is kept is before
+             one exists — not while looking at the file you are about to lose. -->
+        <n-input-number v-model:value="dlg.ttl" :min="0" :max="3650" data-testid="conference-ttl">
+          <template #prefix>{{ $t('conferences.create.ttl') }}</template>
+        </n-input-number>
+        <div class="hint">{{ $t('conferences.create.ttlHint') }}</div>
+      </div>
+      <template #footer>
+        <div class="foot">
+          <n-button quaternary @click="dlg.show = false">
+            {{ $t('conferences.create.cancel') }}
+          </n-button>
+          <n-button
+            type="primary"
+            :loading="dlg.saving"
+            data-testid="conference-submit"
+            @click="submit"
+          >
+            {{ $t('conferences.create.submit') }}
+          </n-button>
+        </div>
+      </template>
+    </n-modal>
+  </div>
+</template>
+
+<style scoped>
+.conf {
+  width: 100%;
+}
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.h {
+  margin: 0;
+  font-size: 20px;
+  color: var(--t-text1);
+}
+.sub {
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+/* The row already wrapped; what didn't is the filter group inside it. Four joined
+   radio buttons («Все» / «Идут» / «Запланированные» / «Завершённые») are one
+   inline-flex box ~470px wide with no break opportunity, so on a 393px phone it
+   pushed the whole pane 90px sideways (#2893). It can't wrap without breaking
+   the joined border radii, so it scrolls on its own instead — the standard
+   filter-strip behaviour — and stops dragging the page with it. */
+.head-actions :deep(.n-radio-group) {
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.head-actions :deep(.n-radio-group::-webkit-scrollbar) {
+  display: none;
+}
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: var(--t-surface);
+  border: 1px solid var(--t-border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.row:hover {
+  background: var(--t-hover);
+}
+.row-body {
+  flex: 1;
+  min-width: 0;
+}
+.row-title {
+  color: var(--t-text1);
+  font-weight: 500;
+}
+.row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+/* The status pill: flat interior, same-hue gradient on the border-box so it
+   follows the corner radius, and the same hue again on the glyphs. Shaped like a
+   button, not a capsule (#2891): the theme's 8px button radius, and a 28px box
+   (inline-flex + fixed height) so it lines up with the small buttons beside it
+   in the call topbar. */
+.pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--t-text3);
+}
+/* No bottom margin: the button now lives in the flex topbar (and, inline on a
+   narrow screen, sits directly above the title where a gap is unwanted). */
+.back {
+  margin-bottom: 0;
+}
+/* The call's status pill + join/leave/end, as one flex group so they read the
+   same whether teleported into the topbar or rendered inline as a fallback. */
+.call-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* The wrapper around both teleports. With the controls in the topbar it must not
+   exist as a box at all — hence `contents`, which leaves the two teleport
+   anchors' comment nodes and nothing else. Only the inline fallback is a row. */
+.call-bar {
+  display: contents;
+}
+.call-bar.inline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+/* Start time, right of the title now that the buttons moved to the topbar. */
+.head-time {
+  flex: none;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+/* Bottom clearance for the room's fixed control bar (#2891), so the recordings
+   panel and description can scroll clear of it instead of hiding underneath. */
+.detail {
+  padding-bottom: 84px;
+}
+/* Plain pane, no card frame — the room owns its own borders. */
+.room {
+  width: 100%;
+}
+.desc {
+  margin: 0 0 16px;
+  color: var(--t-text2);
+  white-space: pre-wrap;
+}
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.hint {
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+</style>

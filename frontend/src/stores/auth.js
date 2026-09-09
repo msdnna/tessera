@@ -161,6 +161,10 @@ export const useAuthStore = defineStore('auth', () => {
     user,
     isAuthenticated,
     isAdmin,
+    // Exposed for the embedded editor (#2894 §4): it receives a live token from
+    // the Android host instead of logging in, so it is the one caller that sets
+    // the session without going through login()/setAuth().
+    setToken,
     login,
     register,
     logout,

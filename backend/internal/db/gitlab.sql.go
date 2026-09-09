@@ -91,6 +91,48 @@ func (q *Queries) ClaimPushedUserComment(ctx context.Context, arg ClaimPushedUse
 	return id, err
 }
 
+const clearGitlabWebhook = `-- name: ClearGitlabWebhook :one
+UPDATE gitlab_integrations
+SET webhook_secret_enc = '', webhook_enabled = false, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at
+`
+
+// ClearGitlabWebhook turns the hook off and wipes the stored secret, so a delivery
+// that still carries the old token is rejected rather than silently accepted.
+func (q *Queries) ClearGitlabWebhook(ctx context.Context, id uuid.UUID) (GitlabIntegration, error) {
+	row := q.db.QueryRow(ctx, clearGitlabWebhook, id)
+	var i GitlabIntegration
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ProjectPath,
+		&i.BoardID,
+		&i.LabelRules,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OwnerUserID,
+		&i.SyncIntervalSec,
+		&i.LastSyncedAt,
+		&i.DueSource,
+		&i.StartSource,
+		&i.Writeback,
+		&i.Name,
+		&i.Scope,
+		&i.ClosedPolicy,
+		&i.ClosedAfter,
+		&i.LastFullSyncedAt,
+		&i.MembersSyncedAt,
+		&i.FullSyncIntervalSec,
+		&i.RelationsSync,
+		&i.WebhookSecretEnc,
+		&i.WebhookEnabled,
+		&i.LastWebhookAt,
+	)
+	return i, err
+}
+
 const countGitlabChildLinks = `-- name: CountGitlabChildLinks :one
 SELECT count(*)
 FROM gitlab_links l
@@ -119,7 +161,7 @@ INSERT INTO gitlab_integrations (
     sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after,
     relations_sync, full_sync_interval_sec, updated_at
 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at
 `
 
 type CreateGitlabIntegrationParams struct {
@@ -185,6 +227,9 @@ func (q *Queries) CreateGitlabIntegration(ctx context.Context, arg CreateGitlabI
 		&i.MembersSyncedAt,
 		&i.FullSyncIntervalSec,
 		&i.RelationsSync,
+		&i.WebhookSecretEnc,
+		&i.WebhookEnabled,
+		&i.LastWebhookAt,
 	)
 	return i, err
 }
@@ -396,7 +441,7 @@ func (q *Queries) GetGitlabCredential(ctx context.Context, userID uuid.UUID) (Gi
 }
 
 const getGitlabIntegration = `-- name: GetGitlabIntegration :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations WHERE id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at FROM gitlab_integrations WHERE id = $1
 `
 
 func (q *Queries) GetGitlabIntegration(ctx context.Context, id uuid.UUID) (GitlabIntegration, error) {
@@ -425,12 +470,15 @@ func (q *Queries) GetGitlabIntegration(ctx context.Context, id uuid.UUID) (Gitla
 		&i.MembersSyncedAt,
 		&i.FullSyncIntervalSec,
 		&i.RelationsSync,
+		&i.WebhookSecretEnc,
+		&i.WebhookEnabled,
+		&i.LastWebhookAt,
 	)
 	return i, err
 }
 
 const getGitlabIntegrationByBoard = `-- name: GetGitlabIntegrationByBoard :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations WHERE board_id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at FROM gitlab_integrations WHERE board_id = $1
 `
 
 // GetGitlabIntegrationByBoard resolves the binding that mirrors into a given board
@@ -461,12 +509,15 @@ func (q *Queries) GetGitlabIntegrationByBoard(ctx context.Context, boardID uuid.
 		&i.MembersSyncedAt,
 		&i.FullSyncIntervalSec,
 		&i.RelationsSync,
+		&i.WebhookSecretEnc,
+		&i.WebhookEnabled,
+		&i.LastWebhookAt,
 	)
 	return i, err
 }
 
 const getGitlabIntegrationByProject = `-- name: GetGitlabIntegrationByProject :one
-SELECT i.id, i.workspace_id, i.project_path, i.board_id, i.label_rules, i.enabled, i.created_at, i.updated_at, i.owner_user_id, i.sync_interval_sec, i.last_synced_at, i.due_source, i.start_source, i.writeback, i.name, i.scope, i.closed_policy, i.closed_after, i.last_full_synced_at, i.members_synced_at, i.full_sync_interval_sec, i.relations_sync FROM gitlab_integrations i
+SELECT i.id, i.workspace_id, i.project_path, i.board_id, i.label_rules, i.enabled, i.created_at, i.updated_at, i.owner_user_id, i.sync_interval_sec, i.last_synced_at, i.due_source, i.start_source, i.writeback, i.name, i.scope, i.closed_policy, i.closed_after, i.last_full_synced_at, i.members_synced_at, i.full_sync_interval_sec, i.relations_sync, i.webhook_secret_enc, i.webhook_enabled, i.last_webhook_at FROM gitlab_integrations i
 JOIN boards b ON b.id = i.board_id
 WHERE b.project_id = $1
 ORDER BY i.created_at
@@ -501,6 +552,9 @@ func (q *Queries) GetGitlabIntegrationByProject(ctx context.Context, projectID u
 		&i.MembersSyncedAt,
 		&i.FullSyncIntervalSec,
 		&i.RelationsSync,
+		&i.WebhookSecretEnc,
+		&i.WebhookEnabled,
+		&i.LastWebhookAt,
 	)
 	return i, err
 }
@@ -763,7 +817,7 @@ func (q *Queries) LinkedTasksForIntegration(ctx context.Context, integrationID u
 }
 
 const listAutoSyncIntegrations = `-- name: ListAutoSyncIntegrations :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at FROM gitlab_integrations
 WHERE enabled
   AND sync_interval_sec > 0
   AND owner_user_id IS NOT NULL
@@ -805,6 +859,9 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 			&i.MembersSyncedAt,
 			&i.FullSyncIntervalSec,
 			&i.RelationsSync,
+			&i.WebhookSecretEnc,
+			&i.WebhookEnabled,
+			&i.LastWebhookAt,
 		); err != nil {
 			return nil, err
 		}
@@ -817,7 +874,7 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 }
 
 const listDueSyncIntegrations = `-- name: ListDueSyncIntegrations :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at FROM gitlab_integrations
 WHERE enabled
   AND sync_interval_sec > 0
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
@@ -857,6 +914,9 @@ func (q *Queries) ListDueSyncIntegrations(ctx context.Context) ([]GitlabIntegrat
 			&i.MembersSyncedAt,
 			&i.FullSyncIntervalSec,
 			&i.RelationsSync,
+			&i.WebhookSecretEnc,
+			&i.WebhookEnabled,
+			&i.LastWebhookAt,
 		); err != nil {
 			return nil, err
 		}
@@ -906,7 +966,7 @@ func (q *Queries) ListGitlabChildGlobalIDs(ctx context.Context, arg ListGitlabCh
 }
 
 const listGitlabIntegrationsByWorkspace = `-- name: ListGitlabIntegrationsByWorkspace :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync FROM gitlab_integrations WHERE workspace_id = $1 ORDER BY name, created_at
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at FROM gitlab_integrations WHERE workspace_id = $1 ORDER BY name, created_at
 `
 
 func (q *Queries) ListGitlabIntegrationsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]GitlabIntegration, error) {
@@ -941,6 +1001,9 @@ func (q *Queries) ListGitlabIntegrationsByWorkspace(ctx context.Context, workspa
 			&i.MembersSyncedAt,
 			&i.FullSyncIntervalSec,
 			&i.RelationsSync,
+			&i.WebhookSecretEnc,
+			&i.WebhookEnabled,
+			&i.LastWebhookAt,
 		); err != nil {
 			return nil, err
 		}
@@ -1105,6 +1168,17 @@ func (q *Queries) MarkGitlabSynced(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const markGitlabWebhookSeen = `-- name: MarkGitlabWebhookSeen :exec
+UPDATE gitlab_integrations SET last_webhook_at = now() WHERE id = $1
+`
+
+// MarkGitlabWebhookSeen stamps the last accepted delivery, so the UI can tell a
+// live hook from one GitLab has quietly disabled.
+func (q *Queries) MarkGitlabWebhookSeen(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, markGitlabWebhookSeen, id)
+	return err
+}
+
 const pinGitlabAssignee = `-- name: PinGitlabAssignee :exec
 INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url, source) VALUES ($1, $2, $3, $4, 'user')
 ON CONFLICT (task_id, gl_username) DO UPDATE SET source = 'user', gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url
@@ -1212,6 +1286,55 @@ func (q *Queries) SetGitlabLinkSnapshot(ctx context.Context, arg SetGitlabLinkSn
 	return err
 }
 
+const setGitlabWebhook = `-- name: SetGitlabWebhook :one
+
+UPDATE gitlab_integrations
+SET webhook_secret_enc = $2, webhook_enabled = true, updated_at = now()
+WHERE id = $1
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at
+`
+
+type SetGitlabWebhookParams struct {
+	ID               uuid.UUID `json:"id"`
+	WebhookSecretEnc string    `json:"webhook_secret_enc"`
+}
+
+// ── Webhook (near-realtime trigger, #2594) ─────────────────
+// SetGitlabWebhook stores a freshly generated shared secret (already encrypted by
+// the sealer) and turns the hook on. Rotating simply overwrites the old secret.
+func (q *Queries) SetGitlabWebhook(ctx context.Context, arg SetGitlabWebhookParams) (GitlabIntegration, error) {
+	row := q.db.QueryRow(ctx, setGitlabWebhook, arg.ID, arg.WebhookSecretEnc)
+	var i GitlabIntegration
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ProjectPath,
+		&i.BoardID,
+		&i.LabelRules,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.OwnerUserID,
+		&i.SyncIntervalSec,
+		&i.LastSyncedAt,
+		&i.DueSource,
+		&i.StartSource,
+		&i.Writeback,
+		&i.Name,
+		&i.Scope,
+		&i.ClosedPolicy,
+		&i.ClosedAfter,
+		&i.LastFullSyncedAt,
+		&i.MembersSyncedAt,
+		&i.FullSyncIntervalSec,
+		&i.RelationsSync,
+		&i.WebhookSecretEnc,
+		&i.WebhookEnabled,
+		&i.LastWebhookAt,
+	)
+	return i, err
+}
+
 const syncUpdateTask = `-- name: SyncUpdateTask :one
 UPDATE tasks
 SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, board_id = $7, updated_at = now()
@@ -1277,7 +1400,7 @@ SET name = $2, project_path = $3, board_id = $4, label_rules = $5, enabled = $6,
     writeback = $11, scope = $12, closed_policy = $13, closed_after = $14,
     relations_sync = $15, full_sync_interval_sec = $16, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at
 `
 
 type UpdateGitlabIntegrationParams struct {
@@ -1342,6 +1465,9 @@ func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabI
 		&i.MembersSyncedAt,
 		&i.FullSyncIntervalSec,
 		&i.RelationsSync,
+		&i.WebhookSecretEnc,
+		&i.WebhookEnabled,
+		&i.LastWebhookAt,
 	)
 	return i, err
 }

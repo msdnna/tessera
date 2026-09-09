@@ -1,10 +1,11 @@
 import { onMounted, onUnmounted } from 'vue'
 import { isTauri } from '@/utils/serverBase'
 
-// Desktop: clicking a native notification should focus the window and open the
-// task it's about. The notification carries { task_board_id, task_number } in its
-// `extra`; on click we surface the window and route to the board with the task
-// query (BoardView canonicalises /board/:id → the slug URL and opens the modal).
+// Desktop: clicking a native notification should focus the window and open what
+// it's about. The notification carries { task_board_id, task_number } — or, for a
+// conference invitation, { conference_id } — in its `extra`; on click we surface
+// the window and route to the board with the task query (BoardView canonicalises
+// /board/:id → the slug URL and opens the modal), or straight into the call.
 // Best-effort — no-op on web, and if the OS doesn't deliver the action payload it
 // simply won't deep-link (the window still comes forward via tray/single-instance).
 export function useDesktopDeepLink(router) {
@@ -30,6 +31,11 @@ export function useDesktopDeepLink(router) {
       unlisten = await onAction((notification) => {
         const extra = notification?.extra || {}
         focusWindow()
+        // A conference invitation opens the call, not a board (#2875).
+        if (extra.conference_id) {
+          router.push({ path: `/conferences/${extra.conference_id}` })
+          return
+        }
         if (extra.task_board_id) {
           router.push({
             path: `/board/${extra.task_board_id}`,

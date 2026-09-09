@@ -46,6 +46,68 @@ type BoardView struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type Conference struct {
+	ID               uuid.UUID  `json:"id"`
+	WorkspaceID      uuid.UUID  `json:"workspace_id"`
+	TaskID           *uuid.UUID `json:"task_id"`
+	CreatedBy        *uuid.UUID `json:"created_by"`
+	Title            string     `json:"title"`
+	Description      string     `json:"description"`
+	ScheduledAt      *time.Time `json:"scheduled_at"`
+	StartedAt        *time.Time `json:"started_at"`
+	EndedAt          *time.Time `json:"ended_at"`
+	Status           string     `json:"status"`
+	RecordingTtlDays int32      `json:"recording_ttl_days"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+}
+
+type ConferenceMessage struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID uuid.UUID  `json:"conference_id"`
+	UserID       *uuid.UUID `json:"user_id"`
+	Body         string     `json:"body"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+type ConferenceMessageAttachment struct {
+	ID          uuid.UUID  `json:"id"`
+	MessageID   uuid.UUID  `json:"message_id"`
+	UploaderID  *uuid.UUID `json:"uploader_id"`
+	Filename    string     `json:"filename"`
+	ContentType string     `json:"content_type"`
+	Size        int64      `json:"size"`
+	StoragePath string     `json:"storage_path"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type ConferenceParticipant struct {
+	ConferenceID uuid.UUID  `json:"conference_id"`
+	UserID       uuid.UUID  `json:"user_id"`
+	Role         string     `json:"role"`
+	InvitedAt    time.Time  `json:"invited_at"`
+	JoinedAt     *time.Time `json:"joined_at"`
+	LeftAt       *time.Time `json:"left_at"`
+	ForceMuted   bool       `json:"force_muted"`
+}
+
+type ConferenceRecording struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID uuid.UUID  `json:"conference_id"`
+	FilePath     string     `json:"file_path"`
+	FileName     string     `json:"file_name"`
+	SizeBytes    int64      `json:"size_bytes"`
+	DurationSec  int32      `json:"duration_sec"`
+	StartedAt    time.Time  `json:"started_at"`
+	ExpiresAt    *time.Time `json:"expires_at"`
+	CreatedAt    time.Time  `json:"created_at"`
+	EgressID     string     `json:"egress_id"`
+	Status       string     `json:"status"`
+	Error        string     `json:"error"`
+	StartedBy    *uuid.UUID `json:"started_by"`
+	EndedAt      *time.Time `json:"ended_at"`
+}
+
 type Document struct {
 	ID          uuid.UUID  `json:"id"`
 	WorkspaceID uuid.UUID  `json:"workspace_id"`
@@ -177,6 +239,9 @@ type GitlabIntegration struct {
 	MembersSyncedAt     *time.Time `json:"members_synced_at"`
 	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
 	RelationsSync       string     `json:"relations_sync"`
+	WebhookSecretEnc    string     `json:"webhook_secret_enc"`
+	WebhookEnabled      bool       `json:"webhook_enabled"`
+	LastWebhookAt       *time.Time `json:"last_webhook_at"`
 }
 
 type GitlabIssueLink struct {

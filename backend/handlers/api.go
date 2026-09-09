@@ -17,10 +17,12 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"tessera/internal/confroom"
 	"tessera/internal/converter"
 	"tessera/internal/db"
 	"tessera/internal/docroom"
 	"tessera/internal/jobs"
+	"tessera/internal/livekit"
 	"tessera/internal/mail"
 	"tessera/internal/notify"
 	"tessera/internal/realtime"
@@ -30,20 +32,25 @@ import (
 
 // API holds the dependencies shared by all resource handlers.
 type API struct {
-	q         *db.Queries
-	pool      *pgxpool.Pool // for multi-statement transactions (e.g. project transfer)
-	hub       *realtime.Hub
-	uploadDir string
-	sealer    *secrets.Sealer          // encrypts secrets at rest (GitLab PATs, channel secrets)
-	assetKey  []byte                   // HMAC key for signed GitLab asset-proxy URLs
-	mailer    mail.Mailer              // transactional email (invitations); no-op when SMTP unset
-	publicURL string                   // external base URL for links in emails
-	senders   map[string]notify.Sender // notification channel transports, keyed by type
-	jobs      *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
-	docRooms  *docroom.Rooms           // per-document presence/locks (nil until WireDocRooms)
-	metrics   *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
-	converter *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
-	version   string                   // build version, surfaced by the readiness/metrics probes
+	q              *db.Queries
+	pool           *pgxpool.Pool // for multi-statement transactions (e.g. project transfer)
+	hub            *realtime.Hub
+	uploadDir      string
+	sealer         *secrets.Sealer          // encrypts secrets at rest (GitLab PATs, channel secrets)
+	assetKey       []byte                   // HMAC key for signed GitLab asset-proxy URLs
+	mailer         mail.Mailer              // transactional email (invitations); no-op when SMTP unset
+	publicURL      string                   // external base URL for links in emails
+	senders        map[string]notify.Sender // notification channel transports, keyed by type
+	jobs           *jobs.Registry           // in-memory registry of background jobs (observability + cancel)
+	docRooms       *docroom.Rooms           // per-document presence/locks (nil until WireDocRooms)
+	confRooms      *confroom.Rooms          // per-conference room state (nil until WireConfRooms)
+	livekit        *livekit.Client          // SFU control plane + join tokens; disabled when LIVEKIT_* unset
+	metrics        *middleware.Collector    // HTTP request/latency counters for /admin/metrics (nil until WireOps)
+	converter      *converter.Client        // LibreOffice sidecar for document import/export; disabled when unconfigured
+	version        string                   // build version, surfaced by the readiness/metrics probes
+	webhooks       webhookQueue             // debounced dirty set of GitLab integrations poked by a webhook (#2594)
+	egressDir      string                   // uploadDir as the egress recorder sees it (#2877); empty falls back to uploadDir
+	recTemplateURL string                   // internal url of our egress recording page (#2877); empty ⇒ egress's built-in grid
 }
 
 // WireOps injects the ops-observability dependencies that live outside NewAPI's
@@ -73,6 +80,73 @@ func (h *API) WireDocRooms(rooms *docroom.Rooms) { h.docRooms = rooms }
 func (h *API) CloseDocRooms() {
 	if h.docRooms != nil {
 		h.docRooms.Close()
+	}
+}
+
+// WireConfRooms injects the per-conference room registry (#2869). As with
+// documents, the resource layer needs it only to empty a room — when the call
+// ends or the conference is deleted — while the socket itself lives on
+// WSHandler.
+func (h *API) WireConfRooms(rooms *confroom.Rooms) { h.confRooms = rooms }
+
+// WireLiveKit injects the SFU client (#2871). livekit.New tolerates an empty
+// config and reports itself disabled, so an install without LIVEKIT_* set gets a
+// non-nil client that answers "off" — the token handler turns that into a 503
+// instead of every call site nil-checking.
+func (h *API) WireLiveKit(c *livekit.Client) { h.livekit = c }
+
+// CloseConfRooms stops the stage sweeper and disconnects everyone still in a
+// call, so a restart doesn't leave clients waiting on a screen-share stage that
+// no process can release.
+func (h *API) CloseConfRooms() {
+	if h.confRooms != nil {
+		h.confRooms.Close()
+	}
+}
+
+// dropConfRoom empties a conference's room, telling whoever is still connected
+// why. Guarded because the registry is optional wiring — the GitLab and job
+// tests build an API without it.
+func (h *API) dropConfRoom(confID uuid.UUID, reason string) {
+	if h.confRooms != nil {
+		h.confRooms.Drop(confID, reason)
+	}
+}
+
+// notifyConfRoom nudges everyone currently in a conference that something they
+// are looking at changed outside the socket — today the chat (#2873).
+//
+// The frame carries no payload on purpose: the room evicts a participant whose
+// buffer overflows, so putting message bodies (let alone attachments) on that
+// channel would let a busy conversation disconnect the people having it. A
+// conference nobody has open has no room and this is a no-op, which is correct —
+// the next arrival loads the chat over HTTP anyway.
+func (h *API) notifyConfRoom(confID uuid.UUID, msgType string) {
+	if h.confRooms != nil {
+		h.confRooms.Notify(confID, msgType)
+	}
+}
+
+// WireRecording injects the path prefix the egress recorder uses for the shared
+// uploads volume (#2877). Separate from WireLiveKit because it is not the SFU's
+// business: it is our own filesystem, seen from another container.
+func (h *API) WireRecording(egressUploadDir, templateURL string) {
+	h.egressDir = egressUploadDir
+	h.recTemplateURL = templateURL
+}
+
+// setConfRecording / clearConfRecording move the room's recording indicator.
+// Guarded like the calls above — the GitLab and job tests build an API with no
+// room registry at all.
+func (h *API) setConfRecording(confID uuid.UUID, v *confroom.RecordingView) {
+	if h.confRooms != nil {
+		h.confRooms.SetRecording(confID, v)
+	}
+}
+
+func (h *API) clearConfRecording(confID uuid.UUID, recordingID string) {
+	if h.confRooms != nil {
+		h.confRooms.ClearRecording(confID, recordingID)
 	}
 }
 

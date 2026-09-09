@@ -31,6 +31,10 @@
     <string name="auth_server_title">Сервер</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Применяется сразу. Пусто — сервер по умолчанию.</string>
+    <string name="tls_insecure_label">Не проверять сертификат</string>
+    <string name="tls_insecure_hint_off">Включите, если у сервера самоподписанный сертификат или свой центр сертификации.</string>
+    <string name="tls_insecure_hint_on">Цепочка доверия и имя хоста не проверяются — соединение можно подменить. Только для своего сервера в доверенной сети.</string>
+    <string name="auth_language_switch_to">Переключить на %1$s</string>
     <string name="auth_browser_failed">Не удалось открыть браузер для входа</string>
 
     <!-- Ошибки OAuth-редиректа (коды приходят от бэкенда) -->
@@ -48,6 +52,7 @@
     <string name="gate_session_title">Сессия завершена</string>
     <string name="gate_session_message">Похоже, сессия истекла или доступ к аккаунту закрыт. Войдите снова, чтобы продолжить.</string>
     <string name="gate_session_relogin">Выполнить повторный вход</string>
+    <string name="gate_change_server">Сменить сервер</string>
     <string name="gate_exit">Выход</string>
 
     <!-- Настройки: профиль -->
@@ -91,6 +96,7 @@
 
     <!-- Настройки: локализация и форматы -->
     <string name="settings_locale_title">Локализация и форматы</string>
+    <string name="settings_connection_title">Подключение</string>
     <string name="settings_language">Язык</string>
     <string name="settings_week_start">Начало недели</string>
     <string name="settings_time_format">Формат времени</string>
@@ -130,8 +136,11 @@
     <string name="nav_reminders">Напоминания</string>
     <string name="nav_notes">Заметки</string>
     <string name="nav_documents">Документы</string>
+    <string name="nav_conferences">Конференции</string>
     <string name="nav_help">Помощь</string>
     <string name="nav_admin">Администрирование</string>
+    <!-- Плашка «новое» у недавно появившихся разделов (Документы, Конференции) -->
+    <string name="nav_new_badge">новое</string>
 
     <!-- Боковая панель: пространства -->
     <string name="sidebar_estimation">Оценка задач…</string>
@@ -209,6 +218,9 @@
     <string name="task_gitlab_creating">Создание…</string>
     <string name="task_gitlab_template">Шаблон</string>
     <string name="task_gitlab_templates_empty">Шаблонов нет</string>
+    <!-- Пометка «сгруппированная задача» на issue с меткой группировки (#2592) -->
+    <string name="task_prop_grouping">Группировка</string>
+    <string name="task_gitlab_grouped">Сгруппированная</string>
     <string name="task_archive_confirm">Архивировать задачу?</string>
     <string name="task_archive_action">В архив</string>
     <string name="task_delete_confirm">Удалить задачу? Это действие необратимо.</string>
@@ -243,7 +255,16 @@
     <string name="task_tab_subtasks">Подзадачи</string>
     <string name="task_tab_relations">Связи</string>
     <string name="task_tab_files">Файлы</string>
+    <string name="task_tab_documents">Документы</string>
     <string name="task_tab_history">История</string>
+
+    <!-- Вкладка «Документы» (#2894 §7): другой конец связи, которую заводят из
+         документа. Читающая по замыслу — связь ставят там, где есть контекст. -->
+    <string name="task_docs_empty">Документы не ссылаются на эту задачу.</string>
+    <string name="task_docs_untitled">Без названия</string>
+    <string name="task_docs_fragment">фрагмент документа</string>
+    <string name="task_docs_unlink">Убрать связь?</string>
+    <string name="task_docs_unlink_confirm">Документ останется на месте — исчезнет только связь с задачей.</string>
 
     <!-- Модалка задачи: описание и комментарии -->
     <string name="task_description_placeholder">Добавьте описание…</string>
@@ -267,6 +288,10 @@
     <!-- Модалка задачи: подзадачи и связи -->
     <string name="task_subtasks_empty">Подзадач пока нет</string>
     <string name="task_subtask_new_hint">+ подзадача (Enter)</string>
+    <!-- Состояние подзадачи в иерархии GitLab (#2592) -->
+    <string name="task_subtasks_gl_detached">вне иерархии</string>
+    <string name="task_subtasks_gl_absent">не в GitLab</string>
+    <string name="task_subtasks_parent_not_grouped">Родитель не помечен как сгруппированная задача — подзадачи не попадут в GitLab.</string>
     <string name="task_relations_empty">Связей пока нет</string>
     <string name="task_relation_relates">связана с</string>
     <string name="task_relation_blocks">блокирует</string>
@@ -481,6 +506,16 @@
     <string name="board_column_delete">Удалить колонку</string>
     <string name="board_column_delete_confirm">Удалить «%1$s» и задачи в ней?</string>
 
+    <!-- Доска: счётчики колонки и бара (веб-паритет #2850/#2851). В скобках —
+         итог с учётом подзадач; подсказка открывается долгим нажатием. -->
+    <string name="board_column_count">%1$d (%2$d)</string>
+    <string name="board_column_count_title">Задач в колонке: %1$d, в скобках — итог с учётом подзадач: %2$d</string>
+    <string name="board_column_count_title_flat">Задач в колонке: %1$d</string>
+    <string name="board_composer_shown">показано: %1$d (%2$d)</string>
+    <string name="board_composer_shown_flat">показано: %1$d</string>
+    <string name="board_composer_shown_title">Показано задач: %1$d, в скобках — итог с учётом подзадач: %2$d</string>
+    <string name="board_composer_shown_title_flat">Показано задач: %1$d (подзадач нет)</string>
+
     <!-- Доска: подписи дорожек в режимах группировки -->
     <string name="board_lane_no_tag">Без тега</string>
     <string name="board_lane_unassigned">Не назначено</string>
@@ -572,10 +607,32 @@
     <string name="dates_short">%1$d %2$s</string>
     <string name="dates_short_year">%1$d %2$s %3$d</string>
     <string name="dates_long">%1$d %2$s. %3$d г.</string>
-    <string name="dates_full">%1$d %2$s %3$d</string>
     <string name="dates_at_time">%1$s, %2$s</string>
     <string name="dates_with_time">%1$s %2$s</string>
     <string name="dates_clock">%1$02d:%2$02d</string>
+    <!-- Пресеты полной даты (#2857): short — цифрами, long — с полным месяцем;
+         medium берёт dates_long, iso собирается в коде и локали не знает. -->
+    <string name="dates_preset_short">%1$02d.%2$02d.%3$d</string>
+    <string name="dates_preset_long">%1$d %2$s %3$d г.</string>
+    <string name="dates_clock_12">%1$d:%2$02d %3$s</string>
+    <string name="dates_am">AM</string>
+    <string name="dates_pm">PM</string>
+    <!-- Полные названия месяцев в родительном падеже: «31 декабря 2026 г.».
+         Именительные из calendar_months («Декабрь») в подпись даты не годятся. -->
+    <string-array name="dates_months_full">
+        <item>января</item>
+        <item>февраля</item>
+        <item>марта</item>
+        <item>апреля</item>
+        <item>мая</item>
+        <item>июня</item>
+        <item>июля</item>
+        <item>августа</item>
+        <item>сентября</item>
+        <item>октября</item>
+        <item>ноября</item>
+        <item>декабря</item>
+    </string-array>
 
     <!-- Уведомления: шапка и разделы -->
     <string name="notif_title">Уведомления</string>
@@ -686,11 +743,355 @@
 
     <!-- Документы -->
     <string name="docs_empty">Документов пока нет</string>
-    <string name="docs_empty_hint">Создать документ можно в веб-версии</string>
+    <string name="docs_empty_nested">Внутри пока пусто</string>
+    <string name="docs_empty_hint">Создайте первый — кнопка выше</string>
     <string name="docs_untitled">Без названия</string>
+    <string name="docs_empty_preview">Пустой документ</string>
     <string name="docs_reader_untitled">Документ</string>
     <string name="docs_reader_empty">Документ пуст</string>
     <string name="docs_image_alt">Изображение документа</string>
+    <!-- Сетка: крошки, создание, число вложенных на плитке -->
+    <string name="docs_crumb_root">Документы</string>
+    <string name="docs_create">Новый документ</string>
+    <string name="docs_create_confirm">Создать</string>
+    <string name="docs_nested_count">вложенных: %1$d</string>
+    <!-- Меню за названием документа в шапке приложения -->
+    <string name="docs_menu_edit">Редактировать</string>
+    <string name="docs_menu_read">Закрыть редактор</string>
+    <string name="docs_menu_comments">Обсуждения</string>
+    <string name="docs_menu_links">Связи и согласования</string>
+    <string name="docs_menu_history">История изменений</string>
+    <string name="docs_menu_switch">Перейти к документу</string>
+    <string name="docs_menu_list">К списку документов</string>
+    <!-- Меню «⋯» в читалке -->
+    <string name="docs_action_nested">Вложенный документ</string>
+    <string name="docs_action_children">Показать вложенные (%1$d)</string>
+    <string name="docs_action_rename">Переименовать</string>
+    <string name="docs_action_remove">Удалить документ</string>
+    <string name="docs_rename_title">Переименовать документ</string>
+    <string name="docs_remove_title">Удалить документ?</string>
+    <string name="docs_remove_single">Документ будет удалён.</string>
+    <string name="docs_remove_with_children">Документ будет удалён вместе с вложенными (%1$d).</string>
+    <string name="docs_toc_title">Оглавление</string>
+    <string name="docs_toc_empty">Добавьте заголовки — они соберутся в оглавление.</string>
+    <string name="docs_toc_untitled">Без заголовка</string>
+    <string name="docs_pdf_untitled">Документ PDF</string>
+    <string name="docs_pdf_failed">Не удалось открыть PDF</string>
+    <string name="docs_pdf_page">Стр. %1$d из %2$d</string>
+    <string name="docs_size_b">Б</string>
+    <string name="docs_size_kb">КБ</string>
+    <string name="docs_size_mb">МБ</string>
+    <string name="docs_size_gb">ГБ</string>
+    <string name="docs_page_portrait">Книжная</string>
+    <string name="docs_page_landscape">Альбомная</string>
+    <string name="docs_page_size_custom">свой размер</string>
+    <string name="docs_section_caption">Дальше — %1$s %2$s</string>
+    <!-- Editor (#2894 §4). docs_embed_lang is not shown anywhere: it is the code
+         of the language this build is currently rendering in, handed to the
+         embedded editor so the web surface speaks the same language as the app
+         around it. It follows whatever picked this resource folder, which is
+         exactly the point — nothing here has to know how the language was set. -->
+    <string name="docs_embed_lang" translatable="false">ru</string>
+    <string name="docs_edit">Редактировать</string>
+    <string name="docs_editor_saved">Сохранено</string>
+    <string name="docs_editor_dirty">Есть изменения</string>
+    <string name="docs_editor_saving">Сохраняем…</string>
+    <string name="docs_editor_conflict_short">Конфликт</string>
+    <string name="docs_editor_error">Не сохранено</string>
+    <string name="docs_editor_conflict">Документ изменён в другом месте — ваши последние правки не сохранены.</string>
+    <string name="docs_editor_remote_change">Документ изменён в другом месте.</string>
+    <string name="docs_editor_reload">Обновить</string>
+    <string name="docs_editor_failed">Не удалось открыть редактор</string>
+    <string name="docs_editor_blocked">Блок редактирует %1$s</string>
+    <string name="docs_editor_blocked_someone">другой участник</string>
+    <!-- Annotations (#2894 §5). The sections say what the web draws with lines
+         from a card to its block — a phone has no column to draw them in. -->
+    <string name="docs_comments_title">Обсуждение</string>
+    <string name="docs_comments_empty">Комментариев пока нет. Откройте блок в редакторе и нажмите на значок обсуждения, чтобы начать.</string>
+    <string name="docs_comments_section_focus">Выбранный блок</string>
+    <string name="docs_comments_section_blocks">К блокам</string>
+    <string name="docs_comments_section_document">К документу</string>
+    <string name="docs_comments_section_detached">Блок удалён</string>
+    <string name="docs_comments_anchor_fallback">выбранный блок</string>
+    <string name="docs_comments_unpin">Открепить</string>
+    <string name="docs_comments_reply">Ответить</string>
+    <string name="docs_comments_resolve">Решено</string>
+    <string name="docs_comments_reopen">Вернуть</string>
+    <string name="docs_comments_resolved">решено</string>
+    <string name="docs_comments_reply_placeholder">Ответить…</string>
+    <string name="docs_comments_edit_placeholder">Изменить комментарий…</string>
+    <string name="docs_comments_draft_block">Комментарий к блоку…</string>
+    <string name="docs_comments_draft_doc">Комментарий к документу…</string>
+    <string name="docs_comments_send">Отправить</string>
+    <string name="docs_comments_someone">Участник</string>
+    <string name="docs_comments_remove_title">Удалить комментарий?</string>
+    <string name="docs_comments_remove_confirm">Комментарий будет удалён.</string>
+    <string name="docs_comments_remove_thread_title">Удалить обсуждение?</string>
+    <string name="docs_comments_remove_thread_confirm">Обсуждение будет удалено вместе с ответами (%1$d).</string>
+
+    <!-- Version journal (#2894 §6). The panel is a sheet over the document, so
+         the entries have to say what the web says with a column beside the text:
+         which revision, when, by whom, and what the comparison found. -->
+    <string name="docs_history_title">История</string>
+    <string name="docs_history_open">История версий</string>
+    <string name="docs_history_empty">История появится, когда документ будет сохранён.</string>
+    <string name="docs_history_snapshot">Сохранить версию</string>
+    <string name="docs_history_label_hint">Например: согласованная редакция</string>
+    <string name="docs_history_revision">Версия %1$d</string>
+    <string name="docs_history_span">%1$s–%2$s</string>
+    <string name="docs_history_unknown_author">Неизвестный автор</string>
+    <string name="docs_history_compare">Сравнение с версией %1$d</string>
+    <string name="docs_history_restore">Восстановить</string>
+    <string name="docs_history_restore_title">Восстановить версию?</string>
+    <string name="docs_history_restore_confirm">Документ вернётся к этой версии. Текущее состояние останется в истории.</string>
+    <string name="docs_history_loading_version">Загрузка версии…</string>
+    <string name="docs_history_identical">Версии совпадают.</string>
+    <plurals name="docs_history_added">
+        <item quantity="one">+%1$d блок</item>
+        <item quantity="few">+%1$d блока</item>
+        <item quantity="many">+%1$d блоков</item>
+        <item quantity="other">+%1$d блоков</item>
+    </plurals>
+    <plurals name="docs_history_removed">
+        <item quantity="one">−%1$d блок</item>
+        <item quantity="few">−%1$d блока</item>
+        <item quantity="many">−%1$d блоков</item>
+        <item quantity="other">−%1$d блоков</item>
+    </plurals>
+    <string name="docs_history_changed">изменено: %1$d</string>
+    <string name="docs_history_moved">перемещено: %1$d</string>
+    <string name="docs_history_status_added">добавлено</string>
+    <string name="docs_history_status_removed">удалено</string>
+    <string name="docs_history_status_changed">изменено</string>
+    <string name="docs_history_status_moved">перемещено</string>
+    <string name="docs_history_diff_image">[изображение]</string>
+
+    <!-- Связи с задачами и согласования (#2894 §7). Панель поверх документа, а не
+         рядом с ним, поэтому якорь связи приходится проговаривать словами: цитата
+         блока и есть единственное, что отвечает «о каком пункте задача», когда
+         пункт уже переписали. -->
+    <string name="docs_links_title">Связи</string>
+    <string name="docs_links_open">Связи и согласования</string>
+    <string name="docs_links_tasks">Задачи</string>
+    <string name="docs_links_empty">Ни одна задача не связана с документом.</string>
+    <string name="docs_links_task">Задача</string>
+    <string name="docs_links_fragment">фрагмент документа</string>
+    <string name="docs_links_link_task">Связать с задачей</string>
+    <string name="docs_links_link_block">Связать блок с задачей</string>
+    <string name="docs_links_search_hint">Номер или название задачи</string>
+    <string name="docs_links_nothing_found">Ничего не найдено.</string>
+    <string name="docs_links_unlink">Убрать связь?</string>
+    <string name="docs_links_unlink_confirm">Задача останется на месте — исчезнет только связь с документом.</string>
+    <string name="docs_links_anchor_fallback">Связь с блоком документа</string>
+    <string name="docs_links_unpin">Открепить</string>
+
+    <string name="docs_links_approvals">Согласование</string>
+    <string name="docs_links_no_approvals">Документ ещё не отправляли на согласование.</string>
+    <string name="docs_links_raise">Отправить на согласование</string>
+    <string name="docs_links_raise_disabled">Уже идёт согласование — дождитесь его завершения или отмените.</string>
+    <string name="docs_links_route_title_hint">Что согласовываем</string>
+    <string name="docs_links_approvers">Согласующие — порядок подписания</string>
+    <string name="docs_links_no_members">В пространстве нет других участников.</string>
+    <string name="docs_links_mode_sequential">По очереди</string>
+    <string name="docs_links_mode_parallel">Одновременно</string>
+    <string name="docs_links_submit">Отправить</string>
+    <string name="docs_links_progress">подписей: %1$d из %2$d</string>
+    <string name="docs_links_meta">Версия %1$d · %2$s</string>
+    <string name="docs_links_unknown_author">Неизвестный автор</string>
+    <string name="docs_links_sign">Подписать</string>
+    <string name="docs_links_comment_hint">Замечание (необязательно)</string>
+    <string name="docs_links_approve">Согласовать</string>
+    <string name="docs_links_reject">Отклонить</string>
+    <string name="docs_links_cancel_route">Отменить согласование</string>
+    <string name="docs_links_cancel_confirm">Маршрут закроется, собранные подписи останутся в истории.</string>
+    <string name="docs_links_status_pending">На согласовании</string>
+    <string name="docs_links_status_approved">Согласовано</string>
+    <string name="docs_links_status_rejected">Отклонено</string>
+    <string name="docs_links_status_cancelled">Отменено</string>
+    <string name="docs_links_status_unknown">Статус неизвестен</string>
+    <string name="docs_links_step_signed">подписал</string>
+    <string name="docs_links_step_rejected">отклонил</string>
+    <string name="docs_links_step_current">сейчас его очередь</string>
+    <string name="docs_links_step_waiting">ждёт очереди</string>
+    <!-- §8: галерея шаблонов, импорт файлов и экспорт (#2734, #2733) -->
+    <string name="docs_templates_open">Шаблоны</string>
+    <string name="docs_templates_title">Шаблоны документов</string>
+    <string name="docs_templates_search">Поиск</string>
+    <string name="docs_templates_upload">Загрузить файл</string>
+    <string name="docs_templates_use">Создать</string>
+    <string name="docs_templates_builtin">Встроенный</string>
+    <string name="docs_templates_no_description">Без описания</string>
+    <string name="docs_templates_empty">Ничего не нашлось. Сохраните документ как шаблон или загрузите файл.</string>
+    <string name="docs_templates_remove_title">Удалить шаблон?</string>
+    <string name="docs_templates_remove_confirm">Документы, созданные по нему, останутся.</string>
+    <!-- Импорт: подсказка о форматах, отказы и предупреждения после конвертации -->
+    <string name="docs_import_hint">Форматы: %1$s</string>
+    <string name="docs_import_hint_limited">Без конвертера доступны только %1$s (%2$s)</string>
+    <string name="docs_import_no_converter">конвертер не подключён</string>
+    <string name="docs_import_unsupported">Такой формат файла не поддерживается</string>
+    <string name="docs_import_too_large">Файл больше %1$d МБ</string>
+    <string name="docs_import_not_a_document">Это не документ Tessera</string>
+    <string name="docs_import_title">Импортированный документ</string>
+    <string name="docs_import_images_dropped">Картинок не перенесено: %1$d</string>
+    <string name="docs_import_images_dropped_why">Картинок не перенесено: %1$d (%2$s)</string>
+    <string name="docs_import_sections_differ">У разделов файла была разная геометрия страницы — документ собран по самому широкому.</string>
+    <!-- Экспорт: пункт меню, имя файла по умолчанию, системный диалог «поделиться» -->
+    <string name="docs_export">Экспорт</string>
+    <string name="docs_export_name">Документ</string>
+    <string name="docs_export_share">Поделиться «%1$s»</string>
+    <string name="docs_export_unavailable">Конвертер недоступен — попробуйте HTML</string>
+    <!-- Встроенные шаблоны. Тела — Markdown: их разбирает DocMarkdown.kt -->
+    <string name="docs_template_meeting_title">Протокол совещания</string>
+    <string name="docs_template_meeting_description">Участники, повестка, решения и задачи по итогам</string>
+    <string name="docs_template_meeting_body"># Протокол совещания\n\n**Дата:**\n**Участники:**\n\n## Повестка\n\n1. \n2. \n\n## Обсуждение\n\n## Решения\n\n- [ ] Решение — ответственный, срок\n\n## Задачи по итогам\n\n- [ ] \n</string>
+    <string name="docs_template_spec_title">Техническое задание</string>
+    <string name="docs_template_spec_description">Задача, объём работ, критерии приёмки и риски</string>
+    <string name="docs_template_spec_body"># Техническое задание\n\n## Постановка задачи\n\n## Что входит в объём\n\n- \n\n## Что не входит\n\n- \n\n## Критерии приёмки\n\n- [ ] \n\n## Риски и открытые вопросы\n\n| Вопрос | Кто отвечает |\n|---|---|\n|  |  |\n</string>
+    <string name="docs_template_retro_title">Ретроспектива</string>
+    <string name="docs_template_retro_description">Что получилось, что мешало, что меняем</string>
+    <string name="docs_template_retro_body"># Ретроспектива\n\n**Период:**\n\n## Что получилось\n\n- \n\n## Что мешало\n\n- \n\n## Что меняем\n\n- [ ] Действие — ответственный\n</string>
+
+    <!-- Конференции (#2896). Подписи строки: время у карточки одно, и какое
+         именно — зависит от состояния встречи, см. conferenceTimeLine. -->
+    <string name="conf_schedule">Запланировать</string>
+    <string name="conf_untitled">Без названия</string>
+    <string name="conf_empty">Конференций пока нет</string>
+    <string name="conf_empty_filtered">В этом фильтре пусто</string>
+    <string name="conf_no_workspace">Выберите пространство</string>
+    <string name="conf_filter_all">Все</string>
+    <string name="conf_filter_live">Идут сейчас</string>
+    <string name="conf_filter_scheduled">Запланированные</string>
+    <string name="conf_filter_ended">Завершённые</string>
+    <string name="conf_status_live">Идёт сейчас</string>
+    <string name="conf_status_scheduled">Запланирована</string>
+    <string name="conf_status_ended">Завершена</string>
+    <string name="conf_row_invited">Приглашено: %1$d</string>
+    <string name="conf_row_in_room">В комнате: %1$d</string>
+    <string name="conf_row_author">Создал: %1$s</string>
+    <string name="conf_row_author_unknown">Автор неизвестен</string>
+    <string name="conf_row_scheduled_at">Начало: %1$s</string>
+    <string name="conf_row_started_at">Началась: %1$s</string>
+    <string name="conf_row_ended_at">Завершилась: %1$s</string>
+    <string name="conf_row_no_time">Без времени начала</string>
+    <string name="conf_confirm_delete">Удалить конференцию? Чат и записи удалятся вместе с ней.</string>
+    <string name="conf_create_title">Новая конференция</string>
+    <string name="conf_create_name">Название</string>
+    <string name="conf_create_name_placeholder">Ежедневная встреча</string>
+    <string name="conf_create_description">Описание</string>
+    <string name="conf_create_description_placeholder">Повестка, ссылки, что обсуждаем</string>
+    <string name="conf_create_at">Начало</string>
+    <string name="conf_create_at_empty">Время не назначено</string>
+    <string name="conf_create_at_hint">Оставьте пустым, если время заранее не назначено</string>
+    <string name="conf_create_ttl">Хранить записи, дней</string>
+    <string name="conf_create_ttl_hint">Записи этой конференции удалятся автоматически через столько дней. 0 — хранить без срока.</string>
+    <string name="conf_create_ttl_invalid">Введите число дней: 0 или больше</string>
+    <string name="conf_create_submit">Запланировать</string>
+    <string name="conf_back">Назад</string>
+    <string name="conf_detail_not_found">Конференция не найдена</string>
+    <string name="conf_action_join">Войти</string>
+    <string name="conf_action_leave">Выйти</string>
+    <string name="conf_action_end">Завершить</string>
+    <string name="conf_confirm_end">Завершить конференцию для всех?</string>
+    <string name="conf_invite">Пригласить</string>
+    <string name="conf_invite_empty">Приглашать больше некого</string>
+    <string name="conf_section_in_room">В комнате</string>
+    <string name="conf_section_invited">Приглашены</string>
+    <string name="conf_room_empty">Сейчас в комнате никого нет</string>
+    <string name="conf_seat_host">ведущий</string>
+    <string name="conf_media_connecting">Подключаемся…</string>
+    <string name="conf_media_reconnecting">Связь пропала, переподключаемся…</string>
+    <string name="conf_media_failed">Не удалось подключиться к комнате</string>
+    <string name="conf_media_retry">Повторить</string>
+    <string name="conf_media_unavailable">На этом сервере не настроены видеозвонки</string>
+    <string name="conf_media_ended">Конференция завершена</string>
+    <string name="conf_media_kicked">Ведущий исключил вас из конференции</string>
+    <string name="conf_media_no_mic">Нет доступа к микрофону — вас никто не слышит</string>
+    <string name="conf_media_no_one">В комнате пока никого нет</string>
+    <string name="conf_sheet_expand">Потяните, чтобы развернуть</string>
+    <string name="conf_zoom_reset">Сбросить масштаб</string>
+    <string name="conf_panel_title">В комнате: %1$d</string>
+    <string name="conf_panel_empty">В комнате пока никого</string>
+    <string name="conf_panel_close">Закрыть</string>
+    <string name="conf_panel_hand_up">Поднял руку</string>
+    <string name="conf_panel_mic_off">микрофон выключен</string>
+    <string name="conf_panel_speaking">микрофон включён</string>
+    <string name="conf_panel_force_muted">заглушён ведущим</string>
+    <string name="conf_panel_you">вы</string>
+    <string name="conf_panel_mute_for_me">Заглушить для себя</string>
+    <string name="conf_panel_unmute_for_me">Вернуть звук</string>
+    <string name="conf_panel_force_mute">Заглушить для всех</string>
+    <string name="conf_panel_unforce_mute">Вернуть микрофон</string>
+    <string name="conf_panel_kick">Исключить</string>
+    <string name="conf_panel_confirm_kick">Исключить %1$s из конференции? Вернуться сразу не получится.</string>
+    <string name="conf_panel_raise_hand">Поднять руку</string>
+    <string name="conf_panel_lower_hand">Опустить руку</string>
+    <string name="conf_panel_you_force_muted">Ведущий заглушил ваш микрофон</string>
+    <string name="conf_denied_kick">Исключать участников может только ведущий или администратор пространства</string>
+    <string name="conf_denied_mute">Заглушать участников может только ведущий или администратор пространства</string>
+    <string name="conf_denied_other">Сервер отклонил действие</string>
+    <string name="conf_role_host">Ведущий</string>
+    <string name="conf_role_member">Участник</string>
+    <string name="conf_route_bluetooth">Bluetooth</string>
+    <string name="conf_route_wired">Наушники</string>
+    <string name="conf_route_speaker">Динамик</string>
+    <string name="conf_route_earpiece">Разговорный динамик</string>
+    <string name="conf_chat_title">Чат</string>
+    <string name="conf_chat_open">Открыть чат</string>
+    <string name="conf_chat_close">Закрыть чат</string>
+    <string name="conf_chat_empty">Сообщений пока нет</string>
+    <string name="conf_chat_placeholder">Написать в чат…</string>
+    <string name="conf_chat_attach">Прикрепить файл</string>
+    <string name="conf_chat_send">Отправить</string>
+    <string name="conf_chat_download">Скачать</string>
+    <string name="conf_chat_delete">Удалить сообщение</string>
+    <string name="conf_chat_delete_confirm">Удалить сообщение? Оно исчезнет у всех участников.</string>
+    <string name="conf_chat_remove_file">Убрать файл</string>
+    <string name="conf_chat_load_older">Показать более ранние</string>
+    <string name="conf_chat_unknown_author">Неизвестный автор</string>
+    <string name="conf_chat_file_too_big">«%1$s» больше 25 МБ</string>
+    <string name="conf_chat_too_many_files">К одному сообщению можно приложить не больше %1$d файлов</string>
+    <string name="conf_chat_too_long">Сообщение длиннее %1$d символов</string>
+    <string name="conf_chat_size_b">%1$s Б</string>
+    <string name="conf_chat_size_kb">%1$s КБ</string>
+    <string name="conf_chat_size_mb">%1$s МБ</string>
+
+    <!-- Демонстрация экрана и записи (#2896 §8) -->
+    <string name="conf_share">Показать экран</string>
+    <string name="conf_share_stop">Остановить показ</string>
+    <string name="conf_share_cancel">Выйти из очереди</string>
+    <string name="conf_share_start">Начать показ</string>
+    <string name="conf_share_you">Вы показываете экран</string>
+    <string name="conf_share_stage_yours">Очередь дошла до вас</string>
+    <string name="conf_share_by">Экран показывает %1$s</string>
+    <string name="conf_share_queued">Вы в очереди: %1$d</string>
+    <string name="conf_share_waiting">Ждут очереди: %1$d</string>
+    <string name="conf_share_ongoing">Показ экрана</string>
+    <string name="conf_share_ongoing_hint">Экран телефона видят участники конференции</string>
+    <string name="conf_rec_start">Начать запись</string>
+    <string name="conf_rec_stop">Остановить запись</string>
+    <string name="conf_rec_live">Идёт запись</string>
+    <string name="conf_rec_by">включил %1$s</string>
+    <string name="conf_rec_title">Записи</string>
+    <string name="conf_rec_download">Скачать</string>
+    <string name="conf_rec_delete">Удалить</string>
+    <string name="conf_rec_delete_confirm">Удалить запись? Файл будет стёрт безвозвратно.</string>
+    <string name="conf_rec_failed">Запись не удалась</string>
+    <string name="conf_rec_running">Пишется…</string>
+    <string name="conf_rec_length">%1$02d:%2$02d</string>
+    <string name="conf_rec_length_hours">%1$d:%2$02d:%3$02d</string>
+    <string name="conf_rec_err_unavailable">Запись недоступна: сервис записи не поднят на этом сервере</string>
+    <string name="conf_rec_err_forbidden">Запись может включить только модератор конференции</string>
+    <string name="conf_rec_err_conflict">Состояние записи уже изменил другой модератор</string>
+
+    <!-- Свёрнутый звонок (#2896 §9) -->
+    <string name="conf_mini_live">Идёт звонок</string>
+    <string name="conf_mini_reconnecting">Переподключаемся…</string>
+    <string name="conf_mini_lost">Связь потеряна</string>
+    <string name="conf_mini_others">Ещё в звонке: %1$d</string>
+    <string name="conf_mini_return">Вернуться в звонок</string>
+    <string name="conf_mini_hangup">Выйти из звонка</string>
+    <string name="conf_mini_mic_on">Выключить микрофон</string>
+    <string name="conf_mini_mic_off">Включить микрофон</string>
 
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>
@@ -933,6 +1334,10 @@
     <string name="notif_channel_device_desc">Уведомления о задачах</string>
     <string name="notif_channel_reminders_name">Напоминания</string>
     <string name="notif_channel_reminders_desc">Срабатывания напоминаний по задачам</string>
+    <string name="notif_channel_conference_name">Конференции</string>
+    <string name="notif_channel_conference_desc">Идущий звонок, пока приложение свёрнуто</string>
+    <string name="conf_call_ongoing">Идёт конференция</string>
+    <string name="conf_call_ongoing_hint">Нажмите, чтобы вернуться в звонок</string>
     <string name="reminder_push_title">Напоминание</string>
     <string name="reminder_push_default_body">Пора заняться задачей</string>
     <string name="push_title_assigned">Назначена задача</string>
@@ -999,6 +1404,7 @@
          задачи, что показывает модалка. -->
     <string name="gljournal_empty">Журнал пуст — синхронизация ещё не запускалась</string>
     <string name="gljournal_no_actions">Нет записанных действий</string>
+    <string name="gljournal_load_more">Показать ещё</string>
     <string name="gljournal_trigger_manual">вручную</string>
     <string name="gljournal_trigger_auto">авто</string>
     <string name="gljournal_run_meta">%1$s · %2$s</string>
@@ -1076,6 +1482,15 @@
     <string name="update_download_failed">Не удалось загрузить</string>
     <string name="whats_new_title">Что нового</string>
     <string name="whats_new_subtitle">Обновление применено — вот что изменилось</string>
+    <!-- Та же карточка, открытая вручную из строки версии в футере (#2858): весь
+         список релизов, а не «что вы пропустили». -->
+    <string name="whats_new_history_title">История изменений</string>
+    <string name="whats_new_history_subtitle">Все обновления Tessera</string>
+    <!-- Сноска о запущенной сборке в конце истории изменений (#2859). -->
+    <string name="version_client">Клиент</string>
+    <string name="version_server">Сервер</string>
+    <string name="version_commit">коммит %1$s</string>
+    <string name="version_built">сборка %1$s</string>
 
     <!-- Редактор Markdown. Подписи-заглушки («текст», «Скрытый текст») попадают
          в сам документ: это заготовка от интерфейса, поэтому язык берётся тот же,
@@ -1158,6 +1573,14 @@
          Ключ содержит версию (whatsnew_v0_70_0_*) — так запись релиза и её текст
          видно рядом, а выбывший из списка релиз видно, какие ключи забирает с
          собой. Пункты едут string-array: их число своё у каждого релиза. -->
+    <string name="whatsnew_v0_76_0_title">Конференции и документы на телефоне</string>
+    <string-array name="whatsnew_v0_76_0_items">
+        <item>Новый раздел «Конференции»: видеозвонки с демонстрацией экрана, чатом и записью встречи — прямо в приложении. Звонок сворачивается в плашку, так что можно ходить по другим разделам, не разрывая связь.</item>
+        <item>Документы теперь можно редактировать с телефона: тот же редактор, что и в браузере — блоки, таблицы, PDF, обсуждения, история версий, связи с задачами и согласование, импорт и экспорт.</item>
+        <item>Появилось интерактивное обучение Get Started: шаги от первого проекта до первой задачи, запускается из футера бокового меню.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_conferences_title">Загляните в «Конференции»</string>
+    <string name="whatsnew_spotlight_conferences_body">Видеозвонки с демонстрацией экрана, чатом и записью встречи — теперь в приложении.</string>
     <string name="whatsnew_v0_72_0_title">Русский и английский язык</string>
     <string-array name="whatsnew_v0_72_0_items">
         <item>Язык приложения переключается в «Настройках» → «Язык»: русский или английский. Выбор сохраняется на устройстве.</item>
@@ -1188,4 +1611,63 @@
     <string-array name="whatsnew_v0_68_0_items">
         <item>Уведомления доходят, даже когда приложение закрыто, и открывают нужную задачу по тапу.</item>
     </string-array>
+
+    <!-- Обучение Get Started (#2860) — тексты шагов, ключ = id шага в util/Tour.kt -->
+    <string name="tour_skip">Пропустить</string>
+    <string name="tour_workspaces_title">Пространства</string>
+    <string name="tour_workspaces_body">Здесь переключаются пространства: у каждого свои проекты, участники и теги. Рядом создаётся новое — но начнём с личного.</string>
+    <string name="tour_tree_add_title">Дерево проектов</string>
+    <string name="tour_tree_add_body">Проекты живут в боковом меню. Нажмите «+», чтобы добавить первый.</string>
+    <string name="tour_menu_project_title">Выберите «Проект»</string>
+    <string name="tour_menu_project_body">Группа пригодится позже, когда проектов станет много.</string>
+    <string name="tour_project_create_title">Назовите проект</string>
+    <string name="tour_project_create_body">Введите название и подтвердите — проект появится в дереве. Адрес проекта сервер соберёт из названия сам.</string>
+    <string name="tour_board_add_title">Добавьте доску</string>
+    <string name="tour_board_add_body">Задачи живут на досках, у проекта их может быть несколько. Откройте меню «⋯» у проекта.</string>
+    <string name="tour_board_menu_title">Выберите «Добавить доску»</string>
+    <string name="tour_board_menu_body">В этом же меню — переименование, оценка и цвет проекта.</string>
+    <string name="tour_board_create_title">Назовите доску</string>
+    <string name="tour_board_create_body">Введите название и подтвердите — доска появится в дереве с четырьмя колонками.</string>
+    <string name="tour_board_open_title">Откройте доску</string>
+    <string name="tour_board_open_body">Нажмите на доску — откроется канбан.</string>
+    <string name="tour_task_create_title">Создайте задачу</string>
+    <string name="tour_task_create_body">Нажмите «Создать задачу» в колонке «К работе», введите название и подтвердите.</string>
+    <string name="tour_card_fields_title">Прямо на карточке</string>
+    <string name="tour_card_fields_body">Приоритет, срок, теги и исполнители правятся не открывая задачу — тапом по значку карточки.</string>
+    <string name="tour_card_open_title">Откройте задачу</string>
+    <string name="tour_card_open_body">Нажмите на карточку — откроется полная форма задачи.</string>
+    <string name="tour_tm_due_title">Срок</string>
+    <string name="tour_tm_due_body">Задайте срок — в календаре же настраиваются повтор и напоминание.</string>
+    <string name="tour_tm_assignees_title">Исполнители</string>
+    <string name="tour_tm_assignees_body">Выберите, кто ведёт задачу. Пока вы в пространстве один — назначьте себя.</string>
+    <string name="tour_tm_priority_title">Приоритет</string>
+    <string name="tour_tm_priority_body">Приоритет красит точку на карточке и по нему же можно сортировать доску.</string>
+    <string name="tour_tm_tags_title">Теги</string>
+    <string name="tour_tm_tags_body">Тег создаётся прямо отсюда. По тегам доска умеет группироваться в колонки — это главный способ разложить задачи по-своему.</string>
+    <string name="tour_tm_description_title">Описание</string>
+    <string name="tour_tm_description_body">Опишите задачу: поддерживается Markdown, вложения и упоминания через @.</string>
+    <string name="tour_tm_tabs_title">Комментарии, подзадачи, связи</string>
+    <string name="tour_tm_tabs_body">Здесь же — обсуждение, дерево подзадач, связи с другими задачами и полная история изменений.</string>
+    <string name="tour_tm_save_title">Сохраните задачу</string>
+    <string name="tour_tm_save_body">Нажмите «Сохранить» — форма закроется, а изменения появятся на карточке.</string>
+    <string name="tour_board_tools_title">Виды и инструменты доски</string>
+    <string name="tour_board_tools_body">Канбан, список, календарь и гант — одни и те же задачи в разных разрезах. Рядом — поиск по всему пространству, теги, этапы и архив.</string>
+    <string name="tour_board_composer_title">Группировка, сортировка, фильтры</string>
+    <string name="tour_board_composer_body">Через «+» на этой панели добавляются группировка (в том числе по тегам), сортировка и фильтры, а рядом — настройка вида карточек.</string>
+    <string name="tour_dnd_card_title">Перетащите карточку</string>
+    <string name="tour_dnd_card_body">Задача переносится между колонками перетаскиванием — так на доске меняется её статус. Перетащите карточку в «В процессе».</string>
+    <string name="tour_group_add_title">Проекты тоже группируются</string>
+    <string name="tour_group_add_body">Когда проектов становится много, их складывают в группы. Нажмите «+» над деревом ещё раз.</string>
+    <string name="tour_menu_group_title">Выберите «Группа»</string>
+    <string name="tour_menu_group_body">Теперь пригодился второй пункт меню.</string>
+    <string name="tour_group_created_title">Назовите группу</string>
+    <string name="tour_group_created_body">Группы удобны, когда проектов много. Введите имя и нажмите Enter.</string>
+    <string name="tour_dnd_project_title">Перетащите проект в группу</string>
+    <string name="tour_dnd_project_body">Дерево проектов перетаскивается так же: возьмите проект и бросьте его в группу.</string>
+    <string name="tour_nav_sections_title">Заметки, документы, напоминания</string>
+    <string name="tour_nav_sections_body">Кроме досок в пространстве живут заметки, совместные документы и напоминания.</string>
+    <string name="tour_nav_footer_title">Настройки и уведомления</string>
+    <string name="tour_nav_footer_body">Внизу — ваш профиль и настройки, рядом — уведомления.</string>
+    <string name="tour_done_title">Готово</string>
+    <string name="tour_done_body">Это всё, что нужно для старта. Обучение можно перезапустить отсюда же, из нижней части бокового меню.</string>
 </resources>

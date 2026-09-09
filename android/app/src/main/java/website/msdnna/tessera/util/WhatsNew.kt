@@ -129,6 +129,35 @@ fun planWhatsNew(
     return WhatsNewPlan(releases = releases, spotlights = spotlights)
 }
 
+/** What the changelog sheet is showing right now, or null when it is closed. */
+data class ChangelogSheet(
+    val entries: List<WhatsNewEntry>,
+    /** True when opened by hand from the version stamp — see [changelogSheet]. */
+    val history: Boolean,
+)
+
+/**
+ * Picks what the one changelog sheet renders (#2858, web `stores/whatsNew.js`).
+ *
+ * An unacknowledged update **wins over** a hand-opened history: that card is
+ * already on screen and it is the one that writes the acks; drawing the history
+ * over it would either hide it or, worse, let the user dismiss the history and
+ * think the update card was seen.
+ *
+ * History mode shows [all] curated releases newest-first regardless of acks and
+ * regardless of the running build — it is the changelog, not "what you missed",
+ * so a release the installed APK predates still belongs in it.
+ */
+fun changelogSheet(
+    pending: List<WhatsNewEntry>,
+    historyOpen: Boolean,
+    all: List<WhatsNewEntry>,
+): ChangelogSheet? = when {
+    pending.isNotEmpty() -> ChangelogSheet(pending, history = false)
+    historyOpen -> ChangelogSheet(all.sortedWith { a, b -> compareVersions(b.version, a.version) }, history = true)
+    else -> null
+}
+
 /** Signing up right around the install counts as brand-new: someone who registers
  *  minutes before or after putting the app on their phone has nothing to catch up
  *  on, and the clocks involved (server vs device) need slack anyway. */

@@ -35,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,9 +47,11 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.model.ProfileUpdate
 import website.msdnna.tessera.data.repository.ProfileRepository
+import website.msdnna.tessera.ui.components.InsecureTlsRow
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
@@ -64,8 +67,13 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.DateFormatPrefs
+import website.msdnna.tessera.util.DatePresets
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.countryOptions
+import website.msdnna.tessera.util.longDate
+import website.msdnna.tessera.util.normalizeDatePreset
+import website.msdnna.tessera.util.normalizeTimeFormat
 import website.msdnna.tessera.util.timezoneOptions
 
 /** Option labels are resolved in composition, so a language switch relabels the
@@ -95,19 +103,30 @@ private fun weekStarts() = listOf(
     0 to stringResource(R.string.week_start_sunday),
 )
 
-private val DateFormats = listOf(
-    "dd.MM.yyyy" to "31.12.2026", "yyyy-MM-dd" to "2026-12-31",
-    "MM/dd/yyyy" to "12/31/2026", "dd/MM/yyyy" to "31/12/2026",
-)
+/**
+ * Date presets, each labelled by how it renders 31 December 2026 — the same
+ * sample the web settings show (#2857). The label is built by the very function
+ * that draws dates in the app, so a picker row can never promise a shape the
+ * board doesn't produce.
+ */
+@Composable
+private fun dateFormats(): List<Pair<String, String>> {
+    val res = LocalResources.current
+    return DatePresets.ALL.map { preset ->
+        preset to longDate(res, DATE_SAMPLE, DateFormatPrefs(datePreset = preset))
+    }
+}
+
+private const val DATE_SAMPLE = "2026-12-31"
 
 /**
  * Label of the option matching [value], or the first option's when nothing matches.
  *
- * A preference value can come from another client: since #2798 the web writes named
- * date presets ("short", "medium", …) into `date_format`, which is not in [DateFormats].
- * `first { }` threw NoSuchElementException on those and took the whole screen down —
- * an unknown value must degrade to a default label, not to a crash. Android moves to
- * the same presets in stage 7 of #2796.
+ * A preference value can come from another client, and until #2857 Android wrote
+ * date-fns patterns (`dd.MM.yyyy`) where the web writes preset names. Stored
+ * patterns are folded onto presets by `normalizeDatePreset` before the lookup;
+ * `first { }` on an unmatched value threw NoSuchElementException and took the
+ * whole screen down, so anything still unknown must degrade to a default label.
  */
 private fun <T> labelOf(options: List<Pair<T, String>>, value: T): String =
     options.firstOrNull { it.first == value }?.second ?: options.first().second
@@ -138,6 +157,38 @@ fun ProfileScreen() {
         PasswordCard(repo, scope)
         AppearanceCard(p, repo, scope)
         LocalizationCard(p, repo, scope)
+        ConnectionCard(prefs, scope)
+    }
+}
+
+/**
+ * Настройки подключения устройства (#2896). Отдельной карточкой, а не в
+ * «Оформлении»: всё остальное на этом экране — настройки профиля, которые
+ * уезжают на сервер и приходят на другой телефон, а эта живёт в DataStore и
+ * описывает сертификат конкретного сервера.
+ */
+@Composable
+private fun ConnectionCard(
+    prefs: website.msdnna.tessera.data.preferences.AppPreferences,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    val c = Tessera.colors
+    val insecure by prefs.insecureTls.collectAsStateWithLifecycle(initialValue = TlsTrust.insecure)
+    TCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                stringResource(R.string.settings_connection_title),
+                color = c.text1,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            InsecureTlsRow(
+                checked = insecure,
+                onCheckedChange = { scope.launch { prefs.setInsecureTls(it) } },
+                labelColor = c.text2,
+                hintColor = c.text3,
+            )
+        }
     }
 }
 
@@ -383,10 +434,19 @@ private fun LocalizationCard(p: Preferences, repo: ProfileRepository, scope: kot
             SelectRow(stringResource(R.string.settings_week_start), labelOf(weeks, p.weekStart), weeks) {
                 save(p.copy(weekStart = it))
             }
-            SelectRow(stringResource(R.string.settings_time_format), labelOf(times, p.timeFormat), times) {
+            SelectRow(
+                stringResource(R.string.settings_time_format),
+                labelOf(times, normalizeTimeFormat(p.timeFormat)),
+                times,
+            ) {
                 save(p.copy(timeFormat = it))
             }
-            SelectRow(stringResource(R.string.settings_date_format), labelOf(DateFormats, p.dateFormat), DateFormats) {
+            val dates = dateFormats()
+            SelectRow(
+                stringResource(R.string.settings_date_format),
+                labelOf(dates, normalizeDatePreset(p.dateFormat)),
+                dates,
+            ) {
                 save(p.copy(dateFormat = it))
             }
             val tzOptions = remember { timezoneOptions() }

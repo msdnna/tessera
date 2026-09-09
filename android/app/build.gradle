@@ -19,6 +19,29 @@ def appVersionName = rootProject.file("VERSION").text.trim()
 def (vmaj, vmin, vpatch) = appVersionName.tokenize('.').collect { it.toInteger() }
 def appVersionCode = vmaj * 10000 + vmin * 100 + vpatch
 
+// ── Build stamp for the version footer (#2859) ───────────────────────────────
+// Web parity: vite.config.js bakes __APP_COMMIT__/__BUILD_DATE__ into the bundle
+// and the sidebar shows them next to the version. Env wins (a CI/Docker context
+// has no .git); a local build reads git itself. An empty value is fine — the UI
+// just omits the line, exactly as the web tooltip does.
+//
+// The date is the COMMIT's date, not the wall clock. `new Date()` here would
+// differ on every single compile, and BuildConfig is an input to the Kotlin
+// compilation — the build cache would miss on every run, and two APKs of the
+// same source would carry different stamps. Same commit → same stamp.
+def gitStamp = { List<String> cmd ->
+    try {
+        def p = new ProcessBuilder(['git'] + cmd).directory(rootProject.projectDir).start()
+        def out = p.inputStream.getText('UTF-8').trim()
+        p.waitFor()
+        return p.exitValue() == 0 ? out : ''
+    } catch (Exception ignored) {
+        return '' // no git on PATH, or not a checkout — the stamp is optional
+    }
+}
+def buildCommit = System.getenv('GIT_COMMIT') ?: gitStamp(['rev-parse', '--short', 'HEAD'])
+def buildDate = System.getenv('BUILD_DATE') ?: gitStamp(['log', '-1', '--format=%cI'])
+
 // ── Help centre content (#2795) ──────────────────────────────────────────────
 // The manual has one source — `docs/help` — and the web bundles it from there.
 // The APK gets the same files copied in at build time instead of a second copy
@@ -60,6 +83,10 @@ android {
         // same APK can point at a dev/test backend.
         buildConfigField "String", "DEFAULT_BASE_URL", "\"https://tessera.msdnna.website\""
 
+        // Which source this APK was cut from, shown in the changelog sheet (#2859).
+        buildConfigField "String", "GIT_COMMIT", "\"${buildCommit}\""
+        buildConfigField "String", "BUILD_DATE", "\"${buildDate}\""
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -91,6 +118,21 @@ android {
                 // -Pe2e (`make test-e2e-android`).
                 if (!project.hasProperty('e2e')) {
                     t.filter { excludeTestsMatching 'website.msdnna.tessera.e2e.*' }
+                } else {
+                    // The e2e tier talks to a live backend, so its result says nothing
+                    // about the inputs Gradle hashes: a second run with a different
+                    // stand (or a rerun hunting a flake) would come back UP-TO-DATE
+                    // and quietly republish the previous XML.
+                    t.outputs.upToDateWhen { false }
+                    // Per-test durations: without them a red tier can't be told apart
+                    // from a JVM that stalled for the whole 20s await window.
+                    t.afterTest { desc, result ->
+                        def seconds = (result.endTime - result.startTime) / 1000.0
+                        logger.lifecycle(String.format(
+                            '[e2e-timing] %6.2fs %s > %s (%s)',
+                            seconds, desc.className, desc.name, result.resultType,
+                        ))
+                    }
                 }
                 jacoco {
                     includeNoLocationClasses = true
@@ -197,6 +239,17 @@ dependencies {
 
     implementation 'io.coil-kt:coil-compose:2.7.0'
     implementation 'io.coil-kt:coil-svg:2.7.0'
+    // Без него Coil отдаёт у GIF/анимированного WebP только первый кадр (#2894).
+    implementation 'io.coil-kt:coil-gif:2.7.0'
+
+    // Conference media (#2896 §4). The SFU client, native rather than in a
+    // WebView: a call has to keep its audio while the app is backgrounded, follow
+    // the headset/speaker routing the phone decides, and survive an incoming
+    // phone call — none of which a WebView gets to participate in.
+    // Major matches the web's livekit-client 2.x, so both clients speak the same
+    // protocol to the same server. It brings a prebuilt WebRTC (~20 MB of native
+    // libs) — the size increase is accepted for this task, see the plan.
+    implementation 'io.livekit:livekit-android:2.28.1'
 
     // ── Unit tests ──────────────────────────────────────────────────────────
     testImplementation 'junit:junit:4.13.2'

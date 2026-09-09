@@ -72,11 +72,42 @@ function refreshFailure(err) {
   return { token: null, offline }
 }
 
+// An external owner of the session, if there is one. Set by the document editor
+// running inside Android's WebView (#2894 §4): there the refresh token lives in
+// the app, not in this page — the page never gets it, precisely so the two sides
+// cannot rotate each other's session out from under themselves. Asking the host
+// for a fresh access token is then the only refresh there is.
+let refreshHook = null
+
+/** Installs (or, with null, removes) the host token provider. The provider
+ *  resolves to a new access token, or to a falsy value when it has none. */
+export function setRefreshHook(fn) {
+  refreshHook = typeof fn === 'function' ? fn : null
+}
+
 // Resolves to { token, offline }: `token` is the new access token, or null when
 // there is none — and then `offline` says whether that means "no session" (false)
 // or "could not reach the server" (true).
 async function refreshAccessToken() {
   if (refreshInflight) return refreshInflight
+  if (refreshHook) {
+    // Coalesced like the network path below — several 401s from one editor save
+    // must not fan out into several prompts to the host.
+    refreshInflight = Promise.resolve()
+      .then(() => refreshHook())
+      .then((token) => {
+        if (token) setAccessToken(token)
+        // A host that cannot answer right now is offline, not signed out: the
+        // app is the one holding the session, and dropping it here would log
+        // the *editor* out of a perfectly live login.
+        return { token: token || null, offline: !token }
+      })
+      .catch(() => ({ token: null, offline: true }))
+      .finally(() => {
+        refreshInflight = null
+      })
+    return refreshInflight
+  }
   const refreshToken = storedRefreshToken()
   // On web there is nothing to check up front — whether a session exists is the
   // cookie's business, and the answer is the response status.
@@ -470,6 +501,84 @@ export const documents = {
   cancelApproval: (approvalId) => api.post(`/document-approvals/${approvalId}/cancel`),
 }
 
+// Conferences (#2864). Media never comes through here — it goes to the LiveKit
+// SFU — so this module is only the bookkeeping the section screen needs: which
+// meetings exist, who is invited and who is in the room right now.
+export const conferences = {
+  // status filters to 'scheduled' | 'live' | 'ended'; omit it for everything.
+  list: (wsId, status) =>
+    api.get(`/workspaces/${wsId}/conferences`, status ? { params: { status } } : {}),
+  create: (wsId, data) => api.post(`/workspaces/${wsId}/conferences`, data),
+  // Answers { conference, participants } in one round trip — the room screen
+  // needs both, and fetching them apart shows an empty roster for one paint.
+  get: (id) => api.get(`/conferences/${id}`),
+  update: (id, data) => api.patch(`/conferences/${id}`, data),
+  remove: (id) => api.delete(`/conferences/${id}`),
+  // join/leave answer { conference, participant }: the first arrival flips a
+  // scheduled call to live and the last exit ends it, so the caller gets the
+  // conference back rather than having to refetch it to learn the new status.
+  join: (id) => api.post(`/conferences/${id}/join`),
+  leave: (id) => api.post(`/conferences/${id}/leave`),
+  end: (id) => api.post(`/conferences/${id}/end`),
+  invite: (id, userIds, role) => api.post(`/conferences/${id}/invite`, { user_ids: userIds, role }),
+  participants: (id) => api.get(`/conferences/${id}/participants`, { skipLoader: true }),
+  // Conferences held about a task — for the task page's "discussed in" link.
+  byTask: (taskId) => api.get(`/tasks/${taskId}/conferences`, { skipLoader: true }),
+  // The one media call: a short-lived LiveKit join warrant, minted only after
+  // the server has checked membership. Answers { url, token, room, identity,
+  // expires_in }; the API key never leaves the backend. skipLoader because the
+  // room screen shows its own connecting state — the global bar would flash.
+  token: (id) => api.post(`/conferences/${id}/token`, {}, { skipLoader: true }),
+
+  // In-call chat (#2873). Answers { messages, has_more }, oldest first — the
+  // rail draws top to bottom. Paging back is a (created_at, id) cursor rather
+  // than an offset: the conversation grows while it is read, and an offset
+  // would skip or repeat a line every time somebody sends one.
+  messages: (id, params) => api.get(`/conferences/${id}/messages`, { params, skipLoader: true }),
+  // Text only — the common case, and it should not pay for a multipart encoder.
+  postMessage: (id, body) =>
+    api.post(`/conferences/${id}/messages`, { body }, { skipLoader: true }),
+  // With files. FormData, so the browser sets its own multipart boundary — do
+  // not add a Content-Type header here, an explicit one arrives without it and
+  // the server cannot parse the form.
+  postMessageWithFiles: (id, body, files) => {
+    const fd = new FormData()
+    fd.append('body', body)
+    for (const f of files) fd.append('files', f)
+    return api.post(`/conferences/${id}/messages`, fd, { skipLoader: true })
+  },
+  removeMessage: (messageId) => api.delete(`/conference-messages/${messageId}`),
+  // The bytes of one attachment, fetched with our bearer credential. Images are
+  // rendered from the blob this returns rather than through an <img src> at the
+  // API: an <img> can send neither a header nor a cookie the desktop client has,
+  // and the alternative — serving call attachments from a public URL guarded
+  // only by an unguessable name — is a weaker guarantee than a private meeting
+  // deserves.
+  attachment: (attachmentId) =>
+    api.get(`/conference-attachments/${attachmentId}`, {
+      responseType: 'blob',
+      skipLoader: true,
+    }),
+
+  // Server-side recording (#2877). Start/stop are moderation and answer the row;
+  // the red dot that everyone sees does NOT come from here — it rides the room
+  // snapshot, so a participant who never pressed anything still learns they are
+  // being recorded. skipLoader on both: the button carries its own pending state.
+  startRecording: (id) => api.post(`/conferences/${id}/recording/start`, {}, { skipLoader: true }),
+  stopRecording: (id) => api.post(`/conferences/${id}/recording/stop`, {}, { skipLoader: true }),
+  recordings: (id) => api.get(`/conferences/${id}/recordings`, { skipLoader: true }),
+  // The mp4 itself, fetched with our bearer credential and played or saved from a
+  // blob — same reasoning as the chat attachments above: an <img>/<video> src
+  // cannot carry a header, and serving a private meeting from an unguessable
+  // public URL is a weaker guarantee than the meeting deserves.
+  recording: (recordingId) =>
+    api.get(`/conference-recordings/${recordingId}/download`, {
+      responseType: 'blob',
+      skipLoader: true,
+    }),
+  removeRecording: (recordingId) => api.delete(`/conference-recordings/${recordingId}`),
+}
+
 export const reminders = {
   list: () => api.get('/reminders'),
   create: (data) => api.post('/reminders', data),
@@ -601,6 +710,13 @@ export const gitlab = {
     api.put(`/workspaces/${wsId}/gitlab/integrations/${integId}`, data),
   deleteIntegration: (wsId, integId) =>
     api.delete(`/workspaces/${wsId}/gitlab/integrations/${integId}`),
+  // Webhook (#2594): generate/rotate the shared secret for a binding, or turn the
+  // hook off. The response of enableWebhook is the ONLY place the secret appears —
+  // it is stored encrypted and never returned by a GET.
+  enableWebhook: (wsId, integId) =>
+    api.post(`/workspaces/${wsId}/gitlab/integrations/${integId}/webhook`),
+  disableWebhook: (wsId, integId) =>
+    api.delete(`/workspaces/${wsId}/gitlab/integrations/${integId}/webhook`),
   // skipLoader: sync is intentionally long and shows its own in-modal loader, so
   // it must not trigger the global slow/offline overlay. mode 'full' forces a full
   // sweep ("Полная синхронизация"); omitted → the default incremental pull.

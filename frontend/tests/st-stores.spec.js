@@ -88,6 +88,22 @@ describe('auth store', () => {
     expect(theme.activeTheme.key).toBe('blue')
   })
 
+  // #2894: the embedded editor is the one caller that gets a live token from
+  // its host instead of logging in, so it calls setToken directly. The method
+  // existed but was left out of the store's returned object, so the call threw
+  // TypeError inside onMounted — before the document was even fetched — and the
+  // Android WebView sat on the loading state forever with no error to show.
+  it('exposes setToken so a host-supplied session can be installed', () => {
+    const s = useAuthStore()
+    expect(typeof s.setToken).toBe('function')
+    s.setToken('host-tok')
+    expect(s.token).toBe('host-tok')
+    expect(s.isAuthenticated).toBe(true)
+    // The axios layer must learn about it too, or every request goes out
+    // unauthenticated while the store insists there is a session.
+    expect(apiMock.setAccessToken).toHaveBeenCalledWith('host-tok')
+  })
+
   it('setAuth without a refresh token clears the stored one', () => {
     localStorage.setItem('tessera_refresh_token', 'stale')
     const s = useAuthStore()

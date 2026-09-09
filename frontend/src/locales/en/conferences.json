@@ -1,0 +1,181 @@
+{
+  "title": "Conferences",
+  "hint": "Stand-ups and calls of this workspace",
+  "schedule": "Schedule",
+  "filter": {
+    "all": "All",
+    "scheduled": "Scheduled",
+    "live": "Live now",
+    "ended": "Finished"
+  },
+  "status": {
+    "scheduled": "Scheduled",
+    "live": "Live now",
+    "ended": "Finished"
+  },
+  "empty": "No conferences yet",
+  "emptyFiltered": "Nothing under this filter",
+  "noWorkspace": "Pick a workspace",
+  "row": {
+    "participantCount": "Invited: {count}",
+    "activeCount": "In the room: {count}",
+    "author": "Created by: {name}",
+    "authorUnknown": "Author unknown",
+    "scheduledAt": "Starts: {when}",
+    "startedAt": "Started: {when}",
+    "endedAt": "Finished: {when}",
+    "noTime": "No start time"
+  },
+  "actions": {
+    "open": "Open",
+    "join": "Join",
+    "leave": "Leave",
+    "end": "End",
+    "delete": "Delete",
+    "back": "Back to the list"
+  },
+  "create": {
+    "title": "New conference",
+    "name": "Title",
+    "namePlaceholder": "Daily stand-up",
+    "description": "Description",
+    "descriptionPlaceholder": "Agenda, links, what to discuss",
+    "at": "Start",
+    "atHint": "Leave empty if the time is not set yet",
+    "ttl": "Keep recordings, days",
+    "ttlHint": "Recordings of this conference are deleted automatically after this many days. 0 keeps them indefinitely.",
+    "submit": "Schedule",
+    "cancel": "Cancel",
+    "required": "Enter a title",
+    "created": "Conference scheduled"
+  },
+  "invite": {
+    "button": "Invite",
+    "title": "Invite participants",
+    "placeholder": "Pick workspace members",
+    "search": "Search members",
+    "noMatch": "No matches",
+    "allInvited": "Everyone in the workspace is already invited",
+    "required": "Select at least one member",
+    "submit": "Invite",
+    "cancel": "Cancel",
+    "sent": "Invited: {count}"
+  },
+  "detail": {
+    "participants": "Participants",
+    "noParticipants": "Nobody yet",
+    "roomTitle": "Room",
+    "notFound": "Conference not found"
+  },
+  "media": {
+    "notJoined": "Join the conference to enter the room",
+    "connecting": "Connecting…",
+    "insecure": "The browser will not grant camera or microphone access: this page is not served over HTTPS. Open Tessera on a secure address.",
+    "failed": "Could not connect to the room",
+    "retry": "Retry",
+    "audioBlocked": "The browser blocked audio until you interact with the page",
+    "enableAudio": "Enable audio",
+    "muteMic": "Mute microphone",
+    "unmuteMic": "Unmute microphone",
+    "camOn": "Turn camera on",
+    "camOff": "Turn camera off",
+    "fullscreen": "Fullscreen",
+    "exitFullscreen": "Exit fullscreen",
+    "hangup": "Leave the room",
+    "mics": "Microphone",
+    "cams": "Camera",
+    "speakers": "Speakers",
+    "deviceFallback": "Device {n}",
+    "processing": "Audio processing",
+    "denoise": "Noise suppression"
+  },
+  "mini": {
+    "expand": "Expand"
+  },
+  "role": {
+    "host": "Host",
+    "member": "Participant"
+  },
+  "quality": {
+    "poor": "Weak connection",
+    "lost": "Connection lost"
+  },
+  "presence": {
+    "inRoom": "in the room",
+    "invited": "invited",
+    "left": "left"
+  },
+  "confirm": {
+    "delete": "Delete the conference? Its chat and recordings go with it.",
+    "end": "End the current session for everyone? The conference can be started again."
+  },
+  "toast": {
+    "joined": "You joined",
+    "left": "You left the conference",
+    "ended": "Conference ended",
+    "deleted": "Conference deleted"
+  },
+  "chat": {
+    "tab": "Chat",
+    "empty": "No messages yet",
+    "placeholder": "Write to the chat…",
+    "attach": "Attach a file",
+    "download": "Download",
+    "delete": "Delete message",
+    "loadOlder": "Show earlier messages",
+    "unknownAuthor": "Unknown author",
+    "closed": "The conference has ended — the chat is read-only",
+    "fileTooBig": "“{name}” is larger than 25 MB",
+    "tooManyFiles": "At most {count} files per message"
+  },
+  "panel": {
+    "title": "In the room: {count}",
+    "hideRail": "Collapse panel",
+    "showRail": "Expand panel",
+    "invitedTitle": "Invited",
+    "empty": "Nobody is in the room yet",
+    "handUp": "Hand raised",
+    "micOff": "microphone off",
+    "speaking": "microphone on",
+    "forceMuted": "muted by a host",
+    "muteForMe": "Mute for me",
+    "unmuteForMe": "Unmute for me",
+    "forceMute": "Mute for everyone",
+    "unforceMute": "Give the microphone back",
+    "kick": "Remove",
+    "confirmKick": "Remove {name} from the conference? They will not be able to come straight back.",
+    "raiseHand": "Raise hand",
+    "lowerHand": "Lower hand",
+    "youAreForceMuted": "A host has muted your microphone",
+    "denied": {
+      "kick": "Only a host or a workspace admin may remove participants",
+      "mute": "Only a host or a workspace admin may mute participants",
+      "other": "The server refused the action"
+    }
+  },
+  "rec": {
+    "start": "Start recording",
+    "stop": "Stop recording",
+    "live": "Recording",
+    "short": "Rec",
+    "by": "started by {name}",
+    "title": "Recordings",
+    "download": "Download",
+    "delete": "Delete",
+    "confirmDelete": "Delete this recording? The file is erased for good.",
+    "failed": "Recording failed",
+    "expires": "deleted {when}"
+  },
+  "screen": {
+    "share": "Share screen",
+    "stop": "Stop sharing",
+    "cancel": "Leave the queue",
+    "start": "Start sharing",
+    "youPresent": "You are sharing your screen",
+    "stageYours": "The stage is yours",
+    "presenting": "{name} is sharing a screen",
+    "yourTurn": "Your turn to share the screen",
+    "queued": "You are number {n} in the queue",
+    "waiting": "Waiting in the queue: {count}"
+  }
+}

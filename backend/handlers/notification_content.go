@@ -35,7 +35,13 @@ const (
 	evSyncOK      = "integration_sync_ok"
 	evSyncPartial = "integration_sync_partial"
 	evSyncFailed  = "integration_sync_failed"
+	evConfInvited = "conference_invited"
 )
+
+// kindConferenceInvite is the routing kind of a conference invitation. Unlike
+// the task kinds it points at no task at all — the thing to open is the call,
+// and its id travels in the payload (see msgConferenceInvited).
+const kindConferenceInvite = "conference_invite"
 
 // notifyMsg is one notification's content: the legacy pre-rendered sentence and
 // the structured payload. Build one with the msg* helpers below — never write a
@@ -176,6 +182,21 @@ func msgMention(actor string, number *int64, excerpt string) notifyMsg {
 	p["actor"] = actor
 	return notifyMsg{
 		text:    fmt.Sprintf("%s упомянул(а) вас в #%s%s", actor, taskRef(number), shortCtx(excerpt)),
+		payload: p,
+	}
+}
+
+// msgConferenceInvited announces an invitation to a call. It is the first event
+// that points at something other than a task, so it carries `conference_id`
+// instead of `task_number`: that id is what the bell feed, the desktop deep link
+// and the push payload all navigate by. The title rides in the same `title` key
+// as everywhere else, so the client's `{ctx}` inlining works unchanged.
+func msgConferenceInvited(actor, title, confID string) notifyMsg {
+	p := withCtx(event(evConfInvited, nil), "title", title)
+	p["actor"] = actor
+	p["conference_id"] = confID
+	return notifyMsg{
+		text:    fmt.Sprintf("%s приглашает вас в конференцию%s", actor, shortCtx(title)),
 		payload: p,
 	}
 }

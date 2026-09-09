@@ -83,8 +83,17 @@ object Ion {
     const val PERSON_ADD = "person_add"
     const val RIBBON = "ribbon"
     const val DOCUMENT_TEXT = "document_text"
+
+    /** Discussions on a document block (#2894 §5) — the web panel's
+     *  `ChatbubbleEllipsesOutline`, the same ionicons-5 glyph. */
+    const val CHATBUBBLE = "chatbubble"
     const val ALARM = "alarm"
     const val TIME = "time"
+    const val VIDEOCAM = "videocam"
+
+    /** A milestone in the version journal (#2894 §6) — the web panel's
+     *  `BookmarkOutline`, the same ionicons-5 glyph. */
+    const val BOOKMARK = "bookmark"
     const val IMAGE = "image"
     const val ATTACH = "attach"
     const val DOWNLOAD = "download"
@@ -118,6 +127,29 @@ object Ion {
     const val SETTINGS = "settings"
     const val SHIELD_CHECKMARK = "shield_checkmark"
     const val HELP_CIRCLE = "help_circle"
+
+    // Conference room (#2896 §5) — the same ionicons the web toolbar uses.
+    const val MIC = "mic"
+    const val MIC_OFF = "mic_off"
+    const val VIDEOCAM_OFF = "videocam_off"
+    const val CAMERA_REVERSE = "camera_reverse"
+    const val VOLUME_HIGH = "volume_high"
+    const val CELLULAR = "cellular"
+    const val WARNING = "warning"
+    const val CONTRACT = "contract"
+    const val CALL = "call"
+
+    // Participants and moderation (#2896 §6).
+    const val HAND_RIGHT = "hand_right"
+    const val VOLUME_MUTE = "volume_mute"
+
+    // In-call chat (#2896 §7).
+    const val CHATBUBBLES = "chatbubbles"
+
+    // Screen share and recordings (#2896 §8).
+    const val DESKTOP = "desktop"
+    const val RADIO_BUTTON_ON = "radio_button_on"
+    const val SQUARE = "square"
 }
 
 fun classifyIcon(icon: String?): IconKind {

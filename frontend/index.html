@@ -3,6 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Recording page (#2877): egress opens /rec/egress in a Chrome whose UI
+         locale differs from the Russian page, so it offers to translate — and
+         that bubble lands in the captured mp4. Chrome checks for the notranslate
+         meta during its initial language detection, so it MUST be in the DOM at
+         first parse; setting it later (from the Vue component, or via an egress
+         chrome flag that its own --disable-features overrides) was too late.
+         Scoped to the recorder path, so the app still offers translation to
+         real users. -->
+    <script>
+      if (location.pathname.indexOf('/rec/egress') === 0) {
+        document.documentElement.setAttribute('translate', 'no')
+        var m = document.createElement('meta')
+        m.name = 'google'
+        m.content = 'notranslate'
+        document.head.appendChild(m)
+      }
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
     <meta name="theme-color" content="#7c6cff" />

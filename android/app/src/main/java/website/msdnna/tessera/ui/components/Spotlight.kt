@@ -46,6 +46,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -113,9 +114,15 @@ fun SidebarSpotlight(spot: WhatsNewSpotlight, target: Rect?, onDismiss: () -> Un
     }
 }
 
-/** The curved arrow plus the breathing ring around the target row. */
+/**
+ * The curved arrow plus the breathing ring around the target row. Shared with the
+ * Get Started guide (#2860), which draws the same flick from its step card to
+ * whatever the step points at — a board control, a field of the task form — so the
+ * two kinds of hint read as one language. [ringInset] is the target's own side
+ * padding: a full-width sidebar row has 8dp of it, an arbitrary control has none.
+ */
 @Composable
-private fun SpotlightArrow(start: Offset, tip: Offset, target: Rect) {
+internal fun SpotlightArrow(start: Offset, tip: Offset, target: Rect, ringInset: Dp = 8.dp) {
     val c = Tessera.colors
     val draw by animateFloatAsState(
         targetValue = 1f,
@@ -133,7 +140,7 @@ private fun SpotlightArrow(start: Offset, tip: Offset, target: Rect) {
         // Ring: a rounded outline hugging the row (inset to match the row's own
         // 8dp side padding), breathing so the eye lands on it.
         val pad = 2.dp.toPx()
-        val sidePad = 8.dp.toPx()
+        val sidePad = ringInset.toPx()
         drawRoundRect(
             color = c.primary.copy(alpha = pulse),
             topLeft = Offset(target.left + sidePad, target.top - pad),

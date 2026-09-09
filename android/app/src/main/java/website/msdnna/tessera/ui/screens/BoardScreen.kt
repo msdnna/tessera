@@ -75,12 +75,14 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.BoardActivity
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.workspaceCaption
 
 /**
@@ -104,6 +106,9 @@ fun BoardScreen(
     onCloseCommands: () -> Unit = {},
     onTimelineLikeChanged: (Boolean) -> Unit = {},
     onBoardGone: () -> Unit = {},
+    /** Leaves for a document linked to the open task (#2894 §7). Null in a host
+     *  that has no documents section to leave for. */
+    onOpenDocument: ((documentId: String) -> Unit)? = null,
 ) {
     val vm: BoardViewModel = viewModel(key = "board-${board.id}")
     val state by vm.state.collectAsStateWithLifecycle()
@@ -260,12 +265,22 @@ fun BoardScreen(
             members = state.members,
             gitlabMembers = state.gitlabMembers,
             gitlabCreate = state.gitlabCreate,
+            gitlabCanGroup = state.gitlabCanGroup,
             milestones = state.milestones,
             parentCandidates = state.tasks.filter { it.id != id && it.parentId == null },
             boardTasks = state.tasks,
             breadcrumb = breadcrumb,
             estimation = state.estimation,
             commands = state.commandRows,
+            // Leaving for a document closes the modal: the documents section is a
+            // top-level destination, and a modal left open over it would come
+            // back on top of the reader when the section is left again.
+            onOpenDocument = onOpenDocument?.let { open ->
+                { documentId ->
+                    openTaskId = null
+                    open(documentId)
+                }
+            },
             onClose = { changed ->
                 openTaskId = null
                 if (changed) vm.reload()
@@ -437,7 +452,7 @@ private fun BoardToolbar(
             expanded = expanded,
             setExpanded = setExpanded,
             onExitArchive = onExitArchive,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).tourAnchor(TourKeys.BOARD_COMPOSER),
         )
         AnimatedVisibility(
             visible = !expanded,
@@ -469,7 +484,7 @@ private fun BoardToolbar(
                 ToolIcon(
                     Ion.SETTINGS,
                     active = customizeOpen,
-                    modifier = Modifier.testTag(TestTags.BOARD_CUSTOMIZE),
+                    modifier = Modifier.testTag(TestTags.BOARD_CUSTOMIZE).tourAnchor(TourKeys.BOARD_CUSTOMIZE),
                 ) { customizeOpen = true }
             }
         }

@@ -28,7 +28,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -43,6 +45,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.repository.AuthRepository
 import website.msdnna.tessera.data.repository.ProfileRepository
@@ -57,7 +60,9 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.theme.accentByKey
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.isAuthError
+import website.msdnna.tessera.util.normalizeLanguage
 
 /** Upper bound on the startup session check before the splash gives up. */
 private const val VERIFY_TIMEOUT_MS = 30_000L
@@ -114,9 +119,16 @@ fun AppRoot(
     val isDark by prefs.darkMode.collectAsStateWithLifecycle(initialValue = false)
     val tagPrefixMode by prefs.tagPrefixMode.collectAsStateWithLifecycle(initialValue = "name")
     val preferences by prefs.preferences.collectAsStateWithLifecycle(initialValue = Preferences())
+    // Профиль → выбор на экране входа → локаль телефона (#2855). Стартовое значение —
+    // системная локаль, а не «ru»: иначе телефон на английском мигнул бы русским,
+    // пока DataStore читается с диска.
+    val language by prefs.language.collectAsStateWithLifecycle(
+        initialValue = normalizeLanguage(LocalConfiguration.current.locales[0].language),
+    )
     val token by prefs.authToken.collectAsStateWithLifecycle(initialValue = "")
     val user by prefs.user.collectAsStateWithLifecycle(initialValue = null)
     val serverUrl by prefs.serverUrl.collectAsStateWithLifecycle(initialValue = AppContainer.serverUrl)
+    val insecureTls by prefs.insecureTls.collectAsStateWithLifecycle(initialValue = TlsTrust.insecure)
 
     var boot by remember { mutableStateOf<Boot>(Boot.Loading) }
     var bootNonce by remember { mutableIntStateOf(0) }
@@ -144,6 +156,9 @@ fun AppRoot(
         val url = prefs.serverUrl.first()
         val access = prefs.authToken.first()
         val refresh = prefs.refreshToken.first()
+        // Раньше адреса: первый же поход в сеть — проверка сессии ниже, и клиент
+        // под неё соберётся с той политикой доверия, которая стоит сейчас (#2896).
+        TlsTrust.set(prefs.insecureTls.first())
         AppContainer.serverUrl = url
         RetrofitClient.authToken = access
         RetrofitClient.refreshToken = refresh
@@ -178,6 +193,10 @@ fun AppRoot(
         }
     }
 
+    // Тумблер «не проверять сертификат» действует сразу: клиенты пересобираются
+    // при следующем обращении, поэтому перезапуск приложения не нужен.
+    LaunchedEffect(insecureTls) { TlsTrust.set(insecureTls) }
+
     // Keep the network client's server URL in sync with prefs changes.
     LaunchedEffect(serverUrl) {
         if (AppContainer.serverUrl != serverUrl) {
@@ -205,9 +224,17 @@ fun AppRoot(
     }
 
     // Language comes from the profile, not the device — the whole tree below
-    // resolves its strings in it (#2803).
-    AppLocale(language = preferences.language) {
-        TesseraTheme(accent = accentByKey(accentKey), isDark = isDark, tagPrefixMode = tagPrefixMode) {
+    // resolves its strings in it (#2803). До логина профиля нет, и его место
+    // занимает выбор на экране входа, а при первом запуске — локаль телефона (#2855).
+    AppLocale(language = language) {
+        // Дата/время следуют префам профиля (#2857) — их вместе с палитрой раздаёт
+        // тема, чтобы каждый рендер даты не тащил префы параметром.
+        TesseraTheme(
+            accent = accentByKey(accentKey),
+            isDark = isDark,
+            tagPrefixMode = tagPrefixMode,
+            dateFormat = DateFormatPrefs.of(preferences),
+        ) {
             Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
                 when {
                     boot is Boot.Loading -> BootLoading()
@@ -217,7 +244,16 @@ fun AppRoot(
                         message = stringResource(R.string.gate_offline_message),
                         primaryLabel = stringResource(R.string.gate_offline_retry),
                         onPrimary = { bootNonce++ },
-                        onExit = ::exitApp,
+                        // Not «Выход»: this gate only shows with a saved session
+                        // against a server that won't answer, and closing the app
+                        // left no way to reach the login screen and its server
+                        // field. Dropping the session lands there — the URL pref
+                        // is kept, so it comes up pre-filled to edit (#2920).
+                        secondaryLabel = stringResource(R.string.gate_change_server),
+                        onSecondary = {
+                            scope.launch { authRepo.logout() }
+                            boot = Boot.Done
+                        },
                     )
 
                     boot is Boot.AuthError -> BootError(
@@ -228,16 +264,23 @@ fun AppRoot(
                             scope.launch { authRepo.logout() }
                             boot = Boot.Done
                         },
-                        onExit = ::exitApp,
+                        secondaryLabel = stringResource(R.string.gate_exit),
+                        onSecondary = ::exitApp,
                     )
 
                     token.isBlank() -> AuthScreen(
                         serverUrl = serverUrl,
                         onServerUrlChange = { scope.launch { prefs.setServerUrl(it) } },
+                        insecureTls = insecureTls,
+                        onInsecureTlsChange = { scope.launch { prefs.setInsecureTls(it) } },
                         isDark = isDark,
                         // Pre-login the theme lives only in local prefs (no user yet);
                         // it's reconciled with the server pref after sign-in.
                         onToggleTheme = { scope.launch { prefs.setDarkMode(!isDark) } },
+                        language = language,
+                        // Тоже только в локальные префы: сессии ещё нет, PUT настроек
+                        // слать некуда. После входа профиль перебьёт этот выбор.
+                        onCycleLanguage = { scope.launch { prefs.setLanguage(it) } },
                         oauthErrorCode = oauthError,
                         onOAuthErrorShown = { oauthError = null },
                     )
@@ -289,14 +332,19 @@ private fun BootLoading() {
 }
 
 /** A startup error on the purple backdrop: brand mark, a message, a white CTA,
- *  and a ghost exit link. Text/buttons are light to read on purple (login style). */
+ *  and a ghost secondary link. Text/buttons are light to read on purple (login
+ *  style). The secondary is passed in rather than always being «Выход»: from an
+ *  unreachable server the only way out used to be closing the app, stranding
+ *  anyone who had simply typed the wrong address (#2920) — that gate hands in a
+ *  «change server» that drops back to the login screen instead. */
 @Composable
-private fun BootError(
+internal fun BootError(
     title: String,
     message: String,
     primaryLabel: String,
     onPrimary: () -> Unit,
-    onExit: () -> Unit,
+    secondaryLabel: String,
+    onSecondary: () -> Unit,
 ) {
     PurpleBackdrop {
         Column(
@@ -318,11 +366,11 @@ private fun BootError(
             BootPrimaryButton(primaryLabel, onPrimary)
             Box(
                 Modifier
-                    .clickableNoRipple(onClick = onExit)
+                    .clickableNoRipple(onClick = onSecondary)
                     .padding(horizontal = 18.dp, vertical = 10.dp),
             ) {
                 Text(
-                    stringResource(R.string.gate_exit),
+                    secondaryLabel,
                     color = Color.White.copy(alpha = 0.85f),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,
@@ -341,6 +389,7 @@ private fun BootPrimaryButton(text: String, onClick: () -> Unit) {
             .background(Color.White, RoundedCornerShape(RadiusMd))
             .clickableNoRipple(onClick = onClick)
             .heightIn(min = 48.dp)
+            .testTag(TestTags.BOOT_RETRY)
             .padding(horizontal = 18.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
     ) {

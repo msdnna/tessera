@@ -1,0 +1,51 @@
+# LiveKit SFU — production config (#2866). Mounted read-only into the container;
+# the server is started with `--config /etc/livekit.yaml`.
+#
+# NO SECRETS HERE. API key/secret come from the environment (LIVEKIT_KEYS in
+# deploy/.env), so this file stays committable and the secret never sits in a
+# world-readable bind mount.
+#
+# Config parsing is STRICT: an unknown or misspelled key aborts startup instead
+# of being ignored. Keys below are the ones livekit-server v1.13.x accepts —
+# check upstream config-sample.yaml before adding more.
+
+# Signalling + RoomService HTTP API. NOT published as a host port — Caddy
+# reverse-proxies /livekit/* here (see deploy/Caddyfile). Publishing it would put
+# the RoomService API (create room, kick, list participants) on the internet;
+# only our backend is supposed to call it.
+port: 7880
+
+rtc:
+  # ICE over TCP for clients whose network blocks UDP (common on corporate
+  # firewalls). Published on the host: without it those clients never connect,
+  # and the failure is hard to diagnose from the browser side.
+  tcp_port: 7881
+  # UDP mux: ALL media multiplexes onto this single port, so one published port
+  # is enough instead of a 10k-wide range. Upstream requirement: port_range_start
+  # / port_range_end must stay unset, or udp_port is ignored and the server falls
+  # back to the range.
+  udp_port: 7882
+  # Discover the host's public IP via STUN and advertise that to clients.
+  # Required for participants coming in over the internet — without it the SFU
+  # offers its container address (172.x) as the only ICE candidate.
+  use_external_ip: true
+
+room:
+  # A valid token for a room that does not exist would otherwise create it
+  # silently — i.e. anonymous video hosting on our server. Rooms are created by
+  # our backend through RoomService, never by a joining client.
+  auto_create: false
+  # Ceiling per room. Sized for daily stand-ups (plan: 10 participants) with room
+  # to spare; 0 would mean unlimited.
+  max_participants: 30
+  # Seconds to keep an empty room alive: 5 min covers "everyone reloads at once",
+  # after which the room is torn down.
+  empty_timeout: 300
+  departure_timeout: 20
+
+logging:
+  # Default `info` writes room names and participant identities into the docker
+  # logs on every join — i.e. who attended which meeting, retained as long as the
+  # logs are. `warn` keeps the operational signal without that record.
+  level: warn
+  pion_level: error

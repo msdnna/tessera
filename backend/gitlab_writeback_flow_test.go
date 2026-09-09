@@ -11,12 +11,15 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -39,11 +42,73 @@ type wbFake struct {
 	wmu   sync.Mutex
 	calls []restCall
 	fail  int // fail the next N REST mutations with a 500
+	// noteSeq hands every created note its own id. It used to be a constant 4242,
+	// which was invisible here but fatal in the de-dup tests: idx_task_comments_gl_note
+	// is unique across the whole table, so two parallel tests pushing "note 4242"
+	// collide on gl_note_id (task #2865).
+	noteSeq  int64
+	noteBase int64
+}
+
+// wbFakeSeq gives each fake a disjoint note-id range (see nextNoteID).
+var wbFakeSeq atomic.Int64
+
+// nextNoteID allocates a note id unique within this fake. The base is derived from
+// the fake's own address space via a package counter so ids never collide across
+// the parallel tests sharing one database.
+func (w *wbFake) nextNoteID() int64 {
+	w.wmu.Lock()
+	defer w.wmu.Unlock()
+	w.noteSeq++
+	return w.noteBase + w.noteSeq
+}
+
+// recordNote stores a note the write-back just created on the inner fake's issue,
+// so the next pull reads back exactly what GitLab would now hold. Without this the
+// push/pull round trip — the one that duplicated comments — cannot be tested at all.
+func (w *wbFake) recordNote(iid int64, n glNote) {
+	is := w.findIssue(iid)
+	if is == nil {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	is.Notes = append(is.Notes, n)
+	is.UpdatedAt = time.Now().UTC()
+}
+
+// discussionIDFromPath recovers the note-id suffix this fake encodes into a
+// discussion id ("d15cu5510n<id>"), so a reply lands in its parent's thread. Zero
+// for a bare note path, which is what glNote treats as "own thread".
+func discussionIDFromPath(p string) int64 {
+	for _, seg := range strings.Split(p, "/") {
+		if rest, ok := strings.CutPrefix(seg, "d15cu5510n"); ok {
+			id, _ := strconv.ParseInt(rest, 10, 64)
+			return id
+		}
+	}
+	return 0
+}
+
+// issueIIDFromPath pulls the issue iid out of a REST path like
+// "/api/v4/projects/<path>/issues/7/discussions[...]".
+func issueIIDFromPath(p string) int64 {
+	parts := strings.Split(p, "/")
+	for i, seg := range parts {
+		if seg == "issues" && i+1 < len(parts) {
+			iid, _ := strconv.ParseInt(parts[i+1], 10, 64)
+			return iid
+		}
+	}
+	return 0
 }
 
 func newWBFake(t *testing.T, username, projectPath string) *wbFake {
 	t.Helper()
-	w := &wbFake{fakeGitlab: newFakeGitlab(t, username, projectPath)}
+	w := &wbFake{
+		fakeGitlab: newFakeGitlab(t, username, projectPath),
+		noteBase:   1_000_000 + 10_000*wbFakeSeq.Add(1),
+	}
 	w.outer = httptest.NewServer(w)
 	t.Cleanup(w.outer.Close)
 	return w
@@ -65,17 +130,29 @@ func (w *wbFake) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// A root comment opens a discussion, so the response carries both the
-		// discussion id (a later reply aims at it) and the opening note's id.
+		// discussion id (a later reply aims at it) and the opening note's id. The
+		// note is also stored on the issue: from here on GitLab holds it, and the
+		// next pull must recognise it as ours rather than import a copy.
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/discussions") {
+			id := w.nextNoteID()
+			w.recordNote(issueIIDFromPath(r.URL.Path), glNote{
+				ID: id, Body: form.Get("body"), AuthorLogin: w.username, Discussion: id,
+			})
 			writeJSON(rw, http.StatusCreated, map[string]any{
-				"id":    "d15cu5510n5ha",
-				"notes": []map[string]any{{"id": 4242}},
+				"id":    fmt.Sprintf("d15cu5510n%d", id),
+				"notes": []map[string]any{{"id": id}},
 			})
 			return
 		}
-		// Notes get a real id so CreateIssueNote can tag the source comment.
+		// Notes get a real id so CreateIssueNote can tag the source comment. A reply
+		// posted into an existing discussion keeps that discussion's grouping.
 		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/notes") {
-			writeJSON(rw, http.StatusCreated, map[string]any{"id": 4242})
+			id := w.nextNoteID()
+			w.recordNote(issueIIDFromPath(r.URL.Path), glNote{
+				ID: id, Body: form.Get("body"), AuthorLogin: w.username,
+				Discussion: discussionIDFromPath(r.URL.Path),
+			})
+			writeJSON(rw, http.StatusCreated, map[string]any{"id": id})
 			return
 		}
 		r.Body = io.NopCloser(strings.NewReader(string(body)))
@@ -179,12 +256,32 @@ func writebackRows(t *testing.T, taskID string) map[string]wbRow {
 	return out
 }
 
+// drainMu serialises drainOutboxUntil across the package. The outbox is global
+// and the worker guards its drain with a Postgres advisory lock, so two drains
+// never actually overlap — the loser just no-ops silently and burns its own
+// deadline waiting for work nobody is doing. Measured: a single drain holds the
+// lock ~2.4 s, and four parallel tests call this helper
+// (TestGitlabWritebackPushFlow, TestGitlabWritebackAssigneeOAuthUser,
+// TestGitlabWritebackRetry, TestGitlabPulledCommentDoesNotDuplicatePushedOne)
+// plus the background worker from TestMain on the same key — four queued
+// holds alone come to ~9.6 s against what used to be a 10 s deadline. Hence the
+// mutex, and hence it lives next to the helper rather than in one test file:
+// the fourth caller arrived from another file (#2865) and would otherwise have
+// stayed in the race. Only the drain is serialised; building a stand (signup,
+// board, fake GitLab, first sync) stays parallel.
+var drainMu sync.Mutex
+
 // drainOutboxUntil spawns the write-back worker (which drains once at startup)
 // and polls cond; respawns a few times so a row that appeared between drains is
 // still picked up. Fails the test when cond never holds.
 func drainOutboxUntil(t *testing.T, cond func() bool) {
 	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
+	drainMu.Lock()
+	defer drainMu.Unlock()
+	// 20 s, not 10: with the drain serialised a test may legitimately wait its
+	// turn behind the other callers before it gets to run at all.
+	deadline := time.Now().Add(20 * time.Second)
+	spawns := 0
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithCancel(context.Background())
 		done := make(chan struct{})
@@ -192,6 +289,7 @@ func drainOutboxUntil(t *testing.T, cond func() bool) {
 			testAPI.RunGitlabWriteBackWorker(ctx)
 			close(done)
 		}()
+		spawns++
 		ok := false
 		for i := 0; i < 20 && !ok; i++ {
 			if cond() {
@@ -206,7 +304,39 @@ func drainOutboxUntil(t *testing.T, cond func() bool) {
 			return
 		}
 	}
-	t.Fatalf("write-back drain condition never met")
+	// "condition never met" on its own sent the last investigation down a wrong
+	// path for weeks: it cannot distinguish "the drain ran and the row is stuck"
+	// from "the drain never got the lock and nothing happened at all". Dump the
+	// outbox so the next reader sees which one it is.
+	t.Fatalf("write-back drain condition never met after %d worker spawns; outbox now: %s",
+		spawns, dumpOutbox(t))
+}
+
+// dumpOutbox renders every outbox row in the database (not just one task's) with
+// the fields that tell a stuck row apart from an untouched one.
+func dumpOutbox(t *testing.T) string {
+	t.Helper()
+	rows, err := testPool.Query(context.Background(),
+		`SELECT task_id, change_kind, status, attempts, COALESCE(last_error, '') FROM gitlab_writebacks ORDER BY task_id, change_kind`)
+	if err != nil {
+		return fmt.Sprintf("<query failed: %v>", err)
+	}
+	defer rows.Close()
+	var b strings.Builder
+	n := 0
+	for rows.Next() {
+		var taskID, kind, status, lastErr string
+		var attempts int32
+		if err := rows.Scan(&taskID, &kind, &status, &attempts, &lastErr); err != nil {
+			return fmt.Sprintf("<scan failed: %v>", err)
+		}
+		n++
+		fmt.Fprintf(&b, "\n  task=%s kind=%s status=%s attempts=%d err=%q", taskID, kind, status, attempts, lastErr)
+	}
+	if n == 0 {
+		return "(empty)"
+	}
+	return b.String()
 }
 
 // ── tests ────────────────────────────────────────────────────────────────────

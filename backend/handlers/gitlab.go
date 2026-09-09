@@ -126,6 +126,11 @@ type gitlabIntegrationView struct {
 	LastFullSyncedAt    *time.Time       `json:"last_full_synced_at"`
 	LabelRules          gitlab.Rules     `json:"label_rules"`
 	Writeback           gitlab.Writeback `json:"writeback"`
+	// Webhook state (#2594). The shared secret is NEVER in this view — it is
+	// returned once, by EnableGitlabWebhook, and only stored encrypted.
+	WebhookEnabled bool       `json:"webhook_enabled"`
+	LastWebhookAt  *time.Time `json:"last_webhook_at"`
+	WebhookURL     string     `json:"webhook_url,omitempty"`
 	// Resolved estimation unit for the integration board (project→workspace→time),
 	// so the UI can disable the estimate write-back toggle when it isn't "time".
 	EstimationUnit string `json:"estimation_unit,omitempty"`
@@ -143,6 +148,8 @@ func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
 		Scope: integ.Scope, ClosedPolicy: integ.ClosedPolicy, ClosedAfter: integ.ClosedAfter,
 		LabelRules: parseRules(integ.LabelRules),
 		Writeback:  parseWriteback(integ.Writeback),
+		// Webhook: state only. The secret stays encrypted at rest.
+		WebhookEnabled: integ.WebhookEnabled, LastWebhookAt: integ.LastWebhookAt,
 	}
 }
 
@@ -270,6 +277,11 @@ func (h *API) fullIntegrationView(c *gin.Context, integ db.GitlabIntegration) gi
 	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
 	if pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID); perr == nil {
 		view.ProjectID = &pid
+	}
+	// The delivery URL is not a secret, so keep it visible for as long as the hook
+	// is on — the admin may need to re-paste it without rotating the secret.
+	if integ.WebhookEnabled {
+		view.WebhookURL = h.webhookURL(c, integ.ID)
 	}
 	return view
 }
@@ -1804,14 +1816,20 @@ func (h *API) syncComments(ctx context.Context, taskID, wsID uuid.UUID, notes []
 		// This avoids re-importing it as a duplicate gitlab-sourced comment when a
 		// pull races the push. Strip an optional Tessera marker footer so the stored
 		// (unmarked) body still matches.
-		claimBody := strings.TrimSuffix(n.Body, tesseraCommentMarker)
+		//
+		// The comparison runs on the *rewritten* body, not the raw GitLab one: our
+		// own comment carries "/api/uploads/…" links, while the copy in GitLab
+		// carries the mirrored "/uploads/…" ones. Comparing before the rewrite meant
+		// a comment with an attachment could never be claimed, and was imported as a
+		// duplicate — exactly the screenshot in task #2865.
+		body := h.rewriteAssets(ctx, n.Body, wsID)
+		claimBody := strings.TrimSuffix(body, tesseraCommentMarker)
 		if claimed, cerr := h.q.ClaimPushedUserComment(ctx, db.ClaimPushedUserCommentParams{
 			TaskID: taskID, GlNoteID: &noteID, Body: claimBody, GlDiscussionID: n.DiscussionID,
 		}); cerr == nil {
 			local[noteID] = claimed
 			continue // claimed our own pushed comment — nothing to insert
 		}
-		body := h.rewriteAssets(ctx, n.Body, wsID)
 		inserted, err := h.q.UpsertGitlabComment(ctx, db.UpsertGitlabCommentParams{
 			TaskID: taskID, Body: body, GlNoteID: &noteID,
 			GlAuthorLogin: n.Author.Login, GlAuthorName: n.Author.Name,

@@ -126,6 +126,7 @@ import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.BoardDragOverlay
 import website.msdnna.tessera.ui.components.BoardDragState
 import website.msdnna.tessera.ui.components.ColorDot
+import website.msdnna.tessera.ui.components.CountWithHint
 import website.msdnna.tessera.ui.components.Drop
 import website.msdnna.tessera.ui.components.InlineCreateField
 import website.msdnna.tessera.ui.components.InlineTitleEditor
@@ -154,11 +155,14 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.columnCaption
+import website.msdnna.tessera.util.countWithSubtasks
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.isReviewColumn
@@ -437,6 +441,11 @@ fun KanbanView(
                         Column(
                             Modifier.animatePlacement().width(colWidth).fillMaxHeight()
                                 .testTag(TestTags.boardColumn(lane.id))
+                                // Keyed by the column's own (server) name, not its
+                                // localised caption: the guide asks for a card to be
+                                // dropped into «В процессе», and that is the name the
+                                // seeded column carries in the database.
+                                .tourAnchor(TourKeys.column(lane.rawTitle))
                                 .dragDim(lane.id == draggingColId),
                         ) {
                             Column(
@@ -528,7 +537,25 @@ fun KanbanView(
                                         }
                                     }
                                     // Count sits just left of the column menu, both pinned right.
-                                    Text("${lane.tasks.size}", color = Tessera.colors.text3, fontSize = 13.sp)
+                                    // Reads «3 (6)»: cards before the brackets, the whole
+                                    // tree inside them; a flat column keeps the bare number
+                                    // (web ColumnHeader parity, #2850).
+                                    val counts = remember(lane.tasks, state.countSubtasksByParent) {
+                                        countWithSubtasks(lane.tasks, state.countSubtasksByParent)
+                                    }
+                                    CountWithHint(
+                                        label = if (counts.hasSubtasks) {
+                                            stringResource(R.string.board_column_count, counts.tasks, counts.total)
+                                        } else {
+                                            "${counts.tasks}"
+                                        },
+                                        hint = if (counts.hasSubtasks) {
+                                            stringResource(R.string.board_column_count_title, counts.tasks, counts.total)
+                                        } else {
+                                            stringResource(R.string.board_column_count_title_flat, counts.tasks)
+                                        },
+                                        modifier = Modifier.testTag(TestTags.columnCount(lane.id)),
+                                    )
                                     if (lane.canAdd) {
                                         Spacer(Modifier.width(6.dp))
                                         ColumnMenu(lane, state, vm, onRename = { renamingCol = true })
@@ -571,6 +598,7 @@ fun KanbanView(
                                                 conflictTaskIds = conflictTaskIds,
                                                 onOpenConflict = onOpenConflict,
                                                 anchored = true,
+                                                tourPlace = lane.rawTitle,
                                             )
                                         }
                                     }
@@ -593,7 +621,9 @@ fun KanbanView(
                                                 } else {
                                                     CreateText(
                                                         stringResource(R.string.board_add_task),
-                                                        modifier = Modifier.testTag(TestTags.columnAddTask(lane.id)),
+                                                        modifier = Modifier
+                                                            .testTag(TestTags.columnAddTask(lane.id))
+                                                            .tourAnchor(TourKeys.columnAdd(lane.rawTitle)),
                                                     ) { addingColumn = lane.id }
                                                 }
                                             }

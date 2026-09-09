@@ -119,6 +119,15 @@ const startSource = ref('created')
 // Tessera relations back), so the switch serialises to those two values.
 const relationsSync = ref(true)
 const lastSynced = ref(null)
+// ── webhook (#2594): GitLab → Tessera near-realtime trigger ──
+// The hook is wired up by hand — we show the URL and a freshly generated secret to
+// paste into the project's Settings → Webhooks. webhookSecret holds that secret for
+// this one screen only: the server never returns it again.
+const webhookEnabled = ref(false)
+const webhookUrl = ref('')
+const lastWebhook = ref(null)
+const webhookSecret = ref('')
+const webhookBusy = ref(false)
 // ── write-back (Tessera → GitLab), opt-in; all off by default ──
 const wbEnabled = ref(false) // master toggle for the whole binding table
 const wbCreate = ref(false) // allow creating GitLab issues from tasks (independent of write-back)
@@ -311,6 +320,69 @@ const lastSyncedText = computed(() =>
     : t('gitlab.modal.sync.never'),
 )
 
+const lastWebhookText = computed(() =>
+  lastWebhook.value
+    ? formatDateTime(lastWebhook.value, { day: '2-digit', month: '2-digit' })
+    : t('gitlab.modal.webhook.never'),
+)
+
+// enableWebhook generates (or rotates) the shared secret. The plaintext comes back
+// exactly once, so it is held in webhookSecret until the binding is reloaded —
+// rotating without copying it means pasting a new one into GitLab again.
+async function enableWebhook() {
+  if (!currentId.value) return
+  webhookBusy.value = true
+  try {
+    const { data } = await glApi.enableWebhook(props.wsId, currentId.value)
+    const view = data.integration || {}
+    webhookEnabled.value = view.webhook_enabled === true
+    webhookUrl.value = view.webhook_url || ''
+    webhookSecret.value = data.secret || ''
+    // Refresh only the cached row, never via loadList(): re-applying the binding
+    // would clear webhookSecret, and the secret is not fetchable a second time.
+    patchCachedBinding(view)
+  } catch (e) {
+    message.error(e?.response?.data?.error || t('gitlab.modal.webhook.failed'))
+  } finally {
+    webhookBusy.value = false
+  }
+}
+
+async function disableWebhook() {
+  if (!currentId.value) return
+  webhookBusy.value = true
+  try {
+    const { data } = await glApi.disableWebhook(props.wsId, currentId.value)
+    webhookEnabled.value = false
+    webhookUrl.value = ''
+    webhookSecret.value = ''
+    patchCachedBinding(data || {})
+  } catch (e) {
+    message.error(e?.response?.data?.error || t('gitlab.modal.webhook.failed'))
+  } finally {
+    webhookBusy.value = false
+  }
+}
+
+// patchCachedBinding folds a server view back into the loaded list, so switching
+// bindings and back shows the current webhook state without a full reload.
+function patchCachedBinding(view) {
+  if (!view || !view.id) return
+  const i = integrations.value.findIndex((b) => b.id === view.id)
+  if (i >= 0) integrations.value[i] = { ...integrations.value[i], ...view }
+}
+
+// copyWebhook puts a value on the clipboard. Falls back to a notice rather than
+// failing silently: the modal may run over plain HTTP, where the API is missing.
+async function copyWebhook(value) {
+  try {
+    await navigator.clipboard.writeText(value)
+    message.success(t('gitlab.modal.webhook.copied'))
+  } catch {
+    message.warning(t('gitlab.modal.webhook.copyFailed'))
+  }
+}
+
 async function loadBoards() {
   const all = []
   const bp = {}
@@ -438,6 +510,10 @@ async function applyBinding(data) {
     startSource.value = data.start_source || 'created'
     relationsSync.value = data.relations_sync !== 'off'
     lastSynced.value = data.last_synced_at || null
+    webhookEnabled.value = data.webhook_enabled === true
+    webhookUrl.value = data.webhook_url || ''
+    lastWebhook.value = data.last_webhook_at || null
+    webhookSecret.value = '' // shown once, on generation; never re-read
     const wb = data.writeback || {}
     wbEnabled.value = wb.enabled === true
     wbCreate.value = wb.push_create === true
@@ -1065,6 +1141,68 @@ watch(
                 <div><n-switch v-model:value="enabled" /></div>
               </div>
 
+              <!-- Webhook (GitLab → Tessera): near-realtime trigger on top of the
+                   polling pull. Wired up by hand — we hand out the URL and secret to
+                   paste into the project's Settings → Webhooks. -->
+              <h4 class="gl-h gl-h-sub">{{ $t('gitlab.modal.webhook.title') }}</h4>
+              <p class="gl-wb-hint">{{ $t('gitlab.modal.webhook.hint') }}</p>
+              <p v-if="!currentId" class="gl-wb-hint">
+                {{ $t('gitlab.modal.webhook.saveFirst') }}
+              </p>
+              <template v-else>
+                <div v-if="webhookEnabled" class="gl-hook">
+                  <div class="gl-hook-row">
+                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.webhook.url') }}</n-text>
+                    <n-input :value="webhookUrl" size="small" readonly />
+                    <n-button size="tiny" quaternary @click="copyWebhook(webhookUrl)">
+                      {{ $t('gitlab.modal.webhook.copy') }}
+                    </n-button>
+                  </div>
+                  <div v-if="webhookSecret" class="gl-hook-row">
+                    <n-text depth="3" class="lbl">{{ $t('gitlab.modal.webhook.secret') }}</n-text>
+                    <n-input :value="webhookSecret" size="small" readonly />
+                    <n-button size="tiny" quaternary @click="copyWebhook(webhookSecret)">
+                      {{ $t('gitlab.modal.webhook.copy') }}
+                    </n-button>
+                  </div>
+                  <p v-if="webhookSecret" class="gl-wb-hint gl-hook-warn">
+                    {{ $t('gitlab.modal.webhook.onceWarning') }}
+                  </p>
+                  <p class="gl-wb-hint">
+                    {{ $t('gitlab.modal.webhook.lastEvent', { at: lastWebhookText }) }}
+                  </p>
+                  <div class="gl-hook-actions">
+                    <n-button
+                      size="small"
+                      :disabled="!isAdmin"
+                      :loading="webhookBusy"
+                      @click="enableWebhook"
+                    >
+                      {{ $t('gitlab.modal.webhook.rotate') }}
+                    </n-button>
+                    <n-button
+                      size="small"
+                      quaternary
+                      :disabled="!isAdmin"
+                      :loading="webhookBusy"
+                      @click="disableWebhook"
+                    >
+                      {{ $t('gitlab.modal.webhook.disable') }}
+                    </n-button>
+                  </div>
+                </div>
+                <div v-else class="gl-hook-actions">
+                  <n-button
+                    size="small"
+                    :disabled="!isAdmin"
+                    :loading="webhookBusy"
+                    @click="enableWebhook"
+                  >
+                    {{ $t('gitlab.modal.webhook.generate') }}
+                  </n-button>
+                </div>
+              </template>
+
               <!-- Write-back (Tessera → GitLab), opt-in; all off by default -->
               <h4 class="gl-h gl-h-sub">{{ $t('gitlab.modal.writeback.title') }}</h4>
               <div class="gl-grid">
@@ -1588,6 +1726,23 @@ watch(
   margin: 8px 0 12px;
   font-size: 12px;
   line-height: 1.4;
+}
+/* Webhook block: label · read-only value · copy, on one line each (#2594). */
+.gl-hook-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.gl-hook-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+/* The secret is displayed exactly once — say so loudly enough to be read. */
+.gl-hook-warn {
+  color: var(--t-warning, #e0a500);
 }
 /* No-credentials warning banner atop the integration section. */
 .gl-warn {

@@ -12,6 +12,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import website.msdnna.tessera.util.DateFormatPrefs
 
 /**
  * The app's own design system. Material3 is wrapped only as a thin host
@@ -26,6 +27,16 @@ val LocalTessera = staticCompositionLocalOf { LightPalette }
  * Lives next to the palette so any chip can read it without prop-drilling.
  */
 val LocalTagPrefixMode = staticCompositionLocalOf { "name" }
+
+/**
+ * Формат времени и даты из профиля (`time_format` / `date_format`, #2857).
+ *
+ * Язык дерева задаётся подменой ресурсов (`AppLocale`), но эти два префа выбирают
+ * не язык, а какую форму из ресурсов собрать, — поэтому едут отдельным composition
+ * local, ровно как [LocalTagPrefixMode]. Дефолт (24 часа + `short`) действует до
+ * логина и в превью.
+ */
+val LocalDateFormat = staticCompositionLocalOf { DateFormatPrefs.Default }
 
 object Tessera {
     val colors: TesseraColors
@@ -56,6 +67,7 @@ fun TesseraTheme(
     accent: AccentTheme = AccentThemes[0],
     isDark: Boolean = isSystemInDarkTheme(),
     tagPrefixMode: String = "name",
+    dateFormat: DateFormatPrefs = DateFormatPrefs.Default,
     content: @Composable () -> Unit,
 ) {
     val base = if (isDark) DarkPalette else LightPalette
@@ -87,7 +99,11 @@ fun TesseraTheme(
         outlineVariant = colors.border,
     )
 
-    CompositionLocalProvider(LocalTessera provides colors, LocalTagPrefixMode provides tagPrefixMode) {
+    CompositionLocalProvider(
+        LocalTessera provides colors,
+        LocalTagPrefixMode provides tagPrefixMode,
+        LocalDateFormat provides dateFormat,
+    ) {
         MaterialTheme(colorScheme = m3, typography = TesseraTypography, content = content)
     }
 }

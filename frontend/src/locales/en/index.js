@@ -8,6 +8,7 @@ import board from './board.json'
 import task from './task.json'
 import project from './project.json'
 import documents from './documents.json'
+import conferences from './conferences.json'
 import notes from './notes.json'
 import reminders from './reminders.json'
 import milestones from './milestones.json'
@@ -28,6 +29,7 @@ export default {
   task,
   project,
   documents,
+  conferences,
   notes,
   reminders,
   milestones,

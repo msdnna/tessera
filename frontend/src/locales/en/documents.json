@@ -59,6 +59,10 @@
     "uploadingImage": "Uploading image…",
     "pdfFallbackName": "document.pdf"
   },
+  "embed": {
+    "loading": "Opening the document…",
+    "failed": "Could not open the document"
+  },
   "toc": {
     "title": "Outline",
     "empty": "Add headings — they will build the outline.",
@@ -87,6 +91,8 @@
     "pdf": { "label": "PDF", "hint": "Embed a file to read" }
   },
   "toolbar": {
+    "more": "More tools",
+    "less": "Fewer tools",
     "undo": "Undo (Ctrl+Z)",
     "redo": "Redo (Ctrl+Shift+Z)",
     "heading": "Heading {level}",

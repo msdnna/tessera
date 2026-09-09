@@ -1,4 +1,21 @@
 {
+  "gitlabWebhook": {
+    "title": "GitLab: a webhook for instant sync",
+    "item1": "The GitLab binding settings gained a «Webhook» section: generate a secret and URL and paste them into your project's Settings → Webhooks — changes then arrive within seconds instead of waiting for the periodic poll. The secret is shown once and can be regenerated or disabled; the last-event time sits next to it."
+  },
+  "parentAndScrollbars": {
+    "title": "The parent's title, and Firefox scrollbars",
+    "item1": "The task window's «Parent» field now shows the parent task's title instead of just its number: it takes the full width of the row, a long one is cut with an ellipsis (the full text is in the tooltip), and clicking it opens the parent. On an archived task the «Detach» button is no longer shown.",
+    "item2": "In Firefox the board columns, the GitLab window panes and the background-jobs list no longer draw a thick system scrollbar: the bar is thin and appears on hover, just like in Chrome."
+  },
+  "conferences": {
+    "title": "Conferences: calls, screen sharing and recording",
+    "item1": "The sidebar gained a «Conferences» section: schedule a meeting or start one right away, and link it to a task if you like. Inside there's a video/audio call, a chat with attachments, screen sharing and a participants panel; the host can mute someone's mic or remove them from the call.",
+    "item2": "A meeting can be recorded. The server does the recording, not your browser, so it doesn't depend on your connection and survives closing the tab. While recording is on everyone in the room sees a red dot, and the finished file shows up in the conference's recordings list to download later.",
+    "item3": "The call window collapses into a floating mini-window, so you can keep working in other sections without dropping the connection. There's also mic noise suppression and avatars instead of black tiles for people with the camera off.",
+    "spotlightTitle": "Here it is — «Conferences»",
+    "spotlightBody": "A new sidebar section: video calls with screen sharing, chat and meeting recording."
+  },
   "taskCounts": {
     "title": "Task counts: in columns and in the filter",
     "item1": "A column's header counter now shows not just its own cards but the total including subtasks at every level — `3 (6)`: cards before the brackets, the full total inside. With no subtasks the brackets are dropped; hovering explains both numbers (the same tooltip on a collapsed column).",

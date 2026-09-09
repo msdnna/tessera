@@ -1,6 +1,14 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 import axios from 'axios'
-import api, { auth, gitlab, boards, setAccessToken, getAccessToken, restoreSession } from '@/api'
+import api, {
+  auth,
+  gitlab,
+  boards,
+  setAccessToken,
+  getAccessToken,
+  restoreSession,
+  setRefreshHook,
+} from '@/api'
 import { connection } from '@/composables/useConnection'
 
 // The api module builds an axios instance with real interceptors (token header,
@@ -282,6 +290,77 @@ describe('refresh-on-401', () => {
     await expect(api.get('/protected')).rejects.toThrow()
     // Original + one retry = 2 instance calls, then it gives up.
     expect(calls).toBe(2)
+  })
+})
+
+// #2894 §4. A third owner of the session: the document editor embedded in the
+// Android app holds an access token of ours and no refresh token at all — that
+// one stays in the app on purpose, so the page and the app can never rotate each
+// other's session away. The hook is then the only refresh the page has.
+describe('host-provided refresh (embedded editor)', () => {
+  afterEach(() => {
+    setRefreshHook(null)
+  })
+
+  it('asks the host instead of the server, and retries with what it gets', async () => {
+    setAccessToken('old')
+    const hook = vi.fn().mockResolvedValue('from-host')
+    setRefreshHook(hook)
+    let calls = 0
+    instanceAdapter.mockImplementation((config) => {
+      calls++
+      if (calls === 1) return fail(config, 401, { error: 'unauthorized' })
+      return Promise.resolve(ok(config, { retried: true }))
+    })
+
+    const res = await api.get('/protected')
+    expect(res.data).toEqual({ retried: true })
+    expect(hook).toHaveBeenCalledTimes(1)
+    expect(getAccessToken()).toBe('from-host')
+    expect(instanceAdapter.mock.calls[1][0].headers.Authorization).toBe('Bearer from-host')
+    // No /auth/refresh of our own: the page has nothing to refresh with, and a
+    // cookie-mode call from a WebView would answer 401 and end the session.
+    expect(globalAdapter).not.toHaveBeenCalled()
+  })
+
+  it('coalesces concurrent 401s into a single request to the host', async () => {
+    setAccessToken('old')
+    const hook = vi.fn(() => new Promise((resolve) => setTimeout(() => resolve('from-host'), 5)))
+    setRefreshHook(hook)
+    const seen = {}
+    instanceAdapter.mockImplementation((config) => {
+      seen[config.url] = (seen[config.url] || 0) + 1
+      if (seen[config.url] === 1) return fail(config, 401, { error: 'unauthorized' })
+      return Promise.resolve(ok(config, { url: config.url }))
+    })
+
+    await Promise.all([api.get('/a'), api.get('/b')])
+    expect(hook).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the session when the host cannot answer', async () => {
+    setAccessToken('old')
+    // A host that is gone (the WebView is being torn down) or busy resolves
+    // empty. That is "could not ask", not "signed out": the app is holding a
+    // live login, and clearing here would sign the editor out of it.
+    setRefreshHook(() => '')
+    const expired = vi.fn()
+    window.addEventListener('auth:expired', expired)
+    instanceAdapter.mockImplementation((config) => fail(config, 401, { error: 'unauthorized' }))
+
+    await expect(api.get('/protected')).rejects.toBeTruthy()
+    expect(expired).not.toHaveBeenCalled()
+    expect(connection.offline).toBe(true)
+    window.removeEventListener('auth:expired', expired)
+  })
+
+  it('a throwing host is a failure, not an unhandled rejection', async () => {
+    setAccessToken('old')
+    setRefreshHook(() => {
+      throw new Error('bridge is gone')
+    })
+    instanceAdapter.mockImplementation((config) => fail(config, 401, { error: 'unauthorized' }))
+    await expect(api.get('/protected')).rejects.toBeTruthy()
   })
 })
 

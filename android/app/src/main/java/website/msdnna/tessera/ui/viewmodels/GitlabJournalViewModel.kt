@@ -14,6 +14,15 @@ import website.msdnna.tessera.data.repository.GitlabRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
+/** One run's loaded actions plus its keyset cursor: [hasMore] tells the UI to offer
+ *  "показать ещё", [nextSeq] is what the next page is fetched with. A run can hold
+ *  thousands of actions and the endpoint pages them 500 at a time. */
+data class RunActions(
+    val items: List<GitlabSyncAction> = emptyList(),
+    val hasMore: Boolean = false,
+    val nextSeq: Int? = null,
+)
+
 data class GitlabJournalUiState(
     val loading: Boolean = true,
     val error: UiText? = null,
@@ -22,18 +31,21 @@ data class GitlabJournalUiState(
     val message: UiText? = null,
     val runs: List<GitlabSyncRun> = emptyList(),
     val expandedRunId: String? = null,
-    /** runId → its loaded actions (lazily fetched on first expand). */
-    val actionsByRun: Map<String, List<GitlabSyncAction>> = emptyMap(),
+    /** runId → its loaded actions (lazily fetched on first expand, then paged). */
+    val actionsByRun: Map<String, RunActions> = emptyMap(),
     val loadingActions: Boolean = false,
     /** The action whose detail/diff is shown in the detail dialog, paired with its run. */
     val selected: Pair<GitlabSyncRun, GitlabSyncAction>? = null,
+    /** The open dialog is still fetching its diff (the list response omits it). */
+    val loadingDetail: Boolean = false,
     val retrying: Boolean = false,
 )
 
 /** Owns the GitLab sync-journal screen: the run list, lazily-loaded actions per
  *  run, and retrying a failed push. Mirrors the web `GitLabJournalModal`. */
-class GitlabJournalViewModel : ViewModel() {
-    private val repo = GitlabRepository()
+class GitlabJournalViewModel(
+    private val repo: GitlabRepository = GitlabRepository(),
+) : ViewModel() {
     private val _state = MutableStateFlow(GitlabJournalUiState())
     val state: StateFlow<GitlabJournalUiState> = _state.asStateFlow()
 
@@ -58,21 +70,74 @@ class GitlabJournalViewModel : ViewModel() {
         }
         _state.update { it.copy(expandedRunId = run.id) }
         if (_state.value.actionsByRun.containsKey(run.id)) return
+        loadActions(workspaceId, run, reset = true)
+    }
+
+    /** Fetches the next page of [run]'s actions and appends it (the run stops at
+     *  the page size otherwise — a long run would silently look truncated). */
+    fun loadMoreActions(workspaceId: String, run: GitlabSyncRun) {
+        val loaded = _state.value.actionsByRun[run.id] ?: return
+        if (!loaded.hasMore || _state.value.loadingActions) return
+        loadActions(workspaceId, run, reset = false)
+    }
+
+    private fun loadActions(workspaceId: String, run: GitlabSyncRun, reset: Boolean) {
         viewModelScope.launch {
+            val cursor = if (reset) null else _state.value.actionsByRun[run.id]?.nextSeq
             _state.update { it.copy(loadingActions = true) }
             try {
-                val actions = repo.syncActions(workspaceId, run.id)
-                _state.update { it.copy(loadingActions = false, actionsByRun = it.actionsByRun + (run.id to actions)) }
+                val page = repo.syncActions(workspaceId, run.id, cursor)
+                _state.update { st ->
+                    val prev = if (reset) emptyList() else st.actionsByRun[run.id]?.items.orEmpty()
+                    val loaded = RunActions(
+                        items = prev + page.items.orEmpty(),
+                        hasMore = page.hasMore,
+                        nextSeq = page.nextAfterSeq,
+                    )
+                    st.copy(loadingActions = false, actionsByRun = st.actionsByRun + (run.id to loaded))
+                }
             } catch (e: Exception) {
                 _state.update { it.copy(loadingActions = false, error = errorMessage(e)) }
             }
         }
     }
 
-    fun select(run: GitlabSyncRun, action: GitlabSyncAction) =
+    /** Opens a row's diff, fetching it on demand — the list response carries only
+     *  [GitlabSyncAction.hasDetail]. The diff is cached back onto the row, and a
+     *  guard drops a late response if the user has moved on to another row. */
+    fun select(workspaceId: String, run: GitlabSyncRun, action: GitlabSyncAction) {
         _state.update { it.copy(selected = run to action) }
+        if (!action.hasDetail || action.detail != null) return
+        viewModelScope.launch {
+            _state.update { it.copy(loadingDetail = true) }
+            try {
+                val detail = repo.syncActionDetail(workspaceId, run.id, action.id)
+                val withDetail = action.copy(detail = detail)
+                _state.update { st ->
+                    val loaded = st.actionsByRun[run.id]
+                    st.copy(
+                        loadingDetail = false,
+                        // Cache the diff back onto the row so reopening it is instant…
+                        actionsByRun = if (loaded == null) {
+                            st.actionsByRun
+                        } else {
+                            st.actionsByRun + (
+                                run.id to loaded.copy(
+                                    items = loaded.items.map { if (it.id == action.id) withDetail else it },
+                                )
+                                )
+                        },
+                        // …but only repaint the dialog if it still shows this row.
+                        selected = if (st.selected?.second?.id == action.id) run to withDetail else st.selected,
+                    )
+                }
+            } catch (e: Exception) {
+                _state.update { it.copy(loadingDetail = false, error = errorMessage(e)) }
+            }
+        }
+    }
 
-    fun closeDetail() = _state.update { it.copy(selected = null) }
+    fun closeDetail() = _state.update { it.copy(selected = null, loadingDetail = false) }
 
     fun retry(workspaceId: String) {
         val sel = _state.value.selected ?: return

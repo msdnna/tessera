@@ -74,6 +74,37 @@ type Config struct {
 	// as unavailable. Deliberately empty by default — the sidecar is close to a
 	// gigabyte, and an install that does not want it should not have to opt out.
 	ConverterURL string
+	// LiveKit SFU, which carries conference media (#2864). Optional in the same
+	// way the converter is: with any of these empty the client reports itself
+	// disabled and only conferences become unavailable.
+	//
+	// LiveKitURL is the backend's own path to the RoomService API — a compose
+	// service name, never published outside. LiveKitPublicURL is the signalling
+	// address handed to the browser, which goes through Caddy on 443 and is
+	// therefore a different address, not a rewrite of the first. The secret is
+	// used to sign join tokens and must never reach a client.
+	LiveKitURL       string
+	LiveKitPublicURL string
+	LiveKitAPIKey    string
+	LiveKitAPISecret string
+	// EgressUploadDir is UploadDir as the *egress container* sees it (#2877).
+	//
+	// The recorder writes the mp4 itself, into the volume both services share, so
+	// the path we ask it for is a path in its filesystem — not ours. In the
+	// shipped compose the two mounts agree (/data/uploads on both), which is why
+	// this defaults to UploadDir and nobody has to set it; the knob exists for the
+	// install that mounts the volume somewhere else in one of the two containers,
+	// where the failure would otherwise be a recording that starts, runs and
+	// writes its file where nothing can find it.
+	EgressUploadDir string
+	// RecordingTemplateURL points egress at our own recording page (#2877), so a
+	// recording is composed the way the room looks in the browser — screen
+	// full-bleed, cameras as PiP, avatars where there is no video — instead of
+	// egress's dark built-in grid. It is an INTERNAL url the egress container
+	// reaches over the compose network (e.g. http://frontend/rec/egress), never
+	// a public one. Empty leaves the built-in template, so an install that does
+	// not set it keeps recording exactly as before.
+	RecordingTemplateURL string
 	// Request body ceilings, in bytes. MaxBodyBytes is the blanket limit;
 	// uploads and attachments get their own, larger, budgets.
 	MaxBodyBytes       int64
@@ -202,6 +233,22 @@ func New() *Config {
 		sentryEnv = "development"
 	}
 
+	// LiveKit credentials. A half-filled pair is worth a word: the SFU would be
+	// running and the section visible, while every join fails on a token the
+	// server refuses — a failure that looks like broken media, not like a
+	// missing setting. Not fail-closed, because conferences are optional and an
+	// install should not be kept down by them.
+	lkKey := strings.TrimSpace(os.Getenv("LIVEKIT_API_KEY"))
+	lkSecret := strings.TrimSpace(os.Getenv("LIVEKIT_API_SECRET"))
+	switch {
+	case (lkKey == "") != (lkSecret == ""):
+		log.Println("WARNING: only one of LIVEKIT_API_KEY/LIVEKIT_API_SECRET is set — conferences stay disabled")
+	case lkSecret != "" && len(lkSecret) < 32:
+		// livekit-server refuses to start on a shorter secret, so this pair can
+		// never work — say so here rather than in the SFU's container log.
+		log.Printf("WARNING: LIVEKIT_API_SECRET is shorter than 32 chars (%d) — livekit-server will refuse it", len(lkSecret))
+	}
+
 	return &Config{
 		DatabaseURL:    dbURL,
 		Port:           getEnv("PORT", "8080"),
@@ -220,15 +267,21 @@ func New() *Config {
 
 		FCMCredentialsFile: strings.TrimSpace(os.Getenv("FCM_CREDENTIALS_FILE")),
 
-		GracefulTimeout:    getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
-		PATTouchInterval:   getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
-		TrustedProxies:     splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
-		RateLimitEnabled:   getEnvBool("RATE_LIMIT_ENABLED", true),
-		MediaRequireAuth:   getEnvBool("MEDIA_REQUIRE_AUTH", false),
-		ConverterURL:       getEnv("CONVERTER_URL", ""),
-		MaxBodyBytes:       getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
-		MaxUploadBytes:     getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
-		MaxAttachmentBytes: getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),
+		GracefulTimeout:      getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
+		PATTouchInterval:     getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
+		TrustedProxies:       splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
+		RateLimitEnabled:     getEnvBool("RATE_LIMIT_ENABLED", true),
+		MediaRequireAuth:     getEnvBool("MEDIA_REQUIRE_AUTH", false),
+		ConverterURL:         getEnv("CONVERTER_URL", ""),
+		LiveKitURL:           strings.TrimSpace(os.Getenv("LIVEKIT_URL")),
+		LiveKitPublicURL:     strings.TrimSpace(os.Getenv("LIVEKIT_PUBLIC_URL")),
+		LiveKitAPIKey:        lkKey,
+		LiveKitAPISecret:     lkSecret,
+		EgressUploadDir:      getEnv("LIVEKIT_EGRESS_UPLOAD_DIR", getEnv("UPLOAD_DIR", "./uploads")),
+		RecordingTemplateURL: strings.TrimSpace(os.Getenv("RECORDING_TEMPLATE_URL")),
+		MaxBodyBytes:         getEnvBytes("MAX_BODY_BYTES", DefaultMaxBodyBytes),
+		MaxUploadBytes:       getEnvBytes("MAX_UPLOAD_BYTES", DefaultMaxUploadBytes),
+		MaxAttachmentBytes:   getEnvBytes("MAX_ATTACHMENT_BYTES", DefaultMaxAttachmentBytes),
 
 		SentryDSN: strings.TrimSpace(os.Getenv("SENTRY_DSN")),
 		SentryEnv: sentryEnv,

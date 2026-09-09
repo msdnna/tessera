@@ -1,15 +1,25 @@
 package website.msdnna.tessera.e2e
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.screens.BoardScreen
+import website.msdnna.tessera.ui.screens.ConferencesScreen
 import website.msdnna.tessera.ui.screens.DocumentsScreen
+import website.msdnna.tessera.ui.screens.MainScreen
+import website.msdnna.tessera.ui.screens.documents.DocChrome
+import website.msdnna.tessera.ui.screens.documents.DocTitleSwitcher
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
 
@@ -57,22 +67,101 @@ fun ComposeContentTestRule.openTaskModal(fixture: E2eBackend.Fixture, taskId: St
 }
 
 /**
+ * Mounts the whole app shell — topbar, drawer, sidebar, Home — logged in as the
+ * fixture's account, and waits until it is up.
+ *
+ * The other helpers here compose a single screen on purpose; this one exists for
+ * the specs whose subject *is* the shell (the Get Started guide, #2860, lives in
+ * its drawer and paints over everything the drawer opens onto). Nothing is stubbed:
+ * `MainScreen` boots on Home and loads the workspace tree over the real API, so a
+ * spec that reaches the sidebar has proved the shell reaches it too.
+ */
+fun ComposeContentTestRule.setShellContent(fixture: E2eBackend.Fixture) {
+    setContent {
+        TesseraTheme {
+            Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
+                MainScreen(
+                    user = fixture.account.user,
+                    isDark = false,
+                    accentKey = "default",
+                    openTaskId = null,
+                    onOpenTaskHandled = {},
+                    onAccentChange = {},
+                    onToggleDark = {},
+                    onLogout = {},
+                )
+            }
+        }
+    }
+    awaitTag(TestTags.MAIN_SHELL)
+}
+
+/**
  * Mounts the documents section and waits until the tree has loaded from the
  * backend ([anchorId]'s row is on screen).
  *
  * Composed directly, for the same reason [setBoardContent] is: reaching the
  * section from Home means walking the drawer, and folding navigation into every
  * documents spec would give each one a second way to fail.
+ *
+ * The shell's top bar is part of the harness since #2894's rework: an open
+ * document no longer draws a header of its own, it hands one up to
+ * [website.msdnna.tessera.ui.screens.MainScreen] and the actions live behind
+ * the title. Mounting the section alone would leave every one of them
+ * unreachable — the specs would be testing a screen the app never shows.
  */
 fun ComposeContentTestRule.setDocumentsContent(fixture: E2eBackend.Fixture, anchorId: String) {
     setContent {
         TesseraTheme {
             Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
-                DocumentsScreen(workspaceId = fixture.workspace.id)
+                var chrome by remember { mutableStateOf<DocChrome?>(null) }
+                Column(Modifier.fillMaxSize()) {
+                    chrome?.let { DocTitleSwitcher(it) }
+                    DocumentsScreen(workspaceId = fixture.workspace.id, onChrome = { chrome = it })
+                }
             }
         }
     }
     awaitTag(TestTags.documentRow(anchorId))
+}
+
+/**
+ * Mounts the conferences section and waits until the workspace's calls have
+ * arrived from the backend ([anchorId]'s row is on screen).
+ *
+ * Composed directly, as the sections above are. No media is set up and none is
+ * needed: everything this tier can assert — which calls exist, what the filter
+ * asks the server for, what a delete actually removes — is the meeting rather
+ * than the call, and the meeting is plain HTTP.
+ */
+fun ComposeContentTestRule.setConferencesContent(fixture: E2eBackend.Fixture, anchorId: String) {
+    setContent {
+        TesseraTheme {
+            Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
+                ConferencesScreen(workspaceId = fixture.workspace.id)
+            }
+        }
+    }
+    awaitTag(TestTags.conferenceRow(anchorId))
+}
+
+/**
+ * Opens the title menu and taps one of its items.
+ *
+ * The menu is a [androidx.compose.ui.window.Popup], composed only while it is
+ * open, so its items cannot be waited on before the tap — hence the wait on
+ * [TestTags.DOCUMENT_BACK], the one item that is always in it.
+ *
+ * The scroll is not decoration: the menu is longer than even the widened
+ * Robolectric screen, and a tap below the fold is swallowed in silence — the
+ * spec then fails on whatever the item was supposed to open, several lines
+ * later, pointing at the wrong thing entirely.
+ */
+fun ComposeContentTestRule.pickDocMenu(tag: String) {
+    onNodeWithTag(TestTags.DOCUMENT_MENU).performClick()
+    awaitTag(TestTags.DOCUMENT_BACK)
+    awaitTag(tag)
+    onNodeWithTag(tag).performScrollTo().performClick()
 }
 
 /**

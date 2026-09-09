@@ -567,14 +567,19 @@ async function loadDetail() {
 
 // The parent's subtask list (ordered) is only needed when this task is itself a
 // subtask and only to pin its position on a move — best-effort, one extra GET.
+// The same response also carries the parent's own title, which the «Родитель»
+// row shows (#2861) — so that stays one request, not two.
 async function loadSiblings(t) {
   siblings.value = []
+  parentTask.value = null
   if (!t?.parent_id) return
   try {
     const res = await tasksApi.get(t.parent_id)
     siblings.value = res.data?.subtasks || []
+    parentTask.value = res.data || null
   } catch {
     siblings.value = []
+    parentTask.value = null
   }
 }
 
@@ -747,6 +752,12 @@ const moving = ref(false)
 // Sibling order of this task inside its parent (empty for a top-level task) —
 // only used to keep the position stable on a move.
 const siblings = ref([])
+// The parent task itself, from the same GET as `siblings` — only its title (and
+// number, until the title lands) is used, by the «Родитель» row.
+const parentTask = ref(null)
+// Empty while the parent GET is in flight (or if it failed) — the row then shows
+// an ellipsis placeholder rather than a chip with no text.
+const parentLabel = computed(() => parentTask.value?.title || '…')
 
 // Neighbours for PATCH move: a subtask holds its place in the parent's list, a
 // top-level task appends to the end of the target column. Either way we send
@@ -1635,9 +1646,18 @@ async function onSubtaskChanged() {
                   ><n-icon :component="GitMergeOutline" :size="15" />
                   {{ t('task.field.parent') }}</span
                 >
-                <button v-if="task?.parent_id" class="val" @click="detachFromParent">
-                  {{ t('task.parent.detach') }}
-                </button>
+                <div v-if="task?.parent_id" class="parent-row">
+                  <button
+                    class="val parent-chip"
+                    :title="parentTask?.title || ''"
+                    @click="emit('open', task.parent_id)"
+                  >
+                    <span class="parent-title">{{ parentLabel }}</span>
+                  </button>
+                  <button v-if="!readonly" class="val detach" @click="detachFromParent">
+                    {{ t('task.parent.detach') }}
+                  </button>
+                </div>
                 <n-popover v-else trigger="click" placement="bottom-start">
                   <template #trigger>
                     <button class="val">
@@ -2489,6 +2509,28 @@ async function onSubtaskChanged() {
   align-items: center;
   gap: 6px;
   min-width: 0;
+}
+/* ── parent row (#2861): [parent title …] [Открепить] ──
+   The title takes whatever the detach button leaves and ellipsises; both the row
+   and the chip need min-width:0, or the flex default (auto) keeps the chip at its
+   text width and pushes «Открепить» out of the modal. */
+.parent-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.parent-chip {
+  min-width: 0;
+}
+.parent-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.parent-row .detach {
+  flex: none;
+  color: var(--t-text3);
 }
 .st-btn {
   display: inline-flex;

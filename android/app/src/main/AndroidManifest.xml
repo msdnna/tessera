@@ -13,6 +13,36 @@
     <!-- In-app self-update: launch the system installer for a downloaded APK. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!-- Conferences (#2896 §4). Microphone and camera are requested at runtime
+         when a call is joined, not at install; a refused camera leaves the call
+         running with audio only. MODIFY_AUDIO_SETTINGS is what lets the call
+         switch between the earpiece, the speaker and a headset, and
+         BLUETOOTH_CONNECT is its Android 12+ counterpart for a wireless one. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- A call keeps its microphone while the app is off screen; that is only
+         allowed to a foreground service, and from Android 14 only to one that
+         declares which capability it is holding. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
+
+    <!-- Sharing the screen (#2896 §8) captures through MediaProjection, which the
+         platform only grants to a foreground service of this type. The service
+         itself is the LiveKit SDK's — it owns the capturer — and its manifest
+         declares both; stated again here because a permission that only appears
+         after a dependency merge is one nobody reviewing this file can see. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <!-- Neither is required: a tablet without a camera, or a device without a
+         microphone, still joins and listens. Left implicit, the permissions above
+         would make both into install-time requirements. -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+
     <application
         android:name=".TesseraApplication"
         android:allowBackup="true"
@@ -74,6 +104,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Holds the microphone and camera for the duration of a call (#2896 §4). -->
+        <service
+            android:name=".data.conference.ConferenceCallService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera" />
 
         <!-- Fires when a reminder alarm goes off → posts a notification. -->
         <receiver

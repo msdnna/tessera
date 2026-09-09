@@ -140,7 +140,15 @@ make bump-api  BUMP=minor   # + bump-web / bump-android
   → `make test-e2e-frontend` (сборка + прогон против `vite preview` :4174) →
   `make e2e-backend-down`. Спеки в `frontend/e2e/`, **не** в `frontend/tests/` (там vitest).
   `@playwright/test` пинуется **ровно 1.62.0** под уже скачанный chromium в
-  `~/.cache/ms-playwright`; `playwright install` локально не запускать — CDN недоступен.
+  `~/.cache/ms-playwright`; `playwright install` не запускать — его node-клиент режется
+  средой (как yarn на npm-реестре). Сам CDN доступен: `curl -L cdn.playwright.dev/dbazure/
+  download/playwright/builds/<браузер>/<rev>/<браузер>-ubuntu-24.04.zip` качается, ревизию
+  брать из `node_modules/playwright-core/browsers.json`, распаковывать в
+  `~/.cache/ms-playwright/<браузер>-<rev>/` + пустые `INSTALLATION_COMPLETE`/
+  `DEPENDENCIES_VALIDATED`. Так поставлен **firefox** (rev 1538) для #2863.
+  Гоча headless Firefox: он **не рисует скроллбары вообще** — `scrollbar-width` там всегда
+  computed `none`, независимо от CSS. Скроллбар-баги в FF проверяются по computed
+  `scrollbar-color`, кадром — нет (дисплея/Xvfb на машине тоже нет).
 - **Android e2e (#2711) — два яруса, харнесс общий** (`android/app/src/e2eShared`, он же
   в `src/test` и в `src/androidTest`). Ярус A: Compose UI Test под **Robolectric** против
   того же бэкенда на :8092 — `make e2e-backend-up` → `make test-e2e-android`. Спеки в

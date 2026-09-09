@@ -1,0 +1,55 @@
+# LiveKit SFU for the recording stand (#2877). Sibling of livekit.e2e.yaml, which
+# serves the web suite's media tier, but it differs from it in the one way that
+# decides whether a recording can happen at all: this SFU advertises its address
+# INSIDE the compose network, not 127.0.0.1.
+#
+# WHY NOT LOOPBACK, since every other stand here uses it. The recording's
+# subscriber is egress's headless Chrome, i.e. a browser in a container. Chrome
+# gathers no loopback candidate of its own (WebRTC drops the lo interface unless
+# started with --allow-loopback-in-peer-connection, which egress does not expose),
+# so its only local candidate sits on eth0 — and a socket bound to 172.x has no
+# route to 127.0.0.1. Handed a loopback candidate it therefore sends nothing at
+# all. That failure was observed here before this file changed: Chrome joined the
+# room as EG_…, the SFU sent eight STUN requests to Chrome's srflx candidate and
+# received zero, no track ever arrived, and egress aborted with "Start signal not
+# received" — which our backend faithfully reports as a failed recording.
+#
+# WHAT THAT COSTS. The media plane of this stand is now reachable only from
+# inside the compose network, so a browser on the host CANNOT join these rooms.
+# The publisher moved in with it: see the `publisher` service in
+# recording.e2e.yml. Only :7955 is published, and only signalling and the twirp
+# API go through it — that is all the backend (a host process) ever needs.
+#
+# node_ip is left unset on purpose: with use_external_ip off, livekit takes the
+# container's own address on the compose network, which is exactly what both the
+# publisher and egress resolve `livekit` to. Pinning it would mean pinning a
+# subnet compose assigns.
+#
+# Same no-secrets rule as its siblings: the key/secret come from LIVEKIT_KEYS.
+# Redis is not here either — it comes from REDIS_HOST in recording.e2e.yml, which
+# is what puts the server in the multi-node mode where an egress store exists at
+# all. Keeping it out of the file means this config is inert on its own and
+# cannot flip an SFU's mode by being mounted somewhere by mistake.
+
+port: 7955
+
+rtc:
+  # Both transports stay on, and the UDP one is what actually gets used. An
+  # earlier revision claimed "TCP only" via udp_port: 0 with an empty port range;
+  # that is not how livekit reads those keys — it fell back to its default
+  # 50000-60000 range and said so in the startup line (portICERange). Nothing is
+  # published, so the range costs nothing here.
+  tcp_port: 7956
+  use_external_ip: false
+
+room:
+  auto_create: false
+  max_participants: 30
+  empty_timeout: 300
+  departure_timeout: 20
+
+logging:
+  # info, like the sibling: "participant active" and the egress lifecycle lines
+  # are how you tell a real recording from a stand that merely started.
+  level: info
+  pion_level: error

@@ -667,14 +667,223 @@ interface ApiService {
     @DELETE("notes/{id}")
     suspend fun deleteNote(@Path("id") noteId: String)
 
-    // ── Documents (#2718) — read-only on Android (#2735) ───────────────────────
+    // ── Documents (#2718, full parity since #2894) ─────────────────────────────
     // The list omits `content`; the body arrives only from the single-document
     // call, so opening a document is a second request by design.
     @GET("workspaces/{id}/documents")
-    suspend fun documents(@Path("id") workspaceId: String): List<website.msdnna.tessera.data.model.Document>?
+    suspend fun documents(
+        @Path("id") workspaceId: String,
+        @retrofit2.http.Query("project_id") projectId: String? = null,
+    ): List<website.msdnna.tessera.data.model.Document>?
 
     @GET("documents/{id}")
     suspend fun document(@Path("id") documentId: String): website.msdnna.tessera.data.model.Document
+
+    /** Resolves a workspace-scoped slug — what a `tessera://doc/<slug>` deep link needs. */
+    @GET("workspaces/{id}/documents/by-slug/{slug}")
+    suspend fun documentBySlug(
+        @Path("id") workspaceId: String,
+        @Path("slug") slug: String,
+    ): website.msdnna.tessera.data.model.Document
+
+    @POST("workspaces/{id}/documents")
+    suspend fun createDocument(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateDocumentRequest,
+    ): website.msdnna.tessera.data.model.Document
+
+    @PATCH("documents/{id}")
+    suspend fun updateDocument(
+        @Path("id") documentId: String,
+        @Body body: website.msdnna.tessera.data.model.UpdateDocumentRequest,
+    ): website.msdnna.tessera.data.model.Document
+
+    /** Content has its own endpoint, and answers **409** when [
+     *  website.msdnna.tessera.data.model.UpdateDocumentContentRequest.updatedAt]
+     *  is stale — see DocumentRepository.saveContent for how that is surfaced. */
+    @PATCH("documents/{id}/content")
+    suspend fun updateDocumentContent(
+        @Path("id") documentId: String,
+        @Body body: website.msdnna.tessera.data.model.UpdateDocumentContentRequest,
+    ): website.msdnna.tessera.data.model.DocumentContentSaved
+
+    /** `recursive=true` deletes the subtree; without it a document with children is refused. */
+    @DELETE("documents/{id}")
+    suspend fun deleteDocument(
+        @Path("id") documentId: String,
+        @retrofit2.http.Query("recursive") recursive: Boolean? = null,
+    )
+
+    @Multipart
+    @POST("documents/{id}/assets")
+    suspend fun uploadDocumentAsset(
+        @Path("id") documentId: String,
+        @Part file: MultipartBody.Part,
+    ): website.msdnna.tessera.data.model.DocumentAssetUploaded
+
+    /** Separate from [uploadDocumentAsset] because the asset route is images-only
+     *  by contract — widening it would quietly let every paste take PDFs. */
+    @Multipart
+    @POST("documents/{id}/pdf")
+    suspend fun uploadDocumentPdf(
+        @Path("id") documentId: String,
+        @Part file: MultipartBody.Part,
+    ): com.google.gson.JsonObject
+
+    // Office import/export via the LibreOffice sidecar (#2733). The status call is
+    // what lets the UI hide import on an install without one, rather than offering
+    // an action that fails after the file picker.
+    @GET("document-converter")
+    suspend fun documentConverterStatus(): website.msdnna.tessera.data.model.DocumentConverterStatus
+
+    @Multipart
+    @POST("workspaces/{id}/documents/import")
+    suspend fun importDocument(
+        @Path("id") workspaceId: String,
+        @Part file: MultipartBody.Part,
+    ): website.msdnna.tessera.data.model.DocumentImportResult
+
+    /**
+     * A document asset by its stored URL (#2894 §3).
+     *
+     * Assets are not addressed by id: the body carries the whole signed URL the
+     * server minted (`/api/documents/asset?doc=…&sig=…`), and the signature is
+     * what authorises the read. So this takes the link as it stands rather than
+     * rebuilding a route the client would have to keep in sync with the server's.
+     */
+    @retrofit2.http.Streaming
+    @GET
+    suspend fun downloadDocumentAsset(@retrofit2.http.Url url: String): okhttp3.ResponseBody
+
+    /** Streaming: the response is a file, and buffering a PDF through Gson corrupts it. */
+    @retrofit2.http.Streaming
+    @GET("documents/{id}/export")
+    suspend fun exportDocument(
+        @Path("id") documentId: String,
+        @retrofit2.http.Query("format") format: String,
+    ): okhttp3.ResponseBody
+
+    // Block comments (#2730). Roots and replies come back in one list and are
+    // threaded on the client.
+    @GET("documents/{id}/comments")
+    suspend fun documentComments(
+        @Path("id") documentId: String,
+    ): List<website.msdnna.tessera.data.model.DocumentComment>?
+
+    @POST("documents/{id}/comments")
+    suspend fun createDocumentComment(
+        @Path("id") documentId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateDocumentCommentRequest,
+    ): website.msdnna.tessera.data.model.DocumentComment
+
+    @PATCH("document-comments/{id}")
+    suspend fun updateDocumentComment(
+        @Path("id") commentId: String,
+        @Body body: website.msdnna.tessera.data.model.UpdateDocumentCommentRequest,
+    ): website.msdnna.tessera.data.model.DocumentComment
+
+    @PATCH("document-comments/{id}/resolve")
+    suspend fun resolveDocumentComment(
+        @Path("id") commentId: String,
+        @Body body: website.msdnna.tessera.data.model.ResolveDocumentCommentRequest,
+    ): website.msdnna.tessera.data.model.DocumentComment
+
+    @DELETE("document-comments/{id}")
+    suspend fun deleteDocumentComment(@Path("id") commentId: String)
+
+    // Version journal (#2731). The list carries no bodies — a version is fetched
+    // whole only when it is previewed.
+    @GET("documents/{id}/versions")
+    suspend fun documentVersions(
+        @Path("id") documentId: String,
+    ): List<website.msdnna.tessera.data.model.DocumentVersion>?
+
+    @POST("documents/{id}/versions")
+    suspend fun createDocumentVersion(
+        @Path("id") documentId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateDocumentVersionRequest,
+    ): website.msdnna.tessera.data.model.DocumentVersion
+
+    @GET("document-versions/{id}")
+    suspend fun documentVersion(
+        @Path("id") versionId: String,
+    ): website.msdnna.tessera.data.model.DocumentVersion
+
+    @POST("document-versions/{id}/restore")
+    suspend fun restoreDocumentVersion(
+        @Path("id") versionId: String,
+    ): website.msdnna.tessera.data.model.Document
+
+    // Template gallery (#2734). Creating a document *from* a template is
+    // createDocument(templateId = …) — there is no separate endpoint for it.
+    @GET("workspaces/{id}/document-templates")
+    suspend fun documentTemplates(
+        @Path("id") workspaceId: String,
+    ): List<website.msdnna.tessera.data.model.DocumentTemplate>?
+
+    @POST("workspaces/{id}/document-templates")
+    suspend fun createDocumentTemplate(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateDocumentTemplateRequest,
+    ): website.msdnna.tessera.data.model.DocumentTemplate
+
+    @GET("document-templates/{id}")
+    suspend fun documentTemplate(
+        @Path("id") templateId: String,
+    ): website.msdnna.tessera.data.model.DocumentTemplate
+
+    @PATCH("document-templates/{id}")
+    suspend fun updateDocumentTemplate(
+        @Path("id") templateId: String,
+        @Body body: website.msdnna.tessera.data.model.UpdateDocumentTemplateRequest,
+    ): website.msdnna.tessera.data.model.DocumentTemplate
+
+    @DELETE("document-templates/{id}")
+    suspend fun deleteDocumentTemplate(@Path("id") templateId: String)
+
+    // Task links and approval routes (#2732). One link row, two read directions.
+    @GET("documents/{id}/tasks")
+    suspend fun documentTaskLinks(
+        @Path("id") documentId: String,
+    ): List<website.msdnna.tessera.data.model.DocumentTaskLink>?
+
+    @POST("documents/{id}/tasks")
+    suspend fun createDocumentTaskLink(
+        @Path("id") documentId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateDocumentTaskLinkRequest,
+    ): website.msdnna.tessera.data.model.DocumentTaskLink
+
+    @DELETE("document-task-links/{id}")
+    suspend fun deleteDocumentTaskLink(@Path("id") linkId: String)
+
+    @GET("tasks/{id}/documents")
+    suspend fun taskDocumentLinks(
+        @Path("id") taskId: String,
+    ): List<website.msdnna.tessera.data.model.TaskDocumentLink>?
+
+    @GET("documents/{id}/approvals")
+    suspend fun documentApprovals(
+        @Path("id") documentId: String,
+    ): List<website.msdnna.tessera.data.model.DocumentApproval>?
+
+    @POST("documents/{id}/approvals")
+    suspend fun createDocumentApproval(
+        @Path("id") documentId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateDocumentApprovalRequest,
+    ): website.msdnna.tessera.data.model.DocumentApproval
+
+    /** Answers with the caller's **step**, not the route — the route's own status
+     *  changes only when the last signature closes it. */
+    @POST("document-approvals/{id}/decide")
+    suspend fun decideDocumentApproval(
+        @Path("id") approvalId: String,
+        @Body body: website.msdnna.tessera.data.model.DecideDocumentApprovalRequest,
+    ): website.msdnna.tessera.data.model.DocumentApprovalStep
+
+    @POST("document-approvals/{id}/cancel")
+    suspend fun cancelDocumentApproval(
+        @Path("id") approvalId: String,
+    ): website.msdnna.tessera.data.model.DocumentApproval
 
     // ── GitLab integration ────────────────────────────────────────────────────
     @GET("gitlab/connection")
@@ -726,11 +935,22 @@ interface ApiService {
         @Path("id") workspaceId: String,
     ): List<website.msdnna.tessera.data.model.GitlabSyncRun>?
 
+    /** Keyset-paginated: the reply is `{items, has_more, next_after_seq}`, and
+     *  [afterSeq] is the cursor (the previous page's `next_after_seq`). Rows come
+     *  without their diffs — fetch one via [gitlabSyncActionDetail]. */
     @GET("workspaces/{id}/gitlab/sync-runs/{runId}/actions")
     suspend fun gitlabSyncActions(
         @Path("id") workspaceId: String,
         @Path("runId") runId: String,
-    ): List<website.msdnna.tessera.data.model.GitlabSyncAction>?
+        @Query("after_seq") afterSeq: Int? = null,
+    ): website.msdnna.tessera.data.model.GitlabSyncActionsPage
+
+    @GET("workspaces/{id}/gitlab/sync-runs/{runId}/actions/{actionId}/detail")
+    suspend fun gitlabSyncActionDetail(
+        @Path("id") workspaceId: String,
+        @Path("runId") runId: String,
+        @Path("actionId") actionId: String,
+    ): website.msdnna.tessera.data.model.GitlabSyncActionDetail
 
     @POST("workspaces/{id}/gitlab/sync-runs/{runId}/actions/{actionId}/retry")
     suspend fun gitlabRetryWriteback(
@@ -751,4 +971,143 @@ interface ApiService {
         @Path("conflictId") conflictId: String,
         @Body body: website.msdnna.tessera.data.model.ResolveConflictRequest,
     )
+
+    // ── Conferences (#2896 §1, backend #2864) ──────────────────────────────────
+    // Media never comes through here: these routes own the meeting (plan, roster,
+    // attendance), and the one media-adjacent call is [conferenceToken], which
+    // hands out a short-lived LiveKit warrant.
+
+    /** [status] filters by `scheduled`/`live`/`ended`; anything else is a 400. */
+    @GET("workspaces/{id}/conferences")
+    suspend fun conferences(
+        @Path("id") workspaceId: String,
+        @Query("status") status: String? = null,
+    ): List<website.msdnna.tessera.data.model.Conference>?
+
+    /** The conferences held about a task — the task screen's "discussed in" link. */
+    @GET("tasks/{id}/conferences")
+    suspend fun taskConferences(
+        @Path("id") taskId: String,
+    ): List<website.msdnna.tessera.data.model.Conference>?
+
+    /** Conference + roster in one round trip, so the room never paints an empty panel. */
+    @GET("conferences/{id}")
+    suspend fun conference(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceDetail
+
+    @POST("workspaces/{id}/conferences")
+    suspend fun createConference(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateConferenceRequest,
+    ): website.msdnna.tessera.data.model.Conference
+
+    /** Full replace, not a partial patch — the server binds `title` as required. */
+    @PATCH("conferences/{id}")
+    suspend fun updateConference(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.UpdateConferenceRequest,
+    ): website.msdnna.tessera.data.model.Conference
+
+    @DELETE("conferences/{id}")
+    suspend fun deleteConference(@Path("id") conferenceId: String)
+
+    /** Joining a scheduled (or paused) call brings it live again — see [Conference]. */
+    @POST("conferences/{id}/join")
+    suspend fun joinConference(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceMembership
+
+    @POST("conferences/{id}/leave")
+    suspend fun leaveConference(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceMembership
+
+    /** Hangs the call up for the whole room. Moderators only (403 otherwise). */
+    @POST("conferences/{id}/end")
+    suspend fun endConference(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.Conference
+
+    @POST("conferences/{id}/invite")
+    suspend fun inviteConference(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.InviteConferenceRequest,
+    ): List<website.msdnna.tessera.data.model.ConferenceParticipant>?
+
+    @GET("conferences/{id}/participants")
+    suspend fun conferenceParticipants(
+        @Path("id") conferenceId: String,
+    ): List<website.msdnna.tessera.data.model.ConferenceParticipant>?
+
+    /** 503 when the install has no SFU, 409 when the call ended, 403 while kicked. */
+    @POST("conferences/{id}/token")
+    suspend fun conferenceToken(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceToken
+
+    // ── In-call chat (#2873) ────────────────────────────────────────────────────
+    // Plain HTTP rather than frames on the room socket: chat bodies there would
+    // let a busy conversation overflow the buffer and disconnect the people
+    // having it. The socket only nudges.
+
+    /** Pages *backwards*: both cursor halves travel together or neither does. */
+    @GET("conferences/{id}/messages")
+    suspend fun conferenceMessages(
+        @Path("id") conferenceId: String,
+        @Query("before_at") beforeAt: String? = null,
+        @Query("before_id") beforeId: String? = null,
+        @Query("limit") limit: Int? = null,
+    ): website.msdnna.tessera.data.model.ConferenceMessagePage
+
+    @POST("conferences/{id}/messages")
+    suspend fun postConferenceMessage(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.PostConferenceMessageRequest,
+    ): website.msdnna.tessera.data.model.ConferenceMessage
+
+    /** The same route as [postConferenceMessage]; a file cannot travel as JSON. */
+    @Multipart
+    @POST("conferences/{id}/messages")
+    suspend fun postConferenceMessageWithFiles(
+        @Path("id") conferenceId: String,
+        @Part("body") body: okhttp3.RequestBody,
+        @Part files: List<MultipartBody.Part>,
+    ): website.msdnna.tessera.data.model.ConferenceMessage
+
+    @DELETE("conference-messages/{id}")
+    suspend fun deleteConferenceMessage(@Path("id") messageId: String)
+
+    @retrofit2.http.Streaming
+    @GET("conference-attachments/{id}")
+    suspend fun downloadConferenceAttachment(
+        @Path("id") attachmentId: String,
+    ): okhttp3.ResponseBody
+
+    // ── Recording (#2877) ───────────────────────────────────────────────────────
+    // Start and stop are moderation; the list is not — everyone who could have
+    // attended may watch it back.
+
+    @POST("conferences/{id}/recording/start")
+    suspend fun startConferenceRecording(
+        @Path("id") conferenceId: String,
+    ): website.msdnna.tessera.data.model.ConferenceRecording
+
+    @POST("conferences/{id}/recording/stop")
+    suspend fun stopConferenceRecording(@Path("id") conferenceId: String)
+
+    @GET("conferences/{id}/recordings")
+    suspend fun conferenceRecordings(
+        @Path("id") conferenceId: String,
+    ): List<website.msdnna.tessera.data.model.ConferenceRecording>?
+
+    /** Streaming: an mp4 buffered whole would be an OOM on a long meeting. */
+    @retrofit2.http.Streaming
+    @GET("conference-recordings/{id}/download")
+    suspend fun downloadConferenceRecording(
+        @Path("id") recordingId: String,
+    ): okhttp3.ResponseBody
+
+    @DELETE("conference-recordings/{id}")
+    suspend fun deleteConferenceRecording(@Path("id") recordingId: String)
 }

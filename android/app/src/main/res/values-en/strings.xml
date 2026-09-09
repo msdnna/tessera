@@ -27,6 +27,10 @@
     <string name="auth_server_title">Server</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Applied immediately. Empty means the default server.</string>
+    <string name="tls_insecure_label">Skip certificate check</string>
+    <string name="tls_insecure_hint_off">Turn on if the server uses a self-signed certificate or a private certificate authority.</string>
+    <string name="tls_insecure_hint_on">The trust chain and host name are not verified — the connection can be intercepted. Only for your own server on a trusted network.</string>
+    <string name="auth_language_switch_to">Switch to %1$s</string>
     <string name="auth_browser_failed">Couldn\'t open a browser to sign in</string>
 
     <!-- OAuth redirect errors (codes come from the backend) -->
@@ -44,6 +48,7 @@
     <string name="gate_session_title">Session ended</string>
     <string name="gate_session_message">Looks like the session expired or account access was revoked. Sign in again to continue.</string>
     <string name="gate_session_relogin">Sign in again</string>
+    <string name="gate_change_server">Change server</string>
     <string name="gate_exit">Exit</string>
 
     <!-- Settings: profile -->
@@ -87,6 +92,7 @@
 
     <!-- Settings: localization and formats -->
     <string name="settings_locale_title">Localization and formats</string>
+    <string name="settings_connection_title">Connection</string>
     <string name="settings_language">Language</string>
     <string name="settings_week_start">Week starts on</string>
     <string name="settings_time_format">Time format</string>
@@ -126,8 +132,11 @@
     <string name="nav_reminders">Reminders</string>
     <string name="nav_notes">Notes</string>
     <string name="nav_documents">Documents</string>
+    <string name="nav_conferences">Conferences</string>
     <string name="nav_help">Help</string>
     <string name="nav_admin">Administration</string>
+    <!-- "New" badge for recently added sections (Documents, Conferences) -->
+    <string name="nav_new_badge">new</string>
 
     <!-- Sidebar: workspaces -->
     <string name="sidebar_estimation">Task estimation…</string>
@@ -203,6 +212,9 @@
     <string name="task_gitlab_creating">Creating…</string>
     <string name="task_gitlab_template">Template</string>
     <string name="task_gitlab_templates_empty">No templates</string>
+    <!-- The "grouped task" badge on an issue carrying the grouping label (#2592) -->
+    <string name="task_prop_grouping">Grouping</string>
+    <string name="task_gitlab_grouped">Grouped</string>
     <string name="task_archive_confirm">Archive this task?</string>
     <string name="task_archive_action">Archive</string>
     <string name="task_delete_confirm">Delete this task? This cannot be undone.</string>
@@ -237,7 +249,15 @@
     <string name="task_tab_subtasks">Subtasks</string>
     <string name="task_tab_relations">Relations</string>
     <string name="task_tab_files">Files</string>
+    <string name="task_tab_documents">Documents</string>
     <string name="task_tab_history">History</string>
+
+    <!-- The «Documents» tab (#2894 §7) -->
+    <string name="task_docs_empty">No document refers to this task.</string>
+    <string name="task_docs_untitled">Untitled</string>
+    <string name="task_docs_fragment">a fragment of the document</string>
+    <string name="task_docs_unlink">Remove the link?</string>
+    <string name="task_docs_unlink_confirm">The document stays where it is — only the link to the task goes.</string>
 
     <!-- Task modal: description and comments -->
     <string name="task_description_placeholder">Add a description…</string>
@@ -259,6 +279,10 @@
     <!-- Task modal: subtasks and relations -->
     <string name="task_subtasks_empty">No subtasks yet</string>
     <string name="task_subtask_new_hint">+ subtask (Enter)</string>
+    <!-- The subtask's place in the GitLab hierarchy (#2592) -->
+    <string name="task_subtasks_gl_detached">outside the hierarchy</string>
+    <string name="task_subtasks_gl_absent">not in GitLab</string>
+    <string name="task_subtasks_parent_not_grouped">The parent is not marked as a grouped task — subtasks will not reach GitLab.</string>
     <string name="task_relations_empty">No relations yet</string>
     <string name="task_relation_relates">relates to</string>
     <string name="task_relation_blocks">blocks</string>
@@ -472,6 +496,16 @@
     <string name="board_column_delete">Delete column</string>
     <string name="board_column_delete_confirm">Delete “%1$s” and the tasks in it?</string>
 
+    <!-- Board: column / composer counters (web parity #2850/#2851). The bracketed
+         number folds in every subtask; the hint opens on a long press. -->
+    <string name="board_column_count">%1$d (%2$d)</string>
+    <string name="board_column_count_title">Tasks in the column: %1$d; in brackets — %2$d including subtasks</string>
+    <string name="board_column_count_title_flat">Tasks in the column: %1$d</string>
+    <string name="board_composer_shown">showing: %1$d (%2$d)</string>
+    <string name="board_composer_shown_flat">showing: %1$d</string>
+    <string name="board_composer_shown_title">Tasks shown: %1$d; in brackets — %2$d including subtasks</string>
+    <string name="board_composer_shown_title_flat">Tasks shown: %1$d (no subtasks)</string>
+
     <!-- Board: lane labels in grouping modes -->
     <string name="board_lane_no_tag">No tag</string>
     <string name="board_lane_unassigned">Unassigned</string>
@@ -561,10 +595,30 @@
     <string name="dates_short">%2$s %1$d</string>
     <string name="dates_short_year">%2$s %1$d, %3$d</string>
     <string name="dates_long">%2$s %1$d, %3$d</string>
-    <string name="dates_full">%2$s %1$d, %3$d</string>
     <string name="dates_at_time">%1$s, %2$s</string>
     <string name="dates_with_time">%1$s %2$s</string>
     <string name="dates_clock">%1$02d:%2$02d</string>
+    <!-- Full-date presets (#2857). en-GB order (day first), matching the web,
+         which picks en-GB so every locale we ship keeps day-before-month. -->
+    <string name="dates_preset_short">%1$02d/%2$02d/%3$d</string>
+    <string name="dates_preset_long">%1$d %2$s %3$d</string>
+    <string name="dates_clock_12">%1$d:%2$02d %3$s</string>
+    <string name="dates_am">AM</string>
+    <string name="dates_pm">PM</string>
+    <string-array name="dates_months_full">
+        <item>January</item>
+        <item>February</item>
+        <item>March</item>
+        <item>April</item>
+        <item>May</item>
+        <item>June</item>
+        <item>July</item>
+        <item>August</item>
+        <item>September</item>
+        <item>October</item>
+        <item>November</item>
+        <item>December</item>
+    </string-array>
 
     <!-- Notifications: header and sections -->
     <string name="notif_title">Notifications</string>
@@ -675,11 +729,342 @@
 
     <!-- Documents -->
     <string name="docs_empty">No documents yet</string>
-    <string name="docs_empty_hint">Documents are created in the web app</string>
+    <string name="docs_empty_nested">Nothing inside yet</string>
+    <string name="docs_empty_hint">Create the first one with the button above</string>
     <string name="docs_untitled">Untitled</string>
+    <string name="docs_empty_preview">Empty document</string>
     <string name="docs_reader_untitled">Document</string>
     <string name="docs_reader_empty">This document is empty</string>
     <string name="docs_image_alt">Document image</string>
+    <!-- Grid: breadcrumbs, create, nested count on a tile -->
+    <string name="docs_crumb_root">Documents</string>
+    <string name="docs_create">New document</string>
+    <string name="docs_create_confirm">Create</string>
+    <string name="docs_nested_count">nested: %1$d</string>
+    <!-- The menu behind the document's name in the app bar -->
+    <string name="docs_menu_edit">Edit</string>
+    <string name="docs_menu_read">Close the editor</string>
+    <string name="docs_menu_comments">Discussions</string>
+    <string name="docs_menu_links">Links and approvals</string>
+    <string name="docs_menu_history">Change history</string>
+    <string name="docs_menu_switch">Go to a document</string>
+    <string name="docs_menu_list">Back to documents</string>
+    <!-- The reader's «⋯» menu -->
+    <string name="docs_action_nested">Nested document</string>
+    <string name="docs_action_children">Show nested (%1$d)</string>
+    <string name="docs_action_rename">Rename</string>
+    <string name="docs_action_remove">Delete the document</string>
+    <string name="docs_rename_title">Rename the document</string>
+    <string name="docs_remove_title">Delete the document?</string>
+    <string name="docs_remove_single">The document will be deleted.</string>
+    <string name="docs_remove_with_children">The document will be deleted along with the nested ones (%1$d).</string>
+    <string name="docs_toc_title">Outline</string>
+    <string name="docs_toc_empty">Add headings — they will build the outline.</string>
+    <string name="docs_toc_untitled">Untitled heading</string>
+    <string name="docs_pdf_untitled">PDF document</string>
+    <string name="docs_pdf_failed">Could not open the PDF</string>
+    <string name="docs_pdf_page">Page %1$d of %2$d</string>
+    <string name="docs_size_b">B</string>
+    <string name="docs_size_kb">KB</string>
+    <string name="docs_size_mb">MB</string>
+    <string name="docs_size_gb">GB</string>
+    <string name="docs_page_portrait">Portrait</string>
+    <string name="docs_page_landscape">Landscape</string>
+    <string name="docs_page_size_custom">custom size</string>
+    <string name="docs_section_caption">From here: %1$s %2$s</string>
+    <!-- Editor (#2894 §4). See the note in values/strings.xml: docs_embed_lang is
+         the code of the language this build renders in, passed to the embedded
+         editor. -->
+    <string name="docs_embed_lang" translatable="false">en</string>
+    <string name="docs_edit">Edit</string>
+    <string name="docs_editor_saved">Saved</string>
+    <string name="docs_editor_dirty">Unsaved changes</string>
+    <string name="docs_editor_saving">Saving…</string>
+    <string name="docs_editor_conflict_short">Conflict</string>
+    <string name="docs_editor_error">Not saved</string>
+    <string name="docs_editor_conflict">The document changed elsewhere — your latest edits were not saved.</string>
+    <string name="docs_editor_remote_change">The document changed elsewhere.</string>
+    <string name="docs_editor_reload">Reload</string>
+    <string name="docs_editor_failed">Could not open the editor</string>
+    <string name="docs_editor_blocked">%1$s is editing this block</string>
+    <string name="docs_editor_blocked_someone">someone else</string>
+    <!-- Annotations (#2894 §5). -->
+    <string name="docs_comments_title">Discussion</string>
+    <string name="docs_comments_empty">No comments yet. Open a block in the editor and tap the discussion icon to start one.</string>
+    <string name="docs_comments_section_focus">Selected block</string>
+    <string name="docs_comments_section_blocks">On blocks</string>
+    <string name="docs_comments_section_document">On the document</string>
+    <string name="docs_comments_section_detached">Block deleted</string>
+    <string name="docs_comments_anchor_fallback">the selected block</string>
+    <string name="docs_comments_unpin">Unpin</string>
+    <string name="docs_comments_reply">Reply</string>
+    <string name="docs_comments_resolve">Resolve</string>
+    <string name="docs_comments_reopen">Reopen</string>
+    <string name="docs_comments_resolved">resolved</string>
+    <string name="docs_comments_reply_placeholder">Reply…</string>
+    <string name="docs_comments_edit_placeholder">Edit the comment…</string>
+    <string name="docs_comments_draft_block">Comment on the block…</string>
+    <string name="docs_comments_draft_doc">Comment on the document…</string>
+    <string name="docs_comments_send">Send</string>
+    <string name="docs_comments_someone">Member</string>
+    <string name="docs_comments_remove_title">Delete the comment?</string>
+    <string name="docs_comments_remove_confirm">The comment will be deleted.</string>
+    <string name="docs_comments_remove_thread_title">Delete the discussion?</string>
+    <string name="docs_comments_remove_thread_confirm">The discussion and its replies (%1$d) will be deleted.</string>
+
+    <!-- Version journal (#2894 §6) -->
+    <string name="docs_history_title">History</string>
+    <string name="docs_history_open">Version history</string>
+    <string name="docs_history_empty">The history starts once the document is saved.</string>
+    <string name="docs_history_snapshot">Save a version</string>
+    <string name="docs_history_label_hint">For example: agreed wording</string>
+    <string name="docs_history_revision">Version %1$d</string>
+    <string name="docs_history_span">%1$s–%2$s</string>
+    <string name="docs_history_unknown_author">Unknown author</string>
+    <string name="docs_history_compare">Compared with version %1$d</string>
+    <string name="docs_history_restore">Restore</string>
+    <string name="docs_history_restore_title">Restore this version?</string>
+    <string name="docs_history_restore_confirm">The document goes back to this version. The current state stays in the history.</string>
+    <string name="docs_history_loading_version">Loading the version…</string>
+    <string name="docs_history_identical">The versions are identical.</string>
+    <plurals name="docs_history_added">
+        <item quantity="one">+%1$d block</item>
+        <item quantity="other">+%1$d blocks</item>
+    </plurals>
+    <plurals name="docs_history_removed">
+        <item quantity="one">−%1$d block</item>
+        <item quantity="other">−%1$d blocks</item>
+    </plurals>
+    <string name="docs_history_changed">changed: %1$d</string>
+    <string name="docs_history_moved">moved: %1$d</string>
+    <string name="docs_history_status_added">added</string>
+    <string name="docs_history_status_removed">removed</string>
+    <string name="docs_history_status_changed">changed</string>
+    <string name="docs_history_status_moved">moved</string>
+    <string name="docs_history_diff_image">[image]</string>
+
+    <!-- Task links and approval routes (#2894 §7) -->
+    <string name="docs_links_title">Links</string>
+    <string name="docs_links_open">Links and approvals</string>
+    <string name="docs_links_tasks">Tasks</string>
+    <string name="docs_links_empty">No task is linked to this document.</string>
+    <string name="docs_links_task">Task</string>
+    <string name="docs_links_fragment">a fragment of the document</string>
+    <string name="docs_links_link_task">Link a task</string>
+    <string name="docs_links_link_block">Link this block to a task</string>
+    <string name="docs_links_search_hint">Task number or title</string>
+    <string name="docs_links_nothing_found">Nothing found.</string>
+    <string name="docs_links_unlink">Remove the link?</string>
+    <string name="docs_links_unlink_confirm">The task stays where it is — only the link to the document goes.</string>
+    <string name="docs_links_anchor_fallback">A link to a block of the document</string>
+    <string name="docs_links_unpin">Unpin</string>
+
+    <string name="docs_links_approvals">Approval</string>
+    <string name="docs_links_no_approvals">The document has not been sent for approval yet.</string>
+    <string name="docs_links_raise">Send for approval</string>
+    <string name="docs_links_raise_disabled">An approval is already under way — wait for it or cancel it.</string>
+    <string name="docs_links_route_title_hint">What is being agreed</string>
+    <string name="docs_links_approvers">Approvers — the signing order</string>
+    <string name="docs_links_no_members">There are no other members in this workspace.</string>
+    <string name="docs_links_mode_sequential">In turn</string>
+    <string name="docs_links_mode_parallel">All at once</string>
+    <string name="docs_links_submit">Send</string>
+    <string name="docs_links_progress">signed: %1$d of %2$d</string>
+    <string name="docs_links_meta">Version %1$d · %2$s</string>
+    <string name="docs_links_unknown_author">Unknown author</string>
+    <string name="docs_links_sign">Sign</string>
+    <string name="docs_links_comment_hint">A remark (optional)</string>
+    <string name="docs_links_approve">Approve</string>
+    <string name="docs_links_reject">Reject</string>
+    <string name="docs_links_cancel_route">Cancel the approval</string>
+    <string name="docs_links_cancel_confirm">The route closes; the signatures collected stay in the history.</string>
+    <string name="docs_links_status_pending">Under approval</string>
+    <string name="docs_links_status_approved">Approved</string>
+    <string name="docs_links_status_rejected">Rejected</string>
+    <string name="docs_links_status_cancelled">Cancelled</string>
+    <string name="docs_links_status_unknown">Unknown status</string>
+    <string name="docs_links_step_signed">signed</string>
+    <string name="docs_links_step_rejected">rejected</string>
+    <string name="docs_links_step_current">their turn now</string>
+    <string name="docs_links_step_waiting">waiting their turn</string>
+    <!-- D8: template gallery, file import and export (#2734, #2733) -->
+    <string name="docs_templates_open">Templates</string>
+    <string name="docs_templates_title">Document templates</string>
+    <string name="docs_templates_search">Search</string>
+    <string name="docs_templates_upload">Upload a file</string>
+    <string name="docs_templates_use">Create</string>
+    <string name="docs_templates_builtin">Built-in</string>
+    <string name="docs_templates_no_description">No description</string>
+    <string name="docs_templates_empty">Nothing found. Save a document as a template, or upload a file.</string>
+    <string name="docs_templates_remove_title">Delete this template?</string>
+    <string name="docs_templates_remove_confirm">Documents created from it are kept.</string>
+    <!-- Import: what the picker takes, refusals, and warnings after a conversion -->
+    <string name="docs_import_hint">Formats: %1$s</string>
+    <string name="docs_import_hint_limited">Without a converter only %1$s (%2$s)</string>
+    <string name="docs_import_no_converter">no converter deployed</string>
+    <string name="docs_import_unsupported">That file format is not supported</string>
+    <string name="docs_import_too_large">The file is larger than %1$d MB</string>
+    <string name="docs_import_not_a_document">This is not a Tessera document</string>
+    <string name="docs_import_title">Imported document</string>
+    <string name="docs_import_images_dropped">Pictures not carried over: %1$d</string>
+    <string name="docs_import_images_dropped_why">Pictures not carried over: %1$d (%2$s)</string>
+    <string name="docs_import_sections_differ">The file\'s sections disagreed about page geometry — the document uses the widest one.</string>
+    <!-- Export: the menu entry, the fallback file name, the system share sheet -->
+    <string name="docs_export">Export</string>
+    <string name="docs_export_name">Document</string>
+    <string name="docs_export_share">Share “%1$s”</string>
+    <string name="docs_export_unavailable">The converter is unavailable — try HTML</string>
+    <!-- Built-in templates. The bodies are Markdown, parsed by DocMarkdown.kt -->
+    <string name="docs_template_meeting_title">Meeting notes</string>
+    <string name="docs_template_meeting_description">Attendees, agenda, decisions and follow-up tasks</string>
+    <string name="docs_template_meeting_body"># Meeting notes\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1. \n2. \n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due\n\n## Follow-up tasks\n\n- [ ] \n</string>
+    <string name="docs_template_spec_title">Specification</string>
+    <string name="docs_template_spec_description">The problem, the scope, acceptance criteria and risks</string>
+    <string name="docs_template_spec_body"># Specification\n\n## The problem\n\n## In scope\n\n- \n\n## Out of scope\n\n- \n\n## Acceptance criteria\n\n- [ ] \n\n## Risks and open questions\n\n| Question | Owner |\n|---|---|\n|  |  |\n</string>
+    <string name="docs_template_retro_title">Retrospective</string>
+    <string name="docs_template_retro_description">What went well, what got in the way, what we change</string>
+    <string name="docs_template_retro_body"># Retrospective\n\n**Period:**\n\n## What went well\n\n- \n\n## What got in the way\n\n- \n\n## What we change\n\n- [ ] Action — owner\n</string>
+
+    <!-- Conferences (#2896) -->
+    <string name="conf_schedule">Schedule</string>
+    <string name="conf_untitled">Untitled</string>
+    <string name="conf_empty">No conferences yet</string>
+    <string name="conf_empty_filtered">Nothing in this filter</string>
+    <string name="conf_no_workspace">Pick a workspace</string>
+    <string name="conf_filter_all">All</string>
+    <string name="conf_filter_live">Live</string>
+    <string name="conf_filter_scheduled">Scheduled</string>
+    <string name="conf_filter_ended">Ended</string>
+    <string name="conf_status_live">Live now</string>
+    <string name="conf_status_scheduled">Scheduled</string>
+    <string name="conf_status_ended">Ended</string>
+    <string name="conf_row_invited">Invited: %1$d</string>
+    <string name="conf_row_in_room">In the room: %1$d</string>
+    <string name="conf_row_author">Created by %1$s</string>
+    <string name="conf_row_author_unknown">Author unknown</string>
+    <string name="conf_row_scheduled_at">Starts: %1$s</string>
+    <string name="conf_row_started_at">Started: %1$s</string>
+    <string name="conf_row_ended_at">Ended: %1$s</string>
+    <string name="conf_row_no_time">No start time</string>
+    <string name="conf_confirm_delete">Delete this conference? Its chat and recordings go with it.</string>
+    <string name="conf_create_title">New conference</string>
+    <string name="conf_create_name">Title</string>
+    <string name="conf_create_name_placeholder">Daily standup</string>
+    <string name="conf_create_description">Description</string>
+    <string name="conf_create_description_placeholder">Agenda, links, what we discuss</string>
+    <string name="conf_create_at">Start</string>
+    <string name="conf_create_at_empty">No time set</string>
+    <string name="conf_create_at_hint">Leave empty if the time is not fixed yet</string>
+    <string name="conf_create_ttl">Keep recordings, days</string>
+    <string name="conf_create_ttl_hint">Recordings of this conference are deleted automatically after that many days. 0 keeps them indefinitely.</string>
+    <string name="conf_create_ttl_invalid">Enter a number of days: 0 or more</string>
+    <string name="conf_create_submit">Schedule</string>
+    <string name="conf_back">Back</string>
+    <string name="conf_detail_not_found">Conference not found</string>
+    <string name="conf_action_join">Join</string>
+    <string name="conf_action_leave">Leave</string>
+    <string name="conf_action_end">End</string>
+    <string name="conf_confirm_end">End this conference for everyone?</string>
+    <string name="conf_invite">Invite</string>
+    <string name="conf_invite_empty">Nobody left to invite</string>
+    <string name="conf_section_in_room">In the room</string>
+    <string name="conf_section_invited">Invited</string>
+    <string name="conf_room_empty">Nobody is in the room right now</string>
+    <string name="conf_seat_host">host</string>
+    <string name="conf_media_connecting">Connecting…</string>
+    <string name="conf_media_reconnecting">Connection lost, reconnecting…</string>
+    <string name="conf_media_failed">Could not connect to the room</string>
+    <string name="conf_media_retry">Retry</string>
+    <string name="conf_media_unavailable">Video calls are not configured on this server</string>
+    <string name="conf_media_ended">The conference has ended</string>
+    <string name="conf_media_kicked">The host removed you from the conference</string>
+    <string name="conf_media_no_mic">No microphone access — nobody can hear you</string>
+    <string name="conf_media_no_one">Nobody is in the room yet</string>
+    <string name="conf_sheet_expand">Drag to expand</string>
+    <string name="conf_zoom_reset">Reset zoom</string>
+    <string name="conf_panel_title">In the room: %1$d</string>
+    <string name="conf_panel_empty">Nobody is in the room yet</string>
+    <string name="conf_panel_close">Close</string>
+    <string name="conf_panel_hand_up">Raised a hand</string>
+    <string name="conf_panel_mic_off">microphone off</string>
+    <string name="conf_panel_speaking">microphone on</string>
+    <string name="conf_panel_force_muted">muted by a host</string>
+    <string name="conf_panel_you">you</string>
+    <string name="conf_panel_mute_for_me">Mute for me</string>
+    <string name="conf_panel_unmute_for_me">Unmute for me</string>
+    <string name="conf_panel_force_mute">Mute for everyone</string>
+    <string name="conf_panel_unforce_mute">Give the microphone back</string>
+    <string name="conf_panel_kick">Remove</string>
+    <string name="conf_panel_confirm_kick">Remove %1$s from the conference? They will not be able to come straight back.</string>
+    <string name="conf_panel_raise_hand">Raise a hand</string>
+    <string name="conf_panel_lower_hand">Lower the hand</string>
+    <string name="conf_panel_you_force_muted">A host has muted your microphone</string>
+    <string name="conf_denied_kick">Only a host or a workspace administrator can remove participants</string>
+    <string name="conf_denied_mute">Only a host or a workspace administrator can mute participants</string>
+    <string name="conf_denied_other">The server refused the action</string>
+    <string name="conf_role_host">Host</string>
+    <string name="conf_role_member">Participant</string>
+    <string name="conf_route_bluetooth">Bluetooth</string>
+    <string name="conf_route_wired">Headphones</string>
+    <string name="conf_route_speaker">Speaker</string>
+    <string name="conf_route_earpiece">Earpiece</string>
+    <string name="conf_chat_title">Chat</string>
+    <string name="conf_chat_open">Open chat</string>
+    <string name="conf_chat_close">Close chat</string>
+    <string name="conf_chat_empty">No messages yet</string>
+    <string name="conf_chat_placeholder">Write to the chat…</string>
+    <string name="conf_chat_attach">Attach a file</string>
+    <string name="conf_chat_send">Send</string>
+    <string name="conf_chat_download">Download</string>
+    <string name="conf_chat_delete">Delete message</string>
+    <string name="conf_chat_delete_confirm">Delete this message? It disappears for everyone.</string>
+    <string name="conf_chat_remove_file">Remove file</string>
+    <string name="conf_chat_load_older">Show earlier messages</string>
+    <string name="conf_chat_unknown_author">Unknown author</string>
+    <string name="conf_chat_file_too_big">“%1$s” is larger than 25 MB</string>
+    <string name="conf_chat_too_many_files">At most %1$d files per message</string>
+    <string name="conf_chat_too_long">The message is longer than %1$d characters</string>
+    <string name="conf_chat_size_b">%1$s B</string>
+    <string name="conf_chat_size_kb">%1$s KB</string>
+    <string name="conf_chat_size_mb">%1$s MB</string>
+
+    <!-- Screen share and recordings (#2896 §8) -->
+    <string name="conf_share">Share screen</string>
+    <string name="conf_share_stop">Stop sharing</string>
+    <string name="conf_share_cancel">Leave the queue</string>
+    <string name="conf_share_start">Start sharing</string>
+    <string name="conf_share_you">You are sharing your screen</string>
+    <string name="conf_share_stage_yours">The stage is yours</string>
+    <string name="conf_share_by">%1$s is sharing a screen</string>
+    <string name="conf_share_queued">You are number %1$d in the queue</string>
+    <string name="conf_share_waiting">Waiting in the queue: %1$d</string>
+    <string name="conf_share_ongoing">Screen sharing</string>
+    <string name="conf_share_ongoing_hint">Everyone in the call sees this phone\'s screen</string>
+    <string name="conf_rec_start">Start recording</string>
+    <string name="conf_rec_stop">Stop recording</string>
+    <string name="conf_rec_live">Recording</string>
+    <string name="conf_rec_by">started by %1$s</string>
+    <string name="conf_rec_title">Recordings</string>
+    <string name="conf_rec_download">Download</string>
+    <string name="conf_rec_delete">Delete</string>
+    <string name="conf_rec_delete_confirm">Delete this recording? The file is erased for good.</string>
+    <string name="conf_rec_failed">Recording failed</string>
+    <string name="conf_rec_running">Writing…</string>
+    <string name="conf_rec_length">%1$02d:%2$02d</string>
+    <string name="conf_rec_length_hours">%1$d:%2$02d:%3$02d</string>
+    <string name="conf_rec_err_unavailable">Recording is unavailable: this server has no recording service running</string>
+    <string name="conf_rec_err_forbidden">Only a conference moderator may start a recording</string>
+    <string name="conf_rec_err_conflict">Another moderator has already changed the recording</string>
+
+    <!-- The minimised call (#2896 §9) -->
+    <string name="conf_mini_live">Call in progress</string>
+    <string name="conf_mini_reconnecting">Reconnecting…</string>
+    <string name="conf_mini_lost">Connection lost</string>
+    <string name="conf_mini_others">Others in the call: %1$d</string>
+    <string name="conf_mini_return">Back to the call</string>
+    <string name="conf_mini_hangup">Leave the call</string>
+    <string name="conf_mini_mic_on">Mute the microphone</string>
+    <string name="conf_mini_mic_off">Unmute the microphone</string>
 
     <!-- Workspace members -->
     <string name="members_title">Members</string>
@@ -912,6 +1297,10 @@
     <string name="notif_channel_device_desc">Task notifications</string>
     <string name="notif_channel_reminders_name">Reminders</string>
     <string name="notif_channel_reminders_desc">Task reminder alarms</string>
+    <string name="notif_channel_conference_name">Conferences</string>
+    <string name="notif_channel_conference_desc">An ongoing call while the app is in the background</string>
+    <string name="conf_call_ongoing">Conference in progress</string>
+    <string name="conf_call_ongoing_hint">Tap to return to the call</string>
     <string name="reminder_push_title">Reminder</string>
     <string name="reminder_push_default_body">Time to get to the task</string>
     <string name="push_title_assigned">Task assigned</string>
@@ -974,6 +1363,7 @@
          the task modal shows. -->
     <string name="gljournal_empty">The journal is empty — sync has not run yet</string>
     <string name="gljournal_no_actions">No recorded actions</string>
+    <string name="gljournal_load_more">Show more</string>
     <string name="gljournal_trigger_manual">manual</string>
     <string name="gljournal_trigger_auto">auto</string>
     <string name="gljournal_run_meta">%1$s · %2$s</string>
@@ -1049,6 +1439,12 @@
     <string name="update_download_failed">Download failed</string>
     <string name="whats_new_title">What\'s new</string>
     <string name="whats_new_subtitle">The update is applied — here is what changed</string>
+    <string name="whats_new_history_title">Changelog</string>
+    <string name="whats_new_history_subtitle">All Tessera updates</string>
+    <string name="version_client">Client</string>
+    <string name="version_server">Server</string>
+    <string name="version_commit">commit %1$s</string>
+    <string name="version_built">built %1$s</string>
 
     <!-- Markdown editor. The placeholder captions ("text", "Hidden text") end up
          inside the document itself: they are a starter written by the UI, so they
@@ -1126,6 +1522,14 @@
     <string name="conflict_state_open">Open</string>
 
     <!-- "What's new" release highlights — one key per entry in update/WhatsNewEntries. -->
+    <string name="whatsnew_v0_76_0_title">Conferences and documents on the phone</string>
+    <string-array name="whatsnew_v0_76_0_items">
+        <item>A new “Conferences” section: video calls with screen sharing, chat and meeting recording — right inside the app. A call collapses into a chip, so you can move around other sections without dropping the connection.</item>
+        <item>Documents are now editable from the phone: the same editor as in the browser — blocks, tables, PDF, discussions, version history, task links and approval, import and export.</item>
+        <item>An interactive Get Started tutorial arrived: steps from your first project to your first task, launched from the sidebar footer.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_conferences_title">Take a look at “Conferences”</string>
+    <string name="whatsnew_spotlight_conferences_body">Video calls with screen sharing, chat and meeting recording — now in the app.</string>
     <string name="whatsnew_v0_72_0_title">English and Russian</string>
     <string-array name="whatsnew_v0_72_0_items">
         <item>Switch the app language in Settings → Language: English or Russian. Your choice is remembered on the device.</item>
@@ -1156,4 +1560,63 @@
     <string-array name="whatsnew_v0_68_0_items">
         <item>Notifications arrive even when the app is closed, and open the right task when tapped.</item>
     </string-array>
+
+    <!-- Get Started guide (#2860) — step wording, keyed by the step id in util/Tour.kt -->
+    <string name="tour_skip">Skip</string>
+    <string name="tour_workspaces_title">Workspaces</string>
+    <string name="tour_workspaces_body">This is where you switch workspaces: each has its own projects, members and tags. A new one is created right next to it — but let’s start with the personal one.</string>
+    <string name="tour_tree_add_title">The project tree</string>
+    <string name="tour_tree_add_body">Projects live in the side menu. Press “+” to add the first one.</string>
+    <string name="tour_menu_project_title">Pick “Project”</string>
+    <string name="tour_menu_project_body">A group will come in handy later, once there are many projects.</string>
+    <string name="tour_project_create_title">Name the project</string>
+    <string name="tour_project_create_body">Type a name and confirm — the project appears in the tree. Its address is derived from the name by the server.</string>
+    <string name="tour_board_add_title">Add a board</string>
+    <string name="tour_board_add_body">Tasks live on boards, and a project may have several. Open the project’s “⋯” menu.</string>
+    <string name="tour_board_menu_title">Pick “Add board”</string>
+    <string name="tour_board_menu_body">The same menu renames, estimates and recolours the project.</string>
+    <string name="tour_board_create_title">Name the board</string>
+    <string name="tour_board_create_body">Type a name and confirm — the board appears in the tree with four columns.</string>
+    <string name="tour_board_open_title">Open the board</string>
+    <string name="tour_board_open_body">Tap the board — the kanban opens.</string>
+    <string name="tour_task_create_title">Create a task</string>
+    <string name="tour_task_create_body">Press “Create task” in the «К работе» column, type a name and confirm.</string>
+    <string name="tour_card_fields_title">Right on the card</string>
+    <string name="tour_card_fields_body">Priority, due date, tags and assignees are edited without opening the task — just tap the icon on the card.</string>
+    <string name="tour_card_open_title">Open the task</string>
+    <string name="tour_card_open_body">Tap the card — the full task form opens.</string>
+    <string name="tour_tm_due_title">Due date</string>
+    <string name="tour_tm_due_body">Set a due date — the calendar is also where repetition and reminders are configured.</string>
+    <string name="tour_tm_assignees_title">Assignees</string>
+    <string name="tour_tm_assignees_body">Choose who runs the task. While you are alone in the workspace — assign yourself.</string>
+    <string name="tour_tm_priority_title">Priority</string>
+    <string name="tour_tm_priority_body">Priority colours the dot on the card, and the board can be sorted by it.</string>
+    <string name="tour_tm_tags_title">Tags</string>
+    <string name="tour_tm_tags_body">A tag is created right here. The board can group into columns by tags — that is the main way to arrange tasks your own way.</string>
+    <string name="tour_tm_description_title">Description</string>
+    <string name="tour_tm_description_body">Describe the task: Markdown, attachments and @ mentions are supported.</string>
+    <string name="tour_tm_tabs_title">Comments, subtasks, relations</string>
+    <string name="tour_tm_tabs_body">The same place holds the discussion, the subtask tree, relations to other tasks and the full change history.</string>
+    <string name="tour_tm_save_title">Save the task</string>
+    <string name="tour_tm_save_body">Press “Save” — the form closes and the changes show up on the card.</string>
+    <string name="tour_board_tools_title">Board views and tools</string>
+    <string name="tour_board_tools_body">Kanban, list, calendar and Gantt — the same tasks in different cuts. Next to them: search across the whole workspace, tags, milestones and the archive.</string>
+    <string name="tour_board_composer_title">Grouping, sorting, filters</string>
+    <string name="tour_board_composer_body">The “+” on this bar adds grouping (including by tag), sorting and filters, and next to it is the card layout setting.</string>
+    <string name="tour_dnd_card_title">Drag the card</string>
+    <string name="tour_dnd_card_body">A task moves between columns by dragging — that is how its status changes on the board. Drag the card into «В процессе».</string>
+    <string name="tour_group_add_title">Projects group up too</string>
+    <string name="tour_group_add_body">Once there are many projects, they go into groups. Press “+” above the tree once more.</string>
+    <string name="tour_menu_group_title">Pick “Group”</string>
+    <string name="tour_menu_group_body">Now the second menu item comes in handy.</string>
+    <string name="tour_group_created_title">Name the group</string>
+    <string name="tour_group_created_body">Groups help when there are many projects. Type a name and press Enter.</string>
+    <string name="tour_dnd_project_title">Drag the project into the group</string>
+    <string name="tour_dnd_project_body">The project tree drags the same way: pick a project up and drop it into a group.</string>
+    <string name="tour_nav_sections_title">Notes, documents, reminders</string>
+    <string name="tour_nav_sections_body">Besides boards, a workspace holds notes, collaborative documents and reminders.</string>
+    <string name="tour_nav_footer_title">Settings and notifications</string>
+    <string name="tour_nav_footer_body">At the bottom — your profile and settings, next to them notifications.</string>
+    <string name="tour_done_title">All set</string>
+    <string name="tour_done_body">That is everything you need to start. The guide can be restarted from the same place, at the bottom of the side menu.</string>
 </resources>

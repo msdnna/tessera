@@ -339,6 +339,25 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'milestones')
     })
 
+    // ── conferences (#2876) ──
+
+    test('конференции', async ({ page }) => {
+      await page.goto('/conferences')
+      await expect(
+        page.getByTestId('conference-row').filter({ hasText: 'Ежедневная летучка' }),
+      ).toBeVisible()
+      await shoot(page, scheme, 'conferences')
+    })
+
+    test('комната конференции', async ({ page }) => {
+      // The lobby, not a live call: joining would need an SFU behind the backend
+      // and this pipeline deliberately runs without one. It is also the state a
+      // reader actually arrives at — the article walks them from here.
+      await page.goto(`/conferences/${seed.conferenceId}`)
+      await expect(page.getByTestId('conference-join')).toBeVisible()
+      await shoot(page, scheme, 'conference-room')
+    })
+
     // ── tags and milestone management (#2823, wave 3) ──
 
     test('управление тегами', async ({ page }) => {

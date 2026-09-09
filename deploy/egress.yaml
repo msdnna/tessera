@@ -1,0 +1,57 @@
+# LiveKit Egress — server-side conference recording (#2877). Mounted read-only
+# into the `egress` container, which only runs under the `recording` compose
+# profile (see docker-compose.yml).
+#
+# NO SECRETS HERE, same rule as livekit.yaml: egress reads LIVEKIT_API_KEY,
+# LIVEKIT_API_SECRET and LIVEKIT_WS_URL from the environment, so this file stays
+# committable.
+#
+# MIND THE TYPOS. Malformed yaml is fatal ("could not parse config"), but a key
+# egress does not know is dropped in silence — an unknown key was fed to
+# v1.14.1 on purpose and it started as if nothing had happened. A misspelt
+# file_output_max_duration would therefore not fail; the recording would simply
+# have no time limit. Every key below was checked against the binary's own yaml
+# tags instead of against a startup that "looked fine":
+#   docker run --rm --entrypoint sh livekit/egress:v1.14.1 \
+#     -c 'grep -ac <key> /usr/bin/egress'   # 0 hits ⇒ the key is a typo
+#
+# How a recording actually flows, because none of it is obvious from this file:
+#   backend --RoomService--> livekit --redis--> egress --> headless Chrome joins
+#   the room as a hidden participant --> mp4 written to /data/uploads.
+# Egress never talks HTTP to livekit-server; the whole request/response path is
+# Redis. That is why livekit itself has to be pointed at the same Redis, via
+# LIVEKIT_REDIS_HOST in compose.
+
+# Task queue shared with livekit-server. MUST be the same instance the SFU uses
+# (livekit.recording.yaml), otherwise the server files an egress request that
+# nobody is listening for and the recording silently never starts.
+redis:
+  address: redis:6379
+  db: 0
+
+# HTTP server inside this container that hosts the participant-grid templates
+# Chrome then loads. The templates are compiled into the egress binary and served
+# from here — nothing is fetched from an external CDN, so no third party learns
+# when a meeting happens. Not published anywhere: only this container's own
+# Chrome ever connects to it.
+template_port: 7980
+
+# Run Chrome WITH its sandbox. Upstream ships with the sandbox disabled because
+# Docker's default seccomp profile blocks the namespace switch it needs; the
+# fix is to widen the profile by exactly two syscalls (clone, unshare) rather
+# than to drop sandboxing. deploy/chrome-sandboxing-seccomp-profile.json is that
+# widened profile, applied via security_opt in compose. Both halves are load
+# bearing: this flag without the profile and Chrome fails to start at all.
+enable_chrome_sandbox: true
+
+session_limits:
+  # A meeting whose host forgot to press stop would otherwise record until the
+  # room empties — overnight, at ~1 GB/hour into the uploads volume. Two hours
+  # covers any real stand-up; the backend's own stop call normally lands first.
+  file_output_max_duration: 2h
+
+logging:
+  # Same reasoning as livekit.yaml: at `info` this writes room names and
+  # participant identities into the docker logs, i.e. an attendance record with
+  # the retention of the log driver.
+  level: warn

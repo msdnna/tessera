@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,6 +58,10 @@ fun TInputDialog(
     initial: String = "",
     confirmText: String = stringResource(R.string.common_save),
     placeholder: String = "",
+    // e2e anchors: a spec drives the field and the confirm button by tag, since
+    // both their wording and the dialog's title live in the locale files.
+    fieldTag: String? = null,
+    confirmTag: String? = null,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -65,7 +70,7 @@ fun TInputDialog(
     DialogShell(onDismiss) {
         Text(title, color = c.text1, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
         Spacer(Modifier.height(14.dp))
-        TTextField(value = text, onValueChange = { text = it }, placeholder = placeholder)
+        TTextField(value = text, onValueChange = { text = it }, placeholder = placeholder, fieldTag = fieldTag)
         Spacer(Modifier.height(18.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onDismiss)
@@ -74,6 +79,7 @@ fun TInputDialog(
                 confirmText,
                 enabled = text.isNotBlank(),
                 onClick = { if (text.isNotBlank()) onConfirm(text.trim()) },
+                modifier = if (confirmTag != null) Modifier.testTag(confirmTag) else Modifier,
             )
         }
     }
@@ -113,12 +119,20 @@ fun TConfirmByNameDialog(
     }
 }
 
-/** Confirm / cancel dialog (destructive actions). */
+/**
+ * Confirm / cancel dialog (destructive actions).
+ *
+ * [confirmTag] anchors the confirming button for a spec. Optional because most
+ * callers assert on the outcome instead, and named on the button rather than the
+ * dialog: the dialog is on screen either way, so a tag on it would pass in a
+ * build where pressing «да» does nothing.
+ */
 @Composable
 fun TConfirmDialog(
     title: String,
     message: String,
     confirmText: String = stringResource(R.string.common_delete),
+    confirmTag: String? = null,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -131,7 +145,11 @@ fun TConfirmDialog(
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
             TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Ghost, onClick = onDismiss)
             Spacer(Modifier.width(8.dp))
-            TButton(confirmText, onClick = onConfirm)
+            TButton(
+                confirmText,
+                onClick = onConfirm,
+                modifier = if (confirmTag != null) Modifier.testTag(confirmTag) else Modifier,
+            )
         }
     }
 }

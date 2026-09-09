@@ -67,14 +67,17 @@ import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.theme.ConflictAmber
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnCaption
@@ -118,6 +121,9 @@ fun TaskCard(
      *  the moment a drag started, so the opt-in is the point. Propagates to this
      *  card's subtasks, which are equally real. */
     anchored: Boolean = false,
+    /** The column this card sits in, by name — the address the guide's `dnd-card`
+     *  step watches to tell a completed drag from a card merely lifted up. */
+    tourPlace: String? = null,
 ) {
     val c = Tessera.colors
     // Keep ALL subtasks composed during a drag (removing the dragged one would
@@ -151,6 +157,7 @@ fun TaskCard(
                 // cascade below — a tag on the outer node would centre a spec's
                 // tap somewhere in the children.
                 .then(if (anchored) Modifier.testTag(TestTags.taskCard(task.id)) else Modifier)
+                .then(if (anchored) Modifier.tourAnchor(TourKeys.taskCard(task.id), tourPlace) else Modifier)
                 .zIndex((subtasks.size + 1).toFloat())
                 .softShadow(shape)
                 .clip(shape)
@@ -206,11 +213,11 @@ fun TaskCard(
                 // Read-only: show the pills but swallow their edit taps — tapping
                 // anywhere on them just opens the (read) modal.
                 Box {
-                    PillsRow(task, state, vm)
+                    PillsRow(task, state, vm, anchored)
                     Spacer(Modifier.matchParentSize().clickableNoRipple { onOpen(task) })
                 }
             } else {
-                PillsRow(task, state, vm)
+                PillsRow(task, state, vm, anchored)
             }
         }
 
@@ -581,7 +588,7 @@ fun InlineTitleEditor(
 }
 
 @Composable
-private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
+private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel, anchored: Boolean = false) {
     // Compact density = title only, no pills (web cardSize=compact → SIZE_FIELDS=[]).
     if (state.isCompactCard) return
 
@@ -606,12 +613,14 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
     // spacing for touch. Description is omitted in stack mode (web parity).
     if (state.stackFields) {
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            if (showPriority) PriorityPill(task, vm, stacked = true)
-            if (showDue) DuePill(task, state, vm, stacked = true)
+            if (showPriority) TourField(anchored, TourKeys.CARD_PRIORITY, task.id) { PriorityPill(task, vm, stacked = true) }
+            if (showDue) TourField(anchored, TourKeys.CARD_DUE, task.id) { DuePill(task, state, vm, stacked = true) }
             if (showEstimate) EstimatePill(task, state, stacked = true)
-            if (showTags) TagsPill(task, state, vm, stacked = true)
+            if (showTags) TourField(anchored, TourKeys.CARD_TAGS, task.id) { TagsPill(task, state, vm, stacked = true) }
             if (showMilestone) MilestonePill(task, state, stacked = true)
-            if (showAssignee) AssigneesPill(task, state, vm, stacked = true)
+            if (showAssignee) {
+                TourField(anchored, TourKeys.CARD_ASSIGNEES, task.id) { AssigneesPill(task, state, vm, stacked = true) }
+            }
         }
         return
     }
@@ -623,18 +632,37 @@ private fun PillsRow(task: Task, state: BoardUiState, vm: BoardViewModel) {
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            if (showPriority) PriorityPill(task, vm)
-            if (showDue) DuePill(task, state, vm)
+            if (showPriority) TourField(anchored, TourKeys.CARD_PRIORITY, task.id) { PriorityPill(task, vm) }
+            if (showDue) TourField(anchored, TourKeys.CARD_DUE, task.id) { DuePill(task, state, vm) }
             if (showEstimate) EstimatePill(task, state)
             if (showDescription) DescriptionPill(task, state)
-            if (showTags) TagsPill(task, state, vm)
+            if (showTags) TourField(anchored, TourKeys.CARD_TAGS, task.id) { TagsPill(task, state, vm) }
             if (showMilestone) MilestonePill(task, state)
         }
         if (showAssignee) {
             Spacer(Modifier.width(6.dp))
-            AssigneesPill(task, state, vm)
+            TourField(anchored, TourKeys.CARD_ASSIGNEES, task.id) { AssigneesPill(task, state, vm) }
         }
     }
+}
+
+/**
+ * Registers a card field as an anchor of the Get Started guide (#2860), so the
+ * «прямо на карточке» step can point at the priority dot and fan its extra arrows
+ * out to the due date, the tags and the assignee.
+ *
+ * Only on a real card ([TaskCard]'s `anchored`): the drag ghost and the landing
+ * preview render the same task, and letting them register would have the arrow
+ * follow the finger mid-drag. Keys are per card — every card carries its own set,
+ * and the step resolves the prefix to the topmost one on the board.
+ */
+@Composable
+private fun TourField(anchored: Boolean, prefix: String, taskId: String, content: @Composable () -> Unit) {
+    if (!anchored) {
+        content()
+        return
+    }
+    Box(Modifier.tourAnchor(TourKeys.cardField(prefix, taskId))) { content() }
 }
 
 /** A stacked-mode field row: the icon in a fixed leading column + the value, so
@@ -959,7 +987,7 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
 private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val due = dueShort(LocalResources.current, task.dueDate)
+    val due = dueShort(LocalResources.current, task.dueDate, LocalDateFormat.current)
     // Overdue (past due, not done) → red tint, like the web.
     val overdue = !task.isCompleted && isOverdue(task.dueDate)
     val overdueColor = Color(0xFFE0533D)

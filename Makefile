@@ -56,9 +56,34 @@ tidy: ## go mod tidy
 lint-backend: ## Run golangci-lint
 	cd backend && golangci-lint run ./...
 
+# show_skips runs a go test command and then surfaces any tier that skipped
+# itself for want of a database (#2736). The indirection is not decoration:
+# go test throws away a *passing* package's output, and a soft skip passes, so
+# the harness's banner cannot reach this terminal on its own — it goes to the
+# file named by TESSERA_TEST_SKIP_LOG and we print it here. $$rc is preserved so
+# the target still fails when the tests do.
+define show_skips
+	@skiplog=$$(mktemp -t tessera-skiplog.XXXXXX); \
+	export TESSERA_TEST_SKIP_LOG=$$skiplog; \
+	$(1); rc=$$?; \
+	if [ -s $$skiplog ]; then cat $$skiplog; fi; \
+	rm -f $$skiplog; \
+	exit $$rc
+endef
+
 .PHONY: test-backend
 test-backend: ## Run backend tests
-	cd backend && $(GO) test ./...
+	@echo "cd backend && $(GO) test ./..."
+	$(call show_skips, cd backend && $(GO) test ./...)
+
+# The integration tier skips itself when Postgres is unreachable, and a skip is
+# the right default on a box without one — but it is then indistinguishable from
+# a pass (#2736). These targets are the ones to run when "green" has to mean
+# something: TESSERA_TEST_REQUIRE_DB makes the skip red, and -count=1 defeats the
+# cached `ok` that go test prints in 0s without running anything.
+.PHONY: test-backend-strict
+test-backend-strict: ## Like test-backend, but a missing database fails instead of skipping
+	cd backend && TESSERA_TEST_REQUIRE_DB=1 $(GO) test -count=1 ./...
 
 .PHONY: test-backend-cover
 test-backend-cover: ## Backend tests with coverage (backend/coverage.out + cover.html); needs tessera_test DB
@@ -77,7 +102,12 @@ test-backend-cover: ## Backend tests with coverage (backend/coverage.out + cover
 test-e2e-backend: ## Black-box e2e: real binaries as subprocesses on a throwaway DB (needs Postgres)
 	@# Build-tagged, so it is not part of test-backend. E2E_GO hands the suite the
 	@# pinned toolchain — it shells out to build the binaries it then runs.
-	cd backend && E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/...
+	@echo "cd backend && E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/..."
+	$(call show_skips, cd backend && E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/...)
+
+.PHONY: test-e2e-backend-strict
+test-e2e-backend-strict: ## Like test-e2e-backend, but a missing database fails instead of skipping
+	cd backend && TESSERA_TEST_REQUIRE_DB=1 E2E_GO=$(GO) $(GO) test -tags=e2e -count=1 -timeout 15m ./e2e/...
 
 .PHONY: test-e2e-backend-docker
 test-e2e-backend-docker: ## E2e including the image tier (docker build + run; several minutes)
@@ -87,9 +117,17 @@ test-e2e-backend-docker: ## E2e including the image tier (docker build + run; se
 help-index: ## Rebuild the help-centre index from docs/help
 	cd frontend && node scripts/build-help-index.mjs
 
+# Same two-address story as test-e2e-frontend below, and SHOTS_ARGS goes through
+# to playwright — `make help-shots SHOTS_ARGS='-g конференц'` repaints one article's
+# pictures instead of all of them, which keeps an unrelated diff out of the commit.
+SHOTS_ARGS ?=
+SHOTS_ENV = E2E_API_URL=http://localhost:$(E2E_PORT)/api \
+	TESSERA_API_TARGET=http://localhost:$(E2E_PORT)
+
 .PHONY: help-shots
 help-shots: ## Re-take the help-centre screenshots into docs/help/assets (needs `make e2e-backend-up`)
-	cd frontend && corepack yarn build && corepack yarn docs:shots
+	cd frontend && corepack yarn build
+	cd frontend && $(SHOTS_ENV) corepack yarn docs:shots $(SHOTS_ARGS)
 
 # The English twins (#2816): same run, same seed, the interface switched through
 # the account's own language preference. They land next to the Russian set as
@@ -99,7 +137,8 @@ help-shots: ## Re-take the help-centre screenshots into docs/help/assets (needs 
 # hands admin to the instance's first account.
 .PHONY: help-shots-en
 help-shots-en: ## Re-take the help-centre screenshots in English (needs a clean `make e2e-backend-up`)
-	cd frontend && corepack yarn build && TESSERA_SHOTS_LANG=en corepack yarn docs:shots
+	cd frontend && corepack yarn build
+	cd frontend && TESSERA_SHOTS_LANG=en $(SHOTS_ENV) corepack yarn docs:shots $(SHOTS_ARGS)
 
 .PHONY: lint-frontend
 lint-frontend: ## Lint + format-check frontend
@@ -131,14 +170,42 @@ test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.h
 # `backend/middleware/ratelimit_test.go`, so nothing goes untested.
 E2E_PORT ?= 8092
 E2E_DB_URL ?= postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable
+# Where this backend keeps uploads. A variable rather than a literal because the
+# recording stand (#2877) has to mount the SAME directory into the egress
+# container: the backend and the recorder name the file by one absolute path, and
+# a mismatch there is invisible until the mp4 does not appear.
+E2E_UPLOAD_DIR ?= /tmp/tessera-e2e-uploads
+
+# Conferences (#2876). Left empty by default, which makes the token endpoint
+# answer its documented 503 and the media tier of conferences.spec.js skip with
+# a printed reason — the room/chat/roster tiers still run. To exercise the media
+# path too, start the throwaway SFU and point these at it; both commands are in
+# the header of deploy/livekit.e2e.yaml, and they look like:
+#   make e2e-backend-up LIVEKIT_URL=http://localhost:7945 \
+#     LIVEKIT_PUBLIC_URL=ws://localhost:7945 \
+#     LIVEKIT_API_KEY=devkey LIVEKIT_SECRET_FILE=~/.livekit-e2e-secret
+# LIVEKIT_PUBLIC_URL is what the *browser* dials, so it has to be an address the
+# host can reach (ws:// is fine from http://localhost, which is a secure context).
+# The secret goes through a FILE rather than LIVEKIT_API_SECRET= on the command
+# line: a make variable lands in the shell history and, worse, in the `ps` line of
+# every process this recipe starts. Both are still accepted.
+LIVEKIT_URL ?=
+LIVEKIT_PUBLIC_URL ?=
+LIVEKIT_API_KEY ?=
+LIVEKIT_API_SECRET ?=
+LIVEKIT_SECRET_FILE ?=
 
 .PHONY: e2e-backend-up
 e2e-backend-up: ## Start a throwaway backend on :8092 against tessera_test (for web e2e)
 	cd backend && DATABASE_URL="$(E2E_DB_URL)" $(GO) run ./cmd/migrate
 	cd backend && $(GO) build -o /tmp/tessera-e2e-bin .
-	@PORT=$(E2E_PORT) UPLOAD_DIR=/tmp/tessera-e2e-uploads JWT_SECRET=e2e \
+	@LK_SECRET="$(LIVEKIT_API_SECRET)"; LK_FILE="$(LIVEKIT_SECRET_FILE)"; \
+	if [ -n "$$LK_FILE" ]; then LK_SECRET=$$(tr -d '\n' < "$$LK_FILE"); fi; \
+	PORT=$(E2E_PORT) UPLOAD_DIR=$(E2E_UPLOAD_DIR) JWT_SECRET=e2e \
 		DATABASE_URL="$(E2E_DB_URL)" \
 		RATE_LIMIT_ENABLED=false \
+		LIVEKIT_URL="$(LIVEKIT_URL)" LIVEKIT_PUBLIC_URL="$(LIVEKIT_PUBLIC_URL)" \
+		LIVEKIT_API_KEY="$(LIVEKIT_API_KEY)" LIVEKIT_API_SECRET="$$LK_SECRET" \
 		nohup /tmp/tessera-e2e-bin > /tmp/tessera-e2e-backend.log 2>&1 & \
 		for i in $$(seq 1 40); do sleep 0.5; \
 			curl -sf http://localhost:$(E2E_PORT)/api/health > /dev/null && \
@@ -150,9 +217,117 @@ e2e-backend-down: ## Stop the throwaway e2e backend
 	@fuser -k $(E2E_PORT)/tcp 2>/dev/null || true
 	@echo "e2e backend on :$(E2E_PORT) stopped"
 
+# ── Recording stand (#2877) ────────────────────────────────
+# Server-side recording is the one part of conferences whose failure modes live
+# entirely between containers — Redis dispatch, a headless Chrome joining the
+# room, an mp4 written into a directory the backend and egress reach under
+# different uids. None of that exists in a unit test, so it gets a stand:
+#
+#   make recording-e2e-up          # redis + SFU + egress, own project, shifted port
+#   make e2e-backend-up LIVEKIT_URL=http://localhost:$(REC_E2E_PORT) \
+#     LIVEKIT_PUBLIC_URL=ws://localhost:$(REC_E2E_PORT) \
+#     LIVEKIT_API_KEY=$(REC_E2E_KEY) LIVEKIT_SECRET_FILE=~/.livekit-e2e-secret
+#   make recording-e2e-publish REC_E2E_ROOM=<room>   # after the room exists
+#   make recording-e2e-down
+#
+# No UPLOAD_DIR override is needed: REC_E2E_UPLOAD_DIR defaults to the backend's
+# own E2E_UPLOAD_DIR, and the stand mounts it into egress at the same absolute
+# path, so both sides name the finished file identically.
+#
+# It is deliberately NOT `docker compose --profile recording`: that profile turns
+# recording on for the *production* SFU by setting LIVEKIT_REDIS_HOST, i.e. moves
+# live conferences into multi-node mode. See deploy/recording.e2e.yml for what
+# this stand keeps faithful to production and what it does not.
+#
+# The secret goes through a file, not a make variable, for the same reason as
+# LIVEKIT_SECRET_FILE above: a variable lands in shell history and in the `ps`
+# line of every process the recipe starts.
+# 7955, not the 7945 of livekit.e2e.yaml: that one belongs to the media tier of
+# the web suite, and a box that has run it recently still has a container holding
+# it (they also leak — see livekit.e2e.yaml). If 7955 is taken too, move it;
+# nothing else depends on the number. Only this one port is published — the SFU's
+# RTC ports stay inside the network, where the publisher and egress are.
+REC_E2E_PORT ?= 7955
+REC_E2E_KEY ?= devkey
+REC_E2E_SECRET_FILE ?= $(HOME)/.livekit-e2e-secret
+# Deliberately derived from E2E_UPLOAD_DIR rather than repeated: the throwaway
+# backend and the egress container must agree on this path exactly, and two
+# defaults that merely happen to match would drift the first time one is changed.
+REC_E2E_UPLOAD_DIR ?= $(E2E_UPLOAD_DIR)
+
+# The environment both recipes need. Kept in one variable so `up` and `down`
+# cannot drift: compose resolves the project's containers from the same
+# interpolated file, and a `down` with different values would look at a
+# different stack and report success having stopped nothing.
+REC_E2E_ENV = REC_E2E_UID=$$(id -u) \
+	REC_E2E_KEY=$(REC_E2E_KEY) \
+	REC_E2E_SECRET=$$(tr -d '\n' < "$(REC_E2E_SECRET_FILE)") \
+	REC_E2E_PORT=$(REC_E2E_PORT) \
+	REC_E2E_ROOM=$(REC_E2E_ROOM) \
+	REC_E2E_UPLOAD_DIR=$(REC_E2E_UPLOAD_DIR)
+
+.PHONY: recording-e2e-up
+recording-e2e-up: ## Start the throwaway recording stand (redis + SFU + egress) for #2877
+	@test -f "$(REC_E2E_SECRET_FILE)" || { \
+		echo "no $(REC_E2E_SECRET_FILE); create it with:" >&2; \
+		echo "  printf devsecret_at_least_32_characters_long > $(REC_E2E_SECRET_FILE)" >&2; \
+		exit 1; }
+	@grep -qx "port: $(REC_E2E_PORT)" deploy/livekit.recording.e2e.yaml || { \
+		echo "REC_E2E_PORT ($(REC_E2E_PORT)) does not match deploy/livekit.recording.e2e.yaml." >&2; \
+		echo "It is published one-to-one, so both places have to say the same number." >&2; \
+		exit 1; }
+	@mkdir -p $(REC_E2E_UPLOAD_DIR)
+	cd deploy && $(REC_E2E_ENV) $(COMPOSE) -f recording.e2e.yml up -d
+	@echo "recording stand up: SFU on :$(REC_E2E_PORT), recordings in $(REC_E2E_UPLOAD_DIR)/rec"
+
+# The room must already exist — the SFU has auto_create off, so a typo'd name is
+# an error from the CLI rather than an empty room that records nothing.
+REC_E2E_ROOM ?= rec-smoke
+
+.PHONY: recording-e2e-publish
+recording-e2e-publish: ## Publish a demo video track into REC_E2E_ROOM on the recording stand
+	cd deploy && $(REC_E2E_ENV) $(COMPOSE) -f recording.e2e.yml --profile publish up -d publisher
+	@echo "publishing demo media into room $(REC_E2E_ROOM)"
+
+# --profile publish on both, and it is not decoration: a service behind a profile
+# is invisible to `down` and to `logs` unless the profile is named, so without it
+# `down` leaves the publisher running, fails to remove the network ("resource is
+# still in use"), and the next `up` inherits a container that is still in an old
+# room. Observed, not theorised.
+.PHONY: recording-e2e-down
+recording-e2e-down: ## Stop the throwaway recording stand
+	cd deploy && $(REC_E2E_ENV) $(COMPOSE) -f recording.e2e.yml --profile publish down --remove-orphans
+
+.PHONY: recording-e2e-logs
+recording-e2e-logs: ## Tail the recording stand's logs
+	cd deploy && $(REC_E2E_ENV) $(COMPOSE) -f recording.e2e.yml --profile publish logs -f
+
+# Both knobs are needed and they are NOT the same one: the suite's own API client
+# talks to the backend directly (E2E_API_URL), while the preview server proxies
+# the browser's /api there (TESSERA_API_TARGET). Deriving both from E2E_PORT keeps
+# a non-default `make e2e-backend-up E2E_PORT=…` from leaving the suite pointed at
+# :8092 — at somebody else's backend, or at nothing.
+# E2E_ARGS is passed through to playwright: `make test-e2e-frontend E2E_ARGS=conferences`
+# runs one spec instead of the whole suite.
+E2E_ARGS ?=
+
 .PHONY: test-e2e-frontend
 test-e2e-frontend: ## Run the Playwright web e2e suite (needs `make e2e-backend-up`)
-	cd frontend && corepack yarn build && corepack yarn e2e
+	cd frontend && corepack yarn build
+	cd frontend && E2E_API_URL=http://localhost:$(E2E_PORT)/api \
+		TESSERA_API_TARGET=http://localhost:$(E2E_PORT) \
+		corepack yarn e2e --project=chromium $(E2E_ARGS)
+
+# The mobile tier (#2893) is a separate target, not an extra project folded into
+# the one above: it re-walks the whole app at 390×844 and roughly doubles the
+# run. Naming the project explicitly in BOTH targets is what keeps that promise —
+# a bare `playwright test` would run every project it finds.
+.PHONY: test-e2e-frontend-mobile
+test-e2e-frontend-mobile: ## Run the mobile-layout Playwright tier at 390x844 (needs `make e2e-backend-up`)
+	cd frontend && corepack yarn build
+	cd frontend && E2E_API_URL=http://localhost:$(E2E_PORT)/api \
+		TESSERA_API_TARGET=http://localhost:$(E2E_PORT) \
+		corepack yarn e2e --project=mobile $(E2E_ARGS)
 
 .PHONY: locale-shots
 locale-shots: ## Visual pass over both locales into frontend/e2e/.auth/locale-shots (needs `make e2e-backend-up`)
@@ -266,9 +441,35 @@ format-android: ## Auto-format Kotlin sources via ktlint
 test-android: ## Run Android unit tests
 	@$(ANDROID_GRADLE) :app:testDebugUnitTest
 
+# Narrows the e2e tier to one class or method, e.g.
+#   make test-e2e-android E2E_ANDROID_TESTS='website.msdnna.tessera.e2e.TaskModalE2eTest'
+# A tier-only failure that passes in isolation is the signature of cross-test
+# leakage, and this is how the two are told apart. Narrowing to a *pair* is the
+# next step of that bisect, so the value is a comma-separated list: Gradle takes
+# one pattern per `--tests`, and a comma inside a single one matches nothing and
+# fails the build with «No tests found» rather than running anything.
+E2E_ANDROID_TESTS ?= website.msdnna.tessera.e2e.*
+comma := ,
+empty :=
+space := $(empty) $(empty)
+e2e_android_filters = $(foreach t,$(subst $(comma),$(space),$(E2E_ANDROID_TESTS)),--tests '$(t)')
+
+# The address the harness itself resolves (`E2eBackend.serverUrl`), so the guard
+# below probes what the specs will probe rather than a second, drifting default.
+e2e_android_url = $(if $(TESSERA_E2E_URL),$(TESSERA_E2E_URL),http://localhost:$(E2E_PORT))
+
 .PHONY: test-e2e-android
 test-e2e-android: ## Android e2e suite against the live backend (needs `make e2e-backend-up`)
-	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e --tests 'website.msdnna.tessera.e2e.*'
+	@# Without the backend every spec `Assume`s itself away, and the tier still
+	@# exits 0 with «BUILD SUCCESSFUL» — indistinguishable from a real green run
+	@# unless you count SKIPPED lines. That silence has already been mistaken for
+	@# evidence here (a bisect round read as 8/8 green while nothing ran), so this
+	@# target refuses to start rather than hand back a green that means nothing.
+	@curl -sf -m 5 $(e2e_android_url)/api/health > /dev/null || { \
+		echo "e2e backend is not reachable at $(e2e_android_url) — run 'make e2e-backend-up'." >&2; \
+		echo "(Running anyway would SKIP every spec and still report BUILD SUCCESSFUL.)" >&2; \
+		exit 1; }
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest -Pe2e $(e2e_android_filters)
 
 # The instrumented smoke tier: needs a connected device or a running emulator,
 # and reaches the throwaway backend through the emulator's 10.0.2.2 host alias

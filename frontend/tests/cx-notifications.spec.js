@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { i18n, setI18nLocale } from '@/i18n'
 import { notificationText, notificationTitle } from '@/utils/notificationText'
+import { notificationRoute } from '@/utils/notificationRoute'
 import { createFormatters } from '@/utils/format'
 
 // Stage 5 of #2796 (#2801): the server stores the facts, the client writes the
@@ -48,6 +49,13 @@ describe('notificationText', () => {
         { event: 'task_due_soon', task_number: 7, title: 'Полить цветы' },
         'Приближается срок задачи #7 «Полить цветы»',
         'Task #7 “Полить цветы” is due soon',
+      ],
+      // A conference invitation (#2875) points at no task, so it has no #ref —
+      // the meeting's name is inlined through the same {ctx} wrapper instead.
+      [
+        { event: 'conference_invited', actor: 'Иван', title: 'Летучка', conference_id: 'c-1' },
+        'Иван приглашает вас в конференцию «Летучка»',
+        'Иван invited you to a conference “Летучка”',
       ],
     ]
     for (const [payload, wantRu] of cases) {
@@ -148,12 +156,40 @@ describe('notificationTitle', () => {
 
   it('titles a native notification by kind', async () => {
     expect(notificationTitle('mention')).toBe('Вас упомянули')
+    expect(notificationTitle('conference_invite')).toBe('Приглашение в конференцию')
     await setI18nLocale('en')
     expect(notificationTitle('mention')).toBe('You were mentioned')
+    expect(notificationTitle('conference_invite')).toBe('Conference invitation')
   })
 
   it('falls back to the product name for an unknown kind', () => {
     expect(notificationTitle('teleported')).toBe('Tessera')
+  })
+})
+
+// Where a click takes you. A conference invitation (#2875) is the first
+// notification that opens something other than a board, and it is recognised by
+// its payload rather than by its kind — the same rule the desktop deep link
+// follows, so both agree without sharing a call stack.
+describe('notificationRoute', () => {
+  it('opens the call for a conference invitation', () => {
+    expect(
+      notificationRoute({ kind: 'conference_invite', payload: { conference_id: 'c-1' } }),
+    ).toBe('/conferences/c-1')
+  })
+
+  it('opens the board with the task query for a task notification', () => {
+    expect(notificationRoute({ task_id: 't-1', task_board_id: 'b-1' })).toBe('/board/b-1?task=t-1')
+  })
+
+  it('goes nowhere for a row that points at nothing', () => {
+    // A sync report is workspace-level; a task row whose board the list endpoint
+    // could not join in has nothing to navigate to either.
+    expect(
+      notificationRoute({ kind: 'integration_sync', payload: { event: 'integration_sync_ok' } }),
+    ).toBe(null)
+    expect(notificationRoute({ task_id: 't-1' })).toBe(null)
+    expect(notificationRoute(null)).toBe(null)
   })
 })
 

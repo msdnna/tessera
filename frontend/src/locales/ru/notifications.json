@@ -12,7 +12,8 @@
     "reminder": "Напоминание",
     "integration_sync_ok": "{label}: +{created} новых, ~{updated} обновлено, за {took}",
     "integration_sync_partial": "{label}: +{created} новых, ~{updated} обновлено, за {took} (часть действий с ошибками)",
-    "integration_sync_failed": "{label}: синхронизация не удалась — {reason} (за {took})"
+    "integration_sync_failed": "{label}: синхронизация не удалась — {reason} (за {took})",
+    "conference_invited": "{actor} приглашает вас в конференцию{ctx}"
   },
   "field": {
     "title": "название",
@@ -33,7 +34,8 @@
     "archived": "Задача архивирована",
     "due_soon": "Скоро дедлайн",
     "reminder": "Напоминание",
-    "integration_sync": "Синхронизация завершена"
+    "integration_sync": "Синхронизация завершена",
+    "conference_invite": "Приглашение в конференцию"
   },
   "duration": {
     "instant": "меньше секунды",

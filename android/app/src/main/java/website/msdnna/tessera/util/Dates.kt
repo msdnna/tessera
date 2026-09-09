@@ -21,12 +21,37 @@ import website.msdnna.tessera.R
  *
  * Разбор ISO ([parseInstantMillis], [isoDateKey], [isOverdue], [millisToUtcIso])
  * локали не знает и ресурсов не требует — это данные, а не интерфейс.
+ *
+ * Формат времени и форма полной даты приходят отдельным параметром
+ * [DateFormatPrefs] (#2857): это преф профиля, а не язык, и подменой [Resources]
+ * его не передать. В композиции значение берут из `LocalDateFormat`.
  */
 private fun months(res: Resources): Array<String> = res.getStringArray(R.array.dates_months_short)
 
-/** Время суток `14:30`. 24-часовой формат в обеих локалях — настройка `time_format`
- *  из профиля на Android пока не применяется; ресурс оставлен как шов под неё. */
-private fun clock(res: Resources, hh: Int, mm: Int): String = res.getString(R.string.dates_clock, hh, mm)
+private fun monthsFull(res: Resources): Array<String> = res.getStringArray(R.array.dates_months_full)
+
+/** Время суток: `14:30` или `2:30 PM` — по префу `time_format`. */
+private fun clock(res: Resources, hh: Int, mm: Int, fmt: DateFormatPrefs): String {
+    if (!fmt.time12h) return res.getString(R.string.dates_clock, hh, mm)
+    // 0 и 12 часов в 12-часовой записи — это «12», отсюда сдвиг, а не остаток.
+    val h12 = ((hh + 11) % 12) + 1
+    val suffix = res.getString(if (hh < 12) R.string.dates_am else R.string.dates_pm)
+    return res.getString(R.string.dates_clock_12, h12, mm, suffix)
+}
+
+/**
+ * Полная дата в форме выбранного пресета ([DatePresets]); [mo0] — месяц с нуля.
+ *
+ * `iso` собирается вручную и одинаков в обеих локалях — он локале-независим по
+ * определению; остальные три идут через ресурсы, потому что порядок полей
+ * («31 дек. 2026 г.» против «Dec 31, 2026») задаёт язык, а не мы.
+ */
+private fun presetDate(res: Resources, y: Int, mo0: Int, d: Int, preset: String): String = when (preset) {
+    DatePresets.ISO -> "%04d-%02d-%02d".format(y, mo0 + 1, d)
+    DatePresets.MEDIUM -> res.getString(R.string.dates_long, d, months(res)[mo0], y)
+    DatePresets.LONG -> res.getString(R.string.dates_preset_long, d, monthsFull(res)[mo0], y)
+    else -> res.getString(R.string.dates_preset_short, d, mo0 + 1, y)
+}
 
 /**
  * A relative day label for near-future/near-past dues, mirroring the web
@@ -112,16 +137,21 @@ fun isoDateKey(iso: String?): String =
     if (iso.isNullOrBlank() || iso.length < 10) "" else iso.substring(0, 10)
 
 /**
- * A fuller `4 июн. 2026 г.` label for the task modal's due-date row. Returns ""
- * for blank/unparseable input. String-based (no java.time on minSdk 24).
+ * A full date label for the task modal's due-date row — its shape follows the
+ * user's `date_format` preset (`31.12.2026` / `31 дек. 2026 г.` / `31 декабря
+ * 2026 г.` / `2026-12-31`). Returns "" for blank/unparseable input. String-based
+ * (no java.time on minSdk 24).
  */
-fun longDate(res: Resources, iso: String?): String {
+fun longDate(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     if (iso.isNullOrBlank() || iso.length < 10) return ""
     return try {
         val year = iso.substring(0, 4).toInt()
-        val month = months(res)[iso.substring(5, 7).toInt() - 1]
+        val mo0 = iso.substring(5, 7).toInt() - 1
         val day = iso.substring(8, 10).toInt()
-        res.getString(R.string.dates_long, day, month, year)
+        // Месяц проверяем здесь: presetDate для iso/short в массив названий не
+        // ходит и «13-й месяц» дорисовал бы битую дату вместо пустой строки.
+        require(mo0 in 0..11)
+        presetDate(res, year, mo0, day, fmt.datePreset)
     } catch (_: Exception) {
         ""
     }
@@ -135,24 +165,30 @@ fun longDate(res: Resources, iso: String?): String {
  *    it isn't local-midnight.
  * [withTime] = false forces the date-only form (for cramped card pills).
  */
-fun dueLabel(res: Resources, iso: String?, withTime: Boolean = true): String {
+fun dueLabel(
+    res: Resources,
+    iso: String?,
+    withTime: Boolean = true,
+    fmt: DateFormatPrefs = DateFormatPrefs.Default,
+): String {
     if (iso.isNullOrBlank() || iso.length < 10) return ""
-    val millis = parseInstantMillis(iso) ?: return longDate(res, iso)
+    val millis = parseInstantMillis(iso) ?: return longDate(res, iso, fmt)
     // A pure UTC-midnight instant is a date-only due (GitLab/legacy) — render the
     // UTC calendar date, no time, so a server that serialises with a +03:00 offset
     // (e.g. `…T03:00:00+03:00`) doesn't surface a phantom "03:00". Mirrors web.
-    if (isUtcMidnight(millis)) return utcLongDate(res, millis)
+    if (isUtcMidnight(millis)) return utcLongDate(res, millis, fmt)
     val cal = Calendar.getInstance().apply { timeInMillis = millis }
-    val date = res.getString(
-        R.string.dates_long,
-        cal.get(Calendar.DAY_OF_MONTH),
-        months(res)[cal.get(Calendar.MONTH)],
+    val date = presetDate(
+        res,
         cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH),
+        fmt.datePreset,
     )
     val hh = cal.get(Calendar.HOUR_OF_DAY)
     val mm = cal.get(Calendar.MINUTE)
     return if (withTime && (hh != 0 || mm != 0)) {
-        res.getString(R.string.dates_at_time, date, clock(res, hh, mm))
+        res.getString(R.string.dates_at_time, date, clock(res, hh, mm, fmt))
     } else {
         date
     }
@@ -162,8 +198,13 @@ fun dueLabel(res: Resources, iso: String?, withTime: Boolean = true): String {
  * A compact due label for cards. Near dates read as relative shorthand
  * («Завтра», or a weekday within the current week); otherwise `10 июн` (+ year
  * when not current), plus `14:30` when a time is set. Mirrors the web `formatDue`.
+ *
+ * The `date_format` preset deliberately does NOT apply here: web's `formatDue`
+ * pins the compact form to day + short month and lets only the clock follow
+ * `time_format`. A card pill asking for `31.12.2026` would be the wider shape,
+ * not the shorthand.
  */
-fun dueShort(res: Resources, iso: String?): String {
+fun dueShort(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     if (iso.isNullOrBlank() || iso.length < 10) return ""
     val millis = parseInstantMillis(iso) ?: return shortDate(res, iso)
     // A pure UTC-midnight instant is a date-only due (GitLab/legacy) — read its
@@ -178,7 +219,7 @@ fun dueShort(res: Resources, iso: String?): String {
     val time = if (!utcMid) {
         val hh = cal.get(Calendar.HOUR_OF_DAY)
         val mm = cal.get(Calendar.MINUTE)
-        if (hh != 0 || mm != 0) clock(res, hh, mm) else ""
+        if (hh != 0 || mm != 0) clock(res, hh, mm, fmt) else ""
     } else {
         ""
     }
@@ -197,11 +238,29 @@ fun dueShort(res: Resources, iso: String?): String {
  * A `4 июн., 14:30` timestamp for comments / journal entries. The time is the
  * raw ISO (UTC) clock — good enough for an at-a-glance "when".
  */
-fun whenLabel(res: Resources, iso: String?): String {
+fun whenLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     val date = shortDate(res, iso)
     if (date.isEmpty()) return ""
-    val time = if (iso != null && iso.length >= 16) iso.substring(11, 16) else ""
-    return if (time.isEmpty()) date else res.getString(R.string.dates_at_time, date, time)
+    val time = timeLabel(res, iso, fmt)
+    if (time.isEmpty()) return date
+    return res.getString(R.string.dates_at_time, date, time)
+}
+
+/**
+ * Just the clock of an instant — `14:30`, or `2:30 PM` for a 12h user.
+ *
+ * Split out of [whenLabel] for the version journal (#2894 §6), whose entries
+ * cover an editing session rather than a moment and read `4 июн., 14:30–14:52`.
+ * The hour is the raw ISO (UTC) one, exactly as in [whenLabel]: only its *shape*
+ * follows `time_format`, so both ends of a span are told the same way.
+ */
+fun timeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
+    val raw = if (iso != null && iso.length >= 16) iso.substring(11, 16) else ""
+    if (raw.isEmpty()) return ""
+    if (!fmt.time12h) return raw
+    val hh = raw.substring(0, 2).toIntOrNull()
+    val mm = raw.substring(3, 5).toIntOrNull()
+    return if (hh != null && mm != null) clock(res, hh, mm, fmt) else raw
 }
 
 // ── Full instants (reminders) — these carry a real time-of-day, so they parse
@@ -233,14 +292,15 @@ private fun isUtcMidnight(millis: Long): Boolean {
         cal.get(Calendar.SECOND) == 0
 }
 
-/** `4 июн. 2026 г.` from the UTC calendar date of [millis]. */
-private fun utcLongDate(res: Resources, millis: Long): String {
+/** A full date (in the user's preset) from the UTC calendar date of [millis]. */
+private fun utcLongDate(res: Resources, millis: Long, fmt: DateFormatPrefs): String {
     val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = millis }
-    return res.getString(
-        R.string.dates_long,
-        cal.get(Calendar.DAY_OF_MONTH),
-        months(res)[cal.get(Calendar.MONTH)],
+    return presetDate(
+        res,
         cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH),
+        fmt.datePreset,
     )
 }
 
@@ -250,19 +310,32 @@ fun millisToUtcIso(millis: Long): String =
         .apply { timeZone = TimeZone.getTimeZone("UTC") }
         .format(Date(millis))
 
-/** A local-zone `15 июн 2026, 14:30` label for a full instant. "" if unparseable. */
-fun localDateTimeLabel(res: Resources, iso: String?): String {
+/** A local-zone `31.12.2026, 14:30` label (date in the user's preset) for a full instant. */
+fun localDateTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     val millis = parseInstantMillis(iso) ?: return ""
     val cal = Calendar.getInstance().apply { timeInMillis = millis }
-    val date = res.getString(
-        R.string.dates_full,
-        cal.get(Calendar.DAY_OF_MONTH),
-        months(res)[cal.get(Calendar.MONTH)],
+    val date = presetDate(
+        res,
         cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH),
+        fmt.datePreset,
     )
     return res.getString(
         R.string.dates_at_time,
         date,
-        clock(res, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE)),
+        clock(res, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), fmt),
     )
+}
+
+/**
+ * Just the time of day, in the user's `time_format` preset.
+ *
+ * Without the date on purpose: the caller is the in-call chat, where every line
+ * was said during the same meeting and the date would repeat on all of them.
+ */
+fun localTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
+    val millis = parseInstantMillis(iso) ?: return ""
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    return clock(res, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), fmt)
 }

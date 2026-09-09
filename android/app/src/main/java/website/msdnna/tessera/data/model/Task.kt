@@ -68,6 +68,15 @@ data class Task(
     // Logins of the GitLab-member assignees (parallel to the names) so the on-card
     // picker can tell which GL members are currently assigned.
     @SerializedName("gitlab_assignee_logins") val gitlabAssigneeLogins: List<String> = emptyList(),
+    // GitLab hierarchy state, filled ONLY by `ListSubtasksWithMeta` (the subtasks of an
+    // open task). Deliberately separate names from the `gitlab_*` fields above: the
+    // board query aliases the same columns as `gitlab_iid`/`gitlab_url`, the subtask
+    // query returns them raw — one Kotlin class, two wire shapes, so both sets exist.
+    // A board card therefore has gitlabIid but no glIid, and that is not a bug.
+    @SerializedName("gl_iid") val glIid: Long? = null,
+    @SerializedName("gl_web_url") val glWebUrl: String? = null,
+    // Empty/absent = GitLab did not put the issue under a parent work item.
+    @SerializedName("gl_parent_global_id") val glParentGlobalId: String? = null,
 ) {
     val isCompleted: Boolean get() = completedAt != null
 }

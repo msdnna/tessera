@@ -170,13 +170,15 @@ func (h *API) CancelJob(c *gin.Context) {
 // the "run now" action so an operator doesn't have to wait for the next tick.
 func (h *API) workerRunners() map[string]func(context.Context) {
 	return map[string]func(context.Context){
-		jobGitlabSyncCron:  h.autoSyncDue,
-		jobGitlabWriteback: h.drainWritebacks,
-		jobNotifyDelivery:  h.drainDeliveries,
+		jobGitlabSyncCron:    h.autoSyncDue,
+		jobGitlabWebhookCron: h.drainWebhookDirty,
+		jobGitlabWriteback:   h.drainWritebacks,
+		jobNotifyDelivery:    h.drainDeliveries,
 		jobNotifyScanner: func(ctx context.Context) {
 			h.scanDueTasks(ctx)
 			h.scanReminders(ctx)
 		},
-		jobRecurrence: h.advanceScheduleDue,
+		jobRecurrence:     h.advanceScheduleDue,
+		jobConfRecordings: h.SweepConferenceRecordings,
 	}
 }
