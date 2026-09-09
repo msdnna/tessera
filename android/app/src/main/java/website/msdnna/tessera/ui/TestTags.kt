@@ -1,5 +1,7 @@
 package website.msdnna.tessera.ui
 
+import website.msdnna.tessera.util.ConfAudioRoute
+
 /**
  * Stable anchors for the e2e tier (`app/src/test/.../e2e`).
  *
@@ -26,6 +28,9 @@ object TestTags {
     /** Gear in the corner that reveals the server-address popover. */
     const val AUTH_SERVER_TOGGLE = "auth-server-toggle"
     const val AUTH_SERVER_FIELD = "auth-server-field"
+
+    /** «Не проверять сертификат сервера» — общий якорь для экрана входа и настроек. */
+    const val TLS_INSECURE_SWITCH = "tls-insecure-switch"
 
     /** Pre-login RU/EN cycle button (web `data-testid="auth-lang-toggle"`). */
     const val AUTH_LANG_TOGGLE = "auth-lang-toggle"
@@ -206,6 +211,234 @@ object TestTags {
     /** One row of that tree, keyed by document id — so a spec asserts «this
      *  document», not «the second row», and a nesting regression is visible. */
     fun documentRow(id: String) = "document-row:$id"
+
+    // ── conferences (#2896) ────────────────────────────────────────────────
+
+    /** Root of the conferences section — the workspace's calls. */
+    const val CONFERENCES_SCREEN = "conferences-screen"
+
+    /** The «Запланировать» button and the dialog it opens. */
+    const val CONFERENCE_SCHEDULE = "conference-schedule"
+    const val CONFERENCE_SCHEDULE_DIALOG = "conference-schedule-dialog"
+    const val CONFERENCE_CREATE_NAME = "conference-create-name"
+    const val CONFERENCE_CREATE_TTL = "conference-create-ttl"
+    const val CONFERENCE_CREATE_SUBMIT = "conference-create-submit"
+
+    /** One call in the list, and its delete button — keyed by id, so a spec says
+     *  «this conference» and a sorting change doesn't rewrite what it checks. */
+    fun conferenceRow(id: String) = "conference-row:$id"
+
+    fun conferenceDelete(id: String) = "conference-delete:$id"
+
+    /** The confirm of the delete popover — the press that actually reaches the
+     *  server. The row's own button only asks. */
+    const val CONFERENCE_DELETE_CONFIRM = "conference-delete-confirm"
+
+    /** One status tab, keyed by the value it sends to the server (`live`,
+     *  `scheduled`, `ended`; blank for «Все») rather than by its position —
+     *  a reordered tab strip must not quietly rewrite what a spec asserts. */
+    fun conferenceFilter(status: String?) = "conference-filter:${status.orEmpty().ifBlank { "all" }}"
+
+    /** The lobby of one call (#2896 §3) and its controls. */
+    const val CONFERENCE_LOBBY = "conference-lobby"
+    const val CONFERENCE_BACK = "conference-back"
+    const val CONFERENCE_JOIN = "conference-join"
+    const val CONFERENCE_LEAVE = "conference-leave"
+    const val CONFERENCE_END = "conference-end"
+    const val CONFERENCE_INVITE = "conference-invite"
+
+    /** One seat in the roster and one line of the invite picker, keyed by user —
+     *  the two lists are complementary, so a spec can assert a person is in the
+     *  one and not the other without depending on either's order. */
+    fun conferenceSeat(userId: String) = "conference-seat:$userId"
+
+    fun conferenceInvitee(userId: String) = "conference-invitee:$userId"
+
+    /** The call itself (#2896 §5) — present exactly while we hold a seat. */
+    const val CONFERENCE_ROOM = "conference-room"
+    const val CONFERENCE_STAGE = "conference-stage"
+    const val CONFERENCE_STRIP = "conference-strip"
+    const val CONFERENCE_BANNER = "conference-banner"
+    const val CONFERENCE_RETRY = "conference-retry"
+    const val CONFERENCE_QUALITY = "conference-quality"
+    const val CONFERENCE_FULLSCREEN = "conference-fullscreen"
+
+    /** «Сбросить масштаб» over a pinched stage — the only way back to 1× that
+     *  does not need a second pinch, and present only while there is something
+     *  to reset. */
+    const val CONFERENCE_ZOOM_RESET = "conference-zoom-reset"
+
+    /** The room toolbar. */
+    const val CONFERENCE_MIC = "conference-mic"
+    const val CONFERENCE_CAM = "conference-cam"
+    const val CONFERENCE_SWITCH_CAM = "conference-switch-cam"
+    const val CONFERENCE_ROUTE = "conference-route"
+    const val CONFERENCE_HANGUP = "conference-hangup"
+
+    /** One tile, keyed by the participant's identity rather than by position —
+     *  the stage moves with whoever is talking, so an index would assert
+     *  «whoever is second» and pass through a layout that lost the speaker. */
+    fun conferenceTile(identity: String) = "conference-tile:$identity"
+
+    /** The crossed-out microphone on somebody's tile — the only thing on screen
+     *  that says a participant is silent, so it needs an anchor of its own: the
+     *  tile is displayed either way. */
+    fun conferenceTileMuted(identity: String) = "conference-tile-muted:$identity"
+
+    /** One output in the routing menu. */
+    fun conferenceRoute(route: ConfAudioRoute) = "conference-route:${route.name.lowercase()}"
+
+    // ── participants and moderation (#2896 §6) ─────────────────────────────
+
+    const val CONFERENCE_HAND = "conference-hand"
+    const val CONFERENCE_PEOPLE = "conference-people"
+    const val CONFERENCE_PANEL = "conference-panel"
+    const val CONFERENCE_PANEL_EMPTY = "conference-panel-empty"
+    const val CONFERENCE_PANEL_CLOSE = "conference-panel-close"
+
+    /** The grabber the roster sheet is pulled up by. Its own anchor rather than
+     *  the sheet's: the sheet is displayed at both sizes, so a drag asserted on
+     *  [CONFERENCE_PANEL] would pass without ever having moved anything. */
+    const val CONFERENCE_PANEL_HANDLE = "conference-panel-handle"
+    const val CONFERENCE_DENIED = "conference-denied"
+    const val CONFERENCE_KICK_CONFIRM = "conference-kick-confirm"
+
+    /** The count of raised hands on the closed panel. Separate from the button,
+     *  which is there on every call — the badge is only there when somebody is
+     *  waiting, so asserting on the button would say nothing about it. */
+    const val CONFERENCE_HANDS = "conference-hands"
+
+    /** One roster row, keyed by user — the order changes with the hands. */
+    fun conferencePerson(userId: String) = "conference-person:$userId"
+
+    /** The «поднял руку» marker. Separate from the row: the row is there either
+     *  way, so asserting on it would pass in a build that lost the marker. */
+    fun conferenceHandUp(userId: String) = "conference-hand-up:$userId"
+
+    /** «Заглушён ведущим» — the badge that says a silence was not their choice. */
+    fun conferenceForced(userId: String) = "conference-forced:$userId"
+
+    /** Moderation. Two tags, because the server treats them differently: a host
+     *  may be force-muted and may not be kicked. */
+    fun conferenceForceMute(userId: String) = "conference-force-mute:$userId"
+
+    fun conferenceKick(userId: String) = "conference-kick:$userId"
+
+    /** Local playback — this phone only, never the room. */
+    fun conferenceLocalMute(userId: String) = "conference-local-mute:$userId"
+
+    fun conferenceVolume(userId: String) = "conference-volume:$userId"
+
+    // ── in-call chat (#2896 §7) ────────────────────────────────────────────
+
+    const val CONFERENCE_CHAT = "conference-chat"
+    const val CONFERENCE_CHAT_OPEN = "conference-chat-open"
+    const val CONFERENCE_CHAT_CLOSE = "conference-chat-close"
+
+    /** The grabber the chat sheet is pulled up by — see [CONFERENCE_PANEL_HANDLE]
+     *  for why the sheet's own tag will not do. */
+    const val CONFERENCE_CHAT_HANDLE = "conference-chat-handle"
+    const val CONFERENCE_CHAT_LOG = "conference-chat-log"
+    const val CONFERENCE_CHAT_EMPTY = "conference-chat-empty"
+    const val CONFERENCE_CHAT_OLDER = "conference-chat-older"
+    const val CONFERENCE_CHAT_INPUT = "conference-chat-input"
+    const val CONFERENCE_CHAT_SEND = "conference-chat-send"
+    const val CONFERENCE_CHAT_ATTACH = "conference-chat-attach"
+
+    /** A refused pick (too big, too many). Separate from the error line: one is
+     *  about the file the user just chose, the other about the server. */
+    const val CONFERENCE_CHAT_REFUSAL = "conference-chat-refusal"
+
+    /** Unread lines on the closed sheet. Like the hands badge, only there when
+     *  it has something to say. */
+    const val CONFERENCE_CHAT_UNREAD = "conference-chat-unread"
+
+    /** One message, keyed by id — the list grows at both ends, so an index would
+     *  name a different line after every «показать более ранние». */
+    fun conferenceChatMessage(id: String) = "conference-chat-message:$id"
+
+    /** Delete, per message. Only on the ones this phone may remove, which is the
+     *  whole point of asserting on it. */
+    fun conferenceChatDelete(id: String) = "conference-chat-delete:$id"
+
+    /** The confirm button of the delete dialog — the press that actually reaches
+     *  the server, and the only one a spec should be able to make. */
+    const val CONFERENCE_CHAT_DELETE_CONFIRM = "conference-chat-delete-confirm"
+
+    /** An attachment on a message, and the picked-but-unsent file in the
+     *  composer — different lifetimes, different tags. */
+    fun conferenceChatAttachment(id: String) = "conference-chat-attachment:$id"
+
+    fun conferenceChatPending(uri: String) = "conference-chat-pending:$uri"
+
+    /** Takes a picked file back off the message before it is sent — the only way
+     *  out of a wrong pick, since the picker replaces nothing. */
+    fun conferenceChatPendingRemove(uri: String) = "conference-chat-pending-remove:$uri"
+
+    // ── screen share and recordings (#2896 §8) ────────────────────────────
+
+    /** The share control. One button through all four states — a spec asserts on
+     *  the notice next to it to tell «в очереди» from «показываю». */
+    const val CONFERENCE_SHARE = "conference-share"
+
+    /** The line above the tiles: who holds the stage, and where we are in the
+     *  queue behind them. */
+    const val CONFERENCE_STAGE_NOTICE = "conference-stage-notice"
+
+    /** Our 1-based place in the queue, only rendered while we are in it. */
+    const val CONFERENCE_QUEUE_POS = "conference-queue-pos"
+
+    /** «Начать показ» — the second press, offered exactly when the stage is ours
+     *  and Android has not been asked for the display yet. */
+    const val CONFERENCE_SHARE_START = "conference-share-start"
+
+    /** Start/stop recording. Absent for a member: only a moderator may press it,
+     *  and a greyed-out one advertises a capability they do not have. */
+    const val CONFERENCE_RECORD = "conference-record"
+
+    /** The red dot — «идёт запись», with the name of whoever started it. Its
+     *  presence follows the room snapshot, never the press. */
+    const val CONFERENCE_RECORD_DOT = "conference-record-dot"
+
+    /** A refused start/stop, including the honest «сервис недоступен» an install
+     *  without the egress worker answers with. */
+    const val CONFERENCE_RECORD_ERROR = "conference-record-error"
+
+    /** The recordings list in the lobby, and one row per recording. */
+    const val CONFERENCE_RECORDINGS = "conference-recordings"
+
+    fun conferenceRecordingRow(id: String) = "conference-recording:$id"
+
+    fun conferenceRecordingDownload(id: String) = "conference-recording-download:$id"
+
+    fun conferenceRecordingDelete(id: String) = "conference-recording-delete:$id"
+
+    /** The confirm of the delete dialog — the press that actually erases the
+     *  file, and the only one a spec should be able to make. */
+    const val CONFERENCE_RECORDING_DELETE_CONFIRM = "conference-recording-delete-confirm"
+
+    /** The list's own error line; the row buttons report their failures here. */
+    const val CONFERENCE_RECORDINGS_ERROR = "conference-recordings-error"
+
+    // ── the minimised call (#2896 §9) ─────────────────────────────────────
+
+    /** The bar over the rest of the app while a call is off-screen. Its absence
+     *  is as much an assertion as its presence: it must not draw over the room. */
+    const val CONFERENCE_MINI = "conference-mini"
+
+    /** The line it says about the call — one tag, because a spec asserts on the
+     *  text, and «идёт звонок» where «связь потеряна» belongs is the bug. */
+    const val CONFERENCE_MINI_LINE = "conference-mini-line"
+
+    /** How many others are in the call. Absent when nobody else is — a lone «0»
+     *  next to a people icon reads as a broken counter. */
+    const val CONFERENCE_MINI_COUNT = "conference-mini-count"
+
+    /** Its own microphone and hang-up. The second is the only way out of a call
+     *  whose lobby is nowhere on screen. */
+    const val CONFERENCE_MINI_MIC = "conference-mini-mic"
+
+    const val CONFERENCE_MINI_HANGUP = "conference-mini-hangup"
 
     // ── help centre (#2795) ────────────────────────────────────────────────
 

@@ -84,6 +84,7 @@ import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.repository.ProfileRepository
 import website.msdnna.tessera.ui.TestTags
+import website.msdnna.tessera.ui.components.InsecureTlsRow
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.MtLogo
 import website.msdnna.tessera.ui.components.TCard
@@ -115,6 +116,8 @@ private val BrandPurple = Color(0xFF7C6CFF)
 fun AuthScreen(
     serverUrl: String,
     onServerUrlChange: (String) -> Unit,
+    insecureTls: Boolean,
+    onInsecureTlsChange: (Boolean) -> Unit,
     isDark: Boolean = false,
     onToggleTheme: () -> Unit = {},
     language: String = DEFAULT_LANGUAGE,
@@ -230,6 +233,15 @@ fun AuthScreen(
                                 stringResource(R.string.auth_server_hint),
                                 color = c.text3,
                                 fontSize = 11.sp,
+                            )
+                            // Здесь, а не только в настройках: сертификат, которому
+                            // телефон не верит, ломает уже вход — до настроек с ним
+                            // не дойти (#2896).
+                            InsecureTlsRow(
+                                checked = insecureTls,
+                                onCheckedChange = onInsecureTlsChange,
+                                labelColor = c.text2,
+                                hintColor = c.text3,
                             )
                         }
                     }

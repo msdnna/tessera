@@ -164,21 +164,6 @@ private fun relKindLabel(kind: String): String = when (kind) {
 /** Red used for destructive ghost actions (matches the web `--t-danger`). */
 private val DangerRed = Color(0xFFE0533D)
 
-/** Opens a downloaded attachment via the system, sharing it through our FileProvider.
- *  [chooserTitle] приходит из композиции: диалог показывается уже вне неё, а
- *  `ctx.getString` дал бы системную локаль вместо языка профиля. */
-private fun openDownloadedFile(ctx: android.content.Context, file: java.io.File, mime: String?, chooserTitle: String) {
-    val uri = androidx.core.content.FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-    val type = mime?.takeIf { it.isNotBlank() } ?: "*/*"
-    val view = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-        setDataAndType(uri, type)
-        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    val chooser = android.content.Intent.createChooser(view, chooserTitle)
-        .apply { addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK) }
-    runCatching { ctx.startActivity(chooser) }
-}
-
 /**
  * The task detail modal (web `TaskModal.vue`), native: borderless title, a
  * property grid (priority / due / assignees / tags / completed / parent), a

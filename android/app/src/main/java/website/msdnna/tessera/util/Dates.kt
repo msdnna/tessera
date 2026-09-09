@@ -319,3 +319,15 @@ fun localDateTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = Date
         clock(res, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), fmt),
     )
 }
+
+/**
+ * Just the time of day, in the user's `time_format` preset.
+ *
+ * Without the date on purpose: the caller is the in-call chat, where every line
+ * was said during the same meeting and the date would repeat on all of them.
+ */
+fun localTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
+    val millis = parseInstantMillis(iso) ?: return ""
+    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    return clock(res, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), fmt)
+}

@@ -34,6 +34,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
@@ -189,6 +190,10 @@ fun TConfirmPopover(
     onDismiss: () -> Unit,
     confirmText: String = stringResource(R.string.common_delete),
     danger: Boolean = true,
+    // On the confirm button, not on the popover: the popover is on screen either
+    // way, so a spec anchored to it can reach the destructive press without ever
+    // proving the press exists (#2896 §6 hit exactly this on TConfirmDialog).
+    confirmTag: String? = null,
 ) {
     if (!expanded) return
     val c = Tessera.colors
@@ -214,7 +219,13 @@ fun TConfirmPopover(
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 ConfirmButton(stringResource(R.string.common_cancel), filled = false, color = c.text1, onClick = onDismiss)
                 Spacer(Modifier.width(8.dp))
-                ConfirmButton(confirmText, filled = true, color = if (danger) TesseraDanger else c.primary, onClick = onConfirm)
+                ConfirmButton(
+                    confirmText,
+                    filled = true,
+                    color = if (danger) TesseraDanger else c.primary,
+                    onClick = onConfirm,
+                    tag = confirmTag,
+                )
             }
         }
     }
@@ -223,7 +234,13 @@ fun TConfirmPopover(
 /** A small Naive-style popconfirm button: bordered when secondary, accent-filled
  *  when the confirming action. */
 @Composable
-private fun ConfirmButton(label: String, filled: Boolean, color: Color, onClick: () -> Unit) {
+private fun ConfirmButton(
+    label: String,
+    filled: Boolean,
+    color: Color,
+    onClick: () -> Unit,
+    tag: String? = null,
+) {
     val c = Tessera.colors
     val shape = RoundedCornerShape(RadiusMd)
     Box(
@@ -231,7 +248,8 @@ private fun ConfirmButton(label: String, filled: Boolean, color: Color, onClick:
             .clip(shape)
             .then(if (filled) Modifier.background(accentGradient(color)) else Modifier.border(1.dp, c.border, shape))
             .clickableNoRipple(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 7.dp),
+            .padding(horizontal = 14.dp, vertical = 7.dp)
+            .then(tag?.let { Modifier.testTag(it) } ?: Modifier),
     ) {
         Text(
             label,

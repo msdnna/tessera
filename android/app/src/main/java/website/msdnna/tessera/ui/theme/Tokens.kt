@@ -111,6 +111,16 @@ val TesseraWarning = Color(0xFFF0A020)
 /** Warning amber for GitLab write-back conflicts (web `#e0922f`). */
 val ConflictAmber = Color(0xFFE0922F)
 
+/**
+ * «Идёт сейчас» green for a live conference (#2896 §2, web's `LIVE_HUE`).
+ *
+ * The accent scheme is the user's to pick, and a call that is happening right
+ * now must not read as «запланирована» in the green scheme — so this one hue is
+ * fixed rather than taken from the palette. Same value as Naive's success green,
+ * which the web view hard-codes for the same reason.
+ */
+val TesseraLive = Color(0xFF18A058)
+
 private fun relativeLuminance(c: Color): Double {
     fun chan(v: Float): Double {
         val d = v.toDouble()

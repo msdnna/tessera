@@ -9,6 +9,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.screens.BoardScreen
+import website.msdnna.tessera.ui.screens.ConferencesScreen
 import website.msdnna.tessera.ui.screens.DocumentsScreen
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraTheme
@@ -73,6 +74,26 @@ fun ComposeContentTestRule.setDocumentsContent(fixture: E2eBackend.Fixture, anch
         }
     }
     awaitTag(TestTags.documentRow(anchorId))
+}
+
+/**
+ * Mounts the conferences section and waits until the workspace's calls have
+ * arrived from the backend ([anchorId]'s row is on screen).
+ *
+ * Composed directly, as the sections above are. No media is set up and none is
+ * needed: everything this tier can assert — which calls exist, what the filter
+ * asks the server for, what a delete actually removes — is the meeting rather
+ * than the call, and the meeting is plain HTTP.
+ */
+fun ComposeContentTestRule.setConferencesContent(fixture: E2eBackend.Fixture, anchorId: String) {
+    setContent {
+        TesseraTheme {
+            Surface(Modifier.fillMaxSize(), color = Tessera.colors.bg) {
+                ConferencesScreen(workspaceId = fixture.workspace.id)
+            }
+        }
+    }
+    awaitTag(TestTags.conferenceRow(anchorId))
 }
 
 /**

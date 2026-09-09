@@ -21,6 +21,14 @@ object AppContainer {
     lateinit var prefs: AppPreferences
         private set
 
+    /**
+     * The application context, for the few things that need one outside a screen:
+     * the LiveKit room and the call's foreground service (#2896 §4). An Activity
+     * context would not do — a call outlives the screen that started it.
+     */
+    lateinit var appContext: Context
+        private set
+
     @Volatile
     var serverUrl: String = BuildConfig.DEFAULT_BASE_URL
 
@@ -29,6 +37,7 @@ object AppContainer {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         prefs = AppPreferences(context.applicationContext)
     }
 

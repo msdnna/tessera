@@ -7,10 +7,10 @@ import com.google.gson.Gson
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import website.msdnna.tessera.BuildConfig
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.data.model.LatestRelease
 
 /**
@@ -23,7 +23,7 @@ import website.msdnna.tessera.data.model.LatestRelease
  * `/apks/` — the check just fails quietly and no update is offered.
  */
 object UpdateRepository {
-    private val http by lazy { OkHttpClient() }
+    private val http = TlsTrust.Holder()
     private val gson = Gson()
 
     /** `<server>/apks` — derived from the configured server URL (sans `/api`). */
@@ -38,7 +38,7 @@ object UpdateRepository {
 
     private fun fetchLatest(): LatestRelease? = runCatching {
         val req = Request.Builder().url("${apksBase()}/latest.json").build()
-        http.newCall(req).execute().use { resp ->
+        http.get().newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return@use null
             val body = resp.body.string().takeIf { it.isNotBlank() } ?: return@use null
             gson.fromJson(body, LatestRelease::class.java)
@@ -55,7 +55,7 @@ object UpdateRepository {
         dir.listFiles()?.forEach { it.delete() } // keep only the current download
         val out = File(dir, release.apk)
         val req = Request.Builder().url("${apksBase()}/${release.apk}").build()
-        http.newCall(req).execute().use { resp ->
+        http.get().newCall(req).execute().use { resp ->
             require(resp.isSuccessful) { "HTTP ${resp.code}" }
             val body = resp.body
             val total = body.contentLength()

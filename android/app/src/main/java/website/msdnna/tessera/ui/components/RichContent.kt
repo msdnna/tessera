@@ -29,10 +29,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import java.util.Locale
 import kotlin.math.roundToInt
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraColors
 import website.msdnna.tessera.util.MentionItem
@@ -237,7 +237,7 @@ internal class NonScrollingWebView(context: Context) : WebView(context) {
     }
 }
 
-private val richHttp by lazy { OkHttpClient() }
+private val richHttp = TlsTrust.Holder()
 
 /** Fetches a backend resource (inline image) with the Bearer token, as a
  *  [WebResourceResponse] for the WebView. Runs on the WebView's IO thread. */
@@ -245,7 +245,7 @@ private fun fetchResource(url: String): WebResourceResponse? {
     val builder = Request.Builder().url(url).get()
     val token = RetrofitClient.authToken
     if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
-    val resp = richHttp.newCall(builder.build()).execute()
+    val resp = richHttp.get().newCall(builder.build()).execute()
     val body = resp.body
     val contentType = resp.header("Content-Type") ?: "application/octet-stream"
     val mime = contentType.substringBefore(";").trim().ifBlank { "application/octet-stream" }

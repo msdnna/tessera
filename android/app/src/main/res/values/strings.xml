@@ -31,6 +31,9 @@
     <string name="auth_server_title">Сервер</string>
     <string name="auth_server_placeholder">https://tessera.msdnna.website</string>
     <string name="auth_server_hint">Применяется сразу. Пусто — сервер по умолчанию.</string>
+    <string name="tls_insecure_label">Не проверять сертификат</string>
+    <string name="tls_insecure_hint_off">Включите, если у сервера самоподписанный сертификат или свой центр сертификации.</string>
+    <string name="tls_insecure_hint_on">Цепочка доверия и имя хоста не проверяются — соединение можно подменить. Только для своего сервера в доверенной сети.</string>
     <string name="auth_language_switch_to">Переключить на %1$s</string>
     <string name="auth_browser_failed">Не удалось открыть браузер для входа</string>
 
@@ -93,6 +96,7 @@
 
     <!-- Настройки: локализация и форматы -->
     <string name="settings_locale_title">Локализация и форматы</string>
+    <string name="settings_connection_title">Подключение</string>
     <string name="settings_language">Язык</string>
     <string name="settings_week_start">Начало недели</string>
     <string name="settings_time_format">Формат времени</string>
@@ -132,6 +136,7 @@
     <string name="nav_reminders">Напоминания</string>
     <string name="nav_notes">Заметки</string>
     <string name="nav_documents">Документы</string>
+    <string name="nav_conferences">Конференции</string>
     <string name="nav_help">Помощь</string>
     <string name="nav_admin">Администрирование</string>
 
@@ -733,6 +738,148 @@
     <string name="docs_reader_empty">Документ пуст</string>
     <string name="docs_image_alt">Изображение документа</string>
 
+    <!-- Конференции (#2896). Подписи строки: время у карточки одно, и какое
+         именно — зависит от состояния встречи, см. conferenceTimeLine. -->
+    <string name="conf_schedule">Запланировать</string>
+    <string name="conf_untitled">Без названия</string>
+    <string name="conf_empty">Конференций пока нет</string>
+    <string name="conf_empty_filtered">В этом фильтре пусто</string>
+    <string name="conf_no_workspace">Выберите пространство</string>
+    <string name="conf_filter_all">Все</string>
+    <string name="conf_filter_live">Идут сейчас</string>
+    <string name="conf_filter_scheduled">Запланированные</string>
+    <string name="conf_filter_ended">Завершённые</string>
+    <string name="conf_status_live">Идёт сейчас</string>
+    <string name="conf_status_scheduled">Запланирована</string>
+    <string name="conf_status_ended">Завершена</string>
+    <string name="conf_row_invited">Приглашено: %1$d</string>
+    <string name="conf_row_in_room">В комнате: %1$d</string>
+    <string name="conf_row_author">Создал: %1$s</string>
+    <string name="conf_row_author_unknown">Автор неизвестен</string>
+    <string name="conf_row_scheduled_at">Начало: %1$s</string>
+    <string name="conf_row_started_at">Началась: %1$s</string>
+    <string name="conf_row_ended_at">Завершилась: %1$s</string>
+    <string name="conf_row_no_time">Без времени начала</string>
+    <string name="conf_confirm_delete">Удалить конференцию? Чат и записи удалятся вместе с ней.</string>
+    <string name="conf_create_title">Новая конференция</string>
+    <string name="conf_create_name">Название</string>
+    <string name="conf_create_name_placeholder">Ежедневная встреча</string>
+    <string name="conf_create_description">Описание</string>
+    <string name="conf_create_description_placeholder">Повестка, ссылки, что обсуждаем</string>
+    <string name="conf_create_at">Начало</string>
+    <string name="conf_create_at_empty">Время не назначено</string>
+    <string name="conf_create_at_hint">Оставьте пустым, если время заранее не назначено</string>
+    <string name="conf_create_ttl">Хранить записи, дней</string>
+    <string name="conf_create_ttl_hint">Записи этой конференции удалятся автоматически через столько дней. 0 — хранить без срока.</string>
+    <string name="conf_create_ttl_invalid">Введите число дней: 0 или больше</string>
+    <string name="conf_create_submit">Запланировать</string>
+    <string name="conf_back">Назад</string>
+    <string name="conf_detail_not_found">Конференция не найдена</string>
+    <string name="conf_action_join">Войти</string>
+    <string name="conf_action_leave">Выйти</string>
+    <string name="conf_action_end">Завершить</string>
+    <string name="conf_confirm_end">Завершить конференцию для всех?</string>
+    <string name="conf_invite">Пригласить</string>
+    <string name="conf_invite_empty">Приглашать больше некого</string>
+    <string name="conf_section_in_room">В комнате</string>
+    <string name="conf_section_invited">Приглашены</string>
+    <string name="conf_room_empty">Сейчас в комнате никого нет</string>
+    <string name="conf_seat_host">ведущий</string>
+    <string name="conf_media_connecting">Подключаемся…</string>
+    <string name="conf_media_reconnecting">Связь пропала, переподключаемся…</string>
+    <string name="conf_media_failed">Не удалось подключиться к комнате</string>
+    <string name="conf_media_retry">Повторить</string>
+    <string name="conf_media_unavailable">На этом сервере не настроены видеозвонки</string>
+    <string name="conf_media_ended">Конференция завершена</string>
+    <string name="conf_media_kicked">Ведущий исключил вас из конференции</string>
+    <string name="conf_media_no_mic">Нет доступа к микрофону — вас никто не слышит</string>
+    <string name="conf_media_no_one">В комнате пока никого нет</string>
+    <string name="conf_sheet_expand">Потяните, чтобы развернуть</string>
+    <string name="conf_zoom_reset">Сбросить масштаб</string>
+    <string name="conf_panel_title">В комнате: %1$d</string>
+    <string name="conf_panel_empty">В комнате пока никого</string>
+    <string name="conf_panel_close">Закрыть</string>
+    <string name="conf_panel_hand_up">Поднял руку</string>
+    <string name="conf_panel_mic_off">микрофон выключен</string>
+    <string name="conf_panel_speaking">микрофон включён</string>
+    <string name="conf_panel_force_muted">заглушён ведущим</string>
+    <string name="conf_panel_you">вы</string>
+    <string name="conf_panel_mute_for_me">Заглушить для себя</string>
+    <string name="conf_panel_unmute_for_me">Вернуть звук</string>
+    <string name="conf_panel_force_mute">Заглушить для всех</string>
+    <string name="conf_panel_unforce_mute">Вернуть микрофон</string>
+    <string name="conf_panel_kick">Исключить</string>
+    <string name="conf_panel_confirm_kick">Исключить %1$s из конференции? Вернуться сразу не получится.</string>
+    <string name="conf_panel_raise_hand">Поднять руку</string>
+    <string name="conf_panel_lower_hand">Опустить руку</string>
+    <string name="conf_panel_you_force_muted">Ведущий заглушил ваш микрофон</string>
+    <string name="conf_denied_kick">Исключать участников может только ведущий или администратор пространства</string>
+    <string name="conf_denied_mute">Заглушать участников может только ведущий или администратор пространства</string>
+    <string name="conf_denied_other">Сервер отклонил действие</string>
+    <string name="conf_role_host">Ведущий</string>
+    <string name="conf_role_member">Участник</string>
+    <string name="conf_route_bluetooth">Bluetooth</string>
+    <string name="conf_route_wired">Наушники</string>
+    <string name="conf_route_speaker">Динамик</string>
+    <string name="conf_route_earpiece">Разговорный динамик</string>
+    <string name="conf_chat_title">Чат</string>
+    <string name="conf_chat_open">Открыть чат</string>
+    <string name="conf_chat_close">Закрыть чат</string>
+    <string name="conf_chat_empty">Сообщений пока нет</string>
+    <string name="conf_chat_placeholder">Написать в чат…</string>
+    <string name="conf_chat_attach">Прикрепить файл</string>
+    <string name="conf_chat_send">Отправить</string>
+    <string name="conf_chat_download">Скачать</string>
+    <string name="conf_chat_delete">Удалить сообщение</string>
+    <string name="conf_chat_delete_confirm">Удалить сообщение? Оно исчезнет у всех участников.</string>
+    <string name="conf_chat_remove_file">Убрать файл</string>
+    <string name="conf_chat_load_older">Показать более ранние</string>
+    <string name="conf_chat_unknown_author">Неизвестный автор</string>
+    <string name="conf_chat_file_too_big">«%1$s» больше 25 МБ</string>
+    <string name="conf_chat_too_many_files">К одному сообщению можно приложить не больше %1$d файлов</string>
+    <string name="conf_chat_too_long">Сообщение длиннее %1$d символов</string>
+    <string name="conf_chat_size_b">%1$s Б</string>
+    <string name="conf_chat_size_kb">%1$s КБ</string>
+    <string name="conf_chat_size_mb">%1$s МБ</string>
+
+    <!-- Демонстрация экрана и записи (#2896 §8) -->
+    <string name="conf_share">Показать экран</string>
+    <string name="conf_share_stop">Остановить показ</string>
+    <string name="conf_share_cancel">Выйти из очереди</string>
+    <string name="conf_share_start">Начать показ</string>
+    <string name="conf_share_you">Вы показываете экран</string>
+    <string name="conf_share_stage_yours">Очередь дошла до вас</string>
+    <string name="conf_share_by">Экран показывает %1$s</string>
+    <string name="conf_share_queued">Вы в очереди: %1$d</string>
+    <string name="conf_share_waiting">Ждут очереди: %1$d</string>
+    <string name="conf_share_ongoing">Показ экрана</string>
+    <string name="conf_share_ongoing_hint">Экран телефона видят участники конференции</string>
+    <string name="conf_rec_start">Начать запись</string>
+    <string name="conf_rec_stop">Остановить запись</string>
+    <string name="conf_rec_live">Идёт запись</string>
+    <string name="conf_rec_by">включил %1$s</string>
+    <string name="conf_rec_title">Записи</string>
+    <string name="conf_rec_download">Скачать</string>
+    <string name="conf_rec_delete">Удалить</string>
+    <string name="conf_rec_delete_confirm">Удалить запись? Файл будет стёрт безвозвратно.</string>
+    <string name="conf_rec_failed">Запись не удалась</string>
+    <string name="conf_rec_running">Пишется…</string>
+    <string name="conf_rec_length">%1$02d:%2$02d</string>
+    <string name="conf_rec_length_hours">%1$d:%2$02d:%3$02d</string>
+    <string name="conf_rec_err_unavailable">Запись недоступна: сервис записи не поднят на этом сервере</string>
+    <string name="conf_rec_err_forbidden">Запись может включить только модератор конференции</string>
+    <string name="conf_rec_err_conflict">Состояние записи уже изменил другой модератор</string>
+
+    <!-- Свёрнутый звонок (#2896 §9) -->
+    <string name="conf_mini_live">Идёт звонок</string>
+    <string name="conf_mini_reconnecting">Переподключаемся…</string>
+    <string name="conf_mini_lost">Связь потеряна</string>
+    <string name="conf_mini_others">Ещё в звонке: %1$d</string>
+    <string name="conf_mini_return">Вернуться в звонок</string>
+    <string name="conf_mini_hangup">Выйти из звонка</string>
+    <string name="conf_mini_mic_on">Выключить микрофон</string>
+    <string name="conf_mini_mic_off">Включить микрофон</string>
+
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>
     <string name="members_invitations">Приглашения</string>
@@ -974,6 +1121,10 @@
     <string name="notif_channel_device_desc">Уведомления о задачах</string>
     <string name="notif_channel_reminders_name">Напоминания</string>
     <string name="notif_channel_reminders_desc">Срабатывания напоминаний по задачам</string>
+    <string name="notif_channel_conference_name">Конференции</string>
+    <string name="notif_channel_conference_desc">Идущий звонок, пока приложение свёрнуто</string>
+    <string name="conf_call_ongoing">Идёт конференция</string>
+    <string name="conf_call_ongoing_hint">Нажмите, чтобы вернуться в звонок</string>
     <string name="reminder_push_title">Напоминание</string>
     <string name="reminder_push_default_body">Пора заняться задачей</string>
     <string name="push_title_assigned">Назначена задача</string>

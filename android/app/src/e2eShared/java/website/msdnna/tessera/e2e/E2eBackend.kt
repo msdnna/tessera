@@ -18,6 +18,8 @@ import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.data.model.BoardViewConfig
 import website.msdnna.tessera.data.model.ChannelRequest
 import website.msdnna.tessera.data.model.Comment
+import website.msdnna.tessera.data.model.Conference
+import website.msdnna.tessera.data.model.ConferenceMembership
 import website.msdnna.tessera.data.model.CreateCommentRequest
 import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
@@ -496,6 +498,34 @@ object E2eBackend {
             SaveBoardViewRequest(name, config),
             fixture.account.accessToken,
         )
+
+    // ── conferences (#2896) ────────────────────────────────────────────────
+    //
+    // Only the meeting, never the media: a conference is a plan and a roster on
+    // the server, and every route below answers without an SFU anywhere. The
+    // call itself is not seedable and not asserted here — see `ConferenceE2eTest`.
+
+    /** Creates a conference. Without [scheduledAt] it is a room with no set time. */
+    fun createConference(fixture: Fixture, title: String, scheduledAt: String? = null): Conference {
+        val body = mutableMapOf<String, Any>("title" to title)
+        scheduledAt?.let { body["scheduled_at"] = it }
+        return post("workspaces/${fixture.workspace.id}/conferences", body, fixture.account.accessToken)
+    }
+
+    /**
+     * The workspace's conferences, optionally filtered — the same `status` query
+     * the section's tabs send, so a spec can check the app's list against the
+     * server's own answer rather than against itself.
+     */
+    fun conferences(fixture: Fixture, status: String? = null): List<Conference> =
+        getList(
+            "workspaces/${fixture.workspace.id}/conferences" + (status?.let { "?status=$it" } ?: ""),
+            fixture.account.accessToken,
+        )
+
+    /** Takes a seat, which also brings a scheduled room live (#2879). */
+    fun joinConference(fixture: Fixture, conferenceId: String): ConferenceMembership =
+        post("conferences/$conferenceId/join", emptyMap<String, Any>(), fixture.account.accessToken)
 
     // ── notification router (channels / routes) ────────────────────────────
 
