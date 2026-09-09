@@ -1,8 +1,11 @@
 package website.msdnna.tessera
 
 import android.app.Application
+import android.os.Build
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
+import coil.decode.ImageDecoderDecoder
 import coil.decode.SvgDecoder
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
@@ -39,7 +42,18 @@ class TesseraApplication :
             .build()
         return ImageLoader.Builder(this)
             .okHttpClient(client)
-            .components { add(SvgDecoder.Factory()) }
+            .components {
+                add(SvgDecoder.Factory())
+                // Без явного декодера Coil разбирает GIF через BitmapFactory и
+                // показывает первый кадр — статичную картинку вместо анимации
+                // (#2894). ImageDecoder умеет ещё и анимированные WebP/AVIF, но
+                // появился в API 28; ниже остаётся Movie-декодер, только GIF.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+            }
             .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.10).build() }
             .diskCache {
                 DiskCache.Builder()

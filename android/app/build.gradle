@@ -224,6 +224,8 @@ dependencies {
 
     implementation 'io.coil-kt:coil-compose:2.7.0'
     implementation 'io.coil-kt:coil-svg:2.7.0'
+    // Без него Coil отдаёт у GIF/анимированного WebP только первый кадр (#2894).
+    implementation 'io.coil-kt:coil-gif:2.7.0'
 
     // ── Unit tests ──────────────────────────────────────────────────────────
     testImplementation 'junit:junit:4.13.2'

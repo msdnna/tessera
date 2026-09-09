@@ -215,8 +215,18 @@ object TestTags {
     /** One breadcrumb step, keyed by the container it walks back to. */
     fun documentCrumb(id: String) = "documents-crumb:$id"
 
-    /** The reader's back arrow — «К списку» on the web. */
+    /** «К списку документов» — the way out of the open document, an item of the
+     *  title menu since the section stopped drawing a header of its own. */
     const val DOCUMENT_BACK = "document-back"
+
+    /** The open document's name in the shell's top bar: tapping it opens the
+     *  menu that holds everything the second header used to. */
+    const val DOCUMENT_MENU = "document-menu"
+
+    /** One neighbouring document in that menu (the parent, or a nested one),
+     *  and the bin beside it. */
+    const val DOCUMENT_SWITCH_ROW = "document-switch-row"
+    const val DOCUMENT_SWITCH_REMOVE = "document-switch-remove"
 
     /** The reader's «⋯» menu and its items. Anchored per action rather than per
      *  menu: their wording lives in the locale files and is not an anchor. */

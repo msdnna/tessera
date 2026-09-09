@@ -159,13 +159,22 @@ private fun appendNodes(nodes: List<JsonElement>, out: MutableList<DocBlock>, co
 private fun appendNode(node: JsonObject, out: MutableList<DocBlock>, counter: IntArray, depth: Int) {
     val id = blockId(node, counter)
     when (node.str("type")) {
-        "paragraph" -> out += DocParagraph(
-            id,
-            spansOf(node),
-            node.attr("textAlign"),
-            node.attrInt("indent") ?: 0,
-            node.lineHeight(),
-        )
+        "paragraph" -> {
+            val spans = spansOf(node)
+            val nested = inlineImages(node)
+            // A paragraph that carries nothing but a picture *is* that picture:
+            // emitting the empty paragraph too would open a blank line above it.
+            if (spans.isNotEmpty() || nested.isEmpty()) {
+                out += DocParagraph(
+                    id,
+                    spans,
+                    node.attr("textAlign"),
+                    node.attrInt("indent") ?: 0,
+                    node.lineHeight(),
+                )
+            }
+            for (image in nested) out += imageBlock(image, counter)
+        }
 
         "heading" -> out += DocHeading(
             id,
@@ -288,6 +297,34 @@ private fun inlineSpans(node: JsonObject): List<DocSpan> {
 }
 
 private fun spansOf(node: JsonObject): List<DocSpan> = inlineSpans(node)
+
+/**
+ * Pictures sitting *inside* a paragraph rather than beside it.
+ *
+ * The editor configures `Image` as a block node, so today's documents keep
+ * their pictures at the top level — but the docx converter and older documents
+ * put them inline, and [collectSpans] carries text only. Without this an image
+ * in a paragraph does not fail to draw, it disappears: the paragraph renders as
+ * the (often empty) run of text around it.
+ */
+private fun inlineImages(node: JsonObject): List<JsonObject> {
+    val out = mutableListOf<JsonObject>()
+    collectInlineImages(node.nodes("content"), out, 0)
+    return out
+}
+
+private fun collectInlineImages(nodes: List<JsonElement>, out: MutableList<JsonObject>, depth: Int) {
+    if (depth > MAX_DEPTH) return
+    for (element in nodes) {
+        val node = element as? JsonObject ?: continue
+        if (node.str("type") == "image") out += node else collectInlineImages(node.nodes("content"), out, depth + 1)
+    }
+}
+
+/** The picture as its own row. Its id is the node's, or the next running one —
+ *  the paragraph's own id belongs to the paragraph's text. */
+private fun imageBlock(node: JsonObject, counter: IntArray): DocImage =
+    DocImage(blockId(node, counter), node.attr("src").orEmpty(), node.attr("alt").orEmpty())
 
 private fun collectSpans(nodes: List<JsonElement>, out: MutableList<DocSpan>, depth: Int) {
     if (depth > MAX_DEPTH) return

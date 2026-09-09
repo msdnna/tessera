@@ -747,6 +747,14 @@
     <string name="docs_create">Новый документ</string>
     <string name="docs_create_confirm">Создать</string>
     <string name="docs_nested_count">вложенных: %1$d</string>
+    <!-- Меню за названием документа в шапке приложения -->
+    <string name="docs_menu_edit">Редактировать</string>
+    <string name="docs_menu_read">Закрыть редактор</string>
+    <string name="docs_menu_comments">Обсуждения</string>
+    <string name="docs_menu_links">Связи и согласования</string>
+    <string name="docs_menu_history">История изменений</string>
+    <string name="docs_menu_switch">Перейти к документу</string>
+    <string name="docs_menu_list">К списку документов</string>
     <!-- Меню «⋯» в читалке -->
     <string name="docs_action_nested">Вложенный документ</string>
     <string name="docs_action_children">Показать вложенные (%1$d)</string>

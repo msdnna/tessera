@@ -44,25 +44,23 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.docEmbedUrl
 
 /**
- * Editing surface for one document (#2894 §4): a native bar over the web
- * editor.
+ * Editing surface for one document (#2894 §4): the web editor in a WebView,
+ * under the app's own chrome.
  *
- * The bar is where the app stays the app — back, the title, and the one thing
- * autosave cannot say for itself, namely whether the text on screen is on the
- * server. The status is *reported* by the page rather than guessed here: two
- * sides deciding separately is how «сохранено» ends up over unsaved text.
+ * The chrome is the shell's top bar, not a bar of this surface's own: the two
+ * used to stack, and the second one said the document's name a line under the
+ * first (#2894 rework). What is left here is the page and the notices it
+ * raises — a conflict, a locked block, a failure to load.
+ *
+ * Autosave status is *reported* out through [onStatus] rather than decided
+ * here: two sides deciding separately is how «сохранено» ends up over unsaved
+ * text.
  */
 @Composable
 fun DocumentEditor(
-    title: String,
     slug: String,
     workspaceId: String,
     serverRoot: String,
-    /** Open discussions, for the badge on the bar — the sheet itself belongs to
-     *  the screen, since the reader opens the same one (§5). */
-    commentCount: Int,
-    /** Linked tasks, for the badge on the bar — same reasoning as [commentCount]. */
-    linkCount: Int,
     /** Owned by the screen: the version journal (§6) restores into the same
      *  document this surface is editing, and has to be able to reload it. */
     controller: DocEditorController,
@@ -70,8 +68,9 @@ fun DocumentEditor(
      *  the app cannot parse it, and the page can; see [DocEditorController.applyImport]. */
     pendingImport: String? = null,
     onImportApplied: () -> Unit = {},
+    /** Where the autosave status goes: the shell's bar carries it now. */
+    onStatus: (DocSaveStatus) -> Unit = {},
     onComments: (DocAnnotateTarget?) -> Unit,
-    onHistory: () -> Unit,
     onLinks: (DocAnnotateTarget?) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -111,46 +110,6 @@ fun DocumentEditor(
     Column(
         Modifier.fillMaxSize().background(c.surface).imePadding().testTag(TestTags.DOCUMENT_EDITOR),
     ) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IonIconButton(
-                Ion.CHEVRON_FORWARD,
-                onClick = { close() },
-                boxSize = 40.dp,
-                modifier = Modifier.graphicsLayer { scaleX = -1f }.testTag(TestTags.DOCUMENT_EDITOR_CLOSE),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                title.ifBlank { stringResource(R.string.docs_reader_untitled) },
-                color = c.text1,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                stringResource(statusLabel(status)),
-                color = if (status == DocSaveStatus.SAVED) c.text3 else c.text2,
-                fontSize = 12.sp,
-                modifier = Modifier.testTag(TestTags.DOCUMENT_EDITOR_STATUS),
-            )
-            DocCommentsButton(count = commentCount, onClick = { onComments(null) })
-            DocLinksButton(count = linkCount, onClick = { onLinks(null) })
-            // Whatever is still in the debounce is written before the journal
-            // opens: the entry the reader is about to compare against should be
-            // the text on screen, not the text of a minute ago — and a rollback
-            // picked from a stale journal would drop the last sentence typed.
-            DocHistoryButton(
-                onClick = {
-                    controller.save()
-                    onHistory()
-                },
-            )
-        }
-        HorizontalDivider(color = c.border)
-
         // A conflict stops autosave dead: the server has someone else's version
         // and retrying would overwrite it. The only way out is taking theirs,
         // which is destructive enough to be a button rather than a timer.
@@ -236,7 +195,10 @@ fun DocumentEditor(
                     controller.applyImport(payload)
                     onImportApplied()
                 },
-                onStatus = { signal -> status = signal.status },
+                onStatus = { signal ->
+                    status = signal.status
+                    onStatus(signal.status)
+                },
                 onBlocked = { name -> blockedBy = name },
                 onRemoteChange = { remoteChanged = true },
                 // A tap on the block handle's comment icon, or on the count the
@@ -252,7 +214,9 @@ fun DocumentEditor(
  *  short enough not to sit over the text after the lock is gone. */
 private const val BLOCKED_NOTICE_MS = 3000L
 
-private fun statusLabel(status: DocSaveStatus): Int = when (status) {
+/** The autosave status as a string resource. `internal` because the bar that
+ *  shows it is the shell's now, and it is filled in by [DocumentsScreen]. */
+internal fun statusLabel(status: DocSaveStatus): Int = when (status) {
     DocSaveStatus.SAVED -> R.string.docs_editor_saved
     DocSaveStatus.DIRTY -> R.string.docs_editor_dirty
     DocSaveStatus.SAVING -> R.string.docs_editor_saving

@@ -308,6 +308,10 @@ data class DocLinksState(
 /** As many task rows as the picker offers at once — the same cap the web uses. */
 private const val MAX_LINK_CANDIDATES = 50
 
+/** Guard for walking a document's ancestry: a `parent_id` cycle the server
+ *  should never produce would otherwise spin the loop forever. */
+private const val MAX_DOC_DEPTH = 32
+
 /** What the backend answers with when the export sidecar is not there (§8). */
 private const val HTTP_UNAVAILABLE = 503
 
@@ -489,6 +493,57 @@ class DocumentsViewModel(
         close()
         // The trail may have been standing on it (or on one of its children).
         refresh()
+    }
+
+    /**
+     * Deletes a *neighbour* of the open document — the bin in the title menu's
+     * switcher (#2894 rework).
+     *
+     * Deleting the parent takes the open document with it, so the reader closes
+     * in that case too; deleting a child leaves the reader where it is. Which
+     * one it was is decided from the tree rather than from the caller, so a
+     * stale row cannot talk the reader into staying over a deleted document.
+     */
+    fun removeDocument(docId: String) = mutate {
+        val doc = _state.value.docs.firstOrNull { it.id == docId } ?: return@mutate
+        repo.delete(doc.id, recursive = docChildCount(_state.value.docs, doc.id) > 0)
+        val openId = _state.value.openId
+        if (openId == doc.id || openId?.let { isDescendantOf(it, doc.id) } == true) close()
+        refresh()
+    }
+
+    /** Is [docId] somewhere under [ancestorId]? */
+    private fun isDescendantOf(docId: String, ancestorId: String): Boolean {
+        val byId = _state.value.docs.associateBy { it.id }
+        var current = byId[docId]?.parentId
+        var hops = 0
+        while (current != null && hops < MAX_DOC_DEPTH) {
+            if (current == ancestorId) return true
+            current = byId[current]?.parentId
+            hops++
+        }
+        return false
+    }
+
+    /**
+     * Steps to a neighbour from the title menu: the document above the open one,
+     * or one of the documents below it.
+     *
+     * The trail moves with the step, because it is what «К списку документов»
+     * lands on: opening a nested document and then leaving should show the level
+     * that document lives at, not the one it was reached from.
+     */
+    fun switchTo(docId: String) {
+        val target = _state.value.docs.firstOrNull { it.id == docId } ?: return
+        val current = _state.value.open
+        when {
+            current != null && target.parentId == current.id ->
+                _state.update { it.withTrail(it.trail + DocCrumb(current.id, current.title)) }
+
+            current != null && current.parentId == target.id ->
+                _state.update { it.withTrail(it.trail.dropLast(1)) }
+        }
+        open(target)
     }
 
     // ── Annotations (§5) ──────────────────────────────────────────────────────

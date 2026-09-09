@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,7 +52,10 @@ import website.msdnna.tessera.ui.components.DocEditorController
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.screens.documents.DocAction
 import website.msdnna.tessera.ui.screens.documents.DocBlockView
+import website.msdnna.tessera.ui.screens.documents.DocChrome
+import website.msdnna.tessera.ui.screens.documents.DocChromeInfo
 import website.msdnna.tessera.ui.screens.documents.DocCommentsButton
 import website.msdnna.tessera.ui.screens.documents.DocCommentsSheet
 import website.msdnna.tessera.ui.screens.documents.DocDraft
@@ -60,18 +64,21 @@ import website.msdnna.tessera.ui.screens.documents.DocHistoryButton
 import website.msdnna.tessera.ui.screens.documents.DocHistorySheet
 import website.msdnna.tessera.ui.screens.documents.DocLinksButton
 import website.msdnna.tessera.ui.screens.documents.DocLinksSheet
+import website.msdnna.tessera.ui.screens.documents.DocSwitchRow
 import website.msdnna.tessera.ui.screens.documents.DocTemplatesSheet
 import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
 import website.msdnna.tessera.ui.screens.documents.DocumentEditor
 import website.msdnna.tessera.ui.screens.documents.DocumentsList
+import website.msdnna.tessera.ui.screens.documents.statusLabel
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.DocumentsViewModel
 import website.msdnna.tessera.util.DOC_IMPORT_MIME_TYPES
 import website.msdnna.tessera.util.DocBlock
 import website.msdnna.tessera.util.DocBuiltinTemplate
 import website.msdnna.tessera.util.DocPage
+import website.msdnna.tessera.util.DocSaveStatus
 import website.msdnna.tessera.util.DocTemplateCard
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.builtinTemplateCard
@@ -101,6 +108,9 @@ fun DocumentsScreen(
     /** Opens a linked task. Null keeps the links panel read-only, which is what
      *  a host with nowhere to navigate to should get. */
     onOpenTask: ((String) -> Unit)? = null,
+    /** Hands the shell what its top bar should show while a document is open,
+     *  and null the moment none is (#2894 rework — see [DocChrome]). */
+    onChrome: (DocChrome?) -> Unit = {},
 ) {
     val c = Tessera.colors
     val vm: DocumentsViewModel = viewModel()
@@ -116,6 +126,11 @@ fun DocumentsScreen(
     // reach the surface that is holding the pre-rollback text, and the journal
     // is a sibling of the editor rather than a child of it.
     val editorController = remember { DocEditorController() }
+    // Both used to live inside the reader. They moved out with its header: the
+    // outline is opened from the shell's menu now, and the autosave status is
+    // reported up by the editor so the same menu's title can carry it.
+    var tocOpen by remember { mutableStateOf(false) }
+    var saveStatus by remember { mutableStateOf(DocSaveStatus.SAVED) }
     val ctx = LocalContext.current
     // Both are read in the composition and used outside it: the share sheet is
     // shown from a callback, where `ctx.getString` would give the system's
@@ -189,6 +204,117 @@ fun DocumentsScreen(
         vm.crumbTo(state.trail.lastIndex - 1)
     }
 
+    // ── The shell's top bar, while a document is open ─────────────────────────
+    // The section used to draw a header of its own under the app's, saying the
+    // same thing twice; now the document takes the app's bar over and the
+    // second row is gone. Everything it held moved into the menu behind the
+    // title — see DocChrome.
+    val openDoc = state.open
+    val switchRows = remember(state.docs, openDoc?.id) {
+        if (openDoc == null) {
+            emptyList()
+        } else {
+            val byId = state.docs.associateBy { it.id }
+            val parent = openDoc.parentId
+                ?.let(byId::get)
+                ?.let { DocSwitchRow(it.id, it.title, it.icon, parent = true) }
+            val children = state.docs
+                .filter { it.parentId == openDoc.id }
+                .map { DocSwitchRow(it.id, it.title, it.icon, parent = false) }
+            listOfNotNull(parent) + children
+        }
+    }
+    LaunchedEffect(
+        openDoc,
+        editing,
+        saveStatus,
+        switchRows,
+        state.comments.openCount,
+        state.links.linkCount,
+        state.openChildCount,
+        state.templates.exportFormats,
+    ) {
+        onChrome(
+            openDoc?.let { doc ->
+                DocChrome(
+                    info = DocChromeInfo(
+                        title = doc.title,
+                        icon = doc.icon,
+                        editing = editing,
+                        // Only the editor has a save to report; the reader
+                        // writes nothing, and «Сохранено» over it would be a
+                        // claim about a keystroke that never happened.
+                        status = if (editing) statusLabel(saveStatus) else null,
+                        statusSettled = saveStatus == DocSaveStatus.SAVED,
+                        commentCount = state.comments.openCount,
+                        linkCount = state.links.linkCount,
+                        childCount = state.openChildCount,
+                        rows = switchRows,
+                        exportFormats = state.templates.exportFormats,
+                    ),
+                    onAction = { action ->
+                        when (action) {
+                            DocAction.EDIT -> editing = true
+
+                            DocAction.READ -> {
+                                // Leaving writes first: the debounce may still
+                                // be holding the last words typed.
+                                editorController.save()
+                                editing = false
+                                vm.refreshOpen()
+                            }
+
+                            DocAction.LIST -> {
+                                editing = false
+                                vm.close()
+                            }
+
+                            DocAction.COMMENTS -> vm.openComments()
+
+                            DocAction.LINKS -> vm.openLinks()
+
+                            // Whatever is still in the debounce is written
+                            // before the journal opens, or the entry it
+                            // compares against would be a minute old — and a
+                            // rollback picked from a stale journal drops the
+                            // last sentence typed.
+                            DocAction.HISTORY -> {
+                                if (editing) editorController.save()
+                                vm.openHistory()
+                            }
+
+                            DocAction.TOC -> tocOpen = true
+
+                            DocAction.NESTED -> draft = DocDraft.Nested
+
+                            DocAction.CHILDREN -> vm.drillInto(doc)
+
+                            DocAction.RENAME -> draft = DocDraft.Rename(doc.title)
+
+                            DocAction.REMOVE -> draft = DocDraft.Remove(state.openChildCount)
+                        }
+                    },
+                    onExport = { format ->
+                        vm.exportOpen(
+                            cacheDir = ctx.cacheDir,
+                            format = format,
+                            fileName = docExportFileName(doc.title, format, exportFallbackName),
+                        ) { file -> shareExportedFile(ctx, file, res.getString(R.string.docs_export_share, file.name)) }
+                    },
+                    onSwitch = { row ->
+                        editing = false
+                        vm.switchTo(row.id)
+                    },
+                    onRemoveRow = { row -> vm.removeDocument(row.id) },
+                )
+            },
+        )
+    }
+    // Leaving the section for another screen must take the title with it: the
+    // shell keeps whatever it was last handed, and a document's name over the
+    // board would point at nothing.
+    DisposableEffect(Unit) { onDispose { onChrome(null) } }
+
     Box(Modifier.fillMaxSize().background(c.bg).testTag(TestTags.DOCUMENTS_SCREEN)) {
         if (state.loading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
@@ -213,30 +339,11 @@ fun DocumentsScreen(
 
         if (state.openId != null) {
             DocumentReader(
-                title = state.open?.title.orEmpty(),
-                icon = state.open?.icon.orEmpty(),
                 blocks = state.blocks,
                 page = state.page,
                 loading = state.opening,
-                childCount = state.openChildCount,
-                commentCount = state.comments.openCount,
-                linkCount = state.links.linkCount,
-                onBack = { vm.close() },
-                onDraft = { draft = it },
-                onChildren = { state.open?.let(vm::drillInto) },
-                onEdit = { editing = true },
-                onComments = { vm.openComments() },
-                onHistory = { vm.openHistory() },
-                onLinks = { vm.openLinks() },
-                exportFormats = state.templates.exportFormats,
-                onExport = { format ->
-                    val title = state.open?.title.orEmpty()
-                    vm.exportOpen(
-                        cacheDir = ctx.cacheDir,
-                        format = format,
-                        fileName = docExportFileName(title, format, exportFallbackName),
-                    ) { file -> shareExportedFile(ctx, file, res.getString(R.string.docs_export_share, file.name)) }
-                },
+                tocOpen = tocOpen,
+                onTocDismiss = { tocOpen = false },
             )
         }
 
@@ -247,20 +354,19 @@ fun DocumentsScreen(
         val open = state.open
         if (editing && open != null && open.slug.isNotBlank()) {
             DocumentEditor(
-                title = open.title,
                 slug = open.slug,
                 workspaceId = workspaceId,
                 serverRoot = RetrofitClient.serverRoot,
-                commentCount = state.comments.openCount,
-                linkCount = state.links.linkCount,
                 controller = editorController,
+                // The bar showing it belongs to the shell now, so the status is
+                // reported out rather than drawn here.
+                onStatus = { saveStatus = it },
                 // Handed over once the page says it is up: the bridge is
                 // installed on mount, and calling into it before that is a
                 // no-op that would lose the import silently.
                 pendingImport = state.pendingImport?.takeIf { it.documentId == open.id }?.payload,
                 onImportApplied = { vm.clearPendingImport() },
                 onComments = { target -> vm.openComments(target) },
-                onHistory = { vm.openHistory() },
                 onLinks = { target -> vm.openLinks(target) },
                 onClose = {
                     editing = false
@@ -460,30 +566,22 @@ private fun pickedFileName(ctx: android.content.Context, uri: android.net.Uri): 
     }
 }.getOrNull() ?: uri.lastPathSegment.orEmpty()
 
+/**
+ * The document, and nothing above it.
+ *
+ * Its header is gone on purpose (#2894 rework): the shell's bar carries the
+ * name and the menu now, so this surface is the text and the space it needs.
+ * The outline is opened from that menu, hence [tocOpen] arriving from outside.
+ */
 @Composable
 private fun DocumentReader(
-    title: String,
-    icon: String,
     blocks: List<DocBlock>,
     page: DocPage,
     loading: Boolean,
-    childCount: Int,
-    commentCount: Int,
-    linkCount: Int,
-    exportFormats: List<String>,
-    onBack: () -> Unit,
-    onDraft: (DocDraft) -> Unit,
-    onChildren: () -> Unit,
-    onEdit: () -> Unit,
-    onComments: () -> Unit,
-    onHistory: () -> Unit,
-    onLinks: () -> Unit,
-    onExport: (String) -> Unit,
+    tocOpen: Boolean,
+    onTocDismiss: () -> Unit,
 ) {
     val c = Tessera.colors
-    var menuOpen by remember { mutableStateOf(false) }
-    var exportOpen by remember { mutableStateOf(false) }
-    var tocOpen by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val outline = remember(blocks) { docOutline(blocks) }
@@ -492,91 +590,6 @@ private fun DocumentReader(
     val pages = remember(blocks, page) { docSectionPages(blocks, page) }
 
     Column(Modifier.fillMaxSize().background(c.surface).testTag(TestTags.DOCUMENT_READER)) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IonIconButton(
-                Ion.CHEVRON_FORWARD,
-                onClick = onBack,
-                boxSize = 40.dp,
-                modifier = Modifier.graphicsLayer { scaleX = -1f }.testTag(TestTags.DOCUMENT_BACK),
-            )
-            Spacer(Modifier.width(4.dp))
-            if (icon.isNotBlank()) {
-                Text(icon, fontSize = 16.sp)
-                Spacer(Modifier.width(6.dp))
-            }
-            Text(
-                title.ifBlank { stringResource(R.string.docs_reader_untitled) },
-                color = c.text1,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
-            IonIconButton(
-                Ion.PENCIL,
-                onClick = onEdit,
-                boxSize = 40.dp,
-                modifier = Modifier.testTag(TestTags.DOCUMENT_EDIT),
-            )
-            DocCommentsButton(count = commentCount, onClick = onComments)
-            DocLinksButton(count = linkCount, onClick = onLinks)
-            DocHistoryButton(onClick = onHistory)
-            IonIconButton(
-                Ion.LIST,
-                onClick = { tocOpen = true },
-                boxSize = 40.dp,
-                modifier = Modifier.testTag(TestTags.DOCUMENT_TOC_OPEN),
-            )
-            // The menu is a sibling of its trigger inside this Box: TDropdown
-            // positions itself against the anchor's bounds.
-            Box {
-                IonIconButton(
-                    Ion.ELLIPSIS_V,
-                    onClick = { menuOpen = true },
-                    boxSize = 40.dp,
-                    modifier = Modifier.testTag(TestTags.DOCUMENT_ACTIONS),
-                )
-                DocumentActionsMenu(
-                    expanded = menuOpen,
-                    childCount = childCount,
-                    onDismiss = { menuOpen = false },
-                    onNested = {
-                        menuOpen = false
-                        onDraft(DocDraft.Nested)
-                    },
-                    onChildren = {
-                        menuOpen = false
-                        onChildren()
-                    },
-                    onRename = {
-                        menuOpen = false
-                        onDraft(DocDraft.Rename(title))
-                    },
-                    onExport = {
-                        menuOpen = false
-                        exportOpen = true
-                    },
-                    onRemove = {
-                        menuOpen = false
-                        onDraft(DocDraft.Remove(childCount))
-                    },
-                )
-                DocExportMenu(
-                    expanded = exportOpen,
-                    formats = exportFormats,
-                    onDismiss = { exportOpen = false },
-                    onPick = { format ->
-                        exportOpen = false
-                        onExport(format)
-                    },
-                )
-            }
-        }
-        HorizontalDivider(color = c.border)
-
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
 
@@ -613,9 +626,9 @@ private fun DocumentReader(
     if (tocOpen) {
         DocTocPanel(
             rows = outline,
-            onDismiss = { tocOpen = false },
+            onDismiss = onTocDismiss,
             onJump = { row ->
-                tocOpen = false
+                onTocDismiss()
                 val index = docBlockIndex(blocks, row.id)
                 // +1 for the leading spacer item; a heading that is no longer in
                 // the body (the outline was built from an older parse) simply

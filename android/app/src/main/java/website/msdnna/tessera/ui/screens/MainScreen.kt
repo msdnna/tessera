@@ -65,6 +65,8 @@ import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.UpdateDialog
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.screens.documents.DocChrome
+import website.msdnna.tessera.ui.screens.documents.DocTitleSwitcher
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.NotificationViewModel
@@ -117,6 +119,10 @@ fun MainScreen(
     // Timeline/Gantt own pinch-zoom + horizontal pan → suppress the drawer edge-swipe
     // there so it doesn't steal the gesture (set by BoardScreen).
     var boardTimelineLike by remember { mutableStateOf(false) }
+    // The open document's chrome, handed up by DocumentsScreen: its name is the
+    // bar's title and its menu is what the section's own header used to be
+    // (#2894 rework). Null whenever no document is open.
+    var docChrome by remember { mutableStateOf<DocChrome?>(null) }
     val scope = rememberCoroutineScope()
     val state by wsVm.state.collectAsStateWithLifecycle()
     val notifState by notifVm.state.collectAsStateWithLifecycle()
@@ -313,7 +319,12 @@ fun MainScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = !boardTimelineLike || drawerState.isOpen,
+        // An open document owns the whole width: reading it is a long vertical
+        // scroll, and a drag that leans a few degrees left near the edge was
+        // being taken as «open the sidebar» instead (#2894 rework). Once the
+        // drawer *is* open its own gestures have to keep working, or it could
+        // only be closed by the scrim.
+        gesturesEnabled = (!boardTimelineLike && docChrome == null) || drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = c.surface, modifier = Modifier.width(280.dp)) {
                 // Sidebar navigation: push onto the back-stack and close the drawer.
@@ -385,6 +396,7 @@ fun MainScreen(
             ) {
                 TopBar(
                     title = titleFor(dest).resolve(),
+                    docChrome = docChrome?.takeIf { dest is MainDest.Documents },
                     unread = notifState.unread,
                     bellOpen = bellOpen,
                     notifState = notifState,
@@ -440,6 +452,7 @@ fun MainScreen(
                                         if (boardId != null) openTask(boardId, taskId)
                                     }
                                 },
+                                onChrome = { docChrome = it },
                             )
 
                             is MainDest.Reminders -> RemindersScreen()
@@ -750,6 +763,9 @@ private fun navKeyOf(dest: MainDest): String = when (dest) {
 @Composable
 private fun TopBar(
     title: String,
+    /** Set while a document is open: its name takes the title's place and its
+     *  menu replaces the header the section used to draw of its own. */
+    docChrome: DocChrome?,
     unread: Int,
     bellOpen: Boolean,
     notifState: website.msdnna.tessera.ui.viewmodels.NotificationUiState,
@@ -777,6 +793,8 @@ private fun TopBar(
         IonIconButton(Ion.MENU, onClick = onMenu, boxSize = 40.dp, modifier = Modifier.testTag(TestTags.TOP_MENU))
         Spacer(Modifier.width(4.dp))
         when {
+            docChrome != null -> DocTitleSwitcher(docChrome, Modifier.weight(1f))
+
             boardId != null -> BoardTitleSwitcher(boardId, title, projectBoards, onSelectBoard, Modifier.weight(1f))
 
             isIntegration -> IntegrationTitleSwitcher(title, Modifier.weight(1f))

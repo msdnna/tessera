@@ -733,6 +733,14 @@
     <string name="docs_create">New document</string>
     <string name="docs_create_confirm">Create</string>
     <string name="docs_nested_count">nested: %1$d</string>
+    <!-- The menu behind the document's name in the app bar -->
+    <string name="docs_menu_edit">Edit</string>
+    <string name="docs_menu_read">Close the editor</string>
+    <string name="docs_menu_comments">Discussions</string>
+    <string name="docs_menu_links">Links and approvals</string>
+    <string name="docs_menu_history">Change history</string>
+    <string name="docs_menu_switch">Go to a document</string>
+    <string name="docs_menu_list">Back to documents</string>
     <!-- The reader's «⋯» menu -->
     <string name="docs_action_nested">Nested document</string>
     <string name="docs_action_children">Show nested (%1$d)</string>
