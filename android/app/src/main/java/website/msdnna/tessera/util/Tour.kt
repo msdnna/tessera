@@ -32,6 +32,16 @@ object TourKeys {
     const val PROJ_ADD = "proj-add"
     const val MENU_PROJECT = "menu-project"
     const val MENU_GROUP = "menu-group"
+
+    /** «Добавить доску» inside a project's «⋯» menu — the board flow's in-menu
+     *  step, the mirror of [MENU_PROJECT]/[MENU_GROUP] the board scenario was
+     *  missing (#2860 rework). */
+    const val MENU_BOARD = "menu-board"
+
+    /** The inline field that names a new group, the mirror of [PROJECT_NAME]. The
+     *  group scenario used to point at the created row via a `{group}` token that
+     *  was empty until commit, which resolved to a stray group (#2860 rework). */
+    const val GROUP_NAME = "group-name"
     const val PROJECT_NAME = "project-name"
     const val PROJECT_SLUG = "project-slug"
     const val PROJECT_SUBMIT = "project-submit"
@@ -101,6 +111,7 @@ object TourKeys {
 
     /** Prefixes the per-entity keys above, for the rules that count or track them. */
     const val PROJECT_ROW = "project-row:"
+    const val GROUP_ROW = "group-row:"
     const val BOARD_ROW = "board-row:"
     const val TASK_CARD = "task-card:"
     const val COLUMN_ADD = "column-add:"
@@ -267,6 +278,20 @@ val GET_STARTED: List<TourStep> = listOf(
         advanceOn = AdvanceOn.Tap(),
     ),
     TourStep(
+        // The «⋯» tap opened the menu; this step lives inside it, the mirror of
+        // `menu-project`. Without it the board flow tapped «⋯» and jumped straight
+        // to `board-create`, whose name field does not exist while the menu is
+        // open — so the overlay had nothing to point at and dimmed nothing, which
+        // read as «маска пропадает вовсе» over the context menu (#2860 rework).
+        id = "board-menu",
+        anchor = TourKeys.MENU_BOARD,
+        titleRes = R.string.tour_board_menu_title,
+        bodyRes = R.string.tour_board_menu_body,
+        mode = TourMode.ACTION,
+        surface = TourSurface.DRAWER,
+        advanceOn = AdvanceOn.Tap(),
+    ),
+    TourStep(
         id = "board-create",
         anchor = TourKeys.BOARD_NAME,
         titleRes = R.string.tour_board_create_title,
@@ -422,14 +447,19 @@ val GET_STARTED: List<TourStep> = listOf(
         advanceOn = AdvanceOn.Tap(),
     ),
     TourStep(
-        id = "group-created",
-        // The group the user just created, not the first in the tree: on a tree that
-        // already had groups the mask sat on someone else's (web #2778 rework).
-        anchor = TourKeys.groupRow(GROUP_TOKEN),
+        // Points at the inline name field, the mirror of `project-create` — not at
+        // the created row via a `{group}` token. That token was empty until the
+        // group was committed, and an empty tail resolves by prefix to the topmost
+        // existing group, so the arrow sat on a stray group and offered «Понятно»
+        // before the user had made anything (#2860 rework). As an action step it
+        // shows no «Понятно» and ends when a new group row actually appears.
+        id = "group-create",
+        anchor = TourKeys.GROUP_NAME,
         titleRes = R.string.tour_group_created_title,
         bodyRes = R.string.tour_group_created_body,
-        mode = TourMode.INFO,
+        mode = TourMode.ACTION,
         surface = TourSurface.DRAWER,
+        advanceOn = AdvanceOn.Count(TourKeys.GROUP_ROW),
     ),
     TourStep(
         id = "dnd-project",

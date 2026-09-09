@@ -98,6 +98,17 @@ val LocalTourAnchors = staticCompositionLocalOf { TourAnchors() }
 val LocalTourTap = staticCompositionLocalOf<(String) -> Unit> { {} }
 
 /**
+ * A drop that relocated an anchored element, for `advanceOn.moved`. The value is
+ * the address it landed in — a project's new group id, empty at the tree root.
+ *
+ * Reported straight from the drop handler rather than inferred from the moved
+ * row's `place`: a drop into a *collapsed* group unmounts that row, so its new
+ * place was never registered and the step hung until the group was expanded by
+ * hand (#2860 rework). Ignored unless a guide runs.
+ */
+val LocalTourMoved = staticCompositionLocalOf<(String) -> Unit> { {} }
+
+/**
  * Registers this element as the anchor [key], reporting its rect and, for the
  * drag-and-drop steps, the [place] it currently sits in.
  *

@@ -78,6 +78,7 @@ import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.tour.LocalTourMoved
 import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
@@ -198,13 +199,21 @@ fun Sidebar(
 
     val flat = remember(state.groups, state.projects, state.expandedGroups) { buildFlat(state) }
 
+    val tourMoved = LocalTourMoved.current
     val onDrop: (SbNode) -> Unit = onDrop@{ node ->
         if (!drag.movedFar) return@onDrop
         val step = with(density) { IndentStep.toPx() }
         val d = resolveSidebarDrop(drag, flat, step, drag.rootOffset.y) ?: return@onDrop
         when (node.kind) {
             SbKind.GROUP -> vm.moveGroup(node.id, d.parentId, d.beforeId, d.afterId)
-            SbKind.PROJECT -> vm.moveProject(node.id, d.parentId, d.beforeId, d.afterId)
+
+            SbKind.PROJECT -> {
+                vm.moveProject(node.id, d.parentId, d.beforeId, d.afterId)
+                // Tell the guide's `dnd-project` step where it landed, now, from the
+                // drop itself: a drop into a collapsed group unmounts the row, so
+                // its new place would otherwise never be reported (#2860 rework).
+                tourMoved(d.parentId.orEmpty())
+            }
         }
     }
 
@@ -361,7 +370,7 @@ fun Sidebar(
                 state.childGroups(null).forEach { key(it.id) { GroupNode(it, 0, ctx) } }
                 val rootCreate = creating
                 if (rootCreate is Creating.Group && rootCreate.parentId == null) {
-                    InlineCreateRow(stringResource(R.string.sidebar_group_name_hint), onDismiss = { creating = null }) {
+                    InlineCreateRow(stringResource(R.string.sidebar_group_name_hint), TourKeys.GROUP_NAME, onDismiss = { creating = null }) {
                         ctx.commitGroup(it, null)
                     }
                 }
@@ -583,7 +592,7 @@ private fun GroupNode(group: ProjectGroup, depth: Int, ctx: TreeCtx) {
             ctx.state.childGroups(group.id).forEach { key(it.id) { GroupNode(it, depth + 1, ctx) } }
             val create = ctx.creating
             if (create is Creating.Group && create.parentId == group.id) {
-                InlineCreateRow(stringResource(R.string.sidebar_group_name_hint), onDismiss = { ctx.setCreating(null) }) {
+                InlineCreateRow(stringResource(R.string.sidebar_group_name_hint), TourKeys.GROUP_NAME, onDismiss = { ctx.setCreating(null) }) {
                     ctx.commitGroup(it, group.id)
                 }
             }
@@ -612,7 +621,7 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
         ctx = ctx,
         onClick = { ctx.clickRow { ctx.vm.toggleProject(project.id) } },
         menu = { close ->
-            TMenuItem(stringResource(R.string.sidebar_project_add_board), icon = Ion.GRID, onClick = {
+            TMenuItem(stringResource(R.string.sidebar_project_add_board), icon = Ion.GRID, modifier = Modifier.tourAnchor(TourKeys.MENU_BOARD), onClick = {
                 close()
                 ctx.vm.ensureProjectExpanded(project.id)
                 ctx.setCreating(Creating.Board(project.id))

@@ -1200,7 +1200,9 @@
     <string name="tour_project_create_title">Назовите проект</string>
     <string name="tour_project_create_body">Введите название и подтвердите — проект появится в дереве. Адрес проекта сервер соберёт из названия сам.</string>
     <string name="tour_board_add_title">Добавьте доску</string>
-    <string name="tour_board_add_body">Задачи живут на досках, у проекта их может быть несколько. Откройте меню «⋯» у проекта и выберите «Добавить доску».</string>
+    <string name="tour_board_add_body">Задачи живут на досках, у проекта их может быть несколько. Откройте меню «⋯» у проекта.</string>
+    <string name="tour_board_menu_title">Выберите «Добавить доску»</string>
+    <string name="tour_board_menu_body">В этом же меню — переименование, оценка и цвет проекта.</string>
     <string name="tour_board_create_title">Назовите доску</string>
     <string name="tour_board_create_body">Введите название и подтвердите — доска появится в дереве с четырьмя колонками.</string>
     <string name="tour_board_open_title">Откройте доску</string>
@@ -1235,8 +1237,8 @@
     <string name="tour_group_add_body">Когда проектов становится много, их складывают в группы. Нажмите «+» над деревом ещё раз.</string>
     <string name="tour_menu_group_title">Выберите «Группа»</string>
     <string name="tour_menu_group_body">Теперь пригодился второй пункт меню.</string>
-    <string name="tour_group_created_title">Группа создана</string>
-    <string name="tour_group_created_body">Она называется «Группа» — долгий тап по названию переименовывает её.</string>
+    <string name="tour_group_created_title">Назовите группу</string>
+    <string name="tour_group_created_body">Группы удобны, когда проектов много. Введите имя и нажмите Enter.</string>
     <string name="tour_dnd_project_title">Перетащите проект в группу</string>
     <string name="tour_dnd_project_body">Дерево проектов перетаскивается так же: возьмите проект и бросьте его в группу.</string>
     <string name="tour_nav_sections_title">Заметки, документы, напоминания</string>

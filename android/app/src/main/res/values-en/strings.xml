@@ -1168,7 +1168,9 @@
     <string name="tour_project_create_title">Name the project</string>
     <string name="tour_project_create_body">Type a name and confirm — the project appears in the tree. Its address is derived from the name by the server.</string>
     <string name="tour_board_add_title">Add a board</string>
-    <string name="tour_board_add_body">Tasks live on boards, and a project may have several. Open the project’s “⋯” menu and pick “Add board”.</string>
+    <string name="tour_board_add_body">Tasks live on boards, and a project may have several. Open the project’s “⋯” menu.</string>
+    <string name="tour_board_menu_title">Pick “Add board”</string>
+    <string name="tour_board_menu_body">The same menu renames, estimates and recolours the project.</string>
     <string name="tour_board_create_title">Name the board</string>
     <string name="tour_board_create_body">Type a name and confirm — the board appears in the tree with four columns.</string>
     <string name="tour_board_open_title">Open the board</string>
@@ -1203,8 +1205,8 @@
     <string name="tour_group_add_body">Once there are many projects, they go into groups. Press “+” above the tree once more.</string>
     <string name="tour_menu_group_title">Pick “Group”</string>
     <string name="tour_menu_group_body">Now the second menu item comes in handy.</string>
-    <string name="tour_group_created_title">The group is created</string>
-    <string name="tour_group_created_body">It is called “Group” — long-press the name to rename it.</string>
+    <string name="tour_group_created_title">Name the group</string>
+    <string name="tour_group_created_body">Groups help when there are many projects. Type a name and press Enter.</string>
     <string name="tour_dnd_project_title">Drag the project into the group</string>
     <string name="tour_dnd_project_body">The project tree drags the same way: pick a project up and drop it into a group.</string>
     <string name="tour_nav_sections_title">Notes, documents, reminders</string>

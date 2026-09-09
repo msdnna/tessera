@@ -335,6 +335,48 @@ class TourTest {
     }
 
     @Test
+    fun `the group step points at its name field, not a stray group row`() {
+        // #2860 rework, point 5: the step used to anchor `group-row:{group}`, and
+        // with no group yet the empty token left a bare `group-row:` prefix that
+        // resolved to the topmost existing group — a stray arrow and a premature
+        // «Понятно». It now points at the inline name field and ends on creation.
+        val group = GET_STARTED.first { it.id == "group-create" }
+        assertThat(group.anchor).isEqualTo(TourKeys.GROUP_NAME)
+        assertThat(group.mode).isEqualTo(TourMode.ACTION)
+        assertThat(group.advanceOn).isEqualTo(AdvanceOn.Count(TourKeys.GROUP_ROW))
+        // No step anchors an unresolved group-row token any more.
+        assertThat(GET_STARTED.map { it.anchor }).doesNotContain(TourKeys.groupRow("{group}"))
+    }
+
+    @Test
+    fun `the board flow guides the in-menu step, mirroring the project flow`() {
+        // #2860 rework, point 2: tapping «⋯» jumped straight to `board-create`,
+        // whose name field does not exist while the context menu is open, so the
+        // overlay dimmed nothing. A `board-menu` step now sits inside the menu.
+        val ids = GET_STARTED.map { it.id }
+        val add = ids.indexOf("board-add")
+        val menu = ids.indexOf("board-menu")
+        val create = ids.indexOf("board-create")
+        assertThat(menu).isGreaterThan(add)
+        assertThat(create).isGreaterThan(menu)
+        assertThat(GET_STARTED[menu].anchor).isEqualTo(TourKeys.MENU_BOARD)
+    }
+
+    @Test
+    fun `a moved step ends on a place reported straight from the drop`() {
+        // #2860 rework, point 4: a drop into a collapsed group unmounts the moved
+        // row, so its new place is never registered. The drop handler reports the
+        // landing place directly (LocalTourMoved → located), which must still end
+        // the step — exactly one non-empty report after the baseline.
+        val e = engine()
+        val moved = step("m", "project-row:x", advanceOn = AdvanceOn.Moved("project-row:"))
+        e.start(listOf(moved, info))
+        e.located("") // baseline: the project sat at the tree root
+        e.located("g1") // dropped into a group, reported without a laid-out row
+        assertThat(e.current?.id).isEqualTo("info")
+    }
+
+    @Test
     fun `the scenario can be walked from end to end`() {
         val e = engine()
         e.start()

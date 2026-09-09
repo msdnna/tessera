@@ -74,6 +74,15 @@ class TourViewModel(app: Application) : AndroidViewModel(app) {
         publish()
     }
 
+    /** A drop reported by the sidebar for a [AdvanceOn.Moved] step — the address it
+     *  landed in. Reported straight from the drop so a relocation into a collapsed
+     *  group (whose row unmounts) still ends the step (#2860 rework). */
+    fun moved(place: String) {
+        if (!engine.active) return
+        engine.located(place)
+        publish()
+    }
+
     /** The host reports what the user just created, so the steps that follow point
      *  at *that* row (the project, its board, the group). */
     fun noteCreated(next: TourContext.() -> TourContext) {

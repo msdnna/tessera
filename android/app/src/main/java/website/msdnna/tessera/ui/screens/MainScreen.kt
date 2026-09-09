@@ -72,6 +72,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.tour.LocalTourActions
 import website.msdnna.tessera.ui.tour.LocalTourAnchors
 import website.msdnna.tessera.ui.tour.LocalTourLayers
+import website.msdnna.tessera.ui.tour.LocalTourMoved
 import website.msdnna.tessera.ui.tour.LocalTourSnapshot
 import website.msdnna.tessera.ui.tour.LocalTourTap
 import website.msdnna.tessera.ui.tour.TourActions
@@ -334,6 +335,7 @@ fun MainScreen(
     val tourAnchors = remember { TourAnchors() }
     val tourLayers = remember { TourLayers() }
     val tourTap = remember(tourVm) { { key: String -> tourVm.tapped(key) } }
+    val tourMoved = remember(tourVm) { { place: String -> tourVm.moved(place) } }
     val tourActions = remember(tourVm) {
         TourActions(next = tourVm::next, skip = tourVm::skip, anchorMissing = tourVm::anchorMissing)
     }
@@ -353,6 +355,7 @@ fun MainScreen(
     CompositionLocalProvider(
         LocalTourAnchors provides tourAnchors,
         LocalTourTap provides tourTap,
+        LocalTourMoved provides tourMoved,
         LocalTourSnapshot provides tour,
         LocalTourActions provides tourActions,
         LocalTourLayers provides tourLayers,

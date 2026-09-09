@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -59,6 +60,7 @@ import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.tour.LocalTourAnchors
+import website.msdnna.tessera.ui.tour.LocalTourSnapshot
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourMode
 import website.msdnna.tessera.util.TourSnapshot
@@ -260,6 +262,44 @@ private fun TourMask(ring: Rect, cuts: List<Rect>) {
         )
         drawPath(
             Path().apply { addRoundRect(tourCutout(ring, pad, radius)) },
+            color = c.primary,
+            style = Stroke(width = 2.dp.toPx()),
+        )
+    }
+}
+
+/**
+ * Dims and rings the guide's target *inside a menu popup* (#2860 rework, points
+ * 1-2). The shell's overlay lives in the activity window, so a [website.msdnna.
+ * tessera.ui.components.TDropdown] — its own window, drawn on top — hid it: the
+ * ring landed behind the menu and the neighbouring item stayed lit. This paints
+ * in the menu's own window, over the rows but consuming nothing (a [Canvas] takes
+ * no pointer input), so the ringed row stays tappable while the rest goes dark.
+ *
+ * Only when the step's target actually falls inside this menu. A menu opened for
+ * another reason mid-guide, or one whose target sits out in the shell (the «⋯» a
+ * step rings before its item exists), is left untouched.
+ */
+@Composable
+fun BoxScope.TourMenuScrim() {
+    val snapshot = LocalTourSnapshot.current
+    val anchors = LocalTourAnchors.current
+    if (!snapshot.active || snapshot.step == null) return
+    val key = snapshot.anchors.firstOrNull().orEmpty()
+    val c = Tessera.colors
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    Canvas(
+        Modifier.matchParentSize().onGloballyPositioned { origin = it.positionOnScreen() },
+    ) {
+        val target = anchors.find(key)?.rect?.translate(-origin.x, -origin.y) ?: return@Canvas
+        // Ours only if the target lands within this menu's bounds — the same rect
+        // in screen space, brought local by subtracting this canvas's origin.
+        if (!Rect(Offset.Zero, size).overlaps(target)) return@Canvas
+        val pad = CutPadding.toPx()
+        val radius = RadiusSm.toPx()
+        drawPath(tourMaskPath(size, listOf(target), pad, radius), Color.Black.copy(alpha = 0.5f))
+        drawPath(
+            Path().apply { addRoundRect(tourCutout(target, pad, radius)) },
             color = c.primary,
             style = Stroke(width = 2.dp.toPx()),
         )

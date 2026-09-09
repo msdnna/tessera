@@ -49,7 +49,7 @@ class TourE2eTest {
         // this also proves the first step found the workspace switcher inside the
         // drawer, which is the whole point of mounting the shell.
         compose.awaitTag(TestTags.TOUR_CARD)
-        compose.awaitTextIn(TestTags.TOUR_CARD, "1/27")
+        compose.awaitTextIn(TestTags.TOUR_CARD, "1/28")
     }
 
     @Test
@@ -65,7 +65,7 @@ class TourE2eTest {
         // («нажмите +»), which offers no «Понятно» at all — so the button going
         // away is itself the proof the guide advanced, and the counter says where to.
         compose.onNodeWithTag(TestTags.TOUR_NEXT).performClick()
-        compose.awaitTextIn(TestTags.TOUR_CARD, "2/27")
+        compose.awaitTextIn(TestTags.TOUR_CARD, "2/28")
         compose.awaitNoTag(TestTags.TOUR_NEXT)
     }
 
