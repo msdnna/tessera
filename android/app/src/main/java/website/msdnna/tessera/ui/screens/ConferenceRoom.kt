@@ -483,7 +483,14 @@ private fun ConferenceTile(peer: ConfPeer, screen: Boolean, modifier: Modifier =
             // without a camera, so their avatar would be the wrong answer.
             IonIcon(Ion.VIDEOCAM, size = 30.dp, tint = c.text3)
         } else {
-            MemberAvatar(if (peer.local) 44.dp else 36.dp, peer.name, userId = peer.identity)
+            // Centred in the space *above* the caption, not in the tile. A strip
+            // tile is 84dp tall and its name band eats the bottom quarter of that,
+            // so a truly centred avatar sits on its own label — the same collision
+            // the web tile had. Bottom padding on a centred child moves it up by
+            // half, which is exactly the band.
+            Box(Modifier.padding(bottom = CAPTION_LIFT * 2)) {
+                MemberAvatar(if (peer.local) 44.dp else 36.dp, peer.name, userId = peer.identity)
+            }
         }
 
         if (peer.quality.weak) {
@@ -519,6 +526,10 @@ private fun ConferenceTile(peer: ConfPeer, screen: Boolean, modifier: Modifier =
         }
     }
 }
+
+/** Half the name band at the bottom of a tile — how far the avatar rides up so
+ *  the two stop touching. See [ConferenceTile]. */
+private val CAPTION_LIFT = 11.dp
 
 /** «Подключаемся…», «Переподключаемся», a refusal — one line, most final first. */
 @Composable

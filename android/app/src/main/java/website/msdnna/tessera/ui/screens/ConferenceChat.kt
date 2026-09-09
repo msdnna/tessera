@@ -217,7 +217,7 @@ internal fun ConferenceChatSheet(
         handleTag = TestTags.CONFERENCE_CHAT_HANDLE,
         handleLabel = stringResource(R.string.conf_sheet_expand),
         onClose = onClose,
-        header = {
+        header = { dismiss ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -234,7 +234,7 @@ internal fun ConferenceChatSheet(
                     size = 18.dp,
                     tint = c.text2,
                     description = stringResource(R.string.conf_chat_close),
-                    modifier = Modifier.clickableNoRipple(onClick = onClose)
+                    modifier = Modifier.clickableNoRipple(onClick = dismiss)
                         .testTag(TestTags.CONFERENCE_CHAT_CLOSE),
                 )
             }

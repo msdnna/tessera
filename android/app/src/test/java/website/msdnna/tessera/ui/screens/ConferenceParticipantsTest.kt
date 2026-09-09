@@ -1,12 +1,17 @@
 package website.msdnna.tessera.ui.screens
 
 import android.content.Context
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.height
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import org.junit.Rule
@@ -27,6 +32,7 @@ import website.msdnna.tessera.ui.viewmodels.ConferenceRoomUiState
 import website.msdnna.tessera.util.ConfMediaGrant
 import website.msdnna.tessera.util.ConfMediaStatus
 import website.msdnna.tessera.util.ConfQuality
+import website.msdnna.tessera.util.ConfSheetDetent
 
 /**
  * The participants panel (#2896 §6), rendered over a call that never existed.
@@ -280,11 +286,86 @@ class ConferenceParticipantsTest {
         mount(state(listOf(person("me", "Я"))), onClose = { closed = true })
 
         compose.onNodeWithTag(TestTags.CONFERENCE_PANEL_CLOSE).performClick()
+        // The panel leaves through its exit animation, so the caller hears about
+        // it a frame later — see the same wait in `ConferenceChatSheetTest`.
+        compose.waitUntil { closed }
         assertThat(closed).isTrue()
+    }
+
+    /**
+     * The bug the second round of review found: collapsed from full screen, the
+     * sheet stopped somewhere near the dismissal threshold with its contents cut
+     * in half instead of landing on a detent.
+     *
+     * The rule was never wrong — «вниз из полного на шаг» is specced in
+     * `ConferenceSheetTest`. What was wrong is that the height it was supposed to
+     * animate to was a coroutine racing the ones the drag itself had launched.
+     * So the assertion here is deliberately about geometry and not about the
+     * rule: where the sheet actually ends up on screen.
+     */
+    @Test
+    fun `collapsed from full screen the sheet lands on half, not between detents`() {
+        mount(state(listOf(person("me", "Я"), person("ann", "Аня"))))
+
+        drag(-DRAG_PX)
+        drag(DRAG_PX * 2)
+
+        val screen = compose.onRoot().getUnclippedBoundsInRoot().height
+        val sheet = compose.onNodeWithTag(TestTags.CONFERENCE_PANEL).getUnclippedBoundsInRoot().height
+        assertThat(sheet.value).isWithin(SLACK_DP).of(screen.value * ConfSheetDetent.HALF.fraction)
+    }
+
+    /** The other half of the same rule: from half, the same pull is a dismissal. */
+    @Test
+    fun `pulled down from half the sheet closes`() {
+        var closed = false
+        mount(state(listOf(person("me", "Я"))), onClose = { closed = true })
+
+        drag(DRAG_PX)
+
+        compose.waitUntil { closed }
+        assertThat(closed).isTrue()
+    }
+
+    /**
+     * Moderation used to be two labelled buttons stacked under the person, each
+     * of them taller than the row they belonged to — which read as controls for
+     * the *next* name down.
+     */
+    @Test
+    fun `the moderation controls stay inside the row they act on`() {
+        mount(state(listOf(person("me", "Я"), person("ann", "Аня")), canModerate = true))
+
+        val row = compose.onNodeWithTag(TestTags.conferencePerson("ann")).getUnclippedBoundsInRoot()
+        for (tag in listOf(TestTags.conferenceForceMute("ann"), TestTags.conferenceKick("ann"))) {
+            val control = compose.onNodeWithTag(tag).getUnclippedBoundsInRoot()
+            assertThat(control.height.value).isLessThan(row.height.value)
+            assertThat(control.top.value).isAtLeast(row.top.value)
+            assertThat(control.bottom.value).isAtMost(row.bottom.value)
+        }
+    }
+
+    /** A drag on the grabber, positive downwards. One move rather than a swipe:
+     *  the sheet reads velocity, and a gesture split into steps is not a flick. */
+    private fun drag(dy: Float) {
+        compose.onNodeWithTag(TestTags.CONFERENCE_PANEL_HANDLE).performTouchInput {
+            down(center)
+            moveBy(Offset(0f, dy))
+            up()
+        }
+        compose.waitForIdle()
     }
 
     /** True when at least one node carries the tag — `onNodeWithTag` throws
      *  rather than answering, which is not what an absence assertion needs. */
     private fun hasTag(tag: String): Boolean =
         compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()
+
+    private companion object {
+        /** Well past both thresholds (56dp of travel) at 2× density. */
+        const val DRAG_PX = 600f
+
+        /** Rounding, and the couple of dp the settle animation may still be short. */
+        const val SLACK_DP = 12f
+    }
 }

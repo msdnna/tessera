@@ -243,6 +243,10 @@ class ConferenceChatSheetTest {
 
         compose.onNodeWithTag(TestTags.CONFERENCE_CHAT_CLOSE).performClick()
 
+        // Awaited rather than asserted outright: the ✕ starts the sheet's exit
+        // animation and the caller is told once it has run, so that the chat
+        // slides away instead of blinking out from the middle of the screen.
+        compose.waitUntil { closed == 1 }
         assertThat(closed).isEqualTo(1)
     }
 

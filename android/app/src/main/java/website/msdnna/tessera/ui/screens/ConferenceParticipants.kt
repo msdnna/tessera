@@ -1,13 +1,16 @@
 package website.msdnna.tessera.ui.screens
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -28,8 +31,6 @@ import website.msdnna.tessera.data.conference.ConfPerson
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.MemberAvatar
-import website.msdnna.tessera.ui.components.TButton
-import website.msdnna.tessera.ui.components.TButtonKind
 import website.msdnna.tessera.ui.components.TConfirmDialog
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.theme.Tessera
@@ -80,7 +81,7 @@ internal fun ConferenceParticipantsPanel(
         handleTag = TestTags.CONFERENCE_PANEL_HANDLE,
         handleLabel = stringResource(R.string.conf_sheet_expand),
         onClose = onClose,
-        header = {
+        header = { dismiss ->
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -97,7 +98,7 @@ internal fun ConferenceParticipantsPanel(
                     size = 18.dp,
                     tint = c.text2,
                     description = stringResource(R.string.conf_panel_close),
-                    modifier = Modifier.clickableNoRipple(onClick = onClose)
+                    modifier = Modifier.clickableNoRipple(onClick = dismiss)
                         .testTag(TestTags.CONFERENCE_PANEL_CLOSE),
                 )
             }
@@ -199,12 +200,20 @@ private fun PersonRow(
             // Our own row carries no controls, so the tint is what explains the
             // empty space rather than it reading as something that failed.
             .background(if (me) c.surfaceAlt else c.surface)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 14.dp, vertical = 6.dp)
             .testTag(TestTags.conferencePerson(person.userId)),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            MemberAvatar(28.dp, person.name, userId = person.userId)
-            Spacer(Modifier.width(9.dp))
+        Row(
+            // A row tall enough to be one thing. The moderation actions used to
+            // sit underneath as two labelled buttons, each taller than the person
+            // they applied to — so the eye grouped every button with the *next*
+            // name down. As icons on the right of the name they belong to, the
+            // row is the unit again, and the tallest thing in it is the avatar.
+            Modifier.fillMaxWidth().heightIn(min = 52.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MemberAvatar(36.dp, person.name, userId = person.userId)
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(person.name, color = c.text1, fontSize = 13.sp, maxLines = 1)
@@ -266,12 +275,47 @@ private fun PersonRow(
                 size = 15.dp,
                 tint = if (badge == ConfMicBadge.ON) c.primary else c.text3,
             )
+
+            // Moderation, at the end of the row it acts on. Both are visible to
+            // the whole room and neither can be taken back by whoever did it —
+            // hence the kick's confirmation and its being the only red thing here.
+            if (actions.forceMute) {
+                Spacer(Modifier.width(2.dp))
+                IonIcon(
+                    if (person.forceMuted) Ion.MIC else Ion.MIC_OFF,
+                    size = 17.dp,
+                    tint = if (person.forceMuted) TesseraWarning else c.text2,
+                    description = stringResource(
+                        if (person.forceMuted) {
+                            R.string.conf_panel_unforce_mute
+                        } else {
+                            R.string.conf_panel_force_mute
+                        },
+                    ),
+                    modifier = Modifier.clip(CircleShape)
+                        .clickableNoRipple(onClick = onForceMute)
+                        .padding(7.dp)
+                        .testTag(TestTags.conferenceForceMute(person.userId)),
+                )
+            }
+            if (actions.kick) {
+                IonIcon(
+                    Ion.LOGOUT,
+                    size = 17.dp,
+                    tint = TesseraDanger,
+                    description = stringResource(R.string.conf_panel_kick),
+                    modifier = Modifier.clip(CircleShape)
+                        .clickableNoRipple(onClick = onKick)
+                        .padding(7.dp)
+                        .testTag(TestTags.conferenceKick(person.userId)),
+                )
+            }
         }
 
         // Local playback. Nothing below reaches the server or the other person.
         if (hasLocalAudio) {
             Row(
-                Modifier.fillMaxWidth().padding(start = 37.dp, top = 4.dp),
+                Modifier.fillMaxWidth().padding(start = 46.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IonIcon(
@@ -290,6 +334,10 @@ private fun PersonRow(
                         .testTag(TestTags.conferenceLocalMute(person.userId)),
                 )
                 Spacer(Modifier.width(10.dp))
+                // Deliberately thinner than the stock M3 slider. This is a
+                // secondary control on a list row — at the default 20dp thumb and
+                // 16dp track it outweighed the name above it and made the row look
+                // like a settings screen rather than a person.
                 Slider(
                     value = volume,
                     onValueChange = onVolume,
@@ -299,43 +347,54 @@ private fun PersonRow(
                         thumbColor = c.primary,
                         activeTrackColor = c.primary,
                         inactiveTrackColor = c.surfaceAlt,
+                        disabledThumbColor = c.text3,
+                        disabledActiveTrackColor = c.text3,
+                        disabledInactiveTrackColor = c.surfaceAlt,
                     ),
-                    modifier = Modifier.weight(1f).height(24.dp)
+                    thumb = {
+                        Box(
+                            Modifier.size(VOLUME_THUMB)
+                                .clip(CircleShape)
+                                .background(if (locallyMuted) c.text3 else c.primary),
+                        )
+                    },
+                    track = { sliderState ->
+                        VolumeTrack(
+                            fraction = sliderState.value / CONF_VOLUME_MAX,
+                            enabled = !locallyMuted,
+                        )
+                    },
+                    modifier = Modifier.weight(1f).height(VOLUME_THUMB)
                         .testTag(TestTags.conferenceVolume(person.userId)),
                 )
             }
         }
+    }
+}
 
-        // Moderation. Both are visible to the whole room and neither can be
-        // taken back by whoever did it.
-        if (actions.forceMute || actions.kick) {
-            Row(
-                Modifier.fillMaxWidth().padding(top = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                if (actions.forceMute) {
-                    TButton(
-                        stringResource(
-                            if (person.forceMuted) {
-                                R.string.conf_panel_unforce_mute
-                            } else {
-                                R.string.conf_panel_force_mute
-                            },
-                        ),
-                        kind = TButtonKind.Ghost,
-                        onClick = onForceMute,
-                        modifier = Modifier.testTag(TestTags.conferenceForceMute(person.userId)),
-                    )
-                }
-                if (actions.kick) {
-                    TButton(
-                        stringResource(R.string.conf_panel_kick),
-                        kind = TButtonKind.Danger,
-                        onClick = onKick,
-                        modifier = Modifier.testTag(TestTags.conferenceKick(person.userId)),
-                    )
-                }
-            }
+/** The thumb, and so the row's own height: everything else here is thinner. */
+private val VOLUME_THUMB = 12.dp
+
+/**
+ * A flat two-tone bar, drawn rather than taken from [SliderDefaults].
+ *
+ * The stock M3 track carries a stop indicator and a gap around the thumb — the
+ * right call for a slider somebody came to a screen to move, and three extra
+ * marks on a control that lives inside a list row.
+ */
+@Composable
+private fun VolumeTrack(fraction: Float, enabled: Boolean) {
+    val c = Tessera.colors
+    val filled = fraction.coerceIn(0f, 1f)
+    Row(
+        Modifier.fillMaxWidth().height(3.dp).clip(CircleShape).background(c.surfaceAlt),
+    ) {
+        if (filled > 0f) {
+            Box(
+                Modifier.fillMaxHeight().weight(filled)
+                    .background(if (enabled) c.primary else c.text3),
+            )
         }
+        if (filled < 1f) Spacer(Modifier.weight(1f - filled))
     }
 }
