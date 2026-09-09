@@ -235,7 +235,16 @@ fun AppRoot(
                         message = stringResource(R.string.gate_offline_message),
                         primaryLabel = stringResource(R.string.gate_offline_retry),
                         onPrimary = { bootNonce++ },
-                        onExit = ::exitApp,
+                        // Not «Выход»: this gate only shows with a saved session
+                        // against a server that won't answer, and closing the app
+                        // left no way to reach the login screen and its server
+                        // field. Dropping the session lands there — the URL pref
+                        // is kept, so it comes up pre-filled to edit (#2920).
+                        secondaryLabel = stringResource(R.string.gate_change_server),
+                        onSecondary = {
+                            scope.launch { authRepo.logout() }
+                            boot = Boot.Done
+                        },
                     )
 
                     boot is Boot.AuthError -> BootError(
@@ -246,7 +255,8 @@ fun AppRoot(
                             scope.launch { authRepo.logout() }
                             boot = Boot.Done
                         },
-                        onExit = ::exitApp,
+                        secondaryLabel = stringResource(R.string.gate_exit),
+                        onSecondary = ::exitApp,
                     )
 
                     token.isBlank() -> AuthScreen(
@@ -311,14 +321,19 @@ private fun BootLoading() {
 }
 
 /** A startup error on the purple backdrop: brand mark, a message, a white CTA,
- *  and a ghost exit link. Text/buttons are light to read on purple (login style). */
+ *  and a ghost secondary link. Text/buttons are light to read on purple (login
+ *  style). The secondary is passed in rather than always being «Выход»: from an
+ *  unreachable server the only way out used to be closing the app, stranding
+ *  anyone who had simply typed the wrong address (#2920) — that gate hands in a
+ *  «change server» that drops back to the login screen instead. */
 @Composable
-private fun BootError(
+internal fun BootError(
     title: String,
     message: String,
     primaryLabel: String,
     onPrimary: () -> Unit,
-    onExit: () -> Unit,
+    secondaryLabel: String,
+    onSecondary: () -> Unit,
 ) {
     PurpleBackdrop {
         Column(
@@ -340,11 +355,11 @@ private fun BootError(
             BootPrimaryButton(primaryLabel, onPrimary)
             Box(
                 Modifier
-                    .clickableNoRipple(onClick = onExit)
+                    .clickableNoRipple(onClick = onSecondary)
                     .padding(horizontal = 18.dp, vertical = 10.dp),
             ) {
                 Text(
-                    stringResource(R.string.gate_exit),
+                    secondaryLabel,
                     color = Color.White.copy(alpha = 0.85f),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium,

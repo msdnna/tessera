@@ -49,6 +49,7 @@
     <string name="gate_session_title">Сессия завершена</string>
     <string name="gate_session_message">Похоже, сессия истекла или доступ к аккаунту закрыт. Войдите снова, чтобы продолжить.</string>
     <string name="gate_session_relogin">Выполнить повторный вход</string>
+    <string name="gate_change_server">Сменить сервер</string>
     <string name="gate_exit">Выход</string>
 
     <!-- Настройки: профиль -->
