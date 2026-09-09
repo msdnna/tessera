@@ -75,12 +75,14 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.BoardActivity
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.workspaceCaption
 
 /**
@@ -450,7 +452,7 @@ private fun BoardToolbar(
             expanded = expanded,
             setExpanded = setExpanded,
             onExitArchive = onExitArchive,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).tourAnchor(TourKeys.BOARD_COMPOSER),
         )
         AnimatedVisibility(
             visible = !expanded,
@@ -482,7 +484,7 @@ private fun BoardToolbar(
                 ToolIcon(
                     Ion.SETTINGS,
                     active = customizeOpen,
-                    modifier = Modifier.testTag(TestTags.BOARD_CUSTOMIZE),
+                    modifier = Modifier.testTag(TestTags.BOARD_CUSTOMIZE).tourAnchor(TourKeys.BOARD_CUSTOMIZE),
                 ) { customizeOpen = true }
             }
         }

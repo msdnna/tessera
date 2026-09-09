@@ -111,22 +111,27 @@ fun TDropdown(
         onDismissRequest = onDismiss,
         properties = PopupProperties(focusable = true),
     ) {
-        if (bare) {
-            Column(modifier.popupAppear(), content = content)
-        } else {
-            Column(
-                modifier
-                    .popupAppear()
-                    .softShadow(RoundedCornerShape(RadiusMd), elevation = 6.dp)
-                    .clip(RoundedCornerShape(RadiusMd))
-                    .background(c.surface)
-                    .border(1.dp, c.border, RoundedCornerShape(RadiusMd))
-                    .width(IntrinsicSize.Max)
-                    .widthIn(min = 140.dp, max = 320.dp)
-                    .then(if (scrollable) Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()) else Modifier)
-                    .padding(vertical = 4.dp),
-                content = content,
-            )
+        // Wrapped in a Box so the guide can dim/ring an item inside this menu from
+        // the menu's own window — the shell overlay is painted behind it (#2860).
+        Box {
+            if (bare) {
+                Column(modifier.popupAppear(), content = content)
+            } else {
+                Column(
+                    modifier
+                        .popupAppear()
+                        .softShadow(RoundedCornerShape(RadiusMd), elevation = 6.dp)
+                        .clip(RoundedCornerShape(RadiusMd))
+                        .background(c.surface)
+                        .border(1.dp, c.border, RoundedCornerShape(RadiusMd))
+                        .width(IntrinsicSize.Max)
+                        .widthIn(min = 140.dp, max = 320.dp)
+                        .then(if (scrollable) Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()) else Modifier)
+                        .padding(vertical = 4.dp),
+                    content = content,
+                )
+            }
+            TourMenuScrim()
         }
     }
 }

@@ -1550,4 +1550,63 @@
     <string-array name="whatsnew_v0_68_0_items">
         <item>Notifications arrive even when the app is closed, and open the right task when tapped.</item>
     </string-array>
+
+    <!-- Get Started guide (#2860) — step wording, keyed by the step id in util/Tour.kt -->
+    <string name="tour_skip">Skip</string>
+    <string name="tour_workspaces_title">Workspaces</string>
+    <string name="tour_workspaces_body">This is where you switch workspaces: each has its own projects, members and tags. A new one is created right next to it — but let’s start with the personal one.</string>
+    <string name="tour_tree_add_title">The project tree</string>
+    <string name="tour_tree_add_body">Projects live in the side menu. Press “+” to add the first one.</string>
+    <string name="tour_menu_project_title">Pick “Project”</string>
+    <string name="tour_menu_project_body">A group will come in handy later, once there are many projects.</string>
+    <string name="tour_project_create_title">Name the project</string>
+    <string name="tour_project_create_body">Type a name and confirm — the project appears in the tree. Its address is derived from the name by the server.</string>
+    <string name="tour_board_add_title">Add a board</string>
+    <string name="tour_board_add_body">Tasks live on boards, and a project may have several. Open the project’s “⋯” menu.</string>
+    <string name="tour_board_menu_title">Pick “Add board”</string>
+    <string name="tour_board_menu_body">The same menu renames, estimates and recolours the project.</string>
+    <string name="tour_board_create_title">Name the board</string>
+    <string name="tour_board_create_body">Type a name and confirm — the board appears in the tree with four columns.</string>
+    <string name="tour_board_open_title">Open the board</string>
+    <string name="tour_board_open_body">Tap the board — the kanban opens.</string>
+    <string name="tour_task_create_title">Create a task</string>
+    <string name="tour_task_create_body">Press “Create task” in the «К работе» column, type a name and confirm.</string>
+    <string name="tour_card_fields_title">Right on the card</string>
+    <string name="tour_card_fields_body">Priority, due date, tags and assignees are edited without opening the task — just tap the icon on the card.</string>
+    <string name="tour_card_open_title">Open the task</string>
+    <string name="tour_card_open_body">Tap the card — the full task form opens.</string>
+    <string name="tour_tm_due_title">Due date</string>
+    <string name="tour_tm_due_body">Set a due date — the calendar is also where repetition and reminders are configured.</string>
+    <string name="tour_tm_assignees_title">Assignees</string>
+    <string name="tour_tm_assignees_body">Choose who runs the task. While you are alone in the workspace — assign yourself.</string>
+    <string name="tour_tm_priority_title">Priority</string>
+    <string name="tour_tm_priority_body">Priority colours the dot on the card, and the board can be sorted by it.</string>
+    <string name="tour_tm_tags_title">Tags</string>
+    <string name="tour_tm_tags_body">A tag is created right here. The board can group into columns by tags — that is the main way to arrange tasks your own way.</string>
+    <string name="tour_tm_description_title">Description</string>
+    <string name="tour_tm_description_body">Describe the task: Markdown, attachments and @ mentions are supported.</string>
+    <string name="tour_tm_tabs_title">Comments, subtasks, relations</string>
+    <string name="tour_tm_tabs_body">The same place holds the discussion, the subtask tree, relations to other tasks and the full change history.</string>
+    <string name="tour_tm_save_title">Save the task</string>
+    <string name="tour_tm_save_body">Press “Save” — the form closes and the changes show up on the card.</string>
+    <string name="tour_board_tools_title">Board views and tools</string>
+    <string name="tour_board_tools_body">Kanban, list, calendar and Gantt — the same tasks in different cuts. Next to them: search across the whole workspace, tags, milestones and the archive.</string>
+    <string name="tour_board_composer_title">Grouping, sorting, filters</string>
+    <string name="tour_board_composer_body">The “+” on this bar adds grouping (including by tag), sorting and filters, and next to it is the card layout setting.</string>
+    <string name="tour_dnd_card_title">Drag the card</string>
+    <string name="tour_dnd_card_body">A task moves between columns by dragging — that is how its status changes on the board. Drag the card into «В процессе».</string>
+    <string name="tour_group_add_title">Projects group up too</string>
+    <string name="tour_group_add_body">Once there are many projects, they go into groups. Press “+” above the tree once more.</string>
+    <string name="tour_menu_group_title">Pick “Group”</string>
+    <string name="tour_menu_group_body">Now the second menu item comes in handy.</string>
+    <string name="tour_group_created_title">Name the group</string>
+    <string name="tour_group_created_body">Groups help when there are many projects. Type a name and press Enter.</string>
+    <string name="tour_dnd_project_title">Drag the project into the group</string>
+    <string name="tour_dnd_project_body">The project tree drags the same way: pick a project up and drop it into a group.</string>
+    <string name="tour_nav_sections_title">Notes, documents, reminders</string>
+    <string name="tour_nav_sections_body">Besides boards, a workspace holds notes, collaborative documents and reminders.</string>
+    <string name="tour_nav_footer_title">Settings and notifications</string>
+    <string name="tour_nav_footer_body">At the bottom — your profile and settings, next to them notifications.</string>
+    <string name="tour_done_title">All set</string>
+    <string name="tour_done_body">That is everything you need to start. The guide can be restarted from the same place, at the bottom of the side menu.</string>
 </resources>

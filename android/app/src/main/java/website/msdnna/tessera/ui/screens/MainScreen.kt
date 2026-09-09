@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
@@ -27,6 +28,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -69,10 +71,27 @@ import website.msdnna.tessera.ui.screens.documents.DocChrome
 import website.msdnna.tessera.ui.screens.documents.DocTitleSwitcher
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.ui.tour.LocalTourActions
+import website.msdnna.tessera.ui.tour.LocalTourAnchors
+import website.msdnna.tessera.ui.tour.LocalTourLayers
+import website.msdnna.tessera.ui.tour.LocalTourMoved
+import website.msdnna.tessera.ui.tour.LocalTourSnapshot
+import website.msdnna.tessera.ui.tour.LocalTourTap
+import website.msdnna.tessera.ui.tour.TourActions
+import website.msdnna.tessera.ui.tour.TourAnchors
+import website.msdnna.tessera.ui.tour.TourHost
+import website.msdnna.tessera.ui.tour.TourLayer
+import website.msdnna.tessera.ui.tour.TourLayers
+import website.msdnna.tessera.ui.tour.TourReporter
+import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.NotificationViewModel
 import website.msdnna.tessera.ui.viewmodels.UpdateViewModel
+import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TourContext
+import website.msdnna.tessera.util.TourKeys
+import website.msdnna.tessera.util.TourSnapshot
 
 /** Top-level destinations. Boards carry their model; the rest are singletons. */
 sealed interface MainDest {
@@ -119,6 +138,7 @@ fun MainScreen(
     // instance the room itself gets — which is what lets a meeting survive
     // navigating away from it, and what makes «hang up» reach the real call.
     callVm: website.msdnna.tessera.ui.viewmodels.ConferenceRoomViewModel = viewModel(),
+    tourVm: website.msdnna.tessera.ui.viewmodels.TourViewModel = viewModel(),
 ) {
     val c = Tessera.colors
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -136,6 +156,7 @@ fun MainScreen(
     val updateState by updateVm.state.collectAsStateWithLifecycle()
     val updateAvailable by updateVm.available.collectAsStateWithLifecycle()
     val whatsNew by whatsNewVm.sheet.collectAsStateWithLifecycle()
+    val tour by tourVm.state.collectAsStateWithLifecycle()
     val spotlight by whatsNewVm.spotlight.collectAsStateWithLifecycle()
     val call by callVm.state.collectAsStateWithLifecycle()
     val apiStamp by whatsNewVm.api.collectAsStateWithLifecycle()
@@ -329,202 +350,313 @@ fun MainScreen(
         notifVm.devicePush.collect { DeviceNotifier.show(pushContext, it) }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        gesturesEnabled = drawerGesturesEnabled(
-            timelineLike = boardTimelineLike,
-            documentOpen = docChrome != null,
-            callOnScreen = call.roomOnScreen,
-            drawerOpen = drawerState.isOpen,
-        ),
-        drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = c.surface, modifier = Modifier.width(280.dp)) {
-                // Sidebar navigation: push onto the back-stack and close the drawer.
-                fun go(d: MainDest) {
-                    navTo(d)
-                    scope.launch { drawerState.close() }
-                }
-                Sidebar(
-                    vm = wsVm,
-                    state = state,
-                    user = user,
-                    isDark = isDark,
-                    accentKey = accentKey,
-                    activeNav = navKeyOf(dest),
-                    onAccentChange = onAccentChange,
-                    onToggleDark = onToggleDark,
-                    onLogout = onLogout,
-                    onOpenHome = { go(MainDest.Home) },
-                    onOpenReminders = { go(MainDest.Reminders) },
-                    onOpenNotes = { go(MainDest.Notes) },
-                    onOpenDocuments = { go(MainDest.Documents) },
-                    onOpenConferences = { go(MainDest.Conferences) },
-                    onOpenMilestones = { go(MainDest.Milestones) },
-                    onOpenHelp = { go(MainDest.Help()) },
-                    onOpenMembers = {
-                        membersOpen = true
-                        scope.launch { drawerState.close() }
-                    },
-                    onOpenGitlab = { go(MainDest.GitLabSettings) },
-                    conflictCount = conflictsState.count,
-                    onOpenNotifications = { go(MainDest.Notifications) },
-                    onOpenSettings = { go(MainDest.Settings) },
-                    onOpenAdmin = { go(MainDest.Admin) },
-                    onOpenBoard = { board -> go(MainDest.BoardView(board)) },
-                    onOpenMilestone = { projectId, milestoneId ->
-                        openBoardWithMilestone(projectId, milestoneId)
-                        scope.launch { drawerState.close() }
-                    },
-                    onProjectGone = { projectId ->
-                        // A project was deleted/transferred — leave its board for Home
-                        // if it's the one open (web navigate-home-on-delete parity).
-                        if ((dest as? MainDest.BoardView)?.board?.projectId == projectId) {
-                            dest = MainDest.Home
-                        }
-                    },
-                    updateVersion = updateAvailable?.let { "v${it.version}" },
-                    onUpdate = {
-                        scope.launch { drawerState.close() }
-                        updateVm.startDownload()
-                    },
-                    apiVersion = apiVersion,
-                    // The changelog draws over the shell, so the drawer that
-                    // launched it has to get out of the way first (#2858).
-                    onOpenHistory = {
-                        scope.launch { drawerState.close() }
-                        whatsNewVm.openHistory()
-                    },
-                    // The hint only makes sense once the drawer is on its way open —
-                    // its arrow points at a row that is otherwise off-screen, and
-                    // drawing it earlier would spend the animation behind the shell.
-                    spotlight = spotlight.takeIf { drawerState.targetValue == DrawerValue.Open },
-                    onDismissSpotlight = { whatsNewVm.dismissSpotlight(it) },
-                )
-            }
-        },
+    // ── Get Started guide (#2860) ───────────────────────────────────────────────
+    // The registry the anchors scattered over the screens report into, plus the
+    // pieces the overlay hosts read. They live here because the shell is the one
+    // composition every surface of the guide sits in — drawer, board, task form.
+    val tourAnchors = remember { TourAnchors() }
+    val tourLayers = remember { TourLayers() }
+    val tourTap = remember(tourVm) { { key: String -> tourVm.tapped(key) } }
+    val tourMoved = remember(tourVm) { { place: String -> tourVm.moved(place) } }
+    val tourActions = remember(tourVm) {
+        TourActions(next = tourVm::next, skip = tourVm::skip, anchorMissing = tourVm::anchorMissing)
+    }
+
+    // The sidebar is a drawer here rather than a permanent column, so a step
+    // pointing at a project row has nothing to point at while it is shut. The guide
+    // works the drawer itself instead of hoping the user guesses (#2860 plan);
+    // KEEP leaves it alone, for the steps whose dialog is up over the drawer.
+    LaunchedEffect(tour.step?.id) {
+        when (tour.step?.surface) {
+            website.msdnna.tessera.util.TourSurface.DRAWER -> drawerState.open()
+            website.msdnna.tessera.util.TourSurface.SCREEN -> drawerState.close()
+            else -> Unit
+        }
+    }
+
+    CompositionLocalProvider(
+        LocalTourAnchors provides tourAnchors,
+        LocalTourTap provides tourTap,
+        LocalTourMoved provides tourMoved,
+        LocalTourSnapshot provides tour,
+        LocalTourActions provides tourActions,
+        LocalTourLayers provides tourLayers,
     ) {
-        Box(Modifier.fillMaxSize().testTag(TestTags.MAIN_SHELL)) {
-            Column(
-                Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),
+        // Feeds the engine's watching rules; mounted once, the registry is shared.
+        TourReporter(tour, tourVm::report)
+        // What the user creates while walking the guide, so the steps that follow point
+        // at *that* row. Watched off the tree rather than reported from the create call
+        // sites: the tree is this screen's state anyway, and a row that arrives over the
+        // WebSocket (a retried request, another client) counts exactly the same.
+        TourEntityWatcher(tour, state, tourVm::noteCreated)
+
+        // The drawer and, above it, the guide. Above and not inside: the sidebar
+        // is a modal drawer, so its scrim covers the shell while it is open — a
+        // card drawn under it would be dimmed by the scrim, and every tap on the
+        // card's own buttons would be swallowed by it and close the drawer instead.
+        Box(Modifier.fillMaxSize()) {
+            ModalNavigationDrawer(
+                drawerState = drawerState,
+                gesturesEnabled = drawerGesturesEnabled(
+                    timelineLike = boardTimelineLike,
+                    documentOpen = docChrome != null,
+                    callOnScreen = call.roomOnScreen,
+                    drawerOpen = drawerState.isOpen,
+                ),
+                drawerContent = {
+                    // imePadding, because the window does not resize for the keyboard
+                    // (enableEdgeToEdge turns decorFitsSystemWindows off): without it
+                    // the inline «название проекта» field the guide asks the user to
+                    // fill in sits *under* the keyboard, and the tree cannot scroll it
+                    // into view because as far as it knows nothing is covering it
+                    // (#2860 rework, point 3).
+                    ModalDrawerSheet(
+                        drawerContainerColor = c.surface,
+                        modifier = Modifier.width(280.dp).imePadding(),
+                    ) {
+                        // Sidebar navigation: push onto the back-stack and close the drawer.
+                        fun go(d: MainDest) {
+                            navTo(d)
+                            scope.launch { drawerState.close() }
+                        }
+                        Sidebar(
+                            vm = wsVm,
+                            state = state,
+                            user = user,
+                            isDark = isDark,
+                            accentKey = accentKey,
+                            activeNav = navKeyOf(dest),
+                            onAccentChange = onAccentChange,
+                            onToggleDark = onToggleDark,
+                            onLogout = onLogout,
+                            onOpenHome = { go(MainDest.Home) },
+                            onOpenReminders = { go(MainDest.Reminders) },
+                            onOpenNotes = { go(MainDest.Notes) },
+                            onOpenDocuments = { go(MainDest.Documents) },
+                            onOpenConferences = { go(MainDest.Conferences) },
+                            onOpenMilestones = { go(MainDest.Milestones) },
+                            onOpenHelp = { go(MainDest.Help()) },
+                            onOpenMembers = {
+                                membersOpen = true
+                                scope.launch { drawerState.close() }
+                            },
+                            onOpenGitlab = { go(MainDest.GitLabSettings) },
+                            conflictCount = conflictsState.count,
+                            onOpenNotifications = { go(MainDest.Notifications) },
+                            onOpenSettings = { go(MainDest.Settings) },
+                            onOpenAdmin = { go(MainDest.Admin) },
+                            onOpenBoard = { board -> go(MainDest.BoardView(board)) },
+                            // Home first, then the guide: its opening steps are about the
+                            // tree and its later ones about a board, and neither has an
+                            // anchor to point at from, say, the reminders screen. The web
+                            // does the same (`router.push('/')` before `startGuide()`), and
+                            // navTo — not `go` — because the first step needs the drawer
+                            // open, which is exactly what `go` would undo.
+                            onStartTour = {
+                                navTo(MainDest.Home)
+                                tourVm.startGuide()
+                            },
+                            onOpenMilestone = { projectId, milestoneId ->
+                                openBoardWithMilestone(projectId, milestoneId)
+                                scope.launch { drawerState.close() }
+                            },
+                            onProjectGone = { projectId ->
+                                // A project was deleted/transferred — leave its board for Home
+                                // if it's the one open (web navigate-home-on-delete parity).
+                                if ((dest as? MainDest.BoardView)?.board?.projectId == projectId) {
+                                    dest = MainDest.Home
+                                }
+                            },
+                            updateVersion = updateAvailable?.let { "v${it.version}" },
+                            onUpdate = {
+                                scope.launch { drawerState.close() }
+                                updateVm.startDownload()
+                            },
+                            apiVersion = apiVersion,
+                            // The changelog draws over the shell, so the drawer that
+                            // launched it has to get out of the way first (#2858).
+                            onOpenHistory = {
+                                scope.launch { drawerState.close() }
+                                whatsNewVm.openHistory()
+                            },
+                            // The hint only makes sense once the drawer is on its way open —
+                            // its arrow points at a row that is otherwise off-screen, and
+                            // drawing it earlier would spend the animation behind the shell.
+                            spotlight = spotlight.takeIf { drawerState.targetValue == DrawerValue.Open },
+                            onDismissSpotlight = { whatsNewVm.dismissSpotlight(it) },
+                        )
+                    }
+                },
             ) {
-                TopBar(
-                    title = titleFor(dest).resolve(),
-                    docChrome = docChrome?.takeIf { dest is MainDest.Documents },
-                    unread = notifState.unread,
-                    bellOpen = bellOpen,
-                    notifState = notifState,
-                    isBoard = dest is MainDest.BoardView,
-                    boardId = (dest as? MainDest.BoardView)?.board?.id,
-                    isIntegration = dest is MainDest.GitLabSettings,
-                    projectBoards = (dest as? MainDest.BoardView)?.board
-                        ?.let { state.boardsByProject[it.projectId] }
-                        .orEmpty(),
-                    onSelectBoard = { board -> navTo(MainDest.BoardView(board)) },
-                    onMenu = { scope.launch { drawerState.open() } },
-                    onSearch = { searchOpen = true },
-                    onBellToggle = { bellOpen = !bellOpen },
-                    onBellDismiss = { bellOpen = false },
-                    onNotification = { n ->
-                        notifVm.markRead(n)
-                        bellOpen = false
-                        if (n.opensTask) openTask(n.taskBoardId!!, n.taskId!!)
-                    },
-                    onMarkAll = { notifVm.markAllRead() },
-                    onArchive = { boardArchiveOpen = true },
-                    onTags = { boardTagsOpen = true },
-                    onCommands = { boardCommandsOpen = true },
-                )
-                HorizontalDivider(color = c.border)
+                Box(Modifier.fillMaxSize().testTag(TestTags.MAIN_SHELL)) {
+                    Column(
+                        Modifier.fillMaxSize().background(c.bg).windowInsetsPadding(WindowInsets.safeDrawing),
+                    ) {
+                        TopBar(
+                            title = titleFor(dest).resolve(),
+                            docChrome = docChrome?.takeIf { dest is MainDest.Documents },
+                            unread = notifState.unread,
+                            bellOpen = bellOpen,
+                            notifState = notifState,
+                            isBoard = dest is MainDest.BoardView,
+                            boardId = (dest as? MainDest.BoardView)?.board?.id,
+                            isIntegration = dest is MainDest.GitLabSettings,
+                            projectBoards = (dest as? MainDest.BoardView)?.board
+                                ?.let { state.boardsByProject[it.projectId] }
+                                .orEmpty(),
+                            onSelectBoard = { board -> navTo(MainDest.BoardView(board)) },
+                            onMenu = { scope.launch { drawerState.open() } },
+                            onSearch = { searchOpen = true },
+                            onBellToggle = { bellOpen = !bellOpen },
+                            onBellDismiss = { bellOpen = false },
+                            onNotification = { n ->
+                                notifVm.markRead(n)
+                                bellOpen = false
+                                if (n.opensTask) openTask(n.taskBoardId!!, n.taskId!!)
+                            },
+                            onMarkAll = { notifVm.markAllRead() },
+                            onArchive = { boardArchiveOpen = true },
+                            onTags = { boardTagsOpen = true },
+                            onCommands = { boardCommandsOpen = true },
+                        )
+                        HorizontalDivider(color = c.border)
 
-                Box(Modifier.fillMaxSize()) {
-                    Crossfade(targetState = dest, animationSpec = tween(220), label = "dest") { d ->
-                        when (d) {
-                            is MainDest.Home -> HomeScreen(
-                                workspaceId = state.currentId,
-                                userName = user?.name.orEmpty(),
-                                userId = user?.id.orEmpty(),
-                                onOpenTask = ::openTask,
-                            )
+                        Box(Modifier.fillMaxSize()) {
+                            Crossfade(targetState = dest, animationSpec = tween(220), label = "dest") { d ->
+                                when (d) {
+                                    is MainDest.Home -> HomeScreen(
+                                        workspaceId = state.currentId,
+                                        userName = user?.name.orEmpty(),
+                                        userId = user?.id.orEmpty(),
+                                        onOpenTask = ::openTask,
+                                    )
 
-                            is MainDest.Notes -> NotesScreen(
-                                workspaceId = state.currentId,
-                                preselectNoteId = notesPreselectId,
-                                onPreselectConsumed = { notesPreselectId = null },
-                            )
+                                    is MainDest.Notes -> NotesScreen(
+                                        workspaceId = state.currentId,
+                                        preselectNoteId = notesPreselectId,
+                                        onPreselectConsumed = { notesPreselectId = null },
+                                    )
 
-                            is MainDest.Documents -> DocumentsScreen(
-                                workspaceId = state.currentId,
-                                preselectDocumentId = documentsPreselectId,
-                                onPreselectConsumed = { documentsPreselectId = null },
-                                // A link points at a task by id alone; which board
-                                // it lives on is a lookup, and openTask already
-                                // does exactly that for the reminder deep-link.
-                                onOpenTask = { taskId ->
-                                    scope.launch {
-                                        val boardId = runCatching { boardRepo.taskBoardId(taskId) }.getOrNull()
-                                        if (boardId != null) openTask(boardId, taskId)
-                                    }
-                                },
-                                onChrome = { docChrome = it },
-                            )
+                                    is MainDest.Documents -> DocumentsScreen(
+                                        workspaceId = state.currentId,
+                                        preselectDocumentId = documentsPreselectId,
+                                        onPreselectConsumed = { documentsPreselectId = null },
+                                        // A link points at a task by id alone; which board
+                                        // it lives on is a lookup, and openTask already
+                                        // does exactly that for the reminder deep-link.
+                                        onOpenTask = { taskId ->
+                                            scope.launch {
+                                                val boardId = runCatching { boardRepo.taskBoardId(taskId) }.getOrNull()
+                                                if (boardId != null) openTask(boardId, taskId)
+                                            }
+                                        },
+                                        onChrome = { docChrome = it },
+                                    )
 
-                            is MainDest.Conferences -> ConferencesScreen(
-                                workspaceId = state.currentId,
-                                preselectConferenceId = conferencePreselectId,
-                                onPreselectConsumed = { conferencePreselectId = null },
-                            )
+                                    is MainDest.Conferences -> ConferencesScreen(
+                                        workspaceId = state.currentId,
+                                        preselectConferenceId = conferencePreselectId,
+                                        onPreselectConsumed = { conferencePreselectId = null },
+                                    )
 
-                            is MainDest.Reminders -> RemindersScreen()
+                                    is MainDest.Reminders -> RemindersScreen()
 
-                            is MainDest.Milestones -> MilestonesScreen(
-                                workspaceId = state.currentId,
-                                projects = state.projects,
-                                workspace = state.current,
-                                glProjectId = glProjectId,
-                                onOpenMilestone = { projectId, milestoneId ->
-                                    openBoardWithMilestone(projectId, milestoneId)
-                                },
-                            )
+                                    is MainDest.Milestones -> MilestonesScreen(
+                                        workspaceId = state.currentId,
+                                        projects = state.projects,
+                                        workspace = state.current,
+                                        glProjectId = glProjectId,
+                                        onOpenMilestone = { projectId, milestoneId ->
+                                            openBoardWithMilestone(projectId, milestoneId)
+                                        },
+                                    )
 
-                            is MainDest.GitLabSettings -> GitLabSettingsScreen(
-                                workspaceId = state.currentId,
-                                onOpenJournal = { navTo(MainDest.GitLabJournal) },
-                                conflictCount = conflictsState.count,
-                                onOpenConflicts = { conflictsVm.openResolver() },
-                            )
+                                    is MainDest.GitLabSettings -> GitLabSettingsScreen(
+                                        workspaceId = state.currentId,
+                                        onOpenJournal = { navTo(MainDest.GitLabJournal) },
+                                        conflictCount = conflictsState.count,
+                                        onOpenConflicts = { conflictsVm.openResolver() },
+                                    )
 
-                            is MainDest.GitLabJournal -> GitLabJournalScreen(workspaceId = state.currentId)
+                                    is MainDest.GitLabJournal -> GitLabJournalScreen(workspaceId = state.currentId)
 
-                            is MainDest.Notifications -> NotificationSettingsScreen(deviceId = deviceId)
+                                    is MainDest.Notifications -> NotificationSettingsScreen(deviceId = deviceId)
 
-                            is MainDest.Settings -> ProfileScreen()
+                                    is MainDest.Settings -> ProfileScreen()
 
-                            is MainDest.Admin -> AdminScreen()
+                                    is MainDest.Admin -> AdminScreen()
 
-                            is MainDest.Help -> HelpScreen(initialSlug = d.slug)
+                                    is MainDest.Help -> HelpScreen(initialSlug = d.slug)
 
-                            is MainDest.BoardView -> BoardScreen(
-                                board = d.board,
-                                workspaceId = state.currentId,
-                                initialTaskId = pendingTaskId,
-                                onInitialTaskConsumed = { pendingTaskId = null },
-                                initialMilestoneId = pendingMilestoneId,
-                                onInitialMilestoneConsumed = { pendingMilestoneId = null },
-                                archiveOpen = boardArchiveOpen,
-                                tagsOpen = boardTagsOpen,
-                                commandsOpen = boardCommandsOpen,
-                                onCloseArchive = { boardArchiveOpen = false },
-                                onCloseTags = { boardTagsOpen = false },
-                                onCloseCommands = { boardCommandsOpen = false },
-                                onTimelineLikeChanged = { boardTimelineLike = it },
-                                onBoardGone = { if (dest is MainDest.BoardView) dest = MainDest.Home },
-                                onOpenDocument = { documentId ->
-                                    documentsPreselectId = documentId
-                                    navTo(MainDest.Documents)
-                                },
-                            )
+                                    is MainDest.BoardView -> BoardScreen(
+                                        board = d.board,
+                                        workspaceId = state.currentId,
+                                        initialTaskId = pendingTaskId,
+                                        onInitialTaskConsumed = { pendingTaskId = null },
+                                        initialMilestoneId = pendingMilestoneId,
+                                        onInitialMilestoneConsumed = { pendingMilestoneId = null },
+                                        archiveOpen = boardArchiveOpen,
+                                        tagsOpen = boardTagsOpen,
+                                        commandsOpen = boardCommandsOpen,
+                                        onCloseArchive = { boardArchiveOpen = false },
+                                        onCloseTags = { boardTagsOpen = false },
+                                        onCloseCommands = { boardCommandsOpen = false },
+                                        onTimelineLikeChanged = { boardTimelineLike = it },
+                                        onBoardGone = { if (dest is MainDest.BoardView) dest = MainDest.Home },
+                                        onOpenDocument = { documentId ->
+                                            documentsPreselectId = documentId
+                                            navTo(MainDest.Documents)
+                                        },
+                                    )
+                                }
+                            }
                         }
                     }
+
+                    if (membersOpen) {
+                        MembersModal(workspaceId = state.currentId, onDismiss = { membersOpen = false })
+                    }
+
+                    if (conflictsState.resolverOpen) {
+                        ConflictResolverModal(vm = conflictsVm, onDismiss = { conflictsVm.closeResolver() })
+                    }
+
+                    if (searchOpen) {
+                        SearchOverlay(
+                            workspaceId = state.currentId,
+                            onClose = { searchOpen = false },
+                            onOpenTask = ::openTask,
+                            onOpenNote = { noteId ->
+                                notesPreselectId = noteId
+                                navTo(MainDest.Notes)
+                                searchOpen = false
+                            },
+                            onOpenHelp = { slug ->
+                                navTo(MainDest.Help(slug))
+                                searchOpen = false
+                            },
+                        )
+                    }
+
+                    // Post-update changelog — declared before the update prompt so that a
+                    // pending update (the more urgent of the two) draws on top of it. The
+                    // same sheet serves the hand-opened history (#2858); which one it is
+                    // decides what dismissing means, so the branch lives here and not in
+                    // the composable.
+                    WhatsNewSheet(
+                        sheet = whatsNew,
+                        onDismiss = {
+                            if (whatsNew?.history == true) whatsNewVm.closeHistory() else whatsNewVm.dismissCard()
+                        },
+                        api = apiStamp,
+                    )
+
+                    UpdateDialog(
+                        state = updateState,
+                        onUpdate = { updateVm.startDownload() },
+                        onInstall = { updateVm.install() },
+                        onDismiss = { updateVm.dismiss() },
+                    )
                 }
             }
 
@@ -556,51 +688,44 @@ fun MainScreen(
                 }
             }
 
-            if (membersOpen) {
-                MembersModal(workspaceId = state.currentId, onDismiss = { membersOpen = false })
-            }
-
-            if (conflictsState.resolverOpen) {
-                ConflictResolverModal(vm = conflictsVm, onDismiss = { conflictsVm.closeResolver() })
-            }
-
-            if (searchOpen) {
-                SearchOverlay(
-                    workspaceId = state.currentId,
-                    onClose = { searchOpen = false },
-                    onOpenTask = ::openTask,
-                    onOpenNote = { noteId ->
-                        notesPreselectId = noteId
-                        navTo(MainDest.Notes)
-                        searchOpen = false
-                    },
-                    onOpenHelp = { slug ->
-                        navTo(MainDest.Help(slug))
-                        searchOpen = false
-                    },
-                )
-            }
-
-            // Post-update changelog — declared before the update prompt so that a
-            // pending update (the more urgent of the two) draws on top of it. The
-            // same sheet serves the hand-opened history (#2858); which one it is
-            // decides what dismissing means, so the branch lives here and not in
-            // the composable.
-            WhatsNewSheet(
-                sheet = whatsNew,
-                onDismiss = {
-                    if (whatsNew?.history == true) whatsNewVm.closeHistory() else whatsNewVm.dismissCard()
-                },
-                api = apiStamp,
-            )
-
-            UpdateDialog(
-                state = updateState,
-                onUpdate = { updateVm.startDownload() },
-                onInstall = { updateVm.install() },
-                onDismiss = { updateVm.dismiss() },
-            )
+            // While the task form is up it is that window's host that draws
+            // instead (see [TourHost]).
+            TourHost(TourLayer.SHELL)
         }
+    }
+}
+
+/**
+ * Notices what the user creates while the guide runs and hands the id to the
+ * engine, so «нажмите “+” у проекта» points at the project they just made rather
+ * than at the first one in the tree (#2860, web `ctx`).
+ *
+ * Baselines are taken when the guide starts — this composable is not in the tree
+ * before that — so a workspace that already has projects still walks the user
+ * through creating one, and only the *new* row is picked up.
+ */
+@Composable
+private fun TourEntityWatcher(
+    snapshot: TourSnapshot,
+    state: WorkspaceUiState,
+    onCreated: (TourContext.() -> TourContext) -> Unit,
+) {
+    if (!snapshot.active) return
+    WatchNew(state.projects.map { it.id }) { id -> onCreated { copy(projectId = id) } }
+    WatchNew(state.groups.map { it.id }) { id -> onCreated { copy(groupId = id) } }
+    WatchNew(state.boardsByProject.values.flatten().map { it.id }) { id -> onCreated { copy(boardId = id) } }
+}
+
+/** Calls [onNew] with the id that appeared in [ids] since the last report. */
+@Composable
+private fun WatchNew(ids: List<String>, onNew: (String) -> Unit) {
+    var seen by remember { mutableStateOf(ids.toSet()) }
+    LaunchedEffect(ids) {
+        val fresh = ids.filterNot(seen::contains)
+        seen = ids.toSet()
+        // The last one: a batch load reports in tree order, and the row the user
+        // just created is appended to it.
+        fresh.lastOrNull()?.let(onNew)
     }
 }
 
@@ -656,7 +781,9 @@ private fun BoardTitleSwitcher(
     var menu by remember { mutableStateOf(false) }
     Box(modifier) {
         Row(
-            Modifier.clickableNoRipple { menu = true },
+            // The board's own tools hang off this title (web mobile header), so it is
+            // what the «Виды и инструменты доски» step points at.
+            Modifier.tourAnchor(TourKeys.BOARD_LAYOUT).clickableNoRipple { menu = true },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -878,7 +1005,9 @@ private fun TopBar(
                 modifier = Modifier.weight(1f),
             )
         }
-        IonIconButton(Ion.SEARCH, onClick = onSearch, boxSize = 40.dp)
+        Box(Modifier.tourAnchor(TourKeys.WS_SEARCH)) {
+            IonIconButton(Ion.SEARCH, onClick = onSearch, boxSize = 40.dp)
+        }
         Box {
             Box {
                 IonIconButton(Ion.NOTIFICATIONS, onClick = onBellToggle, boxSize = 40.dp)
@@ -906,7 +1035,7 @@ private fun TopBar(
             )
         }
         if (isBoard) {
-            Box {
+            Box(Modifier.tourAnchor(TourKeys.BOARD_ACTIONS)) {
                 IonIconButton(Ion.ELLIPSIS_V, onClick = { boardMenu = true }, boxSize = 40.dp)
                 TDropdown(expanded = boardMenu, onDismiss = { boardMenu = false }) {
                     TMenuItem(stringResource(R.string.main_board_menu_archive), icon = Ion.ARCHIVE, onClick = {

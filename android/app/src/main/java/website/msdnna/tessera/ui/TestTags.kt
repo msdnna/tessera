@@ -691,4 +691,17 @@ object TestTags {
      *  changelog (#2858), and the build stamp only that mode renders (#2859). */
     const val SIDEBAR_VERSION = "sidebar-version"
     const val WHATS_NEW_BUILD = "whats-new-build"
+
+    // ── get started guide (#2860) ──────────────────────────────────────────
+    //
+    // The card of the running step. What it points at is addressed by the guide's
+    // own anchor keys (`util/Tour.kt`, `TourKeys`), not from here: those are read
+    // by the overlay at runtime, while a test tag is only ever read by a spec.
+
+    const val TOUR_CARD = "tour-card"
+    const val TOUR_NEXT = "tour-next"
+    const val TOUR_SKIP = "tour-skip"
+
+    /** «Обучение» in the sidebar footer — the guide's only entry point. */
+    const val TOUR_START = "tour-start"
 }
