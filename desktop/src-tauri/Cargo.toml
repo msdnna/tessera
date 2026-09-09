@@ -35,6 +35,18 @@ tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
+# Native webview handles for the media/permission wiring in src/media.rs (#2929).
+# These MUST stay pinned to exactly what wry 0.55 links against: `with_webview` hands
+# back `webkit2gtk::WebView` / `ICoreWebView2Controller` from *that* crate version, and
+# the same type from a different version is a different type — a mismatch is a compile
+# error, not a runtime surprise. Bump them together with tauri/wry.
+[target.'cfg(any(target_os = "linux", target_os = "dragonfly", target_os = "freebsd", target_os = "netbsd", target_os = "openbsd"))'.dependencies]
+webkit2gtk = { version = "=2.0.2", features = ["v2_40"] }
+
+[target.'cfg(windows)'.dependencies]
+webview2-com = "=0.38.2"
+windows = { version = "0.61", features = ["Win32_Foundation"] }
+
 # Release profile: smaller, faster binaries for the shipped installers.
 [profile.release]
 opt-level = "s"
