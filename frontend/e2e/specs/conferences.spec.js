@@ -122,18 +122,12 @@ test('конференция: приглашённый виден в комна�
   await page.getByTestId('conference-join').click()
   await expect(page.getByTestId('conference-leave')).toBeVisible()
 
-  // Invite through the UI: the dialog is where the "who is left to invite" list
+  // Invite through the UI: the popover is where the "who is left to invite" list
   // is computed, and it is that filtering (#2875) the roster then depends on.
   await page.getByTestId('conference-invite').click()
-  const select = page.getByTestId('conference-invite-select')
-  await select.click()
-  // Naive's select options are plain divs in a portal — no `option` role to grab
-  // them by, which is why the rest of the suite goes through the class too.
-  await page.locator('.n-base-select-option', { hasText: creds.name }).first().click()
-  // The menu of a multiple select stays open after a pick and covers the footer,
-  // so «Пригласить» has to be uncovered before it can be clicked.
-  await page.keyboard.press('Escape')
-  await page.getByTestId('conference-invite-submit').click()
+  // #2891: the invite popover is a search + one-click list — picking a member
+  // invites immediately, with no batch select or «Отправить» step.
+  await page.getByTestId('conference-invite-item').filter({ hasText: creds.name }).first().click()
 
   // An invitee who has not arrived belongs under «Приглашены», apart from the
   // live roster — that separation is the whole point of the block.
