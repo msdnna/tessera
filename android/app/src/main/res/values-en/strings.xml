@@ -45,6 +45,7 @@
     <string name="gate_session_title">Session ended</string>
     <string name="gate_session_message">Looks like the session expired or account access was revoked. Sign in again to continue.</string>
     <string name="gate_session_relogin">Sign in again</string>
+    <string name="gate_change_server">Change server</string>
     <string name="gate_exit">Exit</string>
 
     <!-- Settings: profile -->
