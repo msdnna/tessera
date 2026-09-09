@@ -65,7 +65,11 @@ func (h *AuthHandler) oauthBaseURL(c *gin.Context) string {
 		return strings.TrimRight(h.publicURL, "/")
 	}
 	scheme := "http"
-	if c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https") {
+	// A proxy chain appends rather than replaces, so the header can arrive as
+	// "https, http" (outer edge first) — the client-facing scheme is the first
+	// token, not the whole string an equality check would miss.
+	xfProto := strings.TrimSpace(strings.SplitN(c.GetHeader("X-Forwarded-Proto"), ",", 2)[0])
+	if c.Request.TLS != nil || strings.EqualFold(xfProto, "https") {
 		scheme = "https"
 	}
 	// Behind a reverse proxy, the Host header may be rewritten without the public
