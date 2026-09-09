@@ -111,58 +111,6 @@ private fun TitleDialog(
 )
 
 /**
- * The reader's «⋯» menu — the web's «Действия» dropdown: nest, walk into the
- * children, rename, delete. «Показать вложенные» appears only when there are
- * any, as on the web: an item that leads to an empty level is a dead end.
- */
-@Composable
-fun DocumentActionsMenu(
-    expanded: Boolean,
-    childCount: Int,
-    onDismiss: () -> Unit,
-    onNested: () -> Unit,
-    onChildren: () -> Unit,
-    onRename: () -> Unit,
-    onExport: () -> Unit,
-    onRemove: () -> Unit,
-) = TDropdown(expanded = expanded, onDismiss = onDismiss) {
-    TMenuItem(
-        stringResource(R.string.docs_action_nested),
-        icon = Ion.ADD,
-        onClick = onNested,
-        modifier = Modifier.testTag(TestTags.DOCUMENT_ACTION_NESTED),
-    )
-    if (childCount > 0) {
-        TMenuItem(
-            stringResource(R.string.docs_action_children, childCount),
-            icon = Ion.FOLDER,
-            onClick = onChildren,
-            modifier = Modifier.testTag(TestTags.DOCUMENT_ACTION_CHILDREN),
-        )
-    }
-    TMenuItem(
-        stringResource(R.string.docs_action_rename),
-        icon = Ion.PENCIL,
-        onClick = onRename,
-        modifier = Modifier.testTag(TestTags.DOCUMENT_ACTION_RENAME),
-    )
-    TMenuItem(
-        stringResource(R.string.docs_export),
-        icon = Ion.DOWNLOAD,
-        onClick = onExport,
-        modifier = Modifier.testTag(TestTags.DOCUMENT_ACTION_EXPORT),
-    )
-    TMenuDivider()
-    TMenuItem(
-        stringResource(R.string.docs_action_remove),
-        icon = Ion.TRASH,
-        danger = true,
-        onClick = onRemove,
-        modifier = Modifier.testTag(TestTags.DOCUMENT_ACTION_REMOVE),
-    )
-}
-
-/**
  * Which format to export in (§8 of #2894).
  *
  * A menu of its own rather than a submenu inside the actions one: the list is

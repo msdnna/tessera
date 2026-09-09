@@ -319,12 +319,11 @@ fun MainScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // An open document owns the whole width: reading it is a long vertical
-        // scroll, and a drag that leans a few degrees left near the edge was
-        // being taken as «open the sidebar» instead (#2894 rework). Once the
-        // drawer *is* open its own gestures have to keep working, or it could
-        // only be closed by the scrim.
-        gesturesEnabled = (!boardTimelineLike && docChrome == null) || drawerState.isOpen,
+        gesturesEnabled = drawerGesturesEnabled(
+            timelineLike = boardTimelineLike,
+            documentOpen = docChrome != null,
+            drawerOpen = drawerState.isOpen,
+        ),
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = c.surface, modifier = Modifier.width(280.dp)) {
                 // Sidebar navigation: push onto the back-stack and close the drawer.
@@ -743,6 +742,20 @@ internal fun titleFor(dest: MainDest): UiText = when (dest) {
     is MainDest.Help -> UiText.Res(R.string.nav_help)
     is MainDest.BoardView -> UiText.Raw(dest.board.name)
 }
+
+/**
+ * Whether the edge-swipe that opens the sidebar is live.
+ *
+ * Two screens own the whole width and lose by sharing it: the timeline pans
+ * horizontally by design, and an open document is a long vertical scroll where
+ * a drag leaning a few degrees left near the edge was being read as «open the
+ * sidebar» (#2894 rework).
+ *
+ * Whatever the screen wants, an *open* drawer keeps its gestures: they are also
+ * how it closes, and a drawer that only the scrim can dismiss is a trap.
+ */
+internal fun drawerGesturesEnabled(timelineLike: Boolean, documentOpen: Boolean, drawerOpen: Boolean): Boolean =
+    (!timelineLike && !documentOpen) || drawerOpen
 
 /** A stable key for the sidebar's active-row highlight. */
 private fun navKeyOf(dest: MainDest): String = when (dest) {

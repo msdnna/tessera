@@ -53,9 +53,7 @@ class DocumentsE2eTest {
         // Nesting is walked from the reader, as on the web.
         compose.onNodeWithTag(TestTags.documentRow(parent.id)).performClick()
         compose.awaitTag(TestTags.DOCUMENT_READER)
-        compose.onNodeWithTag(TestTags.DOCUMENT_ACTIONS).performClick()
-        compose.awaitTag(TestTags.DOCUMENT_ACTION_CHILDREN)
-        compose.onNodeWithTag(TestTags.DOCUMENT_ACTION_CHILDREN).performClick()
+        compose.pickDocMenu(TestTags.DOCUMENT_ACTION_CHILDREN)
 
         // Inside the container: the child, and only the child.
         compose.awaitTag(TestTags.documentRow(child.id))
@@ -88,7 +86,7 @@ class DocumentsE2eTest {
 
         // Back on the grid it is a tile of its own: the list was reloaded, not
         // just the reader pushed over a stale one.
-        compose.onNodeWithTag(TestTags.DOCUMENT_BACK).performClick()
+        compose.pickDocMenu(TestTags.DOCUMENT_BACK)
         compose.awaitNoTag(TestTags.DOCUMENT_READER)
         compose.awaitText(title)
     }
@@ -103,9 +101,7 @@ class DocumentsE2eTest {
         compose.setDocumentsContent(fixture, doc.id)
         compose.onNodeWithTag(TestTags.documentRow(doc.id)).performClick()
         compose.awaitTag(TestTags.DOCUMENT_READER)
-        compose.onNodeWithTag(TestTags.DOCUMENT_ACTIONS).performClick()
-        compose.awaitTag(TestTags.DOCUMENT_ACTION_RENAME)
-        compose.onNodeWithTag(TestTags.DOCUMENT_ACTION_RENAME).performClick()
+        compose.pickDocMenu(TestTags.DOCUMENT_ACTION_RENAME)
         compose.awaitTag(TestTags.DOCUMENT_TITLE_INPUT)
         compose.onNodeWithTag(TestTags.DOCUMENT_TITLE_INPUT).performTextClearance()
         compose.onNodeWithTag(TestTags.DOCUMENT_TITLE_INPUT).performTextInput(renamed)
@@ -129,9 +125,7 @@ class DocumentsE2eTest {
         compose.setDocumentsContent(fixture, parent.id)
         compose.onNodeWithTag(TestTags.documentRow(parent.id)).performClick()
         compose.awaitTag(TestTags.DOCUMENT_READER)
-        compose.onNodeWithTag(TestTags.DOCUMENT_ACTIONS).performClick()
-        compose.awaitTag(TestTags.DOCUMENT_ACTION_REMOVE)
-        compose.onNodeWithTag(TestTags.DOCUMENT_ACTION_REMOVE).performClick()
+        compose.pickDocMenu(TestTags.DOCUMENT_ACTION_REMOVE)
         compose.awaitTag(TestTags.DOCUMENT_REMOVE_CONFIRM)
         compose.onNodeWithTag(TestTags.DOCUMENT_REMOVE_CONFIRM).performClick()
 
@@ -202,7 +196,7 @@ class DocumentsE2eTest {
         // with no number on it is an unread discussion nobody opens.
         compose.awaitTextOn(TestTags.DOCUMENT_COMMENTS_BADGE, "1")
 
-        compose.onNodeWithTag(TestTags.DOCUMENT_COMMENTS_OPEN).performClick()
+        compose.pickDocMenu(TestTags.DOCUMENT_COMMENTS_OPEN)
         compose.awaitTag(TestTags.DOCUMENT_COMMENTS)
         // Scoped to the seeded thread's own card: the body would also match a
         // panel that dropped the threading and rendered one flat list.
@@ -238,7 +232,7 @@ class DocumentsE2eTest {
         compose.setDocumentsContent(fixture, doc.id)
         compose.onNodeWithTag(TestTags.documentRow(doc.id)).performClick()
         compose.awaitTag(TestTags.DOCUMENT_READER)
-        compose.onNodeWithTag(TestTags.DOCUMENT_COMMENTS_OPEN).performClick()
+        compose.pickDocMenu(TestTags.DOCUMENT_COMMENTS_OPEN)
         compose.awaitTag(TestTags.DOCUMENT_COMMENTS)
 
         compose.onNodeWithTag(TestTags.documentCommentResolve(seeded.id)).performClick()
@@ -267,7 +261,7 @@ class DocumentsE2eTest {
         compose.awaitTag(TestTags.DOCUMENT_READER)
         compose.awaitText(DRAFT)
 
-        compose.onNodeWithTag(TestTags.DOCUMENT_HISTORY_OPEN).performClick()
+        compose.pickDocMenu(TestTags.DOCUMENT_HISTORY_OPEN)
         compose.awaitTag(TestTags.DOCUMENT_HISTORY)
         compose.onNodeWithTag(TestTags.documentVersionRow(snapshot.id)).performClick()
 

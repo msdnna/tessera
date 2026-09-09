@@ -214,6 +214,43 @@ class DocBlocksTest {
     }
 
     @Test
+    fun `a picture inside a paragraph is drawn, not swallowed`() {
+        // The docx converter nests images in paragraphs. Text-only collection
+        // used to drop them silently: the reader showed an empty line where the
+        // web shows a picture (#2894).
+        val blocks = parse(
+            """
+            {"type":"doc","content":[
+              {"type":"paragraph","attrs":{"id":"blk-1"},
+               "content":[{"type":"image","attrs":{"src":"/api/uploads/a.gif","alt":"схема"}}]}
+            ]}
+            """.trimIndent(),
+        )
+        val image = blocks.single() as DocImage
+        assertThat(image.src).isEqualTo("/api/uploads/a.gif")
+        assertThat(image.alt).isEqualTo("схема")
+    }
+
+    @Test
+    fun `a caption around a nested picture keeps both, in order`() {
+        val blocks = parse(
+            """
+            {"type":"doc","content":[
+              {"type":"paragraph","attrs":{"id":"blk-1"},"content":[
+                {"type":"text","text":"Схема:"},
+                {"type":"image","attrs":{"src":"/api/uploads/b.png"}}
+              ]}
+            ]}
+            """.trimIndent(),
+        )
+        assertThat(blocks).hasSize(2)
+        assertThat((blocks[0] as DocParagraph).spans.single().text).isEqualTo("Схема:")
+        assertThat((blocks[1] as DocImage).src).isEqualTo("/api/uploads/b.png")
+        // Two rows, two ids: they scroll and are addressed apart.
+        assertThat(blocks.map { it.id }.toSet()).hasSize(2)
+    }
+
+    @Test
     fun `table rows keep header cells apart from body cells`() {
         val blocks = parse(
             """

@@ -60,17 +60,6 @@ import website.msdnna.tessera.util.docVersionDiff
 import website.msdnna.tessera.util.timeLabel
 import website.msdnna.tessera.util.whenLabel
 
-/** The way into the journal, over the reader and over the editor alike. */
-@Composable
-fun DocHistoryButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    IonIconButton(
-        Ion.TIME,
-        onClick = onClick,
-        boxSize = 40.dp,
-        modifier = modifier.testTag(TestTags.DOCUMENT_HISTORY_OPEN),
-    )
-}
-
 /**
  * The version journal of the open document (#2731, §6 of #2894).
  *

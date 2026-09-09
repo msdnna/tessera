@@ -22,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TDropdown
@@ -42,6 +43,27 @@ data class DocSwitchRow(
     /** True for the document above this one, false for a nested one. */
     val parent: Boolean,
 )
+
+/**
+ * The neighbours of [open] among [docs]: the document it hangs off first, then
+ * the ones hanging off it.
+ *
+ * The parent leads because it is the step *out* — the direction the reader is
+ * far likelier to want, and the one the vanished header used to offer. The
+ * document itself is never a row: an item that goes where you already are reads
+ * as broken.
+ */
+fun docSwitchRows(docs: List<Document>, open: Document?): List<DocSwitchRow> {
+    if (open == null) return emptyList()
+    val parent = open.parentId
+        ?.takeIf { it != open.id }
+        ?.let { id -> docs.firstOrNull { it.id == id } }
+        ?.let { DocSwitchRow(it.id, it.title, it.icon, parent = true) }
+    val children = docs
+        .filter { it.parentId == open.id && it.id != open.id }
+        .map { DocSwitchRow(it.id, it.title, it.icon, parent = false) }
+    return listOfNotNull(parent) + children
+}
 
 /** An item of the title menu that does one thing and needs nothing said back. */
 enum class DocAction {
@@ -119,37 +141,60 @@ fun DocTitleSwitcher(chrome: DocChrome, modifier: Modifier = Modifier) {
     var menu by remember { mutableStateOf(false) }
     var exportOpen by remember { mutableStateOf(false) }
     Box(modifier) {
-        Row(
-            Modifier.clickableNoRipple { menu = true }.testTag(TestTags.DOCUMENT_MENU),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (info.icon.isNotBlank()) {
-                Text(info.icon, fontSize = 16.sp)
-                Spacer(Modifier.width(6.dp))
-            }
-            Column(Modifier.weight(1f, fill = false)) {
-                Text(
-                    info.title.ifBlank { stringResource(R.string.docs_reader_untitled) },
-                    color = c.text1,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                )
-                // Autosave is the one thing the editor cannot leave unsaid, and
-                // its row is gone — so it rides under the title rather than
-                // costing the bar a line of its own.
-                info.status?.let { label ->
+        // The whole strip opens the menu, but only the title part of it is the
+        // clickable node: a clickable merges the semantics under it, and the
+        // status and the badge would stop being nodes of their own — invisible
+        // to a spec, and to a screen reader announced as part of the title.
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    Modifier.weight(1f, fill = false)
+                        .clickableNoRipple { menu = true }
+                        .testTag(TestTags.DOCUMENT_MENU),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (info.icon.isNotBlank()) {
+                        Text(info.icon, fontSize = 16.sp)
+                        Spacer(Modifier.width(6.dp))
+                    }
                     Text(
-                        stringResource(label),
-                        color = if (info.statusSettled) c.text3 else c.text2,
-                        fontSize = 11.sp,
+                        info.title.ifBlank { stringResource(R.string.docs_reader_untitled) },
+                        color = c.text1,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
-                        modifier = Modifier.testTag(TestTags.DOCUMENT_EDITOR_STATUS),
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Spacer(Modifier.width(4.dp))
+                    IonIcon(Ion.CHEVRON_DOWN, size = 18.dp, tint = c.text2)
+                }
+                // The open discussions have to be visible *before* the menu is:
+                // a remark on a phone-sized document is invisible until
+                // something says it is there, and «behind the title» is not
+                // saying it.
+                if (info.commentCount > 0) {
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        info.commentCount.toString(),
+                        color = c.primary,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.testTag(TestTags.DOCUMENT_COMMENTS_BADGE),
                     )
                 }
             }
-            Spacer(Modifier.width(4.dp))
-            IonIcon(Ion.CHEVRON_DOWN, size = 18.dp, tint = c.text2)
+            // Autosave is the one thing the editor cannot leave unsaid, and its
+            // row is gone — so it rides under the title rather than costing the
+            // bar a line of its own.
+            info.status?.let { label ->
+                Text(
+                    stringResource(label),
+                    color = if (info.statusSettled) c.text3 else c.text2,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    modifier = Modifier.testTag(TestTags.DOCUMENT_EDITOR_STATUS),
+                )
+            }
         }
         DocMenu(
             chrome = chrome,

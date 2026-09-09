@@ -64,37 +64,6 @@ import website.msdnna.tessera.util.canDecideNow
 import website.msdnna.tessera.util.orderedApprovalSteps
 
 /**
- * The way into the links panel, over the reader and over the editor alike, with
- * the number of linked tasks on it.
- *
- * The count is on the button for the same reason the discussions' is: a document
- * that a task hangs off looks exactly like one that nothing does.
- */
-@Composable
-fun DocLinksButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val c = Tessera.colors
-    Box(modifier) {
-        IonIconButton(
-            Ion.LINK,
-            onClick = onClick,
-            boxSize = 40.dp,
-            modifier = Modifier.testTag(TestTags.DOCUMENT_LINKS_OPEN),
-        )
-        if (count > 0) {
-            Text(
-                count.toString(),
-                color = c.primary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.TopEnd)
-                    .padding(top = 4.dp, end = 2.dp)
-                    .testTag(TestTags.DOCUMENT_LINKS_BADGE),
-            )
-        }
-    }
-}
-
-/**
  * Task links and approval routes of the open document (#2732, §7 of #2894).
  *
  * Both belong in one panel, as on the web: a route is raised against the

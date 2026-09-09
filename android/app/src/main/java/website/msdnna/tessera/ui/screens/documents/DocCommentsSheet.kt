@@ -57,38 +57,6 @@ import website.msdnna.tessera.util.whenLabel
 private data class DocRemoveTarget(val id: String, val replies: Int)
 
 /**
- * The way into the discussions, over the reader and over the editor alike, with
- * the number of open ones on it.
- *
- * The count is on the button rather than only inside the sheet because that is
- * the whole point of it: a remark left on a phone-sized document is invisible
- * until something says it is there.
- */
-@Composable
-fun DocCommentsButton(count: Int, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val c = Tessera.colors
-    Box(modifier) {
-        IonIconButton(
-            Ion.CHATBUBBLE,
-            onClick = onClick,
-            boxSize = 40.dp,
-            modifier = Modifier.testTag(TestTags.DOCUMENT_COMMENTS_OPEN),
-        )
-        if (count > 0) {
-            Text(
-                count.toString(),
-                color = c.primary,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.align(Alignment.TopEnd)
-                    .padding(top = 4.dp, end = 2.dp)
-                    .testTag(TestTags.DOCUMENT_COMMENTS_BADGE),
-            )
-        }
-    }
-}
-
-/**
  * Discussions of the open document (#2730, §5 of #2894).
  *
  * A panel over the document rather than beside it: the web has a column to spare

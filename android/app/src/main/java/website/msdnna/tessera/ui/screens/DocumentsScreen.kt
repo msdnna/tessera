@@ -56,21 +56,17 @@ import website.msdnna.tessera.ui.screens.documents.DocAction
 import website.msdnna.tessera.ui.screens.documents.DocBlockView
 import website.msdnna.tessera.ui.screens.documents.DocChrome
 import website.msdnna.tessera.ui.screens.documents.DocChromeInfo
-import website.msdnna.tessera.ui.screens.documents.DocCommentsButton
 import website.msdnna.tessera.ui.screens.documents.DocCommentsSheet
 import website.msdnna.tessera.ui.screens.documents.DocDraft
 import website.msdnna.tessera.ui.screens.documents.DocExportMenu
-import website.msdnna.tessera.ui.screens.documents.DocHistoryButton
 import website.msdnna.tessera.ui.screens.documents.DocHistorySheet
-import website.msdnna.tessera.ui.screens.documents.DocLinksButton
 import website.msdnna.tessera.ui.screens.documents.DocLinksSheet
-import website.msdnna.tessera.ui.screens.documents.DocSwitchRow
 import website.msdnna.tessera.ui.screens.documents.DocTemplatesSheet
 import website.msdnna.tessera.ui.screens.documents.DocTocPanel
-import website.msdnna.tessera.ui.screens.documents.DocumentActionsMenu
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
 import website.msdnna.tessera.ui.screens.documents.DocumentEditor
 import website.msdnna.tessera.ui.screens.documents.DocumentsList
+import website.msdnna.tessera.ui.screens.documents.docSwitchRows
 import website.msdnna.tessera.ui.screens.documents.statusLabel
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.DocumentsViewModel
@@ -210,20 +206,7 @@ fun DocumentsScreen(
     // second row is gone. Everything it held moved into the menu behind the
     // title — see DocChrome.
     val openDoc = state.open
-    val switchRows = remember(state.docs, openDoc?.id) {
-        if (openDoc == null) {
-            emptyList()
-        } else {
-            val byId = state.docs.associateBy { it.id }
-            val parent = openDoc.parentId
-                ?.let(byId::get)
-                ?.let { DocSwitchRow(it.id, it.title, it.icon, parent = true) }
-            val children = state.docs
-                .filter { it.parentId == openDoc.id }
-                .map { DocSwitchRow(it.id, it.title, it.icon, parent = false) }
-            listOfNotNull(parent) + children
-        }
-    }
+    val switchRows = remember(state.docs, openDoc?.id) { docSwitchRows(state.docs, openDoc) }
     LaunchedEffect(
         openDoc,
         editing,
