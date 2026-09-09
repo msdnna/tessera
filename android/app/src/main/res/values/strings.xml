@@ -253,7 +253,16 @@
     <string name="task_tab_subtasks">Подзадачи</string>
     <string name="task_tab_relations">Связи</string>
     <string name="task_tab_files">Файлы</string>
+    <string name="task_tab_documents">Документы</string>
     <string name="task_tab_history">История</string>
+
+    <!-- Вкладка «Документы» (#2894 §7): другой конец связи, которую заводят из
+         документа. Читающая по замыслу — связь ставят там, где есть контекст. -->
+    <string name="task_docs_empty">Документы не ссылаются на эту задачу.</string>
+    <string name="task_docs_untitled">Без названия</string>
+    <string name="task_docs_fragment">фрагмент документа</string>
+    <string name="task_docs_unlink">Убрать связь?</string>
+    <string name="task_docs_unlink_confirm">Документ останется на месте — исчезнет только связь с задачей.</string>
 
     <!-- Модалка задачи: описание и комментарии -->
     <string name="task_description_placeholder">Добавьте описание…</string>
@@ -732,11 +741,213 @@
 
     <!-- Документы -->
     <string name="docs_empty">Документов пока нет</string>
-    <string name="docs_empty_hint">Создать документ можно в веб-версии</string>
+    <string name="docs_empty_nested">Внутри пока пусто</string>
+    <string name="docs_empty_hint">Создайте первый — кнопка выше</string>
     <string name="docs_untitled">Без названия</string>
+    <string name="docs_empty_preview">Пустой документ</string>
     <string name="docs_reader_untitled">Документ</string>
     <string name="docs_reader_empty">Документ пуст</string>
     <string name="docs_image_alt">Изображение документа</string>
+    <!-- Сетка: крошки, создание, число вложенных на плитке -->
+    <string name="docs_crumb_root">Документы</string>
+    <string name="docs_create">Новый документ</string>
+    <string name="docs_create_confirm">Создать</string>
+    <string name="docs_nested_count">вложенных: %1$d</string>
+    <!-- Меню за названием документа в шапке приложения -->
+    <string name="docs_menu_edit">Редактировать</string>
+    <string name="docs_menu_read">Закрыть редактор</string>
+    <string name="docs_menu_comments">Обсуждения</string>
+    <string name="docs_menu_links">Связи и согласования</string>
+    <string name="docs_menu_history">История изменений</string>
+    <string name="docs_menu_switch">Перейти к документу</string>
+    <string name="docs_menu_list">К списку документов</string>
+    <!-- Меню «⋯» в читалке -->
+    <string name="docs_action_nested">Вложенный документ</string>
+    <string name="docs_action_children">Показать вложенные (%1$d)</string>
+    <string name="docs_action_rename">Переименовать</string>
+    <string name="docs_action_remove">Удалить документ</string>
+    <string name="docs_rename_title">Переименовать документ</string>
+    <string name="docs_remove_title">Удалить документ?</string>
+    <string name="docs_remove_single">Документ будет удалён.</string>
+    <string name="docs_remove_with_children">Документ будет удалён вместе с вложенными (%1$d).</string>
+    <string name="docs_toc_title">Оглавление</string>
+    <string name="docs_toc_empty">Добавьте заголовки — они соберутся в оглавление.</string>
+    <string name="docs_toc_untitled">Без заголовка</string>
+    <string name="docs_pdf_untitled">Документ PDF</string>
+    <string name="docs_pdf_failed">Не удалось открыть PDF</string>
+    <string name="docs_pdf_page">Стр. %1$d из %2$d</string>
+    <string name="docs_size_b">Б</string>
+    <string name="docs_size_kb">КБ</string>
+    <string name="docs_size_mb">МБ</string>
+    <string name="docs_size_gb">ГБ</string>
+    <string name="docs_page_portrait">Книжная</string>
+    <string name="docs_page_landscape">Альбомная</string>
+    <string name="docs_page_size_custom">свой размер</string>
+    <string name="docs_section_caption">Дальше — %1$s %2$s</string>
+    <!-- Editor (#2894 §4). docs_embed_lang is not shown anywhere: it is the code
+         of the language this build is currently rendering in, handed to the
+         embedded editor so the web surface speaks the same language as the app
+         around it. It follows whatever picked this resource folder, which is
+         exactly the point — nothing here has to know how the language was set. -->
+    <string name="docs_embed_lang" translatable="false">ru</string>
+    <string name="docs_edit">Редактировать</string>
+    <string name="docs_editor_saved">Сохранено</string>
+    <string name="docs_editor_dirty">Есть изменения</string>
+    <string name="docs_editor_saving">Сохраняем…</string>
+    <string name="docs_editor_conflict_short">Конфликт</string>
+    <string name="docs_editor_error">Не сохранено</string>
+    <string name="docs_editor_conflict">Документ изменён в другом месте — ваши последние правки не сохранены.</string>
+    <string name="docs_editor_remote_change">Документ изменён в другом месте.</string>
+    <string name="docs_editor_reload">Обновить</string>
+    <string name="docs_editor_failed">Не удалось открыть редактор</string>
+    <string name="docs_editor_blocked">Блок редактирует %1$s</string>
+    <string name="docs_editor_blocked_someone">другой участник</string>
+    <!-- Annotations (#2894 §5). The sections say what the web draws with lines
+         from a card to its block — a phone has no column to draw them in. -->
+    <string name="docs_comments_title">Обсуждение</string>
+    <string name="docs_comments_empty">Комментариев пока нет. Откройте блок в редакторе и нажмите на значок обсуждения, чтобы начать.</string>
+    <string name="docs_comments_section_focus">Выбранный блок</string>
+    <string name="docs_comments_section_blocks">К блокам</string>
+    <string name="docs_comments_section_document">К документу</string>
+    <string name="docs_comments_section_detached">Блок удалён</string>
+    <string name="docs_comments_anchor_fallback">выбранный блок</string>
+    <string name="docs_comments_unpin">Открепить</string>
+    <string name="docs_comments_reply">Ответить</string>
+    <string name="docs_comments_resolve">Решено</string>
+    <string name="docs_comments_reopen">Вернуть</string>
+    <string name="docs_comments_resolved">решено</string>
+    <string name="docs_comments_reply_placeholder">Ответить…</string>
+    <string name="docs_comments_edit_placeholder">Изменить комментарий…</string>
+    <string name="docs_comments_draft_block">Комментарий к блоку…</string>
+    <string name="docs_comments_draft_doc">Комментарий к документу…</string>
+    <string name="docs_comments_send">Отправить</string>
+    <string name="docs_comments_someone">Участник</string>
+    <string name="docs_comments_remove_title">Удалить комментарий?</string>
+    <string name="docs_comments_remove_confirm">Комментарий будет удалён.</string>
+    <string name="docs_comments_remove_thread_title">Удалить обсуждение?</string>
+    <string name="docs_comments_remove_thread_confirm">Обсуждение будет удалено вместе с ответами (%1$d).</string>
+
+    <!-- Version journal (#2894 §6). The panel is a sheet over the document, so
+         the entries have to say what the web says with a column beside the text:
+         which revision, when, by whom, and what the comparison found. -->
+    <string name="docs_history_title">История</string>
+    <string name="docs_history_open">История версий</string>
+    <string name="docs_history_empty">История появится, когда документ будет сохранён.</string>
+    <string name="docs_history_snapshot">Сохранить версию</string>
+    <string name="docs_history_label_hint">Например: согласованная редакция</string>
+    <string name="docs_history_revision">Версия %1$d</string>
+    <string name="docs_history_span">%1$s–%2$s</string>
+    <string name="docs_history_unknown_author">Неизвестный автор</string>
+    <string name="docs_history_compare">Сравнение с версией %1$d</string>
+    <string name="docs_history_restore">Восстановить</string>
+    <string name="docs_history_restore_title">Восстановить версию?</string>
+    <string name="docs_history_restore_confirm">Документ вернётся к этой версии. Текущее состояние останется в истории.</string>
+    <string name="docs_history_loading_version">Загрузка версии…</string>
+    <string name="docs_history_identical">Версии совпадают.</string>
+    <plurals name="docs_history_added">
+        <item quantity="one">+%1$d блок</item>
+        <item quantity="few">+%1$d блока</item>
+        <item quantity="many">+%1$d блоков</item>
+        <item quantity="other">+%1$d блоков</item>
+    </plurals>
+    <plurals name="docs_history_removed">
+        <item quantity="one">−%1$d блок</item>
+        <item quantity="few">−%1$d блока</item>
+        <item quantity="many">−%1$d блоков</item>
+        <item quantity="other">−%1$d блоков</item>
+    </plurals>
+    <string name="docs_history_changed">изменено: %1$d</string>
+    <string name="docs_history_moved">перемещено: %1$d</string>
+    <string name="docs_history_status_added">добавлено</string>
+    <string name="docs_history_status_removed">удалено</string>
+    <string name="docs_history_status_changed">изменено</string>
+    <string name="docs_history_status_moved">перемещено</string>
+    <string name="docs_history_diff_image">[изображение]</string>
+
+    <!-- Связи с задачами и согласования (#2894 §7). Панель поверх документа, а не
+         рядом с ним, поэтому якорь связи приходится проговаривать словами: цитата
+         блока и есть единственное, что отвечает «о каком пункте задача», когда
+         пункт уже переписали. -->
+    <string name="docs_links_title">Связи</string>
+    <string name="docs_links_open">Связи и согласования</string>
+    <string name="docs_links_tasks">Задачи</string>
+    <string name="docs_links_empty">Ни одна задача не связана с документом.</string>
+    <string name="docs_links_task">Задача</string>
+    <string name="docs_links_fragment">фрагмент документа</string>
+    <string name="docs_links_link_task">Связать с задачей</string>
+    <string name="docs_links_link_block">Связать блок с задачей</string>
+    <string name="docs_links_search_hint">Номер или название задачи</string>
+    <string name="docs_links_nothing_found">Ничего не найдено.</string>
+    <string name="docs_links_unlink">Убрать связь?</string>
+    <string name="docs_links_unlink_confirm">Задача останется на месте — исчезнет только связь с документом.</string>
+    <string name="docs_links_anchor_fallback">Связь с блоком документа</string>
+    <string name="docs_links_unpin">Открепить</string>
+
+    <string name="docs_links_approvals">Согласование</string>
+    <string name="docs_links_no_approvals">Документ ещё не отправляли на согласование.</string>
+    <string name="docs_links_raise">Отправить на согласование</string>
+    <string name="docs_links_raise_disabled">Уже идёт согласование — дождитесь его завершения или отмените.</string>
+    <string name="docs_links_route_title_hint">Что согласовываем</string>
+    <string name="docs_links_approvers">Согласующие — порядок подписания</string>
+    <string name="docs_links_no_members">В пространстве нет других участников.</string>
+    <string name="docs_links_mode_sequential">По очереди</string>
+    <string name="docs_links_mode_parallel">Одновременно</string>
+    <string name="docs_links_submit">Отправить</string>
+    <string name="docs_links_progress">подписей: %1$d из %2$d</string>
+    <string name="docs_links_meta">Версия %1$d · %2$s</string>
+    <string name="docs_links_unknown_author">Неизвестный автор</string>
+    <string name="docs_links_sign">Подписать</string>
+    <string name="docs_links_comment_hint">Замечание (необязательно)</string>
+    <string name="docs_links_approve">Согласовать</string>
+    <string name="docs_links_reject">Отклонить</string>
+    <string name="docs_links_cancel_route">Отменить согласование</string>
+    <string name="docs_links_cancel_confirm">Маршрут закроется, собранные подписи останутся в истории.</string>
+    <string name="docs_links_status_pending">На согласовании</string>
+    <string name="docs_links_status_approved">Согласовано</string>
+    <string name="docs_links_status_rejected">Отклонено</string>
+    <string name="docs_links_status_cancelled">Отменено</string>
+    <string name="docs_links_status_unknown">Статус неизвестен</string>
+    <string name="docs_links_step_signed">подписал</string>
+    <string name="docs_links_step_rejected">отклонил</string>
+    <string name="docs_links_step_current">сейчас его очередь</string>
+    <string name="docs_links_step_waiting">ждёт очереди</string>
+    <!-- §8: галерея шаблонов, импорт файлов и экспорт (#2734, #2733) -->
+    <string name="docs_templates_open">Шаблоны</string>
+    <string name="docs_templates_title">Шаблоны документов</string>
+    <string name="docs_templates_search">Поиск</string>
+    <string name="docs_templates_upload">Загрузить файл</string>
+    <string name="docs_templates_use">Создать</string>
+    <string name="docs_templates_builtin">Встроенный</string>
+    <string name="docs_templates_no_description">Без описания</string>
+    <string name="docs_templates_empty">Ничего не нашлось. Сохраните документ как шаблон или загрузите файл.</string>
+    <string name="docs_templates_remove_title">Удалить шаблон?</string>
+    <string name="docs_templates_remove_confirm">Документы, созданные по нему, останутся.</string>
+    <!-- Импорт: подсказка о форматах, отказы и предупреждения после конвертации -->
+    <string name="docs_import_hint">Форматы: %1$s</string>
+    <string name="docs_import_hint_limited">Без конвертера доступны только %1$s (%2$s)</string>
+    <string name="docs_import_no_converter">конвертер не подключён</string>
+    <string name="docs_import_unsupported">Такой формат файла не поддерживается</string>
+    <string name="docs_import_too_large">Файл больше %1$d МБ</string>
+    <string name="docs_import_not_a_document">Это не документ Tessera</string>
+    <string name="docs_import_title">Импортированный документ</string>
+    <string name="docs_import_images_dropped">Картинок не перенесено: %1$d</string>
+    <string name="docs_import_images_dropped_why">Картинок не перенесено: %1$d (%2$s)</string>
+    <string name="docs_import_sections_differ">У разделов файла была разная геометрия страницы — документ собран по самому широкому.</string>
+    <!-- Экспорт: пункт меню, имя файла по умолчанию, системный диалог «поделиться» -->
+    <string name="docs_export">Экспорт</string>
+    <string name="docs_export_name">Документ</string>
+    <string name="docs_export_share">Поделиться «%1$s»</string>
+    <string name="docs_export_unavailable">Конвертер недоступен — попробуйте HTML</string>
+    <!-- Встроенные шаблоны. Тела — Markdown: их разбирает DocMarkdown.kt -->
+    <string name="docs_template_meeting_title">Протокол совещания</string>
+    <string name="docs_template_meeting_description">Участники, повестка, решения и задачи по итогам</string>
+    <string name="docs_template_meeting_body"># Протокол совещания\n\n**Дата:**\n**Участники:**\n\n## Повестка\n\n1. \n2. \n\n## Обсуждение\n\n## Решения\n\n- [ ] Решение — ответственный, срок\n\n## Задачи по итогам\n\n- [ ] \n</string>
+    <string name="docs_template_spec_title">Техническое задание</string>
+    <string name="docs_template_spec_description">Задача, объём работ, критерии приёмки и риски</string>
+    <string name="docs_template_spec_body"># Техническое задание\n\n## Постановка задачи\n\n## Что входит в объём\n\n- \n\n## Что не входит\n\n- \n\n## Критерии приёмки\n\n- [ ] \n\n## Риски и открытые вопросы\n\n| Вопрос | Кто отвечает |\n|---|---|\n|  |  |\n</string>
+    <string name="docs_template_retro_title">Ретроспектива</string>
+    <string name="docs_template_retro_description">Что получилось, что мешало, что меняем</string>
+    <string name="docs_template_retro_body"># Ретроспектива\n\n**Период:**\n\n## Что получилось\n\n- \n\n## Что мешало\n\n- \n\n## Что меняем\n\n- [ ] Действие — ответственный\n</string>
 
     <!-- Конференции (#2896). Подписи строки: время у карточки одно, и какое
          именно — зависит от состояния встречи, см. conferenceTimeLine. -->

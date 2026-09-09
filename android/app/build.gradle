@@ -239,6 +239,8 @@ dependencies {
 
     implementation 'io.coil-kt:coil-compose:2.7.0'
     implementation 'io.coil-kt:coil-svg:2.7.0'
+    // Без него Coil отдаёт у GIF/анимированного WebP только первый кадр (#2894).
+    implementation 'io.coil-kt:coil-gif:2.7.0'
 
     // Conference media (#2896 §4). The SFU client, native rather than in a
     // WebView: a call has to keep its audio while the app is backgrounded, follow

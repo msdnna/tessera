@@ -26,6 +26,8 @@ import website.msdnna.tessera.data.model.CreateProjectRequest
 import website.msdnna.tessera.data.model.CreateTagRequest
 import website.msdnna.tessera.data.model.CreateTaskRequest
 import website.msdnna.tessera.data.model.Document
+import website.msdnna.tessera.data.model.DocumentComment
+import website.msdnna.tessera.data.model.DocumentVersion
 import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.Note
@@ -393,11 +395,13 @@ object E2eBackend {
     fun events(fixture: Fixture, taskId: String): List<TaskEvent> =
         getList("tasks/$taskId/events", fixture.account.accessToken)
 
-    // ── documents (#2735) ──────────────────────────────────────────────────
+    // ── documents (#2735, #2894) ───────────────────────────────────────────
     //
-    // Seeded as raw maps rather than through request models: the Android client
-    // is read-only by design, so there is nothing to reuse and adding write
-    // models here would imply an app capability that does not exist.
+    // Request bodies are raw maps even though the app now has write models for
+    // all of this (§1 of #2894): a fixture built out of the models under test
+    // would rename a field along with them and keep passing. Responses are
+    // parsed into the app's models, so a spec can point at an id — the field
+    // *names* on the way back are what `DocumentJsonTest` guards.
 
     /** Creates a document, optionally nested under [parentId]. */
     fun createDocument(
@@ -431,6 +435,58 @@ object E2eBackend {
             }
         }
     }
+
+    /**
+     * The document as the server has it, body included.
+     *
+     * This is what turns «the reader redrew» into «Postgres changed»: a rollback
+     * that only repainted the screen would satisfy every on-screen assertion.
+     */
+    fun document(fixture: Fixture, documentId: String): Document =
+        get("documents/$documentId", fixture.account.accessToken)
+
+    /**
+     * Seeds a remark. [blockId] empty files it against the document as a whole,
+     * exactly as the panel does when it is opened from the bar rather than from
+     * a block's handle.
+     */
+    fun createDocumentComment(
+        fixture: Fixture,
+        documentId: String,
+        body: String,
+        blockId: String = "",
+        quote: String = "",
+    ): DocumentComment = post(
+        "documents/$documentId/comments",
+        mapOf("body" to body, "block_id" to blockId, "quote" to quote),
+        fixture.account.accessToken,
+    )
+
+    /** Remarks on a document, as the server has them — roots and replies in one
+     *  list, the way the panel receives them. */
+    fun documentComments(fixture: Fixture, documentId: String): List<DocumentComment> =
+        getList("documents/$documentId/comments", fixture.account.accessToken)
+
+    /**
+     * Takes a named snapshot of the document as it stands.
+     *
+     * A seed needs this rather than a second content write: consecutive saves by
+     * the same author inside the session window *extend* the newest journal
+     * entry instead of adding one, so two writes alone leave a one-entry journal
+     * and nothing to compare against. A manual snapshot closes the session, and
+     * the write after it opens a new entry.
+     */
+    fun snapshotDocument(fixture: Fixture, documentId: String, label: String): DocumentVersion =
+        post(
+            "documents/$documentId/versions",
+            mapOf("label" to label),
+            fixture.account.accessToken,
+        )
+
+    /** The version journal, newest first — the server's own ids, so a spec can
+     *  point at one entry rather than at «the second row». */
+    fun documentVersions(fixture: Fixture, documentId: String): List<DocumentVersion> =
+        getList("documents/$documentId/versions", fixture.account.accessToken)
 
     /** Creates a workspace note. */
     fun createNote(fixture: Fixture, title: String, body: String = ""): Note =

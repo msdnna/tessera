@@ -59,6 +59,10 @@
     "uploadingImage": "Uploading image…",
     "pdfFallbackName": "document.pdf"
   },
+  "embed": {
+    "loading": "Opening the document…",
+    "failed": "Could not open the document"
+  },
   "toc": {
     "title": "Outline",
     "empty": "Add headings — they will build the outline.",

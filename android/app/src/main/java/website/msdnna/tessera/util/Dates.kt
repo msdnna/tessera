@@ -241,18 +241,26 @@ fun dueShort(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPref
 fun whenLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     val date = shortDate(res, iso)
     if (date.isEmpty()) return ""
-    val raw = if (iso != null && iso.length >= 16) iso.substring(11, 16) else ""
-    if (raw.isEmpty()) return date
-    // The clock is the raw ISO one (see above) — only its *shape* follows
-    // `time_format`, so a 12h user reads "2:30 PM" over the same instant.
-    val time = if (fmt.time12h) {
-        val hh = raw.substring(0, 2).toIntOrNull()
-        val mm = raw.substring(3, 5).toIntOrNull()
-        if (hh != null && mm != null) clock(res, hh, mm, fmt) else raw
-    } else {
-        raw
-    }
+    val time = timeLabel(res, iso, fmt)
+    if (time.isEmpty()) return date
     return res.getString(R.string.dates_at_time, date, time)
+}
+
+/**
+ * Just the clock of an instant — `14:30`, or `2:30 PM` for a 12h user.
+ *
+ * Split out of [whenLabel] for the version journal (#2894 §6), whose entries
+ * cover an editing session rather than a moment and read `4 июн., 14:30–14:52`.
+ * The hour is the raw ISO (UTC) one, exactly as in [whenLabel]: only its *shape*
+ * follows `time_format`, so both ends of a span are told the same way.
+ */
+fun timeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
+    val raw = if (iso != null && iso.length >= 16) iso.substring(11, 16) else ""
+    if (raw.isEmpty()) return ""
+    if (!fmt.time12h) return raw
+    val hh = raw.substring(0, 2).toIntOrNull()
+    val mm = raw.substring(3, 5).toIntOrNull()
+    return if (hh != null && mm != null) clock(res, hh, mm, fmt) else raw
 }
 
 // ── Full instants (reminders) — these carry a real time-of-day, so they parse

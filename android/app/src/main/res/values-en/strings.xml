@@ -247,7 +247,15 @@
     <string name="task_tab_subtasks">Subtasks</string>
     <string name="task_tab_relations">Relations</string>
     <string name="task_tab_files">Files</string>
+    <string name="task_tab_documents">Documents</string>
     <string name="task_tab_history">History</string>
+
+    <!-- The «Documents» tab (#2894 §7) -->
+    <string name="task_docs_empty">No document refers to this task.</string>
+    <string name="task_docs_untitled">Untitled</string>
+    <string name="task_docs_fragment">a fragment of the document</string>
+    <string name="task_docs_unlink">Remove the link?</string>
+    <string name="task_docs_unlink_confirm">The document stays where it is — only the link to the task goes.</string>
 
     <!-- Task modal: description and comments -->
     <string name="task_description_placeholder">Add a description…</string>
@@ -719,11 +727,201 @@
 
     <!-- Documents -->
     <string name="docs_empty">No documents yet</string>
-    <string name="docs_empty_hint">Documents are created in the web app</string>
+    <string name="docs_empty_nested">Nothing inside yet</string>
+    <string name="docs_empty_hint">Create the first one with the button above</string>
     <string name="docs_untitled">Untitled</string>
+    <string name="docs_empty_preview">Empty document</string>
     <string name="docs_reader_untitled">Document</string>
     <string name="docs_reader_empty">This document is empty</string>
     <string name="docs_image_alt">Document image</string>
+    <!-- Grid: breadcrumbs, create, nested count on a tile -->
+    <string name="docs_crumb_root">Documents</string>
+    <string name="docs_create">New document</string>
+    <string name="docs_create_confirm">Create</string>
+    <string name="docs_nested_count">nested: %1$d</string>
+    <!-- The menu behind the document's name in the app bar -->
+    <string name="docs_menu_edit">Edit</string>
+    <string name="docs_menu_read">Close the editor</string>
+    <string name="docs_menu_comments">Discussions</string>
+    <string name="docs_menu_links">Links and approvals</string>
+    <string name="docs_menu_history">Change history</string>
+    <string name="docs_menu_switch">Go to a document</string>
+    <string name="docs_menu_list">Back to documents</string>
+    <!-- The reader's «⋯» menu -->
+    <string name="docs_action_nested">Nested document</string>
+    <string name="docs_action_children">Show nested (%1$d)</string>
+    <string name="docs_action_rename">Rename</string>
+    <string name="docs_action_remove">Delete the document</string>
+    <string name="docs_rename_title">Rename the document</string>
+    <string name="docs_remove_title">Delete the document?</string>
+    <string name="docs_remove_single">The document will be deleted.</string>
+    <string name="docs_remove_with_children">The document will be deleted along with the nested ones (%1$d).</string>
+    <string name="docs_toc_title">Outline</string>
+    <string name="docs_toc_empty">Add headings — they will build the outline.</string>
+    <string name="docs_toc_untitled">Untitled heading</string>
+    <string name="docs_pdf_untitled">PDF document</string>
+    <string name="docs_pdf_failed">Could not open the PDF</string>
+    <string name="docs_pdf_page">Page %1$d of %2$d</string>
+    <string name="docs_size_b">B</string>
+    <string name="docs_size_kb">KB</string>
+    <string name="docs_size_mb">MB</string>
+    <string name="docs_size_gb">GB</string>
+    <string name="docs_page_portrait">Portrait</string>
+    <string name="docs_page_landscape">Landscape</string>
+    <string name="docs_page_size_custom">custom size</string>
+    <string name="docs_section_caption">From here: %1$s %2$s</string>
+    <!-- Editor (#2894 §4). See the note in values/strings.xml: docs_embed_lang is
+         the code of the language this build renders in, passed to the embedded
+         editor. -->
+    <string name="docs_embed_lang" translatable="false">en</string>
+    <string name="docs_edit">Edit</string>
+    <string name="docs_editor_saved">Saved</string>
+    <string name="docs_editor_dirty">Unsaved changes</string>
+    <string name="docs_editor_saving">Saving…</string>
+    <string name="docs_editor_conflict_short">Conflict</string>
+    <string name="docs_editor_error">Not saved</string>
+    <string name="docs_editor_conflict">The document changed elsewhere — your latest edits were not saved.</string>
+    <string name="docs_editor_remote_change">The document changed elsewhere.</string>
+    <string name="docs_editor_reload">Reload</string>
+    <string name="docs_editor_failed">Could not open the editor</string>
+    <string name="docs_editor_blocked">%1$s is editing this block</string>
+    <string name="docs_editor_blocked_someone">someone else</string>
+    <!-- Annotations (#2894 §5). -->
+    <string name="docs_comments_title">Discussion</string>
+    <string name="docs_comments_empty">No comments yet. Open a block in the editor and tap the discussion icon to start one.</string>
+    <string name="docs_comments_section_focus">Selected block</string>
+    <string name="docs_comments_section_blocks">On blocks</string>
+    <string name="docs_comments_section_document">On the document</string>
+    <string name="docs_comments_section_detached">Block deleted</string>
+    <string name="docs_comments_anchor_fallback">the selected block</string>
+    <string name="docs_comments_unpin">Unpin</string>
+    <string name="docs_comments_reply">Reply</string>
+    <string name="docs_comments_resolve">Resolve</string>
+    <string name="docs_comments_reopen">Reopen</string>
+    <string name="docs_comments_resolved">resolved</string>
+    <string name="docs_comments_reply_placeholder">Reply…</string>
+    <string name="docs_comments_edit_placeholder">Edit the comment…</string>
+    <string name="docs_comments_draft_block">Comment on the block…</string>
+    <string name="docs_comments_draft_doc">Comment on the document…</string>
+    <string name="docs_comments_send">Send</string>
+    <string name="docs_comments_someone">Member</string>
+    <string name="docs_comments_remove_title">Delete the comment?</string>
+    <string name="docs_comments_remove_confirm">The comment will be deleted.</string>
+    <string name="docs_comments_remove_thread_title">Delete the discussion?</string>
+    <string name="docs_comments_remove_thread_confirm">The discussion and its replies (%1$d) will be deleted.</string>
+
+    <!-- Version journal (#2894 §6) -->
+    <string name="docs_history_title">History</string>
+    <string name="docs_history_open">Version history</string>
+    <string name="docs_history_empty">The history starts once the document is saved.</string>
+    <string name="docs_history_snapshot">Save a version</string>
+    <string name="docs_history_label_hint">For example: agreed wording</string>
+    <string name="docs_history_revision">Version %1$d</string>
+    <string name="docs_history_span">%1$s–%2$s</string>
+    <string name="docs_history_unknown_author">Unknown author</string>
+    <string name="docs_history_compare">Compared with version %1$d</string>
+    <string name="docs_history_restore">Restore</string>
+    <string name="docs_history_restore_title">Restore this version?</string>
+    <string name="docs_history_restore_confirm">The document goes back to this version. The current state stays in the history.</string>
+    <string name="docs_history_loading_version">Loading the version…</string>
+    <string name="docs_history_identical">The versions are identical.</string>
+    <plurals name="docs_history_added">
+        <item quantity="one">+%1$d block</item>
+        <item quantity="other">+%1$d blocks</item>
+    </plurals>
+    <plurals name="docs_history_removed">
+        <item quantity="one">−%1$d block</item>
+        <item quantity="other">−%1$d blocks</item>
+    </plurals>
+    <string name="docs_history_changed">changed: %1$d</string>
+    <string name="docs_history_moved">moved: %1$d</string>
+    <string name="docs_history_status_added">added</string>
+    <string name="docs_history_status_removed">removed</string>
+    <string name="docs_history_status_changed">changed</string>
+    <string name="docs_history_status_moved">moved</string>
+    <string name="docs_history_diff_image">[image]</string>
+
+    <!-- Task links and approval routes (#2894 §7) -->
+    <string name="docs_links_title">Links</string>
+    <string name="docs_links_open">Links and approvals</string>
+    <string name="docs_links_tasks">Tasks</string>
+    <string name="docs_links_empty">No task is linked to this document.</string>
+    <string name="docs_links_task">Task</string>
+    <string name="docs_links_fragment">a fragment of the document</string>
+    <string name="docs_links_link_task">Link a task</string>
+    <string name="docs_links_link_block">Link this block to a task</string>
+    <string name="docs_links_search_hint">Task number or title</string>
+    <string name="docs_links_nothing_found">Nothing found.</string>
+    <string name="docs_links_unlink">Remove the link?</string>
+    <string name="docs_links_unlink_confirm">The task stays where it is — only the link to the document goes.</string>
+    <string name="docs_links_anchor_fallback">A link to a block of the document</string>
+    <string name="docs_links_unpin">Unpin</string>
+
+    <string name="docs_links_approvals">Approval</string>
+    <string name="docs_links_no_approvals">The document has not been sent for approval yet.</string>
+    <string name="docs_links_raise">Send for approval</string>
+    <string name="docs_links_raise_disabled">An approval is already under way — wait for it or cancel it.</string>
+    <string name="docs_links_route_title_hint">What is being agreed</string>
+    <string name="docs_links_approvers">Approvers — the signing order</string>
+    <string name="docs_links_no_members">There are no other members in this workspace.</string>
+    <string name="docs_links_mode_sequential">In turn</string>
+    <string name="docs_links_mode_parallel">All at once</string>
+    <string name="docs_links_submit">Send</string>
+    <string name="docs_links_progress">signed: %1$d of %2$d</string>
+    <string name="docs_links_meta">Version %1$d · %2$s</string>
+    <string name="docs_links_unknown_author">Unknown author</string>
+    <string name="docs_links_sign">Sign</string>
+    <string name="docs_links_comment_hint">A remark (optional)</string>
+    <string name="docs_links_approve">Approve</string>
+    <string name="docs_links_reject">Reject</string>
+    <string name="docs_links_cancel_route">Cancel the approval</string>
+    <string name="docs_links_cancel_confirm">The route closes; the signatures collected stay in the history.</string>
+    <string name="docs_links_status_pending">Under approval</string>
+    <string name="docs_links_status_approved">Approved</string>
+    <string name="docs_links_status_rejected">Rejected</string>
+    <string name="docs_links_status_cancelled">Cancelled</string>
+    <string name="docs_links_status_unknown">Unknown status</string>
+    <string name="docs_links_step_signed">signed</string>
+    <string name="docs_links_step_rejected">rejected</string>
+    <string name="docs_links_step_current">their turn now</string>
+    <string name="docs_links_step_waiting">waiting their turn</string>
+    <!-- D8: template gallery, file import and export (#2734, #2733) -->
+    <string name="docs_templates_open">Templates</string>
+    <string name="docs_templates_title">Document templates</string>
+    <string name="docs_templates_search">Search</string>
+    <string name="docs_templates_upload">Upload a file</string>
+    <string name="docs_templates_use">Create</string>
+    <string name="docs_templates_builtin">Built-in</string>
+    <string name="docs_templates_no_description">No description</string>
+    <string name="docs_templates_empty">Nothing found. Save a document as a template, or upload a file.</string>
+    <string name="docs_templates_remove_title">Delete this template?</string>
+    <string name="docs_templates_remove_confirm">Documents created from it are kept.</string>
+    <!-- Import: what the picker takes, refusals, and warnings after a conversion -->
+    <string name="docs_import_hint">Formats: %1$s</string>
+    <string name="docs_import_hint_limited">Without a converter only %1$s (%2$s)</string>
+    <string name="docs_import_no_converter">no converter deployed</string>
+    <string name="docs_import_unsupported">That file format is not supported</string>
+    <string name="docs_import_too_large">The file is larger than %1$d MB</string>
+    <string name="docs_import_not_a_document">This is not a Tessera document</string>
+    <string name="docs_import_title">Imported document</string>
+    <string name="docs_import_images_dropped">Pictures not carried over: %1$d</string>
+    <string name="docs_import_images_dropped_why">Pictures not carried over: %1$d (%2$s)</string>
+    <string name="docs_import_sections_differ">The file\'s sections disagreed about page geometry — the document uses the widest one.</string>
+    <!-- Export: the menu entry, the fallback file name, the system share sheet -->
+    <string name="docs_export">Export</string>
+    <string name="docs_export_name">Document</string>
+    <string name="docs_export_share">Share “%1$s”</string>
+    <string name="docs_export_unavailable">The converter is unavailable — try HTML</string>
+    <!-- Built-in templates. The bodies are Markdown, parsed by DocMarkdown.kt -->
+    <string name="docs_template_meeting_title">Meeting notes</string>
+    <string name="docs_template_meeting_description">Attendees, agenda, decisions and follow-up tasks</string>
+    <string name="docs_template_meeting_body"># Meeting notes\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1. \n2. \n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due\n\n## Follow-up tasks\n\n- [ ] \n</string>
+    <string name="docs_template_spec_title">Specification</string>
+    <string name="docs_template_spec_description">The problem, the scope, acceptance criteria and risks</string>
+    <string name="docs_template_spec_body"># Specification\n\n## The problem\n\n## In scope\n\n- \n\n## Out of scope\n\n- \n\n## Acceptance criteria\n\n- [ ] \n\n## Risks and open questions\n\n| Question | Owner |\n|---|---|\n|  |  |\n</string>
+    <string name="docs_template_retro_title">Retrospective</string>
+    <string name="docs_template_retro_description">What went well, what got in the way, what we change</string>
+    <string name="docs_template_retro_body"># Retrospective\n\n**Period:**\n\n## What went well\n\n- \n\n## What got in the way\n\n- \n\n## What we change\n\n- [ ] Action — owner\n</string>
 
     <!-- Conferences (#2896) -->
     <string name="conf_schedule">Schedule</string>

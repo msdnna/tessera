@@ -65,6 +65,8 @@ import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.UpdateDialog
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.screens.documents.DocChrome
+import website.msdnna.tessera.ui.screens.documents.DocTitleSwitcher
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.NotificationViewModel
@@ -123,6 +125,10 @@ fun MainScreen(
     // Timeline/Gantt own pinch-zoom + horizontal pan → suppress the drawer edge-swipe
     // there so it doesn't steal the gesture (set by BoardScreen).
     var boardTimelineLike by remember { mutableStateOf(false) }
+    // The open document's chrome, handed up by DocumentsScreen: its name is the
+    // bar's title and its menu is what the section's own header used to be
+    // (#2894 rework). Null whenever no document is open.
+    var docChrome by remember { mutableStateOf<DocChrome?>(null) }
     val scope = rememberCoroutineScope()
     val state by wsVm.state.collectAsStateWithLifecycle()
     val notifState by notifVm.state.collectAsStateWithLifecycle()
@@ -147,6 +153,9 @@ fun MainScreen(
     var notesPreselectId by remember { mutableStateOf<String?>(null) }
     // Which call to reopen the lobby of — set by the minimised bar (#2896 §9).
     var conferencePreselectId by remember { mutableStateOf<String?>(null) }
+    // A document to open on arrival — the task modal's «Документы» tab walking
+    // the link to its other end (#2894 §7).
+    var documentsPreselectId by remember { mutableStateOf<String?>(null) }
     var searchOpen by remember { mutableStateOf(false) }
     var bellOpen by remember { mutableStateOf(false) }
     var membersOpen by remember { mutableStateOf(false) }
@@ -322,12 +331,12 @@ fun MainScreen(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        // Same trade the timeline makes, and for the same reason: the call screen
-        // owns pinch-zoom and pan on the stage (#2896), and an edge-swipe that
-        // pulled the sidebar out from under a two-finger spread turned every
-        // attempt to read a shared screen into a navigation. A drawer already
-        // open still closes by gesture — that one is not competing with anything.
-        gesturesEnabled = (!boardTimelineLike && !call.roomOnScreen) || drawerState.isOpen,
+        gesturesEnabled = drawerGesturesEnabled(
+            timelineLike = boardTimelineLike,
+            documentOpen = docChrome != null,
+            callOnScreen = call.roomOnScreen,
+            drawerOpen = drawerState.isOpen,
+        ),
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = c.surface, modifier = Modifier.width(280.dp)) {
                 // Sidebar navigation: push onto the back-stack and close the drawer.
@@ -400,6 +409,7 @@ fun MainScreen(
             ) {
                 TopBar(
                     title = titleFor(dest).resolve(),
+                    docChrome = docChrome?.takeIf { dest is MainDest.Documents },
                     unread = notifState.unread,
                     bellOpen = bellOpen,
                     notifState = notifState,
@@ -442,7 +452,21 @@ fun MainScreen(
                                 onPreselectConsumed = { notesPreselectId = null },
                             )
 
-                            is MainDest.Documents -> DocumentsScreen(workspaceId = state.currentId)
+                            is MainDest.Documents -> DocumentsScreen(
+                                workspaceId = state.currentId,
+                                preselectDocumentId = documentsPreselectId,
+                                onPreselectConsumed = { documentsPreselectId = null },
+                                // A link points at a task by id alone; which board
+                                // it lives on is a lookup, and openTask already
+                                // does exactly that for the reminder deep-link.
+                                onOpenTask = { taskId ->
+                                    scope.launch {
+                                        val boardId = runCatching { boardRepo.taskBoardId(taskId) }.getOrNull()
+                                        if (boardId != null) openTask(boardId, taskId)
+                                    }
+                                },
+                                onChrome = { docChrome = it },
+                            )
 
                             is MainDest.Conferences -> ConferencesScreen(
                                 workspaceId = state.currentId,
@@ -494,6 +518,10 @@ fun MainScreen(
                                 onCloseCommands = { boardCommandsOpen = false },
                                 onTimelineLikeChanged = { boardTimelineLike = it },
                                 onBoardGone = { if (dest is MainDest.BoardView) dest = MainDest.Home },
+                                onOpenDocument = { documentId ->
+                                    documentsPreselectId = documentId
+                                    navTo(MainDest.Documents)
+                                },
                             )
                         }
                     }
@@ -764,6 +792,27 @@ internal fun titleFor(dest: MainDest): UiText = when (dest) {
     is MainDest.BoardView -> UiText.Raw(dest.board.name)
 }
 
+/**
+ * Whether the edge-swipe that opens the sidebar is live.
+ *
+ * Three screens own the whole width and lose by sharing it: the timeline pans
+ * horizontally by design, the call screen owns pinch-zoom and pan on the stage
+ * (#2896) — an edge-swipe pulling the sidebar out from under a two-finger
+ * spread turned every attempt to read a shared screen into a navigation — and
+ * an open document is a long vertical scroll where a drag leaning a few degrees
+ * left near the edge was being read as «open the sidebar» (#2894 rework).
+ *
+ * Whatever the screen wants, an *open* drawer keeps its gestures: they are also
+ * how it closes, and a drawer that only the scrim can dismiss is a trap.
+ */
+internal fun drawerGesturesEnabled(
+    timelineLike: Boolean,
+    documentOpen: Boolean,
+    callOnScreen: Boolean,
+    drawerOpen: Boolean,
+): Boolean =
+    (!timelineLike && !documentOpen && !callOnScreen) || drawerOpen
+
 /** A stable key for the sidebar's active-row highlight. */
 private fun navKeyOf(dest: MainDest): String = when (dest) {
     is MainDest.Home -> "home"
@@ -784,6 +833,9 @@ private fun navKeyOf(dest: MainDest): String = when (dest) {
 @Composable
 private fun TopBar(
     title: String,
+    /** Set while a document is open: its name takes the title's place and its
+     *  menu replaces the header the section used to draw of its own. */
+    docChrome: DocChrome?,
     unread: Int,
     bellOpen: Boolean,
     notifState: website.msdnna.tessera.ui.viewmodels.NotificationUiState,
@@ -811,6 +863,8 @@ private fun TopBar(
         IonIconButton(Ion.MENU, onClick = onMenu, boxSize = 40.dp, modifier = Modifier.testTag(TestTags.TOP_MENU))
         Spacer(Modifier.width(4.dp))
         when {
+            docChrome != null -> DocTitleSwitcher(docChrome, Modifier.weight(1f))
+
             boardId != null -> BoardTitleSwitcher(boardId, title, projectBoards, onSelectBoard, Modifier.weight(1f))
 
             isIntegration -> IntegrationTitleSwitcher(title, Modifier.weight(1f))

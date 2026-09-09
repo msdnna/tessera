@@ -132,6 +132,18 @@ describe('docDiff', () => {
     expect(statuses(rows)).toEqual([DIFF_SAME, DIFF_CHANGED])
   })
 
+  // Imported content and content written in the editor live in the same document
+  // all the time — a `.docx` brought in and then edited. The "moved" check
+  // compares two lists of surviving blocks, and if they are built by different
+  // rules (an id'd block counts on one side, an anonymous one only on the other)
+  // the indices shift and an untouched paragraph is reported as dragged.
+  it('does not call an untouched block moved in a document with imported blocks', () => {
+    const anon = (text) => ({ type: 'paragraph', content: [{ type: 'text', text }] })
+    const d = doc(anon('импортированный абзац'), p('a', 'дописанный абзац'))
+    expect(statuses(diffDocs(d, d))).toEqual([DIFF_SAME, DIFF_SAME])
+    expect(diffSummary(diffDocs(d, d)).identical).toBe(true)
+  })
+
   it('describes an empty document against a filled one', () => {
     const rows = diffDocs({ type: 'doc', content: [] }, doc(p('a', 'первая строка')))
     expect(statuses(rows)).toEqual([DIFF_ADDED])

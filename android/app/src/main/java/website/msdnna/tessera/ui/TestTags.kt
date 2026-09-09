@@ -149,6 +149,7 @@ object TestTags {
     const val TASK_TAB_SUBTASKS = "subtasks"
     const val TASK_TAB_RELATIONS = "relations"
     const val TASK_TAB_FILES = "files"
+    const val TASK_TAB_DOCUMENTS = "documents"
     const val TASK_TAB_HISTORY = "history"
 
     /** Footer button that commits title + description. */
@@ -200,16 +201,22 @@ object TestTags {
     fun taskRelationRow(relatedTaskId: String) = "task-relation-row:$relatedTaskId"
     fun taskEventRow(eventId: String) = "task-event-row:$eventId"
 
-    // ── documents (read-only, #2735) ───────────────────────────────────────
+    // ── documents (#2735, #2894) ───────────────────────────────────────────
 
-    /** Root of the documents section — the tree of the workspace's documents. */
+    /** Root of the documents section — the grid of one nesting level. */
     const val DOCUMENTS_SCREEN = "documents-screen"
 
-    /** The reader that slides over the tree; present exactly while one is open. */
+    /** The reader that slides over the grid; present exactly while one is open. */
     const val DOCUMENT_READER = "document-reader"
 
-    /** One row of that tree, keyed by document id — so a spec asserts «this
-     *  document», not «the second row», and a nesting regression is visible. */
+    /** «Документ пуст» — the reader's answer for a document with no blocks.
+     *  Tagged rather than matched by its words: from the outside an empty body
+     *  and a body that never loaded look the same, so a spec has to be able to
+     *  tell them apart, and the sentence itself is localised. */
+    const val DOCUMENT_READER_EMPTY = "document-reader-empty"
+
+    /** One tile of that grid, keyed by document id — so a spec asserts «this
+     *  document», not «the second tile», and a nesting regression is visible. */
     fun documentRow(id: String) = "document-row:$id"
 
     // ── conferences (#2896) ────────────────────────────────────────────────
@@ -439,6 +446,207 @@ object TestTags {
     const val CONFERENCE_MINI_MIC = "conference-mini-mic"
 
     const val CONFERENCE_MINI_HANGUP = "conference-mini-hangup"
+
+    /** «Новый документ», and the crumb that returns the grid to the root. */
+    const val DOCUMENTS_CREATE = "documents-create"
+    const val DOCUMENTS_CRUMB_ROOT = "documents-crumb-root"
+
+    /** One breadcrumb step, keyed by the container it walks back to. */
+    fun documentCrumb(id: String) = "documents-crumb:$id"
+
+    /** «К списку документов» — the way out of the open document, an item of the
+     *  title menu since the section stopped drawing a header of its own. */
+    const val DOCUMENT_BACK = "document-back"
+
+    /** The open document's name in the shell's top bar: tapping it opens the
+     *  menu that holds everything the second header used to. */
+    const val DOCUMENT_MENU = "document-menu"
+
+    /** One neighbouring document in that menu (the parent, or a nested one),
+     *  and the bin beside it. */
+    const val DOCUMENT_SWITCH_ROW = "document-switch-row"
+    const val DOCUMENT_SWITCH_REMOVE = "document-switch-remove"
+
+    /** The reader's «⋯» menu and its items. Anchored per action rather than per
+     *  menu: their wording lives in the locale files and is not an anchor. */
+    const val DOCUMENT_ACTIONS = "document-actions"
+    const val DOCUMENT_ACTION_NESTED = "document-action-nested"
+    const val DOCUMENT_ACTION_CHILDREN = "document-action-children"
+    const val DOCUMENT_ACTION_RENAME = "document-action-rename"
+    const val DOCUMENT_ACTION_REMOVE = "document-action-remove"
+
+    /** The title field of the create / rename dialog, and its confirm button. */
+    const val DOCUMENT_TITLE_INPUT = "document-title-input"
+    const val DOCUMENT_TITLE_CONFIRM = "document-title-confirm"
+
+    /** Confirm button of the delete dialog. */
+    const val DOCUMENT_REMOVE_CONFIRM = "document-remove-confirm"
+
+    /** The reader's outline: the toggle, the panel, its close button, one row. */
+    const val DOCUMENT_TOC_OPEN = "document-toc-open"
+    const val DOCUMENT_TOC = "document-toc"
+    const val DOCUMENT_TOC_CLOSE = "document-toc-close"
+
+    /** Keyed by the heading's block id — the same anchor the jump scrolls to. */
+    fun documentTocRow(blockId: String) = "document-toc-row:$blockId"
+
+    /** A PDF block, its rendered page and the two page arrows (#2733). */
+    const val DOCUMENT_PDF = "document-pdf"
+    const val DOCUMENT_PDF_PAGE = "document-pdf-page"
+    const val DOCUMENT_PDF_PREV = "document-pdf-prev"
+    const val DOCUMENT_PDF_NEXT = "document-pdf-next"
+
+    /** A section boundary — where the page geometry changes (#2827). */
+    const val DOCUMENT_SECTION_BREAK = "document-section-break"
+
+    /** The editor (#2894 §4): the way in, the surface, and the bar over it. The
+     *  text itself lives in a WebView and has no Compose semantics — what can be
+     *  asserted from here is the shell around it. */
+    const val DOCUMENT_EDIT = "document-edit"
+    const val DOCUMENT_EDITOR = "document-editor"
+    const val DOCUMENT_EDITOR_CLOSE = "document-editor-close"
+    const val DOCUMENT_EDITOR_STATUS = "document-editor-status"
+    const val DOCUMENT_EDITOR_RELOAD = "document-editor-reload"
+    const val DOCUMENT_EDITOR_FAILED = "document-editor-failed"
+    const val DOCUMENT_EDITOR_BLOCKED = "document-editor-blocked"
+
+    /** Annotations (#2894 §5): the way in — from the reader and from the editor
+     *  bar — and the sheet itself. */
+    const val DOCUMENT_COMMENTS_OPEN = "document-comments-open"
+    const val DOCUMENT_COMMENTS = "document-comments"
+    const val DOCUMENT_COMMENTS_CLOSE = "document-comments-close"
+
+    /** Open discussions: on the way-in button, and again in the sheet header.
+     *  Two tags because a spec asserting the badge must not pass on the header. */
+    const val DOCUMENT_COMMENTS_BADGE = "document-comments-badge"
+    const val DOCUMENT_COMMENTS_COUNT = "document-comments-count"
+
+    const val DOCUMENT_COMMENTS_EMPTY = "document-comments-empty"
+
+    /** The block a new thread will hang on — the quote, and the way to drop it. */
+    const val DOCUMENT_COMMENTS_ANCHOR = "document-comments-anchor"
+    const val DOCUMENT_COMMENTS_UNPIN = "document-comments-unpin"
+
+    /** The three composers: a new thread, an answer, and an edit of one's own. */
+    const val DOCUMENT_COMMENT_DRAFT = "document-comment-draft"
+    const val DOCUMENT_COMMENT_SEND = "document-comment-send"
+    const val DOCUMENT_COMMENT_REPLY_DRAFT = "document-comment-reply-draft"
+    const val DOCUMENT_COMMENT_REPLY_SEND = "document-comment-reply-send"
+    const val DOCUMENT_COMMENT_EDIT_DRAFT = "document-comment-edit-draft"
+    const val DOCUMENT_COMMENT_EDIT_SAVE = "document-comment-edit-save"
+    const val DOCUMENT_COMMENT_REMOVE_CONFIRM = "document-comment-remove-confirm"
+
+    /** Keyed by the comment they belong to: a thread is asserted by identity,
+     *  not by «the second card» — which is exactly what re-ordering changes. */
+    fun documentCommentThread(id: String) = "document-comment-thread:$id"
+
+    fun documentCommentReply(id: String) = "document-comment-reply:$id"
+
+    fun documentCommentResolve(id: String) = "document-comment-resolve:$id"
+
+    fun documentCommentResolved(id: String) = "document-comment-resolved:$id"
+
+    fun documentCommentEdit(id: String) = "document-comment-edit:$id"
+
+    fun documentCommentRemove(id: String) = "document-comment-remove:$id"
+
+    /** The version journal (#2894 §6): the way in — from the reader and from the
+     *  editor bar — and the panel itself. */
+    const val DOCUMENT_HISTORY_OPEN = "document-history-open"
+    const val DOCUMENT_HISTORY = "document-history"
+    const val DOCUMENT_HISTORY_CLOSE = "document-history-close"
+    const val DOCUMENT_HISTORY_EMPTY = "document-history-empty"
+
+    /** Taking a named snapshot: the way in, the name, and the confirm. */
+    const val DOCUMENT_SNAPSHOT = "document-snapshot"
+    const val DOCUMENT_SNAPSHOT_LABEL = "document-snapshot-label"
+    const val DOCUMENT_SNAPSHOT_SAVE = "document-snapshot-save"
+
+    /** The comparison: its heading, the rollback and its confirmation. */
+    const val DOCUMENT_HISTORY_DIFF = "document-history-diff"
+    const val DOCUMENT_HISTORY_SUMMARY = "document-history-summary"
+    const val DOCUMENT_RESTORE = "document-restore"
+    const val DOCUMENT_RESTORE_CONFIRM = "document-restore-confirm"
+
+    /** Keyed by the version, like the comment rows: a journal is asserted by
+     *  which entry, not by «the second row» — retention changes that. */
+    fun documentVersionRow(id: String) = "document-version-row:$id"
+
+    /** Task links and approval routes (#2894 §7): the way in — from the reader
+     *  and from the editor bar — and the panel itself. */
+    const val DOCUMENT_LINKS_OPEN = "document-links-open"
+    const val DOCUMENT_LINKS_BADGE = "document-links-badge"
+    const val DOCUMENT_LINKS = "document-links"
+    const val DOCUMENT_LINKS_CLOSE = "document-links-close"
+    const val DOCUMENT_LINKS_EMPTY = "document-links-empty"
+
+    /** The block a new link is pinned to, and the way to drop that anchor. */
+    const val DOCUMENT_LINKS_ANCHOR = "document-links-anchor"
+    const val DOCUMENT_LINKS_UNPIN = "document-links-unpin"
+
+    /** Linking a task: the way in and the picker's query. */
+    const val DOCUMENT_LINK_ADD = "document-link-add"
+    const val DOCUMENT_LINK_QUERY = "document-link-query"
+    const val DOCUMENT_LINK_REMOVE_CONFIRM = "document-link-remove-confirm"
+
+    /** Raising a route, and composing it. */
+    const val DOCUMENT_APPROVALS_EMPTY = "document-approvals-empty"
+    const val DOCUMENT_APPROVAL_RAISE = "document-approval-raise"
+    const val DOCUMENT_APPROVAL_COMPOSER = "document-approval-composer"
+    const val DOCUMENT_APPROVAL_TITLE = "document-approval-title"
+    const val DOCUMENT_APPROVAL_MODE_SEQUENTIAL = "document-approval-mode-sequential"
+    const val DOCUMENT_APPROVAL_MODE_PARALLEL = "document-approval-mode-parallel"
+    const val DOCUMENT_APPROVAL_SUBMIT = "document-approval-submit"
+
+    /** Signing: the way in, the remark, and the two outcomes. */
+    const val DOCUMENT_APPROVAL_SIGN = "document-approval-sign"
+    const val DOCUMENT_APPROVAL_COMMENT = "document-approval-comment"
+    const val DOCUMENT_APPROVAL_APPROVE = "document-approval-approve"
+    const val DOCUMENT_APPROVAL_REJECT = "document-approval-reject"
+    const val DOCUMENT_APPROVAL_CANCEL_CONFIRM = "document-approval-cancel-confirm"
+
+    /** Keyed by the row they belong to, for the same reason the versions are:
+     *  a link and a route are asserted by which one, never by position. */
+    fun documentLinkRow(id: String) = "document-link-row:$id"
+    fun documentLinkRemove(id: String) = "document-link-remove:$id"
+    fun documentLinkCandidate(taskId: String) = "document-link-candidate:$taskId"
+    fun documentApprovalCard(id: String) = "document-approval-card:$id"
+    fun documentApprovalStatus(id: String) = "document-approval-status:$id"
+    fun documentApprovalStep(id: String) = "document-approval-step:$id"
+    fun documentApprovalCancel(id: String) = "document-approval-cancel:$id"
+    fun documentApproverRow(userId: String) = "document-approver-row:$userId"
+
+    /** The task modal's «Документы» tab — the other end of the same link row. */
+    fun taskDocumentRow(id: String) = "task-document-row:$id"
+    fun taskDocumentRemove(id: String) = "task-document-remove:$id"
+
+    /** Templates, file import and export (#2894 §8): the way into the gallery,
+     *  the gallery itself, and the picker that lives in it. */
+    const val DOCUMENTS_TEMPLATES_OPEN = "documents-templates-open"
+    const val DOCUMENT_TEMPLATES = "document-templates"
+    const val DOCUMENT_TEMPLATES_CLOSE = "document-templates-close"
+    const val DOCUMENT_TEMPLATES_SEARCH = "document-templates-search"
+    const val DOCUMENT_TEMPLATES_EMPTY = "document-templates-empty"
+    const val DOCUMENT_TEMPLATES_UPLOAD = "document-templates-upload"
+    const val DOCUMENT_TEMPLATE_REMOVE_CONFIRM = "document-template-remove-confirm"
+
+    /** What the picker will take — the line that changes when the sidecar is
+     *  down, and therefore the one a spec asserts degradation by. */
+    const val DOCUMENT_IMPORT_HINT = "document-import-hint"
+
+    /** What the conversion could not carry over — the line a finished import
+     *  leaves behind, and the only place the reason appears. */
+    const val DOCUMENT_IMPORT_NOTICE = "document-import-notice"
+
+    /** Export lives in the reader's «…» menu; one entry per offered format. */
+    const val DOCUMENT_ACTION_EXPORT = "document-action-export"
+    fun documentExportFormat(format: String) = "document-export-format:$format"
+
+    /** Gallery rows are keyed by card id — a saved template by its own id, a
+     *  built-in by `builtin:<key>` — so a spec names the template it means. */
+    fun documentTemplateRow(id: String) = "document-template-row:$id"
+    fun documentTemplateUse(id: String) = "document-template-use:$id"
+    fun documentTemplateRemove(id: String) = "document-template-remove:$id"
 
     // ── help centre (#2795) ────────────────────────────────────────────────
 

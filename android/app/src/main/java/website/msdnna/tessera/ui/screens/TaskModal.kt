@@ -102,6 +102,7 @@ import website.msdnna.tessera.ui.components.RichContent
 import website.msdnna.tessera.ui.components.SourceBadge
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
+import website.msdnna.tessera.ui.components.TConfirmDialog
 import website.msdnna.tessera.ui.components.TConfirmPopover
 import website.msdnna.tessera.ui.components.TDropdown
 import website.msdnna.tessera.ui.components.TInputDialog
@@ -199,6 +200,10 @@ fun TaskModal(
         website.msdnna.tessera.util.Estimation.DEFAULT,
     /** Quick-action rows for the comment composer's `/`-popup; empty → no popup. */
     commands: List<CommandItem> = emptyList(),
+    /** Opens a linked document (#2894 §7). Null in a host with nowhere to
+     *  navigate — the tab then lists the documents without pretending the rows
+     *  lead anywhere. */
+    onOpenDocument: ((documentId: String) -> Unit)? = null,
     onClose: (changed: Boolean) -> Unit,
 ) {
     val c = Tessera.colors
@@ -405,6 +410,11 @@ fun TaskModal(
                                     TestTags.taskTab(TestTags.TASK_TAB_FILES),
                                 ),
                                 TabItem(
+                                    stringResource(R.string.task_tab_documents),
+                                    state.documents.size,
+                                    TestTags.taskTab(TestTags.TASK_TAB_DOCUMENTS),
+                                ),
+                                TabItem(
                                     stringResource(R.string.task_tab_history),
                                     testTag = TestTags.taskTab(TestTags.TASK_TAB_HISTORY),
                                 ),
@@ -472,6 +482,12 @@ fun TaskModal(
                                     )
 
                                     4 -> FilesTab(vm, state.attachments)
+
+                                    5 -> DocumentsTab(
+                                        vm = vm,
+                                        links = state.documents,
+                                        onOpen = onOpenDocument,
+                                    )
 
                                     else -> HistoryTab(state.events)
                                 }
@@ -2148,6 +2164,99 @@ private fun RelationsTab(
                 }
             }
         }
+    }
+}
+
+/**
+ * «Документы» tab (#2732, §7 of #2894): the other end of the link the document's
+ * own panel creates.
+ *
+ * Read-mostly by design, exactly as on the web — a link is made where the
+ * context is, next to the clause it is about, and this side is where you find
+ * out which documents mention this task and open them.
+ */
+@Composable
+private fun DocumentsTab(
+    vm: TaskDetailViewModel,
+    links: List<website.msdnna.tessera.data.model.TaskDocumentLink>,
+    onOpen: ((documentId: String) -> Unit)?,
+) {
+    val c = Tessera.colors
+    var confirmUnlink by remember { mutableStateOf<String?>(null) }
+
+    Column(Modifier.fillMaxWidth()) {
+        if (links.isEmpty()) {
+            Text(
+                stringResource(R.string.task_docs_empty),
+                color = c.text3,
+                fontSize = 13.sp,
+                modifier = Modifier.padding(vertical = 6.dp),
+            )
+        }
+        links.forEach { link ->
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Row(
+                    Modifier.weight(1f)
+                        .clip(RoundedCornerShape(RadiusSm))
+                        .then(
+                            if (onOpen != null) {
+                                Modifier.clickableNoRipple { onOpen(link.documentId) }
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .padding(horizontal = 8.dp, vertical = 8.dp)
+                        .testTag(TestTags.taskDocumentRow(link.id)),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (link.documentIcon.isNotBlank()) {
+                        Text(link.documentIcon, fontSize = 14.sp)
+                    } else {
+                        IonIcon(Ion.DOCUMENT_TEXT, size = 14.dp, tint = c.text3)
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        link.documentTitle.ifBlank { stringResource(R.string.task_docs_untitled) },
+                        color = c.text1,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    // An anchored link says which clause it is about; the quote is
+                    // what still answers that once the clause has been rewritten.
+                    if (link.blockId.isNotBlank()) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            link.quote.ifBlank { stringResource(R.string.task_docs_fragment) },
+                            color = c.text3,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                IonIconButton(
+                    Ion.CLOSE,
+                    onClick = { confirmUnlink = link.id },
+                    boxSize = 32.dp,
+                    modifier = Modifier.testTag(TestTags.taskDocumentRemove(link.id)),
+                )
+            }
+        }
+    }
+
+    confirmUnlink?.let { id ->
+        TConfirmDialog(
+            title = stringResource(R.string.task_docs_unlink),
+            message = stringResource(R.string.task_docs_unlink_confirm),
+            onConfirm = {
+                vm.unlinkDocument(id)
+                confirmUnlink = null
+            },
+            onDismiss = { confirmUnlink = null },
+        )
     }
 }
 

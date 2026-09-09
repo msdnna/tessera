@@ -85,11 +85,6 @@ export function diffDocs(oldDoc, newDoc) {
   before.forEach((b) => {
     if (b.id && !beforeById.has(b.id)) beforeById.set(b.id, b)
   })
-  const afterById = new Map()
-  after.forEach((b) => {
-    if (b.id && !afterById.has(b.id)) afterById.set(b.id, b)
-  })
-
   // Blocks with no id are paired positionally among themselves — see the module
   // comment for why this fallback exists at all.
   const anonBefore = before.filter((b) => !b.id)
@@ -98,6 +93,18 @@ export function diffDocs(oldDoc, newDoc) {
   anonAfter.forEach((b, i) => {
     if (anonBefore[i]) anonPairs.set(b, anonBefore[i])
   })
+
+  // Which blocks survived, on both sides and by the same rule. The two lists are
+  // what "moved" is measured against, so they have to agree on what counts as a
+  // survivor: testing the old side for "is my id still there" alone (an anonymous
+  // block has no id and never matches) drops the imported blocks from one list
+  // but not the other, and in a document that mixes id'd and imported blocks the
+  // shifted indices report untouched paragraphs as moved.
+  const survivedAfter = after.filter((b) => (b.id ? beforeById.has(b.id) : anonPairs.has(b)))
+  const pairedBefore = new Set(
+    survivedAfter.map((b) => (b.id ? beforeById.get(b.id) : anonPairs.get(b))),
+  )
+  const survivedBefore = before.filter((b) => pairedBefore.has(b))
 
   const matched = new Set()
   const rows = []
@@ -127,8 +134,8 @@ export function diffDocs(oldDoc, newDoc) {
     // Same content, different neighbourhood: the block was dragged. Position is
     // compared among *surviving* blocks only — otherwise deleting a paragraph
     // would report everything below it as moved.
-    const prevOrder = before.filter((b) => afterById.has(b.id) || anonPairs.has(b)).indexOf(prev)
-    const nextOrder = after.filter((b) => beforeById.has(b.id) || anonPairs.has(b)).indexOf(block)
+    const prevOrder = survivedBefore.indexOf(prev)
+    const nextOrder = survivedAfter.indexOf(block)
     rows.push({
       status: prevOrder !== nextOrder && prevOrder !== -1 ? DIFF_MOVED : DIFF_SAME,
       type: block.type,

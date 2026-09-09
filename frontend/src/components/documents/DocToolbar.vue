@@ -518,6 +518,39 @@ function pick(picker, value) {
   gap: 2px;
   padding: 4px 0 6px;
 }
+/* Phone width — the layout the Android editor gets (задача 2894, §4; the number
+   is written without a hash on purpose — the theming guard over this stylesheet
+   reads a four-digit hash as a literal colour). Wrapping is what
+   a wide screen wants; at 360px the same tools wrap into four rows and take a
+   third of the visible document before a single letter is typed. One strip that
+   scrolls sideways keeps the text where the text belongs.
+   Sized by the viewport, not by a container query: the strip is as wide as the
+   phone either way, and a query would need a named container this component
+   does not own. */
+@media (max-width: 640px) {
+  .row {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    /* Nothing may shrink: a squeezed-to-nothing button is worse than one that
+       has to be scrolled to. */
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+  .row::-webkit-scrollbar {
+    display: none;
+  }
+  .row > * {
+    flex: none;
+  }
+  /* A finger, not a mouse pointer: 26px is a comfortable click and a missed tap. */
+  .doc-tbtn {
+    min-width: 34px;
+    height: 34px;
+  }
+  .sep {
+    margin: 2px 4px;
+  }
+}
 .doc-tbtn {
   display: inline-flex;
   align-items: center;

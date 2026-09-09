@@ -72,11 +72,42 @@ function refreshFailure(err) {
   return { token: null, offline }
 }
 
+// An external owner of the session, if there is one. Set by the document editor
+// running inside Android's WebView (#2894 §4): there the refresh token lives in
+// the app, not in this page — the page never gets it, precisely so the two sides
+// cannot rotate each other's session out from under themselves. Asking the host
+// for a fresh access token is then the only refresh there is.
+let refreshHook = null
+
+/** Installs (or, with null, removes) the host token provider. The provider
+ *  resolves to a new access token, or to a falsy value when it has none. */
+export function setRefreshHook(fn) {
+  refreshHook = typeof fn === 'function' ? fn : null
+}
+
 // Resolves to { token, offline }: `token` is the new access token, or null when
 // there is none — and then `offline` says whether that means "no session" (false)
 // or "could not reach the server" (true).
 async function refreshAccessToken() {
   if (refreshInflight) return refreshInflight
+  if (refreshHook) {
+    // Coalesced like the network path below — several 401s from one editor save
+    // must not fan out into several prompts to the host.
+    refreshInflight = Promise.resolve()
+      .then(() => refreshHook())
+      .then((token) => {
+        if (token) setAccessToken(token)
+        // A host that cannot answer right now is offline, not signed out: the
+        // app is the one holding the session, and dropping it here would log
+        // the *editor* out of a perfectly live login.
+        return { token: token || null, offline: !token }
+      })
+      .catch(() => ({ token: null, offline: true }))
+      .finally(() => {
+        refreshInflight = null
+      })
+    return refreshInflight
+  }
   const refreshToken = storedRefreshToken()
   // On web there is nothing to check up front — whether a session exists is the
   // cookie's business, and the answer is the response status.
