@@ -363,6 +363,17 @@ class TourTest {
     }
 
     @Test
+    fun `menu and drag steps park their card clear of the target`() {
+        // #2860 rework: a card tucked under a menu item hides behind the menu's own
+        // window; a card under the dragged row sits on the group to drop into.
+        fun gravity(id: String) = GET_STARTED.first { it.id == id }.cardGravity
+        assertThat(gravity("menu-project")).isEqualTo(TourCardGravity.BOTTOM)
+        assertThat(gravity("menu-group")).isEqualTo(TourCardGravity.BOTTOM)
+        assertThat(gravity("board-menu")).isEqualTo(TourCardGravity.BOTTOM)
+        assertThat(gravity("dnd-project")).isEqualTo(TourCardGravity.TOP)
+    }
+
+    @Test
     fun `a moved step ends on a place reported straight from the drop`() {
         // #2860 rework, point 4: a drop into a collapsed group unmounts the moved
         // row, so its new place is never registered. The drop handler reports the

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.max
+import kotlin.math.min
 import kotlinx.coroutines.delay
 import website.msdnna.tessera.R
 import website.msdnna.tessera.ui.TestTags
@@ -62,6 +65,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.tour.LocalTourAnchors
 import website.msdnna.tessera.ui.tour.LocalTourSnapshot
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TourCardGravity
 import website.msdnna.tessera.util.TourMode
 import website.msdnna.tessera.util.TourSnapshot
 
@@ -112,7 +116,20 @@ fun tourCardLayout(
     bottomLimit: Float,
     gap: Float,
     nubMargin: Float,
+    topLimit: Float = 0f,
+    gravity: TourCardGravity = TourCardGravity.AUTO,
 ): TourCardLayout {
+    // Pinned to an edge, out of the way of a popup menu or a drag zone — the ring
+    // still marks the target, so the card carries no nub of its own (#2860 rework).
+    when (gravity) {
+        TourCardGravity.BOTTOM ->
+            return TourCardLayout((bottomLimit - cardHeight).coerceAtLeast(topLimit), TourNubSide.NONE, 0f)
+
+        TourCardGravity.TOP ->
+            return TourCardLayout(topLimit, TourNubSide.NONE, 0f)
+
+        TourCardGravity.AUTO -> Unit
+    }
     val below = target.bottom + gap
     val above = target.top - gap - cardHeight
     val side = when {
@@ -183,22 +200,26 @@ fun TourOverlay(
         }
         if (target == null) return@BoxWithConstraints
 
-        // The primary anchor is ringed — that is what the step is about. The extras
-        // are only un-dimmed: one card carries one nub, and three arrows fanning out
-        // of it was exactly what made this look like scribble on a phone (#2860
-        // rework, points 1-2).
-        TourMask(ring = target, cuts = extras + cuts)
+        // The step's anchors are one highlighted block: the primary plus its extras
+        // merged into a single rounded cutout and ring, rather than each row/pill
+        // outlined on its own. Adjacent sections and card pills read as one thing,
+        // which is what they are (#2860 rework, point 2). `cut` stays separate —
+        // it un-dims a drop target or a button, not part of the block.
+        val region = boundingRect(listOf(target) + extras)
+        TourMask(ring = region, cuts = cuts)
 
         val inset = with(density) { CardInset.toPx() }
         val gap = with(density) { CardGap.toPx() + NubHeight.toPx() + CutPadding.toPx() }
         val layout = tourCardLayout(
-            target = target,
+            target = region,
             cardHeight = cardHeight.toFloat(),
             cardLeft = inset,
             cardRight = constraints.maxWidth - inset,
             bottomLimit = (constraints.maxHeight - imeBottom).toFloat(),
             gap = gap,
             nubMargin = with(density) { NubMargin.toPx() },
+            topLimit = WindowInsets.statusBars.getTop(density).toFloat(),
+            gravity = step.cardGravity,
         )
 
         Box(
@@ -218,6 +239,22 @@ fun TourOverlay(
             )
         }
     }
+}
+
+/** The smallest rect covering all of [rects] — a step's primary anchor and its
+ *  extras highlighted as one block instead of each outlined alone (#2860 rework). */
+fun boundingRect(rects: List<Rect>): Rect {
+    var l = rects.first().left
+    var t = rects.first().top
+    var r = rects.first().right
+    var b = rects.first().bottom
+    for (rect in rects) {
+        l = min(l, rect.left)
+        t = min(t, rect.top)
+        r = max(r, rect.right)
+        b = max(b, rect.bottom)
+    }
+    return Rect(l, t, r, b)
 }
 
 /** A cutout: the anchor's rect, grown by [pad] on every side and rounded, which is

@@ -140,6 +140,16 @@ enum class TourSurface {
     KEEP,
 }
 
+/**
+ * Where the step card is parked, when adjacency to its target is the wrong place
+ * for it (#2860 rework). [AUTO] tucks it under (or over) the target like a tooltip.
+ * [BOTTOM]/[TOP] pin it to a screen edge instead — for a target inside a popup menu
+ * (the card would be hidden behind that menu's own window) or a drag whose landing
+ * zone the card would otherwise sit on. The ring still marks the target; the card
+ * just steps out of the way and drops its nub.
+ */
+enum class TourCardGravity { AUTO, BOTTOM, TOP }
+
 /** How an action step ends. Info steps have none — the user presses «Понятно». */
 sealed interface AdvanceOn {
     /** The user tapped the step's own anchor, or [key] when it is a different one. */
@@ -189,6 +199,9 @@ data class TourStep(
     val extra: List<String> = emptyList(),
     val cut: List<String> = emptyList(),
     val advanceOn: AdvanceOn? = null,
+    /** Where the card sits — [TourCardGravity.AUTO] unless the target is inside a
+     *  menu the card would hide behind, or a drag zone it would cover. */
+    val cardGravity: TourCardGravity = TourCardGravity.AUTO,
 )
 
 /** Ids of what the user creates while walking the guide, so the steps that follow
@@ -251,6 +264,9 @@ val GET_STARTED: List<TourStep> = listOf(
         mode = TourMode.ACTION,
         surface = TourSurface.DRAWER,
         advanceOn = AdvanceOn.Tap(),
+        // The menu is its own window on top of the shell; a card tucked under the
+        // ringed item would hide behind it. Parked at the bottom, clear of it.
+        cardGravity = TourCardGravity.BOTTOM,
     ),
     TourStep(
         id = "project-create",
@@ -290,6 +306,7 @@ val GET_STARTED: List<TourStep> = listOf(
         mode = TourMode.ACTION,
         surface = TourSurface.DRAWER,
         advanceOn = AdvanceOn.Tap(),
+        cardGravity = TourCardGravity.BOTTOM,
     ),
     TourStep(
         id = "board-create",
@@ -445,6 +462,7 @@ val GET_STARTED: List<TourStep> = listOf(
         mode = TourMode.ACTION,
         surface = TourSurface.DRAWER,
         advanceOn = AdvanceOn.Tap(),
+        cardGravity = TourCardGravity.BOTTOM,
     ),
     TourStep(
         // Points at the inline name field, the mirror of `project-create` — not at
@@ -473,6 +491,9 @@ val GET_STARTED: List<TourStep> = listOf(
         // being draggable, and a drop into any group closes it. Demanding the one
         // just created would lock a user who missed it in with «Пропустить».
         advanceOn = AdvanceOn.Moved(TourKeys.PROJECT_ROW),
+        // The drop zone is the tree itself; a card under the dragged row would sit
+        // on the group the user has to drop into. Parked at the top, out of it.
+        cardGravity = TourCardGravity.TOP,
     ),
 
     // ── 11. The other sections ───────────────────────────────────────────────

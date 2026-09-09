@@ -3,6 +3,7 @@ package website.msdnna.tessera.ui.components
 import androidx.compose.ui.geometry.Rect
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import website.msdnna.tessera.util.TourCardGravity
 
 /**
  * Where the Get Started card lands and which way its nub points (#2860 rework).
@@ -72,6 +73,46 @@ class TourOverlayLayoutTest {
 
         assertThat(result.nubSide).isEqualTo(TourNubSide.NONE)
         assertThat(result.top).isEqualTo(800f)
+    }
+
+    @Test
+    fun `bottom gravity parks the card at the foot with no nub`() {
+        // A target the card would normally tuck under — but inside a popup menu it
+        // would hide behind, so it drops to the bottom instead (#2860 rework).
+        val r = tourCardLayout(
+            target = Rect(100f, 300f, 400f, 380f),
+            cardHeight = cardHeight, cardLeft = left, cardRight = right,
+            bottomLimit = 2000f, gap = gap, nubMargin = margin,
+            gravity = TourCardGravity.BOTTOM,
+        )
+        assertThat(r.nubSide).isEqualTo(TourNubSide.NONE)
+        assertThat(r.top).isEqualTo(2000f - cardHeight)
+    }
+
+    @Test
+    fun `top gravity parks the card below the status bar with no nub`() {
+        val r = tourCardLayout(
+            target = Rect(100f, 900f, 400f, 980f),
+            cardHeight = cardHeight, cardLeft = left, cardRight = right,
+            bottomLimit = 2000f, gap = gap, nubMargin = margin,
+            topLimit = 60f, gravity = TourCardGravity.TOP,
+        )
+        assertThat(r.nubSide).isEqualTo(TourNubSide.NONE)
+        assertThat(r.top).isEqualTo(60f)
+    }
+
+    @Test
+    fun `a step's anchors merge into one bounding block`() {
+        // Three stacked sidebar rows → a single rect, so they read as one thing
+        // instead of three separate outlines (#2860 rework, point 2).
+        val block = boundingRect(
+            listOf(
+                Rect(20f, 100f, 300f, 140f),
+                Rect(20f, 150f, 320f, 190f),
+                Rect(20f, 200f, 280f, 240f),
+            ),
+        )
+        assertThat(block).isEqualTo(Rect(20f, 100f, 320f, 240f))
     }
 
     @Test
