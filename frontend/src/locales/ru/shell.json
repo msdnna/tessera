@@ -5,7 +5,8 @@
     "documents": "Документы",
     "conferences": "Конференции",
     "reminders": "Напоминания",
-    "milestones": "Этапы"
+    "milestones": "Этапы",
+    "newBadge": "новое"
   },
   "workspace": {
     "create": "Новое пространство",

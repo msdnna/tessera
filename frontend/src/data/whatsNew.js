@@ -26,6 +26,12 @@
 //              elements.
 export const WHATS_NEW = [
   {
+    version: '0.185.0',
+    date: '2026-09-09',
+    titleKey: 'whatsNew.gitlabWebhook.title',
+    itemKeys: ['whatsNew.gitlabWebhook.item1'],
+  },
+  {
     version: '0.184.0',
     date: '2026-09-04',
     titleKey: 'whatsNew.parentAndScrollbars.title',

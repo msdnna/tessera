@@ -26,9 +26,21 @@ import website.msdnna.tessera.util.WhatsNewSpotlight
  *
  * `spotlight` queues a one-shot arrow at a sidebar item after the card is
  * dismissed; `navKey` must match a sidebar nav key (`activeNav`) — "documents",
- * "milestones", "notes", "reminders", "home", "admin" — or the hint is skipped.
+ * "conferences", "milestones", "notes", "reminders", "home", "admin" — or the hint
+ * is skipped.
  */
 val WhatsNewEntries: List<WhatsNewEntry> = listOf(
+    WhatsNewEntry(
+        version = "0.76.0",
+        date = "2026-09-09",
+        titleRes = R.string.whatsnew_v0_76_0_title,
+        itemsRes = R.array.whatsnew_v0_76_0_items,
+        spotlight = WhatsNewSpotlight(
+            navKey = "conferences",
+            titleRes = R.string.whatsnew_spotlight_conferences_title,
+            bodyRes = R.string.whatsnew_spotlight_conferences_body,
+        ),
+    ),
     WhatsNewEntry(
         version = "0.72.0",
         date = "2026-08-26",

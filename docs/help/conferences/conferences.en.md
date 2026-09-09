@@ -3,11 +3,10 @@ title: Conferences
 category: Conferences
 order: 65
 keywords: conferences, call, meeting, standup, video, audio, microphone, camera, screen share, screen sharing, chat, invite, host, kick, mute, connection quality, minimised, floating window
-updated: 2026-09-03
-platforms: web
+updated: 2026-09-09
 ---
 
-The **Conferences** section is audio and video calling inside Tessera: daily stand-ups, walking through a task, demos. A call does not take you out of the tracker — a conference can be pinned to a task, and the discussion stays in the room's chat next to the work rather than in a separate messenger. The section works **in the browser**; it is not in the mobile client yet.
+The **Conferences** section is audio and video calling inside Tessera: daily stand-ups, walking through a task, demos. A call does not take you out of the tracker — a conference can be pinned to a task, and the discussion stays in the room's chat next to the work rather than in a separate messenger. The section is available both in the browser and in the mobile app (on a phone some panels — chat and participants — open as bottom sheets).
 
 ![The Conferences section: a list of scheduled and finished calls](../assets/conferences-light.png)
 

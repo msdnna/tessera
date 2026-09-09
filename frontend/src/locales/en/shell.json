@@ -5,7 +5,8 @@
     "documents": "Documents",
     "conferences": "Conferences",
     "reminders": "Reminders",
-    "milestones": "Milestones"
+    "milestones": "Milestones",
+    "newBadge": "new"
   },
   "workspace": {
     "create": "New workspace",

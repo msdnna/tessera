@@ -6,7 +6,7 @@ keywords: documents, editor, docx, word, odt, import, export, pdf, versions, his
 updated: 2026-08-28
 ---
 
-**Documents** is a collaborative editor for everything that outgrows a task description: requirements, meeting minutes, policies, how-tos. Unlike a task description, a document stands on its own — it has versions, a table of contents, per-paragraph discussion and an approval route. The section is marked `alpha`: it is still developing, and details do change.
+**Documents** is a collaborative editor for everything that outgrows a task description: requirements, meeting minutes, policies, how-tos. Unlike a task description, a document stands on its own — it has versions, a table of contents, per-paragraph discussion and an approval route. The section is young and still developing — details do change over time.
 
 ![The Documents section: document cards with previews](../assets/documents-light.png)
 

@@ -39,7 +39,11 @@ web UI; native clients cover mobile and desktop.
 - **GitLab Issues integration** (self-hosted): two-way sync of tasks, labels,
   assignees and comments, conflict resolution, a sync journal.
 - **Notes, documents and personal reminders**: quick notes, collaborative
-  Markdown pages (the "Documents" module) and scheduled reminders.
+  Markdown pages (the “Documents” module — a block editor with versions,
+  per-paragraph discussions, approval routes and Word import) and scheduled reminders.
+- **Conferences**: audio and video calls built into the tracker — stand-ups without
+  switching to a messenger, pinning a meeting to a task, screen sharing, server-side
+  recording, chat and moderation. Available on the web and mobile clients (LiveKit-based).
 - **MCP server** — Tessera hands tasks to AI agents as a priority-ranked queue and
   accepts their results, so the project can be driven from agentic tooling (this
   very repository is developed that way).

@@ -39,10 +39,11 @@ One of the board's columns is the **completing** one: a task that lands in it co
 ## What's next
 
 - [Boards and tasks](/help/boards-and-tasks) — grouping by tags, views, filters.
-- [Documents](/help/documents) — what of the documents feature is available from a phone.
+- [Documents](/help/documents) — the collaborative editor: read and edit right from your phone.
+- [Conferences](/help/conferences) — video calls with screen sharing, chat and recording right in the app.
 - [Notes](/help/notes) — short jottings that don't need a task.
 - [Reminders](/help/reminders) — the app itself is how push notifications are delivered.
 - [Milestones](/help/milestones) — release milestones and progress toward them.
 - [FAQ](/help/faq) — short answers to the things people trip over most often.
 
-The **Help** item in the side menu opens this help. There is no interactive tour like the web version's; the help centre takes its place and works offline — the articles live inside the app rather than being downloaded.
+The **Help** item in the side menu opens this help — the help centre works offline, with the articles living inside the app rather than being downloaded. Next to it, in the side-menu footer, there is an **interactive tutorial** — a guide through the interface right inside the app; you can launch it at any time and go through it again.

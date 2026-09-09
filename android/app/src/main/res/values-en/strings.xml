@@ -135,6 +135,8 @@
     <string name="nav_conferences">Conferences</string>
     <string name="nav_help">Help</string>
     <string name="nav_admin">Administration</string>
+    <!-- "New" badge for recently added sections (Documents, Conferences) -->
+    <string name="nav_new_badge">new</string>
 
     <!-- Sidebar: workspaces -->
     <string name="sidebar_estimation">Task estimation…</string>
@@ -1520,6 +1522,14 @@
     <string name="conflict_state_open">Open</string>
 
     <!-- "What's new" release highlights — one key per entry in update/WhatsNewEntries. -->
+    <string name="whatsnew_v0_76_0_title">Conferences and documents on the phone</string>
+    <string-array name="whatsnew_v0_76_0_items">
+        <item>A new “Conferences” section: video calls with screen sharing, chat and meeting recording — right inside the app. A call collapses into a chip, so you can move around other sections without dropping the connection.</item>
+        <item>Documents are now editable from the phone: the same editor as in the browser — blocks, tables, PDF, discussions, version history, task links and approval, import and export.</item>
+        <item>An interactive Get Started tutorial arrived: steps from your first project to your first task, launched from the sidebar footer.</item>
+    </string-array>
+    <string name="whatsnew_spotlight_conferences_title">Take a look at “Conferences”</string>
+    <string name="whatsnew_spotlight_conferences_body">Video calls with screen sharing, chat and meeting recording — now in the app.</string>
     <string name="whatsnew_v0_72_0_title">English and Russian</string>
     <string-array name="whatsnew_v0_72_0_items">
         <item>Switch the app language in Settings → Language: English or Russian. Your choice is remembered on the device.</item>

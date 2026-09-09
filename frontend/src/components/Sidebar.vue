@@ -268,7 +268,8 @@ async function deleteWorkspace() {
           <router-link to="/documents" class="nav-link" data-nav="documents">
             <n-icon :component="DocumentsOutline" :size="18" />
             <span v-if="!collapsed" class="nav-label">
-              {{ t('shell.nav.documents') }}<sup class="nav-badge">alpha</sup>
+              {{ t('shell.nav.documents')
+              }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
             </span>
           </router-link>
         </template>
@@ -279,7 +280,8 @@ async function deleteWorkspace() {
           <router-link to="/conferences" class="nav-link" data-nav="conferences">
             <n-icon :component="VideocamOutline" :size="18" />
             <span v-if="!collapsed" class="nav-label">
-              {{ t('shell.nav.conferences') }}<sup class="nav-badge">alpha</sup>
+              {{ t('shell.nav.conferences')
+              }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
             </span>
           </router-link>
         </template>

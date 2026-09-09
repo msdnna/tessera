@@ -1,4 +1,8 @@
 {
+  "gitlabWebhook": {
+    "title": "GitLab: a webhook for instant sync",
+    "item1": "The GitLab binding settings gained a «Webhook» section: generate a secret and URL and paste them into your project's Settings → Webhooks — changes then arrive within seconds instead of waiting for the periodic poll. The secret is shown once and can be regenerated or disabled; the last-event time sits next to it."
+  },
   "parentAndScrollbars": {
     "title": "The parent's title, and Firefox scrollbars",
     "item1": "The task window's «Parent» field now shows the parent task's title instead of just its number: it takes the full width of the row, a long one is cut with an ellipsis (the full text is in the tooltip), and clicking it opens the parent. On an archived task the «Detach» button is no longer shown.",

@@ -316,7 +316,15 @@ fun Sidebar(
             NavRow(Ion.ROCKET, stringResource(R.string.nav_milestones), activeNav == "milestones", onOpenMilestones, spotSink("milestones"), "milestones")
             NavRow(Ion.ALARM, stringResource(R.string.nav_reminders), activeNav == "reminders", onOpenReminders, spotSink("reminders"), "reminders")
             NavRow(Ion.DOCUMENT_TEXT, stringResource(R.string.nav_notes), activeNav == "notes", onOpenNotes, spotSink("notes"), "notes")
-            NavRow(Ion.BOOK, stringResource(R.string.nav_documents), activeNav == "documents", onOpenDocuments, spotSink("documents"), "documents")
+            NavRow(
+                Ion.BOOK,
+                stringResource(R.string.nav_documents),
+                active = activeNav == "documents",
+                onClick = onOpenDocuments,
+                spotlight = spotSink("documents"),
+                navKey = "documents",
+                badge = stringResource(R.string.nav_new_badge),
+            )
             NavRow(
                 Ion.VIDEOCAM,
                 stringResource(R.string.nav_conferences),
@@ -324,6 +332,7 @@ fun Sidebar(
                 onClick = onOpenConferences,
                 spotlight = spotSink("conferences"),
                 navKey = "conferences",
+                badge = stringResource(R.string.nav_new_badge),
             )
             NavRow(Ion.HELP_CIRCLE, stringResource(R.string.nav_help), activeNav == "help", onOpenHelp, spotSink("help"), "help")
             if (user?.isAdmin == true) {
@@ -515,6 +524,8 @@ private fun NavRow(
     // The guide's anchor for this row is `nav-<navKey>` — the same key the sidebar
     // already uses for the active-row highlight and for the one-shot hint above.
     navKey: String = "",
+    // Small "новое"/"new" pill after the label for recently added sections; null hides it.
+    badge: String? = null,
 ) {
     val c = Tessera.colors
     val sway = if (spotlight != null) navSway() else 0f
@@ -540,6 +551,21 @@ private fun NavRow(
                 fontSize = 14.sp,
                 fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
             )
+            if (badge != null) {
+                Spacer(Modifier.width(6.dp))
+                Box(
+                    Modifier.clip(RoundedCornerShape(6.dp))
+                        .background(c.primary.copy(alpha = 0.14f))
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                ) {
+                    Text(
+                        badge,
+                        color = c.primary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
         }
     }
 }
