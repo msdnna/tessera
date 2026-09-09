@@ -116,6 +116,18 @@ class TourOverlayLayoutTest {
     }
 
     @Test
+    fun `a grouping step outlines one block, a non-grouping one a square each`() {
+        // The bell in the header and the gear in the footer: far apart, so one rect
+        // around both would light the whole sidebar between them (#2860 review).
+        val bell = Rect(240f, 60f, 300f, 120f)
+        val gear = Rect(240f, 1800f, 300f, 1860f)
+
+        assertThat(tourRings(gear, listOf(bell), group = false)).containsExactly(gear, bell).inOrder()
+        assertThat(tourRings(gear, listOf(bell), group = true))
+            .containsExactly(Rect(240f, 60f, 300f, 1860f))
+    }
+
+    @Test
     fun `the nub never slides onto the card's rounded corners`() {
         // A target hard against the left edge of the screen…
         assertThat(layout(Rect(0f, 300f, 30f, 380f)).nubCenterX).isEqualTo(left + margin)

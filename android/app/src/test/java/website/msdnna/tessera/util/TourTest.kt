@@ -374,6 +374,22 @@ class TourTest {
     }
 
     @Test
+    fun `the footer steps keep their own square and point at the restart button`() {
+        // #2860 review: the bell sits in the sidebar header and the gear in its
+        // footer, so grouping them outlined the whole sidebar — this pair stays two
+        // separate squares. And the closing step promises the button the guide
+        // restarts from, so it rings that button, not the footer row around it.
+        val footer = GET_STARTED.first { it.id == "nav-footer" }
+        assertThat(footer.groupAnchors).isFalse()
+        assertThat(footer.extra).containsExactly(TourKeys.FOOTER_NOTIFICATIONS)
+
+        assertThat(GET_STARTED.last().id).isEqualTo("done")
+        assertThat(GET_STARTED.last().anchor).isEqualTo(TourKeys.FOOTER_TOUR)
+        // Steps whose anchors do stand next to each other stay one block.
+        assertThat(GET_STARTED.first { it.id == "nav-sections" }.groupAnchors).isTrue()
+    }
+
+    @Test
     fun `a moved step ends on a place reported straight from the drop`() {
         // #2860 rework, point 4: a drop into a collapsed group unmounts the moved
         // row, so its new place is never registered. The drop handler reports the

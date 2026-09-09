@@ -200,13 +200,17 @@ fun TourOverlay(
         }
         if (target == null) return@BoxWithConstraints
 
-        // The step's anchors are one highlighted block: the primary plus its extras
-        // merged into a single rounded cutout and ring, rather than each row/pill
-        // outlined on its own. Adjacent sections and card pills read as one thing,
-        // which is what they are (#2860 rework, point 2). `cut` stays separate —
-        // it un-dims a drop target or a button, not part of the block.
-        val region = boundingRect(listOf(target) + extras)
-        TourMask(ring = region, cuts = cuts)
+        // Anchors that stand next to each other are one highlighted block — a single
+        // rounded cutout and ring, rather than each row/pill outlined on its own
+        // (#2860 rework, point 2). Ones that don't (the bell in the header, the gear
+        // in the footer) keep a square each: merging those would light up the whole
+        // sidebar between them. `cut` stays separate either way — it un-dims a drop
+        // target or a button, not part of the block.
+        val rings = tourRings(target, extras, group = step.groupAnchors)
+        TourMask(rings = rings, cuts = cuts)
+        // The card is placed against the block it points at; without grouping that is
+        // the step's primary anchor, and the extras are only lit, not aimed at.
+        val region = rings.first()
 
         val inset = with(density) { CardInset.toPx() }
         val gap = with(density) { CardGap.toPx() + NubHeight.toPx() + CutPadding.toPx() }
@@ -240,6 +244,18 @@ fun TourOverlay(
         }
     }
 }
+
+/**
+ * What the step outlines: one block covering [target] and [extras] when they belong
+ * together ([group]), otherwise a square each, primary first.
+ *
+ * Grouping is per step because adjacency is: the sidebar's sections and a card's
+ * pills sit shoulder to shoulder and read as one thing, while the notifications bell
+ * lives in the header and the settings gear in the footer — the rect enclosing those
+ * two is the whole sidebar (#2860 review).
+ */
+fun tourRings(target: Rect, extras: List<Rect>, group: Boolean): List<Rect> =
+    if (group) listOf(boundingRect(listOf(target) + extras)) else listOf(target) + extras
 
 /** The smallest rect covering all of [rects] — a step's primary anchor and its
  *  extras highlighted as one block instead of each outlined alone (#2860 rework). */
@@ -285,23 +301,25 @@ fun tourMaskPath(size: Size, cuts: List<Rect>, pad: Float, radius: Float): Path 
 
 /**
  * The dimming mask: everything but the cutouts goes dark, so the eye has one place
- * to land, and [ring] — what the step actually points at — is outlined.
+ * to land, and every rect in [rings] — what the step actually points at — is outlined.
  */
 @Composable
-private fun TourMask(ring: Rect, cuts: List<Rect>) {
+private fun TourMask(rings: List<Rect>, cuts: List<Rect>) {
     val c = Tessera.colors
     Canvas(Modifier.fillMaxSize()) {
         val pad = CutPadding.toPx()
         val radius = RadiusSm.toPx()
         drawPath(
-            tourMaskPath(size, listOf(ring) + cuts, pad, radius),
+            tourMaskPath(size, rings + cuts, pad, radius),
             Color.Black.copy(alpha = 0.5f),
         )
-        drawPath(
-            Path().apply { addRoundRect(tourCutout(ring, pad, radius)) },
-            color = c.primary,
-            style = Stroke(width = 2.dp.toPx()),
-        )
+        for (ring in rings) {
+            drawPath(
+                Path().apply { addRoundRect(tourCutout(ring, pad, radius)) },
+                color = c.primary,
+                style = Stroke(width = 2.dp.toPx()),
+            )
+        }
     }
 }
 

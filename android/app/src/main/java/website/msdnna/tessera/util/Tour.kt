@@ -66,7 +66,7 @@ object TourKeys {
     const val TM_DESCRIPTION = "tm-description"
     const val TM_TABS = "tm-tabs"
     const val TM_SAVE = "tm-save"
-    const val SB_FOOTER = "sb-footer"
+    const val FOOTER_TOUR = "footer-tour"
     const val FOOTER_SETTINGS = "footer-settings"
     const val FOOTER_NOTIFICATIONS = "footer-notifications"
 
@@ -202,6 +202,11 @@ data class TourStep(
     /** Where the card sits — [TourCardGravity.AUTO] unless the target is inside a
      *  menu the card would hide behind, or a drag zone it would cover. */
     val cardGravity: TourCardGravity = TourCardGravity.AUTO,
+    /** Whether [anchor] and [extra] are highlighted as one block. True for things
+     *  that stand next to each other and read as a group (sidebar sections, the
+     *  pills on a card); false when they sit at opposite ends of the screen, where
+     *  one enclosing rect would light up everything in between (#2860 rework). */
+    val groupAnchors: Boolean = true,
 )
 
 /** Ids of what the user creates while walking the guide, so the steps that follow
@@ -514,12 +519,17 @@ val GET_STARTED: List<TourStep> = listOf(
         mode = TourMode.INFO,
         surface = TourSurface.DRAWER,
         extra = listOf(TourKeys.FOOTER_NOTIFICATIONS),
+        // The gear is in the footer, the bell up in the header: one rect around both
+        // would light the whole sidebar. Two separate squares instead (#2860 review).
+        groupAnchors = false,
     ),
 
     // ── 12. The end ──────────────────────────────────────────────────────────
     TourStep(
         id = "done",
-        anchor = TourKeys.SB_FOOTER,
+        // The button the closing text promises, not the footer row it sits in — the
+        // step is a pointer at where the guide restarts from (#2860 review).
+        anchor = TourKeys.FOOTER_TOUR,
         titleRes = R.string.tour_done_title,
         bodyRes = R.string.tour_done_body,
         mode = TourMode.INFO,

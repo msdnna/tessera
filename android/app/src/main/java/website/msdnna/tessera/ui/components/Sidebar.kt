@@ -1111,7 +1111,7 @@ private fun SidebarFooter(
 ) {
     val c = Tessera.colors
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp).tourAnchor(TourKeys.SB_FOOTER),
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // Tapping the user (avatar/name) opens account settings.
@@ -1151,7 +1151,7 @@ private fun SidebarFooter(
             onClick = onStartTour,
             boxSize = 32.dp,
             iconSize = 18.dp,
-            modifier = Modifier.testTag(TestTags.TOUR_START),
+            modifier = Modifier.testTag(TestTags.TOUR_START).tourAnchor(TourKeys.FOOTER_TOUR),
         )
         Box(Modifier.tourAnchor(TourKeys.FOOTER_SETTINGS)) {
             IonIconButton(Ion.SETTINGS, onClick = onOpenSettings, boxSize = 32.dp, iconSize = 18.dp)
