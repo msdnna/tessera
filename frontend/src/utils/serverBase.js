@@ -7,30 +7,26 @@
 //    http://tauri.localhost), so relative '/api' and `location.host` don't reach
 //    the backend. Instead we use a stored, in-app-editable base URL (set on the
 //    login screen), defaulting to production. Mirrors the Android configurable
-//    server-URL setting.
-const KEY = 'tessera_server_base'
-const DEFAULT_BASE = 'https://tessera.msdnna.website'
+//    server-URL setting. Since #2930 that origin is the *active* entry of a
+//    list of server profiles — see utils/servers.js.
+import { isTauri, activeServer, setActiveServerUrl, DEFAULT_BASE } from './servers'
 
-// isTauri reports whether we're running inside the Tauri webview (v2 injects
-// __TAURI_INTERNALS__; older/global builds expose __TAURI__).
-export function isTauri() {
-  return typeof window !== 'undefined' && (!!window.__TAURI_INTERNALS__ || !!window.__TAURI__)
-}
+// Re-exported so the many `import { isTauri } from '@/utils/serverBase'` call
+// sites keep working; the definition moved to servers.js, which needs it and
+// must not import from here (that would be a cycle).
+export { isTauri }
 
 // serverBase returns '' for web (same-origin) or an absolute origin without a
 // trailing slash for desktop.
 export function serverBase() {
   if (!isTauri()) return ''
-  const stored = (localStorage.getItem(KEY) || '').trim().replace(/\/+$/, '')
-  return stored || DEFAULT_BASE
+  return activeServer()?.url || DEFAULT_BASE
 }
 
-// setServerBase persists the desktop server origin (called from the login-screen
-// popover). Empty clears it back to the default.
+// setServerBase re-points the active server profile (called from the
+// login-screen popover and the settings screen). Empty restores the default.
 export function setServerBase(url) {
-  const clean = (url || '').trim().replace(/\/+$/, '')
-  if (clean) localStorage.setItem(KEY, clean)
-  else localStorage.removeItem(KEY)
+  setActiveServerUrl(url)
 }
 
 // apiBaseURL is the axios baseURL: '/api' on web, '<base>/api' on desktop.

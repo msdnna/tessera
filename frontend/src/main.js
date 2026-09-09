@@ -5,7 +5,14 @@ import router from './router'
 import { useAuthStore } from './stores/auth'
 import { initSentry } from './utils/sentry'
 import { i18n } from './i18n'
+import { ensureRegistry } from './utils/servers'
 import './styles/main.css'
+
+// #2930: on desktop, fold a pre-multi-server install into the server registry
+// before anything reads a session key — the migration renames those keys into
+// the first profile's namespace, and a read that beat it would look in the
+// wrong place and start the app signed out. No-op on web and on later runs.
+ensureRegistry()
 
 const app = createApp(App)
 app.use(createPinia())

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { auth, setAccessToken, restoreSession } from '@/api'
+import { sGet, sSet, sRemove } from '@/utils/serverStorage'
 import { useThemeStore } from './theme'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -9,8 +10,8 @@ export const useAuthStore = defineStore('auth', () => {
   // until bootstrap() trades the refresh cookie for a fresh one. `tessera_user`
   // is still cached: it holds no secret, only the profile the UI paints with.
   const token = ref('')
-  const refreshToken = ref(localStorage.getItem('tessera_refresh_token') || '')
-  const user = ref(JSON.parse(localStorage.getItem('tessera_user') || 'null'))
+  const refreshToken = ref(sGet('tessera_refresh_token') || '')
+  const user = ref(JSON.parse(sGet('tessera_user') || 'null'))
 
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => !!user.value?.is_admin)
@@ -29,11 +30,11 @@ export const useAuthStore = defineStore('auth', () => {
     refreshToken.value = res.refresh_token || ''
     user.value = res.user || null
     if (refreshToken.value) {
-      localStorage.setItem('tessera_refresh_token', refreshToken.value)
+      sSet('tessera_refresh_token', refreshToken.value)
     } else {
-      localStorage.removeItem('tessera_refresh_token')
+      sRemove('tessera_refresh_token')
     }
-    localStorage.setItem('tessera_user', JSON.stringify(user.value))
+    sSet('tessera_user', JSON.stringify(user.value))
     if (res.preferences) useThemeStore().hydrate(res.preferences)
   }
 
@@ -43,8 +44,8 @@ export const useAuthStore = defineStore('auth', () => {
     setToken('')
     refreshToken.value = ''
     user.value = null
-    localStorage.removeItem('tessera_refresh_token')
-    localStorage.removeItem('tessera_user')
+    sRemove('tessera_refresh_token')
+    sRemove('tessera_user')
     useThemeStore().reset()
   }
 
@@ -83,7 +84,7 @@ export const useAuthStore = defineStore('auth', () => {
   // setUser refreshes the cached user after a profile edit.
   function setUser(u) {
     user.value = u
-    localStorage.setItem('tessera_user', JSON.stringify(u))
+    sSet('tessera_user', JSON.stringify(u))
   }
 
   // loginWithTokens completes an OAuth redirect handoff. The callback delivers
@@ -94,11 +95,11 @@ export const useAuthStore = defineStore('auth', () => {
   async function loginWithTokens(access, refresh) {
     setToken(access)
     refreshToken.value = refresh || ''
-    if (refreshToken.value) localStorage.setItem('tessera_refresh_token', refreshToken.value)
-    else localStorage.removeItem('tessera_refresh_token')
+    if (refreshToken.value) sSet('tessera_refresh_token', refreshToken.value)
+    else sRemove('tessera_refresh_token')
     const res = await auth.me()
     user.value = res.data.user
-    localStorage.setItem('tessera_user', JSON.stringify(user.value))
+    sSet('tessera_user', JSON.stringify(user.value))
     if (res.data.preferences) useThemeStore().hydrate(res.data.preferences)
   }
 
@@ -116,7 +117,7 @@ export const useAuthStore = defineStore('auth', () => {
   const BOOTSTRAP_RETRIES = [1000, 2000, 4000]
 
   async function bootstrap() {
-    if (!localStorage.getItem('tessera_user')) return
+    if (!sGet('tessera_user')) return
     let attempt = 0
     for (;;) {
       const { token: access, offline } = await restoreSession()
@@ -145,7 +146,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const res = await auth.me()
       user.value = res.data.user
-      localStorage.setItem('tessera_user', JSON.stringify(user.value))
+      sSet('tessera_user', JSON.stringify(user.value))
       if (res.data.preferences) useThemeStore().hydrate(res.data.preferences)
     } catch (e) {
       // Same rule as bootstrap(): a failed round-trip is not proof the session

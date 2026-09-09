@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -17,6 +17,7 @@ import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
 import SidebarSpotlight from './SidebarSpotlight.vue'
 import TourOverlay from './TourOverlay.vue'
+import ServerRail from './ServerRail.vue'
 import HelpDrawer from './help/HelpDrawer.vue'
 import HelpCenterModal from './help/HelpCenterModal.vue'
 import VersionBadge from './VersionBadge.vue'
@@ -44,6 +45,11 @@ const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
 const { isMobile } = useResponsive()
 const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
+
+// The multi-server rail is a desktop-shell affordance (#2930) and needs the room
+// of a wide window: on a narrow one the mobile layout has no sidebar for it to
+// sit beside, and the active server's address stays editable in settings.
+const showRail = computed(() => isTauri() && !isMobile.value)
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
@@ -186,7 +192,21 @@ watch(
        a component with one root. A second sibling root (e.g. the conflict modal)
        turns this into a fragment, and the leave callback never fires when AppLayout
        unmounts on logout — leaving a blank screen until a hard refresh. -->
-  <div class="app-shell" :style="{ '--app-content-left': isMobile ? '0px' : layoutWidth + 'px' }">
+  <div
+    class="app-shell"
+    :class="{ 'has-rail': showRail }"
+    :style="{
+      '--server-rail-w': showRail ? '56px' : '0px',
+      '--app-content-left': isMobile
+        ? '0px'
+        : `calc(${showRail ? '56px' : '0px'} + ${layoutWidth}px)`,
+    }"
+  >
+    <!-- Desktop app only: the server hotbar sits outside the workspace layout,
+         left of the sidebar — it switches which server that whole layout is
+         showing. -->
+    <ServerRail v-if="showRail" />
+
     <!-- Desktop: fixed sider + content -->
     <n-layout
       v-if="!isMobile"
@@ -208,7 +228,7 @@ watch(
       <div
         class="sider-resizer"
         :class="{ active: dragging }"
-        :style="{ left: layoutWidth + 'px' }"
+        :style="{ left: `calc(var(--server-rail-w, 0px) + ${layoutWidth}px)` }"
         :title="t('shell.layout.resize')"
         @pointerdown.prevent="startDrag"
         @dblclick="toggle"
@@ -301,6 +321,16 @@ watch(
 /* Single transition-trackable root; the inner n-layouts own the 100vh height. */
 .app-shell {
   height: 100vh;
+}
+/* With the server rail present the shell becomes a row: rail, then the whole
+   workspace layout. Without it nothing changes — the layout stays the only
+   child and fills the shell as before. */
+.app-shell.has-rail {
+  display: flex;
+}
+.app-shell.has-rail > .app-layout {
+  flex: 1;
+  min-width: 0;
 }
 /* Positioning context for the working-area version footer. */
 .work-pane {

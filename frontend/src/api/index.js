@@ -2,6 +2,7 @@ import axios from 'axios'
 import { humanizeError } from '@/utils/errors'
 import { reqStart, reqEnd, setOffline } from '@/composables/useConnection'
 import { apiBaseURL, isTauri } from '@/utils/serverBase'
+import { sGet, sSet, sRemove } from '@/utils/serverStorage'
 
 // Web: apiBaseURL() === '/api' (same-origin). Desktop (Tauri): '<server>/api',
 // where <server> is the login-configured origin. See utils/serverBase.js.
@@ -42,7 +43,7 @@ function authModeHeaders() {
 // storedRefreshToken is the desktop-only fallback: on web this is always null,
 // because the token is in a cookie we deliberately cannot read.
 function storedRefreshToken() {
-  return cookieAuth() ? null : localStorage.getItem('tessera_refresh_token')
+  return cookieAuth() ? null : sGet('tessera_refresh_token')
 }
 
 // Attach the access token on every request + track liveness for the connection
@@ -125,7 +126,7 @@ async function refreshAccessToken() {
       setAccessToken(data.access_token)
       // Only ever present in body mode (desktop); on web the rotated token went
       // back into the cookie.
-      if (data.refresh_token) localStorage.setItem('tessera_refresh_token', data.refresh_token)
+      if (data.refresh_token) sSet('tessera_refresh_token', data.refresh_token)
       return { token: data.access_token || null, offline: false }
     })
     .catch(refreshFailure)
@@ -179,8 +180,8 @@ api.interceptors.response.use(
     // is back) refreshes normally instead of landing on /login.
     if (isUnauthorized && !isRefreshCall && !refreshOffline) {
       setAccessToken('')
-      localStorage.removeItem('tessera_refresh_token')
-      localStorage.removeItem('tessera_user')
+      sRemove('tessera_refresh_token')
+      sRemove('tessera_user')
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }
     if (refreshOffline) setOffline(true)
