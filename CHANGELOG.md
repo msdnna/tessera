@@ -6932,6 +6932,18 @@ User-management phase U1a (backend). All additive (migration 0014).
 
 ## desktop
 
+### [0.4.0] — 2026-09-11
+- **feat(desktop): конференции в приложении — камера, микрофон и демонстрация экрана (#2929).**
+  На Linux WebKitGTK по умолчанию отдаёт webview без `enable-media-stream`, поэтому
+  `navigator.mediaDevices` в десктопе не существовало вовсе и клиент честно гасил звонки.
+  Теперь оболочка включает media-stream/WebRTC/media-capabilities и сама выдаёт разрешение
+  на камеру, микрофон и список устройств своему origin; на Windows добавлен свой
+  `PermissionRequested` (WebView2 грантил только буфер обмена). Демонстрацию экрана
+  по-прежнему подтверждает системный пикер — на Linux через `xdg-desktop-portal`.
+- **fix(desktop): `make lint-desktop` падал с `cargo: not found`.**
+  Рецепты зовут `cargo` по абсолютному пути — в PATH у `/bin/sh` нет rustup-шимов.
+  Заодно добавлен `make test-desktop`.
+
 ### [0.3.4] — 2026-09-11
 - **fix(desktop): десктоп-сборка больше не тащит PWA service worker (#2930).**
   `beforeBuildCommand` переведён на `build:desktop` — прямой `cargo tauri build`
