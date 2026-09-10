@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -17,7 +17,6 @@ import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
 import SidebarSpotlight from './SidebarSpotlight.vue'
 import TourOverlay from './TourOverlay.vue'
-import ServerRail from './ServerRail.vue'
 import HelpDrawer from './help/HelpDrawer.vue'
 import HelpCenterModal from './help/HelpCenterModal.vue'
 import VersionBadge from './VersionBadge.vue'
@@ -46,10 +45,10 @@ const tour = useTourStore()
 const { isMobile } = useResponsive()
 const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
 
-// The multi-server rail is a desktop-shell affordance (#2930) and needs the room
-// of a wide window: on a narrow one the mobile layout has no sidebar for it to
-// sit beside, and the active server's address stays editable in settings.
-const showRail = computed(() => isTauri() && !isMobile.value)
+// The multi-server rail (#2930) is docked at the app root (App.vue) now, not here,
+// so it also covers the login/offline screens. This layout only reserves the
+// gutter it occupies via the global `--server-rail-w` custom property (0 on web
+// and on mobile, where the rail is hidden).
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
@@ -194,19 +193,10 @@ watch(
        unmounts on logout — leaving a blank screen until a hard refresh. -->
   <div
     class="app-shell"
-    :class="{ 'has-rail': showRail }"
     :style="{
-      '--server-rail-w': showRail ? '56px' : '0px',
-      '--app-content-left': isMobile
-        ? '0px'
-        : `calc(${showRail ? '56px' : '0px'} + ${layoutWidth}px)`,
+      '--app-content-left': isMobile ? '0px' : `calc(var(--server-rail-w, 0px) + ${layoutWidth}px)`,
     }"
   >
-    <!-- Desktop app only: the server hotbar sits outside the workspace layout,
-         left of the sidebar — it switches which server that whole layout is
-         showing. -->
-    <ServerRail v-if="showRail" />
-
     <!-- Desktop: fixed sider + content -->
     <n-layout
       v-if="!isMobile"
@@ -324,16 +314,11 @@ watch(
 .app-shell {
   height: 100vh;
   overflow: hidden;
-}
-/* With the server rail present the shell becomes a row: rail, then the whole
-   workspace layout. Without it nothing changes — the layout stays the only
-   child and fills the shell as before. */
-.app-shell.has-rail {
-  display: flex;
-}
-.app-shell.has-rail > .app-layout {
-  flex: 1;
-  min-width: 0;
+  /* Reserve the gutter for the app-root server rail (#2930); 0 on web/mobile
+     where --server-rail-w is unset/0. border-box so the padding eats into the
+     100vw width instead of overflowing it. */
+  box-sizing: border-box;
+  padding-left: var(--server-rail-w, 0px);
 }
 /* Positioning context for the working-area version footer. */
 .work-pane {
