@@ -1,7 +1,8 @@
-import { beforeEach, afterEach, describe, it, expect } from 'vitest'
+import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 
 import {
   DEFAULT_BASE,
+  isTauri,
   ensureRegistry,
   listServers,
   activeServerId,
@@ -44,6 +45,26 @@ afterEach(() => {
 })
 
 describe('server registry (#2930)', () => {
+  // The Tauri IPC globals are injected by an init script that can lag the first
+  // synchronous reads of the bundle. If detection hung on those globals alone, a
+  // boot-time read would treat the desktop as web and start it signed out — the
+  // reload/switch logout of the #2930 rework. The custom-protocol host is the
+  // synchronous fallback that must still say "desktop".
+  it('detects the desktop from the Tauri protocol even without the IPC globals', () => {
+    delete window.__TAURI_INTERNALS__
+    delete window.__TAURI__
+    expect(isTauri()).toBe(false) // jsdom default host is plain localhost
+    const spy = vi.spyOn(window, 'location', 'get').mockReturnValue({
+      protocol: 'http:',
+      hostname: 'tauri.localhost',
+    })
+    try {
+      expect(isTauri()).toBe(true)
+    } finally {
+      spy.mockRestore()
+    }
+  })
+
   it('stays completely inert on web', () => {
     localStorage.setItem('tessera_refresh_token', 'web-token')
     ensureRegistry()

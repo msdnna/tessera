@@ -12,6 +12,7 @@ import UpdateToast from '@/components/UpdateToast.vue'
 import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
 import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
 import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
+import { isTauri } from '@/utils/serverBase'
 
 const theme = useThemeStore()
 const router = useRouter()
@@ -124,7 +125,12 @@ onUnmounted(() => unlistenOAuth?.())
     </n-message-provider>
     <!-- Global "server slow / unreachable" overlay (branded loader + retry). -->
     <app-connection-overlay />
-    <!-- Global "new version deployed" toast (PWA prompt-mode update, #2748). -->
-    <update-toast />
+    <!-- Global "new version deployed" toast (PWA prompt-mode update, #2748).
+         Web only: mounting it calls useRegisterSW(), which registers the service
+         worker. On desktop the SW has no business running — it precaches the app
+         shell and then serves a stale one across app updates (#2930 rework; see
+         the desktop SW purge in main.js) — and desktop updates ship as new app
+         builds, not PWA prompts. Gated so the worker is never even registered. -->
+    <update-toast v-if="!isTauri()" />
   </n-config-provider>
 </template>

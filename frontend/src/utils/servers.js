@@ -31,13 +31,25 @@ export const SESSION_KEYS = [
   'tessera_device_id',
 ]
 
-// isTauri reports whether we're running inside the Tauri webview (v2 injects
-// __TAURI_INTERNALS__; older/global builds expose __TAURI__). It lives here
+// isTauri reports whether we're running inside the Tauri webview. It lives here
 // rather than in serverBase.js because the registry needs it and serverBase
 // imports from this module — serverBase re-exports it, so every existing
 // `import { isTauri } from '@/utils/serverBase'` keeps working.
+//
+// Detection is deliberately NOT limited to the injected IPC globals. Tauri v2
+// injects __TAURI_INTERNALS__ (and, with withGlobalTauri, __TAURI__) via an init
+// script — but that can lag the very first synchronous reads of the bundle. If
+// isTauri() answered "no" for even one such read at boot, the session helpers
+// would look at the *un-namespaced* keys, find nothing, and start the app signed
+// out — logging desktop users out on every reload/switch (#2930 rework). So we
+// also check the location: the production webview serves the app from a Tauri
+// custom protocol (tauri://localhost on Linux/macOS, http://tauri.localhost on
+// Windows WebView2), which is available from the first line, before the globals.
 export function isTauri() {
-  return typeof window !== 'undefined' && (!!window.__TAURI_INTERNALS__ || !!window.__TAURI__)
+  if (typeof window === 'undefined') return false
+  if (window.__TAURI_INTERNALS__ || window.__TAURI__) return true
+  const loc = window.location
+  return !!loc && (loc.protocol === 'tauri:' || loc.hostname === 'tauri.localhost')
 }
 
 // normalizeUrl trims and drops trailing slashes — '<base>/api' is built by
