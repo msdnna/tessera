@@ -5,6 +5,9 @@
 // Phase 1: native notifications, self-update, file dialogs + fs, clipboard.
 // Phase 2: single-instance, system tray, close-to-tray, autostart.
 // Phase 3: GitLab OAuth via the system browser + tessera:// deep link (#2696).
+// Phase 4: media permissions for conferences — camera/mic/screen share (#2929).
+
+mod media;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -59,6 +62,11 @@ pub fn run() {
             if let Err(e) = app.deep_link().register_all() {
                 eprintln!("tessera: could not register the tessera:// scheme: {e}");
             }
+
+            // Conferences: turn media on in the native webview and grant camera/mic to
+            // our own origin. Must happen before the frontend boots — it probes
+            // navigator.mediaDevices once and disables calls if the API is missing.
+            media::setup(app.handle());
 
             // System tray: menu (open / quit) + left-click to show the window.
             let show = MenuItem::with_id(app, "show", "Открыть Tessera", true, None::<&str>)?;

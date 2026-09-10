@@ -591,6 +591,11 @@ test-android-cover: ## Android unit tests + JaCoCo coverage report
 
 # ── Desktop (Tauri) ────────────────────────────────────────
 DESKTOP_DIR := desktop/src-tauri
+# make runs recipes through /bin/sh, whose PATH does not include the rustup shims —
+# plain `cargo` here fails with "cargo: not found" even though the toolchain is fine.
+# Calling the absolute path also makes `cargo tauri` resolve, since cargo looks for
+# subcommands next to its own binary.
+CARGO := $(if $(wildcard $(HOME)/.cargo/bin/cargo),$(HOME)/.cargo/bin/cargo,cargo)
 # Updater signing key (kept outside the repo, like the Android keystore). When
 # present it's passed to bundling builds so updater artifacts get signed.
 DESKTOP_KEY := $(HOME)/.tessera/tessera-desktop-updater.key
@@ -598,11 +603,11 @@ DESKTOP_SIGN := $(if $(wildcard $(DESKTOP_KEY)),TAURI_SIGNING_PRIVATE_KEY="$(DES
 
 .PHONY: dev-desktop
 dev-desktop: ## Run the desktop app in dev (Vite :5174 + Tauri window)
-	cd $(DESKTOP_DIR) && cargo tauri dev
+	cd $(DESKTOP_DIR) && $(CARGO) tauri dev
 
 .PHONY: desktop
 desktop: ## Build desktop bundles for this OS (Linux: AppImage + .deb)
-	cd $(DESKTOP_DIR) && $(DESKTOP_SIGN) cargo tauri build
+	cd $(DESKTOP_DIR) && $(DESKTOP_SIGN) $(CARGO) tauri build
 
 .PHONY: desktop-release
 desktop-release: ## Build + sign desktop bundles and assemble the updater manifest
@@ -610,4 +615,8 @@ desktop-release: ## Build + sign desktop bundles and assemble the updater manife
 
 .PHONY: lint-desktop
 lint-desktop: ## cargo fmt --check + clippy on the desktop crate
-	cd $(DESKTOP_DIR) && cargo fmt --check && cargo clippy -- -D warnings
+	cd $(DESKTOP_DIR) && $(CARGO) fmt --check && $(CARGO) clippy -- -D warnings
+
+.PHONY: test-desktop
+test-desktop: ## cargo test on the desktop crate
+	cd $(DESKTOP_DIR) && $(CARGO) test
