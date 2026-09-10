@@ -5,7 +5,7 @@
   "build": {
     "beforeDevCommand": "cd ../frontend && corepack yarn dev",
     "devUrl": "http://localhost:5174",
-    "beforeBuildCommand": "cd ../frontend && corepack yarn build",
+    "beforeBuildCommand": "cd ../frontend && corepack yarn build:desktop",
     "frontendDist": "../../frontend/dist"
   },
   "app": {

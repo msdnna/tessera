@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
 import { NConfigProvider, NGlobalStyle, NMessageProvider } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
@@ -9,12 +9,28 @@ import { naivePack } from '@/i18n/naive'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
 import UpdateToast from '@/components/UpdateToast.vue'
+import ServerRail from '@/components/ServerRail.vue'
 import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
 import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
 import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
+import { isTauri } from '@/utils/serverBase'
+import { useResponsive } from '@/composables/useResponsive'
 
 const theme = useThemeStore()
 const router = useRouter()
+
+// Desktop server hotbar (#2930). It lives at the app root — NOT inside AppLayout —
+// so it is reachable on the login and "no connection" screens too: those render
+// outside AppLayout, and a stuck/expired server would otherwise trap the user
+// with no way to switch away (the rework follow-up). It reserves a gutter via the
+// global `--server-rail-w` custom property, which AppLayout and the connection
+// overlay read to inset themselves past it.
+const { isMobile } = useResponsive()
+const showRail = computed(() => isTauri() && !isMobile.value)
+watchEffect(() => {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty('--server-rail-w', showRail.value ? '56px' : '0px')
+})
 
 // Language (#2797). The watch — rather than a call in the settings screen —
 // is what makes every source of the preference land: the localStorage cache
@@ -108,6 +124,11 @@ onUnmounted(() => unlistenOAuth?.())
   >
     <n-global-style />
     <n-message-provider>
+      <!-- Desktop server hotbar, docked at the app root so it survives on the
+           login and offline screens (which live outside AppLayout). A fixed
+           gutter on the left; AppLayout and the connection overlay inset
+           themselves past it via --server-rail-w. -->
+      <div v-if="showRail" class="app-rail-dock"><ServerRail /></div>
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />
@@ -124,7 +145,28 @@ onUnmounted(() => unlistenOAuth?.())
     </n-message-provider>
     <!-- Global "server slow / unreachable" overlay (branded loader + retry). -->
     <app-connection-overlay />
-    <!-- Global "new version deployed" toast (PWA prompt-mode update, #2748). -->
-    <update-toast />
+    <!-- Global "new version deployed" toast (PWA prompt-mode update, #2748).
+         Web only: mounting it calls useRegisterSW(), which registers the service
+         worker. On desktop the SW has no business running — it precaches the app
+         shell and then serves a stale one across app updates (#2930 rework; see
+         the desktop SW purge in main.js) — and desktop updates ship as new app
+         builds, not PWA prompts. Gated so the worker is never even registered. -->
+    <update-toast v-if="!isTauri()" />
   </n-config-provider>
 </template>
+
+<style scoped>
+/* Server hotbar gutter, pinned to the viewport so it stays put across the login,
+   offline and in-app screens alike (#2930). Width comes from the rail itself
+   (56px). Kept below Naive's teleported modals/dropdowns (~2000+) so the rail's
+   own edit modal opens over it, and the connection overlay insets past it rather
+   than covering it — so a server can be switched even while the current one is
+   unreachable. */
+.app-rail-dock {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+}
+</style>

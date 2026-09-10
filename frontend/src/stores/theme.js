@@ -4,6 +4,7 @@ import { darkTheme } from 'naive-ui'
 import { DARK, LIGHT } from '@/styles/tokens'
 import { users, getAccessToken } from '@/api'
 import { normalizeDatePreset, DEFAULT_PREFS } from '@/utils/format'
+import { sGet, sSet } from '@/utils/serverStorage'
 import { detectBrowserLocale } from '@/i18n'
 
 // Multi-color accent schemes. Default = purple. The palette is a token; the
@@ -79,9 +80,9 @@ export const useThemeStore = defineStore('theme', () => {
   // the single client-side source of truth and persist point. localStorage is a
   // first-paint cache so the theme doesn't flash before /auth/me hydrates it.
   // Legacy keys (tessera_color / tessera_dark) are read once for back-compat.
-  const cached = JSON.parse(localStorage.getItem('tessera_prefs') || 'null') || {}
-  const legacyKey = localStorage.getItem('tessera_color')
-  const legacyDark = localStorage.getItem('tessera_dark')
+  const cached = JSON.parse(sGet('tessera_prefs') || 'null') || {}
+  const legacyKey = sGet('tessera_color')
+  const legacyDark = sGet('tessera_dark')
 
   const accentKey = cached.accent || legacyKey || 'purple'
   const activeTheme = ref(COLOR_THEMES.find((t) => t.key === accentKey) ?? COLOR_THEMES[0])
@@ -246,10 +247,10 @@ export const useThemeStore = defineStore('theme', () => {
   // forget: a failed write shouldn't block the UI from reflecting the choice.
   function persist() {
     const snap = snapshot()
-    localStorage.setItem('tessera_prefs', JSON.stringify(snap))
+    sSet('tessera_prefs', JSON.stringify(snap))
     // Keep legacy keys in sync so an older cached client still first-paints right.
-    localStorage.setItem('tessera_color', snap.accent)
-    localStorage.setItem('tessera_dark', isDark.value ? '1' : '0')
+    sSet('tessera_color', snap.accent)
+    sSet('tessera_dark', isDark.value ? '1' : '0')
     if (getAccessToken()) {
       users.updatePreferences(snap).catch(() => {})
     }
@@ -269,9 +270,9 @@ export const useThemeStore = defineStore('theme', () => {
     if (prefs.date_format) dateFormat.value = normalizeDatePreset(prefs.date_format)
     if (typeof prefs.week_start === 'number') weekStart.value = prefs.week_start
     boardBackground.value = prefs.board_background ?? boardBackground.value
-    localStorage.setItem('tessera_prefs', JSON.stringify(snapshot()))
-    localStorage.setItem('tessera_color', activeTheme.value.key)
-    localStorage.setItem('tessera_dark', isDark.value ? '1' : '0')
+    sSet('tessera_prefs', JSON.stringify(snapshot()))
+    sSet('tessera_color', activeTheme.value.key)
+    sSet('tessera_dark', isDark.value ? '1' : '0')
   }
 
   function selectColor(t) {
@@ -342,9 +343,9 @@ export const useThemeStore = defineStore('theme', () => {
     dateFormat.value = DEFAULT_PREFS.dateFormat
     weekStart.value = 1
     boardBackground.value = ''
-    localStorage.setItem('tessera_prefs', JSON.stringify(snapshot()))
-    localStorage.setItem('tessera_color', activeTheme.value.key)
-    localStorage.setItem('tessera_dark', isDark.value ? '1' : '0')
+    sSet('tessera_prefs', JSON.stringify(snapshot()))
+    sSet('tessera_color', activeTheme.value.key)
+    sSet('tessera_dark', isDark.value ? '1' : '0')
   }
 
   return {

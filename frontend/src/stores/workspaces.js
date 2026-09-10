@@ -4,12 +4,13 @@ import { workspaces as wsApi, projects as projApi } from '@/api'
 import { useTreeExpand } from '@/composables/useTreeExpand'
 import { resolveEstimation } from '@/utils/estimation'
 import { commandItems } from '@/utils/commands'
+import { sGet, sSet } from '@/utils/serverStorage'
 
 // workspaces store — holds the list, the current selection, and the
 // groups/projects tree for the sidebar. Boards are loaded lazily per project.
 export const useWorkspacesStore = defineStore('workspaces', () => {
   const list = ref([])
-  const currentId = ref(localStorage.getItem('tessera_ws') || '')
+  const currentId = ref(sGet('tessera_ws') || '')
   const groups = ref([])
   const projects = ref([])
   const boardsByProject = ref({}) // projectId -> board[]
@@ -54,7 +55,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   async function selectWorkspace(id) {
     const seq = ++selectSeq
     currentId.value = id
-    localStorage.setItem('tessera_ws', id)
+    sSet('tessera_ws', id)
     boardsByProject.value = {}
     const [g, p] = await Promise.all([wsApi.groups(id), wsApi.projects(id)])
     if (seq !== selectSeq) return // superseded by a later switch — leave its tree alone
