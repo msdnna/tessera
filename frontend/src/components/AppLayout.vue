@@ -318,9 +318,12 @@ watch(
 </template>
 
 <style scoped>
-/* Single transition-trackable root; the inner n-layouts own the 100vh height. */
+/* Single transition-trackable root; the inner n-layouts own the 100vh height.
+   overflow:hidden pins the shell to the viewport — the scrolling belongs to the
+   n-layout-content inside, never to the page itself (#2930). */
 .app-shell {
   height: 100vh;
+  overflow: hidden;
 }
 /* With the server rail present the shell becomes a row: rail, then the whole
    workspace layout. Without it nothing changes — the layout stays the only

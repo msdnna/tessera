@@ -55,6 +55,21 @@ describe('ServerRail (#2930)', () => {
     expect(wrapper.find('[data-testid="server-rail-add"]').exists()).toBe(true)
   })
 
+  it('renders a chosen icon instead of the initials (#2930 rework)', () => {
+    window.__TAURI_INTERNALS__ = {}
+    localStorage.setItem('tessera_servers', '[]')
+    const a = addServer({ name: 'Работа', url: 'https://a.example.com', icon: 'rocket' })
+    setActiveServerId(a.id)
+
+    const store = useServersStore()
+    store.reload()
+    const tile = mountRail().findAll('.sr-tile:not(.sr-add)')[0]
+
+    // With an icon set the face is the glyph (ProjectIcon), not the initials.
+    expect(tile.findComponent({ name: 'ProjectIcon' }).exists()).toBe(true)
+    expect(tile.text()).not.toContain('РА')
+  })
+
   it('badges an inactive server with its unread count', () => {
     window.__TAURI_INTERNALS__ = {}
     localStorage.setItem('tessera_servers', '[]')

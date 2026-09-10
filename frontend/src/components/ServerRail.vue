@@ -11,6 +11,7 @@ import { useI18n } from 'vue-i18n'
 import { NTooltip, NDropdown, NIcon } from 'naive-ui'
 import { AddOutline, LogInOutline } from '@vicons/ionicons5'
 import ServerEditModal from './ServerEditModal.vue'
+import ProjectIcon from './ProjectIcon.vue'
 import { useServersStore } from '@/stores/servers'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useServerBadges } from '@/composables/useServerBadges'
@@ -95,7 +96,7 @@ function onRemove(id) {
         >
           <span class="sr-mark" />
           <span class="sr-face" :style="{ backgroundImage: hueGrad(s.color) }">
-            <img v-if="s.icon" class="sr-img" :src="s.icon" alt="" />
+            <ProjectIcon v-if="s.icon" :icon="s.icon" :initials="tileLabel(s)" :size="20" />
             <template v-else>{{ tileLabel(s) }}</template>
           </span>
           <span v-if="badgeFor(s) > 0" class="sr-badge">{{
@@ -150,9 +151,15 @@ function onRemove(id) {
 
 <style scoped>
 .sr-rail {
+  /* border-box: the app has no global reset, so under the default content-box the
+     10px vertical padding would add onto height:100% and push the rail past the
+     shell — a page-level scrollbar that nudged the whole window down (#2930). */
+  box-sizing: border-box;
   width: 56px;
   flex: none;
-  height: 100vh;
+  /* Fill the flex parent (app-shell, itself 100vh) rather than re-asserting 100vh:
+     equal to the sibling layout's height, and immune to any host chrome offset. */
+  height: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -222,11 +229,6 @@ function onRemove(id) {
    which is how you get to its login screen. */
 .sr-tile.out .sr-face {
   opacity: 0.45;
-}
-.sr-img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 .sr-face-add {
   background: none;

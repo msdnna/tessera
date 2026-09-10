@@ -2,10 +2,12 @@
 // Add / edit one entry of the desktop server rail (#2930).
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NModal, NCard, NInput, NButton, NColorPicker, NSwitch, NAlert } from 'naive-ui'
+import { NModal, NCard, NInput, NButton, NSwitch, NAlert } from 'naive-ui'
 import { DEFAULT_COLOR, normalizeUrl, serverLabel } from '@/utils/servers'
 import { initials } from '@/utils/initials'
 import { hueGrad } from '@/utils/gradient'
+import IconColorPicker from './IconColorPicker.vue'
+import ProjectIcon from './ProjectIcon.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -19,6 +21,7 @@ const { t } = useI18n()
 const name = ref('')
 const url = ref('')
 const color = ref(DEFAULT_COLOR)
+const icon = ref('')
 const insecure = ref(false)
 
 watch(
@@ -28,6 +31,7 @@ watch(
     name.value = props.server?.name || ''
     url.value = props.server?.url || ''
     color.value = props.server?.color || DEFAULT_COLOR
+    icon.value = props.server?.icon || ''
     insecure.value = !!props.server?.insecure
   },
   { immediate: true },
@@ -56,6 +60,7 @@ function save() {
     name: name.value.trim(),
     url: cleanUrl.value,
     color: color.value || DEFAULT_COLOR,
+    icon: icon.value || '',
     insecure: insecure.value,
   })
   emit('update:show', false)
@@ -71,12 +76,20 @@ function save() {
         </template>
 
         <div class="se-row">
-          <div class="se-preview" :style="{ backgroundImage: hueGrad(color) }">{{ preview }}</div>
-          <n-color-picker
-            v-model:value="color"
-            class="se-color"
-            :show-alpha="false"
-            :modes="['hex']"
+          <div class="se-preview" :style="{ backgroundImage: hueGrad(color) }">
+            <ProjectIcon v-if="icon" :icon="icon" :initials="preview" :size="20" />
+            <template v-else>{{ preview }}</template>
+          </div>
+          <IconColorPicker
+            class="se-picker"
+            :icon="icon"
+            :color="color"
+            mode="badge"
+            :show-mode="false"
+            :initials="preview"
+            allow-upload
+            @update:icon="icon = $event"
+            @update:color="color = $event || DEFAULT_COLOR"
           />
         </div>
 
@@ -128,24 +141,26 @@ function save() {
 }
 .se-row {
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 12px;
   margin-bottom: 4px;
 }
 .se-preview {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex: none;
-  border-radius: 12px;
+  border-radius: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 16px;
   color: #fff;
+  overflow: hidden;
 }
-.se-color {
-  flex: 1;
+.se-picker {
+  width: 100%;
 }
 .se-label {
   display: block;
