@@ -44,6 +44,11 @@ const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
 const { isMobile } = useResponsive()
 const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
+
+// The multi-server rail (#2930) is docked at the app root (App.vue) now, not here,
+// so it also covers the login/offline screens. This layout only reserves the
+// gutter it occupies via the global `--server-rail-w` custom property (0 on web
+// and on mobile, where the rail is hidden).
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
@@ -186,7 +191,12 @@ watch(
        a component with one root. A second sibling root (e.g. the conflict modal)
        turns this into a fragment, and the leave callback never fires when AppLayout
        unmounts on logout — leaving a blank screen until a hard refresh. -->
-  <div class="app-shell" :style="{ '--app-content-left': isMobile ? '0px' : layoutWidth + 'px' }">
+  <div
+    class="app-shell"
+    :style="{
+      '--app-content-left': isMobile ? '0px' : `calc(var(--server-rail-w, 0px) + ${layoutWidth}px)`,
+    }"
+  >
     <!-- Desktop: fixed sider + content -->
     <n-layout
       v-if="!isMobile"
@@ -208,7 +218,7 @@ watch(
       <div
         class="sider-resizer"
         :class="{ active: dragging }"
-        :style="{ left: layoutWidth + 'px' }"
+        :style="{ left: `calc(var(--server-rail-w, 0px) + ${layoutWidth}px)` }"
         :title="t('shell.layout.resize')"
         @pointerdown.prevent="startDrag"
         @dblclick="toggle"
@@ -298,9 +308,17 @@ watch(
 </template>
 
 <style scoped>
-/* Single transition-trackable root; the inner n-layouts own the 100vh height. */
+/* Single transition-trackable root; the inner n-layouts own the 100vh height.
+   overflow:hidden pins the shell to the viewport — the scrolling belongs to the
+   n-layout-content inside, never to the page itself (#2930). */
 .app-shell {
   height: 100vh;
+  overflow: hidden;
+  /* Reserve the gutter for the app-root server rail (#2930); 0 on web/mobile
+     where --server-rail-w is unset/0. border-box so the padding eats into the
+     100vw width instead of overflowing it. */
+  box-sizing: border-box;
+  padding-left: var(--server-rail-w, 0px);
 }
 /* Positioning context for the working-area version footer. */
 .work-pane {

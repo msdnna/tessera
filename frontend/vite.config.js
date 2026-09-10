@@ -26,6 +26,14 @@ const buildDate = process.env.BUILD_DATE || new Date().toISOString()
 // Backend dev server runs on :8090 (8080 is taken by the budget app on this box).
 const backend = process.env.TESSERA_API_TARGET || 'http://localhost:8090'
 
+// Desktop (Tauri) build: the frontend is served from a persistent custom-protocol
+// origin (WebView2 keeps its profile across app updates), so a service worker
+// there PINS a stale app shell — the freshly-bundled files on disk get ignored
+// and the app is stuck on whatever version first registered the SW. Desktop
+// updates come through the Tauri updater, not a server deploy, so the SW is pure
+// harm. `corepack yarn build:desktop` (or the ps1 -BuildFrontend path) sets this.
+const desktopBuild = process.env.TESSERA_DESKTOP === '1'
+
 // Shared by `server` and `preview`: `vite preview` does NOT inherit `server.proxy`,
 // and the e2e suite (#2710) runs against the built bundle, where a missing proxy
 // means 404 on every /api call and a failed /api/ws upgrade.
@@ -54,6 +62,10 @@ export default defineConfig({
     // the WebSocket — navigateFallbackDenylist keeps /api on the network, so
     // refresh-on-401 and realtime are untouched.
     VitePWA({
+      // Off for desktop (see `desktopBuild` above). `disable` still provides the
+      // `virtual:pwa-register/vue` module as a no-op, so useAppUpdate.js keeps
+      // importing cleanly and the update toast simply never fires on desktop.
+      disable: desktopBuild,
       registerType: 'prompt',
       injectRegister: null,
       workbox: {

@@ -59,7 +59,9 @@ function retry() {
 .top-progress {
   position: fixed;
   top: 0;
-  left: 0;
+  /* Start past the desktop server rail (#2930) so the hotbar stays visible; 0 on
+     web, where --server-rail-w is unset. */
+  left: var(--server-rail-w, 0px);
   right: 0;
   height: 3px;
   z-index: 9002;
@@ -101,6 +103,9 @@ function retry() {
 .conn-overlay {
   position: fixed;
   inset: 0;
+  /* Leave the desktop server rail (#2930) uncovered and clickable — so a stuck
+     server can be switched away from without dismissing this overlay. 0 on web. */
+  left: var(--server-rail-w, 0px);
   z-index: 9001;
   display: flex;
   align-items: center;

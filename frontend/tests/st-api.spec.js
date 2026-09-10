@@ -10,6 +10,7 @@ import api, {
   setRefreshHook,
 } from '@/api'
 import { connection } from '@/composables/useConnection'
+import { sGet } from '@/utils/serverStorage'
 
 // The api module builds an axios instance with real interceptors (token header,
 // refresh-on-401 coalescing, error humanizing). We drive it by swapping the
@@ -434,7 +435,9 @@ describe('refresh-token delivery mode', () => {
       expect(JSON.parse(sent.data)).toEqual({ refresh_token: 'ref1' })
       expect(sent.headers['X-Auth-Mode']).toBeUndefined()
       // The rotated token is stored again — desktop has nowhere else to keep it.
-      expect(localStorage.getItem('tessera_refresh_token')).toBe('ref2')
+      // Since #2930 it lands in the active server's namespace, which is what
+      // sGet() reads; the plain key only exists until the migration moves it.
+      expect(sGet('tessera_refresh_token')).toBe('ref2')
       expect(getAccessToken()).toBe('new')
     })
 
