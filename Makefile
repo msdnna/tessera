@@ -624,3 +624,27 @@ lint-desktop: ## cargo fmt --check + clippy on the desktop crate
 .PHONY: test-desktop
 test-desktop: ## cargo test on the desktop crate
 	cd $(DESKTOP_DIR) && $(CARGO) test
+
+# ── SonarQube (стенд по требованию, #2937) ─────────────────
+# Отдельный compose-проект: `make up` стенд не поднимает, `make down` не гасит.
+SONAR_HOME ?= $(HOME)/sonarqube
+SONAR_PORT ?= 9000
+SONAR_COMPOSE := $(COMPOSE) -p tessera-sonar -f deploy/sonarqube/docker-compose.yml
+
+.PHONY: sonar-up
+sonar-up: ## Поднять стенд SonarQube на localhost:$(SONAR_PORT) и дождаться готовности
+	@mkdir -p $(SONAR_HOME)/db $(SONAR_HOME)/data $(SONAR_HOME)/extensions $(SONAR_HOME)/logs
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) up -d
+	@bash ./tools/sonar-wait.sh $(SONAR_PORT)
+
+.PHONY: sonar-down
+sonar-down: ## Погасить стенд (данные в $(SONAR_HOME) остаются)
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) down
+
+.PHONY: sonar-logs
+sonar-logs: ## Хвост логов стенда
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) logs -f --tail=100
+
+.PHONY: sonar-scan
+sonar-scan: ## Проанализировать рабочее дерево (нужен SONAR_TOKEN; PROJECT_KEY=tessera-scratch для веток)
+	bash ./tools/sonar-scan.sh

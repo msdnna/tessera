@@ -1,0 +1,61 @@
+# SonarQube Community Build — стенд «по требованию» для анализа develop (#2937).
+#
+# Живёт ОТДЕЛЬНО от основного docker-compose.yml: `make up` его не поднимает, у
+# него свой проект (`-p tessera-sonar`) и своя сеть. Поднимать/гасить —
+# `make sonar-up` / `make sonar-down` из корня репозитория.
+#
+# Данные лежат не в репозитории, а в $SONAR_HOME (по умолчанию ~/sonarqube) —
+# как стенд Sentry. Это bind-каталоги, а не именованные тома: стенд можно
+# снести целиком одной командой `rm -rf ~/sonarqube`, не разыскивая тома.
+services:
+  sonar-db:
+    image: postgres:17-alpine
+    container_name: tessera-sonar-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sonar
+      POSTGRES_PASSWORD: ${SONAR_DB_PASSWORD:-sonar}
+      POSTGRES_DB: sonar
+    volumes:
+      - ${SONAR_HOME:-/home/msdnna/sonarqube}/db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sonar -d sonar"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - sonar-network
+
+  sonarqube:
+    image: sonarqube:${SONAR_IMAGE_TAG:-community}
+    container_name: tessera-sonarqube
+    restart: unless-stopped
+    depends_on:
+      sonar-db:
+        condition: service_healthy
+    environment:
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
+      SONAR_JDBC_USERNAME: sonar
+      SONAR_JDBC_PASSWORD: ${SONAR_DB_PASSWORD:-sonar}
+      # Встроенный Elasticsearch иначе отъедает всю доступную память.
+      SONAR_WEB_JAVAOPTS: -Xmx1g -Xms256m
+      SONAR_SEARCH_JAVAADDITIONALOPTS: -Xmx1g -Xms1g
+    ports:
+      # Наружу только на loopback: стенд смотреть с этой же машины.
+      - "127.0.0.1:${SONAR_PORT:-9000}:9000"
+    volumes:
+      - ${SONAR_HOME:-/home/msdnna/sonarqube}/data:/opt/sonarqube/data
+      - ${SONAR_HOME:-/home/msdnna/sonarqube}/extensions:/opt/sonarqube/extensions
+      - ${SONAR_HOME:-/home/msdnna/sonarqube}/logs:/opt/sonarqube/logs
+    # Elasticsearch внутри Sonar требует поднятых лимитов; на этой машине
+    # vm.max_map_count уже 1048576 (нужно ≥524288), см. deploy/sonarqube/README.md.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    networks:
+      - sonar-network
+
+networks:
+  sonar-network:
+    name: tessera-sonar-network
