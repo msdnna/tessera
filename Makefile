@@ -382,8 +382,8 @@ test: test-backend test-frontend test-mcp ## Test everything
 # @latest drifts between a developer's machine and CI). Bump a version with:
 #   make scan-tools-force GOSEC_VERSION=2.30.0
 .PHONY: scan-tools
-scan-tools: ## Install the SAST/SCA scanners into tools/bin
-	./tools/install-scanners.sh
+scan-tools: ## Install the SAST/SCA scanners into tools/bin (TOOLS=osv-scanner for a subset)
+	./tools/install-scanners.sh $(TOOLS)
 
 .PHONY: scan-tools-force
 scan-tools-force: ## Reinstall the scanners even if already present
@@ -401,8 +401,16 @@ scan-frontend: ## SCA for the frontend (osv-scanner over yarn.lock)
 scan-secrets: ## Secret scan of the working tree (gitleaks)
 	./tools/security-scan.sh secrets
 
+.PHONY: scan-android
+scan-android: ## SAST/SCA for Android (detekt SARIF + osv-scanner over Gradle deps)
+	./tools/security-scan.sh android
+
+.PHONY: scan-desktop
+scan-desktop: ## SCA for the desktop app (osv-scanner over Cargo.lock)
+	./tools/security-scan.sh desktop
+
 .PHONY: scan
-scan: ## Run every security scan (backend + frontend + secrets)
+scan: ## Run every security scan (backend + frontend + secrets + android + desktop)
 	./tools/security-scan.sh all
 
 # ── Versioning ─────────────────────────────────────────────

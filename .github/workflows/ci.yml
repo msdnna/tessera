@@ -94,6 +94,10 @@ jobs:
               - 'mcp/**'
               - 'frontend/yarn.lock'
               - 'frontend/package.json'
+              # Desktop is lockfile-only too (#2938): a Rust source edit cannot
+              # change what osv-scanner reads out of Cargo.lock, and clippy —
+              # the SAST half for Rust — is already a gate in the Desktop job.
+              - 'desktop/src-tauri/Cargo.lock'
               - 'tools/security-scan.sh'
               - 'tools/install-scanners.sh'
               - '.gitleaks.toml'
@@ -351,6 +355,10 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.android == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The scan step at the end publishes SARIF into the Security tab.
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -394,6 +402,27 @@ jobs:
           name: badge-android
           path: _badges/android.json
           retention-days: 1
+
+      # The Android half of the security scan (#2938) lives here rather than in
+      # the Security job because it needs this job's JDK + SDK: detekt is an
+      # Android-variant-aware Gradle task, and the dependency list comes from
+      # resolving releaseRuntimeClasspath. Only osv-scanner is installed — the Go
+      # scanners would drag a Go toolchain into a job that has no use for one.
+      - name: Install osv-scanner
+        run: make scan-tools TOOLS=osv-scanner
+
+      - name: Scan (detekt + osv-scanner over Gradle dependencies)
+        run: make scan-android
+
+      # A separate category from the Security job: same-category uploads replace
+      # each other in the code-scanning UI, so sharing one would mean whichever
+      # job finished last silently erased the other's findings.
+      - name: Publish SARIF to code scanning
+        if: ${{ always() }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/security
+          category: sast-sca-android
 
   android-e2e:
     name: Android e2e (JVM)
@@ -667,8 +696,11 @@ jobs:
       # SCAN_FAIL_ON stays at its default `none` — this job reports, it does not
       # yet gate. Turning it into a gate is the ratchet in #2939; doing it before
       # the baseline is triaged would just mean a permanently red develop.
+      # Not `make scan`: that also runs the Android half, which needs the JDK and
+      # the SDK this job deliberately does not install. Android is scanned in the
+      # Android job below, where that toolchain already exists (#2938).
       - name: Scan (govulncheck + gosec + osv-scanner + gitleaks)
-        run: make scan
+        run: make scan-backend scan-frontend scan-secrets scan-desktop
 
       # A directory upload: the action picks up every .sarif and keys them by the
       # tool name inside each file, so the four scanners stay distinguishable.

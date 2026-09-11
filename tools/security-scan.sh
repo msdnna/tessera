@@ -2,7 +2,7 @@
 # SAST/SCA scan runner (#2936). One entry point for every component so the
 # make targets, CI and the nightly agent all invoke the same thing.
 #
-# Usage: ./tools/security-scan.sh <backend|frontend|secrets|all>
+# Usage: ./tools/security-scan.sh <backend|frontend|secrets|android|desktop|all>
 #
 # Every tool writes SARIF into reports/security/<tool>.sarif (gitignored, like
 # the rest of reports/) and a human summary to stdout. SARIF because it is the
@@ -24,7 +24,7 @@
 # backend e2e tier that skipped itself green). `make scan-tools` installs them.
 set -uo pipefail
 
-TARGET="${1:?usage: security-scan.sh <backend|frontend|secrets|all>}"
+TARGET="${1:?usage: security-scan.sh <backend|frontend|secrets|android|desktop|all>}"
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 OUT="$ROOT/reports/security"
@@ -180,17 +180,153 @@ scan_secrets() {
   fi
 }
 
+# gradlew <task…> — the Android wrapper invoked the way the Makefile does it
+# (local.env carries SDK/JDK paths and the optional SOCKS proxy). Duplicated here
+# rather than shelling back into make so that CI and the agent can call this
+# script directly.
+gradlew() {
+  (
+    cd "$ROOT/android" || exit 1
+    set -a
+    # shellcheck disable=SC1091
+    [ -f ./local.env ] && . ./local.env
+    set +a
+    ANDROID_HOME="${ANDROID_HOME:-$HOME/Android/Sdk}" \
+    JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-21-openjdk-amd64}" \
+    GRADLE_OPTS="${SOCKS_PROXY_HOST:+-DsocksProxyHost=$SOCKS_PROXY_HOST -DsocksProxyPort=$SOCKS_PROXY_PORT -DsocksProxyVersion=5} -Dorg.gradle.internal.http.socketTimeout=300000" \
+    ./gradlew --no-daemon "$@"
+  )
+}
+
+scan_android() {
+  say "android — SAST (detekt) + SCA (Gradle dependencies)"
+
+  # ── SAST: detekt with the SARIF reporter.
+  # detekt already runs in `make lint-android`, but there it is a pass/fail gate on
+  # style; here we want its findings in the same SARIF pile as everything else, so
+  # the report is collected even when detekt exits non-zero (`|| true`) — a style
+  # violation must not abort the security scan.
+  echo "  · detekt (SARIF)"
+  local detekt_sarif="$ROOT/android/app/build/reports/detekt/detekt.sarif"
+  rm -f "$detekt_sarif"
+  gradlew :app:detekt >"$OUT/detekt.log" 2>&1 || true
+  if [ -s "$detekt_sarif" ]; then
+    cp "$detekt_sarif" "$OUT/detekt.sarif"
+    summarise "detekt" "$OUT/detekt.sarif"
+  else
+    echo "    ! detekt: no SARIF written — see $OUT/detekt.log" >&2
+    missing=$((missing + 1))
+  fi
+
+  # ── SCA: osv-scanner over the Gradle dependency graph.
+  # osv-scanner cannot read build.gradle — it needs a resolved list, and of the two
+  # formats it understands (gradle.lockfile, gradle/verification-metadata.xml) only
+  # the latter can be produced without switching dependency locking on for the build.
+  #
+  # The catch that dictates the rest of this function: Gradle writes that file to a
+  # FIXED path inside the repo (android/gradle/verification-metadata.xml), and its
+  # mere presence turns on dependency verification for every subsequent build — an
+  # incomplete file then fails `make android` with checksum errors. So it is
+  # generated, moved out to a scratch dir, and removed from the tree by a trap that
+  # also fires on Ctrl-C. If the file already exists when we start, somebody
+  # committed a real one: use it in place and generate nothing.
+  if ! have osv-scanner; then
+    return
+  fi
+
+  local verif="$ROOT/android/gradle/verification-metadata.xml"
+  local scratch generated=0
+  scratch=$(mktemp -d)
+  mkdir -p "$scratch/gradle"
+
+  if [ -f "$verif" ]; then
+    cp "$verif" "$scratch/gradle/verification-metadata.xml"
+    echo "  · osv-scanner (existing gradle/verification-metadata.xml)"
+  else
+    generated=1
+    echo "  · generating the Gradle dependency list (resolves releaseRuntimeClasspath, takes a minute)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$verif'" EXIT INT TERM
+    gradlew --write-verification-metadata sha256 \
+      :app:dependencies --configuration releaseRuntimeClasspath \
+      >"$OUT/gradle-deps.log" 2>&1 || true
+    if [ -s "$verif" ]; then
+      cp "$verif" "$scratch/gradle/verification-metadata.xml"
+    fi
+    rm -f "$verif"
+    trap - EXIT INT TERM
+  fi
+
+  if [ -s "$scratch/gradle/verification-metadata.xml" ]; then
+    # Gradle records everything the *build* resolved, including its own plugin
+    # classpath — unfiltered, all 94 findings of the first run were CVEs in AGP /
+    # detekt / google-services tooling (netty, jdom2, jose4j) that never reaches
+    # the APK. Narrow to the release runtime classpath so the report answers
+    # "what do we ship". Only for a list this run generated: filtering a
+    # committed metadata file against some earlier run's dependency report would
+    # quietly drop entries that are on the classpath today.
+    local kept
+    if [ "$generated" = "1" ]; then
+      kept=$(python3 "$ROOT/tools/gradle-deps-filter.py" \
+        "$scratch/gradle/verification-metadata.xml" "$OUT/gradle-deps.log" \
+        "$scratch/gradle/filtered.xml") || kept=""
+      if [ -n "$kept" ] && [ -s "$scratch/gradle/filtered.xml" ]; then
+        echo "  · shipped dependencies: ${kept% *} of ${kept#* } resolved artefacts (rest is build tooling)"
+        mv "$scratch/gradle/filtered.xml" "$scratch/gradle/verification-metadata.xml"
+      else
+        # Better a noisy report than a silently empty one — but say which it is.
+        echo "    ! could not narrow to the runtime classpath; scanning every resolved artefact" >&2
+      fi
+    fi
+    echo "  · osv-scanner (Gradle dependencies)"
+    (cd "$scratch" && osv-scanner scan source --format sarif \
+      --lockfile gradle/verification-metadata.xml \
+      > "$OUT/osv-android.sarif" 2>"$OUT/osv-android.log") || true
+    summarise "osv-scanner (android)" "$OUT/osv-android.sarif"
+  else
+    echo "    ! osv-scanner (android): no dependency list — see $OUT/gradle-deps.log" >&2
+    missing=$((missing + 1))
+  fi
+  rm -rf "$scratch"
+}
+
+scan_desktop() {
+  say "desktop — SCA (Cargo.lock)"
+
+  # cargo-audit is the ecosystem-native choice and was the one named in the task,
+  # but it is not installable here the way everything else is: there is no release
+  # binary, so it means `cargo install` compiling ~200 crates from crates.io on
+  # every machine and in CI. osv-scanner is already pinned by install-scanners.sh
+  # and serves the same RustSec advisories through OSV (RustSec is an OSV feed), so
+  # Rust reuses the binary the frontend already uses. If the desktop app ever needs
+  # the licence/ban side of cargo-deny, that is a different tool and a new decision.
+  if have osv-scanner; then
+    echo "  · osv-scanner (desktop/src-tauri/Cargo.lock)"
+    (cd "$ROOT" && osv-scanner scan source --format sarif --lockfile desktop/src-tauri/Cargo.lock \
+      > "$OUT/osv-desktop.sarif" 2>"$OUT/osv-desktop.log") || true
+    summarise "osv-scanner (desktop)" "$OUT/osv-desktop.sarif"
+  fi
+
+  # SAST for Rust: clippy already runs in `make lint-desktop` with `-D warnings`,
+  # i.e. it is a hard gate there and would add nothing as a report here.
+  echo "  · SAST for Rust is the clippy gate in \`make lint-desktop\` (-D warnings)"
+}
+
 case "$TARGET" in
   backend) scan_backend ;;
   frontend) scan_frontend ;;
   secrets) scan_secrets ;;
+  android) scan_android ;;
+  desktop) scan_desktop ;;
   all)
     scan_backend
     scan_frontend
     scan_secrets
+    scan_android
+    scan_desktop
     ;;
   *)
-    echo "Unknown target: $TARGET (expected backend|frontend|secrets|all)" >&2
+    echo "Unknown target: $TARGET (expected backend|frontend|secrets|android|desktop|all)" >&2
     exit 2
     ;;
 esac

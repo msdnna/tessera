@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 # Installs the SAST/SCA scanners used by tools/security-scan.sh (#2936).
 #
-# Usage: ./tools/install-scanners.sh            # everything that is missing
-#        ./tools/install-scanners.sh --force    # reinstall even if present
+# Usage: ./tools/install-scanners.sh                  # everything that is missing
+#        ./tools/install-scanners.sh --force          # reinstall even if present
+#        ./tools/install-scanners.sh osv-scanner      # only the named tools
+#
+# The subset form exists for jobs that need one scanner and no Go toolchain: the
+# Android CI job runs `make scan-android`, which needs osv-scanner only, and
+# pulling in govulncheck there would mean installing Go to serve a scanner that
+# job never runs.
 #
 # Release binaries over `go install`, for two reasons:
 #
@@ -42,7 +48,29 @@ CACHE="$BIN/.cache"
 mkdir -p "$BIN" "$CACHE"
 
 FORCE=0
-[ "${1:-}" = "--force" ] && FORCE=1
+WANTED=()
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    gosec|osv-scanner|gitleaks|govulncheck) WANTED+=("$arg") ;;
+    *)
+      echo "unknown argument: $arg" >&2
+      echo "usage: install-scanners.sh [--force] [gosec|osv-scanner|gitleaks|govulncheck …]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+# wanted <tool> — true when the tool was asked for, or when nothing was asked for
+# (the default is still "install everything").
+wanted() {
+  [ ${#WANTED[@]} -eq 0 ] && return 0
+  local t
+  for t in "${WANTED[@]}"; do
+    [ "$t" = "$1" ] && return 0
+  done
+  return 1
+}
 
 say() { printf '\n\033[1m── %s\033[0m\n' "$*"; }
 
@@ -161,10 +189,12 @@ install_govulncheck() {
   fi
 }
 
-install_gosec
-install_osvscanner
-install_gitleaks
-install_govulncheck
+# `if`, not `wanted x && install_x`: under `set -e` a && list whose first command
+# fails takes down the whole script, so the skip would look like a failure.
+if wanted gosec; then install_gosec; fi
+if wanted osv-scanner; then install_osvscanner; fi
+if wanted gitleaks; then install_gitleaks; fi
+if wanted govulncheck; then install_govulncheck; fi
 
 say "done"
 echo "  scanners in $BIN"
