@@ -82,6 +82,26 @@ make test-android-cover    # android/.../jacocoTestReport.xml
 make sonar-scan
 ```
 
+## Базовая линия (первый прогон, 12.09.2026)
+
+141 441 NCLOC в 721 файле; go 41 785, kotlin 42 804, js 52 428, xml 2 993,
+css 674, py 469, rust 217.
+
+| Метрика | Значение |
+|---|---|
+| Все замечания | 687 |
+| из них баги | 17 (reliability **D**) |
+| из них уязвимости | 22 (security **E**) |
+| из них code smells | 648 (maintainability **A**) |
+| Технический долг | 7 101 мин ≈ 118 ч |
+| Дублирование | 1.8 % |
+| Покрытие | 31.2 % |
+| Security hotspots | 0 |
+
+Это снимок, а не план работ: триаж — отдельная задача (#2939). Цифры сняты с
+ветки `task/2937-…` (проект `tessera-scratch`), от `develop` она отличается
+только файлами самого стенда.
+
 ## Требования и грабли
 
 * **`vm.max_map_count` ≥ 524288** — иначе Elasticsearch внутри Sonar не
@@ -91,8 +111,8 @@ make sonar-scan
 * **Первый `sonar-up` долгий**: образ ~1 ГБ, плюс миграция БД и старт
   Elasticsearch. `make sonar-up` ждёт `status=UP` и не возвращает ноль на ещё
   мёртвом стенде — на `DB_MIGRATION_RUNNING` ожидание продолжается.
-* **Rust (`desktop/src-tauri`)**: анализатор Rust в Community Build появился не
-  сразу; если в отчёте по desktop пусто — это ожидаемо, качество Rust-кода
-  держит `make lint-desktop` (clippy `-D warnings`).
+* **Rust (`desktop/src-tauri`) анализируется** — профиль `rust: Sonar way`
+  загружается, в первом прогоне учтено 217 строк. Отдельный clippy это не
+  отменяет: `make lint-desktop` строже (`-D warnings`).
 * `backend/db/**` исключён из анализа целиком: это вывод `sqlc`, править его
   руками нельзя.
