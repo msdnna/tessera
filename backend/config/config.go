@@ -166,6 +166,8 @@ func New() *Config {
 		jwt = "dev-secret-change-in-production-min32chars!"
 		log.Println("WARNING: JWT_SECRET not set — using dev default (do NOT use in production)")
 	} else if len(jwt) < 32 {
+		// #nosec G706 -- the only interpolated value is a length (an int); the
+		// secret itself never reaches the log
 		log.Printf("WARNING: JWT_SECRET is shorter than 32 chars (%d) — generate a stronger one", len(jwt))
 	}
 
@@ -187,6 +189,8 @@ func New() *Config {
 		if prod {
 			fatal("DATABASE_URL is required in production (APP_ENV=production)")
 		}
+		// #nosec G101 -- the dev-only local DSN, unreachable in production: the
+		// branch above exits when APP_ENV=production
 		dbURL = "postgres://tessera:tessera@localhost:5432/tessera?sslmode=disable"
 		log.Println("WARNING: DATABASE_URL not set — using local dev default")
 	}
@@ -246,6 +250,8 @@ func New() *Config {
 	case lkSecret != "" && len(lkSecret) < 32:
 		// livekit-server refuses to start on a shorter secret, so this pair can
 		// never work — say so here rather than in the SFU's container log.
+		// #nosec G706 -- the only interpolated value is a length (an int); the
+		// secret itself never reaches the log
 		log.Printf("WARNING: LIVEKIT_API_SECRET is shorter than 32 chars (%d) — livekit-server will refuse it", len(lkSecret))
 	}
 

@@ -274,6 +274,9 @@ func saveUploaded(fh *multipart.FileHeader, dst string) error {
 		return err
 	}
 	defer func() { _ = src.Close() }()
+	// #nosec G304 -- every caller builds dst as uploadDir/<uuid><ext>, and ext is
+	// either sniffed from our own whitelist or filepath.Ext, which stops at the
+	// last separator — nothing from the client can escape the directory
 	out, err := os.Create(dst)
 	if err != nil {
 		return err

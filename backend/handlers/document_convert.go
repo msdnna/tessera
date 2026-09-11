@@ -391,6 +391,9 @@ const (
 
 // dropReasonText is what the user reads in the import warning, so it says what
 // happened to their document rather than which branch was taken.
+//
+// #nosec G101 -- these are user-facing Russian warning texts; the entropy check
+// misreads the literal block as a secret
 var dropReasonText = map[dropReason]string{
 	dropUnreadable:  "не удалось разобрать разметку",
 	dropCountLimit:  "превышен лимит на число картинок в одном импорте",

@@ -53,7 +53,15 @@ func SkipOrFail(tier string, cause error) int {
 // appendSkipLog is best-effort on purpose: an unwritable path is not a reason to
 // change the outcome of a test run, and the banner is already on stderr.
 func appendSkipLog(path, banner string) {
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	// 0600, not 0644: the only reader is the same user's Makefile, which made
+	// this file with mktemp (0600) in the first place.
+	// #nosec G304 -- path is TESSERA_TEST_SKIP_LOG, set by the Makefile for its
+	// own mktemp file; this helper is test-harness-only and never linked into a
+	// server binary.
+	// G703 (the taint-analysis twin of G304) is deliberately NOT suppressed here:
+	// adding it to this line makes gosec 2.29.0 exit silently without writing a
+	// report at all. It stays in the baseline instead.
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  (could not write %s=%s: %v)\n", SkipLogEnv, path, err)
 		return

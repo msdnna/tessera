@@ -82,6 +82,7 @@ func NewFCMSender(keyJSON []byte) (*FCMSender, error) {
 	}
 	tokenURI := k.TokenURI
 	if tokenURI == "" {
+		// #nosec G101 -- Google's public OAuth token endpoint, not a credential
 		tokenURI = "https://oauth2.googleapis.com/token"
 	}
 	cfg := &jwt.Config{
@@ -96,7 +97,7 @@ func NewFCMSender(keyJSON []byte) (*FCMSender, error) {
 
 // LoadFCMSender reads a service-account key from disk.
 func LoadFCMSender(path string) (*FCMSender, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- operator-supplied path (FCM_CREDENTIALS_FILE), never a request value
 	if err != nil {
 		return nil, fmt.Errorf("read FCM credentials: %w", err)
 	}

@@ -172,6 +172,8 @@ func authenticatePAT(ctx context.Context, q *db.Queries, tok string, toucher *pa
 	// Best-effort, non-blocking: record usage on a detached context so it
 	// survives past the request lifecycle without delaying the response.
 	if toucher.shouldTouch(pat.ID) {
+		// #nosec G118 -- context.Background is the point: the request context is
+		// cancelled the moment the response is written, which would abort the touch
 		go func(id uuid.UUID) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()

@@ -56,6 +56,8 @@ const (
 	opRecordingSweep = "recording_sweep"
 )
 
+// #nosec G101 -- Russian worker labels shown in the admin UI; the entropy check
+// misreads them as a secret
 var workerOps = map[string]string{
 	opSyncScan:       "проверка интеграций к синхронизации",
 	opWebhookScan:    "проверка событий вебхука GitLab",

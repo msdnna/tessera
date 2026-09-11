@@ -144,6 +144,12 @@ scan_backend() {
   # would be findings in production code.
   if have gosec; then
     echo "  · gosec"
+    # Drop the previous report first. gosec writes the file itself rather than
+    # through a shell redirect, so a run that dies before writing leaves the last
+    # one in place — and then summarise counts it and the ratchet grades stale
+    # numbers as if the scan had passed. Not hypothetical: `#nosec G703` makes
+    # gosec 2.29.0 exit with no output and no report at all (#2932).
+    rm -f "$OUT/gosec.sarif"
     (cd "$ROOT/backend" && gosec -quiet -fmt sarif -out "$OUT/gosec.sarif" \
       -exclude-dir=internal/db -exclude-dir=e2e ./... >"$OUT/gosec.log" 2>&1) || true
     summarise "gosec" "$OUT/gosec.sarif"
@@ -182,6 +188,8 @@ scan_secrets() {
     # --config explicitly, not by auto-discovery: gitleaks only picks
     # .gitleaks.toml up implicitly for some scan modes, and a silently unused
     # config would put twelve build-artefact false positives back in the report.
+    # Same stale-report guard as gosec above: gitleaks owns the output file.
+    rm -f "$OUT/gitleaks.sarif"
     (cd "$ROOT" && gitleaks dir . --config .gitleaks.toml \
       --report-format sarif --report-path "$OUT/gitleaks.sarif" \
       --no-banner >"$OUT/gitleaks.log" 2>&1) || true
