@@ -12,12 +12,15 @@
 # Knobs:
 #   SCAN_FAIL_ON=none|any   what makes this script exit non-zero (default: none)
 #   SCAN_ALLOW_MISSING=1    a missing tool warns instead of failing
+#   SCAN_RATCHET=0          skip the baseline comparison (default: on)
+#   SCAN_RATCHET_UPDATE=1   rewrite the baseline from this run instead
+#   SCAN_RATCHET_DEPS=fail  make new dependency advisories fail too
 #
-# On the default SCAN_FAIL_ON=none the script reports findings and exits 0. That
-# is deliberate for now: the tools have never run against this tree, so a hard
-# gate would paint develop red on day one. The ratchet that makes *new* findings
-# fail is #2939 — until then this is a visibility step, and the summary below is
-# the thing to read.
+# On the default SCAN_FAIL_ON=any-is-off the script does not fail on the mere
+# existence of findings: the tree carries ~100 of them and triage is its own
+# work, so a zero-findings gate would paint develop red on day one. What does
+# fail is the ratchet (#2939): findings are frozen in tools/security-baseline.json
+# and the list may shrink, never grow. See docs/security-scanning.md.
 #
 # A tool that is not installed is an ERROR, not a silent skip: a scan that
 # quietly scans nothing and exits 0 is worse than no scan (same trap as the
@@ -42,6 +45,11 @@ ALLOW_MISSING="${SCAN_ALLOW_MISSING:-0}"
 
 missing=0   # tools that could not be run
 findings=0  # total results across every SARIF produced
+produced=() # reports this run actually wrote — what the ratchet may compare
+            # against. Scoping it to *this* run matters: reports/security keeps
+            # the files of previous runs, and feeding the ratchet a stale
+            # osv-android.sarif during a backend-only scan would compare the
+            # android baseline against a report nobody regenerated.
 
 say() { printf '\n\033[1m── %s\033[0m\n' "$*"; }
 
@@ -113,6 +121,7 @@ PY
     return
   fi
   findings=$((findings + n))
+  produced+=("$file")
   echo "    $label: $text  → $(realpath --relative-to="$ROOT" "$file")"
 }
 
@@ -337,7 +346,23 @@ echo "  findings: $findings"
 [ "$missing" -gt 0 ] && echo "  tools missing: $missing (run \`make scan-tools\`)"
 
 if [ "$missing" -gt 0 ]; then
+  # Stop before the ratchet: a partial run would read as "these findings are
+  # gone" and invite somebody to bake the gap into the baseline.
   exit 1
+fi
+
+ratchet_rc=0
+if [ "${SCAN_RATCHET:-1}" != "0" ] && [ "${#produced[@]}" -gt 0 ]; then
+  if [ "${SCAN_RATCHET_UPDATE:-0}" = "1" ]; then
+    say "baseline update"
+    python3 "$ROOT/tools/security-ratchet.py" update "${produced[@]}" || ratchet_rc=$?
+  else
+    say "ratchet (tools/security-baseline.json)"
+    python3 "$ROOT/tools/security-ratchet.py" check "${produced[@]}" || ratchet_rc=$?
+  fi
+fi
+if [ "$ratchet_rc" -ne 0 ]; then
+  exit "$ratchet_rc"
 fi
 if [ "$FAIL_ON" = "any" ] && [ "$findings" -gt 0 ]; then
   echo "  SCAN_FAIL_ON=any and there are findings → failing" >&2

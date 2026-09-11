@@ -413,6 +413,15 @@ scan-desktop: ## SCA for the desktop app (osv-scanner over Cargo.lock)
 scan: ## Run every security scan (backend + frontend + secrets + android + desktop)
 	./tools/security-scan.sh all
 
+# Every scan above ends by comparing itself against tools/security-baseline.json
+# (#2939): the frozen list of findings may shrink, never grow. After fixing
+# something — or after accepting a new finding with your eyes open — rerun the
+# same scan through this target to rewrite the baseline, and commit the diff.
+# SCAN_TARGET picks which scan regenerates its own entries; the others keep theirs.
+.PHONY: scan-baseline-update
+scan-baseline-update: ## Rewrite the scan baseline from a fresh run (SCAN_TARGET=backend|frontend|secrets|android|desktop|all)
+	SCAN_RATCHET_UPDATE=1 ./tools/security-scan.sh $(or $(SCAN_TARGET),all)
+
 # ── Versioning ─────────────────────────────────────────────
 .PHONY: version
 version: ## Show service versions

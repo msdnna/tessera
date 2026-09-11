@@ -90,6 +90,19 @@ Repository documentation is **bilingual**, but there's a single canon — **Russ
 - **Sentry** — optional self-hosted error tracking (off without a DSN). In dev we
   read errors from logs; with Sentry up — through it (see the `tessera-sentry` skill).
 
+## Code security
+
+Before submitting a change, run the scan for the component you touched:
+`make scan-backend` / `scan-frontend` / `scan-android` / `scan-desktop` /
+`scan-secrets` (install the tools with `make scan-tools`). The scans deliberately
+stay out of `make lint`/`make test` — they reach the network and take minutes.
+
+The gate is a **ratchet**: today's findings are frozen in
+`tools/security-baseline.json` and the list may shrink, never grow. Fixed a
+finding — regenerate the baseline (`make scan-baseline-update`) and commit the
+diff together with the change. Details — [`docs/security-scanning.md`](docs/security-scanning.md)
+(Russian only).
+
 ## Pull requests
 
 1. Fork the repository and branch from `develop`.

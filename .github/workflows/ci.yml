@@ -100,6 +100,10 @@ jobs:
               - 'desktop/src-tauri/Cargo.lock'
               - 'tools/security-scan.sh'
               - 'tools/install-scanners.sh'
+              # The ratchet and its baseline (#2939): editing either changes the
+              # verdict of an otherwise unchanged scan, so it has to rerun.
+              - 'tools/security-ratchet.py'
+              - 'tools/security-baseline.json'
               - '.gitleaks.toml'
               - 'Makefile'
               - '.github/workflows/ci.yml'
