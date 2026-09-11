@@ -613,6 +613,10 @@ desktop: ## Build desktop bundles for this OS (Linux: AppImage + .deb)
 desktop-release: ## Build + sign desktop bundles and assemble the updater manifest
 	./tools/build-desktop-release.sh
 
+.PHONY: desktop-release-linux
+desktop-release-linux: ## Same, but build the Linux bundles in an old-glibc (Ubuntu 22.04) container for broad distro compat (Astra 1.8 etc.)
+	DESKTOP_LINUX_DOCKER=1 ./tools/build-desktop-release.sh
+
 .PHONY: lint-desktop
 lint-desktop: ## cargo fmt --check + clippy on the desktop crate
 	cd $(DESKTOP_DIR) && $(CARGO) fmt --check && $(CARGO) clippy -- -D warnings
