@@ -11,19 +11,25 @@
 
 ```bash
 make sonar-up        # поднять и дождаться status=UP (первый запуск — минуты)
-# открыть http://127.0.0.1:9000, admin/admin, сменить пароль
-# My Account -> Security -> Generate Token (Global Analysis Token)
-echo '<token>' > ~/.tessera/sonar-token
-make sonar-scan      # проанализировать текущее рабочее дерево
+make sonar-scan      # выпустить токен (один раз) и проанализировать рабочее дерево
 make sonar-down      # погасить (данные остаются)
 ```
+
+Логин в UI на `http://127.0.0.1:9000` — `admin` с паролем из
+`~/.tessera/sonar-admin-password`.
 
 | Цель | Что делает |
 |---|---|
 | `make sonar-up` | Поднимает стенд и **ждёт готовности** (`tools/sonar-wait.sh`) |
 | `make sonar-down` | Гасит контейнеры, данные в `$SONAR_HOME` не трогает |
 | `make sonar-logs` | Хвост логов |
+| `make sonar-token` | Меняет дефолтный пароль admin и выпускает токен анализа |
 | `make sonar-scan` | Прогоняет `sonar-scanner-cli` в контейнере по `sonar-project.properties` |
+
+`make sonar-token` идемпотентен и вызывается из `sonar-scan` сам: действующий
+токен переиспользуется (проверяется запросом к стенду, а не наличием файла).
+Дефолтный пароль `admin/admin` меняется на случайный — он не зашит в
+репозиторий, а сохраняется в `~/.tessera/sonar-admin-password` (0600).
 
 ## Где что лежит
 

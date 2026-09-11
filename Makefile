@@ -645,6 +645,10 @@ sonar-down: ## Погасить стенд (данные в $(SONAR_HOME) ост
 sonar-logs: ## Хвост логов стенда
 	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) logs -f --tail=100
 
+.PHONY: sonar-token
+sonar-token: ## Сменить дефолтный пароль admin и выпустить токен анализа (идемпотентно)
+	@SONAR_PORT=$(SONAR_PORT) bash ./tools/sonar-token.sh
+
 .PHONY: sonar-scan
-sonar-scan: ## Проанализировать рабочее дерево (нужен SONAR_TOKEN; PROJECT_KEY=tessera-scratch для веток)
+sonar-scan: sonar-token ## Проанализировать рабочее дерево (PROJECT_KEY=tessera-scratch для веток)
 	bash ./tools/sonar-scan.sh
