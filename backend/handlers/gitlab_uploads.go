@@ -304,7 +304,7 @@ func (h *API) mirrorAsset(ctx context.Context, client *gitlab.Client, integ db.G
 
 	name := strings.TrimPrefix(ref, "/api/uploads/")
 	path := filepath.Join(h.uploadDir, "media", filepath.Base(name))
-	f, err := os.Open(path) //nolint:gosec // name is regex-constrained and Base'd
+	f, err := os.Open(path) // #nosec G304 -- name is regex-constrained and Base'd
 	if err != nil {
 		return "", err
 	}
@@ -397,7 +397,7 @@ func (h *API) mirrorAttachment(ctx context.Context, client *gitlab.Client, integ
 	}); err == nil && row.GlUrl != "" {
 		return row.GlUrl, nil
 	}
-	f, err := os.Open(att.StoragePath) //nolint:gosec // path comes from our own attachments row
+	f, err := os.Open(att.StoragePath) // #nosec G304 -- path comes from our own attachments row
 	if err != nil {
 		return "", err
 	}
