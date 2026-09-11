@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -122,6 +123,17 @@ func (r *Rule) matches(title string) (string, bool) {
 	return "", false
 }
 
+// parsePriority turns a value-map entry ("2") into a task priority. Rules are
+// admin-authored JSONB, so the number is untrusted: anything outside int32 (the
+// DB column) is rejected rather than silently wrapped into a bogus priority.
+func parsePriority(s string) (int32, bool) {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < math.MinInt32 || n > math.MaxInt32 {
+		return 0, false
+	}
+	return int32(n), true // #nosec G109 -- range-checked on the line above
+}
+
 // lookup resolves a matched value against the rule's ValueMap. The match is
 // case-insensitive: GitLab label capitalisation ("S: In Progress") should still
 // hit a value-map key written in another case ("In progress"). Exact match wins;
@@ -184,8 +196,8 @@ func (rs Rules) Resolve(labels []Label) Resolution {
 			case "priority":
 				if !prioSet {
 					if lvl, ok := rule.lookup(value); ok {
-						if n, err := strconv.Atoi(lvl); err == nil {
-							res.Priority, prioSet = int32(n), true
+						if n, ok := parsePriority(lvl); ok {
+							res.Priority, prioSet = n, true
 						}
 					}
 				}

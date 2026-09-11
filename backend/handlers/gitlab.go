@@ -1749,6 +1749,7 @@ func (h *API) syncProjectMembers(ctx context.Context, client *gitlab.Client, int
 	for _, m := range members {
 		soft(ctx, "UpsertGitlabProjectMember", h.q.UpsertGitlabProjectMember(ctx, db.UpsertGitlabProjectMemberParams{
 			IntegrationID: integ.ID, GlUserID: m.ID, GlUsername: m.Username, GlName: m.Name,
+			// #nosec G115 -- GitLab access_level is a fixed 0..50 enum
 			GlAvatarUrl: h.avatarProxyURL(integ.WorkspaceID, m.AvatarURL), AccessLevel: int32(m.AccessLevel),
 		}))
 		keep = append(keep, m.ID)

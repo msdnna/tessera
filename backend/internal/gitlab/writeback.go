@@ -2,7 +2,6 @@ package gitlab
 
 import (
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -189,7 +188,7 @@ func (w Writeback) effectiveBindings(rules Rules) []Binding {
 			}
 			sort.Ints(levels)
 			for _, lvl := range levels {
-				l := int32(lvl)
+				l := int32(lvl) // #nosec G115 -- levels are int32 map keys widened to int just above
 				add(Binding{
 					Trigger: BindTrigger{Type: TrigPriority, Priority: &l},
 					Action:  BindAction{Type: ActSetLabel, Label: inv[l], ClearPrefix: true},
@@ -376,14 +375,14 @@ func (rs Rules) InversePriority() (map[int32]string, bool) {
 	}
 	out := make(map[int32]string, len(r.ValueMap))
 	for value, lvl := range r.ValueMap {
-		n, err := strconv.Atoi(lvl)
-		if err != nil {
+		n, ok := parsePriority(lvl)
+		if !ok {
 			continue
 		}
-		if _, dup := out[int32(n)]; dup {
+		if _, dup := out[n]; dup {
 			return nil, false // ambiguous inverse
 		}
-		out[int32(n)] = r.Match + value
+		out[n] = r.Match + value
 	}
 	return out, len(out) > 0
 }

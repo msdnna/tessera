@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"path"
@@ -127,6 +128,20 @@ type recordingResult struct {
 	Size     int64
 	Duration time.Duration
 	Err      string
+}
+
+// durationSec narrows a recording length to the int32 seconds the DB column
+// holds. The value comes from the SFU, so a garbage length is clamped instead
+// of wrapping into a negative duration.
+func durationSec(d time.Duration) int32 {
+	secs := int64(d / time.Second)
+	switch {
+	case secs < 0:
+		return 0
+	case secs > math.MaxInt32:
+		return math.MaxInt32
+	}
+	return int32(secs)
 }
 
 func resultOf(info livekit.EgressInfo) recordingResult {
@@ -389,7 +404,7 @@ func (h *API) finishRecording(ctx context.Context, recID uuid.UUID, owner record
 		ID:          recID,
 		Status:      status,
 		SizeBytes:   res.Size,
-		DurationSec: int32(res.Duration / time.Second),
+		DurationSec: durationSec(res.Duration),
 		Error:       res.Err,
 		TtlDays:     owner.TTLDays,
 	})

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -135,17 +136,23 @@ func triggerFromKind(kind string, payload map[string]any) gitlab.BindTrigger {
 		t.ColumnName, _ = payload["column_name"].(string)
 	case gitlab.TrigPriority:
 		// The payload is an in-memory map, not decoded JSON, so priority may
-		// arrive as any integer type (handlers enqueue int32).
+		// arrive as any integer type (handlers enqueue int32). Rows replayed
+		// from the JSONB column come back as float64, so range-check before
+		// narrowing to the int32 the DB column holds.
 		switch v := payload["priority"].(type) {
 		case float64:
-			p := int32(v)
-			t.Priority = &p
+			if v >= math.MinInt32 && v <= math.MaxInt32 {
+				p := int32(v)
+				t.Priority = &p
+			}
 		case int32:
 			p := v
 			t.Priority = &p
 		case int:
-			p := int32(v)
-			t.Priority = &p
+			if v >= math.MinInt32 && v <= math.MaxInt32 {
+				p := int32(v)
+				t.Priority = &p
+			}
 		}
 	case gitlab.TrigCompletion:
 		if b, ok := payload["completed"].(bool); ok {

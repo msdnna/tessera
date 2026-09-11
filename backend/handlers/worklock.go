@@ -52,5 +52,7 @@ func (h *API) withAdvisoryLock(ctx context.Context, name string, fn func()) bool
 func advisoryKey(name string) int64 {
 	hsh := fnv.New64a()
 	_, _ = hsh.Write([]byte("tessera:worker:" + name))
+	// #nosec G115 -- deliberate bit reinterpretation: pg_advisory_lock takes a
+	// signed key and any 64-bit value is a valid lock id.
 	return int64(hsh.Sum64())
 }
