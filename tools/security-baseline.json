@@ -94,10 +94,7 @@
       "RUSTSEC-2025-0080 unic-common": 1,
       "RUSTSEC-2025-0081 unic-char-property": 1,
       "RUSTSEC-2025-0098 unic-ucd-version": 1,
-      "RUSTSEC-2025-0100 unic-ucd-ident": 1,
-      "RUSTSEC-2026-0194 quick-xml": 1,
-      "RUSTSEC-2026-0195 quick-xml": 1,
-      "RUSTSEC-2026-0221 event-listener": 1
+      "RUSTSEC-2025-0100 unic-ucd-ident": 1
     },
     "osv-frontend": {
       "CVE-2026-11525 undici": 1,
