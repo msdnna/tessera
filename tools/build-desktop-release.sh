@@ -139,7 +139,12 @@ fi
 # to whatever origin serves it (`<serverBase>/desktop/<file>`, same-origin on web)
 # — no hard-coded public domain, mirroring how the Android APK link is built.
 dl_obj() { # $1=format $2=path — prints {"format","file"} when the file exists
+  # `return 0` so a missing file (empty print) doesn't propagate non-zero: under
+  # `set -e`, `WIN_DL="$(dl_obj exe "")"` would otherwise abort the whole script
+  # right before latest.json — which is exactly what a Linux-only run (no Windows
+  # .exe staged) hits.
   [ -n "$2" ] && [ -f "$2" ] && printf '{"format":"%s","file":"%s"}' "$1" "$(basename "$2")"
+  return 0
 }
 join_csv() { # comma-join non-empty args
   local out="" a
