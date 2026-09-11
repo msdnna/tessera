@@ -75,7 +75,7 @@ func (h *API) UploadDocumentAsset(c *gin.Context) {
 		return
 	}
 	dir := filepath.Join(h.uploadDir, "documents", doc.ID.String())
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
 	}

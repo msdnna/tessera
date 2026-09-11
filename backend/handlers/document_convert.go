@@ -543,14 +543,14 @@ func (h *API) storeImportedImages(doc db.Document, page string) (string, importI
 			return ""
 		}
 		if !made {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+			if err := os.MkdirAll(dir, 0o750); err != nil {
 				stats.drop(dropMkdir, mime, len(raw))
 				return ""
 			}
 			made = true
 		}
 		fname := uuid.NewString() + ext
-		if err := os.WriteFile(filepath.Join(dir, fname), raw, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, fname), raw, 0o600); err != nil {
 			stats.drop(dropWrite, mime, len(raw))
 			return ""
 		}

@@ -313,8 +313,10 @@ func (h *API) storeChatFiles(c *gin.Context, confID uuid.UUID, files []*multipar
 	if len(files) == 0 {
 		return nil, true
 	}
+	// 0750: conf/ is written and read by this process alone — unlike rec/ next to
+	// it, which is shared with the egress worker (see recordingDirMode).
 	dir := filepath.Join(h.uploadDir, "conf", confID.String())
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return nil, false
 	}

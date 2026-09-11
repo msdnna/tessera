@@ -65,7 +65,7 @@ func (h *API) importPdfDocument(c *gin.Context, wsID uuid.UUID, fileHeader *mult
 	}
 
 	dir := filepath.Join(h.uploadDir, "documents", doc.ID.String())
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
 	}
@@ -122,7 +122,7 @@ func (h *API) UploadDocumentPdf(c *gin.Context) {
 		return
 	}
 	dir := filepath.Join(h.uploadDir, "documents", doc.ID.String())
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
 	}

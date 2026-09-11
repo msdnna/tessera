@@ -19,6 +19,13 @@ import (
 // A probe here turns that into one loud line in the log (and in Sentry) at
 // startup.
 func checkUploadDir(dir string) error {
+	// The root of the volume keeps its world-execute bit while every directory
+	// the handlers create below it is 0750. It is the one level with a second
+	// user: the egress worker (uid 1001, gid 0) has to traverse it to reach
+	// rec/<conference>/ and write the mp4 there. 0750 would make the owner the
+	// only one who can enter, and the recording would fail at its last step —
+	// after the call has already been recorded.
+	// #nosec G301 -- общий с egress том: корень должен оставаться проходимым для чужого uid
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("создать каталог: %w", err)
 	}

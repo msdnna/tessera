@@ -78,8 +78,12 @@ func (h *API) UploadMedia(c *gin.Context) {
 		return
 	}
 
+	// 0750, not 0755: everything under uploadDir is read back through a handler
+	// of this process, so nothing outside it needs the world bits. The one
+	// exception is the recordings subtree, which egress writes into as another
+	// uid — see recordingDirMode.
 	dir := filepath.Join(h.uploadDir, "media")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
 	}
@@ -163,7 +167,7 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	// Store under <uploadDir>/<taskID>/<uuid><ext> so paths never collide and
 	// removing a task's files is a single directory.
 	dir := filepath.Join(h.uploadDir, id.String())
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
 	}
