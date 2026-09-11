@@ -9,7 +9,7 @@
 # при первом запуске генерится случайный и кладётся рядом с токеном.
 set -euo pipefail
 
-PORT="${SONAR_PORT:-9000}"
+PORT="${SONAR_PORT:-9001}"
 BASE="http://127.0.0.1:${PORT}"
 SECRET_DIR="${SECRET_DIR:-$HOME/.tessera}"
 TOKEN_FILE="${TOKEN_FILE:-$SECRET_DIR/sonar-token}"

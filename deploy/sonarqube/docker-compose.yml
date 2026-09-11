@@ -42,7 +42,8 @@ services:
       SONAR_SEARCH_JAVAADDITIONALOPTS: -Xmx1g -Xms1g
     ports:
       # Наружу только на loopback: стенд смотреть с этой же машины.
-      - "127.0.0.1:${SONAR_PORT:-9000}:9000"
+      # 9000 на этой машине занят стендом Sentry — отсюда 9001.
+      - "127.0.0.1:${SONAR_PORT:-9001}:9000"
     volumes:
       - ${SONAR_HOME:-/home/msdnna/sonarqube}/data:/opt/sonarqube/data
       - ${SONAR_HOME:-/home/msdnna/sonarqube}/extensions:/opt/sonarqube/extensions

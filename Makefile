@@ -628,7 +628,11 @@ test-desktop: ## cargo test on the desktop crate
 # ── SonarQube (стенд по требованию, #2937) ─────────────────
 # Отдельный compose-проект: `make up` стенд не поднимает, `make down` не гасит.
 SONAR_HOME ?= $(HOME)/sonarqube
-SONAR_PORT ?= 9000
+# 9000 занят self-hosted Sentry (его контейнер уже держит порт), поэтому 9001.
+# Проверить свободен ли порт на этой машине нельзя ни `ss` (не видит
+# опубликованные docker-порты), ни curl'ом (закрытый порт тут не отвечает
+# refused, а висит до таймаута) — единственный честный ответ даёт сам bind.
+SONAR_PORT ?= 9001
 SONAR_COMPOSE := $(COMPOSE) -p tessera-sonar -f deploy/sonarqube/docker-compose.yml
 
 .PHONY: sonar-up

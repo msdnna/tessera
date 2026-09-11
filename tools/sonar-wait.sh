@@ -7,7 +7,7 @@
 # стенде, и следующий шаг падает непонятным connection refused.
 set -euo pipefail
 
-PORT="${1:-9000}"
+PORT="${1:-9001}"
 TIMEOUT="${SONAR_WAIT_TIMEOUT:-300}"
 URL="http://127.0.0.1:${PORT}/api/system/status"
 

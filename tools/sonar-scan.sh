@@ -26,11 +26,11 @@ if [[ -z "$SONAR_TOKEN" && -r "$TOKEN_FILE" ]]; then
 fi
 if [[ -z "$SONAR_TOKEN" ]]; then
 	cat >&2 <<-MSG
-	Нужен токен Sonar. Как получить:
-	  1. make sonar-up
-	  2. открыть http://127.0.0.1:${SONAR_PORT:-9000} (admin/admin, пароль сменить)
-	  3. My Account -> Security -> Generate Token (тип: Global Analysis Token)
-	  4. echo '<token>' > $TOKEN_FILE   (или export SONAR_TOKEN=...)
+	Нужен токен Sonar:
+	  make sonar-up && make sonar-token
+	Токен ляжет в $TOKEN_FILE. Вручную — UI на
+	http://127.0.0.1:${SONAR_PORT:-9001}, My Account -> Security -> Generate Token
+	(тип: Global Analysis Token), затем export SONAR_TOKEN=...
 	MSG
 	exit 1
 fi
