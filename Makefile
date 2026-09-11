@@ -372,6 +372,47 @@ lint: lint-backend lint-frontend lint-mcp ## Lint everything
 .PHONY: test
 test: test-backend test-frontend test-mcp ## Test everything
 
+# ── Security scanning (SAST/SCA, #2936) ────────────────────
+# Separate from `lint`: these reach the network (vulnerability databases) and
+# take far longer than a linter, so they must not sit in the pre-commit gate.
+# Reports land in reports/security/ as SARIF — gitignored like reports/coverage.
+# @latest rather than pinned versions: the worth of a vulnerability scanner is
+# its database, and an old binary bundles an old matcher. They are variables all
+# the same, because the newest govulncheck and osv-scanner ask for a newer Go
+# toolchain than this repo pins — a host that cannot fetch one installs the last
+# releases that build under it:
+#   make scan-tools GOVULNCHECK_PKG=golang.org/x/vuln/cmd/govulncheck@v1.1.4 \
+#                   OSVSCANNER_PKG=github.com/google/osv-scanner/cmd/osv-scanner@v1.9.2
+GOVULNCHECK_PKG ?= golang.org/x/vuln/cmd/govulncheck@latest
+GOSEC_PKG       ?= github.com/securego/gosec/v2/cmd/gosec@latest
+OSVSCANNER_PKG  ?= github.com/google/osv-scanner/v2/cmd/osv-scanner@latest
+GITLEAKS_PKG    ?= github.com/zricethezav/gitleaks/v8@latest
+
+.PHONY: scan-tools
+scan-tools: ## Install the SAST/SCA scanners into GOPATH/bin
+	@# Plain `go`, not $(GO): these tools pick their own toolchain via GOTOOLCHAIN,
+	@# and pinning them to the repo's go1.25.9 would only fail the install.
+	go install $(GOVULNCHECK_PKG)
+	go install $(GOSEC_PKG)
+	go install $(OSVSCANNER_PKG)
+	go install $(GITLEAKS_PKG)
+
+.PHONY: scan-backend
+scan-backend: ## SAST/SCA for the backend (govulncheck + gosec)
+	./tools/security-scan.sh backend
+
+.PHONY: scan-frontend
+scan-frontend: ## SCA for the frontend (osv-scanner over yarn.lock)
+	./tools/security-scan.sh frontend
+
+.PHONY: scan-secrets
+scan-secrets: ## Secret scan of the working tree (gitleaks)
+	./tools/security-scan.sh secrets
+
+.PHONY: scan
+scan: ## Run every security scan (backend + frontend + secrets)
+	./tools/security-scan.sh all
+
 # ── Versioning ─────────────────────────────────────────────
 .PHONY: version
 version: ## Show service versions

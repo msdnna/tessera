@@ -33,6 +33,7 @@ jobs:
       android: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true') }}
       mcp:     ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.mcp == 'true') }}
       desktop: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.desktop == 'true') }}
+      security: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.security == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -83,6 +84,18 @@ jobs:
             desktop:
               - 'desktop/**'
               - 'frontend/**'
+              - '.github/workflows/ci.yml'
+            # Dependency and secret scanning: the Go sources (govulncheck walks
+            # the call graph, so any code change can change the verdict), the
+            # lockfiles, and the scanner itself. Not 'frontend/**' — a .vue edit
+            # cannot change what osv-scanner reads out of yarn.lock.
+            security:
+              - 'backend/**'
+              - 'mcp/**'
+              - 'frontend/yarn.lock'
+              - 'frontend/package.json'
+              - 'tools/security-scan.sh'
+              - 'Makefile'
               - '.github/workflows/ci.yml'
 
   backend:
@@ -617,6 +630,60 @@ jobs:
           workspaces: desktop/src-tauri
       - name: fmt + clippy
         run: make lint-desktop
+
+  security:
+    name: Security (SAST/SCA)
+    needs: changes
+    if: ${{ needs.changes.outputs.security == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Publishing the SARIF into the Security tab, same as the CodeQL workflow.
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      # govulncheck's own go.mod asks for a newer toolchain than this repo pins;
+      # `auto` lets the install fetch it instead of failing the job.
+      - name: Install scanners
+        env:
+          GOTOOLCHAIN: auto
+        run: make scan-tools
+
+      # SCAN_FAIL_ON stays at its default `none` — this job reports, it does not
+      # yet gate. Turning it into a gate is the ratchet in #2939; doing it before
+      # the baseline is triaged would just mean a permanently red develop.
+      - name: Scan (govulncheck + gosec + osv-scanner + gitleaks)
+        run: make scan
+
+      # A directory upload: the action picks up every .sarif and keys them by the
+      # tool name inside each file, so the four scanners stay distinguishable.
+      - name: Publish SARIF to code scanning
+        if: ${{ always() }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/security
+          category: sast-sca
+
+      - name: Upload reports artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: reports/security/
+          retention-days: 14
 
   # ─── Build verification (push only) ───────────────────────────────────────
   build-verify:
