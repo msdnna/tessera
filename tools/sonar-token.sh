@@ -38,9 +38,14 @@ fi
 if [[ -r "$PASS_FILE" ]]; then
 	ADMIN_PASS="$(tr -d '\n' < "$PASS_FILE")"
 else
-	# /dev/urandom, а не openssl: на этой машине лишней зависимости в скрипте
-	# лучше не заводить, а base64 есть в coreutils.
-	ADMIN_PASS="$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-24)"
+	# /dev/urandom, а не openssl: лишней зависимости в скрипте лучше не
+	# заводить, а base64 есть в coreutils.
+	#
+	# Хвост `-Aa9!` не украшение: политика паролей Sonar требует строчную,
+	# заглавную, цифру и спецсимвол, а случайная алфавитно-цифровая строка
+	# какой-нибудь класс рано или поздно не наберёт — и смена пароля упадёт
+	# с 400 не каждый раз, а через раз.
+	ADMIN_PASS="$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-20)-Aa9!"
 fi
 
 # Сменить пароль можно только с текущего; на свежем стенде это admin/admin,
@@ -61,11 +66,19 @@ fi
 if [[ "$auth" == "admin" ]]; then
 	# Пока пароль дефолтный, Sonar помечает пользователя как "must change
 	# password" и отклоняет часть API — меняем в первую очередь.
-	curl -sS --fail --max-time 10 -u "admin:admin" -X POST \
+	# Без --fail: при отказе Sonar кладёт причину в тело (например
+	# «Password must contain at least one special character»), а --fail её
+	# глотает и оставляет голое «curl: (22) error 400».
+	resp="$(curl -sS --max-time 10 -w '\n%{http_code}' -u "admin:admin" -X POST \
 		--data-urlencode "login=admin" \
 		--data-urlencode "previousPassword=admin" \
 		--data-urlencode "password=$ADMIN_PASS" \
-		"$BASE/api/users/change_password" > /dev/null
+		"$BASE/api/users/change_password")"
+	code="$(printf '%s' "$resp" | tail -n1)"
+	if [[ "$code" != 2* ]]; then
+		echo "Смена пароля admin не удалась (HTTP $code): $(printf '%s' "$resp" | sed '$d')" >&2
+		exit 1
+	fi
 	printf '%s\n' "$ADMIN_PASS" > "$PASS_FILE"
 	chmod 600 "$PASS_FILE"
 	echo "Пароль admin сменён, сохранён в $PASS_FILE"
