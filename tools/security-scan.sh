@@ -30,9 +30,12 @@ ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 OUT="$ROOT/reports/security"
 mkdir -p "$OUT"
 
-# The Go tools land in GOPATH/bin, which is not always on PATH under make.
+# tools/bin first: that is where install-scanners.sh puts the pinned versions,
+# and they must win over whatever a developer happens to have in GOPATH/bin.
+# GOPATH/bin still trails it — govulncheck has no release binary and may already
+# live there — and it is appended because make does not always pass it through.
 GOPATH_BIN="$(go env GOPATH 2>/dev/null || echo "$HOME/go")/bin"
-export PATH="$PATH:$GOPATH_BIN"
+export PATH="$ROOT/tools/bin:$PATH:$GOPATH_BIN"
 
 FAIL_ON="${SCAN_FAIL_ON:-none}"
 ALLOW_MISSING="${SCAN_ALLOW_MISSING:-0}"
@@ -162,11 +165,16 @@ scan_secrets() {
 
   # Working tree only (`dir`), not history: history rewriting is not on the
   # table, so a hit in an old commit is a rotate-the-credential task, not
-  # something a pre-commit gate can act on. `make scan-secrets-history` covers
-  # the audit case separately.
+  # something a pre-commit gate can act on. A one-off history audit is
+  # `gitleaks git .` by hand — deliberately not a make target, so nobody wires
+  # a minutes-long full-history walk into a routine scan.
   if have gitleaks; then
     echo "  · gitleaks (working tree)"
-    (cd "$ROOT" && gitleaks dir . --report-format sarif --report-path "$OUT/gitleaks.sarif" \
+    # --config explicitly, not by auto-discovery: gitleaks only picks
+    # .gitleaks.toml up implicitly for some scan modes, and a silently unused
+    # config would put twelve build-artefact false positives back in the report.
+    (cd "$ROOT" && gitleaks dir . --config .gitleaks.toml \
+      --report-format sarif --report-path "$OUT/gitleaks.sarif" \
       --no-banner >"$OUT/gitleaks.log" 2>&1) || true
     summarise "gitleaks" "$OUT/gitleaks.sarif"
   fi

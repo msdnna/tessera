@@ -27,6 +27,10 @@ mcp/coverage.out
 mcp/cover.html
 reports/
 _badges/
+
+# SAST/SCA scanner binaries (#2936) — pinned by tools/install-scanners.sh,
+# fetched on demand rather than vendored.
+tools/bin/
 .yarn/*
 !.yarn/patches
 .pnp.*

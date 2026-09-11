@@ -95,6 +95,8 @@ jobs:
               - 'frontend/yarn.lock'
               - 'frontend/package.json'
               - 'tools/security-scan.sh'
+              - 'tools/install-scanners.sh'
+              - '.gitleaks.toml'
               - 'Makefile'
               - '.github/workflows/ci.yml'
 
