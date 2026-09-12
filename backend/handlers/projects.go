@@ -32,6 +32,59 @@ func normTreeMode(m string) string {
 
 // ── Project groups ─────────────────────────────────────────
 
+// groupParentAllowed authorizes the parent_id a caller sends in the *body* of a
+// create/move. The route's :id is checked by the caller (requireMember or
+// loadGroup); the parent is a second reference to a group the caller may have no
+// rights to, and nothing else ties it to the workspace being edited.
+//
+// Two things go wrong without it. A parent in someone else's workspace drops the
+// branch out of both trees at once — the client lists the groups of one
+// workspace, so a parent it never sees makes the branch unreachable, while
+// workspace_id (and with it every authorization check) still points at the old
+// workspace. And a parent inside the moved group's own subtree closes the tree
+// into a cycle with no root: both clients walk parent_id by recursion, so what
+// the database holds as one odd row lands as an unbounded walk in the sidebar of
+// every member — broadcast to them and surviving a reload, with the sidebar
+// itself being the only UI that could undo it.
+//
+// moved is uuid.Nil on create (nothing can be below a group that does not exist
+// yet). Mirrors reparentAllowed for documents, which is the same tree.
+func (h *API) groupParentAllowed(c *gin.Context, wsID, moved uuid.UUID, parentID *uuid.UUID) bool {
+	if parentID == nil {
+		return true
+	}
+	parent, err := h.q.GetProjectGroup(c, *parentID)
+	if notFound(c, err) {
+		return false
+	}
+	if err != nil {
+		fail(c, err)
+		return false
+	}
+	if parent.WorkspaceID != wsID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "parent group belongs to another workspace"})
+		return false
+	}
+	if moved == uuid.Nil {
+		return true
+	}
+	// Walk up from the proposed parent: meeting the moved group on the way to the
+	// root means the parent sits below it. The walk starts at the parent itself,
+	// so "be your own parent" is the same case and needs no separate branch.
+	ancestors, err := h.q.ProjectGroupAncestorIDs(c, *parentID)
+	if err != nil {
+		fail(c, err)
+		return false
+	}
+	for _, id := range ancestors {
+		if id == moved {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "cannot move a group into itself or its own subtree"})
+			return false
+		}
+	}
+	return true
+}
+
 // CreateProjectGroup adds a group to a workspace, optionally nested in a parent.
 func (h *API) CreateProjectGroup(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
@@ -44,6 +97,9 @@ func (h *API) CreateProjectGroup(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.groupParentAllowed(c, wsID, uuid.Nil, req.ParentID) {
 		return
 	}
 	maxPos, err := h.q.MaxProjectGroupPosition(c, wsID)
@@ -119,8 +175,7 @@ func (h *API) MoveProjectGroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if req.ParentID != nil && *req.ParentID == g.ID {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "a group cannot be its own parent"})
+	if !h.groupParentAllowed(c, g.WorkspaceID, g.ID, req.ParentID) {
 		return
 	}
 	prev, next, ok := h.neighborGroupPositions(c, req.BeforeID, req.AfterID)
