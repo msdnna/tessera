@@ -478,6 +478,28 @@ func (q *Queries) SetNotificationChannelVerified(ctx context.Context, arg SetNot
 	return err
 }
 
+const stripChannelFromRoutes = `-- name: StripChannelFromRoutes :exec
+UPDATE notification_routes
+SET channel_ids = array_remove(channel_ids, $1::uuid), updated_at = now()
+WHERE user_id = $2 AND $1::uuid = ANY(channel_ids)
+`
+
+type StripChannelFromRoutesParams struct {
+	ChannelID uuid.UUID `json:"channel_id"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
+// StripChannelFromRoutes drops a channel's id out of every routing rule of its
+// owner. notification_routes.channel_ids is a plain uuid[] with no FK, so the
+// channel delete leaves the id behind on its own; the dispatcher then skips the
+// unresolvable id silently, and — worse — the rule's next save fails the
+// ownership check, so the settings screen cannot even toggle it off again.
+// Scoped to the owner, so it can never touch someone else's rules.
+func (q *Queries) StripChannelFromRoutes(ctx context.Context, arg StripChannelFromRoutesParams) error {
+	_, err := q.db.Exec(ctx, stripChannelFromRoutes, arg.ChannelID, arg.UserID)
+	return err
+}
+
 const updateNotificationChannel = `-- name: UpdateNotificationChannel :one
 UPDATE notification_channels
 SET label = $3, config = $4, secret_enc = $5, enabled = $6, template = $7, updated_at = now()

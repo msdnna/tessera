@@ -225,8 +225,16 @@ func (h *API) DeleteNotificationChannel(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.q.DeleteNotificationChannel(c, db.DeleteNotificationChannelParams{
-		ID: id, UserID: middleware.CurrentUser(c),
+	uid := middleware.CurrentUser(c)
+	// One transaction with the scrub: channel_ids is a bare uuid[], so nothing in
+	// the schema clears the reference. Leaving it behind wedges the rule — the
+	// settings screen echoes the stored ids back on the next save (even a plain
+	// enable toggle) and channelsOwned then rejects it as someone else's channel.
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if err := q.DeleteNotificationChannel(c, db.DeleteNotificationChannelParams{ID: id, UserID: uid}); err != nil {
+			return err
+		}
+		return q.StripChannelFromRoutes(c, db.StripChannelFromRoutesParams{ChannelID: id, UserID: uid})
 	}); err != nil {
 		fail(c, err)
 		return

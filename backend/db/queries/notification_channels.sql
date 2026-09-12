@@ -33,6 +33,17 @@ UPDATE notification_channels SET verified = $3, updated_at = now() WHERE id = $1
 -- name: DeleteNotificationChannel :exec
 DELETE FROM notification_channels WHERE id = $1 AND user_id = $2;
 
+-- StripChannelFromRoutes drops a channel's id out of every routing rule of its
+-- owner. notification_routes.channel_ids is a plain uuid[] with no FK, so the
+-- channel delete leaves the id behind on its own; the dispatcher then skips the
+-- unresolvable id silently, and — worse — the rule's next save fails the
+-- ownership check, so the settings screen cannot even toggle it off again.
+-- Scoped to the owner, so it can never touch someone else's rules.
+-- name: StripChannelFromRoutes :exec
+UPDATE notification_routes
+SET channel_ids = array_remove(channel_ids, @channel_id::uuid), updated_at = now()
+WHERE user_id = @user_id AND @channel_id::uuid = ANY(channel_ids);
+
 -- ── Routes (per-user) ──────────────────────────────────────
 
 -- name: CreateNotificationRoute :one

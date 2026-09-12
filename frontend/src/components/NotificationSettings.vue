@@ -181,9 +181,9 @@ function channelName(id) {
   const c = channels.value.find((x) => x.id === id)
   return c ? channelTitle(c) : '—'
 }
-// `notification_routes.channel_ids` is a plain uuid[] with no FK, and the backend
-// doesn't scrub it on channel delete — so warn up front instead of silently
-// leaving routes pointing at a dead channel (they'd render as «—»).
+// The backend scrubs the deleted channel out of `channel_ids`, so the rules stay
+// editable — but a rule that named only this channel is left delivering nowhere.
+// Worth saying up front rather than letting it go quiet.
 function usedInRoutesHint(c) {
   const n = routes.value.filter((r) => (r.channel_ids || []).includes(c.id)).length
   if (!n) return ''
