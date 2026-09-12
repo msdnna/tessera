@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.security.SecureRandom
 import java.util.Locale
 import kotlin.math.roundToInt
 import okhttp3.Request
@@ -261,6 +262,57 @@ private fun fetchResource(url: String): WebResourceResponse? {
     return WebResourceResponse(mime, null, resp.code, reason, emptyMap(), body.byteStream())
 }
 
+/**
+ * Единственный удалённый скрипт документа — mermaid. Версия прибита точно (не
+ * `@11`), а [MERMAID_SRI] — sha384 ровно того файла, который лежит в npm-пакете
+ * `mermaid@11.17.2`, то есть в бандле web-клиента: одна и та же диаграмма
+ * рисуется одним и тем же кодом на обоих клиентах.
+ */
+internal const val MERMAID_VERSION = "11.17.2"
+internal const val MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@$MERMAID_VERSION/dist/mermaid.min.js"
+internal const val MERMAID_SRI = "sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2"
+
+/** Разовый nonce для единственного инлайнового скрипта документа. */
+private fun scriptNonce(): String {
+    val bytes = ByteArray(16)
+    SecureRandom().nextBytes(bytes)
+    return bytes.joinToString("") { String.format(Locale.US, "%02x", it) }
+}
+
+/**
+ * Политика документа (#2932).
+ *
+ * DOMPurify стоит перед `innerHTML`, но он — единственный рубеж, а за ним
+ * включённый JS, мост `AndroidRich` и `shouldInterceptRequest`, подставляющий
+ * Bearer. CSP — второй рубеж: и обход санитайзера, и дыра в самом mermaid
+ * (его SVG кладётся в `innerHTML` уже без DOMPurify) упираются в то, что
+ * выполнить получится только код из APK и один прибитый файл с CDN.
+ *
+ * Что где:
+ * - `script-src` — ассеты APK (`file:`), инлайновый скрипт по nonce и mermaid;
+ *   без `'unsafe-inline'`, поэтому `onerror=` и `javascript:` мертвы;
+ * - `style-src` — с `'unsafe-inline'`: стили документа инлайновые, и mermaid
+ *   кладёт свои внутрь SVG. Nonce тут не ставим намеренно — он бы отменил
+ *   `'unsafe-inline'` и диаграммы поехали бы;
+ * - `img-src` — широкий: картинку в задачу можно вставить с любого адреса;
+ * - `connect-src 'none'` — странице незачем самой ходить в сеть (UMD-сборка
+ *   mermaid самодостаточна, чанков не подгружает);
+ * - `base-uri`/`form-action`/`frame-src`/`object-src` закрыты: это пути,
+ *   которые обходят `script-src`.
+ */
+private fun contentSecurityPolicy(nonce: String): String = listOf(
+    "default-src 'none'",
+    "script-src 'nonce-$nonce' file: $MERMAID_URL",
+    "style-src 'unsafe-inline' file:",
+    "img-src file: data: blob: http: https:",
+    "font-src file: data:",
+    "connect-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-src 'none'",
+    "object-src 'none'",
+).joinToString("; ")
+
 private fun hex(c: Color): String =
     String.format(Locale.US, "#%02X%02X%02X", (c.red * 255).roundToInt(), (c.green * 255).roundToInt(), (c.blue * 255).roundToInt())
 
@@ -277,12 +329,14 @@ internal fun buildRichHtml(
     helpSlugs: List<String> = emptyList(),
 ): String {
     val hljsTheme = if (c.isDark) "github-dark" else "github"
+    val nonce = scriptNonce()
     val src = JSONObject.quote(source)
     val root = JSONObject.quote(serverRoot)
     val mentionsJson = org.json.JSONArray(mentions).toString()
     val helpSlugsJson = org.json.JSONArray(helpSlugs).toString()
     return """
 <!DOCTYPE html><html><head>
+<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy(nonce)}">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <link rel="stylesheet" href="file:///android_asset/richcontent/hljs-$hljsTheme.min.css">
 ${richStyles(c, interactive)}
@@ -290,7 +344,7 @@ ${richStyles(c, interactive)}
 <div id="content"></div>
 <script src="file:///android_asset/richcontent/marked.umd.js"></script>
 <script src="file:///android_asset/richcontent/purify.min.js"></script>
-<script>
+<script nonce="$nonce">
   var SRC = $src, ROOT = $root, MENTIONS = $mentionsJson, INTERACTIVE = $interactive;
   var MENTION_CARDS = $mentionCards, TASK_REFS = $taskRefs, HELP_LINKS = $helpLinks;
   var HELP_SLUGS = $helpSlugsJson;
@@ -460,7 +514,15 @@ ${richStyles(c, interactive)}
   }
   if (mer.length) {
     var m = document.createElement('script');
-    m.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+    m.src = '$MERMAID_URL';
+    // Pinned version + SRI: this is the only code in the document that does not
+    // come from the APK, and it is untrusted task text that asks for it (a
+    // ```mermaid block). A floating `@11` meant "run whatever the CDN serves
+    // today"; `integrity` checks the bytes instead, so a swapped mermaid — at
+    // the CDN or on the way — simply does not execute. The hash is the one of
+    // the npm package the web client bundles.
+    m.integrity = '$MERMAID_SRI';
+    m.crossOrigin = 'anonymous';
     m.onload = function(){
       mermaid.initialize({startOnLoad:false, securityLevel:'strict', theme: ${if (c.isDark) "'dark'" else "'default'"}});
       var i = 0, jobs = [];
