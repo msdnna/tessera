@@ -1083,6 +1083,46 @@ func (q *Queries) SetTaskTitle(ctx context.Context, arg SetTaskTitleParams) erro
 	return err
 }
 
+const taskAncestorIDs = `-- name: TaskAncestorIDs :many
+WITH RECURSIVE up AS (
+    SELECT a.id, a.parent_id FROM tasks a WHERE a.id = $1
+    UNION
+    SELECT t.id, t.parent_id FROM tasks t JOIN up ON t.id = up.parent_id
+)
+SELECT id FROM up
+`
+
+// TaskAncestorIDs returns the task itself followed by its parents, up to the
+// root. Used to reject attaching a task below one of its own descendants, which
+// would leave the branch ringed with no root — and a subtask nobody can reach
+// from a root is drawn nowhere, so the whole ring drops off the board. Nesting
+// is not depth-limited, so the one-level check this replaced was not enough.
+// Mirrors ProjectGroupAncestorIDs and DocumentAncestorIDs, membership test in Go
+// included (sqlc cannot resolve a recursive CTE inside a subquery).
+//
+// UNION rather than UNION ALL: an install that already grew a ring through the
+// unguarded handler must still get an answer here instead of spinning, and
+// dedup on the row is what stops the walk when it comes back around.
+func (q *Queries) TaskAncestorIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskAncestorIDs, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transferTask = `-- name: TransferTask :one
 UPDATE tasks
 SET board_id = $2, column_id = $3, parent_id = NULL, position = $4, updated_at = now()

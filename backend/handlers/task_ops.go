@@ -585,9 +585,24 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 		if err := h.sameWorkspaceTask(c, parent, wsID); err != nil {
 			return t, err
 		}
-		// The parent must not itself be a child of this task (1-level cycle).
-		if parent.ParentID != nil && *parent.ParentID == t.ID {
-			return t, userErr("cyclic parent")
+		// …and it must not sit anywhere below this task. Subtask nesting has no
+		// depth limit (CreateTask hangs a subtask off a subtask without complaint),
+		// so checking only the direct child — as this did — left the two-step
+		// version open: A → B → C, then A under C rings all three with no root.
+		// A subtask is drawn under its parent and ListBoardTasks takes only
+		// parent_id IS NULL, so a ring nobody can reach from a root is drawn
+		// nowhere and the cards drop off the board for every member.
+		//
+		// Same guard as groups and documents, and the walk starts at the parent
+		// itself, so "be your own parent" is covered by the same code.
+		ancestors, err := h.q.TaskAncestorIDs(c, parent.ID)
+		if err != nil {
+			return t, err
+		}
+		for _, id := range ancestors {
+			if id == t.ID {
+				return t, userErr("cannot attach a task to itself or to one of its own subtasks")
+			}
 		}
 		boardID, columnID = parent.BoardID, parent.ColumnID
 	}

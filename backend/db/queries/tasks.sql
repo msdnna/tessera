@@ -166,6 +166,25 @@ RETURNING *;
 -- name: MoveSubtasksToBoard :exec
 UPDATE tasks SET board_id = $2, column_id = $3, updated_at = now() WHERE parent_id = $1;
 
+-- TaskAncestorIDs returns the task itself followed by its parents, up to the
+-- root. Used to reject attaching a task below one of its own descendants, which
+-- would leave the branch ringed with no root — and a subtask nobody can reach
+-- from a root is drawn nowhere, so the whole ring drops off the board. Nesting
+-- is not depth-limited, so the one-level check this replaced was not enough.
+-- Mirrors ProjectGroupAncestorIDs and DocumentAncestorIDs, membership test in Go
+-- included (sqlc cannot resolve a recursive CTE inside a subquery).
+--
+-- UNION rather than UNION ALL: an install that already grew a ring through the
+-- unguarded handler must still get an answer here instead of spinning, and
+-- dedup on the row is what stops the walk when it comes back around.
+-- name: TaskAncestorIDs :many
+WITH RECURSIVE up AS (
+    SELECT a.id, a.parent_id FROM tasks a WHERE a.id = $1
+    UNION
+    SELECT t.id, t.parent_id FROM tasks t JOIN up ON t.id = up.parent_id
+)
+SELECT id FROM up;
+
 -- name: SetTaskParent :one
 UPDATE tasks
 SET parent_id = $2, board_id = $3, column_id = $4, updated_at = now()
