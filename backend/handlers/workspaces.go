@@ -191,6 +191,21 @@ func (h *API) AddMember(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// Adding an existing member is an upsert, so this route carries the same role
+	// change as UpdateMemberRole — and must refuse the owner for the same reason,
+	// or an admin takes the workspace by re-adding its owner as a plain member.
+	ws, err := h.q.GetWorkspace(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if user.ID == ws.OwnerID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "cannot change the workspace owner's role"})
+		return
+	}
 	m, err := h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: id, UserID: user.ID, Role: role})
 	if err != nil {
 		fail(c, err)
