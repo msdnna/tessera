@@ -134,6 +134,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// LiveKit through here. Set once, before any room exists — rooms copy it as
 	// they are created.
 	confRooms.SetEnforcer(rh.ConfEnforcer())
+	// Both password doors live on authHandler, all three socket registries on rh
+	// (#2932). Wired after WireDocRooms/WireConfRooms above so the revoker closes
+	// over an API that already has them.
+	authHandler.WireSocketRevoker(rh.SocketRevoker())
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 

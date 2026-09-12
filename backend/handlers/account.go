@@ -176,6 +176,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	}
 	soft(c, "MarkUserTokenUsed", h.q.MarkUserTokenUsed(c, tok.ID))
 	soft(c, "RevokeAllUserTokens", h.q.RevokeAllUserTokens(c, tok.UserID)) // log out other sessions
+	h.dropSockets(tok.UserID, "password reset")
 	c.Status(http.StatusNoContent)
 }
 
@@ -196,6 +197,14 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // never reached. That makes this a 200 carrying a session where it used to be a
 // 204; a client that ignores the body is no worse off than one whose user reset
 // the password from the login form.
+//
+// Revocation reaches the sockets too, not just the refresh chain (#2932). A
+// WebSocket authorises exactly once, at the upgrade, and then lives on ping/pong
+// indefinitely — so an intruder's open tab went on receiving every event of every
+// workspace the account belongs to, holding block locks in documents and sitting
+// in calls, long after the password that let them in had been replaced. The
+// caller's own sockets go down with the rest; every client reconnects by itself,
+// now on the session this response hands back.
 //
 // Personal access tokens are deliberately left alone. They are separate
 // credentials with their own revoke button, minted for CI and MCP clients that
@@ -230,5 +239,6 @@ func (h *AuthHandler) ChangeMyPassword(c *gin.Context) {
 		return
 	}
 	soft(c, "RevokeAllUserTokens", h.q.RevokeAllUserTokens(c, uid))
+	h.dropSockets(uid, "password changed")
 	h.issue(c, u)
 }

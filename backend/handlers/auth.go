@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -28,6 +29,25 @@ type AuthHandler struct {
 	publicURL string
 	// One-time codes for the desktop OAuth deep link — see oauth_handoff.go.
 	handoff *oauthHandoffStore
+	// revokeSockets cuts the user's live WebSockets when their password changes
+	// (#2932). Optional: tests that build an AuthHandler directly leave it nil,
+	// and a nil revoker simply means "no sockets to cut here".
+	revokeSockets func(uuid.UUID, string)
+}
+
+// WireSocketRevoker injects the socket revocation behaviour owned by API (see
+// API.SocketRevoker). Called once at router construction, before any request.
+func (h *AuthHandler) WireSocketRevoker(revoke func(uuid.UUID, string)) { h.revokeSockets = revoke }
+
+// dropSockets ends every live connection the user holds. Both password doors
+// call it: a socket authenticates once, at the upgrade, and then lives on
+// ping/pong for as long as the process does — so revoking the refresh chain
+// alone leaves whoever the password change was aimed at still connected,
+// receiving the account's events in real time.
+func (h *AuthHandler) dropSockets(userID uuid.UUID, reason string) {
+	if h.revokeSockets != nil {
+		h.revokeSockets(userID, reason)
+	}
 }
 
 // NewAuthHandler returns an AuthHandler with the given queries, signing secret,

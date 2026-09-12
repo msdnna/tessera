@@ -132,6 +132,13 @@ func (h *API) revokeUserSockets(userID uuid.UUID, reason string) {
 	}
 }
 
+// SocketRevoker hands revokeUserSockets to AuthHandler, which owns the two
+// password doors but none of the three socket registries (#2932). Same shape as
+// ConfEnforcer: one behaviour, handed across the seam as a function rather than
+// by giving the auth layer the hub, the document rooms and the conference rooms
+// to reach into.
+func (h *API) SocketRevoker() func(uuid.UUID, string) { return h.revokeUserSockets }
+
 // notifyConfRoom nudges everyone currently in a conference that something they
 // are looking at changed outside the socket — today the chat (#2873).
 //
