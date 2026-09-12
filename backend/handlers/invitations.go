@@ -98,6 +98,13 @@ func (h *API) ListInvitations(c *gin.Context) {
 }
 
 // DeleteInvitation revokes a pending invitation (owner/admin of its workspace).
+//
+// The delete is scoped by the workspace from the URL, which is the one the
+// caller's role was checked against. Unscoped, managing any workspace — one's
+// own is enough — let a caller burn a pending invitation anywhere on the
+// install; the door that needs no guessing is a demoted admin, who read the ids
+// out of ListInvitations while the role lasted and can spend them for the whole
+// week the invitations stay live.
 func (h *API) DeleteInvitation(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -110,8 +117,13 @@ func (h *API) DeleteInvitation(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.q.DeleteInvitation(c, invID); err != nil {
+	n, err := h.q.DeleteInvitation(c, db.DeleteInvitationParams{ID: invID, WorkspaceID: id})
+	if err != nil {
 		fail(c, err)
+		return
+	}
+	if n == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found in this workspace"})
 		return
 	}
 	c.Status(http.StatusNoContent)
