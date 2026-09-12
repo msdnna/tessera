@@ -179,6 +179,33 @@ func rewriteInbound(body string, ours func(string) (string, bool), proxy func(st
 	})
 }
 
+// streamProxied hands a proxied GitLab response to the caller on our own origin.
+//
+// The HMAC bounds which file may be fetched; it says nothing about what the file
+// is. Both proxies are public and same-origin, so whatever they return renders
+// with the app's session — and the bytes, along with the Content-Type GitLab
+// declares for them, come from an attachment somebody put on a synced issue. An
+// SVG (or, on the uploads-API branch, anything at all) would therefore decide
+// for itself that it is active content on the origin that holds the session in
+// localStorage, via a link the sync itself wrote into the task description.
+//
+// So: the declared type is honoured only for the image types Tessera serves
+// inline anywhere else (inlineSafeTypes, shared with ServeUpload and
+// DocumentAsset), and everything else is handed over as an opaque download.
+// nosniff pins the verdict and the sandbox CSP neuters anything that still gets
+// rendered — both inert for the real screenshots this proxy exists to show.
+func streamProxied(c *gin.Context, ct string, length int64, body io.Reader) {
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+	base, _, _ := strings.Cut(ct, ";")
+	if !inlineSafeTypes[strings.ToLower(strings.TrimSpace(base))] {
+		c.Header("Content-Disposition", "attachment")
+		ct = "application/octet-stream"
+	}
+	c.DataFromReader(http.StatusOK, length, ct, body, nil)
+}
+
 // GitlabAsset proxies a signed GitLab upload: it verifies the HMAC, then streams
 // the file from the workspace integration's GitLab using the owner's token.
 // Public (an <img> can't send auth) but only serves Tessera-signed paths.
@@ -232,12 +259,7 @@ func (h *API) GitlabAsset(c *gin.Context) {
 			if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
 				if resp.StatusCode == http.StatusOK {
 					defer func() { _ = resp.Body.Close() }()
-					ct := resp.Header.Get("Content-Type")
-					if ct == "" {
-						ct = "application/octet-stream"
-					}
-					c.Header("Cache-Control", "private, max-age=3600")
-					c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+					streamProxied(c, resp.Header.Get("Content-Type"), resp.ContentLength, resp.Body)
 					return
 				}
 				_ = resp.Body.Close()
@@ -257,11 +279,7 @@ func (h *API) GitlabAsset(c *gin.Context) {
 				// A sign-in redirect serves HTML — only stream real binary content.
 				if resp.StatusCode == http.StatusOK && !strings.HasPrefix(ct, "text/html") {
 					defer func() { _ = resp.Body.Close() }()
-					if ct == "" {
-						ct = "application/octet-stream"
-					}
-					c.Header("Cache-Control", "private, max-age=3600")
-					c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+					streamProxied(c, ct, resp.ContentLength, resp.Body)
 					return
 				}
 				_ = resp.Body.Close()
@@ -387,8 +405,7 @@ func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) boo
 		// Accept a real image only (200, non-text). A sign-in HTML page or a
 		// remaining 3xx means this attempt didn't authenticate — try the next.
 		if resp.StatusCode == http.StatusOK && ct != "" && !strings.HasPrefix(ct, "text/") {
-			c.Header("Cache-Control", "private, max-age=3600")
-			c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+			streamProxied(c, ct, resp.ContentLength, resp.Body)
 			_ = resp.Body.Close()
 			return true
 		}

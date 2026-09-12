@@ -48,6 +48,18 @@ var inlineSafeExts = func() map[string]bool {
 	return m
 }()
 
+// inlineSafeTypes is the same allowlist keyed by content type, for bytes that
+// arrive with a declared type instead of a filename — what the GitLab proxies
+// get back from the instance. Same source of truth as inlineSafeExts, so the
+// two public serve paths and the two proxy paths can never drift apart.
+var inlineSafeTypes = func() map[string]bool {
+	m := make(map[string]bool, len(mediaExts))
+	for ct := range mediaExts {
+		m[ct] = true
+	}
+	return m
+}()
+
 // mediaNameRe guards the public serve route against path traversal.
 var mediaNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+\.[a-z0-9]+$`)
 

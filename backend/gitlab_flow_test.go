@@ -132,6 +132,43 @@ type fakeGitlab struct {
 	// Every path the backend asked for, as it arrived on the wire. The asset
 	// proxy test reads it to see where a signed link actually pointed.
 	seen []string
+
+	// Attachment bytes the instance serves under "/uploads/…", keyed by that
+	// suffix. A real GitLab exposes the same file on three routes (the uploads
+	// API, the project web route, the avatar URL), and the proxy tries them in
+	// that order, so the fake answers on any path ending in a registered key.
+	uploads map[string]fakeUpload
+}
+
+// fakeUpload is one attachment the fake instance hands back, declared type and
+// all — the content type is the whole point for the proxy tests.
+type fakeUpload struct {
+	contentType string
+	body        string
+}
+
+// addUpload registers an attachment under "/uploads/<secret>/<name>".
+func (f *fakeGitlab) addUpload(relPath, contentType, body string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.uploads[relPath] = fakeUpload{contentType: contentType, body: body}
+}
+
+// serveUpload answers a request for a registered attachment, on whichever of
+// the three routes it arrived. Reports whether it handled the request.
+func (f *fakeGitlab) serveUpload(w http.ResponseWriter, r *http.Request) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for rel, up := range f.uploads {
+		if !strings.HasSuffix(r.URL.Path, rel) {
+			continue
+		}
+		w.Header().Set("Content-Type", up.contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(up.body))
+		return true
+	}
+	return false
 }
 
 // sawPath reports whether the backend ever requested exactly this path.
@@ -154,6 +191,7 @@ func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
 		templates: map[string]string{}, nextIID: 100, nextMsID: 9000,
 		linkedItemsWidget: true,
 		children:          map[int64][]int64{},
+		uploads:           map[string]fakeUpload{},
 	}
 	f.srv = httptest.NewServer(f)
 	t.Cleanup(f.srv.Close)
@@ -229,6 +267,9 @@ func (f *fakeGitlab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.seen = append(f.seen, r.URL.EscapedPath())
 	f.mu.Unlock()
 	switch {
+	// Attachments first: they answer on the uploads API, on the project web
+	// route and on an avatar URL alike, and none of those is a JSON endpoint.
+	case f.serveUpload(w, r):
 	case r.URL.Path == "/api/graphql":
 		f.graphql(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v4/"):
