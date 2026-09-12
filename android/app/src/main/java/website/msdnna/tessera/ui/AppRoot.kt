@@ -61,6 +61,7 @@ import website.msdnna.tessera.ui.theme.TesseraTheme
 import website.msdnna.tessera.ui.theme.accentByKey
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.DateFormatPrefs
+import website.msdnna.tessera.util.handoffAccepted
 import website.msdnna.tessera.util.isAuthError
 import website.msdnna.tessera.util.normalizeLanguage
 
@@ -69,9 +70,11 @@ private const val VERIFY_TIMEOUT_MS = 30_000L
 
 private val BrandPurple = Color(0xFF7C6CFF)
 
-/** Result of the GitLab OAuth deep link handed up from [MainActivity]. */
+/** Result of the GitLab OAuth deep link handed up from [MainActivity].
+ *  [Success.state] is the nonce the backend echoed back; it is checked against the
+ *  pending login below before the tokens are worth anything (#2932). */
 sealed interface OAuthResult {
-    data class Success(val access: String, val refresh: String) : OAuthResult
+    data class Success(val access: String, val refresh: String, val state: String = "") : OAuthResult
     data class Error(val message: String) : OAuthResult
 }
 
@@ -132,6 +135,10 @@ fun AppRoot(
 
     var boot by remember { mutableStateOf<Boot>(Boot.Loading) }
     var bootNonce by remember { mutableIntStateOf(0) }
+    // Bootstrap primes RetrofitClient from the *stored* session, so a deep-link login that
+    // overtakes it has its token wiped out from under the very request it just made. The
+    // handoff below waits for this rather than racing it.
+    var booted by remember { mutableStateOf(false) }
 
     // Match the system status/navigation bar icon colours to the theme so they
     // stay legible (and don't glare) over the app background.
@@ -164,6 +171,7 @@ fun AppRoot(
         RetrofitClient.refreshToken = refresh
         if (access.isBlank()) {
             boot = Boot.Done
+            booted = true
             return@LaunchedEffect
         }
         boot = runCatching { withTimeoutOrNull(VERIFY_TIMEOUT_MS) { authRepo.verify() } }
@@ -171,15 +179,28 @@ fun AppRoot(
                 onSuccess = { if (it == null) Boot.ConnectError else Boot.Done },
                 onFailure = { if (isAuthError(it)) Boot.AuthError else Boot.ConnectError },
             )
+        booted = true
     }
 
     // A returning OAuth deep link: persist the handed-back session (→ token flow
     // flips the gate to Main), or surface the error on the auth screen.
-    LaunchedEffect(oauthResult) {
+    LaunchedEffect(oauthResult, booted) {
+        if (!booted) return@LaunchedEffect // see `booted` — bootstrap would clobber the token
         when (val r = oauthResult) {
             null -> {}
 
             is OAuthResult.Success -> {
+                // tessera:// is an OS-wide scheme, so tokens alone prove nothing: any page
+                // in the phone's browser can fire this link and, unchecked, would sign the
+                // user into the attacker's account over a live session (#2932). Only a
+                // handoff carrying the nonce *this* app minted before opening the browser
+                // is a login we started; the nonce is burned on read, so no replays.
+                val pending = prefs.consumeOAuthNonce()
+                if (!handoffAccepted(pending, r.state)) {
+                    oauthError = "state_mismatch"
+                    onOAuthHandled()
+                    return@LaunchedEffect
+                }
                 oauthError = null
                 runCatching { authRepo.loginWithTokens(r.access, r.refresh) }
                     .onFailure { boot = if (isAuthError(it)) Boot.AuthError else Boot.ConnectError }

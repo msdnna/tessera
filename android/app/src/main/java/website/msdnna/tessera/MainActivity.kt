@@ -11,10 +11,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
-import java.net.URLDecoder
 import website.msdnna.tessera.reminders.ReminderNotifications
 import website.msdnna.tessera.ui.AppRoot
 import website.msdnna.tessera.ui.OAuthResult
+import website.msdnna.tessera.util.OAuthHandoff
+import website.msdnna.tessera.util.parseOAuthFragment
 
 class MainActivity : ComponentActivity() {
     // A task id to open on launch, set from a reminder-notification tap. Read
@@ -54,29 +55,15 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Extracts the session (or error) from a tessera://oauth/callback deep link.
-     *  The payload rides in the URL fragment so it never hits the server logs. */
+     *  The payload rides in the URL fragment so it never hits the server logs.
+     *  Whether the handoff is *ours* is decided in AppRoot, against the pending
+     *  nonce — this only reads the link (#2932). */
     private fun parseOAuth(intent: Intent?): OAuthResult? {
         val data = intent?.data ?: return null
         if (data.scheme != "tessera" || data.host != "oauth") return null
-        val frag = data.encodedFragment ?: return OAuthResult.Error("no_data")
-        val params = frag.split("&").mapNotNull { part ->
-            val i = part.indexOf('=')
-            if (i <= 0) {
-                null
-            } else {
-                runCatching {
-                    URLDecoder.decode(part.substring(0, i), "UTF-8") to
-                        URLDecoder.decode(part.substring(i + 1), "UTF-8")
-                }.getOrNull()
-            }
-        }.toMap()
-        params["oauth_error"]?.let { return OAuthResult.Error(it) }
-        val access = params["access_token"].orEmpty()
-        val refresh = params["refresh_token"].orEmpty()
-        return if (access.isNotBlank() && refresh.isNotBlank()) {
-            OAuthResult.Success(access, refresh)
-        } else {
-            OAuthResult.Error("no_tokens")
+        return when (val handoff = parseOAuthFragment(data.encodedFragment)) {
+            is OAuthHandoff.Success -> OAuthResult.Success(handoff.access, handoff.refresh, handoff.state)
+            is OAuthHandoff.Error -> OAuthResult.Error(handoff.code)
         }
     }
 

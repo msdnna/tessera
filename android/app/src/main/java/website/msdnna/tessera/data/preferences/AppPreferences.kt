@@ -70,6 +70,7 @@ class AppPreferences(private val context: Context) {
         // Empty on a build without Firebase config or a phone without Play
         // Services — the device then lives on the live-socket path only.
         val FCM_TOKEN = stringPreferencesKey("fcm_token")
+        val OAUTH_NONCE = stringPreferencesKey("oauth_nonce")
     }
 
     /** Stable id for the notification "device" channel so this device is routable and
@@ -106,6 +107,25 @@ class AppPreferences(private val context: Context) {
 
     suspend fun setFcmToken(token: String) {
         context.dataStore.edit { it[Keys.FCM_TOKEN] = token }
+    }
+
+    /**
+     * Remembers the nonce of an OAuth login started from this app, so the deep link that
+     * comes back can be told apart from one any web page could fire (#2932).
+     *
+     * On disk rather than in memory: the browser hands control back through a *new*
+     * Intent, and the app may well have been killed behind the Custom Tab while the user
+     * was typing their password.
+     */
+    suspend fun setOAuthNonce(nonce: String) {
+        context.dataStore.edit { it[Keys.OAUTH_NONCE] = nonce }
+    }
+
+    /** Reads the pending nonce and burns it, so one handoff can't be replayed twice. */
+    suspend fun consumeOAuthNonce(): String {
+        val pending = context.dataStore.data.first()[Keys.OAUTH_NONCE] ?: ""
+        if (pending.isNotEmpty()) context.dataStore.edit { it.remove(Keys.OAUTH_NONCE) }
+        return pending
     }
 
     /** User-set server override; falls back to the build's default base URL. */

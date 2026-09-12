@@ -81,6 +81,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.repository.ProfileRepository
 import website.msdnna.tessera.ui.TestTags
@@ -100,6 +101,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.AuthViewModel
 import website.msdnna.tessera.util.DEFAULT_LANGUAGE
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.newOAuthNonce
 import website.msdnna.tessera.util.nextLanguage
 import website.msdnna.tessera.util.normalizeLanguage
 
@@ -143,12 +145,6 @@ fun AuthScreen(
         }
     }
 
-    fun launchGitlabOAuth() {
-        val url = RetrofitClient.apiBaseUrl(serverUrl) + "auth/gitlab/authorize?platform=android"
-        runCatching { CustomTabsIntent.Builder().build().launchUrl(ctx, Uri.parse(url)) }
-            .onFailure { vm.setError(R.string.auth_browser_failed) }
-    }
-
     // Logo height ~28% of screen width (~1.5× smaller than before). MtLogo is the
     // tall "t" mark now (width = height * 69.224/99.008), so this stays comfortably
     // narrow on the login screen.
@@ -162,6 +158,21 @@ fun AuthScreen(
     var forgotSent by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val profileRepo = remember { ProfileRepository() }
+
+    // Opens the system browser (Custom Tab) at the authorize endpoint, carrying a nonce
+    // that ties the returning `tessera://` deep link to this login — see [newOAuthNonce].
+    // The nonce is persisted *before* the browser opens: from that moment the handoff can
+    // arrive at any time, including into a freshly launched process.
+    fun launchGitlabOAuth() {
+        scope.launch {
+            val nonce = newOAuthNonce()
+            AppContainer.prefs.setOAuthNonce(nonce)
+            val url = RetrofitClient.apiBaseUrl(serverUrl) +
+                "auth/gitlab/authorize?platform=android&app_state=" + nonce
+            runCatching { CustomTabsIntent.Builder().build().launchUrl(ctx, Uri.parse(url)) }
+                .onFailure { vm.setError(R.string.auth_browser_failed) }
+        }
+    }
     var showServer by rememberSaveable { mutableStateOf(false) }
     var serverDraft by remember(serverUrl) { mutableStateOf(serverUrl) }
 
