@@ -49,6 +49,13 @@ func normTreeMode(m string) string {
 //
 // moved is uuid.Nil on create (nothing can be below a group that does not exist
 // yet). Mirrors reparentAllowed for documents, which is the same tree.
+//
+// Projects hang off the same tree and pass their group_id through here with
+// moved = uuid.Nil: only the workspace half applies (a project is a leaf, so it
+// has no subtree to close a cycle with), and a project under a foreign group
+// falls out of the sidebar exactly the same way. TransferProject states the
+// invariant from the other side — it clears group_id on the way out, because
+// groups belong to the source workspace.
 func (h *API) groupParentAllowed(c *gin.Context, wsID, moved uuid.UUID, parentID *uuid.UUID) bool {
 	if parentID == nil {
 		return true
@@ -226,6 +233,9 @@ func (h *API) CreateProject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if !h.groupParentAllowed(c, wsID, uuid.Nil, req.GroupID) {
+		return
+	}
 	// An explicit address is a request for that exact address: reject a taken
 	// one instead of silently handing back "name-2". Empty means "derive it".
 	projectSlug := ""
@@ -388,6 +398,9 @@ func (h *API) MoveProject(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.groupParentAllowed(c, p.WorkspaceID, uuid.Nil, req.GroupID) {
 		return
 	}
 	prev, next, ok := h.neighborProjectPositions(c, req.BeforeID, req.AfterID)
