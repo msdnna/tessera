@@ -167,11 +167,28 @@ func (q *webhookQueue) due(now time.Time, debounce, maxWait time.Duration) []dir
 // clear drops an integration's mark, but only when no newer delivery arrived while
 // its sync was running — otherwise that delivery would be swallowed by the sync it
 // is not covered by.
+//
+// A mark that survives starts a *new* burst rather than staying in the one just
+// synced: firstSeen moves up to the point the run covered. Carried forward, the old
+// firstSeen is already past maxWait, which makes the entry due on every tick from
+// then on — and a stream long enough to keep landing a delivery inside each run (a
+// mass label edit, an import) then drives back-to-back full pulls a second apart,
+// which is the traffic the debounce exists to collapse. syncedThrough is a floor for
+// the leftovers: they all arrived after it.
 func (q *webhookQueue) clear(id uuid.UUID, syncedThrough time.Time) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if m, ok := q.dirty[id]; ok && !m.lastSeen.After(syncedThrough) {
+	m, ok := q.dirty[id]
+	if !ok {
+		return
+	}
+	if !m.lastSeen.After(syncedThrough) {
 		delete(q.dirty, id)
+		return
+	}
+	if m.firstSeen.Before(syncedThrough) {
+		m.firstSeen = syncedThrough
+		q.dirty[id] = m
 	}
 }
 
