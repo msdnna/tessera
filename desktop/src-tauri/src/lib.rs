@@ -113,3 +113,108 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running the Tessera desktop app");
 }
+
+// The shell's security posture lives in two JSON files that nothing else checks:
+// `capabilities/default.json` (what the webview may ask the Rust side to do) and the
+// `app.security.csp` of `tauri.conf.json` (what the page may load/run). Both are easy to
+// loosen "just for a moment" while debugging, and the app boots fine either way — so the
+// regression is silent. These tests are the ratchet (#2932).
+#[cfg(test)]
+mod hardening {
+    use serde_json::Value;
+
+    const CAPABILITIES: &str = include_str!("../capabilities/default.json");
+    const CONFIG: &str = include_str!("../tauri.conf.json");
+
+    // csp_directive pulls one directive's source list out of the configured policy.
+    fn csp_directive(csp: &str, name: &str) -> Option<Vec<String>> {
+        csp.split(';')
+            .map(str::trim)
+            .find(|d| d == &name || d.starts_with(&format!("{name} ")))
+            .map(|d| {
+                d[name.len()..]
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect()
+            })
+    }
+
+    fn csp() -> String {
+        let cfg: Value = serde_json::from_str(CONFIG).expect("tauri.conf.json must be valid JSON");
+        cfg["app"]["security"]["csp"]
+            .as_str()
+            .expect("app.security.csp must be a policy string, not null")
+            .to_string()
+    }
+
+    // A blanket fs scope turns any script that reaches the page (a malicious task
+    // description, a compromised dependency) into write-anywhere on the user's disk.
+    // The Save-as dialog grants the single path the user picked, so nothing static is needed.
+    #[test]
+    fn the_filesystem_scope_is_not_blanket() {
+        let caps: Value =
+            serde_json::from_str(CAPABILITIES).expect("capabilities must be valid JSON");
+        let perms = caps["permissions"]
+            .as_array()
+            .expect("capabilities must list permissions");
+        for perm in perms {
+            let Some(obj) = perm.as_object() else {
+                continue;
+            };
+            if obj.get("identifier").and_then(Value::as_str) != Some("fs:scope") {
+                continue;
+            }
+            for entry in obj
+                .get("allow")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+            {
+                let path = entry
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .trim_start_matches('/');
+                assert!(
+                    !matches!(path, "**" | "*" | "**/*"),
+                    "fs:scope allows the whole filesystem ({path:?})"
+                );
+            }
+        }
+    }
+
+    // Content injected into task text is the realistic attack: it runs as inline script or
+    // pulls one in from a remote host. 'self' (plus the build-time hashes Tauri adds for the
+    // inline script in index.html) stops both; 'unsafe-inline'/'unsafe-eval' would hand it back.
+    #[test]
+    fn scripts_may_only_come_from_the_bundle() {
+        let csp = csp();
+        let sources = csp_directive(&csp, "script-src")
+            .expect("script-src must be set explicitly — default-src alone is too permissive");
+        assert!(
+            sources.contains(&"'self'".to_string()),
+            "script-src: {sources:?}"
+        );
+        for banned in ["'unsafe-inline'", "'unsafe-eval'", "http:", "https:", "*"] {
+            assert!(
+                !sources.iter().any(|s| s == banned),
+                "script-src must not contain {banned}: {sources:?}"
+            );
+        }
+    }
+
+    // Plugins are another script-execution path, and a rewritten <base> relocates every
+    // relative asset URL — both sit outside script-src.
+    #[test]
+    fn plugins_and_base_uri_are_pinned() {
+        let csp = csp();
+        assert_eq!(
+            csp_directive(&csp, "object-src"),
+            Some(vec!["'none'".to_string()])
+        );
+        assert_eq!(
+            csp_directive(&csp, "base-uri"),
+            Some(vec!["'self'".to_string()])
+        );
+    }
+}
