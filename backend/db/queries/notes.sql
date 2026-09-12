@@ -31,3 +31,9 @@ UPDATE notes SET workspace_id = $2 WHERE project_id = $1;
 
 -- name: DeleteNote :exec
 DELETE FROM notes WHERE id = $1;
+
+-- ProjectNoteSlugs lists the addresses a project's notes occupy, for the same
+-- reason as ProjectDocumentSlugs: notes_ws_slug_key is per workspace and a
+-- transfer carries the notes into one that may already use those addresses.
+-- name: ProjectNoteSlugs :many
+SELECT id, slug FROM notes WHERE project_id = $1 AND slug <> '' ORDER BY created_at;

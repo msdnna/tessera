@@ -359,6 +359,38 @@ func (q *Queries) ListDocumentsByProject(ctx context.Context, arg ListDocumentsB
 	return items, nil
 }
 
+const projectDocumentSlugs = `-- name: ProjectDocumentSlugs :many
+SELECT id, slug FROM documents WHERE project_id = $1 ORDER BY created_at
+`
+
+type ProjectDocumentSlugsRow struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+}
+
+// ProjectDocumentSlugs lists the addresses a project's documents occupy. A
+// document's slug is unique per workspace, so a transfer has to know them to
+// free the ones the target workspace already uses.
+func (q *Queries) ProjectDocumentSlugs(ctx context.Context, projectID *uuid.UUID) ([]ProjectDocumentSlugsRow, error) {
+	rows, err := q.db.Query(ctx, projectDocumentSlugs, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectDocumentSlugsRow
+	for rows.Next() {
+		var i ProjectDocumentSlugsRow
+		if err := rows.Scan(&i.ID, &i.Slug); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reassignProjectDocumentsWorkspace = `-- name: ReassignProjectDocumentsWorkspace :exec
 UPDATE documents SET workspace_id = $2 WHERE project_id = $1
 `

@@ -106,6 +106,110 @@ func (h *API) uniqueDocumentSlug(ctx context.Context, wsID uuid.UUID, title stri
 	}
 }
 
+// freeProjectSlugs re-addresses the notes and documents of a project that is
+// about to be re-stamped into targetWS, so none of them lands on an address the
+// target workspace already uses. Runs inside the transfer's transaction (q is
+// the tx-bound Queries), before the workspace_id re-stamp — until that happens
+// the moving rows are invisible to the target's existence checks, which is
+// exactly what makes a row's own address look free.
+func (h *API) freeProjectSlugs(ctx context.Context, q *db.Queries, projectID, targetWS uuid.UUID) error {
+	notes, err := q.ProjectNoteSlugs(ctx, &projectID)
+	if err != nil {
+		return err
+	}
+	noteRows := make([]slugRow, 0, len(notes))
+	for _, n := range notes {
+		noteRows = append(noteRows, slugRow{id: n.ID, slug: n.Slug})
+	}
+	err = freeSlugsInto(noteRows,
+		func(s string) (bool, error) {
+			return q.NoteSlugExists(ctx, db.NoteSlugExistsParams{WorkspaceID: targetWS, Slug: s})
+		},
+		func(id uuid.UUID, s string) error {
+			return q.SetNoteSlug(ctx, db.SetNoteSlugParams{ID: id, Slug: s})
+		})
+	if err != nil {
+		return err
+	}
+
+	docs, err := q.ProjectDocumentSlugs(ctx, &projectID)
+	if err != nil {
+		return err
+	}
+	docRows := make([]slugRow, 0, len(docs))
+	for _, d := range docs {
+		docRows = append(docRows, slugRow{id: d.ID, slug: d.Slug})
+	}
+	return freeSlugsInto(docRows,
+		func(s string) (bool, error) {
+			return q.DocumentSlugExists(ctx, db.DocumentSlugExistsParams{WorkspaceID: targetWS, Slug: s})
+		},
+		func(id uuid.UUID, s string) error {
+			return q.SetDocumentSlug(ctx, db.SetDocumentSlugParams{ID: id, Slug: s})
+		})
+}
+
+// freeSlugsInto frees a workspace-scoped address for every row that would land
+// on one already in use. Notes and documents carry a slug unique per workspace
+// (notes_ws_slug_key, idx_documents_ws_slug) while a project transfer moves them
+// between workspaces, so a title shared by both sides — «Регламент» is not a rare
+// one — would abort the whole transfer on the unique index with nothing in the
+// error naming the row that caused it.
+//
+// Rows keep their address whenever it is free in the target and take the same
+// -2, -3 … variant a new title would otherwise get. The taken set carries the
+// moving rows' own addresses, so a rename can't collide with a sibling that
+// already sits on the variant (two «Регламент» in the source: reglament and
+// reglament-2, the first of which must skip past its sibling to reglament-3).
+func freeSlugsInto(rows []slugRow, exists func(string) (bool, error), set func(uuid.UUID, string) error) error {
+	taken := map[string]bool{}
+	for _, r := range rows {
+		taken[r.slug] = true
+	}
+	for _, r := range rows {
+		clash, err := exists(r.slug)
+		if err != nil {
+			return err
+		}
+		if !clash {
+			continue
+		}
+		free, err := firstFreeVariant(r.slug, taken, exists)
+		if err != nil {
+			return err
+		}
+		if err := set(r.id, free); err != nil {
+			return err
+		}
+		taken[free] = true
+	}
+	return nil
+}
+
+// slugRow is one addressable row being moved: its id and current slug.
+type slugRow struct {
+	id   uuid.UUID
+	slug string
+}
+
+// firstFreeVariant returns the first of base-2, base-3, … that is neither taken
+// by a sibling nor already present in the target.
+func firstFreeVariant(base string, taken map[string]bool, exists func(string) (bool, error)) (string, error) {
+	for i := 2; ; i++ {
+		cand := base + "-" + strconv.Itoa(i)
+		if taken[cand] {
+			continue
+		}
+		clash, err := exists(cand)
+		if err != nil {
+			return "", err
+		}
+		if !clash {
+			return cand, nil
+		}
+	}
+}
+
 // BackfillSlugs assigns slugs to projects/boards/notes that lack one (rows that
 // predate the slug columns, or boards reset by the per-project re-scope).
 // Idempotent: only empty-slug rows are touched. Run once at startup.

@@ -111,3 +111,9 @@ UPDATE documents
 SET content = $2, preview = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- ProjectDocumentSlugs lists the addresses a project's documents occupy. A
+-- document's slug is unique per workspace, so a transfer has to know them to
+-- free the ones the target workspace already uses.
+-- name: ProjectDocumentSlugs :many
+SELECT id, slug FROM documents WHERE project_id = $1 ORDER BY created_at;

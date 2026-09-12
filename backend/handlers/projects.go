@@ -479,6 +479,16 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// Notes and documents are addressed by a slug unique *per workspace*, and the
+	// re-stamps below carry them into one that may already use those addresses —
+	// a title shared by both sides («Регламент» is not a rare one) aborted the
+	// whole transfer on the unique index, with nothing in the 500 naming the row
+	// that caused it and every retry failing the same way. Freeing the clashing
+	// addresses first leaves the target's own rows where they are.
+	if err := h.freeProjectSlugs(c, qtx, p.ID, req.WorkspaceID); err != nil {
+		fail(c, err)
+		return
+	}
 	if err := qtx.ReassignProjectNotesWorkspace(c, db.ReassignProjectNotesWorkspaceParams{
 		ProjectID: &p.ID, WorkspaceID: req.WorkspaceID,
 	}); err != nil {
