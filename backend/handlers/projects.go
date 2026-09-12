@@ -422,11 +422,10 @@ func (h *API) MoveProject(c *gin.Context) {
 // GitLab bindings — to another workspace. A dangerous operation: it re-stamps the
 // denormalized workspace_id across the project's tags/tag_prefixes/notes and any
 // GitLab integrations, re-numbers its tasks out of the target's counter, strips
-// assignees who aren't members of the target workspace, and severs the relations
-// and milestone links whose two ends the move would put in different workspaces.
-// Requires
-// membership in BOTH the source (checked by loadProject) and the target
-// workspace. The project lands ungrouped at the target's root.
+// assignees who aren't members of the target workspace, and severs the relations,
+// milestone links and document links whose two ends the move would put in different
+// workspaces. Requires membership in BOTH the source (checked by loadProject) and
+// the target workspace. The project lands ungrouped at the target's root.
 func (h *API) TransferProject(c *gin.Context) {
 	p, ok := h.loadProject(c)
 	if !ok {
@@ -572,6 +571,18 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A document↔task link is the third of the kind, and the only one whose two
+	// ends are different objects: the project's documents travel with it while a
+	// task in a neighbouring project does not, so either end can be the one left
+	// behind. CreateDocumentTaskLink refuses a cross-workspace pair and says why
+	// — the row would "leak the task's title to people who cannot see the task" —
+	// and both reads join straight through it for task_title and document
+	// title/slug.
+	unlinkedDocs, err := qtx.DeleteDocumentLinksAcrossWorkspaces(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	if err := tx.Commit(c); err != nil {
 		fail(c, err)
 		return
@@ -583,6 +594,7 @@ func (h *API) TransferProject(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"project": updated, "stripped_assignees": stripped, "renumbered_tasks": renumbered,
 		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,
+		"unlinked_documents": unlinkedDocs,
 	})
 }
 

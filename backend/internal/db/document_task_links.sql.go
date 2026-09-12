@@ -53,6 +53,35 @@ func (q *Queries) CreateDocumentTaskLink(ctx context.Context, arg CreateDocument
 	return i, err
 }
 
+const deleteDocumentLinksAcrossWorkspaces = `-- name: DeleteDocumentLinksAcrossWorkspaces :execrows
+DELETE FROM document_task_links l
+WHERE (
+        l.task_id IN (SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1)
+     OR l.document_id IN (SELECT d.id FROM documents d WHERE d.project_id = $1)
+      )
+  AND (SELECT p.workspace_id FROM tasks t JOIN boards b ON b.id = t.board_id
+       JOIN projects p ON p.id = b.project_id WHERE t.id = l.task_id)
+      IS DISTINCT FROM
+      (SELECT d.workspace_id FROM documents d WHERE d.id = l.document_id)
+`
+
+// DeleteDocumentLinksAcrossWorkspaces drops every document↔task link touching
+// the given project whose two ends now sit in different workspaces — the state a
+// project transfer leaves behind when a document travels with its project while
+// the task it points at belongs to a project that stayed, or the reverse.
+// CreateDocumentTaskLink refuses such a pair outright, so it can only appear when
+// the boundary moves under an existing link; neither read re-checks it
+// (ListDocumentTaskLinks joins tasks for task_title, ListTaskDocumentLinks joins
+// documents for title/slug, both unfiltered), so a row left in place keeps
+// handing each side the other's titles. Returns the number of links dropped.
+func (q *Queries) DeleteDocumentLinksAcrossWorkspaces(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteDocumentLinksAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteDocumentTaskLink = `-- name: DeleteDocumentTaskLink :exec
 DELETE FROM document_task_links WHERE id = $1
 `

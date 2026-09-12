@@ -38,3 +38,23 @@ SELECT * FROM document_task_links WHERE id = $1;
 
 -- name: DeleteDocumentTaskLink :exec
 DELETE FROM document_task_links WHERE id = $1;
+
+-- DeleteDocumentLinksAcrossWorkspaces drops every document↔task link touching
+-- the given project whose two ends now sit in different workspaces — the state a
+-- project transfer leaves behind when a document travels with its project while
+-- the task it points at belongs to a project that stayed, or the reverse.
+-- CreateDocumentTaskLink refuses such a pair outright, so it can only appear when
+-- the boundary moves under an existing link; neither read re-checks it
+-- (ListDocumentTaskLinks joins tasks for task_title, ListTaskDocumentLinks joins
+-- documents for title/slug, both unfiltered), so a row left in place keeps
+-- handing each side the other's titles. Returns the number of links dropped.
+-- name: DeleteDocumentLinksAcrossWorkspaces :execrows
+DELETE FROM document_task_links l
+WHERE (
+        l.task_id IN (SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1)
+     OR l.document_id IN (SELECT d.id FROM documents d WHERE d.project_id = $1)
+      )
+  AND (SELECT p.workspace_id FROM tasks t JOIN boards b ON b.id = t.board_id
+       JOIN projects p ON p.id = b.project_id WHERE t.id = l.task_id)
+      IS DISTINCT FROM
+      (SELECT d.workspace_id FROM documents d WHERE d.id = l.document_id);
