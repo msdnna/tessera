@@ -87,6 +87,21 @@ WHERE id IN (
 )
 RETURNING *;
 
+-- RequeueStaleDeliveries puts rows left in 'sending' by a process that died
+-- between the claim and the settle back into the queue. Nothing else ever moves a
+-- row out of 'sending', and ClaimPendingDeliveries only looks at 'pending', so
+-- without this a restart mid-drain loses those deliveries for good.
+--
+-- Called at the top of a drain, which runs under the 'notify_delivery' worker
+-- lock: holding it means no other instance is draining this outbox, so every
+-- 'sending' row is provably orphaned rather than in flight. attempts is left
+-- as-is, so a row whose send keeps killing the process still reaches
+-- maxDeliveryAttempts and fails instead of looping forever.
+-- name: RequeueStaleDeliveries :execrows
+UPDATE notification_deliveries
+SET status = 'pending', last_error = 'прервано перезапуском сервиса', updated_at = now()
+WHERE status = 'sending';
+
 -- name: MarkDeliverySent :exec
 UPDATE notification_deliveries SET status = 'sent', last_error = '', updated_at = now() WHERE id = $1;
 

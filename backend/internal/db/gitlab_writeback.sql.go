@@ -552,6 +552,28 @@ func (q *Queries) RefreshConflict(ctx context.Context, arg RefreshConflictParams
 	return err
 }
 
+const requeueStaleWritebacks = `-- name: RequeueStaleWritebacks :execrows
+UPDATE gitlab_writebacks
+SET status = 'pending', last_error = 'прервано перезапуском сервиса', updated_at = now()
+WHERE status = 'sending'
+`
+
+// RequeueStaleWritebacks puts rows left in 'sending' by a process that died
+// between the claim and the settle back into the queue — the write-back twin of
+// RequeueStaleDeliveries, and for the same reason: ClaimPendingWritebacks only
+// looks at 'pending', so a restart mid-drain drops those pushes silently.
+//
+// Runs at the top of a drain, under the 'gitlab_writeback' worker lock, so a
+// 'sending' row cannot belong to a live drain. 'conflict' rows are parked
+// deliberately and are not touched. attempts is left as-is.
+func (q *Queries) RequeueStaleWritebacks(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, requeueStaleWritebacks)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const resolveConflictSettled = `-- name: ResolveConflictSettled :exec
 UPDATE gitlab_writebacks
 SET status = 'sent', conflict = '{}'::jsonb, resolution = $2, resolved_by = $3,

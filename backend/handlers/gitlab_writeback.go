@@ -192,6 +192,14 @@ func (h *API) RunGitlabWriteBackWorker(ctx context.Context) {
 }
 
 func (h *API) drainWritebacks(ctx context.Context) {
+	// Recover rows a previous drain claimed but never settled (see
+	// RequeueStaleWritebacks). Safe because we hold the write-back worker lock: no
+	// other instance is draining, so nothing in 'sending' is in flight.
+	if n, err := h.q.RequeueStaleWritebacks(ctx); err != nil {
+		soft(ctx, "RequeueStaleWritebacks", err)
+	} else if n > 0 {
+		log.Printf("gitlab writeback: requeued %d row(s) left mid-push by a previous run", n)
+	}
 	rows, err := h.q.ClaimPendingWritebacks(ctx, writebackBatchSize)
 	if err != nil || len(rows) == 0 {
 		return
@@ -312,9 +320,26 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 
 // settleWriteback marks a row sent, retried (quadratic backoff) or failed. Claim
 // already bumped attempts, so w.Attempts is this attempt's number.
+//
+// Settles on a ctx that outlives cancellation, for the reason flushJournal below
+// already does: on SIGTERM mid-drain the push fails with the ctx, and settling on
+// that same ctx would fail too, leaving the row 'sending' to be requeued and
+// pushed a second time.
 func (h *API) settleWriteback(ctx context.Context, w db.GitlabWriteback, err error) {
+	shuttingDown := ctx.Err() != nil
+	ctx = context.WithoutCancel(ctx)
 	if err == nil {
 		soft(ctx, "MarkWritebackSent", h.q.MarkWritebackSent(ctx, w.ID))
+		return
+	}
+	// The push died with the worker's context (a deploy mid-drain), not on
+	// anything GitLab said — re-arm it. isPermanentWriteback would otherwise
+	// read the wrapped "integration gone: context canceled" as permanent and
+	// bury the change for good. Timeouts keep their backoff (see settleDelivery).
+	if shuttingDown && errors.Is(err, context.Canceled) {
+		soft(ctx, "MarkWritebackRetry", h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{
+			ID: w.ID, LastError: truncErr(err), NextAttemptAt: time.Now(),
+		}))
 		return
 	}
 	if isPermanentWriteback(err) || int(w.Attempts) >= maxWritebackAttempts {

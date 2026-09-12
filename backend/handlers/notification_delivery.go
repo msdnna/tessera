@@ -153,6 +153,14 @@ func (h *API) RunNotificationWorker(ctx context.Context) {
 }
 
 func (h *API) drainDeliveries(ctx context.Context) {
+	// Recover rows a previous drain claimed but never settled (see
+	// RequeueStaleDeliveries). Holding the worker lock is what makes this safe:
+	// no other instance is draining, so nothing in 'sending' is in flight.
+	if n, err := h.q.RequeueStaleDeliveries(ctx); err != nil {
+		soft(ctx, "RequeueStaleDeliveries", err)
+	} else if n > 0 {
+		log.Printf("notify: requeued %d delivery row(s) left mid-send by a previous run", n)
+	}
 	rows, err := h.q.ClaimPendingDeliveries(ctx, notifyBatchSize)
 	if err != nil || len(rows) == 0 {
 		return
@@ -182,9 +190,31 @@ func (h *API) drainDeliveries(ctx context.Context) {
 // settleDelivery marks a delivery sent, retried (quadratic backoff) or failed
 // based on the send error. Claim already bumped attempts, so d.Attempts is this
 // attempt's number.
+//
+// The settle writes outlive a cancelled ctx (WithoutCancel, as flushJournal does
+// on the write-back side). On SIGTERM mid-drain the send fails with the ctx, and
+// settling on that same ctx would fail too — leaving the row 'sending' for
+// RequeueStaleDeliveries to pick up, which is recovery for a delivery that may
+// already have gone out. Recording the outcome is what keeps the requeue from
+// re-sending it.
 func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err error) {
+	shuttingDown := ctx.Err() != nil
+	ctx = context.WithoutCancel(ctx)
 	if err == nil {
 		soft(ctx, "MarkDeliverySent", h.q.MarkDeliverySent(ctx, d.ID))
+		return
+	}
+	// A send that died with the worker's context is a deploy stopping mid-drain,
+	// not a verdict on the delivery: re-arm it for the next drain. Without this
+	// the cancellation arrives wrapped as a permanent error ("channel gone:
+	// context canceled") and a restart would mark live deliveries failed for
+	// good. Deliberately not keyed on DeadlineExceeded too: a webhook that
+	// times out on its own client deadline must keep its backoff, or a slow
+	// endpoint becomes a hot retry loop that never exhausts its attempts.
+	if shuttingDown && errors.Is(err, context.Canceled) {
+		soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{
+			ID: d.ID, LastError: truncErr(err), NextAttemptAt: time.Now(),
+		}))
 		return
 	}
 	if notify.IsPermanent(err) || int(d.Attempts) >= maxDeliveryAttempts {
