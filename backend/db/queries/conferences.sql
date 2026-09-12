@@ -140,3 +140,24 @@ DELETE FROM conference_participants WHERE conference_id = $1 AND user_id = $2;
 -- name: CountActiveConferenceParticipants :one
 SELECT count(*) FROM conference_participants
 WHERE conference_id = $1 AND joined_at IS NOT NULL AND left_at IS NULL;
+
+-- ClearConferenceTasksAcrossWorkspaces unpins every conference whose task is in
+-- the given project but whose own workspace is no longer that task's — the state
+-- a project transfer leaves behind. CreateConference refuses a task from another
+-- workspace and names the harm: the link "is what later files the protocol back
+-- into the task, and a cross-workspace link would put it in front of a team that
+-- was never in the call". A conference carries its own workspace_id and belongs
+-- to no project, so it never travels with one; ListConferencesByTask then lists
+-- by task_id alone behind a membership check on the *task's* workspace, handing
+-- the arriving team the title, description and schedule of a call held
+-- elsewhere. Only the link goes — the conference, its chat and its recordings
+-- stay where they were held. Returns the number of conferences unpinned.
+-- name: ClearConferenceTasksAcrossWorkspaces :execrows
+UPDATE conferences c
+SET task_id = NULL, updated_at = now()
+FROM tasks t, boards b, projects p
+WHERE c.task_id = t.id
+  AND b.id = t.board_id
+  AND p.id = b.project_id
+  AND p.id = $1
+  AND c.workspace_id <> p.workspace_id;

@@ -613,6 +613,22 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The sixth is the conference pinned to a task, and it is the one link that
+	// cannot travel at all: a conference carries its own workspace_id and belongs
+	// to no project, so the call stays where it was held while the task it was
+	// about walks into another workspace. CreateConference refuses such a pair at
+	// the door and names the harm — the link "is what later files the protocol
+	// back into the task, and a cross-workspace link would put it in front of a
+	// team that was never in the call" — and ListConferencesByTask is exactly that
+	// read: it authorizes on the *task's* workspace, the target from here on, then
+	// lists by task_id alone, handing the arriving team the title, description and
+	// schedule of a meeting they were not in. Only the link is cleared; the
+	// conference, its chat and its recordings stay in the workspace that held it.
+	unpinnedConfs, err := qtx.ClearConferenceTasksAcrossWorkspaces(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	if err := tx.Commit(c); err != nil {
 		fail(c, err)
 		return
@@ -625,7 +641,7 @@ func (h *API) TransferProject(c *gin.Context) {
 		"project": updated, "stripped_assignees": stripped, "renumbered_tasks": renumbered,
 		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,
 		"unlinked_documents": unlinkedDocs, "detached_documents": detachedDocs,
-		"stripped_tags": strippedTags,
+		"stripped_tags": strippedTags, "unpinned_conferences": unpinnedConfs,
 	})
 }
 
