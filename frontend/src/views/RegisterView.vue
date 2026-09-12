@@ -3,7 +3,7 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
 import { LogoGitlab } from '@vicons/ionicons5'
-import { useRouter, RouterLink } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
@@ -18,6 +18,9 @@ const formError = ref('')
 const errors = ref({})
 const authStore = useAuthStore()
 const router = useRouter()
+// ?invite=<token> — set by the invite page when the invitee has no account yet.
+// Carried into register so the backend can apply that one invitation.
+const inviteToken = useRoute().query.invite || ''
 
 const gitlabEnabled = ref(false)
 onMounted(async () => {
@@ -52,7 +55,7 @@ async function submit() {
   if (!validate()) return
   loading.value = true
   try {
-    await authStore.register(email.value.trim(), name.value.trim(), password.value)
+    await authStore.register(email.value.trim(), name.value.trim(), password.value, inviteToken)
     router.push('/')
   } catch (e) {
     formError.value = e.message

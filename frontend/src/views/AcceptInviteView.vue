@@ -2,11 +2,13 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { accountFlows } from '@/api'
+import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import AuthLayout from '@/components/AuthLayout.vue'
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const ws = useWorkspacesStore()
 const state = ref('pending') // pending | ok | fail
 
@@ -14,6 +16,13 @@ onMounted(async () => {
   const token = route.query.token
   if (!token) {
     state.value = 'fail'
+    return
+  }
+  // No account yet: accepting needs a session, so hand the token to the register
+  // form. It presents it on sign-up — the only thing that joins an invitee to
+  // the workspace now, since the invited email alone grants nothing.
+  if (!auth.isAuthenticated) {
+    router.replace({ path: '/register', query: { invite: token } })
     return
   }
   try {

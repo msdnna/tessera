@@ -40,8 +40,12 @@ func (h *AuthHandler) sendVerification(c *gin.Context, user db.User) {
 	mail.SendAsync(h.mailer, user.Email, subject, body)
 }
 
-// acceptPendingInvitations applies any workspace invitations addressed to the
-// user's email (called on register so an invited user lands in the workspace).
+// acceptPendingInvitations applies every workspace invitation addressed to the
+// user's email. The email address alone is the key here, so this may only run
+// once the account has proven it owns that mailbox: after email verification,
+// or right after OAuth provisioning (the provider vouches for the address).
+// Plain registration must not call it — typing an address is not owning it, and
+// invitations stay pending for a week (see acceptInvitationToken).
 func (h *AuthHandler) acceptPendingInvitations(c *gin.Context, user db.User) {
 	invites, err := h.q.ListPendingInvitationsByEmail(c, user.Email)
 	if err != nil {
@@ -53,6 +57,30 @@ func (h *AuthHandler) acceptPendingInvitations(c *gin.Context, user db.User) {
 		}); err == nil {
 			soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
 		}
+	}
+}
+
+// acceptInvitationToken applies the single invitation the raw token identifies,
+// used at registration so an invitee who followed the emailed link lands in the
+// workspace straight away. The token is the proof of mailbox ownership, so the
+// invitation must be addressed to exactly the email being registered; anything
+// off (unknown, expired, already accepted, different address) silently grants
+// nothing — registration itself still succeeds.
+func (h *AuthHandler) acceptInvitationToken(c *gin.Context, user db.User, rawToken string) {
+	if rawToken == "" {
+		return
+	}
+	inv, err := h.q.GetInvitationByHash(c, auth.HashRefreshToken(rawToken))
+	if err != nil || inv.AcceptedAt != nil || time.Now().After(inv.ExpiresAt) {
+		return
+	}
+	if !strings.EqualFold(inv.Email, user.Email) {
+		return
+	}
+	if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{
+		WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
+	}); err == nil {
+		soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
 	}
 }
 
@@ -75,6 +103,12 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 	soft(c, "MarkUserTokenUsed", h.q.MarkUserTokenUsed(c, tok.ID))
+	// Mailbox ownership is proven now, so anything still addressed to it can be
+	// applied — this is how an invitee who registered without following the
+	// emailed link finally lands in the workspace.
+	if user, err := h.q.GetUserByID(c, tok.UserID); err == nil {
+		h.acceptPendingInvitations(c, user)
+	}
 	c.Status(http.StatusNoContent)
 }
 

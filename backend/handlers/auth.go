@@ -55,6 +55,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		Email    string `json:"email" binding:"required,email"`
 		Name     string `json:"name" binding:"required"`
 		Password string `json:"password" binding:"required,min=8"`
+		// Optional: the token from an invitation email, carried here by the
+		// invite page when the invitee has no account yet.
+		InviteToken string `json:"invite_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -99,9 +102,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		})
 	}
 
-	// Apply any pending workspace invitations addressed to this email, then send
-	// a verification email (no-op mailer just logs the link when SMTP is off).
-	h.acceptPendingInvitations(c, user)
+	// Only the invitation whose token was presented is applied: the address by
+	// itself proves nothing, and invitations sit pending for a week, so joining
+	// on a bare email match would hand the workspace to whoever registers the
+	// invitee's address first. The rest wait for email verification.
+	h.acceptInvitationToken(c, user, req.InviteToken)
 	h.sendVerification(c, user)
 
 	h.issue(c, user)

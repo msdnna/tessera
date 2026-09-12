@@ -27,8 +27,16 @@ const routes = [
     component: () => import('@/views/VerifyEmailView.vue'),
     meta: { open: true },
   },
-  // Accepting an invite needs a signed-in session (the email must match).
-  { path: '/invite', component: () => import('@/views/AcceptInviteView.vue') },
+  // Accepting an invite needs a signed-in session (the email must match), but the
+  // page itself is `open`: an invitee with no account has to reach it so it can
+  // pass the token on to the register form. Bounced to /login instead, the token
+  // was lost and only the email was left to join on — which is exactly what must
+  // not grant access.
+  {
+    path: '/invite',
+    component: () => import('@/views/AcceptInviteView.vue'),
+    meta: { open: true },
+  },
   // GitLab OAuth handoff: parses the session from the URL fragment. `open` so it
   // runs regardless of the (about-to-change) auth state.
   {

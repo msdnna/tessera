@@ -73,10 +73,15 @@ export const useAuthStore = defineStore('auth', () => {
   // the auth screen (#2818). Login is the opposite case — the language is a
   // property of the existing account — so only register carries the choice over,
   // writing it back once as the new account's preference.
-  async function register(email, name, password) {
+  // inviteToken, when the invite page sent an unregistered invitee here, is the
+  // proof they own the invited address: the backend joins them to the workspace
+  // only against that token, never on the email alone.
+  async function register(email, name, password, inviteToken = '') {
     const theme = useThemeStore()
     const chosen = theme.language
-    const res = await auth.register({ email, name, password })
+    const payload = { email, name, password }
+    if (inviteToken) payload.invite_token = inviteToken
+    const res = await auth.register(payload)
     setAuth(res.data)
     if (theme.language !== chosen) theme.setLocale({ language: chosen })
   }
