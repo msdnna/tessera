@@ -289,16 +289,20 @@ func (h *API) documentSubtreeIDs(c *gin.Context, doc db.Document) []uuid.UUID {
 	if err != nil {
 		return ids
 	}
-	// Breadth-first over the parent links; the tree is a tree (reparentAllowed
-	// rejects cycles), so this terminates.
+	// Breadth-first over the parent links, skipping rows already collected. The
+	// guard keeps the tree acyclic, but this loop must not be the thing that
+	// depends on it: an in-process walk over a ring neither returns nor answers to
+	// a cancelled request, it just grows the slice until the backend dies (#2932).
+	seen := map[uuid.UUID]bool{doc.ID: true}
 	for frontier := ids; len(frontier) > 0; {
 		var next []uuid.UUID
 		for i := range docs {
-			if docs[i].ParentID == nil {
+			if docs[i].ParentID == nil || seen[docs[i].ID] {
 				continue
 			}
 			for _, parent := range frontier {
 				if *docs[i].ParentID == parent {
+					seen[docs[i].ID] = true
 					next = append(next, docs[i].ID)
 					break
 				}

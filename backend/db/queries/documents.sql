@@ -50,21 +50,27 @@ SELECT count(*) FROM documents WHERE parent_id = $1;
 -- table. The membership test is done in Go: sqlc's analyzer cannot resolve a
 -- recursive CTE referenced from inside a subquery, so EXISTS(...) here does not
 -- generate.
+--
+-- UNION, not UNION ALL, and for the same reason as the task and project-group
+-- walks: the guard keeps the tree acyclic, but a ring that slips in anyway (two
+-- concurrent re-parents racing the check, an import, a manual fix) makes UNION ALL
+-- recurse forever, while UNION drops the repeat and stops (#2932).
 -- name: DocumentAncestorIDs :many
 WITH RECURSIVE up AS (
     SELECT a.id, a.parent_id FROM documents a WHERE a.id = $1
-    UNION ALL
+    UNION
     SELECT d.id, d.parent_id FROM documents d JOIN up ON d.id = up.parent_id
 )
 SELECT id FROM up;
 
 -- DeleteDocumentSubtree removes a document together with everything nested
 -- below it. One statement, so the parent_id RESTRICT never sees an intermediate
--- state with a dangling child.
+-- state with a dangling child. UNION for the cycle safety described above — a
+-- delete that never returns is the worst place to meet a ring.
 -- name: DeleteDocumentSubtree :exec
 WITH RECURSIVE down AS (
     SELECT a.id FROM documents a WHERE a.id = $1
-    UNION ALL
+    UNION
     SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id
 )
 DELETE FROM documents WHERE documents.id IN (SELECT id FROM down);
