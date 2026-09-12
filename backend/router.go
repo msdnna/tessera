@@ -20,6 +20,7 @@ import (
 	"tessera/internal/docroom"
 	"tessera/internal/livekit"
 	"tessera/internal/mail"
+	"tessera/internal/observability"
 	"tessera/internal/realtime"
 	"tessera/middleware"
 )
@@ -99,12 +100,22 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// rather than in main() so the four tests that boot newRouter() get a working
 	// document socket too; its sweeper goroutine ends when rh.CloseDocRooms does.
 	rooms := docroom.New()
-	go rooms.Run()
+	// Under the same guard as the realtime hub's loop (main()): a sweeper panic
+	// has no request and no supervisor around it, so it would end the process
+	// instead of the sweep. Reported and dropped, live documents keep their
+	// sockets — only lock expiry stops, until the next restart.
+	go func() {
+		defer observability.Recover("docroom-sweeper")
+		rooms.Run()
+	}()
 	// Per-conference room state (#2869): presence, the screen-share queue and
 	// moderation. Created here for the same reason as the document rooms; its
 	// sweeper goroutine ends when rh.CloseConfRooms does.
 	confRooms := confroom.New()
-	go confRooms.Run()
+	go func() {
+		defer observability.Recover("confroom-sweeper")
+		confRooms.Run()
+	}()
 	wsHandler := handlers.NewWSHandler(hub, rooms, confRooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	// Reports itself disabled when no frontend DSN is configured, so the two

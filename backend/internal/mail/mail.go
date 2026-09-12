@@ -18,6 +18,8 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
+
+	"tessera/internal/observability"
 )
 
 // smtpTimeout bounds the whole connect+send exchange so a misconfigured or
@@ -62,8 +64,13 @@ func New(cfg Config) Mailer {
 // SendAsync delivers a message in the background, logging any error. Use it for
 // transactional mail (verification / reset / invite) so the HTTP request never
 // blocks on — or fails because of — the SMTP exchange.
+//
+// Detaching from the request also detaches from gin's recovery: a panic in the
+// SMTP exchange has no request around it and would take the process down. Guard
+// it here rather than at each call site — the caller has already answered.
 func SendAsync(m Mailer, to, subject, body string) {
 	go func() {
+		defer observability.Recover("mail-send")
 		if err := m.Send(to, subject, body); err != nil {
 			log.Printf("mail: send to %s (%q) failed: %v", to, subject, err)
 		}
