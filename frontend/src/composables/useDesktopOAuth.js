@@ -1,3 +1,4 @@
+import { auth } from '@/api'
 import { isTauri } from '@/utils/serverBase'
 
 // Desktop GitLab login (#2696). The webview must never navigate to the OAuth provider
@@ -61,6 +62,12 @@ export function consumeOAuthState(received) {
 // parseOAuthDeepLink pulls the handoff out of a tessera://oauth/callback URL. Returns
 // null for anything that isn't one, so a deep link added later for some other purpose
 // doesn't get mistaken for a login. Kept pure and exported for tests.
+//
+// The desktop handoff carries a one-time `code`, never the tokens (#2932): on Linux and
+// Windows the OS delivers this URL by launching the app with it as a command-line
+// argument, and argv is readable by other processes (`ps`, /proc/<pid>/cmdline). The code
+// is traded for the session over HTTPS in exchangeOAuthCode below. Android keeps the old
+// token fragment — a different client, and an Intent is not argv.
 export function parseOAuthDeepLink(url) {
   if (typeof url !== 'string' || !url.startsWith(OAUTH_DEEP_LINK)) return null
   const hash = url.slice(OAUTH_DEEP_LINK.length)
@@ -68,10 +75,17 @@ export function parseOAuthDeepLink(url) {
   const frag = new URLSearchParams(hash.replace(/^#/, ''))
   const state = frag.get('state')
   const error = frag.get('oauth_error')
-  if (error) return { access: null, refresh: null, state, error }
-  const access = frag.get('access_token')
-  if (!access) return { access: null, refresh: null, state, error: 'no_token' }
-  return { access, refresh: frag.get('refresh_token') || null, state, error: null }
+  if (error) return { code: null, state, error }
+  const code = frag.get('code')
+  if (!code) return { code: null, state, error: 'no_token' }
+  return { code, state, error: null }
+}
+
+// exchangeOAuthCode redeems the code and returns the session tokens. Separated from the
+// store so App.vue keeps one straight line: parse → check the nonce → exchange → sign in.
+export async function exchangeOAuthCode(code) {
+  const { data } = await auth.oauthHandoff(code)
+  return { access: data.access_token, refresh: data.refresh_token || null }
 }
 
 // startDesktopGitlabLogin opens the system browser at the authorize endpoint. Returns

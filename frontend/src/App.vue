@@ -14,6 +14,7 @@ import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.v
 import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
 import {
   consumeOAuthState,
+  exchangeOAuthCode,
   listenDesktopOAuth,
   OAUTH_DONE_EVENT,
 } from '@/composables/useDesktopOAuth'
@@ -63,7 +64,7 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
 // loader before the router settles. LoginView only needs to know the wait is over,
 // which it learns from OAUTH_DONE_EVENT.
 let unlistenOAuth = null
-async function onDesktopOAuth({ access, refresh, state, error }) {
+async function onDesktopOAuth({ code, state, error }) {
   // tessera:// is an OS-wide scheme, so this handler hears from any web page that cares
   // to open one. Only a handoff carrying the nonce of the login this app started is a
   // login; anything else is dropped without a trace — no routing, no OAUTH_DONE_EVENT,
@@ -71,13 +72,24 @@ async function onDesktopOAuth({ access, refresh, state, error }) {
   if (!consumeOAuthState(state)) return
   let reason = error
   if (!reason) {
+    // The deep link carries a one-time code, not the session (#2932) — redeem it. Its own
+    // try/catch: a code that expired or was already spent is a different failure from a
+    // profile fetch that fell over, and the login screen names them differently.
+    let tokens = null
     try {
-      await useAuthStore().loginWithTokens(access, refresh)
-      window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: null } }))
-      router.replace('/')
-      return
+      tokens = await exchangeOAuthCode(code)
     } catch {
-      reason = 'userinfo_failed'
+      reason = 'handoff_failed'
+    }
+    if (tokens) {
+      try {
+        await useAuthStore().loginWithTokens(tokens.access, tokens.refresh)
+        window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: null } }))
+        router.replace('/')
+        return
+      } catch {
+        reason = 'userinfo_failed'
+      }
     }
   }
   window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: reason } }))

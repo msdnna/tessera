@@ -113,6 +113,7 @@
       "account_disabled": "This account is deactivated.",
       "exchange_failed": "Could not authorize with GitLab.",
       "userinfo_failed": "Could not fetch the GitLab profile.",
+      "handoff_failed": "Could not complete the sign-in: the link has expired or was already used. Please try again.",
       "browserOpen": "Could not open the browser to sign in with GitLab.",
       "noReturn": "Could not return to the app. Check that tessera:// links open in Tessera."
     }

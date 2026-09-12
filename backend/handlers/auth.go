@@ -26,6 +26,8 @@ type AuthHandler struct {
 	sealer    *secrets.Sealer // decrypts the OAuth client secret at rest
 	mailer    mail.Mailer
 	publicURL string
+	// One-time codes for the desktop OAuth deep link — see oauth_handoff.go.
+	handoff *oauthHandoffStore
 }
 
 // NewAuthHandler returns an AuthHandler with the given queries, signing secret,
@@ -35,7 +37,7 @@ func NewAuthHandler(q *db.Queries, secret, encryptionKey string, mailer mail.Mai
 	if err != nil {
 		log.Fatalf("failed to init auth secret sealer: %v", err)
 	}
-	return &AuthHandler{q: q, secret: secret, sealer: sealer, mailer: mailer, publicURL: publicURL}
+	return &AuthHandler{q: q, secret: secret, sealer: sealer, mailer: mailer, publicURL: publicURL, handoff: newOAuthHandoffStore()}
 }
 
 type authResponse struct {

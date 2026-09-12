@@ -253,6 +253,10 @@ export const auth = {
   // back on the tessera:// deep link instead of the web SPA route (#2696).
   gitlabAuthorizeUrl: (platform) =>
     `${apiBaseURL()}/auth/gitlab/authorize${platform ? `?platform=${platform}` : ''}`,
+  // Desktop only: trade the one-time code from the tessera:// deep link for the session
+  // (#2932). The link itself carries no tokens — the OS hands it to the app as a
+  // command-line argument, which every local process can read.
+  oauthHandoff: (code) => api.post('/auth/oauth/handoff', { code }),
 }
 
 export const accountFlows = {

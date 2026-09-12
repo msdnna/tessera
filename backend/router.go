@@ -213,6 +213,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		api.GET("/auth/providers", authHandler.Providers)
 		api.GET("/auth/gitlab/authorize", authHandler.GitlabAuthorize)
 		api.GET("/auth/gitlab/callback", authHandler.GitlabCallback)
+		// Desktop redeems the one-time code from its tessera:// deep link here.
+		// Public like /auth/refresh: the code is the credential.
+		api.POST("/auth/oauth/handoff", authHandler.OAuthHandoff)
 
 		// Live updates. Not in the protected group because the browser
 		// WebSocket API can't send an Authorization header — the handler does

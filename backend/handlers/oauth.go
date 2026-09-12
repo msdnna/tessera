@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,8 +25,9 @@ const oauthStateCookie = "gl_oauth_state"
 // the session (or error) back through this URI instead of the web SPA route — the Chrome
 // Custom Tab / system browser redirects to it, and the app picks up the fragment. The
 // confidential-app secret never leaves the server, so native clients stay pure public
-// consumers of tokens. Android and the desktop shell share one scheme: they never run on
-// the same OS, and a single handoff format keeps the callback branch-free.
+// consumers of tokens. Android and the desktop shell share the scheme (they never run on
+// the same OS) but not the payload: Android receives the tokens in the fragment, desktop a
+// one-time code it redeems over HTTPS — see oauth_handoff.go for why they differ.
 const oauthNativeScheme = "tessera://oauth/callback"
 
 // oauthMobileState / oauthDesktopState mark a `state` value as originating from a native
@@ -261,15 +263,31 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	// Group-membership → workspace access, refreshed on every login.
 	h.applyOrgMap(c, p, token, glUser, user)
 
+	// Desktop: hand back a one-time code, never the tokens. The OS delivers this deep
+	// link as a command-line argument, where any local process can read it — see
+	// oauth_handoff.go. Android keeps the token fragment (Intent, not argv).
+	if native && statePrefix == oauthDesktopState {
+		code, cerr := h.handoff.issue(user.ID, time.Now())
+		if cerr != nil {
+			redirectErr("server_error")
+			return
+		}
+		frag := url.Values{"code": {code}}
+		if nonce != "" {
+			frag.Set("state", nonce)
+		}
+		c.Redirect(http.StatusFound, oauthNativeScheme+"#"+frag.Encode())
+		return
+	}
+
 	access, refresh, ok := h.mintTokens(c, user)
 	if !ok {
 		return // mintTokens already wrote a 500
 	}
 	if native {
-		// No cookie to set on a custom-scheme handoff — the native client stores
-		// the refresh token itself. Desktop is cross-origin against the API
-		// (frontend/src/utils/serverBase.js), so a host-only cookie would never
-		// reach it either way.
+		// Android. No cookie to set on a custom-scheme handoff — the native client
+		// stores the refresh token itself, and a host-only cookie would never reach a
+		// cross-origin client either way.
 		frag := url.Values{"access_token": {access}, "refresh_token": {refresh}}
 		if nonce != "" {
 			frag.Set("state", nonce)
