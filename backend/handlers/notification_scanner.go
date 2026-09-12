@@ -229,10 +229,19 @@ func (h *API) scanReminders(ctx context.Context) {
 // reminderWorkspace resolves a workspace to scope a reminder notification to: the
 // linked task's workspace, else the user's first workspace (reminders aren't
 // workspace-scoped, but notifications carry a workspace id).
+//
+// The linked task's workspace is used only while the user is still a member of
+// it. Otherwise this function would hand deliverNotification a workspace its
+// membership gate then refuses, and the reminder would be dropped in silence —
+// on a task that walked out of reach after the reminder was set (the project was
+// transferred, the member was removed) that silence falls on a legitimate
+// reminder whose text is the user's own. The link goes stale; the reminder
+// still has to fire.
 func (h *API) reminderWorkspace(ctx context.Context, r db.Reminder) uuid.UUID {
 	if r.TaskID != nil {
 		if t, err := h.q.GetTask(ctx, *r.TaskID); err == nil {
-			if ws, werr := h.q.WorkspaceIDForBoard(ctx, t.BoardID); werr == nil {
+			if ws, werr := h.q.WorkspaceIDForBoard(ctx, t.BoardID); werr == nil &&
+				h.notifiableInWorkspace(ctx, r.UserID, ws) {
 				return ws
 			}
 		}

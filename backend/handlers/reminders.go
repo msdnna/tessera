@@ -25,6 +25,16 @@ func (h *API) CreateReminder(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// The task arrives in the body, so nothing in the route vouches for it — the
+	// same seam TestTagMustBeInSameWorkspace pins for POST /tasks/:id/tags.
+	// Unchecked, a reminder is a reference into a workspace the caller was never
+	// in; it reads nothing back today, but the id is stored, travels with the
+	// notification, and is one join away from being rendered.
+	if req.TaskID != nil {
+		if _, _, ok := h.loadTask(c, *req.TaskID); !ok {
+			return
+		}
+	}
 	r, err := h.q.CreateReminder(c, db.CreateReminderParams{
 		UserID:   middleware.CurrentUser(c),
 		TaskID:   req.TaskID,
