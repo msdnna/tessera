@@ -12,6 +12,20 @@ import (
 	"github.com/google/uuid"
 )
 
+const countProjectTasks = `-- name: CountProjectTasks :one
+SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1
+`
+
+// CountProjectTasks counts every task on the project's boards — subtasks and
+// archived rows included, since both carry a number and an archived task can be
+// restored into a workspace that has since reused it.
+func (q *Queries) CountProjectTasks(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countProjectTasks, projectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (workspace_id, group_id, name, color, icon, slug, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -237,6 +251,32 @@ func (q *Queries) ProjectsMissingSlug(ctx context.Context) ([]ProjectsMissingSlu
 		return nil, err
 	}
 	return items, nil
+}
+
+const renumberProjectTasks = `-- name: RenumberProjectTasks :exec
+UPDATE tasks SET number = $2::bigint + ordered.rn
+FROM (
+    SELECT t.id, row_number() OVER (ORDER BY t.number NULLS LAST, t.created_at, t.id) AS rn
+    FROM tasks t
+    JOIN boards b ON b.id = t.board_id
+    WHERE b.project_id = $1
+) AS ordered
+WHERE tasks.id = ordered.id
+`
+
+type RenumberProjectTasksParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Base      int64     `json:"base"`
+}
+
+// RenumberProjectTasks re-stamps the project's tasks with a block of numbers
+// reserved from the target workspace ($2 is the number *before* the block).
+// Ordering by the old number keeps the re-stamp a translation rather than a
+// shuffle: a task that was #7 where it came from still sorts before the one that
+// was #9. created_at/id only break ties for rows predating the number column.
+func (q *Queries) RenumberProjectTasks(ctx context.Context, arg RenumberProjectTasksParams) error {
+	_, err := q.db.Exec(ctx, renumberProjectTasks, arg.ProjectID, arg.Base)
+	return err
 }
 
 const setProjectEstimation = `-- name: SetProjectEstimation :one

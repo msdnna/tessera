@@ -13,6 +13,14 @@ SELECT * FROM workspaces WHERE id = $1;
 -- name: NextWorkspaceTaskNumber :one
 UPDATE workspaces SET task_counter = task_counter + 1 WHERE id = $1 RETURNING task_counter;
 
+-- ReserveWorkspaceTaskNumbers claims a whole block of numbers at once and returns
+-- the last one in it, so a project arriving from another workspace can be
+-- renumbered without racing the ordinary one-at-a-time allocation above. The
+-- claim is the same single UPDATE … RETURNING, so a concurrent task creation
+-- either sees the counter before the block or after it — never inside.
+-- name: ReserveWorkspaceTaskNumbers :one
+UPDATE workspaces SET task_counter = task_counter + @count::bigint WHERE id = @id RETURNING task_counter;
+
 -- name: ListWorkspacesForUser :many
 SELECT w.*, m.role AS my_role
 FROM workspaces w

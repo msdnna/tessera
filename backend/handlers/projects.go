@@ -421,9 +421,10 @@ func (h *API) MoveProject(c *gin.Context) {
 // TransferProject moves a project — with all its boards, tasks, tags, notes and
 // GitLab bindings — to another workspace. A dangerous operation: it re-stamps the
 // denormalized workspace_id across the project's tags/tag_prefixes/notes and any
-// GitLab integrations, and strips assignees who aren't members of the target
-// workspace. Requires membership in BOTH the source (checked by loadProject) and
-// the target workspace. The project lands ungrouped at the target's root.
+// GitLab integrations, re-numbers its tasks out of the target's counter, and
+// strips assignees who aren't members of the target workspace. Requires
+// membership in BOTH the source (checked by loadProject) and the target
+// workspace. The project lands ungrouped at the target's root.
 func (h *API) TransferProject(c *gin.Context) {
 	p, ok := h.loadProject(c)
 	if !ok {
@@ -507,6 +508,36 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A task's #N is issued by its workspace's counter, and the arrivals carry the
+	// source workspace's numbering. Nothing in the schema can catch the clash —
+	// tasks has no workspace_id, the number is scoped through boards → projects,
+	// so there is no unique index to violate — and GetTaskByNumber is a `:one`
+	// with neither LIMIT nor ORDER BY: with two matches it silently returns
+	// whichever row came first. That is a #-link, `/blocks #42` or `/parent #42`
+	// landing on the wrong task, for the *resident* task as much as the arriving
+	// one. Leaving the target's counter alone would keep minting the clash for
+	// every task created afterwards, so the numbers are re-stamped from a block
+	// reserved out of that counter, inside this transaction.
+	renumbered, err := qtx.CountProjectTasks(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if renumbered > 0 {
+		last, rerr := qtx.ReserveWorkspaceTaskNumbers(c, db.ReserveWorkspaceTaskNumbersParams{
+			ID: req.WorkspaceID, Count: renumbered,
+		})
+		if rerr != nil {
+			fail(c, rerr)
+			return
+		}
+		if rerr := qtx.RenumberProjectTasks(c, db.RenumberProjectTasksParams{
+			ProjectID: p.ID, Base: last - renumbered,
+		}); rerr != nil {
+			fail(c, rerr)
+			return
+		}
+	}
 	if err := tx.Commit(c); err != nil {
 		fail(c, err)
 		return
@@ -515,7 +546,9 @@ func (h *API) TransferProject(c *gin.Context) {
 	// The project leaves the source workspace and joins the target — tell both.
 	h.broadcast(p.WorkspaceID, "project.deleted", gin.H{"id": p.ID})
 	h.broadcast(req.WorkspaceID, "project.created", updated)
-	c.JSON(http.StatusOK, gin.H{"project": updated, "stripped_assignees": stripped})
+	c.JSON(http.StatusOK, gin.H{
+		"project": updated, "stripped_assignees": stripped, "renumbered_tasks": renumbered,
+	})
 }
 
 // DeleteProject removes a project and everything under it.

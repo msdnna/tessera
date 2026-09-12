@@ -53,5 +53,26 @@ SET workspace_id = $2, group_id = NULL, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- CountProjectTasks counts every task on the project's boards — subtasks and
+-- archived rows included, since both carry a number and an archived task can be
+-- restored into a workspace that has since reused it.
+-- name: CountProjectTasks :one
+SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1;
+
+-- RenumberProjectTasks re-stamps the project's tasks with a block of numbers
+-- reserved from the target workspace (base is the number *before* the block).
+-- Ordering by the old number keeps the re-stamp a translation rather than a
+-- shuffle: a task that was #7 where it came from still sorts before the one that
+-- was #9. created_at/id only break ties for rows predating the number column.
+-- name: RenumberProjectTasks :exec
+UPDATE tasks SET number = sqlc.arg(base)::bigint + ordered.rn
+FROM (
+    SELECT t.id, row_number() OVER (ORDER BY t.number NULLS LAST, t.created_at, t.id) AS rn
+    FROM tasks t
+    JOIN boards b ON b.id = t.board_id
+    WHERE b.project_id = $1
+) AS ordered
+WHERE tasks.id = ordered.id;
+
 -- name: DeleteProject :exec
 DELETE FROM projects WHERE id = $1;

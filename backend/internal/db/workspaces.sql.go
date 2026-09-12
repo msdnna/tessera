@@ -272,6 +272,27 @@ func (q *Queries) NextWorkspaceTaskNumber(ctx context.Context, id uuid.UUID) (in
 	return task_counter, err
 }
 
+const reserveWorkspaceTaskNumbers = `-- name: ReserveWorkspaceTaskNumbers :one
+UPDATE workspaces SET task_counter = task_counter + $1::bigint WHERE id = $2 RETURNING task_counter
+`
+
+type ReserveWorkspaceTaskNumbersParams struct {
+	Count int64     `json:"count"`
+	ID    uuid.UUID `json:"id"`
+}
+
+// ReserveWorkspaceTaskNumbers claims a whole block of numbers at once and returns
+// the last one in it, so a project arriving from another workspace can be
+// renumbered without racing the ordinary one-at-a-time allocation above. The
+// claim is the same single UPDATE … RETURNING, so a concurrent task creation
+// either sees the counter before the block or after it — never inside.
+func (q *Queries) ReserveWorkspaceTaskNumbers(ctx context.Context, arg ReserveWorkspaceTaskNumbersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, reserveWorkspaceTaskNumbers, arg.Count, arg.ID)
+	var task_counter int64
+	err := row.Scan(&task_counter)
+	return task_counter, err
+}
+
 const setWorkspaceEstimation = `-- name: SetWorkspaceEstimation :one
 UPDATE workspaces
 SET estimation = $2, updated_at = now()
