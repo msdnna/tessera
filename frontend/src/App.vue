@@ -12,7 +12,11 @@ import UpdateToast from '@/components/UpdateToast.vue'
 import ServerRail from '@/components/ServerRail.vue'
 import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
 import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
-import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
+import {
+  consumeOAuthState,
+  listenDesktopOAuth,
+  OAUTH_DONE_EVENT,
+} from '@/composables/useDesktopOAuth'
 import { isTauri } from '@/utils/serverBase'
 import { useResponsive } from '@/composables/useResponsive'
 
@@ -59,7 +63,12 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
 // loader before the router settles. LoginView only needs to know the wait is over,
 // which it learns from OAUTH_DONE_EVENT.
 let unlistenOAuth = null
-async function onDesktopOAuth({ access, refresh, error }) {
+async function onDesktopOAuth({ access, refresh, state, error }) {
+  // tessera:// is an OS-wide scheme, so this handler hears from any web page that cares
+  // to open one. Only a handoff carrying the nonce of the login this app started is a
+  // login; anything else is dropped without a trace — no routing, no OAUTH_DONE_EVENT,
+  // so a forged link can neither sign the user in (#2932) nor cancel a real sign-in.
+  if (!consumeOAuthState(state)) return
   let reason = error
   if (!reason) {
     try {

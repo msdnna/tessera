@@ -57,6 +57,58 @@ func oauthHandoff(platform, state string) (native bool, prefix string) {
 	return false, ""
 }
 
+// oauthAppStateMax bounds the client nonce echoed back in the handoff. Long enough for
+// 32 hex chars with room to spare, short enough that nobody can stuff a payload into the
+// deep link through it.
+const oauthAppStateMax = 64
+
+// oauthAppState sanitizes the native client's own CSRF nonce (`?app_state=`). The state
+// GitLab echoes back proves the *browser* leg wasn't forged — it is mirrored in an
+// httpOnly cookie — but the last hop is a plain OS-wide URL: any web page can fire a
+// tessera:// link at the installed app. Without a value only the app knows, an
+// unsolicited `tessera://oauth/callback#access_token=…` silently signs the user into the
+// attacker's account (session fixation, #2932). So the app generates a nonce, sends it
+// here, and accepts the handoff only when it comes back.
+//
+// Alphanumeric only: the nonce is stored inside the state as its own dot-separated field,
+// and it must not be able to forge that structure or smuggle URL syntax into the
+// redirect. Anything else is dropped rather than mangled — a client that sent garbage
+// gets a handoff it will reject, which is the safe direction.
+func oauthAppState(raw string) string {
+	if raw == "" || len(raw) > oauthAppStateMax {
+		return ""
+	}
+	for _, r := range raw {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return ""
+		}
+	}
+	return raw
+}
+
+// oauthState builds the value that travels to GitLab and back. Paired with
+// oauthStateNonce below — the two have to agree on the layout or every real login is
+// rejected, so they are kept next to each other and round-tripped in the tests.
+func oauthState(prefix, nonce, random string) string {
+	if nonce == "" {
+		return prefix + random
+	}
+	return prefix + nonce + "." + random
+}
+
+// oauthStateNonce pulls the client nonce back out of the state GitLab echoed. Layout is
+// `<marker><nonce>.<random>` when the client sent one and `<marker><random>` when it
+// didn't (Android, and desktop builds older than #2932) — the random half is hex, so the
+// separator is unambiguous.
+func oauthStateNonce(prefix, state string) string {
+	rest := strings.TrimPrefix(state, prefix)
+	i := strings.Index(rest, ".")
+	if i <= 0 {
+		return ""
+	}
+	return oauthAppState(rest[:i])
+}
+
 // oauthBaseURL is the externally-reachable origin used to build redirect URIs and
 // the post-login handoff. Prefers the configured PublicURL; falls back to the
 // request's scheme+host (dev).
@@ -116,7 +168,14 @@ func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
-	state := statePrefix + hex.EncodeToString(buf)
+	// The client nonce rides *inside* the CSRF state, so it inherits the cookie check and
+	// can't be swapped for another flow's value on the way back. Only native flows have a
+	// deep link to protect; the web handoff is a same-origin redirect.
+	nonce := ""
+	if native {
+		nonce = oauthAppState(c.Query("app_state"))
+	}
+	state := oauthState(statePrefix, nonce, hex.EncodeToString(buf))
 	secure := strings.HasPrefix(h.oauthBaseURL(c), "https")
 	// SameSite=Lax so the cookie survives GitLab's top-level GET redirect back.
 	c.SetSameSite(http.SameSiteLaxMode)
@@ -140,10 +199,18 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	// The native marker lives inside the state value, which is echoed back untouched by
 	// GitLab — safe to read here for choosing the handoff target even before the CSRF
 	// check (a forged prefix only changes where an *error* is delivered).
-	native, _ := oauthHandoff("", c.Query("state"))
+	native, statePrefix := oauthHandoff("", c.Query("state"))
+	// Echoed back to the app so it can tell *its* handoff from one a web page fired at
+	// the tessera:// scheme. Read before the CSRF check for the same reason the marker is:
+	// a forged value only changes where an error lands, and the app rejects it anyway.
+	nonce := oauthStateNonce(statePrefix, c.Query("state"))
 	redirectErr := func(reason string) {
 		if native {
-			c.Redirect(http.StatusFound, oauthNativeScheme+"#"+url.Values{"oauth_error": {reason}}.Encode())
+			v := url.Values{"oauth_error": {reason}}
+			if nonce != "" {
+				v.Set("state", nonce)
+			}
+			c.Redirect(http.StatusFound, oauthNativeScheme+"#"+v.Encode())
 			return
 		}
 		c.Redirect(http.StatusFound, base+"/login?oauth_error="+url.QueryEscape(reason))
@@ -204,6 +271,9 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 		// (frontend/src/utils/serverBase.js), so a host-only cookie would never
 		// reach it either way.
 		frag := url.Values{"access_token": {access}, "refresh_token": {refresh}}
+		if nonce != "" {
+			frag.Set("state", nonce)
+		}
 		c.Redirect(http.StatusFound, oauthNativeScheme+"#"+frag.Encode())
 		return
 	}
