@@ -60,6 +60,23 @@ class RichContentHtmlTest {
         assertThat(remote).containsExactly("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js")
     }
 
+    /**
+     * #2932: markdown задачи допускает сырой HTML, а marked отдаёт его как есть.
+     * Здесь это опаснее, чем во вкладке браузера: в WebView включён JS, висит мост
+     * `AndroidRich`, а `shouldInterceptRequest` подставляет Bearer к запросам на
+     * свой сервер — то есть внедрённый скрипт читает API от лица жертвы. Web гонит
+     * тот же текст через DOMPurify; свойство, потерю которого мы ловим, — что и
+     * здесь между marked и `innerHTML` стоит санитайзер, причём локальный.
+     */
+    @Test
+    fun `untrusted markup is sanitised before it reaches innerHTML`() {
+        val doc = html(false)
+        assertWithMessage("санитайзера нет в ассетах — DOMPurify.sanitize упадёт уже в рантайме")
+            .that(doc).contains("file:///android_asset/richcontent/purify.min.js")
+        assertWithMessage("разметка попадает в innerHTML в обход DOMPurify")
+            .that(doc).contains("el.innerHTML = DOMPurify.sanitize(")
+    }
+
     /** Тема светлая/тёмная различает файл, а не только цвета вокруг. */
     @Test
     fun `the light and dark documents pick different hljs themes`() {

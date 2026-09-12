@@ -44,7 +44,12 @@ import website.msdnna.tessera.util.resolveMention
  * A WebView is the faithful (and only sane) way to reproduce mermaid diagrams +
  * syntax highlighting; everything around it (tabs, editor, controls) is native.
  *
- * marked, highlight.js и его тема лежат в `assets/richcontent` — сеть не участвует
+ * Разметка из задачи недоверенная, поэтому — как и на web — между marked и
+ * `innerHTML` стоит DOMPurify: markdown допускает сырой HTML, а этот WebView
+ * куда опаснее вкладки браузера (JS включён, есть мост `AndroidRich`, а
+ * `shouldInterceptRequest` подставляет Bearer к запросам на свой сервер).
+ *
+ * marked, DOMPurify, highlight.js и его тема лежат в `assets/richcontent` — сеть не участвует
  * в отрисовке вообще (#2897: внешний `<link>` на CDN блокировал первый кадр, и на
  * телефоне без выхода наружу описание появлялось через десяток секунд). Из сети
  * тянется только mermaid — он нужен единицам, весит полмегабайта и грузится лениво,
@@ -273,62 +278,15 @@ internal fun buildRichHtml(
     val root = JSONObject.quote(serverRoot)
     val mentionsJson = org.json.JSONArray(mentions).toString()
     val helpSlugsJson = org.json.JSONArray(helpSlugs).toString()
-    // Accent gradient colours for links and mentions (mirrors AccentGradient.kt)
-    val strength = 0.14f
-    val accentDarker = lerp(c.primary, Color.Black, strength)
-    val accentLighter = lerp(c.primary, Color.White, strength)
-    val accentBoxGrad = "linear-gradient(135deg,${hex(accentDarker)},${hex(c.primary)},${hex(accentLighter)})"
-    val accentGradCss = "background:$accentBoxGrad;" +
-        "-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;"
-    val checkCursor = if (interactive) "pointer" else "default"
-    // Muted box border (not the bright text3) so checkboxes read softly on dark.
-    val checkBorder = hex(lerp(c.text3, c.border, 0.55f))
     return """
 <!DOCTYPE html><html><head>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <link rel="stylesheet" href="file:///android_asset/richcontent/hljs-$hljsTheme.min.css">
-<style>
-  html,body{margin:0;padding:0;background:transparent;}
-  body{color:${hex(c.text1)};font-family:-apple-system,Roboto,sans-serif;font-size:14px;line-height:1.55;
-       word-wrap:break-word;overflow-wrap:anywhere;}
-  /* flow-root so child margins stay inside the box we measure for the height. */
-  #content{padding:0;display:flow-root;}
-  a{text-decoration:none;$accentGradCss}
-  p{margin:0 0 8px;} p:last-child{margin-bottom:0;}
-  h1,h2,h3,h4{margin:12px 0 6px;line-height:1.3;font-weight:600;}
-  h1{font-size:20px;} h2{font-size:18px;} h3{font-size:16px;} h4{font-size:14px;}
-  ul,ol{margin:0 0 8px;padding-left:20px;} li{margin:2px 0;}
-  li:has(> input[type=checkbox]){list-style:none;}
-  input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 7px 0 0;
-       vertical-align:-2px;border:1.5px solid $checkBorder;border-radius:4px;background:${hex(c.surface)};
-       position:relative;flex:none;cursor:$checkCursor;
-       transition:border-color .15s ease,background-color .15s ease;}
-  input[type=checkbox]:checked{border-color:transparent;background-color:transparent;
-       background-image:$accentBoxGrad;background-origin:border-box;}
-  /* Checkmark always present; pops in/out (scale+fade) — the light tick animation. */
-  input[type=checkbox]::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:8px;
-       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;
-       transform:translate(-50%,-60%) rotate(45deg) scale(.4);opacity:0;
-       transition:opacity .12s ease,transform .18s cubic-bezier(.2,.7,.3,1.55);}
-  input[type=checkbox]:checked::after{opacity:1;transform:translate(-50%,-60%) rotate(45deg) scale(1);}
-  @media (prefers-reduced-motion:reduce){input[type=checkbox],input[type=checkbox]::after{transition:none;}}
-  img{max-width:100%;height:auto;border-radius:8px;}
-  blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid ${hex(c.border)};color:${hex(c.text2)};}
-  hr{border:none;border-top:1px solid ${hex(c.border)};margin:12px 0;}
-  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:${hex(c.surfaceAlt)};
-       padding:1px 5px;border-radius:5px;}
-  pre{margin:8px 0;padding:10px 12px;background:${hex(c.surfaceAlt)};border:1px solid ${hex(c.border)};
-      border-radius:8px;overflow-x:auto;}
-  pre code{background:transparent;padding:0;font-size:12.5px;}
-  table{border-collapse:collapse;margin:8px 0;} th,td{border:1px solid ${hex(c.border)};padding:4px 8px;}
-  .mention{font-weight:600;$accentGradCss}
-  .task-ref{font-weight:600;cursor:pointer;$accentGradCss}
-  .mermaid-diagram{display:flex;justify-content:center;margin:10px 0;}
-  .mermaid-diagram svg{max-width:100%;height:auto;}
-</style>
+${richStyles(c, interactive)}
 </head><body>
 <div id="content"></div>
 <script src="file:///android_asset/richcontent/marked.umd.js"></script>
+<script src="file:///android_asset/richcontent/purify.min.js"></script>
 <script>
   var SRC = $src, ROOT = $root, MENTIONS = $mentionsJson, INTERACTIVE = $interactive;
   var MENTION_CARDS = $mentionCards, TASK_REFS = $taskRefs, HELP_LINKS = $helpLinks;
@@ -365,11 +323,17 @@ internal fun buildRichHtml(
     }
     return out + fn(html.slice(last));
   }
+  // Order mirrors the web utils/markdown.js: decorate first, sanitise the whole
+  // thing afterwards, so the chips we inject are inspected by the same pass.
+  // ADD_ATTR lists what the decorations and marked emit themselves and DOMPurify
+  // would otherwise drop along with the markup: without target/rel links lose
+  // their safe opening, without class the mention and task-ref chips lose theirs.
+  var SANITIZE_OPTS = {ADD_ATTR: ['target', 'rel', 'class', 'data-handle', 'data-task-ref']};
   var el = document.getElementById('content');
-  el.innerHTML = replaceOutsideCode(marked.parse(SRC || ''), function(part){
+  el.innerHTML = DOMPurify.sanitize(replaceOutsideCode(marked.parse(SRC || ''), function(part){
     var withMentions = highlightMentions(part);
     return TASK_REFS ? linkTaskRefs(withMentions) : withMentions;
-  });
+  }), SANITIZE_OPTS);
   // Expand root-relative upload/asset URLs to the active server (inline images
   // are intercepted + fetched with auth; links open in the browser).
   el.querySelectorAll('img').forEach(function(im){
@@ -514,5 +478,63 @@ internal fun buildRichHtml(
   report();
 </script>
 </body></html>
+"""
+}
+
+/**
+ * Стили документа вынесены отдельно, чтобы buildRichHtml оставался в пределах
+ * detekt-лимита на длину функции: CSS занимал в нём больше трети строк.
+ */
+private fun richStyles(c: TesseraColors, interactive: Boolean): String {
+    // Accent gradient colours for links and mentions (mirrors AccentGradient.kt)
+    val strength = 0.14f
+    val accentDarker = lerp(c.primary, Color.Black, strength)
+    val accentLighter = lerp(c.primary, Color.White, strength)
+    val accentBoxGrad = "linear-gradient(135deg,${hex(accentDarker)},${hex(c.primary)},${hex(accentLighter)})"
+    val accentGradCss = "background:$accentBoxGrad;" +
+        "-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;"
+    val checkCursor = if (interactive) "pointer" else "default"
+    // Muted box border (not the bright text3) so checkboxes read softly on dark.
+    val checkBorder = hex(lerp(c.text3, c.border, 0.55f))
+    return """
+<style>
+  html,body{margin:0;padding:0;background:transparent;}
+  body{color:${hex(c.text1)};font-family:-apple-system,Roboto,sans-serif;font-size:14px;line-height:1.55;
+       word-wrap:break-word;overflow-wrap:anywhere;}
+  /* flow-root so child margins stay inside the box we measure for the height. */
+  #content{padding:0;display:flow-root;}
+  a{text-decoration:none;$accentGradCss}
+  p{margin:0 0 8px;} p:last-child{margin-bottom:0;}
+  h1,h2,h3,h4{margin:12px 0 6px;line-height:1.3;font-weight:600;}
+  h1{font-size:20px;} h2{font-size:18px;} h3{font-size:16px;} h4{font-size:14px;}
+  ul,ol{margin:0 0 8px;padding-left:20px;} li{margin:2px 0;}
+  li:has(> input[type=checkbox]){list-style:none;}
+  input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 7px 0 0;
+       vertical-align:-2px;border:1.5px solid $checkBorder;border-radius:4px;background:${hex(c.surface)};
+       position:relative;flex:none;cursor:$checkCursor;
+       transition:border-color .15s ease,background-color .15s ease;}
+  input[type=checkbox]:checked{border-color:transparent;background-color:transparent;
+       background-image:$accentBoxGrad;background-origin:border-box;}
+  /* Checkmark always present; pops in/out (scale+fade) — the light tick animation. */
+  input[type=checkbox]::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:8px;
+       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;
+       transform:translate(-50%,-60%) rotate(45deg) scale(.4);opacity:0;
+       transition:opacity .12s ease,transform .18s cubic-bezier(.2,.7,.3,1.55);}
+  input[type=checkbox]:checked::after{opacity:1;transform:translate(-50%,-60%) rotate(45deg) scale(1);}
+  @media (prefers-reduced-motion:reduce){input[type=checkbox],input[type=checkbox]::after{transition:none;}}
+  img{max-width:100%;height:auto;border-radius:8px;}
+  blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid ${hex(c.border)};color:${hex(c.text2)};}
+  hr{border:none;border-top:1px solid ${hex(c.border)};margin:12px 0;}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:${hex(c.surfaceAlt)};
+       padding:1px 5px;border-radius:5px;}
+  pre{margin:8px 0;padding:10px 12px;background:${hex(c.surfaceAlt)};border:1px solid ${hex(c.border)};
+      border-radius:8px;overflow-x:auto;}
+  pre code{background:transparent;padding:0;font-size:12.5px;}
+  table{border-collapse:collapse;margin:8px 0;} th,td{border:1px solid ${hex(c.border)};padding:4px 8px;}
+  .mention{font-weight:600;$accentGradCss}
+  .task-ref{font-weight:600;cursor:pointer;$accentGradCss}
+  .mermaid-diagram{display:flex;justify-content:center;margin:10px 0;}
+  .mermaid-diagram svg{max-width:100%;height:auto;}
+</style>
 """
 }
