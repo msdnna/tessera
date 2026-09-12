@@ -137,10 +137,56 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   }
 
   // tree helpers (groups/projects are flat; build the tree by parent_id/group_id)
+  //
+  // effectiveParent is the parent_id the tree is actually drawn from: an edge
+  // whose chain of ancestors comes back around to the group itself is read as
+  // null, so the group shows up at the root instead of closing the tree into a
+  // ring. Every group in a ring nulls its own edge.
+  //
+  // A ring costs twice over. Drawing starts at the root and walks down, so a
+  // ring is simply unreachable from it: the groups in it, and every project
+  // inside them, stop appearing at all — and the sidebar is the only UI that
+  // could drag them back out. Walking *up* is worse: the active-rail lookup
+  // follows parent_id from the open project's group and in a ring never reaches
+  // a root, and that loop runs inside a computed.
+  //
+  // The server refuses to create such a cycle (#2932), so this is about data
+  // that predates that guard: nothing is hidden, the ring is simply flattened
+  // to roots and stays visible and movable.
+  const effectiveParent = computed(() => {
+    const raw = new Map(groups.value.map((g) => [g.id, g.parent_id || null]))
+    const out = new Map()
+    for (const id of raw.keys()) {
+      const own = raw.get(id) || null
+      const seen = new Set([id])
+      let p = own
+      while (p) {
+        if (p === id) {
+          out.set(id, null) // the chain closes on this group — draw it as a root
+          break
+        }
+        if (seen.has(p)) break // a ring further up, already broken on its own turn
+        seen.add(p)
+        p = raw.get(p) || null
+      }
+      if (!out.has(id)) out.set(id, own)
+    }
+    return out
+  })
+
   function childGroups(parentId) {
+    const parents = effectiveParent.value
     return groups.value
-      .filter((g) => (g.parent_id || null) === (parentId || null))
+      .filter((g) => (parents.get(g.id) ?? null) === (parentId || null))
       .sort((a, b) => a.position - b.position)
+  }
+
+  // parentGroupOf returns the group a group hangs under, following the same
+  // cycle-broken edges childGroups draws — so callers walking up to the root
+  // (the sidebar's active-rail lookup) terminate on the same tree the nodes show.
+  function parentGroupOf(groupId) {
+    const pid = effectiveParent.value.get(groupId) ?? null
+    return pid ? groups.value.find((g) => g.id === pid) || null : null
   }
   function projectsInGroup(groupId) {
     return projects.value
@@ -188,6 +234,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     refresh,
     loadBoards,
     childGroups,
+    parentGroupOf,
     projectsInGroup,
     estimationFor,
     setProjectEstimation,

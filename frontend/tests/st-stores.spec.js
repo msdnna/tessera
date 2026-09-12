@@ -341,6 +341,81 @@ describe('workspaces store', () => {
     expect(s.commands.map((c) => c.key)).toEqual(['close', 'hold'])
   })
 
+  // #2932: a ring in the group edges breaks the sidebar in two ways, and the
+  // tree is built from parent_id in both. Drawing starts at the root, so a ring
+  // is unreachable from it: the groups in it — and every project inside them —
+  // simply stop appearing, with no way left to drag them out. And the
+  // active-rail lookup walks *up* from the open project's group, which in a ring
+  // never reaches a root: that loop sits in a computed, so it takes the tab with
+  // it. The server refuses to make such a cycle now; data from before that guard
+  // still has to render, so the ring is flattened to roots — nothing hidden.
+  it('a cycle in group parents stays visible instead of dropping out of the tree', () => {
+    const s = useWorkspacesStore()
+    // a ↔ b closed on each other, c hangs under a, d is an untouched root
+    s.groups = [
+      { id: 'a', parent_id: 'b', position: 1 },
+      { id: 'b', parent_id: 'a', position: 2 },
+      { id: 'c', parent_id: 'a', position: 3 },
+      { id: 'd', parent_id: null, position: 4 },
+    ]
+
+    // Walk the whole tree the way the components do, from the root down.
+    const visited = []
+    const walk = (parentId, depth) => {
+      if (depth > 12) throw new Error('group tree does not terminate')
+      for (const g of s.childGroups(parentId)) {
+        visited.push(g.id)
+        walk(g.id, depth + 1)
+      }
+    }
+    walk(null, 0)
+
+    // Every group is reachable — without the guard a, b and c are orphaned off
+    // the root and only d is drawn.
+    expect(visited.sort()).toEqual(['a', 'b', 'c', 'd'])
+    expect(s.childGroups(null).map((g) => g.id)).toEqual(['a', 'b', 'd'])
+    expect(s.childGroups('a').map((g) => g.id)).toEqual(['c']) // b broke its own edge
+    expect(s.parentGroupOf('a')).toBeNull()
+    expect(s.parentGroupOf('c').id).toBe('a')
+  })
+
+  it('walking up from a group in a cycle reaches a root instead of looping', () => {
+    const s = useWorkspacesStore()
+    s.groups = [
+      { id: 'a', parent_id: 'b', position: 1 },
+      { id: 'b', parent_id: 'a', position: 2 },
+      { id: 'c', parent_id: 'a', position: 3 },
+    ]
+    // Sidebar's active-rail lookup, verbatim: up from the open project's group.
+    const rootOf = (startId) => {
+      let g = s.groups.find((x) => x.id === startId)
+      let parent = g ? s.parentGroupOf(g.id) : null
+      for (let steps = 0; parent; steps += 1) {
+        if (steps > 24) throw new Error('ancestor walk does not terminate')
+        g = parent
+        parent = s.parentGroupOf(g.id)
+      }
+      return g?.id ?? null
+    }
+    expect(rootOf('c')).toBe('a') // a is a root now, so the walk stops there
+    expect(rootOf('a')).toBe('a')
+    expect(rootOf('b')).toBe('b')
+  })
+
+  it('an ordinary group tree is untouched by the cycle guard', () => {
+    const s = useWorkspacesStore()
+    s.groups = [
+      { id: 'top', parent_id: null, position: 1 },
+      { id: 'mid', parent_id: 'top', position: 2 },
+      { id: 'deep', parent_id: 'mid', position: 3 },
+    ]
+    expect(s.childGroups(null).map((g) => g.id)).toEqual(['top'])
+    expect(s.childGroups('top').map((g) => g.id)).toEqual(['mid'])
+    expect(s.childGroups('mid').map((g) => g.id)).toEqual(['deep'])
+    expect(s.parentGroupOf('deep').id).toBe('mid')
+    expect(s.parentGroupOf('top')).toBeNull()
+  })
+
   // #2721: a deep-linked board has to drag the app into its own workspace, or
   // the realtime scope filter drops all of its events.
   it('ensureWorkspace switches to a foreign workspace and persists it', async () => {
