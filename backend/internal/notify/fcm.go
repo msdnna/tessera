@@ -92,7 +92,13 @@ func NewFCMSender(keyJSON []byte) (*FCMSender, error) {
 		Scopes:       []string{fcmScope},
 		TokenURL:     tokenURI,
 	}
-	return &FCMSender{ProjectID: k.ProjectID, Tokens: cfg.TokenSource(context.Background())}, nil
+	// Mint the token through fcmClient explicitly. x/oauth2 falls back to
+	// http.DefaultClient, and HardenDefaultClient replaces that one with a
+	// guarded, proxy-less transport meant for member-supplied targets — Google's
+	// token endpoint is neither, and in a proxied install it is only reachable
+	// through HTTP_PROXY.
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, fcmClient)
+	return &FCMSender{ProjectID: k.ProjectID, Tokens: cfg.TokenSource(ctx)}, nil
 }
 
 // LoadFCMSender reads a service-account key from disk.

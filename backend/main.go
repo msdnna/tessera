@@ -20,6 +20,7 @@ import (
 	"tessera/internal/database"
 	"tessera/internal/db"
 	"tessera/internal/mail"
+	"tessera/internal/notify"
 	"tessera/internal/observability"
 	"tessera/internal/realtime"
 )
@@ -62,6 +63,12 @@ func main() {
 	// volume we cannot write to would stay invisible until a user uploads a file.
 	// Runs after InitSentry so the report lands there too.
 	preflightUploadDir(cfg.UploadDir)
+
+	// Notification delivery hands a member-supplied service URL to shoutrrr,
+	// which dials through http.DefaultClient — the one client we cannot pass in.
+	// Guard it before anything can deliver, so a redirect or a rebind off that
+	// URL can't reach the internal network (#2932).
+	notify.HardenDefaultClient()
 
 	// Cancelled on SIGINT/SIGTERM; every background worker hangs off it, so a
 	// deploy stops them at a tick boundary instead of mid-write.
