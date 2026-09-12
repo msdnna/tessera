@@ -126,13 +126,44 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 	return i, err
 }
 
-const deleteTask = `-- name: DeleteTask :exec
-DELETE FROM tasks WHERE id = $1
+const deleteTask = `-- name: DeleteTask :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+DELETE FROM tasks WHERE tasks.id IN (SELECT id FROM down) RETURNING tasks.id
 `
 
-func (q *Queries) DeleteTask(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTask, id)
-	return err
+// DeleteTask removes a task; its subtasks follow by the parent_id cascade.
+//
+// Returns the ids it actually removed, which is what the attachment sweep needs:
+// the files under <uploadDir>/<task id>/ are named by nothing but the
+// task_attachments rows this statement has just erased, and a subtask is a task
+// with an id and a directory of its own. Spelling the recursion out rather than
+// leaning on the cascade is what makes those ids observable — the cascade
+// deletes the descendants without ever naming them.
+//
+// UNION rather than UNION ALL for the same reason as ArchiveTaskCascade: an
+// install that already grew a ring must get an answer instead of spinning.
+func (q *Queries) DeleteTask(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteTask, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const detachChildren = `-- name: DetachChildren :exec

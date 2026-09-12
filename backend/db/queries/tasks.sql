@@ -330,8 +330,24 @@ SET column_id = $2, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
--- name: DeleteTask :exec
-DELETE FROM tasks WHERE id = $1;
+-- DeleteTask removes a task; its subtasks follow by the parent_id cascade.
+--
+-- Returns the ids it actually removed, which is what the attachment sweep needs:
+-- the files under <uploadDir>/<task id>/ are named by nothing but the
+-- task_attachments rows this statement has just erased, and a subtask is a task
+-- with an id and a directory of its own. Spelling the recursion out rather than
+-- leaning on the cascade is what makes those ids observable — the cascade
+-- deletes the descendants without ever naming them.
+--
+-- UNION rather than UNION ALL for the same reason as ArchiveTaskCascade: an
+-- install that already grew a ring must get an answer instead of spinning.
+-- name: DeleteTask :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+DELETE FROM tasks WHERE tasks.id IN (SELECT id FROM down) RETURNING tasks.id;
 
 -- SetTaskDueNotify sets a task's per-task due-notification overrides (NULL = inherit
 -- the user default). Used by the card's due popover.

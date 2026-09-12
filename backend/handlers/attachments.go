@@ -177,8 +177,8 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	}
 
 	// Store under <uploadDir>/<taskID>/<uuid><ext> so paths never collide and
-	// removing a task's files is a single directory.
-	dir := filepath.Join(h.uploadDir, id.String())
+	// removing a task's files is a single directory (purgeTaskUploads).
+	dir := h.taskUploadDir(id)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
@@ -208,6 +208,32 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	h.broadcast(wsID, "task.updated", gin.H{"id": id})
 	_ = t
 	c.JSON(http.StatusCreated, att)
+}
+
+// taskUploadDir is where one task's attachments live. A sibling of the named
+// subdirectories under uploadDir (media/, documents/, conf/, rec/) and never
+// confusable with them: the name is a task uuid.
+func (h *API) taskUploadDir(taskID uuid.UUID) string {
+	return filepath.Join(h.uploadDir, taskID.String())
+}
+
+// purgeTaskUploads clears the attachment directories of tasks that have just
+// been deleted.
+//
+// A plain RemoveAll per id, unlike purgeDocAssets: storage_path is written in
+// exactly one place (UploadAttachment, under a fresh uuid), no row is ever
+// copied to another task, and the ids handed in are the ones the delete really
+// took — so nothing outside the directory can be pointing into it. What makes
+// the sweep necessary is that the task_attachments rows are the only record the
+// files exist at all, and the delete has just taken them.
+//
+// Best-effort by design: the rows are gone either way, and a delete that
+// answered 500 because a file was already missing would be worse than a
+// directory left behind.
+func (h *API) purgeTaskUploads(ids []uuid.UUID) {
+	for _, id := range ids {
+		_ = os.RemoveAll(h.taskUploadDir(id))
+	}
 }
 
 // DownloadAttachment streams an attachment's stored file to the client.

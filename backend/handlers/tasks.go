@@ -661,10 +661,18 @@ func (h *API) DeleteTask(c *gin.Context) {
 			return
 		}
 	}
-	if err := h.q.DeleteTask(c, id); err != nil {
+	gone, err := h.q.DeleteTask(c, id)
+	if err != nil {
 		fail(c, err)
 		return
 	}
+	// Sweep the attachments of every task the delete actually took, subtasks
+	// included — each has its own <uploadDir>/<id>/ (UploadAttachment) and its
+	// rows have just gone with it, so nothing names those files any more. The
+	// list comes from the delete itself rather than from a walk of the tree: a
+	// ?subtasks=detach run re-parented the children a statement earlier, and
+	// they keep both their rows and their files.
+	h.purgeTaskUploads(gone)
 	h.broadcast(wsID, "task.deleted", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
