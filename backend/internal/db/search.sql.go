@@ -95,6 +95,7 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Sea
 }
 
 const searchTasks = `-- name: SearchTasks :many
+
 SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
@@ -122,6 +123,9 @@ type SearchTasksRow struct {
 	CompletedAt *time.Time `json:"completed_at"`
 }
 
+// The search term arrives already escaped for LIKE (handlers.likeEscaper): it is
+// spliced into the pattern, so a `%`, `_` or `\` the user typed would otherwise
+// act as an operator instead of as text. Do not pass a raw query string here.
 func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]SearchTasksRow, error) {
 	rows, err := q.db.Query(ctx, searchTasks, arg.WorkspaceID, arg.Column2)
 	if err != nil {
