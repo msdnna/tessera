@@ -107,10 +107,20 @@ func (h *API) CloseConfRooms() {
 // dropConfRoom empties a conference's room, telling whoever is still connected
 // why. Guarded because the registry is optional wiring — the GitLab and job
 // tests build an API without it.
+//
+// Both halves of the call go down, presence and media (#2932). The registry only
+// owns the roster; the audio and video live in the SFU, which authorises a
+// participant once at the join and never re-reads anything afterwards — so a
+// teardown that stopped here would close the sockets while the room itself
+// played on, for anyone who ignores the frame it just sent or who re-presents
+// the join token they still hold. dropConfMedia is deliberately outside the nil
+// guard: a presence room that no longer exists (nobody connected, or a backend
+// that restarted since) says nothing about whether the SFU still has one.
 func (h *API) dropConfRoom(confID uuid.UUID, reason string) {
 	if h.confRooms != nil {
 		h.confRooms.Drop(confID, reason)
 	}
+	h.dropConfMedia(confID)
 }
 
 // revokeUserSockets cuts every live connection a user holds after their access
