@@ -188,9 +188,9 @@ type stage struct {
 // so it survives a reconnect, and to the SFU, so it applies to the media stream
 // this package deliberately knows nothing about.
 //
-// Both methods are called *after* the room's lock is released and must not
-// block the caller — they run on a socket's read pump, and a wedged SFU must not
-// be able to freeze a participant's connection. The implementation owns its own
+// Every method is called *after* the room's lock is released and must not block
+// the caller — they run on a socket's read pump, and a wedged SFU must not be
+// able to freeze a participant's connection. The implementation owns its own
 // goroutine and timeout.
 //
 // A nil Enforcer is legal and means "in-memory only": every test that exercises
@@ -198,6 +198,11 @@ type stage struct {
 type Enforcer interface {
 	// Kicked is called once a kick has taken effect in the room.
 	Kicked(confID, userID uuid.UUID)
+	// Evicted is called once a user's access was revoked and their connections
+	// to this conference were dropped. Separate from Kicked because the exit is
+	// already being stamped in the database by the socket's own cleanup — all
+	// that is left is the media stream. See EvictUser.
+	Evicted(confID, userID uuid.UUID)
 	// Muted is called when a user's force-mute flag was flipped either way.
 	Muted(confID, userID uuid.UUID, muted bool)
 }
@@ -982,19 +987,28 @@ func (rs *Rooms) Drop(confID uuid.UUID, reason string) {
 // Unlike a kick this leaves no cooldown: the room is not punishing them, it is
 // just no longer theirs, and a membership restored a minute later must not run
 // into a ban the room invented.
+//
+// Closing the socket is only half of it. The roster lives here, but the call
+// itself lives in the SFU, which authorises once at the join and never re-reads
+// anything after it — so an eviction that stopped at the socket would take the
+// ex-member off the roster while they went on hearing, seeing and publishing to
+// the meeting, now invisibly. The media half goes out through the Enforcer, the
+// same seam a kick uses (#2932).
 func (rs *Rooms) EvictUser(userID uuid.UUID, reason string) {
 	rs.mu.Lock()
 	snapshot := make(map[uuid.UUID]*Room, len(rs.rooms))
 	for id, room := range rs.rooms {
 		snapshot[id] = room
 	}
+	enforce := rs.enforce
 	rs.mu.Unlock()
 	frame := encode(struct {
 		Type   string `json:"type"`
 		Reason string `json:"reason"`
 	}{TypeEnded, reason})
 	for confID, room := range snapshot {
-		for _, p := range room.connectionsOf(userID) {
+		here := room.connectionsOf(userID)
+		for _, p := range here {
 			// Queue the reason before Leave closes the channel: a closed channel
 			// still yields what was buffered, so the write pump delivers it. A
 			// client that merely goes quiet cannot tell this from a network drop
@@ -1003,6 +1017,11 @@ func (rs *Rooms) EvictUser(userID uuid.UUID, reason string) {
 			// Leave (rather than a bare Close) releases the stage and the place in
 			// the queue, tells the rest of the room, and forgets an empty one.
 			rs.Leave(confID, p)
+		}
+		// Once per room, not per connection: the same person in three tabs is one
+		// identity at the SFU, and removing it three times is two wasted calls.
+		if len(here) > 0 && enforce != nil {
+			enforce.Evicted(confID, userID)
 		}
 	}
 }

@@ -105,6 +105,28 @@ func (e confEnforcer) Kicked(confID, userID uuid.UUID) {
 	})
 }
 
+// Evicted disconnects a user from the SFU after their access was revoked.
+//
+// Deliberately thinner than Kicked: the presence socket is being closed under
+// them, and its own deferred cleanup already stamps the exit and tells the
+// board. What that cleanup cannot do is reach the media stream — LiveKit
+// authorises a participant once, at the join, so a session opened while they
+// were still a member outlives the membership for as long as the connection
+// holds. This is what ends it (#2932).
+func (e confEnforcer) Evicted(confID, userID uuid.UUID) {
+	e.dispatch("evict", func(ctx context.Context) {
+		// NotFound is ordinary here for the same reason as in Kicked: a client
+		// whose socket just closed usually tears down its own media first.
+		if err := e.h.livekit.RemoveParticipant(ctx, livekit.RoomName(confID), userID.String()); err != nil {
+			var lkErr *livekit.Error
+			gone := errors.As(err, &lkErr) && lkErr.NotFound()
+			if !errors.Is(err, livekit.ErrDisabled) && !gone {
+				soft(ctx, "conference.evict.sfu", err)
+			}
+		}
+	})
+}
+
 // Muted persists a force-mute and carries it to the SFU.
 //
 // Order matters on the way in: the publish permission is narrowed *before* the
