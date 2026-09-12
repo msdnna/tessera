@@ -213,6 +213,29 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     list.value = list.value.map((w) => (w.id === workspaceId ? { ...w, estimation } : w))
   }
 
+  // Apply somebody else's estimation change (#2932).
+  //
+  // Both patchers above used to be reachable only from EstimationModal, i.e. only
+  // on the client that did the saving — the backend's `workspace.estimation` /
+  // `project.estimation` events arrived at the socket and stopped there, since the
+  // board deliberately ignores them (utils/boardEvents.js) and nothing else
+  // listened. That is not a cosmetic staleness: a task's `estimate` is a bare
+  // number whose *unit* this config decides, and parseEstimate/formatEstimate read
+  // it in both directions. A colleague who left the board open kept showing 480
+  // as «1д» after the team moved to six-hour days, and kept writing minutes into a
+  // project that had switched to story points.
+  //
+  // Patching the store is all that is needed: every consumer resolves through
+  // `estimationFor` inside a computed, so the re-render follows.
+  function onEstimationEvent(ev) {
+    const data = ev?.data
+    if (ev?.type === 'workspace.estimation' && data?.workspace_id) {
+      setWorkspaceEstimation(data.workspace_id, data.estimation ?? null)
+    } else if (ev?.type === 'project.estimation' && data?.project_id) {
+      setProjectEstimation(data.project_id, data.estimation ?? null)
+    }
+  }
+
   return {
     list,
     currentId,
@@ -239,5 +262,6 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     estimationFor,
     setProjectEstimation,
     setWorkspaceEstimation,
+    onEstimationEvent,
   }
 })

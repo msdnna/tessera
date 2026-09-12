@@ -43,6 +43,7 @@ vi.mock('@/composables/useTreeExpand', () => ({
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { formatEstimate } from '@/utils/estimation'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useGitlabStore } from '@/stores/gitlab'
@@ -414,6 +415,69 @@ describe('workspaces store', () => {
     expect(s.childGroups('mid').map((g) => g.id)).toEqual(['deep'])
     expect(s.parentGroupOf('deep').id).toBe('mid')
     expect(s.parentGroupOf('top')).toBeNull()
+  })
+
+  // #2932: the estimation config decides what a task's `estimate` *number*
+  // means, and the backend broadcasts every change to it. Until the event is
+  // applied, a colleague who left the board open keeps both reading and writing
+  // estimates against the config the project no longer uses.
+  it('a project estimation override from the socket reaches an open client', () => {
+    const s = useWorkspacesStore()
+    s.list = [{ id: 'w1', estimation: null }]
+    s.currentId = 'w1'
+    s.projects = [{ id: 'p1', estimation: { unit: 'time', hours_per_day: 8, days_per_week: 5 } }]
+    // 480 minutes is one working day while the day is eight hours long.
+    expect(formatEstimate(480, s.estimationFor('p1'))).toBe('1д')
+
+    s.onEstimationEvent({
+      type: 'project.estimation',
+      scope: 'w1',
+      data: { project_id: 'p1', estimation: { unit: 'time', hours_per_day: 6, days_per_week: 5 } },
+    })
+
+    // The team went to six-hour days: the same stored number is now a day and two hours.
+    expect(s.estimationFor('p1').hours_per_day).toBe(6)
+    expect(formatEstimate(480, s.estimationFor('p1'))).toBe('1д 2ч')
+  })
+
+  it('a workspace estimation default from the socket reaches an open client', () => {
+    const s = useWorkspacesStore()
+    s.list = [{ id: 'w1', estimation: { unit: 'time', hours_per_day: 8, days_per_week: 5 } }]
+    s.currentId = 'w1'
+    s.projects = [{ id: 'p1', estimation: null }] // inherits the workspace default
+
+    s.onEstimationEvent({
+      type: 'workspace.estimation',
+      scope: 'w1',
+      data: { workspace_id: 'w1', estimation: { unit: 'points', points_scale: 'fibonacci' } },
+    })
+
+    expect(s.estimationFor('p1').unit).toBe('points')
+    expect(formatEstimate(5, s.estimationFor('p1'))).toBe('5 SP')
+  })
+
+  it('clearing a project override on the socket falls back to the workspace default', () => {
+    const s = useWorkspacesStore()
+    s.list = [{ id: 'w1', estimation: { unit: 'custom', custom_label: 'сеанс' } }]
+    s.currentId = 'w1'
+    s.projects = [{ id: 'p1', estimation: { unit: 'points', points_scale: 'linear' } }]
+
+    s.onEstimationEvent({
+      type: 'project.estimation',
+      scope: 'w1',
+      data: { project_id: 'p1', estimation: null },
+    })
+
+    expect(s.estimationFor('p1').unit).toBe('custom')
+  })
+
+  it('an unrelated event leaves the estimation config alone', () => {
+    const s = useWorkspacesStore()
+    s.list = [{ id: 'w1', estimation: null }]
+    s.currentId = 'w1'
+    s.projects = [{ id: 'p1', estimation: { unit: 'points', points_scale: 'linear' } }]
+    s.onEstimationEvent({ type: 'project.updated', scope: 'w1', data: { id: 'p1', slug: 'new' } })
+    expect(s.estimationFor('p1').unit).toBe('points')
   })
 
   // #2721: a deep-linked board has to drag the app into its own workspace, or

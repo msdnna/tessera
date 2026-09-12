@@ -92,6 +92,10 @@ useRealtime(
     conflicts.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
+    // The estimation config is resolved from the store by the board, the task
+    // modal, the charts and the «Этапы» screen alike, so it is patched here at
+    // the layout rather than in any one of them.
+    ws.onEstimationEvent(ev)
   },
   // Reconnect / resync: rebuild the sidebar tree, which is the layout-level state
   // that can drift while the socket is down (projects added/removed elsewhere).

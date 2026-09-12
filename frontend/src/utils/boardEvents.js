@@ -22,6 +22,9 @@ const IGNORED = new Set([
   'note.deleted',
   'notification',
   'workspace.updated',
+  // The two estimation events do concern the board — they decide what its
+  // estimate chips mean — but not by way of a re-fetch: AppLayout patches the
+  // workspaces store and every consumer re-resolves through it (#2932).
   'workspace.estimation',
   'group.created',
   'group.updated',
@@ -31,7 +34,7 @@ const IGNORED = new Set([
   'project.updated',
   'project.deleted',
   'project.moved',
-  'project.estimation',
+  'project.estimation', // see workspace.estimation above
   'board.created',
   'board.deleted',
   // Handled by their own branch in the board's event handler, and neither needs
