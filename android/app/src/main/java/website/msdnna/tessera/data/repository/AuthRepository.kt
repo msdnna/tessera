@@ -58,7 +58,10 @@ class AuthRepository {
         prefs.clearSession()
     }
 
-    private suspend fun persist(res: AuthResponse): User {
+    /** Adopts a freshly issued session. Not private because a password change
+     *  also mints one (see [ProfileRepository.changePassword]) and both paths
+     *  have to store it the same way. */
+    internal suspend fun persist(res: AuthResponse): User {
         RetrofitClient.authToken = res.accessToken
         RetrofitClient.refreshToken = res.refreshToken
         val user = res.user ?: User()

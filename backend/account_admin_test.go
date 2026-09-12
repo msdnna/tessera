@@ -257,9 +257,11 @@ func TestChangeMyPassword(t *testing.T) {
 		t.Fatalf("wrong current password: status %d, want 403", r.Status)
 	}
 
+	// 200, not 204: the change revokes every session and returns a replacement
+	// one so the caller's own device survives it (password_change_test.go).
 	c.expect(t, c.put("/users/me/password", map[string]any{
 		"current_password": "password-123", "new_password": "changed-password-1",
-	}), http.StatusNoContent)
+	}), http.StatusOK)
 
 	if r := login(t, c.Email, "password-123"); r.Status != http.StatusUnauthorized {
 		t.Fatalf("old password: status %d, want 401", r.Status)

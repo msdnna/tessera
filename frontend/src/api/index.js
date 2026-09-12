@@ -270,7 +270,9 @@ export const accountFlows = {
 
 export const users = {
   updateProfile: (data) => api.patch('/users/me', data),
-  changePassword: (data) => api.put('/users/me/password', data),
+  // Hands back a replacement session (the change revokes every existing one),
+  // so it needs the delivery-mode header like login/register do.
+  changePassword: (data) => api.put('/users/me/password', data, { headers: authModeHeaders() }),
   updatePreferences: (data) => api.put('/users/me/preferences', data),
   uploadAvatar: (file) => {
     const form = new FormData()

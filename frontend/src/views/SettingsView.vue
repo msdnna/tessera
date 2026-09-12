@@ -153,7 +153,12 @@ async function changePassword() {
   }
   pwSaving.value = true
   try {
-    await users.changePassword({ current_password: pw.current, new_password: pw.next })
+    // The change logs out every session the old password was behind, this one
+    // included, and hands back a replacement in the same {access_token, …}
+    // shape login uses. Storing it is what keeps the tab the user is looking at
+    // from quietly dropping to the login screen a few minutes later.
+    const res = await users.changePassword({ current_password: pw.current, new_password: pw.next })
+    auth.setAuth(res.data)
     pw.current = pw.next = pw.confirm = ''
     flash(pwSaved)
   } catch (e) {

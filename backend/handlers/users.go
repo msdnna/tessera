@@ -10,7 +10,6 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"tessera/internal/auth"
 	"tessera/internal/db"
 	"tessera/middleware"
 )
@@ -126,38 +125,6 @@ func (h *API) UpdateMyProfile(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, buildUserDTO(c, h.q, u))
-}
-
-// ChangeMyPassword changes the caller's password after verifying the current one.
-func (h *API) ChangeMyPassword(c *gin.Context) {
-	uid := middleware.CurrentUser(c)
-	var req struct {
-		CurrentPassword string `json:"current_password" binding:"required"`
-		NewPassword     string `json:"new_password" binding:"required,min=8"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	u, err := h.q.GetUserByID(c, uid)
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	if !auth.CheckPassword(u.PasswordHash, req.CurrentPassword) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "current password is incorrect"})
-		return
-	}
-	hash, err := auth.HashPassword(req.NewPassword)
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	if err := h.q.UpdateUserPassword(c, db.UpdateUserPasswordParams{ID: uid, PasswordHash: hash}); err != nil {
-		fail(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
 }
 
 // UpdateMyPreferences upserts the caller's localizing + personalizing settings.

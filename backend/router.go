@@ -281,7 +281,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			// Self-service profile / password / preferences / avatar.
 			protected.PATCH("/users/me", rh.UpdateMyProfile)
-			protected.PUT("/users/me/password", rh.ChangeMyPassword)
+			// On AuthHandler, not the resource handler: changing the password
+			// now ends every session and hands back a replacement, so it needs
+			// the signing key and the same delivery modes as login (account.go).
+			protected.PUT("/users/me/password", authHandler.ChangeMyPassword)
 			protected.PUT("/users/me/preferences", rh.UpdateMyPreferences)
 			protected.PUT("/users/me/avatar", rh.UploadMyAvatar)
 			protected.DELETE("/users/me/avatar", rh.DeleteMyAvatar)

@@ -99,8 +99,10 @@ interface ApiService {
     @PATCH("users/me")
     suspend fun updateProfile(@Body body: ProfileUpdate): User
 
+    // Returns a session: the change revokes every refresh token the account has,
+    // this device's included, and hands back a replacement pair.
     @PUT("users/me/password")
-    suspend fun changePassword(@Body body: PasswordChange)
+    suspend fun changePassword(@Body body: PasswordChange): AuthResponse
 
     @PUT("users/me/preferences")
     suspend fun updatePreferences(@Body body: Preferences): Preferences

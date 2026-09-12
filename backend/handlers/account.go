@@ -178,3 +178,57 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	soft(c, "RevokeAllUserTokens", h.q.RevokeAllUserTokens(c, tok.UserID)) // log out other sessions
 	c.Status(http.StatusNoContent)
 }
+
+// ChangeMyPassword changes the caller's password after verifying the current one
+// and, like ResetPassword above, ends every session the old password was behind.
+//
+// The two are the same act from different doors — one from the login form, one
+// from a live session — and the in-session one is the door a user reaches for on
+// noticing someone else is in the account. Leaving the refresh chain alone there
+// meant the intruder's token went on rotating itself for its full thirty days,
+// renewing past the new password indefinitely; the user, meanwhile, had done the
+// one thing the interface offers for exactly this.
+//
+// Revocation is unconditional, which includes the caller's own pair — the access
+// token carries no session id, so there is nothing to tell their chain apart
+// from anyone else's. The replacement is handed back in the response instead, so
+// the device performing the change stays signed in on a chain the old password
+// never reached. That makes this a 200 carrying a session where it used to be a
+// 204; a client that ignores the body is no worse off than one whose user reset
+// the password from the login form.
+//
+// Personal access tokens are deliberately left alone. They are separate
+// credentials with their own revoke button, minted for CI and MCP clients that
+// no one is watching, and a routine password rotation is not a statement about
+// them. Reset does not touch them either.
+func (h *AuthHandler) ChangeMyPassword(c *gin.Context) {
+	uid := middleware.CurrentUser(c)
+	var req struct {
+		CurrentPassword string `json:"current_password" binding:"required"`
+		NewPassword     string `json:"new_password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	u, err := h.q.GetUserByID(c, uid)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if !auth.CheckPassword(u.PasswordHash, req.CurrentPassword) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "current password is incorrect"})
+		return
+	}
+	hash, err := auth.HashPassword(req.NewPassword)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if err := h.q.UpdateUserPassword(c, db.UpdateUserPasswordParams{ID: uid, PasswordHash: hash}); err != nil {
+		fail(c, err)
+		return
+	}
+	soft(c, "RevokeAllUserTokens", h.q.RevokeAllUserTokens(c, uid))
+	h.issue(c, u)
+}
