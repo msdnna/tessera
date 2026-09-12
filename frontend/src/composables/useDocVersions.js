@@ -90,6 +90,26 @@ export function useDocVersions() {
       if (selectedId.value && !versions.value.some((v) => v.id === selectedId.value)) {
         selectedId.value = ''
       }
+      // A compare pin can outlive its version: retention keeps fifty automatic
+      // entries and drops the rest. Holding the dead id leaves `baseline` null
+      // and the diff permanently unreachable, so it falls back to the newest —
+      // the comparison the panel opens with.
+      if (compareId.value && !versions.value.some((v) => v.id === compareId.value)) {
+        compareId.value = ''
+      }
+      // The journal is read *while* the document is edited: every save reloads
+      // it, and the two lines above just invalidated the live body — which is
+      // the default baseline — or moved the baseline to an entry this session
+      // has never fetched. Nothing on screen asks the reader to pick their
+      // comparison again, so re-fetching it is this function's job; without it
+      // the panel answers the next keystroke with «Загружаем версию…» and keeps
+      // saying that. Reported apart from the list: the journal itself arrived,
+      // and calling that a failed load would blank a panel that is fine.
+      try {
+        await hydrateSelection()
+      } catch (e) {
+        error.value = e.message || i18n.global.t('documents.history.error.version')
+      }
     } catch (e) {
       error.value = e.message || i18n.global.t('documents.history.error.load')
     } finally {
@@ -106,12 +126,23 @@ export function useDocVersions() {
     return bodies.value[id]
   }
 
+  /**
+   * Loads both bodies the open comparison needs. No selection, nothing to do —
+   * which is what keeps the reload cheap for the common case: a journal read
+   * without a diff open costs the list and nothing else, and the one body this
+   * refetches is the only one that can have changed.
+   */
+  async function hydrateSelection() {
+    if (!selectedId.value) return
+    await Promise.all([body(selectedId.value), body(baseline.value?.id)])
+  }
+
   /** Opens a version for comparison, loading both sides. */
   async function select(id) {
     selectedId.value = id === selectedId.value ? '' : id
     if (!selectedId.value) return
     try {
-      await Promise.all([body(selectedId.value), body(baseline.value?.id)])
+      await hydrateSelection()
       error.value = ''
     } catch (e) {
       error.value = e.message || i18n.global.t('documents.history.error.version')
