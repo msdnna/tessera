@@ -299,14 +299,27 @@ func (h *API) broadcastAs(c *gin.Context, workspaceID uuid.UUID, eventType strin
 	h.broadcastEvent(workspaceID, eventType, middleware.CurrentUser(c).String(), payload)
 }
 
+// broadcastToUser fans an event out to one person's sockets only, still inside
+// the workspace scope. Use it whenever the payload is that person's business
+// alone — leaving such an event to the plain workspace broadcast puts its text in
+// every colleague's socket and leans on the client to throw it away.
+func (h *API) broadcastToUser(workspaceID, userID uuid.UUID, eventType string, payload any) {
+	h.broadcastEvent(workspaceID, eventType, "", payload, userID)
+}
+
 // broadcastEvent marshals the payload and fans the event out; actor may be "".
-func (h *API) broadcastEvent(workspaceID uuid.UUID, eventType, actor string, payload any) {
+// An optional addressee narrows delivery to that user's sockets.
+func (h *API) broadcastEvent(workspaceID uuid.UUID, eventType, actor string, payload any, to ...uuid.UUID) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
+	var user uuid.UUID
+	if len(to) > 0 {
+		user = to[0]
+	}
 	h.hub.Broadcast(realtime.Event{
-		Scope: workspaceID.String(), Type: eventType, Actor: actor, Data: data,
+		Scope: workspaceID.String(), Type: eventType, Actor: actor, Data: data, User: user,
 	})
 }
 

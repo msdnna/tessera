@@ -104,7 +104,10 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 			obj["task_number"] = t.Number
 		}
 	}
-	h.broadcast(wsID, "notification", gin.H{
+	// Addressed to the recipient alone: the text is theirs (for a reminder it is
+	// literally their own private message), so it must not travel to every
+	// colleague's socket with a user_id for the client to compare against.
+	h.broadcastToUser(wsID, userID, "notification", gin.H{
 		"user_id": userID, "notification": obj, "device_targets": deviceTargets,
 	})
 }

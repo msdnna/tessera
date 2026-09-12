@@ -174,6 +174,33 @@ func TestClientCanSee(t *testing.T) {
 	}
 }
 
+// TestClientShouldReceiveHonoursAddressee pins the second half of the delivery
+// test: an event naming a user reaches that user's sockets and nobody else's,
+// even among members of the same workspace.
+func TestClientShouldReceiveHonoursAddressee(t *testing.T) {
+	ws := uuid.New().String()
+	me, colleague := uuid.New(), uuid.New()
+	c := newTestClient(me, ws)
+
+	cases := []struct {
+		name string
+		ev   Event
+		want bool
+	}{
+		{"unaddressed event goes to everyone in scope", Event{Scope: ws}, true},
+		{"addressed to me", Event{Scope: ws, User: me}, true},
+		{"addressed to a colleague", Event{Scope: ws, User: colleague}, false},
+		{"addressed to me but out of scope", Event{Scope: uuid.New().String(), User: me}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := c.shouldReceive(tc.ev); got != tc.want {
+				t.Fatalf("shouldReceive(%+v) = %v, want %v", tc.ev, got, tc.want)
+			}
+		})
+	}
+}
+
 // TestHubFanOutIsScoped is the regression guard for the pre-fix behaviour, where
 // every client received every event regardless of workspace.
 func TestHubFanOutIsScoped(t *testing.T) {
