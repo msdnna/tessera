@@ -1,6 +1,8 @@
 package observability
 
 import (
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/getsentry/sentry-go"
@@ -20,6 +22,40 @@ var sensitiveQueryParams = map[string]struct{}{
 	"sig":           {},
 	"access_token":  {},
 	"refresh_token": {},
+	// GitLab's own name for a personal access token passed in the URL. We send
+	// it that way only as the last resort of the avatar proxy (older web
+	// routes accept nothing else), but once it is in a URL it can reach a log
+	// through any error value that quotes the request.
+	"private_token": {},
+}
+
+// redactURLParams matches a sensitive parameter and its value inside a larger
+// string — an error message, a log line — where the URL is embedded rather than
+// handed over as a bare query. The value runs to the next separator: '&' ends a
+// parameter, and whitespace, a quote or a backslash ends the URL itself (Go
+// quotes URLs in error messages as \"…\").
+var redactURLParams = buildRedactURLParams()
+
+func buildRedactURLParams() *regexp.Regexp {
+	keys := make([]string, 0, len(sensitiveQueryParams))
+	for k := range sensitiveQueryParams {
+		keys = append(keys, regexp.QuoteMeta(k))
+	}
+	// Longest first: alternation is leftmost-first in Go's engine, and a short
+	// name must not win over a longer one that starts with it.
+	sort.Slice(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
+	return regexp.MustCompile(`([?&](?:` + strings.Join(keys, "|") + `)=)[^&\s"'\\]*`)
+}
+
+// RedactURLs replaces the value of every sensitive query parameter found
+// anywhere in s. Use it on text that may quote a URL we built — most of all on
+// an error from an HTTP client, since *url.Error stringifies the full request
+// URL. The parameter name survives so the message stays diagnosable.
+func RedactURLs(s string) string {
+	if s == "" {
+		return ""
+	}
+	return redactURLParams.ReplaceAllString(s, "${1}***")
 }
 
 // RedactQuery returns rawQuery with every sensitive parameter's value replaced

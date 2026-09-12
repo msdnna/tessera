@@ -25,6 +25,41 @@ func TestRedactQuery(t *testing.T) {
 	}
 }
 
+func TestRedactURLs(t *testing.T) {
+	cases := []struct{ name, in, want string }{
+		{"empty", "", ""},
+		{
+			// The shape that started this: a *url.Error from the avatar proxy.
+			"url error from an http client",
+			`Get "http://gl.example/uploads/-/system/user/avatar/7/a.png?private_token=glpat-live": dial tcp: i/o timeout`,
+			`Get "http://gl.example/uploads/-/system/user/avatar/7/a.png?private_token=***": dial tcp: i/o timeout`,
+		},
+		{
+			"every parameter on one url, unrelated ones kept",
+			"https://h/x?page=2&token=t&code=c&sig=s&access_token=a&refresh_token=r&secret=e&state=n&limit=50",
+			"https://h/x?page=2&token=***&code=***&sig=***&access_token=***&refresh_token=***&secret=***&state=***&limit=50",
+		},
+		{
+			// A short name must not eat a longer one that ends with it: the
+			// value has to disappear, not the "access_" prefix of the key.
+			"longer parameter name wins",
+			"https://h/x?access_token=live",
+			"https://h/x?access_token=***",
+		},
+		{
+			// Only a real parameter, not the word appearing in prose or path.
+			"no false positives",
+			"fetching /api/token for user code=? nothing to redact",
+			"fetching /api/token for user code=? nothing to redact",
+		},
+	}
+	for _, c := range cases {
+		if got := RedactURLs(c.in); got != c.want {
+			t.Errorf("%s: RedactURLs(%q) = %q, want %q", c.name, c.in, got, c.want)
+		}
+	}
+}
+
 // The regression this file exists for: sentry-go copies r.URL.RawQuery into the
 // event verbatim (interfaces.go newRequest), so an OAuth callback that 500s —
 // or, with tracing on, any sampled request at all — used to hand the live

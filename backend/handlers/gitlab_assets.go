@@ -18,6 +18,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
+	"tessera/internal/observability"
 )
 
 // GitLab uploads referenced in synced descriptions/comments are project-relative
@@ -398,7 +399,12 @@ func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) boo
 		}
 		resp, derr := client.Do(req)
 		if derr != nil {
-			lastStatus, lastCT, lastBody = 0, "", derr.Error()
+			// Not derr.Error() as-is: a transport failure yields a *url.Error
+			// that quotes the whole request URL, and the third attempt has the
+			// PAT in it. That attempt is also the one that overwrites whatever
+			// the first two recorded, so the credential would be what the
+			// diagnostic below prints.
+			lastStatus, lastCT, lastBody = 0, "", observability.RedactURLs(derr.Error())
 			continue
 		}
 		ct := resp.Header.Get("Content-Type")
