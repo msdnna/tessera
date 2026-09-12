@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"tessera/internal/db"
 )
 
@@ -116,5 +118,69 @@ func TestDueShouldFire(t *testing.T) {
 				t.Fatalf("dueShouldFire = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// A digest is only ever combined out of rows the drain claims in one tick
+// (deliverGroup groups whatever ClaimPendingDeliveries returned), so two
+// notifications inside the same window have to come due at the *same* instant
+// and under the same group key — otherwise each is delivered on its own and the
+// window is nothing but a delay. The user-facing promise is per-window, not
+// per-notification: "уведомления за окно объединяются в одно сообщение на канал".
+func TestDigestSlotCombinesWholeWindow(t *testing.T) {
+	ch := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	window := int32(30)
+	first := time.Date(2026, 6, 16, 10, 2, 0, 0, time.UTC)
+	later := time.Date(2026, 6, 16, 10, 21, 30, 0, time.UTC) // same 10:00–10:30 window
+
+	at1, g1 := digestSlot(first, time.Time{}, window, ch)
+	at2, g2 := digestSlot(later, time.Time{}, window, ch)
+	if !at1.Equal(at2) {
+		t.Fatalf("two notifications in one window come due apart: %v vs %v — delivered separately", at1, at2)
+	}
+	if g1 != g2 {
+		t.Fatalf("same window, different digest group: %q vs %q", g1, g2)
+	}
+	if !at1.After(first) || at1.Sub(first) > time.Duration(window)*time.Minute {
+		t.Fatalf("due %v is not inside the window that follows %v", at1, first)
+	}
+
+	// The next window is a separate digest: its rows must not wait for, or merge
+	// into, the one that already went out.
+	next := time.Date(2026, 6, 16, 10, 31, 0, 0, time.UTC)
+	at3, g3 := digestSlot(next, time.Time{}, window, ch)
+	if g3 == g1 {
+		t.Fatalf("next window reuses the spent group key %q", g3)
+	}
+	if !at3.After(at1) {
+		t.Fatalf("next window due %v must follow the previous digest %v", at3, at1)
+	}
+}
+
+// Quiet hours and the digest compose: everything released at the window's end is
+// one burst, so it must be combined rather than arrive as a stream. And with no
+// digest configured, delivery still resumes exactly when the quiet window ends.
+func TestDigestSlotWithQuietHours(t *testing.T) {
+	ch := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	qEnd := time.Date(2026, 6, 16, 8, 0, 0, 0, time.UTC)
+
+	// No digest: quiet hours alone decide, and they only ever push delivery later.
+	now := time.Date(2026, 6, 16, 3, 0, 0, 0, time.UTC)
+	if at, g := digestSlot(now, qEnd, 0, ch); !at.Equal(qEnd) || g != "" {
+		t.Fatalf("no digest, quiet → at=%v g=%q, want %v and no group", at, g, qEnd)
+	}
+	if at, _ := digestSlot(now, time.Time{}, 0, ch); !at.Equal(now) {
+		t.Fatalf("no digest, no quiet → at=%v, want now", at)
+	}
+
+	// Digest shorter than the remaining quiet time: the window may not release a
+	// delivery before quiet hours are over.
+	at1, g1 := digestSlot(now, qEnd, 30, ch)
+	at2, g2 := digestSlot(now.Add(2*time.Hour), qEnd, 30, ch)
+	if at1.Before(qEnd) || at2.Before(qEnd) {
+		t.Fatalf("delivery escapes quiet hours: %v / %v before %v", at1, at2, qEnd)
+	}
+	if !at1.Equal(at2) || g1 != g2 {
+		t.Fatalf("quiet-release burst not combined: %v/%q vs %v/%q", at1, g1, at2, g2)
 	}
 }

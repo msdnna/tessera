@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -241,10 +242,9 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 			p = defaultPrefs(n.UserID)
 		}
 		now := time.Now()
-		base := now
 		qEnd, inQuiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, now)
-		if inQuiet {
-			base = qEnd
+		if !inQuiet {
+			qEnd = time.Time{}
 		}
 		var deviceTargets []string
 		for _, chID := range r.ChannelIds {
@@ -271,13 +271,7 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 				}
 				continue
 			}
-			next, group := base, ""
-			if p.DigestMinutes > 0 {
-				group = chID.String() // v1 group key — combine everything to this channel
-				if d := now.Add(time.Duration(p.DigestMinutes) * time.Minute); d.After(next) {
-					next = d
-				}
-			}
+			next, group := digestSlot(now, qEnd, p.DigestMinutes, chID)
 			soft(ctx, "CreateNotificationDeliveryAt", h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
 				NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next, DigestGroup: group,
 			}))
@@ -285,6 +279,38 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 		return deviceTargets // first matching rule wins
 	}
 	return nil
+}
+
+// digestSlot decides when an outbox row for chID may be sent and which digest
+// group it joins. quietEnd is the zero time outside quiet hours; digestMinutes
+// <= 0 means the user wants no digest.
+//
+// The digest window is a slot on a fixed grid, not a per-notification timer. Only
+// rows that one drain tick claims together are ever combined (drainDeliveries
+// groups what ClaimPendingDeliveries returned), so rows of the same window have
+// to come due at the same instant — a per-notification now+window gives each its
+// own deadline seconds apart, and a burst arrives as the stream of separate
+// messages the window exists to replace (#2932). The slot end is also in the
+// group key: a spent window must not absorb the next one's rows, nor a retried
+// row from an hour ago.
+//
+// Quiet hours move the anchor, not the grid: a window that would release a
+// delivery mid-quiet is pushed to the first slot after the window ends, where the
+// whole released burst meets.
+func digestSlot(now, quietEnd time.Time, digestMinutes int32, chID uuid.UUID) (time.Time, string) {
+	anchor := now
+	if quietEnd.After(anchor) {
+		anchor = quietEnd
+	}
+	if digestMinutes <= 0 {
+		return anchor, ""
+	}
+	// The configured windows (5/15/30/60 min) all divide an hour, so truncating on
+	// the epoch grid lands on wall-clock boundaries. Always the *next* boundary:
+	// an anchor sitting exactly on one still owes its window a chance to fill.
+	window := time.Duration(digestMinutes) * time.Minute
+	end := anchor.Truncate(window).Add(window)
+	return end, fmt.Sprintf("%s:%d", chID, end.Unix())
 }
 
 // deviceIDOf extracts the stable device id from a device channel's config.
