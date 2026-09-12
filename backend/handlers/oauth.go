@@ -430,9 +430,31 @@ func (h *AuthHandler) applyOrgMap(c *gin.Context, p db.OauthProvider, token stri
 		if role == "" {
 			continue
 		}
-		if existing, gerr := h.q.GetMembershipRole(c, db.GetMembershipRoleParams{WorkspaceID: wsID, UserID: user.ID}); gerr == nil && existing == "owner" {
-			continue // never downgrade an owner
+		// CreateMembership is an upsert, so writing the mapped role over an
+		// existing one would take away what the mapping never gave: a workspace
+		// admin who also sits in a group with `users: true` would be demoted to
+		// member by their own sign-in, again after every re-grant (#2932). The
+		// mapping is additive — it may raise a role, never lower it.
+		if existing, gerr := h.q.GetMembershipRole(c, db.GetMembershipRoleParams{WorkspaceID: wsID, UserID: user.ID}); gerr == nil &&
+			membershipRank(existing) >= membershipRank(role) {
+			continue
 		}
 		_, _ = h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: wsID, UserID: user.ID, Role: role})
+	}
+}
+
+// membershipRank orders the workspace roles so org_map can tell a promotion from
+// a demotion. Anything unknown ranks lowest — a role we don't understand must not
+// stop a documented grant.
+func membershipRank(role string) int {
+	switch role {
+	case "owner":
+		return 3
+	case "admin":
+		return 2
+	case "member":
+		return 1
+	default:
+		return 0
 	}
 }
