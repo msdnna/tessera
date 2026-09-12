@@ -69,7 +69,18 @@ func (s emailSender) Send(_ context.Context, ch notify.Channel, msg notify.Messa
 // system-generated notifications (the due/reminder scanner). msg carries both the
 // structured payload the client renders from and the legacy Russian text (#2801).
 // Best-effort — used both on the request path (via notify) and off it (the scanner).
+//
+// Every notification is gated on the recipient still being a member of wsID.
+// The check lives here rather than in each caller because the callers are the
+// problem: notifyMentions and notifyThread do check, while the paths that walk
+// a task's assignees and creator (notifyTaskParticipants, the due scanner) walk
+// rows that outlive a membership — task_assignees references users, and
+// RemoveMember deliberately leaves those rows standing. One gate on the single
+// seam every notification passes through cannot be forgotten by the next caller.
 func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, taskID, actorID *uuid.UUID, kind string, msg notifyMsg) {
+	if !h.notifiableInWorkspace(ctx, userID, wsID) {
+		return
+	}
 	n, err := h.q.CreateNotification(ctx, db.CreateNotificationParams{
 		UserID: userID, WorkspaceID: wsID, TaskID: taskID, ActorID: actorID,
 		Kind: kind, Text: msg.text, Payload: msg.json(),
@@ -96,6 +107,23 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 	h.broadcast(wsID, "notification", gin.H{
 		"user_id": userID, "notification": obj, "device_targets": deviceTargets,
 	})
+}
+
+// notifiableInWorkspace reports whether userID may still be told about events in
+// wsID.
+//
+// uuid.Nil passes: reminderWorkspace falls back to it for a reminder that is tied
+// to no task and no workspace, and that notification carries the user's own text
+// about their own reminder — nothing of anyone else's to leak. A read error is
+// treated as "not notifiable": the alternative is leaking on exactly the
+// transient failure an attacker cannot arrange, for the sake of a notification
+// the next comment re-sends.
+func (h *API) notifiableInWorkspace(ctx context.Context, userID, wsID uuid.UUID) bool {
+	if wsID == uuid.Nil {
+		return true
+	}
+	_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: wsID, UserID: userID})
+	return err == nil
 }
 
 const (
