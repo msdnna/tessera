@@ -36,6 +36,7 @@ import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraColors
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.isOwnServerUrl
 import website.msdnna.tessera.util.resolveMention
 
 /**
@@ -177,8 +178,10 @@ fun RichContent(
                         // same OkHttp path Coil uses and hand the bytes back.
                         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                             val url = request.url.toString()
-                            val root = RetrofitClient.serverRoot
-                            if (root.isBlank() || !url.startsWith(root) || request.method != "GET") return null
+                            // By origin, not by text: a string prefix would hand the
+                            // session's Bearer to `https://<root>.attacker.example/x`,
+                            // which any `![](…)` in a task can point at.
+                            if (request.method != "GET" || !isOwnServerUrl(url, RetrofitClient.serverRoot)) return null
                             return runCatching { fetchResource(url) }.getOrNull()
                         }
                     }
