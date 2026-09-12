@@ -74,6 +74,21 @@ func (h *API) CreateTask(c *gin.Context) {
 		return
 	}
 
+	// …and so must the parent, if one is named: parent_id is a free-form task id
+	// from the body, so without this a member of one workspace could hang a task
+	// off a task in another and have it show up among that task's subtasks.
+	if req.ParentID != nil {
+		parent, err := h.q.GetTask(c, *req.ParentID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid parent"})
+			return
+		}
+		if err := h.sameWorkspaceTask(c, parent, wsID); err != nil {
+			respondOpError(c, err)
+			return
+		}
+	}
+
 	pos, err := h.nextTaskPosition(c, req.ColumnID, req.ParentID)
 	if err != nil {
 		fail(c, err)

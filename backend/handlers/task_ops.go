@@ -46,6 +46,15 @@ func isUserErr(err error) bool {
 	return ok
 }
 
+// forbiddenErr is a cross-tenant reference: the caller may touch the task the
+// route names, but the request *body* names a second task in a workspace they
+// are not a member of. Kept apart from opError because it is not a bad argument
+// the caller can fix — it renders as a 403, matching TransferTask's refusal of
+// a target board in another workspace.
+type forbiddenErr struct{ msg string }
+
+func (e forbiddenErr) Error() string { return e.msg }
+
 // staleErr is a lost-update failure: the caller sent the updated_at it had read
 // and the stored row has moved on since, so writing would silently drop whoever
 // wrote first. It carries the current row — the client needs it to show what it
@@ -71,6 +80,11 @@ func respondOpError(c *gin.Context, err error) {
 	}
 	if errors.Is(err, errTaskGone) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	var forbidden forbiddenErr
+	if errors.As(err, &forbidden) {
+		c.JSON(http.StatusForbidden, gin.H{"error": forbidden.Error()})
 		return
 	}
 	if isUserErr(err) {
@@ -523,6 +537,15 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 		if err != nil {
 			return t, userErr("invalid parent")
 		}
+		// The parent must live in the caller's own workspace. Without this the
+		// lines below would adopt a stranger's board and column, physically
+		// moving the caller's task onto a board they cannot read — a card the
+		// victim never created appearing on their board, and the caller losing
+		// their own task. loadTask only vouches for the task in the :id param;
+		// parent_id is a second reference and needs its own check.
+		if err := h.sameWorkspaceTask(c, parent, wsID); err != nil {
+			return t, err
+		}
 		// The parent must not itself be a child of this task (1-level cycle).
 		if parent.ParentID != nil && *parent.ParentID == t.ID {
 			return t, userErr("cyclic parent")
@@ -548,6 +571,21 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 	}
 	h.broadcastAs(c, wsID, "task.moved", updated)
 	return updated, nil
+}
+
+// sameWorkspaceTask reports whether a task named in a request body belongs to
+// wsID, the workspace the caller was already authorized against. Use it for
+// every task id that arrives *besides* the one in the route — those the route
+// resolves go through loadTask, these do not.
+func (h *API) sameWorkspaceTask(c *gin.Context, t db.Task, wsID uuid.UUID) error {
+	other, err := h.q.WorkspaceIDForBoard(c, t.BoardID)
+	if err != nil {
+		return userErr("invalid parent")
+	}
+	if other != wsID {
+		return forbiddenErr{msg: "task is in another workspace"}
+	}
+	return nil
 }
 
 // applyArchive soft-deletes a task. detach keeps its subtasks on the board
