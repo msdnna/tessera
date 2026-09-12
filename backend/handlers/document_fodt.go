@@ -801,12 +801,6 @@ func renderFODTImage(b *strings.Builder, n docNode, ctx *fodtCtx) {
 	if src == "" {
 		return
 	}
-	if !ctx.inPara {
-		ctx.flushMaster(b)
-		b.WriteString(`<text:p text:style-name="` + ctx.paraParent() + `">`)
-	}
-	ctx.frameSeq++
-	frame := ctx.styles.add("graphic", "", `style:vertical-pos="top" style:vertical-rel="baseline" style:horizontal-pos="center" style:horizontal-rel="paragraph" fo:padding="0cm" fo:border="none"`, "")
 
 	w := attrInt(n.Attrs, "width", 0)
 	h := attrInt(n.Attrs, "height", 0)
@@ -814,24 +808,69 @@ func renderFODTImage(b *strings.Builder, n docNode, ctx *fodtCtx) {
 	if w <= 0 || h <= 0 {
 		w, h = mediaW, mediaH
 	}
+	if data == "" {
+		// Nothing was inlined, so this src points somewhere else — an external
+		// URL a member typed into the editor, or an asset link whose signature
+		// did not check out. It must not become a draw:image href: the sidecar
+		// converts this .fodt with LibreOffice, and LibreOffice honours
+		// xlink:actuate="onLoad" by fetching the URL itself. That turns every
+		// export into a request the server makes on a member's behalf, to any
+		// address the server can reach — the converter's egress is not confined
+		// to the compose network (#2932). Same stand-in as an embedded PDF, and
+		// for the same reason: a link is not fetched on load, and dropping the
+		// node silently is what TestRenderDocFODTCoversSchema exists to prevent.
+		renderFODTRemoteImage(b, n, ctx, src)
+		return
+	}
+
+	if !ctx.inPara {
+		ctx.flushMaster(b)
+		b.WriteString(`<text:p text:style-name="` + ctx.paraParent() + `">`)
+	}
+	ctx.frameSeq++
+	frame := ctx.styles.add("graphic", "", `style:vertical-pos="top" style:vertical-rel="baseline" style:horizontal-pos="center" style:horizontal-rel="paragraph" fo:padding="0cm" fo:border="none"`, "")
 
 	fmt.Fprintf(b, `<draw:frame draw:style-name="%s" draw:name="Image%d" text:anchor-type="as-char"`, frame, ctx.frameSeq)
 	if w > 0 && h > 0 {
 		fmt.Fprintf(b, ` svg:width="%s" svg:height="%s"`, pxToCm(w), pxToCm(h))
 	}
 	b.WriteString(`>`)
-	if data != "" {
-		// An inlined asset becomes the frame's own bytes. The alternative, leaving
-		// the data: URI in xlink:href, is not equivalent: LibreOffice's ODF import
-		// does not fetch data: URIs and the picture arrives as an empty box.
-		b.WriteString(`<draw:image><office:binary-data>` + data + `</office:binary-data></draw:image>`)
-	} else {
-		b.WriteString(`<draw:image xlink:href="` + fodtAttr(src) + `" xlink:type="simple" xlink:show="embed" xlink:actuate="onLoad"/>`)
-	}
+	// An inlined asset becomes the frame's own bytes. The alternative, leaving
+	// the data: URI in xlink:href, is not equivalent: LibreOffice's ODF import
+	// does not fetch data: URIs and the picture arrives as an empty box.
+	b.WriteString(`<draw:image><office:binary-data>` + data + `</office:binary-data></draw:image>`)
 	if alt, ok := n.Attrs["alt"].(string); ok && alt != "" {
 		b.WriteString(`<svg:title>` + fodtText(alt) + `</svg:title>`)
 	}
 	b.WriteString(`</draw:frame>`)
+	if !ctx.inPara {
+		b.WriteString("</text:p>\n")
+	}
+}
+
+// renderFODTRemoteImage writes the stand-in for a picture whose bytes the export
+// does not hold.
+//
+// The label carries the alt text when there is one and the address otherwise, so
+// a reader of the exported file can see what was meant to be here and follow it
+// by hand. The address travels as text:a — a hyperlink, which no ODF reader
+// resolves until it is clicked — never as a draw:image href, which LibreOffice
+// fetches while converting.
+func renderFODTRemoteImage(b *strings.Builder, n docNode, ctx *fodtCtx, src string) {
+	label, _ := n.Attrs["alt"].(string)
+	if strings.TrimSpace(label) == "" {
+		label = src
+	}
+	text := fodtText("Изображение: " + label)
+	if !ctx.inPara {
+		ctx.flushMaster(b)
+		b.WriteString(`<text:p text:style-name="` + ctx.paraParent() + `">`)
+	}
+	if safeDocHref(src) {
+		b.WriteString(`<text:a xlink:type="simple" xlink:href="` + fodtAttr(src) + `" text:style-name="Internet_20_Link">` + text + `</text:a>`)
+	} else {
+		b.WriteString(text)
+	}
 	if !ctx.inPara {
 		b.WriteString("</text:p>\n")
 	}

@@ -459,8 +459,11 @@ func attrInt(attrs map[string]any, key string, def int) int {
 // authorised for.
 //
 // A link to anything else — an external https:// image, or a URL whose
-// signature does not check out — is left alone, and LibreOffice decides for
-// itself whether it can fetch it.
+// signature does not check out — comes back unchanged, and what happens to it
+// next is the renderer's call, not LibreOffice's. The HTML export is read by the
+// member's own browser, so it keeps the <img>; the .fodt export is opened by the
+// sidecar, so it writes a link instead of an image the converter would fetch on
+// the server's behalf (#2932, renderFODTRemoteImage).
 func (h *API) inlineDocAsset(wsID uuid.UUID) func(string) string {
 	return func(src string) string {
 		if src == "" || !strings.Contains(src, "/api/documents/asset") {
