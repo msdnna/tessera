@@ -12,7 +12,8 @@
     "accountDeactivated": "Аккаунт деактивирован",
     "forbidden": "Недостаточно прав",
     "unauthorized": "Нужно войти заново",
-    "notFound": "Не найдено"
+    "notFound": "Не найдено",
+    "jobAlreadyRunning": "Задача уже выполняется — дождитесь её завершения"
   },
   "validation": {
     "email": "Введите корректный email",

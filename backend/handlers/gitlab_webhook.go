@@ -253,7 +253,7 @@ func (h *API) RunWebhookSyncWorker(ctx context.Context) {
 			// Shares the auto-sync worker's advisory lock: the dirty set is
 			// process-local, but the *sync* it triggers must not run beside the cron
 			// one on another process.
-			h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.drainWebhookDirty(ctx) })
+			h.withAdvisoryLock(ctx, gitlabSyncLock, func() { h.drainWebhookDirty(ctx) })
 		}
 	}
 }

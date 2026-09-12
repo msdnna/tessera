@@ -12,7 +12,8 @@
     "accountDeactivated": "Account deactivated",
     "forbidden": "Not enough permissions",
     "unauthorized": "Please sign in again",
-    "notFound": "Not found"
+    "notFound": "Not found",
+    "jobAlreadyRunning": "This job is already running — wait for it to finish"
   },
   "validation": {
     "email": "Enter a valid email",

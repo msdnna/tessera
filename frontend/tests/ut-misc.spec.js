@@ -86,6 +86,11 @@ describe('humanizeError', () => {
     expect(humanizeError('invalid credentials')).toBe('Неверный email или пароль')
     expect(humanizeError('FORBIDDEN')).toBe('Недостаточно прав')
     expect(humanizeError('  not found  ')).toBe('Не найдено')
+    // "Run now" on a worker whose lock is taken answers 409 with this sentinel —
+    // without a mapping the operator gets the bare English line.
+    expect(humanizeError('job is already running')).toBe(
+      'Задача уже выполняется — дождитесь её завершения',
+    )
   })
 
   it('collapses gin/validator errors by failed tag', () => {

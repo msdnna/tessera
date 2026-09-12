@@ -28,6 +28,7 @@ const SENTINELS = {
   'token expired': 'linkExpired',
   'account is deactivated': 'accountDeactivated',
   'account deactivated': 'accountDeactivated',
+  'job is already running': 'jobAlreadyRunning',
   forbidden: 'forbidden',
   unauthorized: 'unauthorized',
   'not found': 'notFound',

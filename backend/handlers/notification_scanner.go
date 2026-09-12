@@ -35,9 +35,6 @@ func (h *API) RunNotificationScanner(ctx context.Context) {
 	}
 }
 
-// NotifyScanLock names the worker lock this scanner runs under.
-const NotifyScanLock = "notify_scan"
-
 // ScanNotificationsOnce runs a single scanner tick under the worker lock, the
 // way every other background sweep here runs.
 //
