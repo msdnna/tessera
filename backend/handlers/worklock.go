@@ -48,6 +48,10 @@ func (h *API) withAdvisoryLock(ctx context.Context, name string, fn func()) bool
 	return true
 }
 
+// AdvisoryLockKey exposes a worker's lock id so an integration test in another
+// package can hold it the way a second instance would.
+func AdvisoryLockKey(name string) int64 { return advisoryKey(name) }
+
 // advisoryKey derives a stable 64-bit lock id from a worker name.
 func advisoryKey(name string) int64 {
 	hsh := fnv.New64a()

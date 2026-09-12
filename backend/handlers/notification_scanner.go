@@ -23,18 +23,38 @@ func (h *API) RunNotificationScanner(ctx context.Context) {
 	ticker := time.NewTicker(notifyScanTick)
 	defer ticker.Stop()
 	h.tick(jobNotifyScanner, opDueScan)
-	h.scanDueTasks(ctx)
-	h.scanReminders(ctx)
+	h.ScanNotificationsOnce(ctx)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobNotifyScanner, opDueScan)
-			h.scanDueTasks(ctx)
-			h.scanReminders(ctx)
+			h.ScanNotificationsOnce(ctx)
 		}
 	}
+}
+
+// NotifyScanLock names the worker lock this scanner runs under.
+const NotifyScanLock = "notify_scan"
+
+// ScanNotificationsOnce runs a single scanner tick under the worker lock, the
+// way every other background sweep here runs.
+//
+// Neither scan claims its rows: ListDueReminders and ListDueTasksForScan just
+// select what is due, and the due-date state is read and written in two separate
+// statements. So two processes ticking at once — a deploy overlap, where the old
+// instance keeps ticking while the new one boots — both see the same reminder
+// and the same due task, and the recipient gets each notification twice, out to
+// e-mail and push. Marking the reminder notified afterwards is too late.
+//
+// Reports whether the tick ran; false means another instance holds the lock and
+// is doing the work.
+func (h *API) ScanNotificationsOnce(ctx context.Context) bool {
+	return h.withAdvisoryLock(ctx, NotifyScanLock, func() {
+		h.scanDueTasks(ctx)
+		h.scanReminders(ctx)
+	})
 }
 
 // defaultPrefs is the scheduling config for a user who hasn't customised it.
