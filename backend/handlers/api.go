@@ -222,6 +222,16 @@ func positionBetween(prev, next *float64) float64 {
 	}
 }
 
+// positionExhausted reports that the midpoint landed *on* a neighbour instead of
+// between them — float8 has no room left in that slot. It happens after ~52 drops
+// into the same gap (each one halves it) and immediately when the two neighbours
+// already share a position. Leaving such a position in place is not a cosmetic
+// rounding loss: two cards with one position have no defined order, and every
+// later drop into that slot computes the same value again, so the slot is dead.
+func positionExhausted(pos float64, prev, next *float64) bool {
+	return (prev != nil && pos <= *prev) || (next != nil && pos >= *next)
+}
+
 // membershipResult is the cached outcome of a per-request membership lookup.
 type membershipResult struct {
 	role string

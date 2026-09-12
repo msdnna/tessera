@@ -270,7 +270,7 @@ type RenumberProjectTasksParams struct {
 }
 
 // RenumberProjectTasks re-stamps the project's tasks with a block of numbers
-// reserved from the target workspace ($2 is the number *before* the block).
+// reserved from the target workspace (base is the number *before* the block).
 // Ordering by the old number keeps the re-stamp a translation rather than a
 // shuffle: a task that was #7 where it came from still sorts before the one that
 // was #9. created_at/id only break ties for rows predating the number column.

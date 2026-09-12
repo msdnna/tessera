@@ -9,7 +9,7 @@ RETURNING *;
 SELECT * FROM tasks WHERE id = $1;
 
 -- name: ListTasksByBoard :many
-SELECT * FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position;
+SELECT * FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position, created_at, id;
 
 -- ListBoardTasksWithMeta returns top-level board tasks with their tag and
 -- assignee ids aggregated, so the kanban can render chips and group by tag
@@ -59,11 +59,14 @@ WHERE t.board_id = @board_id AND t.parent_id IS NULL
     OR (@backlog::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
     OR (sqlc.narg('milestone_id')::uuid IS NOT NULL AND t.milestone_id = sqlc.narg('milestone_id')) -- one milestone
   )
--- Newest-archived first in the archive; board position otherwise.
-ORDER BY CASE WHEN @archived::boolean THEN t.archived_at END DESC NULLS LAST, t.position;
+-- Newest-archived first in the archive; board position otherwise. created_at/id
+-- break position ties: two cards can share a position (legacy rows from before
+-- the midpoint rebalance), and ORDER BY position alone leaves their order to the
+-- planner, so the board reshuffles them between reads.
+ORDER BY CASE WHEN @archived::boolean THEN t.archived_at END DESC NULLS LAST, t.position, t.created_at, t.id;
 
 -- name: ListSubtasks :many
-SELECT * FROM tasks WHERE parent_id = $1 ORDER BY position;
+SELECT * FROM tasks WHERE parent_id = $1 ORDER BY position, created_at, id;
 
 -- ListSubtasksWithMeta returns a parent's subtasks with tag/assignee ids, so the
 -- task modal can render a kanban-style hover card for each one.
@@ -88,7 +91,7 @@ LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.parent_id = $1
 GROUP BY t.id, gl.task_id
-ORDER BY t.position;
+ORDER BY t.position, t.created_at, t.id;
 
 -- ListBoardSubtasksWithMeta returns every subtask on a board (parent_id set)
 -- with tag/assignee ids, so the kanban can render them under their parents.
@@ -117,7 +120,7 @@ LEFT JOIN LATERAL (
     FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
 ) ga ON true
 WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
-ORDER BY t.position;
+ORDER BY t.position, t.created_at, t.id;
 
 -- ListBoardArchivedWithMeta returns a board's archived tasks: top-level ones
 -- and individually-archived subtasks (whose parent is still active). Children
@@ -197,6 +200,31 @@ UPDATE tasks SET parent_id = NULL, updated_at = now() WHERE parent_id = $1;
 -- name: MaxTaskPositionInColumn :one
 SELECT coalesce(max(position), 0)::double precision
 FROM tasks WHERE column_id = $1 AND parent_id IS NULL;
+
+-- Rebalance* respace a sibling list onto a fresh gap * 1,2,3… ladder, keeping the
+-- order the list already had. Card order is a float8 midpoint, and the gap halves
+-- on every drop into the same slot, so after ~52 drops the average of two
+-- neighbours *is* one of them; the reorder handler calls these when it sees that
+-- and then recomputes, which is the only way the slot ever opens up again.
+-- (Written as UPDATE … FROM (subquery) rather than a CTE: sqlc mis-parses
+-- UPDATE … FROM with a leading WITH.)
+-- name: RebalanceColumnTaskPositions :exec
+UPDATE tasks t
+SET position = ordered.rn * sqlc.arg(gap)::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM tasks WHERE column_id = sqlc.arg(column_id)::uuid AND parent_id IS NULL
+) ordered
+WHERE t.id = ordered.id;
+
+-- name: RebalanceSubtaskPositions :exec
+UPDATE tasks t
+SET position = ordered.rn * sqlc.arg(gap)::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM tasks WHERE parent_id = sqlc.arg(parent_id)::uuid
+) ordered
+WHERE t.id = ordered.id;
 
 -- UpdateTask writes a task's editable fields, optionally under an optimistic
 -- lock: pass expected_updated_at with the updated_at the client read, and the

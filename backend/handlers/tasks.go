@@ -483,11 +483,23 @@ func (h *API) MoveTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// One task named as both neighbours asks to be dropped into a zero-width
+	// slot: the midpoint of a position with itself is that position, so the card
+	// would land exactly on top of its "neighbour". No rebalance can open that
+	// slot, because there is no slot.
+	if req.BeforeID != nil && req.AfterID != nil && *req.BeforeID == *req.AfterID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "before_id and after_id must differ"})
+		return
+	}
 	prev, next, ok := h.neighborTaskPositions(c, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
-	updated, err := h.applyMove(c, t, wsID, req.ColumnID, positionBetween(prev, next))
+	pos, ok := h.positionForDrop(c, t, req.ColumnID, req.BeforeID, req.AfterID, prev, next)
+	if !ok {
+		return
+	}
+	updated, err := h.applyMove(c, t, wsID, req.ColumnID, pos)
 	if err != nil {
 		respondOpError(c, err)
 		return
@@ -844,6 +856,39 @@ func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID
 		next = &t.Position
 	}
 	return prev, next, true
+}
+
+// positionForDrop is positionBetween with a way out of an exhausted slot: when
+// the midpoint collapses onto a neighbour, the sibling list is respaced back
+// onto the positionGap ladder and the midpoint recomputed against the fresh
+// neighbour positions. Only the list the card is being dropped into is touched
+// (the destination column, or the parent's subtasks for a child card); column,
+// project and group ordering share the midpoint scheme and still have no such
+// recovery.
+func (h *API) positionForDrop(c *gin.Context, t db.Task, columnID uuid.UUID, beforeID, afterID *uuid.UUID, prev, next *float64) (float64, bool) {
+	pos := positionBetween(prev, next)
+	if !positionExhausted(pos, prev, next) {
+		return pos, true
+	}
+	var err error
+	if t.ParentID != nil {
+		err = h.q.RebalanceSubtaskPositions(c, db.RebalanceSubtaskPositionsParams{
+			ParentID: *t.ParentID, Gap: positionGap,
+		})
+	} else {
+		err = h.q.RebalanceColumnTaskPositions(c, db.RebalanceColumnTaskPositionsParams{
+			ColumnID: columnID, Gap: positionGap,
+		})
+	}
+	if err != nil {
+		fail(c, err)
+		return 0, false
+	}
+	prev, next, ok := h.neighborTaskPositions(c, beforeID, afterID)
+	if !ok {
+		return 0, false
+	}
+	return positionBetween(prev, next), true
 }
 
 // recurrenceToStore validates a client-supplied recurrence rule and returns its

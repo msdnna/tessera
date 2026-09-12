@@ -278,7 +278,7 @@ LEFT JOIN LATERAL (
     FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
 ) ga ON true
 WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
-ORDER BY t.position
+ORDER BY t.position, t.created_at, t.id
 `
 
 type ListBoardSubtasksWithMetaRow struct {
@@ -400,7 +400,7 @@ WHERE t.board_id = $1 AND t.parent_id IS NULL
     OR ($3::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
     OR ($4::uuid IS NOT NULL AND t.milestone_id = $4) -- one milestone
   )
-ORDER BY CASE WHEN $2::boolean THEN t.archived_at END DESC NULLS LAST, t.position
+ORDER BY CASE WHEN $2::boolean THEN t.archived_at END DESC NULLS LAST, t.position, t.created_at, t.id
 `
 
 type ListBoardTasksWithMetaParams struct {
@@ -457,7 +457,10 @@ type ListBoardTasksWithMetaRow struct {
 // plain LEFT JOIN: task_id is its primary key, so it is 1:1 and never multiplied rows.
 // DISTINCT is kept inside the aggregates so the arrays are ordered and deduplicated
 // exactly as before (gl_name and gl_username are each sorted on their own value).
-// Newest-archived first in the archive; board position otherwise.
+// Newest-archived first in the archive; board position otherwise. created_at/id
+// break position ties: two cards can share a position (legacy rows from before
+// the midpoint rebalance), and ORDER BY position alone leaves their order to the
+// planner, so the board reshuffles them between reads.
 func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasksWithMetaParams) ([]ListBoardTasksWithMetaRow, error) {
 	rows, err := q.db.Query(ctx, listBoardTasksWithMeta,
 		arg.BoardID,
@@ -573,7 +576,7 @@ func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 }
 
 const listSubtasks = `-- name: ListSubtasks :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE parent_id = $1 ORDER BY position
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE parent_id = $1 ORDER BY position, created_at, id
 `
 
 func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task, error) {
@@ -634,7 +637,7 @@ LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.parent_id = $1
 GROUP BY t.id, gl.task_id
-ORDER BY t.position
+ORDER BY t.position, t.created_at, t.id
 `
 
 type ListSubtasksWithMetaRow struct {
@@ -727,7 +730,7 @@ func (q *Queries) ListSubtasksWithMeta(ctx context.Context, parentID *uuid.UUID)
 }
 
 const listTasksByBoard = `-- name: ListTasksByBoard :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position, created_at, id
 `
 
 func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Task, error) {
@@ -843,6 +846,53 @@ func (q *Queries) MoveTask(ctx context.Context, arg MoveTaskParams) (Task, error
 		&i.MilestoneID,
 	)
 	return i, err
+}
+
+const rebalanceColumnTaskPositions = `-- name: RebalanceColumnTaskPositions :exec
+UPDATE tasks t
+SET position = ordered.rn * $1::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM tasks WHERE column_id = $2::uuid AND parent_id IS NULL
+) ordered
+WHERE t.id = ordered.id
+`
+
+type RebalanceColumnTaskPositionsParams struct {
+	Gap      float64   `json:"gap"`
+	ColumnID uuid.UUID `json:"column_id"`
+}
+
+// Rebalance* respace a sibling list onto a fresh gap * 1,2,3… ladder, keeping the
+// order the list already had. Card order is a float8 midpoint, and the gap halves
+// on every drop into the same slot, so after ~52 drops the average of two
+// neighbours *is* one of them; the reorder handler calls these when it sees that
+// and then recomputes, which is the only way the slot ever opens up again.
+// (Written as UPDATE … FROM (subquery) rather than a CTE: sqlc mis-parses
+// UPDATE … FROM with a leading WITH.)
+func (q *Queries) RebalanceColumnTaskPositions(ctx context.Context, arg RebalanceColumnTaskPositionsParams) error {
+	_, err := q.db.Exec(ctx, rebalanceColumnTaskPositions, arg.Gap, arg.ColumnID)
+	return err
+}
+
+const rebalanceSubtaskPositions = `-- name: RebalanceSubtaskPositions :exec
+UPDATE tasks t
+SET position = ordered.rn * $1::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM tasks WHERE parent_id = $2::uuid
+) ordered
+WHERE t.id = ordered.id
+`
+
+type RebalanceSubtaskPositionsParams struct {
+	Gap      float64   `json:"gap"`
+	ParentID uuid.UUID `json:"parent_id"`
+}
+
+func (q *Queries) RebalanceSubtaskPositions(ctx context.Context, arg RebalanceSubtaskPositionsParams) error {
+	_, err := q.db.Exec(ctx, rebalanceSubtaskPositions, arg.Gap, arg.ParentID)
+	return err
 }
 
 const reopenSubtasks = `-- name: ReopenSubtasks :exec
