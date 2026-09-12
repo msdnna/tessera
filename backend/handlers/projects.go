@@ -699,6 +699,33 @@ func (h *API) loadProject(c *gin.Context) (db.Project, bool) {
 	return p, true
 }
 
+// projectInWorkspace authorizes a project_id that arrived in a request *body*,
+// where the route vouches for the workspace but nothing vouches for the
+// project. Same shape and same role as parentInWorkspace for a document's
+// parent_id: 404 when there is no such project, 400 when it lives elsewhere.
+//
+// Pinning a note or a document across the boundary is not a cosmetic mismatch,
+// because two writes read the relation by project_id alone. notes.project_id is
+// ON DELETE CASCADE, so a stranger deleting their own project takes the note
+// with it; and TransferProject re-stamps workspace_id on a project's notes and
+// documents (`WHERE project_id = $1`), carrying them out of the workspace that
+// wrote them and into one whose members never saw them.
+func (h *API) projectInWorkspace(c *gin.Context, projectID, wsID uuid.UUID) bool {
+	p, err := h.q.GetProject(c, projectID)
+	if notFound(c, err) {
+		return false
+	}
+	if err != nil {
+		fail(c, err)
+		return false
+	}
+	if p.WorkspaceID != wsID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "project belongs to another workspace"})
+		return false
+	}
+	return true
+}
+
 func (h *API) neighborGroupPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
 	if beforeID != nil {
 		g, err := h.q.GetProjectGroup(c, *beforeID)

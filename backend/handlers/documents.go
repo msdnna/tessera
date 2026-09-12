@@ -48,6 +48,13 @@ func (h *API) CreateDocument(c *gin.Context) {
 	if req.ParentID != nil && !h.parentInWorkspace(c, *req.ParentID, wsID) {
 		return
 	}
+	// The project gets the same check as the parent above, and for a sharper
+	// reason than symmetry: TransferProject re-stamps workspace_id on a
+	// project's documents by project_id alone, so one pinned across the boundary
+	// leaves this workspace the next time that project moves.
+	if req.ProjectID != nil && !h.projectInWorkspace(c, *req.ProjectID, wsID) {
+		return
+	}
 	seed, ok := h.seedFromTemplate(c, wsID, req.TemplateID)
 	if !ok {
 		return
@@ -216,6 +223,9 @@ func (h *API) UpdateDocument(c *gin.Context) {
 		next.Icon = *req.Icon
 	}
 	if req.ProjectID != nil {
+		if !h.projectInWorkspace(c, *req.ProjectID, doc.WorkspaceID) {
+			return
+		}
 		next.ProjectID = req.ProjectID
 	}
 	if req.Position != nil {
