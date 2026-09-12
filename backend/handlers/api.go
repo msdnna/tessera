@@ -113,6 +113,25 @@ func (h *API) dropConfRoom(confID uuid.UUID, reason string) {
 	}
 }
 
+// revokeUserSockets cuts every live connection a user holds after their access
+// is taken away (#2932).
+//
+// Three fan-outs, three registries, one revocation. The hub scopes by workspace
+// and can be told to drop a user; the document and conference rooms are keyed by
+// their own object and authorise exactly once, at the upgrade — so dropping only
+// the hub socket leaves an ex-member holding block locks in someone else's
+// document and moderating someone else's call. All three are guarded: the
+// registries are optional wiring the GitLab and job tests build without.
+func (h *API) revokeUserSockets(userID uuid.UUID, reason string) {
+	h.hub.DropUser(userID)
+	if h.docRooms != nil {
+		h.docRooms.EvictUser(userID)
+	}
+	if h.confRooms != nil {
+		h.confRooms.EvictUser(userID, reason)
+	}
+}
+
 // notifyConfRoom nudges everyone currently in a conference that something they
 // are looking at changed outside the socket — today the chat (#2873).
 //

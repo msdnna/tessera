@@ -965,6 +965,69 @@ func (rs *Rooms) Drop(confID uuid.UUID, reason string) {
 	room.mu.Unlock()
 }
 
+// EvictUser removes every connection a user holds, in every conference room
+// (#2932). Called when their access is revoked.
+//
+// The seat is resolved once, at the upgrade — role, moderation rights and all —
+// and nothing re-reads it. Without this an ex-member keeps their place in a live
+// call, and one who joined as a host or a workspace admin keeps the moderation
+// controls that came with that seat: they go on kicking and force-muting the
+// people still in the meeting, through the SFU, after losing the workspace.
+//
+// Every room, not only the workspace's: the registry is keyed by conference and
+// does not know which workspace a call belongs to. Evicting wider is safe —
+// ConnectConference re-checks membership, so a call they may still attend
+// re-admits them on the reconnect.
+//
+// Unlike a kick this leaves no cooldown: the room is not punishing them, it is
+// just no longer theirs, and a membership restored a minute later must not run
+// into a ban the room invented.
+func (rs *Rooms) EvictUser(userID uuid.UUID, reason string) {
+	rs.mu.Lock()
+	snapshot := make(map[uuid.UUID]*Room, len(rs.rooms))
+	for id, room := range rs.rooms {
+		snapshot[id] = room
+	}
+	rs.mu.Unlock()
+	frame := encode(struct {
+		Type   string `json:"type"`
+		Reason string `json:"reason"`
+	}{TypeEnded, reason})
+	for confID, room := range snapshot {
+		for _, p := range room.connectionsOf(userID) {
+			// Queue the reason before Leave closes the channel: a closed channel
+			// still yields what was buffered, so the write pump delivers it. A
+			// client that merely goes quiet cannot tell this from a network drop
+			// and would reconnect in a loop.
+			room.deliverTo(p, frame)
+			// Leave (rather than a bare Close) releases the stage and the place in
+			// the queue, tells the rest of the room, and forgets an empty one.
+			rs.Leave(confID, p)
+		}
+	}
+}
+
+// connectionsOf lists a user's participants in this room — a user may have the
+// same call open in several tabs.
+func (r *Room) connectionsOf(userID uuid.UUID) []*Participant {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*Participant, 0, 1)
+	for p := range r.members {
+		if p.UserID == userID {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// deliverTo queues one frame to a single participant under the room lock.
+func (r *Room) deliverTo(p *Participant, frame []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p.deliver(frame)
+}
+
 // Notify tells everyone currently in a conference that something they are
 // looking at changed outside the socket (a chat message, #2873). A conference
 // nobody has open has no room and the call is a no-op — which is correct: the

@@ -280,8 +280,9 @@ func (h *API) RemoveMember(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	// Cut the removed member's live sockets — otherwise they keep streaming
-	// this workspace's events until they happen to reconnect.
-	h.hub.DropUser(userID)
+	// Cut the removed member's live sockets — the board stream, but also the
+	// document and conference rooms, which authorise once at the upgrade and
+	// would otherwise outlive the membership for as long as the tab stays open.
+	h.revokeUserSockets(userID, "access revoked")
 	c.Status(http.StatusNoContent)
 }

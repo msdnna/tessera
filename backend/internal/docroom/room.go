@@ -488,6 +488,47 @@ func (rs *Rooms) Drop(docID uuid.UUID) {
 	room.mu.Unlock()
 }
 
+// EvictUser disconnects every connection a user holds, in every document room
+// (#2932). Called when their access is revoked: a room socket authorises once,
+// at the upgrade, and nothing re-reads the membership afterwards — so without
+// this an ex-member keeps their presence badge, keeps being told when the
+// document is saved, and keeps holding block locks nobody in the workspace can
+// lift, for as long as the tab stays open.
+//
+// Every room, not only the workspace's: the registry is keyed by document and
+// has no idea which workspace a document belongs to. Evicting wider is safe
+// because the client reconnects, and ConnectDocument re-checks membership on the
+// way back in — rooms they may still enter re-admit them, the rest answer 403.
+func (rs *Rooms) EvictUser(userID uuid.UUID) {
+	rs.mu.Lock()
+	snapshot := make(map[uuid.UUID]*Room, len(rs.rooms))
+	for id, room := range rs.rooms {
+		snapshot[id] = room
+	}
+	rs.mu.Unlock()
+	for docID, room := range snapshot {
+		// Leave (rather than a bare Close) is what releases the locks and tells
+		// the rest of the room, and what forgets a room left empty.
+		for _, p := range room.connectionsOf(userID) {
+			rs.Leave(docID, p)
+		}
+	}
+}
+
+// connectionsOf lists a user's participants in this room — a user may have the
+// same document open in several tabs.
+func (r *Room) connectionsOf(userID uuid.UUID) []*Participant {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*Participant, 0, 1)
+	for p := range r.members {
+		if p.UserID == userID {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // Notify tells everyone currently in a document's room that something they are
 // looking at changed outside the socket (its comment threads, #2730). A document
 // nobody has open has no room, and the call is then a no-op — which is correct:
