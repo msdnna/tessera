@@ -101,6 +101,18 @@ func (h *API) CreateNotificationRoute(c *gin.Context) {
 }
 
 // UpdateNotificationRoute edits a routing rule.
+//
+// A field the request left out keeps its stored value — this is a PATCH, and
+// here the defaults were not merely untidy: the list is first-match-wins, so a
+// missing position fell to 0 and pulled the rule ahead of every other one, and
+// notify.Matcher documents the empty object as a catch-all, so a missing matcher
+// widened that promoted rule to every notification the user gets. Both shipped
+// clients echo the whole rule back and so never saw it; a PAT script sending the
+// one field it means to change did.
+//
+// An explicitly empty value still replaces: `"channel_ids": []` is what a mute
+// rule stores and `"matcher": {}` is a deliberate catch-all, and JSON absence is
+// distinguishable from either.
 func (h *API) UpdateNotificationRoute(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -112,22 +124,37 @@ func (h *API) UpdateNotificationRoute(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if !h.channelsOwned(c, uid, req.ChannelIDs) {
+	// The stored rule supplies whatever the request did not name. Reading the
+	// user's list also scopes the lookup: a rule that is not theirs is simply not
+	// in it, and the UPDATE below is scoped again anyway.
+	stored, ok := h.routeOf(c, uid, id)
+	if !ok {
+		return
+	}
+	arg := db.UpdateNotificationRouteParams{
+		ID: id, UserID: uid, Position: stored.Position, Matcher: orJSONObj(stored.Matcher),
+		ChannelIds: orIDs(stored.ChannelIds), Options: orJSONObj(stored.Options), Enabled: stored.Enabled,
+	}
+	if req.Position != nil {
+		arg.Position = *req.Position
+	}
+	if req.Matcher != nil {
+		arg.Matcher = orJSONObj(req.Matcher)
+	}
+	if req.ChannelIDs != nil {
+		arg.ChannelIds = req.ChannelIDs
+	}
+	if req.Options != nil {
+		arg.Options = orJSONObj(req.Options)
+	}
+	if req.Enabled != nil {
+		arg.Enabled = *req.Enabled
+	}
+	if !h.channelsOwned(c, uid, arg.ChannelIds) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "одного из каналов не существует"})
 		return
 	}
-	pos := 0.0
-	if req.Position != nil {
-		pos = *req.Position
-	}
-	enabled := true
-	if req.Enabled != nil {
-		enabled = *req.Enabled
-	}
-	row, err := h.q.UpdateNotificationRoute(c, db.UpdateNotificationRouteParams{
-		ID: id, UserID: uid, Position: pos, Matcher: orJSONObj(req.Matcher),
-		ChannelIds: orIDs(req.ChannelIDs), Options: orJSONObj(req.Options), Enabled: enabled,
-	})
+	row, err := h.q.UpdateNotificationRoute(c, arg)
 	if notFound(c, err) {
 		return
 	}
@@ -136,6 +163,24 @@ func (h *API) UpdateNotificationRoute(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, routeViewOf(row))
+}
+
+// routeOf returns one of the user's routing rules. There is no single-row query
+// for it: the list is per-user and short (it is a hand-written rule list, not a
+// feed), and reusing it keeps the ownership check in one place.
+func (h *API) routeOf(c *gin.Context, uid, id uuid.UUID) (db.NotificationRoute, bool) {
+	rows, err := h.q.ListNotificationRoutes(c, uid)
+	if err != nil {
+		fail(c, err)
+		return db.NotificationRoute{}, false
+	}
+	for _, r := range rows {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+	return db.NotificationRoute{}, false
 }
 
 // DeleteNotificationRoute removes a routing rule.
