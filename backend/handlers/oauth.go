@@ -330,6 +330,17 @@ func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glU
 			if !user.Active {
 				return db.User{}, errors.New("account_disabled")
 			}
+			// GitLab vouches for its side of the address; the local side is
+			// whatever was typed at registration, which nobody checks. Linking on
+			// that alone hands the GitLab login — and, through applyOrgMap, the
+			// workspaces it grants — to whoever registered with a colleague's
+			// address first (#2932). So the local account must have proven the
+			// mailbox too: same rule as acceptPendingInvitations. An account that
+			// hasn't can still verify it (sign in with the password, resend the
+			// link) and then link on the next try.
+			if !user.EmailVerified {
+				return db.User{}, errors.New("email_taken")
+			}
 			h.upsertIdentity(c, user.ID, providerUserID, glUser, p.GlBaseUrl)
 			return user, nil
 		}
