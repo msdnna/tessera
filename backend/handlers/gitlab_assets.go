@@ -34,6 +34,37 @@ import (
 // lookbehind, so the alternation does the work and rewriteInbound skips the match.
 var uploadRe = regexp.MustCompile(`/api/uploads/[A-Za-z0-9_-]+\.[A-Za-z0-9]+|/uploads/[^\s)"'<>]+`)
 
+// safeUploadPath reports whether a proxy path is a plain GitLab upload
+// reference rather than one that walks out of it.
+//
+// The "/uploads/" prefix alone bounds nothing. The path is lifted out of
+// GitLab-authored text by uploadRe, which allows dots and slashes, and the
+// proxy resolves it against the project's URL before fetching it with the
+// integration owner's token. One ".." segment therefore turns a signed
+// attachment link into a signed link to any endpoint of the instance — and the
+// proxy has to be public (an <img> cannot authenticate), so the answer goes to
+// whoever asks. Percent-escapes are decoded first: the reverse proxy in front
+// of GitLab decodes before it resolves the path, so "%2e%2e" is a ".." by the
+// time anything acts on it.
+func safeUploadPath(p string) bool {
+	if !strings.HasPrefix(p, "/uploads/") {
+		return false
+	}
+	dec, err := url.PathUnescape(p)
+	if err != nil {
+		return false
+	}
+	if strings.Contains(dec, `\`) {
+		return false
+	}
+	for _, seg := range strings.Split(dec, "/") {
+		if seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
+}
+
 // assetGitlabConn resolves the connection for the asset/avatar proxies: the
 // instance service token first, else any workspace binding owner's PAT. Returns the
 // (trimmed) base URL + decrypted token.
@@ -137,6 +168,13 @@ func rewriteInbound(body string, ours func(string) (string, bool), proxy func(st
 		if src, ok := ours(p); ok {
 			return src
 		}
+		// Not a shape we can bound — leave it as the text GitLab sent. Signing it
+		// would mint a capability for a path nobody chose (see safeUploadPath), and
+		// the round trip stays symmetric because rewriteOutbound has nothing to
+		// match on a path that was never turned into a proxy URL.
+		if !safeUploadPath(p) {
+			return p
+		}
 		return proxy(p)
 	})
 }
@@ -156,8 +194,10 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		return
 	}
 	relPath := string(pb)
-	// Only serve upload paths, and only with a valid signature.
-	if !strings.HasPrefix(relPath, "/uploads/") ||
+	// Only serve real upload paths, and only with a valid signature. The shape
+	// check is not redundant with the HMAC: it is what keeps the HMAC meaningful,
+	// since an older link (or a future signing path) could carry anything.
+	if !safeUploadPath(relPath) ||
 		!hmac.Equal([]byte(c.Query("sig")), []byte(h.signAsset(wsID, relPath))) {
 		c.Status(http.StatusForbidden)
 		return

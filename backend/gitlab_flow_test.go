@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -126,6 +128,22 @@ type fakeGitlab struct {
 	// Child items of a grouped parent, keyed by parent iid — what the Hierarchy
 	// widget reports and the sync mirrors as Tessera subtasks.
 	children map[int64][]int64
+
+	// Every path the backend asked for, as it arrived on the wire. The asset
+	// proxy test reads it to see where a signed link actually pointed.
+	seen []string
+}
+
+// sawPath reports whether the backend ever requested exactly this path.
+func (f *fakeGitlab) sawPath(p string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, s := range f.seen {
+		if s == p {
+			return true
+		}
+	}
+	return false
 }
 
 func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
@@ -195,6 +213,21 @@ func (f *fakeGitlab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if d > 0 {
 		time.Sleep(d)
 	}
+	// A real GitLab sits behind nginx/Workhorse, which resolve "." and ".."
+	// segments before the app ever sees the path. Go's net/http does not, so the
+	// fake normalises the same way — otherwise a traversal would 404 here and
+	// read as safe when production would serve it. Inert for every other test:
+	// their paths are already clean, and Clean leaves those untouched.
+	if cleaned := path.Clean(r.URL.EscapedPath()); cleaned != r.URL.EscapedPath() {
+		if u, err := url.Parse(cleaned); err == nil {
+			r.URL.Path, r.URL.RawPath = u.Path, ""
+		}
+	}
+	// Recorded after normalisation: what matters is the endpoint the instance
+	// ends up serving, not the shape the request took to get there.
+	f.mu.Lock()
+	f.seen = append(f.seen, r.URL.EscapedPath())
+	f.mu.Unlock()
 	switch {
 	case r.URL.Path == "/api/graphql":
 		f.graphql(w, r)
@@ -460,6 +493,13 @@ func (f *fakeGitlab) issueNode(is *glIssue) map[string]any {
 func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("PRIVATE-TOKEN") != f.token {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "401 Unauthorized"})
+		return
+	}
+	// An instance-wide endpoint, outside every project's scope: reaching it at
+	// all means a request escaped the project path it was built for, and the
+	// body is the kind of thing only the PAT's owner may read.
+	if r.URL.Path == "/api/v4/personal_access_tokens" {
+		writeJSON(w, http.StatusOK, []any{map[string]any{"id": 1, "name": "owner-pat", "token": f.token}})
 		return
 	}
 	prefix := "/api/v4/projects/" + f.projectPath + "/"
