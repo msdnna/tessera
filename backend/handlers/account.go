@@ -52,6 +52,13 @@ func (h *AuthHandler) acceptPendingInvitations(c *gin.Context, user db.User) {
 		return
 	}
 	for _, inv := range invites {
+		// A pending invitation may raise the role, never lower one granted since
+		// (see invitationRaisesRole) — this path fires on every OAuth sign-in, so a
+		// stale one would demote the same admin again after each re-grant.
+		if !invitationRaisesRole(c, h.q, inv.WorkspaceID, user.ID, inv.Role) {
+			soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
+			continue
+		}
 		if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{
 			WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
 		}); err == nil {
@@ -75,6 +82,10 @@ func (h *AuthHandler) acceptInvitationToken(c *gin.Context, user db.User, rawTok
 		return
 	}
 	if !strings.EqualFold(inv.Email, user.Email) {
+		return
+	}
+	if !invitationRaisesRole(c, h.q, inv.WorkspaceID, user.ID, inv.Role) {
+		soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
 		return
 	}
 	if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{
