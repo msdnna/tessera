@@ -499,7 +499,7 @@ func logSuffix(s importImageStats) string {
 // client and to the log — because a document that quietly lost half its figures
 // looks like a successful import until somebody scrolls.
 func (h *API) storeImportedImages(doc db.Document, page string) (string, importImageStats) {
-	dir := filepath.Join(h.uploadDir, "documents", doc.ID.String())
+	dir := h.docAssetDir(doc.ID)
 	stats := importImageStats{}
 	total := 0
 	made := false

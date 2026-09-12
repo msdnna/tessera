@@ -263,7 +263,8 @@ func (h *API) DeleteDocument(c *gin.Context) {
 	// there is nothing left to walk, while a nested document's participants would
 	// go on typing into a row that no longer exists (#2729).
 	doomed := h.documentSubtreeIDs(c, doc)
-	if err := h.q.DeleteDocumentSubtree(c, doc.ID); err != nil {
+	removed, err := h.q.DeleteDocumentSubtree(c, doc.ID)
+	if err != nil {
 		fail(c, err)
 		return
 	}
@@ -272,6 +273,11 @@ func (h *API) DeleteDocument(c *gin.Context) {
 			h.docRooms.Drop(id)
 		}
 	}
+	// The rows are gone, and with them the only pointer to the images they
+	// embedded (#2932). Swept off the delete's own RETURNING rather than off
+	// `doomed`: that list exists to name live rooms and is filtered by workspace,
+	// while the recursion above is not.
+	h.purgeDocAssets(c, removed)
 	h.broadcast(doc.WorkspaceID, "document.deleted", gin.H{"id": doc.ID})
 	c.Status(http.StatusNoContent)
 }

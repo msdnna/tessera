@@ -12,6 +12,35 @@ import (
 	"github.com/google/uuid"
 )
 
+const countDocumentAssetRefs = `-- name: CountDocumentAssetRefs :one
+SELECT (
+    (SELECT count(*) FROM documents WHERE content::text LIKE $1::text)
+  + (SELECT count(*) FROM document_templates WHERE content::text LIKE $1::text)
+  + (SELECT count(*) FROM document_versions WHERE content::text LIKE $1::text)
+)::bigint
+`
+
+// CountDocumentAssetRefs counts the bodies that still embed images belonging to
+// one document — the guard in front of deleting its directory.
+//
+// A document's images are stored under its own id and referenced only by the src
+// attributes inside a body, with no row of their own. Usually that owner is the
+// only body pointing there, but not always: saving a document as a template
+// copies its content verbatim (signed URLs included), and so does creating a
+// document from that template, so one directory can back a whole family. The
+// needle is therefore matched against all three places a body can live, with no
+// workspace filter — a transferred project carries its documents across the
+// boundary while the URLs keep naming the original document.
+//
+// Called after the delete, so the document's own row and its versions (cascade)
+// are already gone and need no exclusion.
+func (q *Queries) CountDocumentAssetRefs(ctx context.Context, needle string) (int64, error) {
+	row := q.db.QueryRow(ctx, countDocumentAssetRefs, needle)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countDocumentChildren = `-- name: CountDocumentChildren :one
 SELECT count(*) FROM documents WHERE parent_id = $1
 `
@@ -80,22 +109,42 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 	return i, err
 }
 
-const deleteDocumentSubtree = `-- name: DeleteDocumentSubtree :exec
+const deleteDocumentSubtree = `-- name: DeleteDocumentSubtree :many
 WITH RECURSIVE down AS (
     SELECT a.id FROM documents a WHERE a.id = $1
     UNION
     SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id
 )
-DELETE FROM documents WHERE documents.id IN (SELECT id FROM down)
+DELETE FROM documents WHERE documents.id IN (SELECT id FROM down) RETURNING documents.id
 `
 
 // DeleteDocumentSubtree removes a document together with everything nested
 // below it. One statement, so the parent_id RESTRICT never sees an intermediate
 // state with a dangling child. UNION for the cycle safety described above — a
 // delete that never returns is the worst place to meet a ring.
-func (q *Queries) DeleteDocumentSubtree(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteDocumentSubtree, id)
-	return err
+// Returns the ids it actually removed, which is what the image sweep needs: the
+// files under documents/<id>/ are named by nothing but the bodies this statement
+// just erased, and the Go-side walk cannot stand in for the list (it is filtered
+// by workspace, while this recursion is not — see
+// DetachDocumentParentsAcrossWorkspaces below).
+func (q *Queries) DeleteDocumentSubtree(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteDocumentSubtree, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const detachDocumentParentsAcrossWorkspaces = `-- name: DetachDocumentParentsAcrossWorkspaces :execrows

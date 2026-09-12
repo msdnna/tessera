@@ -67,13 +67,39 @@ SELECT id FROM up;
 -- below it. One statement, so the parent_id RESTRICT never sees an intermediate
 -- state with a dangling child. UNION for the cycle safety described above — a
 -- delete that never returns is the worst place to meet a ring.
--- name: DeleteDocumentSubtree :exec
+-- Returns the ids it actually removed, which is what the image sweep needs: the
+-- files under documents/<id>/ are named by nothing but the bodies this statement
+-- just erased, and the Go-side walk cannot stand in for the list (it is filtered
+-- by workspace, while this recursion is not — see
+-- DetachDocumentParentsAcrossWorkspaces below).
+-- name: DeleteDocumentSubtree :many
 WITH RECURSIVE down AS (
     SELECT a.id FROM documents a WHERE a.id = $1
     UNION
     SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id
 )
-DELETE FROM documents WHERE documents.id IN (SELECT id FROM down);
+DELETE FROM documents WHERE documents.id IN (SELECT id FROM down) RETURNING documents.id;
+
+-- CountDocumentAssetRefs counts the bodies that still embed images belonging to
+-- one document — the guard in front of deleting its directory.
+--
+-- A document's images are stored under its own id and referenced only by the src
+-- attributes inside a body, with no row of their own. Usually that owner is the
+-- only body pointing there, but not always: saving a document as a template
+-- copies its content verbatim (signed URLs included), and so does creating a
+-- document from that template, so one directory can back a whole family. The
+-- needle is therefore matched against all three places a body can live, with no
+-- workspace filter — a transferred project carries its documents across the
+-- boundary while the URLs keep naming the original document.
+--
+-- Called after the delete, so the document's own row and its versions (cascade)
+-- are already gone and need no exclusion.
+-- name: CountDocumentAssetRefs :one
+SELECT (
+    (SELECT count(*) FROM documents WHERE content::text LIKE sqlc.arg(needle)::text)
+  + (SELECT count(*) FROM document_templates WHERE content::text LIKE sqlc.arg(needle)::text)
+  + (SELECT count(*) FROM document_versions WHERE content::text LIKE sqlc.arg(needle)::text)
+)::bigint;
 
 -- ReassignProjectDocumentsWorkspace re-stamps workspace_id on documents tied to
 -- a project, used when the project is transferred between workspaces (mirrors

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/hmac"
 	"net/http"
 	"os"
@@ -25,9 +26,16 @@ import (
 // docAssetName guards the serve route against path traversal.
 var docAssetNameRe = mediaNameRe
 
+// docAssetDir is where one document's images live. Named by the document alone:
+// there is no row per image, so this directory *is* the bookkeeping, and it is
+// only ever reachable through the src attributes inside a body.
+func (h *API) docAssetDir(docID uuid.UUID) string {
+	return filepath.Join(h.uploadDir, "documents", docID.String())
+}
+
 // docAssetPath is the on-disk location of a document image.
 func (h *API) docAssetPath(docID uuid.UUID, name string) string {
-	return filepath.Join(h.uploadDir, "documents", docID.String(), name)
+	return filepath.Join(h.docAssetDir(docID), name)
 }
 
 // docAssetRel is the signed payload: stable, and specific enough that a
@@ -42,6 +50,29 @@ func (h *API) docAssetURL(wsID, docID uuid.UUID, name string) string {
 		"&ws=" + wsID.String() +
 		"&n=" + name +
 		"&sig=" + h.signAsset(wsID, rel)
+}
+
+// purgeDocAssets clears the image directories of documents that have just been
+// deleted — every one of them whose images nothing else still embeds.
+//
+// The check is what separates this from the conference sweeps, which own their
+// files outright. A template is a verbatim copy of a document's body, signed
+// image URLs and all, and so is a document created from that template, so the
+// source's directory can be the backing store for a whole family of bodies. A
+// bare RemoveAll would leave those rendering broken images — a loud, permanent
+// failure, and the wrong trade against a leak.
+//
+// Best-effort by design: the rows are gone either way, and a delete that
+// answered 500 because a file was already missing would be worse than a
+// directory left behind.
+func (h *API) purgeDocAssets(ctx context.Context, ids []uuid.UUID) {
+	for _, id := range ids {
+		refs, err := h.q.CountDocumentAssetRefs(ctx, "%doc="+id.String()+"%")
+		if err != nil || refs > 0 {
+			continue
+		}
+		_ = os.RemoveAll(h.docAssetDir(id))
+	}
 }
 
 // UploadDocumentAsset stores an image for a document and returns the signed URL
@@ -74,7 +105,7 @@ func (h *API) UploadDocumentAsset(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "поддерживаются только изображения (PNG, JPEG, GIF, WebP, BMP)"})
 		return
 	}
-	dir := filepath.Join(h.uploadDir, "documents", doc.ID.String())
+	dir := h.docAssetDir(doc.ID)
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
