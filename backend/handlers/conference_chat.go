@@ -306,6 +306,28 @@ func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeade
 	return body, files, true
 }
 
+// chatDir is where one conference's chat uploads live. Per conference and used
+// by nothing else, which is what lets the whole directory go when the conference
+// does.
+func (h *API) chatDir(confID uuid.UUID) string {
+	return filepath.Join(h.uploadDir, "conf", confID.String())
+}
+
+// purgeChatDir clears the uploads of a conference that has just been deleted.
+//
+// Deleting a single message reads its paths before the row goes, because after
+// the cascade nothing remembers where the bytes are; deleting the conference owes
+// the same to every message at once, and the row-by-row version would be a page
+// of statements to arrive at a directory that is already exactly the set of files
+// to remove. Unlike rec/ there is nothing to wait for — a chat upload is written
+// inside the request that posted it, so no writer can be in flight.
+//
+// Best-effort: the rows are gone either way, and a delete that reported a 500
+// because a file was already missing would be worse than a file left behind.
+func (h *API) purgeChatDir(confID uuid.UUID) {
+	_ = os.RemoveAll(h.chatDir(confID))
+}
+
 // storeChatFiles writes the uploads under UPLOAD_DIR/conf/<conference>/ and
 // describes them for the rows that follow. On any failure it removes whatever it
 // had already written, writes the response and returns false.
@@ -313,9 +335,9 @@ func (h *API) storeChatFiles(c *gin.Context, confID uuid.UUID, files []*multipar
 	if len(files) == 0 {
 		return nil, true
 	}
+	dir := h.chatDir(confID)
 	// 0750: conf/ is written and read by this process alone — unlike rec/ next to
 	// it, which is shared with the egress worker (see recordingDirMode).
-	dir := filepath.Join(h.uploadDir, "conf", confID.String())
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return nil, false

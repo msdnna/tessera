@@ -279,7 +279,8 @@ func (h *API) requireConferenceManager(c *gin.Context, conf db.Conference) bool 
 }
 
 // DeleteConference removes a conference along with its participants, chat and
-// recording rows (ON DELETE CASCADE).
+// recording rows (ON DELETE CASCADE) — and the files those rows named, which the
+// cascade knows nothing about.
 func (h *API) DeleteConference(c *gin.Context) {
 	conf, ok := h.conferenceScope(c)
 	if !ok {
@@ -324,6 +325,12 @@ func (h *API) DeleteConference(c *gin.Context) {
 		_ = os.Remove(p) // best-effort; the rows are already gone
 	}
 	h.purgeRecordingDir(conf.ID, activeEgress)
+	// The chat's files are in the same position the recordings were: the cascade
+	// has just taken the attachment rows that were the only record of where they
+	// live, and no sweep walks that directory. DeleteConferenceMessage unlinks
+	// them one message at a time; this is the same obligation for the whole
+	// conversation at once.
+	h.purgeChatDir(conf.ID)
 	h.dropConfRoom(conf.ID, "deleted")
 	h.broadcastAs(c, conf.WorkspaceID, "conference.deleted", gin.H{"id": conf.ID})
 	c.Status(http.StatusNoContent)
