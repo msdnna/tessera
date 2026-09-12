@@ -47,14 +47,39 @@ describe('topoByDeps', () => {
     expect(ids(out)).toEqual(['A', 'B'])
   })
 
-  it('emits a shared dependent only once (diamond)', () => {
-    // A→B, A→C, B→D, C→D. D must appear once, after its first visited blocker.
+  it('emits a shared dependent only once, after ALL of its blockers (diamond)', () => {
+    // A→B, A→C, B→D, C→D. D must appear once — and below C, not between B and C:
+    // the Gantt draws finish→start arrows between rows, so a dependent placed
+    // above one of its blockers gets an arrow pointing back up the chart.
     const out = topoByDeps(tasks('A', 'B', 'C', 'D'), [
       { blocker: 'A', blocked: 'B' },
       { blocker: 'A', blocked: 'C' },
       { blocker: 'B', blocked: 'D' },
       { blocker: 'C', blocked: 'D' },
     ])
-    expect(ids(out)).toEqual(['A', 'B', 'D', 'C'])
+    expect(ids(out)).toEqual(['A', 'B', 'C', 'D'])
+  })
+
+  it('holds a task with two blockers until the second one is emitted', () => {
+    // The minimal shape of the same rule: A and B both block C.
+    const out = topoByDeps(tasks('A', 'B', 'C'), [
+      { blocker: 'A', blocked: 'C' },
+      { blocker: 'B', blocked: 'C' },
+    ])
+    expect(ids(out)).toEqual(['A', 'B', 'C'])
+  })
+
+  it('never places a task above one of its blockers', () => {
+    // Two roots feeding a joined tail, with the incoming order deliberately
+    // interleaved so a first-blocker-wins walk would emit Г before В.
+    const out = topoByDeps(tasks('A', 'Б', 'В', 'Г'), [
+      { blocker: 'A', blocked: 'Г' },
+      { blocker: 'В', blocked: 'Г' },
+      { blocker: 'Б', blocked: 'В' },
+    ])
+    const at = (id) => ids(out).indexOf(id)
+    expect(at('Г')).toBeGreaterThan(at('A'))
+    expect(at('Г')).toBeGreaterThan(at('В'))
+    expect(at('В')).toBeGreaterThan(at('Б'))
   })
 })
