@@ -45,6 +45,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 	if rule.Once {
 		carry = nil
 	}
+	nextStart := shiftStart(t.StartDate, t.DueDate, next)
 
 	if rule.CreateNew {
 		// Strip the rule from the original (it's now a historical instance) and
@@ -53,7 +54,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 		if err != nil {
 			original = t
 		}
-		if _, cerr := h.cloneRecurringTask(ctx, t, target, next, carry, wsID, actorID); cerr == nil {
+		if _, cerr := h.cloneRecurringTask(ctx, t, target, next, nextStart, carry, wsID, actorID); cerr == nil {
 			h.logEventActor(ctx, t.ID, actorID, "recurred", map[string]any{"due": next, "cloned": true})
 		}
 		return original, true
@@ -62,7 +63,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 	// Reschedule the same task.
 	updated, err := h.q.UpdateTask(ctx, db.UpdateTaskParams{
 		ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
-		DueDate: &next, CompletedAt: nil, Recurrence: carry, StartDate: t.StartDate, Estimate: t.Estimate,
+		DueDate: &next, CompletedAt: nil, Recurrence: carry, StartDate: nextStart, Estimate: t.Estimate,
 	})
 	if err != nil {
 		return t, false
@@ -106,10 +107,36 @@ func (h *API) setTaskRecurrence(ctx context.Context, t db.Task, rule *json.RawMe
 	})
 }
 
+// shiftStart moves a start date by the same step the due date just took, so a
+// recurrence carries the planned window forward whole instead of stretching it.
+//
+// The boards draw one bar per task from start_date to due_date (Gantt and
+// timeline both), and the estimate's ghost bar anchors on the start. Advancing
+// only the deadline pinned every occurrence's start to the first one, so a daily
+// stand-up's bar grew a day longer each time it recurred — after a month a
+// half-hour meeting reads as a month-long effort, and it drags the chart's whole
+// axis with it.
+//
+// The step is measured as elapsed time, not calendar arithmetic, because the
+// window's length is what has to survive: a monthly rule landing on a short
+// February moves due by 28 days, and the start has to move 28 too or the window
+// silently changes size. A task with no start (or no previous due to measure
+// from) keeps none — a bar for a task nobody scheduled to begin would be the same
+// invention in the other direction.
+func shiftStart(start, prevDue *time.Time, next time.Time) *time.Time {
+	if start == nil || prevDue == nil {
+		return start
+	}
+	shifted := start.Add(next.Sub(*prevDue))
+	return &shifted
+}
+
 // cloneRecurringTask duplicates a task into the target column with a fresh due
 // date and the carried recurrence rule: title/description/priority/tags/assignees
 // are copied and direct subtasks are recreated uncompleted (a clean checklist).
-func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid.UUID, due time.Time, rule *json.RawMessage, wsID, actorID uuid.UUID) (db.Task, error) {
+// start is the duplicate's own start date (already stepped by shiftStart) — the
+// clone is the next occurrence, not a snapshot of the first.
+func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid.UUID, due time.Time, start *time.Time, rule *json.RawMessage, wsID, actorID uuid.UUID) (db.Task, error) {
 	endPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
 	if err != nil {
 		return db.Task{}, err
@@ -121,7 +148,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	clone, err := h.q.CreateTask(ctx, db.CreateTaskParams{
 		BoardID: src.BoardID, ColumnID: columnID, ParentID: nil,
 		Title: src.Title, Description: src.Description, Priority: src.Priority,
-		DueDate: &due, StartDate: src.StartDate, Estimate: src.Estimate, Position: positionBetween(&endPos, nil), CreatedBy: src.CreatedBy, Number: &num,
+		DueDate: &due, StartDate: start, Estimate: src.Estimate, Position: positionBetween(&endPos, nil), CreatedBy: src.CreatedBy, Number: &num,
 	})
 	if err != nil {
 		return db.Task{}, err
