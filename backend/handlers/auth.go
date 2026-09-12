@@ -210,6 +210,16 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		reject(http.StatusUnauthorized, "user not found")
 		return
 	}
+	// Deactivation has to reach the session, not just the login form. A refresh
+	// token renews itself for as long as it is used, so an account switched off
+	// while someone was signed in would otherwise never actually leave — rotation
+	// alone would carry it indefinitely. 403 matches Login's answer for the same
+	// state, and every client already reads a non-5xx refusal here as "the
+	// session is over" (frontend/src/api/index.js refreshFailure).
+	if !user.Active {
+		reject(http.StatusForbidden, "account is deactivated")
+		return
+	}
 
 	// Rotation stays in the channel it arrived on: a cookie-mode client gets the
 	// new token back as a cookie even if it forgot the header.

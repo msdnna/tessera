@@ -241,8 +241,16 @@ func (h *API) DeleteMyAvatar(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// SetUserActive activates/deactivates an account (global admin only). A
-// deactivated user can't log in. You can't change your own active state.
+// SetUserActive activates/deactivates an account (global admin only). You can't
+// change your own active state.
+//
+// Deactivation is an offboarding lever, so it has to end the access the account
+// already holds, not merely bar the door it no longer uses: the refresh chain is
+// revoked outright and the live sockets are cut. The credential paths re-check
+// the flag on their own (Refresh, and the PAT lookup joins on it), which is what
+// makes the account stay out; this only stops it from lingering for the rest of
+// a refresh token's month. Nothing here is destructive — PATs and memberships
+// survive, so reactivation gives the account back whole.
 func (h *API) SetUserActive(c *gin.Context) {
 	caller, ok := h.requireGlobalAdmin(c)
 	if !ok {
@@ -266,6 +274,10 @@ func (h *API) SetUserActive(c *gin.Context) {
 	if err := h.q.SetUserActive(c, db.SetUserActiveParams{ID: id, Active: req.Active}); err != nil {
 		fail(c, err)
 		return
+	}
+	if !req.Active {
+		soft(c, "RevokeAllUserTokens", h.q.RevokeAllUserTokens(c, id))
+		h.revokeUserSockets(id, "account deactivated")
 	}
 	c.Status(http.StatusNoContent)
 }
