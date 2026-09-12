@@ -30,6 +30,16 @@ Two classes of tool, because they fail differently:
         fail the build; SCAN_RATCHET_DEPS=fail makes it fail too. For the same
         reason a disappeared advisory is not an error: advisories get withdrawn
         and rescoped without anyone touching the repo.
+
+One exception, and it is the whole point of running govulncheck rather than a
+plain lockfile scan: govulncheck says whether the vulnerable symbol is actually
+*called*. That is a property of the tree, not of the feed. Every result still
+points at go.mod, so without the `[called]` marker below a vulnerability that
+goes from merely-imported to called keeps the same key, the count never moves,
+and the ratchet stays green through exactly the change that matters. Marking it
+splits the two states into two keys, and `main` hard-fails when an advisory the
+baseline already knew about crosses into called — a brand-new advisory that
+arrives already-called stays soft, because nobody in this commit caused it.
 """
 
 import argparse
@@ -47,6 +57,11 @@ DEPS_TOOLS = ("govulncheck", "osv")
 # vulnerable to 'RUSTSEC-2024-0429'". The version is dropped on purpose (see
 # module docstring).
 OSV_PKG = re.compile(r"Package '([^']+?)(?:@[^'@]*)?' is vulnerable")
+
+# Suffix that marks a govulncheck finding whose vulnerable symbol is reached from
+# our own code. Kept out of the fingerprint's rule/where halves so that stripping
+# it recovers the key the same advisory has while only imported.
+CALLED = " [called]"
 
 
 def tool_name(path):
@@ -97,7 +112,14 @@ def fingerprint(tool, result):
     uri = ""
     if locations:
         uri = ((locations[0].get("physicalLocation") or {}).get("artifactLocation") or {}).get("uri", "")
-    return "%s %s" % (rule, rel_path(uri))
+    key = "%s %s" % (rule, rel_path(uri))
+
+    # govulncheck attaches a codeFlow — the call chain from our package down to
+    # the vulnerable symbol — only to findings it proved reachable. Everything
+    # else it reports is "the module is in the build graph, nothing calls it".
+    if tool.startswith("govulncheck") and result.get("codeFlows"):
+        key += CALLED
+    return key
 
 
 def read_report(path):
@@ -194,15 +216,42 @@ def main():
     warned = 0
     tightenable = []
     for tool in sorted(current):
-        added, resolved = diff(baseline.get(tool, {}), current[tool])
+        base = baseline.get(tool, {})
+        added, resolved = diff(base, current[tool])
         soft = is_deps(tool) and args.deps == "warn"
-        if added:
+
+        # A known advisory that just became reachable is the tree's doing, so it
+        # fails even in warn mode — see the module docstring.
+        regressions = [
+            (key, delta) for key, delta in added
+            if soft and key.endswith(CALLED) and key[: -len(CALLED)] in base
+        ]
+        if regressions:
+            print("  ✗ %s: now REACHED from our own code" % tool, file=sys.stderr)
+            for key, delta in regressions:
+                print("      +%d  %s" % (delta, key), file=sys.stderr)
+            failed = True
+
+        # The mirror image: an advisory that stopped being reachable shows up as
+        # a "new" plain key, because the called one it replaces is a key of its
+        # own. Reporting that as a fresh advisory to triage is backwards.
+        improvements = [
+            (key, delta) for key, delta in added
+            if tool.startswith("govulncheck") and not key.endswith(CALLED) and key + CALLED in base
+        ]
+        if improvements:
+            print("  · %s: no longer reached from our own code" % tool)
+            for key, delta in improvements:
+                print("      ·%d  %s" % (delta, key))
+
+        rest = [pair for pair in added if pair not in regressions and pair not in improvements]
+        if rest:
             label = "new advisories (feed moves on its own — not failing, SCAN_RATCHET_DEPS=fail to)" if soft else "NEW"
             print("  %s %s: %s" % ("!" if soft else "✗", tool, label), file=sys.stderr)
-            for key, delta in added:
+            for key, delta in rest:
                 print("      +%d  %s" % (delta, key), file=sys.stderr)
             if soft:
-                warned += len(added)
+                warned += len(rest)
             else:
                 failed = True
         if resolved:

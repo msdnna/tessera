@@ -93,6 +93,11 @@ except (OSError, json.JSONDecodeError) as exc:
 # not "warning". Resolve through the rule index before counting.
 levels = collections.Counter()
 total = 0
+# govulncheck attaches a codeFlow only to the findings it proved reachable. Both
+# kinds land in the same report, and the unreachable ones outnumber the rest, so
+# a bare total reads far more alarming than the actual work — call the reachable
+# ones out separately.
+called = 0
 for run in sarif.get("runs", []):
     rules = {}
     driver = run.get("tool", {}).get("driver", {})
@@ -104,10 +109,13 @@ for run in sarif.get("runs", []):
         total += 1
         level = res.get("level") or rules.get(res.get("ruleId"), "warning")
         levels[level] += 1
+        if res.get("codeFlows"):
+            called += 1
 
 if total:
     breakdown = ", ".join(f"{lvl}={cnt}" for lvl, cnt in sorted(levels.items()))
-    print(f"{total}\t{total} finding(s): {breakdown}")
+    reach = f", {called} reached from our code" if called else ""
+    print(f"{total}\t{total} finding(s): {breakdown}{reach}")
 else:
     print("0\tclean")
 PY
