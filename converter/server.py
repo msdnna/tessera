@@ -78,6 +78,50 @@ _SAFE_EXT = re.compile(r"^[a-z0-9]{1,8}$")
 # backend turns those into document assets.
 _IMG_SRC = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', re.IGNORECASE)
 
+# LibreOffice fetches what a document points at. A <draw:image xlink:href="http://…"
+# xlink:actuate="onLoad"> in an uploaded .fodt (or its .docx equivalent) makes soffice
+# issue a real GET while converting — server-side request forgery driven by whoever
+# uploaded the file. Measured here: the request reaches an arbitrary host as
+# "LibreOffice 7.4.7.2 … GnuTLS/3.7.9", and this container's egress is not restricted,
+# so that is the whole internal network plus the public internet.
+#
+# Blocking it belongs in the profile, not in a document filter: the obvious knob
+# (Security/Scripting/LinkUpdateMode = 0, "never update links") was tried and does NOT
+# stop a linked graphic — the fetch still happened. Pointing LibreOffice's own HTTP
+# client at a dead proxy does: with this in place the same payload produces no outbound
+# request at all, and conversion still succeeds. Nothing here needs the network —
+# the service is handed bytes and returns bytes — so the whole of it is off.
+_PROFILE_REGISTRY = """<?xml version="1.0" encoding="UTF-8"?>
+<oor:items xmlns:oor="http://openoffice.org/2001/registry" \
+xmlns:xs="http://www.w3.org/2001/XMLSchema" \
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<item oor:path="/org.openoffice.Inet/Settings">\
+<prop oor:name="ooInetProxyType" oor:op="fuse"><value>1</value></prop>\
+<prop oor:name="ooInetHTTPProxyName" oor:op="fuse"><value>127.0.0.1</value></prop>\
+<prop oor:name="ooInetHTTPProxyPort" oor:op="fuse"><value>9</value></prop>\
+<prop oor:name="ooInetHTTPSProxyName" oor:op="fuse"><value>127.0.0.1</value></prop>\
+<prop oor:name="ooInetHTTPSProxyPort" oor:op="fuse"><value>9</value></prop>\
+<prop oor:name="ooInetFTPProxyName" oor:op="fuse"><value>127.0.0.1</value></prop>\
+<prop oor:name="ooInetFTPProxyPort" oor:op="fuse"><value>9</value></prop>\
+<prop oor:name="ooInetNoProxy" oor:op="fuse"><value></value></prop>\
+</item>
+<item oor:path="/org.openoffice.Office.Common/Security/Scripting">\
+<prop oor:name="LinkUpdateMode" oor:op="fuse"><value>0</value></prop>\
+<prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop>\
+<prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop>\
+</item>
+</oor:items>
+"""
+
+
+def _write_profile(path: str) -> str:
+    """Creates a soffice UserInstallation directory and returns its file:// URL."""
+    user = os.path.join(path, "user")
+    os.makedirs(user, exist_ok=True)
+    with open(os.path.join(user, "registrymodifications.xcu"), "w") as fh:
+        fh.write(_PROFILE_REGISTRY)
+    return "file://" + path
+
 
 def _inline_images(html: str, outdir: str) -> str:
     """Replaces relative <img src> with data: URIs read from outdir."""
@@ -125,7 +169,8 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
         # A private UserInstallation per request. Without it concurrent soffice
         # invocations share one profile directory, and the second one exits
         # immediately with "another instance is running" instead of converting.
-        profile = "file://" + os.path.join(tmp, "profile-" + uuid.uuid4().hex)
+        # It is also where the network is turned off (see _PROFILE_REGISTRY).
+        profile = _write_profile(os.path.join(tmp, "profile-" + uuid.uuid4().hex))
         cmd = [
             "soffice",
             "--headless",
