@@ -117,3 +117,32 @@ RETURNING *;
 -- free the ones the target workspace already uses.
 -- name: ProjectDocumentSlugs :many
 SELECT id, slug FROM documents WHERE project_id = $1 ORDER BY created_at;
+
+-- DetachDocumentParentsAcrossWorkspaces clears parent_id on every nesting
+-- touching the given project whose two ends now sit in different workspaces —
+-- the state a project transfer leaves behind, since a document's nesting and
+-- its project are independent columns and only one of the pair travels.
+-- parentInWorkspace refuses such a pair outright ("parent belongs to another
+-- workspace"), so it can only appear when the boundary moves under an existing
+-- nesting, and nothing downstream expects it: CountDocumentChildren and
+-- DeleteDocumentSubtree walk parent_id with no workspace filter (an undeletable
+-- parent with an invisible child, and a ?recursive=true that deletes another
+-- workspace's documents), while ListDocuments is per workspace and the tree is
+-- assembled from parent_id client-side, so a child whose parent is not in the
+-- list renders nowhere at all. Detaching surfaces it at the root of the
+-- workspace that now owns it, which is where a document with no parent belongs.
+--
+-- updated_at is deliberately left alone: it is the optimistic-concurrency token
+-- UpdateDocumentContent checks, and bumping it for a change that never touched
+-- the body would answer 409 to the next save of whoever has the document open.
+-- Returns the number of nestings detached.
+-- name: DetachDocumentParentsAcrossWorkspaces :execrows
+UPDATE documents d
+SET parent_id = NULL
+WHERE d.parent_id IS NOT NULL
+  AND (
+        d.project_id = $1
+     OR (SELECT p.project_id FROM documents p WHERE p.id = d.parent_id) = $1
+      )
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT p.workspace_id FROM documents p WHERE p.id = d.parent_id);

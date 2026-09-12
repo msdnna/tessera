@@ -583,6 +583,22 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The fourth is a document's own parent, and unlike a task's it does not
+	// travel with the project: nesting and project are independent columns, so a
+	// document of this project can be nested under one that stays behind, or be
+	// the parent of one. parentInWorkspace refuses such a pair at the door, and
+	// the reads that walk parent_id assume it never exists — CountDocumentChildren
+	// blocks the delete of a parent over a child its workspace cannot see,
+	// DeleteDocumentSubtree follows the link straight into the other workspace
+	// and erases documents there (with no room to drop, since documentSubtreeIDs
+	// only walks the caller's own list), and ListDocuments plus a client-side tree
+	// render a parentless-looking child nowhere at all. Detached after the
+	// re-stamp above, so both ends are compared at their final workspace.
+	detachedDocs, err := qtx.DetachDocumentParentsAcrossWorkspaces(c, &p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	if err := tx.Commit(c); err != nil {
 		fail(c, err)
 		return
@@ -594,7 +610,7 @@ func (h *API) TransferProject(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"project": updated, "stripped_assignees": stripped, "renumbered_tasks": renumbered,
 		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,
-		"unlinked_documents": unlinkedDocs,
+		"unlinked_documents": unlinkedDocs, "detached_documents": detachedDocs,
 	})
 }
 
