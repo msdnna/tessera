@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  То же исключение для Android 11 и ниже (minSdk 24), где действует не
+  `dataExtractionRules`, а `fullBackupContent`. Держать обе версии обязательно:
+  платформа выбирает файл по версии устройства и молча игнорирует чужой, так что
+  правила только для 12+ оставили бы старые телефоны с токеном в облаке.
+  Комментарий к исключению — в data_extraction_rules.xml.
+-->
+<full-backup-content>
+    <exclude domain="file" path="datastore" />
+</full-backup-content>
