@@ -57,6 +57,7 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
 import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
 import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
+import { useBoardAutosave } from '@/composables/useBoardAutosave'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
 import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
@@ -640,29 +641,21 @@ async function deleteView(v) {
 }
 // Autosave: when enabled and a named view is loaded, re-save it (debounced,
 // silent) as the toolbar/customize state changes. Guarded by restoring/swapping
-// like persistView so applying a view doesn't immediately re-save it.
-const AUTOSAVE_MS = 700 // longer than VIEW_PERSIST_MS: this one costs a request
-let autosaveTimer = null
-async function autosaveCurrent() {
-  const name = currentViewName.value.trim()
-  if (!name) return
-  try {
-    await boards.saveView(props.boardId, { name, config: currentViewConfig() })
-  } catch {
-    /* silent — a failed autosave shouldn't nag; manual save still surfaces errors */
-  }
-}
-watch(
-  () => (autosaveView.value && currentViewName.value ? JSON.stringify(currentViewConfig()) : ''),
-  (sig) => {
-    if (!sig || viewLoadInFlight()) return
-    if (autosaveTimer) clearTimeout(autosaveTimer)
-    autosaveTimer = setTimeout(() => {
-      autosaveTimer = null
-      autosaveCurrent()
-    }, AUTOSAVE_MS)
+// like persistView so applying a view doesn't immediately re-save it; the debounce
+// and its teardown live in the composable.
+useBoardAutosave({
+  enabled: autosaveView,
+  viewName: currentViewName,
+  config: currentViewConfig,
+  guarded: viewLoadInFlight,
+  save: async (name, config) => {
+    try {
+      await boards.saveView(props.boardId, { name, config })
+    } catch {
+      /* silent — a failed autosave shouldn't nag; manual save still surfaces errors */
+    }
   },
-)
+})
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
