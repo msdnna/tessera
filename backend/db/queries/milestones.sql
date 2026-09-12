@@ -69,3 +69,24 @@ DELETE FROM milestones WHERE id = $1;
 
 -- name: SetTaskMilestone :exec
 UPDATE tasks SET milestone_id = $2, updated_at = now() WHERE id = $1;
+
+-- ClearMilestonesAcrossWorkspaces unpins every task that, after a project
+-- transfer, points at a milestone owned by a different workspace — in either
+-- direction: a task of the moved project left pointing at a milestone that
+-- stayed, and a task that stayed pointing at one that moved. applyMilestone
+-- refuses such a pairing at the door; ListWorkspaceMilestones rolls the
+-- milestone up over `tasks t ON t.milestone_id = m.id` with no workspace filter,
+-- so a stranded task keeps inflating the count and the Σ estimate of a milestone
+-- its own workspace cannot even list. Returns the number of tasks unpinned.
+-- name: ClearMilestonesAcrossWorkspaces :execrows
+UPDATE tasks SET milestone_id = NULL, updated_at = now()
+WHERE milestone_id IS NOT NULL
+  AND (
+        board_id IN (SELECT b.id FROM boards b WHERE b.project_id = $1)
+     OR milestone_id IN (SELECT m.id FROM milestones m WHERE m.project_id = $1)
+      )
+  AND (SELECT p.workspace_id FROM boards b JOIN projects p ON p.id = b.project_id
+       WHERE b.id = tasks.board_id)
+      IS DISTINCT FROM
+      (SELECT p.workspace_id FROM milestones m JOIN projects p ON p.id = m.project_id
+       WHERE m.id = tasks.milestone_id);

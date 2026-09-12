@@ -421,8 +421,10 @@ func (h *API) MoveProject(c *gin.Context) {
 // TransferProject moves a project — with all its boards, tasks, tags, notes and
 // GitLab bindings — to another workspace. A dangerous operation: it re-stamps the
 // denormalized workspace_id across the project's tags/tag_prefixes/notes and any
-// GitLab integrations, re-numbers its tasks out of the target's counter, and
-// strips assignees who aren't members of the target workspace. Requires
+// GitLab integrations, re-numbers its tasks out of the target's counter, strips
+// assignees who aren't members of the target workspace, and severs the relations
+// and milestone links whose two ends the move would put in different workspaces.
+// Requires
 // membership in BOTH the source (checked by loadProject) and the target
 // workspace. The project lands ungrouped at the target's root.
 func (h *API) TransferProject(c *gin.Context) {
@@ -548,6 +550,28 @@ func (h *API) TransferProject(c *gin.Context) {
 			return
 		}
 	}
+	// Two of a task's links were authorized once, when they were made, against a
+	// workspace boundary this transfer just moved out from under them: a relation
+	// (AddRelation resolves the other end through GetTaskByNumber scoped to the
+	// caller's workspace) and a milestone (applyMilestone refuses one from another
+	// workspace outright). Neither read re-checks that later — ListTaskRelations
+	// joins tasks for related_number/related_title, ListWorkspaceMilestones rolls
+	// up over t.milestone_id, both without a workspace filter — so a link left
+	// hanging across the new boundary keeps handing each side the other's task
+	// titles and keeps a stranger's task in a milestone's count and Σ estimate.
+	// Severed here, in the same transaction, in both directions. Parent links need
+	// no such pass: applyParent adopts the parent's board, so a parent and its
+	// subtree share a project and travel together.
+	unlinked, err := qtx.DeleteRelationsAcrossWorkspaces(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	unpinned, err := qtx.ClearMilestonesAcrossWorkspaces(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	if err := tx.Commit(c); err != nil {
 		fail(c, err)
 		return
@@ -558,6 +582,7 @@ func (h *API) TransferProject(c *gin.Context) {
 	h.broadcast(req.WorkspaceID, "project.created", updated)
 	c.JSON(http.StatusOK, gin.H{
 		"project": updated, "stripped_assignees": stripped, "renumbered_tasks": renumbered,
+		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,
 	})
 }
 

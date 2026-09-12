@@ -39,6 +39,35 @@ func (q *Queries) AddTaskRelation(ctx context.Context, arg AddTaskRelationParams
 	return i, err
 }
 
+const deleteRelationsAcrossWorkspaces = `-- name: DeleteRelationsAcrossWorkspaces :execrows
+DELETE FROM task_relations r
+WHERE (
+        r.task_id IN (SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1)
+     OR r.related_task_id IN (SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1)
+      )
+  AND (SELECT p.workspace_id FROM tasks t JOIN boards b ON b.id = t.board_id
+       JOIN projects p ON p.id = b.project_id WHERE t.id = r.task_id)
+      IS DISTINCT FROM
+      (SELECT p.workspace_id FROM tasks t JOIN boards b ON b.id = t.board_id
+       JOIN projects p ON p.id = b.project_id WHERE t.id = r.related_task_id)
+`
+
+// DeleteRelationsAcrossWorkspaces drops every relation of the given project's
+// tasks whose other end is now in a different workspace — the state a project
+// transfer leaves behind. AddRelation resolves its target through
+// GetTaskByNumber scoped to the caller's workspace, so such a pair can only
+// appear when the boundary moves under an existing relation; ListTaskRelations
+// joins tasks for related_number/related_title with no workspace filter of its
+// own, so leaving the row in place hands both sides the other's task titles.
+// Returns the number of relations dropped.
+func (q *Queries) DeleteRelationsAcrossWorkspaces(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRelationsAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteTaskRelation = `-- name: DeleteTaskRelation :exec
 DELETE FROM task_relations WHERE id = $1
 `

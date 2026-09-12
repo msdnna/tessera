@@ -44,3 +44,23 @@ SELECT * FROM task_relations WHERE id = $1;
 
 -- name: DeleteTaskRelation :exec
 DELETE FROM task_relations WHERE id = $1;
+
+-- DeleteRelationsAcrossWorkspaces drops every relation of the given project's
+-- tasks whose other end is now in a different workspace — the state a project
+-- transfer leaves behind. AddRelation resolves its target through
+-- GetTaskByNumber scoped to the caller's workspace, so such a pair can only
+-- appear when the boundary moves under an existing relation; ListTaskRelations
+-- joins tasks for related_number/related_title with no workspace filter of its
+-- own, so leaving the row in place hands both sides the other's task titles.
+-- Returns the number of relations dropped.
+-- name: DeleteRelationsAcrossWorkspaces :execrows
+DELETE FROM task_relations r
+WHERE (
+        r.task_id IN (SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1)
+     OR r.related_task_id IN (SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1)
+      )
+  AND (SELECT p.workspace_id FROM tasks t JOIN boards b ON b.id = t.board_id
+       JOIN projects p ON p.id = b.project_id WHERE t.id = r.task_id)
+      IS DISTINCT FROM
+      (SELECT p.workspace_id FROM tasks t JOIN boards b ON b.id = t.board_id
+       JOIN projects p ON p.id = b.project_id WHERE t.id = r.related_task_id);
