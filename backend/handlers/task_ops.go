@@ -412,6 +412,22 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 // "assigned to you" notification, the WS event and the GitLab assignee trigger.
 func (h *API) applyAssignee(c *gin.Context, t db.Task, wsID, userID uuid.UUID, add bool) error {
 	if add {
+		// Same rule as applyTag: the user_id arrives in the body, so loadTask
+		// does not vouch for it. Assigning a stranger reads their address back
+		// through ListTaskAssignees (it selects u.email) and pushes them an
+		// "assigned to you" notification carrying a title the caller writes,
+		// from a workspace they cannot open. The sibling notification paths
+		// (notifyMentions, notifyThread) already skip non-members.
+		//
+		// The remove arm stays unguarded on purpose — see
+		// TestRevokedMemberCanStillBeUnassigned: RemoveMember leaves existing
+		// assignments standing, and a check here would make them unremovable.
+		if _, err := h.q.GetMembership(c, db.GetMembershipParams{WorkspaceID: wsID, UserID: userID}); err != nil {
+			if errIsNoRows(err) {
+				return forbiddenErr{msg: "assignee is not a member of this workspace"}
+			}
+			return err
+		}
 		if err := h.q.AddTaskAssignee(c, db.AddTaskAssigneeParams{TaskID: t.ID, UserID: userID}); err != nil {
 			return err
 		}
