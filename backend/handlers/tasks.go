@@ -571,7 +571,7 @@ func (h *API) TransferTask(c *gin.Context) {
 		if err != nil {
 			return err
 		}
-		return q.MoveSubtasksToBoard(c, db.MoveSubtasksToBoardParams{
+		return q.MoveSubtreeToBoard(c, db.MoveSubtreeToBoardParams{
 			ParentID: &id, BoardID: req.BoardID, ColumnID: columnID,
 		})
 	}); err != nil {

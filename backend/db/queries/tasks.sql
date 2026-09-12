@@ -166,8 +166,25 @@ SET board_id = $2, column_id = $3, parent_id = NULL, position = $4, updated_at =
 WHERE id = $1
 RETURNING *;
 
--- name: MoveSubtasksToBoard :exec
-UPDATE tasks SET board_id = $2, column_id = $3, updated_at = now() WHERE parent_id = $1;
+-- MoveSubtreeToBoard puts every descendant of a task on the given board and
+-- column. The whole tree, not `parent_id = $1`: nesting is not depth-limited
+-- (CreateTask hangs a subtask off a subtask, and TaskAncestorIDs below exists
+-- because chains run deeper than one), so a one-level move left grandchildren
+-- on the board their parent had just left. A subtask is drawn only under a
+-- parent card on the same board, so such a row is drawn on neither board — and
+-- board_id/column_id are ON DELETE CASCADE, so deleting that stale column takes
+-- the task with it.
+--
+-- UNION rather than UNION ALL for the same reason as TaskAncestorIDs: an install
+-- that already grew a ring must get an answer instead of spinning.
+-- name: MoveSubtreeToBoard :exec
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.parent_id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+UPDATE tasks SET board_id = $2, column_id = $3, updated_at = now()
+WHERE id IN (SELECT id FROM down);
 
 -- TaskAncestorIDs returns the task itself followed by its parents, up to the
 -- root. Used to reject attaching a task below one of its own descendants, which

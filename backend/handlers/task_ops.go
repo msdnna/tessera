@@ -607,10 +607,28 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 		boardID, columnID = parent.BoardID, parent.ColumnID
 	}
 	prevParent := t.ParentID
-	updated, err := h.q.SetTaskParent(c, db.SetTaskParentParams{
-		ID: t.ID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
-	})
-	if err != nil {
+	// Adopting the parent's board moves the task itself — and a task brings its
+	// own subtree with it, exactly as TransferTask does. Without this, attaching
+	// a task that has children under a parent on another board left the children
+	// on the board their parent just left: drawn on neither (a subtask renders
+	// only under a parent card present on the same board), and destroyed outright
+	// once that board or column is deleted (both foreign keys are ON DELETE
+	// CASCADE). One transaction, so a crash cannot split the tree across boards.
+	var updated db.Task
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		updated, err = q.SetTaskParent(c, db.SetTaskParentParams{
+			ID: t.ID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
+		})
+		if err != nil || boardID == t.BoardID {
+			// Same board: the descendants stay where they are, keeping whatever
+			// column each of them sits in.
+			return err
+		}
+		return q.MoveSubtreeToBoard(c, db.MoveSubtreeToBoardParams{
+			ParentID: &t.ID, BoardID: boardID, ColumnID: columnID,
+		})
+	}); err != nil {
 		return t, err
 	}
 	// Mirror the move in GitLab's hierarchy (#2592). Re-parenting to a different parent
