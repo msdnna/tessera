@@ -142,11 +142,31 @@ func mediaCaller(c *gin.Context, secret string, q *db.Queries) (uuid.UUID, bool)
 		}
 	}
 	if ck, err := c.Cookie(MediaCookieName); err == nil && ck != "" {
-		if uid, err := auth.ParseMediaToken(secret, ck); err == nil {
+		if uid, err := auth.ParseMediaToken(secret, ck); err == nil && mediaOwnerActive(c, q, uid) {
 			return uid, true
 		}
 	}
 	return uuid.Nil, false
+}
+
+// mediaOwnerActive reports whether the account a media token names is still
+// switched on (#2932). The token is verified by signature alone and lives 30
+// days, so without this the cookie is the one credential deactivation can't
+// reach: the refresh chain is revoked, the PAT lookup joins on `active` and the
+// socket is cut, while the departing browser keeps reading inline images for the
+// rest of the month. A lookup per image is the same price the PAT path already
+// pays per request, and the route answers from the browser cache anyway
+// (Cache-Control immutable on a UUID name).
+//
+// A lookup that cannot be made is not a pass: q is nil only where no database
+// was wired up, and the enforcing install is exactly the one that asked for the
+// credential to mean something.
+func mediaOwnerActive(ctx context.Context, q *db.Queries, uid uuid.UUID) bool {
+	if q == nil {
+		return false
+	}
+	active, err := q.IsUserActive(ctx, uid)
+	return err == nil && active
 }
 
 // ResolveBearer validates a bearer credential — an access JWT or a Personal
