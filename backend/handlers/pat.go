@@ -26,7 +26,21 @@ type patDTO struct {
 
 // CreatePAT mints a new personal access token for the caller. The plaintext
 // token is returned exactly once (only its hash is stored).
+//
+// A session is required: a PAT may not mint another PAT. Everywhere else the
+// two credentials are interchangeable on purpose, but revocation has to be a
+// fixed point, and it is not if the token being revoked could have issued
+// siblings first. That matters more here than elsewhere because a PAT is the
+// one credential meant to sit at rest — in a CI secret, an MCP config, a shell
+// profile — and a routine password change deliberately leaves it alive (see
+// ChangeMyPassword), on the grounds that it has its own revoke button. This is
+// what keeps that button worth pressing: revoke the leaked token and the access
+// is over, rather than merely the copy the owner happened to know about.
 func (h *API) CreatePAT(c *gin.Context) {
+	if middleware.IsPATAuth(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "a personal access token cannot create another token; sign in to issue one"})
+		return
+	}
 	var req struct {
 		Name      string     `json:"name" binding:"required"`
 		ExpiresAt *time.Time `json:"expires_at"`

@@ -18,6 +18,12 @@ import (
 // ContextUserID is the gin context key holding the authenticated user's uuid.
 const ContextUserID = "user_id"
 
+// ContextPATAuth is the gin context key marking a request that arrived on a
+// personal access token rather than on a session. The two are interchangeable
+// almost everywhere — that is the point of PATs — so this exists for the one
+// place where they must not be: minting further tokens.
+const ContextPATAuth = "pat_auth"
+
 // patToucher throttles last_used_at writes. Without it every PAT request spawns
 // a goroutine that takes a pool connection for a single UPDATE — a batching
 // client (MCP, CI) drains the pool with writes nobody reads at second precision.
@@ -75,12 +81,18 @@ func Auth(secret string, q *db.Queries, patTouchInterval time.Duration) gin.Hand
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 			return
 		}
-		uid, ok := ResolveBearer(c, secret, q, strings.TrimPrefix(h, "Bearer "), toucher)
+		tok := strings.TrimPrefix(h, "Bearer ")
+		uid, ok := ResolveBearer(c, secret, q, tok, toucher)
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
 		c.Set(ContextUserID, uid)
+		// The prefix is what ResolveBearer itself branched on, so reading it again
+		// here names the credential kind without threading it back out.
+		if strings.HasPrefix(tok, auth.PATPrefix) {
+			c.Set(ContextPATAuth, true)
+		}
 		c.Next()
 	}
 }
@@ -188,4 +200,13 @@ func CurrentUser(c *gin.Context) uuid.UUID {
 	v, _ := c.Get(ContextUserID)
 	id, _ := v.(uuid.UUID)
 	return id
+}
+
+// IsPATAuth reports whether the caller presented a personal access token. It
+// defaults to false, so a route reached by any other path is treated as a
+// session — the restriction it gates is deliberately narrow.
+func IsPATAuth(c *gin.Context) bool {
+	v, _ := c.Get(ContextPATAuth)
+	b, _ := v.(bool)
+	return b
 }
