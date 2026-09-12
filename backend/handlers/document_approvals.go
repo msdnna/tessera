@@ -44,6 +44,17 @@ const (
 	approvalModeParallel   = "parallel"
 )
 
+// Refusals raised from inside a transaction, where writing the response on the
+// spot would mean answering before the rollback. Each maps to one status code
+// at the call site.
+var (
+	errApprovalOpen   = errors.New("document already has an open approval")
+	errApprovalClosed = errors.New("approval is already closed")
+	errNotOnRoute     = errors.New("caller is not on this approval route")
+	errAlreadyDecided = errors.New("caller has already decided")
+	errNotYourTurn    = errors.New("an earlier approver has not signed yet")
+)
+
 // documentApprovalView is one protocol with its route. The steps are nested
 // rather than shipped as a second flat list (the shape comments use) because a
 // protocol *is* its route: the panel never renders a step outside the approval it
@@ -126,16 +137,6 @@ func (h *API) CreateDocumentApproval(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "too many approvers"})
 		return
 	}
-	// One open route per document. Two would be collecting signatures on two
-	// different revisions at the same time, and "документ согласован" would stop
-	// having a single answer — including for the badge in the documents list.
-	if _, err := h.q.PendingDocumentApproval(c, doc.ID); err == nil {
-		c.JSON(http.StatusConflict, gin.H{"error": "document already has an open approval"})
-		return
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		fail(c, err)
-		return
-	}
 	// Every approver must be a member: the route is a list of people asked to
 	// read the document, and someone who cannot open it can only ever stall it.
 	// One read of the member list serves both the check and the names, so a route
@@ -168,8 +169,23 @@ func (h *API) CreateDocumentApproval(c *gin.Context) {
 	// would leave a route short of an approver, and in sequential mode such a
 	// route stalls forever: the missing step is the one everyone behind it waits
 	// on, and there is no endpoint that adds one to a route already raised.
+	//
+	// The "one open route" check lives inside the same transaction, behind a lock
+	// on the document: it is a read that decides an insert, so outside one two
+	// simultaneous requests both read "none open" and both write.
 	var approval db.DocumentApproval
 	if err := h.inTx(c, func(q *db.Queries) error {
+		if _, err := q.LockDocumentApprovalSlot(c, doc.ID); err != nil {
+			return err
+		}
+		// One open route per document. Two would be collecting signatures on two
+		// different revisions at the same time, and "документ согласован" would stop
+		// having a single answer — including for the badge in the documents list.
+		if _, err := q.PendingDocumentApproval(c, doc.ID); err == nil {
+			return errApprovalOpen
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
 		version, err := q.CreateDocumentVersion(c, db.CreateDocumentVersionParams{
 			DocumentID: doc.ID,
 			AuthorID:   &uid,
@@ -205,6 +221,10 @@ func (h *API) CreateDocumentApproval(c *gin.Context) {
 		}
 		return nil
 	}); err != nil {
+		if errors.Is(err, errApprovalOpen) {
+			c.JSON(http.StatusConflict, gin.H{"error": errApprovalOpen.Error()})
+			return
+		}
 		fail(c, err)
 		return
 	}
@@ -236,58 +256,79 @@ func (h *API) DecideDocumentApproval(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "decision must be approved or rejected"})
 		return
 	}
-	if approval.Status != approvalPending {
-		c.JSON(http.StatusConflict, gin.H{"error": "approval is already closed"})
-		return
-	}
-	steps, err := h.q.ListDocumentApprovalSteps(c, approval.ID)
-	if err != nil {
-		fail(c, err)
-		return
-	}
 	uid := middleware.CurrentUser(c)
-	mine, found := stepForApprover(steps, uid)
-	if !found {
-		c.JSON(http.StatusForbidden, gin.H{"error": "you are not on this approval route"})
-		return
-	}
-	if mine.Status != approvalPending {
-		c.JSON(http.StatusConflict, gin.H{"error": "you have already decided"})
-		return
-	}
-	if !canDecideNow(approval.Mode, steps, mine.ID) {
-		c.JSON(http.StatusConflict, gin.H{"error": "an earlier approver has not signed yet"})
-		return
-	}
-	// The signature defaults to the name the route recorded. Letting it default
-	// rather than requiring the client to echo it back keeps the two from ever
-	// disagreeing about who signed.
-	signature := truncateRunes(req.Signature, maxDocApprovalTitle)
-	if signature == "" {
-		signature = mine.ApproverName
-	}
-	updated, err := h.q.DecideDocumentApprovalStep(c, db.DecideDocumentApprovalStepParams{
-		ID:        mine.ID,
-		Status:    req.Decision,
-		Comment:   truncateRunes(req.Comment, maxDocApprovalComment),
-		Signature: signature,
-	})
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	for i := range steps {
-		if steps[i].ID == updated.ID {
-			steps[i] = updated
+	// Signing is a read-modify-write over the whole route — the step list decides
+	// what the route's status becomes — so it runs in one transaction behind a
+	// lock on the route. Two approvers signing at the same instant would otherwise
+	// each recompute from a list that is missing the other's signature, and a
+	// route whose last two steps land together would stay 'pending' with nothing
+	// left for anyone to sign.
+	var updated db.DocumentApprovalStep
+	if err := h.inTx(c, func(q *db.Queries) error {
+		locked, err := q.LockDocumentApproval(c, approval.ID)
+		if err != nil {
+			return err
 		}
-	}
-	if next := nextApprovalStatus(steps); next != approvalPending {
-		if _, err := h.q.CloseDocumentApproval(c, db.CloseDocumentApprovalParams{
-			ID: approval.ID, Status: next,
-		}); err != nil {
+		if locked.Status != approvalPending {
+			return errApprovalClosed
+		}
+		steps, err := q.ListDocumentApprovalSteps(c, locked.ID)
+		if err != nil {
+			return err
+		}
+		mine, found := stepForApprover(steps, uid)
+		if !found {
+			return errNotOnRoute
+		}
+		if mine.Status != approvalPending {
+			return errAlreadyDecided
+		}
+		if !canDecideNow(locked.Mode, steps, mine.ID) {
+			return errNotYourTurn
+		}
+		// The signature defaults to the name the route recorded. Letting it default
+		// rather than requiring the client to echo it back keeps the two from ever
+		// disagreeing about who signed.
+		signature := truncateRunes(req.Signature, maxDocApprovalTitle)
+		if signature == "" {
+			signature = mine.ApproverName
+		}
+		updated, err = q.DecideDocumentApprovalStep(c, db.DecideDocumentApprovalStepParams{
+			ID:        mine.ID,
+			Status:    req.Decision,
+			Comment:   truncateRunes(req.Comment, maxDocApprovalComment),
+			Signature: signature,
+		})
+		if err != nil {
+			return err
+		}
+		for i := range steps {
+			if steps[i].ID == updated.ID {
+				steps[i] = updated
+			}
+		}
+		if next := nextApprovalStatus(steps); next != approvalPending {
+			if _, err := q.CloseDocumentApproval(c, db.CloseDocumentApprovalParams{
+				ID: locked.ID, Status: next,
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		switch {
+		case errors.Is(err, errApprovalClosed):
+			c.JSON(http.StatusConflict, gin.H{"error": "approval is already closed"})
+		case errors.Is(err, errNotOnRoute):
+			c.JSON(http.StatusForbidden, gin.H{"error": "you are not on this approval route"})
+		case errors.Is(err, errAlreadyDecided):
+			c.JSON(http.StatusConflict, gin.H{"error": "you have already decided"})
+		case errors.Is(err, errNotYourTurn):
+			c.JSON(http.StatusConflict, gin.H{"error": "an earlier approver has not signed yet"})
+		default:
 			fail(c, err)
-			return
 		}
+		return
 	}
 	h.notifyDocLinks(doc.ID)
 	c.JSON(http.StatusOK, updated)
@@ -314,9 +355,16 @@ func (h *API) CancelDocumentApproval(c *gin.Context) {
 	if !mine && !h.requireManager(c, doc.WorkspaceID) {
 		return
 	}
+	// The UPDATE is itself guarded on 'pending', so a cancellation that loses to a
+	// signature landing in the same moment changes nothing and says so, instead of
+	// overwriting an outcome the approvers already reached.
 	updated, err := h.q.CloseDocumentApproval(c, db.CloseDocumentApprovalParams{
 		ID: approval.ID, Status: approvalCancelled,
 	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusConflict, gin.H{"error": "approval is already closed"})
+		return
+	}
 	if err != nil {
 		fail(c, err)
 		return

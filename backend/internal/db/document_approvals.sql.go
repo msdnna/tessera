@@ -15,7 +15,7 @@ import (
 const closeDocumentApproval = `-- name: CloseDocumentApproval :one
 UPDATE document_approvals
 SET status = $2, closed_at = now()
-WHERE id = $1
+WHERE id = $1 AND status = 'pending'
 RETURNING id, document_id, version_id, title, status, mode, created_by, created_at, closed_at
 `
 
@@ -24,6 +24,8 @@ type CloseDocumentApprovalParams struct {
 	Status string    `json:"status"`
 }
 
+// Closing is guarded on 'pending' so a cancellation and a final signature that
+// cross cannot overwrite each other's outcome.
 func (q *Queries) CloseDocumentApproval(ctx context.Context, arg CloseDocumentApprovalParams) (DocumentApproval, error) {
 	row := q.db.QueryRow(ctx, closeDocumentApproval, arg.ID, arg.Status)
 	var i DocumentApproval
@@ -328,6 +330,51 @@ func (q *Queries) ListDocumentApprovals(ctx context.Context, documentID uuid.UUI
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockDocumentApproval = `-- name: LockDocumentApproval :one
+SELECT id, document_id, version_id, title, status, mode, created_by, created_at, closed_at FROM document_approvals WHERE id = $1 FOR UPDATE
+`
+
+// LockDocumentApproval takes the route for a read-modify-write on its steps.
+// Deciding is exactly that: read the steps, write one, recompute the route's
+// status from the whole list. Two approvers signing at the same moment each
+// recompute from a list missing the other's signature, so a route whose last
+// two steps land together stays 'pending' with nothing left to sign — and the
+// rule above then refuses to raise a replacement.
+func (q *Queries) LockDocumentApproval(ctx context.Context, id uuid.UUID) (DocumentApproval, error) {
+	row := q.db.QueryRow(ctx, lockDocumentApproval, id)
+	var i DocumentApproval
+	err := row.Scan(
+		&i.ID,
+		&i.DocumentID,
+		&i.VersionID,
+		&i.Title,
+		&i.Status,
+		&i.Mode,
+		&i.CreatedBy,
+		&i.CreatedAt,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
+const lockDocumentApprovalSlot = `-- name: LockDocumentApprovalSlot :one
+SELECT id FROM documents WHERE id = $1 FOR UPDATE
+`
+
+// LockDocumentApprovalSlot serialises everything that raises a route on one
+// document. The "one open route" rule is a read followed by an insert, so
+// without a lock two simultaneous requests both read "none open" and both
+// insert — and the rule PendingDocumentApproval exists to enforce is broken by
+// the very pair of calls it was written for. The document row is the slot
+// because the route being guarded against does not exist yet: locking a row
+// that is not there blocks nobody.
+func (q *Queries) LockDocumentApprovalSlot(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, lockDocumentApprovalSlot, id)
+	var id_2 uuid.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const pendingDocumentApproval = `-- name: PendingDocumentApproval :one
