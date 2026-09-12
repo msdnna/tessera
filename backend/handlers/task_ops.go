@@ -435,6 +435,19 @@ func (h *API) applyAssignee(c *gin.Context, t db.Task, wsID, userID uuid.UUID, a
 // applyTag attaches or detaches a project tag, with the WS event and the GitLab
 // label reconciliation trigger.
 func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) error {
+	// The tag must live in the caller's own workspace. loadTask vouches for the
+	// task in the route; tag_id arrives separately in the body (or the URL of
+	// the delete) and needs its own check — otherwise a stranger's tag attaches
+	// to the caller's task and the task detail reads its name and colour back,
+	// a cross-workspace read of data the caller was never shown. Tags stay
+	// free to cross *projects* inside one workspace, which the board views rely on.
+	tag, err := h.q.GetTag(c, tagID)
+	if err != nil {
+		return userErr("invalid tag")
+	}
+	if tag.WorkspaceID != wsID {
+		return forbiddenErr{msg: "tag is in another workspace"}
+	}
 	if add {
 		if err := h.q.AddTaskTag(c, db.AddTaskTagParams{TaskID: taskID, TagID: tagID}); err != nil {
 			return err
@@ -457,6 +470,16 @@ func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) 
 // applyMilestone pins or clears a task's milestone (nil clears), marking the
 // change as a local override of the GitLab sync.
 func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID *uuid.UUID) error {
+	// Same rule as applyTag: a milestone named in the body must belong to the
+	// caller's workspace. The «Этапы» rollup (ListWorkspaceMilestones) counts
+	// every task carrying the id without a workspace filter of its own, so an
+	// unchecked milestone_id lets an outsider inflate a stranger's milestone
+	// progress with a task the victim can neither see nor unpin.
+	if milestoneID != nil {
+		if err := h.sameWorkspaceMilestone(c, *milestoneID, wsID); err != nil {
+			return err
+		}
+	}
 	if err := h.q.SetTaskMilestone(c, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: milestoneID}); err != nil {
 		return err
 	}
@@ -584,6 +607,23 @@ func (h *API) sameWorkspaceTask(c *gin.Context, t db.Task, wsID uuid.UUID) error
 	}
 	if other != wsID {
 		return forbiddenErr{msg: "task is in another workspace"}
+	}
+	return nil
+}
+
+// sameWorkspaceMilestone is sameWorkspaceTask for a milestone id from a request
+// body: milestones hang off a project, so the workspace comes one hop away.
+func (h *API) sameWorkspaceMilestone(c *gin.Context, milestoneID, wsID uuid.UUID) error {
+	m, err := h.q.GetMilestone(c, milestoneID)
+	if err != nil {
+		return userErr("invalid milestone")
+	}
+	other, err := h.q.WorkspaceIDForProject(c, m.ProjectID)
+	if err != nil {
+		return userErr("invalid milestone")
+	}
+	if other != wsID {
+		return forbiddenErr{msg: "milestone is in another workspace"}
 	}
 	return nil
 }
