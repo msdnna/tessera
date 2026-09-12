@@ -553,12 +553,22 @@ func (h *API) DeleteRelation(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if _, _, ok := h.loadTask(c, rel.TaskID); !ok {
+	t, wsID, ok := h.loadTask(c, rel.TaskID)
+	if !ok {
 		return
 	}
+	// Read the other end before the row goes: the relation id is all the caller
+	// sends, and the event has to name both endpoints.
+	target, terr := h.q.GetTask(c, rel.RelatedTaskID)
 	if err := h.q.DeleteTaskRelation(c, id); err != nil {
 		fail(c, err)
 		return
+	}
+	// This used to broadcast nothing at all, so an edge deleted here stayed drawn
+	// on every other client's Gantt until a full reload — the delete is the one
+	// relation change that leaves no trace on either task row.
+	if terr == nil {
+		h.broadcastRelation(wsID, t, target, rel.Kind)
 	}
 	c.Status(http.StatusNoContent)
 }

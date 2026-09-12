@@ -529,7 +529,30 @@ func (h *API) applyRelation(c *gin.Context, t db.Task, wsID uuid.UUID, target db
 		h.broadcast(wsID, "task.updated", gin.H{"id": target.ID})
 	}
 	h.broadcast(wsID, "task.updated", gin.H{"id": t.ID})
+	h.broadcastRelation(wsID, t, target, kind)
 	return nil
+}
+
+// broadcastRelation announces that the link between two tasks changed.
+//
+// The two `task.updated` events above say the tasks changed, not that the edges
+// between them did — and the Gantt view keeps its blocking-edge list in a fetch
+// of its own (/boards/:id/dependencies), separate from the board's task lists.
+// Without a relation-specific event an open chart would either miss every link
+// made elsewhere (the task modal, a second browser, a quick action) or have to
+// re-read the whole graph after each unrelated task patch.
+//
+// Both endpoint boards travel with it: an arrow is drawn only when both ends sit
+// on the same board (ListBoardDependencies), so a board can tell from the event
+// alone whether the change is any of its business.
+func (h *API) broadcastRelation(wsID uuid.UUID, t, target db.Task, kind string) {
+	h.broadcast(wsID, "task.relation", gin.H{
+		"task_id":          t.ID,
+		"related_task_id":  target.ID,
+		"kind":             kind,
+		"board_id":         t.BoardID,
+		"related_board_id": target.BoardID,
+	})
 }
 
 // applyUnlink drops every relation between two tasks, in either direction, and
@@ -558,6 +581,9 @@ func (h *API) applyUnlink(c *gin.Context, t db.Task, wsID uuid.UUID, target db.T
 		h.logEvent(c, t.ID, "relation_removed", map[string]any{"related": target.Number})
 		h.broadcast(wsID, "task.updated", gin.H{"id": t.ID})
 		h.broadcast(wsID, "task.updated", gin.H{"id": target.ID})
+		// Kind is empty: "/unlink" drops every relation between the pair at once,
+		// so no single one names the change. Consumers re-read the edge list.
+		h.broadcastRelation(wsID, t, target, "")
 	}
 	return n, nil
 }

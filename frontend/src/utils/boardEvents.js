@@ -41,6 +41,11 @@ const IGNORED = new Set([
   // the board itself re-fetched.
   'workspace_commands.updated',
   'gitlab.conflict',
+  // A link between two tasks changed. No card carries a relation (the board rows
+  // have no such field), so a task-list re-fetch would buy nothing; the only
+  // consumer is the Gantt's edge list, which the board pokes by its own branch
+  // (#2932).
+  'task.relation',
 ])
 
 const META = new Set(['tag.created', 'tag.updated', 'tag.deleted', 'tag_prefixes.updated'])
@@ -69,6 +74,17 @@ export function classifyEvent(ev, { boardId } = {}) {
   // Unknown type: re-fetch the tasks. A new event type added on the backend must
   // not silently stop updating the board — that failure would be invisible.
   return 'tasks'
+}
+
+// Does a `task.relation` event change the arrows drawn on this board?
+//
+// The backend returns an edge only when BOTH its endpoints sit on the queried
+// board, so a pair with one end here is still worth a re-read: that is exactly
+// the event that takes an arrow away (a task re-parented onto another board) or
+// brings one back. A pair with neither end here cannot move anything.
+export function relationTouchesBoard(ev, boardId) {
+  if (ev?.type !== 'task.relation' || !boardId) return false
+  return ev?.data?.board_id === boardId || ev?.data?.related_board_id === boardId
 }
 
 // A full task payload (as opposed to `{id}` / `{task_id}`) is recognised by the

@@ -63,7 +63,12 @@ import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
 import { filterBoardTasks } from '@/utils/taskFilter'
-import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardEvents'
+import {
+  classifyEvent,
+  applyTaskPatch,
+  applySubtaskPatch,
+  relationTouchesBoard,
+} from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
@@ -1301,6 +1306,10 @@ useRealtime((ev) => {
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
   // Custom command dictionary edited elsewhere → the `/`-popup picks it up live.
   if (ev.type === 'workspace_commands.updated') wsStore.setCustomCommands(ev.data?.commands || [])
+  // A link between two tasks changed → nudge the Gantt to re-read its edge list.
+  // Only pairs with an end on this board can move an arrow here, and only the
+  // Gantt draws them, so this costs nothing on the other layouts.
+  if (relationTouchesBoard(ev, props.boardId)) depsToken.value++
   // Board-activity toast for create/move on THIS board (any actor).
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
   if (dragging.value || Date.now() < suppressReloadUntil) return
@@ -1358,6 +1367,11 @@ function pushActivity(ev) {
     self,
   })
 }
+
+// Relation-change counter handed to the Gantt view. The chart owns its edge list
+// (a fetch of its own), and a relation change touches no task row, so a plain
+// board reload would not refresh a single arrow (#2932).
+const depsToken = ref(0)
 
 // Refresh just the project's milestones (after the manager edits them, or a remote
 // milestone change) without a full board reload.
@@ -1795,6 +1809,7 @@ async function restoreFromArchive(taskId) {
         :auto-sort="autoActive"
         :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
+        :deps-token="depsToken"
         @open="openTask"
         @changed="onChanged"
       />

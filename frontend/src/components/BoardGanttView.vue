@@ -51,6 +51,12 @@ const props = defineProps({
   autoSort: { type: Boolean, default: false },
   // Project milestones — dashed vertical due-markers across the chart.
   milestones: { type: Array, default: () => [] },
+  // Bumped by the board on every `task.relation` socket event that touches this
+  // board. The edge list is a fetch of its own, and a link added or dropped
+  // elsewhere (the task modal, a second browser, a quick action) changes neither
+  // the task set nor any task field — so without this the arrows only caught up
+  // on a full reload (#2932).
+  depsToken: { type: Number, default: 0 },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -243,9 +249,16 @@ async function loadDeps() {
   }
 }
 onMounted(loadDeps)
-// Refetch when the task set changes (a link added elsewhere, a task removed).
+// Refetch when the task set changes — a task arriving or leaving can add or
+// orphan an edge (ListBoardDependencies returns only pairs with both ends here).
 watch(
   () => props.tasks.map((t) => t.id).join(','),
+  () => loadDeps(),
+)
+// …and when a relation itself changed somewhere else. That leaves the task set
+// untouched, so the watcher above never sees it — see the depsToken prop.
+watch(
+  () => props.depsToken,
   () => loadDeps(),
 )
 
