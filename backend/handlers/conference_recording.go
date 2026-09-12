@@ -428,6 +428,55 @@ func (h *API) finishRecording(ctx context.Context, recID uuid.UUID, owner record
 	h.broadcast(owner.WorkspaceID, "conference.recording.finished", viewRecording(rec))
 }
 
+// purgeRecordingDir clears the recording directory of a conference that has just
+// been deleted, stopping the egress still writing into it first.
+//
+// The directory, not a list of paths: after the cascade there is no row left to
+// say which files inside it were ever named by one, and every file under
+// rec/<conference> belonged to the conference that is now gone.
+//
+// The wait is what makes it work. Removing the directory while the worker is
+// still winding down would only race it — egress creates what it needs on the way
+// to its output path — so the job is stopped, waited out, and *then* the directory
+// goes. Detached from the request for the same reason pollRecordingDone is: the
+// moderator's delete has already succeeded, and nothing about clearing the disk
+// needs their connection. Bounded by the same deadline, after which the directory
+// is removed anyway — a straggler file beyond that point is what the sweep cannot
+// see either, so it is better gone than kept.
+func (h *API) purgeRecordingDir(confID uuid.UUID, egressID string) {
+	dir := filepath.Join(h.uploadDir, recordingSubdir, confID.String())
+	// Nothing is being written: no recording was in flight, or the row never got
+	// its job id attached (in which case dropping the room is what ends the job,
+	// and a missing directory is what stops its file from landing).
+	if egressID == "" || h.livekit == nil || !h.livekit.Enabled() {
+		_ = os.RemoveAll(dir)
+		return
+	}
+	go func() {
+		defer observability.Recover("conf-recording.purge")
+		ctx, cancel := context.WithTimeout(context.Background(), recordingOpTimeout)
+		if _, err := h.livekit.StopEgress(ctx, egressID); err != nil && !errors.Is(err, livekit.ErrEgressGone) {
+			soft(ctx, "conference.recording.purge-stop", err)
+		}
+		cancel()
+		deadline := time.Now().Add(recordingPollFor)
+		for time.Now().Before(deadline) {
+			time.Sleep(recordingPollEvery)
+			ctx, cancel := context.WithTimeout(context.Background(), recordingOpTimeout)
+			info, err := h.livekit.GetEgress(ctx, egressID)
+			cancel()
+			if err != nil && !errors.Is(err, livekit.ErrEgressGone) {
+				continue // transient; the deadline is what ends this loop
+			}
+			if err == nil && !info.Done() {
+				continue
+			}
+			break
+		}
+		_ = os.RemoveAll(dir)
+	}()
+}
+
 // ListConferenceRecordings returns a conference's recordings, newest first.
 // Membership in the workspace is enough to see them: they are the meeting, and
 // everyone who could attend it can watch it back.

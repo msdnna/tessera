@@ -297,6 +297,25 @@ func (h *API) DeleteConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A recording still in flight is the one file that list cannot reach. Its row
+	// says where the mp4 *will* be — the egress writes it as it winds down, which
+	// is why an explicit stop has to poll for it — so the unlink below runs against
+	// a path that is still empty and the bytes land a second or two later, into a
+	// directory whose rows have all just left by cascade. Both sweeps walk rows, so
+	// from then on nothing can find that file: the disk grows with every deleted
+	// meeting, and the moderator who deleted a recorded call is left believing the
+	// video went with it. Its egress id is read here and dealt with after the
+	// delete.
+	var activeEgress string
+	active, err := h.q.ActiveConferenceRecording(c, conf.ID)
+	switch {
+	case err == nil:
+		activeEgress = active.EgressID
+	case errIsNoRows(err):
+	default:
+		fail(c, err)
+		return
+	}
 	if err := h.q.DeleteConference(c, conf.ID); err != nil {
 		fail(c, err)
 		return
@@ -304,6 +323,7 @@ func (h *API) DeleteConference(c *gin.Context) {
 	for _, p := range recordings {
 		_ = os.Remove(p) // best-effort; the rows are already gone
 	}
+	h.purgeRecordingDir(conf.ID, activeEgress)
 	h.dropConfRoom(conf.ID, "deleted")
 	h.broadcastAs(c, conf.WorkspaceID, "conference.deleted", gin.H{"id": conf.ID})
 	c.Status(http.StatusNoContent)

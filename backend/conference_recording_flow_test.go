@@ -20,6 +20,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -231,5 +232,59 @@ func TestDeletingAConferenceRemovesItsRecordings(t *testing.T) {
 		if _, err := os.Stat(p); !os.IsNotExist(err) {
 			t.Fatalf("recording file %s survived the conference: %v", filepath.Base(p), err)
 		}
+	}
+}
+
+// TestDeletingAConferenceMidRecordingLeavesNoFileBehind: the one file the
+// path-by-path unlink above cannot reach is the recording still in flight.
+//
+// Its row says where the mp4 will be, not where it is — the egress writes the
+// file as it winds down, which is why an explicit stop has to poll for it — so at
+// the moment of the delete that path is still empty and the unlink is a no-op.
+// The bytes arrive a second or two later, into a directory whose rows have all
+// left by cascade: the TTL sweep walks rows, the finaliser walks rows, and the
+// largest file this application writes is now reachable by nothing at all. On a
+// self-hosted install that is a disk that grows with every deleted meeting — and
+// a moderator who deleted a recorded call is entitled to believe the video went
+// with it.
+//
+// The harness has no egress to wind down, so the straggler is written up front.
+// To a delete that only unlinks the paths it managed to read, "already there" and
+// "arrives in two seconds" are the same file.
+func TestDeletingAConferenceMidRecordingLeavesNoFileBehind(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	_, confID := liveConference(t, owner, "Летучка под снос на живой записи")
+	_, planned := plantRecording(t, confID, "active")
+	dir := filepath.Dir(planned)
+	straggler := filepath.Join(dir, uuid.NewString()+".mp4")
+	if err := os.WriteFile(straggler, []byte("bytes the egress wrote on its way out"), 0o644); err != nil {
+		t.Fatalf("straggler file: %v", err)
+	}
+
+	if r := owner.del("/conferences/" + confID); r.Status != http.StatusNoContent {
+		t.Fatalf("delete conference: status %d, want 204\n%s", r.Status, r.Body)
+	}
+	// The whole per-conference directory, not just the paths: after the cascade
+	// nothing can tell which files inside it were ever named by a row.
+	if !awaitGone(dir) {
+		left, _ := os.ReadDir(dir)
+		t.Fatalf("recording directory survived the conference with %d file(s) no row points at", len(left))
+	}
+}
+
+// awaitGone waits for a path to disappear. The purge outlives the request that
+// started it — it has an egress to stop and a file to wait for — so the assertion
+// above cannot be made the moment the 204 lands.
+func awaitGone(path string) bool {
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return true
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
