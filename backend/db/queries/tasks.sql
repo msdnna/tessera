@@ -145,11 +145,33 @@ ORDER BY t.archived_at DESC;
 -- name: ArchiveTask :exec
 UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1;
 
+-- ArchiveTaskCascade/RestoreTask walk the whole subtree, not `parent_id = $1`:
+-- nesting is not depth-limited (same reason MoveSubtreeToBoard above is
+-- recursive), so a one-level archive left grandchildren active under an
+-- archived parent — and such a row is drawn by neither screen. The board draws a
+-- subtask only under a parent card in the same payload, and that parent is
+-- archived; the archive list filters on archived_at IS NOT NULL, which the
+-- grandchild's is not. Restore has to match, or the tree comes back partial.
+--
+-- UNION rather than UNION ALL for the same reason as TaskAncestorIDs: an install
+-- that already grew a ring must get an answer instead of spinning.
 -- name: ArchiveTaskCascade :exec
-UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1 OR parent_id = $1;
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+UPDATE tasks SET archived_at = now(), updated_at = now()
+WHERE id IN (SELECT id FROM down);
 
 -- name: RestoreTask :exec
-UPDATE tasks SET archived_at = NULL, updated_at = now() WHERE id = $1 OR parent_id = $1;
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+UPDATE tasks SET archived_at = NULL, updated_at = now()
+WHERE id IN (SELECT id FROM down);
 
 -- ArchiveTaskIfActive/RestoreTaskIfArchived are idempotent single-task variants for
 -- the GitLab sync (closed_policy=archive_closed_sprints): no-op + no updated_at churn

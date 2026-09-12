@@ -23,9 +23,25 @@ func (q *Queries) ArchiveTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const archiveTaskCascade = `-- name: ArchiveTaskCascade :exec
-UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1 OR parent_id = $1
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+UPDATE tasks SET archived_at = now(), updated_at = now()
+WHERE id IN (SELECT id FROM down)
 `
 
+// ArchiveTaskCascade/RestoreTask walk the whole subtree, not `parent_id = $1`:
+// nesting is not depth-limited (same reason MoveSubtreeToBoard above is
+// recursive), so a one-level archive left grandchildren active under an
+// archived parent — and such a row is drawn by neither screen. The board draws a
+// subtask only under a parent card in the same payload, and that parent is
+// archived; the archive list filters on archived_at IS NOT NULL, which the
+// grandchild's is not. Restore has to match, or the tree comes back partial.
+//
+// UNION rather than UNION ALL for the same reason as TaskAncestorIDs: an install
+// that already grew a ring must get an answer instead of spinning.
 func (q *Queries) ArchiveTaskCascade(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, archiveTaskCascade, id)
 	return err
@@ -925,7 +941,13 @@ func (q *Queries) ReopenSubtasks(ctx context.Context, parentID *uuid.UUID) error
 }
 
 const restoreTask = `-- name: RestoreTask :exec
-UPDATE tasks SET archived_at = NULL, updated_at = now() WHERE id = $1 OR parent_id = $1
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+UPDATE tasks SET archived_at = NULL, updated_at = now()
+WHERE id IN (SELECT id FROM down)
 `
 
 func (q *Queries) RestoreTask(ctx context.Context, id uuid.UUID) error {
