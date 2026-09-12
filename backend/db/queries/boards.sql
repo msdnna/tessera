@@ -9,10 +9,26 @@ SELECT * FROM boards WHERE project_id = $1 ORDER BY position;
 -- name: GetBoard :one
 SELECT * FROM boards WHERE id = $1;
 
--- GetBoardBySlug returns the first board with this slug (legacy global lookup,
--- best-effort: board slugs are unique only per project now).
--- name: GetBoardBySlug :one
-SELECT * FROM boards WHERE slug = $1 LIMIT 1;
+-- GetBoardBySlugForUser resolves a bare /board/<slug> link (no project in the
+-- address) to a board the caller can actually see. Board slugs are unique only
+-- per project since 0025, so several projects — and several workspaces — carry
+-- the same slug at once; an unscoped `WHERE slug = $1 LIMIT 1` returns whichever
+-- row Postgres reaches first, which is regularly a board the caller is not a
+-- member of (their own link answers 403) or, when they are a member of both, a
+-- different workspace's board with the URL canonicalised to it.
+--
+-- Candidates are therefore restricted to workspaces the caller belongs to.
+-- preferred_workspace (may be NULL) is the client's hint — the workspace it is
+-- currently showing — and wins when it holds a match; the oldest board breaks
+-- any remaining tie, so the same link always lands on the same board.
+-- name: GetBoardBySlugForUser :one
+SELECT b.*
+FROM boards b
+JOIN projects p ON p.id = b.project_id
+JOIN memberships m ON m.workspace_id = p.workspace_id AND m.user_id = sqlc.arg('user_id')
+WHERE b.slug = sqlc.arg('slug')
+ORDER BY (p.workspace_id = sqlc.narg('preferred_workspace')) DESC NULLS LAST, b.created_at, b.id
+LIMIT 1;
 
 -- name: GetBoardInProjectBySlug :one
 SELECT * FROM boards WHERE project_id = $1 AND slug = $2;

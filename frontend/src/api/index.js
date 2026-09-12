@@ -398,7 +398,10 @@ export const groups = {
 }
 
 export const boards = {
-  get: (id) => api.get(`/boards/${id}`),
+  // `id` may be a UUID or a bare board slug (legacy /board/<slug> links). A slug
+  // is unique only within its project, so wsId tells the backend which of the
+  // caller's workspaces the link is meant for.
+  get: (id, wsId) => api.get(`/boards/${id}`, wsId ? { params: { workspace: wsId } } : undefined),
   // Resolve a /project/<slug>/board/<slug> pair to the board.
   resolve: (projectSlug, boardSlug) =>
     api.get('/board-by-slug', { params: { project: projectSlug, board: boardSlug } }),

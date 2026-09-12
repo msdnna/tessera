@@ -514,27 +514,8 @@ func (h *API) AddRelation(c *gin.Context) {
 // Gantt view fetches the whole graph at once (the per-task /relations endpoint
 // would need one round-trip per bar). Accepts a board UUID or slug like GetBoard.
 func (h *API) BoardDependencies(c *gin.Context) {
-	param := c.Param("id")
-	var b db.Board
-	var err error
-	if id, perr := uuid.Parse(param); perr == nil {
-		b, err = h.q.GetBoard(c, id)
-	} else {
-		b, err = h.q.GetBoardBySlug(c, param)
-	}
-	if notFound(c, err) {
-		return
-	}
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	if !h.requireMember(c, wsID) {
+	b, _, ok := h.resolveBoardParam(c)
+	if !ok {
 		return
 	}
 	rows, err := h.q.ListBoardDependencies(c, b.ID)

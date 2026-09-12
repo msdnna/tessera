@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/middleware"
 )
 
 // ── Boards ─────────────────────────────────────────────────
@@ -182,30 +183,54 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID})
 }
 
-// GetBoard returns a single board by UUID or human-readable slug.
-func (h *API) GetBoard(c *gin.Context) {
-	// Accept either a UUID or a human-readable slug (/board/<slug> links).
+// resolveBoardParam resolves a board route's :id segment — a UUID or a
+// human-readable slug (/board/<slug> deep links) — and authorizes the caller.
+// Writes the error response itself; ok=false means the caller must return.
+//
+// The slug branch searches only workspaces the caller belongs to: board slugs
+// are unique per project, not globally (0025), so a bare slug matches several
+// boards at once and an unscoped lookup regularly answered with a stranger's
+// board — a 403 on the caller's own link, or the wrong board of a workspace they
+// happen to share. `?workspace=` is the client's hint about which one it means.
+func (h *API) resolveBoardParam(c *gin.Context) (db.Board, uuid.UUID, bool) {
 	param := c.Param("id")
 	var b db.Board
 	var err error
 	if id, perr := uuid.Parse(param); perr == nil {
 		b, err = h.q.GetBoard(c, id)
 	} else {
-		b, err = h.q.GetBoardBySlug(c, param)
+		var preferred *uuid.UUID
+		if hint, perr := uuid.Parse(c.Query("workspace")); perr == nil {
+			preferred = &hint
+		}
+		b, err = h.q.GetBoardBySlugForUser(c, db.GetBoardBySlugForUserParams{
+			UserID: middleware.CurrentUser(c), Slug: param, PreferredWorkspace: preferred,
+		})
 	}
 	if notFound(c, err) {
-		return
+		return db.Board{}, uuid.Nil, false
 	}
 	if err != nil {
 		fail(c, err)
-		return
+		return db.Board{}, uuid.Nil, false
 	}
 	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
 	if err != nil {
 		fail(c, err)
-		return
+		return db.Board{}, uuid.Nil, false
 	}
+	// Redundant for the slug branch (the query joins the membership) but not for
+	// a UUID, and it is the one place that turns a lost membership into a 403.
 	if !h.requireMember(c, wsID) {
+		return db.Board{}, uuid.Nil, false
+	}
+	return b, wsID, true
+}
+
+// GetBoard returns a single board by UUID or human-readable slug.
+func (h *API) GetBoard(c *gin.Context) {
+	b, wsID, ok := h.resolveBoardParam(c)
+	if !ok {
 		return
 	}
 	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID})

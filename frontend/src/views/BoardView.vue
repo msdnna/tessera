@@ -22,7 +22,10 @@ async function resolve() {
     if (projectSlug && boardSlug) {
       board = (await boardsApi.resolve(projectSlug, boardSlug)).data
     } else if (id) {
-      board = (await boardsApi.get(id)).data // legacy: UUID or bare slug
+      // Legacy: UUID or bare slug. A bare slug is ambiguous (unique per project
+      // only), so hand the backend the workspace we are currently in — otherwise
+      // the same link can land on a same-named board of another workspace.
+      board = (await boardsApi.get(id, wsStore.currentId)).data
     } else {
       boardId.value = null
       return

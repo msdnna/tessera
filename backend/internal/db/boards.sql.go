@@ -175,14 +175,36 @@ func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
 	return i, err
 }
 
-const getBoardBySlug = `-- name: GetBoardBySlug :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE slug = $1 LIMIT 1
+const getBoardBySlugForUser = `-- name: GetBoardBySlugForUser :one
+SELECT b.id, b.project_id, b.name, b.position, b.created_at, b.updated_at, b.done_column_id, b.slug, b.icon, b.color, b.icon_mode
+FROM boards b
+JOIN projects p ON p.id = b.project_id
+JOIN memberships m ON m.workspace_id = p.workspace_id AND m.user_id = $1
+WHERE b.slug = $2
+ORDER BY (p.workspace_id = $3) DESC NULLS LAST, b.created_at, b.id
+LIMIT 1
 `
 
-// GetBoardBySlug returns the first board with this slug (legacy global lookup,
-// best-effort: board slugs are unique only per project now).
-func (q *Queries) GetBoardBySlug(ctx context.Context, slug string) (Board, error) {
-	row := q.db.QueryRow(ctx, getBoardBySlug, slug)
+type GetBoardBySlugForUserParams struct {
+	UserID             uuid.UUID  `json:"user_id"`
+	Slug               string     `json:"slug"`
+	PreferredWorkspace *uuid.UUID `json:"preferred_workspace"`
+}
+
+// GetBoardBySlugForUser resolves a bare /board/<slug> link (no project in the
+// address) to a board the caller can actually see. Board slugs are unique only
+// per project since 0025, so several projects — and several workspaces — carry
+// the same slug at once; an unscoped `WHERE slug = $1 LIMIT 1` returns whichever
+// row Postgres reaches first, which is regularly a board the caller is not a
+// member of (their own link answers 403) or, when they are a member of both, a
+// different workspace's board with the URL canonicalised to it.
+//
+// Candidates are therefore restricted to workspaces the caller belongs to.
+// preferred_workspace (may be NULL) is the client's hint — the workspace it is
+// currently showing — and wins when it holds a match; the oldest board breaks
+// any remaining tie, so the same link always lands on the same board.
+func (q *Queries) GetBoardBySlugForUser(ctx context.Context, arg GetBoardBySlugForUserParams) (Board, error) {
+	row := q.db.QueryRow(ctx, getBoardBySlugForUser, arg.UserID, arg.Slug, arg.PreferredWorkspace)
 	var i Board
 	err := row.Scan(
 		&i.ID,
