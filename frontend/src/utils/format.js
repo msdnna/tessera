@@ -50,6 +50,24 @@ export function normalizeDatePreset(value) {
   return LEGACY_PATTERNS[value] || DEFAULT_PREFS.dateFormat
 }
 
+// The zone times are actually shown in: the profile timezone when the user picked
+// one, otherwise the browser's own — the fallback every formatter here already
+// makes (zonedParts passes `undefined` to Intl, which means local).
+//
+// Worth naming because the empty string does NOT mean the same thing on both
+// sides: for rendering it means "local", but a preference the *server* evaluates
+// against a clock (quiet hours) reads an empty zone as UTC. Anything sent to the
+// backend has to carry the resolved zone, not the blank.
+export function resolvedTimezone(profileTz) {
+  const tz = String(profileTz || '').trim()
+  if (tz) return tz
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+  } catch {
+    return '' // exotic environment with no Intl data — let the server keep UTC
+  }
+}
+
 // BCP-47 tag for a UI language. en-GB (not en-US) keeps day-before-month, which
 // matches every other locale we ship and the shape users already see.
 export function localeTag(language) {

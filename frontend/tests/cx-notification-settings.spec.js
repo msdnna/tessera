@@ -22,6 +22,11 @@ vi.mock('@/utils/device', () => ({
   notificationsSupported: () => false,
 }))
 
+// The component reads only `timezone` off the theme store; the real one drags in
+// the API client and the whole preference hydration for nothing.
+const themeState = { timezone: '' }
+vi.mock('@/stores/theme', () => ({ useThemeStore: () => themeState }))
+
 // The real popconfirm teleports its body out and only mounts it once the popover
 // opens — neither the prompt text nor the confirm button is reachable from the
 // wrapper. `global.stubs` can't reach it either: the component is an import
@@ -109,5 +114,43 @@ describe('NotificationSettings.vue — удаление через попове�
     await routePc.find('.pc-ok').trigger('click')
     await flushPromises()
     expect(rtApi.remove).toHaveBeenCalledWith('rt1')
+  })
+})
+
+// Quiet hours are the one preference the *server* evaluates against a clock, so
+// the zone that clock runs in has to travel with them. Everywhere else an empty
+// profile timezone means "render in the browser's zone" (zonedParts falls back to
+// undefined → local), and that is the zone the hint under the window promises:
+// «Время — по вашему часовому поясу». The scanner reads an empty quiet_tz as UTC,
+// so sending one through puts a Moscow user's 22:00–08:00 window at 01:00–11:00
+// their time — pushes for the first three hours of the night, silence all morning.
+describe('NotificationSettings.vue — часовой пояс тихих часов', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    themeState.timezone = ''
+  })
+
+  it('подставляет зону браузера, когда профильная не задана', async () => {
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const w = await mountSettings()
+    prefsApi.update.mockResolvedValue({ data: {} })
+
+    await w.find('.row-end button').trigger('click')
+    await flushPromises()
+
+    expect(prefsApi.update).toHaveBeenCalledTimes(1)
+    expect(prefsApi.update.mock.calls[0][0].quiet_tz).toBe(browserTz)
+  })
+
+  it('не трогает явно выбранную профильную зону', async () => {
+    themeState.timezone = 'Asia/Yekaterinburg'
+    const w = await mountSettings()
+    prefsApi.update.mockResolvedValue({ data: {} })
+
+    await w.find('.row-end button').trigger('click')
+    await flushPromises()
+
+    expect(prefsApi.update.mock.calls[0][0].quiet_tz).toBe('Asia/Yekaterinburg')
   })
 })

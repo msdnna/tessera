@@ -31,6 +31,7 @@ import {
   notificationPrefs as prefsApi,
 } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
+import { resolvedTimezone } from '@/utils/format'
 import { workspaceName } from '@/utils/defaultNames'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
@@ -157,8 +158,12 @@ async function load() {
 async function savePrefs() {
   prefsSaving.value = true
   try {
-    // Track the user's timezone so the quiet window is evaluated in their local time.
-    prefs.quiet_tz = theme.timezone || prefs.quiet_tz
+    // Track the user's timezone so the quiet window is evaluated in their local
+    // time. The profile setting is empty by default, and an empty zone is UTC to
+    // the scanner — not «по вашему часовому поясу», as the hint under the window
+    // promises — so resolve the blank to the browser's own zone, which is the one
+    // every time on this screen is already rendered in.
+    prefs.quiet_tz = resolvedTimezone(theme.timezone) || prefs.quiet_tz
     const res = await prefsApi.update({ ...prefs })
     Object.assign(prefs, res.data || {})
     prefsSaved.value = true
