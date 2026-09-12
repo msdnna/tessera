@@ -423,8 +423,8 @@ func (h *API) MoveProject(c *gin.Context) {
 // denormalized workspace_id across the project's tags/tag_prefixes/notes and any
 // GitLab integrations, re-numbers its tasks out of the target's counter, strips
 // assignees who aren't members of the target workspace, and severs the relations,
-// milestone links and document links whose two ends the move would put in different
-// workspaces. Requires membership in BOTH the source (checked by loadProject) and
+// milestone links, document links and task tags whose two ends the move would put
+// in different workspaces. Requires membership in BOTH the source (checked by loadProject) and
 // the target workspace. The project lands ungrouped at the target's root.
 func (h *API) TransferProject(c *gin.Context) {
 	p, ok := h.loadProject(c)
@@ -599,6 +599,20 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The fifth is the tag on a task, and it is the one the per-project scoping
+	// of tags makes easy to miss: applyTag lets a tag cross *projects* inside a
+	// workspace on purpose ("which the board views rely on"), so the moving
+	// project's tasks may carry a neighbour's tag and the neighbour's tasks may
+	// carry one of this project's — re-stamped to the target a few lines up. The
+	// same door refuses a tag from another workspace and names the harm: the task
+	// detail "reads its name and colour back, a cross-workspace read of data the
+	// caller was never shown", and ListTaskTags joins straight through task_tags
+	// with no filter of its own. Only the pairing is dropped; both tags stay.
+	strippedTags, err := qtx.DeleteTaskTagsAcrossWorkspaces(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	if err := tx.Commit(c); err != nil {
 		fail(c, err)
 		return
@@ -611,6 +625,7 @@ func (h *API) TransferProject(c *gin.Context) {
 		"project": updated, "stripped_assignees": stripped, "renumbered_tasks": renumbered,
 		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,
 		"unlinked_documents": unlinkedDocs, "detached_documents": detachedDocs,
+		"stripped_tags": strippedTags,
 	})
 }
 

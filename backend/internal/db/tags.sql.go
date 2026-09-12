@@ -80,6 +80,34 @@ func (q *Queries) DeleteTag(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteTaskTagsAcrossWorkspaces = `-- name: DeleteTaskTagsAcrossWorkspaces :execrows
+DELETE FROM task_tags tt
+USING tasks t, boards b, projects p, tags g
+WHERE tt.task_id = t.id
+  AND b.id = t.board_id
+  AND p.id = b.project_id
+  AND g.id = tt.tag_id
+  AND (p.id = $1 OR g.project_id = $1)
+  AND p.workspace_id <> g.workspace_id
+`
+
+// DeleteTaskTagsAcrossWorkspaces drops every task↔tag pairing with one end in
+// the given project and the other in a different workspace — the state a project
+// transfer leaves behind. applyTag lets a tag cross *projects* inside one
+// workspace on purpose (the board views rely on it) and refuses one from another
+// workspace, so such a pair can only appear when the boundary moves under an
+// existing pairing; ListTaskTags joins tags straight through task_tags with no
+// workspace filter of its own, so leaving the row in place shows each side the
+// other's tag name and colour. Only the pairing goes — both tags survive, each
+// in its own workspace. Returns the number of pairings dropped.
+func (q *Queries) DeleteTaskTagsAcrossWorkspaces(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteTaskTagsAcrossWorkspaces, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const ensureTag = `-- name: EnsureTag :one
 INSERT INTO tags (workspace_id, project_id, name, color)
 VALUES ($1, $2, $3, $4)
