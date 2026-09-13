@@ -1,5 +1,7 @@
 package website.msdnna.tessera.util
 
+import android.content.res.Resources
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.CommandDef
 import website.msdnna.tessera.data.model.WorkspaceCommand
 
@@ -75,6 +77,60 @@ fun commandItems(builtin: List<CommandDef>, custom: List<WorkspaceCommand>): Lis
         )
     } + custom.map {
         CommandItem(key = it.key, description = it.description, example = "/${it.key}", builtin = false)
+    }
+
+/**
+ * Описание встроенной команды → строковый ресурс (#2932).
+ *
+ * Реестр быстрых действий живёт на бэкенде (`internal/quickact/registry.go`), и
+ * `Description` там захардкожен по-русски: API отдаёт его клиентам как есть, так что
+ * на английском интерфейсе попап читался целиком по-русски. Сам парсер при этом
+ * двуязычен (`args.go` понимает и «высокий», и `high`) — отстала ровно витрина.
+ *
+ * Мапа явная, а не через `getIdentifier`: имя, собранное в рантайме, R8 не видит и
+ * вычищает строку из релизной сборки. Полноту сторожит `i18n/CommandLabelsTest`.
+ */
+val BUILTIN_COMMAND_DESCRIPTIONS: Map<String, Int> = mapOf(
+    "assign" to R.string.cmd_assign_desc,
+    "unassign" to R.string.cmd_unassign_desc,
+    "due" to R.string.cmd_due_desc,
+    "remove_due" to R.string.cmd_remove_due_desc,
+    "start" to R.string.cmd_start_desc,
+    "remove_start" to R.string.cmd_remove_start_desc,
+    "estimate" to R.string.cmd_estimate_desc,
+    "remove_estimate" to R.string.cmd_remove_estimate_desc,
+    "priority" to R.string.cmd_priority_desc,
+    "title" to R.string.cmd_title_desc,
+    "tag" to R.string.cmd_tag_desc,
+    "untag" to R.string.cmd_untag_desc,
+    "milestone" to R.string.cmd_milestone_desc,
+    "remove_milestone" to R.string.cmd_remove_milestone_desc,
+    "move" to R.string.cmd_move_desc,
+    "close" to R.string.cmd_close_desc,
+    "reopen" to R.string.cmd_reopen_desc,
+    "archive" to R.string.cmd_archive_desc,
+    "relate" to R.string.cmd_relate_desc,
+    "blocks" to R.string.cmd_blocks_desc,
+    "blocked_by" to R.string.cmd_blocked_by_desc,
+    "duplicates" to R.string.cmd_duplicates_desc,
+    "unlink" to R.string.cmd_unlink_desc,
+    "subtask" to R.string.cmd_subtask_desc,
+    "parent" to R.string.cmd_parent_desc,
+    "unparent" to R.string.cmd_unparent_desc,
+)
+
+/**
+ * Переводит описания встроенных команд на язык интерфейса, оставляя серверный текст
+ * там, где своего перевода нет: новая команда реестра всё равно что-то покажет, а
+ * словарная команда воркспейса — текст её автора, его переводить нечем и незачем.
+ *
+ * Делать это надо ДО [matchCommands], иначе поиск по попапу остаётся русским на
+ * английском интерфейсе: фильтр смотрит в то же поле `description`.
+ */
+fun localizedCommands(items: List<CommandItem>, resources: Resources): List<CommandItem> =
+    items.map { item ->
+        val res = if (item.builtin) BUILTIN_COMMAND_DESCRIPTIONS[item.key] else null
+        if (res == null) item else item.copy(description = resources.getString(res))
     }
 
 /**

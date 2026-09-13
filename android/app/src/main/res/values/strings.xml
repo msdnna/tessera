@@ -1718,4 +1718,34 @@
     <string name="tour_nav_footer_body">Внизу — ваш профиль и настройки, рядом — уведомления.</string>
     <string name="tour_done_title">Готово</string>
     <string name="tour_done_body">Это всё, что нужно для старта. Обучение можно перезапустить отсюда же, из нижней части бокового меню.</string>
+
+    <!-- Описания встроенных быстрых действий: реестр живёт на бэкенде
+         (internal/quickact/registry.go) и отдаёт свой русский текст всем
+         клиентам, поэтому витрину переводим у себя (#2932). -->
+    <string name="cmd_assign_desc">Назначить исполнителя</string>
+    <string name="cmd_unassign_desc">Снять исполнителя (без аргумента — всех)</string>
+    <string name="cmd_due_desc">Установить срок</string>
+    <string name="cmd_remove_due_desc">Убрать срок</string>
+    <string name="cmd_start_desc">Установить дату начала</string>
+    <string name="cmd_remove_start_desc">Убрать дату начала</string>
+    <string name="cmd_estimate_desc">Установить оценку</string>
+    <string name="cmd_remove_estimate_desc">Убрать оценку</string>
+    <string name="cmd_priority_desc">Установить приоритет</string>
+    <string name="cmd_title_desc">Изменить заголовок</string>
+    <string name="cmd_tag_desc">Добавить тег (через запятую)</string>
+    <string name="cmd_untag_desc">Убрать тег</string>
+    <string name="cmd_milestone_desc">Назначить майлстоун</string>
+    <string name="cmd_remove_milestone_desc">Убрать майлстоун</string>
+    <string name="cmd_move_desc">Перенести в колонку</string>
+    <string name="cmd_close_desc">Закрыть задачу</string>
+    <string name="cmd_reopen_desc">Переоткрыть задачу</string>
+    <string name="cmd_archive_desc">Архивировать задачу</string>
+    <string name="cmd_relate_desc">Связать с задачей</string>
+    <string name="cmd_blocks_desc">Блокирует задачу</string>
+    <string name="cmd_blocked_by_desc">Заблокирована задачей</string>
+    <string name="cmd_duplicates_desc">Дублирует задачу</string>
+    <string name="cmd_unlink_desc">Снять связь с задачей</string>
+    <string name="cmd_subtask_desc">Создать подзадачу</string>
+    <string name="cmd_parent_desc">Сделать подзадачей задачи</string>
+    <string name="cmd_unparent_desc">Открепить от родителя</string>
 </resources>

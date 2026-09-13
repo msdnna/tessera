@@ -82,6 +82,7 @@ import website.msdnna.tessera.util.detectMentionQuery
 import website.msdnna.tessera.util.detectSlashQuery
 import website.msdnna.tessera.util.indentLines
 import website.msdnna.tessera.util.linePrefixLines
+import website.msdnna.tessera.util.localizedCommands
 import website.msdnna.tessera.util.matchCommands
 import website.msdnna.tessera.util.orderedListPrefix
 import website.msdnna.tessera.util.outdentLines
@@ -273,7 +274,14 @@ fun MarkdownEditor(
                 emptyList()
             }
             val slash = if (query == null && commands.isNotEmpty()) detectSlashQuery(upto) else null
-            val cmdMatches = if (slash != null) matchCommands(commands, slash.query) else emptyList()
+            // Перевод описаний — ДО фильтра: реестр приходит с бэкенда по-русски (#2932),
+            // а `matchCommands` ищет по тому же полю, так что иначе на английском
+            // интерфейсе остались бы и русские подписи, и русский поиск по ним.
+            val cmdMatches = if (slash != null) {
+                matchCommands(localizedCommands(commands, ctx.resources), slash.query)
+            } else {
+                emptyList()
+            }
             fun pickMention(item: MentionItem) {
                 val start = mq?.start ?: return
                 val ins = "@${item.insert} "

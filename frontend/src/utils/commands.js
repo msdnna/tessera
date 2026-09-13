@@ -4,8 +4,32 @@
 // the bits the editor needs locally: where a `/`-query starts, which registry
 // entries match it, and what text to insert. Keep canonCommandKey in sync with
 // commandKeyRe in backend/handlers/workspace_commands.go.
+import { i18n } from '@/i18n'
 
 const KEY_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/
+
+// builtinLabel translates a built-in command's display text (#2932).
+//
+// The registry is the backend's, and its Description/Example are hard-coded
+// Russian — the API hands them over verbatim, so an English UI used to draw a
+// fully Russian `/`-popup. The *parser* was bilingual all along (args.go maps
+// none/low/high/urgent as well as нет/низкий/высокий/срочный, ParseDate takes
+// today/tomorrow), so only the shop window had to catch up; the English examples
+// below are arguments the backend really executes.
+//
+// The server string stays the fallback: a command added to the registry before
+// the bundles know about it still shows something, and a workspace-defined
+// command is never touched — its wording belongs to whoever wrote it.
+//
+// Reading `locale.value` explicitly makes a caller's computed() re-run on a
+// language switch; `t()` alone already does, but the dependency is worth being
+// obvious about here, since this is called from a Pinia getter.
+function builtinLabel(key, field, fallback) {
+  const g = i18n.global
+  void g.locale.value
+  const path = `commands.builtin.${key}.${field}`
+  return g.te(path) ? g.t(path) : fallback
+}
 
 // canonCommandKey normalises a user-typed key to its storage form: no leading
 // slash, lowercase, trimmed. Returns '' when nothing usable is left.
@@ -56,11 +80,11 @@ export function commandItems(builtin = [], custom = []) {
   return [
     ...(builtin || []).map((c) => ({
       key: c.key,
-      description: c.description || '',
+      description: builtinLabel(c.key, 'description', c.description || ''),
       aliases: c.aliases || [],
       arg: c.arg || 'none',
       argOptional: !!c.arg_optional,
-      example: c.example || '',
+      example: builtinLabel(c.key, 'example', c.example || ''),
       builtin: true,
     })),
     ...(custom || []).map((c) => ({

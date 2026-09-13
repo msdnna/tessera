@@ -1655,4 +1655,32 @@
     <string name="tour_nav_footer_body">At the bottom — your profile and settings, next to them notifications.</string>
     <string name="tour_done_title">All set</string>
     <string name="tour_done_body">That is everything you need to start. The guide can be restarted from the same place, at the bottom of the side menu.</string>
+
+    <!-- Built-in quick-action descriptions (see values/strings.xml). -->
+    <string name="cmd_assign_desc">Assign an assignee</string>
+    <string name="cmd_unassign_desc">Remove an assignee (no argument — all of them)</string>
+    <string name="cmd_due_desc">Set the due date</string>
+    <string name="cmd_remove_due_desc">Clear the due date</string>
+    <string name="cmd_start_desc">Set the start date</string>
+    <string name="cmd_remove_start_desc">Clear the start date</string>
+    <string name="cmd_estimate_desc">Set the estimate</string>
+    <string name="cmd_remove_estimate_desc">Clear the estimate</string>
+    <string name="cmd_priority_desc">Set the priority</string>
+    <string name="cmd_title_desc">Change the title</string>
+    <string name="cmd_tag_desc">Add a tag (comma-separated)</string>
+    <string name="cmd_untag_desc">Remove a tag</string>
+    <string name="cmd_milestone_desc">Set the milestone</string>
+    <string name="cmd_remove_milestone_desc">Clear the milestone</string>
+    <string name="cmd_move_desc">Move to a column</string>
+    <string name="cmd_close_desc">Close the task</string>
+    <string name="cmd_reopen_desc">Reopen the task</string>
+    <string name="cmd_archive_desc">Archive the task</string>
+    <string name="cmd_relate_desc">Relate to a task</string>
+    <string name="cmd_blocks_desc">Blocks a task</string>
+    <string name="cmd_blocked_by_desc">Blocked by a task</string>
+    <string name="cmd_duplicates_desc">Duplicates a task</string>
+    <string name="cmd_unlink_desc">Remove a task link</string>
+    <string name="cmd_subtask_desc">Create a subtask</string>
+    <string name="cmd_parent_desc">Make it a subtask of a task</string>
+    <string name="cmd_unparent_desc">Detach from the parent</string>
 </resources>
