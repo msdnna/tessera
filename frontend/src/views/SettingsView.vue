@@ -11,6 +11,8 @@ import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
 import { useFormat } from '@/composables/useFormat'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 import { useApiImage } from '@/composables/useApiImage'
+import { AVATAR_MAX_BYTES, AVATAR_TYPES, avatarPickError } from '@/utils/avatar'
+import { formatFileSize } from '@/utils/docPdf'
 import { useDesktopUpdate } from '@/composables/useDesktopUpdate'
 
 const { t } = useI18n()
@@ -119,6 +121,19 @@ async function onAvatarPicked(e) {
   const file = e.target.files?.[0]
   if (!file) return
   avatarError.value = ''
+  // Say what the server would say, before spending the upload on it — and say it
+  // in the reader's language and units. Its own refusal is a bare English
+  // sentence ("avatar exceeds 2 MiB") that errors.js passes through untouched,
+  // landing beside a hint that reads "до 2 МБ".
+  const bad = avatarPickError(file)
+  if (bad) {
+    avatarError.value =
+      bad === 'tooLarge'
+        ? t('settings.profile.avatar.tooLarge', { limit: formatFileSize(AVATAR_MAX_BYTES) })
+        : t('settings.profile.avatar.badType')
+    if (fileInput.value) fileInput.value.value = ''
+    return
+  }
   try {
     const res = await users.uploadAvatar(file)
     auth.setUser({ ...auth.user, avatar_url: res.data.avatar_url })
@@ -226,11 +241,13 @@ async function resendVerify() {
         <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" />
         <n-avatar v-else round :size="72" class="ava">{{ initials }}</n-avatar>
         <div class="avatar-actions">
-          <!-- Matches what the server accepts for avatars (no SVG). -->
+          <!-- Same allowlist the picked file is then checked against (no SVG), so
+               the dialog's filter cannot drift from the rule behind it. It is only
+               a filter: "All files" gets past it, which is why the check exists. -->
           <input
             ref="fileInput"
             type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
+            :accept="AVATAR_TYPES.join(',')"
             hidden
             @change="onAvatarPicked"
           />

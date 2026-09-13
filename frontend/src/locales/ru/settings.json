@@ -15,7 +15,9 @@
     "avatar": {
       "upload": "Загрузить",
       "remove": "Убрать",
-      "hint": "PNG/JPEG/GIF/WebP, до 2 МБ"
+      "hint": "PNG/JPEG/GIF/WebP, до 2 МБ",
+      "tooLarge": "Файл больше {limit}",
+      "badType": "Поддерживаются только PNG, JPEG, GIF или WebP"
     },
     "verify": {
       "done": "Почта подтверждена",

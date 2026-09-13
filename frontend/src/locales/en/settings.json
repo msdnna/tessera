@@ -15,7 +15,9 @@
     "avatar": {
       "upload": "Upload",
       "remove": "Remove",
-      "hint": "PNG/JPEG/GIF/WebP, up to 2 MB"
+      "hint": "PNG/JPEG/GIF/WebP, up to 2 MB",
+      "tooLarge": "The file is larger than {limit}",
+      "badType": "Only PNG, JPEG, GIF or WebP are supported"
     },
     "verify": {
       "done": "Email verified",
