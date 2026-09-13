@@ -41,6 +41,14 @@ private fun applySkip(millis: Long, skip: Boolean): Long {
     }
 }
 
+/** Anchored day-of-month (1..31), falling back to the due date's own day. */
+private fun anchorDay(rule: Recurrence, from: Calendar): Int =
+    if (rule.day in 1..31) rule.day else from.get(Calendar.DAY_OF_MONTH)
+
+/** Anchored month as a 0-based Calendar month, falling back to the due date's. */
+private fun anchorMonth(rule: Recurrence, from: Calendar): Int =
+    if (rule.month in 1..12) rule.month - 1 else from.get(Calendar.MONTH)
+
 /** weekday 0=Sun..6=Sat (matches the rule's encoding). */
 private fun weekday0(c: Calendar): Int = c.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
 
@@ -67,6 +75,27 @@ private fun nextWeekly(from: Calendar, rule: Recurrence): Long {
     return (from.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 7 * iv) }.timeInMillis
 }
 
+/**
+ * Lends a rule rebuilt from the editor's controls the anchor the server keeps on
+ * our behalf — mirrors web `withStoredAnchor` and the backend's `recurrenceToStore`
+ * (handlers/tasks.go).
+ *
+ * A monthly/yearly rule carries a server-managed day-of-month anchor ([Recurrence.day],
+ * plus [Recurrence.month] for yearly). The picker's controls never hold it, so without
+ * this a task that February has parked on the 28th would be previewed a March 28th it
+ * is never going to fire on. Borrowed on the same terms the server uses: same
+ * frequency, due date untouched. Otherwise the server re-derives the anchor from the
+ * due date, which is what [nextOccurrence] falls back to on its own.
+ */
+fun withStoredAnchor(rule: Recurrence?, stored: Recurrence?, dueChanged: Boolean): Recurrence? {
+    if (rule == null || (rule.freq != "monthly" && rule.freq != "yearly")) return rule
+    if (dueChanged || stored == null || stored.freq != rule.freq) return rule
+    return rule.copy(
+        day = if (stored.day > 0) stored.day else rule.day,
+        month = if (rule.freq == "yearly" && stored.month > 0) stored.month else rule.month,
+    )
+}
+
 /** Next occurrence after [fromMillis], or null when the recurrence has ended. */
 fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
     if (rule == null || rule.freq.isBlank()) return null
@@ -81,10 +110,11 @@ fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
             val total = from.get(Calendar.MONTH) + iv
             val y = from.get(Calendar.YEAR) + Math.floorDiv(total, 12)
             val m = Math.floorMod(total, 12)
-            dateOn(from, y, m, from.get(Calendar.DAY_OF_MONTH))
+            // The anchor, not the (possibly clamped) due date: see Recurrence.day.
+            dateOn(from, y, m, anchorDay(rule, from))
         }
 
-        "yearly" -> dateOn(from, from.get(Calendar.YEAR) + iv, from.get(Calendar.MONTH), from.get(Calendar.DAY_OF_MONTH))
+        "yearly" -> dateOn(from, from.get(Calendar.YEAR) + iv, anchorMonth(rule, from), anchorDay(rule, from))
 
         "custom" -> {
             val key = dayKeyOf(from)

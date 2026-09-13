@@ -61,6 +61,7 @@ import website.msdnna.tessera.util.millisDayKey
 import website.msdnna.tessera.util.millisToUtcIso
 import website.msdnna.tessera.util.occurrenceKeys
 import website.msdnna.tessera.util.parseInstantMillis
+import website.msdnna.tessera.util.withStoredAnchor
 
 /** Заголовки столбцов календаря — тот же строчный словарь, что у оси таймлайна. */
 @Composable
@@ -225,7 +226,15 @@ fun DueDateTimePicker(
         return localCalOf(startField.year, startField.month, startField.day, startField.hour, startField.minute).timeInMillis
     }
 
-    val occKeys = occurrenceKeys(buildRule(), dueMillis(), 24)
+    // The due instant the panel opened on — the server re-derives the monthly/yearly
+    // anchor whenever it moves, so it also decides whether the stored one still applies.
+    val initialDueMillis = remember { if (initialIso != null) dueMillis() else null }
+    // Previewed from the rule *plus* the anchor the server keeps on our behalf:
+    // buildRule() rebuilds the rule out of the controls above, and those never held
+    // the monthly/yearly day-of-month anchor, so a task that February has parked on
+    // the 28th would otherwise be shown a March 28th it is never going to fire on.
+    val previewRule = withStoredAnchor(buildRule(), initialRecurrence, dueMillis() != initialDueMillis)
+    val occKeys = occurrenceKeys(previewRule, dueMillis(), 24)
     // The actively-edited endpoint is the filled "selected" day; the other endpoint
     // is an outlined marker, with the days strictly between shaded as the bar span.
     val isCustomDue = editTarget == "due" && freq == "custom"

@@ -92,6 +92,30 @@ class RecurrenceTest {
             .isEqualTo("2026-02-28")
     }
 
+    @Test
+    fun `monthly honours the stored day anchor after a short-month clamp`() {
+        // February has parked a "31st" task on the 28th. The anchor is what keeps
+        // March from inheriting the clamp.
+        val from = localMidnight(2026, 2, 28)
+        val rule = Recurrence(freq = "monthly", interval = 1, day = 31)
+        assertThat(keyOf(nextOccurrence(rule, from))).isEqualTo("2026-03-31")
+    }
+
+    @Test
+    fun `monthly without an anchor still follows the due date`() {
+        val from = localMidnight(2026, 6, 15)
+        assertThat(keyOf(nextOccurrence(Recurrence(freq = "monthly", interval = 1), from)))
+            .isEqualTo("2026-07-15")
+    }
+
+    @Test
+    fun `monthly anchor keeps the whole series on the 31st`() {
+        // Without the anchor the series walks backwards: 01-31 → 02-28 → 03-28 → …
+        val rule = Recurrence(freq = "monthly", interval = 1, day = 31)
+        assertThat(occurrenceKeys(rule, localMidnight(2026, 1, 31), n = 3))
+            .containsExactly("2026-01-31", "2026-02-28", "2026-03-31", "2026-04-30")
+    }
+
     // ── yearly ───────────────────────────────────────────────────────────────
     @Test
     fun `yearly advances by interval years`() {
@@ -106,6 +130,47 @@ class RecurrenceTest {
         val from = localMidnight(2028, 2, 29)
         assertThat(keyOf(nextOccurrence(Recurrence(freq = "yearly", interval = 1), from)))
             .isEqualTo("2029-02-28")
+    }
+
+    @Test
+    fun `yearly honours the stored day and month anchor`() {
+        // A Feb 29 task, clamped to the 28th by the non-leap 2029. Three years on,
+        // 2032 is leap again and the anchor has to bring the 29th back.
+        val from = localMidnight(2029, 2, 28)
+        val rule = Recurrence(freq = "yearly", interval = 3, day = 29, month = 2)
+        assertThat(keyOf(nextOccurrence(rule, from))).isEqualTo("2032-02-29")
+    }
+
+    // ── withStoredAnchor ─────────────────────────────────────────────────────
+    @Test
+    fun `withStoredAnchor lends the anchor back to a rule rebuilt from the controls`() {
+        val stored = Recurrence(freq = "monthly", interval = 1, day = 31)
+        val rebuilt = Recurrence(freq = "monthly", interval = 1)
+        assertThat(withStoredAnchor(rebuilt, stored, dueChanged = false)?.day).isEqualTo(31)
+
+        val storedYearly = Recurrence(freq = "yearly", interval = 1, day = 29, month = 2)
+        val rebuiltYearly = Recurrence(freq = "yearly", interval = 1)
+        val out = withStoredAnchor(rebuiltYearly, storedYearly, dueChanged = false)
+        assertThat(out?.day).isEqualTo(29)
+        assertThat(out?.month).isEqualTo(2)
+    }
+
+    @Test
+    fun `withStoredAnchor drops the anchor when the due date or frequency changed`() {
+        val stored = Recurrence(freq = "monthly", interval = 1, day = 31)
+        // Moving the due date re-derives the anchor server-side — don't pin the old one.
+        assertThat(withStoredAnchor(Recurrence(freq = "monthly"), stored, dueChanged = true)?.day)
+            .isEqualTo(0)
+        // A different frequency has a different anchor entirely.
+        assertThat(withStoredAnchor(Recurrence(freq = "yearly"), stored, dueChanged = false)?.day)
+            .isEqualTo(0)
+        // Nothing to lend from.
+        assertThat(withStoredAnchor(Recurrence(freq = "monthly"), null, dueChanged = false)?.day)
+            .isEqualTo(0)
+        // Frequencies without an anchor pass through untouched.
+        val weekly = Recurrence(freq = "weekly", weekdays = listOf(1))
+        assertThat(withStoredAnchor(weekly, stored, dueChanged = false)).isEqualTo(weekly)
+        assertThat(withStoredAnchor(null, stored, dueChanged = false)).isNull()
     }
 
     // ── custom ───────────────────────────────────────────────────────────────

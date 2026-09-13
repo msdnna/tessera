@@ -14,6 +14,13 @@ data class Recurrence(
     // ("yyyy-MM-dd"). Both omitted (null) when not applicable.
     @SerializedName("weekdays") val weekdays: List<Int>? = null,
     @SerializedName("dates") val dates: List<String>? = null,
+    // Monthly/yearly day-of-month anchor (server-managed; `month` only for yearly).
+    // A short month temporarily moves the due date, and without the anchor every
+    // later occurrence inherits the clamp — a task repeating on the 31st becomes a
+    // 28th task the first time it passes through February. The editor's controls
+    // never hold it, so a rule rebuilt from them borrows it back (withStoredAnchor).
+    @SerializedName("day") val day: Int = 0,
+    @SerializedName("month") val month: Int = 0,
     // The IANA zone the rule's calendar arithmetic runs in on the server ("every
     // Monday", "the 31st" are calendar statements, and a due date picked here is
     // local midnight — which east of UTC belongs to the previous UTC day). Kept on
