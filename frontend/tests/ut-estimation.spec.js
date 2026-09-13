@@ -46,6 +46,18 @@ describe('parseEstimate (time)', () => {
     expect(parseEstimate('1,5ч', cfg)).toBe(90)
   })
 
+  // A comma is the decimal separator in every token, not just the first one:
+  // "2,5ч 30,5м" used to read as 2.5h + 30h + 5m, because a string `replace`
+  // swaps a single occurrence. The other two parsers of the same syntax
+  // (backend internal/quickact, android util/Estimation.kt) never had the split.
+  it('reads the comma separator in every token, not only the first', () => {
+    expect(parseEstimate('1,5д 2,5ч', cfg)).toBe(parseEstimate('1.5d 2.5h', cfg))
+    expect(parseEstimate('1,5д 2,5ч', cfg)).toBe(720 + 150)
+    expect(parseEstimate('2,5ч 30,5м', cfg)).toBe(Math.round(150 + 30.5))
+    expect(parseEstimate('1,25ч 1,25ч', cfg)).toBe(150)
+    expect(parseEstimate('0,5н 0,5д', cfg)).toBe(1200 + 240)
+  })
+
   it('honours a custom working day/week', () => {
     const c = { unit: 'time', hours_per_day: 6, days_per_week: 4 }
     expect(parseEstimate('1д', c)).toBe(360)

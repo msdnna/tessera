@@ -56,7 +56,10 @@ function trimNum(v) {
 // take a plain number; a T-shirt size label is accepted too.
 export function parseEstimate(input, cfg) {
   if (input == null) return null
-  const s = String(input).trim().toLowerCase().replace(',', '.')
+  // replaceAll, not replace: the comma is the decimal separator of *every*
+  // token, and a single-occurrence swap left "2,5ч 30,5м" as "2.5ч 30,5м" —
+  // the second number split at the comma and its tail was read as bare hours.
+  const s = String(input).trim().toLowerCase().replaceAll(',', '.')
   if (!s) return null
   const unit = cfg?.unit || 'time'
 
