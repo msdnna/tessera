@@ -71,6 +71,7 @@ import {
 } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
+import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
@@ -569,9 +570,12 @@ const savedViews = ref([])
 // layout (board views and timeline views are separate sets). Legacy views with
 // no stored layout default to 'board'.
 const viewsForLayout = computed(() =>
-  savedViews.value.filter((v) => (v.config?.layout || 'board') === layout.value),
+  savedViews.value.filter((v) => viewLayout(v) === layout.value),
 )
 const currentViewName = ref('')
+// The visualization the loaded view was saved for. Tracked separately from `layout`
+// because the two come apart the moment the user switches layout with a view loaded.
+const currentViewLayout = ref('')
 const newViewName = ref('')
 const showSaveView = ref(false)
 const showLoadView = ref(false)
@@ -617,9 +621,18 @@ function applyViewConfig(c) {
 async function saveView() {
   const name = (newViewName.value || currentViewName.value).trim()
   if (!name) return
+  // Names are per-board, not per-layout: the upsert key knows nothing about the
+  // visualization. Refuse rather than let the save quietly destroy a view the
+  // popover never listed (it only offers same-layout ones to overwrite).
+  const taken = conflictingViewLayout(savedViews.value, name, layout.value)
+  if (taken) {
+    message.error(t('board.views.nameTaken', { name, layout: t(`board.layout.${taken}`) }))
+    return
+  }
   try {
     await boards.saveView(props.boardId, { name, config: currentViewConfig() })
     currentViewName.value = name
+    currentViewLayout.value = layout.value
     newViewName.value = ''
     showSaveView.value = false
     await loadViews()
@@ -632,13 +645,17 @@ function applyView(v) {
   withViewLoad(() => {
     applyViewConfig(v.config)
     currentViewName.value = v.name
+    currentViewLayout.value = viewLayout(v)
     showLoadView.value = false
   })
 }
 async function deleteView(v) {
   try {
     await boards.deleteView(v.id)
-    if (currentViewName.value === v.name) currentViewName.value = ''
+    if (currentViewName.value === v.name) {
+      currentViewName.value = ''
+      currentViewLayout.value = ''
+    }
     await loadViews()
   } catch (e) {
     message.error(e.message)
@@ -654,6 +671,11 @@ useBoardAutosave({
   config: currentViewConfig,
   guarded: viewLoadInFlight,
   save: async (name, config) => {
+    // A view belongs to the visualization it was saved for. Switching layout with a
+    // view loaded must not rewrite its layout behind the user's back: that drops it
+    // out of its own list (views are filtered by layout) — the same disappearance
+    // the composable's teardown guards against, just reached from the other side.
+    if (currentViewLayout.value && config.layout !== currentViewLayout.value) return
     try {
       await boards.saveView(props.boardId, { name, config })
     } catch {

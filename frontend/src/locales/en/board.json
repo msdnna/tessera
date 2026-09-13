@@ -36,7 +36,8 @@
     "overwrite": "Overwrite:",
     "empty": "No saved views",
     "deleteConfirm": "Delete the view “{name}”?",
-    "saved": "View “{name}” saved"
+    "saved": "View “{name}” saved",
+    "nameTaken": "The name “{name}” is taken by a “{layout}” view — pick another"
   },
   "column": {
     "expand": "Expand the column",
