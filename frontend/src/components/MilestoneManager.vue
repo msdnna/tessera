@@ -173,7 +173,11 @@ async function remove(m) {
   }
 }
 
-const { formatters } = useFormat()
+// `datePattern` / `firstDayOfWeek` are what carry the localization preferences
+// into Naive's pickers — without them the calendars here showed `yyyy-MM-dd`
+// next to range labels rendered in the chosen preset, and started the week by
+// interface language rather than by the week_start setting (#2932).
+const { formatters, datePattern, firstDayOfWeek } = useFormat()
 const fmtRange = (m) => milestoneRange(m, formatters.value)
 
 watch(
@@ -212,6 +216,8 @@ watch(
               <n-input v-model:value="editBuf.title" size="small" class="m-edit-title" />
               <n-date-picker
                 v-model:value="editBuf.start_date"
+                :format="datePattern"
+                :first-day-of-week="firstDayOfWeek"
                 type="date"
                 size="small"
                 clearable
@@ -219,6 +225,8 @@ watch(
               />
               <n-date-picker
                 v-model:value="editBuf.due_date"
+                :format="datePattern"
+                :first-day-of-week="firstDayOfWeek"
                 type="date"
                 size="small"
                 clearable
@@ -307,6 +315,8 @@ watch(
           />
           <n-date-picker
             v-model:value="newStart"
+            :format="datePattern"
+            :first-day-of-week="firstDayOfWeek"
             type="date"
             size="small"
             clearable
@@ -314,6 +324,8 @@ watch(
           />
           <n-date-picker
             v-model:value="newDue"
+            :format="datePattern"
+            :first-day-of-week="firstDayOfWeek"
             type="date"
             size="small"
             clearable

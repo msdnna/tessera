@@ -35,7 +35,11 @@ function commit() {
 
 const theme = useThemeStore()
 const { t } = useI18n()
-const { formatDate, formatDateTime } = useFormat()
+// `timePattern` is the date-fns pattern Naive's time picker formats and parses
+// by: the 12/24h preference reaches it only through this prop, so a hard-coded
+// "HH:mm" left the clock below the calendar at 24h while every due label the
+// same popover renders was already "3:00 PM" (#2932).
+const { formatDate, formatDateTime, timePattern } = useFormat()
 // Both option lists are computed, not constants: a plain array would keep the
 // language of the first render (pitfall 1 of #2799).
 const freqOpts = computed(() => freqOptions())
@@ -513,7 +517,7 @@ const dueRepeatOpts = computed(() => [
         <div class="de-cal-foot">
           <n-time-picker
             size="small"
-            format="HH:mm"
+            :format="timePattern"
             :value="activeMs"
             :placeholder="t('task.due.timePlaceholder')"
             @update:value="setTime"

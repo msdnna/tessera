@@ -49,7 +49,7 @@ const emit = defineEmits(['update:show'])
 const { t } = useI18n()
 const message = useMessage()
 const gl = useGitlabStore()
-const { formatDateTime } = useFormat()
+const { formatDateTime, datePattern, firstDayOfWeek } = useFormat()
 const ws = useWorkspacesStore()
 
 // ── connection (per-user) ──
@@ -1128,7 +1128,17 @@ watch(
                   <n-text depth="3" class="lbl">
                     {{ $t('gitlab.modal.binding.closedAfter') }}
                   </n-text>
-                  <n-date-picker v-model:value="closedAfter" type="date" size="small" clearable />
+                  <!-- Naive formats and parses by its own pattern; without these
+                       two the field showed `yyyy-MM-dd` and started the week by
+                       interface language, ignoring both settings (#2932). -->
+                  <n-date-picker
+                    v-model:value="closedAfter"
+                    :format="datePattern"
+                    :first-day-of-week="firstDayOfWeek"
+                    type="date"
+                    size="small"
+                    clearable
+                  />
                 </template>
 
                 <n-text depth="3" class="lbl">
