@@ -16,6 +16,7 @@ import {
 } from 'naive-ui'
 import { TrashOutline, CopyOutline, MailOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
+import { useFormat } from '@/composables/useFormat'
 import { copyText } from '@/utils/clipboard'
 
 const props = defineProps({
@@ -25,6 +26,7 @@ const props = defineProps({
 const emit = defineEmits(['update:show'])
 
 const { t } = useI18n()
+const { formatDate } = useFormat()
 const message = useMessage()
 const members = ref([])
 const invitations = ref([])
@@ -37,6 +39,21 @@ const roleOptions = computed(() => [
   { label: t('shell.members.member'), value: 'member' },
   { label: t('shell.members.admin'), value: 'admin' },
 ])
+
+// An invitation lives a week (backend invitationTTL), but the list endpoint only
+// drops the accepted ones — an expired invitation stays in the response forever.
+// Every path that redeems one refuses it past `expires_at`, so an unmarked row
+// tells the admin "invited, hasn't accepted yet" about a link that answers
+// "invalid or expired invitation"; there is no unique key on (workspace, email)
+// either, so re-invites pile up and only the newest of the identical-looking
+// rows works. The date is what tells them apart.
+const invitationRows = computed(() =>
+  invitations.value.map((inv) => {
+    const until = inv.expires_at ? new Date(inv.expires_at) : null
+    const expired = !!until && until.getTime() <= Date.now()
+    return { ...inv, expired, until: until && !expired ? formatDate(until) : '' }
+  }),
+)
 
 async function load() {
   if (!props.wsId) return
@@ -156,12 +173,25 @@ watch(
       <!-- Pending invitations -->
       <div v-if="invitations.length" class="invites">
         <n-text depth="3" class="lbl">{{ t('shell.members.invitations') }}</n-text>
-        <div v-for="inv in invitations" :key="inv.id" class="invite-row">
+        <div
+          v-for="inv in invitationRows"
+          :key="inv.id"
+          class="invite-row"
+          :class="{ 'is-expired': inv.expired }"
+        >
           <n-icon :component="MailOutline" class="inv-icon" />
           <span class="inv-mail">{{ inv.email }}</span>
           <n-tag size="small" :bordered="false">{{
             inv.role === 'admin' ? t('shell.members.admin') : t('shell.members.member')
           }}</n-tag>
+          <!-- Revoke stays on an expired row: clearing it out of the list is the
+               only thing left to do with it. -->
+          <n-tag v-if="inv.expired" class="inv-expired" size="small" type="error" :bordered="false">
+            {{ t('shell.members.inviteExpired') }}
+          </n-tag>
+          <n-text v-else-if="inv.until" depth="3" class="inv-until">
+            {{ t('shell.members.inviteUntil', { date: inv.until }) }}
+          </n-text>
           <n-button text size="tiny" type="error" @click="revokeInvite(inv.id)">
             <n-icon :component="TrashOutline" />
           </n-button>
@@ -239,6 +269,16 @@ watch(
   color: var(--t-text2);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.inv-until {
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* A dead row still belongs in the list (it is the only place to revoke it), it
+   just must not read as one that is still waiting for an answer. */
+.invite-row.is-expired .inv-mail,
+.invite-row.is-expired .inv-icon {
+  opacity: 0.6;
 }
 .lbl {
   display: block;

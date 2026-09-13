@@ -78,6 +78,8 @@
     "member": "Member",
     "removeConfirm": "Remove this member from the workspace?",
     "invitations": "Invitations",
+    "inviteExpired": "Expired",
+    "inviteUntil": "until {date}",
     "inviteLabel": "Invite by email",
     "emailPlaceholder": "user{'@'}example.com",
     "invite": "Invite",

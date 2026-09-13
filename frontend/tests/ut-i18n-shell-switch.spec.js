@@ -1,4 +1,5 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { setI18nLocale } from '@/i18n'
 import { isReviewColumn, columnStatusName } from '@/utils/columnStatus'
@@ -86,6 +87,10 @@ describe('column status glyph', () => {
 })
 
 describe('members modal', () => {
+  // The invitation rows render their expiry through useFormat, so the modal now
+  // reads the profile's date preferences off the theme store.
+  beforeEach(() => setActivePinia(createPinia()))
+
   it('re-renders the role options after a switch', async () => {
     const w = mount(MembersModal, { props: { show: false, wsId: 'w1' } })
     expect(w.vm.roleOptions.map((o) => o.label)).toEqual(['Участник', 'Админ'])

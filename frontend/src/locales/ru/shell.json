@@ -78,6 +78,8 @@
     "member": "Участник",
     "removeConfirm": "Удалить участника из пространства?",
     "invitations": "Приглашения",
+    "inviteExpired": "Истекло",
+    "inviteUntil": "до {date}",
     "inviteLabel": "Пригласить по email",
     "emailPlaceholder": "user{'@'}example.com",
     "invite": "Пригласить",
