@@ -189,7 +189,8 @@
       "kb": "{n} KB",
       "mb": "{n} MB"
     },
-    "downloadFailed": "Could not download the file"
+    "downloadFailed": "Could not download the file",
+    "tooLarge": "The file is larger than {limit} — the server will not take it"
   },
   "docs": {
     "empty": "No linked documents",

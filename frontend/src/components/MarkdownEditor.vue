@@ -41,6 +41,13 @@ import { detectSlashQuery, matchCommands, commandInsertText } from '@/utils/comm
 import { mentionIdsIn } from '@/utils/mentions'
 import { isTauri } from '@/utils/serverBase'
 import { scrollParent } from '@/utils/dom'
+import {
+  ATTACHMENT_MAX_BYTES,
+  MEDIA_MAX_BYTES,
+  attachmentPickError,
+  mediaPickError,
+} from '@/utils/upload'
+import { formatFileSize } from '@/utils/docPdf'
 import RichContent from './RichContent.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import UserAvatar from './UserAvatar.vue'
@@ -308,6 +315,18 @@ const imgInput = ref(null)
 const uploading = ref(false)
 async function uploadImage(file) {
   if (!file || !file.type.startsWith('image/')) return
+  // `image/*` is wider than the media route's allowlist and says nothing about
+  // size, so both refusals used to arrive from the server — as its hardcoded
+  // Russian sentence, and only after a 12 MB paste had finished uploading.
+  const bad = mediaPickError(file)
+  if (bad) {
+    message.error(
+      bad === 'tooLarge'
+        ? t('documents.editor.error.imageTooLarge', { limit: formatFileSize(MEDIA_MAX_BYTES) })
+        : t('documents.editor.error.imageType'),
+    )
+    return
+  }
   uploading.value = true
   try {
     const fd = new FormData()
@@ -377,6 +396,12 @@ const attachOpen = ref(false)
 const canAttach = computed(() => !!props.attachTaskId)
 
 async function uploadAttachment(file) {
+  if (attachmentPickError(file)) {
+    message.error(
+      t('documents.editor.error.fileTooLarge', { limit: formatFileSize(ATTACHMENT_MAX_BYTES) }),
+    )
+    return
+  }
   attaching.value = true
   try {
     const fd = new FormData()

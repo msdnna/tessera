@@ -9,6 +9,8 @@ import { NIcon, NButton, NPopconfirm, useMessage } from 'naive-ui'
 import { AttachOutline, DownloadOutline, TrashOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { saveAttachment } from '@/utils/download'
+import { ATTACHMENT_MAX_BYTES, attachmentPickError } from '@/utils/upload'
+import { formatFileSize } from '@/utils/docPdf'
 import EmptyState from '../EmptyState.vue'
 
 const props = defineProps({
@@ -35,6 +37,15 @@ function pickFile() {
 async function onFileChosen(ev) {
   const file = ev.target.files?.[0]
   if (!file) return
+  // Say what the server would say, before spending the upload on it. Its own
+  // refusal is a hardcoded Russian sentence ("файл больше 25 МБ") that errors.js
+  // passes through untouched — and it only arrives once the whole file has gone
+  // over the wire.
+  if (attachmentPickError(file)) {
+    message.error(t('task.files.tooLarge', { limit: formatFileSize(ATTACHMENT_MAX_BYTES) }))
+    ev.target.value = ''
+    return
+  }
   uploading.value = true
   try {
     const fd = new FormData()

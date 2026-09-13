@@ -41,7 +41,10 @@
       "image": "Could not upload the image",
       "file": "Could not upload the file",
       "attachments": "Could not load the file list",
-      "pdf": "Could not upload the PDF"
+      "pdf": "Could not upload the PDF",
+      "imageTooLarge": "The image is larger than {limit} — the server will not take it",
+      "imageType": "Only PNG, JPEG, GIF, WebP and BMP are supported",
+      "fileTooLarge": "The file is larger than {limit} — the server will not take it"
     },
     "link": {
       "placeholder": "https://… or a section of the document",
