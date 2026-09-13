@@ -29,6 +29,22 @@ export const startOfDay = (ms) => {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
 }
 
+// The instant at a fractional day offset along the axis: the whole part is a
+// LOCAL calendar day, the fraction is the clock time inside it.
+//
+// Not `rangeStart + offset * DAY_MS` — the axis is laid out on local calendar
+// days (startOfDay above, dayIndex in useChartTimeline), and a day with a clock
+// change is not 24 hours long. An autumn day lasts 25, so ms arithmetic lands at
+// 23:00 of the *previous* day and everything past the change carries its
+// neighbour's date, while the bars — built from real local midnights — stay put.
+// Outside a clock change the two agree exactly.
+export function msAtDayOffset(rangeStart, offset) {
+  const i = Math.floor(offset)
+  const d = new Date(rangeStart)
+  const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate() + i).getTime()
+  return offset === i ? dayStart : dayStart + (offset - i) * DAY_MS
+}
+
 // True when the instant lands on UTC midnight → a date-only (all-day) value with no
 // meaningful time of day. Timed values carry a non-zero UTC time.
 export function isAllDayMs(ms) {
@@ -98,7 +114,7 @@ export function anchorMs(startMs, tier) {
 export function buildDays(rangeStart, count, todayMs, fmt = defaultFormatters()) {
   const out = []
   for (let i = 0; i < count; i++) {
-    const ms = rangeStart + i * DAY_MS
+    const ms = msAtDayOffset(rangeStart, i)
     const d = new Date(ms)
     const dow = d.getDay()
     out.push({

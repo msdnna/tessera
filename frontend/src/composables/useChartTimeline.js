@@ -11,6 +11,7 @@ import {
   buildWeekBands,
   hourTicksInWindow,
   hourStepFor,
+  msAtDayOffset,
 } from '@/utils/timeAxis'
 import { estimateToDays } from '@/utils/estimation'
 import { useFormat } from '@/composables/useFormat'
@@ -297,7 +298,10 @@ export function useChartTimeline({
       return
     }
     const axisX = Math.max(0, Math.min(axisW.value, el.scrollLeft + xv - leftW.value))
-    cursor.value = { axisX, ms: range.value.start + (axisX / dayW.value) * DAY_MS }
+    // Day offset → instant through the calendar, like the header cells: past a
+    // clock change plain ms arithmetic would label the hovered column with its
+    // neighbour's date.
+    cursor.value = { axisX, ms: msAtDayOffset(range.value.start, axisX / dayW.value) }
     cursorPill.value = { x: e.clientX, top: rect.top }
   }
   function onHoverLeave() {
