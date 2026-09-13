@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -249,28 +251,85 @@ func (h *API) SetUserActive(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
+// avatarETag is the validator for one stored avatar: its last write, which is
+// what a re-upload and a delete-then-upload both move.
+func avatarETag(updatedAt time.Time) string {
+	return `"` + strconv.FormatInt(updatedAt.UnixNano(), 36) + `"`
+}
+
+// etagMatches reports whether an If-None-Match header covers etag. The header is
+// a comma-separated list and may carry the weak marker, so a plain == against it
+// would miss the ordinary case of a browser echoing back several cached copies.
+func etagMatches(header, etag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" {
+			return true
+		}
+		if strings.TrimPrefix(candidate, "W/") == etag {
+			return true
+		}
+	}
+	return false
+}
+
 // GetUserAvatar serves a user's avatar blob. Unauthenticated (served straight
 // into <img>, like /uploads) — avatars are low-sensitivity and keyed by UUID.
+//
+// Cached against a validator rather than for a lifetime, unlike attachments and
+// document assets: those are addressed by a per-upload UUID, so new content
+// arrives under a new URL and `immutable` is honest. This URL is the user's id
+// and outlives every picture behind it — and the clients build it themselves
+// (UserAvatar.vue) so there is nowhere to stamp a version. A lifetime here means
+// the sidebar, the cards and the comments keep painting the previous avatar for
+// its length, a reload included, while the Settings preview (which busts its own
+// URL) already shows the new one; a deleted avatar keeps being painted after the
+// server has started answering 404. So: no-cache — store it, but ask first.
 func (h *API) GetUserAvatar(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
 		return
 	}
-	av, err := h.q.GetUserAvatar(c, id)
+	// Version first, blob second: after the first load the browser revalidates on
+	// every page, and answering "unchanged" must not cost a blob read per member.
+	ver, err := h.q.GetUserAvatarVersion(c, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		// No uploaded avatar → fall back to the synced GitLab avatar (a same-origin
-		// signed proxy URL); redirect so <img> loads it transparently.
-		if gl, gerr := h.q.GetGitlabAvatarForUser(c, id); gerr == nil && gl != "" {
-			c.Redirect(http.StatusFound, gl)
-			return
-		}
-		c.Status(http.StatusNotFound)
+		h.avatarFallback(c, id)
 		return
 	}
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.Header("Cache-Control", "private, max-age=300")
+	etag := avatarETag(ver)
+	c.Header("ETag", etag)
+	c.Header("Cache-Control", "private, no-cache")
+	if etagMatches(c.GetHeader("If-None-Match"), etag) {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	av, err := h.q.GetUserAvatar(c, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Deleted between the two reads — answer as if it had never been there,
+		// validator included (gin drops a header set to "").
+		c.Header("ETag", "")
+		h.avatarFallback(c, id)
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	c.Data(http.StatusOK, av.ContentType, av.Bytes)
+}
+
+// avatarFallback answers for a user with no uploaded avatar: the synced GitLab
+// one (a same-origin signed proxy URL) if the roster has it, else 404.
+func (h *API) avatarFallback(c *gin.Context, id uuid.UUID) {
+	if gl, gerr := h.q.GetGitlabAvatarForUser(c, id); gerr == nil && gl != "" {
+		// Redirect so <img> loads it transparently.
+		c.Redirect(http.StatusFound, gl)
+		return
+	}
+	c.Status(http.StatusNotFound)
 }
