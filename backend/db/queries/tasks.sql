@@ -182,10 +182,25 @@ UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1 AND archi
 -- name: RestoreTaskIfArchived :exec
 UPDATE tasks SET archived_at = NULL, updated_at = now() WHERE id = $1 AND archived_at IS NOT NULL;
 
+-- TransferTask drops the milestone when the target board belongs to another
+-- project. A milestone hangs off a project — it is created under one, and the
+-- task modal offers only the ones its own project owns — but ListWorkspaceMilestones
+-- rolls tasks up over `t.milestone_id = m.id` with no project filter of its own.
+-- So a task that left for another project kept inflating the total / done / Σ
+-- estimate of a milestone whose board no longer holds it, while the modal showed
+-- «Не задан» (the id isn't in the picker's list) — a number nobody could explain
+-- pinned to a link nobody could see. Same resolution as
+-- ClearMilestonesAcrossWorkspaces uses for the cross-workspace case: unpin.
 -- name: TransferTask :one
 UPDATE tasks
-SET board_id = $2, column_id = $3, parent_id = NULL, position = $4, updated_at = now()
-WHERE id = $1
+SET board_id = $2, column_id = $3, parent_id = NULL, position = $4,
+    milestone_id = CASE
+        WHEN (SELECT m.project_id FROM milestones m WHERE m.id = tasks.milestone_id)
+             IS NOT DISTINCT FROM
+             (SELECT b.project_id FROM boards b WHERE b.id = $2)
+        THEN tasks.milestone_id ELSE NULL END,
+    updated_at = now()
+WHERE tasks.id = $1
 RETURNING *;
 
 -- MoveSubtreeToBoard puts every descendant of a task on the given board and
@@ -205,8 +220,14 @@ WITH RECURSIVE down AS (
     UNION
     SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
 )
-UPDATE tasks SET board_id = $2, column_id = $3, updated_at = now()
-WHERE id IN (SELECT id FROM down);
+UPDATE tasks SET board_id = $2, column_id = $3,
+    milestone_id = CASE
+        WHEN (SELECT m.project_id FROM milestones m WHERE m.id = tasks.milestone_id)
+             IS NOT DISTINCT FROM
+             (SELECT b.project_id FROM boards b WHERE b.id = $2)
+        THEN tasks.milestone_id ELSE NULL END,
+    updated_at = now()
+WHERE tasks.id IN (SELECT down.id FROM down);
 
 -- TaskAncestorIDs returns the task itself followed by its parents, up to the
 -- root. Used to reject attaching a task below one of its own descendants, which
@@ -227,10 +248,19 @@ WITH RECURSIVE up AS (
 )
 SELECT id FROM up;
 
+-- SetTaskParent is the other door onto board_id (a task adopts its new parent's
+-- board), so it unpins a milestone left behind in another project for the same
+-- reason TransferTask does.
 -- name: SetTaskParent :one
 UPDATE tasks
-SET parent_id = $2, board_id = $3, column_id = $4, updated_at = now()
-WHERE id = $1
+SET parent_id = $2, board_id = $3, column_id = $4,
+    milestone_id = CASE
+        WHEN (SELECT m.project_id FROM milestones m WHERE m.id = tasks.milestone_id)
+             IS NOT DISTINCT FROM
+             (SELECT b.project_id FROM boards b WHERE b.id = $3)
+        THEN tasks.milestone_id ELSE NULL END,
+    updated_at = now()
+WHERE tasks.id = $1
 RETURNING *;
 
 -- name: DetachChildren :exec
