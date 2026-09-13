@@ -96,7 +96,7 @@ async function cancelJob(key) {
     message.info(t('jobs.cancelling'))
     await load()
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 

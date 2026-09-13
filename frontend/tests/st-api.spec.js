@@ -12,6 +12,7 @@ import api, {
 } from '@/api'
 import { connection } from '@/composables/useConnection'
 import { sGet } from '@/utils/serverStorage'
+import { i18n } from '@/i18n'
 
 // The api module builds an axios instance with real interceptors (token header,
 // refresh-on-401 coalescing, error humanizing). We drive it by swapping the
@@ -194,6 +195,67 @@ describe('api error handling', () => {
   it('falls back to the axios message when the body carries no sentinel', async () => {
     instanceAdapter.mockImplementation((config) => fail(config, 500, {}))
     await expect(auth.me()).rejects.toMatchObject({ raw: 'Request failed with status code 500' })
+  })
+
+  // The rejection is an error of our own making: `message`, `status`, `raw`,
+  // `offline` — and no `response`. Pinned because three component specs had
+  // grown axios-shaped fixtures and the code they covered read
+  // `e.response.status`, which is undefined against the real client: the check
+  // never matched in the app, and the spec never noticed (#2932).
+  it('carries no axios response — status and raw are the whole contract', async () => {
+    instanceAdapter.mockImplementation((config) => fail(config, 403, { error: 'forbidden' }))
+    const err = await auth.me().catch((e) => e)
+    expect(err.response).toBeUndefined()
+    expect(err.status).toBe(403)
+    expect(err.raw).toBe('forbidden')
+  })
+
+  // A file route asks axios for `responseType: 'blob'`, and axios honours that
+  // for the error response too: the refusal arrives as a Blob holding
+  // `{"error": …}`, not as a parsed object. Reading `.error` off it yields
+  // undefined, so every failed download used to surface the axios line
+  // ("Request failed with status code 404") — protocol English, in whatever
+  // language the UI is in (#2932). Four routes are on this path: document
+  // export, task attachments, call attachments and call recordings.
+  describe('a refusal that arrives as a blob', () => {
+    function blobFail(config, status, body) {
+      const blob = new Blob([JSON.stringify(body)], { type: 'application/json' })
+      return fail(config, status, blob)
+    }
+
+    it('reads the sentinel back out of the body', async () => {
+      instanceAdapter.mockImplementation((config) => blobFail(config, 404, { error: 'not found' }))
+      await expect(tasks.downloadAttachment('a1')).rejects.toMatchObject({
+        raw: 'not found',
+        status: 404,
+      })
+    })
+
+    it('humanizes it like any other refusal', async () => {
+      instanceAdapter.mockImplementation((config) =>
+        blobFail(config, 403, { error: 'requires admin' }),
+      )
+      // Not the axios line: the catalogue answers, in the UI's language.
+      await expect(tasks.downloadAttachment('a1')).rejects.toThrow(
+        i18n.global.t('errors.sentinel.requiresAdmin'),
+      )
+    })
+
+    it('survives a body that is not JSON at all', async () => {
+      // A proxy answering with an HTML error page, or a truncated file — the
+      // rejection still has to carry the status, not throw inside the handler.
+      instanceAdapter.mockImplementation((config) =>
+        fail(config, 502, new Blob(['<html>502</html>'], { type: 'text/html' })),
+      )
+      await expect(tasks.downloadAttachment('a1')).rejects.toMatchObject({ status: 502 })
+    })
+
+    it('leaves the blob of a successful download untouched', async () => {
+      const body = new Blob(['%PDF-1.7'], { type: 'application/pdf' })
+      instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, body)))
+      const res = await tasks.downloadAttachment('a1')
+      expect(res.data).toBe(body)
+    })
   })
 })
 

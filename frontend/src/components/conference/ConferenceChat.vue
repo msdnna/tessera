@@ -121,7 +121,10 @@ async function loadTail() {
   } catch (e) {
     // A 403/404 here means the conference went away under us; the screen around
     // this rail already says so, and a second toast would only repeat it.
-    if (![403, 404].includes(e.response?.status)) message.error(e.message)
+    // `e.status`, not `e.response.status`: the api client rejects with an error
+    // of its own and carries the status there — reading `.response` matched
+    // nothing, so the toast this line exists to suppress was shown anyway.
+    if (![403, 404].includes(e.status)) message.error(e.message)
   } finally {
     loading.value = false
   }
@@ -203,7 +206,7 @@ async function send() {
     if (data?.id && !messages.value.some((m) => m.id === data.id)) messages.value.push(data)
     await scrollToEnd(true)
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     sending.value = false
   }
@@ -214,7 +217,7 @@ async function remove(msg) {
     await confApi.removeMessage(msg.id)
     messages.value = messages.value.filter((m) => m.id !== msg.id)
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 

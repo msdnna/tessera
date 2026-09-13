@@ -4,6 +4,7 @@ import {
   OFFICE_EXTENSIONS,
   downloadBlob,
   exportFileName,
+  exportRefusalKey,
   importAccept,
   importOfficeFile,
   isOfficeFile,
@@ -255,5 +256,31 @@ describe('downloadBlob', () => {
 
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+  })
+})
+
+// Which sentence an export failure gets.
+//
+// The two refusals worth naming come off the status, not the body: the export
+// is fetched as a blob, and the backend phrases both of these in Russian of its
+// own ("сервис конвертации документов недоступен"), which is the wrong language
+// half the time. The view used to read `err.response.status` — a field the api
+// interceptor does not put on the error it rejects with (#2932) — so neither
+// branch was ever taken and both locale lines sat unused.
+describe('exportRefusalKey', () => {
+  it('names the sidecar being unreachable', () => {
+    expect(exportRefusalKey(503)).toBe('documents.view.error.exportUnavailable')
+  })
+
+  it('names a document the sidecar would not convert', () => {
+    expect(exportRefusalKey(422)).toBe('documents.view.error.exportFailed')
+  })
+
+  it('leaves anything else to the caller', () => {
+    // 403/404/500 already have a humanized line from the catalogue; overriding
+    // it with "could not export" would say less than the server did.
+    expect(exportRefusalKey(403)).toBe(null)
+    expect(exportRefusalKey(500)).toBe(null)
+    expect(exportRefusalKey(undefined)).toBe(null)
   })
 })

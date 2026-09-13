@@ -297,7 +297,13 @@ describe('one conference', () => {
   })
 
   it('reports a deleted conference instead of leaving the previous one on screen', async () => {
-    api.get.mockRejectedValue({ response: { status: 404 }, message: 'not found' })
+    // `status` on the error itself — the api client rejects with an Error of
+    // its own and drops the axios `response` (pinned in st-api.spec.js). With
+    // the old axios-shaped fixture this case passed while the running app
+    // toasted "not found" on top of the page that already said it (#2932).
+    api.get.mockRejectedValue(
+      Object.assign(new Error('Не найдено'), { status: 404, raw: 'not found' }),
+    )
     const { w } = await mountAt('/conferences/c1')
     expect(w.text()).toContain('Конференция не найдена')
     // A 404 is the expected answer for a deleted meeting — not a toast.

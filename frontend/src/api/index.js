@@ -145,6 +145,30 @@ export function restoreSession() {
   return refreshAccessToken()
 }
 
+// refusalText digs the server's `{"error": …}` sentence out of an error body.
+//
+// Usually that is a plain object and this is a field read. The exception is a
+// file route: `responseType: 'blob'` applies to the error response too, so a
+// refused download hands back a Blob holding the JSON rather than the parsed
+// object (document export, task attachments, call attachments, call recordings
+// are all on that path). Reading `.error` off a Blob yields undefined, and the
+// caller then showed the axios line — "Request failed with status code 404",
+// protocol English in whatever language the UI is in (#2932).
+//
+// A body that is not JSON at all (a proxy's HTML error page, a truncated file)
+// resolves to '' so the axios message stays the fallback.
+async function refusalText(data) {
+  if (!data) return ''
+  if (typeof data === 'object' && typeof data.text === 'function') {
+    try {
+      return JSON.parse(await data.text())?.error || ''
+    } catch {
+      return ''
+    }
+  }
+  return data.error || ''
+}
+
 api.interceptors.response.use(
   (res) => {
     if (!res.config?.skipLoader) reqEnd(true)
@@ -187,7 +211,7 @@ api.interceptors.response.use(
     if (refreshOffline) setOffline(true)
     // No message at all → humanizeError answers with its own generic line from
     // the catalogue; a literal here would be one more untranslated string.
-    const raw = err.response?.data?.error || err.message || ''
+    const raw = (await refusalText(err.response?.data)) || err.message || ''
     const wrapped = new Error(humanizeError(raw))
     // Keep the HTTP status reachable: most callers just show `e.message`, but a
     // few need to tell one failure from another (e.g. 409 "address taken" is

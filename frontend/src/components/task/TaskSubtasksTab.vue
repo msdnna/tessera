@@ -105,7 +105,7 @@ async function pushChild(sub) {
     // the row updates when the write-back lands and the parent is re-fetched.
     message.success(t('task.subtasks.pushQueued'))
   } catch (e) {
-    message.error(e?.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     const next = new Set(pushing.value)
     next.delete(sub.id)

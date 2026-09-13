@@ -113,7 +113,10 @@ async function loadDetail(id) {
     // page instead of leaving the previous conference on screen under a new id.
     detail.value = null
     detailMissing.value = true
-    if (e.response?.status !== 404 && e.response?.status !== 403) message.error(e.message)
+    // `e.status`, not `e.response.status` — see the note in ConferenceChat: the
+    // api client rejects with an error of its own, and this check silently
+    // matched nothing, so the page said "conference not found" *and* toasted it.
+    if (e.status !== 404 && e.status !== 403) message.error(e.message)
   } finally {
     detailLoading.value = false
   }
@@ -140,7 +143,7 @@ async function act(fn, toast) {
     detail.value.participants = parts || []
     if (toast) message.success(t(toast))
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     busy.value = false
   }
@@ -157,7 +160,7 @@ async function remove(conf) {
     if (openId.value === conf.id) backToList()
     else await load()
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 
@@ -211,7 +214,7 @@ async function inviteOne(userId) {
     detail.value.participants = parts || []
     message.success(t('conferences.invite.sent', { count: 1 }))
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 
@@ -263,7 +266,7 @@ async function submit() {
     await load()
     if (data?.id) open(data)
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     dlg.value.saving = false
   }

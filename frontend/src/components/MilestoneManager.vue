@@ -88,7 +88,7 @@ async function pushToGitlab(m) {
     emit('changed')
     message.success(t('milestones.manager.pushed'))
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     pushing.value = null
   }

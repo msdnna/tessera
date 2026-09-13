@@ -47,7 +47,7 @@ async function load() {
     rows.value = data || []
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   } finally {
     loading.value = false
   }
@@ -77,7 +77,7 @@ async function download(rec) {
     setTimeout(() => URL.revokeObjectURL(url), 60000)
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   } finally {
     busyId.value = ''
   }
@@ -89,7 +89,7 @@ async function remove(rec) {
     rows.value = rows.value.filter((r) => r.id !== rec.id)
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   }
 }
 

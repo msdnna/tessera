@@ -172,6 +172,26 @@ export function exportFileName(title, format) {
 }
 
 /**
+ * Catalog key for an export the server refused, or null to let the caller keep
+ * the humanized message it already has.
+ *
+ * Keyed on the status, not on the body: the backend phrases both of these
+ * refusals in Russian of its own ("сервис конвертации документов недоступен"),
+ * which is the wrong language half the time. 503 is the sidecar being
+ * unreachable — nothing the user can act on, but worth naming rather than
+ * leaving as "could not export"; 422 is the sidecar refusing this particular
+ * document. Everything else (403, 404, 500) already has a catalogue line.
+ *
+ * @param {number|undefined} status
+ * @returns {string|null}
+ */
+export function exportRefusalKey(status) {
+  if (status === 503) return 'documents.view.error.exportUnavailable'
+  if (status === 422) return 'documents.view.error.exportFailed'
+  return null
+}
+
+/**
  * Hands a downloaded blob to the browser.
  *
  * The object URL is revoked afterwards; without that every export leaks the

@@ -150,7 +150,7 @@ async function load() {
     routes.value = r.data || []
     Object.assign(prefs, p.data || {})
   } catch (e) {
-    loadError.value = e.response?.data?.error || e.message
+    loadError.value = e.message
   } finally {
     loading.value = false
   }
@@ -169,7 +169,7 @@ async function savePrefs() {
     prefsSaved.value = true
     setTimeout(() => (prefsSaved.value = false), 2000)
   } catch (e) {
-    loadError.value = e.response?.data?.error || e.message
+    loadError.value = e.message
   } finally {
     prefsSaving.value = false
   }
@@ -263,7 +263,7 @@ async function saveChannel() {
     chModal.value = false
     await load()
   } catch (e) {
-    chErr.value = e.response?.data?.error || e.message
+    chErr.value = e.message
   } finally {
     chSaving.value = false
   }
@@ -292,7 +292,7 @@ async function testChannel(c) {
     testState[c.id] = { ok: true, msg: res.data?.warning || t('settings.notifications.testSent') }
     await load()
   } catch (e) {
-    testState[c.id] = { ok: false, msg: e.response?.data?.error || e.message }
+    testState[c.id] = { ok: false, msg: e.message }
   }
 }
 
@@ -365,7 +365,7 @@ async function runPreview() {
       tplError.value = res.data.error
     }
   } catch (e) {
-    tplError.value = e.response?.data?.error || e.message
+    tplError.value = e.message
   }
 }
 
@@ -455,7 +455,7 @@ async function saveRoute() {
     rtModal.value = false
     await load()
   } catch (e) {
-    rtErr.value = e.response?.data?.error || e.message
+    rtErr.value = e.message
   } finally {
     rtSaving.value = false
   }

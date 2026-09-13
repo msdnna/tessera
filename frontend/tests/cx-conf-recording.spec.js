@@ -287,10 +287,17 @@ describe('ConferenceRoom — the button and the dot', () => {
   })
 
   it('prints the server refusal verbatim instead of a shrug', async () => {
-    // What a server without the recording profile running actually answers.
-    api.startRecording.mockRejectedValue({
-      response: { data: { error: 'recording is not configured on this server' } },
-    })
+    // What a server without the recording profile running actually answers —
+    // in the shape the api client hands to a caller: an Error whose `message`
+    // is the humanized line and whose `raw` is the server's own English. No
+    // axios `response` (pinned in st-api.spec.js), which is what the panel used
+    // to read (#2932).
+    api.startRecording.mockRejectedValue(
+      Object.assign(new Error('recording is not configured on this server'), {
+        status: 503,
+        raw: 'recording is not configured on this server',
+      }),
+    )
     const { w } = await room({ canModerate: true })
     await w.find('[data-testid="conference-record"]').trigger('click')
     await flushPromises()

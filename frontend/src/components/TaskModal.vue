@@ -854,7 +854,7 @@ async function createGlIssue() {
     )
     emit('changed')
   } catch (e) {
-    message.error(e?.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     glCreating.value = false
   }
@@ -881,7 +881,7 @@ async function toggleGlGroup() {
     message.success(grouped ? t('task.gitlab.groupCleared') : t('task.gitlab.groupSet'))
     emit('changed')
   } catch (e) {
-    message.error(e?.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     glGrouping.value = false
   }

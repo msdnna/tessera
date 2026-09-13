@@ -104,6 +104,42 @@ describe('loading the conversation', () => {
     w.unmount()
   })
 
+  // The rail's own note says a 403/404 means the call went away under us and
+  // the screen around it already says so. That test read `e.response.status`,
+  // and the api client rejects with a plain Error carrying `status` — no
+  // `response` at all (#2932) — so the check never matched and the second toast
+  // was shown every time.
+  function refusal(status) {
+    const e = new Error('нет доступа')
+    e.status = status
+    e.offline = false
+    return e
+  }
+
+  it('stays quiet when the call it belongs to is gone', async () => {
+    toast.error.mockClear()
+    api.messages.mockRejectedValue(refusal(404))
+    const w = await rail()
+    expect(toast.error).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('stays quiet when the call is no longer ours to read', async () => {
+    toast.error.mockClear()
+    api.messages.mockRejectedValue(refusal(403))
+    const w = await rail()
+    expect(toast.error).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('still says so when the refusal is not about the call going away', async () => {
+    toast.error.mockClear()
+    api.messages.mockRejectedValue(refusal(500))
+    const w = await rail()
+    expect(toast.error).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
   it('opens on the newest message once the rail actually shows it', async () => {
     // The room keeps this component alive behind v-show so switching tabs does
     // not refetch — which means the first load lands on a display:none element,

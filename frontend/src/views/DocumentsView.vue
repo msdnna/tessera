@@ -40,6 +40,7 @@ import {
   EXPORT_LABELS,
   downloadBlob,
   exportFileName,
+  exportRefusalKey,
   importAccept,
   importOfficeFile,
   needsConverter,
@@ -752,12 +753,17 @@ async function exportAs(format) {
 }
 
 // An export failure arrives as a Blob, not as JSON, because responseType is
-// blob for the whole request — so the interceptor's message is not usable and
-// the reason has to be read back out of the body.
+// blob for the whole request; the interceptor reads the sentence back out of
+// the body (api/index.js), and the two refusals the sidecar owns are named off
+// the status instead — the server phrases those two in Russian of its own.
+//
+// `err.status`, not `err.response.status`: the interceptor rejects with an
+// error of its own making and puts the status there. Reading `.response` gave
+// undefined every time, so both branches below were dead and the locale lines
+// they point at had never been shown (#2932).
 function exportError(err) {
-  const status = err?.response?.status
-  if (status === 503) return t('documents.view.error.exportUnavailable')
-  if (status === 422) return t('documents.view.error.exportFailed')
+  const key = exportRefusalKey(err?.status)
+  if (key) return t(key)
   return err?.message || t('documents.view.error.exportGeneric')
 }
 
