@@ -97,9 +97,17 @@ async function loadDetail(id) {
   try {
     const { data } = await confApi.get(id)
     detail.value = data
+    // An invitation notification deep-links straight here, and the backend
+    // authorises a call against ITS workspace — so the lobby can open while the
+    // app is still pointed at the remembered one. Every scope decision on this
+    // page reads currentId (the realtime filter below, the invite roster), so it
+    // has to follow the call, exactly as BoardView follows a linked board (#2721).
+    // Idempotent when we are already there.
+    const confWs = data?.conference?.workspace_id
+    if (confWs) await ws.ensureWorkspace(confWs)
     // Prefetch the workspace roster so the room's invite popover is ready before
     // it is opened; skipped for an ended call, which cannot be invited to.
-    if (canInvite.value) loadMembers()
+    if (canInvite.value) loadMembers(confWs)
   } catch (e) {
     // A deleted (or foreign-workspace) conference answers 404 — say so on the
     // page instead of leaving the previous conference on screen under a new id.
@@ -177,12 +185,16 @@ const invitable = computed(() => {
 const canInvite = computed(() => detail.value && detail.value.conference.status !== 'ended')
 
 // Loaded once the lobby opens, so the popover's list is ready on the first click.
+// Asked for the CALL's workspace, not the remembered one: the server lets only
+// members of the call's workspace be invited, so a roster read off currentId
+// would offer people it then refuses and hide the colleagues actually in reach.
 // Silent on failure: the popover just shows an empty list until it succeeds —
 // nothing the person opening a call needs a red toast about.
-async function loadMembers() {
-  if (!wsApi?.members || !ws.currentId) return
+async function loadMembers(wsID) {
+  const scope = wsID || ws.currentId
+  if (!wsApi?.members || !scope) return
   try {
-    const { data } = await wsApi.members(ws.currentId)
+    const { data } = await wsApi.members(scope)
     members.value = data || []
   } catch {
     // non-fatal; invitable stays empty
@@ -359,10 +371,15 @@ watch(
 watch(filter, load)
 watch(
   () => ws.currentId,
-  () => {
+  (id) => {
     // Switching workspaces while a conference is open leaves that conference
-    // outside the visible scope — go back to the list rather than 403.
-    if (openId.value) router.push('/conferences')
+    // outside the visible scope — go back to the list rather than 403. Unless we
+    // switched INTO the open call's own workspace, which is loadDetail pulling
+    // the scope after a deep link: that is the call arriving in scope, not
+    // leaving it, and bouncing there would close the lobby we just opened.
+    if (openId.value && detail.value?.conference?.workspace_id !== id) {
+      router.push('/conferences')
+    }
     load()
   },
 )

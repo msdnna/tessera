@@ -31,7 +31,15 @@ const api = {
   token: vi.fn(() => Promise.reject(new Error('no media in jsdom'))),
 }
 // The invite popover (#2891) prefetches the workspace roster when a lobby opens.
-const wsApi = { members: vi.fn(() => Promise.resolve({ data: [] })) }
+// groups/projects/commands are what selectWorkspace fetches — a conference opened
+// by link may live outside the remembered workspace and has to pull the scope
+// after it (#2932), which runs that path.
+const wsApi = {
+  members: vi.fn(() => Promise.resolve({ data: [] })),
+  groups: vi.fn(() => Promise.resolve({ data: [] })),
+  projects: vi.fn(() => Promise.resolve({ data: [] })),
+  commands: vi.fn(() => Promise.resolve({ data: { builtin: [], custom: [] } })),
+}
 // getAccessToken is what useRealtime reads on mount; null keeps the socket from
 // ever opening in jsdom (it retries on a timer, which unmount clears).
 vi.mock('@/api', () => ({ conferences: api, workspaces: wsApi, getAccessToken: () => null }))
@@ -256,6 +264,36 @@ describe('one conference', () => {
     useAuthStore().user = { id: 'u9', is_admin: false }
     await flushPromises()
     expect(w.vm.canModerate).toBe(false)
+  })
+
+  it('follows a call opened by link into its own workspace (#2932)', async () => {
+    // The invitation notification deep-links straight to /conferences/<id>, and the
+    // backend authorises the call against ITS workspace — so the lobby opens while
+    // the app is still pointed at the remembered one. Every scope decision here
+    // reads currentId: the realtime filter (`ev.scope !== ws.currentId`) would drop
+    // the call's own events, and the invite roster would be the wrong workspace's
+    // members, none of whom the server will let into this call.
+    api.get.mockResolvedValue({
+      data: { conference: conf({ workspace_id: 'ws2' }), participants: [part()] },
+    })
+    const { w, router } = await mountAt('/conferences/c1')
+    await flushPromises()
+    expect(useWorkspacesStore().currentId).toBe('ws2')
+    expect(wsApi.members).toHaveBeenCalledWith('ws2')
+    // …and pulling the scope across must not trip the guard that bounces an open
+    // call when the user switches workspaces by hand: this IS its workspace.
+    expect(router.currentRoute.value.path).toBe('/conferences/c1')
+    expect(w.text()).toContain('Ежедневная летучка')
+  })
+
+  it('still bounces an open call when the user switches away by hand', async () => {
+    // The other half of the guard above: a hand-picked workspace leaves the call
+    // outside the visible scope, and the lobby has to close rather than 403.
+    api.get.mockResolvedValue({ data: { conference: conf(), participants: [part()] } })
+    const { router } = await mountAt('/conferences/c1')
+    useWorkspacesStore().currentId = 'ws9'
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/conferences')
   })
 
   it('reports a deleted conference instead of leaving the previous one on screen', async () => {
