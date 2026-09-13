@@ -651,10 +651,22 @@ func (h *API) DeleteProject(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.q.DeleteProject(c, p.ID); err != nil {
+	// A project's tasks are two cascades away (project → board → task), so the
+	// sweep has to resolve them rather than read them off the id in the URL.
+	// Transactional for the same reason as DeleteBoard: the list must be what the
+	// delete actually took.
+	var gone []uuid.UUID
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		if gone, err = q.TaskIDsInProject(c, p.ID); err != nil {
+			return err
+		}
+		return q.DeleteProject(c, p.ID)
+	}); err != nil {
 		fail(c, err)
 		return
 	}
+	h.purgeTaskUploads(gone)
 	h.broadcast(p.WorkspaceID, "project.deleted", gin.H{"id": p.ID})
 	c.Status(http.StatusNoContent)
 }

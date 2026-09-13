@@ -379,6 +379,33 @@ WITH RECURSIVE down AS (
 )
 DELETE FROM tasks WHERE tasks.id IN (SELECT id FROM down) RETURNING tasks.id;
 
+-- TaskIDsInColumn / TaskIDsOnBoard / TaskIDsInProject / TaskIDsInWorkspace name the
+-- tasks a container delete is about to take by cascade, so their upload directories
+-- can be swept the way DeleteTask sweeps its own (purgeTaskUploads).
+--
+-- DELETE ... RETURNING cannot answer this: it returns the rows of the table named in
+-- the statement, never the ones the foreign keys took afterwards. So the ids are read
+-- first, inside the same transaction as the delete — a snapshot no concurrent insert
+-- can slip a task past.
+--
+-- Subtasks need no recursion here, unlike DeleteTask: every task carries its own
+-- board_id/column_id (MoveSubtreeToBoard exists to keep it that way), so a subtree is
+-- already wholly inside whichever container holds its root.
+-- name: TaskIDsInColumn :many
+SELECT id FROM tasks WHERE column_id = $1;
+
+-- name: TaskIDsOnBoard :many
+SELECT id FROM tasks WHERE board_id = $1;
+
+-- name: TaskIDsInProject :many
+SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1;
+
+-- name: TaskIDsInWorkspace :many
+SELECT t.id FROM tasks t
+JOIN boards b ON b.id = t.board_id
+JOIN projects p ON p.id = b.project_id
+WHERE p.workspace_id = $1;
+
 -- SetTaskDueNotify sets a task's per-task due-notification overrides (NULL = inherit
 -- the user default). Used by the card's due popover.
 -- name: SetTaskDueNotify :one

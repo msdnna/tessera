@@ -1258,6 +1258,117 @@ func (q *Queries) TaskAncestorIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUI
 	return items, nil
 }
 
+const taskIDsInColumn = `-- name: TaskIDsInColumn :many
+SELECT id FROM tasks WHERE column_id = $1
+`
+
+// TaskIDsInColumn / TaskIDsOnBoard / TaskIDsInProject / TaskIDsInWorkspace name the
+// tasks a container delete is about to take by cascade, so their upload directories
+// can be swept the way DeleteTask sweeps its own (purgeTaskUploads).
+//
+// DELETE ... RETURNING cannot answer this: it returns the rows of the table named in
+// the statement, never the ones the foreign keys took afterwards. So the ids are read
+// first, inside the same transaction as the delete — a snapshot no concurrent insert
+// can slip a task past.
+//
+// Subtasks need no recursion here, unlike DeleteTask: every task carries its own
+// board_id/column_id (MoveSubtreeToBoard exists to keep it that way), so a subtree is
+// already wholly inside whichever container holds its root.
+func (q *Queries) TaskIDsInColumn(ctx context.Context, columnID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskIDsInColumn, columnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taskIDsInProject = `-- name: TaskIDsInProject :many
+SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1
+`
+
+func (q *Queries) TaskIDsInProject(ctx context.Context, projectID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskIDsInProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taskIDsInWorkspace = `-- name: TaskIDsInWorkspace :many
+SELECT t.id FROM tasks t
+JOIN boards b ON b.id = t.board_id
+JOIN projects p ON p.id = b.project_id
+WHERE p.workspace_id = $1
+`
+
+func (q *Queries) TaskIDsInWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskIDsInWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taskIDsOnBoard = `-- name: TaskIDsOnBoard :many
+SELECT id FROM tasks WHERE board_id = $1
+`
+
+func (q *Queries) TaskIDsOnBoard(ctx context.Context, boardID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskIDsOnBoard, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transferTask = `-- name: TransferTask :one
 UPDATE tasks
 SET board_id = $2, column_id = $3, parent_id = NULL, position = $4,

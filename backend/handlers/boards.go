@@ -308,10 +308,22 @@ func (h *API) DeleteBoard(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	if err := h.q.DeleteBoard(c, id); err != nil {
+	// Retiring a board takes every card on it through tasks.board_id's cascade —
+	// the same deletion DeleteTask sweeps after, reached by a different gesture.
+	// Read the ids and delete in one transaction so the sweep list is exactly what
+	// the delete took, then sweep once it is committed.
+	var gone []uuid.UUID
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		if gone, err = q.TaskIDsOnBoard(c, id); err != nil {
+			return err
+		}
+		return q.DeleteBoard(c, id)
+	}); err != nil {
 		fail(c, err)
 		return
 	}
+	h.purgeTaskUploads(gone)
 	h.broadcast(wsID, "board.deleted", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
@@ -530,10 +542,20 @@ func (h *API) DeleteColumn(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	if err := h.q.DeleteColumn(c, id); err != nil {
+	// Same cascade as DeleteBoard, one level down: tasks.column_id is the FK, so
+	// dropping a column deletes every card standing in it. See TaskIDsInColumn.
+	var gone []uuid.UUID
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		if gone, err = q.TaskIDsInColumn(c, id); err != nil {
+			return err
+		}
+		return q.DeleteColumn(c, id)
+	}); err != nil {
 		fail(c, err)
 		return
 	}
+	h.purgeTaskUploads(gone)
 	h.broadcast(wsID, "column.deleted", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }

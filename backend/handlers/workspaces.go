@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"tessera/internal/db"
 	"tessera/middleware"
@@ -126,10 +127,20 @@ func (h *API) DeleteWorkspace(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "only the owner can delete the workspace"})
 		return
 	}
-	if err := h.q.DeleteWorkspace(c, id); err != nil {
+	// The widest of the four container deletes — three cascades from here to a
+	// task — and the only one after which nobody is left to notice the files.
+	var gone []uuid.UUID
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		if gone, err = q.TaskIDsInWorkspace(c, id); err != nil {
+			return err
+		}
+		return q.DeleteWorkspace(c, id)
+	}); err != nil {
 		fail(c, err)
 		return
 	}
+	h.purgeTaskUploads(gone)
 	c.Status(http.StatusNoContent)
 }
 
