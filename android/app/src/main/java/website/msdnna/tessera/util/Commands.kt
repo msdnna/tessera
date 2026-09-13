@@ -39,6 +39,25 @@ fun canonCommandKey(raw: String?): String =
 
 fun isValidCommandKey(key: String?): Boolean = KEY_RE.matches(canonCommandKey(key))
 
+/**
+ * Every key the backend treats as built-in: the registry keys AND their aliases.
+ * `quickact.byKey` maps both, and `IsBuiltin` — what the dictionary PUT checks —
+ * looks the key up in that same map. Collecting only `key` lets a custom "/done"
+ * (alias of /close) or "/status" (alias of /move) past the editor's inline
+ * validation and into a 400 that rejects the WHOLE dictionary, with an error
+ * that cannot name the offending row. Mirrors web `builtinCommandKeys`.
+ */
+fun builtinCommandKeys(items: List<CommandDef>): Set<String> {
+    val out = LinkedHashSet<String>()
+    for (cmd in items) {
+        for (raw in listOf(cmd.key) + cmd.aliases.orEmpty()) {
+            val key = canonCommandKey(raw)
+            if (key.isNotEmpty()) out.add(key)
+        }
+    }
+    return out
+}
+
 /** An open `/`-query: [start] is the index of the slash, [query] what follows it. */
 data class SlashQuery(val start: Int, val query: String)
 
@@ -129,9 +148,21 @@ val BUILTIN_COMMAND_DESCRIPTIONS: Map<String, Int> = mapOf(
  */
 fun localizedCommands(items: List<CommandItem>, resources: Resources): List<CommandItem> =
     items.map { item ->
-        val res = if (item.builtin) BUILTIN_COMMAND_DESCRIPTIONS[item.key] else null
-        if (res == null) item else item.copy(description = resources.getString(res))
+        if (!item.builtin) {
+            item
+        } else {
+            item.copy(description = builtinCommandDescription(resources, item.key, item.description))
+        }
     }
+
+/**
+ * Описание встроенной команды на языке интерфейса, с серверным текстом как
+ * фолбэком. Отдельная функция нужна справочному списку встроенных команд в
+ * редакторе словаря: там строки — это [CommandDef] прямо из реестра, а не уже
+ * собранные [CommandItem] попапа, и без этого список оставался русским.
+ */
+fun builtinCommandDescription(resources: Resources, key: String, fallback: String): String =
+    BUILTIN_COMMAND_DESCRIPTIONS[key]?.let(resources::getString) ?: fallback
 
 /**
  * Filters rows for a query, matching key, aliases and description (so «срок»

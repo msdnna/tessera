@@ -75,6 +75,24 @@ class CommandsTest {
     }
 
     @Test
+    fun `the taken-keys set covers aliases, not just registry keys`() {
+        // The backend maps aliases into the same byKey table IsBuiltin reads, so a
+        // custom "/done" (alias of /close) is rejected there just like "/close".
+        // Missing it here makes Save look available and the PUT fail as a whole.
+        val taken = builtinCommandKeys(builtin)
+        assertTrue("close" in taken)
+        assertTrue("done" in taken)
+        assertTrue("assignee" in taken)
+        assertTrue("due_date" in taken)
+        assertFalse("approve" in taken)
+        // Keys arrive canonicalised, and a blank one is not a taken name.
+        assertEquals(setOf("assign", "assignee", "due", "due_date", "close", "done"), taken)
+        assertTrue(builtinCommandKeys(listOf(CommandDef(key = " /Done "))).contains("done"))
+        assertTrue(builtinCommandKeys(listOf(CommandDef(key = ""))).isEmpty())
+        assertTrue(builtinCommandKeys(emptyList()).isEmpty())
+    }
+
+    @Test
     fun `matching spans key, aliases and description`() {
         assertEquals(listOf("assign"), matchCommands(items, "assignee").map { it.key })
         assertEquals(listOf("due"), matchCommands(items, "срок").map { it.key })
