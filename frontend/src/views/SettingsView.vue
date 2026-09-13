@@ -10,6 +10,7 @@ import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
 import { useFormat } from '@/composables/useFormat'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
+import { serverUrlMessage } from '@/utils/servers'
 import { useApiImage } from '@/composables/useApiImage'
 import { AVATAR_MAX_BYTES, AVATAR_TYPES, avatarPickError } from '@/utils/avatar'
 import { isPasswordValid, passwordError } from '@/utils/password'
@@ -21,8 +22,12 @@ const { t } = useI18n()
 // Desktop-only settings: configurable server address + self-update.
 const isDesktop = isTauri()
 const serverAddr = ref(serverBase())
+// Same rule as the rail's edit modal and the login-screen popover: an address
+// that is not an absolute http(s) origin is refused, not stored — see
+// utils/servers.js serverUrlError() for what committing one costs.
+const serverAddrError = computed(() => serverUrlMessage(serverAddr.value, t))
 function saveServerAddr() {
-  setServerBase(serverAddr.value)
+  if (!setServerBase(serverAddr.value)) return
   location.reload()
 }
 const {
@@ -488,8 +493,9 @@ async function resendVerify() {
           :placeholder="t('settings.app.serverAddrPlaceholder')"
         />
       </label>
+      <div v-if="serverAddrError" class="settings-server-error">{{ serverAddrError }}</div>
       <div class="row-end">
-        <n-button type="primary" @click="saveServerAddr">{{
+        <n-button type="primary" :disabled="!!serverAddrError" @click="saveServerAddr">{{
           t('settings.app.saveAndRestart')
         }}</n-button>
       </div>
@@ -633,6 +639,12 @@ async function resendVerify() {
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+}
+/* Same error red as the rail's edit modal (.se-error) — one refusal, one look. */
+.settings-server-error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #d03050;
 }
 .swatches {
   display: flex;

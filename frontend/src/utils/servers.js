@@ -61,6 +61,44 @@ export function normalizeUrl(url) {
   return (url || '').trim().replace(/\/+$/, '')
 }
 
+// serverUrlError validates a typed server address. It answers '' when the
+// address is usable, or a reason code the caller renders as a message:
+// 'empty', 'parse' (not a URL at all — a host with no scheme is the common
+// typo) or 'scheme' (parses, but not something the app can talk to).
+//
+// This is the single guard for every door into the registry, and it has to be
+// one: an address that is not an absolute http(s) origin does more than fail to
+// connect. `${base}/api` turns into a *relative* axios baseURL that resolves
+// against tauri://localhost, wsURL() throws outright on `new URL(base)` — and,
+// worst of it, updateServer() below purges the profile's namespace whenever the
+// host changes, with an unparseable address reading as "different host". So
+// committing the typo silently signs the user out of the very server they were
+// aiming at.
+export function serverUrlError(url) {
+  const clean = normalizeUrl(url)
+  if (!clean) return 'empty'
+  let parsed
+  try {
+    parsed = new URL(clean)
+  } catch {
+    return 'parse'
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? '' : 'scheme'
+}
+
+// serverUrlMessage renders serverUrlError()'s code as a sentence. `t` is passed
+// in rather than imported: this module is loaded by the api layer and by the
+// storage wrapper, neither of which has (or should have) an i18n instance.
+// 'empty' maps to no message on purpose — an empty address is not a mistake,
+// it means "restore the built-in default" on the two address fields and is
+// already covered by the required-field state in the rail's edit modal.
+export function serverUrlMessage(url, t) {
+  const code = serverUrlError(url)
+  if (code === 'scheme') return t('shell.servers.errUrlScheme')
+  if (code === 'parse') return t('shell.servers.errUrl')
+  return ''
+}
+
 // serverLabel is the fallback display name: the host of the address.
 export function serverLabel(url) {
   try {
@@ -247,13 +285,22 @@ export function removeServer(id) {
 // popover and the settings screen): it re-points the active profile instead of
 // writing the legacy key. On web — where there is no profile — it keeps writing
 // the legacy key, so nothing about the browser build changes.
+//
+// Returns whether the address was accepted. An empty one still means "restore
+// the built-in default" (that is what the field's placeholder promises), but
+// anything else serverUrlError() rejects is refused outright rather than
+// stored — see the note there for why a bad address is not merely a dead link.
+// The rail's edit modal validates before it ever gets here; these two older
+// fields did not, which is what this guard is for.
 export function setActiveServerUrl(url) {
   const clean = normalizeUrl(url)
+  if (clean && serverUrlError(clean)) return false
   const id = activeServerId()
   if (!id) {
     if (clean) localStorage.setItem(LEGACY_BASE_KEY, clean)
     else localStorage.removeItem(LEGACY_BASE_KEY)
-    return
+    return true
   }
   updateServer(id, { url: clean || DEFAULT_BASE })
+  return true
 }

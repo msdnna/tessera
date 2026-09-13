@@ -14,6 +14,7 @@ import { SunnyOutline, MoonOutline, ServerOutline } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { SUPPORTED_LOCALES, normalizeLocale } from '@/i18n'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
+import { serverUrlMessage } from '@/utils/servers'
 import DownloadAppButton from '@/components/DownloadAppButton.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 
@@ -29,8 +30,13 @@ const theme = useThemeStore()
 const desktop = isTauri()
 const showServer = ref(false)
 const serverInput = ref(serverBase())
+// Same rule as the rail's edit modal. An address that is not an absolute
+// http(s) origin is refused rather than stored: it would leave axios with a
+// relative baseURL and — because re-pointing a profile at another host purges
+// its namespace — take the session of the server being aimed at with it.
+const serverError = computed(() => serverUrlMessage(serverInput.value, t))
 function saveServer() {
-  setServerBase(serverInput.value)
+  if (!setServerBase(serverInput.value)) return
   // Reload so axios (baseURL) and the WS reconnect against the new origin.
   location.reload()
 }
@@ -127,7 +133,8 @@ onBeforeUnmount(() => {
             size="small"
             @keyup.enter="saveServer"
           />
-          <n-button size="small" type="primary" block @click="saveServer">
+          <div v-if="serverError" class="auth-server-error">{{ serverError }}</div>
+          <n-button size="small" type="primary" block :disabled="!!serverError" @click="saveServer">
             {{ t('common.action.save') }}
           </n-button>
         </div>
@@ -241,6 +248,11 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 600;
   color: var(--t-text1);
+}
+/* Same error red as the rail's edit modal (.se-error) — one refusal, one look. */
+.auth-server-error {
+  font-size: 12px;
+  color: #d03050;
 }
 
 .auth-stage {
