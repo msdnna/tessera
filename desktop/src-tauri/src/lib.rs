@@ -8,6 +8,7 @@
 // Phase 4: media permissions for conferences — camera/mic/screen share (#2929).
 
 mod media;
+mod tray;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -53,6 +54,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![tray::set_tray_language])
         .setup(|app| {
             // Installers (.deb/.rpm/NSIS) register tessera:// system-wide, but an
             // AppImage installs nothing and `tauri dev` never runs an installer — so
@@ -69,9 +71,18 @@ pub fn run() {
             media::setup(app.handle());
 
             // System tray: menu (open / quit) + left-click to show the window.
-            let show = MenuItem::with_id(app, "show", "Открыть Tessera", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+            //
+            // The wording starts on the OS locale — the only language hint available
+            // before the webview has logged in and read the user's own choice — and is
+            // re-labelled over `set_tray_language` the moment it has (see tray.rs).
+            let labels = tray::labels(tray::os_language());
+            let show = MenuItem::with_id(app, "show", labels.show, true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
+            app.manage(tray::Tray {
+                show: show.clone(),
+                quit: quit.clone(),
+            });
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Tessera")
@@ -221,6 +232,30 @@ mod hardening {
         assert!(
             global.is_null() || global == &Value::Bool(false),
             "app.withGlobalTauri must stay off: {global}"
+        );
+    }
+
+    // The tray is the one piece of interface this crate draws itself, so it is also the
+    // one piece vue-i18n cannot reach: a literal here ships in whatever language it was
+    // typed in, next to a webview the user has already switched to the other one. Keeping
+    // the shell free of display text is what forces every label through tray::labels(),
+    // where both languages sit side by side and the unit tests can see them.
+    #[test]
+    fn the_shell_holds_no_display_text_of_its_own() {
+        const SHELL: &str = include_str!("lib.rs");
+        let lines: Vec<String> = SHELL
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| {
+                !l.trim_start().starts_with("//")
+                    && l.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
+            })
+            .map(|(i, l)| format!("{}: {}", i + 1, l.trim()))
+            .collect();
+        assert!(
+            lines.is_empty(),
+            "hard-coded interface text in the shell — move it to tray::labels():\n{}",
+            lines.join("\n")
         );
     }
 
