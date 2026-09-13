@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -399,4 +401,42 @@ func (h *API) inTx(ctx context.Context, fn func(q *db.Queries) error) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// callerLocation resolves the calendar the caller lives in, for the handlers that
+// bucket data by day: the zone sent with the request, else the one stored in the
+// profile, else the server's own.
+//
+// The query parameter comes first because an empty profile zone does not mean UTC
+// on the web client — it means "whatever the browser is", a blank the server
+// cannot re-derive, which is why anything sent to the backend carries the resolved
+// zone (see resolvedTimezone in frontend/src/utils/format.js). A zone that fails
+// to load falls through to the next source rather than failing the request: these
+// are summary counts, and a client that sent a typo gets the old behaviour, not a
+// broken screen.
+func (h *API) callerLocation(c *gin.Context, uid uuid.UUID) *time.Location {
+	if loc, ok := loadLocation(c.Query("tz")); ok {
+		return loc
+	}
+	if p, err := h.q.GetUserPreferences(c, uid); err == nil {
+		if loc, ok := loadLocation(p.Timezone); ok {
+			return loc
+		}
+	}
+	return time.Local
+}
+
+// loadLocation resolves an IANA zone name, reporting whether it named one at all.
+// An empty string is "unset", not UTC — time.LoadLocation maps it to UTC, which
+// would swallow the difference between "no preference" and "explicitly UTC".
+func loadLocation(tz string) (*time.Location, bool) {
+	tz = strings.TrimSpace(tz)
+	if tz == "" {
+		return nil, false
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return nil, false
+	}
+	return loc, true
 }

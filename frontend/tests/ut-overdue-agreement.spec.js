@@ -66,7 +66,7 @@ vi.mock('@/api', () => {
     users: { updatePrefs: vi.fn() },
     columns: { update: vi.fn(), remove: vi.fn() },
     workspaces: {
-      summary: () => ok({ assigned: 1, active: 1, overdue: 0, due_today: 1, due_week: 1 }),
+      summary: vi.fn(() => ok({ assigned: 1, active: 1, overdue: 0, due_today: 1, due_week: 1 })),
       tasks: () => ok([FIX.dueToday, FIX.dueYesterday]),
       tags: () => ok([]),
       tagPrefixes: () => ok([]),
@@ -177,5 +177,24 @@ describe('the home list', () => {
     const reds = w.findAll('.t-due').map((el) => el.classes().includes('overdue'))
     // Row order follows the mocked list: due today first, due yesterday second.
     expect(reds).toEqual([false, true])
+  })
+
+  // The rows above are bucketed by this browser's calendar day; the tiles counting
+  // them are bucketed by the server. They only agree if the request carries the
+  // zone — an omitted one reads as UTC on the backend, which moves the day edge by
+  // the whole offset and files a task due today under «Просрочено» all day long.
+  it('asks for the counts in the caller‘s own zone', async () => {
+    const { workspaces } = await import('@/api')
+    await mountHome()
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    expect(workspaces.summary).toHaveBeenCalledWith('w1', browserTz)
+  })
+
+  it('prefers the zone picked in the profile over the browser‘s', async () => {
+    const { workspaces } = await import('@/api')
+    const { useThemeStore } = await import('@/stores/theme')
+    useThemeStore().timezone = 'Etc/GMT-14'
+    await mountHome()
+    expect(workspaces.summary).toHaveBeenCalledWith('w1', 'Etc/GMT-14')
   })
 })

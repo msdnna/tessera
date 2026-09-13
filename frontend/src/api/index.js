@@ -340,7 +340,10 @@ export const workspaces = {
   tasks: (id, params) => api.get(`/workspaces/${id}/tasks`, { params }),
   // Resolve a per-workspace task number (#252) to its task — for /board/<slug>?task=<number> links.
   taskByNumber: (id, number) => api.get(`/workspaces/${id}/tasks/by-number/${number}`),
-  summary: (id) => api.get(`/workspaces/${id}/summary`),
+  // `tz` is the caller's resolved IANA zone: the day buckets (overdue / today /
+  // this week) are calendar days, and they have to be the same days the list
+  // under the tiles is filtered by. Omitting it falls back to the profile zone.
+  summary: (id, tz) => api.get(`/workspaces/${id}/summary`, { params: { tz } }),
   // Every tag across the workspace's projects — read-only, for cross-project
   // views (Home). Tags are created/listed per-project (see `projects` below).
   tags: (id) => sharedGet(`/workspaces/${id}/tags`),

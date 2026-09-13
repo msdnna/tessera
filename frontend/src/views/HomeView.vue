@@ -8,6 +8,8 @@ import { workspaces as wsApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
+import { useThemeStore } from '@/stores/theme'
+import { resolvedTimezone } from '@/utils/format'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { taskColumnName } from '@/utils/defaultNames'
@@ -21,6 +23,7 @@ const { t } = useI18n()
 const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
+const theme = useThemeStore()
 
 const loading = ref(false)
 const summary = ref(null)
@@ -81,7 +84,10 @@ async function load() {
     // Destructured as `tasks`, not `t` — the short name is the translation
     // function in this file now.
     const [s, tasks, tg, pfx, mem] = await Promise.all([
-      wsApi.summary(wsId),
+      // The zone goes with the request: the tiles count calendar days, and the
+      // rows below them are bucketed by this browser's. An empty profile zone
+      // means "browser local" here and UTC on the server, so send the resolved one.
+      wsApi.summary(wsId, resolvedTimezone(theme.timezone)),
       wsApi.tasks(wsId),
       wsApi.tags(wsId),
       wsApi.tagPrefixes(wsId),

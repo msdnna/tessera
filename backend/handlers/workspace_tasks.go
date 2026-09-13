@@ -40,16 +40,22 @@ func (h *API) WorkspaceSummary(c *gin.Context) {
 		return
 	}
 	// Day boundaries stay in Go: a due date is bucketed by its own calendar day, and
-	// pgx hands timestamptz back in time.Local — the same location time.Now() uses —
-	// so "day(due) < today" is exactly "due < today" once both are absolute instants.
-	// Passing the midnights as parameters keeps that equivalence explicit instead of
-	// re-deriving it with date_trunc under the server's session timezone.
-	now := time.Now()
+	// the comparison is between absolute instants, so "day(due) < today" is exactly
+	// "due < today" once the midnights are passed in as parameters — no re-deriving
+	// it with date_trunc under the server's session timezone.
+	//
+	// The calendar is the caller's, not the server's. The clients store a due date
+	// as the local midnight the user picked (+03:00 "today" is 21:00 UTC the day
+	// before), and they colour the row under the tile by their own calendar day —
+	// counting against the server's midnight instead puts a task that is due today
+	// in "Просрочено" for the whole of it, contradicting the list right below.
+	uid := middleware.CurrentUser(c)
+	now := time.Now().In(h.callerLocation(c, uid))
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 
 	s, err := h.q.WorkspaceTaskSummary(c, db.WorkspaceTaskSummaryParams{
 		WorkspaceID: wsID,
-		UserID:      middleware.CurrentUser(c),
+		UserID:      uid,
 		DayStart:    today,
 		NextDay:     today.AddDate(0, 0, 1),
 		WeekEnd:     today.AddDate(0, 0, 7),
