@@ -5,6 +5,7 @@ import { i18n } from '@/i18n'
 import { PRIORITY_KEYS, priorityLabel } from '@/utils/priority'
 import { defaultFormatters } from '@/utils/format'
 import { columnName } from '@/utils/defaultNames'
+import { sourceMeta } from '@/utils/sources'
 
 // Short "12 янв., 14:03" stamp used on comment and journal rows. `fmt` is a
 // formatter set from useFormat() — it carries the language, the timezone and the
@@ -70,6 +71,10 @@ export function eventText(e) {
       })
     case 'due':
       return d.set ? t('task.journal.dueSet') : t('task.journal.dueCleared')
+    case 'start':
+      return d.set ? t('task.journal.startSet') : t('task.journal.startCleared')
+    case 'estimate':
+      return d.set ? t('task.journal.estimateSet') : t('task.journal.estimateCleared')
     case 'completed':
       return t('task.journal.completed')
     case 'reopened':
@@ -98,6 +103,25 @@ export function eventText(e) {
       return t('task.journal.comment')
     case 'relation':
       return t('task.journal.relation', { ref: d.related ?? '' })
+    case 'relation_removed':
+      return t('task.journal.relationRemoved', { ref: d.related ?? '' })
+    // One aggregated entry per comment (a five-command comment must not bury the
+    // rest of the history), so the line names the commands instead of saying
+    // "ran quick actions" — otherwise a silent /close reads like nothing happened.
+    case 'commands': {
+      const list = (keys) => (Array.isArray(keys) ? keys : []).map((k) => `/${k}`).join(', ')
+      const applied = list(d.applied)
+      const failed = list(d.failed)
+      if (applied && failed) return t('task.journal.commandsMixed', { applied, failed })
+      if (failed) return t('task.journal.commandsFailed', { failed })
+      if (applied) return t('task.journal.commandsApplied', { applied })
+      return t('task.journal.commands')
+    }
+    // Written by the integrations, not by a person. The provider is captioned
+    // through the shared source dictionary so the journal doesn't invent a second
+    // spelling of a name the relation badges already print.
+    case 'synced':
+      return t('task.journal.synced', { source: sourceMeta(d.source).label })
     case 'attachment':
       return d.filename
         ? t('task.journal.attachmentNamed', { name: d.filename })
