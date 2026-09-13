@@ -21,6 +21,22 @@ export function isValidCommandKey(key) {
   return KEY_RE.test(canonCommandKey(key))
 }
 
+// builtinCommandKeys collects every key the backend treats as built-in: the
+// registry keys AND their aliases, because quickact.byKey maps both and
+// IsBuiltin looks the dictionary editor's key up in that same map. Checking
+// only `.key` lets a custom "/done" through the editor and into a 400 that
+// rejects the whole PUT — and the toast can't say which row caused it.
+export function builtinCommandKeys(items = []) {
+  const out = new Set()
+  for (const c of items || []) {
+    for (const raw of [c?.key, ...(c?.aliases || [])]) {
+      const key = canonCommandKey(raw)
+      if (key) out.add(key)
+    }
+  }
+  return out
+}
+
 // detectSlashQuery finds an open `/`-query in the text up to the caret and
 // returns { start, query } (start = index of the slash), or null.
 //
