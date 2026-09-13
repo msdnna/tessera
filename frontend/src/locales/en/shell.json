@@ -69,6 +69,8 @@
     "untitled": "Untitled",
     "help": "Help",
     "nothing": "Nothing found",
+    "failed": "Search failed",
+    "more": "Showing the first {n} — narrow the search",
     "hint": "Searches task titles and descriptions, note titles and text, document titles and help articles"
   },
   "members": {

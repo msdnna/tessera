@@ -43,8 +43,11 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.viewmodels.SearchPane
 import website.msdnna.tessera.ui.viewmodels.SearchViewModel
+import website.msdnna.tessera.ui.viewmodels.searchPane
 import website.msdnna.tessera.util.HelpHit
 import website.msdnna.tessera.util.HelpSearcher
 import website.msdnna.tessera.util.Ion
@@ -106,21 +109,28 @@ fun SearchOverlay(
         }
 
         val results = state.results
-        val serverEmpty = results?.isEmpty != false
-        when {
-            state.query.isBlank() -> Hint(stringResource(R.string.search_hint))
+        when (searchPane(state, helpHits.isNotEmpty())) {
+            SearchPane.HINT -> Hint(stringResource(R.string.search_hint))
 
-            helpHits.isEmpty() && serverEmpty && state.loading ->
+            SearchPane.LOADING ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
 
-            helpHits.isEmpty() && results?.isEmpty == true -> Hint(stringResource(R.string.search_empty))
+            SearchPane.FAILED -> Hint(state.error?.resolve().orEmpty())
 
-            else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+            SearchPane.EMPTY -> Hint(stringResource(R.string.search_empty))
+
+            SearchPane.RESULTS -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                 if (helpHits.isNotEmpty()) {
                     item { SectionHeader(stringResource(R.string.search_section_help)) }
                     items(helpHits, key = { "h-${it.slug}" }) { hit ->
                         HelpResult(hit, onClick = { onOpenHelp(hit.slug) })
                     }
+                }
+                // The help hits got us here; the server's failure still has to be
+                // said out loud rather than left as an absence under them.
+                val failure = state.error
+                if (failure != null && results == null) {
+                    item { SectionNote(failure.resolve()) }
                 }
                 if (results != null) {
                     if (results.tasks.isNotEmpty()) {
@@ -128,11 +138,19 @@ fun SearchOverlay(
                         items(results.tasks, key = { "t-${it.id}" }) { task ->
                             TaskResult(task, onClick = { onOpenTask(task.boardId, task.id) })
                         }
+                        // The count is the rendered list's own length: when the
+                        // server says it truncated, what it sent back is the page.
+                        if (results.hasMore.tasks) {
+                            item { SectionNote(stringResource(R.string.search_more, results.tasks.size)) }
+                        }
                     }
                     if (results.notes.isNotEmpty()) {
                         item { SectionHeader(stringResource(R.string.search_section_notes)) }
                         items(results.notes, key = { "n-${it.id}" }) { note ->
                             NoteResult(note, onClick = { onOpenNote(note.id) })
+                        }
+                        if (results.hasMore.notes) {
+                            item { SectionNote(stringResource(R.string.search_more, results.notes.size)) }
                         }
                     }
                 }
@@ -155,6 +173,18 @@ private fun Hint(text: String) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Text(text, color = Tessera.colors.text3, fontSize = 14.sp)
     }
+}
+
+/** A footnote under a section: the truncation notice, or a failure the list has
+ *  to carry because help hits are already drawn above it. */
+@Composable
+private fun SectionNote(text: String) {
+    Text(
+        text,
+        color = Tessera.colors.text3,
+        fontSize = 12.sp,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

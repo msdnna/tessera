@@ -26,8 +26,33 @@ import (
 // byte-for-byte what the trigram indexes of migration 0052 were built for.
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
+// searchLimit is how many hits of each kind one search answers with. The
+// queries ask for one more than this (db/queries/search.sql) and page() throws
+// the extra away, so the two constants have to stay in step.
+//
+// The number is a dropdown's worth, not a judgement about how much matched: the
+// endpoint fires from a debounced input on every keystroke, and a term like "а"
+// matches most of a real tracker. What the cap must not do is pass itself off as
+// the whole answer, which is what has_more is for (#2932).
+const searchLimit = 25
+
+// page trims a query's probe row and reports whether it was there. A result set
+// that came back short is complete by definition — the database had nothing
+// further to give — so only a full-plus-one page counts as truncated.
+func page[T any](rows []T) ([]T, bool) {
+	if len(rows) > searchLimit {
+		return rows[:searchLimit], true
+	}
+	return orEmpty(rows), false
+}
+
 // Search looks up tasks (title/description), notes (title/body) and documents
-// (title) within a workspace.
+// (title) within a workspace, up to searchLimit of each.
+//
+// The response carries has_more per kind rather than a total. The clients use it
+// to say "the first 25 — narrow the search", which is the honest thing to show
+// and the thing that actually helps: a count of 412 tells the reader nothing
+// they can act on, and costs a full scan to produce.
 func (h *API) Search(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok || !h.requireMember(c, wsID) {
@@ -35,7 +60,13 @@ func (h *API) Search(c *gin.Context) {
 	}
 	q := strings.TrimSpace(c.Query("q"))
 	if q == "" {
-		c.JSON(http.StatusOK, gin.H{"tasks": []any{}, "notes": []any{}, "documents": []any{}})
+		// The empty search is not a truncated one. Spelling the flags out here
+		// rather than omitting the map keeps the shape identical to every other
+		// answer, so a client can read it without a special case.
+		c.JSON(http.StatusOK, gin.H{
+			"tasks": []any{}, "notes": []any{}, "documents": []any{},
+			"has_more": gin.H{"tasks": false, "notes": false, "documents": false},
+		})
 		return
 	}
 	term := likeEscaper.Replace(q)
@@ -54,7 +85,13 @@ func (h *API) Search(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"tasks": orEmpty(tasks), "notes": orEmpty(notes), "documents": orEmpty(documents)})
+	taskPage, taskMore := page(tasks)
+	notePage, noteMore := page(notes)
+	docPage, docMore := page(documents)
+	c.JSON(http.StatusOK, gin.H{
+		"tasks": taskPage, "notes": notePage, "documents": docPage,
+		"has_more": gin.H{"tasks": taskMore, "notes": noteMore, "documents": docMore},
+	})
 }
 
 func orEmpty[T any](s []T) []T {

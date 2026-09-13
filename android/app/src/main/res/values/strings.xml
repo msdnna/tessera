@@ -1574,6 +1574,7 @@
     <string name="search_placeholder">Поиск задач, заметок и справки</string>
     <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок, статьям справки</string>
     <string name="search_empty">Ничего не найдено</string>
+    <string name="search_more">Показаны первые %1$d — уточните запрос</string>
     <string name="search_section_help">СПРАВКА</string>
     <string name="search_section_tasks">ЗАДАЧИ</string>
     <string name="search_section_notes">ЗАМЕТКИ</string>
