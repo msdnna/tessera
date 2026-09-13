@@ -595,6 +595,7 @@ function currentViewConfig() {
     tagPrefix: tagPrefix.value,
     sortLevels: sortLevels.value,
     subtasksExpanded: subtasksExpanded.value,
+    autoSort: autoSort.value,
     filters: cloneFilters(filters),
     colCollapse: { ...colCollapse },
     autoCollapseEmpty: autoCollapseEmpty.value,
@@ -615,6 +616,12 @@ function applyViewConfig(c) {
     sortLevels.value = [{ field: c.sortBy, dir: c.sortDir || 'asc' }]
   else sortLevels.value = []
   subtasksExpanded.value = !!c.subtasksExpanded
+  // Gantt's «Авто» is part of the view, not of the session: without this a view
+  // saved in auto order loaded as plain scheduled order, and an auto run left on
+  // leaked into the next view (autoActive asks only for gantt + no group + no
+  // sort, which is what most views look like). Views predating the key read as
+  // off — the state they were actually saved in, since it could not be captured.
+  autoSort.value = !!c.autoSort
   Object.assign(filters, cloneFilters(c.filters))
   loadCustomize(c)
 }
