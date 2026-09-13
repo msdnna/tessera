@@ -47,6 +47,22 @@ function dueDayOf(t) {
   return new Date(due.getFullYear(), due.getMonth(), due.getDate())
 }
 
+// Is this task late? The one answer the whole app gives — the red due pill on a
+// card, the red date in the home list, the Gantt/Timeline counters and the
+// «Срок: Просрочено» facet all call this.
+//
+// It is a calendar-day comparison, not an instant one, because that is what a due
+// date means everywhere else: the server buckets the home cards the same way
+// (`due < day_start` in WorkspaceTaskSummary, midnights computed in Go), and a due
+// date may or may not carry a time of day. Comparing instants made a task due
+// *today* go red at 00:00 while the «Просрочено» card counted it as zero, the
+// «Сегодня» card counted it as one, and clicking the «Просрочено» facet made the
+// red card disappear from the board.
+export function isTaskOverdue(t, now = new Date()) {
+  if (!t?.due_date || t.completed_at) return false
+  return dueDayOf(t) < dueWindow(now).today
+}
+
 // Due-date predicate for the "Срок" filter. `now` is injectable so tests are
 // not clock-dependent.
 export function matchesDue(t, mode, now = new Date()) {

@@ -11,7 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { taskColumnName } from '@/utils/defaultNames'
-import { matchesHomeDue } from '@/utils/taskFilter'
+import { matchesHomeDue, isTaskOverdue } from '@/utils/taskFilter'
 import { useDateLocale } from '@/composables/useDateLocale'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -104,9 +104,9 @@ function openTask(task) {
   router.push(`/board/${task.board_id}?task=${task.id}`)
 }
 const { formatDue: dueLabel } = useDateLocale()
-function isOverdue(task) {
-  return task.due_date && !task.completed_at && new Date(task.due_date) < new Date()
-}
+// isTaskOverdue, not a local instant comparison: the red date under a row has to
+// mean the same thing as the «Просрочено» card counting the rows above it.
+const isOverdue = (task) => isTaskOverdue(task)
 
 onMounted(load)
 watch(() => wsStore.currentId, load)

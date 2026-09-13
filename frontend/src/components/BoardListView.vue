@@ -6,6 +6,7 @@ import { priorityLabel } from '@/utils/priority'
 import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
+import { isTaskOverdue } from '@/utils/taskFilter'
 import UserAvatar from './UserAvatar.vue'
 import TagPill from './TagPill.vue'
 
@@ -31,13 +32,9 @@ const menu = useTaskMenu({
 })
 
 const { formatDue: fmtDue } = useDateLocale()
-function isOverdue(task) {
-  return (
-    task.due_date &&
-    !task.completed_at &&
-    new Date(task.due_date) < new Date(new Date().toDateString())
-  )
-}
+// Shared predicate rather than a local one: this view and the board show the same
+// rows, and they used to disagree about which of them were late.
+const isOverdue = (task) => isTaskOverdue(task)
 </script>
 
 <template>

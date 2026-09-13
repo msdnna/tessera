@@ -7,7 +7,7 @@ import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { topoByDeps } from '@/utils/dependencyOrder'
 import { sCurvePath } from '@/utils/curvePath'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { startOfDay, parseDate as parse } from '@/utils/timeAxis'
+import { isTaskOverdue } from '@/utils/taskFilter'
 import { useChartTimeline } from '@/composables/useChartTimeline'
 import { useChartLanes } from '@/composables/useChartLanes'
 import { useChartRows, SUB_STEP, SUB_TOP0 } from '@/composables/useChartRows'
@@ -112,7 +112,6 @@ const {
   zooming,
   zoomIn,
   zoomOut,
-  todayMs,
   tier,
   range,
   axisW,
@@ -158,12 +157,7 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   estCfg,
 })
 
-const overdueCount = computed(
-  () =>
-    scheduled.value.filter(
-      (t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs,
-    ).length,
-)
+const overdueCount = computed(() => scheduled.value.filter((t) => isTaskOverdue(t)).length)
 const counters = computed(() => {
   const out = []
   if (overdueCount.value)

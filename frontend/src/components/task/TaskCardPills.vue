@@ -36,6 +36,7 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { cardFieldVisible } from '@/utils/cardFields'
+import { isTaskOverdue } from '@/utils/taskFilter'
 import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
 import UserAvatar from '../UserAvatar.vue'
@@ -221,11 +222,10 @@ const due = computed(() => formatDue(props.task.due_date))
 // Long form (capitalised, full weekday) for the stacked row, where the terse
 // lowercase pill form would clash with capitalised siblings like the priority.
 const dueLong = computed(() => formatDue(props.task.due_date, { long: true }))
-const done = computed(() => !!props.task.completed_at)
-// Overdue: due date in the past on a not-yet-done task.
-const overdue = computed(
-  () => !!props.task.due_date && !done.value && Date.parse(props.task.due_date) < Date.now(),
-)
+// Overdue: the due date's calendar day is already past. Shared with the «Срок»
+// facet — a card painted red has to be one the «Просрочено» filter still lists
+// (it also owns the "a closed task is never late" half, which used to live here).
+const overdue = computed(() => isTaskOverdue(props.task))
 const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
 const startTs = computed(() => (props.task.start_date ? Date.parse(props.task.start_date) : null))
 // Estimate chip: the task's own estimate, or — if unset — the rollup sum of its
