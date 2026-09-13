@@ -456,9 +456,20 @@ func (h *API) callerLocation(c *gin.Context, uid uuid.UUID) *time.Location {
 	if loc, ok := loadLocation(c.Query("tz")); ok {
 		return loc
 	}
-	if p, err := h.q.GetUserPreferences(c, uid); err == nil {
-		if loc, ok := loadLocation(p.Timezone); ok {
-			return loc
+	return h.actorLocation(c, &uid)
+}
+
+// actorLocation is callerLocation for work that runs outside the request that
+// caused it — the GitLab writeback worker pushing a due date, say. There is no
+// query parameter to consult there, so the stored profile zone is the whole
+// answer, and an actor who never set one (or a row old enough to predate the
+// column) leaves the server's own zone, which is what that code did before.
+func (h *API) actorLocation(ctx context.Context, uid *uuid.UUID) *time.Location {
+	if uid != nil {
+		if p, err := h.q.GetUserPreferences(ctx, *uid); err == nil {
+			if loc, ok := loadLocation(p.Timezone); ok {
+				return loc
+			}
 		}
 	}
 	return time.Local

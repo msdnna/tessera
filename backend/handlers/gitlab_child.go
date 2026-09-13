@@ -322,10 +322,7 @@ func (h *API) createChildIssue(ctx context.Context, client *gitlab.Client, integ
 	iid, globalID, webURL := reservedIssue(payload)
 	if iid == 0 {
 		labels := h.buildCreateLabels(ctx, task, parseRules(integ.LabelRules), wb)
-		due := ""
-		if task.DueDate != nil {
-			due = task.DueDate.UTC().Format("2006-01-02")
-		}
+		due := taskDateStr(task.DueDate, h.actorLocation(ctx, w.ActorUserID))
 		assignees := h.resolveTaskGitlabAssigneeIDs(ctx, integ, task.ID)
 		created, err := client.CreateIssue(ctx, integ.ProjectPath, task.Title, task.Description,
 			labels, due, assignees, gitlab.ChildIssueType)

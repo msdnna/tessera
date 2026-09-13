@@ -81,6 +81,39 @@ func dateStr(t *time.Time) string {
 	return t.UTC().Format("2006-01-02")
 }
 
+// taskDateStr is dateStr for a date the *task* owns rather than one GitLab sent,
+// which is why it needs a zone: a task due date is an instant, not a date-only
+// value. The editors build it from local calendar fields (DueEditor.vue picks
+// `new Date(y, m, d, 0, 0, 0, 0)`) and «/due сегодня» resolves to midnight in the
+// caller's zone, so east of UTC the stored instant belongs to the previous UTC
+// day. Read in UTC it named that previous day — the day written into the GitLab
+// issue, and the day the three-way check compared against a snapshot GitLab had
+// filled with the right one, so a date nobody had moved read as diverged (#2932).
+//
+// A pure UTC-midnight instant is left in UTC: that is a genuine date-only value —
+// what a pull from GitLab stores — and it has no time of day to re-read, so a zone
+// west of UTC would walk it back a day. The clients draw the same line for the
+// same reason (isDateOnly in frontend/src/utils/format.js).
+//
+// A nil zone means "unknown" and keeps the old UTC reading rather than panicking:
+// the callers resolve it from a user profile, which may simply not name one.
+func taskDateStr(t *time.Time, loc *time.Location) string {
+	if t == nil {
+		return ""
+	}
+	if loc == nil || isDateOnly(*t) {
+		return dateStr(t)
+	}
+	return t.In(loc).Format("2006-01-02")
+}
+
+// isDateOnly reports whether an instant carries no time of day at all — the
+// convention this codebase stores a day-without-a-time under.
+func isDateOnly(t time.Time) bool {
+	u := t.UTC()
+	return u.Hour() == 0 && u.Minute() == 0 && u.Second() == 0 && u.Nanosecond() == 0
+}
+
 // minutesStr renders an optional estimate (minutes) as an integer string, "" when nil.
 func minutesStr(m *float64) string {
 	if m == nil {
@@ -130,13 +163,15 @@ func conflictCheckedKind(kind string) bool {
 // resolve GitLab attachment links in the issue body to the same proxy URLs Tessera
 // stores, so a description comparison doesn't false-conflict on link rewriting.
 // rules map the issue's labels to a priority level for the priority triple.
-func (h *API) conflictTriples(ctx context.Context, kind string, raw []byte, issue gitlab.Issue, task db.Task, wsID uuid.UUID, rules gitlab.Rules) []conflictField {
+// loc is the calendar the task's own dates are read in — the same one the push
+// would use, so the comparison and the value it guards cannot disagree.
+func (h *API) conflictTriples(ctx context.Context, kind string, raw []byte, issue gitlab.Issue, task db.Task, wsID uuid.UUID, rules gitlab.Rules, loc *time.Location) []conflictField {
 	snap, present := snapshotPresence(raw)
 	switch kind {
 	case "due":
 		_, ok := present["due"]
 		return []conflictField{{
-			Field: "due", Base: snap.Due, Ours: dateStr(task.DueDate), Theirs: dateStr(issue.DueDate),
+			Field: "due", Base: snap.Due, Ours: taskDateStr(task.DueDate, loc), Theirs: dateStr(issue.DueDate),
 			basePresent: ok,
 		}}
 	case "estimate":
@@ -212,7 +247,7 @@ func (h *API) evalWritebackConflict(ctx context.Context, w db.GitlabWriteback, l
 	if err != nil {
 		return conflictProceed, nil, err // transient: retry
 	}
-	triples := h.conflictTriples(ctx, w.ChangeKind, link.GlSnapshot, issue, task, wsID, rules)
+	triples := h.conflictTriples(ctx, w.ChangeKind, link.GlSnapshot, issue, task, wsID, rules, h.actorLocation(ctx, w.ActorUserID))
 	if len(triples) == 0 {
 		return conflictProceed, nil, nil
 	}

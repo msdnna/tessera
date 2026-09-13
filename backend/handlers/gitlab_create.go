@@ -84,10 +84,7 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 	rules := parseRules(integ.LabelRules)
 
 	labels := h.buildCreateLabels(c, task, rules, wb)
-	due := ""
-	if task.DueDate != nil {
-		due = task.DueDate.UTC().Format("2006-01-02")
-	}
+	due := taskDateStr(task.DueDate, h.callerLocation(c, actor))
 	assignees := h.resolveTaskGitlabAssigneeIDs(c, integ, id)
 
 	// Mirror Tessera-hosted assets into the project's upload store BEFORE creating

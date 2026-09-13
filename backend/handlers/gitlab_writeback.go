@@ -520,7 +520,7 @@ func (h *API) performAction(ctx context.Context, client *gitlab.Client, integ db
 	case gitlab.ActReconcileLabels:
 		return h.performReconcileLabels(ctx, client, integ, w.TaskID, path, iid, rules)
 	case gitlab.ActSetDue:
-		return h.performSetDue(ctx, client, integ, w.TaskID, path, iid)
+		return h.performSetDue(ctx, client, integ, w.TaskID, w.ActorUserID, path, iid)
 	case gitlab.ActSetAssignees:
 		return h.performSetAssignees(ctx, client, integ, w.TaskID, path, iid)
 	case gitlab.ActSetEstimate:
@@ -703,16 +703,16 @@ func (h *API) performSetEstimate(ctx context.Context, client *gitlab.Client, int
 	return fmt.Sprintf("оценка → %dм", minutes), nil
 }
 
-// performSetDue pushes the task's due date (empty clears it).
-func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) (string, error) {
+// performSetDue pushes the task's due date (empty clears it). actor names the
+// user whose edit is being pushed: the due date is an instant and GitLab wants a
+// calendar day, and the only honest answer to "which day is this" is the one the
+// person who picked it sees (taskDateStr).
+func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, actor *uuid.UUID, path string, iid int64) (string, error) {
 	task, err := h.q.GetTask(ctx, taskID)
 	if err != nil {
 		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
 	}
-	date := ""
-	if task.DueDate != nil {
-		date = task.DueDate.UTC().Format("2006-01-02")
-	}
+	date := taskDateStr(task.DueDate, h.actorLocation(ctx, actor))
 	if err := client.UpdateIssueDueDate(ctx, path, iid, date); err != nil {
 		return "", err
 	}
