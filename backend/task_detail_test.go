@@ -187,10 +187,17 @@ func TestRelationsCRUD(t *testing.T) {
 		t.Fatalf("blocks relation meta: %v", blocks)
 	}
 
-	// Storage is one-way: the target's own relation list stays empty (it only
-	// receives a "relation" journal event with the inverse kind).
-	if got := c.get("/tasks/" + id2 + "/relations").listBody(t); len(got) != 0 {
-		t.Fatalf("relations are stored two-way now: %v", got)
+	// Storage is one-way, the read is not: the target lists the same two links
+	// from its own point of view, with the directed kind flipped (#2932). Details
+	// of that are pinned in task_relation_both_sides_test.go.
+	got := c.get("/tasks/" + id2 + "/relations").listBody(t)
+	if len(got) != 2 {
+		t.Fatalf("target task lists %d relations, want the same 2 seen from its end: %v", len(got), got)
+	}
+	for _, r := range got {
+		if r["related_task_id"] != id1 || (r["kind"] != "blocked_by" && r["kind"] != "relates") {
+			t.Fatalf("target task's view of the relation: %v", r)
+		}
 	}
 	if !hasKind(eventKinds(t, c, id2), "relation") {
 		t.Fatalf("target task got no relation journal event")

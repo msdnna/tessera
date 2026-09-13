@@ -560,7 +560,15 @@ func (h *API) DeleteRelation(c *gin.Context) {
 	// Read the other end before the row goes: the relation id is all the caller
 	// sends, and the event has to name both endpoints.
 	target, terr := h.q.GetTask(c, rel.RelatedTaskID)
-	if err := h.q.DeleteTaskRelation(c, id); err != nil {
+	// Drop this link from both ends, not just the clicked row. Both tasks show it
+	// (ListTaskRelations reads either direction), so leaving the mirrored row —
+	// written by the GitLab projection, or by whoever linked the same pair from
+	// their end — would put the relation straight back on both tabs. Only this
+	// kind goes: another relation between the same two tasks is its own row.
+	if _, err := h.q.DeleteRelationBothWays(c, db.DeleteRelationBothWaysParams{
+		TaskID: rel.TaskID, RelatedTaskID: rel.RelatedTaskID,
+		Kind: rel.Kind, InverseKind: inverseRelationKind(rel.Kind),
+	}); err != nil {
 		fail(c, err)
 		return
 	}

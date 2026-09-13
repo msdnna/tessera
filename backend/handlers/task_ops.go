@@ -567,25 +567,17 @@ func (h *API) broadcastRelation(wsID uuid.UUID, t, target db.Task, kind string) 
 // applyUnlink drops every relation between two tasks, in either direction, and
 // reports how many rows went away (0 means there was nothing to unlink).
 //
-// Relations are stored one-way, so "/unlink #N" has to look from both ends: the
-// row may live on either task depending on who linked whom.
+// Relations are stored one-way, so "/unlink #N" has to clear both ends: the row
+// may live on either task depending on who linked whom, and a pair can be on
+// record twice (the GitLab projection mirrors the reverse edge).
 func (h *API) applyUnlink(c *gin.Context, t db.Task, wsID uuid.UUID, target db.Task) (int, error) {
-	var n int
-	for _, side := range [2][2]uuid.UUID{{t.ID, target.ID}, {target.ID, t.ID}} {
-		rels, err := h.q.ListTaskRelations(c, side[0])
-		if err != nil {
-			return n, err
-		}
-		for _, r := range rels {
-			if r.RelatedTaskID != side[1] {
-				continue
-			}
-			if err := h.q.DeleteTaskRelation(c, r.ID); err != nil {
-				return n, err
-			}
-			n++
-		}
+	rows, err := h.q.DeleteRelationsBetween(c, db.DeleteRelationsBetweenParams{
+		TaskID: t.ID, RelatedTaskID: target.ID,
+	})
+	if err != nil {
+		return 0, err
 	}
+	n := int(rows)
 	if n > 0 {
 		h.logEvent(c, t.ID, "relation_removed", map[string]any{"related": target.Number})
 		h.broadcast(wsID, "task.updated", gin.H{"id": t.ID})

@@ -39,6 +39,40 @@ func (q *Queries) AddTaskRelation(ctx context.Context, arg AddTaskRelationParams
 	return i, err
 }
 
+const deleteRelationBothWays = `-- name: DeleteRelationBothWays :execrows
+DELETE FROM task_relations
+WHERE (task_id = $1 AND related_task_id = $2 AND kind = $3)
+   OR (task_id = $2 AND related_task_id = $1 AND kind = $4)
+`
+
+type DeleteRelationBothWaysParams struct {
+	TaskID        uuid.UUID `json:"task_id"`
+	RelatedTaskID uuid.UUID `json:"related_task_id"`
+	Kind          string    `json:"kind"`
+	InverseKind   string    `json:"inverse_kind"`
+}
+
+// DeleteRelationBothWays drops ONE link between two tasks — the given kind and
+// the row that says the same thing from the other end (blocks ⇄ blocked_by, the
+// symmetric kinds map to themselves). That mirrored row is real: the GitLab
+// projection writes it deliberately, and either user can link the same pair from
+// their own end. Since both ends now SHOW the link (ListTaskRelations reads
+// either direction), deleting only the clicked row would put it straight back.
+// Other kinds between the same two tasks are left alone — "✕" on «связана с»
+// must not also drop «блокирует».
+func (q *Queries) DeleteRelationBothWays(ctx context.Context, arg DeleteRelationBothWaysParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRelationBothWays,
+		arg.TaskID,
+		arg.RelatedTaskID,
+		arg.Kind,
+		arg.InverseKind,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteRelationsAcrossWorkspaces = `-- name: DeleteRelationsAcrossWorkspaces :execrows
 DELETE FROM task_relations r
 WHERE (
@@ -62,6 +96,28 @@ WHERE (
 // Returns the number of relations dropped.
 func (q *Queries) DeleteRelationsAcrossWorkspaces(ctx context.Context, projectID uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, deleteRelationsAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteRelationsBetween = `-- name: DeleteRelationsBetween :execrows
+DELETE FROM task_relations
+WHERE (task_id = $1 AND related_task_id = $2)
+   OR (task_id = $2 AND related_task_id = $1)
+`
+
+type DeleteRelationsBetweenParams struct {
+	TaskID        uuid.UUID `json:"task_id"`
+	RelatedTaskID uuid.UUID `json:"related_task_id"`
+}
+
+// DeleteRelationsBetween drops EVERY relation between two tasks, in either
+// direction, and reports how many rows went — "/unlink #N" means "these two are
+// no longer linked at all", whatever kinds are on record.
+func (q *Queries) DeleteRelationsBetween(ctx context.Context, arg DeleteRelationsBetweenParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteRelationsBetween, arg.TaskID, arg.RelatedTaskID)
 	if err != nil {
 		return 0, err
 	}
@@ -186,17 +242,36 @@ func (q *Queries) ListBoardDependencies(ctx context.Context, boardID uuid.UUID) 
 }
 
 const listTaskRelations = `-- name: ListTaskRelations :many
+WITH edges AS (
+    SELECT r.id, r.related_task_id, r.kind, r.source, r.created_at, 0 AS own
+    FROM task_relations r
+    WHERE r.task_id = $1
+    UNION ALL
+    SELECT r.id, r.task_id AS related_task_id,
+           CASE r.kind
+               WHEN 'blocks' THEN 'blocked_by'
+               WHEN 'blocked_by' THEN 'blocks'
+               ELSE r.kind
+           END AS kind,
+           r.source, r.created_at, 1 AS own
+    FROM task_relations r
+    WHERE r.related_task_id = $1
+), deduped AS (
+    SELECT DISTINCT ON (e.related_task_id, e.kind)
+        e.id, e.related_task_id, e.kind, e.source, e.created_at
+    FROM edges e
+    ORDER BY e.related_task_id, e.kind, e.own, e.created_at
+)
 SELECT
-    r.id, r.task_id, r.related_task_id, r.kind, r.source, r.created_at,
+    d.id, $1::uuid AS task_id, d.related_task_id, d.kind, d.source, d.created_at,
     t.number AS related_number,
     t.title  AS related_title,
     t.board_id AS related_board_id,
     t.completed_at AS related_completed_at,
     t.archived_at  AS related_archived_at
-FROM task_relations r
-JOIN tasks t ON t.id = r.related_task_id
-WHERE r.task_id = $1
-ORDER BY r.created_at
+FROM deduped d
+JOIN tasks t ON t.id = d.related_task_id
+ORDER BY d.created_at
 `
 
 type ListTaskRelationsRow struct {
@@ -213,6 +288,22 @@ type ListTaskRelationsRow struct {
 	RelatedArchivedAt  *time.Time `json:"related_archived_at"`
 }
 
+// ListTaskRelations returns a task's relations as seen FROM that task — both the
+// ones it was linked from and the ones pointing at it.
+//
+// A relation is one directed row, so reading `task_id = $1` alone showed the link
+// only to the task that created it: #10 "blocks #20" left #20's «Связи» empty
+// while its journal carried the entry and the Gantt drew the arrow (see
+// ListBoardDependencies, which reads both endpoints). The incoming half is
+// flipped to the reader's point of view — #20 is `blocked_by` #10 — with the same
+// mapping the Go side uses (inverseRelationKind); relates/duplicates are symmetric.
+//
+// DISTINCT ON collapses a pair that is on record in both directions into one row
+// per end: the GitLab projection writes the reverse edge deliberately
+// (gitlab_relations.go), and two people linking the same pair from either end
+// produce the same shape. `own` orders the real outgoing row first, so the id the
+// client gets back is this task's own whenever there is one.
+//
 // `source` is provider-neutral (user|gitlab): the client shows where a relation came
 // from without this query knowing anything about integrations.
 func (q *Queries) ListTaskRelations(ctx context.Context, taskID uuid.UUID) ([]ListTaskRelationsRow, error) {

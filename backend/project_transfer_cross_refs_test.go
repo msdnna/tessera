@@ -78,10 +78,15 @@ func TestTransferProjectSeversCrossWorkspaceRefs(t *testing.T) {
 	})
 
 	t.Run("no relation survives the boundary", func(t *testing.T) {
-		for _, id := range []string{staying["id"].(string), moving["id"].(string)} {
-			rels := owner.get("/tasks/" + id + "/relations").listBody(t)
-			if len(rels) != 0 {
-				t.Fatalf("task %s still relates across workspaces: %v", id, rels)
+		// The list reads both directions now, so "nothing crossed" is not the same
+		// as "the list is empty": `moving` keeps the link to the task that travelled
+		// with it, which reaches it from the far end (travelling → moving).
+		if rels := owner.get("/tasks/" + staying["id"].(string) + "/relations").listBody(t); len(rels) != 0 {
+			t.Fatalf("the staying task still relates across workspaces: %v", rels)
+		}
+		for _, r := range owner.get("/tasks/" + moving["id"].(string) + "/relations").listBody(t) {
+			if r["related_task_id"] != travelling["id"] {
+				t.Fatalf("the moved task still relates across workspaces: %v", r)
 			}
 		}
 	})
