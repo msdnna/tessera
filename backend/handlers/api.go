@@ -234,6 +234,44 @@ func positionExhausted(pos float64, prev, next *float64) bool {
 	return (prev != nil && pos <= *prev) || (next != nil && pos >= *next)
 }
 
+// rejectSameNeighbour answers 400 (and reports true) when a reorder names one
+// item as both of its neighbours. That asks to be dropped into a zero-width
+// slot: the midpoint of a position with itself is that position, so the item
+// would land exactly on top of its "neighbour". No respacing can open that slot,
+// because there is no slot — which is why this is a refusal and not a recovery.
+func rejectSameNeighbour(c *gin.Context, beforeID, afterID *uuid.UUID) bool {
+	if beforeID == nil || afterID == nil || *beforeID != *afterID {
+		return false
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": "before_id and after_id must differ"})
+	return true
+}
+
+// positionForReorder is positionBetween with a way out of an exhausted slot, for
+// the lists that order themselves by midpoint but are not tasks: board columns,
+// projects and project groups. When the midpoint collapses onto a neighbour,
+// `respace` puts the sibling list back on the positionGap ladder and `neighbors`
+// re-reads the two neighbour positions so the midpoint can be computed again.
+// (Cards have their own version — positionForDrop — because which list to
+// respace depends on whether the card is a subtask.)
+func (h *API) positionForReorder(c *gin.Context, prev, next *float64,
+	respace func() error, neighbors func() (*float64, *float64, bool),
+) (float64, bool) {
+	pos := positionBetween(prev, next)
+	if !positionExhausted(pos, prev, next) {
+		return pos, true
+	}
+	if err := respace(); err != nil {
+		fail(c, err)
+		return 0, false
+	}
+	prev, next, ok := neighbors()
+	if !ok {
+		return 0, false
+	}
+	return positionBetween(prev, next), true
+}
+
 // membershipResult is the cached outcome of a per-request membership lookup.
 type membershipResult struct {
 	role string

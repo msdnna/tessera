@@ -44,6 +44,21 @@ SET group_id = $2, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- RebalanceProjectPositions respaces a workspace's projects onto a fresh
+-- gap * 1,2,3… ladder, keeping the order they already had. Workspace-scoped for
+-- the same reason as the group one: ListProjects orders every project of the
+-- workspace by position and the client groups them, so respacing all of them
+-- preserves each group's sibling order. MoveProject calls it when the midpoint
+-- collapses onto a neighbour.
+-- name: RebalanceProjectPositions :exec
+UPDATE projects t
+SET position = ordered.rn * sqlc.arg(gap)::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM projects WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+) ordered
+WHERE t.id = ordered.id;
+
 -- TransferProject moves a project to another workspace, dropping it at the root
 -- (ungrouped) since groups belong to the source workspace. Denormalized
 -- workspace_id on tags/tag_prefixes/notes is re-stamped separately in the same tx.

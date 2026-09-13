@@ -253,6 +253,32 @@ func (q *Queries) ProjectsMissingSlug(ctx context.Context) ([]ProjectsMissingSlu
 	return items, nil
 }
 
+const rebalanceProjectPositions = `-- name: RebalanceProjectPositions :exec
+UPDATE projects t
+SET position = ordered.rn * $1::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM projects WHERE workspace_id = $2::uuid
+) ordered
+WHERE t.id = ordered.id
+`
+
+type RebalanceProjectPositionsParams struct {
+	Gap         float64   `json:"gap"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// RebalanceProjectPositions respaces a workspace's projects onto a fresh
+// gap * 1,2,3… ladder, keeping the order they already had. Workspace-scoped for
+// the same reason as the group one: ListProjects orders every project of the
+// workspace by position and the client groups them, so respacing all of them
+// preserves each group's sibling order. MoveProject calls it when the midpoint
+// collapses onto a neighbour.
+func (q *Queries) RebalanceProjectPositions(ctx context.Context, arg RebalanceProjectPositionsParams) error {
+	_, err := q.db.Exec(ctx, rebalanceProjectPositions, arg.Gap, arg.WorkspaceID)
+	return err
+}
+
 const renumberProjectTasks = `-- name: RenumberProjectTasks :exec
 UPDATE tasks SET number = $2::bigint + ordered.rn
 FROM (

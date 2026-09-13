@@ -510,12 +510,27 @@ func (h *API) MoveColumn(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
+		return
+	}
 	prev, next, ok := h.neighborColumnPositions(c, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
+	pos, ok := h.positionForReorder(c, prev, next,
+		func() error {
+			return h.q.RebalanceColumnPositions(c, db.RebalanceColumnPositionsParams{
+				BoardID: col.BoardID, Gap: positionGap,
+			})
+		},
+		func() (*float64, *float64, bool) {
+			return h.neighborColumnPositions(c, req.BeforeID, req.AfterID)
+		})
+	if !ok {
+		return
+	}
 	updated, err := h.q.UpdateColumn(c, db.UpdateColumnParams{
-		ID: id, Name: col.Name, Color: col.Color, Position: positionBetween(prev, next),
+		ID: id, Name: col.Name, Color: col.Color, Position: pos,
 	})
 	if err != nil {
 		fail(c, err)

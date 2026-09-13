@@ -361,6 +361,33 @@ func (q *Queries) MaxColumnPosition(ctx context.Context, boardID uuid.UUID) (flo
 	return column_1, err
 }
 
+const rebalanceColumnPositions = `-- name: RebalanceColumnPositions :exec
+UPDATE board_columns t
+SET position = ordered.rn * $1::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM board_columns WHERE board_id = $2::uuid
+) ordered
+WHERE t.id = ordered.id
+`
+
+type RebalanceColumnPositionsParams struct {
+	Gap     float64   `json:"gap"`
+	BoardID uuid.UUID `json:"board_id"`
+}
+
+// RebalanceColumnPositions respaces a board's columns onto a fresh gap * 1,2,3…
+// ladder, keeping the order they already had — the same recovery
+// Rebalance*TaskPositions gives cards, for the list that orders itself the same
+// way. MoveColumn calls it when the midpoint collapses onto a neighbour, which
+// is the only way that slot ever opens up again.
+// (UPDATE … FROM (subquery), not a CTE: sqlc mis-parses UPDATE … FROM with a
+// leading WITH.)
+func (q *Queries) RebalanceColumnPositions(ctx context.Context, arg RebalanceColumnPositionsParams) error {
+	_, err := q.db.Exec(ctx, rebalanceColumnPositions, arg.Gap, arg.BoardID)
+	return err
+}
+
 const setBoardDoneColumn = `-- name: SetBoardDoneColumn :one
 UPDATE boards
 SET done_column_id = $2, updated_at = now()

@@ -90,5 +90,21 @@ SET name = $2,
 WHERE id = $1
 RETURNING *;
 
+-- RebalanceColumnPositions respaces a board's columns onto a fresh gap * 1,2,3…
+-- ladder, keeping the order they already had — the same recovery
+-- Rebalance*TaskPositions gives cards, for the list that orders itself the same
+-- way. MoveColumn calls it when the midpoint collapses onto a neighbour, which
+-- is the only way that slot ever opens up again.
+-- (UPDATE … FROM (subquery), not a CTE: sqlc mis-parses UPDATE … FROM with a
+-- leading WITH.)
+-- name: RebalanceColumnPositions :exec
+UPDATE board_columns t
+SET position = ordered.rn * sqlc.arg(gap)::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM board_columns WHERE board_id = sqlc.arg(board_id)::uuid
+) ordered
+WHERE t.id = ordered.id;
+
 -- name: DeleteColumn :exec
 DELETE FROM board_columns WHERE id = $1;

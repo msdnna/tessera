@@ -185,12 +185,27 @@ func (h *API) MoveProjectGroup(c *gin.Context) {
 	if !h.groupParentAllowed(c, g.WorkspaceID, g.ID, req.ParentID) {
 		return
 	}
+	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
+		return
+	}
 	prev, next, ok := h.neighborGroupPositions(c, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
+	pos, ok := h.positionForReorder(c, prev, next,
+		func() error {
+			return h.q.RebalanceProjectGroupPositions(c, db.RebalanceProjectGroupPositionsParams{
+				WorkspaceID: g.WorkspaceID, Gap: positionGap,
+			})
+		},
+		func() (*float64, *float64, bool) {
+			return h.neighborGroupPositions(c, req.BeforeID, req.AfterID)
+		})
+	if !ok {
+		return
+	}
 	updated, err := h.q.MoveProjectGroup(c, db.MoveProjectGroupParams{
-		ID: g.ID, ParentID: req.ParentID, Position: positionBetween(prev, next),
+		ID: g.ID, ParentID: req.ParentID, Position: pos,
 	})
 	if err != nil {
 		fail(c, err)
@@ -403,12 +418,27 @@ func (h *API) MoveProject(c *gin.Context) {
 	if !h.groupParentAllowed(c, p.WorkspaceID, uuid.Nil, req.GroupID) {
 		return
 	}
+	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
+		return
+	}
 	prev, next, ok := h.neighborProjectPositions(c, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
+	pos, ok := h.positionForReorder(c, prev, next,
+		func() error {
+			return h.q.RebalanceProjectPositions(c, db.RebalanceProjectPositionsParams{
+				WorkspaceID: p.WorkspaceID, Gap: positionGap,
+			})
+		},
+		func() (*float64, *float64, bool) {
+			return h.neighborProjectPositions(c, req.BeforeID, req.AfterID)
+		})
+	if !ok {
+		return
+	}
 	updated, err := h.q.MoveProject(c, db.MoveProjectParams{
-		ID: p.ID, GroupID: req.GroupID, Position: positionBetween(prev, next),
+		ID: p.ID, GroupID: req.GroupID, Position: pos,
 	})
 	if err != nil {
 		fail(c, err)

@@ -483,12 +483,7 @@ func (h *API) MoveTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// One task named as both neighbours asks to be dropped into a zero-width
-	// slot: the midpoint of a position with itself is that position, so the card
-	// would land exactly on top of its "neighbour". No rebalance can open that
-	// slot, because there is no slot.
-	if req.BeforeID != nil && req.AfterID != nil && *req.BeforeID == *req.AfterID {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "before_id and after_id must differ"})
+	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
 		return
 	}
 	prev, next, ok := h.neighborTaskPositions(c, req.BeforeID, req.AfterID)
@@ -870,9 +865,9 @@ func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID
 // the midpoint collapses onto a neighbour, the sibling list is respaced back
 // onto the positionGap ladder and the midpoint recomputed against the fresh
 // neighbour positions. Only the list the card is being dropped into is touched
-// (the destination column, or the parent's subtasks for a child card); column,
-// project and group ordering share the midpoint scheme and still have no such
-// recovery.
+// (the destination column, or the parent's subtasks for a child card) — which is
+// what this needs over the generic positionForReorder that columns, projects and
+// groups use: which list to respace depends on the card, not on the endpoint.
 func (h *API) positionForDrop(c *gin.Context, t db.Task, columnID uuid.UUID, beforeID, afterID *uuid.UUID, prev, next *float64) (float64, bool) {
 	pos := positionBetween(prev, next)
 	if !positionExhausted(pos, prev, next) {

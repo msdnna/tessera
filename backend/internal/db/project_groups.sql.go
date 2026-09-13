@@ -194,6 +194,33 @@ func (q *Queries) ProjectGroupAncestorIDs(ctx context.Context, id uuid.UUID) ([]
 	return items, nil
 }
 
+const rebalanceProjectGroupPositions = `-- name: RebalanceProjectGroupPositions :exec
+UPDATE project_groups t
+SET position = ordered.rn * $1::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM project_groups WHERE workspace_id = $2::uuid
+) ordered
+WHERE t.id = ordered.id
+`
+
+type RebalanceProjectGroupPositionsParams struct {
+	Gap         float64   `json:"gap"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// RebalanceProjectGroupPositions respaces a workspace's groups onto a fresh
+// gap * 1,2,3… ladder, keeping the order they already had. Scoped to the
+// workspace and not to one parent because that is how the list is read
+// (ListProjectGroups orders every group of the workspace by position and the
+// client builds the tree); respacing all of them preserves each parent's
+// sibling order too. MoveProjectGroup calls it when the midpoint collapses onto
+// a neighbour.
+func (q *Queries) RebalanceProjectGroupPositions(ctx context.Context, arg RebalanceProjectGroupPositionsParams) error {
+	_, err := q.db.Exec(ctx, rebalanceProjectGroupPositions, arg.Gap, arg.WorkspaceID)
+	return err
+}
+
 const updateProjectGroup = `-- name: UpdateProjectGroup :one
 UPDATE project_groups
 SET name = $2, icon = $3, color = $4, icon_mode = $5, updated_at = now()

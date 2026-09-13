@@ -42,5 +42,21 @@ SET parent_id = $2, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- RebalanceProjectGroupPositions respaces a workspace's groups onto a fresh
+-- gap * 1,2,3… ladder, keeping the order they already had. Scoped to the
+-- workspace and not to one parent because that is how the list is read
+-- (ListProjectGroups orders every group of the workspace by position and the
+-- client builds the tree); respacing all of them preserves each parent's
+-- sibling order too. MoveProjectGroup calls it when the midpoint collapses onto
+-- a neighbour.
+-- name: RebalanceProjectGroupPositions :exec
+UPDATE project_groups t
+SET position = ordered.rn * sqlc.arg(gap)::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM project_groups WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+) ordered
+WHERE t.id = ordered.id;
+
 -- name: DeleteProjectGroup :exec
 DELETE FROM project_groups WHERE id = $1;
