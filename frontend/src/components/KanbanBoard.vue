@@ -63,6 +63,7 @@ import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
 import { filterBoardTasks } from '@/utils/taskFilter'
+import { useFormat } from '@/composables/useFormat'
 import {
   classifyEvent,
   applyTaskPatch,
@@ -95,6 +96,9 @@ const message = useMessage()
 // `t` is the translator everywhere below; task/tag loop variables are spelled out
 // (`task`, `tag`) so nothing shadows it (#2799).
 const { t } = useI18n()
+// Only for the «Срок» facet: a card the filter hides (or keeps) has to be the one
+// whose own pill reads that way, and the pill renders through this formatter set.
+const { formatters } = useFormat()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const boardViewStore = useBoardViewStore()
@@ -982,6 +986,7 @@ const filterResult = computed(() =>
     subtasksByParent: subtasksByParent.value,
     filters,
     glLoginByUserId: glLoginByUserId.value,
+    formatters: formatters.value,
   }),
 )
 

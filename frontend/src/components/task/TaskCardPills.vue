@@ -225,7 +225,7 @@ const dueLong = computed(() => formatDue(props.task.due_date, { long: true }))
 // Overdue: the due date's calendar day is already past. Shared with the «Срок»
 // facet — a card painted red has to be one the «Просрочено» filter still lists
 // (it also owns the "a closed task is never late" half, which used to live here).
-const overdue = computed(() => isTaskOverdue(props.task))
+const overdue = computed(() => isTaskOverdue(props.task, new Date(), formatters.value))
 const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
 const startTs = computed(() => (props.task.start_date ? Date.parse(props.task.start_date) : null))
 // Estimate chip: the task's own estimate, or — if unset — the rollup sum of its

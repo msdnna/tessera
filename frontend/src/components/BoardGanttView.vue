@@ -8,6 +8,7 @@ import { topoByDeps } from '@/utils/dependencyOrder'
 import { sCurvePath } from '@/utils/curvePath'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { isTaskOverdue } from '@/utils/taskFilter'
+import { useFormat } from '@/composables/useFormat'
 import { useChartTimeline } from '@/composables/useChartTimeline'
 import { useChartLanes } from '@/composables/useChartLanes'
 import { useChartRows, SUB_STEP, SUB_TOP0 } from '@/composables/useChartRows'
@@ -22,6 +23,9 @@ import ChartTaskMenu from './chart/ChartTaskMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
 
 const { t } = useI18n()
+// Only for the overdue counter: the tally has to agree with the red pills on the
+// cards, so it buckets due dates in the user's calendar, not the browser's.
+const { formatters } = useFormat()
 
 const wsStore = useWorkspacesStore()
 
@@ -157,7 +161,9 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   estCfg,
 })
 
-const overdueCount = computed(() => scheduled.value.filter((t) => isTaskOverdue(t)).length)
+const overdueCount = computed(
+  () => scheduled.value.filter((x) => isTaskOverdue(x, new Date(), formatters.value)).length,
+)
 const counters = computed(() => {
   const out = []
   if (overdueCount.value)

@@ -31,10 +31,11 @@ const menu = useTaskMenu({
   columns: () => props.statusColumns,
 })
 
-const { formatDue: fmtDue } = useDateLocale()
+const { formatDue: fmtDue, formatters } = useDateLocale()
 // Shared predicate rather than a local one: this view and the board show the same
-// rows, and they used to disagree about which of them were late.
-const isOverdue = (task) => isTaskOverdue(task)
+// rows, and they used to disagree about which of them were late. The formatter set
+// goes in so the red row is bucketed in the same calendar fmtDue prints.
+const isOverdue = (task) => isTaskOverdue(task, new Date(), formatters.value)
 </script>
 
 <template>

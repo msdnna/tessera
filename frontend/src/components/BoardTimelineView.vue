@@ -26,6 +26,10 @@ import ChartCursorPill from './chart/ChartCursorPill.vue'
 import UserAvatar from './UserAvatar.vue'
 
 const { t } = useI18n()
+// Declared up here rather than next to the hover card that renders with it: the
+// overdue counter below needs the same formatter set, and a counter that bucketed
+// due dates in the browser's calendar would contradict the red pills it counts.
+const { formatDue, formatters } = useFormat()
 
 const wsStore = useWorkspacesStore()
 
@@ -142,7 +146,9 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   estCfg,
 })
 
-const overdueCount = computed(() => scheduled.value.filter((t) => isTaskOverdue(t)).length)
+const overdueCount = computed(
+  () => scheduled.value.filter((x) => isTaskOverdue(x, new Date(), formatters.value)).length,
+)
 const counters = computed(() => {
   const out = []
   if (overdueCount.value)
@@ -191,7 +197,6 @@ onBeforeUnmount(() => {
 })
 
 // ── hover preview card ──
-const { formatDue, formatters } = useFormat()
 const hover = ref(null) // { task, x, y, above }
 let hoverTimer = null
 function onBarEnter(e, t) {

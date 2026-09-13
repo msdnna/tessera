@@ -24,6 +24,10 @@ const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
 const theme = useThemeStore()
+// The due label and the calendar the list buckets by, from one source: the server
+// counts the cards in the zone this page sends it (see resolvedTimezone below), so
+// the rows under a card have to be picked in that same zone.
+const { formatDue: dueLabel, formatters } = useDateLocale()
 
 const loading = ref(false)
 const summary = ref(null)
@@ -72,7 +76,7 @@ const visibleTasks = computed(() => {
     default:
       // Same windows as the cards above the list — the counts come from the server
       // (WorkspaceTaskSummary), so the predicate here must not invent its own.
-      return arr.filter((task) => matchesHomeDue(task, filter.value))
+      return arr.filter((task) => matchesHomeDue(task, filter.value, new Date(), formatters.value))
   }
 })
 
@@ -109,10 +113,9 @@ async function load() {
 function openTask(task) {
   router.push(`/board/${task.board_id}?task=${task.id}`)
 }
-const { formatDue: dueLabel } = useDateLocale()
 // isTaskOverdue, not a local instant comparison: the red date under a row has to
 // mean the same thing as the «Просрочено» card counting the rows above it.
-const isOverdue = (task) => isTaskOverdue(task)
+const isOverdue = (task) => isTaskOverdue(task, new Date(), formatters.value)
 
 onMounted(load)
 watch(() => wsStore.currentId, load)

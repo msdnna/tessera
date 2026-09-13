@@ -9,6 +9,7 @@
 // modal is untouched and always lists every subtask.
 
 import { matchesAuthor } from './boardFilters'
+import { defaultFormatters, epochDay } from './format'
 import { NO_MILESTONE } from './facetKeys'
 
 // Facets that a subtask may "lift" its parent by. `statuses` (the board column)
@@ -26,25 +27,35 @@ export const SUBTASK_FACETS = [
   'milestones',
 ]
 
-// The calendar day a due date belongs to, and the two bounds every "срок" window
-// is measured against. Both are built as local calendar dates rather than by
-// adding milliseconds: a week is seven midnights, not 7×86400000 ms, and across a
-// DST change those are an hour apart — enough to move a task in or out of a window.
+// Both bounds and the due day itself are whole calendar days (epoch-day integers),
+// never instants offset by milliseconds: a week is seven midnights, not 7×86400000
+// ms, and across a DST change those are an hour apart — enough to move a task in or
+// out of a window.
+//
+// The calendar is the USER'S, which is why a formatter set is threaded through every
+// predicate here instead of reading the browser clock. A due date is bucketed in the
+// same calendar it is printed in, because one pill carries both: TaskCardPills
+// renders the caption with formatDue and paints it red with isTaskOverdue. Two rules
+// come with that, both already inside `formatters.parts` — the `timezone` preference
+// wins over the browser's zone, and a pure UTC midnight is a date-only value (a
+// GitLab issue/milestone due) read in UTC in every zone. Buckets computed off
+// `new Date().getDate()` ignored both, so a pill could read «вчера» and stay black,
+// or read «сегодня» in red.
 //
 // The week window is half-open, [today, today+7): seven days counting today, the
 // same range WorkspaceTaskSummary counts in SQL (`due < week_end`, pinned by
 // TestWorkspaceSummaryBuckets) and Android's home filters on. It has to be the
 // same one, because on the home screen the server's number is the caption of a
 // list this module filters — an eighth day here was a card the count above it
-// never included.
-function dueWindow(now) {
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  return { today, weekEnd: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7) }
+// never included. The server counts in the caller's zone too (callerLocation), so
+// passing the same preference here is what keeps the tile and the list in step.
+function dueWindow(now, f) {
+  const today = epochDay(f.today(now))
+  return { today, weekEnd: today + 7 }
 }
 
-function dueDayOf(t) {
-  const due = new Date(t.due_date)
-  return new Date(due.getFullYear(), due.getMonth(), due.getDate())
+function dueDayOf(t, f) {
+  return epochDay(f.parts(t.due_date))
 }
 
 // Is this task late? The one answer the whole app gives — the red due pill on a
@@ -58,21 +69,22 @@ function dueDayOf(t) {
 // *today* go red at 00:00 while the «Просрочено» card counted it as zero, the
 // «Сегодня» card counted it as one, and clicking the «Просрочено» facet made the
 // red card disappear from the board.
-export function isTaskOverdue(t, now = new Date()) {
+export function isTaskOverdue(t, now = new Date(), f = defaultFormatters()) {
   if (!t?.due_date || t.completed_at) return false
-  return dueDayOf(t) < dueWindow(now).today
+  return dueDayOf(t, f) < dueWindow(now, f).today
 }
 
-// Due-date predicate for the "Срок" filter. `now` is injectable so tests are
-// not clock-dependent.
-export function matchesDue(t, mode, now = new Date()) {
+// Due-date predicate for the "Срок" filter. `now` is injectable so tests are not
+// clock-dependent; `f` is the caller's formatter set, whose `timezone` preference
+// decides which calendar day the due date and "today" belong to.
+export function matchesDue(t, mode, now = new Date(), f = defaultFormatters()) {
   if (mode === 'none') return !t.due_date
   if (!t.due_date) return false
   if (mode === 'has') return true
-  const { today, weekEnd } = dueWindow(now)
-  const dueDay = dueDayOf(t)
+  const { today, weekEnd } = dueWindow(now, f)
+  const dueDay = dueDayOf(t, f)
   if (mode === 'overdue') return dueDay < today && !t.completed_at
-  if (mode === 'today') return dueDay.getTime() === today.getTime()
+  if (mode === 'today') return dueDay === today
   if (mode === 'week') return dueDay >= today && dueDay < weekEnd
   return true
 }
@@ -84,12 +96,12 @@ export function matchesDue(t, mode, now = new Date()) {
 // Kept apart from matchesDue rather than folded into it: the board's "Срок" facet
 // is a date filter over cards that include the done column, so hiding completed
 // tasks there would be a different feature, not the same one.
-export function matchesHomeDue(t, mode, now = new Date()) {
+export function matchesHomeDue(t, mode, now = new Date(), f = defaultFormatters()) {
   if (!t.due_date || t.completed_at) return false
-  const { today, weekEnd } = dueWindow(now)
-  const dueDay = dueDayOf(t)
+  const { today, weekEnd } = dueWindow(now, f)
+  const dueDay = dueDayOf(t, f)
   if (mode === 'overdue') return dueDay < today
-  if (mode === 'today') return dueDay.getTime() === today.getTime()
+  if (mode === 'today') return dueDay === today
   if (mode === 'week') return dueDay >= today && dueDay < weekEnd
   return true
 }
@@ -107,13 +119,13 @@ function matchesQuery(t, q) {
 }
 
 // Does one task pass every active facet? `facets` limits which facets are
-// considered (subtasks use SUBTASK_FACETS), `now` is passed through to matchesDue,
-// `glLoginByUserId` (tessera user id → gl_username) lets the author facet match
-// GitLab-synced tasks whose Tessera author is null.
+// considered (subtasks use SUBTASK_FACETS), `now` and `formatters` are passed
+// through to matchesDue, `glLoginByUserId` (tessera user id → gl_username) lets the
+// author facet match GitLab-synced tasks whose Tessera author is null.
 export function matchesTask(
   t,
   filters,
-  { facets = null, now = new Date(), glLoginByUserId = {} } = {},
+  { facets = null, now = new Date(), glLoginByUserId = {}, formatters = null } = {},
 ) {
   const on = (f) => !facets || facets.includes(f)
   if (on('priorities') && filters.priorities?.length && !filters.priorities.includes(t.priority))
@@ -140,7 +152,12 @@ export function matchesTask(
     !filters.milestones.includes(t.milestone_id || NO_MILESTONE)
   )
     return false
-  if (on('due') && filters.due && !matchesDue(t, filters.due, now)) return false
+  if (
+    on('due') &&
+    filters.due &&
+    !matchesDue(t, filters.due, now, formatters || defaultFormatters())
+  )
+    return false
   const q = (filters.q || '').trim().toLowerCase()
   if (on('q') && q && !matchesQuery(t, q)) return false
   return true
@@ -172,9 +189,11 @@ export function filterBoardTasks({
   subtasksByParent = {},
   filters = {},
   glLoginByUserId = {},
+  formatters = null,
   now,
 }) {
   const clock = now || new Date()
+  const fmt = formatters || defaultFormatters()
 
   // Empty composer: everything passes and nothing is narrowed. Shaped exactly like
   // the general path below (fresh arrays, child lists only for parents that have
@@ -196,7 +215,7 @@ export function filterBoardTasks({
 
   for (const t of tasks) {
     const subs = subtasksByParent[t.id] || []
-    const selfOk = matchesTask(t, filters, { now: clock, glLoginByUserId })
+    const selfOk = matchesTask(t, filters, { now: clock, glLoginByUserId, formatters: fmt })
     if (selfOk) {
       outTasks.push(t)
       if (subs.length) outSubs[t.id] = subs
@@ -206,9 +225,22 @@ export function filterBoardTasks({
     // The parent itself failed. It may still be lifted by a matching subtask —
     // but only if the parent passes the facets a subtask cannot stand in for
     // (its board column), otherwise the card would appear in the wrong place.
-    if (!matchesTask(t, filters, { facets: ['statuses'], now: clock, glLoginByUserId })) continue
+    if (
+      !matchesTask(t, filters, {
+        facets: ['statuses'],
+        now: clock,
+        glLoginByUserId,
+        formatters: fmt,
+      })
+    )
+      continue
     const hits = subs.filter((s) =>
-      matchesTask(s, filters, { facets: SUBTASK_FACETS, now: clock, glLoginByUserId }),
+      matchesTask(s, filters, {
+        facets: SUBTASK_FACETS,
+        now: clock,
+        glLoginByUserId,
+        formatters: fmt,
+      }),
     )
     if (!hits.length) continue
     outTasks.push(t)

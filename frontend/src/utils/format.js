@@ -153,7 +153,9 @@ function zonedParts(date, timeZone) {
 
 // Days since the epoch for a set of calendar fields — the unit relative labels
 // compare in, so a comparison never depends on the offset of either instant.
-function epochDay(parts) {
+// Exported because the due-date filters compare days too (utils/taskFilter), and
+// they have to land on the same integer this module's labels do.
+export function epochDay(parts) {
   return Math.round(Date.UTC(parts.year, parts.month, parts.day) / 86400000)
 }
 
