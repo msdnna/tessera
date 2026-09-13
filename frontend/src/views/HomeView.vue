@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad } from '@/utils/gradient'
 import { taskColumnName } from '@/utils/defaultNames'
+import { matchesHomeDue } from '@/utils/taskFilter'
 import { useDateLocale } from '@/composables/useDateLocale'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
@@ -54,18 +55,6 @@ const cards = computed(() => {
   }))
 })
 
-function matchesDue(task, mode) {
-  if (!task.due_date) return false
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const due = new Date(task.due_date)
-  const day = new Date(due.getFullYear(), due.getMonth(), due.getDate())
-  if (mode === 'overdue') return day < today && !task.completed_at
-  if (mode === 'today') return day.getTime() === today.getTime() && !task.completed_at
-  if (mode === 'week') return day >= today && day - today <= 7 * 86400000 && !task.completed_at
-  return true
-}
-
 const visibleTasks = computed(() => {
   const arr = allTasks.value
   switch (filter.value) {
@@ -78,7 +67,9 @@ const visibleTasks = computed(() => {
     case 'completed':
       return arr.filter((task) => task.completed_at)
     default:
-      return arr.filter((task) => matchesDue(task, filter.value))
+      // Same windows as the cards above the list — the counts come from the server
+      // (WorkspaceTaskSummary), so the predicate here must not invent its own.
+      return arr.filter((task) => matchesHomeDue(task, filter.value))
   }
 })
 

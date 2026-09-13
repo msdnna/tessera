@@ -237,8 +237,13 @@ func TestWorkspaceSummaryBuckets(t *testing.T) {
 	due("ровно через неделю", today.AddDate(0, 0, 7)) // week_end is exclusive
 	due("через десять дней", today.AddDate(0, 0, 10))
 
-	// Completed tasks drop out of the due buckets even when the date has passed.
+	// Completed tasks drop out of the due buckets even when the date has passed —
+	// and out of "assigned" too, though they are assigned: every client's "Мои"
+	// list is open tasks only (HomeView.vue, HomeUiState.visibleTasks), and the
+	// tile is the count of that list, not of the rows behind it.
 	pastDone := due("готовая просроченная", today.AddDate(0, 0, -2))
+	c.expect(t, c.post("/tasks/"+pastDone["id"].(string)+"/assignees",
+		map[string]any{"user_id": c.UserID}), http.StatusNoContent)
 	c.expect(t, c.patch("/tasks/"+pastDone["id"].(string), map[string]any{
 		"title": "готовая просроченная", "completed": true,
 	}), http.StatusOK)
@@ -263,7 +268,7 @@ func TestWorkspaceSummaryBuckets(t *testing.T) {
 		n   float64
 	}{
 		{"total", 8}, {"completed", 1}, {"active", 7}, {"assigned", 1},
-		{"overdue", 1}, {"due_today", 1}, {"due_week", 2}, {"unassigned", 6},
+		{"overdue", 1}, {"due_today", 1}, {"due_week", 2}, {"unassigned", 5},
 	} {
 		if sum[want.key] != want.n {
 			t.Errorf("summary[%s] = %v, want %v\nfull: %v", want.key, sum[want.key], want.n, sum)

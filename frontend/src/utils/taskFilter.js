@@ -26,19 +26,55 @@ export const SUBTASK_FACETS = [
   'milestones',
 ]
 
+// The calendar day a due date belongs to, and the two bounds every "срок" window
+// is measured against. Both are built as local calendar dates rather than by
+// adding milliseconds: a week is seven midnights, not 7×86400000 ms, and across a
+// DST change those are an hour apart — enough to move a task in or out of a window.
+//
+// The week window is half-open, [today, today+7): seven days counting today, the
+// same range WorkspaceTaskSummary counts in SQL (`due < week_end`, pinned by
+// TestWorkspaceSummaryBuckets) and Android's home filters on. It has to be the
+// same one, because on the home screen the server's number is the caption of a
+// list this module filters — an eighth day here was a card the count above it
+// never included.
+function dueWindow(now) {
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return { today, weekEnd: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7) }
+}
+
+function dueDayOf(t) {
+  const due = new Date(t.due_date)
+  return new Date(due.getFullYear(), due.getMonth(), due.getDate())
+}
+
 // Due-date predicate for the "Срок" filter. `now` is injectable so tests are
 // not clock-dependent.
 export function matchesDue(t, mode, now = new Date()) {
   if (mode === 'none') return !t.due_date
   if (!t.due_date) return false
   if (mode === 'has') return true
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const due = new Date(t.due_date)
-  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate())
-  const dayMs = 86400000
+  const { today, weekEnd } = dueWindow(now)
+  const dueDay = dueDayOf(t)
   if (mode === 'overdue') return dueDay < today && !t.completed_at
   if (mode === 'today') return dueDay.getTime() === today.getTime()
-  if (mode === 'week') return dueDay >= today && dueDay - today <= 7 * dayMs
+  if (mode === 'week') return dueDay >= today && dueDay < weekEnd
+  return true
+}
+
+// The home screen's due predicate: the same windows as the summary cards above the
+// list, minus completed tasks. A closed task is not work that is due, and the cards
+// («Просрочено», «Сегодня», «На неделе») count it that way too — see the query.
+//
+// Kept apart from matchesDue rather than folded into it: the board's "Срок" facet
+// is a date filter over cards that include the done column, so hiding completed
+// tasks there would be a different feature, not the same one.
+export function matchesHomeDue(t, mode, now = new Date()) {
+  if (!t.due_date || t.completed_at) return false
+  const { today, weekEnd } = dueWindow(now)
+  const dueDay = dueDayOf(t)
+  if (mode === 'overdue') return dueDay < today
+  if (mode === 'today') return dueDay.getTime() === today.getTime()
+  if (mode === 'week') return dueDay >= today && dueDay < weekEnd
   return true
 }
 

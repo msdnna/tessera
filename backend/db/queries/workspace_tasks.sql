@@ -33,12 +33,19 @@ ORDER BY t.due_date NULLS LAST, t.created_at DESC;
 -- the caller buckets a due date in Go, and comparing against caller-supplied midnights
 -- keeps that bucketing byte-identical (see WorkspaceSummary). board_columns is not
 -- joined — tasks.column_id is a NOT NULL FK, so the join never filtered anything.
+--
+-- Every count here is the size of a list the client can open: each number is a
+-- clickable card on the home screen that switches the list below it. So `assigned`
+-- excludes completed tasks for the same reason `overdue` does — both clients' "Мои"
+-- list is open tasks only (HomeView.vue, HomeUiState.visibleTasks), and a card that
+-- claims eight while the list under it shows five is worse than no card.
 -- name: WorkspaceTaskSummary :one
 SELECT
     count(*) AS total,
     count(*) FILTER (WHERE t.completed_at IS NOT NULL) AS completed,
     count(*) FILTER (
-        WHERE EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = @user_id)
+        WHERE t.completed_at IS NULL
+          AND EXISTS (SELECT 1 FROM task_assignees ta WHERE ta.task_id = t.id AND ta.user_id = @user_id)
     ) AS assigned,
     count(*) FILTER (
         WHERE t.completed_at IS NULL AND t.due_date < @day_start::timestamptz

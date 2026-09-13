@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   filterBoardTasks,
   matchesDue,
+  matchesHomeDue,
   matchesTask,
   hasSubtaskFacets,
   hasAnyFacets,
@@ -159,6 +160,39 @@ describe('matchesDue', () => {
     expect(matchesDue({ due_date: '2026-08-01', completed_at: '2026-08-02' }, 'overdue', NOW)).toBe(
       false,
     )
+  })
+
+  // The week window is a seven-day half-open range [today, today+7): the same one
+  // WorkspaceTaskSummary counts in SQL (week_end exclusive) and Android's home
+  // filters on. A day-8 task inside it is a card the tile over it doesn't count.
+  it('неделя — семь дней, ровно через неделю уже вне окна', () => {
+    expect(matchesDue(t('2026-08-09T23:00:00'), 'week', NOW)).toBe(true) // today+6
+    expect(matchesDue(t('2026-08-10T00:00:00'), 'week', NOW)).toBe(false) // today+7
+  })
+})
+
+// The Home screen's own predicate: same windows as the summary tiles above it,
+// minus completed tasks (a closed task is not work that is due).
+describe('matchesHomeDue', () => {
+  const t = (d, done) => ({ due_date: d, completed_at: done || null })
+  it('окно недели совпадает с плиткой: today+6 внутри, today+7 снаружи', () => {
+    expect(matchesHomeDue(t('2026-08-09T23:00:00'), 'week', NOW)).toBe(true)
+    expect(matchesHomeDue(t('2026-08-10T00:00:00'), 'week', NOW)).toBe(false)
+  })
+  it('закрытые задачи не попадают ни в один срок', () => {
+    expect(matchesHomeDue(t('2026-08-03T09:00:00', '2026-08-03T10:00:00'), 'today', NOW)).toBe(
+      false,
+    )
+    expect(matchesHomeDue(t('2026-08-05T09:00:00', '2026-08-03T10:00:00'), 'week', NOW)).toBe(false)
+    expect(matchesHomeDue(t('2026-08-01T09:00:00', '2026-08-02T10:00:00'), 'overdue', NOW)).toBe(
+      false,
+    )
+  })
+  it('открытые попадают: сегодня, на неделе, просрочена', () => {
+    expect(matchesHomeDue(t('2026-08-03T09:00:00'), 'today', NOW)).toBe(true)
+    expect(matchesHomeDue(t('2026-08-05T09:00:00'), 'week', NOW)).toBe(true)
+    expect(matchesHomeDue(t('2026-08-01T09:00:00'), 'overdue', NOW)).toBe(true)
+    expect(matchesHomeDue(t(null), 'today', NOW)).toBe(false)
   })
 })
 
