@@ -97,6 +97,36 @@ class ErrorsTest {
             .isEqualTo("В маршруте согласования слишком много участников")
     }
 
+    /** Четыре отказа членства в пространстве плюс ранг, который остаётся после
+     *  них (#2932). Модалка участников на телефоне гасит свою строку так же, как
+     *  веб, поэтому сюда доходит только устаревшая вкладка — момент, когда сырая
+     *  английская фраза нужна меньше всего. */
+    @Test
+    fun `humanizeError maps the workspace membership refusals`() {
+        assertThat(humanizeError("cannot change the workspace owner's role")?.resolve(ru))
+            .isEqualTo("Роль владельца пространства менять нельзя")
+        assertThat(humanizeError("cannot remove the workspace owner")?.resolve(ru))
+            .isEqualTo("Владельца пространства нельзя удалить")
+        assertThat(humanizeError("cannot change your own role")?.resolve(ru))
+            .isEqualTo("Свою роль изменить нельзя — попросите другого администратора")
+        assertThat(humanizeError("cannot remove yourself from the workspace")?.resolve(ru))
+            .isEqualTo("Себя нельзя удалить из пространства — попросите другого администратора")
+        assertThat(humanizeError("requires admin or owner")?.resolve(ru))
+            .isEqualTo("Нужны права администратора или владельца пространства")
+        assertThat(humanizeError("requires admin")?.resolve(ru))
+            .isEqualTo("Нужны права администратора")
+    }
+
+    /** Обе локали заполнены — англоязычный читатель не должен получить русскую
+     *  строку из-за половинчатой правки. */
+    @Test
+    fun `humanizeError phrases the membership refusals in English too`() {
+        assertThat(humanizeError("cannot change your own role")?.resolve(en))
+            .isEqualTo("You cannot change your own role — ask another admin")
+        assertThat(humanizeError("cannot remove yourself from the workspace")?.resolve(en))
+            .isEqualTo("You cannot remove yourself from the workspace — ask another admin")
+    }
+
     @Test
     fun `humanizeError validator email`() {
         val raw = "Key: 'Req.Email' Error:Field validation for 'Email' failed on the 'email' tag"

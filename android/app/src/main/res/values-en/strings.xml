@@ -1356,6 +1356,12 @@
     <string name="err_no_user_with_email">No account uses this email — you can send an invitation</string>
     <string name="err_job_already_running">This job is already running — wait for it to finish</string>
     <string name="err_too_many_approvers">The approval route asks too many people</string>
+    <string name="err_cannot_change_owner_role">The workspace owner\'s role cannot be changed</string>
+    <string name="err_cannot_remove_owner">The workspace owner cannot be removed</string>
+    <string name="err_cannot_change_own_role">You cannot change your own role — ask another admin</string>
+    <string name="err_cannot_remove_self">You cannot remove yourself from the workspace — ask another admin</string>
+    <string name="err_requires_manager">Workspace admin or owner rights are required</string>
+    <string name="err_requires_admin">Admin rights are required</string>
     <string name="err_forbidden">Not enough permissions</string>
     <string name="err_unauthorized">Please sign in again</string>
     <string name="err_not_found">Not found</string>

@@ -22,7 +22,13 @@
     "invitationInvalid": "The invitation is no longer valid or has expired",
     "invitationWrongAccount": "This invitation was sent to a different address",
     "bodyTooLarge": "The request is too large — shorten the text or the attachment",
-    "docContentTooLarge": "The document is larger than {limit} — split it into several pages"
+    "docContentTooLarge": "The document is larger than {limit} — split it into several pages",
+    "cannotChangeOwnerRole": "The workspace owner's role cannot be changed",
+    "cannotRemoveOwner": "The workspace owner cannot be removed",
+    "cannotChangeOwnRole": "You cannot change your own role — ask another admin",
+    "cannotRemoveSelf": "You cannot remove yourself from the workspace — ask another admin",
+    "requiresManager": "Workspace admin or owner rights are required",
+    "requiresAdmin": "Admin rights are required"
   },
   "validation": {
     "email": "Enter a valid email",

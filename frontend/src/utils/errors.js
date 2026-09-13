@@ -61,6 +61,20 @@ const SENTINELS = {
   // refusal surfaces as the form's error line.
   'invalid or expired invitation': 'invitationInvalid',
   'this invitation is for a different email': 'invitationWrongAccount',
+  // The workspace membership guards (#2932). The dialog mirrors all four
+  // (utils/members.js) and greys the row out, so these are reached from a stale
+  // tab — another admin changed something while this one was open — which is
+  // exactly when a bare English line is least welcome.
+  "cannot change the workspace owner's role": 'cannotChangeOwnerRole',
+  'cannot remove the workspace owner': 'cannotRemoveOwner',
+  'cannot change your own role': 'cannotChangeOwnRole',
+  'cannot remove yourself from the workspace': 'cannotRemoveSelf',
+  // What a manager hears once they are not one any more. Distinct from the bare
+  // `forbidden` above: that one is the generic gate, this one names the rank
+  // required, and it is the sentence a demoted admin meets on every subsequent
+  // click of the dialog they were just using.
+  'requires admin or owner': 'requiresManager',
+  'requires admin': 'requiresAdmin',
   // The transport's own refusal, from middleware.BodyLimit — not a handler's
   // sentence at all, which is why it reads like a protocol error rather than
   // something a person did. An ordinary user reaches it by writing a very long

@@ -79,6 +79,16 @@ private val sentinels = mapOf(
     "no user with that email" to R.string.err_no_user_with_email,
     "job is already running" to R.string.err_job_already_running,
     "too many approvers" to R.string.err_too_many_approvers,
+    // Четыре гварда членства в пространстве и ранг, который остаётся после них
+    // (#2932). Модалка участников гасит свою строку (см. MembersModal), так что
+    // сюда доходит устаревшая вкладка: другой админ поменял роли, пока эта была
+    // открыта.
+    "cannot change the workspace owner's role" to R.string.err_cannot_change_owner_role,
+    "cannot remove the workspace owner" to R.string.err_cannot_remove_owner,
+    "cannot change your own role" to R.string.err_cannot_change_own_role,
+    "cannot remove yourself from the workspace" to R.string.err_cannot_remove_self,
+    "requires admin or owner" to R.string.err_requires_manager,
+    "requires admin" to R.string.err_requires_admin,
     "forbidden" to R.string.err_forbidden,
     "unauthorized" to R.string.err_unauthorized,
     "not found" to R.string.err_not_found,

@@ -124,6 +124,29 @@ describe('humanizeError', () => {
     )
   })
 
+  // The four membership guards plus the rank they leave behind (#2932). The
+  // dialog mirrors all four and greys the row out, so these are what a stale tab
+  // hears — and a demoted admin hears "requires admin or owner" on every click
+  // afterwards, which is the moment a bare English line is least welcome.
+  it('maps the workspace membership refusals', () => {
+    expect(humanizeError("cannot change the workspace owner's role")).toBe(
+      'Роль владельца пространства менять нельзя',
+    )
+    expect(humanizeError('cannot remove the workspace owner')).toBe(
+      'Владельца пространства нельзя удалить',
+    )
+    expect(humanizeError('cannot change your own role')).toBe(
+      'Свою роль изменить нельзя — попросите другого администратора',
+    )
+    expect(humanizeError('cannot remove yourself from the workspace')).toBe(
+      'Себя нельзя удалить из пространства — попросите другого администратора',
+    )
+    expect(humanizeError('requires admin or owner')).toBe(
+      'Нужны права администратора или владельца пространства',
+    )
+    expect(humanizeError('requires admin')).toBe('Нужны права администратора')
+  })
+
   // Both ways a body can be refused for its size (#2932). The transport's line
   // is a flat sentinel; the validator's carries its own ceiling, so it is the
   // one refusal in the catalogue that has to be read rather than looked up —

@@ -190,6 +190,27 @@ func manageableRole(role string) bool {
 	return role == "admin" || role == "member"
 }
 
+// The self-lockout guards. A manager may do anything to anybody's membership
+// except their own, for the same reason admin.go refuses "cannot change your own
+// admin role" and users.go refuses "cannot change your own active state": every
+// other refusal on these routes protects someone who can still complain, while
+// this one protects the only person whose mistake nobody will notice and who
+// cannot undo it. An admin who picks «Участник» on their own row loses members,
+// roles, invitations and settings on the next request, and getting them back
+// needs another admin — or the owner, who may not be around.
+//
+// Removal has its own sentence rather than sharing the role one because it is a
+// different loss (the workspace disappears from the sidebar mid-session:
+// RemoveMember cuts the member's live sockets), and because it is not a way out
+// that is being taken away — RemoveMember sits behind requireManager, so an
+// ordinary member never had it, and there is no leave-workspace route to speak
+// of. Both are checked *after* the owner guard, so the owner keeps hearing the
+// owner rule, which is true regardless of who is asking.
+const (
+	errSelfRole   = "cannot change your own role"
+	errSelfRemove = "cannot remove yourself from the workspace"
+)
+
 // AddMember invites an existing user (by email) to the workspace (owner/admin).
 func (h *API) AddMember(c *gin.Context) {
 	id, ok := parseID(c, "id")
@@ -237,6 +258,10 @@ func (h *API) AddMember(c *gin.Context) {
 	}
 	if user.ID == ws.OwnerID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "cannot change the workspace owner's role"})
+		return
+	}
+	if user.ID == middleware.CurrentUser(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": errSelfRole})
 		return
 	}
 	m, err := h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: id, UserID: user.ID, Role: role})
@@ -287,6 +312,10 @@ func (h *API) UpdateMemberRole(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "cannot change the workspace owner's role"})
 		return
 	}
+	if userID == middleware.CurrentUser(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": errSelfRole})
+		return
+	}
 	m, err := h.q.UpdateMembershipRole(c, db.UpdateMembershipRoleParams{WorkspaceID: id, UserID: userID, Role: req.Role})
 	if notFound(c, err) {
 		return
@@ -322,6 +351,10 @@ func (h *API) RemoveMember(c *gin.Context) {
 	}
 	if userID == ws.OwnerID {
 		c.JSON(http.StatusForbidden, gin.H{"error": "cannot remove the workspace owner"})
+		return
+	}
+	if userID == middleware.CurrentUser(c) {
+		c.JSON(http.StatusForbidden, gin.H{"error": errSelfRemove})
 		return
 	}
 	if err := h.q.DeleteMembership(c, db.DeleteMembershipParams{WorkspaceID: id, UserID: userID}); err != nil {

@@ -1399,6 +1399,12 @@
     <string name="err_no_user_with_email">Пользователя с таким email нет — можно отправить приглашение</string>
     <string name="err_job_already_running">Задача уже выполняется — дождитесь её завершения</string>
     <string name="err_too_many_approvers">В маршруте согласования слишком много участников</string>
+    <string name="err_cannot_change_owner_role">Роль владельца пространства менять нельзя</string>
+    <string name="err_cannot_remove_owner">Владельца пространства нельзя удалить</string>
+    <string name="err_cannot_change_own_role">Свою роль изменить нельзя — попросите другого администратора</string>
+    <string name="err_cannot_remove_self">Себя нельзя удалить из пространства — попросите другого администратора</string>
+    <string name="err_requires_manager">Нужны права администратора или владельца пространства</string>
+    <string name="err_requires_admin">Нужны права администратора</string>
     <string name="err_forbidden">Недостаточно прав</string>
     <string name="err_unauthorized">Нужно войти заново</string>
     <string name="err_not_found">Не найдено</string>

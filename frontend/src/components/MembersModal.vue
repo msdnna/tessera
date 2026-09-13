@@ -16,8 +16,10 @@ import {
 } from 'naive-ui'
 import { TrashOutline, CopyOutline, MailOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
+import { useAuthStore } from '@/stores/auth'
 import { useFormat } from '@/composables/useFormat'
 import { copyText } from '@/utils/clipboard'
+import { LOCK_OWNER, LOCK_SELF, memberRowLock, addMemberRefusal } from '@/utils/members'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -28,10 +30,22 @@ const emit = defineEmits(['update:show'])
 const { t } = useI18n()
 const { formatDate } = useFormat()
 const message = useMessage()
+const auth = useAuthStore()
 const members = ref([])
 const invitations = ref([])
 const email = ref('')
+const inviteError = ref('')
 const role = ref('member')
+
+// Who is looking. The dialog knew the owner (the list carries the role) but not
+// the viewer, so an admin's own row offered the same role select and the same
+// trash icon as anybody else's — see utils/members.js. `ownerId` is left to the
+// row's own `role` field; there is no workspace record in scope here.
+const who = computed(() => ({
+  selfId: auth.user?.id || '',
+  selfEmail: auth.user?.email || '',
+}))
+const rowLock = (m) => memberRowLock(m, who.value)
 const lastLink = ref('') // link from the most recent invitation, for copying
 // Computed: the role labels sit inside a select, and a frozen table would keep
 // showing the language of the first render — including inside the open dropdown.
@@ -71,6 +85,18 @@ async function load() {
 async function invite() {
   const e = email.value.trim()
   if (!e) return
+  // The same operation by the other door: CreateMembership is an upsert, so an
+  // address already on the list is a role change, and the caller's own address
+  // with the select on its "member" default was a self-demotion answered with a
+  // green "Участник добавлен". The server refuses it now; this only spares the
+  // round trip and says which rule was hit.
+  const refused = addMemberRefusal(e, members.value, who.value)
+  if (refused) {
+    inviteError.value =
+      refused === LOCK_OWNER ? t('shell.members.cannotOwner') : t('shell.members.cannotSelf')
+    return
+  }
+  inviteError.value = ''
   try {
     await wsApi.addMember(props.wsId, { email: e, role: role.value })
     email.value = ''
@@ -146,8 +172,13 @@ watch(
             <span class="name">{{ m.name }}</span>
             <span class="mail">{{ m.email }}</span>
           </div>
-          <n-tag v-if="m.role === 'owner'" size="small" :bordered="false">
+          <n-tag v-if="rowLock(m) === LOCK_OWNER" size="small" :bordered="false">
             {{ t('shell.members.owner') }}
+          </n-tag>
+          <!-- A control that vanishes with no word reads as a broken dialog, so
+               the locked row says which rule locked it. -->
+          <n-tag v-else-if="rowLock(m) === LOCK_SELF" size="small" :bordered="false">
+            {{ t('shell.members.you') }}
           </n-tag>
           <n-select
             v-else
@@ -158,7 +189,7 @@ watch(
             @update:value="(v) => changeRole(m.user_id, v)"
           />
           <n-popconfirm
-            v-if="m.role !== 'owner'"
+            v-if="!rowLock(m)"
             :positive-button-props="{ type: 'error' }"
             :positive-text="t('common.action.delete')"
             @positive-click="remove(m.user_id)"
@@ -208,6 +239,7 @@ watch(
             v-model:value="email"
             size="small"
             :placeholder="t('shell.members.emailPlaceholder')"
+            @update:value="inviteError = ''"
             @keyup.enter="invite"
           />
           <n-select v-model:value="role" :options="roleOptions" size="small" style="width: 130px" />
@@ -215,6 +247,7 @@ watch(
             {{ t('shell.members.invite') }}
           </n-button>
         </n-space>
+        <n-text v-if="inviteError" type="error" class="invite-err">{{ inviteError }}</n-text>
         <n-text depth="3" class="hint">{{ t('shell.members.inviteHint') }}</n-text>
         <div v-if="lastLink" class="link-box">
           <n-input :value="lastLink" size="small" readonly />
@@ -282,6 +315,11 @@ watch(
 .invite-row.is-expired .inv-mail,
 .invite-row.is-expired .inv-icon {
   opacity: 0.6;
+}
+.invite-err {
+  display: block;
+  font-size: 11px;
+  margin-top: 6px;
 }
 .lbl {
   display: block;
