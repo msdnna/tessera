@@ -9,7 +9,6 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -604,23 +603,6 @@ func exportFormatsFor(info converter.Info) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// contentDisposition builds an attachment header that survives a Cyrillic
-// title. The ASCII filename is a fallback for clients that do not read RFC 5987;
-// without the starred form a document called "Протокол" downloads as a row of
-// underscores.
-func contentDisposition(name string) string {
-	ascii := make([]rune, 0, len(name))
-	for _, r := range name {
-		if r < 32 || r > 126 || r == '"' || r == '\\' {
-			ascii = append(ascii, '_')
-			continue
-		}
-		ascii = append(ascii, r)
-	}
-	return fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`,
-		string(ascii), url.PathEscape(name))
 }
 
 // readUpload reads a multipart file into memory under a ceiling.

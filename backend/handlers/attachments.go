@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -257,7 +256,7 @@ func (h *API) DownloadAttachment(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "файл недоступен"})
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", att.Filename))
+	c.Header("Content-Disposition", contentDisposition(att.Filename))
 	// Attachments are arbitrary user files; without nosniff a browser may still
 	// sniff one into HTML and render it on our origin.
 	c.Header("X-Content-Type-Options", "nosniff")

@@ -447,7 +447,7 @@ func (h *API) DownloadConferenceMessageAttachment(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "файл недоступен"})
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", att.Filename))
+	c.Header("Content-Disposition", contentDisposition(att.Filename))
 	c.Header("X-Content-Type-Options", "nosniff")
 	// The type is the sniffed one, so a client that renders the bytes from a blob
 	// gets a picture rather than a download prompt.

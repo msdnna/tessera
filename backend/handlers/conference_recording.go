@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math"
 	"net/http"
 	"os"
@@ -519,7 +518,7 @@ func (h *API) DownloadConferenceRecording(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "файл недоступен"})
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", rec.FileName))
+	c.Header("Content-Disposition", contentDisposition(rec.FileName))
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Content-Type", "video/mp4")
 	c.File(rec.FilePath)

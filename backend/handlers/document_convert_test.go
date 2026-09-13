@@ -138,20 +138,9 @@ func TestExportFormatsFollowSidecarCapabilities(t *testing.T) {
 	}
 }
 
-func TestContentDispositionSurvivesCyrillic(t *testing.T) {
-	got := contentDisposition("Протокол совещания.pdf")
-	if !strings.Contains(got, "filename*=UTF-8''") {
-		t.Fatalf("no RFC 5987 filename: %q", got)
-	}
-	if !strings.Contains(got, "%D0%9F") {
-		t.Fatalf("title not percent-encoded: %q", got)
-	}
-	// The ASCII fallback must still be a quoted string a naive client can parse,
-	// not a header broken by an embedded quote.
-	if strings.Count(got, `"`) != 2 {
-		t.Fatalf("malformed ASCII fallback: %q", got)
-	}
-	if got := contentDisposition(`ev"il.pdf`); strings.Count(got, `"`) != 2 {
-		t.Fatalf("a quote in the title escaped into the header: %q", got)
-	}
-}
+// The header builder moved to content_disposition.go along with its tests. What
+// stood here — TestContentDispositionSurvivesCyrillic — asserted the header
+// *contained* "filename*=UTF-8''" and never asked whether it parsed, so it went
+// on passing through the whole of #2932 while a colon in a title was making the
+// header unreadable. Its every assertion is covered there by a round-trip
+// through mime.ParseMediaType, which is the thing a client actually does.

@@ -16,6 +16,7 @@ package main
 
 import (
 	"context"
+	"mime"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -158,8 +159,17 @@ func TestRecordingDownloadServesTheFileToMembersOnly(t *testing.T) {
 	if string(r.Body) != "fake-mp4-bytes" {
 		t.Fatalf("download body = %q", r.Body)
 	}
-	if got := r.Header.Get("Content-Disposition"); got != `attachment; filename="rec-2026-09-03-2300.mp4"` {
-		t.Errorf("Content-Disposition = %q", got)
+	// Read back through a real parser rather than comparing the header verbatim:
+	// what the route owes the client is a name it can recover, not a particular
+	// spelling. Pinning the spelling is how #2932 hid — the header now also
+	// carries filename*, and a literal comparison would have called that a
+	// regression.
+	got := r.Header.Get("Content-Disposition")
+	typ, params, err := mime.ParseMediaType(got)
+	if err != nil {
+		t.Errorf("Content-Disposition %q does not parse: %v", got, err)
+	} else if typ != "attachment" || params["filename"] != "rec-2026-09-03-2300.mp4" {
+		t.Errorf("Content-Disposition = %q (type %q, filename %q)", got, typ, params["filename"])
 	}
 	// Attacker-supplied bytes behind nothing but a bearer token must not be
 	// sniffable into something the browser will execute on our origin.
