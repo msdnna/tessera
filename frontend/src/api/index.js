@@ -637,12 +637,20 @@ export const tasks = {
   events: (id) => api.get(`/tasks/${id}/events`),
   comments: (id) => api.get(`/tasks/${id}/comments`),
   // parentId is optional and last so existing three-argument calls are unchanged.
-  addComment: (id, body, mentions, parentId) =>
-    api.post(`/tasks/${id}/comments`, { body, mentions, parent_id: parentId || null }),
+  // `tz` rides along for the same reason the home summary takes one: a «/due
+  // сегодня» in the body is resolved server-side, and the day it means is the
+  // writer's, not the server's.
+  addComment: (id, body, mentions, parentId, tz) =>
+    api.post(
+      `/tasks/${id}/comments`,
+      { body, mentions, parent_id: parentId || null },
+      { params: { tz } },
+    ),
   // Dry-run the quick actions in a draft comment — same parser as the real
-  // POST, changes nothing. Powers the «Будет применено: …» hint.
-  previewCommands: (id, body) =>
-    api.post(`/tasks/${id}/commands/preview`, { body }, { skipLoader: true }),
+  // POST, changes nothing. Powers the «Будет применено: …» hint. Same zone as
+  // the real POST, or the hint would name a different day than the command sets.
+  previewCommands: (id, body, tz) =>
+    api.post(`/tasks/${id}/commands/preview`, { body }, { skipLoader: true, params: { tz } }),
   updateComment: (commentId, body) => api.patch(`/comments/${commentId}`, { body }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),

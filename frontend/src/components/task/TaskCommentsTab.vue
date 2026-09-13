@@ -19,6 +19,8 @@ import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useThemeStore } from '@/stores/theme'
+import { resolvedTimezone } from '@/utils/format'
 import { fmtWhen, groupThreads } from '@/utils/taskFeed'
 import { useFormat } from '@/composables/useFormat'
 import { toggleTaskMarker } from '@/utils/markdown'
@@ -45,6 +47,7 @@ const { formatters } = useFormat()
 const auth = useAuthStore()
 const bv = useBoardViewStore()
 const store = useWorkspacesStore()
+const theme = useThemeStore()
 
 const meId = computed(() => auth.user?.id)
 const commentsPane = ref(null) // the .comments container (narrow-layout scroll fallback)
@@ -182,6 +185,13 @@ const commandItems = computed(() => store.commands || [])
 const cmdPreview = ref([]) // [{ key, summary, error }] from the dry-run
 const cmdCustom = ref([]) // custom keys seen in the draft — kept as plain text
 let cmdTimer = null
+// «/due сегодня» is resolved on the server, so the request has to say which
+// calendar «сегодня» belongs to — the blank the profile may hold reads as UTC
+// there (see resolvedTimezone). Sent on the dry-run too: the hint and the command
+// must name the same day.
+function commandTz() {
+  return resolvedTimezone(theme.timezone)
+}
 // Dry-run the draft against the backend's parser (debounced) instead of
 // re-implementing it here: the hint can never disagree with what will happen.
 watch(newComment, (body) => {
@@ -193,7 +203,7 @@ watch(newComment, (body) => {
   }
   cmdTimer = setTimeout(async () => {
     try {
-      const res = await tasksApi.previewCommands(props.taskId, body)
+      const res = await tasksApi.previewCommands(props.taskId, body, commandTz())
       cmdPreview.value = res.data?.commands || []
       cmdCustom.value = res.data?.custom || []
     } catch {
@@ -290,7 +300,7 @@ async function postComment() {
     // attempt 0 is the initial send; 1..N are retries, each preceded by its backoff.
     for (let attempt = 0; attempt <= RETRY_BACKOFFS.length; attempt++) {
       try {
-        const res = await tasksApi.addComment(props.taskId, body, mentions)
+        const res = await tasksApi.addComment(props.taskId, body, mentions, null, commandTz())
         retryInfo.value = null
         newComment.value = ''
         commentEditor.value?.clear?.()
@@ -338,7 +348,7 @@ async function postReply(rootId) {
   const known = new Set((props.comments || []).map((c) => c.id))
   replyingPost.value = true
   try {
-    const res = await tasksApi.addComment(props.taskId, body, mentions, rootId)
+    const res = await tasksApi.addComment(props.taskId, body, mentions, rootId, commandTz())
     cancelReply()
     const c = await tasksApi.comments(props.taskId)
     emit('update:comments', c.data || [])

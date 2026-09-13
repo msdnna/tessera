@@ -12,6 +12,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/quickact"
+	"tessera/middleware"
 )
 
 // Quick actions: GitLab-style commands typed into a comment ("/close",
@@ -188,6 +189,23 @@ func matchMember(members []db.ListMembersRow, login string) (uuid.UUID, bool) {
 	return uuid.Nil, false
 }
 
+// commandNow is the clock a date command reads: the present moment, in the
+// calendar of whoever typed the command.
+//
+// «/due сегодня» is a statement about the writer's day, and the day the server
+// process happens to be in is not it. ParseDate resolves every relative form and
+// every bare date to midnight in the location it is handed, and the clients store
+// a due date as exactly that local midnight (resolvedTimezone in
+// frontend/src/utils/format.js) — so passing the server's clock lands on the wrong
+// day twice: the stored instant is a different day's start, and the summary
+// written back into the comment ("срок 14.08.2026") then names a date the due pill
+// on that same card does not show, because the frontend renders it in the user's
+// zone. A comment written at 01:30 in +03:00 is 22:30 of the previous day in UTC,
+// which is how «/due сегодня» used to file a task as already overdue.
+func (h *API) commandNow(c *gin.Context) time.Time {
+	return time.Now().In(h.callerLocation(c, middleware.CurrentUser(c)))
+}
+
 // qaPatch handles the commands that are a partial edit of the task's own fields.
 func (h *API) qaPatch(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd quickact.Cmd) (string, error) {
 	var patch taskPatch
@@ -195,7 +213,7 @@ func (h *API) qaPatch(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd quickact.C
 
 	switch cmd.Key {
 	case "due", "start":
-		when, err := quickact.ParseDate(cmd.Arg, time.Now())
+		when, err := quickact.ParseDate(cmd.Arg, h.commandNow(c))
 		if err != nil {
 			return "", opError{msg: err.Error()}
 		}
@@ -589,7 +607,7 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 		return "снять @" + strings.Join(logins, ", @"), nil
 
 	case "due", "start":
-		when, err := quickact.ParseDate(cmd.Arg, time.Now())
+		when, err := quickact.ParseDate(cmd.Arg, h.commandNow(c))
 		if err != nil {
 			return "", opError{msg: err.Error()}
 		}

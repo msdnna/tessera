@@ -4,6 +4,7 @@ import api, {
   auth,
   gitlab,
   boards,
+  tasks,
   setAccessToken,
   getAccessToken,
   restoreSession,
@@ -120,6 +121,23 @@ describe('boards.setDoneColumn', () => {
     instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
     await boards.setDoneColumn('b1', 'c9')
     expect(JSON.parse(instanceAdapter.mock.calls[0][0].data)).toEqual({ column_id: 'c9' })
+  })
+})
+
+// A «/due сегодня» in a comment is resolved by the backend, so the request has to
+// carry the calendar it belongs to — the same zone the home summary sends. The
+// dry-run behind the «Будет применено: …» hint carries it too: a hint computed in
+// one zone and a command applied in another would name two different days.
+describe('quick-action comments carry the caller zone', () => {
+  it('sends tz on the comment POST and on the preview', async () => {
+    instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
+    await tasks.addComment('t1', '/due сегодня', [], null, 'Europe/Moscow')
+    await tasks.previewCommands('t1', '/due сегодня', 'Europe/Moscow')
+    const [post, preview] = instanceAdapter.mock.calls.map((c) => c[0])
+    expect(post.url).toContain('/tasks/t1/comments')
+    expect(post.params).toEqual({ tz: 'Europe/Moscow' })
+    expect(preview.url).toContain('/tasks/t1/commands/preview')
+    expect(preview.params).toEqual({ tz: 'Europe/Moscow' })
   })
 })
 
