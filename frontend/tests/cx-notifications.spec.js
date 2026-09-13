@@ -140,6 +140,30 @@ describe('notificationText', () => {
     ).toBe('GitLab · a/b: sync failed — 401 (after 1h 1m)')
   })
 
+  // A failure reason is the integration's own error text, so it is spliced in
+  // verbatim — but the "we don't know why" default is a UI string and belongs
+  // here, in the reader's language. A payload that carried it would read
+  // "sync failed — неизвестная ошибка" on an English screen, and an empty one
+  // would leave the dash dangling.
+  it('words an unknown sync failure reason in the reader s language', async () => {
+    const failed = (payload, opts) =>
+      notificationText(
+        N({ event: 'integration_sync_failed', label: 'GitLab · a/b', ...payload }),
+        opts,
+      )
+
+    expect(failed({ reason: '401', seconds: 5 }, ru())).toBe(
+      'GitLab · a/b: синхронизация не удалась — 401 (за 5 с)',
+    )
+    expect(failed({ seconds: 5 }, ru())).toBe(
+      'GitLab · a/b: синхронизация не удалась — неизвестная ошибка (за 5 с)',
+    )
+    await setI18nLocale('en')
+    expect(failed({ seconds: 5 }, en())).toBe(
+      'GitLab · a/b: sync failed — unknown error (after 5s)',
+    )
+  })
+
   // A reminder's body is the user's own text: content, never translated. Only
   // the empty-message default is a UI string.
   it('shows a reminder message verbatim and falls back to a translated default', async () => {

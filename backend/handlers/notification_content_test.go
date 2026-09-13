@@ -49,6 +49,11 @@ func TestNotifyMsgLegacyText(t *testing.T) {
 			msgSyncFailed(syncCounts{label: "GitLab · a/b", took: "5 с", seconds: 5}),
 			"GitLab · a/b: синхронизация не удалась — неизвестная ошибка (за 5 с)",
 		},
+		{
+			"sync failed/blank reason",
+			msgSyncFailed(syncCounts{label: "GitLab · a/b", took: "5 с", seconds: 5, reason: "  "}),
+			"GitLab · a/b: синхронизация не удалась — неизвестная ошибка (за 5 с)",
+		},
 	}
 	for _, tc := range cases {
 		if tc.msg.text != tc.want {
@@ -91,6 +96,24 @@ func TestNotifyMsgPayload(t *testing.T) {
 	p = decode(t, msgReminder(""))
 	if _, ok := p["message"]; ok {
 		t.Fatalf("empty reminder should carry no message, got %v", p["message"])
+	}
+
+	// A failure reason is the integration's own error text — content, so it
+	// travels verbatim.
+	p = decode(t, msgSyncFailed(syncCounts{label: "GitLab · a/b", took: "5 с", seconds: 5, reason: "401 Unauthorized"}))
+	if p["reason"] != "401 Unauthorized" {
+		t.Fatalf("reason = %v, want the integration's own error text", p["reason"])
+	}
+
+	// A failure with nothing to blame carries no reason, exactly as an empty
+	// reminder carries no message. The default is a UI string, and the client
+	// splices `reason` into a sentence of its own language: shipping the Russian
+	// default in the payload puts "неизвестная ошибка" inside "sync failed — …".
+	for _, reason := range []string{"", "   "} {
+		p = decode(t, msgSyncFailed(syncCounts{label: "GitLab · a/b", took: "5 с", seconds: 5, reason: reason}))
+		if _, ok := p["reason"]; ok {
+			t.Fatalf("reasonless failure (%q) should carry no reason, got %v", reason, p["reason"])
+		}
 	}
 
 	// A seeded column carries its name_key next to the stored Russian name

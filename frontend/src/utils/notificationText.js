@@ -56,7 +56,11 @@ export function notificationText(n, { t = i18n.global.t, te = i18n.global.te, fo
     column: columnName({ name: p.column, name_key: p.column_key }, { t, te }),
     title: p.title || '',
     label: p.label || '',
-    reason: p.reason || '',
+    // A failure reason is the integration's own error text, shown verbatim. A
+    // failure with nothing to blame carries no reason at all (the server keeps
+    // its default in the legacy text), so the word for "we don't know why" is
+    // ours to supply — otherwise the sentence keeps its dash and loses its end.
+    reason: p.reason || t('notifications.reason.unknown'),
     created: p.created ?? 0,
     updated: p.updated ?? 0,
     took: formatDuration(p.seconds ?? 0, t),

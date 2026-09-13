@@ -244,17 +244,26 @@ type syncCounts struct {
 	reason  string // failure reason; only set for the failed outcome
 }
 
+// msgSyncFailed reports a failed sync. The reason is the integration's own error
+// text, which is content and travels verbatim; the "we don't know why" default is
+// a UI string, so — like msgReminder's empty-message default — it stays in the
+// legacy text and is left out of the payload. The client splices `reason` into a
+// sentence of its own language, and a Russian default in there would read
+// "sync failed — неизвестная ошибка" on an English screen.
 func msgSyncFailed(s syncCounts) notifyMsg {
-	reason := s.reason
-	if reason == "" {
-		reason = "неизвестная ошибка"
-	}
+	reason := strings.TrimSpace(s.reason)
 	p := event(evSyncFailed, nil)
 	p["label"] = s.label
 	p["seconds"] = s.seconds
-	p["reason"] = reason
+	if reason != "" {
+		p["reason"] = reason
+	}
+	text := reason
+	if text == "" {
+		text = "неизвестная ошибка"
+	}
 	return notifyMsg{
-		text:    fmt.Sprintf("%s: синхронизация не удалась — %s (за %s)", s.label, reason, s.took),
+		text:    fmt.Sprintf("%s: синхронизация не удалась — %s (за %s)", s.label, text, s.took),
 		payload: p,
 	}
 }
