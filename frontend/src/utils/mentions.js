@@ -10,6 +10,7 @@
 // GitLab verbatim, so "@Евгений Полянский" resolves to nothing there — the GitLab
 // login has to be what lands in the text, while the readable name stays on screen.
 import { i18n } from '@/i18n'
+import { renderRich } from '@/utils/markdown'
 
 // Roles as shown on the hover card, sharing the member-list catalogue entries.
 // Unknown roles fall back to the raw value rather than to "member" — inventing a
@@ -95,6 +96,32 @@ export function buildMentionItems(members, gitlabMembers, gitlabMembersMap) {
         gitlab: true,
       })),
   ]
+}
+
+// mentionIdsIn returns the workspace-member ids a piece of content mentions, in
+// the order they are written and without repeats — the list the server is handed
+// so those people get a "mention" notification.
+//
+// It reads them back off the rendered output instead of scanning the source,
+// because the chip the reader sees IS the promise that the person was told. A
+// text scan breaks that promise in both directions: "@Иван" inside a fenced code
+// block draws no chip yet would notify, and a name typed by hand (or seeded by
+// the reply composer, which writes "@" + author name) draws a resolved chip yet
+// would notify nobody, since the composer only knew the rows picked from its own
+// popup. Rendering here costs one marked+sanitize pass per submitted comment.
+//
+// Rows with no `id` (GitLab-only users) carry no data-id and so drop out on
+// their own: the handle stays in the text for GitLab to resolve on writeback,
+// and Tessera has nobody to notify.
+export function mentionIdsIn(src, items) {
+  if (!src || typeof DOMParser === 'undefined') return []
+  const doc = new DOMParser().parseFromString(renderRich(src, items), 'text/html')
+  const out = []
+  for (const el of doc.querySelectorAll('span.mention[data-id]')) {
+    const id = el.getAttribute('data-id')
+    if (id && !out.includes(id)) out.push(id)
+  }
+  return out
 }
 
 // resolveMention turns a rendered mention chip back into the person it names.

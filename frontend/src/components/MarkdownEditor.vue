@@ -38,6 +38,7 @@ import {
   handleEnter,
 } from '@/utils/mdEdit'
 import { detectSlashQuery, matchCommands, commandInsertText } from '@/utils/commands'
+import { mentionIdsIn } from '@/utils/mentions'
 import { isTauri } from '@/utils/serverBase'
 import { scrollParent } from '@/utils/dom'
 import RichContent from './RichContent.vue'
@@ -122,9 +123,6 @@ watch(
 const ta = ref(null)
 const rootEl = ref(null)
 const previewSide = ref(null)
-
-// Members the user picked from the dropdown, so getMentions can resolve ids.
-const picked = ref([])
 
 // ── narrow (boxed) composer: fold the formatting/insert buttons into a popover ──
 // A comment composer in the sidebar-panel layout is only ~470–500px wide, where the
@@ -711,7 +709,6 @@ function pickSuggest(item) {
   const cmd = isCmd.value
   const insert = cmd ? commandInsertText(item) : `@${item.label} `
   const next = el.value.slice(0, mq.value.start) + insert + el.value.slice(el.selectionStart)
-  if (!cmd && !picked.value.some((p) => p.id === item.id)) picked.value.push({ ...item })
   setValue(next)
   const caret = mq.value.start + insert.length
   mq.value = null
@@ -849,15 +846,14 @@ function onFsAfterLeave() {
   fsOpen.value = false
 }
 
+// Who this text notifies: read off the mentions it renders, not off the popup.
+// The popup is one way to write a handle — typing it, pasting it or having the
+// reply composer seed it are the others, and all four draw the same chip.
 function getMentions() {
-  const text = props.modelValue
-  // GitLab-only mentions have no Tessera id — they live in the text as `@username`
-  // (GitLab resolves them on writeback) and don't produce a Tessera notification.
-  return picked.value.filter((p) => p.id && text.includes(`@${p.label}`)).map((p) => p.id)
+  return mentionIdsIn(props.modelValue, props.mentionItems)
 }
 function clear() {
   setValue('')
-  picked.value = []
   hideBubble()
 }
 function focus() {

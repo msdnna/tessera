@@ -298,3 +298,38 @@ describe('MarkdownEditor split mode', () => {
     expect(w.find('textarea').exists()).toBe(false)
   })
 })
+
+// Mentions the composer reports on submit. The unit-level invariant lives in
+// ut-mentionIds.spec.js; what needs a mount is that the exposed getMentions()
+// reads the text, so a handle nobody picked from the popup still notifies.
+describe('MarkdownEditor mentions', () => {
+  const ITEMS = [
+    { id: 'u1', label: 'Ann Lee', display: 'Ann Lee' },
+    { id: 'u2', label: 'e.polyansky', display: 'Евгений Полянский' },
+    { id: null, label: 'v.sokolov', display: 'Виктор Соколов', gitlab: true },
+  ]
+  function composer(value) {
+    return mount(MarkdownEditor, {
+      props: { modelValue: value, mentionItems: ITEMS },
+      global: { stubs: { RichContent: true, TesseraSpinner: true, UserAvatar: true } },
+    })
+  }
+
+  it('reports a hand-typed mention the popup never saw', () => {
+    expect(composer('@Ann Lee посмотри').vm.getMentions()).toEqual(['u1'])
+  })
+
+  it('reports a seeded reply mention written by display name', () => {
+    // startReply prefills "@" + author_name — for a GitLab-linked member that is
+    // their name, not the login the popup would have inserted.
+    expect(composer('@Евгений Полянский, ок').vm.getMentions()).toEqual(['u2'])
+  })
+
+  it('reports nobody for a handle that only appears inside code', () => {
+    expect(composer('`@Ann Lee` — литерал').vm.getMentions()).toEqual([])
+  })
+
+  it('leaves a GitLab-only handle out of the Tessera notification list', () => {
+    expect(composer('@v.sokolov привет').vm.getMentions()).toEqual([])
+  })
+})
