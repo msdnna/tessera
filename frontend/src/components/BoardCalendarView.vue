@@ -27,12 +27,24 @@ const menu = useTaskMenu({
 // files — twelve more hand-written names per language is exactly the duplication
 // that layer exists to avoid. The grid is built in the browser's timezone, so
 // every lookup passes `timeZone: null` to keep the label on the same day.
-const { formatDate } = useFormat()
-// 1 Jan 2024 was a Monday, and the grid below is Monday-first — any week would
-// do, only the weekday names are read off this one.
+const { formatDate, formatters } = useFormat()
+
+// Where the week starts, as a JS getDay() value. Settings → Локализация offers
+// the choice, and the calendar in the due editor, the Naive pickers and the
+// Gantt week bands all follow it — a month grid that didn't would be a week out
+// of step with the picker the user opens from the same card.
+const firstDow = computed(() => (formatters.value.prefs.weekStart === 0 ? 0 : 1))
+
+// 1 Jan 2024 was a Monday — any week would do, only the weekday names are read
+// off this one, rotated to start on the user's first day.
 const weekdays = computed(() =>
   Array.from({ length: 7 }, (_, i) =>
-    capitalizeFirst(formatDate(new Date(2024, 0, 1 + i), { weekday: 'short', timeZone: null })),
+    capitalizeFirst(
+      formatDate(new Date(2024, 0, 1 + ((i + firstDow.value + 6) % 7)), {
+        weekday: 'short',
+        timeZone: null,
+      }),
+    ),
   ),
 )
 
@@ -62,10 +74,11 @@ const tasksByDay = computed(() => {
 
 const noDate = computed(() => props.tasks.filter((task) => !task.due_date))
 
-// 6 weeks × 7 days, Monday-first, covering the displayed month.
+// 6 weeks × 7 days covering the displayed month, starting on the user's first
+// day of the week (same source as the header row above).
 const weeks = computed(() => {
   const first = cursor.value
-  const offset = (first.getDay() + 6) % 7 // Monday = 0
+  const offset = (first.getDay() - firstDow.value + 7) % 7
   const start = new Date(first.getFullYear(), first.getMonth(), 1 - offset)
   const cells = []
   for (let i = 0; i < 42; i++) {
