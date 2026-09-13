@@ -94,11 +94,21 @@ private val NotifyRepeatOpts = listOf<Pair<String?, Int>>(
     "60" to R.string.due_notify_repeat_60, "180" to R.string.due_notify_repeat_180,
     "1440" to R.string.due_notify_repeat_1440,
 )
-private val UnitPlurals = mapOf(
+
+// Обе половины строки интервала («каждые 3 недели») склоняются по одному и тому
+// же числу, поэтому лежат рядом. internal — чтобы RecurrenceLabelsTest проверял
+// ровно ту раскладку, которой пользуется пикер.
+internal val UnitPlurals = mapOf(
     "daily" to R.plurals.recur_unit_daily,
     "weekly" to R.plurals.recur_unit_weekly,
     "monthly" to R.plurals.recur_unit_monthly,
     "yearly" to R.plurals.recur_unit_yearly,
+)
+internal val EveryPlurals = mapOf(
+    "daily" to R.plurals.recur_every_daily,
+    "weekly" to R.plurals.recur_every_weekly,
+    "monthly" to R.plurals.recur_every_monthly,
+    "yearly" to R.plurals.recur_every_yearly,
 )
 
 // weekday index for the chips, 0=Sun..6=Sat, ordered by week-start.
@@ -364,7 +374,13 @@ fun DueDateTimePicker(
                 if (freq != "custom") {
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.due_picker_every), color = c.text3, fontSize = 13.sp)
+                        // Префикс склоняется вместе с единицей: при интервале 1 (а это
+                        // значение по умолчанию) «каждые 1 день» читается как ошибка, и
+                        // род у единиц разный — «каждый день», но «каждую неделю».
+                        Text(
+                            pluralStringResource(EveryPlurals.getValue(freq), interval),
+                            color = c.text3, fontSize = 13.sp,
+                        )
                         Spacer(Modifier.width(10.dp))
                         IntervalStepper(value = interval, onChange = { interval = it.coerceIn(1, 99) })
                         Spacer(Modifier.width(10.dp))

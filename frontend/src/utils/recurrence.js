@@ -23,12 +23,31 @@ export function triggerOptions() {
   }))
 }
 
+// The interval row is rendered as three pieces — [everyLabel] [number box]
+// [unitLabel] — so both text halves are declined for the same count.
+const intervalCount = (n) => Math.round(Number(n) || 0)
+
+const hasIntervalRow = (freq) => FREQ_VALUES.includes(freq) && freq !== '' && freq !== 'custom'
+
 // "каждые 3 недели" — the unit half, declined for the count. Russian needs three
 // forms and the accusative ("каждые 2 неделИ"), which ICU pluralisation in the
 // catalogue handles; English gets its own two.
 export function unitLabel(freq, n) {
-  if (!FREQ_VALUES.includes(freq) || freq === '' || freq === 'custom') return ''
-  return i18n.global.t(`task.recur.unit.${freq}`, Math.round(Number(n) || 0))
+  if (!hasIntervalRow(freq)) return ''
+  return i18n.global.t(`task.recur.unit.${freq}`, intervalCount(n))
+}
+
+// "каждый 1 день" — the half *in front of* the number. It used to be one frozen
+// word ("каждые"), which reads wrong for every count ending in 1: the interval
+// box opens at 1 the moment a frequency is picked, so «каждые 1 день» was the
+// first form a Russian user ever saw. The word agrees with the unit in number
+// *and* in gender — неделя is feminine ("каждУЮ неделю") where день/месяц/год
+// are masculine — hence one message per frequency rather than one shared. The
+// English branches are deliberately identical: the word does not inflect there,
+// and a flat message opposite a pluralised `ru` one is what cx-i18n forbids.
+export function everyLabel(freq, n) {
+  if (!hasIntervalRow(freq)) return ''
+  return i18n.global.t(`task.recur.every.${freq}`, intervalCount(n))
 }
 
 // withStoredAnchor mirrors the backend's `recurrenceToStore` (handlers/tasks.go).

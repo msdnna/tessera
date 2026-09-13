@@ -229,7 +229,12 @@
   },
   "recur": {
     "title": "Repeat the task",
-    "every": "every",
+    "every": {
+      "daily": "every | every",
+      "weekly": "every | every",
+      "monthly": "every | every",
+      "yearly": "every | every"
+    },
     "customHint": "Mark the repeat dates in the calendar →",
     "event": "Event",
     "triggerColumn": "Trigger column",

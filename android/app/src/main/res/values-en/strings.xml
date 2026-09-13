@@ -1197,7 +1197,6 @@
 
     <!-- Due picker: task recurrence -->
     <string name="due_picker_repeat">Repeat task</string>
-    <string name="due_picker_every">every</string>
     <string name="due_picker_custom_hint">Mark the repeat dates on the calendar above.</string>
     <string name="due_picker_trigger">Event</string>
     <string name="due_picker_trigger_column">Trigger column</string>
@@ -1216,6 +1215,22 @@
     <string name="recur_trigger_complete">On completion</string>
     <string name="recur_trigger_column">On moving to a column</string>
     <string name="recur_trigger_schedule">On schedule</string>
+    <plurals name="recur_every_daily">
+        <item quantity="one">every</item>
+        <item quantity="other">every</item>
+    </plurals>
+    <plurals name="recur_every_weekly">
+        <item quantity="one">every</item>
+        <item quantity="other">every</item>
+    </plurals>
+    <plurals name="recur_every_monthly">
+        <item quantity="one">every</item>
+        <item quantity="other">every</item>
+    </plurals>
+    <plurals name="recur_every_yearly">
+        <item quantity="one">every</item>
+        <item quantity="other">every</item>
+    </plurals>
     <plurals name="recur_unit_daily">
         <item quantity="one">day</item>
         <item quantity="other">days</item>

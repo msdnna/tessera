@@ -1226,7 +1226,6 @@
 
     <!-- Выбор срока: повтор задачи -->
     <string name="due_picker_repeat">Повтор задачи</string>
-    <string name="due_picker_every">каждые</string>
     <string name="due_picker_custom_hint">Отметьте даты повтора в календаре выше.</string>
     <string name="due_picker_trigger">Событие</string>
     <string name="due_picker_trigger_column">Колонка-триггер</string>
@@ -1245,6 +1244,32 @@
     <string name="recur_trigger_complete">При завершении</string>
     <string name="recur_trigger_column">При переходе в колонку</string>
     <string name="recur_trigger_schedule">По расписанию</string>
+    <!-- Слово перед числом склоняется вместе с единицей: «каждый 1 день», но
+         «каждую 1 неделю» — род у единиц разный, поэтому форма своя на частоту -->
+    <plurals name="recur_every_daily">
+        <item quantity="one">каждый</item>
+        <item quantity="few">каждые</item>
+        <item quantity="many">каждые</item>
+        <item quantity="other">каждые</item>
+    </plurals>
+    <plurals name="recur_every_weekly">
+        <item quantity="one">каждую</item>
+        <item quantity="few">каждые</item>
+        <item quantity="many">каждые</item>
+        <item quantity="other">каждые</item>
+    </plurals>
+    <plurals name="recur_every_monthly">
+        <item quantity="one">каждый</item>
+        <item quantity="few">каждые</item>
+        <item quantity="many">каждые</item>
+        <item quantity="other">каждые</item>
+    </plurals>
+    <plurals name="recur_every_yearly">
+        <item quantity="one">каждый</item>
+        <item quantity="few">каждые</item>
+        <item quantity="many">каждые</item>
+        <item quantity="other">каждые</item>
+    </plurals>
     <!-- Единица интервала стоит после числа («каждые 2 недели») — винительный падеж -->
     <plurals name="recur_unit_daily">
         <item quantity="one">день</item>

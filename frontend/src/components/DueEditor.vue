@@ -14,6 +14,7 @@ import { useFormat } from '@/composables/useFormat'
 import {
   freqOptions,
   triggerOptions,
+  everyLabel,
   unitLabel,
   occurrenceKeys,
   withStoredAnchor,
@@ -363,7 +364,7 @@ const dueRepeatOpts = computed(() => [
 
         <template v-if="freq">
           <div v-if="freq !== 'custom'" class="de-row">
-            <span class="muted">{{ t('task.recur.every') }}</span>
+            <span class="muted">{{ everyLabel(freq, interval) }}</span>
             <n-input-number
               size="small"
               class="de-num"
