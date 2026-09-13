@@ -185,6 +185,46 @@ describe('server registry (#2930)', () => {
     expect(activeServerId()).toBe(a.id)
   })
 
+  // Removing the *last* profile is the one removal that cannot just re-point the
+  // active id — there is nothing left to point at. An empty registry makes
+  // activeServerId() '' , and that single empty string unravels the feature:
+  // skey() drops back to the un-namespaced keys, so the next session is written
+  // where nothing looks for it again; serverBase() falls through to DEFAULT_BASE,
+  // silently aiming a self-hosted desktop at the public instance; and
+  // setActiveServerUrl() writes the legacy key that serverBase() no longer reads,
+  // so the address field on the login screen stops doing anything at all. The
+  // registry therefore keeps itself non-empty: the last profile is reset to a
+  // fresh default one rather than deleted outright.
+  it('removing the last server resets it instead of emptying the registry', () => {
+    emptyRegistry()
+    const only = addServer({ name: 'Работа', url: 'https://work.example.com' })
+    setActiveServerId(only.id)
+    sSet('tessera_refresh_token', 'token-only')
+    sSet('tessera_user', '{"id":"u"}')
+
+    removeServer(only.id)
+
+    // The session of the profile the user removed is gone, as for any removal.
+    expect(localStorage.getItem(`tessera_refresh_token::${only.id}`)).toBe(null)
+    expect(localStorage.getItem(`tessera_user::${only.id}`)).toBe(null)
+
+    // …but a profile is still there, so nothing downstream sees "no server".
+    const list = listServers()
+    expect(list).toHaveLength(1)
+    expect(list[0].id).not.toBe(only.id)
+    expect(list[0].url).toBe(DEFAULT_BASE)
+    expect(activeServerId()).toBe(list[0].id)
+    expect(activeServer().url).toBe(DEFAULT_BASE)
+
+    // The three things an empty registry would have broken.
+    expect(skey('tessera_refresh_token')).toBe(`tessera_refresh_token::${list[0].id}`)
+    sSet('tessera_refresh_token', 'token-next')
+    expect(localStorage.getItem('tessera_refresh_token')).toBe(null)
+    expect(serverBase()).toBe(DEFAULT_BASE)
+    setActiveServerUrl('https://work.example.com')
+    expect(serverBase()).toBe('https://work.example.com')
+  })
+
   it('survives a dangling active id', () => {
     emptyRegistry()
     const a = addServer({ url: 'https://a.example.com' })

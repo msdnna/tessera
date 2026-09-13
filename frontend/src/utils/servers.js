@@ -171,6 +171,18 @@ export function updateServer(id, patch = {}) {
 // removeServer drops the profile AND every key in its namespace. Leaving the
 // session behind would be a refresh token for a server the user believes they
 // removed, kept indefinitely.
+//
+// Removing the *last* profile resets it instead of emptying the registry: the
+// session is purged as always, but a fresh default profile takes its place. The
+// desktop build assumes throughout that exactly one server is active, and an
+// empty list makes activeServerId() '' — which is not "no server" to the rest of
+// the code, it is the *web* answer. skey() would drop back to the un-namespaced
+// keys and write the next session where nothing looks for it again; serverBase()
+// would fall through to DEFAULT_BASE, aiming a self-hosted desktop at the public
+// instance; and setActiveServerUrl() would write the legacy key serverBase() no
+// longer reads, so the address field on the login screen would stop doing
+// anything. Nor is the state recoverable on its own: ensureRegistry() sees a
+// non-null "[]" and does not re-seed.
 export function removeServer(id) {
   const list = readList().filter((s) => s.id !== id)
   writeList(list)
@@ -179,9 +191,24 @@ export function removeServer(id) {
     const key = localStorage.key(i)
     if (key && key.endsWith(suffix)) localStorage.removeItem(key)
   }
+  if (list.length === 0) {
+    // A new id, not the removed one: the namespace has just been purged, and
+    // reusing the id would hand the replacement whatever the sweep above missed.
+    const fresh = {
+      id: newId(),
+      name: serverLabel(DEFAULT_BASE),
+      url: DEFAULT_BASE,
+      color: DEFAULT_COLOR,
+      icon: '',
+      insecure: false,
+    }
+    list.push(fresh)
+    writeList(list)
+    localStorage.setItem(ACTIVE_KEY, fresh.id)
+    return list
+  }
   if (localStorage.getItem(ACTIVE_KEY) === id) {
-    if (list[0]) localStorage.setItem(ACTIVE_KEY, list[0].id)
-    else localStorage.removeItem(ACTIVE_KEY)
+    localStorage.setItem(ACTIVE_KEY, list[0].id)
   }
   return list
 }
