@@ -42,6 +42,12 @@ const (
 	// never got to explain. Found while adding the import route (#2733).
 	routeDocAssets = "/api/documents/:id/assets"
 	routeDocImport = "/api/workspaces/:id/documents/import"
+	// A PDF attached to an open page. Third route to repeat the mistake above:
+	// its handler allows maxDocImportBytes (20 MiB), but with no entry in the
+	// table it ran on the blanket 1 MiB — and a PDF under a megabyte is the
+	// exception, not the rule, so the transport refused nearly every real one
+	// with a 413 the handler never got to phrase (#2932).
+	routeDocPdf = "/api/documents/:id/pdf"
 	// Browser Sentry envelopes. Pinned to the handler's own ceiling rather than
 	// left on the blanket JSON budget so that an operator tightening
 	// MAX_BODY_BYTES doesn't silently start dropping crash reports at the
@@ -194,6 +200,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
 		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
 		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		routeDocPdf:      orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
 		routeWS:          middleware.NoBodyLimit,
 
 		routeSentryTunnel: handlers.MaxEnvelopeBytes,

@@ -5,7 +5,9 @@ import {
   MEDIA_TYPES,
   attachmentPickError,
   mediaPickError,
+  mediaPickMessage,
 } from '@/utils/upload'
+import { i18n, setI18nLocale } from '@/i18n'
 
 // The two task upload paths restate the server's rules (`handlers/attachments.go`):
 // 25 MiB for an attachment, 8 MiB + a PNG/JPEG/GIF/WebP/BMP sniff allowlist for an
@@ -96,5 +98,45 @@ describe('inline image rules', () => {
   it('says nothing about an empty pick', () => {
     expect(mediaPickError(null)).toBe('')
     expect(mediaPickError(undefined)).toBe('')
+  })
+})
+
+// The reason code above is only half the rule: every caller then has to turn it
+// into a sentence, and each one that writes that ternary itself is a place the
+// wording can drift. The document editor had no rule at all, so a photo dropped
+// onto a page was refused by the asset route's own hardcoded *Russian* string —
+// in whatever language the reader had chosen.
+describe('inline image refusal, phrased', () => {
+  it('says nothing when the file is fine', () => {
+    expect(mediaPickMessage(pick(1024, 'image/png'))).toBe('')
+    expect(mediaPickMessage(null)).toBe('')
+  })
+
+  it('states the cap in the reader’s own units, not the server’s', () => {
+    // The server answers "файл слишком большой" — no number at all, and in one
+    // fixed language. The point of saying it here is that it can carry both.
+    const msg = mediaPickMessage(pick(12 * 1024 * 1024, 'image/png'))
+    expect(msg).toBe(i18n.global.t('documents.editor.error.imageTooLarge', { limit: '8 МБ' }))
+    expect(msg).toContain('8 МБ')
+  })
+
+  it('names the type as the reason when the type is what is wrong', () => {
+    expect(mediaPickMessage(pick(4096, 'image/svg+xml'))).toBe(
+      i18n.global.t('documents.editor.error.imageType'),
+    )
+  })
+
+  it('follows the language the reader switched to', async () => {
+    // Same failure as #2799: a module-level lookup would freeze the sentence in
+    // whichever locale happened to be active when the bundle loaded. The unit
+    // has to follow too — it is formatted, not baked into the phrase.
+    try {
+      await setI18nLocale('en')
+      const msg = mediaPickMessage(pick(12 * 1024 * 1024, 'image/png'))
+      expect(msg).toBe(i18n.global.t('documents.editor.error.imageTooLarge', { limit: '8 MB' }))
+      expect(msg).not.toContain('МБ')
+    } finally {
+      await setI18nLocale('ru')
+    }
   })
 })

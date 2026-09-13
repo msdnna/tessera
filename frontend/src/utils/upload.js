@@ -13,6 +13,8 @@
  * Kept out of the components because a rule that is only ever true inside one is
  * a rule nobody can pin with a test — same reason as `utils/avatar.js`.
  */
+import { i18n } from '@/i18n'
+import { formatFileSize } from '@/utils/docPdf'
 
 /** The server's `maxAttachmentBytes`. */
 export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024
@@ -62,4 +64,31 @@ export function mediaPickError(file) {
   const type = String(file.type || '').toLowerCase()
   if (type && !MEDIA_TYPES.includes(type)) return 'badType'
   return ''
+}
+
+/**
+ * The same refusal, already phrased — '' when there is nothing to refuse.
+ *
+ * The reason code is the rule; this is the sentence, and it lives here so the
+ * three ways an image reaches a page (picker, drop, paste) and the two editors
+ * that offer them cannot drift apart in wording or in the units they quote.
+ * Both servers answer with a fixed Russian line and no number at all, which is
+ * the thing being replaced: `handlers/document_assets.go` says "файл слишком
+ * большой" whatever language the reader chose.
+ *
+ * The lookup is per call, not at import time — same reason as errors.js (#2799):
+ * a refusal shown after the user switched language must be in the new one.
+ *
+ * @param {File|null|undefined} file
+ * @returns {string} the refusal to show, or '' if the file is fine
+ */
+export function mediaPickMessage(file) {
+  const reason = mediaPickError(file)
+  if (!reason) return ''
+  if (reason === 'tooLarge') {
+    return i18n.global.t('documents.editor.error.imageTooLarge', {
+      limit: formatFileSize(MEDIA_MAX_BYTES),
+    })
+  }
+  return i18n.global.t('documents.editor.error.imageType')
 }

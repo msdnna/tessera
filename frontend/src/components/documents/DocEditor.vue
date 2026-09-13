@@ -31,6 +31,7 @@ import { quoteFromBlock } from '@/utils/docComments'
 import { scrollToBlockId } from '@/utils/docExtensions/internalLink'
 import { docOutline, headingLabel, internalHref, internalTargetId } from '@/utils/docToc'
 import { MAX_PDF_BYTES, formatFileSize } from '@/utils/docPdf'
+import { mediaPickMessage } from '@/utils/upload'
 import DocToolbar from './DocToolbar.vue'
 
 const props = defineProps({
@@ -102,7 +103,7 @@ function build() {
     editable: props.editable,
     extensions: docExtensions({
       placeholder: props.placeholder,
-      uploadImage: (file) => props.uploadImage?.(file),
+      uploadImage: (file) => uploadImageChecked(file),
       onUploadError: (err) => message.error(err?.message || t('documents.editor.error.image')),
       // The "Изображение" entry of the slash menu opens the picker below; the
       // menu itself has no business knowing about file inputs.
@@ -279,13 +280,29 @@ async function onPdfFile(e) {
   }
 }
 
+// The asset route's rules (utils/upload.js), applied before the request rather
+// than after it. Every way an image reaches a page — the picker below, a drop,
+// a paste — goes through this one function, which is the point: the PDF beside
+// it has had a rule since #2733, while an 12 MB photo travelled the wire in full
+// only to come back as `document_assets.go`'s hardcoded Russian "файл слишком
+// большой", in whatever language the reader had chosen (#2932).
+//
+// It throws rather than returning a code because both callers already have a
+// catch that shows `err.message`: the picker below, and the drop/paste plugin
+// via onUploadError.
+function uploadImageChecked(file) {
+  const bad = mediaPickMessage(file)
+  if (bad) throw new Error(bad)
+  return props.uploadImage?.(file)
+}
+
 async function onFile(e) {
   const file = e.target.files && e.target.files[0]
   e.target.value = ''
   if (!file || !props.uploadImage) return
   uploading.value = true
   try {
-    const url = await props.uploadImage(file)
+    const url = await uploadImageChecked(file)
     if (url) editor.value?.chain().focus().setImage({ src: url, alt: file.name }).run()
   } catch (err) {
     message.error(err.message || t('documents.editor.error.image'))

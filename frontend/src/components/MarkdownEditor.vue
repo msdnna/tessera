@@ -41,12 +41,7 @@ import { detectSlashQuery, matchCommands, commandInsertText } from '@/utils/comm
 import { mentionIdsIn } from '@/utils/mentions'
 import { isTauri } from '@/utils/serverBase'
 import { scrollParent } from '@/utils/dom'
-import {
-  ATTACHMENT_MAX_BYTES,
-  MEDIA_MAX_BYTES,
-  attachmentPickError,
-  mediaPickError,
-} from '@/utils/upload'
+import { ATTACHMENT_MAX_BYTES, attachmentPickError, mediaPickMessage } from '@/utils/upload'
 import { formatFileSize } from '@/utils/docPdf'
 import RichContent from './RichContent.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
@@ -318,13 +313,9 @@ async function uploadImage(file) {
   // `image/*` is wider than the media route's allowlist and says nothing about
   // size, so both refusals used to arrive from the server — as its hardcoded
   // Russian sentence, and only after a 12 MB paste had finished uploading.
-  const bad = mediaPickError(file)
+  const bad = mediaPickMessage(file)
   if (bad) {
-    message.error(
-      bad === 'tooLarge'
-        ? t('documents.editor.error.imageTooLarge', { limit: formatFileSize(MEDIA_MAX_BYTES) })
-        : t('documents.editor.error.imageType'),
-    )
+    message.error(bad)
     return
   }
   uploading.value = true

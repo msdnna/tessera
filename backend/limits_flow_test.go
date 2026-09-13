@@ -33,7 +33,10 @@ func TestBodyLimitRoutesExist(t *testing.T) {
 	for _, route := range r.Routes() {
 		registered[route.Path] = true
 	}
-	for _, want := range []string{routeWS, routeUploads, routeAvatar, routeAttachments} {
+	for _, want := range []string{
+		routeWS, routeUploads, routeAvatar, routeAttachments,
+		routeDocAssets, routeDocImport, routeDocPdf, routeSentryTunnel,
+	} {
 		if !registered[want] {
 			t.Errorf("body-limit table names %q, which is not a registered route", want)
 		}
@@ -95,6 +98,41 @@ func TestMediaBudgetRefusesOversizedUpload(t *testing.T) {
 	r := uploadFile(t, c, "/uploads", "file", "huge.png", over)
 	if r.Status != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized media upload: status %d, want 413\n%s", r.Status, truncate(r.Body))
+	}
+}
+
+// A PDF dropped into an open page goes to a route of its own, and that route's
+// handler allows 20 MiB. Without an entry in the limits table it sits on the
+// blanket 1 MiB JSON budget instead, so the transport refuses the request before
+// the handler ever sees it — and refuses it with "request body too large", which
+// is neither the handler's sentence nor a true one at 2 MiB. Every real PDF is
+// over a megabyte, so the route was unusable for its entire purpose.
+//
+// The pair is the point: one upload the route must carry, one it must refuse
+// with its *own* answer. A budget that merely refuses everything would pass the
+// first half of this on its own.
+func TestDocumentPdfBudgetSurvivesRealPdf(t *testing.T) {
+	c := signup(t)
+	ws := mkWorkspace(t, c, "WS "+t.Name())
+	doc := c.post("/workspaces/"+ws+"/documents", map[string]any{"title": "Страница"}).mapBody(t)
+	id, _ := doc["id"].(string)
+
+	// Over the blanket ceiling, well under the route's own — an ordinary scan.
+	big := append(append([]byte{}, pdfFixture...), make([]byte, 2<<20)...)
+	r := uploadFile(t, c, "/documents/"+id+"/pdf", "file", "Смета.pdf", big)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("2 MiB PDF: status %d, want 201\n%s", r.Status, truncate(r.Body))
+	}
+
+	// Past maxDocImportBytes: still a 413, but the handler's, phrased in the
+	// units it promises. The transport would say "request body too large".
+	over := append(append([]byte{}, pdfFixture...), make([]byte, 21<<20)...)
+	ref := uploadFile(t, c, "/documents/"+id+"/pdf", "file", "Огромная.pdf", over)
+	if ref.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("21 MiB PDF: status %d, want 413\n%s", ref.Status, truncate(ref.Body))
+	}
+	if body := string(ref.Body); !strings.Contains(body, "20 МБ") {
+		t.Fatalf("21 MiB PDF was refused by the transport, not the handler: %s", truncate(ref.Body))
 	}
 }
 
