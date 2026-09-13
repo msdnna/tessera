@@ -128,10 +128,13 @@ import website.msdnna.tessera.ui.tour.TourHost
 import website.msdnna.tessera.ui.tour.TourLayer
 import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
+import website.msdnna.tessera.util.ATTACHMENT_MAX_BYTES
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.PickRefusal
 import website.msdnna.tessera.util.TourKeys
+import website.msdnna.tessera.util.attachmentPickError
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
@@ -2342,6 +2345,18 @@ private fun FilesTab(vm: TaskDetailViewModel, attachments: List<website.msdnna.t
     ) { uri ->
         if (uri != null) {
             scope.launch {
+                // Say what the server would say, before the file is read (the next line
+                // pulls it into a ByteArray whole) and before it is sent. The server's
+                // own refusal is a hardcoded Russian sentence that arrives only once
+                // 25 MB have gone over a phone connection — see util/Uploads.kt.
+                if (attachmentPickError(fileSize(ctx, uri)) != PickRefusal.NONE) {
+                    android.widget.Toast.makeText(
+                        ctx,
+                        res.getString(R.string.task_file_too_large, ATTACHMENT_MAX_BYTES / (1 shl 20)),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                    return@launch
+                }
                 val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 }
@@ -2644,6 +2659,15 @@ private fun fileName(ctx: android.content.Context, uri: android.net.Uri): String
     ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
         val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
         if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+    }
+}.getOrNull()
+
+/** How big the picked file is, or null when the provider will not say — which
+ *  [attachmentPickError] treats as "let the server decide". */
+private fun fileSize(ctx: android.content.Context, uri: android.net.Uri): Long? = runCatching {
+    ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+        if (idx >= 0 && cursor.moveToFirst() && !cursor.isNull(idx)) cursor.getLong(idx) else null
     }
 }.getOrNull()
 

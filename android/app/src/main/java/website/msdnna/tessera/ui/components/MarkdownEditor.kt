@@ -74,8 +74,10 @@ import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.MEDIA_MAX_BYTES
 import website.msdnna.tessera.util.MdEdit
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.PickRefusal
 import website.msdnna.tessera.util.applyTyping
 import website.msdnna.tessera.util.commandInsertText
 import website.msdnna.tessera.util.detectMentionQuery
@@ -84,6 +86,7 @@ import website.msdnna.tessera.util.indentLines
 import website.msdnna.tessera.util.linePrefixLines
 import website.msdnna.tessera.util.localizedCommands
 import website.msdnna.tessera.util.matchCommands
+import website.msdnna.tessera.util.mediaPickError
 import website.msdnna.tessera.util.orderedListPrefix
 import website.msdnna.tessera.util.outdentLines
 import website.msdnna.tessera.util.toggleTaskMarker
@@ -165,6 +168,23 @@ fun MarkdownEditor(
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri == null || uploadImage == null) return@rememberLauncherForActivityResult
+        // Refuse here, with a sentence, rather than at the server: the upload path
+        // below reports nothing at all on failure (`runCatching { … }.getOrNull()`
+        // here and again in the view model), so an over-cap or non-allowlisted image
+        // used to just never appear — see util/Uploads.kt.
+        val refusal = mediaPickError(pickedSize(ctx, uri), ctx.contentResolver.getType(uri))
+        if (refusal != PickRefusal.NONE) {
+            android.widget.Toast.makeText(
+                ctx,
+                if (refusal == PickRefusal.TOO_BIG) {
+                    ctx.getString(R.string.md_image_too_large, MEDIA_MAX_BYTES / (1 shl 20))
+                } else {
+                    ctx.getString(R.string.md_image_type)
+                },
+                android.widget.Toast.LENGTH_LONG,
+            ).show()
+            return@rememberLauncherForActivityResult
+        }
         uploading = true
         scope.launch {
             val url = runCatching {
@@ -690,5 +710,14 @@ private fun displayName(ctx: android.content.Context, uri: Uri): String? = runCa
     ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
         val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
         if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null
+    }
+}.getOrNull()
+
+/** How big the picked image is, or null when the provider will not say — which
+ *  [mediaPickError] treats as "let the server decide". */
+private fun pickedSize(ctx: android.content.Context, uri: Uri): Long? = runCatching {
+    ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val idx = cursor.getColumnIndex(OpenableColumns.SIZE)
+        if (idx >= 0 && cursor.moveToFirst() && !cursor.isNull(idx)) cursor.getLong(idx) else null
     }
 }.getOrNull()

@@ -308,6 +308,10 @@
     <!-- Модалка задачи: файлы -->
     <string name="task_files_empty">Файлов пока нет</string>
     <string name="task_file_attach">Прикрепить файл</string>
+    <!-- Отказ до отправки: сервер режет вложение на 25 МиБ (maxAttachmentBytes),
+         и его собственный отказ приходит зашитой русской строкой уже после того,
+         как файл целиком уехал по мобильной сети (#2932). -->
+    <string name="task_file_too_large">Файл больше %1$d МБ — сервер такой не примет</string>
     <string name="task_file_open_chooser">Открыть «%1$s»</string>
     <string name="task_attachment_delete_confirm">Удалить вложение?</string>
     <string name="task_file_size_mb">%1$s МБ</string>
@@ -1550,6 +1554,10 @@
     <string name="md_link_placeholder">текст</string>
     <string name="md_mermaid_start">Старт</string>
     <string name="md_mermaid_done">Готово</string>
+    <!-- Отказ до отправки для инлайн-картинки: 8 МиБ (maxMediaBytes) и белый список
+         mediaExts. Раньше отказ проглатывался целиком — картинка просто не появлялась. -->
+    <string name="md_image_too_large">Изображение больше %1$d МБ — сервер такое не примет</string>
+    <string name="md_image_type">Поддерживаются только PNG, JPEG, GIF, WebP и BMP</string>
 
     <!-- Подписи под лоадером (появляются, только если загрузка затянулась) и
          состояние ошибки экрана. -->

@@ -296,6 +296,7 @@
 
     <!-- Task modal: files -->
     <string name="task_files_empty">No files yet</string>
+    <string name="task_file_too_large">The file is larger than %1$d MB — the server will not take it</string>
     <string name="task_file_attach">Attach a file</string>
     <string name="task_file_open_chooser">Open “%1$s”</string>
     <string name="task_attachment_delete_confirm">Delete this attachment?</string>
@@ -1492,6 +1493,8 @@
     <string name="md_link_placeholder">text</string>
     <string name="md_mermaid_start">Start</string>
     <string name="md_mermaid_done">Done</string>
+    <string name="md_image_too_large">The image is larger than %1$d MB — the server will not take it</string>
+    <string name="md_image_type">Only PNG, JPEG, GIF, WebP and BMP are supported</string>
 
     <!-- Captions under the loader (shown only when a load drags on) and the
          screen-level error state. -->
