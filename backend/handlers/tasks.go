@@ -900,13 +900,27 @@ func (h *API) positionForDrop(c *gin.Context, t db.Task, columnID uuid.UUID, bef
 // when the user changes the due date or the frequency, and otherwise carried over
 // from the previously stored rule — so unrelated edits don't reset an anchor that
 // a short-month clamp has temporarily moved (e.g. the 30th showing as Feb 28).
+//
+// The rule's zone is carried over the same way when the request omits it (#2932).
+// It is the field that decides which calendar day the whole series lands on (see
+// recur.Rule.TZ), and a client that does not know it exists re-sends the rest of
+// the rule as it always did: the Android editor has no tz field at all and its
+// task update re-sends the stored rule by default, so a rename or a tick of the
+// completed box there would reset a web-authored "every Monday" to UTC — which
+// for anyone east of it turns the series into Tuesdays. Taking an explicit zone
+// as an overwrite and silence as "unchanged" leaves the deliberate edit working
+// and the incidental one harmless.
 func recurrenceToStore(reqRaw *json.RawMessage, reqDue *time.Time, prevRaw *json.RawMessage, prevDue *time.Time) *json.RawMessage {
 	rule, ok := recur.Parse(reqRaw)
 	if !ok {
 		return nil
 	}
+	prev, hadPrev := recur.Parse(prevRaw)
+	if rule.TZ == "" && hadPrev {
+		rule.TZ = prev.TZ
+	}
 	if rule.Freq == recur.FreqMonthly || rule.Freq == recur.FreqYearly {
-		if prev, hadPrev := recur.Parse(prevRaw); hadPrev && prev.Freq == rule.Freq && sameTime(reqDue, prevDue) {
+		if hadPrev && prev.Freq == rule.Freq && sameTime(reqDue, prevDue) {
 			rule.Day, rule.Month = prev.Day, prev.Month
 		} else if reqDue != nil {
 			rule = rule.WithAnchor(*reqDue)

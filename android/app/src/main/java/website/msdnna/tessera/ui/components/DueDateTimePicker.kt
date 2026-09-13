@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Calendar
+import java.util.TimeZone
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.BoardColumn
@@ -197,6 +198,9 @@ fun DueDateTimePicker(
             interval = interval.coerceAtLeast(1),
             weekdays = if (freq == "weekly" && weekdaySet.isNotEmpty()) weekdaySet.sorted() else null,
             dates = if (freq == "custom") customDates.sorted() else null,
+            // The zone the calendar above was drawn in — this picker works in local
+            // time throughout, so it is the zone the user actually pointed at.
+            tz = TimeZone.getDefault().id,
             trigger = if (trigger != "complete") trigger else null,
             triggerColumn = if (trigger == "column") triggerColumn else null,
             targetColumn = targetColumn,

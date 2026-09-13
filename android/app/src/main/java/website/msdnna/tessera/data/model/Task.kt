@@ -14,6 +14,13 @@ data class Recurrence(
     // ("yyyy-MM-dd"). Both omitted (null) when not applicable.
     @SerializedName("weekdays") val weekdays: List<Int>? = null,
     @SerializedName("dates") val dates: List<String>? = null,
+    // The IANA zone the rule's calendar arithmetic runs in on the server ("every
+    // Monday", "the 31st" are calendar statements, and a due date picked here is
+    // local midnight — which east of UTC belongs to the previous UTC day). Kept on
+    // the model even though nothing local reads it: the task update re-sends the
+    // stored rule whole, so a field the client forgets is a field the server loses
+    // on the next rename.
+    @SerializedName("tz") val tz: String? = null,
     @SerializedName("trigger") val trigger: String? = null, // complete|column|schedule
     @SerializedName("trigger_column") val triggerColumn: String? = null,
     @SerializedName("target_column") val targetColumn: String? = null,
