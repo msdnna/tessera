@@ -125,15 +125,22 @@ export function buildMonthBands(days, fmt = defaultFormatters()) {
   return out
 }
 
-// Week header bands (weeks tier): break on Monday; the first band may be partial.
-// Label = the band's day-of-month RANGE ("29–4"); the month is already shown by the
-// band above, and a date+month label would overflow the narrow cell.
-export function buildWeekBands(days) {
+// Week header bands (weeks tier): break on the user's first day of the week; the
+// first band may be partial. Label = the band's day-of-month RANGE ("29–4"); the
+// month is already shown by the band above, and a date+month label would overflow
+// the narrow cell.
+//
+// The break day comes from the preferences rather than being pinned to Monday:
+// the same setting already drives the due-date calendar, every Naive picker
+// (useFormat's firstDayOfWeek) and formatRelative's "inside this week" window, so
+// a hard-coded Monday made this header the one place that ignored it.
+export function buildWeekBands(days, fmt = defaultFormatters()) {
+  const firstDow = fmt.prefs.weekStart === 0 ? 0 : 1
   const out = []
   for (const d of days) {
     const dt = new Date(d.ms)
     const last = out[out.length - 1]
-    if (last && dt.getDay() !== 1) {
+    if (last && dt.getDay() !== firstDow) {
       last.span++
       last.endDay = dt.getDate()
     } else {

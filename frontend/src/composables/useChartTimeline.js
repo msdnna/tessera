@@ -138,7 +138,9 @@ export function useChartTimeline({
     buildDays(range.value.start, range.value.days, todayMs, formatters.value),
   )
   const monthBands = computed(() => buildMonthBands(days.value, formatters.value))
-  const weekBands = computed(() => (tier.value === 'weeks' ? buildWeekBands(days.value) : []))
+  const weekBands = computed(() =>
+    tier.value === 'weeks' ? buildWeekBands(days.value, formatters.value) : [],
+  )
   // Hour ticks only for the visible viewport slice (+ a margin) — "lazy lines" so a
   // wide board doesn't render thousands of header nodes in the hours tier.
   const hourTicks = computed(() => {
