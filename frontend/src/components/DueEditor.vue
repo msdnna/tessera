@@ -270,7 +270,15 @@ function buildRule() {
   // one drawn right here. The due date leaves as an instant (local midnight by
   // default), so without the zone the server re-reads those days in UTC and a user
   // east of UTC gets the whole series a day off the days highlighted above.
-  const tz = resolvedTimezone(theme.timezone)
+  //
+  // The zone is the *browser's*, not the profile preference: this grid is
+  // browser-local by construction (see the `timeZone: null` note above) — every day
+  // in it comes out of `new Date(y, m, d)`, and so does the due instant. Passing the
+  // profile zone when the two differ only moved the mismatch one layer down: for a
+  // profile zone west of the browser's, browser midnight is still the previous day
+  // there, so the server read a monthly rule picked on the 6th as the 5th and custom
+  // dates re-fired the occurrence the task was already on.
+  const tz = resolvedTimezone('')
   if (tz) r.tz = tz
   return r
 }

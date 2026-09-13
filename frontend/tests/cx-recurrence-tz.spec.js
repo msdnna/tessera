@@ -10,11 +10,30 @@
 // format.js already states the contract — anything the server evaluates against a
 // clock has to be handed the resolved zone, not the blank. This pins that the rule
 // the editor emits carries it.
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+//
+// Which zone, though, is not free: it has to be the one the grid above the rule is
+// drawn in. The whole editor builds its instants from LOCAL calendar fields
+// (`new Date(y, m, d)`) and labels them with `timeZone: null` on purpose (#2798) —
+// the day the user clicks is a *browser* day, and the due date leaves as browser
+// midnight. Handing the server the profile zone instead made the rule name days off
+// a calendar nobody drew: for a profile zone west of the browser's, browser midnight
+// is still the previous day there, so `WithAnchor` read a monthly rule picked on the
+// 6th as the 5th while the editor kept highlighting the 6th.
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
 import { NMessageProvider } from 'naive-ui'
+
+// The browser zone is pinned so "profile zone ≠ browser zone" is expressible at
+// all; Europe/Moscow (UTC+3) sits east of the profile zones used below, which is
+// what makes local midnight fall on the previous day over there.
+const TZ_BEFORE = process.env.TZ
+process.env.TZ = 'Europe/Moscow'
+afterAll(() => {
+  if (TZ_BEFORE === undefined) delete process.env.TZ
+  else process.env.TZ = TZ_BEFORE
+})
 
 vi.mock('@/api', () => ({
   users: { updatePreferences: vi.fn(() => Promise.resolve()) },
@@ -40,10 +59,24 @@ function mountWith(props) {
 
 const editor = (w) => w.findComponent(DueEditor)
 
-// The rule of the last `apply` the editor emitted.
-function lastRule(w) {
+// The last `apply` payload the editor emitted (due_date + start_date + recurrence).
+function lastApply(w) {
   const events = editor(w).emitted('apply') || []
-  return events.length ? events[events.length - 1][0].recurrence : null
+  return events.length ? events[events.length - 1][0] : null
+}
+function lastRule(w) {
+  return lastApply(w)?.recurrence ?? null
+}
+
+// What the backend's `WithAnchor` derives from that payload: it reads the due
+// instant in the rule's own zone (`due.In(r.loc())`, recur.go) and takes the day.
+function anchorDay(apply) {
+  return Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: apply.recurrence.tz,
+      day: 'numeric',
+    }).format(new Date(apply.due_date)),
+  )
 }
 
 beforeEach(() => {
@@ -60,7 +93,7 @@ afterEach(() => {
 })
 
 describe('recurrence rule timezone', () => {
-  it('carries the profile zone into the rule', async () => {
+  it('carries the zone into the rule when profile and browser agree', async () => {
     const theme = useThemeStore()
     theme.timezone = 'Europe/Moscow'
     const w = mountWith({ due: Date.UTC(2026, 3, 5, 21, 0), recurrence: null })
@@ -68,6 +101,30 @@ describe('recurrence rule timezone', () => {
     editor(w).vm.setFreq('weekly')
     await nextTick()
     expect(lastRule(w)).toMatchObject({ freq: 'weekly', tz: 'Europe/Moscow' })
+  })
+
+  it('names the grid zone, not the profile zone, when the two differ', async () => {
+    const theme = useThemeStore()
+    theme.timezone = 'Europe/London' // west of the browser's Europe/Moscow
+    const w = mountWith({ due: Date.UTC(2026, 3, 5, 21, 0), recurrence: null })
+    await nextTick()
+    editor(w).vm.setFreq('weekly')
+    await nextTick()
+    // The weekday list the panel offers is read off the browser-local grid, so the
+    // zone shipped with it has to be that grid's.
+    expect(lastRule(w).tz).toBe('Europe/Moscow')
+  })
+
+  it('keeps a monthly anchor on the day that was clicked', async () => {
+    const theme = useThemeStore()
+    theme.timezone = 'Europe/London'
+    const w = mountWith({ due: null, recurrence: null })
+    await nextTick()
+    editor(w).vm.setFreq('monthly')
+    await nextTick()
+    editor(w).vm.onDayClick(new Date(2026, 6, 6)) // Mon 6 Jul 2026, as drawn
+    await nextTick()
+    expect(anchorDay(lastApply(w))).toBe(6)
   })
 
   it('falls back to the browser zone when no profile zone is set', async () => {
@@ -83,7 +140,7 @@ describe('recurrence rule timezone', () => {
     else expect(lastRule(w).tz).toBeUndefined()
   })
 
-  it('keeps the zone on a rule the editor loaded and re-emitted', async () => {
+  it('re-stamps a rule loaded from elsewhere with the zone it is edited in', async () => {
     const theme = useThemeStore()
     theme.timezone = 'Asia/Vladivostok'
     const w = mountWith({
@@ -94,7 +151,9 @@ describe('recurrence rule timezone', () => {
     editor(w).vm.toggleWeekday(3)
     await nextTick()
     const rule = lastRule(w)
+    // The new weekday was picked off this browser's grid, so the list as a whole now
+    // describes this browser's days — the stored zone has to follow it.
     expect(rule.weekdays).toEqual([1, 3])
-    expect(rule.tz).toBe('Asia/Vladivostok')
+    expect(rule.tz).toBe('Europe/Moscow')
   })
 })
