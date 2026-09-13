@@ -77,7 +77,7 @@ func TestSummarize(t *testing.T) {
 	if s.PriorityLabel != "high" || s.Column != "В процессе" || !s.Overdue {
 		t.Fatalf("summary basics: %+v", s)
 	}
-	if s.EstimateHours == nil || *s.EstimateHours != 3.5 || s.AssigneeCount != 2 {
+	if s.Estimate == nil || *s.Estimate != 3.5 || s.AssigneeCount != 2 {
 		t.Fatalf("summary numerics: %+v", s)
 	}
 	// Only the resolvable tag id makes it into the names list.

@@ -136,9 +136,12 @@ type taskSummary struct {
 	Completed     bool     `json:"completed,omitempty"`
 	Tags          []string `json:"tags,omitempty"`
 	AssigneeCount int      `json:"assignee_count,omitempty"`
-	EstimateHours *float64 `json:"estimate_hours,omitempty"`
-	GitlabURL     string   `json:"gitlab_url,omitempty"`
-	URL           string   `json:"url,omitempty"`
+	// Estimate is the backend's canonical number, not hours — see the note on
+	// taskFieldsInput.Estimate for what decides its unit and why nothing here
+	// converts it.
+	Estimate  *float64 `json:"estimate,omitempty"`
+	GitlabURL string   `json:"gitlab_url,omitempty"`
+	URL       string   `json:"url,omitempty"`
 }
 type taskListOut struct {
 	Count int           `json:"count"`
@@ -189,7 +192,7 @@ type taskDetailOut struct {
 	Due           string        `json:"due,omitempty"`
 	Overdue       bool          `json:"overdue,omitempty"`
 	Completed     bool          `json:"completed"`
-	EstimateHours *float64      `json:"estimate_hours,omitempty"`
+	Estimate      *float64      `json:"estimate,omitempty"`
 	Tags          []string      `json:"tags,omitempty"`
 	Assignees     []assigneeOut `json:"assignees,omitempty"`
 	Subtasks      []subtaskOut  `json:"subtasks,omitempty"`
@@ -372,7 +375,7 @@ func getTask(c *client.Client) mcp.ToolHandlerFor[getTaskInput, taskDetailOut] {
 			ID: d.ID, Number: d.Number, Title: d.Title, Description: d.Description,
 			Priority: d.Priority, PriorityLabel: priorityLabel(d.Priority),
 			Due: dueString(d.DueDate), Overdue: isOverdue(d.Task, now),
-			Completed: d.CompletedAt != nil, EstimateHours: d.Estimate,
+			Completed: d.CompletedAt != nil, Estimate: d.Estimate,
 			Column: columnName(ctx, c, d.BoardID, d.ColumnID),
 		}
 		for _, t := range d.Tags {

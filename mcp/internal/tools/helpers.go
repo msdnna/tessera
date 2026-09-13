@@ -52,7 +52,7 @@ func summarize(t model.Task, columnName string, tagNames map[string]string, url 
 		Priority: t.Priority, PriorityLabel: priorityLabel(t.Priority),
 		Project: t.ProjectName, // populated only on workspace listings (board tasks leave it empty)
 		Column:  columnName, Due: dueString(t.DueDate), Overdue: isOverdue(t, now),
-		Completed: t.CompletedAt != nil, EstimateHours: t.Estimate,
+		Completed: t.CompletedAt != nil, Estimate: t.Estimate,
 		AssigneeCount: len(t.AssigneeIDs), URL: url,
 	}
 	for _, id := range t.TagIDs {

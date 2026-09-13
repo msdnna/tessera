@@ -90,7 +90,7 @@ func TestGetTaskByNumberLoadsSubtasks(t *testing.T) {
 	full.Subtasks = []model.Task{{ID: "st1", Title: "Этап 2", Number: &num}}
 	c, _ := newMux(t, map[string]any{
 		"/api/workspaces/w1/tasks/by-number/2821": model.Task{ID: "par"}, // bare stub
-		"/api/tasks/par":                          full,                  // full detail by id
+		"/api/tasks/par": full, // full detail by id
 	})
 	_, out, err := getTask(c)(context.Background(), nil, getTaskInput{WorkspaceID: "w1", Number: 2821})
 	if err != nil {
@@ -110,7 +110,7 @@ func TestCreateSubtasksSkipsExistingTitle(t *testing.T) {
 	parent.Subtasks = []model.Task{{ID: "st1", Title: "Этап 2", Number: &existing}}
 	c, mux := newMux(t, map[string]any{
 		"/api/workspaces/w1/tasks/by-number/2821": model.Task{ID: "par"},
-		"/api/tasks/par":                          parent,
+		"/api/tasks/par": parent,
 	})
 	_, out, err := createSubtasks(c)(context.Background(), nil, createSubtasksInput{
 		WorkspaceID: "w1", Number: 2821,
@@ -174,7 +174,7 @@ func TestUpdateTaskSendsOnlyGivenFields(t *testing.T) {
 	empty, zero, bad := "  ", 0.0, 9
 	for name, in := range map[string]updateTaskInput{
 		"empty title":   {TaskID: "t1", Title: &empty},
-		"zero estimate": {TaskID: "t1", EstimateHours: &zero},
+		"zero estimate": {TaskID: "t1", Estimate: &zero},
 		"bad priority":  {TaskID: "t1", Priority: &bad},
 		"unknown clear": {TaskID: "t1", Clear: []string{"title"}},
 	} {
@@ -185,7 +185,7 @@ func TestUpdateTaskSendsOnlyGivenFields(t *testing.T) {
 
 	title := "Renamed"
 	_, out, err := updateTask(c)(ctx, nil, updateTaskInput{
-		TaskID: "t1", Title: &title, Clear: []string{"estimate_hours"},
+		TaskID: "t1", Title: &title, Clear: []string{"estimate"},
 	})
 	if err != nil || len(out.Changed) != 2 {
 		t.Fatalf("updateTask: %+v %v", out, err)

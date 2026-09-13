@@ -19,7 +19,7 @@ func registerTasksWrite(s *mcp.Server, c *client.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "tessera_create_task",
 		Description: "Create a task on a board (or a subtask, via parent_number/parent_id). Give it a title plus " +
-			"any of description, priority, due_date, start_date, estimate_hours, assignees and tags. Column defaults " +
+			"any of description, priority, due_date, start_date, estimate, assignees and tags. Column defaults " +
 			"to the board's leftmost. Dates are ISO ('2026-08-21') or RFC3339 — relative wording like 'завтра' is not " +
 			"parsed here, resolve it to a date first. When a parent is given, creating a subtask whose title already " +
 			"matches a live subtask of that parent is rejected (pass allow_duplicate_titles to override) — this keeps " +
@@ -29,7 +29,7 @@ func registerTasksWrite(s *mcp.Server, c *client.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "tessera_create_subtasks",
 		Description: "Create several subtasks under one parent in a single call — the way to decompose a big task. " +
-			"Each item takes a title plus optional description, priority, due_date, estimate_hours, assignees and tags. " +
+			"Each item takes a title plus optional description, priority, due_date, estimate, assignees and tags. " +
 			"A failing item doesn't roll back the rest: the result lists created and failed separately. Re-running is " +
 			"safe: an item whose title already matches a live subtask of the parent is skipped (reported under " +
 			"skipped_existing), not duplicated — pass allow_duplicate_titles to force creation.",
@@ -62,14 +62,35 @@ func registerTasksWrite(s *mcp.Server, c *client.Client) {
 // taskFieldsInput is the set of task fields shared by create_task and each item
 // of create_subtasks.
 type taskFieldsInput struct {
-	Title         string   `json:"title" jsonschema:"the task title"`
-	Description   string   `json:"description,omitempty" jsonschema:"Markdown description"`
-	Priority      int      `json:"priority,omitempty" jsonschema:"0 none, 1 low, 2 normal, 3 high, 4 urgent"`
-	DueDate       string   `json:"due_date,omitempty" jsonschema:"due date, ISO '2026-08-21' or RFC3339"`
-	StartDate     string   `json:"start_date,omitempty" jsonschema:"start date, ISO '2026-08-21' or RFC3339"`
-	EstimateHours float64  `json:"estimate_hours,omitempty" jsonschema:"estimate in hours (must be > 0)"`
-	Assignees     []string `json:"assignees,omitempty" jsonschema:"who to assign: user emails, names, UUIDs or 'me' (the token owner)"`
-	Tags          []string `json:"tags,omitempty" jsonschema:"tag names (project-scoped); unknown names fail unless create_missing_tags is true"`
+	Title       string `json:"title" jsonschema:"the task title"`
+	Description string `json:"description,omitempty" jsonschema:"Markdown description"`
+	Priority    int    `json:"priority,omitempty" jsonschema:"0 none, 1 low, 2 normal, 3 high, 4 urgent"`
+	DueDate     string `json:"due_date,omitempty" jsonschema:"due date, ISO '2026-08-21' or RFC3339"`
+	StartDate   string `json:"start_date,omitempty" jsonschema:"start date, ISO '2026-08-21' or RFC3339"`
+	// Estimate is the backend's canonical number, passed through untouched.
+	//
+	// The unit is not a property of the task: it comes from a two-level config
+	// (project override → workspace default → the built-in time/8h/5d), and the
+	// backend "only validates and stores minutes" (handlers/estimation.go) while
+	// the clients do the parsing and formatting. Calling this field
+	// `estimate_hours` therefore made every write sixty times too small on a time
+	// board — "3" meant three hours to the caller and three minutes to the
+	// database — and every read sixty times too large. The quick-action engine
+	// made the same mistake once and fixed it for the same reason
+	// (quickact.ParseEstimate: "it used to be minutes here and only here, so
+	// «/estimate 3» stored three minutes where the popover would have stored
+	// three hours — the same typing, off by sixty"). On a points or custom board
+	// "hours" was not merely scaled wrong, it was meaningless.
+	//
+	// Converting here is deliberately NOT the fix. Resolving the unit needs the
+	// task's project, and one read path cannot get it: my_tasks spans projects
+	// and the workspace listing carries project_name without project_id, so a
+	// conversion would be right on a board listing and wrong on the home queue —
+	// worse than one honest number. Typing a human duration is what `/estimate`
+	// in a comment is for; it resolves the config server-side.
+	Estimate  float64  `json:"estimate,omitempty" jsonschema:"estimate as the backend stores it — MINUTES on a time-unit board (3h = 180), points on a points board, a plain count on a custom one; NOT hours. Must be > 0"`
+	Assignees []string `json:"assignees,omitempty" jsonschema:"who to assign: user emails, names, UUIDs or 'me' (the token owner)"`
+	Tags      []string `json:"tags,omitempty" jsonschema:"tag names (project-scoped); unknown names fail unless create_missing_tags is true"`
 }
 
 type createTaskInput struct {
@@ -186,8 +207,8 @@ func buildTaskSpec(ctx context.Context, c *client.Client, boardID, workspaceID s
 		DueDate:     due,
 		StartDate:   start,
 	}
-	if f.EstimateHours > 0 {
-		est := f.EstimateHours
+	if f.Estimate > 0 {
+		est := f.Estimate
 		spec.params.Estimate = &est
 	}
 	if len(f.Assignees) > 0 {
@@ -364,17 +385,19 @@ func childRef(t model.Task) string {
 // ── update_task ───────────────────────────────────────────────────────────────
 
 type updateTaskInput struct {
-	TaskID        string   `json:"task_id,omitempty" jsonschema:"the task (or subtask) UUID"`
-	WorkspaceID   string   `json:"workspace_id,omitempty" jsonschema:"workspace UUID (with number) to resolve the task"`
-	Number        int64    `json:"number,omitempty" jsonschema:"the per-workspace task number, e.g. 252"`
-	Title         *string  `json:"title,omitempty" jsonschema:"new title (must not be empty)"`
-	Description   *string  `json:"description,omitempty" jsonschema:"new Markdown description; pass '' to empty it (this replaces the text — use tessera_update_description to append)"`
-	Priority      *int     `json:"priority,omitempty" jsonschema:"0 none, 1 low, 2 normal, 3 high, 4 urgent"`
-	DueDate       *string  `json:"due_date,omitempty" jsonschema:"new due date, ISO '2026-08-21' or RFC3339"`
-	StartDate     *string  `json:"start_date,omitempty" jsonschema:"new start date, ISO '2026-08-21' or RFC3339"`
-	EstimateHours *float64 `json:"estimate_hours,omitempty" jsonschema:"estimate in hours; must be > 0 (use clear to remove it)"`
-	Completed     *bool    `json:"completed,omitempty" jsonschema:"mark done/undone — note the board moves the card to/from the done column"`
-	Clear         []string `json:"clear,omitempty" jsonschema:"fields to blank out: due_date, start_date, estimate_hours"`
+	TaskID      string  `json:"task_id,omitempty" jsonschema:"the task (or subtask) UUID"`
+	WorkspaceID string  `json:"workspace_id,omitempty" jsonschema:"workspace UUID (with number) to resolve the task"`
+	Number      int64   `json:"number,omitempty" jsonschema:"the per-workspace task number, e.g. 252"`
+	Title       *string `json:"title,omitempty" jsonschema:"new title (must not be empty)"`
+	Description *string `json:"description,omitempty" jsonschema:"new Markdown description; pass '' to empty it (this replaces the text — use tessera_update_description to append)"`
+	Priority    *int    `json:"priority,omitempty" jsonschema:"0 none, 1 low, 2 normal, 3 high, 4 urgent"`
+	DueDate     *string `json:"due_date,omitempty" jsonschema:"new due date, ISO '2026-08-21' or RFC3339"`
+	StartDate   *string `json:"start_date,omitempty" jsonschema:"new start date, ISO '2026-08-21' or RFC3339"`
+	// Estimate carries the same canonical number as taskFieldsInput.Estimate —
+	// see the note there for why it is not hours.
+	Estimate  *float64 `json:"estimate,omitempty" jsonschema:"estimate as the backend stores it — MINUTES on a time-unit board (3h = 180), points on a points board, a plain count on a custom one; NOT hours. Must be > 0 (use clear to remove it)"`
+	Completed *bool    `json:"completed,omitempty" jsonschema:"mark done/undone — note the board moves the card to/from the done column"`
+	Clear     []string `json:"clear,omitempty" jsonschema:"fields to blank out: due_date, start_date, estimate"`
 }
 
 type updateTaskOut struct {
@@ -387,10 +410,9 @@ type updateTaskOut struct {
 // nulls out. Description/title/priority read a JSON null as "absent", so
 // clearing them this way would be a silent no-op.
 var clearableFields = map[string]string{
-	"due_date":       "due_date",
-	"start_date":     "start_date",
-	"estimate":       "estimate",
-	"estimate_hours": "estimate",
+	"due_date":   "due_date",
+	"start_date": "start_date",
+	"estimate":   "estimate",
 }
 
 func updateTask(c *client.Client) mcp.ToolHandlerFor[updateTaskInput, updateTaskOut] {
@@ -433,13 +455,13 @@ func updateTask(c *client.Client) mcp.ToolHandlerFor[updateTaskInput, updateTask
 			patch.Set(f.name, t.Format(timeRFC3339))
 			changed = append(changed, f.name)
 		}
-		if in.EstimateHours != nil {
+		if in.Estimate != nil {
 			// The backend turns a non-positive estimate into NULL, so "0" would
 			// quietly mean "clear" — make the caller say so explicitly.
-			if *in.EstimateHours <= 0 {
-				return nil, updateTaskOut{}, fmt.Errorf("estimate_hours must be > 0; use clear=[\"estimate_hours\"] to remove it")
+			if *in.Estimate <= 0 {
+				return nil, updateTaskOut{}, fmt.Errorf("estimate must be > 0; use clear=[\"estimate\"] to remove it")
 			}
-			patch.Set("estimate", *in.EstimateHours)
+			patch.Set("estimate", *in.Estimate)
 			changed = append(changed, "estimate")
 		}
 		if in.Completed != nil {
@@ -449,7 +471,7 @@ func updateTask(c *client.Client) mcp.ToolHandlerFor[updateTaskInput, updateTask
 		for _, raw := range in.Clear {
 			field, ok := clearableFields[strings.ToLower(strings.TrimSpace(raw))]
 			if !ok {
-				return nil, updateTaskOut{}, fmt.Errorf("cannot clear %q; clearable: due_date, start_date, estimate_hours "+
+				return nil, updateTaskOut{}, fmt.Errorf("cannot clear %q; clearable: due_date, start_date, estimate "+
 					"(to empty a description pass description='')", raw)
 			}
 			patch.Clear(field)
