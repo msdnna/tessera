@@ -85,7 +85,7 @@ func TestShoutrrrURL(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	data := SampleData()
+	data := SampleData("ru")
 	// default template = text + link
 	out, err := Render(DefaultTemplate, data)
 	if err != nil || !indexOfOK(out, data.Text) || !indexOfOK(out, data.Link) {

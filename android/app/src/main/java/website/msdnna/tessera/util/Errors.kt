@@ -87,6 +87,11 @@ private val sentinels = mapOf(
     "cannot remove the workspace owner" to R.string.err_cannot_remove_owner,
     "cannot change your own role" to R.string.err_cannot_change_own_role,
     "cannot remove yourself from the workspace" to R.string.err_cannot_remove_self,
+    // Предупреждение, а не отказ, и единственное здесь, что едет с кодом 200:
+    // пробник канала отвечает {ok:true, warning}, когда на сервере нет SMTP.
+    // Перехватчик его не видит — вызов-то успешен, — поэтому ViewModel прогоняет
+    // строку через humanizeError сама.
+    "smtp is not configured" to R.string.err_smtp_not_configured,
     "requires admin or owner" to R.string.err_requires_manager,
     "requires admin" to R.string.err_requires_admin,
     "forbidden" to R.string.err_forbidden,
@@ -95,6 +100,47 @@ private val sentinels = mapOf(
 )
 
 private val validatorTag = Regex("""failed on the '(\w+)' tag""")
+
+// Отказы редактора каналов уведомлений (#2932). В отличие от большинства строк
+// выше это не редкость из устаревшей вкладки: правила каналов клиент не зеркалит,
+// так что до них доходят обычным путём — при настройке канала. У каждого есть
+// переменная часть (тип, недостающее поле, потолок), поэтому они шаблоны, а не
+// строки таблицы. Тип перечислён явно: на проводе это закрытый набор, а свободное
+// `(\w+) channel requires …` переписало бы обычную английскую фразу с теми же
+// тремя словами. Зеркало `frontend/src/utils/errors.js` — держать в синхроне.
+private val channelTypeUnknown = Regex("""^unknown channel type: "(.*)"$""")
+private val channelRequiresField =
+    Regex("""^(email|telegram|webhook|shoutrrr|device) channel requires ([a-z_]+)$""")
+private val templateTooLong = Regex("""^template exceeds (\d+) characters$""")
+
+// Своя тут только обёртка: хвост — слова самого парсера Go, они называют
+// сломанное выражение и перевода не имеют, поэтому едут дословно и с исходным
+// регистром (из `msg`, а не из приведённой к нижнему копии).
+private const val TEMPLATE_ERROR_PREFIX = "template error: "
+
+// Разбор той самой четвёрки. Вынесен из [humanizeError] отдельной функцией: там
+// это были бы четыре ранних возврата подряд на одну тему.
+private fun channelRefusal(msg: String, low: String): UiText? {
+    channelTypeUnknown.find(low)?.let {
+        return UiText.Res(R.string.err_channel_type_unknown, listOf(it.groupValues[1]))
+    }
+    channelRequiresField.find(low)?.let {
+        return UiText.Res(
+            R.string.err_channel_requires_field,
+            listOf(it.groupValues[1], it.groupValues[2]),
+        )
+    }
+    templateTooLong.find(low)?.let {
+        return UiText.Res(R.string.err_template_too_long, listOf(it.groupValues[1]))
+    }
+    if (low.startsWith(TEMPLATE_ERROR_PREFIX)) {
+        return UiText.Res(
+            R.string.err_template_error,
+            listOf(msg.substring(TEMPLATE_ERROR_PREFIX.length)),
+        )
+    }
+    return null
+}
 
 // Collapse a gin/validator error ("...failed on the 'X' tag") into one friendly
 // sentence based on which validation tags failed.
@@ -121,6 +167,7 @@ fun humanizeError(raw: String?): UiText? {
     if (msg.isNullOrEmpty()) return null
     val low = msg.lowercase()
     sentinels[low]?.let { return UiText.Res(it) }
+    channelRefusal(msg, low)?.let { return it }
     if (low.startsWith("key:") && low.contains("validation")) {
         return UiText.Res(fromValidator(msg) ?: R.string.err_check_fields)
     }

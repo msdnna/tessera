@@ -1406,6 +1406,11 @@
     <string name="err_cannot_remove_self">Себя нельзя удалить из пространства — попросите другого администратора</string>
     <string name="err_requires_manager">Нужны права администратора или владельца пространства</string>
     <string name="err_requires_admin">Нужны права администратора</string>
+    <string name="err_channel_type_unknown">Сервер не умеет каналы типа «%1$s»</string>
+    <string name="err_channel_requires_field">Каналу «%1$s» нужно поле %2$s</string>
+    <string name="err_template_too_long">Шаблон длиннее %1$s символов — сократите его</string>
+    <string name="err_template_error">Ошибка в шаблоне: %1$s</string>
+    <string name="err_smtp_not_configured">SMTP на сервере не настроен — письмо записано в лог, но не отправлено</string>
     <string name="err_forbidden">Недостаточно прав</string>
     <string name="err_unauthorized">Нужно войти заново</string>
     <string name="err_not_found">Не найдено</string>

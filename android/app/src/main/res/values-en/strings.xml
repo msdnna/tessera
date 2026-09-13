@@ -1363,6 +1363,11 @@
     <string name="err_cannot_remove_self">You cannot remove yourself from the workspace — ask another admin</string>
     <string name="err_requires_manager">Workspace admin or owner rights are required</string>
     <string name="err_requires_admin">Admin rights are required</string>
+    <string name="err_channel_type_unknown">The server has no channel of type “%1$s”</string>
+    <string name="err_channel_requires_field">The “%1$s” channel needs %2$s</string>
+    <string name="err_template_too_long">The template is longer than %1$s characters — shorten it</string>
+    <string name="err_template_error">Template error: %1$s</string>
+    <string name="err_smtp_not_configured">SMTP is not configured on the server — the email was logged, not sent</string>
     <string name="err_forbidden">Not enough permissions</string>
     <string name="err_unauthorized">Please sign in again</string>
     <string name="err_not_found">Not found</string>

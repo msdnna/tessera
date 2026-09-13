@@ -29,7 +29,12 @@
     "cannotChangeOwnRole": "Свою роль изменить нельзя — попросите другого администратора",
     "cannotRemoveSelf": "Себя нельзя удалить из пространства — попросите другого администратора",
     "requiresManager": "Нужны права администратора или владельца пространства",
-    "requiresAdmin": "Нужны права администратора"
+    "requiresAdmin": "Нужны права администратора",
+    "channelTypeUnknown": "Сервер не умеет каналы типа «{type}»",
+    "channelRequiresField": "Каналу «{type}» нужно поле {field}",
+    "templateTooLong": "Шаблон длиннее {limit} символов — сократите его",
+    "templateError": "Ошибка в шаблоне: {detail}",
+    "smtpNotConfigured": "SMTP на сервере не настроен — письмо записано в лог, но не отправлено"
   },
   "validation": {
     "email": "Введите корректный email",

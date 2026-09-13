@@ -33,6 +33,7 @@ import {
 import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { resolvedTimezone } from '@/utils/format'
 import { workspaceName } from '@/utils/defaultNames'
+import { humanizeError } from '@/utils/errors'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import SecretInput from '@/components/SecretInput.vue'
@@ -289,7 +290,14 @@ async function testChannel(c) {
   testState[c.id] = { pending: true }
   try {
     const res = await chApi.test(c.id)
-    testState[c.id] = { ok: true, msg: res.data?.warning || t('settings.notifications.testSent') }
+    // A probe that went through can still carry a warning (no SMTP on the
+    // server). It arrives as a sentinel, like every refusal — the interceptor
+    // never sees it, since the call succeeded, so translate it here.
+    const warning = res.data?.warning
+    testState[c.id] = {
+      ok: true,
+      msg: warning ? humanizeError(warning) : t('settings.notifications.testSent'),
+    }
     await load()
   } catch (e) {
     testState[c.id] = { ok: false, msg: e.message }

@@ -38,6 +38,16 @@ type bundle struct {
 	durationHM   string // {h} {m}
 	durationMS   string // {m} {s}
 	durationS    string // {s}
+	// deviceLabel names a client's auto-registered device channel when the client
+	// didn't send a name of its own.
+	deviceLabel string
+	// sampleActor/sampleTaskTitle furnish the stand-in notification the channel
+	// editor previews and the "send a test" probe delivers (SampleData). They live
+	// here, not at the call site, for the same reason everything else in this file
+	// does: those two are rehearsals of a message that leaves the app, so they have
+	// to be written in the reader's language or they rehearse the wrong thing.
+	sampleActor     string
+	sampleTaskTitle string
 }
 
 var bundles = map[string]bundle{
@@ -86,15 +96,21 @@ var bundles = map[string]bundle{
 			"reminder":          "Напоминание",
 			"integration_sync":  "Синхронизация завершена",
 			"conference_invite": "Приглашение в конференцию",
+			// Not a stored notification: the subject of the probe a user sends to
+			// check a channel they just set up.
+			"test": "Проверка канала",
 		},
-		fallbackKind: "Уведомление",
-		listSep:      ", ",
-		digestTitle:  "Сводка уведомлений",
-		digestHeader: "Сводка — {count} уведомлений:",
-		instant:      "меньше секунды",
-		durationHM:   "{h} ч {m} м",
-		durationMS:   "{m} м {s} с",
-		durationS:    "{s} с",
+		fallbackKind:    "Уведомление",
+		listSep:         ", ",
+		digestTitle:     "Сводка уведомлений",
+		digestHeader:    "Сводка — {count} уведомлений:",
+		instant:         "меньше секунды",
+		durationHM:      "{h} ч {m} м",
+		durationMS:      "{m} м {s} с",
+		durationS:       "{s} с",
+		deviceLabel:     "Устройство",
+		sampleActor:     "Алиса",
+		sampleTaskTitle: "Починить чайник",
 	},
 	"en": {
 		ctx: " “{text}”",
@@ -141,15 +157,19 @@ var bundles = map[string]bundle{
 			"reminder":          "Reminder",
 			"integration_sync":  "Sync finished",
 			"conference_invite": "Conference invitation",
+			"test":              "Channel test",
 		},
-		fallbackKind: "Notification",
-		listSep:      ", ",
-		digestTitle:  "Notification digest",
-		digestHeader: "Digest — {count} notifications:",
-		instant:      "less than a second",
-		durationHM:   "{h}h {m}m",
-		durationMS:   "{m}m {s}s",
-		durationS:    "{s}s",
+		fallbackKind:    "Notification",
+		listSep:         ", ",
+		digestTitle:     "Notification digest",
+		digestHeader:    "Digest — {count} notifications:",
+		instant:         "less than a second",
+		durationHM:      "{h}h {m}m",
+		durationMS:      "{m}m {s}s",
+		durationS:       "{s}s",
+		deviceLabel:     "Device",
+		sampleActor:     "Alice",
+		sampleTaskTitle: "Fix the kettle",
 	},
 }
 
@@ -187,6 +207,11 @@ func DefaultName(key, stored, lang string) string {
 	}
 	return stored
 }
+
+// DeviceLabel names a device channel a client registered without a name of its
+// own. It is stored, and the user may rename it afterwards — so this is the name
+// they first see, written in their language rather than the server's.
+func DeviceLabel(lang string) string { return bundleFor(lang).deviceLabel }
 
 // DigestTitle is the subject of a combined digest delivery.
 func DigestTitle(lang string) string { return bundleFor(lang).digestTitle }

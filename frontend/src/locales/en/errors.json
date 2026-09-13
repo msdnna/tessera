@@ -29,7 +29,12 @@
     "cannotChangeOwnRole": "You cannot change your own role — ask another admin",
     "cannotRemoveSelf": "You cannot remove yourself from the workspace — ask another admin",
     "requiresManager": "Workspace admin or owner rights are required",
-    "requiresAdmin": "Admin rights are required"
+    "requiresAdmin": "Admin rights are required",
+    "channelTypeUnknown": "The server has no channel of type “{type}”",
+    "channelRequiresField": "The “{type}” channel needs {field}",
+    "templateTooLong": "The template is longer than {limit} characters — shorten it",
+    "templateError": "Template error: {detail}",
+    "smtpNotConfigured": "SMTP is not configured on the server — the email was logged, not sent"
   },
   "validation": {
     "email": "Enter a valid email",

@@ -214,6 +214,53 @@ class ErrorsTest {
         assertThat(rawErrorText(httpException(500, "gateway down"))).isNull()
     }
 
+    // ── отказы редактора каналов уведомлений (#2932) ─────────────────────────
+
+    /** Правила каналов клиент не зеркалит: до этих отказов доходят обычным
+     *  путём, настраивая канал. Раньше сервер слал их зашитыми русскими фразами,
+     *  и в английском UI они печатались дословно. */
+    @Test
+    fun `humanizeError words the channel refusals`() {
+        assertThat(humanizeError("""unknown channel type: "carrier-pigeon"""")?.resolve(ru))
+            .isEqualTo("Сервер не умеет каналы типа «carrier-pigeon»")
+        assertThat(humanizeError("email channel requires address")?.resolve(ru))
+            .isEqualTo("Каналу «email» нужно поле address")
+        assertThat(humanizeError("telegram channel requires bot_token")?.resolve(en))
+            .isEqualTo("The “telegram” channel needs bot_token")
+        assertThat(humanizeError("template exceeds 8192 characters")?.resolve(ru))
+            .isEqualTo("Шаблон длиннее 8192 символов — сократите его")
+    }
+
+    /** Хвост — слова парсера Go: перевода у них нет, и регистр им приходится
+     *  сохранять, хотя сопоставление идёт по строке в нижнем. */
+    @Test
+    fun `humanizeError labels a template error but keeps the parser's words`() {
+        assertThat(humanizeError("template error: template: msg:1: unclosed action")?.resolve(ru))
+            .isEqualTo("Ошибка в шаблоне: template: msg:1: unclosed action")
+    }
+
+    /** Предупреждение едет с кодом 200, мимо перехватчика — его переводит сама
+     *  ViewModel пробника. */
+    @Test
+    fun `humanizeError translates the SMTP warning`() {
+        assertThat(humanizeError("smtp is not configured")?.resolve(ru))
+            .isEqualTo("SMTP на сервере не настроен — письмо записано в лог, но не отправлено")
+        assertThat(humanizeError("smtp is not configured")?.resolve(en))
+            .isEqualTo("SMTP is not configured on the server — the email was logged, not sent")
+    }
+
+    /** Негативные контроли: шаблоны узкие и не переписывают обычную фразу,
+     *  в которой случайно оказались те же слова. */
+    @Test
+    fun `humanizeError leaves lookalike sentences alone`() {
+        assertThat(humanizeError("the channel requires maintenance")?.resolve(ru))
+            .isEqualTo("the channel requires maintenance")
+        assertThat(humanizeError("template exceeds expectations")?.resolve(ru))
+            .isEqualTo("template exceeds expectations")
+        assertThat(humanizeError("unknown channel type")?.resolve(ru))
+            .isEqualTo("unknown channel type")
+    }
+
     // ── isAuthError ──────────────────────────────────────────────────────────
     @Test
     fun `isAuthError only for 401 and 403`() {

@@ -3,6 +3,8 @@ package notify
 import (
 	"strings"
 	"text/template"
+
+	"tessera/internal/i18n"
 )
 
 // TemplateData is the data a channel's message template renders against. It's the
@@ -39,18 +41,41 @@ func Render(tmpl string, data TemplateData) (string, error) {
 	return b.String(), nil
 }
 
+// sampleKind / sampleTaskNumber are the stand-in notification every preview and
+// test probe is built from: an "assigned" event on task #42.
+const (
+	sampleKind       = "assigned"
+	sampleTaskNumber = int64(42)
+)
+
 // SampleData is representative data for previewing/testing a template before any
-// real notification exists.
-func SampleData() TemplateData {
-	n := int64(42)
+// real notification exists — the channel editor's live preview and the "send a
+// test" probe both render against it.
+//
+// It is written in lang for the same reason a real delivery is (locale.go): both
+// are rehearsals of a message that leaves the app, and a rehearsal in the wrong
+// language teaches the wrong thing — an English reader would preview a Russian
+// message, receive a Russian test, and only then start getting English ones.
+// Every field is taken from the same catalog handlers.templateData draws on, so
+// the rehearsal reads exactly like the delivery.
+func SampleData(lang string) TemplateData {
+	b := bundleFor(lang)
+	n := sampleTaskNumber
 	return TemplateData{
-		Kind:       "assigned",
-		Title:      "Назначена задача",
-		Text:       "Алиса назначил вам задачу #42 «Починить чайник»",
+		Kind:  sampleKind,
+		Title: Title(sampleKind, lang),
+		Text: Sentence(map[string]any{
+			"event":       "task_assigned",
+			"actor":       b.sampleActor,
+			"task_number": n,
+			"title":       b.sampleTaskTitle,
+		}, lang, ""),
 		TaskNumber: &n,
-		TaskTitle:  "Починить чайник",
-		Actor:      "Алиса",
-		Workspace:  "Личное пространство",
-		Link:       "https://tessera.example/",
+		TaskTitle:  b.sampleTaskTitle,
+		Actor:      b.sampleActor,
+		// The personal workspace is a server-seeded name carrying a key (#2800),
+		// captioned for the reader exactly as a real delivery captions it.
+		Workspace: DefaultName("personal", bundles[i18n.Default].defaultNames["personal"], lang),
+		Link:      "https://tessera.example/",
 	}
 }

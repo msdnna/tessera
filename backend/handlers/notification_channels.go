@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/i18n"
 	"tessera/internal/notify"
 	"tessera/middleware"
 )
@@ -75,15 +76,27 @@ const maxTemplateLen = 8192
 
 // validateTemplate rejects an over-long or unparseable template (it must render
 // against the sample data without error).
+//
+// The refusals are English sentinels, like every other refusal on this API: both
+// clients keep a catalog (frontend/src/utils/errors.js, android Errors.kt) and
+// print anything they can't place verbatim — so a Russian sentence here lands
+// untranslated under an English reader's form (#2932). The ceiling is named in
+// the message so each client can word it in the reader's own units.
+//
+// The sample is rendered in the default language on purpose: what can fail here
+// is a parse error or a field the struct doesn't have, and neither depends on the
+// wording.
 func validateTemplate(tmpl string) error {
 	if strings.TrimSpace(tmpl) == "" {
 		return nil
 	}
 	if len(tmpl) > maxTemplateLen {
-		return fmt.Errorf("шаблон слишком длинный (макс %d символов)", maxTemplateLen)
+		return fmt.Errorf("template exceeds %d characters", maxTemplateLen)
 	}
-	if _, err := notify.Render(tmpl, notify.SampleData()); err != nil {
-		return fmt.Errorf("ошибка шаблона: %s", err.Error())
+	if _, err := notify.Render(tmpl, notify.SampleData(i18n.Default)); err != nil {
+		// The parser's own words name the offending action and have no
+		// translation; only the wrapper around them is ours.
+		return fmt.Errorf("template error: %s", err.Error())
 	}
 	return nil
 }
@@ -111,7 +124,7 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 	}
 	typ := strings.TrimSpace(req.Type)
 	if _, ok := h.senders[typ]; !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("неизвестный тип канала: %q", typ)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unknown channel type: %q", typ)})
 		return
 	}
 	cfg := parseConfig(req.Config)
@@ -121,7 +134,7 @@ func (h *API) CreateNotificationChannel(c *gin.Context) {
 	}
 	// Some types need a secret on create (telegram bot token, shoutrrr URL).
 	if k := requiredSecret[typ]; k != "" && strings.TrimSpace(req.Secret[k]) == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("канал %q требует %s", typ, k)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s channel requires %s", typ, k)})
 		return
 	}
 	tmpl := ""
@@ -192,7 +205,7 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		}
 	}
 	if k := requiredSecret[row.Type]; k != "" && secEnc == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("канал %q требует %s", row.Type, k)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s channel requires %s", row.Type, k)})
 		return
 	}
 	tmpl := row.Template
@@ -262,7 +275,9 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 	uid := middleware.CurrentUser(c)
 	label := strings.TrimSpace(req.Label)
 	if label == "" {
-		label = "Устройство"
+		// Stored, and renameable afterwards — so the name the user first sees is
+		// written in their language rather than the server's.
+		label = notify.DeviceLabel(h.userLang(c, uid))
 	}
 	newCfg := map[string]string{"device_id": req.DeviceID, "platform": strings.TrimSpace(req.Platform)}
 	if tok := strings.TrimSpace(req.FCMToken); tok != "" {
@@ -288,7 +303,9 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 			SecretEnc: existing.SecretEnc, Enabled: existing.Enabled, Template: existing.Template,
 		})
 		if uerr != nil {
-			fail(c, err)
+			// uerr, not err: err is the *successful* lookup above, so passing it
+			// logged "err=<nil>" and left Sentry without a cause to group on.
+			fail(c, uerr)
 			return
 		}
 		c.JSON(http.StatusOK, channelViewOf(updated))
@@ -327,17 +344,20 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 	}
 	sender, ok := h.senders[row.Type]
 	if !ok {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "неизвестный тип канала"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unknown channel type: %q", row.Type)})
 		return
 	}
 	// Render through the channel's own template (with sample data) so the test
-	// reflects exactly what real messages will look like.
-	body, rerr := renderChannel(row.Template, notify.SampleData())
+	// reflects exactly what real messages will look like — including the language.
+	// This message leaves the app, so it is written in the recipient's, exactly as
+	// a real delivery is (notification_delivery.go).
+	lang := h.userLang(c, uid)
+	body, rerr := renderChannel(row.Template, notify.SampleData(lang))
 	if rerr != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "ошибка шаблона: " + rerr.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"ok": false, "error": "template error: " + rerr.Error()})
 		return
 	}
-	msg := notify.Message{Kind: "test", Title: "Проверка канала", Body: body, Link: h.publicURL}
+	msg := notify.Message{Kind: "test", Title: notify.Title("test", lang), Body: body, Link: h.publicURL}
 	if err := sender.Send(c, ch, msg); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error()})
 		return
@@ -347,7 +367,9 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 	}))
 	resp := gin.H{"ok": true}
 	if row.Type == "email" && !h.mailer.Enabled() {
-		resp["warning"] = "SMTP на сервере не настроен — письмо записано в лог, но не отправлено."
+		// Shown verbatim by both clients (the web puts it on the channel row,
+		// Android in a snackbar), so it travels as a sentinel they translate.
+		resp["warning"] = "smtp is not configured"
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -364,10 +386,13 @@ func (h *API) PreviewNotificationTemplate(c *gin.Context) {
 		return
 	}
 	if len(req.Template) > maxTemplateLen {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("шаблон слишком длинный (макс %d символов)", maxTemplateLen)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("template exceeds %d characters", maxTemplateLen)})
 		return
 	}
-	out, err := renderChannel(req.Template, notify.SampleData())
+	// The preview stands in for a delivery, so it is written in the reader's
+	// language — otherwise the editor teaches one wording and the channel carries
+	// another.
+	out, err := renderChannel(req.Template, notify.SampleData(h.userLang(c, middleware.CurrentUser(c))))
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"ok": false, "error": err.Error()})
 		return
@@ -402,29 +427,31 @@ func (h *API) channelsOwned(c *gin.Context, uid uuid.UUID, ids []uuid.UUID) bool
 	return true
 }
 
-// validateChannel checks the minimal non-secret config a channel type needs.
+// validateChannel checks the minimal non-secret config a channel type needs. Its
+// refusals are English sentinels for the clients to translate — see
+// validateTemplate for why.
 func validateChannel(typ string, cfg map[string]any) error {
 	switch typ {
 	case "email":
 		if cfgString(cfg, "address") == "" {
-			return errors.New("email канал требует address")
+			return errors.New("email channel requires address")
 		}
 	case "telegram":
 		if cfgString(cfg, "chat_id") == "" {
-			return errors.New("telegram канал требует chat_id")
+			return errors.New("telegram channel requires chat_id")
 		}
 	case "webhook":
 		if cfgString(cfg, "url") == "" {
-			return errors.New("webhook канал требует url")
+			return errors.New("webhook channel requires url")
 		}
 	case "shoutrrr":
 		// The service URL is a secret (it carries credentials) — validated there.
 	case "device":
 		if cfgString(cfg, "device_id") == "" {
-			return errors.New("device канал требует device_id")
+			return errors.New("device channel requires device_id")
 		}
 	default:
-		return fmt.Errorf("неизвестный тип канала: %q", typ)
+		return fmt.Errorf("unknown channel type: %q", typ)
 	}
 	return nil
 }

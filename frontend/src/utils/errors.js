@@ -28,6 +28,23 @@ const CONTENT_TOO_LARGE = /^content exceeds (\d+) bytes$/
 // picker hears (#2932).
 const ATTACHMENTS_TOO_LARGE = /^attachments exceed (\d+) bytes$/
 
+// The notification-channel editor's refusals (#2932). Unlike most of the table
+// below these are not stale-tab rarities — no client mirrors the channel rules,
+// so an ordinary user meets them while setting a channel up. Each carries a
+// variable part (the type, the field it wants, the ceiling), which is why they
+// are patterns rather than table entries.
+const CHANNEL_TYPE_UNKNOWN = /^unknown channel type: "(.*)"$/
+// The type is spelled out rather than matched as a word: the channel types are a
+// closed set on the wire, and a loose `(\w+) channel requires …` would rewrite an
+// ordinary English sentence that happens to contain those three words.
+const CHANNEL_REQUIRES_FIELD =
+  /^(email|telegram|webhook|shoutrrr|device) channel requires ([a-z_]+)$/
+const TEMPLATE_TOO_LONG = /^template exceeds (\d+) characters$/
+// Only the wrapper is ours: the tail is the Go template parser naming the
+// offending action, which has no translation and is carried verbatim — taken
+// from the original string, not the lowercased copy used for matching.
+const TEMPLATE_ERROR_PREFIX = 'template error: '
+
 // The keys are the wire format — exactly what the backend sends — so they stay
 // English; only the catalog key on the right-hand side is ours to translate.
 const SENTINELS = {
@@ -87,6 +104,10 @@ const SENTINELS = {
   // something a person did. An ordinary user reaches it by writing a very long
   // task description (#2932).
   'request body too large': 'bodyTooLarge',
+  // Not an error but a warning, and the one message on this list that rides a
+  // 200: the channel probe answers {ok:true, warning} when the server has no
+  // SMTP, and both clients print that string as-is (#2932).
+  'smtp is not configured': 'smtpNotConfigured',
   forbidden: 'forbidden',
   unauthorized: 'unauthorized',
   'not found': 'notFound',
@@ -124,6 +145,17 @@ export function humanizeError(raw) {
     return t('sentinel.chatAttachmentsTooLarge', {
       limit: formatFileSize(Number(oversizedBatch[1])),
     })
+  }
+  const unknownChannel = CHANNEL_TYPE_UNKNOWN.exec(low)
+  if (unknownChannel) return t('sentinel.channelTypeUnknown', { type: unknownChannel[1] })
+  const channelNeeds = CHANNEL_REQUIRES_FIELD.exec(low)
+  if (channelNeeds) {
+    return t('sentinel.channelRequiresField', { type: channelNeeds[1], field: channelNeeds[2] })
+  }
+  const longTemplate = TEMPLATE_TOO_LONG.exec(low)
+  if (longTemplate) return t('sentinel.templateTooLong', { limit: Number(longTemplate[1]) })
+  if (low.startsWith(TEMPLATE_ERROR_PREFIX)) {
+    return t('sentinel.templateError', { detail: msg.slice(TEMPLATE_ERROR_PREFIX.length) })
   }
   if (low.startsWith('key:') && low.includes('validation')) {
     return fromValidator(msg) || t('validation.generic')

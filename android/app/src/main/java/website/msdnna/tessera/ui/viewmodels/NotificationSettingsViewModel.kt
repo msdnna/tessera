@@ -17,6 +17,7 @@ import website.msdnna.tessera.data.model.Workspace
 import website.msdnna.tessera.data.repository.NotificationSettingsRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
+import website.msdnna.tessera.util.humanizeError
 
 data class NotifSettingsUiState(
     val loading: Boolean = true,
@@ -98,7 +99,11 @@ class NotificationSettingsViewModel : ViewModel() {
             _state.update { it.copy(testingId = id, error = null, message = null) }
             try {
                 val r = repo.testChannel(id)
-                val message = r.warning?.let { w -> UiText.Raw(w) } ?: UiText.Res(R.string.notif_test_sent)
+                // Успешный пробник всё равно может нести предупреждение (на
+                // сервере нет SMTP). Оно приходит сентинелом, как и отказы, но
+                // мимо перехватчика — вызов-то удался, — поэтому переводим здесь.
+                val message = r.warning?.let { w -> humanizeError(w) ?: UiText.Raw(w) }
+                    ?: UiText.Res(R.string.notif_test_sent)
                 _state.update { it.copy(testingId = null, message = message) }
                 reload()
             } catch (e: Exception) {
