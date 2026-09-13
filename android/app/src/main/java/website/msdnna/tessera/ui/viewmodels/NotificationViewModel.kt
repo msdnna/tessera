@@ -3,6 +3,7 @@ package website.msdnna.tessera.ui.viewmodels
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.gson.Gson
 import com.google.gson.JsonObject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -18,6 +19,7 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Notification
+import website.msdnna.tessera.data.model.NotificationPayload
 import website.msdnna.tessera.data.push.PushTokens
 import website.msdnna.tessera.data.realtime.DevicePush
 import website.msdnna.tessera.data.realtime.RealtimeClient
@@ -126,7 +128,11 @@ class NotificationViewModel(
             // Carry the notification id so a push copy of the same notification
             // redraws this entry instead of stacking a second one.
             val id = n.get("id")?.takeUnless { it.isJsonNull }?.asString
-            _devicePush.tryEmit(DevicePush("", text, taskId, id, titleResForKind(kind)))
+            // Факты события едут дальше сырыми: фраза по ним собирается в момент
+            // показа, на языке профиля, — как и заголовок. `text` остаётся фолбэком.
+            val payload = n.get("payload")?.takeUnless { it.isJsonNull }
+                ?.let { runCatching { Gson().fromJson(it, NotificationPayload::class.java) }.getOrNull() }
+            _devicePush.tryEmit(DevicePush("", text, taskId, id, titleResForKind(kind), payload))
         }
     }
 

@@ -12,7 +12,9 @@ import androidx.core.app.NotificationManagerCompat
 import website.msdnna.tessera.MainActivity
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.NotificationPayload
 import website.msdnna.tessera.reminders.ReminderNotifications
+import website.msdnna.tessera.util.notificationText
 import website.msdnna.tessera.util.withLanguage
 
 /** A notification the server routed to this device's "device" channel — shown as
@@ -28,6 +30,11 @@ data class DevicePush(
     /** Заголовок ресурсом, а не текстом: пуш живёт от события до показа, и
      *  готовая строка застыла бы на языке, который стоял в момент события. */
     @StringRes val titleRes: Int? = null,
+    /** Факты события — по ним тело собирается на языке профиля ровно тогда, когда
+     *  показывается, по той же причине, что и заголовок. Приходит только с сокета:
+     *  фоновый FCM-пуш тело уже несёт написанным (сервер пишет его на языке
+     *  получателя — `notify.Sentence`), и переписывать его незачем. */
+    val payload: NotificationPayload? = null,
 )
 
 /** Posts [DevicePush]es as system notifications (the device-channel delivery path
@@ -55,11 +62,14 @@ object DeviceNotifier {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         val title = push.titleRes?.let { localized.getString(it) } ?: push.title
+        // Тело — из фактов события, когда они есть; иначе остаётся то, что прислали
+        // (серверная фраза на языке получателя у FCM, легаси-строка у старых записей).
+        val body = notificationText(localized.resources, push.payload, push.body)
         val notification = NotificationCompat.Builder(localized, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_reminder)
             .setContentTitle(title.ifBlank { localized.getString(R.string.app_name) })
-            .setContentText(push.body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(push.body))
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(pi)

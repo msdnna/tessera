@@ -1686,4 +1686,34 @@
     <string name="cmd_subtask_desc">Create a subtask</string>
     <string name="cmd_parent_desc">Make it a subtask of a task</string>
     <string name="cmd_unparent_desc">Detach from the parent</string>
+
+    <string name="notif_ev_ctx">" “%1$s”"</string>
+    <string name="notif_ev_no_ref">?</string>
+    <string name="notif_ev_list_sep">", "</string>
+    <string name="notif_ev_reason_unknown">unknown error</string>
+    <string name="notif_ev_task_assigned">%1$s assigned task #%2$s to you%3$s</string>
+    <string name="notif_ev_task_updated">%1$s updated task #%2$s: %3$s</string>
+    <string name="notif_ev_task_moved">%1$s moved task #%2$s → “%3$s”</string>
+    <string name="notif_ev_task_archived">%1$s archived task #%2$s%3$s</string>
+    <string name="notif_ev_task_comment">%1$s commented on #%2$s%3$s</string>
+    <string name="notif_ev_task_thread_reply">%1$s replied in the thread on #%2$s%3$s</string>
+    <string name="notif_ev_task_mention">%1$s mentioned you in #%2$s%3$s</string>
+    <string name="notif_ev_task_due_soon">Task #%1$s “%2$s” is due soon</string>
+    <string name="notif_ev_reminder">Reminder</string>
+    <string name="notif_ev_sync_ok">%1$s: +%2$s new, ~%3$s updated, in %4$s</string>
+    <string name="notif_ev_sync_partial">%1$s: +%2$s new, ~%3$s updated, in %4$s (some actions failed)</string>
+    <string name="notif_ev_sync_failed">%1$s: sync failed — %2$s (after %3$s)</string>
+    <string name="notif_ev_conference_invited">%1$s invited you to a conference%2$s</string>
+    <string name="notif_ev_field_title">title</string>
+    <string name="notif_ev_field_description">description</string>
+    <string name="notif_ev_field_priority">priority</string>
+    <string name="notif_ev_field_due">due date</string>
+    <string name="notif_ev_field_start">start date</string>
+    <string name="notif_ev_field_estimate">estimate</string>
+    <string name="notif_ev_field_completed">completed</string>
+    <string name="notif_ev_field_reopened">reopened</string>
+    <string name="notif_ev_duration_instant">less than a second</string>
+    <string name="notif_ev_duration_hm">%1$dh %2$dm</string>
+    <string name="notif_ev_duration_ms">%1$dm %2$ds</string>
+    <string name="notif_ev_duration_s">%1$ds</string>
 </resources>
