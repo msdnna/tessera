@@ -126,15 +126,41 @@ private fun todayKey(): String {
     )
 }
 
-/** True when a date-only due is before today (a task overdue if not completed). */
+/** True when a due date is before today (a task overdue if not completed). */
 fun isOverdue(iso: String?): Boolean {
-    val key = isoDateKey(iso)
+    val key = dueDayKey(iso)
     return key.isNotEmpty() && key < todayKey()
 }
 
 /** The `yyyy-MM-dd` date portion of an ISO timestamp, or "" for the undated. */
 fun isoDateKey(iso: String?): String =
     if (iso.isNullOrBlank() || iso.length < 10) "" else iso.substring(0, 10)
+
+/**
+ * The calendar day a due date belongs to, as `yyyy-MM-dd` — the day [dueLabel] and
+ * [dueShort] print on the card, so a filter built on this key can never disagree
+ * with the label right next to it.
+ *
+ * Which calendar that is follows the same rule the labels use: a pure UTC-midnight
+ * instant is a date-only due (GitLab/legacy) and keeps its UTC day, everything else
+ * is a real instant and is read in the device zone. [isoDateKey] — the date portion
+ * of the raw string — is neither: it is the day in whatever zone the *server*
+ * serialised with. The two part company exactly where it hurts, because the clients
+ * store a due date as the local midnight the user picked: with a server writing UTC,
+ * «15 сентября» arrives as `…-14T21:00:00Z`, and a task due today then sat in
+ * «Просрочено» while its own pill read «Сегодня».
+ *
+ * A value that is not a parseable instant (a bare `2026-06-15`) is already a
+ * calendar day — there is nothing to convert, so the raw portion stands.
+ */
+fun dueDayKey(iso: String?): String {
+    val millis = parseInstantMillis(iso) ?: return isoDateKey(iso)
+    val zone = if (isUtcMidnight(millis)) TimeZone.getTimeZone("UTC") else TimeZone.getDefault()
+    val cal = Calendar.getInstance(zone).apply { timeInMillis = millis }
+    return "%04d-%02d-%02d".format(
+        cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH),
+    )
+}
 
 /**
  * A full date label for the task modal's due-date row — its shape follows the

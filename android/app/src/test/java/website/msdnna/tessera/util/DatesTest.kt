@@ -5,6 +5,7 @@ import android.content.res.Resources
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import java.util.Calendar
+import java.util.TimeZone
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -106,6 +107,61 @@ class DatesTest {
         assertThat(isOverdue("2999-12-31")).isFalse()
         assertThat(isOverdue(null)).isFalse()
         assertThat(isOverdue("")).isFalse()
+    }
+
+    // ── dueDayKey ────────────────────────────────────────────────────────────
+    // Какому дню принадлежит срок, решают «просрочено» и фильтры «Сегодня/На
+    // неделе» — и решать это надо тем же днём, который стоит в подписи карточки.
+    // Зона фиксируется в самом тесте: срез сырой ISO совпадает с локальным днём
+    // ровно до тех пор, пока хост сидит в UTC, и на хосте в UTC любая проверка
+    // этого расхождения выродилась бы в тавтологию.
+
+    /** Выполняет [body] с подменённой зоной устройства, возвращая прежнюю. */
+    private fun inZone(id: String, body: () -> Unit) {
+        val prev = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone(id))
+        try {
+            body()
+        } finally {
+            TimeZone.setDefault(prev)
+        }
+    }
+
+    @Test
+    fun `dueDayKey reads a timed due in the device zone`() = inZone("Asia/Tokyo") {
+        // Срок «15 сентября, локальная полночь» в Токио (+09) уезжает на сутки
+        // назад, когда сервер сериализует его в UTC. Подпись покажет 15-е —
+        // ключ дня обязан согласиться, иначе задача краснеет за день до срока.
+        assertThat(dueDayKey("2026-09-14T15:00:00Z")).isEqualTo("2026-09-15")
+        assertThat(dueDayKey("2026-09-15T00:00:00+09:00")).isEqualTo("2026-09-15")
+    }
+
+    @Test
+    fun `dueDayKey keeps a date-only due on its UTC day`() = inZone("America/New_York") {
+        // Дата без времени (GitLab/legacy) — это чистая UTC-полночь, и читать её
+        // в локальной зоне нельзя: в Нью-Йорке (-04) она сползла бы на 13-е.
+        // Ровно эту ветку рисует dueLabel/dueShort.
+        assertThat(dueDayKey("2026-09-14T00:00:00Z")).isEqualTo("2026-09-14")
+        assertThat(dueDayKey("2026-09-14T03:00:00+03:00")).isEqualTo("2026-09-14")
+    }
+
+    @Test
+    fun `dueDayKey falls back to the raw date portion`() {
+        // Голая дата без времени не разбирается как инстант — берём срез, как и
+        // делали раньше: это уже календарный день, конвертировать нечего.
+        assertThat(dueDayKey("2026-06-15")).isEqualTo("2026-06-15")
+        assertThat(dueDayKey(null)).isEmpty()
+        assertThat(dueDayKey("")).isEmpty()
+        assertThat(dueDayKey("2026")).isEmpty()
+    }
+
+    @Test
+    fun `dueDayKey agrees with the label the card shows`() = inZone("Asia/Tokyo") {
+        // Тот же момент, что в первом тесте: подпись рисует 15 сентября, значит
+        // и ключ дня — 15-е. Раньше подпись и ключ расходились на сутки.
+        assertThat(dueLabel(ru, "2026-09-14T15:00:00Z", fmt = medium))
+            .isEqualTo("15 сен. 2026 г.")
+        assertThat(dueDayKey("2026-09-14T15:00:00Z")).isEqualTo("2026-09-15")
     }
 
     // ── whenLabel ────────────────────────────────────────────────────────────

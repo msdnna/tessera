@@ -163,10 +163,10 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.countWithSubtasks
+import website.msdnna.tessera.util.dueDayKey
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.isReviewColumn
-import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
 import website.msdnna.tessera.util.shortDate
@@ -847,7 +847,9 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
 
     // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
     val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
-    val byDay = tasks.filter { !it.dueDate.isNullOrBlank() }.groupBy { isoDateKey(it.dueDate) }
+    // Ячейки месяца строятся из локального Calendar, поэтому и раскладывать задачи
+    // по ним надо днём устройства (dueDayKey), а не срезом сырой ISO-строки.
+    val byDay = tasks.filter { !it.dueDate.isNullOrBlank() }.groupBy { dueDayKey(it.dueDate) }
     val undated = tasks.filter { it.dueDate.isNullOrBlank() }
     val cells = remember(year, month) { monthCells(year, month) }
 

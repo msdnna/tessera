@@ -13,8 +13,8 @@ import website.msdnna.tessera.data.model.WorkspaceSummary
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.data.repository.HomeRepository
 import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.util.dueDayKey
 import website.msdnna.tessera.util.errorMessage
-import website.msdnna.tessera.util.isoDateKey
 
 enum class HomeFilter { Me, All, Overdue, Today, Week, Completed }
 
@@ -33,7 +33,9 @@ data class HomeUiState(
             val today = dateKeyOffset(0)
             val weekEnd = dateKeyOffset(DAYS_IN_WEEK)
             return tasks.filter { t ->
-                val due = isoDateKey(t.dueDate)
+                // День срока — тот же, что на карточке (dueDayKey), а не срез сырой
+                // строки: границы ниже считаны с часов устройства.
+                val due = dueDayKey(t.dueDate)
                 when (filter) {
                     HomeFilter.Me -> !t.isCompleted && meId in t.assigneeIds
                     HomeFilter.All -> !t.isCompleted

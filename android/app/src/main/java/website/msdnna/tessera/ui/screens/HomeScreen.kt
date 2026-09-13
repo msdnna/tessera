@@ -50,6 +50,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.HomeFilter
 import website.msdnna.tessera.ui.viewmodels.HomeUiState
 import website.msdnna.tessera.ui.viewmodels.HomeViewModel
+import website.msdnna.tessera.util.dueDayKey
 import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.shortDate
 
@@ -161,7 +162,7 @@ private fun TaskRow(task: WorkspaceTask, state: HomeUiState, onClick: () -> Unit
     val c = Tessera.colors
     val priorityColor = PriorityColors.getOrElse(task.priority) { PriorityColors[0] }
     val today = isoDateKey(nowIsoDate())
-    val due = isoDateKey(task.dueDate)
+    val due = dueDayKey(task.dueDate)
     val overdue = due.isNotEmpty() && due < today && !task.isCompleted
 
     Row(

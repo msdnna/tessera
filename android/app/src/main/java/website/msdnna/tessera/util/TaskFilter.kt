@@ -129,7 +129,9 @@ fun matchesAuthor(task: Task, selected: Set<String>, glLoginByUserId: Map<String
 
 /** Due-date predicate for the «Срок» filter, against [clock]'s boundaries. */
 fun matchesDue(task: Task, mode: DueFilter, clock: FilterClock): Boolean {
-    val due = isoDateKey(task.dueDate)
+    // dueDayKey, не isoDateKey: границы [clock] — дни устройства, и сравнивать их
+    // надо с тем же днём, который стоит в подписи карточки.
+    val due = dueDayKey(task.dueDate)
     return when (mode) {
         DueFilter.All -> true
 
