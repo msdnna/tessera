@@ -21,7 +21,7 @@ import {
   LogoGitlab,
 } from '@vicons/ionicons5'
 import { projects as projApi, milestones as msApi, gitlab as glApi } from '@/api'
-import { milestoneRange } from '@/utils/milestones'
+import { milestoneRange, toDateOnlyISO, pickerValue } from '@/utils/milestones'
 import { useFormat } from '@/composables/useFormat'
 import EmptyState from '@/components/EmptyState.vue'
 
@@ -100,8 +100,9 @@ async function create() {
   saving.value = true
   try {
     const body = { title }
-    if (newStart.value) body.start_date = new Date(newStart.value).toISOString()
-    if (newDue.value) body.due_date = new Date(newDue.value).toISOString()
+    // Date-only, not the picker's local midnight — see toDateOnlyISO.
+    if (newStart.value) body.start_date = toDateOnlyISO(newStart.value)
+    if (newDue.value) body.due_date = toDateOnlyISO(newDue.value)
     const { data } = await projApi.createMilestone(props.projectId, body)
     list.value.push(data)
     newTitle.value = ''
@@ -119,8 +120,8 @@ function startEdit(m) {
   editingId.value = m.id
   editBuf.value = {
     title: m.title,
-    start_date: m.start_date ? new Date(m.start_date).getTime() : null,
-    due_date: m.due_date ? new Date(m.due_date).getTime() : null,
+    start_date: pickerValue(m.start_date),
+    due_date: pickerValue(m.due_date),
     state: m.state,
   }
 }
@@ -134,8 +135,8 @@ async function saveEdit(m) {
     const body = {
       title: b.title.trim(),
       description: m.description || '',
-      start_date: b.start_date ? new Date(b.start_date).toISOString() : null,
-      due_date: b.due_date ? new Date(b.due_date).toISOString() : null,
+      start_date: toDateOnlyISO(b.start_date),
+      due_date: toDateOnlyISO(b.due_date),
       state: b.state,
     }
     const { data } = await msApi.update(m.id, body)
