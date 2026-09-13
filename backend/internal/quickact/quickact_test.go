@@ -225,12 +225,15 @@ func TestParsePriority(t *testing.T) {
 }
 
 func TestParseEstimate(t *testing.T) {
+	timeCfg := Estimation{Unit: "time", HoursPerDay: 8, DaysPerWeek: 5}
 	cases := []struct {
 		in      string
 		want    float64
 		wantErr bool
 	}{
-		{in: "90", want: 90}, // bare number passes through (points too)
+		// A bare number is HOURS, like the estimate field in both clients
+		// (frontend utils/estimation.js, android util/Estimation.kt).
+		{in: "90", want: 5400},
 		{in: "90m", want: 90},
 		{in: "2h", want: 120},
 		{in: "1h30m", want: 90},
@@ -239,6 +242,7 @@ func TestParseEstimate(t *testing.T) {
 		{in: "1d", want: 480},  // 8h day
 		{in: "1w", want: 2400}, // 5d week
 		{in: "1d 4h", want: 720},
+		{in: "1d 4", want: 720}, // the tail-less number is hours too
 		{in: "0", wantErr: true},
 		{in: "", wantErr: true},
 		{in: "скоро", wantErr: true},
@@ -246,7 +250,7 @@ func TestParseEstimate(t *testing.T) {
 		{in: "2 3", wantErr: true},
 	}
 	for _, tc := range cases {
-		got, err := ParseEstimate(tc.in, 8, 5)
+		got, err := ParseEstimate(tc.in, timeCfg)
 		if tc.wantErr != (err != nil) {
 			t.Errorf("ParseEstimate(%q) = %v, err = %v, wantErr %v", tc.in, got, err, tc.wantErr)
 			continue
@@ -256,8 +260,51 @@ func TestParseEstimate(t *testing.T) {
 		}
 	}
 	// Workspace settings drive day/week arithmetic.
-	if got, err := ParseEstimate("1d", 6, 4); err != nil || got != 360 {
+	if got, err := ParseEstimate("1d", Estimation{Unit: "time", HoursPerDay: 6, DaysPerWeek: 4}); err != nil || got != 360 {
 		t.Errorf("ParseEstimate(1d, 6h/day) = %v, %v; want 360", got, err)
+	}
+	// An absent unit inherits the built-in default: time, 8h/day, 5d/week.
+	if got, err := ParseEstimate("1w", Estimation{}); err != nil || got != 2400 {
+		t.Errorf("ParseEstimate(1w, zero cfg) = %v, %v; want 2400", got, err)
+	}
+}
+
+// A points / custom workspace counts dimensionless numbers, so the argument is
+// read the way the clients read their estimate field: a plain number (or a
+// T-shirt size), and nothing that looks like a duration.
+func TestParseEstimateNonTimeUnits(t *testing.T) {
+	points := Estimation{Unit: "points", PointsScale: "fibonacci"}
+	tshirt := Estimation{Unit: "points", PointsScale: "tshirt"}
+	custom := Estimation{Unit: "custom"}
+
+	cases := []struct {
+		name    string
+		cfg     Estimation
+		in      string
+		want    float64
+		wantErr bool
+	}{
+		{name: "points number", cfg: points, in: "5", want: 5},
+		{name: "points decimal comma", cfg: points, in: "2,5", want: 2.5},
+		{name: "points reject duration", cfg: points, in: "2h", wantErr: true},
+		{name: "points reject word", cfg: points, in: "много", wantErr: true},
+		{name: "points reject zero", cfg: points, in: "0", wantErr: true},
+		{name: "tshirt size", cfg: tshirt, in: "M", want: 3},
+		{name: "tshirt size lowercase", cfg: tshirt, in: "xxl", want: 13},
+		{name: "tshirt number still works", cfg: tshirt, in: "8", want: 8},
+		{name: "tshirt unknown size", cfg: tshirt, in: "XXXL", wantErr: true},
+		{name: "custom number", cfg: custom, in: "12", want: 12},
+		{name: "custom reject duration", cfg: custom, in: "1d", wantErr: true},
+	}
+	for _, tc := range cases {
+		got, err := ParseEstimate(tc.in, tc.cfg)
+		if tc.wantErr != (err != nil) {
+			t.Errorf("%s: ParseEstimate(%q) = %v, err = %v, wantErr %v", tc.name, tc.in, got, err, tc.wantErr)
+			continue
+		}
+		if err == nil && got != tc.want {
+			t.Errorf("%s: ParseEstimate(%q) = %v, want %v", tc.name, tc.in, got, tc.want)
+		}
 	}
 }
 

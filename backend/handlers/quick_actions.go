@@ -231,8 +231,7 @@ func (h *API) qaPatch(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd quickact.C
 		patch.StartDate = clearTime()
 		summary = "убрана дата начала"
 	case "estimate":
-		hpd, dpw := h.estimateUnits(c, *t, wsID)
-		v, err := quickact.ParseEstimate(cmd.Arg, hpd, dpw)
+		v, err := quickact.ParseEstimate(cmd.Arg, h.estimateConfig(c, *t, wsID))
 		if err != nil {
 			return "", opError{msg: err.Error()}
 		}
@@ -506,10 +505,11 @@ func (h *API) qaParent(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd quickact.
 	return fmt.Sprintf("стала подзадачей #%d", refs[0]), nil
 }
 
-// estimateUnits resolves the hours-per-day / days-per-week in force for a task,
-// following the same project → workspace → built-in (8h/5d) chain the clients
-// use, so "/estimate 1d" means what "1d" typed into the UI means.
-func (h *API) estimateUnits(c *gin.Context, t db.Task, wsID uuid.UUID) (hoursPerDay, daysPerWeek float64) {
+// estimateConfig resolves the estimate settings in force for a task, following
+// the same project → workspace → built-in (time, 8h/5d) chain the clients use,
+// so "/estimate 1d" means what "1d" typed into the UI means — and so a points
+// board reads the argument as points rather than as a duration.
+func (h *API) estimateConfig(c *gin.Context, t db.Task, wsID uuid.UUID) quickact.Estimation {
 	var raw *json.RawMessage
 	if projectID, err := h.q.ProjectIDForBoard(c, t.BoardID); err == nil {
 		if p, perr := h.q.GetProject(c, projectID); perr == nil {
@@ -521,21 +521,19 @@ func (h *API) estimateUnits(c *gin.Context, t db.Task, wsID uuid.UUID) (hoursPer
 			raw = ws.Estimation
 		}
 	}
-	hoursPerDay, daysPerWeek = 8, 5
 	if raw == nil {
-		return
+		return quickact.Estimation{}
 	}
 	var cfg estimationConfig
 	if err := json.Unmarshal(*raw, &cfg); err != nil {
-		return
+		return quickact.Estimation{}
 	}
-	if cfg.HoursPerDay > 0 {
-		hoursPerDay = cfg.HoursPerDay
+	return quickact.Estimation{
+		Unit:        cfg.Unit,
+		HoursPerDay: cfg.HoursPerDay,
+		DaysPerWeek: cfg.DaysPerWeek,
+		PointsScale: cfg.PointsScale,
 	}
-	if cfg.DaysPerWeek > 0 {
-		daysPerWeek = cfg.DaysPerWeek
-	}
-	return
 }
 
 // PreviewCommands dry-runs a comment body: it reports what each command would
@@ -621,8 +619,7 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 		return "убрать дату начала", nil
 
 	case "estimate":
-		hpd, dpw := h.estimateUnits(c, t, wsID)
-		if _, err := quickact.ParseEstimate(cmd.Arg, hpd, dpw); err != nil {
+		if _, err := quickact.ParseEstimate(cmd.Arg, h.estimateConfig(c, t, wsID)); err != nil {
 			return "", opError{msg: err.Error()}
 		}
 		return "оценка " + cmd.Arg, nil

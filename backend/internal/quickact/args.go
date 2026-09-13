@@ -29,17 +29,45 @@ func ParsePriority(raw string) (int32, error) {
 // estimateToken matches one "2h" / "30м" / "1.5d" chunk of an estimate.
 var estimateToken = regexp.MustCompile(`(\d+(?:[.,]\d+)?)\s*([wнdдhчmм]?)`)
 
-// ParseEstimate resolves an /estimate argument to the stored value.
+// Estimation is the estimate configuration in force for a task (project
+// override → workspace default → the built-in time/8h/5d), reduced to what
+// argument parsing needs. The zero value means the built-in default.
+type Estimation struct {
+	Unit        string  // "time" | "points" | "custom"; empty = time
+	HoursPerDay float64 // time only; ≤0 = 8
+	DaysPerWeek float64 // time only; ≤0 = 5
+	PointsScale string  // points only: fibonacci | tshirt | linear
+}
+
+// tshirtSizes mirrors POINTS_SCALES.tshirt in the clients (frontend
+// utils/estimation.js, android util/Estimation.kt): the size is what a user
+// types and sees, the number is what gets stored.
+var tshirtSizes = map[string]float64{"xs": 1, "s": 2, "m": 3, "l": 5, "xl": 8, "xxl": 13}
+
+// ParseEstimate resolves an /estimate argument to the stored value, reading it
+// exactly the way the estimate field in the clients reads its input — a comment
+// and a popover that set the same number must not disagree about what it means.
 //
-// With a unit suffix (2h30m, 1d, 1w, Russian ч/д/н/м) the result is minutes,
-// using the workspace's hours-per-day / days-per-week settings — the same
-// arithmetic the clients do when formatting. A bare number is passed through
-// unchanged, so a points-based workspace can write "/estimate 3".
-func ParseEstimate(raw string, hoursPerDay, daysPerWeek float64) (float64, error) {
+// In a time workspace the result is minutes: with a unit suffix (2h30m, 1d, 1w,
+// Russian ч/д/н/м) the day/week arithmetic uses the workspace settings, and a
+// bare number is HOURS, as in `parseEstimate` on both clients. (It used to be
+// minutes here and only here, so "/estimate 3" stored three minutes where the
+// popover would have stored three hours — the same typing, off by sixty.)
+//
+// Points and custom units count something dimensionless, so there the argument
+// is a plain number — plus the T-shirt sizes when the scale is tshirt. A
+// duration is refused rather than counted: "/estimate 2h" on a points board
+// used to store 120 points.
+func ParseEstimate(raw string, cfg Estimation) (float64, error) {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	if s == "" {
 		return 0, fmt.Errorf("не указана оценка")
 	}
+	if cfg.Unit != "" && cfg.Unit != "time" {
+		return parseDimensionless(s, raw, cfg)
+	}
+
+	hoursPerDay, daysPerWeek := cfg.HoursPerDay, cfg.DaysPerWeek
 	if hoursPerDay <= 0 {
 		hoursPerDay = 8
 	}
@@ -65,7 +93,7 @@ func ParseEstimate(raw string, hoursPerDay, daysPerWeek float64) (float64, error
 		}
 		switch m[2] {
 		case "":
-			total += n // bare number: minutes, or points in a points workspace
+			total += n * 60 // bare number: hours, as in the clients' estimate field
 		case "m", "м":
 			unitSeen = true
 			total += n
@@ -87,6 +115,25 @@ func ParseEstimate(raw string, hoursPerDay, daysPerWeek float64) (float64, error
 		return 0, fmt.Errorf("оценка должна быть больше нуля")
 	}
 	return total, nil
+}
+
+// parseDimensionless reads the argument of a points / custom-unit workspace: a
+// T-shirt size on a tshirt scale, otherwise a plain number. `s` is the
+// lowercased form, `raw` the original, kept for the error text.
+func parseDimensionless(s, raw string, cfg Estimation) (float64, error) {
+	if cfg.Unit == "points" && cfg.PointsScale == "tshirt" {
+		if v, ok := tshirtSizes[s]; ok {
+			return v, nil
+		}
+	}
+	n, err := strconv.ParseFloat(strings.Replace(s, ",", ".", 1), 64)
+	if err != nil {
+		return 0, fmt.Errorf("не понимаю оценку %q (нужно число)", raw)
+	}
+	if n <= 0 {
+		return 0, fmt.Errorf("оценка должна быть больше нуля")
+	}
+	return n, nil
 }
 
 var taskRef = regexp.MustCompile(`#?(\d{1,9})`)
