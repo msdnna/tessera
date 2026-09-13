@@ -27,7 +27,7 @@ func TestTransferProjectUnpinsCrossWorkspaceConferences(t *testing.T) {
 
 	// A second project in the source workspace: its task stays behind, and the
 	// conference pinned to it is the control — that link crosses no boundary.
-	stayProject := mkProject(t, owner, src.WS, src.Group, "Остающийся проект")
+	stayProject := mkProject(t, owner, src.WS, src.Group, "Остающийся проект "+t.Name())
 	stayBoard := mkBoard(t, owner, stayProject, "Доска остающегося")
 	stayCol := owner.get("/boards/" + stayBoard + "/columns").listBody(t)[0]["id"].(string)
 

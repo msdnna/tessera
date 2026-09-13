@@ -33,7 +33,9 @@ func TestTransferProjectSeversCrossWorkspaceRefs(t *testing.T) {
 
 	// A second project in the source workspace: it stays behind when the first
 	// one leaves, and that is what puts the two ends of each link apart.
-	stayProject := mkProject(t, owner, src.WS, src.Group, "Остающийся проект")
+	// Titled per test: the project slug index is global (0025), so two parallel
+	// tests creating "Остающийся проект" at once collide on it.
+	stayProject := mkProject(t, owner, src.WS, src.Group, "Остающийся проект "+t.Name())
 	stayBoard := mkBoard(t, owner, stayProject, "Доска остающегося")
 	stayCols := owner.get("/boards/" + stayBoard + "/columns").listBody(t)
 	stayCol := stayCols[0]["id"].(string)

@@ -32,7 +32,7 @@ func TestTransferProjectStripsCrossWorkspaceTags(t *testing.T) {
 
 	// A second project in the source workspace: it stays behind when the first
 	// one leaves, and that is what puts a tag and its task apart.
-	stayProject := mkProject(t, owner, src.WS, src.Group, "Остающийся проект")
+	stayProject := mkProject(t, owner, src.WS, src.Group, "Остающийся проект "+t.Name())
 	stayBoard := mkBoard(t, owner, stayProject, "Доска остающегося")
 	stayCols := owner.get("/boards/" + stayBoard + "/columns").listBody(t)
 	stayCol := stayCols[0]["id"].(string)

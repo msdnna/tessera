@@ -324,7 +324,12 @@ LEFT JOIN LATERAL (
     SELECT COALESCE(array_agg(DISTINCT tga.gl_username), '{}')::text[] AS gitlab_assignee_logins
     FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
 ) ga ON true
-WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
+WHERE t.board_id = $1 AND t.archived_at IS NULL
+  -- Only rows the board can actually place under a card: the parent has to be
+  -- active too, or the subtask is drawn nowhere. The mirror of the predicate in
+  -- ListBoardTasksWithMeta, and the reason the two never overlap — an active
+  -- child of an archived parent is served there as a card, exactly once.
+  AND EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NULL)
 ORDER BY t.position, t.created_at, t.id
 `
 
@@ -439,9 +444,25 @@ LEFT JOIN LATERAL (
     FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
 ) ga ON true
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
-WHERE t.board_id = $1 AND t.parent_id IS NULL
+WHERE t.board_id = $1
   -- Active board (archived_at IS NULL) or the read-only archive view (IS NOT NULL).
   AND (($2::boolean AND t.archived_at IS NOT NULL) OR (NOT $2::boolean AND t.archived_at IS NULL))
+  -- Top-level *for this view*: no parent that the same view would also draw.
+  -- ` + "`" + `parent_id IS NULL` + "`" + ` alone was right only while parent and child always shared
+  -- an archived state, which the manual archive guarantees (ArchiveTaskCascade
+  -- takes the subtree, ?subtasks=detach re-parents it to the root) and the GitLab
+  -- pull does not: applyClosedPolicy archives per issue, so a parent issue closed
+  -- inside a closed milestone goes to the archive while a child issue that is
+  -- still open stays active. Such a child was fetched by neither screen — the
+  -- board hangs subtasks off a parent card in the same payload and the parent is
+  -- archived, the archive filters on archived_at IS NOT NULL and the child's is
+  -- NULL. It is a card here instead, which is also what the archive view has
+  -- always done with a child buried under an archived root (ListBoardArchivedWithMeta).
+  AND NOT EXISTS (
+    SELECT 1 FROM tasks p
+    WHERE p.id = t.parent_id
+      AND (($2::boolean AND p.archived_at IS NOT NULL) OR (NOT $2::boolean AND p.archived_at IS NULL))
+  )
   AND (
     (NOT $3::boolean AND $4::uuid IS NULL)             -- all (no scope)
     OR ($3::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
