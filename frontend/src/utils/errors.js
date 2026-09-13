@@ -47,6 +47,12 @@ const SENTINELS = {
   // maxDocApprovalSteps (utils/docApprovals.js) and greys the remaining names
   // out, so this is only reached when that check was bypassed.
   'too many approvers': 'tooManyApprovers',
+  // The two ways accepting an invitation is refused (#2932). The accept page
+  // phrases both itself — it also *branches* on the wrong-address one, against
+  // `err.raw` — but the same call is made from the register form, where the
+  // refusal surfaces as the form's error line.
+  'invalid or expired invitation': 'invitationInvalid',
+  'this invitation is for a different email': 'invitationWrongAccount',
   forbidden: 'forbidden',
   unauthorized: 'unauthorized',
   'not found': 'notFound',

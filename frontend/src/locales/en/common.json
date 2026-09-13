@@ -92,7 +92,9 @@
       "title": "Invitation",
       "pending": "Accepting the invitation…",
       "ok": "Done! You have joined the workspace.",
-      "fail": "The invitation is invalid, has expired or was meant for another address."
+      "fail": "This invitation is no longer valid — it has expired or was already used.",
+      "wrongAccount": "This invitation was sent to a different address. Sign in with the account it was mailed to.",
+      "switchAccount": "Sign in with another account"
     },
     "oauth": {
       "title": "Sign in with GitLab",

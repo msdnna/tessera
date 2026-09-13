@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
 import { isTauri } from '@/utils/serverBase'
+import { inviteTokenFromNext, registerRouteForInvite } from '@/utils/inviteRoute'
 import {
   startDesktopGitlabLogin,
   OAUTH_DONE_EVENT,
@@ -170,7 +171,12 @@ async function submit() {
     </div>
     <div class="auth-foot">
       {{ t('common.auth.login.noAccount') }}
-      <router-link to="/register">{{ t('common.auth.login.register') }}</router-link>
+      <!-- Mirror of the register form's link back here: when this visit is a
+           detour from an invitation (?next=/invite?token=…), the token rides
+           along rather than being dropped at the fork. -->
+      <router-link :to="registerRouteForInvite(inviteTokenFromNext(route.query.next))">{{
+        t('common.auth.login.register')
+      }}</router-link>
     </div>
   </auth-layout>
 </template>

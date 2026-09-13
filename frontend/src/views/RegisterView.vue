@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
 import { passwordError } from '@/utils/password'
+import { loginRouteForInvite } from '@/utils/inviteRoute'
 
 const { t } = useI18n()
 
@@ -133,7 +134,13 @@ async function submit() {
     </template>
     <div class="auth-foot">
       {{ $t('common.auth.register.haveAccount') }}
-      <router-link to="/login">{{ $t('common.auth.register.login') }}</router-link>
+      <!-- An invitee who already has an account lands here anyway (the accept
+           page sends every signed-out visitor to register) and takes this link.
+           It carries the token on, or the invitation is left unaccepted with its
+           only link back in the mailbox. -->
+      <router-link :to="loginRouteForInvite(inviteToken)">{{
+        $t('common.auth.register.login')
+      }}</router-link>
     </div>
   </auth-layout>
 </template>

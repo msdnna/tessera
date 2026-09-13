@@ -18,7 +18,9 @@
     "jobAlreadyRunning": "This job is already running — wait for it to finish",
     "currentPasswordWrong": "Current password is incorrect",
     "noUserWithEmail": "No account uses this email — you can send an invitation",
-    "tooManyApprovers": "The approval route asks too many people"
+    "tooManyApprovers": "The approval route asks too many people",
+    "invitationInvalid": "The invitation is no longer valid or has expired",
+    "invitationWrongAccount": "This invitation was sent to a different address"
   },
   "validation": {
     "email": "Enter a valid email",
