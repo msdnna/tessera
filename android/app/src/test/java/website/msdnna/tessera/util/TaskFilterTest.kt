@@ -162,8 +162,11 @@ class TaskFilterTest {
         fun t(due: String, completed: String? = null) = Task(id = "t", dueDate = due, completedAt = completed)
         assertTrue(matchesDue(t("2026-08-03T09:00:00"), DueFilter.Today, clock))
         assertTrue(matchesDue(t("2026-08-06T09:00:00"), DueFilter.Week, clock))
-        // The seventh day is inside the window (web `dueDay - today <= 7 days`).
-        assertTrue(matchesDue(t("2026-08-10T09:00:00"), DueFilter.Week, clock))
+        // Half-open [today, today+7): seven days counting today, the same window the
+        // server counts in (`due_date < @week_end`) and the home screen filters on.
+        // The seventh day is the last one inside; `weekEnd` itself is the eighth and out.
+        assertTrue(matchesDue(t("2026-08-09T09:00:00"), DueFilter.Week, clock))
+        assertFalse(matchesDue(t("2026-08-10T09:00:00"), DueFilter.Week, clock))
         assertFalse(matchesDue(t("2026-08-20T09:00:00"), DueFilter.Week, clock))
         assertTrue(matchesDue(t("2026-08-01T09:00:00"), DueFilter.Overdue, clock))
         // A closed task is never «просроченная».

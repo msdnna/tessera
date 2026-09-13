@@ -73,7 +73,8 @@ val SUBTASK_FACETS: Set<TaskFacet> = setOf(
  */
 data class FilterClock(val today: String, val weekEnd: String) {
     companion object {
-        /** Boundaries from the device clock: today and today + 7 days. */
+        /** Boundaries from the device clock: today, and today + 7 days — the
+         *  *exclusive* end of the week window (see [matchesDue]). */
         fun now(): FilterClock = FilterClock(dateKey(0), dateKey(DAYS_IN_WEEK))
 
         /** A local `yyyy-MM-dd` key for today + [days], matching due-date keys. */
@@ -143,8 +144,15 @@ fun matchesDue(task: Task, mode: DueFilter, clock: FilterClock): Boolean {
 
         DueFilter.Today -> due == clock.today
 
-        // Inclusive of the seventh day, like web (`dueDay - today <= 7 days`).
-        DueFilter.Week -> due.isNotEmpty() && due >= clock.today && due <= clock.weekEnd
+        // Half-open [today, today+7) — seven days counting today, not eight. The same
+        // window the server counts the home «На неделе» tile in (`due_date < @week_end`
+        // in WorkspaceTaskSummary), the home screen filters on (HomeViewModel) and web's
+        // «Срок» facet uses (`dueDay < weekEnd` in utils/taskFilter.js). It has to be the
+        // same one twice over: the tile's number is the caption of the list this filter
+        // draws, and a saved board view carries the facet as the bare string "week"
+        // between web and the phone — an eighth day here is a card the other side never
+        // shows.
+        DueFilter.Week -> due.isNotEmpty() && due >= clock.today && due < clock.weekEnd
     }
 }
 
