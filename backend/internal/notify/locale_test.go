@@ -46,7 +46,7 @@ func TestBundlesCarryTheSameKeys(t *testing.T) {
 	base := bundles[i18n.Default]
 	for _, lang := range i18n.Supported {
 		b := bundles[lang]
-		if b.ctx == "" || b.fallbackKind == "" || b.digestTitle == "" {
+		if b.ctx == "" || b.fallbackKind == "" || b.digestTitle == "" || b.unknownReason == "" {
 			t.Fatalf("%s: bundle is incomplete", lang)
 		}
 		// All three forms, even where a language only distinguishes two: the
@@ -128,6 +128,29 @@ func TestSentenceWording(t *testing.T) {
 			payload: map[string]any{"event": "integration_sync_failed", "label": "GitLab", "reason": "401", "seconds": float64(0)},
 			lang:    "ru",
 			want:    "GitLab: синхронизация не удалась — 401 (за меньше секунды)",
+		},
+		// A sync can fail with nothing to blame: the producer leaves `reason` out
+		// of the payload then (the same way it leaves a reminder's empty message
+		// out), because a default written here would be spliced into a sentence of
+		// the reader's language. This renderer serves the deliveries that leave the
+		// app, so it owns the default — without one the line breaks off at the dash.
+		{
+			name:    "sync failure with nothing to blame names it in ru",
+			payload: map[string]any{"event": "integration_sync_failed", "label": "GitLab", "seconds": float64(5)},
+			lang:    "ru",
+			want:    "GitLab: синхронизация не удалась — неизвестная ошибка (за 5 с)",
+		},
+		{
+			name:    "sync failure with nothing to blame names it in en",
+			payload: map[string]any{"event": "integration_sync_failed", "label": "GitLab", "seconds": float64(5)},
+			lang:    "en",
+			want:    "GitLab: sync failed — unknown error (after 5s)",
+		},
+		{
+			name:    "a blank reason counts as no reason",
+			payload: map[string]any{"event": "integration_sync_failed", "label": "GitLab", "reason": "   ", "seconds": float64(5)},
+			lang:    "en",
+			want:    "GitLab: sync failed — unknown error (after 5s)",
 		},
 		{
 			name:    "reminder keeps the user's own words",

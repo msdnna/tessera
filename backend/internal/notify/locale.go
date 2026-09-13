@@ -46,6 +46,13 @@ type bundle struct {
 	// deviceLabel names a client's auto-registered device channel when the client
 	// didn't send a name of its own.
 	deviceLabel string
+	// unknownReason stands in for a sync failure that names no cause. The reason
+	// itself is the integration's own error text — content, carried verbatim — so
+	// the producer leaves the key out rather than defaulting it in the sender's
+	// language (handlers.msgSyncFailed, the same rule as an empty reminder). That
+	// makes the default this side's business, and without it the sentence breaks
+	// off at the dash.
+	unknownReason string
 	// sampleActor/sampleTaskTitle furnish the stand-in notification the channel
 	// editor previews and the "send a test" probe delivers (SampleData). They live
 	// here, not at the call site, for the same reason everything else in this file
@@ -115,6 +122,7 @@ var bundles = map[string]bundle{
 		durationMS:      "{m} м {s} с",
 		durationS:       "{s} с",
 		deviceLabel:     "Устройство",
+		unknownReason:   "неизвестная ошибка",
 		sampleActor:     "Алиса",
 		sampleTaskTitle: "Починить чайник",
 	},
@@ -175,6 +183,7 @@ var bundles = map[string]bundle{
 		durationMS:      "{m}m {s}s",
 		durationS:       "{s}s",
 		deviceLabel:     "Device",
+		unknownReason:   "unknown error",
 		sampleActor:     "Alice",
 		sampleTaskTitle: "Fix the kettle",
 	},
@@ -251,6 +260,12 @@ func Sentence(payload map[string]any, lang, fallback string) string {
 		}
 		return tmpl
 	}
+	// A failure that names no cause carries no `reason` key at all, so the stand-in
+	// is worded here rather than travelling in the payload — see bundle.unknownReason.
+	reason := strings.TrimSpace(str(payload["reason"]))
+	if reason == "" {
+		reason = b.unknownReason
+	}
 	inline := str(payload["title"])
 	if inline == "" {
 		inline = str(payload["excerpt"])
@@ -269,7 +284,7 @@ func Sentence(payload map[string]any, lang, fallback string) string {
 		"{column}", DefaultName(str(payload["column_key"]), str(payload["column"]), lang),
 		"{title}", str(payload["title"]),
 		"{label}", str(payload["label"]),
-		"{reason}", str(payload["reason"]),
+		"{reason}", reason,
 		"{created}", strconv.Itoa(num(payload["created"])),
 		"{updated}", strconv.Itoa(num(payload["updated"])),
 		"{took}", duration(num(payload["seconds"]), b),
