@@ -7,6 +7,7 @@ package recur
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -46,6 +47,16 @@ type Rule struct {
 	Trigger       string `json:"trigger,omitempty"`        // complete (default) | column | schedule
 	TriggerColumn string `json:"trigger_column,omitempty"` // uuid, when trigger=column
 	TargetColumn  string `json:"target_column,omitempty"`  // uuid, where the task lands (empty = first column)
+	// TZ is the IANA zone the rule's calendar arithmetic runs in — the zone the
+	// person who wrote the rule sees. Every field above is a *calendar* statement
+	// ("every Monday", "the 31st", "not on weekends", "these dates"), and a due
+	// date picked in the editor defaults to local midnight, so for anyone east of
+	// UTC the stored instant belongs to the previous day. Stepping that instant in
+	// the server's zone shifted the whole series by a day — Mondays came out as
+	// Tuesdays — while the editor's calendar kept highlighting the right days.
+	// Empty (or unknown) means UTC, which is what rules stored before this field
+	// already did.
+	TZ string `json:"tz,omitempty"`
 	// Behaviour toggles.
 	CreateNew    bool `json:"create_new,omitempty"`    // duplicate the task instead of rescheduling it
 	Once         bool `json:"once,omitempty"`          // stop after one recurrence (default = forever)
@@ -110,7 +121,27 @@ func (r Rule) normalized() (Rule, bool) {
 	if r.Freq != FreqDaily && r.Freq != FreqWeekly {
 		r.SkipWeekends = false
 	}
+	// An unknown zone is dropped rather than rejected: a rule that repeats is more
+	// useful than no rule at all, and UTC is the behaviour it had before.
+	r.TZ = strings.TrimSpace(r.TZ)
+	if r.TZ != "" {
+		if _, err := time.LoadLocation(r.TZ); err != nil {
+			r.TZ = ""
+		}
+	}
 	return r, true
+}
+
+// loc resolves the rule's zone, falling back to UTC for a blank or unknown one.
+func (r Rule) loc() *time.Location {
+	if r.TZ == "" {
+		return time.UTC
+	}
+	l, err := time.LoadLocation(r.TZ)
+	if err != nil {
+		return time.UTC
+	}
+	return l
 }
 
 // cleanWeekdays sorts, de-dupes and range-checks a weekday list.
@@ -143,8 +174,10 @@ func cleanDates(in []string) []string {
 	return out
 }
 
-// WithAnchor returns a copy with its monthly/yearly anchor set from the due date.
+// WithAnchor returns a copy with its monthly/yearly anchor set from the due date —
+// read in the rule's zone, since the anchor is the day-of-month the user pointed at.
 func (r Rule) WithAnchor(due time.Time) Rule {
+	due = due.In(r.loc())
 	switch r.Freq {
 	case FreqMonthly:
 		r.Day = due.Day()
@@ -172,7 +205,13 @@ func (r Rule) Marshal() (*json.RawMessage, bool) {
 // Next returns the due date of the occurrence after `from`. ok is false when the
 // recurrence has no further occurrence (a custom date list past its end). The
 // time-of-day is preserved (custom dates inherit from's clock).
+//
+// Everything below is calendar arithmetic — Weekday, Day, AddDate and time.Date all
+// read the receiver's location — so the one thing that decides which day the series
+// lands on is which zone `from` is expressed in. It is moved into the rule's zone
+// once, here, and every branch inherits that.
 func (r Rule) Next(from time.Time) (time.Time, bool) {
+	from = from.In(r.loc())
 	switch r.Freq {
 	case FreqDaily:
 		return r.applySkip(from.AddDate(0, 0, r.Interval)), true

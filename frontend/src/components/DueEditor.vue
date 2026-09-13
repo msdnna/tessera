@@ -12,6 +12,7 @@ import {
 import { useThemeStore } from '@/stores/theme'
 import { useFormat } from '@/composables/useFormat'
 import { freqOptions, triggerOptions, unitLabel, occurrenceKeys } from '@/utils/recurrence'
+import { resolvedTimezone } from '@/utils/format'
 
 const props = defineProps({
   due: { type: Number, default: null }, // ms
@@ -264,6 +265,13 @@ function buildRule() {
   if (!recurForever.value) r.once = true
   if (skipWeekends.value && (freq.value === 'daily' || freq.value === 'weekly'))
     r.skip_weekends = true
+  // Every field above names a *calendar* day — a weekday, a day of the month, a
+  // date off this calendar, "not on a weekend" — and the calendar they name is the
+  // one drawn right here. The due date leaves as an instant (local midnight by
+  // default), so without the zone the server re-reads those days in UTC and a user
+  // east of UTC gets the whole series a day off the days highlighted above.
+  const tz = resolvedTimezone(theme.timezone)
+  if (tz) r.tz = tz
   return r
 }
 function setFreq(v) {
