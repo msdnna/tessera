@@ -22,9 +22,6 @@ data class Notification(
     @SerializedName("task_board_id") val taskBoardId: String? = null,
 ) {
     val isUnread: Boolean get() = readAt == null
-
-    /** True when tapping should open a task (both ids present, as the web checks). */
-    val opensTask: Boolean get() = !taskId.isNullOrBlank() && !taskBoardId.isNullOrBlank()
 }
 
 /**
@@ -48,6 +45,12 @@ data class NotificationPayload(
     @SerializedName("column_key") val columnKey: String? = null,
     @SerializedName("label") val label: String? = null,
     @SerializedName("reason") val reason: String? = null,
+    /**
+     * Id звонка, в который зовут (`conference_invite`). Такая строка не указывает
+     * ни на какую задачу — `notifications.task_id` это внешний ключ на tasks, а
+     * конференция не задача, — поэтому адрес едет здесь. См. `util/NotificationRoute.kt`.
+     */
+    @SerializedName("conference_id") val conferenceId: String? = null,
     /** A reminder's own text — the user's content, shown verbatim. */
     @SerializedName("message") val message: String? = null,
     @SerializedName("created") val created: Int? = null,

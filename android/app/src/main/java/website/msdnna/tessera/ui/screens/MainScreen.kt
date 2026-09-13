@@ -89,6 +89,7 @@ import website.msdnna.tessera.ui.viewmodels.UpdateViewModel
 import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.NotificationRoute
 import website.msdnna.tessera.util.TourContext
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.TourSnapshot
@@ -125,6 +126,8 @@ fun MainScreen(
     accentKey: String,
     openTaskId: String?,
     onOpenTaskHandled: () -> Unit,
+    openConferenceId: String?,
+    onOpenConferenceHandled: () -> Unit,
     onAccentChange: (String) -> Unit,
     onToggleDark: () -> Unit,
     onLogout: () -> Unit,
@@ -280,6 +283,15 @@ fun MainScreen(
         if (boardId != null) openTask(boardId, id)
     }
 
+    // Приглашение в звонок задачи не имеет — открываем сам список конференций и
+    // просим его развернуть лобби нужного звонка (тот же приём, что у мини-бара).
+    LaunchedEffect(openConferenceId) {
+        val id = openConferenceId ?: return@LaunchedEffect
+        onOpenConferenceHandled()
+        conferencePreselectId = id
+        navTo(MainDest.Conferences)
+    }
+
     // Re-check for updates whenever the app returns to the foreground — the
     // initial check runs in UpdateViewModel.init, but a release published while
     // the app was merely backgrounded would otherwise be missed until a cold
@@ -293,7 +305,7 @@ fun MainScreen(
     // Restore the last-open destination once on launch (a reminder deep-link wins).
     var restoreDone by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (openTaskId == null) {
+        if (openTaskId == null && openConferenceId == null) {
             val saved = AppContainer.prefs.lastDest.first()
             when {
                 saved == "notes" -> dest = MainDest.Notes
@@ -512,7 +524,16 @@ fun MainScreen(
                             onNotification = { n ->
                                 notifVm.markRead(n)
                                 bellOpen = false
-                                if (n.opensTask) openTask(n.taskBoardId!!, n.taskId!!)
+                                when (val route = NotificationRoute.of(n)) {
+                                    is NotificationRoute.Conference -> {
+                                        conferencePreselectId = route.conferenceId
+                                        navTo(MainDest.Conferences)
+                                    }
+
+                                    is NotificationRoute.Task -> openTask(route.boardId, route.taskId)
+
+                                    NotificationRoute.None -> Unit
+                                }
                             },
                             onMarkAll = { notifVm.markAllRead() },
                             onArchive = { boardArchiveOpen = true },

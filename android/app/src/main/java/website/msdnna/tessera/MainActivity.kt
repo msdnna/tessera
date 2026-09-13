@@ -22,6 +22,10 @@ class MainActivity : ComponentActivity() {
     // (and cleared) by AppRoot; updated on onNewIntent when already running.
     private val pendingOpenTaskId = mutableStateOf<String?>(null)
 
+    // Тот же приём для приглашения в звонок: у такой строки задачи нет вовсе,
+    // и до этого тап по её баннеру открывал приложение «где бросили».
+    private val pendingOpenConferenceId = mutableStateOf<String?>(null)
+
     // Session handed back by the OAuth deep link (tessera://oauth/callback#…).
     // Consumed by AppRoot, which persists the tokens and advances past auth.
     private val pendingOAuth = mutableStateOf<OAuthResult?>(null)
@@ -33,12 +37,15 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         pendingOpenTaskId.value = intent?.getStringExtra(ReminderNotifications.EXTRA_OPEN_TASK_ID)
+        pendingOpenConferenceId.value = intent?.getStringExtra(ReminderNotifications.EXTRA_OPEN_CONFERENCE_ID)
         parseOAuth(intent)?.let { pendingOAuth.value = it }
         requestNotificationPermission()
         setContent {
             AppRoot(
                 openTaskId = pendingOpenTaskId.value,
                 onOpenTaskHandled = { pendingOpenTaskId.value = null },
+                openConferenceId = pendingOpenConferenceId.value,
+                onOpenConferenceHandled = { pendingOpenConferenceId.value = null },
                 oauthResult = pendingOAuth.value,
                 onOAuthHandled = { pendingOAuth.value = null },
             )
@@ -50,6 +57,9 @@ class MainActivity : ComponentActivity() {
         setIntent(intent)
         intent.getStringExtra(ReminderNotifications.EXTRA_OPEN_TASK_ID)?.let {
             pendingOpenTaskId.value = it
+        }
+        intent.getStringExtra(ReminderNotifications.EXTRA_OPEN_CONFERENCE_ID)?.let {
+            pendingOpenConferenceId.value = it
         }
         parseOAuth(intent)?.let { pendingOAuth.value = it }
     }

@@ -27,6 +27,9 @@ data class DevicePush(
     val body: String,
     val taskId: String?,
     val id: String? = null,
+    /** Id звонка для приглашения в конференцию — такая строка не указывает ни на
+     *  какую задачу, и без него тап по баннеру открывал приложение «где бросили». */
+    val conferenceId: String? = null,
     /** Заголовок ресурсом, а не текстом: пуш живёт от события до показа, и
      *  готовая строка застыла бы на языке, который стоял в момент события. */
     @StringRes val titleRes: Int? = null,
@@ -51,7 +54,13 @@ object DeviceNotifier {
         ensureChannel(localized)
         val launch = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            if (!push.taskId.isNullOrBlank()) putExtra(ReminderNotifications.EXTRA_OPEN_TASK_ID, push.taskId)
+            // Порядок как в вебе (`utils/notificationRoute.js`): звонок раньше
+            // задачи — у приглашения задачи нет, откатываться ему не на что.
+            if (!push.conferenceId.isNullOrBlank()) {
+                putExtra(ReminderNotifications.EXTRA_OPEN_CONFERENCE_ID, push.conferenceId)
+            } else if (!push.taskId.isNullOrBlank()) {
+                putExtra(ReminderNotifications.EXTRA_OPEN_TASK_ID, push.taskId)
+            }
         }
         // Key on the notification's own id so the socket copy and the push copy
         // of the same notification reuse one system entry (notify() redraws it)

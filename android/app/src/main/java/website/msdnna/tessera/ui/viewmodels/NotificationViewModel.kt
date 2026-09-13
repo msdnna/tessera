@@ -132,7 +132,17 @@ class NotificationViewModel(
             // показа, на языке профиля, — как и заголовок. `text` остаётся фолбэком.
             val payload = n.get("payload")?.takeUnless { it.isJsonNull }
                 ?.let { runCatching { Gson().fromJson(it, NotificationPayload::class.java) }.getOrNull() }
-            _devicePush.tryEmit(DevicePush("", text, taskId, id, titleResForKind(kind), payload))
+            _devicePush.tryEmit(
+                DevicePush(
+                    title = "",
+                    body = text,
+                    taskId = taskId,
+                    id = id,
+                    conferenceId = payload?.conferenceId,
+                    titleRes = titleResForKind(kind),
+                    payload = payload,
+                ),
+            )
         }
     }
 

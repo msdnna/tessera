@@ -107,6 +107,8 @@ private sealed interface Boot {
 fun AppRoot(
     openTaskId: String? = null,
     onOpenTaskHandled: () -> Unit = {},
+    openConferenceId: String? = null,
+    onOpenConferenceHandled: () -> Unit = {},
     oauthResult: OAuthResult? = null,
     onOAuthHandled: () -> Unit = {},
 ) {
@@ -312,6 +314,8 @@ fun AppRoot(
                         accentKey = accentKey,
                         openTaskId = openTaskId,
                         onOpenTaskHandled = onOpenTaskHandled,
+                        openConferenceId = openConferenceId,
+                        onOpenConferenceHandled = onOpenConferenceHandled,
                         onAccentChange = { scope.launch { profileRepo.savePreferences(preferences.copy(accent = it)) } },
                         onToggleDark = {
                             scope.launch {
