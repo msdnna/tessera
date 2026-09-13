@@ -18,6 +18,10 @@
     <string name="auth_name_placeholder">Как вас зовут</string>
     <string name="auth_password_label">Пароль</string>
     <string name="auth_password_placeholder">••••••••</string>
+    <string name="auth_password_too_short">Минимум %1$d символов</string>
+    <!-- Байты, а не символы: предел принадлежит bcrypt, и для кириллицы он вдвое ближе,
+         чем кажется по числу букв (веб говорит это теми же словами). -->
+    <string name="auth_password_too_long">Слишком длинный пароль: не больше %1$d байт (кириллическая буква — 2 байта)</string>
     <string name="auth_submit_login">Войти</string>
     <string name="auth_submit_register">Зарегистрироваться</string>
     <string name="auth_gitlab">Войти через GitLab</string>
@@ -1382,6 +1386,8 @@
     <string name="err_no_connection">Нет соединения с сервером</string>
     <string name="err_unknown">Неизвестная ошибка</string>
     <string name="err_invalid_credentials">Неверный email или пароль</string>
+    <string name="err_password_too_short">Пароль слишком короткий — минимум 8 символов</string>
+    <string name="err_password_too_long">Пароль слишком длинный — не больше 72 байт</string>
     <string name="err_email_registered">Этот email уже зарегистрирован</string>
     <string name="err_email_in_use">Этот email уже используется</string>
     <string name="err_user_exists">Пользователь с таким email уже существует</string>

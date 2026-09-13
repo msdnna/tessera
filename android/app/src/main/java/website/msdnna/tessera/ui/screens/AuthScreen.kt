@@ -104,6 +104,7 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.newOAuthNonce
 import website.msdnna.tessera.util.nextLanguage
 import website.msdnna.tessera.util.normalizeLanguage
+import website.msdnna.tessera.util.passwordError
 
 /** The fixed brand purple of the launch splash — the auth screen shares it. */
 private val BrandPurple = Color(0xFF7C6CFF)
@@ -310,6 +311,22 @@ fun AuthScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
 
+            // Правило пароля применимо только к РЕГИСТРАЦИИ: при входе пароль уже
+            // существует, и мерить его сегодняшним правилом значило бы запереть
+            // владельца старого короткого пароля (#2932). Пустое поле молчит —
+            // подсказка появляется, когда есть что подсказывать.
+            val passwordProblem = if (register) passwordError(password) else null
+            if (passwordProblem != null && password.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    passwordProblem.resolve(),
+                    color = Color(0xFFFFD9D2),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             state.error?.let { err ->
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -326,7 +343,11 @@ fun AuthScreen(
                 text = stringResource(if (register) R.string.auth_submit_register else R.string.auth_submit_login),
                 loading = state.loading,
                 onClick = {
-                    if (register) vm.register(email, name, password) else vm.login(email, password)
+                    when {
+                        !register -> vm.login(email, password)
+                        passwordProblem != null -> vm.setError(passwordProblem)
+                        else -> vm.register(email, name, password)
+                    }
                 },
             )
 

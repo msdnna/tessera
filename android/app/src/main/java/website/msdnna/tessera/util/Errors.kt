@@ -54,6 +54,11 @@ private fun apiError(t: HttpException): String? {
 private val sentinels = mapOf(
     "invalid credentials" to R.string.err_invalid_credentials,
     "invalid email or password" to R.string.err_invalid_credentials,
+    // Оба конца правила пароля (#2932). Сюда доходит лишь то, что прошло мимо
+    // собственной проверки формы — она зеркалит правило (util/Password.kt), —
+    // но без этих двух строк отказ показывался бы по-английски в русском UI.
+    "password is too short" to R.string.err_password_too_short,
+    "password is too long" to R.string.err_password_too_long,
     "email already registered" to R.string.err_email_registered,
     "email already exists" to R.string.err_email_registered,
     "email already in use" to R.string.err_email_in_use,

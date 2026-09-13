@@ -71,9 +71,11 @@ import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.DatePresets
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.countryOptions
+import website.msdnna.tessera.util.isPasswordValid
 import website.msdnna.tessera.util.longDate
 import website.msdnna.tessera.util.normalizeDatePreset
 import website.msdnna.tessera.util.normalizeTimeFormat
+import website.msdnna.tessera.util.passwordError
 import website.msdnna.tessera.util.timezoneOptions
 
 /** Option labels are resolved in composition, so a language switch relabels the
@@ -329,7 +331,11 @@ private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.Coro
     var saving by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var done by remember { mutableStateOf(false) }
-    val valid = current.isNotBlank() && next.length >= 8 && next == confirm
+    // `next.length >= 8` не совпадало с сервером ни на одном конце правила (#2932):
+    // минимум там считается рунами, а потолок в 72 БАЙТА — предел bcrypt — здесь не
+    // знали вовсе, и русская парольная фраза уезжала за отказом.
+    val nextProblem = if (next.isEmpty()) null else passwordError(next)
+    val valid = current.isNotBlank() && isPasswordValid(next) && next == confirm
 
     TCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -341,6 +347,7 @@ private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.Coro
             )
             TTextField(current, { current = it }, label = stringResource(R.string.settings_password_current), isPassword = true)
             TTextField(next, { next = it }, label = stringResource(R.string.settings_password_new), isPassword = true)
+            TFormError(nextProblem)
             TTextField(confirm, { confirm = it }, label = stringResource(R.string.settings_password_repeat), isPassword = true)
             TFormError(error)
             if (done) Text(stringResource(R.string.settings_password_changed), color = c.primary, fontSize = 13.sp)

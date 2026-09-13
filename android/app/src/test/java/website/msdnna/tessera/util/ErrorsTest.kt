@@ -63,6 +63,18 @@ class ErrorsTest {
         assertThat(humanizeError("forbidden")?.resolve(en)).isEqualTo("Not enough permissions")
     }
 
+    /** Оба конца правила пароля (#2932): форма зеркалит его сама, но отказ с
+     *  сервера всё равно должен приходить на языке читателя. */
+    @Test
+    fun `humanizeError maps both ends of the password rule`() {
+        assertThat(humanizeError("password is too short")?.resolve(ru))
+            .isEqualTo("Пароль слишком короткий — минимум 8 символов")
+        assertThat(humanizeError("password is too long")?.resolve(ru))
+            .isEqualTo("Пароль слишком длинный — не больше 72 байт")
+        assertThat(humanizeError("password is too long")?.resolve(en))
+            .isEqualTo("Password is too long — at most 72 bytes")
+    }
+
     @Test
     fun `humanizeError validator email`() {
         val raw = "Key: 'Req.Email' Error:Field validation for 'Email' failed on the 'email' tag"
