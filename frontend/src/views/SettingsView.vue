@@ -12,6 +12,7 @@ import { useFormat } from '@/composables/useFormat'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 import { useApiImage } from '@/composables/useApiImage'
 import { AVATAR_MAX_BYTES, AVATAR_TYPES, avatarPickError } from '@/utils/avatar'
+import { isPasswordValid, passwordError } from '@/utils/password'
 import { formatFileSize } from '@/utils/docPdf'
 import { useDesktopUpdate } from '@/composables/useDesktopUpdate'
 
@@ -158,12 +159,17 @@ const pw = reactive({ current: '', next: '', confirm: '' })
 const pwSaving = ref(false)
 const pwSaved = ref(false)
 const pwError = ref('')
-const pwValid = computed(() => pw.current && pw.next.length >= 8 && pw.next === pw.confirm)
+const pwValid = computed(() => !!pw.current && isPasswordValid(pw.next) && pw.next === pw.confirm)
+// The reason, live, rather than only on a submit the disabled button prevents.
+// The ceiling is bcrypt's and counted in bytes, so the case this catches is an
+// ordinary Russian passphrase — which used to reach the server and come back as
+// "internal error" (#2932). A dead button would say none of that.
+const pwFieldError = computed(() => (pw.next ? passwordError(pw.next) : ''))
 
 async function changePassword() {
   pwError.value = ''
   if (!pwValid.value) {
-    pwError.value = t('settings.security.invalid')
+    pwError.value = passwordError(pw.next) || t('settings.security.invalid')
     return
   }
   pwSaving.value = true
@@ -359,7 +365,7 @@ async function resendVerify() {
         /></label>
       </div>
       <div class="row-end">
-        <span v-if="pwError" class="err">{{ pwError }}</span>
+        <span v-if="pwError || pwFieldError" class="err">{{ pwError || pwFieldError }}</span>
         <transition name="fade">
           <span v-if="pwSaved" class="saved"
             ><n-icon :component="CheckmarkCircle" /> {{ t('settings.security.changed') }}</span

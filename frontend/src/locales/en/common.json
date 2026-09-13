@@ -104,7 +104,8 @@
       "emailInvalid": "Enter a valid email",
       "passwordRequired": "Enter your password",
       "nameRequired": "Enter your name",
-      "passwordTooShort": "At least 8 characters"
+      "passwordTooShort": "At least 8 characters",
+      "passwordTooLong": "Password is too long: at most {bytes} bytes (a Cyrillic letter takes 2)"
     },
     "oauthError": {
       "generic": "Could not sign in with GitLab.",

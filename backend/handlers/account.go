@@ -171,6 +171,12 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// Checked before the token is looked up, let alone marked used: a reset link
+	// is single-use, and spending it on a password that was never storable would
+	// take away the user's one way back into the account.
+	if rejectBadPassword(c, req.NewPassword) {
+		return
+	}
 	tok, err := h.q.GetUserToken(c, db.GetUserTokenParams{TokenHash: auth.HashRefreshToken(req.Token), Kind: "reset"})
 	if err != nil || tok.UsedAt != nil || time.Now().After(tok.ExpiresAt) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired token"})
@@ -229,6 +235,9 @@ func (h *AuthHandler) ChangeMyPassword(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if rejectBadPassword(c, req.NewPassword) {
 		return
 	}
 	u, err := h.q.GetUserByID(c, uid)

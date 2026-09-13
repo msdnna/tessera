@@ -7,6 +7,7 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
+import { passwordError } from '@/utils/password'
 
 const { t } = useI18n()
 
@@ -45,7 +46,10 @@ function validate() {
   if (!email.value.trim()) e.email = t('common.auth.validation.emailRequired')
   else if (!EMAIL_RE.test(email.value.trim())) e.email = t('common.auth.validation.emailInvalid')
   if (!password.value) e.password = t('common.auth.validation.passwordRequired')
-  else if (password.value.length < 8) e.password = t('common.auth.validation.passwordTooShort')
+  // Both bounds, from the shared rule: the ceiling is bcrypt's and is counted in
+  // bytes, so a long Russian passphrase used to reach the server and come back
+  // as "internal error" (#2932).
+  else if (passwordError(password.value)) e.password = passwordError(password.value)
   errors.value = e
   return Object.keys(e).length === 0
 }

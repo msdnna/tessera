@@ -29,6 +29,11 @@ const SENTINELS = {
   'account is deactivated': 'accountDeactivated',
   'account deactivated': 'accountDeactivated',
   'job is already running': 'jobAlreadyRunning',
+  // The two ends of the password rule (#2932). Reached only when a client's own
+  // check was bypassed — the forms mirror the rule (utils/password.js) so the
+  // user hears about a too-long passphrase while typing it.
+  'password is too short': 'passwordTooShort',
+  'password is too long': 'passwordTooLong',
   forbidden: 'forbidden',
   unauthorized: 'unauthorized',
   'not found': 'notFound',

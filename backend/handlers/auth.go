@@ -69,6 +69,31 @@ type authResponse struct {
 	Preferences  prefsDTO `json:"preferences"`
 }
 
+// rejectBadPassword answers 400 when a new password cannot be stored, and
+// reports whether it did.
+//
+// The upper bound is bcrypt's and it is counted in bytes, which no binding tag
+// can express — `max=72` counts runes, so a 37-letter Russian passphrase (74
+// bytes) would sail past it and fail inside GenerateFromPassword. That failure
+// used to reach the 500 branch of all three doors: the user read "internal
+// error" about a password that was merely long, and the operator got a logged
+// server error that was nothing of the kind (#2932).
+//
+// The strings are fixed English sentinels because that is how this API hands
+// reasons to a client — see SENTINELS in frontend/src/utils/errors.js, which
+// turns them into the reader's language.
+func rejectBadPassword(c *gin.Context, plain string) bool {
+	switch err := auth.CheckPasswordPolicy(plain); {
+	case errors.Is(err, auth.ErrPasswordTooLong):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password is too long"})
+		return true
+	case errors.Is(err, auth.ErrPasswordTooShort):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password is too short"})
+		return true
+	}
+	return false
+}
+
 // Register creates a user. The very first registered user becomes an admin.
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req struct {
@@ -81,6 +106,9 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if rejectBadPassword(c, req.Password) {
 		return
 	}
 

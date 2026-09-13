@@ -104,7 +104,8 @@
       "emailInvalid": "Введите корректный email",
       "passwordRequired": "Укажите пароль",
       "nameRequired": "Укажите имя",
-      "passwordTooShort": "Минимум 8 символов"
+      "passwordTooShort": "Минимум 8 символов",
+      "passwordTooLong": "Слишком длинный пароль: не больше {bytes} байт (кириллическая буква — 2 байта)"
     },
     "oauthError": {
       "generic": "Не удалось войти через GitLab.",
