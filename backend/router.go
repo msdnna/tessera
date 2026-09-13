@@ -48,12 +48,32 @@ const (
 	// exception, not the rule, so the transport refused nearly every real one
 	// with a 413 the handler never got to phrase (#2932).
 	routeDocPdf = "/api/documents/:id/pdf"
+	// The editor's own save. Fourth repeat of the same omission, and the costly
+	// one: validateDocContent allows a 4 MiB document, but on the blanket budget
+	// anything past a megabyte met a transport 413 — so the validator's ceiling
+	// was unreachable and a long page could not be written at all. Nobody retries
+	// this one by hand either (useDocAutosave requeues the rejected content and
+	// keeps saving, silently, while its author goes on typing), and the office
+	// import PATCHes its converted body through here, so a 20 MiB file the import
+	// route deliberately accepts landed as an empty document (#2932).
+	routeDocContent = "/api/documents/:id/content"
 	// Browser Sentry envelopes. Pinned to the handler's own ceiling rather than
 	// left on the blanket JSON budget so that an operator tightening
 	// MAX_BODY_BYTES doesn't silently start dropping crash reports at the
 	// transport, where nothing would report the loss.
 	routeSentryTunnel = "/api/sentry-tunnel"
 )
+
+// docContentEnvelope is the slack the content route's budget carries on top of
+// the document itself. The envelope proper is tiny — the updated_at the save is
+// based on and the sender's connection id — and a budget sized to just that
+// would still be wrong, because the transport would then answer for every
+// document a byte past the ceiling. The point of giving this route a budget at
+// all is that the *validator* explains the refusal ("content exceeds N bytes"),
+// so the slack is deliberately wide enough to cover an ordinary overshoot and
+// leave only an absurd body to the transport. Same shape as the media budget,
+// which is 8 MiB of file with a megabyte of framing around it.
+const docContentEnvelope int64 = 1 << 20
 
 // authRateRules throttles the unauthenticated auth surface — the routes where a
 // cheap anonymous request costs the server a bcrypt round, an outgoing email or
@@ -201,7 +221,13 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
 		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
 		routeDocPdf:      orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
-		routeWS:          middleware.NoBodyLimit,
+		// The validator's ceiling plus the envelope it travels in: the body is the
+		// document *and* the updated_at it is based on *and* the sender's
+		// connection id. Sized from the constant rather than restated, because a
+		// budget equal to it would refuse a document of exactly MaxDocContentBytes
+		// at the transport — the one size the validator promises to accept.
+		routeDocContent: handlers.MaxDocContentBytes + docContentEnvelope,
+		routeWS:         middleware.NoBodyLimit,
 
 		routeSentryTunnel: handlers.MaxEnvelopeBytes,
 	}))

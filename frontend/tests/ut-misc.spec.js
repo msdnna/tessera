@@ -124,6 +124,28 @@ describe('humanizeError', () => {
     )
   })
 
+  // Both ways a body can be refused for its size (#2932). The transport's line
+  // is a flat sentinel; the validator's carries its own ceiling, so it is the
+  // one refusal in the catalogue that has to be read rather than looked up —
+  // and the number has to come back as a size, not as seven digits of bytes.
+  it('maps both size refusals, naming the document ceiling in the reader units', () => {
+    expect(humanizeError('request body too large')).toBe(
+      'Слишком большой запрос — сократите текст или вложение',
+    )
+    expect(humanizeError('content exceeds 4194304 bytes')).toBe(
+      'Документ больше 4 МБ — разделите его на несколько страниц',
+    )
+  })
+
+  // The pattern above must not swallow neighbouring sentences: a message that
+  // merely starts the same way is not a size refusal, and losing its text would
+  // replace a real reason with a wrong one.
+  it('leaves a look-alike sentence alone', () => {
+    expect(humanizeError('content exceeds the allowed nesting')).toBe(
+      'content exceeds the allowed nesting',
+    )
+  })
+
   it('passes an unknown short message through unchanged', () => {
     expect(humanizeError('Своя ошибка')).toBe('Своя ошибка')
   })

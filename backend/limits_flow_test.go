@@ -35,7 +35,7 @@ func TestBodyLimitRoutesExist(t *testing.T) {
 	}
 	for _, want := range []string{
 		routeWS, routeUploads, routeAvatar, routeAttachments,
-		routeDocAssets, routeDocImport, routeDocPdf, routeSentryTunnel,
+		routeDocAssets, routeDocImport, routeDocPdf, routeDocContent, routeSentryTunnel,
 	} {
 		if !registered[want] {
 			t.Errorf("body-limit table names %q, which is not a registered route", want)
@@ -133,6 +133,71 @@ func TestDocumentPdfBudgetSurvivesRealPdf(t *testing.T) {
 	}
 	if body := string(ref.Body); !strings.Contains(body, "20 МБ") {
 		t.Fatalf("21 MiB PDF was refused by the transport, not the handler: %s", truncate(ref.Body))
+	}
+}
+
+// docOfBytes builds a valid ProseMirror document of roughly `size` bytes of
+// JSON: `paras` paragraphs, each holding one text node. Node count stays far
+// under maxDocNodes so the only ceiling the request can meet is a size one.
+func docOfBytes(paras, perPara int) map[string]any {
+	line := strings.Repeat("текст ", perPara/len("текст "))
+	content := make([]any, 0, paras)
+	for i := 0; i < paras; i++ {
+		content = append(content, map[string]any{
+			"type":    "paragraph",
+			"content": []any{map[string]any{"type": "text", "text": line}},
+		})
+	}
+	return map[string]any{"type": "doc", "content": content}
+}
+
+// The editor's own route repeats the mistake the constants above are named
+// after, and repeats it where it costs the most. validateDocContent allows a
+// document of MaxDocContentBytes (4 MiB of JSON), but with no entry in the limits
+// table the save runs on the blanket 1 MiB — so a long page is refused by the
+// transport, and the handler's ceiling is unreachable code.
+//
+// What makes this route different from the three above it is that nobody
+// retries a refused upload by hand here: useDocAutosave puts the rejected
+// content back on the queue and keeps saving, so a document that crossed a
+// megabyte simply stops being written while its author keeps typing. The office
+// import lands in the same place — it PATCHes the converted body through this
+// route, and a 20 MiB file the import route deliberately accepts produces far
+// more than a megabyte of JSON, leaving the freshly created document empty.
+//
+// Both halves are asserted for the same reason as the PDF pair: a budget that
+// merely accepted everything would pass the first and lose the handler's own
+// answer on the second.
+func TestDocumentContentBudgetSurvivesLongDocument(t *testing.T) {
+	c := signup(t)
+	ws := mkWorkspace(t, c, "WS "+t.Name())
+	doc := c.post("/workspaces/"+ws+"/documents", map[string]any{"title": "Длинная страница"}).mapBody(t)
+	id, _ := doc["id"].(string)
+	updatedAt, _ := doc["updated_at"].(string)
+
+	// ~2 MiB of JSON: over the blanket ceiling, well under the handler's. An
+	// ordinary long page — a spec, a manual, an imported .docx.
+	big := docOfBytes(2000, 1000)
+	r := c.patch("/documents/"+id+"/content",
+		map[string]any{"content": big, "updated_at": updatedAt})
+	if r.Status != http.StatusOK {
+		t.Fatalf("~2 MiB document: status %d, want 200\n%s", r.Status, truncate(r.Body))
+	}
+	saved := r.mapBody(t)
+	updatedAt, _ = saved["updated_at"].(string)
+
+	// Past MaxDocContentBytes: still refused, but by the validator, in its own
+	// words and with a 400 — the transport would answer 413 "request body too
+	// large", which says nothing about documents. This is what the route's slack
+	// buys: an ordinary overshoot is explained rather than cut off.
+	over := docOfBytes(3500, 1300)
+	ref := c.patch("/documents/"+id+"/content",
+		map[string]any{"content": over, "updated_at": updatedAt})
+	if ref.Status != http.StatusBadRequest {
+		t.Fatalf("~4.5 MiB document: status %d, want 400\n%s", ref.Status, truncate(ref.Body))
+	}
+	if body := string(ref.Body); !strings.Contains(body, "content exceeds") {
+		t.Fatalf("oversized document was refused by the transport, not the validator: %s", truncate(ref.Body))
 	}
 }
 

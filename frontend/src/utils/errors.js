@@ -12,6 +12,14 @@
 // lookup happens per call, not at import time — an error raised after the user
 // switched language must be phrased in the new one (#2799).
 import { i18n } from '@/i18n'
+import { formatFileSize } from '@/utils/docPdf'
+
+// The one refusal that carries a number, so it can't be a table entry: the
+// document validator names its own ceiling in bytes ("content exceeds 4194304
+// bytes"). It surfaces in the editor's autosave line, where a raw English
+// sentence with a seven-digit byte count is the least useful phrasing possible —
+// the reader wants "4 МБ" and the fact that the page has to be split (#2932).
+const CONTENT_TOO_LARGE = /^content exceeds (\d+) bytes$/
 
 // The keys are the wire format — exactly what the backend sends — so they stay
 // English; only the catalog key on the right-hand side is ours to translate.
@@ -53,6 +61,11 @@ const SENTINELS = {
   // refusal surfaces as the form's error line.
   'invalid or expired invitation': 'invitationInvalid',
   'this invitation is for a different email': 'invitationWrongAccount',
+  // The transport's own refusal, from middleware.BodyLimit — not a handler's
+  // sentence at all, which is why it reads like a protocol error rather than
+  // something a person did. An ordinary user reaches it by writing a very long
+  // task description (#2932).
+  'request body too large': 'bodyTooLarge',
   forbidden: 'forbidden',
   unauthorized: 'unauthorized',
   'not found': 'notFound',
@@ -81,6 +94,10 @@ export function humanizeError(raw) {
   // hasOwn, not a bare lookup: `low` comes from the server, and "constructor"
   // would otherwise hit Object.prototype and be mapped as if it were a sentinel.
   if (Object.hasOwn(SENTINELS, low)) return t(`sentinel.${SENTINELS[low]}`)
+  const oversized = CONTENT_TOO_LARGE.exec(low)
+  if (oversized) {
+    return t('sentinel.docContentTooLarge', { limit: formatFileSize(Number(oversized[1])) })
+  }
   if (low.startsWith('key:') && low.includes('validation')) {
     return fromValidator(msg) || t('validation.generic')
   }

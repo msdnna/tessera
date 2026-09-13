@@ -113,11 +113,17 @@ var allowedDocAttrs = map[string]bool{
 var docPageKeys = []string{"w", "h", "ml", "mr", "mt", "mb"}
 
 const (
-	maxDocDepth       = 32
-	maxDocNodes       = 20000
-	maxDocPreviewLen  = 200
-	maxDocContentSize = 4 << 20 // 4 MiB of JSON
+	maxDocDepth      = 32
+	maxDocNodes      = 20000
+	maxDocPreviewLen = 200
 )
+
+// MaxDocContentBytes is the largest document body the validator accepts.
+// Exported because the router sizes the content route's body budget from it:
+// left on the blanket JSON ceiling the transport refused every document past a
+// megabyte, which made this constant unreachable and the editor's autosave
+// unable to write a long page at all (#2932).
+const MaxDocContentBytes = 4 << 20 // 4 MiB of JSON
 
 // docNode is the shape of one ProseMirror node. Unknown keys are tolerated at
 // the parse step and rejected below, so a payload can never smuggle fields past
@@ -143,8 +149,8 @@ func validateDocContent(raw json.RawMessage) (json.RawMessage, string, error) {
 	if len(raw) == 0 {
 		return nil, "", errors.New("content is required")
 	}
-	if len(raw) > maxDocContentSize {
-		return nil, "", fmt.Errorf("content exceeds %d bytes", maxDocContentSize)
+	if len(raw) > MaxDocContentBytes {
+		return nil, "", fmt.Errorf("content exceeds %d bytes", MaxDocContentBytes)
 	}
 	var root docNode
 	dec := json.NewDecoder(strings.NewReader(string(raw)))

@@ -20,7 +20,9 @@
     "noUserWithEmail": "No account uses this email — you can send an invitation",
     "tooManyApprovers": "The approval route asks too many people",
     "invitationInvalid": "The invitation is no longer valid or has expired",
-    "invitationWrongAccount": "This invitation was sent to a different address"
+    "invitationWrongAccount": "This invitation was sent to a different address",
+    "bodyTooLarge": "The request is too large — shorten the text or the attachment",
+    "docContentTooLarge": "The document is larger than {limit} — split it into several pages"
   },
   "validation": {
     "email": "Enter a valid email",
