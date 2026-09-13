@@ -343,6 +343,43 @@ func (h *API) qaMilestone(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickac
 	return "", userErr("нет такого майлстоуна в проекте: %s", title)
 }
 
+// matchColumn resolves the column name typed in `/move …` against a board's
+// columns, or nil when nothing on the board answers to it.
+//
+// Two passes, and the order matters. The stored name comes first: a column
+// somebody named themselves is user data and must win outright. Only then the
+// seeded captions (#2800) — those four columns are stored under their Russian
+// names but captioned by each client from name_key, so an English reader's board
+// says "Done" where the row says «Готово», and `/move Done` was answering «нет
+// колонки «Done» на этой доске» about a column they were looking at. /close and
+// /reopen never had the problem: they go through done_column_id, no name at all.
+//
+// Only a column that still carries a name_key is reachable by caption — renaming
+// one clears the key (see UpdateColumn), and a renamed column means what it now
+// says, not what it was seeded as. Same name-or-key resolution the GitLab column
+// rules do.
+func matchColumn(cols []db.BoardColumn, typed string) *db.BoardColumn {
+	typed = strings.TrimSpace(typed)
+	if typed == "" {
+		return nil
+	}
+	for i := range cols {
+		if strings.EqualFold(strings.TrimSpace(cols[i].Name), typed) {
+			return &cols[i]
+		}
+	}
+	key := seededColumnKey(typed)
+	if key == "" {
+		return nil
+	}
+	for i := range cols {
+		if cols[i].NameKey != nil && *cols[i].NameKey == key {
+			return &cols[i]
+		}
+	}
+	return nil
+}
+
 // qaMove handles /move, /close and /reopen — all three are a column change.
 //
 // /close and /reopen resolve the board's done column; a board without one falls
@@ -362,12 +399,7 @@ func (h *API) qaMove(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd quickact.Cm
 		if name == "" {
 			return "", userErr("не указана колонка")
 		}
-		for i := range cols {
-			if strings.EqualFold(strings.TrimSpace(cols[i].Name), name) {
-				target = &cols[i]
-				break
-			}
-		}
+		target = matchColumn(cols, name)
 		if target == nil {
 			return "", userErr("нет колонки «%s» на этой доске", name)
 		}

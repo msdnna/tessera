@@ -2,11 +2,13 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/i18n"
 	"tessera/middleware"
 )
 
@@ -122,6 +124,42 @@ func defaultColumnKey(name string) string {
 	for _, dc := range defaultColumns {
 		if dc.name == name {
 			return dc.nameKey
+		}
+	}
+	return ""
+}
+
+// seededColumnCaptions is what each client writes on a seeded column, per
+// language: the twin of frontend/src/locales/<lang>/board.json
+// (column.defaultName) and android/…/res/values*/strings.xml (default_column_*).
+// Adding a language to i18n.Supported means adding its arm here —
+// TestSeededColumnCaptionsCoverSupportedLanguages iterates that list.
+//
+// This is not the server localising its own output (i18n's package doc is clear
+// that clients do that): it is the reverse direction. A user typing `/move Done`
+// is echoing the caption their own screen shows them, and only the server can
+// resolve a quick action, so the server has to recognise the words the client
+// put on the card. The Russian arm duplicates defaultColumns on purpose — the
+// two are edited in different places, and the test above pins them together.
+var seededColumnCaptions = map[string]map[string]string{
+	"ru": {"todo": "К работе", "in_progress": "В процессе", "review": "На рассмотрении", "done": doneColumnName},
+	"en": {"todo": "To do", "in_progress": "In progress", "review": "In review", "done": "Done"},
+}
+
+// seededColumnKey maps a caption a client may have shown the user back to the
+// seeded column's key, in any supported language, or "" for a caption that is
+// not one of the four. Case- and space-insensitive: it matches text a human
+// retyped, not a stored value.
+func seededColumnKey(caption string) string {
+	caption = strings.TrimSpace(caption)
+	if caption == "" {
+		return ""
+	}
+	for _, lang := range i18n.Supported {
+		for key, want := range seededColumnCaptions[lang] {
+			if strings.EqualFold(want, caption) {
+				return key
+			}
 		}
 	}
 	return ""
