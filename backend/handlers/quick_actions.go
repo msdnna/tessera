@@ -109,6 +109,75 @@ func (h *API) runQuickAction(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd qui
 	return "", userErr("команда /%s пока не поддерживается", cmd.Key)
 }
 
+// A command whose argument is a *list* — "/assign @a @b", "/tag x, y" — is
+// partially satisfiable: some entries name something in this workspace and some
+// do not. The rule is "apply what resolves, name the rest", and it only fails
+// when nothing at all resolved.
+//
+// The dry run behind the editor hint has to reach the same verdict, and it used
+// to not: it refused the whole command on the first unknown entry, so
+// "/assign @known @typo" was shown as a failure and then went on to assign
+// @known. Both sides now build the answer through the types below, which is the
+// only way they cannot drift apart again.
+
+// namedRef is one resolved entry: what to act on, and how to name it back.
+type namedRef struct {
+	id    uuid.UUID
+	label string
+}
+
+// partialList is the outcome of resolving a list argument.
+type partialList struct {
+	done    []string // labels of entries that resolved (and, in a real run, applied)
+	missing []string // labels of entries that named nothing
+}
+
+// summary renders the applied half plus, in parentheses, what was skipped.
+func (p partialList) summary(verb, skipLabel string) string {
+	s := verb + " " + strings.Join(p.done, ", ")
+	if len(p.missing) > 0 {
+		s += " (" + skipLabel + ": " + strings.Join(p.missing, ", ") + ")"
+	}
+	return s
+}
+
+// missed lists every unresolved entry — every one of them, not just the first:
+// a user who mistyped two logins wants both named in one go.
+func (p partialList) missed() string { return strings.Join(p.missing, ", ") }
+
+// resolveMentions splits parsed @logins into workspace members and misses. Both
+// halves keep the "@" the user typed, so the summary and the error read back the
+// way the command was written.
+func resolveMentions(members []db.ListMembersRow, logins []string) ([]namedRef, partialList) {
+	var refs []namedRef
+	var p partialList
+	for _, login := range logins {
+		member, ok := matchMember(members, login)
+		if !ok {
+			p.missing = append(p.missing, "@"+login)
+			continue
+		}
+		refs = append(refs, namedRef{id: member, label: "@" + login})
+	}
+	return refs, p
+}
+
+// resolveTagNames does the same for tag names within the task's project. The
+// label is the name as typed, matching what the error says about the misses.
+func resolveTagNames(tags []db.Tag, names []string) ([]namedRef, partialList) {
+	var refs []namedRef
+	var p partialList
+	for _, name := range names {
+		tag, ok := matchTag(tags, name)
+		if !ok {
+			p.missing = append(p.missing, name)
+			continue
+		}
+		refs = append(refs, namedRef{id: tag, label: name})
+	}
+	return refs, p
+}
+
 // qaAssign resolves @logins to workspace members and (un)assigns them.
 func (h *API) qaAssign(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickact.Cmd) (string, error) {
 	add := cmd.Key == "assign"
@@ -138,33 +207,23 @@ func (h *API) qaAssign(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickact.C
 	if err != nil {
 		return "", err
 	}
-	var done []string
-	var missing []string
-	for _, login := range logins {
-		member, ok := matchMember(members, login)
-		if !ok {
-			missing = append(missing, "@"+login)
-			continue
-		}
-		if err := h.applyAssignee(c, t, wsID, member, add); err != nil {
+	refs, part := resolveMentions(members, logins)
+	for _, ref := range refs {
+		if err := h.applyAssignee(c, t, wsID, ref.id, add); err != nil {
 			return "", err
 		}
-		done = append(done, "@"+login)
+		part.done = append(part.done, ref.label)
 	}
-	if len(done) == 0 {
-		return "", userErr("не нашёл участника: %s", strings.Join(missing, ", "))
+	if len(part.done) == 0 {
+		return "", userErr("не нашёл участника: %s", part.missed())
 	}
 	verb := "назначен"
 	if !add {
 		verb = "снят"
 	}
-	summary := verb + " " + strings.Join(done, ", ")
-	if len(missing) > 0 {
-		// Partial success is still success — say who was skipped rather than
-		// failing the whole command and losing the assignments that worked.
-		summary += " (не найдены: " + strings.Join(missing, ", ") + ")"
-	}
-	return summary, nil
+	// Partial success is still success — say who was skipped rather than
+	// failing the whole command and losing the assignments that worked.
+	return part.summary(verb, "не найдены"), nil
 }
 
 // matchMember resolves a mention to a workspace member by GitLab login, email
@@ -281,30 +340,21 @@ func (h *API) qaTag(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickact.Cmd)
 		return "", err
 	}
 	add := cmd.Key == "tag"
-	var done, missing []string
-	for _, name := range names {
-		tag, ok := matchTag(tags, name)
-		if !ok {
-			missing = append(missing, name)
-			continue
-		}
-		if err := h.applyTag(c, t.ID, wsID, tag, add); err != nil {
+	refs, part := resolveTagNames(tags, names)
+	for _, ref := range refs {
+		if err := h.applyTag(c, t.ID, wsID, ref.id, add); err != nil {
 			return "", err
 		}
-		done = append(done, name)
+		part.done = append(part.done, ref.label)
 	}
-	if len(done) == 0 {
-		return "", userErr("нет такого тега в проекте: %s", strings.Join(missing, ", "))
+	if len(part.done) == 0 {
+		return "", userErr("нет такого тега в проекте: %s", part.missed())
 	}
 	verb := "добавлен тег"
 	if !add {
 		verb = "убран тег"
 	}
-	summary := verb + " " + strings.Join(done, ", ")
-	if len(missing) > 0 {
-		summary += " (нет в проекте: " + strings.Join(missing, ", ") + ")"
-	}
-	return summary, nil
+	return part.summary(verb, "нет в проекте"), nil
 }
 
 func matchTag(tags []db.Tag, name string) (uuid.UUID, bool) {
@@ -626,15 +676,18 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 		if err != nil {
 			return "", err
 		}
-		for _, login := range logins {
-			if _, ok := matchMember(members, login); !ok {
-				return "", userErr("не нашёл участника: @%s", login)
-			}
+		refs, part := resolveMentions(members, logins)
+		for _, ref := range refs {
+			part.done = append(part.done, ref.label)
 		}
-		if cmd.Key == "assign" {
-			return "назначить @" + strings.Join(logins, ", @"), nil
+		if len(part.done) == 0 {
+			return "", userErr("не нашёл участника: %s", part.missed())
 		}
-		return "снять @" + strings.Join(logins, ", @"), nil
+		verb := "назначить"
+		if cmd.Key != "assign" {
+			verb = "снять"
+		}
+		return part.summary(verb, "не найдены"), nil
 
 	case "due", "start":
 		when, err := quickact.ParseDate(cmd.Arg, h.commandNow(c))
@@ -682,15 +735,18 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 		if err != nil {
 			return "", err
 		}
-		for _, name := range names {
-			if _, ok := matchTag(tags, name); !ok {
-				return "", userErr("нет такого тега в проекте: %s", name)
-			}
+		refs, part := resolveTagNames(tags, names)
+		for _, ref := range refs {
+			part.done = append(part.done, ref.label)
 		}
-		if cmd.Key == "tag" {
-			return "добавить тег " + strings.Join(names, ", "), nil
+		if len(part.done) == 0 {
+			return "", userErr("нет такого тега в проекте: %s", part.missed())
 		}
-		return "убрать тег " + strings.Join(names, ", "), nil
+		verb := "добавить тег"
+		if cmd.Key != "tag" {
+			verb = "убрать тег"
+		}
+		return part.summary(verb, "нет в проекте"), nil
 
 	case "milestone":
 		title := strings.TrimSpace(cmd.Arg)
