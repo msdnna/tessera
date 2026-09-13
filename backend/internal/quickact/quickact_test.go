@@ -243,11 +243,26 @@ func TestParseEstimate(t *testing.T) {
 		{in: "1w", want: 2400}, // 5d week
 		{in: "1d 4h", want: 720},
 		{in: "1d 4", want: 720}, // the tail-less number is hours too
+		// A unit spelled out as a word, read by its first letter — the estimate
+		// field on both clients matches `[a-zа-яё]*` there, and the UI language
+		// here is Russian, so "3 дня" is the ordinary way to type it.
+		{in: "3 дня", want: 1440},
+		{in: "30 мин", want: 30},
+		{in: "2 hours", want: 120},
+		{in: "1 неделя", want: 2400},
+		{in: "2 часа 30 минут", want: 150},
+		{in: "1 день 4 часа", want: 720},
 		{in: "0", wantErr: true},
 		{in: "", wantErr: true},
 		{in: "скоро", wantErr: true},
 		{in: "2h кое-что", wantErr: true},
 		{in: "2 3", wantErr: true},
+		// A word that starts with no unit letter stays an error rather than
+		// silently becoming hours the way the clients' field would read it: a
+		// command that stored "5 попугаев" as five hours would be worse than one
+		// that says it did not understand.
+		{in: "5 попугаев", wantErr: true},
+		{in: "2 часа кое-что", wantErr: true},
 	}
 	for _, tc := range cases {
 		got, err := ParseEstimate(tc.in, timeCfg)

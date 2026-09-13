@@ -26,8 +26,37 @@ func ParsePriority(raw string) (int32, error) {
 	return 0, fmt.Errorf("не понимаю приоритет %q (нет/низкий/обычный/высокий/срочный)", raw)
 }
 
-// estimateToken matches one "2h" / "30м" / "1.5d" chunk of an estimate.
-var estimateToken = regexp.MustCompile(`(\d+(?:[.,]\d+)?)\s*([wнdдhчmм]?)`)
+// estimateToken matches one "2h" / "30м" / "1.5d" chunk of an estimate. The
+// unit is a whole word, not a single letter, because that is what the estimate
+// field on both clients matches (`[a-zа-яё]*` in frontend utils/estimation.js
+// and android util/Estimation.kt) — and the UI here is Russian, where "3 дня"
+// and "30 мин" are the ordinary way to type it. Accepting only the first letter
+// left the word spilling out of the token and tripping the junk check below, so
+// the popover took an estimate the command refused with "не понимаю оценку".
+var estimateToken = regexp.MustCompile(`(\d+(?:[.,]\d+)?)\s*([a-zа-яё]*)`)
+
+// estimateUnit reduces a written-out unit to the letter the arithmetic below
+// switches on, exactly as the clients do: the first letter decides, so "день",
+// "дня" and "d" are one unit. Unlike the clients, an unrecognised first letter
+// is *not* silently taken as hours — "/estimate 5 попугаев" storing five hours
+// is worse than a command that says it did not understand the argument.
+func estimateUnit(word string) (string, bool) {
+	if word == "" {
+		return "", true
+	}
+	switch r := []rune(word)[0]; r {
+	case 'w', 'н':
+		return "w", true
+	case 'd', 'д':
+		return "d", true
+	case 'h', 'ч':
+		return "h", true
+	case 'm', 'м':
+		return "m", true
+	default:
+		return "", false
+	}
+}
 
 // Estimation is the estimate configuration in force for a task (project
 // override → workspace default → the built-in time/8h/5d), reduced to what
@@ -91,19 +120,23 @@ func ParseEstimate(raw string, cfg Estimation) (float64, error) {
 		if err != nil {
 			return 0, fmt.Errorf("не понимаю оценку %q", raw)
 		}
-		switch m[2] {
+		unit, ok := estimateUnit(m[2])
+		if !ok {
+			return 0, fmt.Errorf("не понимаю оценку %q", raw)
+		}
+		switch unit {
 		case "":
 			total += n * 60 // bare number: hours, as in the clients' estimate field
-		case "m", "м":
+		case "m":
 			unitSeen = true
 			total += n
-		case "h", "ч":
+		case "h":
 			unitSeen = true
 			total += n * 60
-		case "d", "д":
+		case "d":
 			unitSeen = true
 			total += n * hoursPerDay * 60
-		default: // w, н
+		default: // w
 			unitSeen = true
 			total += n * daysPerWeek * hoursPerDay * 60
 		}
