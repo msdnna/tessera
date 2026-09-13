@@ -210,6 +210,30 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 	return i, err
 }
 
+const liftSubtasksFromColumn = `-- name: LiftSubtasksFromColumn :exec
+UPDATE tasks SET column_id = $1::uuid, updated_at = now()
+WHERE parent_id = $2::uuid
+  AND column_id = $3::uuid
+`
+
+type LiftSubtasksFromColumnParams struct {
+	TargetColumn uuid.UUID `json:"target_column"`
+	ParentID     uuid.UUID `json:"parent_id"`
+	FromColumn   uuid.UUID `json:"from_column"`
+}
+
+// LiftSubtasksFromColumn takes a recurring parent's direct subtasks out of the
+// board's done column when the parent recurs. On this board "in the done column"
+// and "completed" are one fact, kept in step by MoveTask's auto-toggle: clearing
+// completed_at alone leaves an item the board still draws under «Готово» with an
+// empty checkbox, and the next move out of that column then finds nothing to
+// reopen. Position is deliberately untouched — it is what orders the checklist
+// among its siblings, and the recurrence is not a reordering.
+func (q *Queries) LiftSubtasksFromColumn(ctx context.Context, arg LiftSubtasksFromColumnParams) error {
+	_, err := q.db.Exec(ctx, liftSubtasksFromColumn, arg.TargetColumn, arg.ParentID, arg.FromColumn)
+	return err
+}
+
 const listBoardArchivedWithMeta = `-- name: ListBoardArchivedWithMeta :many
 SELECT
     t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,

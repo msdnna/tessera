@@ -339,6 +339,18 @@ RETURNING *;
 UPDATE tasks SET completed_at = NULL, updated_at = now()
 WHERE parent_id = $1 AND completed_at IS NOT NULL;
 
+-- LiftSubtasksFromColumn takes a recurring parent's direct subtasks out of the
+-- board's done column when the parent recurs. On this board "in the done column"
+-- and "completed" are one fact, kept in step by MoveTask's auto-toggle: clearing
+-- completed_at alone leaves an item the board still draws under «Готово» with an
+-- empty checkbox, and the next move out of that column then finds nothing to
+-- reopen. Position is deliberately untouched — it is what orders the checklist
+-- among its siblings, and the recurrence is not a reordering.
+-- name: LiftSubtasksFromColumn :exec
+UPDATE tasks SET column_id = sqlc.arg(target_column)::uuid, updated_at = now()
+WHERE parent_id = sqlc.arg(parent_id)::uuid
+  AND column_id = sqlc.arg(from_column)::uuid;
+
 -- ShiftSubtaskWindow moves a recurring parent's direct subtasks by the same step
 -- its due date just took, so the whole checklist travels to the next occurrence
 -- instead of staying pinned — and overdue — at the first one. The shift is elapsed

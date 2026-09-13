@@ -78,6 +78,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 		}
 	}
 	soft(ctx, "ReopenSubtasks", h.q.ReopenSubtasks(ctx, &t.ID))
+	h.liftSubtasksFromDone(ctx, t, target)
 	// The checklist travels with the parent: a subtask is a task in its own right
 	// (its own card, its own bar, its own overdue badge), so leaving its dates on
 	// the previous occurrence makes every item of the second run be born late.
@@ -88,6 +89,37 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 	}
 	h.logEventActor(ctx, t.ID, actorID, "recurred", map[string]any{"due": next})
 	return updated, true
+}
+
+// liftSubtasksFromDone takes the reopened checklist out of the board's done column
+// and lands it where the parent just landed.
+//
+// A subtask is a task in its own right — its own card, its own column — and it is
+// closed either by its checkbox or by being dragged into the done column, where
+// MoveTask's auto-toggle sets completed_at. Those two facts are kept in step
+// everywhere else, so ReopenSubtasks clearing only completed_at left an item the
+// board still draws under «Готово» with an empty checkbox, and dragging it out
+// again then found nothing to reopen. The parent already moves (recurTargetColumn
+// is resolved right above), and the create_new branch builds the duplicate's
+// checklist in the target column from the start; this is the reschedule branch
+// saying the same thing.
+//
+// Only items sitting in the done column move: one parked in «В процессе» is where
+// its owner left it, and a recurrence is not a reason to tidy that away.
+func (h *API) liftSubtasksFromDone(ctx context.Context, t db.Task, target uuid.UUID) {
+	board, err := h.q.GetBoard(ctx, t.BoardID)
+	if err != nil {
+		return
+	}
+	done := doneColumnID(board)
+	// No done column configured, or the rule deliberately recurs *into* it — then
+	// there is nothing to lift and nowhere else to put it.
+	if done == nil || *done == target {
+		return
+	}
+	soft(ctx, "LiftSubtasksFromColumn", h.q.LiftSubtasksFromColumn(ctx, db.LiftSubtasksFromColumnParams{
+		TargetColumn: target, ParentID: t.ID, FromColumn: *done,
+	}))
 }
 
 // recurTargetColumn resolves where a recurred task lands: the rule's target column
