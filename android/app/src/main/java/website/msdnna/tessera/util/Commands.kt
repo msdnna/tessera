@@ -44,7 +44,12 @@ data class SlashQuery(val start: Int, val query: String)
 // after any whitespace would pop the menu on `cd /home`, `src/utils` and `24/7` —
 // all common in task text. This mirrors the backend, which only treats a line
 // whose first non-space character is `/` as a command.
-private val SLASH_RE = Regex("(?:^|\n)/([a-z0-9_-]*)$")
+//
+// `\z`, not `$`: java's `$` also matches *before* a trailing newline, so a query
+// the user has already finished with Enter would stay open — and `start`, measured
+// back from the end of the text, would land on the newline instead of the slash.
+// JS has no such rule, which is why the web regex can end in `$`.
+private val SLASH_RE = Regex("(?:^|\n)/([a-z0-9_-]*)\\z")
 
 /** Finds an open `/`-query in the text up to the caret, or null. */
 fun detectSlashQuery(upto: String?): SlashQuery? {

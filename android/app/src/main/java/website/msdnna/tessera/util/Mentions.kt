@@ -141,6 +141,27 @@ private fun opensMention(text: String, at: Int): Boolean {
     return c.isWhitespace() || c == '(' || c == '>' || c == '|'
 }
 
+/** An open `@`-query in the composer: [start] is the index of the '@', [query] what follows it. */
+data class MentionQuery(val start: Int, val query: String)
+
+// Unlike the `/`-trigger a mention may open anywhere after whitespace, so this
+// one is not anchored to the start of a line — see [detectSlashQuery].
+//
+// `\z`, not `$`: java's `$` also matches *before* a trailing newline, so a handle
+// the user has already finished with Enter would keep the popup open — and
+// [MentionQuery.start], measured back from the caret, would land on the newline
+// instead of the '@'. JS has no such rule, which is why the web regex in
+// `MarkdownEditor.vue` can end in `$`.
+private val MENTION_RE = Regex("(^|\\s)@([^\\s@]*)\\z")
+
+/** Finds an open `@`-query in the text up to the caret, or null. */
+fun detectMentionQuery(upto: String?): MentionQuery? {
+    val text = upto ?: return null
+    val m = MENTION_RE.find(text) ?: return null
+    val query = m.groupValues[2]
+    return MentionQuery(start = text.length - query.length - 1, query = query)
+}
+
 /**
  * Turns a rendered mention chip back into the person it names. Returns null for
  * a handle nobody in either roster owns — the caller then shows no card at all

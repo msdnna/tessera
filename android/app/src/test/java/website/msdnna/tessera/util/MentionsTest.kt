@@ -85,6 +85,29 @@ class MentionsTest {
     }
 
     @Test
+    fun `the at-trigger opens after a boundary and points at its own sign`() {
+        assertEquals(MentionQuery(start = 0, query = ""), detectMentionQuery("@"))
+        assertEquals(MentionQuery(start = 7, query = "pol"), detectMentionQuery("привет @pol"))
+        assertEquals(MentionQuery(start = 7, query = "pol"), detectMentionQuery("строка\n@pol"))
+        // An address is one word, not a mention, and a closed handle is not a query.
+        assertNull(detectMentionQuery("mail@example"))
+        assertNull(detectMentionQuery("@pol готово"))
+        assertNull(detectMentionQuery("без собаки"))
+        assertNull(detectMentionQuery(null))
+    }
+
+    @Test
+    fun `a finished line closes the at-query`() {
+        // Same java `$` trap as the `/`-trigger: a handle already ended with Enter
+        // would otherwise keep the popup open, and `start` would be measured from
+        // the newline — picking a row would then splice a second '@' into the text
+        // and the comment would notify nobody.
+        assertNull(detectMentionQuery("@pol\n"))
+        assertNull(detectMentionQuery("привет @pol\n"))
+        assertNull(detectMentionQuery("@pol\n\n"))
+    }
+
+    @Test
     fun `a handle nobody owns resolves to nothing`() {
         val items = buildMentionItems(listOf(linked), emptyList())
         assertNull(resolveMention(items, "root"))

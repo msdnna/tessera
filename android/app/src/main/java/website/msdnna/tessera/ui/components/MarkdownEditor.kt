@@ -78,6 +78,7 @@ import website.msdnna.tessera.util.MdEdit
 import website.msdnna.tessera.util.MentionItem
 import website.msdnna.tessera.util.applyTyping
 import website.msdnna.tessera.util.commandInsertText
+import website.msdnna.tessera.util.detectMentionQuery
 import website.msdnna.tessera.util.detectSlashQuery
 import website.msdnna.tessera.util.indentLines
 import website.msdnna.tessera.util.linePrefixLines
@@ -91,9 +92,6 @@ import website.msdnna.tessera.util.toggleTaskMarker
  *  at the moment of the insert — the graph syntax around them never changes. */
 private fun mermaidSnippet(start: String, done: String) =
     "\n```mermaid\ngraph TD\n  A[$start] --> B[$done]\n```\n"
-
-/** "@query" right before the caret (mirrors the web editor's mention trigger). */
-private val MENTION_RE = Regex("(^|\\s)@([^\\s@]*)$")
 
 /**
  * The web `MarkdownEditor`, native: a Написать / Просмотр tab pair, a borderless
@@ -265,8 +263,8 @@ fun MarkdownEditor(
             // with a slash, so the two never compete for the same caret.
             val caret = tfv.selection.min
             val upto = tfv.text.substring(0, caret)
-            val mq = if (mentions.isNotEmpty()) MENTION_RE.find(upto) else null
-            val query = mq?.groupValues?.get(2)
+            val mq = if (mentions.isNotEmpty()) detectMentionQuery(upto) else null
+            val query = mq?.query
             val matches = if (query != null) {
                 mentions.filter {
                     it.display.contains(query, ignoreCase = true) || it.insert.contains(query, ignoreCase = true)
@@ -277,7 +275,7 @@ fun MarkdownEditor(
             val slash = if (query == null && commands.isNotEmpty()) detectSlashQuery(upto) else null
             val cmdMatches = if (slash != null) matchCommands(commands, slash.query) else emptyList()
             fun pickMention(item: MentionItem) {
-                val start = caret - (query?.length ?: 0) - 1
+                val start = mq?.start ?: return
                 val ins = "@${item.insert} "
                 val text = tfv.text.substring(0, start) + ins + tfv.text.substring(caret)
                 set(TextFieldValue(text, androidx.compose.ui.text.TextRange(start + ins.length)))

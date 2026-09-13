@@ -50,6 +50,21 @@ class CommandsTest {
     }
 
     @Test
+    fun `a finished line closes the query`() {
+        // A newline ends the command, so the popup must shut — java's `$` also
+        // matches before a trailing terminator, which would both keep it open and
+        // measure `start` from the newline instead of the slash.
+        assertNull(detectSlashQuery("/close\n"))
+        assertNull(detectSlashQuery("текст\n/clo\n"))
+        assertNull(detectSlashQuery("/close\n\n"))
+        // Picking an argument-less command types exactly that trailing newline, so
+        // its own insert text may not re-open the popup on the row just chosen.
+        assertNull(detectSlashQuery(commandInsertText(items.first { it.key == "close" })))
+        // The query is still open while the line is unfinished.
+        assertEquals(SlashQuery(start = 0, query = "close"), detectSlashQuery("/close"))
+    }
+
+    @Test
     fun `built-ins come first, custom entries after`() {
         assertEquals(listOf("assign", "due", "close", "approve"), items.map { it.key })
         assertTrue(items.first { it.key == "close" }.builtin)
