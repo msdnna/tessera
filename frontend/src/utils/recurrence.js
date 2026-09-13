@@ -31,6 +31,26 @@ export function unitLabel(freq, n) {
   return i18n.global.t(`task.recur.unit.${freq}`, Math.round(Number(n) || 0))
 }
 
+// withStoredAnchor mirrors the backend's `recurrenceToStore` (handlers/tasks.go).
+//
+// A monthly/yearly rule carries a server-managed day-of-month anchor (`day`, plus
+// `month` for yearly): a short month temporarily moves the due date, and without
+// the anchor every later occurrence would inherit the clamped day and the series
+// would walk backwards — a task repeating on the 31st would become a 28th task the
+// first time it passed through February. The editor's controls never hold that
+// anchor, so a rule rebuilt from them has to take it back from the stored one, on
+// the same terms the server uses: same frequency, due date untouched. In every
+// other case the server re-derives the anchor from the due date, which is exactly
+// what `nextOccurrence` falls back to on its own.
+export function withStoredAnchor(rule, stored, dueChanged) {
+  if (!rule || (rule.freq !== 'monthly' && rule.freq !== 'yearly')) return rule
+  if (dueChanged || !stored || stored.freq !== rule.freq) return rule
+  const out = { ...rule }
+  if (stored.day) out.day = stored.day
+  if (rule.freq === 'yearly' && stored.month) out.month = stored.month
+  return out
+}
+
 const dayKey = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 

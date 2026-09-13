@@ -11,7 +11,13 @@ import {
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { useFormat } from '@/composables/useFormat'
-import { freqOptions, triggerOptions, unitLabel, occurrenceKeys } from '@/utils/recurrence'
+import {
+  freqOptions,
+  triggerOptions,
+  unitLabel,
+  occurrenceKeys,
+  withStoredAnchor,
+} from '@/utils/recurrence'
 import { resolvedTimezone } from '@/utils/format'
 
 const props = defineProps({
@@ -187,7 +193,15 @@ const gridDays = computed(() => {
 })
 
 // Highlighted occurrences (the rule's upcoming dates), excluding the selected one.
-const occKeys = computed(() => occurrenceKeys(rule.value, localDue.value, 24))
+//
+// Previewed from the rule *plus* the anchor the server keeps on our behalf: the
+// panel below rebuilds the rule out of its own controls, and those never held the
+// monthly/yearly day-of-month anchor, so a task that February has parked on the
+// 28th would otherwise be shown a March 28th it is never going to fire on.
+const previewRule = computed(() =>
+  withStoredAnchor(rule.value, props.recurrence, localDue.value !== normalizeDueIn(props.due)),
+)
+const occKeys = computed(() => occurrenceKeys(previewRule.value, localDue.value, 24))
 
 function onDayClick(d) {
   // Custom-recurrence date-picking only applies to the due date.
