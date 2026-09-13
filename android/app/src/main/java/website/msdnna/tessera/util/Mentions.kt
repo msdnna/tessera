@@ -82,6 +82,66 @@ fun buildMentionItems(members: List<Member>, gitlabMembers: List<GitlabMember>):
 }
 
 /**
+ * Markup that disappears into a tag, leaving the '@' at the start of a text node:
+ * emphasis/strike delimiters, a link label's bracket, an escape. The renderer sees
+ * `<em>@Иван`, i.e. the '>' its own boundary class allows.
+ */
+private const val MARKUP_LEAD = "*_~[\\"
+
+/**
+ * The workspace members a piece of content mentions, in the order they are written
+ * and without repeats — the list handed to the server so those people are notified.
+ *
+ * The promise being kept is that **the chip the reader sees is the person told**.
+ * Scanning the source for `"@" + name` broke it in both directions: «@Иван» inside
+ * a fenced block or `mail@root` in a sentence drew no chip yet notified, while a
+ * member mentioned by the GitLab login the picker inserts on their behalf (the
+ * login can come from the GitLab roster rather than their own member row) drew a
+ * resolved chip yet notified nobody.
+ *
+ * So this reproduces what `highlightMentions` in `RichContent.kt` draws: code is
+ * masked out ([codeMasked]), the '@' has to open a token (start of text,
+ * whitespace, '(' — or markup that becomes a tag), and the longest handle wins.
+ * There is no Kotlin markdown parser here (the app's copy is JS inside the
+ * WebView) and a comment is posted without one, so the rules are walked instead,
+ * pinned by a table measured off the renderer in `MentionsTest`.
+ *
+ * Rows with no [MentionItem.avatarUserId] — GitLab-only users — drop out on their
+ * own: the handle stays in the text for GitLab to resolve on write-back, and
+ * Tessera has nobody to notify.
+ */
+fun mentionIdsIn(src: String, items: List<MentionItem>): List<String> {
+    if (src.isBlank() || items.isEmpty()) return emptyList()
+    val text = codeMasked(src)
+    val handles = items.flatMap { listOf(it.insert, it.display) }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .sortedByDescending { it.length }
+    val out = LinkedHashSet<String>()
+    var i = 0
+    while (i < text.length) {
+        val at = text.indexOf('@', i)
+        if (at < 0) break
+        val handle = if (opensMention(text, at)) handles.firstOrNull { text.startsWith(it, at + 1) } else null
+        handle?.let { resolveMention(items, it)?.avatarUserId?.let(out::add) }
+        i = at + 1 + (handle?.length ?: 0)
+    }
+    return out.toList()
+}
+
+/** True when the '@' at [at] starts a token the renderer would chip. */
+private fun opensMention(text: String, at: Int): Boolean {
+    var i = at - 1
+    // A delimiter run only opens markup when itself preceded by a boundary:
+    // `_@Иван_` is emphasis, `mail_@root` is one plain word.
+    while (i >= 0 && text[i] in MARKUP_LEAD) i--
+    if (i < 0) return true
+    val c = text[i]
+    // '>' and '|' close a block or table cell — the '@' again opens its text.
+    return c.isWhitespace() || c == '(' || c == '>' || c == '|'
+}
+
+/**
  * Turns a rendered mention chip back into the person it names. Returns null for
  * a handle nobody in either roster owns — the caller then shows no card at all
  * rather than one that merely repeats the text that was tapped.

@@ -14,7 +14,6 @@ import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.CommandOutcome
 import website.msdnna.tessera.data.model.CommandSummary
 import website.msdnna.tessera.data.model.Comment
-import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.Relation
 import website.msdnna.tessera.data.model.TaskDetail
@@ -24,9 +23,11 @@ import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.data.repository.DocumentRepository
 import website.msdnna.tessera.data.repository.TaskRepository
 import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.util.MentionItem
 import website.msdnna.tessera.util.MoveNeighbors
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.hasCommandLine
+import website.msdnna.tessera.util.mentionIdsIn
 
 private val TagPalette = listOf(
     "#7c5cff", "#2f80ed", "#0eb0a9", "#18a058", "#f0a020", "#e0533d", "#eb2f96",
@@ -299,10 +300,12 @@ class TaskDetailViewModel(
 
     // ── comments ─────────────────────────────────────────────────────────────
 
-    /** Posts a comment; [parentId] set makes it a reply into that thread. */
-    fun postComment(body: String, members: List<Member>, parentId: String? = null) = mutate {
+    /** Posts a comment; [parentId] set makes it a reply into that thread.
+     *  [mentions] is the same roster the composer and the renderer use, so the
+     *  people notified are exactly those whose chip the comment draws. */
+    fun postComment(body: String, mentions: List<MentionItem>, parentId: String? = null) = mutate {
         if (body.isBlank()) return@mutate
-        val res = taskRepo.addComment(taskId, body, detectMentions(body, members), parentId)
+        val res = taskRepo.addComment(taskId, body, mentionIdsIn(body, mentions), parentId)
         _state.update {
             it.copy(comments = taskRepo.comments(taskId), changed = true, commandPreview = emptyList(), commandCustom = emptyList())
         }
@@ -503,15 +506,6 @@ class TaskDetailViewModel(
     }
 
     private val numberCache = mutableMapOf<Int, String>()
-
-    /** Matches `@Name` substrings against known members. A member linked to GitLab
-     *  is written by their login (that is what the picker inserts, so GitLab
-     *  resolves the mention on write-back) — both spellings notify them. */
-    private fun detectMentions(body: String, members: List<Member>): List<String> =
-        members.filter { m ->
-            (m.name.isNotBlank() && body.contains("@${m.name}")) ||
-                (m.glUsername.isNotBlank() && body.contains("@${m.glUsername}"))
-        }.map { it.userId }
 
     private fun mutate(block: suspend () -> Unit) {
         viewModelScope.launch {

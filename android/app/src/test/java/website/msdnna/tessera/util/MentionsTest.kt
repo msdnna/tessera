@@ -91,6 +91,110 @@ class MentionsTest {
         assertNull(resolveMention(items, "  "))
     }
 
+    /**
+     * Кого уведомит комментарий — должно совпадать с тем, чей чип нарисован.
+     *
+     * Таблица снята с самого рендерера: разметка прогнана через marked 18 и через
+     * дословную копию `highlightMentions`/`replaceOutsideCode` из `RichContent.kt`,
+     * ожидания здесь — его чипы. Расхождение опасно в обе стороны: «@Иван» в
+     * примере кода нарисован текстом и никого не зовёт, а имя, набранное руками,
+     * рисует чип и обязано позвать.
+     */
+    private val roster = listOf(
+        Member(userId = "u1", name = "Иван"),
+        Member(userId = "u2", name = "Иван Петров"),
+        Member(userId = "u3", name = "root"),
+        Member(userId = "u4", name = "Ян"),
+        linked.copy(userId = "u5"),
+    )
+
+    private fun ids(src: String, gl: List<GitlabMember> = emptyList()) =
+        mentionIdsIn(src, buildMentionItems(roster, gl))
+
+    @Test
+    fun `mentions are read the way the renderer draws them`() {
+        val table = listOf(
+            // текст → кого зовём
+            "Привет @Иван, глянь" to listOf("u1"),
+            "@Иван глянь" to listOf("u1"),
+            "```\n@Иван\n```" to emptyList(),
+            "```sh\nsudo -u @root ls\n```" to emptyList(),
+            "команда `@Иван` тут" to emptyList(),
+            "    @Иван\n" to emptyList(),
+            "(@Иван) глянь" to listOf("u1"),
+            "*@Иван* глянь" to listOf("u1"),
+            "**@Иван** глянь" to listOf("u1"),
+            "@Иван, глянь" to listOf("u1"),
+            "mail@root тут" to emptyList(),
+            "@Янис привет" to listOf("u4"),
+            "@Иван Петров глянь" to listOf("u2"),
+            "> @Иван глянь" to listOf("u1"),
+            "- @Иван глянь" to listOf("u1"),
+            "[@Иван](http://x) глянь" to listOf("u1"),
+            "[тут](http://x/@Иван) глянь" to emptyList(),
+            "@e.polyansky глянь" to listOf("u5"),
+            "@Иван и снова @Иван" to listOf("u1"),
+            "# @Иван глянь" to listOf("u1"),
+            "| кто |\n| --- |\n| @Иван |" to listOf("u1"),
+            "строка\n@Иван глянь" to listOf("u1"),
+            "<b>@Иван</b> глянь" to listOf("u1"),
+            "_@Иван_ глянь" to listOf("u1"),
+            "~~@Иван~~ глянь" to listOf("u1"),
+            "| кто |\n| --- |\n|@Иван|" to listOf("u1"),
+            "mail_@root тут" to emptyList(),
+            "«@Иван» глянь" to emptyList(),
+            "\"@Иван\" глянь" to emptyList(),
+            "-@Иван глянь" to emptyList(),
+            "/@Иван глянь" to emptyList(),
+            "@@Иван глянь" to emptyList(),
+            "кому:@Иван глянь" to emptyList(),
+            "строка\n\n@Иван глянь" to listOf("u1"),
+            ">@Иван глянь" to listOf("u1"),
+            "-   @Иван глянь" to listOf("u1"),
+            "http://x/@Иван глянь" to emptyList(),
+            ".@Иван глянь" to emptyList(),
+            "<http://x/@Иван> глянь" to emptyList(),
+            "\\@Иван глянь" to listOf("u1"),
+            "строка\n    @Иван глянь" to listOf("u1"),
+            "строка\n\n    @Иван глянь" to emptyList(),
+            "- пункт\n\n    @Иван глянь" to listOf("u1"),
+            "- пункт\n\n        @Иван глянь" to emptyList(),
+            "```\nкод\n```\n@Иван глянь" to listOf("u1"),
+            "~~~\n@Иван\n~~~" to emptyList(),
+            "```\n@Иван глянь" to emptyList(),
+            "``@Иван`` глянь" to emptyList(),
+            "`@Иван глянь" to emptyList(),
+            "> ```\n> @Иван\n> ```" to emptyList(),
+        )
+        table.forEach { (src, expected) ->
+            assertEquals("разметка: ${src.replace("\n", "\\n")}", expected, ids(src))
+        }
+    }
+
+    /** Порядок — как в тексте, повторы схлопнуты: список уходит на сервер как есть. */
+    @Test
+    fun `mentions keep the order they are written in, without repeats`() {
+        assertEquals(listOf("u2", "u1", "u4"), ids("@Иван Петров, @Иван и @Ян — и снова @Иван"))
+    }
+
+    /**
+     * Логин из ростера GitLab — то, что вставляет пикер и что рисует чип, даже
+     * когда на строке участника своего `gl_username` нет. Раньше уведомление
+     * искало только имя и `gl_username` участника, так что чип был, а звонка не было.
+     */
+    @Test
+    fun `a login borrowed from the gitlab roster notifies its owner`() {
+        val gl = GitlabMember(glUserId = 7, glUsername = "i.petrov", glName = "Ivan", tesseraUserId = "u2")
+        assertEquals(listOf("u2"), ids("@i.petrov глянь", listOf(gl)))
+    }
+
+    /** У гостя из GitLab нет аккаунта в Tessera — звать некого, текст остаётся ему. */
+    @Test
+    fun `a gitlab-only handle notifies nobody`() {
+        val gl = GitlabMember(glUserId = 8, glUsername = "outsider", glName = "Out Sider")
+        assertEquals(emptyList<String>(), ids("@outsider глянь", listOf(gl)))
+    }
+
     @Test
     fun `roles are spelled out, unknown ones kept verbatim`() {
         val ru = res("ru")

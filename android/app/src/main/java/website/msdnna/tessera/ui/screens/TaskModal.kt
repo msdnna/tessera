@@ -1877,7 +1877,7 @@ private fun CommentsTab(
                             modifier = Modifier.height(34.dp).testTag(TestTags.TASK_REPLY_SUBMIT),
                             onClick = {
                                 if (replyDraft.isNotBlank()) {
-                                    vm.postComment(replyDraft, members, t.root.id)
+                                    vm.postComment(replyDraft, mentionItems, t.root.id)
                                     replyDraft = ""
                                     replyingTo = null
                                 }
@@ -1930,7 +1930,7 @@ private fun CommentsTab(
         Row(verticalAlignment = Alignment.CenterVertically) {
             TButton(stringResource(R.string.task_comment_send), modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
                 if (draft.isNotBlank()) {
-                    vm.postComment(draft, members)
+                    vm.postComment(draft, mentionItems)
                     draft = ""
                 }
             })

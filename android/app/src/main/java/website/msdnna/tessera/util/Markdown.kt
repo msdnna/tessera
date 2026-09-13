@@ -64,6 +64,31 @@ fun toggleTaskMarker(src: String, index: Int): String {
     return lines.joinToString("\n")
 }
 
+/** A run of backticks closed by a run of the same length — one inline code span. */
+private val CODE_SPAN_RE = Regex("""(`+)[^`]*\1(?!`)""")
+
+/**
+ * Returns [src] with everything the renderer draws as code replaced by spaces,
+ * character positions intact.
+ *
+ * Decorations that rewrite the rendered HTML — the mention chips, the `#N` links —
+ * are kept away from `<code>`/`<pre>` there (`replaceOutsideCode` in
+ * `RichContent.kt`). Anything asking the *source* who was mentioned has to keep
+ * away from the same text, or «@Иван» in a shell snippet rings a person who sees
+ * no chip at all.
+ *
+ * Fenced and indented blocks are recognised by the same walk as [taskMarkerLines];
+ * inline spans are matched per line, so a span wrapped across a line break stays
+ * visible (rare, and the failure is a false chip rather than a blanked paragraph).
+ */
+internal fun codeMasked(src: String): String {
+    val scan = BlockScan()
+    return src.split("\n").joinToString("\n") { raw ->
+        scan.step(stripQuotes(raw))
+        if (scan.lastWasCode) " ".repeat(raw.length) else raw.replace(CODE_SPAN_RE) { " ".repeat(it.value.length) }
+    }
+}
+
 /**
  * Walks a document line by line, tracking the block context a checkbox needs to
  * survive: an open code fence, an indented code block, and the innermost open list
@@ -76,11 +101,18 @@ private class BlockScan {
     private var prevBlank = true
     private var wasBlank = true
 
+    /** Whether the line last fed to [step] was code: fenced content, either of its
+     *  delimiters, or an indented block. A blank line is not (it carries nothing). */
+    var lastWasCode = false
+        private set
+
     /** Feeds one blockquote-stripped line; true when that line draws a checkbox. */
     fun step(body: String): Boolean {
+        lastWasCode = false
         if (consumedByCode(body)) return false
         FENCE_RE.find(body)?.let {
             fence = it.groupValues[1]
+            lastWasCode = true
             return false
         }
         val indent = indentWidth(body)
@@ -99,6 +131,7 @@ private class BlockScan {
         if (fence.isNotEmpty()) {
             if (closesFence(body, fence)) fence = ""
             prevBlank = false
+            lastWasCode = true
             return true
         }
         if (body.isBlank()) {
@@ -111,8 +144,12 @@ private class BlockScan {
         val indent = indentWidth(body)
         wasBlank = prevBlank
         prevBlank = false
-        if (inCode && indent >= codeAt) return true
+        if (inCode && indent >= codeAt) {
+            lastWasCode = true
+            return true
+        }
         inCode = indent >= codeAt && wasBlank
+        lastWasCode = inCode
         return inCode
     }
 }
