@@ -21,6 +21,13 @@ import { formatFileSize } from '@/utils/docPdf'
 // the reader wants "4 МБ" and the fact that the page has to be split (#2932).
 const CONTENT_TOO_LARGE = /^content exceeds (\d+) bytes$/
 
+// The second one, same shape and same reason: the in-call chat refuses a batch
+// of files whose *total* is over MaxChatTotalBytes, and names the ceiling in
+// bytes so every client can put it in the reader's own units. The composer
+// mirrors the rule (utils/confChat.js), so this is what a stale tab or a second
+// picker hears (#2932).
+const ATTACHMENTS_TOO_LARGE = /^attachments exceed (\d+) bytes$/
+
 // The keys are the wire format — exactly what the backend sends — so they stay
 // English; only the catalog key on the right-hand side is ours to translate.
 const SENTINELS = {
@@ -111,6 +118,12 @@ export function humanizeError(raw) {
   const oversized = CONTENT_TOO_LARGE.exec(low)
   if (oversized) {
     return t('sentinel.docContentTooLarge', { limit: formatFileSize(Number(oversized[1])) })
+  }
+  const oversizedBatch = ATTACHMENTS_TOO_LARGE.exec(low)
+  if (oversizedBatch) {
+    return t('sentinel.chatAttachmentsTooLarge', {
+      limit: formatFileSize(Number(oversizedBatch[1])),
+    })
   }
   if (low.startsWith('key:') && low.includes('validation')) {
     return fromValidator(msg) || t('validation.generic')

@@ -160,12 +160,24 @@ describe('humanizeError', () => {
     )
   })
 
+  // The in-call chat's aggregate refusal, shaped like the document one for the
+  // same reason: the ceiling is a config number, so the sentence carries it and
+  // the reader gets a size rather than eight digits of bytes (#2932).
+  it('names the chat batch ceiling in reader units', () => {
+    expect(humanizeError('attachments exceed 26214400 bytes')).toBe(
+      'Вложения весят больше 25 МБ — отправьте их несколькими сообщениями',
+    )
+  })
+
   // The pattern above must not swallow neighbouring sentences: a message that
   // merely starts the same way is not a size refusal, and losing its text would
   // replace a real reason with a wrong one.
   it('leaves a look-alike sentence alone', () => {
     expect(humanizeError('content exceeds the allowed nesting')).toBe(
       'content exceeds the allowed nesting',
+    )
+    expect(humanizeError('attachments exceed the allowed count')).toBe(
+      'attachments exceed the allowed count',
     )
   })
 

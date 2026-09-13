@@ -22,6 +22,41 @@ export const CONF_CHAT_MAX_FILES = 5
 export const CONF_CHAT_MAX_BYTES = 25 * 1024 * 1024
 
 /**
+ * The server's `MaxChatTotalBytes` — the cap on one message's files *together*.
+ *
+ * The fourth rule, and the one nobody had: `maxChatFiles` bounds how many files
+ * travel, never how much. Five 20 MB videos passed every check on every client,
+ * and the request was then refused server-side — before the route had a body
+ * budget of its own, by the transport, with "request body too large", which
+ * names nothing the user picked (#2932).
+ */
+export const CONF_CHAT_MAX_TOTAL_BYTES = 25 * 1024 * 1024
+
+/**
+ * Why the server would refuse this file on top of the ones already queued,
+ * decided before anything is uploaded.
+ *
+ * Order mirrors the server's: the count first (`maxChatFiles`), then the file
+ * (`maxAttachmentBytes`), then the batch (`MaxChatTotalBytes`) — so a single
+ * 30 MB video reads as one over-sized file, which is what the composer can name,
+ * rather than as a batch the user has not built yet.
+ *
+ * @param {Array<{size?: number}>} pending files already queued for this message
+ * @param {File|null|undefined} file the newly picked one
+ * @returns {''|'tooMany'|'tooLarge'|'tooLargeTotal'} a reason code, or ''
+ */
+export function confChatPickError(pending, file) {
+  if (!file) return ''
+  const queued = pending || []
+  if (queued.length >= CONF_CHAT_MAX_FILES) return 'tooMany'
+  const size = Number(file.size) || 0
+  if (size > CONF_CHAT_MAX_BYTES) return 'tooLarge'
+  const total = queued.reduce((sum, f) => sum + (Number(f?.size) || 0), 0)
+  if (total + size > CONF_CHAT_MAX_TOTAL_BYTES) return 'tooLargeTotal'
+  return ''
+}
+
+/**
  * The message body's length as the server counts it.
  *
  * Code points, not `String.length`. JS measures UTF-16 units, Go measures runes,

@@ -1024,6 +1024,7 @@
     <string name="conf_chat_load_older">Show earlier messages</string>
     <string name="conf_chat_unknown_author">Unknown author</string>
     <string name="conf_chat_file_too_big">“%1$s” is larger than 25 MB</string>
+    <string name="conf_chat_files_too_big">The attachments add up to more than 25 MB — send them in several messages</string>
     <string name="conf_chat_too_many_files">At most %1$d files per message</string>
     <string name="conf_chat_too_long">The message is longer than %1$d characters</string>
     <string name="conf_chat_size_b">%1$s B</string>

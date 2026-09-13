@@ -50,6 +50,20 @@ const (
 	maxChatPage     = 200
 )
 
+// MaxChatTotalBytes caps one message's attachments *together*, which is the
+// number the route's transport budget is sized from (see routeConfMessages).
+//
+// maxChatFiles alone does not bound the request: five files of maxAttachmentBytes
+// each is 125 MiB of multipart buffered for one line of chat, and the comment on
+// maxChatFiles says plainly that this is what it was meant to prevent. A single
+// file keeps the whole 25 MiB — the cap the composers quote and the common case
+// by far — so this only ever refuses a batch, and refuses it here, before a byte
+// is written to disk.
+//
+// Exported because router.go derives the route's body limit from it; they have to
+// agree or the transport answers for a batch the handler would have explained.
+const MaxChatTotalBytes int64 = maxAttachmentBytes
+
 // chatAttachment is one file on a message, as clients see it. is_image is
 // computed from the *sniffed* content type — not from the filename, and not
 // from the extension on disk either. Both of those are downstream of what the
@@ -301,6 +315,20 @@ func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeade
 	}
 	if len(files) > maxChatFiles {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("at most %d files per message", maxChatFiles)})
+		return "", nil, false
+	}
+	// The aggregate ceiling, checked before storeChatFiles so an over-full batch
+	// costs no disk. Phrased with the number so the clients can format it in the
+	// reader's own units, the way the document validator's sentence is —
+	// the per-file refusal below it still predates that and says "25 МБ" in
+	// Russian to everyone.
+	var total int64
+	for _, f := range files {
+		total += f.Size
+	}
+	if total > MaxChatTotalBytes {
+		c.JSON(http.StatusRequestEntityTooLarge,
+			gin.H{"error": fmt.Sprintf("attachments exceed %d bytes", MaxChatTotalBytes)})
 		return "", nil, false
 	}
 	return body, files, true

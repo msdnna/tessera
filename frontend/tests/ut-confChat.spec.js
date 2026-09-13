@@ -3,10 +3,17 @@ import {
   CONF_CHAT_MAX_BODY,
   CONF_CHAT_MAX_BYTES,
   CONF_CHAT_MAX_FILES,
+  CONF_CHAT_MAX_TOTAL_BYTES,
   confChatBodyLength,
   confChatBodyTooLong,
   confChatCanSend,
+  confChatPickError,
 } from '@/utils/confChat'
+
+/** A stand-in for a picked File — only `size` and `name` are ever read. */
+function file(mb, name = 'кадр.png') {
+  return { name, size: Math.round(mb * 1024 * 1024) }
+}
 
 // The composer restates three server rules (`handlers/conference_chat.go`): the
 // body length, the per-file size and the file count. Two of them were mirrored
@@ -14,10 +21,57 @@ import {
 // it is a raw English 400 landing in a Russian UI in the middle of a call.
 
 describe('conference chat composer rules', () => {
-  it('pins the three caps to the server’s', () => {
+  it('pins the four caps to the server’s', () => {
     expect(CONF_CHAT_MAX_BODY).toBe(4000)
     expect(CONF_CHAT_MAX_FILES).toBe(5)
     expect(CONF_CHAT_MAX_BYTES).toBe(25 * 1024 * 1024)
+    // The fourth is what bounds the *request*: five files of 25 MiB each is
+    // 125 MiB of multipart for one line of chat, and the route's transport
+    // budget is sized from this number (router.go routeConfMessages).
+    expect(CONF_CHAT_MAX_TOTAL_BYTES).toBe(25 * 1024 * 1024)
+  })
+
+  // The batch rule the composer never had. `maxChatFiles` bounds how many files
+  // travel, never how much: five 20 MB videos passed every check on every client
+  // and were then refused by the server — as of this change with its own
+  // sentence, and before it by the transport with "request body too large",
+  // which names nothing the user can act on. Said here, it is said before the
+  // upload starts and names the batch.
+  describe('confChatPickError', () => {
+    it('accepts an ordinary screenshot', () => {
+      expect(confChatPickError([], file(2))).toBe('')
+    })
+
+    it('refuses a file past the per-file cap, by itself', () => {
+      expect(confChatPickError([], file(30))).toBe('tooLarge')
+    })
+
+    it('refuses one file too many', () => {
+      const full = [file(1), file(1), file(1), file(1), file(1)]
+      expect(full).toHaveLength(CONF_CHAT_MAX_FILES)
+      expect(confChatPickError(full, file(1))).toBe('tooMany')
+    })
+
+    // The gap: each file is legal, the count is legal, the sum is not.
+    it('refuses a batch whose total is over the cap', () => {
+      const queued = [file(10), file(10)]
+      expect(confChatPickError(queued, file(10))).toBe('tooLargeTotal')
+    })
+
+    it('counts what is already queued, not just the new file', () => {
+      // 24 MiB queued: a 2 MiB file is fine on its own and over the line here.
+      expect(confChatPickError([], file(2))).toBe('')
+      expect(confChatPickError([file(24)], file(2))).toBe('tooLargeTotal')
+    })
+
+    it('allows a batch landing exactly on the cap', () => {
+      expect(confChatPickError([file(20)], file(5))).toBe('')
+    })
+
+    it('ignores a missing file', () => {
+      expect(confChatPickError([], null)).toBe('')
+      expect(confChatPickError([], undefined)).toBe('')
+    })
   })
 
   describe('confChatBodyLength', () => {

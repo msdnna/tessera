@@ -1053,6 +1053,7 @@
     <string name="conf_chat_load_older">Показать более ранние</string>
     <string name="conf_chat_unknown_author">Неизвестный автор</string>
     <string name="conf_chat_file_too_big">«%1$s» больше 25 МБ</string>
+    <string name="conf_chat_files_too_big">Вложения весят больше 25 МБ — отправьте их несколькими сообщениями</string>
     <string name="conf_chat_too_many_files">К одному сообщению можно приложить не больше %1$d файлов</string>
     <string name="conf_chat_too_long">Сообщение длиннее %1$d символов</string>
     <string name="conf_chat_size_b">%1$s Б</string>

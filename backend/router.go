@@ -57,6 +57,18 @@ const (
 	// import PATCHes its converted body through here, so a 20 MiB file the import
 	// route deliberately accepts landed as an empty document (#2932).
 	routeDocContent = "/api/documents/:id/content"
+	// A file dropped into the in-call chat. Fifth repeat, and the one where the
+	// three composers were loudest about a rule the transport did not honour: the
+	// handler, utils/confChat.js and util/ConferenceChat.kt all promise 25 MiB per
+	// file, while the blanket budget refused anything past one — so a screenshot
+	// from a phone left the composer and came back "request body too large".
+	//
+	// Unlike the four above, this route takes several files at once, so the budget
+	// is the *aggregate* one (maxChatTotalBytes) rather than the per-file cap:
+	// maxChatFiles × 25 MiB is 125 MiB of buffered multipart for one line of chat,
+	// which is the thing maxChatFiles was written to prevent in the first place
+	// (#2932).
+	routeConfMessages = "/api/conferences/:id/messages"
 	// Browser Sentry envelopes. Pinned to the handler's own ceiling rather than
 	// left on the blanket JSON budget so that an operator tightening
 	// MAX_BODY_BYTES doesn't silently start dropping crash reports at the
@@ -74,6 +86,13 @@ const (
 // leave only an absurd body to the transport. Same shape as the media budget,
 // which is 8 MiB of file with a megabyte of framing around it.
 const docContentEnvelope int64 = 1 << 20
+
+// chatFilesEnvelope is the same slack for the chat route: the message body
+// (maxChatBody runes, so at most ~16 KiB of UTF-8) plus a multipart part header
+// per file. Sized like the one above rather than to the framing proper so that an
+// ordinary overshoot is explained by readChatSubmission — "attachments exceed N
+// bytes" names what to drop — and only an absurd body meets the transport.
+const chatFilesEnvelope int64 = 1 << 20
 
 // authRateRules throttles the unauthenticated auth surface — the routes where a
 // cheap anonymous request costs the server a bcrypt round, an outgoing email or
@@ -227,7 +246,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// budget equal to it would refuse a document of exactly MaxDocContentBytes
 		// at the transport — the one size the validator promises to accept.
 		routeDocContent: handlers.MaxDocContentBytes + docContentEnvelope,
-		routeWS:         middleware.NoBodyLimit,
+		// The chat's aggregate file ceiling plus its framing, for the same reason:
+		// a budget equal to MaxChatTotalBytes would refuse at the transport the one
+		// batch readChatSubmission promises to take.
+		routeConfMessages: handlers.MaxChatTotalBytes + chatFilesEnvelope,
+		routeWS:           middleware.NoBodyLimit,
 
 		routeSentryTunnel: handlers.MaxEnvelopeBytes,
 	}))

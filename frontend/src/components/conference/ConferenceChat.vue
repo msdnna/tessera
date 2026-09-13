@@ -34,11 +34,13 @@ import { useAuthStore } from '@/stores/auth'
 import { useFormat } from '@/composables/useFormat'
 import {
   CONF_CHAT_MAX_BODY,
-  CONF_CHAT_MAX_BYTES,
   CONF_CHAT_MAX_FILES,
+  CONF_CHAT_MAX_TOTAL_BYTES,
   confChatBodyTooLong,
   confChatCanSend,
+  confChatPickError,
 } from '@/utils/confChat'
+import { formatFileSize } from '@/utils/docPdf'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const props = defineProps({
@@ -65,11 +67,10 @@ const message = useMessage()
 const { formatDateTime } = useFormat()
 
 const PAGE = 50
-// The composer's three caps are the server's, restated in `@/utils/confChat` —
+// The composer's four caps are the server's, restated in `@/utils/confChat` —
 // checked here too so a 30 MB video fails instantly instead of after a minute of
 // uploading, and so an over-long body is refused before the press rather than by
 // a 400 whose message is not even translated.
-const MAX_BYTES = CONF_CHAT_MAX_BYTES
 const MAX_FILES = CONF_CHAT_MAX_FILES
 
 const messages = ref([])
@@ -168,12 +169,23 @@ function onFiles(e) {
   // row fires no change event the second time.
   e.target.value = ''
   for (const f of picked) {
-    if (pending.value.length >= MAX_FILES) {
+    // The count refusal stops the loop (nothing after it can fit either); the
+    // two size ones skip just that file, because a smaller one behind it still
+    // can. Warned once per file rather than once per pick — the user picked
+    // them one by one and the name is the only way to tell which was dropped.
+    const reason = confChatPickError(pending.value, f)
+    if (reason === 'tooMany') {
       message.warning(t('conferences.chat.tooManyFiles', { count: MAX_FILES }))
       break
     }
-    if (f.size > MAX_BYTES) {
+    if (reason === 'tooLarge') {
       message.warning(t('conferences.chat.fileTooBig', { name: f.name }))
+      continue
+    }
+    if (reason === 'tooLargeTotal') {
+      message.warning(
+        t('conferences.chat.filesTooBig', { limit: formatFileSize(CONF_CHAT_MAX_TOTAL_BYTES) }),
+      )
       continue
     }
     pending.value.push(f)

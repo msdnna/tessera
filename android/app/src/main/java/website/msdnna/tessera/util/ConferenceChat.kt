@@ -22,6 +22,17 @@ const val CONF_CHAT_MAX_FILES = 5
 /** The server's per-file cap, checked here so a 30 MB video fails instantly. */
 const val CONF_CHAT_MAX_BYTES = 25L * 1024 * 1024
 
+/**
+ * The server's `MaxChatTotalBytes` — the cap on one message's files *together*.
+ *
+ * The fourth rule, and the one nobody had: [CONF_CHAT_MAX_FILES] bounds how many
+ * files travel, never how much. Five 20 MB videos passed every check on every
+ * client and the request was then refused server-side — and before the route had
+ * a body budget of its own, refused by the transport with "request body too
+ * large", which names nothing the user picked (#2932).
+ */
+const val CONF_CHAT_MAX_TOTAL_BYTES = 25L * 1024 * 1024
+
 /** The server's `maxChatBody`, in *runes* — see [confChatBodyLength]. */
 const val CONF_CHAT_MAX_BODY = 4000
 
@@ -35,7 +46,7 @@ data class ConfPendingFile(
 )
 
 /** Why a picked file did not make it onto the message. */
-enum class ConfPickRefusal { NONE, TOO_BIG, TOO_MANY }
+enum class ConfPickRefusal { NONE, TOO_BIG, TOO_BIG_TOTAL, TOO_MANY }
 
 /**
  * The composer's attachments after a pick, and the one refusal worth telling
@@ -62,6 +73,7 @@ data class ConfPickResult(
  */
 fun confChatAccept(pending: List<ConfPendingFile>, picked: List<ConfPendingFile>): ConfPickResult {
     val out = pending.toMutableList()
+    var total = pending.sumOf { it.size }
     var refusal = ConfPickRefusal.NONE
     var name = ""
     for (file in picked) {
@@ -75,10 +87,18 @@ fun confChatAccept(pending: List<ConfPendingFile>, picked: List<ConfPendingFile>
         }
         // An oversized file is skipped, not fatal — the rest of the pick is
         // still perfectly sendable, and the refusal below says what was lost.
-        if (file.size <= CONF_CHAT_MAX_BYTES) {
+        // The batch check is skipped the same way rather than breaking, because
+        // a smaller file behind a rejected one can still fit.
+        val over = when {
+            file.size > CONF_CHAT_MAX_BYTES -> ConfPickRefusal.TOO_BIG
+            total + file.size > CONF_CHAT_MAX_TOTAL_BYTES -> ConfPickRefusal.TOO_BIG_TOTAL
+            else -> ConfPickRefusal.NONE
+        }
+        if (over == ConfPickRefusal.NONE) {
             out += file
+            total += file.size
         } else if (refusal == ConfPickRefusal.NONE) {
-            refusal = ConfPickRefusal.TOO_BIG
+            refusal = over
             name = file.name
         }
     }

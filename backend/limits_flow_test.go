@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,7 +36,8 @@ func TestBodyLimitRoutesExist(t *testing.T) {
 	}
 	for _, want := range []string{
 		routeWS, routeUploads, routeAvatar, routeAttachments,
-		routeDocAssets, routeDocImport, routeDocPdf, routeDocContent, routeSentryTunnel,
+		routeDocAssets, routeDocImport, routeDocPdf, routeDocContent, routeConfMessages,
+		routeSentryTunnel,
 	} {
 		if !registered[want] {
 			t.Errorf("body-limit table names %q, which is not a registered route", want)
@@ -198,6 +200,51 @@ func TestDocumentContentBudgetSurvivesLongDocument(t *testing.T) {
 	}
 	if body := string(ref.Body); !strings.Contains(body, "content exceeds") {
 		t.Fatalf("oversized document was refused by the transport, not the validator: %s", truncate(ref.Body))
+	}
+}
+
+// The in-call chat repeats the same omission a fifth time, and this route is the
+// one where the gap is widest: the handler caps a file at maxAttachmentBytes
+// (25 MiB) and the message at maxChatFiles of them, while all three composers —
+// web (utils/confChat.js), Android (util/ConferenceChat.kt) and the handler's own
+// sentence — promise the reader 25 MiB. With no entry in the limits table the
+// request ran on the blanket 1 MiB, so every one of those promises was false past
+// the first megabyte: a screenshot from a phone left the composer, travelled the
+// wire and came back "request body too large", which names nothing the user did.
+//
+// The pair is the point, same as the PDF and document routes above: one upload
+// the route must carry, one it must refuse with its *own* answer. The refusal is
+// the aggregate ceiling, which the route budget exists to make reachable — five
+// files of 25 MiB each is 125 MiB of buffered multipart for one line of chat,
+// which is exactly what maxChatFiles was written to prevent.
+func TestConferenceChatBudgetSurvivesRealAttachment(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	_, confID := mkConference(t, owner, "Летучка с файлом")
+
+	// A 2 MiB screenshot: over the blanket ceiling, far under the route's own.
+	shot := make([]byte, 2<<20)
+	for i := range shot {
+		shot[i] = byte(i)
+	}
+	r := postChat(t, owner, confID, "скрин", map[string][]byte{"Экран.png": shot})
+	if r.Status != http.StatusCreated {
+		t.Fatalf("2 MiB chat attachment: status %d, want 201\n%s", r.Status, truncate(r.Body))
+	}
+
+	// Past the aggregate ceiling but inside the route's slack: refused by the
+	// handler, in its own words and before a byte reaches disk. The transport
+	// would answer "request body too large", which says nothing about files.
+	over := map[string][]byte{}
+	for i := 0; i < 5; i++ {
+		over[fmt.Sprintf("кусок-%d.bin", i)] = make([]byte, 5_400_000) // ~25.8 MiB in total
+	}
+	ref := postChat(t, owner, confID, "пачка", over)
+	if ref.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("~25.8 MiB of attachments: status %d, want 413\n%s", ref.Status, truncate(ref.Body))
+	}
+	if body := string(ref.Body); !strings.Contains(body, "attachments exceed") {
+		t.Fatalf("oversized batch was refused by the transport, not the handler: %s", truncate(ref.Body))
 	}
 }
 

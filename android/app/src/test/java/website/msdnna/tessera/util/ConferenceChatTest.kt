@@ -72,6 +72,46 @@ class ConferenceChatTest {
         assertThat(result.pending).hasSize(CONF_CHAT_MAX_FILES)
     }
 
+    // The rule that bounds the *request* rather than a file. CONF_CHAT_MAX_FILES
+    // says how many may travel, never how much: five 20 MB videos passed both
+    // checks here and on the web, and the server refused the batch — for most of
+    // this route's life not even with its own sentence, because the route carried
+    // no body budget and the transport answered first with "request body too
+    // large", which names nothing the user picked (#2932).
+    @Test
+    fun `a batch over the total cap is refused, and what fits is kept`() {
+        val ten = 10L * 1024 * 1024
+
+        val result = confChatAccept(
+            emptyList(),
+            listOf(file("а.mp4", ten), file("б.mp4", ten), file("в.mp4", ten)),
+        )
+
+        assertThat(result.pending.map { it.name }).containsExactly("а.mp4", "б.mp4").inOrder()
+        assertThat(result.refusal).isEqualTo(ConfPickRefusal.TOO_BIG_TOTAL)
+        assertThat(result.refusedName).isEqualTo("в.mp4")
+    }
+
+    @Test
+    fun `the total counts what is already queued`() {
+        val already = listOf(file("снято.mp4", CONF_CHAT_MAX_TOTAL_BYTES - 1024))
+
+        val result = confChatAccept(already, listOf(file("ещё.png", 2 * 1024)))
+
+        assertThat(result.pending).hasSize(1)
+        assertThat(result.refusal).isEqualTo(ConfPickRefusal.TOO_BIG_TOTAL)
+    }
+
+    @Test
+    fun `a batch landing exactly on the total cap goes through`() {
+        val half = CONF_CHAT_MAX_TOTAL_BYTES / 2
+
+        val result = confChatAccept(emptyList(), listOf(file("a", half), file("b", CONF_CHAT_MAX_TOTAL_BYTES - half)))
+
+        assertThat(result.pending).hasSize(2)
+        assertThat(result.refusal).isEqualTo(ConfPickRefusal.NONE)
+    }
+
     // ── the composer ──────────────────────────────────────────────────────
 
     @Test

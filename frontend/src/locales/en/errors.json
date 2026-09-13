@@ -23,6 +23,7 @@
     "invitationWrongAccount": "This invitation was sent to a different address",
     "bodyTooLarge": "The request is too large — shorten the text or the attachment",
     "docContentTooLarge": "The document is larger than {limit} — split it into several pages",
+    "chatAttachmentsTooLarge": "The attachments add up to more than {limit} — send them in several messages",
     "cannotChangeOwnerRole": "The workspace owner's role cannot be changed",
     "cannotRemoveOwner": "The workspace owner cannot be removed",
     "cannotChangeOwnRole": "You cannot change your own role — ask another admin",

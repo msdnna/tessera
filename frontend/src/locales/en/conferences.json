@@ -126,6 +126,7 @@
     "unknownAuthor": "Unknown author",
     "closed": "The conference has ended — the chat is read-only",
     "fileTooBig": "“{name}” is larger than 25 MB",
+    "filesTooBig": "The attachments add up to more than {limit} — send them in several messages",
     "tooManyFiles": "At most {count} files per message",
     "tooLong": "The message is longer than {count} characters"
   },
