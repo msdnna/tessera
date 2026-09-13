@@ -34,6 +34,10 @@ const SENTINELS = {
   // user hears about a too-long passphrase while typing it.
   'password is too short': 'passwordTooShort',
   'password is too long': 'passwordTooLong',
+  // Same shape for the approval route's cap (#2932): the panel mirrors
+  // maxDocApprovalSteps (utils/docApprovals.js) and greys the remaining names
+  // out, so this is only reached when that check was bypassed.
+  'too many approvers': 'tooManyApprovers',
   forbidden: 'forbidden',
   unauthorized: 'unauthorized',
   'not found': 'notFound',

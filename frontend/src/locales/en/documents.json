@@ -331,6 +331,7 @@
     "raiseDisabled": "The document is already under approval",
     "routeTitlePlaceholder": "What is being approved",
     "approversPlaceholder": "Approvers",
+    "approversTooMany": "A route may ask at most {max} approvers",
     "submit": "Send",
     "mode": { "sequential": "One by one", "parallel": "All at once" },
     "error": { "load": "Could not load the links" }

@@ -100,6 +100,26 @@ export function documentApprovalState(approvals) {
   return open || list[0]
 }
 
+/**
+ * How many people one route may ask — `maxDocApprovalSteps` in
+ * handlers/document_approvals.go. Past it the server answers 400, and the panel
+ * composes the route in a picker that has no idea the limit exists.
+ */
+export const MAX_APPROVERS = 25
+
+/**
+ * Why the composed route would be refused, as a reason key ('' when it would be
+ * taken). The server's order is reproduced exactly — dedupe, then empty, then
+ * the cap — because the two ends have to agree on the *same* list: counting raw
+ * entries would disable a submit a deduping server would have accepted.
+ */
+export function routeApproversRefusal(approvers) {
+  const named = new Set((approvers || []).filter(Boolean))
+  if (named.size === 0) return 'empty'
+  if (named.size > MAX_APPROVERS) return 'tooMany'
+  return ''
+}
+
 /** Whether a new route may be raised — one open route per document. */
 export function canRaiseApproval(approvals) {
   return !(approvals || []).some((a) => a.status === APPROVAL_PENDING)

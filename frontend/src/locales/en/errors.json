@@ -15,7 +15,8 @@
     "notFound": "Not found",
     "passwordTooShort": "Password is too short — at least 8 characters",
     "passwordTooLong": "Password is too long — at most 72 bytes",
-    "jobAlreadyRunning": "This job is already running — wait for it to finish"
+    "jobAlreadyRunning": "This job is already running — wait for it to finish",
+    "tooManyApprovers": "The approval route asks too many people"
   },
   "validation": {
     "email": "Enter a valid email",

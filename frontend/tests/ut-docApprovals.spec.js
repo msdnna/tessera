@@ -4,7 +4,9 @@ import {
   canDecideNow,
   canRaiseApproval,
   documentApprovalState,
+  MAX_APPROVERS,
   orderedSteps,
+  routeApproversRefusal,
   stepForApprover,
   stepState,
 } from '@/utils/docApprovals'
@@ -202,5 +204,48 @@ describe('canRaiseApproval', () => {
 
   it('refuses a second open route', () => {
     expect(canRaiseApproval([{ status: 'pending' }])).toBe(false)
+  })
+})
+
+// ── the route's size, before the press ──────────────────────────────────────
+// handlers/document_approvals.go walks one list in one order: dedupe, then
+// refuse an empty route, then refuse one longer than maxDocApprovalSteps. The
+// panel has to reach the same verdict for the same list, because the only other
+// way the user learns it is a 400 that also costs them the names they picked.
+
+describe('routeApproversRefusal', () => {
+  const ids = (n) => Array.from({ length: n }, (_, i) => `u${i}`)
+
+  it('refuses an empty route', () => {
+    expect(routeApproversRefusal([])).toBe('empty')
+    expect(routeApproversRefusal(null)).toBe('empty')
+  })
+
+  it('refuses a route of blanks — they are not approvers', () => {
+    expect(routeApproversRefusal(['', null, undefined])).toBe('empty')
+  })
+
+  it('accepts a route filled exactly to the cap', () => {
+    expect(routeApproversRefusal(ids(MAX_APPROVERS))).toBe('')
+  })
+
+  it('refuses one name past the cap', () => {
+    expect(routeApproversRefusal(ids(MAX_APPROVERS + 1))).toBe('tooMany')
+  })
+
+  it('refuses a long route regardless of blanks padding it', () => {
+    expect(routeApproversRefusal([...ids(MAX_APPROVERS + 1), '', null])).toBe('tooMany')
+  })
+
+  it('counts what the server counts — duplicates collapse before the cap', () => {
+    // The server dedupes first, so a list that *looks* over the cap but names
+    // only 25 people is accepted. Counting raw entries would disable a submit
+    // the server would have taken.
+    expect(routeApproversRefusal([...ids(MAX_APPROVERS), 'u0'])).toBe('')
+    expect(routeApproversRefusal(Array.from({ length: 40 }, () => 'u1'))).toBe('')
+  })
+
+  it('caps at the number the server caps at', () => {
+    expect(MAX_APPROVERS).toBe(25)
   })
 })

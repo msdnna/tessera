@@ -331,6 +331,7 @@
     "raiseDisabled": "Документ уже на согласовании",
     "routeTitlePlaceholder": "Что согласуем",
     "approversPlaceholder": "Согласующие",
+    "approversTooMany": "В маршруте не больше {max} согласующих",
     "submit": "Отправить",
     "mode": { "sequential": "По очереди", "parallel": "Одновременно" },
     "error": { "load": "Не удалось загрузить связи" }

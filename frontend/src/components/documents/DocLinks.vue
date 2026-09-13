@@ -9,7 +9,9 @@ import {
   approvalProgress,
   approvalStatusLabel,
   canDecideNow,
+  MAX_APPROVERS,
   orderedSteps,
+  routeApproversRefusal,
   stepState,
   stepStatusLabel,
 } from '@/utils/docApprovals'
@@ -93,9 +95,22 @@ const modeOptions = computed(() => [
   { label: t('documents.links.mode.parallel'), value: 'parallel' },
 ])
 
-const memberOptions = computed(() =>
-  members.value.map((m) => ({ label: m.name || m.email, value: m.user_id })),
-)
+// Why the composed route would be refused — asked before the press rather than
+// read off a 400 that also takes the picked names with it (submitRoute clears
+// the form on emit, so a refusal means composing the whole route again).
+const routeRefusal = computed(() => routeApproversRefusal(routeApprovers.value))
+
+// At the cap the remaining names go grey instead of the 26th pick failing later.
+// Already-picked ones stay enabled — otherwise a full route could not be edited,
+// only cleared.
+const memberOptions = computed(() => {
+  const full = routeApprovers.value.length >= MAX_APPROVERS
+  return members.value.map((m) => ({
+    label: m.name || m.email,
+    value: m.user_id,
+    disabled: full && !routeApprovers.value.includes(m.user_id),
+  }))
+})
 
 async function openRaise() {
   raising.value = true
@@ -110,7 +125,7 @@ async function openRaise() {
 }
 
 function submitRoute() {
-  if (!routeApprovers.value.length) return
+  if (routeRefusal.value) return
   emit('raise', {
     title: routeTitle.value,
     mode: routeMode.value,
@@ -353,11 +368,19 @@ function approvalMeta(a) {
             data-testid="doc-approval-approvers"
             :options="memberOptions"
           />
+          <n-text
+            v-if="routeRefusal === 'tooMany'"
+            type="error"
+            class="empty"
+            data-testid="doc-approval-too-many"
+          >
+            {{ $t('documents.links.approversTooMany', { max: MAX_APPROVERS }) }}
+          </n-text>
           <div class="row">
             <n-button
               size="tiny"
               type="primary"
-              :disabled="!routeApprovers.length"
+              :disabled="!!routeRefusal"
               data-testid="doc-approval-submit"
               @click="submitRoute"
             >
