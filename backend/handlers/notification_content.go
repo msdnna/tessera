@@ -135,12 +135,18 @@ var fieldWords = map[string]string{
 	"reopened":    "возвращена в работу",
 }
 
-func msgMoved(actor string, number *int64, column string) notifyMsg {
+func msgMoved(actor string, number *int64, column string, columnKey *string) notifyMsg {
 	p := event(evMoved, number)
 	p["actor"] = actor
-	// Column names are user data (and the GitLab mapping keys off them), so this
-	// one is carried verbatim, not translated.
+	// A column the user named is user data (and the GitLab mapping keys off that
+	// name), so it is carried verbatim. The four columns seeded with a board are
+	// not: they carry a name_key (#2800) and every client captions them from it,
+	// so the key rides along or the bell would say «Готово» about the column the
+	// same screen labels "Done".
 	p["column"] = column
+	if columnKey != nil && *columnKey != "" {
+		p["column_key"] = *columnKey
+	}
 	return notifyMsg{
 		text:    fmt.Sprintf("%s переместил(а) задачу #%s → «%s»", actor, taskRef(number), column),
 		payload: p,

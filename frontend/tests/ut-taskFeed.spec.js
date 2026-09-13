@@ -42,6 +42,21 @@ describe('taskFeed.eventText', () => {
     // An out-of-range level falls back to the raw value rather than "undefined".
     expect(eventText({ kind: 'priority', data: { to: 99 } })).toBe('изменил(а) приоритет → 99')
   })
+
+  // A move lands on a seeded column as often as not, and those carry a name_key
+  // (#2800) — the journal must caption it the way the board does, while a column
+  // the user named (no key) reads verbatim in every language.
+  it('captions a seeded target column in the active language', async () => {
+    const { setI18nLocale } = await import('@/i18n')
+    const moved = { kind: 'moved', data: { to: 'Готово', to_key: 'done' } }
+    expect(eventText(moved)).toBe('переместил(а) → «Готово»')
+    await setI18nLocale('en')
+    expect(eventText(moved)).toBe('moved it to “Done”')
+    expect(eventText({ kind: 'moved', data: { to: 'Протестировано' } })).toBe(
+      'moved it to “Протестировано”',
+    )
+    await setI18nLocale('ru')
+  })
 })
 
 describe('taskFeed.fmtWhen', () => {

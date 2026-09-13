@@ -139,6 +139,27 @@ func TestSentenceWording(t *testing.T) {
 			lang:    "en",
 			want:    "Alice mentioned you in #?",
 		},
+		// A seeded column is a server-born name with a name_key (#2800), exactly
+		// like the personal workspace: the reader must see the caption their own
+		// board shows them, not the Russian string the seeder stored.
+		{
+			name:    "moved captions a seeded column in the reader's language",
+			payload: map[string]any{"event": "task_moved", "actor": "Alice", "task_number": float64(42), "column": "Готово", "column_key": "done"},
+			lang:    "en",
+			want:    "Alice moved task #42 → “Done”",
+		},
+		{
+			name:    "moved keeps a user-named column verbatim",
+			payload: map[string]any{"event": "task_moved", "actor": "Alice", "task_number": float64(42), "column": "Протестировано"},
+			lang:    "en",
+			want:    "Alice moved task #42 → “Протестировано”",
+		},
+		{
+			name:    "moved falls back to the stored name for a key this build doesn't know",
+			payload: map[string]any{"event": "task_moved", "actor": "Алиса", "task_number": float64(42), "column": "Приёмка", "column_key": "acceptance"},
+			lang:    "ru",
+			want:    "Алиса переместил(а) задачу #42 → «Приёмка»",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

@@ -21,7 +21,7 @@ func TestNotifyMsgLegacyText(t *testing.T) {
 		{"assigned/long title", msgAssigned("Иван", &num, "Очень длинное название задачи"), "Иван назначил вам задачу #42"},
 		{"assigned/no number", msgAssigned("Иван", nil, ""), "Иван назначил вам задачу #?"},
 		{"updated", msgUpdated("Иван", &num, []string{"title", "due"}), "Иван изменил(а) задачу #42: название, срок"},
-		{"moved", msgMoved("Иван", &num, "Готово"), "Иван переместил(а) задачу #42 → «Готово»"},
+		{"moved", msgMoved("Иван", &num, "Готово", ptr("done")), "Иван переместил(а) задачу #42 → «Готово»"},
 		{"archived", msgArchived("Иван", &num, "Полить цветы"), "Иван архивировал(а) задачу #42 «Полить цветы»"},
 		{"comment", msgComment("Иван", &num, "Готово"), "Иван прокомментировал #42 «Готово»"},
 		{"thread reply", msgThreadReply("Иван", &num, "Готово"), "Иван ответил(а) в обсуждении #42 «Готово»"},
@@ -91,6 +91,19 @@ func TestNotifyMsgPayload(t *testing.T) {
 	p = decode(t, msgReminder(""))
 	if _, ok := p["message"]; ok {
 		t.Fatalf("empty reminder should carry no message, got %v", p["message"])
+	}
+
+	// A seeded column carries its name_key next to the stored Russian name
+	// (#2800), so the reader is captioned in their own language — the same deal
+	// as the personal workspace. A column the user named has no key and stays
+	// verbatim, which is what makes the distinction mean anything.
+	p = decode(t, msgMoved("Иван", &num, "Готово", ptr("done")))
+	if p["column"] != "Готово" || p["column_key"] != "done" {
+		t.Fatalf("moved payload = %v, want the stored name and its key", p)
+	}
+	p = decode(t, msgMoved("Иван", &num, "Протестировано", nil))
+	if _, ok := p["column_key"]; ok {
+		t.Fatalf("a user-named column should carry no key, got %v", p["column_key"])
 	}
 }
 

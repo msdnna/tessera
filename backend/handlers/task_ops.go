@@ -336,9 +336,18 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 	}
 
 	if t.ColumnID != columnID {
-		h.logEvent(c, t.ID, "moved", map[string]any{"to": col.Name})
+		// The journal and the notification both name the target column, and both
+		// carry its name_key beside the stored name: a seeded column is captioned
+		// by the reader's client (#2800), a column the user renamed has no key and
+		// stays as written. Entries from before this carry no key and fall back to
+		// the stored string, which is what they used to show anyway.
+		moved := map[string]any{"to": col.Name}
+		if col.NameKey != nil && *col.NameKey != "" {
+			moved["to_key"] = *col.NameKey
+		}
+		h.logEvent(c, t.ID, "moved", moved)
 		h.notifyTaskParticipants(c, updated, wsID, "moved",
-			msgMoved(h.actorName(c), updated.Number, col.Name))
+			msgMoved(h.actorName(c), updated.Number, col.Name, col.NameKey))
 	}
 
 	// Auto-toggle completion based on the board's configured "done" column:

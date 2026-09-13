@@ -69,7 +69,11 @@ var bundles = map[string]bundle{
 			"reopened":    "возвращена в работу",
 		},
 		defaultNames: map[string]string{
-			"personal": "Личное пространство",
+			"personal":    "Личное пространство",
+			"todo":        "К работе",
+			"in_progress": "В процессе",
+			"review":      "На рассмотрении",
+			"done":        "Готово",
 		},
 		kinds: map[string]string{
 			"assigned":          "Назначена задача",
@@ -120,7 +124,11 @@ var bundles = map[string]bundle{
 			"reopened":    "reopened",
 		},
 		defaultNames: map[string]string{
-			"personal": "Personal space",
+			"personal":    "Personal space",
+			"todo":        "To do",
+			"in_progress": "In progress",
+			"review":      "In review",
+			"done":        "Done",
 		},
 		kinds: map[string]string{
 			"assigned":          "Task assigned",
@@ -161,10 +169,11 @@ func Title(kind, lang string) string {
 	return b.fallbackKind
 }
 
-// DefaultName captions a name the server seeded and stored in Russian — today
-// the personal workspace (#2800). In a client the caption is drawn from name_key
-// by the client itself; a delivery that leaves the app has no client, so it is
-// drawn here, in the recipient's language.
+// DefaultName captions a name the server seeded and stored in Russian — the
+// personal workspace and the four columns every board is seeded with (#2800). In
+// a client the caption is drawn from name_key by the client itself; a delivery
+// that leaves the app has no client, so it is drawn here, in the recipient's
+// language.
 //
 // key is the row's name_key: empty for a name the user chose, and that name is
 // carried verbatim in every language. A key this build doesn't know falls back to
@@ -218,7 +227,10 @@ func Sentence(payload map[string]any, lang, fallback string) string {
 		"{actor}", str(payload["actor"]),
 		"{ref}", taskRef(payload["task_number"]),
 		"{ctx}", ctx,
-		"{column}", str(payload["column"]),
+		// A column seeded with the board carries its name_key, so it reads in the
+		// recipient's language like every other server-born name; a column the
+		// user named has no key and is carried verbatim.
+		"{column}", DefaultName(str(payload["column_key"]), str(payload["column"]), lang),
 		"{title}", str(payload["title"]),
 		"{label}", str(payload["label"]),
 		"{reason}", str(payload["reason"]),

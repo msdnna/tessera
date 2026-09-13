@@ -67,6 +67,31 @@ describe('notificationText', () => {
     }
   })
 
+  // A seeded column is a server-born name with a name_key (#2800), so the bell
+  // has to caption it the way the board does — otherwise the same column reads
+  // "Done" on the card and «Готово» one panel over.
+  it('captions a seeded column in the reader s language', async () => {
+    const seeded = {
+      event: 'task_moved',
+      actor: 'Иван',
+      task_number: 42,
+      column: 'Готово',
+      column_key: 'done',
+    }
+    expect(notificationText(N(seeded), ru())).toBe('Иван переместил(а) задачу #42 → «Готово»')
+    await setI18nLocale('en')
+    expect(notificationText(N(seeded), en())).toBe('Иван moved task #42 → “Done”')
+  })
+
+  it('shows a user-named column verbatim, and falls back for an unknown key', async () => {
+    // No key — the server drops it on rename, so this name is the user's own.
+    const mine = { event: 'task_moved', actor: 'Иван', task_number: 42, column: 'Протестировано' }
+    const unknown = { ...mine, column: 'Приёмка', column_key: 'acceptance' }
+    await setI18nLocale('en')
+    expect(notificationText(N(mine), en())).toBe('Иван moved task #42 → “Протестировано”')
+    expect(notificationText(N(unknown), en())).toBe('Иван moved task #42 → “Приёмка”')
+  })
+
   // The changed fields arrive as machine names and are joined by Intl.ListFormat,
   // so the enumeration reads naturally in both languages instead of being a
   // comma-spliced list built on the server.

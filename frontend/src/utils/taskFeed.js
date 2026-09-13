@@ -4,6 +4,7 @@
 import { i18n } from '@/i18n'
 import { PRIORITY_KEYS, priorityLabel } from '@/utils/priority'
 import { defaultFormatters } from '@/utils/format'
+import { columnName } from '@/utils/defaultNames'
 
 // Short "12 янв., 14:03" stamp used on comment and journal rows. `fmt` is a
 // formatter set from useFormat() — it carries the language, the timezone and the
@@ -76,7 +77,15 @@ export function eventText(e) {
     case 'recurred':
       return t('task.journal.recurred')
     case 'moved':
-      return d.to ? t('task.journal.movedTo', { to: d.to }) : t('task.journal.moved')
+      // A column seeded with the board is captioned from its name_key (#2800),
+      // the same as everywhere else the column is named; a column the user named
+      // has no key and reads verbatim. Entries older than the key fall back to
+      // the recorded string.
+      return d.to
+        ? t('task.journal.movedTo', {
+            to: columnName({ name: d.to, name_key: d.to_key }, { t, te: i18n.global.te }),
+          })
+        : t('task.journal.moved')
     case 'assigned':
       return t('task.journal.assigned')
     case 'unassigned':
