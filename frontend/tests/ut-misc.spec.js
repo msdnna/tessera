@@ -107,6 +107,23 @@ describe('humanizeError', () => {
     expect(humanizeError('connect ECONNREFUSED')).toContain('Нет связи с сервером')
   })
 
+  // The one refusal on this catalogue's list an ordinary user reaches by
+  // ordinary means: a typo in the current-password field (#2932). It lands in
+  // SettingsView's `pwError` — printed inline under the form, not as a toast
+  // that scrolls away — so the bare English line sat in the Russian UI.
+  it('maps the wrong current password', () => {
+    expect(humanizeError('current password is incorrect')).toBe('Текущий пароль неверен')
+  })
+
+  // The membership dialog's "no account yet → send an invitation instead"
+  // fallback used to branch on this very string surviving untranslated. It
+  // reads `err.raw` now, so the sentence is free to be a sentence.
+  it('maps the unknown-email refusal the invite fallback branches on', () => {
+    expect(humanizeError('no user with that email')).toBe(
+      'Пользователя с таким email нет — можно отправить приглашение',
+    )
+  })
+
   it('passes an unknown short message through unchanged', () => {
     expect(humanizeError('Своя ошибка')).toBe('Своя ошибка')
   })

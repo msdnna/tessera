@@ -69,6 +69,16 @@ private val sentinels = mapOf(
     "token expired" to R.string.err_link_expired,
     "account is deactivated" to R.string.err_account_deactivated,
     "account deactivated" to R.string.err_account_deactivated,
+    // Опечатка в поле «текущий пароль» (#2932) — единственный отказ из этого
+    // списка, до которого доходят обычным путём. Печатается прямо в форме
+    // (ProfileScreen), так что английская строка оставалась на экране.
+    "current password is incorrect" to R.string.err_current_password_wrong,
+    // Добавление участника по адресу, за которым нет аккаунта. На вебе по этому
+    // же ответу ветвится предложение отправить приглашение — но по сырой строке
+    // (`rawErrorText`), а не по этой фразе.
+    "no user with that email" to R.string.err_no_user_with_email,
+    "job is already running" to R.string.err_job_already_running,
+    "too many approvers" to R.string.err_too_many_approvers,
     "forbidden" to R.string.err_forbidden,
     "unauthorized" to R.string.err_unauthorized,
     "not found" to R.string.err_not_found,

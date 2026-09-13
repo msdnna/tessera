@@ -193,6 +193,13 @@ api.interceptors.response.use(
     // few need to tell one failure from another (e.g. 409 "address taken" is
     // fixable inline, everything else is a toast).
     wrapped.status = err.response?.status
+    // …and the server's own words, untouched. Status alone doesn't always
+    // separate two outcomes of one call, so a caller that branches has to
+    // compare against the English sentinel — never against `message`, which is
+    // written in whatever language the UI is in and gets rewritten outright the
+    // day that sentinel joins the catalogue (#2932). Mirrors the phone's
+    // `rawErrorText` (android util/Errors.kt).
+    wrapped.raw = raw
     // Distinguish "server unreachable" (network/DNS/timeout — no response at all)
     // from an HTTP error the server answered with. Callers that retry (e.g. the
     // comment composer) only retry when offline; a 4xx/5xx is not a connectivity

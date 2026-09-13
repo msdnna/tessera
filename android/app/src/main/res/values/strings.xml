@@ -1395,6 +1395,10 @@
     <string name="err_link_invalid">Ссылка недействительна или устарела</string>
     <string name="err_link_expired">Срок действия ссылки истёк</string>
     <string name="err_account_deactivated">Аккаунт деактивирован</string>
+    <string name="err_current_password_wrong">Текущий пароль неверен</string>
+    <string name="err_no_user_with_email">Пользователя с таким email нет — можно отправить приглашение</string>
+    <string name="err_job_already_running">Задача уже выполняется — дождитесь её завершения</string>
+    <string name="err_too_many_approvers">В маршруте согласования слишком много участников</string>
     <string name="err_forbidden">Недостаточно прав</string>
     <string name="err_unauthorized">Нужно войти заново</string>
     <string name="err_not_found">Не найдено</string>

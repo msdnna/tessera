@@ -78,7 +78,10 @@ async function invite() {
     await load()
     message.success(t('shell.members.added'))
   } catch (err) {
-    if (err.message === 'no user with that email') {
+    // `raw`, not `message`: the branch is on the server's English sentinel. The
+    // humanized line is localized and would stop matching the moment that
+    // sentinel got a catalogue entry — which it now has (#2932).
+    if (err.raw === 'no user with that email') {
       try {
         const res = await wsApi.createInvitation(props.wsId, { email: e, role: role.value })
         lastLink.value = res.data.link || ''

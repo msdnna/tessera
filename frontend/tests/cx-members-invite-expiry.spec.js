@@ -102,3 +102,62 @@ describe('MembersModal: срок приглашения', () => {
     expect(dead.findAll('button').length).toBeGreaterThan(0)
   })
 })
+
+// Одно поле на два исхода: известный адрес добавляется участником сразу,
+// неизвестный сваливается в приглашение. Развилка — ответ сервера «no user with
+// that email», и сравнивать её можно только с сырой английской строкой: `message`
+// уже причёсан humanizeError и переписывается при добавлении сентинела в каталог
+// (#2932), да ещё и меняется вместе с языком интерфейса.
+describe('MembersModal: развилка «участник или приглашение»', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  const api = async () => (await import('@/api')).workspaces
+
+  const typeAndInvite = async (w, mail) => {
+    await w.find('.invite input').setValue(mail)
+    await w.findAll('.invite button')[0].trigger('click')
+    await new Promise((r) => setTimeout(r, 0))
+    await w.vm.$nextTick()
+  }
+
+  // Перехватчик кладёт сентинел в `raw`, а в `message` — уже готовую фразу.
+  const refusal = () => {
+    const e = new Error('Пользователя с таким email нет — можно отправить приглашение')
+    e.raw = 'no user with that email'
+    e.status = 404
+    return e
+  }
+
+  it('на неизвестный адрес заводит приглашение, а не показывает ошибку', async () => {
+    const w = await open([])
+    const wsApi = await api()
+    wsApi.addMember.mockRejectedValue(refusal())
+    wsApi.createInvitation.mockResolvedValue({ data: { link: 'https://t/invite?token=x' } })
+
+    await typeAndInvite(w, 'stranger@example.com')
+
+    expect(wsApi.createInvitation).toHaveBeenCalledWith('ws-1', {
+      email: 'stranger@example.com',
+      role: 'member',
+    })
+    expect(w.find('.link-box input').element.value).toBe('https://t/invite?token=x')
+  })
+
+  // Негативный контроль: на любой другой отказ приглашение НЕ заводится —
+  // иначе развилка выродилась бы в «всегда приглашать».
+  it('на другой отказ приглашение не заводит', async () => {
+    const w = await open([])
+    const wsApi = await api()
+    const other = new Error('Недостаточно прав')
+    other.raw = 'requires admin'
+    other.status = 403
+    wsApi.addMember.mockRejectedValue(other)
+
+    await typeAndInvite(w, 'someone@example.com')
+
+    expect(wsApi.createInvitation).not.toHaveBeenCalled()
+  })
+})

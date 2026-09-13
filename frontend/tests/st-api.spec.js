@@ -179,6 +179,22 @@ describe('api error handling', () => {
     instanceAdapter.mockImplementation((config) => fail(config, 500, { error: 'boom' }))
     await expect(auth.me()).rejects.toMatchObject({ offline: false })
   })
+
+  // `message` is the humanized, localized line — the wrong thing to branch on:
+  // it changes with the UI language, and a sentinel added to the catalogue
+  // rewrites it outright. Callers that tell one refusal from another compare
+  // against `raw`, the server's own English (Android's `rawErrorText`, #2932).
+  it('keeps the backend sentinel reachable as `raw`', async () => {
+    instanceAdapter.mockImplementation((config) =>
+      fail(config, 404, { error: 'no user with that email' }),
+    )
+    await expect(auth.me()).rejects.toMatchObject({ raw: 'no user with that email' })
+  })
+
+  it('falls back to the axios message when the body carries no sentinel', async () => {
+    instanceAdapter.mockImplementation((config) => fail(config, 500, {}))
+    await expect(auth.me()).rejects.toMatchObject({ raw: 'Request failed with status code 500' })
+  })
 })
 
 describe('refresh-on-401', () => {

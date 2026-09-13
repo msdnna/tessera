@@ -16,6 +16,8 @@
     "passwordTooShort": "Password is too short — at least 8 characters",
     "passwordTooLong": "Password is too long — at most 72 bytes",
     "jobAlreadyRunning": "This job is already running — wait for it to finish",
+    "currentPasswordWrong": "Current password is incorrect",
+    "noUserWithEmail": "No account uses this email — you can send an invitation",
     "tooManyApprovers": "The approval route asks too many people"
   },
   "validation": {

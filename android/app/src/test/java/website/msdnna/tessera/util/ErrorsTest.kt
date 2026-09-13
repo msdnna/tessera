@@ -75,6 +75,28 @@ class ErrorsTest {
             .isEqualTo("Password is too long — at most 72 bytes")
     }
 
+    /** Опечатка в текущем пароле — единственный отказ из этого каталога, до
+     *  которого обычный пользователь доходит обычным путём. Печатается прямо в
+     *  форме (ProfileScreen, TFormError), и до #2932 — по-английски. */
+    @Test
+    fun `humanizeError maps the wrong current password`() {
+        assertThat(humanizeError("current password is incorrect")?.resolve(ru))
+            .isEqualTo("Текущий пароль неверен")
+        assertThat(humanizeError("current password is incorrect")?.resolve(en))
+            .isEqualTo("Current password is incorrect")
+    }
+
+    /** Каталог обязан совпадать с вебовским (`frontend/src/utils/errors.js`) —
+     *  один и тот же сервер отвечает обоим клиентам, и разойтись они могут
+     *  только молча. Эти два сентинела веб знал, а телефон — нет. */
+    @Test
+    fun `humanizeError knows the sentinels the web catalogue has`() {
+        assertThat(humanizeError("job is already running")?.resolve(ru))
+            .isEqualTo("Задача уже выполняется — дождитесь её завершения")
+        assertThat(humanizeError("too many approvers")?.resolve(ru))
+            .isEqualTo("В маршруте согласования слишком много участников")
+    }
+
     @Test
     fun `humanizeError validator email`() {
         val raw = "Key: 'Req.Email' Error:Field validation for 'Email' failed on the 'email' tag"

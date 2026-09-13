@@ -29,6 +29,15 @@ const SENTINELS = {
   'account is deactivated': 'accountDeactivated',
   'account deactivated': 'accountDeactivated',
   'job is already running': 'jobAlreadyRunning',
+  // A typo in the current-password field (#2932) — the one refusal on this list
+  // an ordinary user reaches by ordinary means. SettingsView prints it inline
+  // under the form rather than as a toast, so the bare English line stayed on
+  // screen until the next attempt.
+  'current password is incorrect': 'currentPasswordWrong',
+  // Adding a member by an address no account uses. The membership dialog also
+  // *branches* on this one (unknown address → offer an invitation instead), and
+  // it compares against `err.raw` rather than this sentence — see api/index.js.
+  'no user with that email': 'noUserWithEmail',
   // The two ends of the password rule (#2932). Reached only when a client's own
   // check was bypassed — the forms mirror the rule (utils/password.js) so the
   // user hears about a too-long passphrase while typing it.

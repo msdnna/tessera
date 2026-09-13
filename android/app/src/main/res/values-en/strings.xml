@@ -1352,6 +1352,10 @@
     <string name="err_link_invalid">The link is invalid or has expired</string>
     <string name="err_link_expired">The link has expired</string>
     <string name="err_account_deactivated">Account deactivated</string>
+    <string name="err_current_password_wrong">Current password is incorrect</string>
+    <string name="err_no_user_with_email">No account uses this email — you can send an invitation</string>
+    <string name="err_job_already_running">This job is already running — wait for it to finish</string>
+    <string name="err_too_many_approvers">The approval route asks too many people</string>
     <string name="err_forbidden">Not enough permissions</string>
     <string name="err_unauthorized">Please sign in again</string>
     <string name="err_not_found">Not found</string>
