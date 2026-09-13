@@ -169,6 +169,7 @@ func TestBlockedTaskIDs(t *testing.T) {
 			{Kind: "blocks", TaskID: "t3", RelatedTaskID: "t4"},
 			{Kind: "relates", TaskID: "t5", RelatedTaskID: "t6"},
 		},
+		"/api/boards/b1/subtasks": []model.Task{},
 	}
 	c := fakeAPI(t, routes)
 	tasks := []model.Task{{ID: "t1"}, {ID: "t2"}, {ID: "t3", CompletedAt: &done}, {ID: "t4"}}
@@ -184,5 +185,45 @@ func TestBlockedTaskIDs(t *testing.T) {
 	}
 	if blocked["t5"] || blocked["t6"] {
 		t.Error("relates edges must not gate work")
+	}
+}
+
+// TestBlockedTaskIDsOffBoardBlockers pins the two kinds of blocker the card list
+// does not contain. GET /boards/:id/tasks is top-level and active only, while the
+// dependency graph returns every edge whose endpoints sit on the board — so a
+// subtask blocker and an archived blocker both arrive as ids nobody can look up.
+// Reading a missing id off the completion map answers "open", which is the one
+// answer that must not be guessed: it gates the dependent task forever.
+func TestBlockedTaskIDsOffBoardBlockers(t *testing.T) {
+	done := time.Now()
+	routes := map[string]any{
+		"/api/boards/b1/dependencies": []model.Dependency{
+			{Kind: "blocked_by", TaskID: "t1", RelatedTaskID: "s1"},   // done subtask
+			{Kind: "blocked_by", TaskID: "t2", RelatedTaskID: "s2"},   // open subtask
+			{Kind: "blocked_by", TaskID: "t3", RelatedTaskID: "gone"}, // archived away
+		},
+		// The board's subtasks, the same shape the kanban loads them in.
+		"/api/boards/b1/subtasks": []model.Task{
+			{ID: "s1", CompletedAt: &done},
+			{ID: "s2"},
+		},
+	}
+	c := fakeAPI(t, routes)
+	tasks := []model.Task{{ID: "t1"}, {ID: "t2"}, {ID: "t3"}}
+	blocked, err := blockedTaskIDs(context.Background(), c, "b1", tasks)
+	if err != nil {
+		t.Fatalf("blockedTaskIDs: %v", err)
+	}
+	if blocked["t1"] {
+		t.Error("t1 should be free — its blocker is a subtask that is done")
+	}
+	if !blocked["t2"] {
+		t.Error("t2 should be blocked — its blocker is a subtask that is still open")
+	}
+	// An archived blocker is off the board by the user's own hand; the Gantt drops
+	// such an edge too (web dependencyOrder.topoByDeps ignores edges touching a
+	// task it was not given), so it must not gate work here either.
+	if blocked["t3"] {
+		t.Error("t3 should be free — its blocker was archived off the board")
 	}
 }

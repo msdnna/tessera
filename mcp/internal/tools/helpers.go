@@ -153,15 +153,36 @@ func columnName(ctx context.Context, c *client.Client, boardID, columnID string)
 }
 
 // blockedTaskIDs returns the set of task ids that have an open (incomplete)
-// blocker on the board, so next_task can skip them. tasks supplies completion
-// status; the dependency graph supplies the blocks/blocked_by edges.
+// blocker on the board, so next_task can skip them. The dependency graph supplies
+// the blocks/blocked_by edges; the task lists supply completion status.
+//
+// Both lists, not just the cards: GET /boards/:id/tasks is top-level and active
+// only, while ListBoardDependencies returns every edge whose two endpoints sit on
+// the board — subtasks included. A blocker missing from the map used to read as
+// open (the zero value of a bool), so a subtask blocker gated its dependent
+// forever, finishing it changed nothing, and next_task answered "all done or
+// blocked" about a board with work left on it.
+//
+// What is still unknown after both lists is a task the board no longer has —
+// archived, the supported way to take something off a board without deleting the
+// relation. That edge is dropped rather than guessed at, mirroring the Gantt's
+// rule for the same graph (web dependencyOrder.topoByDeps: edges touching a task
+// it was not given are ignored). Guessing "open" there is the expensive mistake:
+// it hides work, and no amount of finishing tasks clears it.
 func blockedTaskIDs(ctx context.Context, c *client.Client, boardID string, tasks []model.Task) (map[string]bool, error) {
 	deps, err := c.ListBoardDependencies(ctx, boardID)
 	if err != nil {
 		return nil, err
 	}
-	completed := make(map[string]bool, len(tasks))
+	subtasks, err := c.ListBoardSubtasks(ctx, boardID)
+	if err != nil {
+		return nil, err
+	}
+	completed := make(map[string]bool, len(tasks)+len(subtasks))
 	for _, t := range tasks {
+		completed[t.ID] = t.CompletedAt != nil
+	}
+	for _, t := range subtasks {
 		completed[t.ID] = t.CompletedAt != nil
 	}
 	blocked := map[string]bool{}
@@ -176,7 +197,8 @@ func blockedTaskIDs(ctx context.Context, c *client.Client, boardID string, tasks
 		default:
 			continue // relates/duplicates don't gate work
 		}
-		if !completed[blockerTask] {
+		isDone, known := completed[blockerTask]
+		if known && !isDone {
 			blocked[blockedTask] = true
 		}
 	}

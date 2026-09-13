@@ -212,6 +212,15 @@ func (c *Client) ListBoardTasks(ctx context.Context, boardID, milestone string) 
 	return out, c.get(ctx, "/boards/"+boardID+"/tasks", q, &out)
 }
 
+// ListBoardSubtasks returns every subtask on a board (parent_id set), at all
+// nesting levels, the way the kanban loads them to draw under their cards.
+// Companion to ListBoardTasks, which is top-level only — between them they cover
+// every active task on the board.
+func (c *Client) ListBoardSubtasks(ctx context.Context, boardID string) ([]model.Task, error) {
+	var out []model.Task
+	return out, c.get(ctx, "/boards/"+boardID+"/subtasks", nil, &out)
+}
+
 // ListWorkspaceTasks returns tasks across a workspace. When assigneeMe is true
 // the server scopes to tasks assigned to the token's owner.
 func (c *Client) ListWorkspaceTasks(ctx context.Context, workspaceID string, assigneeMe bool) ([]model.Task, error) {
