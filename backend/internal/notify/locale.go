@@ -33,7 +33,12 @@ type bundle struct {
 	fallbackKind string            // subject for a kind this bundle doesn't know
 	listSep      string            // how a list of changed fields is joined
 	digestTitle  string
-	digestHeader string // holds {count}
+	digestHeader string // holds {count} and {noun}
+	// digestNoun is the noun {noun} stands for, in the three CLDR forms
+	// i18n.Plural chooses between (one · few · many). The header carries a count,
+	// so the noun has to agree with it: a digest combines two rows or more, which
+	// in Russian is the "few" form far more often than not.
+	digestNoun [3]string
 	instant      string // duration under a second
 	durationHM   string // {h} {m}
 	durationMS   string // {m} {s}
@@ -103,7 +108,8 @@ var bundles = map[string]bundle{
 		fallbackKind:    "Уведомление",
 		listSep:         ", ",
 		digestTitle:     "Сводка уведомлений",
-		digestHeader:    "Сводка — {count} уведомлений:",
+		digestHeader:    "Сводка — {count} {noun}:",
+		digestNoun:      [3]string{"уведомление", "уведомления", "уведомлений"},
 		instant:         "меньше секунды",
 		durationHM:      "{h} ч {m} м",
 		durationMS:      "{m} м {s} с",
@@ -162,7 +168,8 @@ var bundles = map[string]bundle{
 		fallbackKind:    "Notification",
 		listSep:         ", ",
 		digestTitle:     "Notification digest",
-		digestHeader:    "Digest — {count} notifications:",
+		digestHeader:    "Digest — {count} {noun}:",
+		digestNoun:      [3]string{"notification", "notifications", "notifications"},
 		instant:         "less than a second",
 		durationHM:      "{h}h {m}m",
 		durationMS:      "{m}m {s}s",
@@ -216,9 +223,13 @@ func DeviceLabel(lang string) string { return bundleFor(lang).deviceLabel }
 // DigestTitle is the subject of a combined digest delivery.
 func DigestTitle(lang string) string { return bundleFor(lang).digestTitle }
 
-// DigestHeader is the line that opens a digest, above the bulleted items.
+// DigestHeader is the line that opens a digest, above the bulleted items. The
+// noun agrees with count in the reader's language — a digest is by definition a
+// plural delivery, and the count it opens with is the first thing read.
 func DigestHeader(count int, lang string) string {
-	return strings.ReplaceAll(bundleFor(lang).digestHeader, "{count}", strconv.Itoa(count))
+	b := bundleFor(lang)
+	noun := i18n.Plural(lang, count, b.digestNoun[0], b.digestNoun[1], b.digestNoun[2])
+	return strings.NewReplacer("{count}", strconv.Itoa(count), "{noun}", noun).Replace(b.digestHeader)
 }
 
 // Sentence renders a notification's payload into one line in lang. fallback is

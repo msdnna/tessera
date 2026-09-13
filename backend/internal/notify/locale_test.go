@@ -49,6 +49,14 @@ func TestBundlesCarryTheSameKeys(t *testing.T) {
 		if b.ctx == "" || b.fallbackKind == "" || b.digestTitle == "" {
 			t.Fatalf("%s: bundle is incomplete", lang)
 		}
+		// All three forms, even where a language only distinguishes two: the
+		// header is rendered through the same rule for every language, and an
+		// empty form would render as a missing word rather than as an error.
+		for i, form := range b.digestNoun {
+			if form == "" {
+				t.Errorf("%s: digestNoun form %d is empty", lang, i)
+			}
+		}
 		for k := range base.events {
 			if _, ok := b.events[k]; !ok {
 				t.Errorf("%s: missing event %q", lang, k)
@@ -218,8 +226,37 @@ func TestTitleAndDigest(t *testing.T) {
 	if got, want := DigestHeader(3, "en"), "Digest — 3 notifications:"; got != want {
 		t.Errorf("DigestHeader(3, en) = %q, want %q", got, want)
 	}
-	if got, want := DigestHeader(3, "ru"), "Сводка — 3 уведомлений:"; got != want {
-		t.Errorf("DigestHeader(3, ru) = %q, want %q", got, want)
+}
+
+// A digest opens with a count, so its noun has to agree with it. Russian needs
+// all three CLDR forms, and the range a digest actually lands in — drainDeliveries
+// only combines two rows or more — is precisely the "few" one that a single frozen
+// form gets wrong.
+func TestDigestHeaderAgreesWithItsCount(t *testing.T) {
+	cases := []struct {
+		count int
+		lang  string
+		want  string
+	}{
+		{1, "ru", "Сводка — 1 уведомление:"},
+		{2, "ru", "Сводка — 2 уведомления:"},
+		{3, "ru", "Сводка — 3 уведомления:"},
+		{5, "ru", "Сводка — 5 уведомлений:"},
+		{11, "ru", "Сводка — 11 уведомлений:"},
+		{21, "ru", "Сводка — 21 уведомление:"},
+		{22, "ru", "Сводка — 22 уведомления:"},
+		{25, "ru", "Сводка — 25 уведомлений:"},
+		{111, "ru", "Сводка — 111 уведомлений:"},
+		{1, "en", "Digest — 1 notification:"},
+		{2, "en", "Digest — 2 notifications:"},
+		{21, "en", "Digest — 21 notifications:"},
+		// An unsupported language falls back to the server's own, agreement included.
+		{2, "de", "Сводка — 2 уведомления:"},
+	}
+	for _, c := range cases {
+		if got := DigestHeader(c.count, c.lang); got != c.want {
+			t.Errorf("DigestHeader(%d, %q) = %q, want %q", c.count, c.lang, got, c.want)
+		}
 	}
 }
 
