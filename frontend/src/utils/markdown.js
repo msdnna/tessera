@@ -219,25 +219,76 @@ export function sanitizeSvgFragment(svg) {
 }
 
 // toggleTaskMarker flips the [ ]↔[x] of the index-th GFM task-list item in the
-// source markdown (index = render order, top to bottom). Used by interactive
-// preview checkboxes so ticking one rewrites the stored markdown. Returns the
-// source unchanged if the index isn't found.
-const TASK_MARKER_RE = /^(\s*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])/
+// source markdown. Used by interactive preview checkboxes so ticking one rewrites
+// the stored markdown. Returns the source unchanged if the index isn't found.
+//
+// `index` is the position of the clicked <input> among the RENDERED checkboxes
+// (RichContent counts them off the DOM), which is not the same thing as the
+// index-th line that looks like a marker — and the gap is not academic:
+//
+//   • "- [ ] …" inside a ``` fence or an indented code block is a code SAMPLE,
+//     drawn as text with no box (a task description that documents a checklist
+//     is exactly where such a sample lives);
+//   • "> - [ ] …" inside a blockquote IS drawn as a box, but does not start its
+//     line with a bullet;
+//   • "- [ ]x", with no space after the bracket, is literal text to GFM.
+//
+// Counting lines therefore drifted from the rendering in both directions: the
+// first real box in a description that quoted a checklist rewrote the line inside
+// the code fence, leaving the clicked box to snap back on the next render.
+//
+// Rather than re-deriving CommonMark's block rules here (indentation inside a
+// list is a nested item, not code — the rules do not survive a line scan), each
+// candidate line is tried against the renderer: flip it, re-lex, and keep the one
+// edit that moved checkbox `index` and left the others alone. The oracle is the
+// parser that draws the boxes, so the two cannot drift again. Cost is one lex per
+// candidate line, on a click, over content a person wrote by hand.
+const TASK_MARKER_RE = /^([ \t>]*(?:[-*+]|\d+[.)])\s+\[)([ xX])(\])/
 export function toggleTaskMarker(src, index) {
   if (!src) return src
+  const before = taskStates(String(src))
+  if (!(index >= 0) || index >= before.length) return src
+
   const lines = String(src).split('\n')
-  let n = -1
   for (let i = 0; i < lines.length; i++) {
     const m = lines[i].match(TASK_MARKER_RE)
     if (!m) continue
-    n++
-    if (n === index) {
-      const checked = m[2].toLowerCase() === 'x'
-      lines[i] = lines[i].replace(TASK_MARKER_RE, `$1${checked ? ' ' : 'x'}$3`)
-      break
+    const trial = lines.slice()
+    trial[i] = lines[i].replace(TASK_MARKER_RE, `$1${m[2].toLowerCase() === 'x' ? ' ' : 'x'}$3`)
+    const candidate = trial.join('\n')
+    if (flipsOnly(before, taskStates(candidate), index)) return candidate
+  }
+  return src
+}
+
+// taskStates lists the checked/unchecked state of every task item marked's own
+// lexer finds, in document order — the order the boxes end up in the DOM. An
+// item is emitted before its own sub-tokens so a nested list follows its parent,
+// matching how the <input> elements nest.
+function taskStates(src) {
+  const out = []
+  const walk = (tokens) => {
+    for (const tok of tokens || []) {
+      if (tok.items) {
+        for (const item of tok.items) {
+          if (item.task) out.push(!!item.checked)
+          walk(item.tokens)
+        }
+        continue
+      }
+      if (tok.tokens) walk(tok.tokens)
     }
   }
-  return lines.join('\n')
+  walk(marked.lexer(String(src)))
+  return out
+}
+
+// flipsOnly reports whether `after` is `before` with the index-th box toggled.
+// A candidate line inside a code block passes no test here: flipping it changes
+// the rendered text but not a single box, so the scan moves on to the next one.
+function flipsOnly(before, after, index) {
+  if (after.length !== before.length) return false
+  return before.every((was, i) => (i === index ? after[i] !== was : after[i] === was))
 }
 
 // toEditorHtml normalises stored content into HTML for loading into the editor.
