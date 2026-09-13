@@ -1,4 +1,5 @@
 import { tasks as tasksApi } from '@/api'
+import { handOffBlob } from '@/utils/blobHandoff'
 import { isTauri } from '@/utils/serverBase'
 
 // saveAttachment pulls a task attachment down and hands it to the user.
@@ -23,14 +24,7 @@ export async function saveAttachment(id, filename) {
     await writeFile(path, new Uint8Array(await res.data.arrayBuffer()))
     return 'saved'
   }
-  const url = URL.createObjectURL(res.data)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  handOffBlob(res.data, filename)
   return 'downloaded'
 }
 

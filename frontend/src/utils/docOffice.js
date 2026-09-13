@@ -1,3 +1,4 @@
+import { handOffBlob } from './blobHandoff'
 import { htmlToDoc } from './docImport'
 import { normalizeOfficeHtml } from './docOfficeHtml'
 import { isPageSetup } from './docPage'
@@ -192,22 +193,16 @@ export function exportRefusalKey(status) {
 }
 
 /**
- * Hands a downloaded blob to the browser.
+ * Hands an exported document to the browser as a file save.
  *
- * The object URL is revoked afterwards; without that every export leaks the
- * whole file for the lifetime of the tab, which for a session of PDF exports is
- * exactly the kind of leak nobody attributes to the export button.
+ * The object URL is revoked, but late rather than on the next line — see
+ * utils/blobHandoff.js: an early revoke races the transfer and can cancel a
+ * multi-megabyte export outright, while never revoking leaks the whole file for
+ * the lifetime of the tab.
  *
  * @param {Blob} blob
  * @param {string} filename
  */
 export function downloadBlob(blob, filename) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
+  handOffBlob(blob, filename)
 }

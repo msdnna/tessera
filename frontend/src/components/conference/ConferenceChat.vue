@@ -40,6 +40,7 @@ import {
   confChatCanSend,
   confChatPickError,
 } from '@/utils/confChat'
+import { handOffBlob } from '@/utils/blobHandoff'
 import { formatFileSize } from '@/utils/docPdf'
 import UserAvatar from '@/components/UserAvatar.vue'
 
@@ -262,14 +263,9 @@ async function loadPreview(att) {
 async function download(att) {
   try {
     const { data } = await confApi.attachment(att.id)
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = att.filename
-    a.click()
-    // Revoked on the next tick, not immediately: revoking before the browser has
-    // started the download cancels it.
-    setTimeout(() => URL.revokeObjectURL(url), 10000)
+    // handOffBlob owns the click-then-revoke-late dance — revoking before the
+    // browser has started the download cancels it.
+    handOffBlob(data, att.filename)
   } catch (e) {
     message.error(e.message)
   }

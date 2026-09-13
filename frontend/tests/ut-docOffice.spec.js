@@ -9,6 +9,7 @@ import {
   importOfficeFile,
   isOfficeFile,
 } from '@/utils/docOffice'
+import { BLOB_REVOKE_DELAY_MS } from '@/utils/blobHandoff'
 
 function fakeFile(name, size = 10) {
   return { name, size }
@@ -237,7 +238,8 @@ describe('exportFileName', () => {
 })
 
 describe('downloadBlob', () => {
-  it('revokes the object URL it created', () => {
+  it('revokes the object URL it created, once the download has started', () => {
+    vi.useFakeTimers()
     const createObjectURL = vi.fn(() => 'blob:x')
     const revokeObjectURL = vi.fn()
     vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL })
@@ -250,12 +252,17 @@ describe('downloadBlob', () => {
 
     expect(anchor.download).toBe('Отчёт.pdf')
     expect(click).toHaveBeenCalled()
-    // Without this every export leaks the whole file for the lifetime of the
-    // tab, and nobody attributes that to the download button.
+    // Not on the next line: an early revoke races the transfer and can cancel a
+    // multi-megabyte export. The timing itself is pinned in ut-blob-handoff.
+    vi.advanceTimersByTime(BLOB_REVOKE_DELAY_MS)
+    // Deferred, not dropped — without the revoke every export leaks the whole
+    // file for the lifetime of the tab, and nobody attributes that to the
+    // download button.
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:x')
 
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    vi.useRealTimers()
   })
 })
 

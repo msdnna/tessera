@@ -14,6 +14,7 @@ import { computed, ref, watch } from 'vue'
 import { NButton, NIcon, NPopconfirm, NSpin } from 'naive-ui'
 import { DownloadOutline, TrashOutline, WarningOutline } from '@vicons/ionicons5'
 import { conferences as confApi } from '@/api'
+import { handOffBlob } from '@/utils/blobHandoff'
 import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
@@ -66,15 +67,10 @@ async function download(rec) {
   busyId.value = rec.id
   try {
     const { data } = await confApi.recording(rec.id)
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = rec.file_name || 'recording.mp4'
-    a.click()
-    // Revoked late, not immediately: revoking before the browser has started the
-    // download cancels it — and these files are large enough for that gap to be
-    // real rather than theoretical.
-    setTimeout(() => URL.revokeObjectURL(url), 60000)
+    // Revoked late, not immediately (handOffBlob): revoking before the browser
+    // has started the download cancels it — and these files are large enough
+    // for that gap to be real rather than theoretical.
+    handOffBlob(data, rec.file_name || 'recording.mp4')
     error.value = ''
   } catch (e) {
     error.value = e.message
