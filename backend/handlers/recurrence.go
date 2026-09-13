@@ -78,6 +78,14 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 		}
 	}
 	soft(ctx, "ReopenSubtasks", h.q.ReopenSubtasks(ctx, &t.ID))
+	// The checklist travels with the parent: a subtask is a task in its own right
+	// (its own card, its own bar, its own overdue badge), so leaving its dates on
+	// the previous occurrence makes every item of the second run be born late.
+	if t.DueDate != nil {
+		soft(ctx, "ShiftSubtaskWindow", h.q.ShiftSubtaskWindow(ctx, db.ShiftSubtaskWindowParams{
+			ShiftSeconds: next.Sub(*t.DueDate).Seconds(), ParentID: t.ID,
+		}))
+	}
 	h.logEventActor(ctx, t.ID, actorID, "recurred", map[string]any{"due": next})
 	return updated, true
 }
@@ -131,6 +139,15 @@ func shiftStart(start, prevDue *time.Time, next time.Time) *time.Time {
 	return &shifted
 }
 
+// shiftBy moves an optional timestamp by step, keeping "no date" as no date.
+func shiftBy(ts *time.Time, step time.Duration) *time.Time {
+	if ts == nil || step == 0 {
+		return ts
+	}
+	shifted := ts.Add(step)
+	return &shifted
+}
+
 // cloneRecurringTask duplicates a task into the target column with a fresh due
 // date and the carried recurrence rule: title/description/priority/tags/assignees
 // are copied and direct subtasks are recreated uncompleted (a clean checklist).
@@ -170,18 +187,41 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 		}
 	}
 	if subs, serr := h.q.ListSubtasks(ctx, &src.ID); serr == nil {
+		// The step the parent's due date took — each item's own window rides along
+		// so the duplicate's checklist isn't born pinned to the previous occurrence.
+		var step time.Duration
+		if src.DueDate != nil {
+			step = due.Sub(*src.DueDate)
+		}
 		pos := positionGap
 		for _, s := range subs {
 			snum, nerr := h.q.NextWorkspaceTaskNumber(ctx, wsID)
 			if nerr != nil {
 				continue
 			}
-			_, _ = h.q.CreateTask(ctx, db.CreateTaskParams{
+			sub, cerr := h.q.CreateTask(ctx, db.CreateTaskParams{
 				BoardID: src.BoardID, ColumnID: columnID, ParentID: &clone.ID,
 				Title: s.Title, Description: s.Description, Priority: s.Priority,
-				DueDate: s.DueDate, StartDate: s.StartDate, Position: pos, CreatedBy: src.CreatedBy, Number: &snum,
+				DueDate: shiftBy(s.DueDate, step), StartDate: shiftBy(s.StartDate, step),
+				Estimate: s.Estimate, Position: pos, CreatedBy: src.CreatedBy, Number: &snum,
 			})
 			pos += positionGap
+			if cerr != nil {
+				continue
+			}
+			// The reschedule branch keeps each item's estimate, tags and assignees
+			// (it never touches them); the duplicate must hand back the same
+			// checklist, not a barer one.
+			if tags, terr := h.q.ListTaskTags(ctx, s.ID); terr == nil {
+				for _, tg := range tags {
+					soft(ctx, "AddTaskTag", h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: sub.ID, TagID: tg.ID}))
+				}
+			}
+			if as, aerr := h.q.ListTaskAssignees(ctx, s.ID); aerr == nil {
+				for _, a := range as {
+					soft(ctx, "AddTaskAssignee", h.q.AddTaskAssignee(ctx, db.AddTaskAssigneeParams{TaskID: sub.ID, UserID: a.ID}))
+				}
+			}
 		}
 	}
 	h.logEventActor(ctx, clone.ID, actorID, "created", nil)

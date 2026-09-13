@@ -1239,6 +1239,31 @@ func (q *Queries) SetTaskTitle(ctx context.Context, arg SetTaskTitleParams) erro
 	return err
 }
 
+const shiftSubtaskWindow = `-- name: ShiftSubtaskWindow :exec
+UPDATE tasks
+SET due_date   = due_date   + make_interval(secs => $1::double precision),
+    start_date = start_date + make_interval(secs => $1::double precision),
+    updated_at = now()
+WHERE parent_id = $2::uuid
+  AND (due_date IS NOT NULL OR start_date IS NOT NULL)
+`
+
+type ShiftSubtaskWindowParams struct {
+	ShiftSeconds float64   `json:"shift_seconds"`
+	ParentID     uuid.UUID `json:"parent_id"`
+}
+
+// ShiftSubtaskWindow moves a recurring parent's direct subtasks by the same step
+// its due date just took, so the whole checklist travels to the next occurrence
+// instead of staying pinned — and overdue — at the first one. The shift is elapsed
+// time, not calendar arithmetic, for the reason shiftStart gives: what has to
+// survive is the length of each item's window. NULL + interval is NULL, so an item
+// nobody scheduled keeps no dates.
+func (q *Queries) ShiftSubtaskWindow(ctx context.Context, arg ShiftSubtaskWindowParams) error {
+	_, err := q.db.Exec(ctx, shiftSubtaskWindow, arg.ShiftSeconds, arg.ParentID)
+	return err
+}
+
 const taskAncestorIDs = `-- name: TaskAncestorIDs :many
 WITH RECURSIVE up AS (
     SELECT a.id, a.parent_id FROM tasks a WHERE a.id = $1

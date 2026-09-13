@@ -339,6 +339,20 @@ RETURNING *;
 UPDATE tasks SET completed_at = NULL, updated_at = now()
 WHERE parent_id = $1 AND completed_at IS NOT NULL;
 
+-- ShiftSubtaskWindow moves a recurring parent's direct subtasks by the same step
+-- its due date just took, so the whole checklist travels to the next occurrence
+-- instead of staying pinned — and overdue — at the first one. The shift is elapsed
+-- time, not calendar arithmetic, for the reason shiftStart gives: what has to
+-- survive is the length of each item's window. NULL + interval is NULL, so an item
+-- nobody scheduled keeps no dates.
+-- name: ShiftSubtaskWindow :exec
+UPDATE tasks
+SET due_date   = due_date   + make_interval(secs => sqlc.arg(shift_seconds)::double precision),
+    start_date = start_date + make_interval(secs => sqlc.arg(shift_seconds)::double precision),
+    updated_at = now()
+WHERE parent_id = sqlc.arg(parent_id)::uuid
+  AND (due_date IS NOT NULL OR start_date IS NOT NULL);
+
 -- ListScheduleRecurDue returns active tasks whose recurrence fires on a schedule
 -- and whose due date has passed — the schedule worker advances each one.
 -- name: ListScheduleRecurDue :many
