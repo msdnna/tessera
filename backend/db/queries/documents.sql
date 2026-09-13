@@ -1,3 +1,14 @@
+-- DocumentIDsInWorkspace names the documents a workspace delete is about to take
+-- by cascade (documents.workspace_id is ON DELETE CASCADE), so their image
+-- directories can be swept the way DeleteDocument sweeps its own (purgeDocAssets).
+--
+-- Read before the delete and in the same transaction, for the reason
+-- TaskIDsInWorkspace is: DELETE ... RETURNING answers for the rows of the table it
+-- names, never for the ones the foreign keys take afterwards — and a document's
+-- images are named by nothing but the body that is leaving with it.
+-- name: DocumentIDsInWorkspace :many
+SELECT id FROM documents WHERE workspace_id = $1;
+
 -- CreateDocument takes content and preview rather than leaving both at their
 -- column defaults, because a document created from a template (D9) is born with
 -- a body. Seeding it here instead of following the insert with a content update

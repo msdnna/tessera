@@ -225,6 +225,38 @@ func (q *Queries) DocumentAncestorIDs(ctx context.Context, id uuid.UUID) ([]uuid
 	return items, nil
 }
 
+const documentIDsInWorkspace = `-- name: DocumentIDsInWorkspace :many
+SELECT id FROM documents WHERE workspace_id = $1
+`
+
+// DocumentIDsInWorkspace names the documents a workspace delete is about to take
+// by cascade (documents.workspace_id is ON DELETE CASCADE), so their image
+// directories can be swept the way DeleteDocument sweeps its own (purgeDocAssets).
+//
+// Read before the delete and in the same transaction, for the reason
+// TaskIDsInWorkspace is: DELETE ... RETURNING answers for the rows of the table it
+// names, never for the ones the foreign keys take afterwards — and a document's
+// images are named by nothing but the body that is leaving with it.
+func (q *Queries) DocumentIDsInWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, documentIDsInWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const documentSlugExists = `-- name: DocumentSlugExists :one
 SELECT EXISTS(SELECT 1 FROM documents WHERE workspace_id = $1 AND slug = $2)
 `

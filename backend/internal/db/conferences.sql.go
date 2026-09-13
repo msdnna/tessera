@@ -42,6 +42,36 @@ func (q *Queries) ClearConferenceTasksAcrossWorkspaces(ctx context.Context, id u
 	return result.RowsAffected(), nil
 }
 
+const conferenceIDsInWorkspace = `-- name: ConferenceIDsInWorkspace :many
+SELECT id FROM conferences WHERE workspace_id = $1
+`
+
+// ConferenceIDsInWorkspace names the conferences a workspace delete is about to
+// take by cascade (conferences.workspace_id is ON DELETE CASCADE), so their
+// recordings and chat uploads can be purged the way DeleteConference purges its
+// own. Read before the delete and in the same transaction: the recording rows and
+// the chat attachment rows leave with the conference, and they are the only record
+// of where the bytes are.
+func (q *Queries) ConferenceIDsInWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, conferenceIDsInWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countActiveConferenceParticipants = `-- name: CountActiveConferenceParticipants :one
 SELECT count(*) FROM conference_participants
 WHERE conference_id = $1 AND joined_at IS NOT NULL AND left_at IS NULL

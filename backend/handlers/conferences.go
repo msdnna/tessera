@@ -278,6 +278,56 @@ func (h *API) requireConferenceManager(c *gin.Context, conf db.Conference) bool 
 	return false
 }
 
+// doomedConference is everything a conference's files need after its rows are
+// gone: the id (the rec/ and conf/ directories are named by it), the recording
+// paths, and the job id of a recording still in flight.
+type doomedConference struct {
+	id           uuid.UUID
+	recordings   []string
+	activeEgress string
+}
+
+// doomedConferences describes every conference of a workspace that is about to
+// be deleted, read through the caller's transaction so the snapshot matches the
+// delete. DeleteConference does this reading for one conference; a workspace
+// delete takes all of them at once, by a cascade that never touches the disk.
+func (h *API) doomedConferences(c *gin.Context, q *db.Queries, wsID uuid.UUID) ([]doomedConference, error) {
+	ids, err := q.ConferenceIDsInWorkspace(c, wsID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]doomedConference, 0, len(ids))
+	for _, id := range ids {
+		d := doomedConference{id: id}
+		if d.recordings, err = q.ListConferenceRecordingPaths(c, id); err != nil {
+			return nil, err
+		}
+		active, aerr := q.ActiveConferenceRecording(c, id)
+		switch {
+		case aerr == nil:
+			d.activeEgress = active.EgressID
+		case errIsNoRows(aerr):
+		default:
+			return nil, aerr
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// purgeConferences unlinks the files of conferences whose rows have just left by
+// cascade — the same three steps DeleteConference takes, for each of them.
+func (h *API) purgeConferences(calls []doomedConference) {
+	for _, d := range calls {
+		for _, p := range d.recordings {
+			_ = os.Remove(p) // best-effort; the rows are already gone
+		}
+		h.purgeRecordingDir(d.id, d.activeEgress)
+		h.purgeChatDir(d.id)
+		h.dropConfRoom(d.id, "workspace deleted")
+	}
+}
+
 // DeleteConference removes a conference along with its participants, chat and
 // recording rows (ON DELETE CASCADE) — and the files those rows named, which the
 // cascade knows nothing about.

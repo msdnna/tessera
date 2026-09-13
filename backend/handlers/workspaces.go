@@ -129,11 +129,31 @@ func (h *API) DeleteWorkspace(c *gin.Context) {
 	}
 	// The widest of the four container deletes — three cascades from here to a
 	// task — and the only one after which nobody is left to notice the files.
-	var gone []uuid.UUID
+	//
+	// Tasks are not the only thing on disk a workspace owns, though. Documents and
+	// conferences hang off it by ON DELETE CASCADE too, and each keeps its bytes
+	// somewhere no row will name once the cascade has run: a document's images are
+	// pointed at by nothing but the body leaving with them, a recording by its
+	// file_path, a chat upload by its attachment row. The per-object deletes all
+	// know this (purgeDocAssets, and the path read DeleteConference does before its
+	// own delete, #2877 — "the largest thing this application ever writes to
+	// disk"); deleting the whole workspace owes the same to every one of them at
+	// once, on the very gesture an owner makes to get the space back.
+	var (
+		gone  []uuid.UUID
+		docs  []uuid.UUID
+		calls []doomedConference
+		derr  error
+	)
 	if err := h.inTx(c, func(q *db.Queries) error {
-		var err error
-		if gone, err = q.TaskIDsInWorkspace(c, id); err != nil {
-			return err
+		if gone, derr = q.TaskIDsInWorkspace(c, id); derr != nil {
+			return derr
+		}
+		if docs, derr = q.DocumentIDsInWorkspace(c, id); derr != nil {
+			return derr
+		}
+		if calls, derr = h.doomedConferences(c, q, id); derr != nil {
+			return derr
 		}
 		return q.DeleteWorkspace(c, id)
 	}); err != nil {
@@ -141,6 +161,8 @@ func (h *API) DeleteWorkspace(c *gin.Context) {
 		return
 	}
 	h.purgeTaskUploads(gone)
+	h.purgeDocAssets(c, docs)
+	h.purgeConferences(calls)
 	c.Status(http.StatusNoContent)
 }
 

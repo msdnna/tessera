@@ -1,3 +1,12 @@
+-- ConferenceIDsInWorkspace names the conferences a workspace delete is about to
+-- take by cascade (conferences.workspace_id is ON DELETE CASCADE), so their
+-- recordings and chat uploads can be purged the way DeleteConference purges its
+-- own. Read before the delete and in the same transaction: the recording rows and
+-- the chat attachment rows leave with the conference, and they are the only record
+-- of where the bytes are.
+-- name: ConferenceIDsInWorkspace :many
+SELECT id FROM conferences WHERE workspace_id = $1;
+
 -- name: CreateConference :one
 INSERT INTO conferences (workspace_id, task_id, created_by, title, description, scheduled_at, recording_ttl_days)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
