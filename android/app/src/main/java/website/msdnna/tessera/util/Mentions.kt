@@ -51,9 +51,19 @@ data class MentionItem(
  * roster row pointing back at them; a member with no GitLab account keeps
  * inserting their name. A GitLab user already mapped to a member is folded into
  * that member rather than listed twice.
+ *
+ * "Pointing back at them" means *either* link the server reports: a GitLab row
+ * carries the Tessera user in `tessera_user_id` when that person signed in
+ * through GitLab, and in `tessera_user_id_pat` when they connected a personal
+ * access token instead. Reading only the first one left PAT-linked people
+ * inserting their own name — which notifies them in Tessera but resolves to
+ * nobody once the comment is pushed to GitLab — while their roster row was
+ * listed a second time as an outsider, whose handle notifies nobody at all.
  */
 fun buildMentionItems(members: List<Member>, gitlabMembers: List<GitlabMember>): List<MentionItem> {
-    val glByUser = gitlabMembers.filter { !it.tesseraUserId.isNullOrBlank() }.associateBy { it.tesseraUserId!! }
+    fun GitlabMember.linkedUserId(): String? =
+        tesseraUserId?.takeIf { it.isNotBlank() } ?: tesseraUserIdPat?.takeIf { it.isNotBlank() }
+    val glByUser = gitlabMembers.mapNotNull { g -> g.linkedUserId()?.let { it to g } }.toMap()
     val memberIds = members.map { it.userId }.toSet()
     val tessera = members.map { m ->
         val login = m.glUsername.ifBlank { glByUser[m.userId]?.glUsername.orEmpty() }
@@ -68,7 +78,7 @@ fun buildMentionItems(members: List<Member>, gitlabMembers: List<GitlabMember>):
         )
     }
     val gitlabOnly = gitlabMembers
-        .filter { it.tesseraUserId == null || it.tesseraUserId !in memberIds }
+        .filter { it.linkedUserId().let { uid -> uid == null || uid !in memberIds } }
         .map {
             MentionItem(
                 insert = it.glUsername,

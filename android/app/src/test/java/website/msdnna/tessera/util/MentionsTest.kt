@@ -53,6 +53,25 @@ class MentionsTest {
     }
 
     @Test
+    fun `a pat-linked gitlab row lends its login just like an oauth one`() {
+        // Only `tessera_user_id_pat` is set: this person connected a PAT instead of
+        // signing in through GitLab. The roster row still names them, so the mention
+        // has to insert the login — a comment goes to GitLab verbatim and «@Евгений
+        // Полянский» resolves to nobody there.
+        val gl = GitlabMember(glUserId = 7, glUsername = "e.polyansky", glName = "Evgeny", tesseraUserIdPat = "u1")
+        val items = buildMentionItems(listOf(member), listOf(gl))
+        // Folded into the member — one row, not the member plus an "outsider".
+        assertEquals(1, items.size)
+        assertEquals("e.polyansky", items[0].insert)
+        assertEquals("Евгений Полянский", items[0].display)
+        assertEquals("u1", items[0].avatarUserId)
+        // …and whichever of the two rows the picker offered, the handle resolves back
+        // to the member, so the server is still told to notify them.
+        assertEquals("u1", resolveMention(items, "e.polyansky")?.avatarUserId)
+        assertEquals(listOf("u1"), mentionIdsIn("привет @e.polyansky", items))
+    }
+
+    @Test
     fun `a gitlab user with no tessera account is listed on their own`() {
         val gl = GitlabMember(glUserId = 8, glUsername = "outsider", glName = "Out Sider")
         val items = buildMentionItems(listOf(member), listOf(gl))
