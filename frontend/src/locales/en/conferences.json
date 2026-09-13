@@ -126,7 +126,8 @@
     "unknownAuthor": "Unknown author",
     "closed": "The conference has ended — the chat is read-only",
     "fileTooBig": "“{name}” is larger than 25 MB",
-    "tooManyFiles": "At most {count} files per message"
+    "tooManyFiles": "At most {count} files per message",
+    "tooLong": "The message is longer than {count} characters"
   },
   "panel": {
     "title": "In the room: {count}",

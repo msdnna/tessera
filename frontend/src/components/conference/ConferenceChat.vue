@@ -32,6 +32,13 @@ import {
 import { conferences as confApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useFormat } from '@/composables/useFormat'
+import {
+  CONF_CHAT_MAX_BODY,
+  CONF_CHAT_MAX_BYTES,
+  CONF_CHAT_MAX_FILES,
+  confChatBodyTooLong,
+  confChatCanSend,
+} from '@/utils/confChat'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const props = defineProps({
@@ -58,10 +65,12 @@ const message = useMessage()
 const { formatDateTime } = useFormat()
 
 const PAGE = 50
-// 25 MiB — the server's cap. Checked here too so a 30 MB video fails instantly
-// instead of after a minute of uploading.
-const MAX_BYTES = 25 * 1024 * 1024
-const MAX_FILES = 5
+// The composer's three caps are the server's, restated in `@/utils/confChat` —
+// checked here too so a 30 MB video fails instantly instead of after a minute of
+// uploading, and so an over-long body is refused before the press rather than by
+// a 400 whose message is not even translated.
+const MAX_BYTES = CONF_CHAT_MAX_BYTES
+const MAX_FILES = CONF_CHAT_MAX_FILES
 
 const messages = ref([])
 const hasMore = ref(false)
@@ -172,9 +181,11 @@ function dropPending(i) {
   pending.value.splice(i, 1)
 }
 
-const canSend = computed(
-  () => !sending.value && (draft.value.trim().length > 0 || pending.value.length > 0),
-)
+// Said before the press rather than after it: the server's answer to an
+// over-long message is a 400, and by then the text has already been typed.
+const tooLong = computed(() => confChatBodyTooLong(draft.value))
+
+const canSend = computed(() => confChatCanSend(draft.value, pending.value.length, sending.value))
 
 async function send() {
   if (!canSend.value) return
@@ -377,6 +388,9 @@ onBeforeUnmount(() => {
             <n-icon :component="CloseOutline" />
           </n-button>
         </span>
+      </div>
+      <div v-if="tooLong" class="too-long" data-testid="conference-chat-too-long">
+        {{ $t('conferences.chat.tooLong', { count: CONF_CHAT_MAX_BODY }) }}
       </div>
       <div class="row">
         <!-- Enter sends, Shift+Enter breaks the line: this is a chat, not the
@@ -581,6 +595,13 @@ onBeforeUnmount(() => {
   color: var(--t-text2);
   background: var(--t-hover);
   border-radius: 6px;
+}
+/* The error red is written out rather than read from a token: there is no
+   --t-error, only the --t-error-grad this hue is built from, and a var() naming
+   a token that does not exist would just fall through to the inherited colour. */
+.too-long {
+  font-size: 11px;
+  color: #e5484d;
 }
 .row {
   display: flex;
