@@ -1,12 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { helpAssetUrl, helpAssetCandidates, resolveHelpImages } from '@/utils/helpAssets'
 
 // The Russian set — the names articles actually link. The English twins are
 // resolved *to*, never linked, so they are filtered out here.
-const ASSETS = join(dirname(fileURLToPath(import.meta.url)), '../../docs/help/assets')
+const HELP_DIR = join(dirname(fileURLToPath(import.meta.url)), '../../docs/help')
+const ASSETS = join(HELP_DIR, 'assets')
 const BASE_NAMES = readdirSync(ASSETS).filter((n) => !n.includes('.en.'))
 
 // The help articles are `?raw` strings, so nothing in the build pipeline checks
@@ -146,5 +147,36 @@ describe('resolveHelpImages', () => {
     // is what cx-help-index.spec.js fails on.
     const html = '<img src="../assets/такого-нет.png">'
     expect(resolveHelpImages(html)).toBe(html)
+  })
+})
+
+// The reverse direction of the resolver guards above: those check that a linked
+// name reaches a file, this one that a shot which exists is actually shown.
+//
+// A mobile screenshot is not a spare asset — each one is a scene in
+// `HelpShotsTest`, taken on the emulator by `make android-shots` for exactly one
+// Android article. Nothing in the pipeline links the two: the shot lands in
+// docs/help/assets, and the `![…](…)` line is written by hand. Miss it and the
+// failure is silent in both directions — the article is simply the one page in
+// the app with no picture (#2932: «Комментарии» was), while the file still ships
+// twice over, into the web bundle (the eager `?url` glob emits every asset) and
+// into the APK (copyHelpContent).
+describe('мобильные кадры справки', () => {
+  const androidArticles = readdirSync(HELP_DIR, { recursive: true })
+    .map(String)
+    .filter((p) => /\.android(\.[a-z]{2})?\.md$/.test(p))
+  const linked = androidArticles.flatMap((p) =>
+    [...readFileSync(join(HELP_DIR, p), 'utf8').matchAll(/!\[[^\]]*\]\([^)\s]*\/assets\/([^)\s]+)/g)]
+      .map((m) => m[1]),
+  )
+  // Only the Russian light name is ever linked — the dark and English twins are
+  // what the resolver swaps in, so they cannot be expected in any article text.
+  const mobileShots = BASE_NAMES.filter((n) => n.includes('-mobile-light.'))
+
+  it('каждый снятый кадр показан хотя бы в одной .android-статье', () => {
+    expect(androidArticles.length).toBeGreaterThan(0)
+    expect(mobileShots.length).toBeGreaterThan(0)
+    const orphans = mobileShots.filter((n) => !linked.includes(n))
+    expect(orphans).toEqual([])
   })
 })

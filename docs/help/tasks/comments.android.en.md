@@ -8,6 +8,8 @@ updated: 2026-08-28
 
 The **Comments** tab is the second in a task's tab row. Comments are written with the same [Markdown editor](/help/markdown-editor) as the description, and can do all the same things: reply threads, mentions with a notification, and commands.
 
+![The Comments tab with a reply thread](../assets/task-comments-mobile-light.png)
+
 ## The composer is at the bottom, not pinned
 
 The main difference from the browser: **the input field is not pinned**. It sits after all the comments and **scrolls with them**. To write a new comment in a long discussion you have to scroll the tab to the end.
