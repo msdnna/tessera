@@ -1,4 +1,5 @@
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 
 import {
   DEFAULT_BASE,
@@ -16,6 +17,7 @@ import {
   normalizeUrl,
 } from '@/utils/servers'
 import { skey, sGet, sSet, sRemove, sGetFor } from '@/utils/serverStorage'
+import { useServersStore } from '@/stores/servers'
 import { serverBase, apiBaseURL, wsURL } from '@/utils/serverBase'
 
 // The registry only exists inside the Tauri shell; every case that exercises it
@@ -241,6 +243,45 @@ describe('server registry (#2930)', () => {
     expect(updateServer(s.id, { name: 'Работа' }).name).toBe('Работа')
   })
 
+  // Re-pointing a profile at another host is a *server* change wearing the same
+  // profile id, so the namespace keeps pointing at a session that belongs to the
+  // machine the user just left: its refresh token would be posted to the new
+  // host on the very next boot, and the cached user / workspace would be drawn
+  // over a server that has never heard of them. Removal purges the namespace for
+  // exactly this reason; an address edit has to do the same (#2932).
+  it('re-pointing a profile at another host drops the old server session', () => {
+    emptyRegistry()
+    const a = addServer({ url: 'https://a.example.com' })
+    setActiveServerId(a.id)
+    sSet('tessera_refresh_token', 'token-a')
+    sSet('tessera_user', '{"id":"u"}')
+    sSet('tessera_ws', 'ws-of-a')
+
+    updateServer(a.id, { url: 'https://b.example.com/' })
+
+    expect(activeServer().url).toBe('https://b.example.com')
+    expect(sGet('tessera_refresh_token')).toBe(null)
+    expect(sGet('tessera_user')).toBe(null)
+    expect(sGet('tessera_ws')).toBe(null)
+  })
+
+  // The same host on a different scheme (or with the path typo fixed) is the
+  // same install — signing the user out there would punish them for switching
+  // the server to TLS. Only the host decides, and cosmetic edits never do.
+  it('keeps the session when the address still names the same host', () => {
+    emptyRegistry()
+    const a = addServer({ url: 'http://tessera.example.com:8080' })
+    setActiveServerId(a.id)
+    sSet('tessera_refresh_token', 'token-a')
+
+    updateServer(a.id, { name: 'Работа', color: '#ff0000' })
+    expect(sGet('tessera_refresh_token')).toBe('token-a')
+
+    updateServer(a.id, { url: 'https://tessera.example.com:8080/' })
+    expect(activeServer().url).toBe('https://tessera.example.com:8080')
+    expect(sGet('tessera_refresh_token')).toBe('token-a')
+  })
+
   it('setServerBase re-points the active profile instead of a global key', () => {
     emptyRegistry()
     const a = addServer({ url: 'https://a.example.com' })
@@ -255,5 +296,55 @@ describe('server registry (#2930)', () => {
     expect(normalizeUrl(null)).toBe('')
     expect(serverLabel('not a url')).toBe('not a url')
     expect(serverLabel('')).toBe('Tessera')
+  })
+})
+
+// The store is the half of the feature the rail talks to; the reload rule lives
+// there because only it knows which profile is active.
+describe('servers store (#2930)', () => {
+  // A mocked location that also reads as the Tauri webview, so isTauri() keeps
+  // saying "desktop" while the spy is installed.
+  function mockLocation() {
+    const reload = vi.fn()
+    const spy = vi.spyOn(window, 'location', 'get').mockReturnValue({
+      protocol: 'http:',
+      hostname: 'tauri.localhost',
+      host: 'tauri.localhost',
+      reload,
+    })
+    return { reload, restore: () => spy.mockRestore() }
+  }
+
+  // Switching servers and removing the active one both reload the page for one
+  // reason: axios' baseURL is snapshotted at import (api/index.js). Editing the
+  // active profile's *address* moves the same server just as far, so without a
+  // reload the app splits in two — ordinary requests keep going to the old host
+  // while the token refresh, the OAuth redirect and the avatar URLs (which call
+  // apiBaseURL() afresh) already go to the new one (#2932). The two call sites
+  // that predate the rail — the login popover and the settings screen — reload
+  // by hand right after setServerBase(); the rail's edit modal did not.
+  it('reloads when the active server address changes', () => {
+    emptyRegistry()
+    const a = addServer({ name: 'A', url: 'https://a.example.com' })
+    const b = addServer({ name: 'B', url: 'https://b.example.com' })
+    setActiveServerId(a.id)
+    setActivePinia(createPinia())
+    const store = useServersStore()
+
+    const { reload, restore } = mockLocation()
+    try {
+      // Name and colour change nothing the running app talks to.
+      store.update(a.id, { name: 'Работа' })
+      expect(reload).not.toHaveBeenCalled()
+      // Neither does re-pointing a server the app is not currently on.
+      store.update(b.id, { url: 'https://elsewhere.example.com' })
+      expect(reload).not.toHaveBeenCalled()
+
+      store.update(a.id, { url: 'https://moved.example.com' })
+      expect(reload).toHaveBeenCalledTimes(1)
+      expect(store.active.url).toBe('https://moved.example.com')
+    } finally {
+      restore()
+    }
   })
 })

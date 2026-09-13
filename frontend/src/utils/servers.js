@@ -155,8 +155,22 @@ export function addServer({ name, url, color, icon, insecure } = {}) {
   return profile
 }
 
+// sameHost reports whether two addresses name the same install. The scheme is
+// deliberately not part of it: putting TLS in front of a server one already has
+// a session on must not sign the user out of it. An unparseable address (the
+// field is free text) falls back to a literal comparison.
+function sameHost(a, b) {
+  if (a === b) return true
+  try {
+    return new URL(a).host === new URL(b).host
+  } catch {
+    return false
+  }
+}
+
 export function updateServer(id, patch = {}) {
   const list = readList()
+  const before = list.find((s) => s.id === id)
   const next = list.map((s) => {
     if (s.id !== id) return s
     const merged = { ...s, ...patch, id: s.id }
@@ -165,7 +179,24 @@ export function updateServer(id, patch = {}) {
     return merged
   })
   writeList(next)
-  return next.find((s) => s.id === id) || null
+  const after = next.find((s) => s.id === id) || null
+  // Re-pointing a profile at a different host is a *server* change wearing the
+  // old profile id, so the namespace would hand the new machine a session that
+  // belongs to the previous one: its refresh token posted to a host that never
+  // issued it (the very thing SESSION_KEYS exists to prevent), and a cached user
+  // and remembered workspace drawn over a server that has never heard of them.
+  // Removal purges the namespace for this reason; so does an address edit.
+  if (before && after && !sameHost(before.url, after.url)) purgeNamespace(id)
+  return after
+}
+
+// purgeNamespace drops every `<key>::<id>` entry of one profile.
+function purgeNamespace(id) {
+  const suffix = `::${id}`
+  for (let i = localStorage.length - 1; i >= 0; i--) {
+    const key = localStorage.key(i)
+    if (key && key.endsWith(suffix)) localStorage.removeItem(key)
+  }
 }
 
 // removeServer drops the profile AND every key in its namespace. Leaving the
@@ -186,11 +217,7 @@ export function updateServer(id, patch = {}) {
 export function removeServer(id) {
   const list = readList().filter((s) => s.id !== id)
   writeList(list)
-  const suffix = `::${id}`
-  for (let i = localStorage.length - 1; i >= 0; i--) {
-    const key = localStorage.key(i)
-    if (key && key.endsWith(suffix)) localStorage.removeItem(key)
-  }
+  purgeNamespace(id)
   if (list.length === 0) {
     // A new id, not the removed one: the namespace has just been purged, and
     // reusing the id would hand the replacement whatever the sweep above missed.
