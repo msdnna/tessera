@@ -7,6 +7,7 @@ import (
 
 	"tessera-mcp/internal/client"
 	"tessera-mcp/internal/model"
+	"tessera-mcp/internal/rank"
 )
 
 // priorityLabel maps the numeric priority (0..4) to a word. Matches the web
@@ -34,9 +35,13 @@ func dueString(t *time.Time) string {
 	return t.Format(time.RFC3339)
 }
 
-// isOverdue reports whether an incomplete task's due date is in the past.
+// isOverdue is the queue's own rule (rank.IsOverdue), not a second opinion: the
+// `overdue` flag on a listing and the position a task takes in next_task have to
+// be the same answer, and they stopped being one when this file kept its own
+// copy — a due date is midnight in the reader's calendar, so the copy's instant
+// comparison called every task due today late.
 func isOverdue(t model.Task, now time.Time) bool {
-	return t.CompletedAt == nil && t.DueDate != nil && t.DueDate.Before(now)
+	return rank.IsOverdue(t, now)
 }
 
 // summarize builds the compact task view shared by all list tools. columnName

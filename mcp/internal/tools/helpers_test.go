@@ -31,18 +31,26 @@ func TestDueString(t *testing.T) {
 	}
 }
 
+// TestIsOverdue checks that the listing's flag is the queue's rule and not a
+// second opinion (rank.IsOverdue owns the day-granular semantics, and its own
+// tests pin the boundaries). The offsets here are whole days on purpose: an hour
+// either side of noon is the *same* day, which is not late.
 func TestIsOverdue(t *testing.T) {
 	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
-	past := now.Add(-time.Hour)
-	future := now.Add(time.Hour)
+	yesterday := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
+	today := time.Date(2026, 7, 30, 0, 0, 0, 0, time.UTC)
+	tomorrow := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
 
-	if !isOverdue(model.Task{DueDate: &past}, now) {
+	if !isOverdue(model.Task{DueDate: &yesterday}, now) {
 		t.Error("past due incomplete task should be overdue")
 	}
-	if isOverdue(model.Task{DueDate: &future}, now) {
+	if isOverdue(model.Task{DueDate: &today}, now) {
+		t.Error("a task due today is due, not late")
+	}
+	if isOverdue(model.Task{DueDate: &tomorrow}, now) {
 		t.Error("future due task is not overdue")
 	}
-	if isOverdue(model.Task{DueDate: &past, CompletedAt: &past}, now) {
+	if isOverdue(model.Task{DueDate: &yesterday, CompletedAt: &yesterday}, now) {
 		t.Error("completed task is never overdue")
 	}
 	if isOverdue(model.Task{}, now) {
@@ -52,7 +60,8 @@ func TestIsOverdue(t *testing.T) {
 
 func TestSummarize(t *testing.T) {
 	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
-	past := now.Add(-time.Hour)
+	// A day behind, not an hour: overdue is counted by day (rank.IsOverdue).
+	past := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
 	num := int64(42)
 	est := 3.5
 	glURL := "https://gitlab.example/issues/1"
