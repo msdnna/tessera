@@ -37,8 +37,11 @@ export const SESSION_KEYS = [
 // `import { isTauri } from '@/utils/serverBase'` keeps working.
 //
 // Detection is deliberately NOT limited to the injected IPC globals. Tauri v2
-// injects __TAURI_INTERNALS__ (and, with withGlobalTauri, __TAURI__) via an init
-// script — but that can lag the very first synchronous reads of the bundle. If
+// injects __TAURI_INTERNALS__ via an init script (and __TAURI__ too, but only
+// under withGlobalTauri — which the shell keeps OFF, so that one is a probe for a
+// setting we do not use rather than a signal we get; see the ratchet test in
+// desktop/src-tauri/src/lib.rs) — and the init script can lag the very first
+// synchronous reads of the bundle. If
 // isTauri() answered "no" for even one such read at boot, the session helpers
 // would look at the *un-namespaced* keys, find nothing, and start the app signed
 // out — logging desktop users out on every reload/switch (#2930 rework). So we

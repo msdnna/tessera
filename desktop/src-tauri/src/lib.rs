@@ -203,6 +203,27 @@ mod hardening {
         }
     }
 
+    // withGlobalTauri publishes the whole plugin JS API on `window.__TAURI__`. Nothing in
+    // the frontend reads it — the plugins are imported as npm modules
+    // (`await import('@tauri-apps/plugin-dialog')` in utils/download.js), and isTauri()
+    // only ever *probes* the global as a secondary signal next to __TAURI_INTERNALS__ and
+    // the tauri:// protocol (frontend/src/utils/servers.js). So it buys nothing and hands
+    // any script that reaches the page a ready-made `__TAURI__.fs.writeFile` /
+    // `.dialog.save` / `.opener.openUrl` / `.process.relaunch` / `.clipboardManager`.
+    //
+    // Not a complete seal: __TAURI_INTERNALS__.invoke is injected regardless, so a
+    // determined payload can still call a command by name. What goes away is the
+    // documented, ready-to-hand surface — and a bundle the app does not use.
+    #[test]
+    fn the_global_tauri_api_is_not_published() {
+        let cfg: Value = serde_json::from_str(CONFIG).expect("tauri.conf.json must be valid JSON");
+        let global = &cfg["app"]["withGlobalTauri"];
+        assert!(
+            global.is_null() || global == &Value::Bool(false),
+            "app.withGlobalTauri must stay off: {global}"
+        );
+    }
+
     // Plugins are another script-execution path, and a rewritten <base> relocates every
     // relative asset URL — both sit outside script-src.
     #[test]
