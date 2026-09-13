@@ -27,6 +27,12 @@ var sensitiveQueryParams = map[string]struct{}{
 	// routes accept nothing else), but once it is in a URL it can reach a log
 	// through any error value that quotes the request.
 	"private_token": {},
+	// The invitation token under the second name it travels by. The mailed link
+	// is /invite?token=…, and the web app hands an invitee with no account to
+	// /register?invite=<that same token> (AcceptInviteView) — so a URL quoting
+	// the sign-up page carries a live invitation under a name `token` does not
+	// cover. It joins whoever presents it to the workspace.
+	"invite": {},
 }
 
 // redactURLParams matches a sensitive parameter and its value inside a larger

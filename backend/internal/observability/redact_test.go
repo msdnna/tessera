@@ -17,6 +17,10 @@ func TestRedactQuery(t *testing.T) {
 		{"page=2&limit=50", "page=2&limit=50"},
 		{"code", "code"}, // value-less key keeps its form
 		{"q=code&code=real", "q=code&code=***"},
+		// The invitation token. It is mailed as /invite?token=… and the web app
+		// then hands the invitee to /register?invite=<the same token>, so the one
+		// credential travels under two names.
+		{"invite=inv-abc", "invite=***"},
 	}
 	for _, c := range cases {
 		if got := RedactQuery(c.in); got != c.want {

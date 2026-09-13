@@ -9,6 +9,9 @@
 // token (i.e. an account takeover) would be sitting in the Sentry project.
 //
 // Mirrors backend/internal/observability/redact.go — keep the two lists in step.
+// Pinned from this side by ut-scrub-secrets.spec.js, which carries the Go list
+// literally: nothing else compares them, and a name present on one side only is
+// a secret that leaves in the clear from the other.
 
 const SENSITIVE_PARAMS = new Set([
   'code',
@@ -18,6 +21,16 @@ const SENSITIVE_PARAMS = new Set([
   'sig',
   'access_token',
   'refresh_token',
+  // GitLab's name for a PAT in the query string. Ours only ever puts it there
+  // server-side (the avatar proxy's last-resort attempt), but the list is shared
+  // with the backend and a URL that reaches the browser must not be the hole.
+  'private_token',
+  // The invitation token under its second name. It is mailed as
+  // /invite?token=…, and AcceptInviteView then sends an invitee with no account
+  // to /register?invite=<the same token>. One name was redacted and the other
+  // was not, so the credential shipped intact in the request URL of any error on
+  // the sign-up page and in the navigation breadcrumb of every event after it.
+  'invite',
 ])
 
 // redactPairs blanks the value of every sensitive parameter in an `a=1&b=2`
