@@ -63,10 +63,13 @@ describe('formatElapsed follows a language switch', () => {
     expect(formatElapsed(72_000)).toBe('1 м 12 с')
     expect(formatElapsed(3_780_000)).toBe('1 ч 3 м')
 
+    // The tight English form is the one the backend words a sync duration in
+    // (internal/notify/locale.go) and the one the bell feed and Android print —
+    // see ut-notification-catalog.spec.js, which pins the two catalogs together.
     await setI18nLocale('en')
-    expect(formatElapsed(45_000)).toBe('45 s')
-    expect(formatElapsed(72_000)).toBe('1 m 12 s')
-    expect(formatElapsed(3_780_000)).toBe('1 h 3 m')
+    expect(formatElapsed(45_000)).toBe('45s')
+    expect(formatElapsed(72_000)).toBe('1m 12s')
+    expect(formatElapsed(3_780_000)).toBe('1h 3m')
   })
 
   // A finished run never reads as having taken no time at all.
