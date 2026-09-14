@@ -23,20 +23,37 @@ data class DateFormatPrefs(
     val time12h: Boolean = false,
     /** Один из [DatePresets], уже нормализованный. */
     val datePreset: String = DatePresets.SHORT,
+    /** `week_start`: [WEEK_START_SUNDAY] или [WEEK_START_MONDAY], уже нормализованный. */
+    val weekStart: Int = WEEK_START_MONDAY,
 ) {
     companion object {
-        /** Дефолт веба: 24 часа + `short`. Им же пользуются места вне композиции. */
+        /** Дефолт веба: 24 часа + `short` + неделя с понедельника. */
         val Default = DateFormatPrefs()
 
         fun of(prefs: Preferences): DateFormatPrefs = DateFormatPrefs(
             time12h = prefs.timeFormat == TIME_12H,
             datePreset = normalizeDatePreset(prefs.dateFormat),
+            weekStart = normalizeWeekStart(prefs.weekStart),
         )
     }
 }
 
 const val TIME_12H = "12h"
 const val TIME_24H = "24h"
+
+/** `week_start = 0` — неделя начинается с воскресенья. */
+const val WEEK_START_SUNDAY = 0
+
+/** `week_start = 1` — неделя начинается с понедельника (дефолт веба). */
+const val WEEK_START_MONDAY = 1
+
+/**
+ * День начала недели из хранимого значения: воскресенье — только явный ноль, всё
+ * остальное — понедельник. Так же сужает значение веб (`weekStart === 0 ? 0 : 1`
+ * в `utils/format.js`): преф редактируется через API, и неизвестное число не должно
+ * уводить подписи в день, которого нет ни в одном из двух календарей.
+ */
+fun normalizeWeekStart(value: Int): Int = if (value == WEEK_START_SUNDAY) WEEK_START_SUNDAY else WEEK_START_MONDAY
 
 /** Имена пресетов даты — те же, что пишет веб. */
 object DatePresets {

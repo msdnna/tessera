@@ -42,6 +42,28 @@ class DatesTest {
         return millisToUtcIso(cal.timeInMillis)
     }
 
+    /** Местная полночь сегодняшнего дня — та же точка отсчёта, что и у подписи. */
+    private fun midnightToday(): Calendar = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    /** Календарь конкретной даты ([month] с единицы), время не участвует. */
+    private fun date(year: Int, month: Int, day: Int): Calendar = Calendar.getInstance().apply {
+        clear()
+        set(year, month - 1, day)
+    }
+
+    /** ISO чистой UTC-полуночи дня `base + offset` — форма срока без времени. */
+    private fun isoUtcMidnight(base: Calendar, offset: Int): String {
+        val day = (base.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, offset) }
+        return "%04d-%02d-%02dT00:00:00Z".format(
+            day.get(Calendar.YEAR), day.get(Calendar.MONTH) + 1, day.get(Calendar.DAY_OF_MONTH),
+        )
+    }
+
     // ── shortDate ────────────────────────────────────────────────────────────
     @Test
     fun `shortDate blank or too-short is empty`() {
@@ -276,6 +298,72 @@ class DatesTest {
             checked++
         }
         assertThat(checked).isAtLeast(4)
+    }
+
+    /**
+     * Неделя рвётся там, где её рвёт преф `week_start`, а не всегда в понедельник.
+     * Расхождение двух календарей — ровно два воскресенья вокруг сегодняшнего дня:
+     * то, которым понедельничная неделя закрывается, и то, которым воскресная
+     * открывается. Проверяем оба (кроме дней, у которых своя подпись «вчера/
+     * сегодня/завтра»): под «своим» префом это «вс», под чужим — обычная дата.
+     */
+    @Test
+    fun `dueShort takes the week boundary from the week_start preference`() {
+        val today = midnightToday()
+        val names = ru.getStringArray(website.msdnna.tessera.R.array.dates_weekdays_short)
+        // Пн = 0 … Вс = 6 (порядок массива подписей), и отдельно номер дня от воскресенья.
+        val fromMonday = (today.get(Calendar.DAY_OF_WEEK) + 5) % 7
+        val fromSunday = today.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
+        // Воскресенье — единственный день, у которого обе границы сходятся на нём
+        // самом: тогда проверять нечего, у «сегодня» своя подпись.
+        val candidates = listOf(6 - fromMonday to WEEK_START_MONDAY, -fromSunday to WEEK_START_SUNDAY)
+        var checked = 0
+        for ((offset, ownWeekStart) in candidates) {
+            if (Math.abs(offset) <= 1) continue
+            val iso = isoUtcMidnight(today, offset)
+            val alien = if (ownWeekStart == WEEK_START_MONDAY) WEEK_START_SUNDAY else WEEK_START_MONDAY
+            assertThat(dueShort(ru, iso, DateFormatPrefs(weekStart = ownWeekStart))).isEqualTo(names[6])
+            assertThat(dueShort(ru, iso, DateFormatPrefs(weekStart = alien))).isNotEqualTo(names[6])
+            checked++
+        }
+        if (checked == 0) assertThat(fromSunday).isEqualTo(0)
+    }
+
+    @Test
+    fun `dueShort keeps Monday as the default and for an unknown preference value`() {
+        // Преф правится через API, и незнакомое число не должно уводить неделю в
+        // день, которого нет ни в одном календаре (веб сужает так же).
+        val today = midnightToday()
+        val sundayOffset = 6 - (today.get(Calendar.DAY_OF_WEEK) + 5) % 7
+        if (Math.abs(sundayOffset) <= 1) return
+        val iso = isoUtcMidnight(today, sundayOffset)
+        val sunday = ru.getStringArray(website.msdnna.tessera.R.array.dates_weekdays_short)[6]
+        assertThat(dueShort(ru, iso)).isEqualTo(sunday)
+        assertThat(dueShort(ru, iso, DateFormatPrefs(weekStart = 42))).isEqualTo(sunday)
+    }
+
+    // ── sameWeek ─────────────────────────────────────────────────────────────
+    @Test
+    fun `sameWeek breaks the week at the chosen first day`() {
+        val friday = date(2026, 9, 18)
+        val sunday = date(2026, 9, 20)
+        val tuesday = date(2026, 9, 22)
+        // Понедельничная неделя 14–20.09: пятница и воскресенье вместе, вторник уже нет.
+        assertThat(sameWeek(friday, sunday, WEEK_START_MONDAY)).isTrue()
+        assertThat(sameWeek(sunday, tuesday, WEEK_START_MONDAY)).isFalse()
+        // Воскресная неделя 20–26.09: ровно наоборот.
+        assertThat(sameWeek(friday, sunday, WEEK_START_SUNDAY)).isFalse()
+        assertThat(sameWeek(sunday, tuesday, WEEK_START_SUNDAY)).isTrue()
+    }
+
+    @Test
+    fun `sameWeek holds across the turn of the year`() {
+        // Номер недели тут не работает: у 31.12 и 01.01 разный YEAR, и неделя
+        // распадалась надвое — подпись «пт» пропадала ровно в новогоднюю неделю.
+        val thursday = date(2026, 12, 31)
+        val friday = date(2027, 1, 1)
+        assertThat(sameWeek(thursday, friday, WEEK_START_MONDAY)).isTrue()
+        assertThat(sameWeek(thursday, friday, WEEK_START_SUNDAY)).isTrue()
     }
 
     @Test

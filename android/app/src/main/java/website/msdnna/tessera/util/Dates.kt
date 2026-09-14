@@ -26,6 +26,8 @@ import website.msdnna.tessera.R
  * [DateFormatPrefs] (#2857): это преф профиля, а не язык, и подменой [Resources]
  * его не передать. В композиции значение берут из `LocalDateFormat`.
  */
+private const val DAYS_IN_WEEK = 7
+
 private fun months(res: Resources): Array<String> = res.getStringArray(R.array.dates_months_short)
 
 private fun monthsFull(res: Resources): Array<String> = res.getStringArray(R.array.dates_months_full)
@@ -55,11 +57,15 @@ private fun presetDate(res: Resources, y: Int, mo0: Int, d: Int, preset: String)
 
 /**
  * A relative day label for near-future/near-past dues, mirroring the web
- * `formatDue`: «Сегодня»/«Завтра»/«Вчера», or a capitalised weekday when the date
- * is elsewhere in the current (Monday-anchored) week. Returns "" to fall back to an
- * absolute date. [y]/[mo0]/[d] are the due's calendar components (mo0 zero-based).
+ * `formatDue`: «Сегодня»/«Завтра»/«Вчера», or a weekday when the date is elsewhere
+ * in the current week. Returns "" to fall back to an absolute date. [y]/[mo0]/[d]
+ * are the due's calendar components (mo0 zero-based).
+ *
+ * Где эта неделя рвётся — преф `week_start` из [fmt], а не понедельник: тот же преф
+ * уже задаёт порядок колонок в обоих пикерах (DueDateTimePicker, ReminderDateTimePicker),
+ * и подпись под календарём не может считать неделю иначе, чем сам календарь.
  */
-private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int): String {
+private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int, fmt: DateFormatPrefs): String {
     val due = Calendar.getInstance().apply {
         clear()
         set(y, mo0, d)
@@ -76,7 +82,7 @@ private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int): String {
         1 -> return res.getString(R.string.dates_tomorrow)
         -1 -> return res.getString(R.string.dates_yesterday)
     }
-    if (Math.abs(diff) <= 6 && sameWeek(due, today)) {
+    if (Math.abs(diff) <= 6 && sameWeek(due, today, fmt.weekStart)) {
         // Массив идёт с понедельника, Calendar.DAY_OF_WEEK — с воскресенья (1).
         // Подписи в ru намеренно строчные («пн»), как на вебе.
         val idx = (due.get(Calendar.DAY_OF_WEEK) + 5) % 7
@@ -85,12 +91,30 @@ private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int): String {
     return ""
 }
 
-/** True when two dates fall in the same Monday-anchored calendar week. */
-private fun sameWeek(a: Calendar, b: Calendar): Boolean {
-    val ca = (a.clone() as Calendar).apply { firstDayOfWeek = Calendar.MONDAY }
-    val cb = (b.clone() as Calendar).apply { firstDayOfWeek = Calendar.MONDAY }
-    return ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR) &&
-        ca.get(Calendar.WEEK_OF_YEAR) == cb.get(Calendar.WEEK_OF_YEAR)
+/**
+ * True when two dates fall in the same calendar week, broken at [weekStart]
+ * ([WEEK_START_SUNDAY] or [WEEK_START_MONDAY]).
+ *
+ * Сравниваются дни начала их недель, а не `WEEK_OF_YEAR`: у номера недели два
+ * изъяна, и оба тихие. На стыке годов `YEAR` у четверга 31.12 и пятницы 01.01 разный,
+ * хотя неделя одна, — подпись «пт» пропадала ровно в новогоднюю неделю. А сам номер
+ * зависит ещё и от `minimalDaysInFirstWeek`, которое Calendar берёт из локали
+ * устройства, то есть граница первой недели года ехала вслед за настройкой телефона.
+ * Веб считает ровно так же — через день начала недели (`weekOf` в utils/format.js).
+ */
+internal fun sameWeek(a: Calendar, b: Calendar, weekStart: Int): Boolean =
+    weekAnchorKey(a, weekStart) == weekAnchorKey(b, weekStart)
+
+/** `yyyyMMdd` дня, которым открывается неделя [cal] при разрыве на [weekStart]. */
+private fun weekAnchorKey(cal: Calendar, weekStart: Int): Int {
+    // Calendar.SUNDAY == 1, поэтому сдвиг даёт 0 = воскресенье — ту же нумерацию,
+    // в которой хранится сам преф.
+    val dow = cal.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
+    val back = ((dow - normalizeWeekStart(weekStart)) + DAYS_IN_WEEK) % DAYS_IN_WEEK
+    val start = (cal.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, -back) }
+    return start.get(Calendar.YEAR) * 10_000 +
+        (start.get(Calendar.MONTH) + 1) * 100 +
+        start.get(Calendar.DAY_OF_MONTH)
 }
 
 /**
@@ -249,7 +273,7 @@ fun dueShort(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPref
     } else {
         ""
     }
-    val rel = relativeDue(res, year, mo0, day)
+    val rel = relativeDue(res, year, mo0, day, fmt)
     val date = if (rel.isNotEmpty()) {
         rel
     } else if (year == currentYear()) {
