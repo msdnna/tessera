@@ -31,14 +31,25 @@ private fun dateOn(base: Calendar, year: Int, month: Int, day: Int): Long {
     }.timeInMillis
 }
 
+/**
+ * Толкает субботу/воскресенье вперёд на понедельник.
+ *
+ * Шаг — календарный (`add(DAY_OF_MONTH, …)`, как `AddDate` у бэкендового оригинала),
+ * а не `+ n * 86_400_000`: в неделю перевода часов сутки не равны 24 часам. Осенью
+ * воскресенье длится 25 часов, поэтому +48 ч от субботы попадали на ВОСКРЕСЕНЬЕ 23:00,
+ * а +24 ч от воскресенья — на то же воскресенье: календарь подсвечивал ровно тот
+ * выходной, который правило запрещает, и день, на который сервер не сработает.
+ * Весной те же +48 ч уводили время суток на час вперёд.
+ */
 private fun applySkip(millis: Long, skip: Boolean): Long {
     if (!skip) return millis
     val c = cal(millis)
-    return when (c.get(Calendar.DAY_OF_WEEK)) {
-        Calendar.SATURDAY -> millis + 2 * 86_400_000L
-        Calendar.SUNDAY -> millis + 86_400_000L
-        else -> millis
+    val days = when (c.get(Calendar.DAY_OF_WEEK)) {
+        Calendar.SATURDAY -> 2
+        Calendar.SUNDAY -> 1
+        else -> return millis
     }
+    return c.apply { add(Calendar.DAY_OF_MONTH, days) }.timeInMillis
 }
 
 /** Anchored day-of-month (1..31), falling back to the due date's own day. */

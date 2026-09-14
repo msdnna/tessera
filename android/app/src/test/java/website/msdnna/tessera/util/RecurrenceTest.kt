@@ -2,6 +2,7 @@ package website.msdnna.tessera.util
 
 import com.google.common.truth.Truth.assertThat
 import java.util.Calendar
+import java.util.TimeZone
 import org.junit.Test
 import website.msdnna.tessera.data.model.Recurrence
 
@@ -215,5 +216,54 @@ class RecurrenceTest {
         val rule = Recurrence(freq = "daily")
         val keys = occurrenceKeys(rule, from, n = 3)
         assertThat(keys).containsExactly("2026-06-10", "2026-06-11", "2026-06-12", "2026-06-13")
+    }
+
+    // ── перевод часов ────────────────────────────────────────────────────────
+    // Правило — календарное утверждение, а сутки с переводом часов не равны 24
+    // часам. Зона фиксируется в самом тесте: хост сидит в UTC, где перевода нет
+    // вовсе, и любая проверка этого класса ошибок выродилась бы в тавтологию.
+
+    /** Выполняет [body] с подменённой зоной устройства, возвращая прежнюю. */
+    private fun inZone(id: String, body: () -> Unit) {
+        val prev = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone(id))
+        try {
+            body()
+        } finally {
+            TimeZone.setDefault(prev)
+        }
+    }
+
+    private fun hourOf(millis: Long?): Int? =
+        millis?.let { Calendar.getInstance().apply { timeInMillis = it }.get(Calendar.HOUR_OF_DAY) }
+
+    @Test
+    fun `skip weekends steps calendar days when clocks go back`() = inZone("Europe/Berlin") {
+        // 2026-10-25 — воскресенье перевода часов назад, в нём 25 часов.
+        val rule = Recurrence(freq = "daily", skipWeekends = true)
+
+        // Пятница 23-го → суббота 24-го → понедельник 26-го (миллисекундами выходило
+        // воскресенье 25-е 23:00 — выходной, запрещённый самим правилом).
+        val fromFri = nextOccurrence(rule, localMidnight(2026, 10, 23))
+        assertThat(keyOf(fromFri)).isEqualTo("2026-10-26")
+        assertThat(hourOf(fromFri)).isEqualTo(0)
+
+        // Суббота 24-го → воскресенье 25-е → понедельник 26-й (было: то же 25-е).
+        val fromSat = nextOccurrence(rule, localMidnight(2026, 10, 24))
+        assertThat(keyOf(fromSat)).isEqualTo("2026-10-26")
+        assertThat(hourOf(fromSat)).isEqualTo(0)
+    }
+
+    @Test
+    fun `skip weekends keeps the clock when clocks go forward`() = inZone("Europe/Berlin") {
+        // 2026-03-29 — воскресенье перевода часов вперёд, в нём 23 часа: +48 ч от
+        // субботы 28-го уводили занятие с 22:00 на 23:00.
+        val fri = Calendar.getInstance().apply {
+            clear()
+            set(2026, Calendar.MARCH, 27, 22, 0, 0)
+        }.timeInMillis
+        val next = nextOccurrence(Recurrence(freq = "daily", skipWeekends = true), fri)
+        assertThat(keyOf(next)).isEqualTo("2026-03-30")
+        assertThat(hourOf(next)).isEqualTo(22)
     }
 }
