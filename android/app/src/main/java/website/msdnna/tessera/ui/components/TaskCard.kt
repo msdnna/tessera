@@ -78,6 +78,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourKeys
+import website.msdnna.tessera.util.UserTextOrder
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnCaption
@@ -1103,7 +1104,7 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel, s
             } else {
                 val byId = state.members.associateBy { it.userId }
                 val out = LinkedHashMap<String, website.msdnna.tessera.data.model.Member>()
-                (task.assigneeIds + recent + state.members.sortedBy { it.name.lowercase() }.map { it.userId })
+                (task.assigneeIds + recent + state.members.sortedWith(compareBy(UserTextOrder) { it.name }).map { it.userId })
                     .forEach { id -> byId[id]?.let { out.putIfAbsent(id, it) } }
                 out.values.toList().take(maxOf(10, task.assigneeIds.size))
             }

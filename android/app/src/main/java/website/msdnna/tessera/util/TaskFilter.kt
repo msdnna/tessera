@@ -1,7 +1,5 @@
 package website.msdnna.tessera.util
 
-import java.text.Collator
-import java.util.Locale
 import website.msdnna.tessera.data.model.Task
 
 /*
@@ -294,8 +292,8 @@ fun boardGitlabAuthors(tasks: List<Task>): List<GitlabAuthor> {
         if (login.isNullOrBlank() || login in byLogin) continue
         byLogin[login] = GitlabAuthor(login, t.gitlabAuthorName?.ifBlank { login } ?: login, t.gitlabAuthorAvatarUrl.orEmpty())
     }
-    // Collator, not a raw String compare: web sorts with localeCompare(…, 'ru'), where
-    // Latin precedes Cyrillic and case/ё are folded — a code-unit sort disagrees.
-    val collator = Collator.getInstance(Locale("ru"))
-    return byLogin.values.sortedWith { a, b -> collator.compare(a.name, b.name) }
+    // Collator, not a raw String compare: the web sorts with its own collator, where
+    // Latin precedes Cyrillic, case/ё are folded and digits compare by value — a
+    // code-unit sort disagrees on all three ([UserTextOrder]).
+    return byLogin.values.sortedWith { a, b -> UserTextOrder.compare(a.name, b.name) }
 }

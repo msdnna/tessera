@@ -150,6 +150,17 @@ class TagGroupsTest {
         ).inOrder()
     }
 
+    /** Числа в именах тегов сравниваются по величине, как на вебе (`numeric: true`):
+     *  «Спринт: 10» не должен обгонять «Спринт: 2». */
+    @Test
+    fun `buildTagGroups sorts numbered tags by value`() {
+        val tags = listOf(tag("Спринт: 10"), tag("Спринт: 2"), tag("Спринт: 1"))
+        val group = buildTagGroups(ru, tags).first()
+        assertThat(group.tags.map { it.name }).containsExactly(
+            "Спринт: 1", "Спринт: 2", "Спринт: 10",
+        ).inOrder()
+    }
+
     @Test
     fun `buildTagGroups honours friendly prefix names`() {
         val tags = listOf(tag("S: a"))

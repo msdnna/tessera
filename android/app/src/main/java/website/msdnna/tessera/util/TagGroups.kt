@@ -1,8 +1,6 @@
 package website.msdnna.tessera.util
 
 import android.content.res.Resources
-import java.text.Collator
-import java.util.Locale
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.GitlabRule
 import website.msdnna.tessera.data.model.Tag
@@ -18,12 +16,12 @@ import website.msdnna.tessera.data.model.Tag
  *  and the member [tags] (sorted by name). */
 data class TagGroup(val key: String, val label: String, val prefix: String, val tags: List<Tag>)
 
-/** Russian-locale, case-insensitive collator so Cyrillic labels sort naturally.
- *  Локаль сортировки намеренно не следует за языком интерфейса: имена тегов — это
- *  пользовательские данные, они остаются русскими и на английском UI, а порядок
- *  групп не должен переставляться от переключения языка. */
-private val ruCollator: Collator =
-    Collator.getInstance(Locale.forLanguageTag("ru")).apply { strength = Collator.SECONDARY }
+/** Russian-locale, case-insensitive, digit-aware order so Cyrillic labels sort
+ *  naturally and «спринт/2» precedes «спринт/10» exactly as it does on the web
+ *  ([UserTextOrder]). Локаль сортировки намеренно не следует за языком интерфейса:
+ *  имена тегов — это пользовательские данные, они остаются русскими и на английском
+ *  UI, а порядок групп не должен переставляться от переключения языка. */
+private val ruCollator: Comparator<String> = UserTextOrder
 
 /** Namespace of a tag name ("T: bug" → "T: ", "effort::small" → "effort::").
  *  Returns "" when the tag has no prefix. */

@@ -93,6 +93,7 @@ import website.msdnna.tessera.util.BoardFilter
 import website.msdnna.tessera.util.DueFilter
 import website.msdnna.tessera.util.GitlabAuthor
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.UserTextOrder
 import website.msdnna.tessera.util.boardGitlabAuthors
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnCaption
@@ -366,7 +367,7 @@ private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     val namespaces = remember(state.tagList, state.prefixNames, res) {
         state.tagList.mapNotNull { tagNamespace(it.name).ifEmpty { null } }.distinct()
             .map { it to prefixLabel(res, it, state.prefixNames) }
-            .sortedBy { it.second.lowercase() }
+            .sortedWith(compareBy(UserTextOrder) { it.second })
     }
     // Assignee / no-grouping are only meaningful on the swimlane (timeline/Gantt) views.
     val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
