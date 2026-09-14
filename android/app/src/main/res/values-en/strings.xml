@@ -699,6 +699,7 @@
     <string name="notif_kind_archived">Archiving</string>
     <string name="notif_kind_due_soon">Due dates</string>
     <string name="notif_kind_reminder">Reminders</string>
+    <string name="notif_kind_integration_sync">Integration sync</string>
 
     <!-- Notifications: due date and quiet hours schedule -->
     <string name="notif_due_enabled">Notify about due dates</string>
@@ -715,6 +716,7 @@
     <string name="notif_lead_1h">1 hour before</string>
     <string name="notif_lead_3h">3 hours before</string>
     <string name="notif_lead_1d">1 day before</string>
+    <string name="notif_lead_2d">2 days before</string>
     <string name="notif_repeat_once">Once</string>
     <string name="notif_repeat_1h">Every hour</string>
     <string name="notif_repeat_3h">Every 3 hours</string>

@@ -718,6 +718,7 @@
     <string name="notif_kind_archived">Архивирование</string>
     <string name="notif_kind_due_soon">Дедлайны</string>
     <string name="notif_kind_reminder">Напоминания</string>
+    <string name="notif_kind_integration_sync">Синхронизация интеграций</string>
 
     <!-- Уведомления: расписание дедлайнов и тихих часов -->
     <string name="notif_due_enabled">Уведомлять о дедлайнах</string>
@@ -734,6 +735,7 @@
     <string name="notif_lead_1h">За час</string>
     <string name="notif_lead_3h">За 3 часа</string>
     <string name="notif_lead_1d">За день</string>
+    <string name="notif_lead_2d">За 2 дня</string>
     <string name="notif_repeat_once">Однократно</string>
     <string name="notif_repeat_1h">Каждый час</string>
     <string name="notif_repeat_3h">Каждые 3 часа</string>
