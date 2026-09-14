@@ -148,11 +148,21 @@ private fun currentYear(): Int = Calendar.getInstance().get(Calendar.YEAR)
 fun todayKey(fmt: DateFormatPrefs = DateFormatPrefs.Default): String = dayKeyIn(fmt.zone, 0)
 
 /**
- * The `yyyy-MM-dd` of today + [days], read in [zone]. Shared by [todayKey] and the
- * board filter's week boundary so both ends of a window come from one calendar.
+ * The `yyyy-MM-dd` of today + [days], read in [zone]. Shared by [todayKey], the
+ * board filter's week boundary and the matrix's urgency window, so every end of
+ * every window comes from one calendar.
+ *
+ * A calendar step, not `+ days * 86_400_000L`: a day with a clock change is not
+ * 24 hours long, and the boundary would land an hour into the neighbouring day.
+ *
+ * [nowMillis] is injectable for the same reason web's predicates take a `now`:
+ * a window that reads the clock itself cannot be pinned by a test.
  */
-internal fun dayKeyIn(zone: TimeZone, days: Int): String {
-    val cal = Calendar.getInstance(zone).apply { add(Calendar.DAY_OF_MONTH, days) }
+internal fun dayKeyIn(zone: TimeZone, days: Int, nowMillis: Long = System.currentTimeMillis()): String {
+    val cal = Calendar.getInstance(zone).apply {
+        timeInMillis = nowMillis
+        add(Calendar.DAY_OF_MONTH, days)
+    }
     return "%04d-%02d-%02d".format(
         cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH),
     )

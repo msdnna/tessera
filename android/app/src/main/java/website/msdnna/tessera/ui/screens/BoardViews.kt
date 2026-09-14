@@ -171,6 +171,7 @@ import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.isReviewColumn
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
+import website.msdnna.tessera.util.quadrantOf
 import website.msdnna.tessera.util.shortDate
 import website.msdnna.tessera.util.topoByDeps
 
@@ -1014,17 +1015,13 @@ private val EisenhowerQuads = listOf(
     EisenQuad(3, R.string.board_matrix_q3_title, R.string.board_matrix_q3_hint, Color(0xFF9AA0AA)),
 )
 
-private const val EISEN_URGENT_DAYS = 7
-
-/** Derived quadrant (no override): importance from priority, urgency from due-date.
- *  Encoding matches the backend (0 urgent+important … 3 not-urgent+not-important). */
-private fun deriveQuadrant(task: Task): Int {
-    val important = task.priority >= 3
-    val due = parseInstantMillis(task.dueDate)
-    val urgent = due != null && due <= System.currentTimeMillis() + EISEN_URGENT_DAYS * 86_400_000L
-    return if (important) (if (urgent) 0 else 1) else (if (urgent) 2 else 3)
-}
-private fun quadrantOf(task: Task): Int = task.eisenhowerQuadrant ?: deriveQuadrant(task)
+/*
+ * Вывод квадранта живёт в `util/Eisenhower.kt`: ось «Срочно» — окно по календарным
+ * дням зоны пользователя, тем же [dueDayKey], которым подписана карточка, и мерить
+ * его миллисекундами нельзя (см. комментарий там). Отсюда [BoardUiState.dateFormat]
+ * приходится дотаскивать до каждого вызова — это та же дисциплина, что у фасета
+ * «Срок» в BoardViewModel.
+ */
 
 /**
  * The Eisenhower matrix (mirrors the web `BoardMatrixView`): a 2×2 Важно×Срочно
@@ -1039,7 +1036,7 @@ fun BoardMatrixView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) 
     val focusManager = LocalFocusManager.current
     // Open tasks only — completed cards belong to «done», not the triage matrix.
     val tasks = state.applyFilterSort(state.tasks).filter { !it.isCompleted }
-    val byQuad = tasks.groupBy { quadrantOf(it) }
+    val byQuad = tasks.groupBy { quadrantOf(it, state.dateFormat) }
     var expanded by remember { mutableStateOf<Int?>(null) }
     BackHandler(enabled = expanded != null) { expanded = null }
 
@@ -1182,7 +1179,14 @@ private fun QuadrantCell(
                     // animateItem fades the card out of its old quadrant and into the
                     // new one when its quadrant changes (the menu move) — the closest
                     // thing to an animated move without cross-list DnD.
-                    MatrixCard(task, quadrantOf(task), state, vm, onOpenTask, Modifier.animateItem())
+                    MatrixCard(
+                        task,
+                        quadrantOf(task, state.dateFormat),
+                        state,
+                        vm,
+                        onOpenTask,
+                        Modifier.animateItem(),
+                    )
                 }
             }
             // When the quick-add is open below, fade the list's bottom cards into it

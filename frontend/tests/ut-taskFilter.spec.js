@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   filterBoardTasks,
   isTaskOverdue,
+  isDueWithinDays,
   matchesDue,
   matchesHomeDue,
   matchesTask,
@@ -328,5 +329,70 @@ describe('matchesTask / hasSubtaskFacets', () => {
     expect(hasSubtaskFacets(f({ q: '  ' }))).toBe(false)
     expect(hasSubtaskFacets(f({ q: 'x' }))).toBe(true)
     expect(hasSubtaskFacets(f({ tags: ['tagA'] }))).toBe(true)
+  })
+})
+
+// Ось «Срочно» матрицы Эйзенхауэра. До этого она считала окно миллисекундами
+// (`due <= Date.now() + 7 * 86400000`), а не календарными днями, и потому спорила
+// с фасетом «Срок: неделя» на той же доске: у задачи со сроком ровно через семь
+// дней время суток обычно раньше текущего — для date-only срока (UTC-полночь)
+// всегда, — и инстант проскакивал под границу.
+describe('isDueWithinDays — срочность по календарным дням', () => {
+  const zone = (timezone) => createFormatters({ ...DEFAULT_PREFS, timezone })
+  const east = zone('Asia/Kamchatka') // UTC+12
+  const west = zone('Pacific/Honolulu') // UTC-10
+  const d = (due) => ({ due_date: due })
+
+  // now = 14:00Z 13 сентября: 14-е 02:00 на Камчатке, 13-е 04:00 в Гонолулу.
+  const NOW_Z = new Date('2026-09-13T14:00:00Z')
+
+  // Ключевой случай: инстант укладывается в now + 7×86400000 (20-е 14:00Z), но
+  // календарный день срока — уже восьмой (21-е на Камчатке, 20-е в Гонолулу),
+  // то есть ровно та граница, за которую окно не заходит.
+  it('срок на восьмой день не срочный, хотя инстант влезает в 7×86400000', () => {
+    const task = d('2026-09-20T13:00:00Z')
+    expect(new Date(task.due_date).getTime() <= NOW_Z.getTime() + 7 * 86400000).toBe(true)
+    for (const z of [east, west]) {
+      expect(isDueWithinDays(task, 7, NOW_Z, z)).toBe(false)
+      // И фасет «неделя» рядом на доске отвечает так же — в этом весь смысл.
+      expect(matchesDue(task, 'week', NOW_Z, z)).toBe(false)
+    }
+  })
+
+  it('седьмой день окна срочный, и фасет «неделя» с ним согласен', () => {
+    const task = d('2026-09-19T13:00:00Z')
+    for (const z of [east, west]) {
+      expect(isDueWithinDays(task, 7, NOW_Z, z)).toBe(true)
+      expect(matchesDue(task, 'week', NOW_Z, z)).toBe(true)
+    }
+  })
+
+  // Тот же date-only срок (UTC-полночь) попадает в окно у одного пользователя и
+  // не попадает у другого — окно отсчитывается от ЕГО «сегодня».
+  it('date-only срок меряется от «сегодня» в зоне пользователя', () => {
+    const task = d('2026-09-20T00:00:00Z')
+    expect(isDueWithinDays(task, 7, NOW_Z, east)).toBe(true) // «сегодня» 14-е → до 21-го
+    expect(isDueWithinDays(task, 7, NOW_Z, west)).toBe(false) // «сегодня» 13-е → до 20-го
+    expect(matchesDue(task, 'week', NOW_Z, east)).toBe(true)
+    expect(matchesDue(task, 'week', NOW_Z, west)).toBe(false)
+  })
+
+  // Окно, перешагивающее перевод часов, тоже календарное: 26-е 23:30Z — это уже
+  // 27-е 00:30 в Берлине (CET с 25 октября), восьмой день.
+  it('перевод часов не сдвигает границу окна', () => {
+    const berlin = zone('Europe/Berlin')
+    const now = new Date('2026-10-20T08:00:00Z') // 10:00 по Берлину, CEST
+    expect(isDueWithinDays(d('2026-10-26T23:30:00Z'), 7, now, berlin)).toBe(false)
+    expect(isDueWithinDays(d('2026-10-26T22:30:00Z'), 7, now, berlin)).toBe(true)
+  })
+
+  it('просроченное срочно, а задача без срока — нет', () => {
+    for (const z of [east, west]) {
+      expect(isDueWithinDays(d('2026-09-01T10:00:00Z'), 7, NOW_Z, z)).toBe(true)
+      expect(isDueWithinDays(d(null), 7, NOW_Z, z)).toBe(false)
+      expect(isDueWithinDays(undefined, 7, NOW_Z, z)).toBe(false)
+      // Ширину окна задаёт вызывающий: с однодневным окном тот же срок уже не срочен.
+      expect(isDueWithinDays(d('2026-09-19T13:00:00Z'), 1, NOW_Z, z)).toBe(false)
+    }
   })
 })

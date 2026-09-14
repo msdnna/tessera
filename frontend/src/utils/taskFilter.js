@@ -74,6 +74,23 @@ export function isTaskOverdue(t, now = new Date(), f = defaultFormatters()) {
   return dueDayOf(t, f) < dueWindow(now, f).today
 }
 
+// Is this task due inside the next `days` calendar days — the urgency axis of the
+// Eisenhower matrix (BoardMatrixView), whose default window is a week.
+//
+// Half-open, [today, today+days), and overdue counts as inside it: something that
+// was due yesterday is not less urgent than something due tomorrow. With days = 7
+// that is the very window `matchesDue(t, 'week')` uses, which is the point of
+// putting it here instead of leaving the matrix its own arithmetic. The matrix
+// used to ask `due <= Date.now() + days * 86400000`, an instant comparison, so a
+// task due on day+7 landed in «Срочно» whenever its time of day was earlier than
+// the current one — always, for a date-only due (a pure UTC midnight reads as
+// 00:00) — while the «Срок: неделя» facet on the same board, the home «На неделе»
+// tile and the server's SQL count all put it outside the week.
+export function isDueWithinDays(t, days, now = new Date(), f = defaultFormatters()) {
+  if (!t?.due_date) return false
+  return dueDayOf(t, f) < dueWindow(now, f).today + days
+}
+
 // Due-date predicate for the "Срок" filter. `now` is injectable so tests are not
 // clock-dependent; `f` is the caller's formatter set, whose `timezone` preference
 // decides which calendar day the due date and "today" belong to.

@@ -7,6 +7,8 @@ import { CloseCircleOutline } from '@vicons/ionicons5'
 import TaskCard from './TaskCard.vue'
 import { tasks as tasksApi } from '@/api'
 import { normalizeTitle } from '@/utils/title'
+import { isDueWithinDays } from '@/utils/taskFilter'
+import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
   // Filtered top-level board tasks (same array the kanban groups).
@@ -22,6 +24,9 @@ const props = defineProps({
 const emit = defineEmits(['open', 'changed', 'create'])
 const message = useMessage()
 const { t } = useI18n()
+// The urgency axis is a calendar-day window in the user's timezone, so it needs
+// the same formatter set the due pill on the card is printed with.
+const { formatters } = useFormat()
 
 // ── quadrant model ────────────────────────────────────────────
 // Index encoding mirrors the backend (migration 0028):
@@ -46,13 +51,14 @@ const quadrants = computed(() =>
 
 // Derived quadrant when there's no manual override: importance from priority
 // (high/urgent), urgency from due-date proximity.
+//
+// Proximity is counted in whole calendar days of the user's timezone, not in
+// milliseconds — see isDueWithinDays(). The window is the one the «Срок: неделя»
+// facet above this very grid uses, so a card cannot be urgent here and outside
+// the week there.
 function derive(t) {
   const important = (t.priority || 0) >= 3
-  let urgent = false
-  if (t.due_date) {
-    const due = new Date(t.due_date).getTime()
-    urgent = due <= Date.now() + props.urgentWindowDays * 86400000
-  }
+  const urgent = isDueWithinDays(t, props.urgentWindowDays, new Date(), formatters.value)
   if (important) return urgent ? 0 : 1
   return urgent ? 2 : 3
 }
@@ -75,7 +81,10 @@ function rebuild() {
   }
   buckets.value = b
 }
-watch(() => props.tasks, rebuild, { immediate: true })
+// Also on the formatter set: the urgency window is read in the user's timezone,
+// so changing that preference re-sorts the grid instead of leaving it on the
+// calendar it was first built in.
+watch([() => props.tasks, formatters], rebuild, { immediate: true })
 
 const dragging = ref(false)
 
