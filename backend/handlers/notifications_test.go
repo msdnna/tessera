@@ -90,6 +90,50 @@ func TestQuietWindow(t *testing.T) {
 	}
 }
 
+// The end of the window is a reading on the user's wall clock, so the day the
+// clocks change must not move it. Computing it as a duration from local midnight
+// did: the autumn Sunday lasts 25 hours, so midnight+7h is 06:00 and the phone
+// starts buzzing an hour before the user said it may; the spring one lasts 23, so
+// the same sum is 08:00 and holds delivery an hour too long. Every other case in
+// TestQuietWindow runs in UTC, where no day is ever anything but 24 hours.
+func TestQuietWindowAcrossClockChange(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skipf("tzdata for Europe/Berlin unavailable: %v", err)
+	}
+	// Quiet 22:00–07:00 (wrapping), read in the user's own zone.
+	const startMin, endMin = 1320, 420
+	local := func(y int, mo time.Month, d, h, m int) time.Time {
+		return time.Date(y, mo, d, h, m, 0, 0, berlin)
+	}
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		// 2026-10-25 is the 25-hour Sunday (03:00 CEST → 02:00 CET).
+		{"autumn, inside the long night", local(2026, 10, 25, 1, 0), local(2026, 10, 25, 7, 0)},
+		// Same night entered before midnight — the "resumes tomorrow" branch, which
+		// used to add a flat 24 hours to a day that has 25.
+		{"autumn, entered the evening before", local(2026, 10, 24, 23, 0), local(2026, 10, 25, 7, 0)},
+		// 2026-03-29 is the 23-hour Sunday (02:00 CET → 03:00 CEST).
+		{"spring, inside the short night", local(2026, 3, 29, 1, 0), local(2026, 3, 29, 7, 0)},
+		{"spring, entered the evening before", local(2026, 3, 28, 23, 0), local(2026, 3, 29, 7, 0)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			end, quiet := quietWindow(true, startMin, endMin, "Europe/Berlin", tc.now)
+			if !quiet {
+				t.Fatalf("%s should be inside 22:00–07:00", tc.now.Format(time.RFC3339))
+			}
+			if !end.Equal(tc.want) {
+				t.Errorf("window ends %s, want %s (07:00 on the user's clock)",
+					end.In(berlin).Format(time.RFC3339), tc.want.Format(time.RFC3339))
+			}
+		})
+	}
+}
+
 func TestDueShouldFire(t *testing.T) {
 	due := time.Date(2026, 6, 16, 18, 0, 0, 0, time.UTC)
 	state := func(firedDue time.Time, last time.Time) *db.DueNotificationState {

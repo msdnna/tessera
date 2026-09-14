@@ -87,10 +87,16 @@ func quietWindow(enabled bool, startMin, endMin int, tz string, now time.Time) (
 	if !inQuiet {
 		return time.Time{}, false
 	}
-	midnight := time.Date(lt.Year(), lt.Month(), lt.Day(), 0, 0, 0, 0, loc)
-	end := midnight.Add(time.Duration(endMin) * time.Minute)
+	// The bound is a reading on the user's wall clock, so it is built as one —
+	// time.Date normalises the out-of-range minute — and not as a duration from
+	// local midnight. A day with a clock change is not 24 hours long: in autumn
+	// midnight+7h lands at 06:00 and the phone starts buzzing an hour before the
+	// window says it may, in spring it lands at 08:00 and holds an hour too long.
+	// Same reason "tomorrow" is the next calendar day rather than +24h.
+	end := time.Date(lt.Year(), lt.Month(), lt.Day(), 0, endMin, 0, 0, loc)
 	if !end.After(lt) {
-		end = end.Add(24 * time.Hour) // end already passed today → resumes tomorrow
+		// end already passed today → resumes tomorrow
+		end = time.Date(lt.Year(), lt.Month(), lt.Day()+1, 0, endMin, 0, 0, loc)
 	}
 	return end, true
 }
