@@ -249,6 +249,42 @@ class ErrorsTest {
             .isEqualTo("SMTP is not configured on the server — the email was logged, not sent")
     }
 
+    // ── отказы «слишком большой» (#2932) ─────────────────────────────────────
+
+    /** Транспортный отказ `middleware.BodyLimit`. Веб его переводит, телефон —
+     *  нет, хотя доходит до него обычным путём: длинное описание задачи. */
+    @Test
+    fun `humanizeError maps the transport's body limit`() {
+        assertThat(humanizeError("request body too large")?.resolve(ru))
+            .isEqualTo("Слишком большой запрос — сократите текст или вложение")
+        assertThat(humanizeError("request body too large")?.resolve(en))
+            .isEqualTo("The request is too large — shorten the text or the attachment")
+    }
+
+    /** Валидатор документа называет свой потолок в БАЙТАХ, чтобы клиент перевёл
+     *  его в единицы читателя. Редактор на телефоне сохраняет через тот же
+     *  `PATCH /documents/:id/content`, и до правки печатал «content exceeds
+     *  4194304 bytes» дословно. */
+    @Test
+    fun `humanizeError words the document ceiling in megabytes`() {
+        assertThat(humanizeError("content exceeds 4194304 bytes")?.resolve(ru))
+            .isEqualTo("Документ больше 4 МБ — разделите его на несколько страниц")
+        assertThat(humanizeError("content exceeds 4194304 bytes")?.resolve(en))
+            .isEqualTo("The document is larger than 4 MB — split it into several pages")
+    }
+
+    /** То же для суммы вложений чата конференции (`MaxChatTotalBytes`). Дробный
+     *  потолок остаётся дробным — округлять его вниз значило бы соврать. */
+    @Test
+    fun `humanizeError words the chat batch ceiling in megabytes`() {
+        assertThat(humanizeError("attachments exceed 26214400 bytes")?.resolve(ru))
+            .isEqualTo("Вложения весят больше 25 МБ — отправьте их несколькими сообщениями")
+        assertThat(humanizeError("attachments exceed 26214400 bytes")?.resolve(en))
+            .isEqualTo("The attachments add up to more than 25 MB — send them in several messages")
+        assertThat(humanizeError("attachments exceed 1572864 bytes")?.resolve(ru))
+            .isEqualTo("Вложения весят больше 1.5 МБ — отправьте их несколькими сообщениями")
+    }
+
     /** Негативные контроли: шаблоны узкие и не переписывают обычную фразу,
      *  в которой случайно оказались те же слова. */
     @Test
@@ -259,6 +295,10 @@ class ErrorsTest {
             .isEqualTo("template exceeds expectations")
         assertThat(humanizeError("unknown channel type")?.resolve(ru))
             .isEqualTo("unknown channel type")
+        assertThat(humanizeError("content exceeds expectations")?.resolve(ru))
+            .isEqualTo("content exceeds expectations")
+        assertThat(humanizeError("the attachments exceed 10 bytes of patience")?.resolve(ru))
+            .isEqualTo("the attachments exceed 10 bytes of patience")
     }
 
     // ── isAuthError ──────────────────────────────────────────────────────────

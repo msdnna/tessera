@@ -92,6 +92,11 @@ private val sentinels = mapOf(
     // Перехватчик его не видит — вызов-то успешен, — поэтому ViewModel прогоняет
     // строку через humanizeError сама.
     "smtp is not configured" to R.string.err_smtp_not_configured,
+    // Отказ самого транспорта (middleware.BodyLimit), а не хендлера — оттого и
+    // звучит как протокольная ошибка, а не как что-то, сделанное человеком. До
+    // него доходят обычным путём: достаточно написать очень длинное описание
+    // задачи (#2932).
+    "request body too large" to R.string.err_body_too_large,
     "requires admin or owner" to R.string.err_requires_manager,
     "requires admin" to R.string.err_requires_admin,
     "forbidden" to R.string.err_forbidden,
@@ -113,10 +118,50 @@ private val channelRequiresField =
     Regex("""^(email|telegram|webhook|shoutrrr|device) channel requires ([a-z_]+)$""")
 private val templateTooLong = Regex("""^template exceeds (\d+) characters$""")
 
+// Два отказа, которые называют свой потолок В БАЙТАХ, чтобы каждый клиент
+// перевёл число в единицы читателя (#2932). Веб так и делает; телефон печатал
+// английскую фразу с семизначным счётчиком посреди русского экрана.
+//
+// Первый — валидатор документа (`handlers/document_schema.go`): он всплывает в
+// строке автосохранения редактора, и читателю нужно «4 МБ» и понимание, что
+// страницу надо разделить. Второй — чат конференции, отказ на СУММУ вложений
+// (`MaxChatTotalBytes`): композер правило зеркалит (util/ConferenceChat.kt), так
+// что сюда доходит только вторая вкладка или второй пикер.
+private val docContentTooLarge = Regex("""^content exceeds (\d+) bytes$""")
+private val chatAttachmentsTooLarge = Regex("""^attachments exceed (\d+) bytes$""")
+
 // Своя тут только обёртка: хвост — слова самого парсера Go, они называют
 // сломанное выражение и перевода не имеют, поэтому едут дословно и с исходным
 // регистром (из `msg`, а не из приведённой к нижнему копии).
 private const val TEMPLATE_ERROR_PREFIX = "template error: "
+
+/**
+ * Потолок из сообщения сервера — в мебибайтах, как его печатает веб
+ * (`formatFileSize`): дробная часть только когда она есть, так что 4194304
+ * читается «4», а не «4.0». Нераспознанное число едет как пришло — соврать про
+ * размер хуже, чем показать байты.
+ */
+private fun megabytes(raw: String): String {
+    val bytes = raw.toLongOrNull() ?: return raw
+    val text = String.format(java.util.Locale.US, "%.1f", bytes.toDouble() / (1L shl 20))
+    return text.removeSuffix(".0")
+}
+
+// Разбор пары «слишком большой» отказов. Отдельной функцией по той же причине,
+// что и [channelRefusal] ниже: в [humanizeError] это были бы ранние возвраты
+// подряд на одну тему.
+private fun tooLargeRefusal(low: String): UiText? {
+    docContentTooLarge.find(low)?.let {
+        return UiText.Res(R.string.err_doc_content_too_large, listOf(megabytes(it.groupValues[1])))
+    }
+    chatAttachmentsTooLarge.find(low)?.let {
+        return UiText.Res(
+            R.string.err_chat_attachments_too_large,
+            listOf(megabytes(it.groupValues[1])),
+        )
+    }
+    return null
+}
 
 // Разбор той самой четвёрки. Вынесен из [humanizeError] отдельной функцией: там
 // это были бы четыре ранних возврата подряд на одну тему.
@@ -167,7 +212,9 @@ fun humanizeError(raw: String?): UiText? {
     if (msg.isNullOrEmpty()) return null
     val low = msg.lowercase()
     sentinels[low]?.let { return UiText.Res(it) }
-    channelRefusal(msg, low)?.let { return it }
+    // Одним возвратом на обе группы шаблонов: ReturnCount этой функции detekt
+    // считает по лимиту, и «ещё один ранний return» её краснит.
+    (tooLargeRefusal(low) ?: channelRefusal(msg, low))?.let { return it }
     if (low.startsWith("key:") && low.contains("validation")) {
         return UiText.Res(fromValidator(msg) ?: R.string.err_check_fields)
     }

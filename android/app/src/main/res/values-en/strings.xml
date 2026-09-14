@@ -1411,6 +1411,9 @@
     <string name="err_template_too_long">The template is longer than %1$s characters — shorten it</string>
     <string name="err_template_error">Template error: %1$s</string>
     <string name="err_smtp_not_configured">SMTP is not configured on the server — the email was logged, not sent</string>
+    <string name="err_body_too_large">The request is too large — shorten the text or the attachment</string>
+    <string name="err_doc_content_too_large">The document is larger than %1$s MB — split it into several pages</string>
+    <string name="err_chat_attachments_too_large">The attachments add up to more than %1$s MB — send them in several messages</string>
     <string name="err_forbidden">Not enough permissions</string>
     <string name="err_unauthorized">Please sign in again</string>
     <string name="err_not_found">Not found</string>
