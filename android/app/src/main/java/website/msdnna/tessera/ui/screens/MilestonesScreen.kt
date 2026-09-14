@@ -69,6 +69,7 @@ import website.msdnna.tessera.ui.viewmodels.MilestoneViewModel
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.Milestones
+import website.msdnna.tessera.util.WeekGrid
 import website.msdnna.tessera.util.longDate
 import website.msdnna.tessera.util.millisToUtcIso
 
@@ -547,10 +548,17 @@ private fun DateChip(label: String, iso: String?, onPick: (String?) -> Unit, mod
     }
 }
 
-/** A compact UTC month-grid date picker (date-only → UTC-midnight ISO). */
+/**
+ * A compact UTC month-grid date picker (date-only → UTC-midnight ISO).
+ *
+ * Сетка открывается на префе `week_start` — как пикеры срока и напоминания и как
+ * `first-day-of-week` у веб-пикеров вехи (#2932). День остаётся UTC-шным: дата вехи
+ * date-only, а преф двигает только колонки.
+ */
 @Composable
 private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
     val c = Tessera.colors
+    val weekStart = LocalDateFormat.current.weekStart
     val initialCal = remember {
         Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
             val key = if (initialIso != null && initialIso.length >= 10) initialIso.substring(0, 10) else null
@@ -571,7 +579,7 @@ private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
     // Те же массивы, что у календарного вида доски: подписи читаются на рекомпозицию,
     // поэтому смена языка перерисовывает попап, а не оставляет его на прежнем.
     val monthNames = stringArrayResource(R.array.calendar_months)
-    val weekdayHeaders = stringArrayResource(R.array.calendar_weekdays_short)
+    val weekdayHeaders = WeekGrid.labels(stringArrayResource(R.array.calendar_weekdays_short).toList(), weekStart)
 
     Column(Modifier.width(260.dp).padding(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -605,12 +613,12 @@ private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
             }
         }
         Spacer(Modifier.height(2.dp))
-        // First weekday of the month (Mon=0..Sun=6).
+        // Пустые ячейки перед первым числом — до дня, которым открывается неделя.
         val first = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
             set(year, month, 1, 0, 0, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val lead = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7 // Mon-based offset
+        val lead = WeekGrid.lead(first.get(Calendar.DAY_OF_WEEK), weekStart)
         val days = daysInMonthUtc(year, month)
         val cells = lead + days
         val rows = (cells + 6) / 7

@@ -149,6 +149,7 @@ import website.msdnna.tessera.ui.components.fadeInOnAppear
 import website.msdnna.tessera.ui.components.leftAccentFrame
 import website.msdnna.tessera.ui.components.rememberBoardDragState
 import website.msdnna.tessera.ui.components.topAccentFrame
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -161,6 +162,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourKeys
+import website.msdnna.tessera.util.WeekGrid
 import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.countWithSubtasks
 import website.msdnna.tessera.util.dueDayKey
@@ -812,14 +814,13 @@ private class CalCell(val key: String, val day: Int, val inMonth: Boolean)
 private fun dayKey(cal: Calendar): String =
     "%04d-%02d-%02d".format(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
 
-/** 42 cells (6 weeks, Monday-first) covering [month0] of [year]. */
-private fun monthCells(year: Int, month0: Int): List<CalCell> {
+/** 42 cells (6 weeks) covering [month0] of [year], opening on the [weekStart] day. */
+private fun monthCells(year: Int, month0: Int, weekStart: Int): List<CalCell> {
     val cal = Calendar.getInstance().apply {
         clear()
         set(year, month0, 1)
     }
-    // Calendar weekday: SUNDAY=1..SATURDAY=7 → Monday-first index 0..6.
-    val lead = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val lead = WeekGrid.lead(cal.get(Calendar.DAY_OF_WEEK), weekStart)
     cal.add(Calendar.DAY_OF_MONTH, -lead)
     return (0 until 42).map {
         val cell = CalCell(dayKey(cal), cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.MONTH) == month0)
@@ -829,9 +830,12 @@ private fun monthCells(year: Int, month0: Int): List<CalCell> {
 }
 
 /**
- * A month-grid calendar (mirrors the web `BoardCalendarView`): a Пн-first 6×7
- * grid with task chips (priority-coloured left bar, strike-through when done) in
- * each day cell, a today highlight, prev/next/today nav, and an undated strip.
+ * A month-grid calendar (mirrors the web `BoardCalendarView`): a 6×7 grid with task
+ * chips (priority-coloured left bar, strike-through when done) in each day cell, a
+ * today highlight, prev/next/today nav, and an undated strip.
+ *
+ * Неделя рвётся на префе `week_start`, а не на понедельнике: тот же преф уже двигает
+ * пикер срока, который открывается с карточки этого же календаря (#2932).
  */
 @Composable
 fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
@@ -840,7 +844,9 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     // `val` вычислился бы один раз при загрузке класса и застыл бы на языке первого
     // рендера — переключение языка календарь бы уже не тронуло.
     val calMonths = stringArrayResource(R.array.calendar_months)
-    val calWeekdays = stringArrayResource(R.array.calendar_weekdays_short)
+    val weekStart = LocalDateFormat.current.weekStart
+    // Ресурс идёт с понедельника; при воскресной неделе подписи едут вместе с сеткой.
+    val calWeekdays = WeekGrid.labels(stringArrayResource(R.array.calendar_weekdays_short).toList(), weekStart)
     val today = remember { Calendar.getInstance() }
     val todayKey = remember { dayKey(today) }
     var cursor by remember { mutableStateOf(today.get(Calendar.YEAR) to today.get(Calendar.MONTH)) }
@@ -852,7 +858,7 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     // по ним надо днём устройства (dueDayKey), а не срезом сырой ISO-строки.
     val byDay = tasks.filter { !it.dueDate.isNullOrBlank() }.groupBy { dueDayKey(it.dueDate) }
     val undated = tasks.filter { it.dueDate.isNullOrBlank() }
-    val cells = remember(year, month) { monthCells(year, month) }
+    val cells = remember(year, month, weekStart) { monthCells(year, month, weekStart) }
 
     fun shift(delta: Int) {
         var m = month + delta
@@ -1720,8 +1726,9 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         buildDayCells(rangeStart, dayCount, todayMs, axisWeekdays)
     }
     val monthBands = remember(rangeStart, dayCount, axisMonths) { buildMonthBands(rangeStart, dayCount, axisMonths) }
-    val weekBands = remember(rangeStart, dayCount, tier) {
-        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
+    val weekStart = LocalDateFormat.current.weekStart
+    val weekBands = remember(rangeStart, dayCount, tier, weekStart) {
+        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount, weekStart) else emptyList()
     }
 
     // Swimlanes follow the shared composer-bar grouping (status / tag[+prefix]) —
@@ -2071,8 +2078,9 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         buildDayCells(rangeStart, dayCount, todayMs, axisWeekdays)
     }
     val monthBands = remember(rangeStart, dayCount, axisMonths) { buildMonthBands(rangeStart, dayCount, axisMonths) }
-    val weekBands = remember(rangeStart, dayCount, tier) {
-        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
+    val weekStart = LocalDateFormat.current.weekStart
+    val weekBands = remember(rangeStart, dayCount, tier, weekStart) {
+        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount, weekStart) else emptyList()
     }
 
     // Normalised blocking edges (blocker, blocked), deduped — drive both the "Авто"
@@ -2846,7 +2854,13 @@ private fun hourStepFor(dayW: androidx.compose.ui.unit.Dp): Int {
 /** A week label spanning [span] day-cells from [startIdx]; label = day-of-month range. */
 private data class TlWeekBand(val label: String, val startIdx: Int, val span: Int)
 
-private fun buildWeekBands(rangeStart: Long, dayCount: Int): List<TlWeekBand> {
+/*
+ * Полосы недель рвутся на префе `week_start` (веб — `utils/timeAxis.js` buildWeekBands),
+ * а не на понедельнике: первая полоса окна и так бывает неполной, но разрыв посреди
+ * недели читателя делает шапку единственным местом, которое преф игнорирует.
+ */
+
+private fun buildWeekBands(rangeStart: Long, dayCount: Int, weekStart: Int): List<TlWeekBand> {
     val out = ArrayList<TlWeekBand>()
     val cal = Calendar.getInstance()
     var startIdx = 0
@@ -2856,7 +2870,7 @@ private fun buildWeekBands(rangeStart: Long, dayCount: Int): List<TlWeekBand> {
     for (i in 0 until dayCount) {
         cal.timeInMillis = rangeStart + i * TL_DAY_MS
         val dom = cal.get(Calendar.DAY_OF_MONTH)
-        if (span > 0 && cal.get(Calendar.DAY_OF_WEEK) == Calendar.MONDAY) {
+        if (span > 0 && WeekGrid.opensWeek(cal.get(Calendar.DAY_OF_WEEK), weekStart)) {
             out.add(TlWeekBand(if (startDom == endDom) "$startDom" else "$startDom–$endDom", startIdx, span))
             startIdx = i
             startDom = dom
