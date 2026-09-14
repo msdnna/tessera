@@ -170,6 +170,7 @@ import website.msdnna.tessera.util.isReviewColumn
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.topoByDeps
 
 /**
  * A kanban lane: title, swatch, count, cards, and (status lanes) a + button.
@@ -1958,38 +1959,6 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
 
 /** One dependency arrow, blocker's finish → blocked's start (positions in Dp). */
 private data class GanttArrow(val x1: Dp, val y1: Dp, val x2: Dp, val y2: Dp)
-
-/**
- * "Авто" ordering for the Gantt: a DFS pre-order over the blocking edges
- * (`blocker → blocked`). Roots (no blocker) and a node's children are visited in
- * the incoming order, so each task prints before its dependents; any cycle
- * remainder is appended in incoming order. Mirrors web `utils/dependencyOrder`.
- * [edges] are normalised (blocker, blocked) pairs; edges touching an absent task
- * are ignored.
- */
-private fun topoByDeps(tasks: List<Task>, edges: List<Pair<String, String>>): List<Task> {
-    if (tasks.isEmpty() || edges.isEmpty()) return tasks
-    val order = tasks.withIndex().associate { (i, t) -> t.id to i }
-    val byId = tasks.associateBy { it.id }
-    val adj = HashMap<String, MutableList<String>>().apply { tasks.forEach { put(it.id, mutableListOf()) } }
-    val indeg = HashMap<String, Int>().apply { tasks.forEach { put(it.id, 0) } }
-    for ((blocker, blocked) in edges) {
-        if (!byId.containsKey(blocker) || !byId.containsKey(blocked)) continue
-        adj[blocker]!!.add(blocked)
-        indeg[blocked] = indeg[blocked]!! + 1
-    }
-    adj.values.forEach { children -> children.sortBy { order[it] ?: 0 } }
-    val visited = HashSet<String>()
-    val out = ArrayList<Task>(tasks.size)
-    fun visit(id: String) {
-        if (!visited.add(id)) return
-        byId[id]?.let { out.add(it) }
-        adj[id]?.forEach { visit(it) }
-    }
-    for (t in tasks) if (indeg[t.id] == 0) visit(t.id)
-    for (t in tasks) visit(t.id) // remaining cycle members, in incoming order
-    return out
-}
 
 /**
  * Gantt view = the Timeline (time axis / bars / zoom / today-line / swimlanes)
