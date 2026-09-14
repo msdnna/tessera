@@ -652,6 +652,11 @@ fun MainScreen(
                                 navTo(MainDest.Notes)
                                 searchOpen = false
                             },
+                            onOpenDocument = { documentId ->
+                                documentsPreselectId = documentId
+                                navTo(MainDest.Documents)
+                                searchOpen = false
+                            },
                             onOpenHelp = { slug ->
                                 navTo(MainDest.Help(slug))
                                 searchOpen = false

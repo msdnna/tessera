@@ -1628,13 +1628,14 @@
     <string name="help_desktop_note">Статья описывает веб-версию — в приложении часть действий выглядит иначе.</string>
     <string name="help_not_translated">Эта статья ещё не переведена — показан оригинал.</string>
 
-    <string name="search_placeholder">Поиск задач, заметок и справки</string>
-    <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок, статьям справки</string>
+    <string name="search_placeholder">Поиск задач, заметок, документов и справки</string>
+    <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок, заголовку документов, статьям справки</string>
     <string name="search_empty">Ничего не найдено</string>
     <string name="search_more">Показаны первые %1$d — уточните запрос</string>
     <string name="search_section_help">СПРАВКА</string>
     <string name="search_section_tasks">ЗАДАЧИ</string>
     <string name="search_section_notes">ЗАМЕТКИ</string>
+    <string name="search_section_documents">ДОКУМЕНТЫ</string>
 
     <!-- Разрешение конфликтов обратной записи GitLab. Подписи полей берутся из
          task_prop_*, а сторона «GitLab» остаётся именем сервиса и ключа не имеет. -->

@@ -1563,13 +1563,14 @@
     <string name="help_desktop_note">The article describes the web version — some actions look different in the app.</string>
     <string name="help_not_translated">This article has not been translated yet — showing the original.</string>
 
-    <string name="search_placeholder">Search tasks, notes and help</string>
-    <string name="search_hint">Type a query — searches task titles and descriptions, note titles and text, help articles</string>
+    <string name="search_placeholder">Search tasks, notes, documents and help</string>
+    <string name="search_hint">Type a query — searches task titles and descriptions, note titles and text, document titles, help articles</string>
     <string name="search_empty">Nothing found</string>
     <string name="search_more">Showing the first %1$d — narrow the search</string>
     <string name="search_section_help">HELP</string>
     <string name="search_section_tasks">TASKS</string>
     <string name="search_section_notes">NOTES</string>
+    <string name="search_section_documents">DOCUMENTS</string>
 
     <!-- GitLab write-back conflict resolver. Field labels come from task_prop_*;
          the "GitLab" side is the service name and has no key. -->

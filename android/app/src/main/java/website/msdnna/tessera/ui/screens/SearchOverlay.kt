@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.SearchDocument
 import website.msdnna.tessera.data.model.SearchNote
 import website.msdnna.tessera.data.model.SearchTask
 import website.msdnna.tessera.data.repository.HelpRepository
@@ -58,8 +59,9 @@ import website.msdnna.tessera.util.normalizeLanguage
 private const val HELP_HITS_LIMIT = 4
 
 /**
- * Full-screen search (web `SearchBar`, mobile-native): an autofocused field
- * over grouped help + task + note results. Picking a result navigates and closes.
+ * Full-screen search (web `SearchBar`, mobile-native): an autofocused field over
+ * grouped help + task + note + document results. Picking a result navigates and
+ * closes.
  */
 @Composable
 fun SearchOverlay(
@@ -67,6 +69,7 @@ fun SearchOverlay(
     onClose: () -> Unit,
     onOpenTask: (boardId: String, taskId: String) -> Unit,
     onOpenNote: (noteId: String) -> Unit,
+    onOpenDocument: (documentId: String) -> Unit = {},
     onOpenHelp: (slug: String) -> Unit = {},
 ) {
     val c = Tessera.colors
@@ -151,6 +154,18 @@ fun SearchOverlay(
                         }
                         if (results.hasMore.notes) {
                             item { SectionNote(stringResource(R.string.search_more, results.notes.size)) }
+                        }
+                    }
+                    // Третий вид ответа сервера (`SearchDocuments`): на телефоне его
+                    // не рисовали вовсе, хотя экран документов есть и открывается
+                    // по id — документ нельзя было найти поиском.
+                    if (results.documents.isNotEmpty()) {
+                        item { SectionHeader(stringResource(R.string.search_section_documents)) }
+                        items(results.documents, key = { "d-${it.id}" }) { doc ->
+                            DocumentResult(doc, onClick = { onOpenDocument(doc.id) })
+                        }
+                        if (results.hasMore.documents) {
+                            item { SectionNote(stringResource(R.string.search_more, results.documents.size)) }
                         }
                     }
                 }
@@ -244,6 +259,26 @@ private fun NoteResult(note: SearchNote, onClick: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Text(
             note.title.ifBlank { stringResource(R.string.notes_untitled) },
+            color = c.text1,
+            fontSize = 14.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun DocumentResult(doc: SearchDocument, onClick: () -> Unit) {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth().clickableNoRipple(onClick = onClick).padding(horizontal = 8.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Ion.BOOK — тот же знак, которым документы подписаны в сайдбаре и в списке,
+        // чтобы строка поиска и пункт навигации читались как одно и то же место.
+        IonIcon(Ion.BOOK, size = 18.dp, tint = c.text3)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            doc.title.ifBlank { stringResource(R.string.docs_untitled) },
             color = c.text1,
             fontSize = 14.sp,
             maxLines = 1,

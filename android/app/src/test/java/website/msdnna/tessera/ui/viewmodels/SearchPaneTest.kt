@@ -60,6 +60,20 @@ class SearchPaneTest {
     }
 
     @Test
+    fun `an answer made only of documents is not an empty answer`() {
+        // Сервер ищет тремя запросами — задачи, заметки И документы
+        // (`SearchDocuments` в db/queries/search.sql). Телефон разбирал только два
+        // списка, поэтому запрос, на который нашёлся один документ, читался как
+        // «Ничего не найдено» поверх непустого ответа.
+        val json = """{"tasks":[],"notes":[],"documents":[{"id":"d1","title":"Протокол встречи","slug":"protokol"}]}"""
+        val res = Gson().fromJson(json, SearchResults::class.java)
+        assertEquals(1, res.documents.size)
+        assertEquals("Протокол встречи", res.documents[0].title)
+        assertFalse(res.isEmpty)
+        assertEquals(SearchPane.RESULTS, searchPane(state(results = res), hasHelpHits = false))
+    }
+
+    @Test
     fun `the truncation flags are read off the wire`() {
         val json = """{"tasks":[],"notes":[],"has_more":{"tasks":true,"notes":false,"documents":true}}"""
         val res = Gson().fromJson(json, SearchResults::class.java)
