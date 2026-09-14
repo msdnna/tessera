@@ -45,6 +45,17 @@ describe('help index', () => {
     expect(slugs.size).toBe(articles.length)
   })
 
+  // Плоский текст — не только корпус поиска: из него режется фрагмент в строке
+  // выдачи, и оба клиента показывают его как есть. Пока индексатор опускал его
+  // в нижний регистр, каждый результат читался «tessera — таск-трекер…».
+  it('плоский текст статьи сохраняет заглавные', () => {
+    for (const a of articles) {
+      expect(a.text, a.slug).not.toBe(a.text.toLowerCase())
+      if (a.android)
+        expect(a.android.text, `${a.slug}.android`).not.toBe(a.android.text.toLowerCase())
+    }
+  })
+
   it('якоря заголовков уникальны внутри статьи', () => {
     for (const a of articles) {
       const ids = a.headings.map((h) => h.id)

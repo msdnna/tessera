@@ -128,6 +128,29 @@ class HelpSearchTest {
     fun `empty text excerpts to an empty string`() {
         assertThat(helpExcerpt("", listOf("что-то"))).isEmpty()
     }
+
+    // The terms come out of the tokenizer lower-cased, while the index keeps the
+    // manual's own capitals (#2932) — the result row quotes this field verbatim,
+    // so a folded corpus made every hit read as "tessera — таск-трекер…".
+    @Test
+    fun `a word capitalised in the body still anchors the excerpt`() {
+        val long = "а".repeat(200) + " Искомое " + "б".repeat(200)
+        val out = helpExcerpt(long, listOf("искомое"))
+        assertThat(out).contains("Искомое")
+        assertThat(out.startsWith("…")).isTrue()
+    }
+
+    @Test
+    fun `the excerpt is cut from the original, not from a folded copy`() {
+        assertThat(helpExcerpt("Tessera — таск-трекер", listOf("tessera")))
+            .isEqualTo("Tessera — таск-трекер")
+    }
+
+    @Test
+    fun `the earliest match wins regardless of case`() {
+        val body = "Доска " + "в".repeat(300) + " колонка"
+        assertThat(helpExcerpt(body, listOf("колонка", "доска"))).contains("Доска")
+    }
 }
 
 /**

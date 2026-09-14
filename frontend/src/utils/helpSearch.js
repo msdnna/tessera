@@ -113,15 +113,25 @@ export function buildHelpSearch(articles) {
 const EXCERPT_LEAD = 40
 const EXCERPT_LEN = 160
 
+// A term is a run of letters/digits by construction, but it reaches a RegExp, so
+// it is escaped anyway rather than trusted to stay that way.
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
 // excerpt lifts the neighbourhood of the first matching term out of the
 // flattened body, so a result row shows why it matched. Returns the opening of
 // the article when the match is only in the title or keywords.
+//
+// The terms arrive lower-cased (that is what `tokenize` returns) and the body no
+// longer is, so the lookup has to fold case. Done with a case-insensitive regex
+// rather than `body.toLowerCase().indexOf(term)`, because folding is not always
+// length-preserving (İ → i̇ is one character to two) and the offset is then used
+// to cut the snippet out of the *original* string.
 export function excerpt(text, terms) {
   const body = String(text || '')
   if (!body) return ''
   let at = -1
   for (const term of terms) {
-    const found = body.indexOf(term)
+    const found = body.search(new RegExp(escapeRe(term), 'i'))
     if (found >= 0 && (at < 0 || found < at)) at = found
   }
   if (at < 0) return body.slice(0, EXCERPT_LEN).trim() + (body.length > EXCERPT_LEN ? '…' : '')
