@@ -14,6 +14,7 @@ import {
   estimateToDays,
   sumEstimates,
 } from '@/utils/estimation'
+import { createFormatters } from '@/utils/format'
 
 const cfg = DEFAULT_ESTIMATION // time, 8h day, 5d week → 480 min/day, 2400 min/week
 
@@ -225,6 +226,34 @@ describe('estimateRangeShort / estimateTooltip', () => {
     expect(estimateRangeShort(null, 2400, cfg)).toBe('')
     expect(estimateRangeShort('garbage', 2400, cfg)).toBe('')
     expect(estimateRangeShort(`${y}-06-15`, null, cfg)).toBe('')
+  })
+
+  // Окно — это отрезок КАЛЕНДАРНЫХ дней, а не start + N×86400000 мс. Конец
+  // считался миллисекундами, а печатался календарной датой в зоне пользователя,
+  // поэтому окно через осенний перевод часов (25-часовое воскресенье) приезжало
+  // на 23:00 предыдущего дня и теряло сутки. Зона берётся из префов, не из
+  // process.env.TZ: на UTC-раннере перевода часов нет и спека была бы зелёной.
+  describe('перевод часов внутри окна', () => {
+    const berlin = createFormatters({ language: 'ru', timezone: 'Europe/Berlin' })
+
+    it('осенью не теряет сутки: 20 окт. + 7 дней = 27 окт.', () => {
+      // 25.10.2026 в Берлине длится 25 ч, и +7×24 ч давали 26 окт. 23:00.
+      const s = estimateRangeShort('2026-10-20T00:00:00+02:00', 2400, cfg, berlin)
+      expect(s).toContain('27 окт.')
+      expect(s).not.toContain('26 окт.')
+    })
+
+    it('весной не прибавляет суток: 24 мар. + 7 дней = 31 мар.', () => {
+      // 29.03.2026 длится 23 ч — обратная ошибка знака.
+      const s = estimateRangeShort('2026-03-24T00:00:00+01:00', 2400, cfg, berlin)
+      expect(s).toContain('31 мар.')
+      expect(s).not.toContain('01 апр.')
+    })
+
+    it('переносит конец через границу года', () => {
+      const s = estimateRangeShort('2026-12-28T00:00:00+01:00', 2400, cfg, berlin)
+      expect(s).toContain('04 янв.')
+    })
   })
 
   it('tooltip = full estimate, with the window in parens when a start exists', () => {

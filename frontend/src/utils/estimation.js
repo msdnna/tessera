@@ -211,15 +211,24 @@ export function estimateRangeShort(startISO, value, cfg, fmt = defaultFormatters
   if (days == null || !startISO) return ''
   const start = new Date(startISO)
   if (Number.isNaN(start.getTime())) return ''
-  const end = new Date(start.getTime() + Math.round(days) * 86400000)
+  // The window is a span of calendar days, so its end is the start's *date* —
+  // as the user sees it — stepped by N days, never the instant plus N×86400000.
+  // A day with a clock change is not 24 hours long: a window crossing the autumn
+  // change landed at 23:00 the evening before and printed the previous date, so
+  // seven days from "20 окт." read "26 окт.". Same rule as utils/recurrence.js
+  // and utils/timeAxis.js. Date.UTC normalises the day overflow, and the UTC
+  // midnight it returns is read back in UTC so no offset can move it again.
+  const sp = fmt.parts(start)
+  if (!sp) return ''
+  const end = new Date(Date.UTC(sp.year, sp.month, sp.day + Math.round(days)))
   // "This year" is the user's year, in their timezone — not the browser's.
   const nowY = fmt.today().year
-  const label = (dt) => {
-    const o = { day: '2-digit', month: 'short' }
-    if (fmt.parts(dt).year !== nowY) o.year = 'numeric'
+  const label = (dt, timeZone) => {
+    const o = { day: '2-digit', month: 'short', timeZone }
+    if (fmt.parts(dt, { timeZone }).year !== nowY) o.year = 'numeric'
     return fmt.formatDate(dt, o)
   }
-  return `${label(start)} → ${label(end)}`
+  return `${label(start)} → ${label(end, 'UTC')}`
 }
 
 // One-line tooltip body: spelled-out estimate + free-form projected window in
