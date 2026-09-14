@@ -82,11 +82,32 @@ function dateOn(base, y, m, d) {
   return new Date(y, m, day, base.getHours(), base.getMinutes(), base.getSeconds(), 0)
 }
 
+// Step whole LOCAL calendar days, keeping the clock — the mirror of the backend's
+// `AddDate(0, 0, n)`. Not `+ n * 86400000`: a day with a clock change is not 24
+// hours long, and every field of a rule is a calendar statement (see timeAxis.js
+// `msAtDayOffset`, which learnt this the same way).
+function addDays(d, n) {
+  return new Date(
+    d.getFullYear(),
+    d.getMonth(),
+    d.getDate() + n,
+    d.getHours(),
+    d.getMinutes(),
+    d.getSeconds(),
+    0,
+  )
+}
+
+// Push a Saturday/Sunday occurrence forward to Monday. Milliseconds used to do the
+// pushing, and in the week the clocks go back (25-hour Sunday) +48h from Saturday
+// lands at 23:00 on SUNDAY and +24h from Sunday stays on Sunday — the calendar
+// highlighted the very weekend the rule excludes, on a day the server (stepping
+// calendar days) never fires on.
 function applySkip(d, skipWeekends) {
   if (!skipWeekends) return d
   const wd = d.getDay() // 0=Sun..6=Sat
-  if (wd === 6) return new Date(d.getTime() + 2 * 86400000)
-  if (wd === 0) return new Date(d.getTime() + 86400000)
+  if (wd === 6) return addDays(d, 2)
+  if (wd === 0) return addDays(d, 1)
   return d
 }
 
