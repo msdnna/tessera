@@ -1718,7 +1718,7 @@
     <string name="tour_board_open_title">Откройте доску</string>
     <string name="tour_board_open_body">Нажмите на доску — откроется канбан.</string>
     <string name="tour_task_create_title">Создайте задачу</string>
-    <string name="tour_task_create_body">Нажмите «Создать задачу» в колонке «К работе», введите название и подтвердите.</string>
+    <string name="tour_task_create_body">Нажмите «Создать задачу» в колонке «%1$s», введите название и подтвердите.</string>
     <string name="tour_card_fields_title">Прямо на карточке</string>
     <string name="tour_card_fields_body">Приоритет, срок, теги и исполнители правятся не открывая задачу — тапом по значку карточки.</string>
     <string name="tour_card_open_title">Откройте задачу</string>
@@ -1742,7 +1742,7 @@
     <string name="tour_board_composer_title">Группировка, сортировка, фильтры</string>
     <string name="tour_board_composer_body">Через «+» на этой панели добавляются группировка (в том числе по тегам), сортировка и фильтры, а рядом — настройка вида карточек.</string>
     <string name="tour_dnd_card_title">Перетащите карточку</string>
-    <string name="tour_dnd_card_body">Задача переносится между колонками перетаскиванием — так на доске меняется её статус. Перетащите карточку в «В процессе».</string>
+    <string name="tour_dnd_card_body">Задача переносится между колонками перетаскиванием — так на доске меняется её статус. Перетащите карточку в «%1$s».</string>
     <string name="tour_group_add_title">Проекты тоже группируются</string>
     <string name="tour_group_add_body">Когда проектов становится много, их складывают в группы. Нажмите «+» над деревом ещё раз.</string>
     <string name="tour_menu_group_title">Выберите «Группа»</string>
