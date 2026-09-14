@@ -161,6 +161,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TimeAxis
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.WeekGrid
 import website.msdnna.tessera.util.columnCaption
@@ -1564,7 +1565,11 @@ private fun ColumnGhost(lane: Lane, state: BoardUiState, vm: BoardViewModel) {
 // deliberately skipped (same call as the matrix: the board drag system is 1D-lane
 // tuned, and a horizontally-scrolling track fights a horizontal drag gesture).
 
-private const val TL_DAY_MS = 86_400_000L
+// Только для дробной геометрии пикселей (x внутри суток, ширина полосы). Шаги по
+// самой оси — календарные, через util/TimeAxis: в неделю перевода часов сутки не
+// равны 24 часам, и миллисекундный шаг уводил подписи шапки на день в сторону от
+// полос. Ровно тот же разбор — в веб-`utils/timeAxis.js`.
+private const val TL_DAY_MS = TimeAxis.DAY_MS
 private val TL_DAY_W = 30.dp
 private val TL_ROW_H = 38.dp
 private val TL_LEFT_W = 168.dp
@@ -1601,14 +1606,10 @@ private val TL_LANE_H = 30.dp
 private const val TL_MAX_AXIS_PX = 200_000f
 private const val TL_MIN_DAYS = 30
 
-private fun tlDayFloor(ms: Long): Long =
-    Calendar.getInstance().apply {
-        timeInMillis = ms
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+private fun tlDayFloor(ms: Long): Long = TimeAxis.dayFloor(ms)
+
+/** Полночь суток, отстоящих от начала окна на [i] календарных дней (шапка оси). */
+private fun tlDayAt(rangeStart: Long, i: Int): Long = TimeAxis.msAtDayOffset(rangeStart, i)
 
 private data class TLane(val key: String, val label: String, val color: Color?, val tasks: List<Task>)
 
@@ -1679,17 +1680,16 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     // Cap the window so the track can't exceed Compose's Constraints limit; keep the
     // recent/future end (anchored at hi) and drop the far past.
     val maxDays = (TL_MAX_AXIS_PX / dayWpx).toInt().coerceAtLeast(TL_MIN_DAYS)
-    var rawCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
+    var rawCount = TimeAxis.dayCount(lo, hi)
     if (rawCount > maxDays) {
-        lo = hi - (maxDays - 1).toLong() * TL_DAY_MS
+        lo = TimeAxis.msAtDayOffset(hi, -(maxDays - 1))
         rawCount = maxDays
     }
     val rangeStart = lo
     val dayCount = rawCount
 
     // Bars starting before the capped window pin to the left edge (still visible, no overflow).
-    fun dayIndex(ms: Long): Int =
-        (((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()).coerceIn(0, dayCount - 1)
+    fun dayIndex(ms: Long): Int = TimeAxis.dayIndex(ms, rangeStart).coerceIn(0, dayCount - 1)
     val axisW = dayW * dayCount
     val tier = tierFor(dayW)
     val headH = if (tier == TimelineTier.HOURS) TL_HEAD_H + TL_HOURS_H else TL_HEAD_H
@@ -2040,17 +2040,16 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     // Cap the window so the track (a single axisW×bodyH box + arrow Canvas) can't
     // exceed Compose's Constraints limit; keep the recent/future end (anchored at hi).
     val maxDays = (TL_MAX_AXIS_PX / dayWpx).toInt().coerceAtLeast(TL_MIN_DAYS)
-    var rawCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
+    var rawCount = TimeAxis.dayCount(lo, hi)
     if (rawCount > maxDays) {
-        lo = hi - (maxDays - 1).toLong() * TL_DAY_MS
+        lo = TimeAxis.msAtDayOffset(hi, -(maxDays - 1))
         rawCount = maxDays
     }
     val rangeStart = lo
     val dayCount = rawCount
 
     // Bars starting before the capped window pin to the left edge (still visible, no overflow).
-    fun dayIndex(ms: Long): Int =
-        (((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()).coerceIn(0, dayCount - 1)
+    fun dayIndex(ms: Long): Int = TimeAxis.dayIndex(ms, rangeStart).coerceIn(0, dayCount - 1)
     val axisW = dayW * dayCount
     val tier = tierFor(dayW)
     val headH = if (tier == TimelineTier.HOURS) TL_HEAD_H + TL_HOURS_H else TL_HEAD_H
@@ -2459,13 +2458,13 @@ private fun TimelineCounter(text: String, fg: Color, bg: Color) {
 }
 
 /** A month label spanning [span] consecutive day-cells starting at [startIdx]. */
-private data class TlMonthBand(val label: String, val startIdx: Int, val span: Int)
+internal data class TlMonthBand(val label: String, val startIdx: Int, val span: Int)
 
-private fun buildMonthBands(rangeStart: Long, dayCount: Int, months: List<String>): List<TlMonthBand> {
+internal fun buildMonthBands(rangeStart: Long, dayCount: Int, months: List<String>): List<TlMonthBand> {
     val out = ArrayList<TlMonthBand>()
     val cal = Calendar.getInstance()
     for (i in 0 until dayCount) {
-        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        cal.timeInMillis = tlDayAt(rangeStart, i)
         val label = "${months[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
         val last = out.lastOrNull()
         if (last != null && last.label == label) out[out.lastIndex] = last.copy(span = last.span + 1)
@@ -2759,13 +2758,13 @@ private fun LazyListScope.timelineBodyItems(
 }
 
 /** Precomputed per-day header metadata, built once per window (cheap zoom frames). */
-private data class TlDayCell(val dom: Int, val weekday: String, val weekend: Boolean, val isToday: Boolean)
+internal data class TlDayCell(val dom: Int, val weekday: String, val weekend: Boolean, val isToday: Boolean)
 
-private fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long, weekdays: List<String>): List<TlDayCell> {
+internal fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long, weekdays: List<String>): List<TlDayCell> {
     val out = ArrayList<TlDayCell>(dayCount)
     val cal = Calendar.getInstance()
     for (i in 0 until dayCount) {
-        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        cal.timeInMillis = tlDayAt(rangeStart, i)
         val dow = cal.get(Calendar.DAY_OF_WEEK)
         out.add(
             TlDayCell(
@@ -2864,7 +2863,7 @@ private fun hourStepFor(dayW: androidx.compose.ui.unit.Dp): Int {
 }
 
 /** A week label spanning [span] day-cells from [startIdx]; label = day-of-month range. */
-private data class TlWeekBand(val label: String, val startIdx: Int, val span: Int)
+internal data class TlWeekBand(val label: String, val startIdx: Int, val span: Int)
 
 /*
  * Полосы недель рвутся на префе `week_start` (веб — `utils/timeAxis.js` buildWeekBands),
@@ -2872,7 +2871,7 @@ private data class TlWeekBand(val label: String, val startIdx: Int, val span: In
  * недели читателя делает шапку единственным местом, которое преф игнорирует.
  */
 
-private fun buildWeekBands(rangeStart: Long, dayCount: Int, weekStart: Int): List<TlWeekBand> {
+internal fun buildWeekBands(rangeStart: Long, dayCount: Int, weekStart: Int): List<TlWeekBand> {
     val out = ArrayList<TlWeekBand>()
     val cal = Calendar.getInstance()
     var startIdx = 0
@@ -2880,7 +2879,7 @@ private fun buildWeekBands(rangeStart: Long, dayCount: Int, weekStart: Int): Lis
     var endDom = 1
     var span = 0
     for (i in 0 until dayCount) {
-        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        cal.timeInMillis = tlDayAt(rangeStart, i)
         val dom = cal.get(Calendar.DAY_OF_MONTH)
         if (span > 0 && WeekGrid.opensWeek(cal.get(Calendar.DAY_OF_WEEK), weekStart)) {
             out.add(TlWeekBand(if (startDom == endDom) "$startDom" else "$startDom–$endDom", startIdx, span))
