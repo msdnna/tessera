@@ -12,8 +12,10 @@ import org.robolectric.RobolectricTestRunner
 
 /**
  * Подписи дат собираются из ресурсов (#2803, волна 11), поэтому тест идёт под
- * Robolectric и проверяет обе локали: у английской другой порядок «месяц день,
- * год», и склейка строкой сломала бы именно его.
+ * Robolectric и проверяет обе локали: порядок полей задаёт строка, и склейка в
+ * коде сломала бы именно его. Английский — день перед месяцем (en-GB, как на
+ * вебе: см. `localeTag` в frontend/src/utils/format.js), отличается только сам
+ * разделитель и отсутствие «г.».
  */
 @RunWith(RobolectricTestRunner::class)
 class DatesTest {
@@ -81,10 +83,10 @@ class DatesTest {
     }
 
     @Test
-    fun `shortDate in English puts the month first`() {
+    fun `shortDate in English keeps the day first`() {
         val yr = currentYear()
-        assertThat(shortDate(en, "$yr-06-05T00:00:00Z")).isEqualTo("Jun 5")
-        assertThat(shortDate(en, "2020-03-10")).isEqualTo("Mar 10, 2020")
+        assertThat(shortDate(en, "$yr-06-05T00:00:00Z")).isEqualTo("5 Jun")
+        assertThat(shortDate(en, "2020-03-10")).isEqualTo("10 Mar 2020")
     }
 
     @Test
@@ -106,7 +108,7 @@ class DatesTest {
 
     @Test
     fun `longDate in English drops the year suffix`() {
-        assertThat(longDate(en, "2026-06-04T00:00:00Z", medium)).isEqualTo("Jun 4, 2026")
+        assertThat(longDate(en, "2026-06-04T00:00:00Z", medium)).isEqualTo("4 Jun 2026")
     }
 
     @Test
@@ -192,7 +194,7 @@ class DatesTest {
         val yr = currentYear()
         assertThat(whenLabel(ru, "$yr-06-04T14:30:00Z")).isEqualTo("4 июн, 14:30")
         assertThat(whenLabel(ru, "$yr-06-04")).isEqualTo("4 июн")
-        assertThat(whenLabel(en, "$yr-06-04T14:30:00Z")).isEqualTo("Jun 4, 14:30")
+        assertThat(whenLabel(en, "$yr-06-04T14:30:00Z")).isEqualTo("4 Jun, 14:30")
     }
 
     @Test
@@ -233,7 +235,7 @@ class DatesTest {
         assertThat(dueLabel(ru, "2026-06-04T00:00:00Z", fmt = medium)).isEqualTo("4 июн. 2026 г.")
         // even with +03:00 offset representing the same UTC-midnight instant
         assertThat(dueLabel(ru, "2026-06-04T03:00:00+03:00", fmt = medium)).isEqualTo("4 июн. 2026 г.")
-        assertThat(dueLabel(en, "2026-06-04T00:00:00Z", fmt = medium)).isEqualTo("Jun 4, 2026")
+        assertThat(dueLabel(en, "2026-06-04T00:00:00Z", fmt = medium)).isEqualTo("4 Jun 2026")
     }
 
     @Test
@@ -248,7 +250,7 @@ class DatesTest {
     fun `dueShort date-only far year appends year`() {
         // Far past year, UTC-midnight → not relative, shows day+month+year
         assertThat(dueShort(ru, "2020-03-10T00:00:00Z")).isEqualTo("10 мар 2020")
-        assertThat(dueShort(en, "2020-03-10T00:00:00Z")).isEqualTo("Mar 10, 2020")
+        assertThat(dueShort(en, "2020-03-10T00:00:00Z")).isEqualTo("10 Mar 2020")
     }
 
     @Test
@@ -384,9 +386,9 @@ class DatesTest {
         // Format is "<day> <mon> <year>, HH:mm" in local zone; assert shape.
         val out = localDateTimeLabel(ru, "2026-06-15T14:30:00Z", medium)
         assertThat(out).matches("""\d+ \S+ 2026 г\., \d{2}:\d{2}""")
-        // English reorders to "<mon> <day>, <year>, HH:mm".
+        // English keeps the same order, only без «г.»: "<day> <mon> <year>, HH:mm".
         assertThat(localDateTimeLabel(en, "2026-06-15T14:30:00Z", medium))
-            .matches("""\S+ \d+, 2026, \d{2}:\d{2}""")
+            .matches("""\d+ \S+ 2026, \d{2}:\d{2}""")
     }
 
     // ── пресеты даты и 12-часовое время (#2857) ───────────────────────────────
@@ -404,7 +406,7 @@ class DatesTest {
     fun `longDate presets keep the English field order`() {
         val iso = "2026-12-31"
         assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.SHORT))).isEqualTo("31/12/2026")
-        assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.MEDIUM))).isEqualTo("Dec 31, 2026")
+        assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.MEDIUM))).isEqualTo("31 Dec 2026")
         assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.LONG))).isEqualTo("31 December 2026")
         assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.ISO))).isEqualTo("2026-12-31")
     }

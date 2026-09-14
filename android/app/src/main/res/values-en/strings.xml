@@ -614,14 +614,19 @@
         <item>Sun</item>
     </string-array>
 
-    <!-- Dates: relative labels and assembly. English puts the month first and
-         separates the year with a comma, hence the reordered arguments. -->
+    <!-- Dates: relative labels and assembly. Day before month, like every other
+         locale we ship: the web renders English through en-GB on purpose (see the
+         note on `localeTag` in frontend/src/utils/format.js), so "4 Jun 2026" is
+         the shape a reader already sees there — and the presets below follow the
+         same rule. These three used to be month-first, which made one screen mix
+         both orders: a `short`/`long` preset drew 04/06/2026 and 4 June 2026,
+         while `medium`, which reuses dates_long, drew "Jun 4, 2026". -->
     <string name="dates_today">today</string>
     <string name="dates_tomorrow">tomorrow</string>
     <string name="dates_yesterday">yesterday</string>
-    <string name="dates_short">%2$s %1$d</string>
-    <string name="dates_short_year">%2$s %1$d, %3$d</string>
-    <string name="dates_long">%2$s %1$d, %3$d</string>
+    <string name="dates_short">%1$d %2$s</string>
+    <string name="dates_short_year">%1$d %2$s %3$d</string>
+    <string name="dates_long">%1$d %2$s %3$d</string>
     <string name="dates_at_time">%1$s, %2$s</string>
     <string name="dates_with_time">%1$s %2$s</string>
     <string name="dates_clock">%1$02d:%2$02d</string>

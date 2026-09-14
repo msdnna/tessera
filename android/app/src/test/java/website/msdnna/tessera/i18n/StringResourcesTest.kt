@@ -109,6 +109,33 @@ class StringResourcesTest {
         }
     }
 
+    /**
+     * Порядок полей в английских подписях даты. Все они собираются как `(день,
+     * месяц[, год])`, и локаль вольна их переставить — но английский в проекте это
+     * en-GB, а не en-US: веб рисует его через `localeTag('en') = 'en-GB'` ровно
+     * затем, чтобы день стоял перед месяцем во всех локалях, которые мы отдаём
+     * (frontend/src/utils/format.js).
+     *
+     * Гвард ресурсный, а не по подписи: строк с этим порядком несколько, они
+     * добавлялись разными волнами (#2803 — сборка, #2857 — пресеты), и разъехались
+     * они именно так — `medium` (он берёт `dates_long`) печатал «Jun 4, 2026»
+     * посреди экрана, где `short` и `long` уже стояли днём вперёд.
+     */
+    @Test
+    fun `english date labels keep the day before the month`() {
+        val strings = elements("values-en", "string").associate {
+            it.getAttribute("name") to it.textContent
+        }
+        DAY_FIRST_DATES.forEach { key ->
+            val value = strings[key] ?: error("нет строки $key в values-en")
+            val day = value.indexOf("%1\$")
+            val month = value.indexOf("%2\$")
+            assertWithMessage("в $key = \"$value\" день должен стоять перед месяцем")
+                .that(day in 0 until month)
+                .isTrue()
+        }
+    }
+
     /** Имя массива → число элементов. */
     private fun stringArrays(dir: String): Map<String, Int> =
         elements(dir, "string-array").associate {
@@ -165,6 +192,15 @@ class StringResourcesTest {
         /** Язык называет себя на себе же — «Русский» в английском списке языков
          *  правильный, это не забытый перевод. */
         private val SELF_NAMED = setOf("language_ru")
+
+        /** Подписи даты, которые склеиваются из `(день, месяц[, год])`. */
+        private val DAY_FIRST_DATES = listOf(
+            "dates_short",
+            "dates_short_year",
+            "dates_long",
+            "dates_preset_short",
+            "dates_preset_long",
+        )
         private val CYRILLIC = Regex("""[Ѐ-ӿ]""")
         private val RU_QUANTITIES = setOf("one", "few", "many", "other")
         private val EN_QUANTITIES = setOf("one", "other")
