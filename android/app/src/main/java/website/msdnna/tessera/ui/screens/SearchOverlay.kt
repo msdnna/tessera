@@ -37,6 +37,7 @@ import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.SearchDocument
 import website.msdnna.tessera.data.model.SearchNote
 import website.msdnna.tessera.data.model.SearchTask
+import website.msdnna.tessera.data.model.localized
 import website.msdnna.tessera.data.repository.HelpRepository
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -83,7 +84,7 @@ fun SearchOverlay(
     val assets = LocalContext.current.assets
     val helpLang = normalizeLanguage(LocalConfiguration.current.locales[0].language)
     val searcher = remember(assets, helpLang) {
-        HelpSearcher(HelpRepository(assets).articles().map { it.content(helpLang) }, helpLang)
+        HelpSearcher(HelpRepository(assets).articles().localized(helpLang), helpLang)
     }
     val helpHits = remember(state.query, searcher) { searcher.search(state.query, HELP_HITS_LIMIT) }
 

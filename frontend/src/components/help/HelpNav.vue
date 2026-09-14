@@ -8,7 +8,7 @@ const help = useHelpStore()
 
 <template>
   <nav class="h-nav">
-    <div v-for="cat in help.categories" :key="cat.name" class="h-cat">
+    <div v-for="cat in help.categories" :key="cat.key" class="h-cat">
       <div class="h-cat-name">{{ cat.name }}</div>
       <!-- Buttons, not links: the help centre is a modal over the reader's board
            (#2792), so switching articles must not touch the URL. -->

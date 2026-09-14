@@ -40,6 +40,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.HelpContent
+import website.msdnna.tessera.data.model.localized
 import website.msdnna.tessera.data.repository.HelpRepository
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
@@ -77,7 +78,7 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
     // settings re-renders the help without leaving the screen.
     val lang = normalizeLanguage(LocalConfiguration.current.locales[0].language)
     val baseArticles = remember(repo) { repo.articles() }
-    val articles = remember(baseArticles, lang) { baseArticles.map { it.content(lang) } }
+    val articles = remember(baseArticles, lang) { baseArticles.localized(lang) }
     val searcher = remember(articles, lang) { HelpSearcher(articles, lang) }
     val assetNames = remember(repo) { repo.assetNames() }
 
@@ -148,11 +149,15 @@ fun HelpScreen(initialSlug: String? = null, onSlugConsumed: () -> Unit = {}) {
                     // Categories in index order — the builder already sorted the
                     // articles by category, then by `order`, so the nav follows
                     // the reading order the manual was written in.
+                    // Grouped by the category's identity, not by its caption: the
+                    // two differ for an article that has no translation yet, and
+                    // a caption repeated later in the list would be a duplicate
+                    // item key — a crash, not a stray heading.
                     var previous: String? = null
                     for (article in articles) {
-                        if (article.category != previous) {
-                            previous = article.category
-                            item(key = "cat-${article.category}") { SectionLabel(article.category) }
+                        if (article.categoryKey != previous) {
+                            previous = article.categoryKey
+                            item(key = "cat-${article.categoryKey}") { SectionLabel(article.category) }
                         }
                         item(key = article.slug) {
                             ArticleRow(article, onClick = { openSlug = article.slug })

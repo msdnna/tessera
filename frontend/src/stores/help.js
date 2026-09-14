@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed, shallowRef, watch } from 'vue'
 import helpIndex from '@/data/helpIndex.json'
 import { buildHelpSearch } from '@/utils/helpSearch'
+import { localizeArticles, groupCategories } from '@/utils/helpNav'
 import { i18n } from '@/i18n'
 
 // Help centre state (#2792). Everything here is client-side: the articles are
@@ -28,37 +29,13 @@ const FRONTMATTER_RE = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/
 
 const DEFAULT_LOCALE = 'ru'
 
-// localize resolves an article to the reader's language (#2809). A translation
-// lives in `locales[<lang>]` beside the Russian original, not in its place, so
-// the Russian article is always here even when a language has no translation
-// yet — in that case the reader gets the Russian text with `translated: false`,
-// and the UI says so, rather than a blank page. `bodyPath` is the Markdown this
-// language renders: the translated web body, or the Russian one as a fallback.
-function localize(article, lang) {
-  const loc = lang !== DEFAULT_LOCALE ? article.locales?.[lang] : null
-  if (!loc) {
-    return { ...article, bodyPath: article.path, translated: lang === DEFAULT_LOCALE }
-  }
-  return {
-    ...article,
-    title: loc.title,
-    category: loc.category,
-    keywords: loc.keywords,
-    headings: loc.headings,
-    text: loc.text,
-    updated: loc.updated || article.updated,
-    bodyPath: loc.path,
-    translated: true,
-  }
-}
-
 export const useHelpStore = defineStore('help', () => {
   // The whole store follows the interface language: title, category, headings
   // and search corpus are the translated ones, and the body is fetched from the
   // translated file. Recomputed, not read once at import, so switching the
   // language in settings re-renders the manual without a reload.
   const lang = computed(() => i18n.global.locale.value)
-  const localized = computed(() => WEB_ARTICLES.map((a) => localize(a, lang.value)))
+  const localized = computed(() => localizeArticles(WEB_ARTICLES, lang.value))
   const searcher = computed(() => buildHelpSearch(localized.value))
 
   // shallowRef: the cache holds long strings keyed by `<lang>:<slug>` and is
@@ -74,18 +51,7 @@ export const useHelpStore = defineStore('help', () => {
 
   const articles = computed(() => localized.value)
 
-  // Nav tree: categories in index order (the builder already sorted articles by
-  // category, then order — one shape on every language, translated captions), so
-  // grouping the localized list by its category label keeps that order.
-  const categories = computed(() => {
-    const out = []
-    for (const a of localized.value) {
-      let cat = out[out.length - 1]
-      if (!cat || cat.name !== a.category) out.push((cat = { name: a.category, articles: [] }))
-      cat.articles.push(a)
-    }
-    return out
-  })
+  const categories = computed(() => groupCategories(localized.value))
 
   const results = computed(() => (query.value.trim() ? searcher.value(query.value) : []))
 

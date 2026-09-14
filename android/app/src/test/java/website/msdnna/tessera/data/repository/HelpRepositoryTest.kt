@@ -7,6 +7,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import website.msdnna.tessera.data.model.HelpArticle
+import website.msdnna.tessera.data.model.HelpContent
+import website.msdnna.tessera.data.model.localized
 
 /**
  * Which half of an article the app reads (#2795, #2809). The manual ships every
@@ -100,6 +102,61 @@ class HelpRepositoryTest {
     @Test
     fun `a missing file reads as null rather than an empty article`() {
         assertThat(repo.body("start/ghost.md")).isNull()
+    }
+
+    @Test
+    fun `an untranslated article does not split its category in two`() {
+        // The caption belongs to the category, not to the article. An article
+        // with no translation yet used to carry its Russian caption into the
+        // middle of a translated group, so «Boards» came out as
+        // Boards / Доски / Boards — three headings where the index has one, and
+        // two of them keyed alike, which is a LazyColumn crash rather than a
+        // stray label.
+        val real = repo.articles().first { it.locales.containsKey("en") }
+        val ruOnly = HelpArticle(slug = "x", path = real.path, title = "Только по-русски", category = real.category)
+        val list = listOf(real, ruOnly, real.copy(slug = "y")).localized("en")
+
+        assertThat(list.map { it.categoryKey }.toSet()).containsExactly(real.category)
+        assertThat(list.map { it.category }.toSet())
+            .containsExactly(real.locales.getValue("en").category)
+        // The untranslated one is still flagged — it borrows the caption, not
+        // the translation.
+        assertThat(list[1].translated).isFalse()
+        assertThat(list[1].title).isEqualTo("Только по-русски")
+
+        val headings = navHeadings(list)
+        assertThat(headings).hasSize(1)
+        assertThat(headings).containsNoDuplicates()
+    }
+
+    @Test
+    fun `the Russian manual keeps its own captions`() {
+        val list = repo.articles().localized("ru")
+        assertThat(list).isNotEmpty()
+        for ((content, article) in list.zip(repo.articles())) {
+            assertThat(content.category).isEqualTo(article.category)
+            assertThat(content.categoryKey).isEqualTo(article.category)
+        }
+        assertThat(navHeadings(list)).containsNoDuplicates()
+    }
+
+    @Test
+    fun `the English manual groups the real index without repeating a heading`() {
+        assertThat(navHeadings(repo.articles().localized("en"))).containsNoDuplicates()
+    }
+
+    /** The section headings the help navigation emits, in order — the same
+     *  adjacency walk as HelpScreen, so a duplicate here is a duplicate key there. */
+    private fun navHeadings(list: List<HelpContent>): List<String> {
+        var previous: String? = null
+        val out = mutableListOf<String>()
+        for (a in list) {
+            if (a.categoryKey != previous) {
+                previous = a.categoryKey
+                out += a.categoryKey
+            }
+        }
+        return out
     }
 
     private fun stripFrontmatter(raw: String) = Regex("^---\\r?\\n[\\s\\S]*?\\r?\\n---\\r?\\n?").replace(raw, "")
