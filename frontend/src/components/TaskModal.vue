@@ -61,6 +61,7 @@ import { priorityLabel, priorityOptions as priorityOptionList } from '@/utils/pr
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
 import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
+import { resolvedTimezone } from '@/utils/format'
 import { useFormat } from '@/composables/useFormat'
 import {
   sortedColumns,
@@ -842,7 +843,9 @@ async function createGlIssue() {
     // Persist the current title/description/properties first so the issue mirrors
     // the on-screen state, then create (the backend reads the saved task).
     await applyMeta()
-    const created = await glApi.createIssue(props.taskId, {})
+    // The due date crosses over as a day, not an instant — send the calendar it
+    // was written in (the profile zone, else the browser's).
+    const created = await glApi.createIssue(props.taskId, {}, resolvedTimezone(theme.timezone))
     // Re-fetch so the task picks up its GitLab provenance and renders as synced.
     const res = await tasksApi.get(props.taskId)
     task.value = res.data

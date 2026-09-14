@@ -154,7 +154,12 @@ class BoardRepository {
      *  («disabled», «already linked», a GitLab error) is the user's answer, so it
      *  travels up to the modal's error toast. */
     suspend fun createGitlabIssue(taskId: String): website.msdnna.tessera.data.model.GitlabIssueCreated =
-        api.createGitlabIssue(taskId, website.msdnna.tessera.data.model.CreateGitlabIssueRequest())
+        // Зона автора: срок уезжает в issue днём, а не мгновением (#2932).
+        api.createGitlabIssue(
+            taskId,
+            website.msdnna.tessera.data.model.CreateGitlabIssueRequest(),
+            AppContainer.callerZone(),
+        )
 
     /** Repo issue templates for the create-issue picker (best-effort — no templates
      *  simply means no picker). */

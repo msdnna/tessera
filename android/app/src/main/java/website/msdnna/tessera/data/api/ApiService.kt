@@ -321,11 +321,18 @@ interface ApiService {
     @GET("workspaces/{id}/gitlab/members")
     suspend fun gitlabMembers(@Path("id") workspaceId: String): List<GitlabMember>?
 
-    /** Creates a GitLab issue from this task (write-back `push_create`). */
+    /** Creates a GitLab issue from this task (write-back `push_create`).
+     *
+     *  `tz` — календарь автора: срок задачи уезжает в issue голым `YYYY-MM-DD`
+     *  (backend `taskDateStr`), то есть ДНЁМ, а хранится он мгновением полуночи.
+     *  Без зоны сервер читает его своей, и восточнее неё полночь принадлежит
+     *  предыдущему серверному дню — issue рождается со сроком на день раньше,
+     *  чем показывает сама задача (#2932). */
     @POST("tasks/{id}/gitlab-issue")
     suspend fun createGitlabIssue(
         @Path("id") taskId: String,
         @Body body: website.msdnna.tessera.data.model.CreateGitlabIssueRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.GitlabIssueCreated
 
     /** Issue templates of the bound GL project (soft-fails to `[]` on the backend). */

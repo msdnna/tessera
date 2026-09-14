@@ -797,7 +797,14 @@ export const gitlab = {
     api.post(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions/${actionId}/retry`),
   // Create a GitLab issue from a task (returns the new link view) + the project's
   // issue templates for prefilling the description.
-  createIssue: (taskId, data) => api.post(`/tasks/${taskId}/gitlab-issue`, data),
+  //
+  // `tz` for the same reason the home summary takes one: the task's due date is
+  // written into the issue as a bare `YYYY-MM-DD` (backend taskDateStr), a day
+  // read out of an instant. Without the zone the server reads it in its own, and
+  // east of that the stored midnight belongs to the previous server day — the
+  // issue is born due a day before the task says it is.
+  createIssue: (taskId, data, tz) =>
+    api.post(`/tasks/${taskId}/gitlab-issue`, data, { params: { tz } }),
   issueTemplates: (wsId, integId) =>
     api.get(`/workspaces/${wsId}/gitlab/issue-templates`, {
       params: integId ? { integration_id: integId } : undefined,

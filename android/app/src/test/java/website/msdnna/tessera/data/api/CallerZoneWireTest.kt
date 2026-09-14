@@ -10,18 +10,18 @@ import org.junit.Test
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import website.msdnna.tessera.data.model.CreateCommentRequest
+import website.msdnna.tessera.data.model.CreateGitlabIssueRequest
 import website.msdnna.tessera.data.model.PreviewCommandsRequest
 
 /**
- * The `tz` query on the three calls the server answers BY DAY (#2932).
+ * The `tz` query on every call the server answers BY DAY (#2932).
  *
  * `callerLocation` (backend handlers/api.go) reads the zone off the request
  * first, and only then off the stored profile — because an empty profile zone
- * means "the client's own", which the server cannot re-derive. Web sends it on
- * all three (frontend/src/api/index.js: summary, addComment, previewCommands);
- * without it the home tiles are bucketed in the *server's* calendar while the
- * list under them is filtered in the device's, and a «/due сегодня» typed on the
- * phone lands on the server's day.
+ * means "the client's own", which the server cannot re-derive. Without it the
+ * home tiles are bucketed in the *server's* calendar while the list under them is
+ * filtered in the device's; a «/due сегодня» typed on the phone lands on the
+ * server's day; and a task exported to GitLab is dated in the server's day too.
  */
 class CallerZoneWireTest {
     private lateinit var server: MockWebServer
@@ -73,6 +73,20 @@ class CallerZoneWireTest {
         val req = server.takeRequest()
         assertThat(req.requestUrl?.encodedPath).isEqualTo("/api/tasks/t-1/commands/preview")
         assertThat(req.requestUrl?.queryParameter("tz")).isEqualTo("Asia/Tokyo")
+    }
+
+    @Test
+    fun `creating a GitLab issue carries the caller zone`() = runBlocking {
+        // The issue is born with the task's due date rendered as a bare
+        // `YYYY-MM-DD` (backend taskDateStr) — a day, so it is read in the zone
+        // the request names. Without one the server falls back to the server's
+        // own calendar and, east of it, dates the issue a day early.
+        reply("""{"link":null,"attachments":null}""")
+        api.createGitlabIssue("t-1", CreateGitlabIssueRequest(), "Europe/Moscow")
+
+        val req = server.takeRequest()
+        assertThat(req.requestUrl?.encodedPath).isEqualTo("/api/tasks/t-1/gitlab-issue")
+        assertThat(req.requestUrl?.queryParameter("tz")).isEqualTo("Europe/Moscow")
     }
 
     @Test

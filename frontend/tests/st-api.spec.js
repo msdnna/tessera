@@ -142,6 +142,22 @@ describe('quick-action comments carry the caller zone', () => {
   })
 })
 
+// Creating the GitLab issue reads the task's own due date and writes it into the
+// issue as a bare `YYYY-MM-DD` (backend taskDateStr) — a day, so it needs the
+// calendar that day was written in. Without the zone the server falls back to the
+// profile's, and a profile that names none leaves the *server's*: east of UTC the
+// stored midnight belongs to the previous UTC day, so the issue is born due a day
+// before the task says.
+describe('creating a GitLab issue carries the caller zone', () => {
+  it('sends tz on the create POST', async () => {
+    instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
+    await gitlab.createIssue('t1', {}, 'Europe/Moscow')
+    const [post] = instanceAdapter.mock.calls.map((c) => c[0])
+    expect(post.url).toContain('/tasks/t1/gitlab-issue')
+    expect(post.params).toEqual({ tz: 'Europe/Moscow' })
+  })
+})
+
 describe('api error handling', () => {
   it('humanizes a backend error string and rejects with an Error', async () => {
     instanceAdapter.mockImplementation((config) =>
