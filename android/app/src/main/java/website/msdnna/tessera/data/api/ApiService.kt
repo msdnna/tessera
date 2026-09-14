@@ -1,6 +1,7 @@
 package website.msdnna.tessera.data.api
 
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -69,7 +70,6 @@ import website.msdnna.tessera.data.model.TokenRequest
 import website.msdnna.tessera.data.model.UpdateCommentRequest
 import website.msdnna.tessera.data.model.UpdateGroupRequest
 import website.msdnna.tessera.data.model.UpdateProjectRequest
-import website.msdnna.tessera.data.model.UpdateTaskRequest
 import website.msdnna.tessera.data.model.UploadResponse
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
@@ -282,8 +282,11 @@ interface ApiService {
     @PATCH("tasks/{id}/move")
     suspend fun moveTask(@Path("id") taskId: String, @Body body: MoveTaskRequest): Task
 
+    // Тело — уже сериализованный JSON (см. `taskPatch`/`toWireJson`), а не дата-класс:
+    // ручка tri-state, и «очистить поле» — это ключ со значением null, который
+    // общий Gson конвертера выбросил бы вместе с ключом.
     @PATCH("tasks/{id}")
-    suspend fun updateTask(@Path("id") taskId: String, @Body body: UpdateTaskRequest): Task
+    suspend fun updateTask(@Path("id") taskId: String, @Body body: RequestBody): Task
 
     @PATCH("tasks/{id}/parent")
     suspend fun setTaskParent(@Path("id") taskId: String, @Body body: SetParentRequest): Task

@@ -14,6 +14,7 @@ import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.CommandOutcome
 import website.msdnna.tessera.data.model.CommandSummary
 import website.msdnna.tessera.data.model.Comment
+import website.msdnna.tessera.data.model.Patch
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.Relation
 import website.msdnna.tessera.data.model.TaskDetail
@@ -150,33 +151,42 @@ class TaskDetailViewModel(
 
     fun saveCore(title: String, description: String) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), title = title.trim().ifBlank { d.title }, description = description)
+        boardRepo.updateTask(
+            d.id,
+            title = Patch.Set(title.trim().ifBlank { d.title }),
+            description = Patch.Set(description),
+        )
         reloadDetail()
     }
 
     fun saveDescription(description: String) = mutate {
         val d = state.value.detail ?: return@mutate
         if (description == d.description) return@mutate
-        boardRepo.updateTask(d.asTask(), description = description)
+        boardRepo.updateTask(d.id, description = Patch.Set(description))
         reloadDetail()
     }
 
     fun setPriority(priority: Int) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), priority = priority)
+        boardRepo.updateTask(d.id, priority = Patch.Set(priority))
         reloadDetail()
     }
 
     fun setDue(dueIso: String?) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), dueDate = dueIso)
+        boardRepo.updateTask(d.id, dueDate = Patch.Set(dueIso))
         reloadDetail()
     }
 
     /** Sets the due date and recurrence rule together (the due popover commits both). */
     fun setDueAndRecurrence(dueIso: String?, startIso: String?, recurrence: Recurrence?) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), dueDate = dueIso, startDate = startIso, recurrence = recurrence)
+        boardRepo.updateTask(
+            d.id,
+            dueDate = Patch.Set(dueIso),
+            startDate = Patch.Set(startIso),
+            recurrence = Patch.Set(recurrence),
+        )
         reloadDetail()
     }
 
@@ -188,7 +198,7 @@ class TaskDetailViewModel(
 
     fun setCompleted(completed: Boolean) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), completed = completed)
+        boardRepo.updateTask(d.id, completed = Patch.Set(completed))
         reloadDetail()
     }
 
@@ -224,7 +234,7 @@ class TaskDetailViewModel(
     /** Sets the task's estimate (canonical value), or null to clear it. */
     fun setEstimate(value: Double?) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), estimate = value)
+        boardRepo.updateTask(d.id, estimate = Patch.Set(value))
         reloadDetail()
     }
 
@@ -294,7 +304,7 @@ class TaskDetailViewModel(
 
     fun toggleSubtaskDone(subId: String, completed: Boolean) = mutate {
         val sub = state.value.detail?.subtasks?.find { it.id == subId } ?: return@mutate
-        boardRepo.updateTask(sub, completed = completed)
+        boardRepo.updateTask(sub.id, completed = Patch.Set(completed))
         reloadDetail()
     }
 
@@ -394,7 +404,7 @@ class TaskDetailViewModel(
         try {
             val newTitle = title.trim().ifBlank { d.title }
             if (newTitle != d.title || description != d.description) {
-                boardRepo.updateTask(d.asTask(), title = newTitle, description = description)
+                boardRepo.updateTask(d.id, title = Patch.Set(newTitle), description = Patch.Set(description))
             }
             val created = boardRepo.createGitlabIssue(d.id)
             reloadDetail()

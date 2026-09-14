@@ -1,5 +1,7 @@
 package website.msdnna.tessera.data.repository
 
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.AddAssigneeRequest
 import website.msdnna.tessera.data.model.AddTagRequest
@@ -10,13 +12,17 @@ import website.msdnna.tessera.data.model.DueNotifyRequest
 import website.msdnna.tessera.data.model.GitlabMember
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
+import website.msdnna.tessera.data.model.Patch
 import website.msdnna.tessera.data.model.PinGitlabAssigneeRequest
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.SetEisenhowerRequest
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
-import website.msdnna.tessera.data.model.UpdateTaskRequest
+import website.msdnna.tessera.data.model.taskPatch
+import website.msdnna.tessera.data.model.toWireJson
+
+private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
 /** Reads a board's columns + cards and performs all card mutations. */
 class BoardRepository {
@@ -114,22 +120,33 @@ class BoardRepository {
     suspend fun setDueNotify(taskId: String, lead: Int?, repeat: Int?, enabled: Boolean?): Task =
         api.setDueNotify(taskId, DueNotifyRequest(lead, repeat, enabled))
 
-    /** Full update — pass the task plus the fields you're changing. Recurrence and
-     *  start_date default to the task's current values so unrelated edits don't
-     *  wipe them (the backend update is full-replace, like web). */
+    /**
+     * Частичное изменение задачи: в тело попадают только поля, переданные как
+     * [Patch.Set], остальные сервер оставит как есть.
+     *
+     * Полей задачи тут намеренно нет — ни как источника значений по умолчанию, ни
+     * в аргументах. Объект задачи на руках у вызывающего часто списочный, а в
+     * списочном payload нет описания (backend/handlers/task_list_dto.go), и
+     * «дополнить патч текущими значениями» означало стереть описание при любом
+     * действии с карточки. Подробности и вторая половина истории (`null` как
+     * «очистить») — в [taskPatch].
+     */
+    @Suppress("LongParameterList")
     suspend fun updateTask(
-        task: Task,
-        title: String = task.title,
-        description: String = task.description,
-        priority: Int = task.priority,
-        dueDate: String? = task.dueDate,
-        startDate: String? = task.startDate,
-        estimate: Double? = task.estimate,
-        completed: Boolean = task.isCompleted,
-        recurrence: Recurrence? = task.recurrence,
+        taskId: String,
+        title: Patch<String> = Patch.Keep,
+        description: Patch<String> = Patch.Keep,
+        priority: Patch<Int> = Patch.Keep,
+        dueDate: Patch<String> = Patch.Keep,
+        startDate: Patch<String> = Patch.Keep,
+        estimate: Patch<Double> = Patch.Keep,
+        completed: Patch<Boolean> = Patch.Keep,
+        recurrence: Patch<Recurrence> = Patch.Keep,
     ): Task = api.updateTask(
-        task.id,
-        UpdateTaskRequest(title, description, priority, dueDate, startDate, estimate, completed, recurrence),
+        taskId,
+        taskPatch(title, description, priority, dueDate, startDate, estimate, completed, recurrence)
+            .toWireJson()
+            .toRequestBody(JSON_MEDIA),
     )
 
     suspend fun archiveTask(taskId: String) = api.archiveTask(taskId)

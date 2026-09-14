@@ -24,9 +24,9 @@ data class Recurrence(
     // The IANA zone the rule's calendar arithmetic runs in on the server ("every
     // Monday", "the 31st" are calendar statements, and a due date picked here is
     // local midnight — which east of UTC belongs to the previous UTC day). Kept on
-    // the model even though nothing local reads it: the task update re-sends the
-    // stored rule whole, so a field the client forgets is a field the server loses
-    // on the next rename.
+    // the model even though nothing local reads it: the picker rebuilds the whole
+    // rule out of its controls (`buildRule`), so a field the client forgets is a
+    // field the server loses the moment the recurrence is touched.
     @SerializedName("tz") val tz: String? = null,
     @SerializedName("trigger") val trigger: String? = null, // complete|column|schedule
     @SerializedName("trigger_column") val triggerColumn: String? = null,
@@ -109,18 +109,6 @@ data class MoveTaskRequest(
     @SerializedName("column_id") val columnId: String,
     @SerializedName("before_id") val beforeId: String? = null,
     @SerializedName("after_id") val afterId: String? = null,
-)
-
-/** Full task update — the backend requires all fields (title is mandatory). */
-data class UpdateTaskRequest(
-    @SerializedName("title") val title: String,
-    @SerializedName("description") val description: String = "",
-    @SerializedName("priority") val priority: Int = 0,
-    @SerializedName("due_date") val dueDate: String? = null,
-    @SerializedName("start_date") val startDate: String? = null,
-    @SerializedName("estimate") val estimate: Double? = null,
-    @SerializedName("completed") val completed: Boolean = false,
-    @SerializedName("recurrence") val recurrence: Recurrence? = null,
 )
 
 /** Per-task due-notification overrides; null fields inherit the user default. */

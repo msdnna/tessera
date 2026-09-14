@@ -7,9 +7,9 @@ import org.junit.Test
 /**
  * The recurrence rule's `tz` is the zone its calendar arithmetic runs in on the
  * server — the field that decides which day "every Monday" means. A model that
- * does not know about it drops it on every round-trip, and the task update
- * re-sends the whole stored rule by default, so an unrelated edit here would
- * reset a rule authored in the web client to UTC and move the whole series.
+ * does not know about it drops it on every round-trip, and the due picker rebuilds
+ * and re-sends the whole rule, so editing the recurrence of a rule authored in the
+ * web client would reset it to UTC and move the whole series.
  */
 class RecurrenceTzTest {
     private val gson = Gson()

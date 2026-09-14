@@ -41,16 +41,6 @@ data class TaskDetail(
     val assignees: List<AssigneeUser> get() = assigneesRaw.orEmpty()
     val gitlabAssignees: List<GitlabAssignee> get() = gitlabAssigneesRaw.orEmpty()
     val subtasks: List<Task> get() = subtasksRaw.orEmpty()
-
-    /** A lightweight [Task] view of this detail, for reusing card-level pickers. */
-    fun asTask(): Task = Task(
-        id = id, boardId = boardId, columnId = columnId, parentId = parentId,
-        title = title, description = description, priority = priority, dueDate = dueDate,
-        startDate = startDate, estimate = estimate,
-        createdBy = createdBy, completedAt = completedAt, number = number, recurrence = recurrence,
-        milestoneId = milestoneId,
-        tagIds = tags.map { it.id }, assigneeIds = assignees.map { it.id },
-    )
 }
 
 /** A task assignee — mirrors `ListTaskAssigneesRow`. */

@@ -19,6 +19,7 @@ import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.data.model.BoardViewConfig
 import website.msdnna.tessera.data.model.BoardViewFilters
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.Patch
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.SortLevel
 import website.msdnna.tessera.data.model.Tag
@@ -1027,22 +1028,27 @@ class BoardViewModel(
     }
 
     fun toggleDone(task: Task) = launchCatching {
-        repo.updateTask(task, completed = !task.isCompleted)
+        repo.updateTask(task.id, completed = Patch.Set(!task.isCompleted))
         refreshTasks()
     }
 
     fun setPriority(task: Task, priority: Int) = launchCatching {
-        repo.updateTask(task, priority = priority)
+        repo.updateTask(task.id, priority = Patch.Set(priority))
         refreshTasks()
     }
 
     fun setDue(task: Task, dueIso: String?) = launchCatching {
-        repo.updateTask(task, dueDate = dueIso)
+        repo.updateTask(task.id, dueDate = Patch.Set(dueIso))
         refreshTasks()
     }
 
     fun setDueAndRecurrence(task: Task, dueIso: String?, startIso: String?, recurrence: Recurrence?) = launchCatching {
-        repo.updateTask(task, dueDate = dueIso, startDate = startIso, recurrence = recurrence)
+        repo.updateTask(
+            task.id,
+            dueDate = Patch.Set(dueIso),
+            startDate = Patch.Set(startIso),
+            recurrence = Patch.Set(recurrence),
+        )
         refreshTasks()
     }
 
@@ -1052,7 +1058,7 @@ class BoardViewModel(
     }
 
     fun renameTask(task: Task, title: String) = launchCatching {
-        repo.updateTask(task, title = title)
+        repo.updateTask(task.id, title = Patch.Set(title))
         refreshTasks()
     }
 
