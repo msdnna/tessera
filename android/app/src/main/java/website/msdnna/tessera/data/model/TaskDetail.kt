@@ -148,12 +148,39 @@ data class Attachment(
     @SerializedName("uploader_name") val uploaderName: String? = null,
 )
 
-/** A task journal entry — mirrors the backend `taskEventResp`. `data` is opaque. */
+/** A task journal entry — mirrors the backend `taskEventResp`. */
 data class TaskEvent(
     @SerializedName("id") val id: String = "",
     @SerializedName("kind") val kind: String = "",
+    @SerializedName("data") val data: TaskEventData? = null,
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("actor_name") val actorName: String? = null,
+)
+
+/**
+ * The facts of a journal entry, from which the client words the line — see
+ * `util/TaskJournal.kt`. The server stores only the facts; the sentence is the
+ * reader's, in the reader's language.
+ *
+ * Every field is nullable and every kind carries only the keys it needs (the
+ * backend substitutes an empty object for an entry that carries none, so an old
+ * record arrives as `{}` rather than as null). [to] is deliberately a String: the
+ * same key holds the new title for `renamed` and the new level for `priority`, and
+ * Gson reads a JSON number into a String.
+ */
+data class TaskEventData(
+    @SerializedName("to") val to: String? = null,
+    /** Key of a server-seeded column name (#2800); absent for one the user named. */
+    @SerializedName("to_key") val toKey: String? = null,
+    /** Whether the date/estimate was set or cleared — `due`, `start`, `estimate`. */
+    @SerializedName("set") val set: Boolean? = null,
+    /** Number of the task on the other end of a relation. */
+    @SerializedName("related") val related: Long? = null,
+    @SerializedName("filename") val filename: String? = null,
+    @SerializedName("applied") val applied: List<String>? = null,
+    @SerializedName("failed") val failed: List<String>? = null,
+    /** Provider that wrote the entry — `user`/`gitlab`, see `util/Sources.kt`. */
+    @SerializedName("source") val source: String? = null,
 )
 
 /** `{ "url": "/api/uploads/<uuid>.<ext>" }` from `POST /api/uploads`. */

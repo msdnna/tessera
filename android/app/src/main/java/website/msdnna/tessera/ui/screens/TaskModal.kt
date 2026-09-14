@@ -143,6 +143,7 @@ import website.msdnna.tessera.util.doneTarget
 import website.msdnna.tessera.util.dueLabel
 import website.msdnna.tessera.util.groupThreads
 import website.msdnna.tessera.util.isExternalSource
+import website.msdnna.tessera.util.journalText
 import website.msdnna.tessera.util.moveNeighbors
 import website.msdnna.tessera.util.nextColumn
 import website.msdnna.tessera.util.onColor
@@ -2456,7 +2457,7 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
                 Spacer(Modifier.width(8.dp))
                 val actor = e.actorName ?: stringResource(R.string.task_someone)
                 Text(
-                    "$actor ${eventText(e.kind)}",
+                    "$actor ${journalText(LocalResources.current, e)}",
                     color = c.text2,
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f),
@@ -2670,26 +2671,3 @@ private fun fileSize(ctx: android.content.Context, uri: android.net.Uri): Long? 
         if (idx >= 0 && cursor.moveToFirst() && !cursor.isNull(idx)) cursor.getLong(idx) else null
     }
 }.getOrNull()
-
-/** Формулировка события истории. Неизвестный вид (бэкенд ушёл вперёд клиента)
- *  показываем сырым ключом — так же, как было до перевода на ресурсы. */
-@Composable
-private fun eventText(kind: String): String = when (kind) {
-    "created" -> stringResource(R.string.task_event_created)
-    "renamed" -> stringResource(R.string.task_event_renamed)
-    "description" -> stringResource(R.string.task_event_description)
-    "priority" -> stringResource(R.string.task_event_priority)
-    "due" -> stringResource(R.string.task_event_due)
-    "completed" -> stringResource(R.string.task_event_completed)
-    "reopened" -> stringResource(R.string.task_event_reopened)
-    "recurred" -> stringResource(R.string.task_event_recurred)
-    "moved" -> stringResource(R.string.task_event_moved)
-    "assigned" -> stringResource(R.string.task_event_assigned)
-    "unassigned" -> stringResource(R.string.task_event_unassigned)
-    "comment" -> stringResource(R.string.task_event_comment)
-    "relation" -> stringResource(R.string.task_event_relation)
-    "attachment" -> stringResource(R.string.task_event_attachment)
-    "archived" -> stringResource(R.string.task_event_archived)
-    "restored" -> stringResource(R.string.task_event_restored)
-    else -> kind
-}

@@ -320,20 +320,44 @@
 
     <!-- Модалка задачи: история -->
     <string name="task_history_empty">История пуста</string>
+    <!-- Фраза события собирается из kind + data (util/TaskJournal.kt). У события,
+         которое несёт цель, две строки: «с целью» и «без цели» — для записи, цели
+         не несущей. Даты и оценка различают установку и снятие; нейтральная
+         формулировка остаётся для записи без флага. -->
     <string name="task_event_created">создал(а) задачу</string>
     <string name="task_event_renamed">переименовал(а) задачу</string>
+    <string name="task_event_renamed_to">переименовал(а) → «%1$s»</string>
     <string name="task_event_description">изменил(а) описание</string>
     <string name="task_event_priority">сменил(а) приоритет</string>
+    <string name="task_event_priority_to">изменил(а) приоритет → %1$s</string>
     <string name="task_event_due">изменил(а) срок</string>
+    <string name="task_event_due_set">установил(а) срок</string>
+    <string name="task_event_due_cleared">убрал(а) срок</string>
+    <string name="task_event_start">изменил(а) дату начала</string>
+    <string name="task_event_start_set">установил(а) дату начала</string>
+    <string name="task_event_start_cleared">убрал(а) дату начала</string>
+    <string name="task_event_estimate">изменил(а) оценку</string>
+    <string name="task_event_estimate_set">установил(а) оценку</string>
+    <string name="task_event_estimate_cleared">убрал(а) оценку</string>
     <string name="task_event_completed">завершил(а) задачу</string>
     <string name="task_event_reopened">вернул(а) в работу</string>
     <string name="task_event_recurred">перенёс(ла) повтор задачи</string>
     <string name="task_event_moved">переместил(а) задачу</string>
+    <string name="task_event_moved_to">переместил(а) → «%1$s»</string>
     <string name="task_event_assigned">назначил(а) исполнителя</string>
     <string name="task_event_unassigned">снял(а) исполнителя</string>
     <string name="task_event_comment">оставил(а) комментарий</string>
     <string name="task_event_relation">добавил(а) связь</string>
+    <string name="task_event_relation_to">добавил(а) связь с #%1$s</string>
+    <string name="task_event_relation_removed">удалил(а) связь</string>
+    <string name="task_event_relation_removed_to">удалил(а) связь с #%1$s</string>
+    <string name="task_event_commands">выполнил(а) быстрые команды</string>
+    <string name="task_event_commands_applied">выполнил(а) команды: %1$s</string>
+    <string name="task_event_commands_failed">не смог(ла) выполнить команды: %1$s</string>
+    <string name="task_event_commands_mixed">выполнил(а) команды: %1$s (не удалось: %2$s)</string>
+    <string name="task_event_synced">синхронизировал(а) с %1$s</string>
     <string name="task_event_attachment">прикрепил(а) файл</string>
+    <string name="task_event_attachment_named">прикрепил(а) файл «%1$s»</string>
     <string name="task_event_archived">архивировал(а) задачу</string>
     <string name="task_event_restored">восстановил(а) задачу</string>
 
