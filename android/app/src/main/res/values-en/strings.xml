@@ -700,6 +700,7 @@
     <string name="notif_kind_due_soon">Due dates</string>
     <string name="notif_kind_reminder">Reminders</string>
     <string name="notif_kind_integration_sync">Integration sync</string>
+    <string name="notif_kind_conference_invite">Conference invitations</string>
 
     <!-- Notifications: due date and quiet hours schedule -->
     <string name="notif_due_enabled">Notify about due dates</string>

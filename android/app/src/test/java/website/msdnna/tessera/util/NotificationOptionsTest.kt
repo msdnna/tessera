@@ -38,6 +38,22 @@ class NotificationOptionsTest {
     }
 
     @Test
+    fun `conference invitations are a kind the rule editor can pick`() {
+        // Приглашение в конференцию доставляется как обычное уведомление
+        // (`handlers/conferences.go` → `notify(…, kindConferenceInvite, …)`), у него
+        // есть тема письма на обоих языках, и в ленте его рисуют оба клиента — но в
+        // редакторе правил вида не было ни здесь, ни в вебе. Значит приглашения
+        // нельзя было ни направить в канал отдельно, ни исключить из него: ловило их
+        // только правило «любые события».
+        assertThat(NOTIF_ROUTE_KINDS).contains("conference_invite")
+        val kinds = listOf("mention", "conference_invite")
+        assertThat(notifKindsCaption(res("ru"), kinds))
+            .isEqualTo("Упоминания, Приглашения в конференцию")
+        assertThat(notifKindsCaption(res("en"), kinds))
+            .isEqualTo("Mentions, Conference invitations")
+    }
+
+    @Test
     fun `two days ahead is a lead the screen can caption`() {
         assertThat(notifLeadLabel(res("ru"), 2880)).isEqualTo("За 2 дня")
         assertThat(notifLeadLabel(res("en"), 2880)).isEqualTo("2 days before")

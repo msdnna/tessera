@@ -719,6 +719,7 @@
     <string name="notif_kind_due_soon">Дедлайны</string>
     <string name="notif_kind_reminder">Напоминания</string>
     <string name="notif_kind_integration_sync">Синхронизация интеграций</string>
+    <string name="notif_kind_conference_invite">Приглашения в конференцию</string>
 
     <!-- Уведомления: расписание дедлайнов и тихих часов -->
     <string name="notif_due_enabled">Уведомлять о дедлайнах</string>

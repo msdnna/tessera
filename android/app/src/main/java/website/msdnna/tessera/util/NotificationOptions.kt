@@ -20,7 +20,8 @@ import website.msdnna.tessera.R
  * "integration_sync", …)`), веб его показывал, а экран — нет, и вид печатался в
  * сводке правила сырым ключом. Подводка «за 2 дня» (2880) хранится бэкендом и
  * выставляется в вебе, а здесь неизвестное значение показывалось как «—», то есть
- * настройка читалась как несуществующая.
+ * настройка читалась как несуществующая. Вид `conference_invite` отставал сразу у
+ * обоих клиентов: сервер его маршрутизирует, а выбрать в правиле было негде.
  */
 
 /** Заглушка для значения, которого нет в каталоге (сервер новее этой сборки). */
@@ -40,6 +41,7 @@ val NOTIF_ROUTE_KINDS: List<String> = listOf(
     "due_soon",
     "reminder",
     "integration_sync",
+    "conference_invite",
 )
 
 private val KIND_LABELS = mapOf(
@@ -52,6 +54,7 @@ private val KIND_LABELS = mapOf(
     "due_soon" to R.string.notif_kind_due_soon,
     "reminder" to R.string.notif_kind_reminder,
     "integration_sync" to R.string.notif_kind_integration_sync,
+    "conference_invite" to R.string.notif_kind_conference_invite,
 )
 
 /** Подводка к сроку, минуты до дедлайна. */
