@@ -48,7 +48,7 @@ func ParseDate(raw string, now time.Time) (time.Time, error) {
 		case "w", "н":
 			return day(now.AddDate(0, 0, n*7)), nil
 		default: // m, м
-			return day(now.AddDate(0, n, 0)), nil
+			return addMonths(day(now), n), nil
 		}
 	}
 
@@ -63,4 +63,29 @@ func ParseDate(raw string, now time.Time) (time.Time, error) {
 	}
 
 	return time.Time{}, fmt.Errorf("не понимаю дату %q", raw)
+}
+
+// addMonths steps n whole calendar months from t, clamping the day to the target
+// month's length.
+//
+// time.AddDate normalises instead of clamping, and "+1m" written on the 31st then
+// lands on a month the person never named: 31 января +1м overflowed 31 февраля into
+// 3 марта, skipping February outright. Backwards it is worse — 31 марта -1м came out
+// as 3 марта, so "минус месяц" moved 28 days back and left the month unchanged. The
+// recurrence engine clamps for exactly this reason (internal/recur dateOn).
+func addMonths(t time.Time, n int) time.Time {
+	// Year is always positive here, so plain / and % stay floor-correct even for n<0.
+	total := t.Year()*12 + int(t.Month()) - 1 + n
+	year, month := total/12, time.Month(total%12+1)
+	d := t.Day()
+	if last := daysInMonth(year, month); d > last {
+		d = last
+	}
+	return time.Date(year, month, d, 0, 0, 0, 0, t.Location())
+}
+
+// daysInMonth is the length of year/month — day 0 of the next month is the last
+// day of this one.
+func daysInMonth(year int, month time.Month) int {
+	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
 }

@@ -196,6 +196,39 @@ func TestParseDate(t *testing.T) {
 	}
 }
 
+// A month step written on the 29th-31st must clamp to the end of the target
+// month, not roll over into the next one: "+1м" on 31 января means February, and
+// "-1м" on 31 марта must actually leave March.
+func TestParseDateMonthClamp(t *testing.T) {
+	day := func(y int, m time.Month, d int) time.Time {
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	cases := []struct {
+		in   string
+		now  time.Time
+		want time.Time
+	}{
+		{in: "+1m", now: day(2026, 1, 31), want: day(2026, 2, 28)},
+		{in: "+1м", now: day(2028, 1, 30), want: day(2028, 2, 29)}, // leap February
+		{in: "-1m", now: day(2026, 3, 31), want: day(2026, 2, 28)},
+		{in: "+1m", now: day(2026, 5, 31), want: day(2026, 6, 30)},
+		// Whole-month steps across a year boundary keep the day when it fits.
+		{in: "+2m", now: day(2026, 11, 30), want: day(2027, 1, 30)},
+		{in: "-2m", now: day(2026, 1, 15), want: day(2025, 11, 15)},
+		{in: "-14m", now: day(2026, 1, 31), want: day(2024, 11, 30)},
+	}
+	for _, tc := range cases {
+		got, err := ParseDate(tc.in, tc.now)
+		if err != nil {
+			t.Errorf("ParseDate(%q, %v): %v", tc.in, tc.now, err)
+			continue
+		}
+		if !got.Equal(tc.want) {
+			t.Errorf("ParseDate(%q, %v) = %v, want %v", tc.in, tc.now.Format("2006-01-02"), got, tc.want)
+		}
+	}
+}
+
 func TestParsePriority(t *testing.T) {
 	cases := []struct {
 		in      string
