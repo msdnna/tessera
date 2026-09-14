@@ -411,10 +411,13 @@ interface ApiService {
         @Body body: website.msdnna.tessera.data.model.SetWorkspaceCommandsRequest,
     ): List<website.msdnna.tessera.data.model.WorkspaceCommand>?
 
+    // Та же зона, что у настоящего POST: иначе подсказка «Будет применено» назовёт
+    // не тот день, в который команда потом попадёт (#2932).
     @POST("tasks/{id}/commands/preview")
     suspend fun previewCommands(
         @Path("id") taskId: String,
         @Body body: website.msdnna.tessera.data.model.PreviewCommandsRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.CommandPreview
 
     @GET("workspaces/{id}/members")
@@ -490,10 +493,15 @@ interface ApiService {
 
     // The reply carries the comment inline plus a `command_summary` when the body
     // held quick actions; a command-only comment stores no row (id null).
+    //
+    // `tz` — календарь автора: «/due сегодня» в теле резолвит СЕРВЕР, и без зоны
+    // он берёт свою, так что команда, набранная поздним вечером, ставит чужой день
+    // (#2932).
     @POST("tasks/{id}/comments")
     suspend fun createComment(
         @Path("id") taskId: String,
         @Body body: CreateCommentRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.CommentResult
 
     @PATCH("comments/{id}")
@@ -642,9 +650,14 @@ interface ApiService {
         @Path("number") number: Int,
     ): website.msdnna.tessera.data.model.Task
 
+    /** Плитки «Просрочено / Сегодня / На неделе». `tz` — календарь читателя: сервер
+     *  раскладывает счётчики по ДНЯМ (`due_date < @day_start`), и без зоны он взял бы
+     *  свою собственную, а список под плиткой фильтруется в днях устройства — число
+     *  в плитке и её же список тогда расходятся (#2932). */
     @GET("workspaces/{id}/summary")
     suspend fun workspaceSummary(
         @Path("id") workspaceId: String,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.WorkspaceSummary
 
     // ── Notes (#5) ────────────────────────────────────────────────────────────

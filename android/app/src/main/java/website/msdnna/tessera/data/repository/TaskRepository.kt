@@ -33,12 +33,15 @@ class TaskRepository {
         body: String,
         mentions: List<String>,
         parentId: String? = null,
-    ): CommentResult = api.createComment(taskId, CreateCommentRequest(body, mentions, parentId))
+    ): CommentResult =
+        // Зона автора: «/due сегодня» в теле резолвит сервер (#2932).
+        api.createComment(taskId, CreateCommentRequest(body, mentions, parentId), AppContainer.callerZone())
 
     /** Dry-runs the draft against the backend's own parser: what each `/`-command
-     *  in it would do, without executing anything. */
+     *  in it would do, without executing anything. Зона — та же, что у настоящего
+     *  POST, иначе подсказка назовёт не тот день. */
     suspend fun previewCommands(taskId: String, body: String): CommandPreview =
-        api.previewCommands(taskId, PreviewCommandsRequest(body))
+        api.previewCommands(taskId, PreviewCommandsRequest(body), AppContainer.callerZone())
     suspend fun editComment(commentId: String, body: String): Comment =
         api.updateComment(commentId, UpdateCommentRequest(body))
     suspend fun deleteComment(commentId: String) = api.deleteComment(commentId)
