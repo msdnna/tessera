@@ -71,6 +71,7 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.softShadow
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -120,6 +121,11 @@ fun BoardScreen(
     val conflictsState by conflictsVm.state.collectAsStateWithLifecycle()
     // Live board-activity toasts (separate from the bell), fed by realtime events.
     val activity by vm.activity.collectAsStateWithLifecycle()
+
+    // Календарь пользователя — вниз, в состояние: фильтр «Срок» и подписи карточек
+    // обязаны считать дни одним и тем же префом (см. BoardUiState.dateFormat).
+    val dateFormat = LocalDateFormat.current
+    LaunchedEffect(dateFormat) { vm.setDateFormat(dateFormat) }
 
     LaunchedEffect(board.id, workspaceId) { vm.load(board.id, workspaceId) }
 

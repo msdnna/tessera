@@ -451,4 +451,87 @@ class DatesTest {
         assertThat(localDateTimeLabel(ru, "2026-06-15T14:30:00Z", DateFormatPrefs(datePreset = DatePresets.ISO)))
             .matches("""2026-06-1\d, \d{2}:\d{2}""")
     }
+
+    // ── Зона профиля (#2932) ────────────────────────────────────────────────
+    //
+    // Преф `timezone` раньше знал только сервер: клиент слал его как `?tz=` на
+    // ручках, считающих по дням, а сам раскладывал даты зоной устройства. Ниже —
+    // момент, который в UTC ещё вчерашний, а в Москве уже завтрашний: на нём
+    // видно, что и бакет, и подпись читают один календарь.
+
+    private val utc = DateFormatPrefs(zoneId = "UTC")
+    private val msk = DateFormatPrefs(zoneId = "Europe/Moscow", datePreset = DatePresets.MEDIUM)
+
+    /** `22:00Z` — это 15-е в Москве и всё ещё 14-е в UTC. */
+    private val lateEvening = "2026-09-14T22:00:00Z"
+
+    @Test
+    fun `dueDayKey buckets by the profile zone, not the device one`() {
+        assertThat(dueDayKey(lateEvening, utc)).isEqualTo("2026-09-14")
+        assertThat(dueDayKey(lateEvening, DateFormatPrefs(zoneId = "Europe/Moscow"))).isEqualTo("2026-09-15")
+    }
+
+    /**
+     * Подпись карточки идёт тем же календарём, что и бакет: иначе пилюля читалась
+     * бы «14 сент.», а задача стояла бы в дне 15-го — расхождение, ради которого
+     * [dueDayKey] и заведён.
+     */
+    @Test
+    fun `the due label reads the same day as its bucket`() {
+        assertThat(dueLabel(ru, lateEvening, withTime = false, fmt = msk)).isEqualTo("15 сен. 2026 г.")
+        assertThat(dueLabel(ru, lateEvening, withTime = false, fmt = DateFormatPrefs(zoneId = "UTC", datePreset = DatePresets.MEDIUM)))
+            .isEqualTo("14 сен. 2026 г.")
+    }
+
+    /** Дата-только значение (UTC-полночь) зоне профиля не подчиняется — это день, а не момент. */
+    @Test
+    fun `a date-only due keeps its UTC day in every zone`() {
+        val dateOnly = "2026-09-15T00:00:00Z"
+        assertThat(dueDayKey(dateOnly, utc)).isEqualTo("2026-09-15")
+        assertThat(dueDayKey(dateOnly, DateFormatPrefs(zoneId = "Pacific/Kiritimati"))).isEqualTo("2026-09-15")
+        assertThat(dueDayKey(dateOnly, DateFormatPrefs(zoneId = "Pacific/Midway"))).isEqualTo("2026-09-15")
+    }
+
+    /**
+     * Просрочка ломается о полночь ПОЛЬЗОВАТЕЛЯ, а не устройства.
+     *
+     * Зона устройства на время теста прибита к UTC, а преф — токийский (UTC+9).
+     * Токийская полночь приходится на 15:00 UTC, поэтому оба момента ниже — час до
+     * неё и час после — лежат в ОДНОМ дне UTC: пока «сегодня» считалось часами
+     * устройства, вердикт у них был один на двоих.
+     */
+    @Test
+    fun `isOverdue breaks at the profile zone's midnight`() {
+        val saved = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+            val tokyo = TimeZone.getTimeZone("Asia/Tokyo")
+            val midnight = Calendar.getInstance(tokyo).apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val fmt = DateFormatPrefs(zoneId = "Asia/Tokyo")
+
+            val hourBefore = millisToUtcIso(midnight - 3_600_000L)
+            val hourAfter = millisToUtcIso(midnight + 3_600_000L)
+            // Оба — один день по UTC: разводит их только календарь префа.
+            assertThat(dueDayKey(hourBefore, utc)).isEqualTo(dueDayKey(hourAfter, utc))
+
+            assertThat(isOverdue(hourBefore, fmt)).isTrue()
+            assertThat(isOverdue(hourAfter, fmt)).isFalse()
+        } finally {
+            TimeZone.setDefault(saved)
+        }
+    }
+
+    /** Граница недели у фильтра — из того же календаря, что и «сегодня». */
+    @Test
+    fun `dayKeyIn walks whole days inside one zone`() {
+        val zone = TimeZone.getTimeZone("Europe/Moscow")
+        val today = dayKeyIn(zone, 0)
+        assertThat(todayKey(DateFormatPrefs(zoneId = "Europe/Moscow"))).isEqualTo(today)
+        assertThat(dayKeyIn(zone, 7)).isGreaterThan(today)
+    }
 }

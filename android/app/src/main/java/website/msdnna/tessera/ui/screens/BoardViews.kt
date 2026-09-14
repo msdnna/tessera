@@ -844,19 +844,21 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     // `val` вычислился бы один раз при загрузке класса и застыл бы на языке первого
     // рендера — переключение языка календарь бы уже не тронуло.
     val calMonths = stringArrayResource(R.array.calendar_months)
-    val weekStart = LocalDateFormat.current.weekStart
+    val fmt = LocalDateFormat.current
+    val weekStart = fmt.weekStart
     // Ресурс идёт с понедельника; при воскресной неделе подписи едут вместе с сеткой.
     val calWeekdays = WeekGrid.labels(stringArrayResource(R.array.calendar_weekdays_short).toList(), weekStart)
-    val today = remember { Calendar.getInstance() }
-    val todayKey = remember { dayKey(today) }
+    val today = remember(fmt.zoneId) { Calendar.getInstance(fmt.zone) }
+    val todayKey = remember(fmt.zoneId) { dayKey(today) }
     var cursor by remember { mutableStateOf(today.get(Calendar.YEAR) to today.get(Calendar.MONTH)) }
     val (year, month) = cursor
 
     // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
     val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
-    // Ячейки месяца строятся из локального Calendar, поэтому и раскладывать задачи
-    // по ним надо днём устройства (dueDayKey), а не срезом сырой ISO-строки.
-    val byDay = tasks.filter { !it.dueDate.isNullOrBlank() }.groupBy { dueDayKey(it.dueDate) }
+    // Ячейки месяца строятся из Calendar в календаре пользователя, поэтому и
+    // раскладывать задачи по ним надо тем же днём (dueDayKey с тем же [fmt]), а не
+    // срезом сырой ISO-строки.
+    val byDay = tasks.filter { !it.dueDate.isNullOrBlank() }.groupBy { dueDayKey(it.dueDate, fmt) }
     val undated = tasks.filter { it.dueDate.isNullOrBlank() }
     val cells = remember(year, month, weekStart) { monthCells(year, month, weekStart) }
 
@@ -1726,7 +1728,8 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         buildDayCells(rangeStart, dayCount, todayMs, axisWeekdays)
     }
     val monthBands = remember(rangeStart, dayCount, axisMonths) { buildMonthBands(rangeStart, dayCount, axisMonths) }
-    val weekStart = LocalDateFormat.current.weekStart
+    val fmt = LocalDateFormat.current
+    val weekStart = fmt.weekStart
     val weekBands = remember(rangeStart, dayCount, tier, weekStart) {
         if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount, weekStart) else emptyList()
     }
@@ -1798,7 +1801,9 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         }
     }
 
-    val overdue = remember(scheduled) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) } }
+    // [fmt] — ключ memo и аргумент разом: счётчик считает просрочку в календаре
+    // пользователя, том же, в котором подписана каждая полоса.
+    val overdue = remember(scheduled, fmt) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate, fmt) } }
     val hScroll = rememberScrollState()
 
     // Apply a new day-width while keeping the date at [focalTrackX] (a track-relative x)
@@ -2078,7 +2083,8 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         buildDayCells(rangeStart, dayCount, todayMs, axisWeekdays)
     }
     val monthBands = remember(rangeStart, dayCount, axisMonths) { buildMonthBands(rangeStart, dayCount, axisMonths) }
-    val weekStart = LocalDateFormat.current.weekStart
+    val fmt = LocalDateFormat.current
+    val weekStart = fmt.weekStart
     val weekBands = remember(rangeStart, dayCount, tier, weekStart) {
         if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount, weekStart) else emptyList()
     }
@@ -2224,7 +2230,9 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     }
     val arrowColor = c.primary
 
-    val overdue = remember(scheduled) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) } }
+    // [fmt] — ключ memo и аргумент разом: счётчик считает просрочку в календаре
+    // пользователя, том же, в котором подписана каждая полоса.
+    val overdue = remember(scheduled, fmt) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate, fmt) } }
     val hScroll = rememberScrollState()
 
     // Apply a new day-width while keeping the date at [focalTrackX] (a track-relative x)

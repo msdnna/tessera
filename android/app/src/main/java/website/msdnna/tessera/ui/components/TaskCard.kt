@@ -987,9 +987,11 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
 private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val due = dueShort(LocalResources.current, task.dueDate, LocalDateFormat.current)
-    // Overdue (past due, not done) → red tint, like the web.
-    val overdue = !task.isCompleted && isOverdue(task.dueDate)
+    val fmt = LocalDateFormat.current
+    val due = dueShort(LocalResources.current, task.dueDate, fmt)
+    // Overdue (past due, not done) → red tint, like the web. Тот же [fmt], что у
+    // подписи: иначе пилюля читалась бы «Сегодня» и краснела как просроченная.
+    val overdue = !task.isCompleted && isOverdue(task.dueDate, fmt)
     val overdueColor = Color(0xFFE0533D)
     val tint = when {
         overdue -> overdueColor

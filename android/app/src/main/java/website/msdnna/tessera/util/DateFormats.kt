@@ -1,5 +1,6 @@
 package website.msdnna.tessera.util
 
+import java.util.TimeZone
 import website.msdnna.tessera.data.model.Preferences
 
 /**
@@ -25,17 +26,53 @@ data class DateFormatPrefs(
     val datePreset: String = DatePresets.SHORT,
     /** `week_start`: [WEEK_START_SUNDAY] или [WEEK_START_MONDAY], уже нормализованный. */
     val weekStart: Int = WEEK_START_MONDAY,
+    /**
+     * `timezone` — календарь, в котором клиент раскладывает даты по дням. Пустая
+     * строка значит «зона устройства» (см. [resolvedTimezone]); хранится именно
+     * строкой, а не [TimeZone], чтобы [Default] не застывал на зоне, действовавшей
+     * в момент первого обращения к классу.
+     *
+     * Этот же преф уходит серверу как `?tz=` на ручках, считающих ПО ДНЯМ
+     * (`AppContainer.callerZone`). Пока его знал только сервер, домашний экран
+     * считал свои две половины в разных календарях: плитки «Просрочено/Сегодня/
+     * На неделе» приходили посчитанными в зоне профиля, а список под ними
+     * бакетился зоной устройства — у человека, чей преф разошёлся с телефоном
+     * (поездка, зона выставлена вручную), плитка показывала одно число, а список
+     * под ней — другой набор задач.
+     */
+    val zoneId: String = "",
 ) {
+    /** Календарь, в котором считаются дни: зона префа, иначе зона устройства. */
+    val zone: TimeZone
+        get() = if (zoneId.isBlank()) TimeZone.getDefault() else TimeZone.getTimeZone(zoneId)
+
     companion object {
-        /** Дефолт веба: 24 часа + `short` + неделя с понедельника. */
+        /** Дефолт веба: 24 часа + `short` + неделя с понедельника + зона устройства. */
         val Default = DateFormatPrefs()
 
         fun of(prefs: Preferences): DateFormatPrefs = DateFormatPrefs(
             time12h = prefs.timeFormat == TIME_12H,
             datePreset = normalizeDatePreset(prefs.dateFormat),
             weekStart = normalizeWeekStart(prefs.weekStart),
+            zoneId = normalizeZoneId(prefs.timezone),
         )
     }
+}
+
+/**
+ * Преф зоны, суженный до того, что телефон умеет показать: пустое значение и
+ * незнакомое имя одинаково означают «зона устройства».
+ *
+ * Незнакомое имя гасится здесь, а не отдаётся [TimeZone.getTimeZone], потому что
+ * тот на мусор молча возвращает GMT: опечатка в профиле увела бы весь календарь в
+ * UTC, и понять это по экрану было бы нечем. Серверу такое значение по-прежнему
+ * уходит как записано — он сам решает, грузится ли зона, и падает на следующий
+ * источник (см. [resolvedTimezone]).
+ */
+fun normalizeZoneId(value: String?): String {
+    val tz = value?.trim().orEmpty()
+    if (tz.isEmpty()) return ""
+    return if (tz in TimeZone.getAvailableIDs()) tz else ""
 }
 
 const val TIME_12H = "12h"

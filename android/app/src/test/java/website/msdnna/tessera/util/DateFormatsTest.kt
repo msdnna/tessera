@@ -1,6 +1,7 @@
 package website.msdnna.tessera.util
 
 import com.google.common.truth.Truth.assertThat
+import java.util.TimeZone
 import org.junit.Test
 import website.msdnna.tessera.data.model.Preferences
 
@@ -52,5 +53,47 @@ class DateFormatsTest {
         val legacy = DateFormatPrefs.of(Preferences())
         assertThat(legacy.time12h).isFalse()
         assertThat(legacy.datePreset).isEqualTo(DatePresets.SHORT)
+    }
+
+    /**
+     * Зона профиля доезжает до рендера (#2932). До этого её знал только сервер —
+     * `?tz=` на ручках, считающих по дням, — и домашний экран считал плитки и
+     * список под ними в разных календарях.
+     */
+    @Test
+    fun `profile timezone reaches the render prefs`() {
+        val fmt = DateFormatPrefs.of(Preferences(timezone = "Europe/Moscow"))
+        assertThat(fmt.zoneId).isEqualTo("Europe/Moscow")
+        assertThat(fmt.zone.id).isEqualTo("Europe/Moscow")
+    }
+
+    /** Пустой преф — зона устройства, а не UTC: пробел значит «как у клиента». */
+    @Test
+    fun `an empty timezone means the device zone`() {
+        val fmt = DateFormatPrefs.of(Preferences())
+        assertThat(fmt.zoneId).isEmpty()
+        assertThat(fmt.zone).isEqualTo(TimeZone.getDefault())
+    }
+
+    /**
+     * Незнакомое имя гасится в «зону устройства», а не отдаётся
+     * [TimeZone.getTimeZone]: тот на мусор молча возвращает GMT, и опечатка в
+     * профиле увела бы весь календарь телефона в UTC без единого признака.
+     */
+    @Test
+    fun `an unknown timezone degrades to the device zone, not GMT`() {
+        assertThat(normalizeZoneId("Europe/Mosow")).isEmpty()
+        assertThat(normalizeZoneId("  ")).isEmpty()
+        assertThat(normalizeZoneId(null)).isEmpty()
+
+        val fmt = DateFormatPrefs.of(Preferences(timezone = "Europe/Mosow"))
+        assertThat(fmt.zone).isEqualTo(TimeZone.getDefault())
+    }
+
+    /** Известное имя проходит как есть — включая формы вида `Etc/GMT+3`. */
+    @Test
+    fun `known zone names pass through`() {
+        assertThat(normalizeZoneId("UTC")).isEqualTo("UTC")
+        assertThat(normalizeZoneId(" Asia/Tokyo ")).isEqualTo("Asia/Tokyo")
     }
 }

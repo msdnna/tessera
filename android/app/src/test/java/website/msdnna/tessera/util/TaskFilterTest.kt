@@ -216,4 +216,36 @@ class TaskFilterTest {
         assertEquals(listOf("bob", "Абрам", "Зоя"), authors.map { it.name })
         assertEquals("u", authors.first { it.username == "abe" }.avatarUrl)
     }
+
+    /**
+     * Часы фильтра несут свой календарь, и срок сверяется с ним же (#2932).
+     *
+     * Один и тот же момент — 22:00Z — в Москве уже 15-е, а в UTC ещё 14-е.
+     * Пока [FilterClock] брал границы из префа, а [matchesDue] читал день срока
+     * зоной устройства, фасет «Срок» отвечал по двум разным календарям сразу.
+     */
+    @Test
+    fun `the clock's zone decides which day a due lands on`() {
+        val task = Task(id = "1", dueDate = "2026-09-14T22:00:00Z")
+        val inMoscow = FilterClock("2026-09-15", "2026-09-22", DateFormatPrefs(zoneId = "Europe/Moscow"))
+        val inUtc = FilterClock("2026-09-15", "2026-09-22", DateFormatPrefs(zoneId = "UTC"))
+
+        // Московский календарь: срок — сегодня, значит не просрочен.
+        assertTrue(matchesDue(task, DueFilter.Today, inMoscow))
+        assertFalse(matchesDue(task, DueFilter.Overdue, inMoscow))
+
+        // UTC: тот же момент — вчерашний день, то есть просрочка.
+        assertFalse(matchesDue(task, DueFilter.Today, inUtc))
+        assertTrue(matchesDue(task, DueFilter.Overdue, inUtc))
+    }
+
+    /** Границы и день срока у [FilterClock.now] приходят из одного календаря. */
+    @Test
+    fun `now builds both boundaries in the prefs zone`() {
+        val fmt = DateFormatPrefs(zoneId = "Asia/Tokyo")
+        val clock = FilterClock.now(fmt)
+        assertEquals(fmt, clock.fmt)
+        assertEquals(dayKeyIn(fmt.zone, 0), clock.today)
+        assertEquals(dayKeyIn(fmt.zone, 7), clock.weekEnd)
+    }
 }

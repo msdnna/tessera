@@ -1,7 +1,6 @@
 package website.msdnna.tessera.util
 
 import java.text.Collator
-import java.util.Calendar
 import java.util.Locale
 import website.msdnna.tessera.data.model.Task
 
@@ -71,20 +70,22 @@ val SUBTASK_FACETS: Set<TaskFacet> = setOf(
  * The `yyyy-MM-dd` boundaries the «Срок» facet compares against, injected so filtering
  * never reads the clock itself (web passes a `now` Date for the same reason).
  */
-data class FilterClock(val today: String, val weekEnd: String) {
+data class FilterClock(
+    val today: String,
+    val weekEnd: String,
+    /**
+     * The calendar the boundaries were read in — carried, not re-derived, so the due
+     * dates compared against them ([matchesDue]) are bucketed by the same zone. A
+     * clock built for Europe/Moscow and due keys read off the device would be two
+     * calendars in one comparison.
+     */
+    val fmt: DateFormatPrefs = DateFormatPrefs.Default,
+) {
     companion object {
-        /** Boundaries from the device clock: today, and today + 7 days — the
-         *  *exclusive* end of the week window (see [matchesDue]). */
-        fun now(): FilterClock = FilterClock(dateKey(0), dateKey(DAYS_IN_WEEK))
-
-        /** A local `yyyy-MM-dd` key for today + [days], matching due-date keys. */
-        private fun dateKey(days: Int): String {
-            val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, days) }
-            val y = cal.get(Calendar.YEAR)
-            val m = (cal.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
-            val d = cal.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
-            return "$y-$m-$d"
-        }
+        /** Boundaries from the clock in the user's zone: today, and today + 7 days —
+         *  the *exclusive* end of the week window (see [matchesDue]). */
+        fun now(fmt: DateFormatPrefs = DateFormatPrefs.Default): FilterClock =
+            FilterClock(dayKeyIn(fmt.zone, 0), dayKeyIn(fmt.zone, DAYS_IN_WEEK), fmt)
     }
 }
 
@@ -130,9 +131,9 @@ fun matchesAuthor(task: Task, selected: Set<String>, glLoginByUserId: Map<String
 
 /** Due-date predicate for the «Срок» filter, against [clock]'s boundaries. */
 fun matchesDue(task: Task, mode: DueFilter, clock: FilterClock): Boolean {
-    // dueDayKey, не isoDateKey: границы [clock] — дни устройства, и сравнивать их
-    // надо с тем же днём, который стоит в подписи карточки.
-    val due = dueDayKey(task.dueDate)
+    // dueDayKey, не isoDateKey: границы [clock] — дни календаря пользователя, и
+    // сравнивать их надо с тем же днём, который стоит в подписи карточки.
+    val due = dueDayKey(task.dueDate, clock.fmt)
     return when (mode) {
         DueFilter.All -> true
 

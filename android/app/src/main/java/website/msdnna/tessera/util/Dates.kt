@@ -66,11 +66,13 @@ private fun presetDate(res: Resources, y: Int, mo0: Int, d: Int, preset: String)
  * и подпись под календарём не может считать неделю иначе, чем сам календарь.
  */
 private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int, fmt: DateFormatPrefs): String {
-    val due = Calendar.getInstance().apply {
+    // Обе стороны сравнения — в календаре пользователя: «сегодня» у подписи не может
+    // быть другим днём, чем «сегодня» у бакета (см. [dueDayKey]).
+    val due = Calendar.getInstance(fmt.zone).apply {
         clear()
         set(y, mo0, d)
     }
-    val today = Calendar.getInstance().apply {
+    val today = Calendar.getInstance(fmt.zone).apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
@@ -142,18 +144,24 @@ fun shortDate(res: Resources, iso: String?): String {
 
 private fun currentYear(): Int = Calendar.getInstance().get(Calendar.YEAR)
 
-/** Today's `yyyy-MM-dd` in the device zone. */
-private fun todayKey(): String {
-    val cal = Calendar.getInstance()
+/** Today's `yyyy-MM-dd` in the user's calendar ([DateFormatPrefs.zone]). */
+fun todayKey(fmt: DateFormatPrefs = DateFormatPrefs.Default): String = dayKeyIn(fmt.zone, 0)
+
+/**
+ * The `yyyy-MM-dd` of today + [days], read in [zone]. Shared by [todayKey] and the
+ * board filter's week boundary so both ends of a window come from one calendar.
+ */
+internal fun dayKeyIn(zone: TimeZone, days: Int): String {
+    val cal = Calendar.getInstance(zone).apply { add(Calendar.DAY_OF_MONTH, days) }
     return "%04d-%02d-%02d".format(
         cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH),
     )
 }
 
 /** True when a due date is before today (a task overdue if not completed). */
-fun isOverdue(iso: String?): Boolean {
-    val key = dueDayKey(iso)
-    return key.isNotEmpty() && key < todayKey()
+fun isOverdue(iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): Boolean {
+    val key = dueDayKey(iso, fmt)
+    return key.isNotEmpty() && key < todayKey(fmt)
 }
 
 /** The `yyyy-MM-dd` date portion of an ISO timestamp, or "" for the undated. */
@@ -167,7 +175,11 @@ fun isoDateKey(iso: String?): String =
  *
  * Which calendar that is follows the same rule the labels use: a pure UTC-midnight
  * instant is a date-only due (GitLab/legacy) and keeps its UTC day, everything else
- * is a real instant and is read in the device zone. [isoDateKey] — the date portion
+ * is a real instant and is read in the user's zone ([DateFormatPrefs.zone] — the
+ * `timezone` preference, falling back to the device's). That is the same zone the
+ * client hands the server as `?tz=` on the day-counting endpoints, so the home
+ * tiles and the list under them cannot land on different days.
+ * [isoDateKey] — the date portion
  * of the raw string — is neither: it is the day in whatever zone the *server*
  * serialised with. The two part company exactly where it hurts, because the clients
  * store a due date as the local midnight the user picked: with a server writing UTC,
@@ -177,9 +189,9 @@ fun isoDateKey(iso: String?): String =
  * A value that is not a parseable instant (a bare `2026-06-15`) is already a
  * calendar day — there is nothing to convert, so the raw portion stands.
  */
-fun dueDayKey(iso: String?): String {
+fun dueDayKey(iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     val millis = parseInstantMillis(iso) ?: return isoDateKey(iso)
-    val zone = if (isUtcMidnight(millis)) TimeZone.getTimeZone("UTC") else TimeZone.getDefault()
+    val zone = if (isUtcMidnight(millis)) TimeZone.getTimeZone("UTC") else fmt.zone
     val cal = Calendar.getInstance(zone).apply { timeInMillis = millis }
     return "%04d-%02d-%02d".format(
         cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH),
@@ -227,7 +239,7 @@ fun dueLabel(
     // UTC calendar date, no time, so a server that serialises with a +03:00 offset
     // (e.g. `…T03:00:00+03:00`) doesn't surface a phantom "03:00". Mirrors web.
     if (isUtcMidnight(millis)) return utcLongDate(res, millis, fmt)
-    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val cal = Calendar.getInstance(fmt.zone).apply { timeInMillis = millis }
     val date = presetDate(
         res,
         cal.get(Calendar.YEAR),
@@ -261,7 +273,7 @@ fun dueShort(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPref
     // calendar date in UTC so a +03:00 server offset doesn't push it to "03:00".
     // A real timed/local-midnight due falls through to local rendering.
     val utcMid = isUtcMidnight(millis)
-    val cal = Calendar.getInstance(if (utcMid) TimeZone.getTimeZone("UTC") else TimeZone.getDefault())
+    val cal = Calendar.getInstance(if (utcMid) TimeZone.getTimeZone("UTC") else fmt.zone)
         .apply { timeInMillis = millis }
     val day = cal.get(Calendar.DAY_OF_MONTH)
     val mo0 = cal.get(Calendar.MONTH)
@@ -360,10 +372,10 @@ fun millisToUtcIso(millis: Long): String =
         .apply { timeZone = TimeZone.getTimeZone("UTC") }
         .format(Date(millis))
 
-/** A local-zone `31.12.2026, 14:30` label (date in the user's preset) for a full instant. */
+/** A `31.12.2026, 14:30` label in the user's zone (date in their preset) for a full instant. */
 fun localDateTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     val millis = parseInstantMillis(iso) ?: return ""
-    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val cal = Calendar.getInstance(fmt.zone).apply { timeInMillis = millis }
     val date = presetDate(
         res,
         cal.get(Calendar.YEAR),

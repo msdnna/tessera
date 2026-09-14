@@ -28,6 +28,7 @@ import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.BoardFilter
+import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.DueFilter
 import website.msdnna.tessera.util.FilterClock
 import website.msdnna.tessera.util.errorMessage
@@ -136,6 +137,16 @@ data class BoardUiState(
     /** Auto-persist the current named view on every change (web autosaveView). */
     val autosaveView: Boolean = false,
     val doneColumnId: String? = null,
+    /**
+     * Календарь пользователя (преф `timezone` + форматы), пришедший из композиции
+     * через [setDateFormat].
+     *
+     * Держится в состоянии, а не читается здесь из DataStore: фильтр «Срок» считает
+     * дни тем же [DateFormatPrefs], которым подписана карточка, — иначе пилюля
+     * читалась бы «Сегодня», а карточка стояла в «Просрочено». Дефолт — зона
+     * устройства, то есть поведение до того, как экран успел пробросить преф.
+     */
+    val dateFormat: DateFormatPrefs = DateFormatPrefs.Default,
     val filter: BoardFilter = BoardFilter(),
     /** Ordered multi-level sort. Empty = manual (position) order. */
     val sortLevels: List<SortLevel> = emptyList(),
@@ -220,7 +231,7 @@ data class BoardUiState(
                 tasks = tasks,
                 subtasksByParent = subtasks.groupBy { it.parentId.orEmpty() },
                 filter = filter,
-                clock = FilterClock.now(),
+                clock = FilterClock.now(dateFormat),
                 glLoginByUserId = glLoginByUserId,
             )
         }
@@ -412,6 +423,17 @@ class BoardViewModel(
             }
             loadViews()
         }
+    }
+
+    /**
+     * The calendar the board counts days in, handed down from composition
+     * (`LocalDateFormat`) — see [BoardUiState.dateFormat]. A no-op when unchanged:
+     * the state object carries a lazily filtered board, and replacing it discards
+     * that work.
+     */
+    fun setDateFormat(fmt: DateFormatPrefs) {
+        if (_state.value.dateFormat == fmt) return
+        _state.update { it.copy(dateFormat = fmt) }
     }
 
     /** Loads this board's saved server-side views (tolerant of failure). */
