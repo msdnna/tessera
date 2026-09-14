@@ -5,6 +5,16 @@ import com.google.common.truth.Truth.assertWithMessage
 import org.junit.Test
 
 class MiscUtilTest {
+    /** Есть ли в строке суррогат без своей пары (такой рисуется ромбом с вопросом). */
+    private fun hasLoneSurrogate(s: String): Boolean = s.indices.any { i ->
+        val c = s[i]
+        when {
+            c.isHighSurrogate() -> i + 1 >= s.length || !s[i + 1].isLowSurrogate()
+            c.isLowSurrogate() -> i == 0 || !s[i - 1].isHighSurrogate()
+            else -> false
+        }
+    }
+
     // ── diffSegments ─────────────────────────────────────────────────────────
     @Test
     fun `diffSegments equal strings single unchanged segment`() {
@@ -41,6 +51,39 @@ class MiscUtilTest {
     fun `diffSegments cyrillic`() {
         val segs = diffSegments("привет мир", "привет добрый мир")
         assertThat(segs.first { it.changed }.text).isEqualTo("добрый ")
+    }
+
+    // Эмодзи — суррогатная пара, а соседи одного блока делят половину: общая
+    // половина не должна оказаться по другую сторону границы, иначе экран
+    // рисует ромбы с вопросом вместо символа.
+    @Test
+    fun `diffSegments keeps a swapped emoji whole when prefix shares its high half`() {
+        val segs = diffSegments("Готово 😀", "Готово 😃")
+        assertThat(segs).containsExactly(
+            DiffSegment("Готово ", false),
+            DiffSegment("😃", true),
+        ).inOrder()
+    }
+
+    @Test
+    fun `diffSegments keeps a swapped emoji whole when suffix shares its low half`() {
+        val segs = diffSegments("𝄞 такт", "𝔞 такт")
+        assertThat(segs).containsExactly(
+            DiffSegment("𝔞", true),
+            DiffSegment(" такт", false),
+        ).inOrder()
+    }
+
+    @Test
+    fun `diffSegments never splits a segment mid-pair`() {
+        for ((base, cur) in listOf("👍 ок" to "👎 ок", "😀" to "😃", "a😀b" to "a😃b")) {
+            val segs = diffSegments(base, cur)
+            assertWithMessage("склейка %s", cur).that(segs.joinToString("") { it.text }).isEqualTo(cur)
+            for (seg in segs) {
+                assertWithMessage("одинокий суррогат в %s", seg.text)
+                    .that(hasLoneSurrogate(seg.text)).isFalse()
+            }
+        }
     }
 
     // ── toggleTaskMarker ─────────────────────────────────────────────────────
