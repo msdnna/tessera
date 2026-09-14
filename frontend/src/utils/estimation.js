@@ -45,6 +45,23 @@ function minutesPerWeek(cfg) {
   return minutesPerDay(cfg) * (cfg?.days_per_week || 5)
 }
 
+// The same two lengths as whole minutes, for the week/day/hour/minute ladder the
+// two formatters below walk.
+//
+// The working day is a free decimal — the settings field is an `n-input-number`
+// with no precision, and the backend only clamps it to [1, 24] — and a day like
+// 8.2h is not exactly representable, so `8.2 * 60` is 491.99999999999994 rather
+// than 492. Dividing the (integer) estimate by that float is off by one in both
+// directions: one working day came out as "1д 5.684341886080802e-14м", because
+// the residue is not zero and the minute branch prints whatever it holds; and at
+// 8.3h/day the same one day (498 min) lost the day unit entirely and read "8ч 18м",
+// because 498 / 498.00000000000006 floors to 0. Android rounds these two lengths
+// the same way (util/Estimation.kt `minutesPerDay(cfg).roundToInt()`), so the phone
+// printed the plain "1д" the web could not.
+function ladderMinutes(cfg) {
+  return { mpd: Math.round(minutesPerDay(cfg)), mpw: Math.round(minutesPerWeek(cfg)) }
+}
+
 // Drop a trailing ".0" so 5 shows as "5" and 2.5 as "2.5".
 function trimNum(v) {
   return Number.isInteger(v) ? String(v) : String(+Number(v).toFixed(2))
@@ -117,8 +134,7 @@ export function formatEstimate(value, cfg) {
     return label ? `${trimNum(value)} ${label}` : trimNum(value)
   }
 
-  const mpd = minutesPerDay(cfg)
-  const mpw = minutesPerWeek(cfg)
+  const { mpd, mpw } = ladderMinutes(cfg)
   let rem = Math.round(value)
   const w = Math.floor(rem / mpw)
   rem -= w * mpw
@@ -168,8 +184,7 @@ export function estimatePlaceholder(cfg) {
 export function formatEstimateFull(value, cfg) {
   if (value == null || !(value > 0)) return ''
   if ((cfg?.unit || 'time') !== 'time') return formatEstimate(value, cfg)
-  const mpd = minutesPerDay(cfg)
-  const mpw = minutesPerWeek(cfg)
+  const { mpd, mpw } = ladderMinutes(cfg)
   let rem = Math.round(value)
   const w = Math.floor(rem / mpw)
   rem -= w * mpw

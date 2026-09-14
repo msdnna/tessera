@@ -115,6 +115,25 @@ describe('formatEstimate', () => {
     expect(formatEstimate(2.5, { unit: 'custom', custom_label: 'шт' })).toBe('2.5 шт')
     expect(formatEstimate(5, { unit: 'custom' })).toBe('5')
   })
+
+  // The working day is a free decimal (the settings field has no precision, the
+  // backend only clamps to [1, 24]), and 8.2 * 60 is 491.99999999999994. Dividing
+  // by that float left a non-zero residue in the minute branch, so one working day
+  // printed as "1д 5.684341886080802e-14м"; at 8.3 the floor went the other way and
+  // one working day (498 min) lost the day unit and read "8ч 18м". Android rounds
+  // both lengths to whole minutes and printed the plain "1д" all along.
+  it('survives a working day whose minute length is not exact in binary', () => {
+    const c82 = { unit: 'time', hours_per_day: 8.2, days_per_week: 5 }
+    expect(formatEstimate(492, c82)).toBe('1д')
+    expect(formatEstimate(2460, c82)).toBe('1н')
+    expect(formatEstimate(492 + 90, c82)).toBe('1д 1ч 30м')
+
+    const c83 = { unit: 'time', hours_per_day: 8.3, days_per_week: 5 }
+    expect(formatEstimate(498, c83)).toBe('1д')
+    expect(formatEstimate(4.1 * 60, { unit: 'time', hours_per_day: 4.1, days_per_week: 5 })).toBe(
+      '1д',
+    )
+  })
 })
 
 describe('scaleOptions', () => {
@@ -163,6 +182,15 @@ describe('formatEstimateFull (russian plurals)', () => {
   it('falls back to compact formatting for points and returns "" for empty', () => {
     expect(formatEstimateFull(5, { unit: 'points' })).toBe('5 SP')
     expect(formatEstimateFull(null, cfg)).toBe('')
+  })
+
+  // Same inexact working day as in formatEstimate, one degree worse: the leftover
+  // residue was fed to ICU pluralisation, so the tooltip asked for the plural form
+  // of 5.684341886080802e-14 minutes.
+  it('spells out an inexact working day without a residue', () => {
+    const c = { unit: 'time', hours_per_day: 8.2, days_per_week: 5 }
+    expect(formatEstimateFull(492, c)).toBe('1 день')
+    expect(formatEstimateFull(2460, c)).toBe('1 неделя')
   })
 })
 
