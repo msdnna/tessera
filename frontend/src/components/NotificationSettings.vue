@@ -88,6 +88,14 @@ async function requestNotifPermission() {
   notifPermission.value = await Notification.requestPermission()
 }
 
+// Every kind the server actually routes (backend internal/notify/locale.go
+// `kinds`), in that file's order. A kind missing here is not merely absent from
+// the picker: kindLabel falls through to the raw key, so a rule that carries it
+// prints `conference_invite` in Latin in the middle of a Russian summary — and
+// the kind can neither be routed to a channel on its own nor excluded from one,
+// because the only rule that catches it is the catch-all «пусто = любые».
+// `test` is deliberately not here: it is the subject of the probe a user sends
+// to check a channel, never a stored notification to route.
 const EVENT_KINDS = [
   'assigned',
   'comment',
@@ -98,6 +106,7 @@ const EVENT_KINDS = [
   'due_soon',
   'reminder',
   'integration_sync',
+  'conference_invite',
 ]
 function kindLabel(kind) {
   return EVENT_KINDS.includes(kind) ? t(`settings.notifications.kind.${kind}`) : kind

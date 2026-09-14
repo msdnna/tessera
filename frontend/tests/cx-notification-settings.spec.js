@@ -58,9 +58,9 @@ const ROUTES = [
   { id: 'rt1', matcher: {}, channel_ids: ['ch1'], options: {}, enabled: true, position: 1 },
 ]
 
-async function mountSettings() {
+async function mountSettings(routes = ROUTES) {
   chApi.list.mockResolvedValue({ data: CHANNELS })
-  rtApi.list.mockResolvedValue({ data: ROUTES })
+  rtApi.list.mockResolvedValue({ data: routes })
   prefsApi.get.mockResolvedValue({ data: {} })
   const NotificationSettings = (await import('@/components/NotificationSettings.vue')).default
   const w = mount(NotificationSettings)
@@ -114,6 +114,41 @@ describe('NotificationSettings.vue — удаление через попове�
     await routePc.find('.pc-ok').trigger('click')
     await flushPromises()
     expect(rtApi.remove).toHaveBeenCalledWith('rt1')
+  })
+})
+
+// The rule editor's event list is a mirror of what the server actually routes
+// (backend internal/notify/locale.go `kinds`), and it had fallen one kind behind:
+// a conference invitation is delivered like any other notification
+// (handlers/conferences.go → notify(…, kindConferenceInvite, …)) and even has its
+// own subject line in both languages, but it could not be picked here. So it was
+// impossible to send invitations to a channel on their own — or to keep them out
+// of one — and a rule that carried the kind anyway (API, another client) printed
+// the bare `conference_invite` in Latin in the middle of the Russian summary.
+describe('NotificationSettings.vue — виды событий в правиле', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  // The picker's options and the summary's labels are both derived from
+  // EVENT_KINDS, so the summary is the cheap end to observe: a kind the list does
+  // not know is one the picker cannot offer either, and here it also shows up as
+  // the untranslated key.
+  it('называет приглашение в конференцию в сводке правила, а не сырым ключом', async () => {
+    const w = await mountSettings([
+      {
+        id: 'rt2',
+        matcher: { kinds: ['conference_invite'] },
+        channel_ids: ['ch1'],
+        options: {},
+        enabled: true,
+        position: 1,
+      },
+    ])
+    const title = w.findAll('.item-title').at(-1).text()
+    expect(title).toBe('Приглашение в конференцию')
+    expect(title).not.toContain('conference_invite')
   })
 })
 

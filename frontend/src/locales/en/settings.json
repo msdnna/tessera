@@ -175,7 +175,8 @@
       "archived": "Archiving",
       "due_soon": "Due soon",
       "reminder": "Reminders (scheduled)",
-      "integration_sync": "Integration sync"
+      "integration_sync": "Integration sync",
+      "conference_invite": "Conference invitation"
     },
     "lead": {
       "0": "At the deadline",
