@@ -271,12 +271,6 @@ async function download(att) {
   }
 }
 
-function humanSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
-}
-
 function when(ts) {
   return formatDateTime(ts, { hour: '2-digit', minute: '2-digit' })
 }
@@ -379,7 +373,7 @@ onBeforeUnmount(() => {
                   >
                     <n-icon :component="DocumentOutline" :size="14" />
                     <span class="fname">{{ a.filename }}</span>
-                    <span class="fsize">{{ humanSize(a.size) }}</span>
+                    <span class="fsize">{{ formatFileSize(a.size) }}</span>
                   </button>
                 </template>
                 {{ $t('conferences.chat.download') }}

@@ -300,6 +300,22 @@ describe('attachments', () => {
     w.unmount()
   })
 
+  it('weighs a file chip in the units the reader reads', async () => {
+    api.messages.mockResolvedValue(
+      page([msg({ attachments: [{ ...file, size: 3 * 1024 * 1024 }] })]),
+    )
+    const w = await rail()
+
+    // The rail kept a private byte formatter with the units spelled out in
+    // English and the decimal point written by hand — on the same screen where
+    // the Android client already says «3 МБ» (util/ConferenceChat.kt confFileSize)
+    // and where every other web surface goes through formatFileSize (#2799).
+    const chip = w.find('[data-testid="conference-chat-file"]')
+    expect(chip.text()).toContain('3 МБ')
+    expect(chip.text()).not.toContain('3 MB')
+    w.unmount()
+  })
+
   it('opens a picture over the call instead of in a new tab', async () => {
     api.messages.mockResolvedValue(page([msg({ attachments: [image] })]))
     const w = await rail()

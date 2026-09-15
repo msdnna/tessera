@@ -122,12 +122,18 @@ describe('TaskFilesTab.vue', () => {
           { id: 'a', filename: 'tiny.txt', size: 900 },
           { id: 'b', filename: 'mid.png', size: 2048 },
           { id: 'c', filename: 'big.zip', size: 3 * 1024 * 1024 },
+          { id: 'd', filename: 'odd.zip', size: 1.4 * 1024 * 1024 },
         ],
       },
       global: { stubs },
     })
     const sizes = w.findAll('.f-size').map((n) => n.text())
-    expect(sizes).toEqual(['900 Б', '2 КБ', '3.0 МБ'])
+    // The row went through `attachmentSizeText` when the hand-written
+    // `.toFixed(1)` came out (#2932), and the expectation here kept the shape
+    // that change existed to kill: a trailing ".0" glued on with a decimal
+    // *point*, inside a Russian interface. Intl writes neither — an exact 3 МБ
+    // has no fraction to show, and one that does shows it after a comma.
+    expect(sizes).toEqual(['900 Б', '2 КБ', '3 МБ', '1,4 МБ'])
   })
 
   it('publishes the shortened list back to the modal on delete', async () => {

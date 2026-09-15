@@ -15,6 +15,7 @@ import { NButton, NIcon, NPopconfirm, NSpin } from 'naive-ui'
 import { DownloadOutline, TrashOutline, WarningOutline } from '@vicons/ionicons5'
 import { conferences as confApi } from '@/api'
 import { handOffBlob } from '@/utils/blobHandoff'
+import { formatFileSize } from '@/utils/docPdf'
 import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
@@ -89,13 +90,6 @@ async function remove(rec) {
   }
 }
 
-function humanSize(bytes) {
-  if (!bytes) return ''
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${Math.round(bytes / 1024 / 1024)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
-}
-
 /** h:mm:ss, dropping the hour when there is none — meetings run both lengths. */
 function humanDuration(sec) {
   if (!sec) return ''
@@ -147,7 +141,7 @@ defineExpose({ load })
               </span>
               <template v-else>
                 <span v-if="r.duration_sec">{{ humanDuration(r.duration_sec) }}</span>
-                <span v-if="r.size_bytes">{{ humanSize(r.size_bytes) }}</span>
+                <span v-if="r.size_bytes">{{ formatFileSize(r.size_bytes) }}</span>
               </template>
               <span v-if="r.started_by_name">
                 {{ $t('conferences.rec.by', { name: r.started_by_name }) }}

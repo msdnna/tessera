@@ -461,11 +461,26 @@ describe('ConferenceRecordings — the list under the room', () => {
     const w = await panel([done()])
     const row = w.find('[data-testid="conference-recording-row"]')
     expect(row.text()).toContain('1:30')
-    expect(row.text()).toContain('5 MB')
+    // The unit is the reader's, not the file system's: this row had its own copy
+    // of the byte formatter printing a hard-coded "MB" (and a hard decimal point)
+    // in the middle of a Russian screen, while every other place that says how
+    // much something weighs goes through formatFileSize (#2799).
+    expect(row.text()).toContain('5 МБ')
+    expect(row.text()).not.toContain('5 MB')
     expect(row.text()).toContain('Аня')
     // The expiry is said out loud: a file that deletes itself on a date is not
     // something to find out about after it is gone.
     expect(row.text()).toContain('удалится')
+    w.unmount()
+  })
+
+  it('names the unit a short recording actually weighs in', async () => {
+    // The private formatter started at kilobytes, so a 700-byte artefact — a
+    // recording that failed early and still has a file — rounded to "1 KB", a
+    // size it never had. The shared one has a bytes branch.
+    const w = await panel([done({ size_bytes: 700 })])
+    const row = w.find('[data-testid="conference-recording-row"]')
+    expect(row.text()).toContain('700 Б')
     w.unmount()
   })
 
