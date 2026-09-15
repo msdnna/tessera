@@ -1,5 +1,9 @@
 package website.msdnna.tessera.util
 
+import android.content.res.Resources
+import java.text.NumberFormat
+import website.msdnna.tessera.R
+
 /*
  * The rules the two upload paths of a task run on (#2932, web `utils/upload.js`).
  *
@@ -79,4 +83,37 @@ fun mediaPickError(size: Long?, mime: String?): PickRefusal {
     val type = mime.orEmpty().substringBefore(';').trim().lowercase()
     if (type.isNotEmpty() && type !in MEDIA_TYPES) return PickRefusal.BAD_TYPE
     return PickRefusal.NONE
+}
+
+/**
+ * How big an uploaded attachment is, for the row that lists it in the task's
+ * «Файлы» tab (#2932, web `attachmentSizeText`).
+ *
+ * The row used to format the number itself, with `String.format(Locale.US, …)`,
+ * which is exactly half of the rule — and the half it got right was documented:
+ * the unit comes from the catalogue so that «МБ»/«MB» follows the profile. The
+ * separator is catalogue business for the same reason, and every other place the
+ * product weighs a file says so ([docFileSize], [confFileSize], web
+ * `formatFileSize`): one attachment read «1.4 МБ» here and «1,4 МБ» in a document
+ * or a call's chat, inside one Russian interface. Kilobytes disagreed about the
+ * number as well — `%.0f` rounded 14.6 KB to a flat «15 КБ» — so anything scaled
+ * keeps one fraction digit, as it does everywhere else.
+ *
+ * The locale comes from [res], not `Locale.getDefault()`: `AppLocale` hands the
+ * composition resources in the *profile's* language, while the device may well be
+ * in another one — taking the separator from the phone and the unit from the
+ * profile is the same split-brain in a new place.
+ */
+fun attachmentSizeText(res: Resources, bytes: Long): String {
+    val size = bytes.coerceAtLeast(0)
+    val (scale, unit) = when {
+        size >= 1L shl 20 -> (1L shl 20) to R.string.task_file_size_mb
+        size >= 1L shl 10 -> (1L shl 10) to R.string.task_file_size_kb
+        else -> 1L to R.string.task_file_size_b
+    }
+    val format = NumberFormat.getInstance(res.configuration.locales[0]).apply {
+        maximumFractionDigits = if (scale == 1L) 0 else 1
+        minimumFractionDigits = 0
+    }
+    return res.getString(unit, format.format(size / scale.toDouble()))
 }

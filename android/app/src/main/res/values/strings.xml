@@ -316,7 +316,7 @@
     <string name="task_attachment_delete_confirm">Удалить вложение?</string>
     <string name="task_file_size_mb">%1$s МБ</string>
     <string name="task_file_size_kb">%1$s КБ</string>
-    <string name="task_file_size_b">%1$d Б</string>
+    <string name="task_file_size_b">%1$s Б</string>
 
     <!-- Модалка задачи: история -->
     <string name="task_history_empty">История пуста</string>

@@ -9,7 +9,7 @@ import { NIcon, NButton, NPopconfirm, useMessage } from 'naive-ui'
 import { AttachOutline, DownloadOutline, TrashOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { saveAttachment } from '@/utils/download'
-import { ATTACHMENT_MAX_BYTES, attachmentPickError } from '@/utils/upload'
+import { ATTACHMENT_MAX_BYTES, attachmentPickError, attachmentSizeText } from '@/utils/upload'
 import { formatFileSize } from '@/utils/docPdf'
 import EmptyState from '../EmptyState.vue'
 
@@ -24,13 +24,9 @@ const { t } = useI18n()
 const fileInput = ref(null)
 const uploading = ref(false)
 
-// Unit suffixes are text, so they come from the catalogue rather than being
-// glued onto the number here (ru «КБ» vs en «KB»).
-function fmtSize(bytes) {
-  if (bytes < 1024) return t('task.files.size.b', { n: bytes })
-  if (bytes < 1024 * 1024) return t('task.files.size.kb', { n: (bytes / 1024).toFixed(0) })
-  return t('task.files.size.mb', { n: (bytes / 1024 / 1024).toFixed(1) })
-}
+// Both halves of a size are locale business — the unit *and* the decimal
+// separator — so the whole label comes from utils/upload, where it can be
+// pinned with a test (#2932).
 function pickFile() {
   fileInput.value?.click?.()
 }
@@ -87,7 +83,7 @@ async function deleteAttachment(id) {
     <div v-for="a in attachments" :key="a.id" class="filerow">
       <n-icon :component="AttachOutline" class="f-ico" />
       <button class="f-name" @click="downloadAttachment(a)">{{ a.filename }}</button>
-      <span class="f-size">{{ fmtSize(a.size) }}</span>
+      <span class="f-size">{{ attachmentSizeText(a.size) }}</span>
       <button class="c-act" :title="t('task.files.download')" @click="downloadAttachment(a)">
         <n-icon :component="DownloadOutline" />
       </button>

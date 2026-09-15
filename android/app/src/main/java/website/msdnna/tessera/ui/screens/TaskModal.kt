@@ -1,7 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
 import android.content.Intent
-import android.content.res.Resources
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -135,6 +134,7 @@ import website.msdnna.tessera.util.MentionItem
 import website.msdnna.tessera.util.PickRefusal
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.attachmentPickError
+import website.msdnna.tessera.util.attachmentSizeText
 import website.msdnna.tessera.util.avatarInitials
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
@@ -2416,7 +2416,7 @@ private fun AttachmentRow(
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(attachment.filename, color = c.text1, fontSize = 13.sp, maxLines = 2)
-            Text(fmtSize(res, attachment.size), color = c.text3, fontSize = 11.sp)
+            Text(attachmentSizeText(res, attachment.size), color = c.text3, fontSize = 11.sp)
         }
         Spacer(Modifier.width(6.dp))
         IonIconButton(Ion.DOWNLOAD, onDownload, boxSize = 44.dp, iconSize = 20.dp, tint = c.text2)
@@ -2627,22 +2627,6 @@ private fun TransferBoardPicker(workspaceId: String, onPick: (String) -> Unit, o
             }
         }
     }
-}
-
-/** Размер вложения: число форматируем сами, единицу берём из ресурсов —
- *  [res] приходит из композиции, чтобы «МБ»/«MB» шли за языком профиля. */
-private fun fmtSize(res: Resources, bytes: Long): String = when {
-    bytes >= 1 shl 20 -> res.getString(
-        R.string.task_file_size_mb,
-        String.format(java.util.Locale.US, "%.1f", bytes / (1 shl 20).toDouble()),
-    )
-
-    bytes >= 1 shl 10 -> res.getString(
-        R.string.task_file_size_kb,
-        String.format(java.util.Locale.US, "%.0f", bytes / (1 shl 10).toDouble()),
-    )
-
-    else -> res.getString(R.string.task_file_size_b, bytes)
 }
 
 private fun fileName(ctx: android.content.Context, uri: android.net.Uri): String? = runCatching {

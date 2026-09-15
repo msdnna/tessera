@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -124,7 +125,12 @@ internal fun DocPdfBlockView(block: DocPdf, repo: DocumentRepository = remember 
 @Composable
 private fun PdfHeader(block: DocPdf) {
     val c = Tessera.colors
-    val size = remember(block.size) { docFileSize(block.size) }
+    // Locale of the *profile*, not of the phone: `AppLocale` substitutes the
+    // resources the unit below comes from, and a number written with the device's
+    // separator under a unit from the profile's catalogue is the split this
+    // formatter exists to avoid (#2932).
+    val locale = LocalConfiguration.current.locales[0]
+    val size = remember(block.size, locale) { docFileSize(block.size, locale) }
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,

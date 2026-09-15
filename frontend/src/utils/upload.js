@@ -92,3 +92,38 @@ export function mediaPickMessage(file) {
   }
   return i18n.global.t('documents.editor.error.imageType')
 }
+
+/**
+ * How big an uploaded attachment is, for the row that lists it (#2932).
+ *
+ * The files tab used to write this by hand — `(bytes / 1024).toFixed(0)` and
+ * `.toFixed(1)` — which is exactly half of the rule. It knew the unit is text
+ * and took it from the catalogue, then glued the number on with a decimal
+ * *point*, so the same file read "1.4 МБ" here and "1,4 МБ" in a document or a
+ * call's chat, inside one Russian interface. The separator is locale business
+ * for the same reason the unit is: `formatFileSize` (imported two lines up for
+ * the refusal above) hands the number to `Intl.NumberFormat`, and so do the
+ * phone's `docFileSize` / `confFileSize`.
+ *
+ * The scaled units keep one fraction digit, again per `formatFileSize`: the old
+ * `toFixed(0)` on kilobytes rounded 14.6 KB to a flat "15 КБ" that disagreed
+ * with every other place the same file is weighed. Whole bytes never want a
+ * fraction.
+ *
+ * The unit stays a catalogue key rather than `formatFileSize`'s own, because
+ * these rows have had their own (`task.files.size.*`) since before documents
+ * existed and the two sets are worded independently.
+ *
+ * @param {number} bytes size as the server reported it
+ * @returns {string} e.g. "14,6 КБ" · "1,4 МБ" · "512 Б"
+ */
+export function attachmentSizeText(bytes) {
+  const n = Number(bytes)
+  if (!Number.isFinite(n) || n < 0) return ''
+  const unit = n < 1024 ? 'b' : n < 1024 * 1024 ? 'kb' : 'mb'
+  const value = unit === 'b' ? n : unit === 'kb' ? n / 1024 : n / 1024 / 1024
+  const amount = new Intl.NumberFormat(i18n.global.locale.value, {
+    maximumFractionDigits: unit === 'b' ? 0 : 1,
+  }).format(value)
+  return i18n.global.t(`task.files.size.${unit}`, { n: amount })
+}

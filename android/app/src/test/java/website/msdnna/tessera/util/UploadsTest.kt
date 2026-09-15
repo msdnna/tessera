@@ -1,7 +1,11 @@
 package website.msdnna.tessera.util
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
 /**
  * The two task upload paths, refused before the bytes travel (#2932).
@@ -19,7 +23,14 @@ import org.junit.Test
  * sides: a client that refuses a file the server would have taken is a feature
  * quietly removed.
  */
+@RunWith(RobolectricTestRunner::class)
 class UploadsTest {
+    private val appContext: Context get() = ApplicationProvider.getApplicationContext()
+
+    private fun res(language: String) = appContext.withLanguage(language).resources
+
+    private fun size(language: String, bytes: Long): String = attachmentSizeText(res(language), bytes)
+
     @Test
     fun `an attachment is refused only above the server's cap`() {
         assertThat(attachmentPickError(1L)).isEqualTo(PickRefusal.NONE)
@@ -83,5 +94,56 @@ class UploadsTest {
         assertThat(mediaPickError(1024L, "")).isEqualTo(PickRefusal.NONE)
         assertThat(mediaPickError(1024L, "IMAGE/PNG")).isEqualTo(PickRefusal.NONE)
         assertThat(mediaPickError(1024L, "image/jpeg; charset=binary")).isEqualTo(PickRefusal.NONE)
+    }
+
+    // ── the size of an attachment already uploaded ──────────────────────────
+    //
+    // The row under the file name. It used to format the number itself with
+    // `Locale.US`, which is half the rule: the unit was taken from the catalogue
+    // precisely so it would follow the profile, and then the separator was
+    // nailed to a point. The same file was weighed «1.4 МБ» here and «1,4 МБ» in
+    // a document and in a call's chat — inside one Russian interface.
+
+    @Test
+    fun `the separator is written in the language the row is read in`() {
+        assertThat(size("ru", (1.4 * (1L shl 20)).toLong())).isEqualTo("1,4 МБ")
+        assertThat(size("en", (1.4 * (1L shl 20)).toLong())).isEqualTo("1.4 MB")
+    }
+
+    @Test
+    fun `anything scaled keeps one fraction digit`() {
+        // `%.0f` read 14.6 KB as a flat «15 КБ» — a number that disagreed with
+        // every other place the product weighs the same file.
+        assertThat(size("ru", 15_000L)).isEqualTo("14,6 КБ")
+        assertThat(size("en", 15_000L)).isEqualTo("14.6 KB")
+        // A trailing zero is not a fraction digit worth printing, as docFileSize
+        // and the web's formatFileSize both decide.
+        assertThat(size("ru", 2L shl 20)).isEqualTo("2 МБ")
+    }
+
+    @Test
+    fun `whole bytes never carry a fraction`() {
+        assertThat(size("ru", 0L)).isEqualTo("0 Б")
+        assertThat(size("ru", 512L)).isEqualTo("512 Б")
+        assertThat(size("en", 512L)).isEqualTo("512 B")
+    }
+
+    @Test
+    fun `the unit switches where the thousand does`() {
+        // 1024, not 1000 — the server reports bytes and every client scales by
+        // the binary step (`docFileSize`, `confFileSize`, web `formatFileSize`).
+        // Four digits are grouped the way the locale groups them, and in Russian
+        // that separator is a no-break space (U+00A0) both here and in `Intl`.
+        assertThat(size("ru", 1023L)).isEqualTo("1\u00A0023 Б")
+        assertThat(size("ru", 1024L)).isEqualTo("1 КБ")
+        assertThat(size("ru", (1L shl 20) - 1)).isEqualTo("1\u00A0024 КБ")
+        assertThat(size("ru", 1L shl 20)).isEqualTo("1 МБ")
+    }
+
+    @Test
+    fun `a size the provider could not report is not a negative file`() {
+        // The pickers pass `-1` through as «let the server decide»; if one ever
+        // reaches the row, «-0,0 Б» is not what it should say.
+        assertThat(size("ru", -1L)).isEqualTo("0 Б")
     }
 }

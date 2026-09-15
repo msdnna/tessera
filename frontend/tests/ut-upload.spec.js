@@ -4,9 +4,11 @@ import {
   MEDIA_MAX_BYTES,
   MEDIA_TYPES,
   attachmentPickError,
+  attachmentSizeText,
   mediaPickError,
   mediaPickMessage,
 } from '@/utils/upload'
+import { formatFileSize } from '@/utils/docPdf'
 import { i18n, setI18nLocale } from '@/i18n'
 
 // The two task upload paths restate the server's rules (`handlers/attachments.go`):
@@ -135,6 +137,45 @@ describe('inline image refusal, phrased', () => {
       const msg = mediaPickMessage(pick(12 * 1024 * 1024, 'image/png'))
       expect(msg).toBe(i18n.global.t('documents.editor.error.imageTooLarge', { limit: '8 MB' }))
       expect(msg).not.toContain('МБ')
+    } finally {
+      await setI18nLocale('ru')
+    }
+  })
+})
+
+// The size of an attachment already uploaded — the label under its name in the
+// files tab. It used to be written by hand there with `.toFixed()`, i.e. with a
+// decimal point, while every other place the same file is weighed (a document's
+// PDF block, a call's chat rail, and the "file is larger than" refusal in this
+// very tab) goes through Intl.NumberFormat.
+describe('attachment size label', () => {
+  it('writes the separator in the language the reader is reading', () => {
+    // The Russian comma is not decoration: `formatFileSize` is what puts it on
+    // the same file's size two lines away in the same component.
+    expect(attachmentSizeText(1.4 * 1024 * 1024)).toBe('1,4 МБ')
+    expect(attachmentSizeText(1.4 * 1024 * 1024)).toContain(formatFileSize(1.4 * 1024 * 1024))
+  })
+
+  it('keeps one fraction digit on anything scaled', () => {
+    // toFixed(0) on kilobytes read 14.6 KB as a flat "15 КБ" — a number that
+    // disagreed with the documents rail about the very same file.
+    expect(attachmentSizeText(15000)).toBe('14,6 КБ')
+    expect(attachmentSizeText(2 * 1024 * 1024)).toBe('2 МБ')
+  })
+
+  it('never puts a fraction on whole bytes', () => {
+    expect(attachmentSizeText(0)).toBe('0 Б')
+    expect(attachmentSizeText(512)).toBe('512 Б')
+    // Four digits are grouped the way the locale groups them, which is what the
+    // documents rail does with the same number — «1 023», not «1023».
+    expect(attachmentSizeText(1023)).toBe(formatFileSize(1023))
+  })
+
+  it('follows the language the reader switched to', async () => {
+    try {
+      await setI18nLocale('en')
+      expect(attachmentSizeText(1.4 * 1024 * 1024)).toBe('1.4 MB')
+      expect(attachmentSizeText(15000)).toBe('14.6 KB')
     } finally {
       await setI18nLocale('ru')
     }
