@@ -299,3 +299,105 @@ func TestPreviewNamesEveryUnresolvedEntry(t *testing.T) {
 		t.Fatalf("preview error = %q, want both unresolved logins named", previewErr)
 	}
 }
+
+// TestPreviewRefusesMoveIntoCurrentColumn reads the same divergence the other way
+// round: the dry run promising something the run then refuses.
+//
+// qaMove answers «задача уже в «X»» for a task already standing there, and the
+// preview — which resolved the column with its own loop and never looked at where
+// the task was — drew a green «перенести в «X»» in front of it.
+func TestPreviewRefusesMoveIntoCurrentColumn(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	colName := s.Columns[0]["name"].(string)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Уже в этой колонке")
+	taskID := task["id"].(string)
+	body := "/move " + colName
+
+	cmds := previewCommands(t, c, taskID, body)
+	if len(cmds) != 1 {
+		t.Fatalf("preview returned %d commands, want 1", len(cmds))
+	}
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr == "" {
+		t.Fatalf("preview promised %q for a task already in that column — the run refuses it", previewSummary)
+	}
+	if !strings.Contains(previewErr, colName) {
+		t.Fatalf("preview error = %q, want the column named", previewErr)
+	}
+
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body}); r.Status != http.StatusBadRequest {
+		t.Fatalf("run: status %d, want 400\n%s", r.Status, r.Body)
+	}
+}
+
+// TestPreviewCloseFollowsTheTasksColumn is both directions of the same check on
+// /close: green while the task is still open, refused once it sits in the done
+// column — which is where qaMove's «задача уже в «Готово»» comes from.
+func TestPreviewCloseFollowsTheTasksColumn(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Закрыть дважды")
+	taskID := task["id"].(string)
+
+	cmds := previewCommands(t, c, taskID, "/close")
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused /close on an open task: %q — the run performs it", previewErr)
+	}
+	if !strings.Contains(previewSummary, "Готово") {
+		t.Fatalf("preview summary = %q, want the done column named", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": "/close"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied", applied, failed)
+	}
+
+	// The task now sits in the done column, and the run refuses a second /close.
+	cmds = previewCommands(t, c, taskID, "/close")
+	previewSummary, previewErr = outcomeText(cmds[0])
+	if previewErr == "" {
+		t.Fatalf("preview promised %q for an already-closed task — the run refuses it", previewSummary)
+	}
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": "/close"}); r.Status != http.StatusBadRequest {
+		t.Fatalf("second run: status %d, want 400\n%s", r.Status, r.Body)
+	}
+}
+
+// TestPreviewRefusesUnassignWithNobodyAssigned covers the argument-less
+// shorthand: qaAssign refuses «/unassign» on a task with nobody to clear, and the
+// preview answered «снять всех исполнителей» without reading the list.
+func TestPreviewRefusesUnassignWithNobodyAssigned(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Снимать некого")
+	taskID := task["id"].(string)
+
+	cmds := previewCommands(t, c, taskID, "/unassign")
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr == "" {
+		t.Fatalf("preview promised %q for a task with no assignees — the run refuses it", previewSummary)
+	}
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": "/unassign"}); r.Status != http.StatusBadRequest {
+		t.Fatalf("run: status %d, want 400\n%s", r.Status, r.Body)
+	}
+
+	// With somebody assigned the shorthand is promised and performed, so the new
+	// refusal is about the task's state and not about the command.
+	c.expect(t, c.post("/tasks/"+taskID+"/assignees",
+		map[string]any{"user_id": c.UserID}), http.StatusNoContent)
+	cmds = previewCommands(t, c, taskID, "/unassign")
+	if _, previewErr = outcomeText(cmds[0]); previewErr != "" {
+		t.Fatalf("preview refused /unassign on a task with an assignee: %q", previewErr)
+	}
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": "/unassign"}); r.Status != http.StatusOK {
+		t.Fatalf("run: status %d, want 200\n%s", r.Status, r.Body)
+	}
+}

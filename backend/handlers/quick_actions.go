@@ -430,6 +430,63 @@ func matchColumn(cols []db.BoardColumn, typed string) *db.BoardColumn {
 	return nil
 }
 
+// moveTarget resolves the column /move, /close or /reopen sends the task to.
+//
+// A nil column with no error is not a refusal: it means the command is a plain
+// completed-flag toggle, which is what /close and /reopen fall back to on a board
+// with no done column configured (and what /reopen does for a task already
+// outside it) — the same thing the UI checkbox does in that situation.
+//
+// Shared with previewCommand on purpose. The dry run and the run have to answer
+// about the same column, and every time the preview kept its own copy of this
+// resolution it drifted: #2800's caption fallback was in matchColumn and not in
+// the preview's loop, so `/move Done` was painted red and then moved the task
+// anyway. One resolver means the next rule added here reaches both callers
+// whether or not anyone remembers the second one.
+func (h *API) moveTarget(c *gin.Context, t db.Task, cols []db.BoardColumn, cmd quickact.Cmd) (*db.BoardColumn, error) {
+	switch cmd.Key {
+	case "move":
+		name := strings.TrimSpace(cmd.Arg)
+		if name == "" {
+			return nil, userErr("не указана колонка")
+		}
+		target := matchColumn(cols, name)
+		if target == nil {
+			return nil, userErr("нет колонки «%s» на этой доске", name)
+		}
+		return target, nil
+	case "close", "reopen":
+		board, err := h.q.GetBoard(c, t.BoardID)
+		if err != nil {
+			return nil, err
+		}
+		doneID := doneColumnID(board)
+		if doneID == nil {
+			return nil, nil
+		}
+		if cmd.Key == "close" {
+			for i := range cols {
+				if cols[i].ID == *doneID {
+					return &cols[i], nil
+				}
+			}
+			return nil, nil
+		}
+		if t.ColumnID != *doneID {
+			return nil, nil
+		}
+		// Reopening out of the done column: the leftmost column is where the
+		// board puts new work.
+		for i := range cols {
+			if cols[i].ID != *doneID {
+				return &cols[i], nil
+			}
+		}
+		return nil, nil
+	}
+	return nil, nil
+}
+
 // qaMove handles /move, /close and /reopen — all three are a column change.
 //
 // /close and /reopen resolve the board's done column; a board without one falls
@@ -440,66 +497,35 @@ func (h *API) qaMove(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd quickact.Cm
 	if err != nil {
 		return "", err
 	}
-
-	var target *db.BoardColumn
-	var summary string
-	switch cmd.Key {
-	case "move":
-		name := strings.TrimSpace(cmd.Arg)
-		if name == "" {
-			return "", userErr("не указана колонка")
+	target, err := h.moveTarget(c, *t, cols, cmd)
+	if err != nil {
+		return "", err
+	}
+	if target == nil {
+		// No column to move into — toggle the completed flag instead.
+		completed := cmd.Key == "close"
+		updated, perr := h.applyTaskPatch(c, *t, wsID, taskPatch{Completed: &completed})
+		if perr != nil {
+			return "", perr
 		}
-		target = matchColumn(cols, name)
-		if target == nil {
-			return "", userErr("нет колонки «%s» на этой доске", name)
+		*t = updated
+		if completed {
+			return "задача закрыта", nil
 		}
-		summary = "перенесена в «" + target.Name + "»"
-	case "close", "reopen":
-		board, berr := h.q.GetBoard(c, t.BoardID)
-		if berr != nil {
-			return "", berr
-		}
-		doneID := doneColumnID(board)
-		if doneID != nil {
-			if cmd.Key == "close" {
-				for i := range cols {
-					if cols[i].ID == *doneID {
-						target = &cols[i]
-					}
-				}
-			} else if t.ColumnID == *doneID {
-				// Reopening out of the done column: the leftmost column is where
-				// the board puts new work.
-				for i := range cols {
-					if cols[i].ID != *doneID {
-						target = &cols[i]
-						break
-					}
-				}
-			}
-		}
-		if target == nil {
-			// No done column configured (or already out of it) — toggle the flag.
-			completed := cmd.Key == "close"
-			updated, perr := h.applyTaskPatch(c, *t, wsID, taskPatch{Completed: &completed})
-			if perr != nil {
-				return "", perr
-			}
-			*t = updated
-			if completed {
-				return "задача закрыта", nil
-			}
-			return "задача переоткрыта", nil
-		}
-		if cmd.Key == "close" {
-			summary = "задача закрыта («" + target.Name + "»)"
-		} else {
-			summary = "задача переоткрыта («" + target.Name + "»)"
-		}
+		return "задача переоткрыта", nil
 	}
 
 	if target.ID == t.ColumnID {
 		return "", userErr("задача уже в «%s»", target.Name)
+	}
+	var summary string
+	switch cmd.Key {
+	case "move":
+		summary = "перенесена в «" + target.Name + "»"
+	case "close":
+		summary = "задача закрыта («" + target.Name + "»)"
+	default:
+		summary = "задача переоткрыта («" + target.Name + "»)"
 	}
 	// Append to the target column (or to the parent's subtask list): a quick
 	// action has no drag neighbours, and positionBetween(nil, nil) would drop the
@@ -676,6 +702,17 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 		logins := quickact.ParseMentions(cmd.Arg)
 		if len(logins) == 0 {
 			if cmd.Key == "unassign" {
+				// The argument-less shorthand clears everyone, and qaAssign refuses
+				// it on a task that has nobody to clear. The dry run has to read the
+				// same list: answering «снять всех исполнителей» in green and then
+				// «у задачи нет исполнителей» in red describes two different tasks.
+				assignees, err := h.q.ListTaskAssignees(c, t.ID)
+				if err != nil {
+					return "", err
+				}
+				if len(assignees) == 0 {
+					return "", userErr("у задачи нет исполнителей")
+				}
 				return "снять всех исполнителей", nil
 			}
 			return "", userErr("не указан исполнитель (например @msdnna)")
@@ -778,29 +815,40 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 	case "remove_milestone":
 		return "убрать майлстоун", nil
 
-	case "move":
-		name := strings.TrimSpace(cmd.Arg)
-		if name == "" {
-			return "", userErr("не указана колонка")
-		}
+	// The same resolver qaMove runs on, including the "already there" refusal.
+	// The preview used to carry its own column loop — which knew nothing about
+	// the seeded-caption fallback of #2800, so `/move Done` was painted red and
+	// then moved the task anyway — and it did not look at where the task was
+	// standing at all, so `/move Готово` on a task already in «Готово», and
+	// `/close` on a task already closed by column, went out green and came back
+	// «задача уже в «Готово»».
+	case "move", "close", "reopen":
 		cols, err := h.q.ListColumns(c, t.BoardID)
 		if err != nil {
 			return "", err
 		}
-		// matchColumn, not a name-only loop: the caption fallback of #2800 lives
-		// there, and the dry run has to answer about the same columns the run
-		// moves the task into. Its own loop knew nothing about name_key, so an
-		// English reader typing `/move Done` was told «нет колонки «Done» на этой
-		// доске» in red — and then the comment they sent moved the task anyway.
-		target := matchColumn(cols, name)
-		if target == nil {
-			return "", userErr("нет колонки «%s» на этой доске", name)
+		target, err := h.moveTarget(c, t, cols, cmd)
+		if err != nil {
+			return "", err
 		}
-		return "перенести в «" + target.Name + "»", nil
-	case "close":
-		return "закрыть задачу", nil
-	case "reopen":
-		return "переоткрыть задачу", nil
+		if target == nil {
+			// No column to move into: the run toggles the completed flag, which
+			// always applies — there is nothing here for the dry run to refuse.
+			if cmd.Key == "reopen" {
+				return "переоткрыть задачу", nil
+			}
+			return "закрыть задачу", nil
+		}
+		if target.ID == t.ColumnID {
+			return "", userErr("задача уже в «%s»", target.Name)
+		}
+		switch cmd.Key {
+		case "move":
+			return "перенести в «" + target.Name + "»", nil
+		case "close":
+			return "закрыть задачу («" + target.Name + "»)", nil
+		}
+		return "переоткрыть задачу («" + target.Name + "»)", nil
 	case "archive":
 		return "архивировать задачу", nil
 
