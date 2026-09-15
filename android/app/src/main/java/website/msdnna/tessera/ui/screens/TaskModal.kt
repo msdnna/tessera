@@ -135,6 +135,7 @@ import website.msdnna.tessera.util.MentionItem
 import website.msdnna.tessera.util.PickRefusal
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.attachmentPickError
+import website.msdnna.tessera.util.avatarInitials
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnById
@@ -1245,7 +1246,7 @@ private fun MemberAvatar(size: Dp, name: String, userId: String? = null, avatarU
     ) {
         // Initials underneath; the image overlays and shows through if it fails
         // to load (e.g. an unreachable GitLab avatar) rather than leaving a blank.
-        Text(initials(name), color = if (muted) Color.White else c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        Text(avatarInitials(name), color = if (muted) Color.White else c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(size).clip(CircleShape))
         }
@@ -2452,7 +2453,7 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.size(22.dp).clip(CircleShape).background(c.surfaceAlt), contentAlignment = Alignment.Center) {
-                    Text(initials(e.actorName ?: "?"), color = c.text2, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                    Text(avatarInitials(e.actorName ?: "?"), color = c.text2, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.width(8.dp))
                 val actor = e.actorName ?: stringResource(R.string.task_someone)
@@ -2515,18 +2516,6 @@ private fun InlineEnterField(placeholder: String, prefix: String? = null, onComm
             },
         )
     }
-}
-
-private fun initials(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    if (s.contains('.')) {
-        val parts = s.split('.').map { it.trim() }.filter { it.isNotEmpty() }
-        if (parts.size >= 2) return "${parts[0].first()}${parts[1].first()}".uppercase()
-    }
-    val words = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
-    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
-    return s.take(2).uppercase()
 }
 
 /**

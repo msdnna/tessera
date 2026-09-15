@@ -79,6 +79,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.UserTextOrder
+import website.msdnna.tessera.util.avatarInitials
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnCaption
@@ -1122,7 +1123,7 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel, s
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(Modifier.size(22.dp).clip(CircleShape).background(accentGradient(c.primary)), contentAlignment = Alignment.Center) {
-                        Text(initials(m.name), color = c.onPrimary, fontSize = 10.sp)
+                        Text(avatarInitials(m.name), color = c.onPrimary, fontSize = 10.sp)
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(m.name, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -1262,23 +1263,6 @@ private fun Pill(onClick: () -> Unit, set: Boolean = false, content: @Composable
     ) { content() }
 }
 
-/**
- * Avatar initials: two words → first letter of each ("Василий Соколов" → ВС);
- * a dot handle → each part ("a.fokin" → AF); a single word → its first two
- * letters ("msdnna" → MS). Mirrors the web `utils/initials`.
- */
-private fun initials(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    if (s.contains('.')) {
-        val parts = s.split('.').map { it.trim() }.filter { it.isNotEmpty() }
-        if (parts.size >= 2) return "${parts[0].first()}${parts[1].first()}".uppercase()
-    }
-    val words = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
-    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
-    return s.take(2).uppercase()
-}
-
 /** A card avatar circle (24dp ring + inner gradient/grey disc). Shows the user's
  *  uploaded avatar when [userId] (Tessera) or [avatarUrl] (GitLab) is given,
  *  falling back to initials. [muted] greys the fallback for the read-only author
@@ -1301,7 +1285,7 @@ private fun CardAvatar(name: String, muted: Boolean, userId: String? = null, ava
             // through when it fails to load (e.g. a GitLab avatar the phone
             // can't reach) instead of leaving an empty circle.
             Text(
-                initials(name),
+                avatarInitials(name),
                 color = if (muted) Color.White else c.onPrimary,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold,

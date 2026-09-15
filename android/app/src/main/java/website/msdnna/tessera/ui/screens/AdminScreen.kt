@@ -64,6 +64,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.avatarInitials
 
 /**
  * Global admin panel (U3): list every account on the instance and manage it —
@@ -438,7 +439,7 @@ private fun AdminAvatar(u: AdminUser) {
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(38.dp).clip(CircleShape))
         } else {
-            Text(initialsOf(u.name), color = c.onPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(avatarInitials(u.name), color = c.onPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -453,11 +454,4 @@ private fun Badge(text: String, color: Color) {
     ) {
         Text(text, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
-}
-
-private fun initialsOf(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    val parts = s.split(Regex("\\s+")).filter { it.isNotBlank() }
-    return if (parts.size >= 2) "${parts[0].first()}${parts[1].first()}".uppercase() else s.take(2).uppercase()
 }

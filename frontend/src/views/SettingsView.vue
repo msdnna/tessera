@@ -13,6 +13,7 @@ import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 import { serverUrlMessage } from '@/utils/servers'
 import { useApiImage } from '@/composables/useApiImage'
 import { AVATAR_MAX_BYTES, AVATAR_TYPES, avatarPickError } from '@/utils/avatar'
+import { initials as initialsOf } from '@/utils/initials'
 import { isPasswordValid, passwordError } from '@/utils/password'
 import { formatFileSize } from '@/utils/docPdf'
 import { useDesktopUpdate } from '@/composables/useDesktopUpdate'
@@ -116,11 +117,10 @@ const avatarUrl = useApiImage(() => {
   if (!u) return ''
   return `${u}${u.includes('?') ? '&' : '?'}t=${avatarBust.value}`
 })
-const initials = computed(() => {
-  const n = (auth.user?.name || auth.user?.email || '?').trim()
-  const p = n.split(/\s+/)
-  return (p.length >= 2 ? p[0][0] + p[1][0] : n.slice(0, 2)).toUpperCase()
-})
+// Shared rule (utils/initials) — this is the same disc the sidebar footer and
+// every card draw, and a local copy of the two-word case turned «a.fokin» into
+// «A.» here while the cards read «AF».
+const initials = computed(() => initialsOf(auth.user?.name || auth.user?.email || '?'))
 const avatarError = ref('')
 
 async function onAvatarPicked(e) {

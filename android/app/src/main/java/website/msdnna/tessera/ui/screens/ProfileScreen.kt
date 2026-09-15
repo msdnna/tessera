@@ -70,6 +70,7 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.DatePresets
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.avatarInitials
 import website.msdnna.tessera.util.countryOptions
 import website.msdnna.tessera.util.isPasswordValid
 import website.msdnna.tessera.util.longDate
@@ -310,16 +311,9 @@ private fun AvatarPreview(user: website.msdnna.tessera.data.model.User?, bust: L
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(72.dp).clip(CircleShape))
         } else {
-            Text(initials(user?.name ?: user?.email ?: "?"), color = c.onPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text(avatarInitials(user?.name ?: user?.email ?: "?"), color = c.onPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         }
     }
-}
-
-private fun initials(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    val w = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
-    return (if (w.size >= 2) "${w[0].first()}${w[1].first()}" else s.take(2)).uppercase()
 }
 
 @Composable
