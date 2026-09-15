@@ -1147,7 +1147,6 @@
     <!-- Администрирование: список аккаунтов -->
     <string name="admin_users_count">Пользователи экземпляра — %1$d</string>
     <string name="admin_search_placeholder">Поиск по имени или почте</string>
-    <string name="admin_load_failed">Не удалось загрузить пользователей</string>
     <string name="admin_nobody_found">Никого не найдено</string>
     <string name="admin_reset_link_copied">Ссылка для сброса пароля скопирована</string>
     <string name="admin_badge_you">вы</string>
@@ -1167,8 +1166,6 @@
     <!-- Администрирование: карточка OAuth -->
     <string name="admin_oauth_title">Вход через GitLab (OAuth)</string>
     <string name="admin_oauth_badge_on">включён</string>
-    <string name="admin_oauth_load_failed">Не удалось загрузить настройки OAuth</string>
-    <string name="admin_oauth_save_failed">Не удалось сохранить настройки</string>
     <string name="admin_oauth_orgmap_invalid">org_map: ожидается JSON-объект</string>
     <string name="admin_oauth_saved">Настройки OAuth сохранены</string>
     <string name="admin_oauth_secret_stored">(сохранён — введите, чтобы заменить)</string>

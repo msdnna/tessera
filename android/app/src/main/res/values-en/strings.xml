@@ -1120,7 +1120,6 @@
     <!-- Admin: account list -->
     <string name="admin_users_count">Accounts on this instance — %1$d</string>
     <string name="admin_search_placeholder">Search by name or email</string>
-    <string name="admin_load_failed">Could not load the account list</string>
     <string name="admin_nobody_found">Nobody found</string>
     <string name="admin_reset_link_copied">Password-reset link copied</string>
     <string name="admin_badge_you">you</string>
@@ -1140,8 +1139,6 @@
     <!-- Admin: OAuth card -->
     <string name="admin_oauth_title">Sign in with GitLab (OAuth)</string>
     <string name="admin_oauth_badge_on">on</string>
-    <string name="admin_oauth_load_failed">Could not load the OAuth settings</string>
-    <string name="admin_oauth_save_failed">Could not save the settings</string>
     <string name="admin_oauth_orgmap_invalid">org_map: a JSON object is expected</string>
     <string name="admin_oauth_saved">OAuth settings saved</string>
     <string name="admin_oauth_secret_stored">(stored — type to replace)</string>
