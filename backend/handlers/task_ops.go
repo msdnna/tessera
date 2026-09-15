@@ -564,6 +564,30 @@ func (h *API) broadcastRelation(wsID uuid.UUID, t, target db.Task, kind string) 
 	})
 }
 
+// logRelationRemoved journals an unlink on both tasks, mirroring what
+// applyRelation writes when the link is made.
+//
+// Both sides, for the same reason the link is recorded on both: a relation is one
+// directed row, but both tasks show it and both journals announced its arrival
+// ("добавил(а) связь с #N"). Recording only the acting side left the other task's
+// history stating a link that is no longer there, with nothing after it — and the
+// ✕ in the «Связи» tab (DeleteRelation, the ordinary way either end drops a link)
+// wrote nothing at all, on either task. `relation_removed` is not a new event
+// kind: both clients have translated it since "/unlink" shipped — it was simply
+// unreachable from the button.
+//
+// Best-effort like every other journal write, and the payload matches the link
+// entry's (`related` = the *other* task's number), so the two lines read as a
+// pair. The guards are the same too: a task without a number cannot be named in
+// the other's history, which is why that side is skipped rather than logged with
+// a blank.
+func (h *API) logRelationRemoved(c *gin.Context, t, target db.Task) {
+	h.logEvent(c, t.ID, "relation_removed", map[string]any{"related": target.Number})
+	if t.Number != nil {
+		h.logEvent(c, target.ID, "relation_removed", map[string]any{"related": *t.Number})
+	}
+}
+
 // applyUnlink drops every relation between two tasks, in either direction, and
 // reports how many rows went away (0 means there was nothing to unlink).
 //
@@ -579,7 +603,7 @@ func (h *API) applyUnlink(c *gin.Context, t db.Task, wsID uuid.UUID, target db.T
 	}
 	n := int(rows)
 	if n > 0 {
-		h.logEvent(c, t.ID, "relation_removed", map[string]any{"related": target.Number})
+		h.logRelationRemoved(c, t, target)
 		h.broadcast(wsID, "task.updated", gin.H{"id": t.ID})
 		h.broadcast(wsID, "task.updated", gin.H{"id": target.ID})
 		// Kind is empty: "/unlink" drops every relation between the pair at once,

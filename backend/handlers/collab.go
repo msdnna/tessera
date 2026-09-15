@@ -575,7 +575,14 @@ func (h *API) DeleteRelation(c *gin.Context) {
 	// This used to broadcast nothing at all, so an edge deleted here stayed drawn
 	// on every other client's Gantt until a full reload — the delete is the one
 	// relation change that leaves no trace on either task row.
+	//
+	// The journal entries are the same omission read from the other end: linking
+	// writes one on each task, and this route — the ✕ in the «Связи» tab, on both
+	// clients — wrote none, so a link added and then dropped stayed in both
+	// histories as an arrival with no departure. Both need the other task's
+	// number, so both wait on the read above succeeding.
 	if terr == nil {
+		h.logRelationRemoved(c, t, target)
 		h.broadcastRelation(wsID, t, target, rel.Kind)
 	}
 	c.Status(http.StatusNoContent)
