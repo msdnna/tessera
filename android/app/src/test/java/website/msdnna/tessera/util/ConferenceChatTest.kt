@@ -1,6 +1,7 @@
 package website.msdnna.tessera.util
 
 import com.google.common.truth.Truth.assertThat
+import java.util.Locale
 import org.junit.Test
 import website.msdnna.tessera.data.model.ConferenceMessage
 import website.msdnna.tessera.ui.viewmodels.ConferenceChatUiState
@@ -279,13 +280,34 @@ class ConferenceChatTest {
 
     @Test
     fun `sizes split into a number and a localisable unit`() {
-        assertThat(confFileSize(512)).isEqualTo(ConfFileSize("512", ConfSizeUnit.BYTES))
-        assertThat(confFileSize(2048)).isEqualTo(ConfFileSize("2", ConfSizeUnit.KB))
-        assertThat(confFileSize(3L * 1024 * 1024)).isEqualTo(ConfFileSize("3.0", ConfSizeUnit.MB))
-        // The decimal separator is not localised: «1,5 МБ» would be built by the
-        // locale's formatter and read as one and a half in one language and
-        // fifteen in another.
-        assertThat(confFileSize(1536L * 1024).amount).isEqualTo("1.5")
-        assertThat(confFileSize(-1)).isEqualTo(ConfFileSize("0", ConfSizeUnit.BYTES))
+        assertThat(confFileSize(512, Locale.US)).isEqualTo(ConfFileSize("512", ConfSizeUnit.BYTES))
+        assertThat(confFileSize(2048, Locale.US)).isEqualTo(ConfFileSize("2", ConfSizeUnit.KB))
+        // Three whole megabytes are «3 МБ», not «3.0 МБ» — the fraction digit is a
+        // maximum, the way `Intl.NumberFormat` spends it on the web rail.
+        assertThat(confFileSize(3L * 1024 * 1024, Locale.US))
+            .isEqualTo(ConfFileSize("3", ConfSizeUnit.MB))
+        assertThat(confFileSize(1536L * 1024, Locale.US).amount).isEqualTo("1.5")
+        assertThat(confFileSize(-1, Locale.US)).isEqualTo(ConfFileSize("0", ConfSizeUnit.BYTES))
+    }
+
+    @Test
+    fun `the number is written in the reader's language, like every other file size`() {
+        // The unit comes from the string catalogue and the separator from the
+        // reader's own formatter — both halves are locale business. Formatting the
+        // number in `Locale.US` while the unit said «МБ» is what made one
+        // attachment read «1.4 МБ» in a call and «1,4 МБ» in a document, inside the
+        // same Russian interface (web `formatFileSize` and phone `docFileSize` both
+        // localise it).
+        val ru = Locale.forLanguageTag("ru-RU")
+        assertThat(confFileSize(1536L * 1024, ru).amount).isEqualTo("1,5")
+        assertThat(confFileSize(14_950, ru).amount).isEqualTo("14,6")
+        assertThat(confFileSize(1536L * 1024, Locale.UK).amount).isEqualTo("1.5")
+    }
+
+    @Test
+    fun `kilobytes keep the fraction digit the web rail keeps`() {
+        // Rounding to whole kilobytes was the phone's own rule: the same 14 950-byte
+        // file reads «14.6 KB» on the web and used to read «15 KB» here.
+        assertThat(confFileSize(14_950, Locale.US).amount).isEqualTo("14.6")
     }
 }

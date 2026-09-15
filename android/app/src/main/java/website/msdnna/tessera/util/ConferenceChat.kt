@@ -1,5 +1,7 @@
 package website.msdnna.tessera.util
 
+import java.text.NumberFormat
+import java.util.Locale
 import website.msdnna.tessera.data.model.ConferenceMessage
 
 /*
@@ -218,17 +220,34 @@ enum class ConfSizeUnit { BYTES, KB, MB }
 
 data class ConfFileSize(val amount: String, val unit: ConfSizeUnit)
 
-/** Formats a byte count the way the task attachments do. */
-fun confFileSize(bytes: Long): ConfFileSize = when {
-    bytes >= 1L shl 20 -> ConfFileSize(
-        String.format(java.util.Locale.US, "%.1f", bytes / (1L shl 20).toDouble()),
-        ConfSizeUnit.MB,
-    )
-
-    bytes >= 1L shl 10 -> ConfFileSize(
-        String.format(java.util.Locale.US, "%.0f", bytes / (1L shl 10).toDouble()),
-        ConfSizeUnit.KB,
-    )
-
-    else -> ConfFileSize(bytes.coerceAtLeast(0).toString(), ConfSizeUnit.BYTES)
+/**
+ * Formats a byte count the way every other file size in the product is formatted:
+ * web `utils/docPdf.formatFileSize` (which `ConferenceChat.vue` imports for this
+ * very rail) and its phone twin [docFileSize] both scale by 1024, keep one
+ * fraction digit for anything above bytes, and hand the number to the reader's
+ * own [NumberFormat].
+ *
+ * Both halves are locale business, and only one of them used to be. The unit came
+ * out of the string catalogue while the number came out of `Locale.US`, so the
+ * same attachment read «1.4 МБ» in a call and «1,4 МБ» in a document — inside one
+ * Russian interface. The separator is not ambiguous the way a hard-coded one
+ * would be: it is written in the language it is read in, which is the argument
+ * [docFileSize] already makes.
+ */
+fun confFileSize(bytes: Long, locale: Locale = Locale.getDefault()): ConfFileSize {
+    val unit = when {
+        bytes >= 1L shl 20 -> ConfSizeUnit.MB
+        bytes >= 1L shl 10 -> ConfSizeUnit.KB
+        else -> ConfSizeUnit.BYTES
+    }
+    val value = when (unit) {
+        ConfSizeUnit.MB -> bytes / (1L shl 20).toDouble()
+        ConfSizeUnit.KB -> bytes / (1L shl 10).toDouble()
+        ConfSizeUnit.BYTES -> bytes.coerceAtLeast(0).toDouble()
+    }
+    val format = NumberFormat.getInstance(locale).apply {
+        maximumFractionDigits = if (unit == ConfSizeUnit.BYTES) 0 else 1
+        minimumFractionDigits = 0
+    }
+    return ConfFileSize(format.format(value), unit)
 }
