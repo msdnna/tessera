@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -176,6 +177,110 @@ func TestPreviewResolvesSeededColumnCaption(t *testing.T) {
 	done := s.Columns[len(s.Columns)-1]["id"].(string)
 	if got := c.get("/tasks/" + taskID).mapBody(t)["column_id"]; got != done {
 		t.Fatalf("task sits in column %v, want the done column %s", got, done)
+	}
+}
+
+// TestPreviewMatchesApplyOnPartialRelation is the same divergence on the third
+// family of list-taking commands — the relations.
+//
+// qaRelation links every #N it resolves and names the rest as skipped, exactly
+// like /assign and /tag. The dry run refused the whole command at the first
+// unknown number, so «/relate #<real> #999999» was painted red and then went on
+// to create the link to the real one.
+func TestPreviewMatchesApplyOnPartialRelation(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	col := s.col(t, 0)
+	task := mkTask(t, c, s.Board, col, "Связи в превью")
+	taskID := task["id"].(string)
+	other := mkTask(t, c, s.Board, col, "Цель связи")
+	otherNum := int(taskNumber(t, c, other["id"].(string)))
+	body := fmt.Sprintf("/relate #%d #999999", otherNum)
+
+	cmds := previewCommands(t, c, taskID, body)
+	if len(cmds) != 1 {
+		t.Fatalf("preview returned %d commands, want 1", len(cmds))
+	}
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused a partially resolvable /relate: %q — the run applies it", previewErr)
+	}
+	if !strings.Contains(previewSummary, fmt.Sprintf("#%d", otherNum)) {
+		t.Fatalf("preview summary = %q, want the resolvable reference in it", previewSummary)
+	}
+	if !strings.Contains(previewSummary, "999999") {
+		t.Fatalf("preview summary = %q, want the unresolvable reference named as skipped", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied — preview promised it", applied, failed)
+	}
+}
+
+// TestPreviewRelationStillRefusesWhenNothingResolves is the negative control for
+// the relations: no reference resolves, so both halves must refuse.
+func TestPreviewRelationStillRefusesWhenNothingResolves(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Связей не нашлось")
+	taskID := task["id"].(string)
+	body := "/relate #999998 #999999"
+
+	cmds := previewCommands(t, c, taskID, body)
+	_, previewErr := outcomeText(cmds[0])
+	if previewErr == "" {
+		t.Fatalf("preview reported no error, want one — no reference resolves")
+	}
+	if !strings.Contains(previewErr, "999998") || !strings.Contains(previewErr, "999999") {
+		t.Fatalf("preview error = %q, want both unresolved references named", previewErr)
+	}
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body}); r.Status != http.StatusBadRequest {
+		t.Fatalf("run: status %d, want 400\n%s", r.Status, r.Body)
+	}
+}
+
+// TestPreviewParentIgnoresExtraReferences guards the command that only *looks*
+// like a list: qaParent re-parents under the first reference and ignores the
+// rest, while the dry run checked every one of them and reported a number the
+// run never reads.
+func TestPreviewParentIgnoresExtraReferences(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	col := s.col(t, 0)
+	task := mkTask(t, c, s.Board, col, "Родитель в превью")
+	taskID := task["id"].(string)
+	parent := mkTask(t, c, s.Board, col, "Будущий родитель")
+	parentNum := int(taskNumber(t, c, parent["id"].(string)))
+	body := fmt.Sprintf("/parent #%d #999999", parentNum)
+
+	cmds := previewCommands(t, c, taskID, body)
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused /parent over an unread extra reference: %q", previewErr)
+	}
+	if !strings.Contains(previewSummary, fmt.Sprintf("#%d", parentNum)) {
+		t.Fatalf("preview summary = %q, want the parent reference in it", previewSummary)
+	}
+	if strings.Contains(previewSummary, "999999") {
+		t.Fatalf("preview summary = %q, must not promise anything about the ignored reference", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied", applied, failed)
+	}
+	if got := c.get("/tasks/" + taskID).mapBody(t)["parent_id"]; got != parent["id"] {
+		t.Fatalf("task parent = %v, want %v", got, parent["id"])
 	}
 }
 

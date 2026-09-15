@@ -568,6 +568,14 @@ func (h *API) qaRelation(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickact
 	return summary, nil
 }
 
+// taskNumberExists reports whether a per-workspace task number names a task —
+// the read the dry run of every reference-taking command needs, and nothing else.
+func (h *API) taskNumberExists(c *gin.Context, wsID uuid.UUID, num int32) bool {
+	n := int64(num)
+	_, err := h.q.GetTaskByNumber(c, db.GetTaskByNumberParams{WorkspaceID: wsID, Number: &n})
+	return err == nil
+}
+
 // qaParent re-parents the task under the referenced #N.
 func (h *API) qaParent(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd quickact.Cmd) (string, error) {
 	refs, err := quickact.ParseRefs(cmd.Arg)
@@ -796,26 +804,47 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 	case "archive":
 		return "архивировать задачу", nil
 
-	case "relate", "blocks", "blocked_by", "duplicates", "unlink", "parent":
+	// A list of task references, resolved the way qaRelation resolves it: a
+	// partial list, not an all-or-nothing check. It refused the whole command at
+	// the first unknown #N while the run linked everything it found and named the
+	// rest as skipped — so «/relate #2591 #999999» was painted red and then went
+	// on to create the link to #2591. The same divergence /assign and /tag had.
+	case "relate", "blocks", "blocked_by", "duplicates", "unlink":
 		refs, err := quickact.ParseRefs(cmd.Arg)
 		if err != nil {
 			return "", opError{msg: err.Error()}
 		}
+		var part partialList
 		for _, num := range refs {
-			n := int64(num)
-			if _, err := h.q.GetTaskByNumber(c, db.GetTaskByNumberParams{WorkspaceID: wsID, Number: &n}); err != nil {
-				return "", userErr("задача #%d не найдена", num)
+			label := fmt.Sprintf("#%d", num)
+			if !h.taskNumberExists(c, wsID, num) {
+				part.missing = append(part.missing, label)
+				continue
 			}
+			part.done = append(part.done, label)
+		}
+		if len(part.done) == 0 {
+			return "", userErr("не найдено: %s", part.missed())
 		}
 		labels := map[string]string{
 			"relate": "связать с", "blocks": "блокирует", "blocked_by": "заблокирована",
-			"duplicates": "дублирует", "unlink": "снять связь с", "parent": "сделать подзадачей",
+			"duplicates": "дублирует", "unlink": "снять связь с",
 		}
-		var parts []string
-		for _, num := range refs {
-			parts = append(parts, fmt.Sprintf("#%d", num))
+		return part.summary(labels[cmd.Key], "пропущено"), nil
+
+	// /parent is not a list even though its argument parses like one: qaParent
+	// re-parents under refs[0] and ignores the rest. Checking every reference made
+	// «/parent #2591 #999999» a red «задача #999999 не найдена» about a number the
+	// run never looks at.
+	case "parent":
+		refs, err := quickact.ParseRefs(cmd.Arg)
+		if err != nil {
+			return "", opError{msg: err.Error()}
 		}
-		return labels[cmd.Key] + " " + strings.Join(parts, ", "), nil
+		if !h.taskNumberExists(c, wsID, refs[0]) {
+			return "", userErr("задача #%d не найдена", refs[0])
+		}
+		return fmt.Sprintf("сделать подзадачей #%d", refs[0]), nil
 
 	case "subtask":
 		if strings.TrimSpace(cmd.Arg) == "" {
