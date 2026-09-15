@@ -213,8 +213,34 @@ class MiscUtilTest {
         assertThat(ru).isNotEmpty()
         // every country has a non-blank display name
         assertThat(ru.all { it.second.isNotBlank() }).isTrue()
-        // sorted by localized name (lowercased)
-        val names = ru.map { it.second.lowercase() }
-        assertThat(names).isEqualTo(names.sorted())
+        // sorted by localized name, with the collator every other list uses —
+        // NOT by `lowercase()`, which is a code-unit sort (see below).
+        val names = ru.map { it.second }
+        assertThat(names).isEqualTo(names.sortedWith(UserTextOrder))
+    }
+
+    /**
+     * «ё» is U+0451, past «я» (U+044F), so a code-unit sort files the only Russian
+     * country name that carries one at the far end of «Т» — between «Турция» and
+     * «Уганда» — instead of among the «Те…»s where a reader scrolls for it.
+     */
+    @Test
+    fun `countryOptions place a yo-name by its letter, not past the alphabet`() {
+        val names = countryOptions("ru").map { it.second }
+        val i = names.indexOf("Тёркс и Кайкос")
+        assertThat(i).isAtLeast(0)
+        assertThat(names.indexOf("Танзания")).isLessThan(i)
+        assertThat(i).isLessThan(names.indexOf("Того"))
+        assertThat(i).isLessThan(names.indexOf("Турция"))
+    }
+
+    /**
+     * A hyphen precedes every letter by code unit, so «о-в …»/«о-ва …» used to sort
+     * ahead of «ОАЭ»; the collator compares the letters first, as the browser does.
+     */
+    @Test
+    fun `countryOptions ignore the hyphen ahead of the letters`() {
+        val names = countryOptions("ru").map { it.second }
+        assertThat(names.indexOf("ОАЭ")).isLessThan(names.indexOf("о-в Буве"))
     }
 }

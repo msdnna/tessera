@@ -71,10 +71,17 @@ fun canInviteToConference(conference: Conference): Boolean = !conference.isEnded
  * The order is the panel's own, not the server's: participants arrive in
  * invitation order, which puts whoever was invited first at the top forever,
  * even after they leave and rejoin.
+ *
+ * Names go through [UserTextOrder] like every other list of people in the app:
+ * sorting by `lowercase()` is a code-unit sort, and «Ёлкина» then lands under the
+ * last letter of the alphabet instead of the first.
  */
 fun confRoster(participants: List<ConferenceParticipant>): List<ConferenceParticipant> =
     participants.filter { it.isPresent }
-        .sortedWith(compareByDescending<ConferenceParticipant> { it.isHost }.thenBy { it.label().lowercase() })
+        .sortedWith(
+            compareByDescending<ConferenceParticipant> { it.isHost }
+                .thenBy(UserTextOrder) { it.label() },
+        )
 
 /**
  * Invited, not in the room, and not somebody who came and left.
@@ -85,7 +92,7 @@ fun confRoster(participants: List<ConferenceParticipant>): List<ConferencePartic
  */
 fun confInvited(participants: List<ConferenceParticipant>): List<ConferenceParticipant> =
     participants.filter { it.joinedAt == null && it.leftAt == null }
-        .sortedBy { it.label().lowercase() }
+        .sortedWith(compareBy(UserTextOrder) { it.label() })
 
 /**
  * Workspace members there is any point in inviting.
@@ -101,7 +108,8 @@ fun confInvitable(
     participants: List<ConferenceParticipant>,
 ): List<Member> {
     val held = participants.filter { it.leftAt == null }.map { it.userId }.toSet()
-    return members.filter { it.userId !in held }.sortedBy { it.name.ifBlank { it.email }.lowercase() }
+    return members.filter { it.userId !in held }
+        .sortedWith(compareBy(UserTextOrder) { it.name.ifBlank { it.email } })
 }
 
 /**
