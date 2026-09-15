@@ -281,8 +281,28 @@ class ErrorsTest {
             .isEqualTo("Вложения весят больше 25 МБ — отправьте их несколькими сообщениями")
         assertThat(humanizeError("attachments exceed 26214400 bytes")?.resolve(en))
             .isEqualTo("The attachments add up to more than 25 MB — send them in several messages")
+    }
+
+    /** Разделитель дробного потолка — локали читателя, а не `Locale.US`: тот же
+     *  файл во вкладке «Файлы» и в чате звонка подписан «1,5 МБ»
+     *  ([attachmentSizeText], [confFileSize], web `formatFileSize`), и отказ не
+     *  может писать его иначе внутри одного русского интерфейса. */
+    @Test
+    fun `humanizeError writes the fractional ceiling in the reader's separator`() {
         assertThat(humanizeError("attachments exceed 1572864 bytes")?.resolve(ru))
-            .isEqualTo("Вложения весят больше 1.5 МБ — отправьте их несколькими сообщениями")
+            .isEqualTo("Вложения весят больше 1,5 МБ — отправьте их несколькими сообщениями")
+        assertThat(humanizeError("attachments exceed 1572864 bytes")?.resolve(en))
+            .isEqualTo("The attachments add up to more than 1.5 MB — send them in several messages")
+    }
+
+    /** Нераспознанное число едет как пришло: соврать про размер хуже, чем
+     *  показать байты. Регекс пропустит только цифры, так что сюда доходит лишь
+     *  то, что не влезло в `Long`. */
+    @Test
+    fun `humanizeError passes an unparsable ceiling through`() {
+        val huge = "9".repeat(25)
+        assertThat(humanizeError("content exceeds $huge bytes")?.resolve(ru))
+            .isEqualTo("Документ больше $huge МБ — разделите его на несколько страниц")
     }
 
     /** Негативные контроли: шаблоны узкие и не переписывают обычную фразу,

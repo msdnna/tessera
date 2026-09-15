@@ -140,11 +140,18 @@ private const val TEMPLATE_ERROR_PREFIX = "template error: "
  * (`formatFileSize`): дробная часть только когда она есть, так что 4194304
  * читается «4», а не «4.0». Нераспознанное число едет как пришло — соврать про
  * размер хуже, чем показать байты.
+ *
+ * Число возвращается [UiText.Decimal], а не готовой строкой: разделитель — дело
+ * локали читателя, а здесь, во ViewModel, она ещё не видна. Считать её
+ * `Locale.getDefault()` нельзя — язык профиля живёт в ресурсах композиции
+ * ([AppLocale]), а телефон вполне может стоять на другом; ровно этот раскол уже
+ * разбирали в [attachmentSizeText]. До правки потолок печатался
+ * `Locale.US`-точкой посреди русской фразы: «Документ больше 1.5 МБ», тогда как
+ * тот же файл во вкладке «Файлы», в документах и в чате звонка — «1,5 МБ».
  */
-private fun megabytes(raw: String): String {
-    val bytes = raw.toLongOrNull() ?: return raw
-    val text = String.format(java.util.Locale.US, "%.1f", bytes.toDouble() / (1L shl 20))
-    return text.removeSuffix(".0")
+private fun megabytes(raw: String): UiText {
+    val bytes = raw.toLongOrNull() ?: return UiText.Raw(raw)
+    return UiText.Decimal(bytes.toDouble() / (1L shl 20))
 }
 
 // Разбор пары «слишком большой» отказов. Отдельной функцией по той же причине,
