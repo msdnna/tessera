@@ -266,6 +266,43 @@ describe('one conference', () => {
     expect(w.vm.canModerate).toBe(false)
   })
 
+  it('gates «Завершить» on the workspace role, not the global admin flag (#2932)', async () => {
+    // The server's canManageConference asks for owner/admin OF THE WORKSPACE.
+    // Testing user.is_admin instead was wrong in both directions at once.
+    api.get.mockResolvedValue({
+      data: { conference: conf({ status: 'live' }), participants: [part({ role: 'member' })] },
+    })
+    const { w } = await mountAt('/conferences/c1')
+
+    // (1) An instance admin who is only a plain member here: the button used to
+    // show and the server answered 403.
+    useAuthStore().user = { id: 'u9', is_admin: true }
+    await flushPromises()
+    expect(w.vm.canModerate).toBe(false)
+    expect(w.find('[data-testid="conference-end"]').exists()).toBe(false)
+
+    // (2) The workspace's own owner, who did not schedule the call: the server
+    // accepts them — and does inside the room already, where the seat is
+    // computed server-side — so the lobby must not be the one place that refuses.
+    useWorkspacesStore().list = [{ id: 'ws1', my_role: 'owner' }]
+    await flushPromises()
+    expect(w.vm.canModerate).toBe(true)
+    expect(w.find('[data-testid="conference-end"]').exists()).toBe(true)
+  })
+
+  it('keeps «Завершить» for a host who is neither creator nor workspace manager', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        conference: conf({ status: 'live' }),
+        participants: [part({ user_id: 'u9', role: 'host' })],
+      },
+    })
+    const { w } = await mountAt('/conferences/c1')
+    useAuthStore().user = { id: 'u9', is_admin: false }
+    await flushPromises()
+    expect(w.vm.canModerate).toBe(true)
+  })
+
   it('follows a call opened by link into its own workspace (#2932)', async () => {
     // The invitation notification deep-links straight to /conferences/<id>, and the
     // backend authorises the call against ITS workspace — so the lobby opens while

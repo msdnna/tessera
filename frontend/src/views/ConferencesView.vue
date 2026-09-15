@@ -43,6 +43,7 @@ import { useConferenceSession } from '@/stores/conference'
 import { useFormat } from '@/composables/useFormat'
 import { useRealtime } from '@/composables/useRealtime'
 import { hueGrad, tagPillBg } from '@/utils/gradient'
+import { canModerateConference } from '@/utils/confLobby'
 import EmptyState from '@/components/EmptyState.vue'
 import ConferenceRoom from '@/components/conference/ConferenceRoom.vue'
 import ConferenceRecordings from '@/components/conference/ConferenceRecordings.vue'
@@ -282,11 +283,18 @@ const myPart = computed(() =>
   (detail.value?.participants || []).find((p) => p.user_id === me.value),
 )
 const inRoom = computed(() => !!myPart.value?.joined_at && !myPart.value?.left_at)
-const canModerate = computed(() => {
-  const conf = detail.value?.conference
-  if (!conf) return false
-  return conf.created_by === me.value || myPart.value?.role === 'host' || auth.isAdmin
-})
+// The server's rule, not a wider one: the creator, a host in the call, or an
+// owner/admin of THIS workspace (ws.canManage reads the role the workspace list
+// reports for the current one, which the detail loader has already pulled across
+// to the call's workspace). See utils/confLobby.js.
+const canModerate = computed(() =>
+  canModerateConference(
+    detail.value?.conference,
+    detail.value?.participants,
+    me.value,
+    ws.canManage,
+  ),
+)
 // Invited but not in the room yet — never joined, or an open invitation (#2875).
 // The room's rail lists these so an invitation is visible somewhere again after
 // the standalone participants column was dropped (#2881).

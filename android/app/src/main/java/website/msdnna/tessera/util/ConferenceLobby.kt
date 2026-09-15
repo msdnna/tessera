@@ -42,9 +42,9 @@ val CONF_MANAGER_WS_ROLES = setOf("owner", "admin")
  * a workspace admin who is neither creator nor host, which is the safe way round:
  * a hidden control is an inconvenience, one that 403s is a bug report.
  *
- * The web client tests the *global* admin flag here instead. That is a wider
- * gate than the server's, so its «Завершить» can answer 403 to a global admin
- * who is not in this workspace; we ask about the workspace role we already have.
+ * The web client used to test the *global* admin flag here — a wider gate than
+ * the server's in one direction and a narrower one in the other. It now asks the
+ * same question we do, in `utils/confLobby.js` (#2932).
  */
 fun canModerateConference(
     conference: Conference,
