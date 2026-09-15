@@ -100,6 +100,23 @@ class EstimationTest {
         assertThat(Estimation.parse("8", custom)).isEqualTo(8.0)
     }
 
+    /**
+     * Диалог оценки предзаполняется тем, что вернул [Estimation.format], и её же
+     * отдаёт обратно в [Estimation.parse], когда человек ничего не поменял. У
+     * `custom` подпись — «3 тикетов», у точек — «5 SP»: строгий разбор возвращал
+     * здесь null и стирал оценку. Веб (`parseFloat`) читает число в начале.
+     */
+    @Test
+    fun `parse ignores the unit name after the number`() {
+        assertThat(Estimation.parse(Estimation.format(ru, 3.0, custom), custom)).isEqualTo(3.0)
+        assertThat(Estimation.parse("12 тикетов", custom)).isEqualTo(12.0)
+        assertThat(Estimation.parse("2,5 тикетов", custom)).isEqualTo(2.5)
+        assertThat(Estimation.parse(Estimation.format(ru, 5.0, fib), fib)).isEqualTo(5.0)
+        // Хвост без числа впереди — по-прежнему не оценка.
+        assertThat(Estimation.parse("тикетов", custom)).isNull()
+        assertThat(Estimation.parse("-3 тикета", custom)).isNull()
+    }
+
     // ── format ───────────────────────────────────────────────────────────────
     @Test
     fun `format null or non-positive is empty`() {

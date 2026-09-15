@@ -89,6 +89,18 @@ describe('parseEstimate (points / custom)', () => {
     expect(parseEstimate('0', { unit: 'points' })).toBeNull()
     expect(parseEstimate('-2', { unit: 'points' })).toBeNull()
   })
+
+  // The popover prefills its text box with the *formatted* value and parses that
+  // same string back when the user confirms without editing — so "3 тикетов" has
+  // to survive the round trip, or looking at an estimate would erase it. Android
+  // mirrors this (util/Estimation.kt `leadingNumber`); it used to parse strictly
+  // and did erase it.
+  it('reads the number in front and ignores the unit name behind it', () => {
+    const c = { unit: 'custom', custom_label: 'тикетов' }
+    expect(parseEstimate(formatEstimate(3, c), c)).toBe(3)
+    expect(parseEstimate('2.5 тикетов', c)).toBe(2.5)
+    expect(parseEstimate('тикетов', c)).toBeNull()
+  })
 })
 
 describe('formatEstimate', () => {

@@ -40,6 +40,22 @@ object Estimation {
     private fun minutesPerWeek(cfg: EstimationConfig): Double =
         minutesPerDay(cfg) * (cfg.daysPerWeek ?: 5.0)
 
+    /**
+     * Число в НАЧАЛЕ строки, как его читает `parseFloat` в веб-оригинале: хвост
+     * после числа игнорируется.
+     *
+     * Строгий `toDoubleOrNull` здесь стирал оценку. Диалог ввода (TaskModal
+     * `EstimateValue`) предзаполняется тем, что вернул [format], а у единицы
+     * `custom` это «12 тикетов» — число и название единицы. Человек открывал
+     * оценку посмотреть, жал «ОК», ничего не поменяв, и получал null: значение
+     * пропадало. Веб на том же сценарии (popover префилится той же подписью)
+     * возвращает 12 и значение сохраняет.
+     */
+    private fun leadingNumber(s: String): Double? =
+        LEADING_NUMBER.find(s)?.value?.toDoubleOrNull()
+
+    private val LEADING_NUMBER = Regex("""^[+-]?(?:\d+(?:\.\d*)?|\.\d+)""")
+
     private fun trimNum(v: Double): String =
         if (v == v.toLong().toDouble()) v.toLong().toString() else ((v * 100).roundToInt() / 100.0).toString()
 
@@ -47,7 +63,8 @@ object Estimation {
      * Parse free-text into the canonical value, or null when unparseable. Time
      * accepts mixed tokens ("1н 2д 3ч 30м"), English (w/d/h/m) or Russian
      * (н/д/ч/м) units, decimals, and a bare number (taken as hours). Points/custom
-     * take a plain number; a T-shirt size label is accepted too.
+     * take a number — anything after it (the unit's own name, «12 тикетов») is
+     * ignored, see [leadingNumber]; a T-shirt size label is accepted too.
      */
     fun parse(input: String?, cfg: EstimationConfig): Double? {
         if (input == null) return null
@@ -59,7 +76,7 @@ object Estimation {
             if (unit == "points" && cfg.pointsScale == "tshirt") {
                 TSHIRT.firstOrNull { it.first.lowercase() == s }?.let { return it.second.toDouble() }
             }
-            val n = s.toDoubleOrNull()
+            val n = leadingNumber(s)
             return if (n != null && n > 0) n else null
         }
 
