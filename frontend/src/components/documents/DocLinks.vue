@@ -8,6 +8,7 @@ import { useFormat } from '@/composables/useFormat'
 import {
   approvalProgress,
   approvalStatusLabel,
+  canCancelApproval,
   canDecideNow,
   MAX_APPROVERS,
   orderedSteps,
@@ -26,6 +27,9 @@ const props = defineProps({
   // view who "me" is in this room.
   userId: { type: String, default: '' },
   wsId: { type: String, default: '' },
+  // Owner or admin of the workspace — the pair `requireManager` accepts, and
+  // with the route's author the only people allowed to withdraw a route.
+  canManage: { type: Boolean, default: false },
   canRaise: { type: Boolean, default: true },
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' },
@@ -168,6 +172,12 @@ function submitDecision(approval, decision) {
 
 function mayDecide(approval) {
   return canDecideNow(approval, props.userId)
+}
+
+// Withdrawing is the route author's and the managers' — see canCancelApproval.
+// Everyone else was shown a button that answered 403.
+function mayCancel(approval) {
+  return canCancelApproval(approval, props.userId, props.canManage)
 }
 
 function progressLabel(approval) {
@@ -339,9 +349,9 @@ function approvalMeta(a) {
           </template>
         </div>
 
-        <n-popconfirm v-if="a.status === 'pending'" @positive-click="emit('cancel', a.id)">
+        <n-popconfirm v-if="mayCancel(a)" @positive-click="emit('cancel', a.id)">
           <template #trigger>
-            <n-button size="tiny" quaternary block>
+            <n-button size="tiny" quaternary block data-testid="doc-approval-cancel">
               {{ $t('documents.links.cancelRoute') }}
             </n-button>
           </template>

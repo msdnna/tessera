@@ -1539,6 +1539,7 @@ watch(
               :approvals="links.approvals.value"
               :user-id="myUserId"
               :ws-id="wsStore.currentId"
+              :can-manage="wsStore.canManage"
               :can-raise="links.canRaise.value"
               :loading="links.loading.value"
               :error="links.error.value"

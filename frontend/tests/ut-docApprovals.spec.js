@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   approvalProgress,
+  canCancelApproval,
   canDecideNow,
   canRaiseApproval,
   documentApprovalState,
@@ -247,5 +248,55 @@ describe('routeApproversRefusal', () => {
 
   it('caps at the number the server caps at', () => {
     expect(MAX_APPROVERS).toBe(25)
+  })
+})
+
+// CancelDocumentApproval takes the route's author and workspace managers and
+// answers 403 to everyone else. The panel puts «Отозвать маршрут» under every
+// open route, so the rule decides who is shown a button that works and who is
+// shown one that refuses — and the commonest reader of an open route is the
+// approver it is waiting on, who is neither.
+
+describe('canCancelApproval', () => {
+  const mine = route([step()], { created_by: 'u1' })
+
+  it('lets the author withdraw their own route', () => {
+    expect(canCancelApproval(mine, 'u1', false)).toBe(true)
+  })
+
+  it('refuses a plain member — the server answers 403', () => {
+    expect(canCancelApproval(mine, 'u2', false)).toBe(false)
+  })
+
+  it('refuses the approver the route is waiting on', () => {
+    // The one person most likely to have the route open: asked to sign it, not
+    // to void it.
+    const waiting = route([step({ approver_id: 'u2' })], { created_by: 'u1' })
+    expect(canCancelApproval(waiting, 'u2', false)).toBe(false)
+  })
+
+  it('lets a workspace manager withdraw somebody elses route', () => {
+    expect(canCancelApproval(mine, 'u2', true)).toBe(true)
+  })
+
+  it('refuses a closed route whoever asks', () => {
+    // The server refuses with 409 rather than 403, but the button is equally
+    // pointless: nothing is left to withdraw.
+    for (const status of ['approved', 'rejected', 'cancelled']) {
+      const closed = route([step()], { created_by: 'u1', status })
+      expect(canCancelApproval(closed, 'u1', true)).toBe(false)
+    }
+  })
+
+  it('does not hand an anonymous reader a route with no author', () => {
+    // created_by is NULL once the account is deleted; a client comparing two
+    // empties would offer the button to a signed-out-looking session.
+    const orphan = route([step()], { created_by: null })
+    expect(canCancelApproval(orphan, '', false)).toBe(false)
+    expect(canCancelApproval(orphan, undefined, false)).toBe(false)
+  })
+
+  it('survives no route at all', () => {
+    expect(canCancelApproval(null, 'u1', true)).toBe(false)
   })
 })
