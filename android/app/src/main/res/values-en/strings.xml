@@ -1146,6 +1146,8 @@
     <string name="admin_oauth_saved">OAuth settings saved</string>
     <string name="admin_oauth_secret_stored">(stored — type to replace)</string>
     <string name="admin_oauth_service_token">Service token (PAT, instance-wide)</string>
+    <string name="admin_oauth_sudo">Write as the acting user (Sudo)</string>
+    <string name="admin_oauth_sudo_sub">issues and write-back go out as the acting user; the service token then has to be an admin PAT (scope api + sudo). Keep this OFF if GitLab or Tessera is reachable from an external network</string>
     <string name="admin_oauth_enabled">Enabled</string>
     <string name="admin_oauth_org_map">org_map (JSON: group path → {workspace_id, admins, users})</string>
     <string name="admin_oauth_callback_hint">Callback URL (set it in the GitLab OAuth app):</string>

@@ -1173,6 +1173,8 @@
     <string name="admin_oauth_saved">Настройки OAuth сохранены</string>
     <string name="admin_oauth_secret_stored">(сохранён — введите, чтобы заменить)</string>
     <string name="admin_oauth_service_token">Сервис-токен (PAT, инстанс-широкий)</string>
+    <string name="admin_oauth_sudo">Запись от имени пользователя (Sudo)</string>
+    <string name="admin_oauth_sudo_sub">issue и обратная запись — от действующего пользователя; сервисный токен должен быть админским PAT (scope api + sudo). Держите ВЫКЛ, если GitLab или Tessera доступны из внешней сети</string>
     <string name="admin_oauth_enabled">Включён</string>
     <string name="admin_oauth_org_map">org_map (JSON: путь-группы → {workspace_id, admins, users})</string>
     <string name="admin_oauth_callback_hint">Callback URL (укажите в OAuth-приложении GitLab):</string>

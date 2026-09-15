@@ -245,6 +245,7 @@ private fun OAuthConfigCard() {
     var clientSecret by remember { mutableStateOf("") }
     var serviceToken by remember { mutableStateOf("") }
     var enabled by remember { mutableStateOf(false) }
+    var sudoWriteback by remember { mutableStateOf(false) }
     var orgMapText by remember { mutableStateOf("{}") }
     var hasSecret by remember { mutableStateOf(false) }
     var hasServiceToken by remember { mutableStateOf(false) }
@@ -257,6 +258,7 @@ private fun OAuthConfigCard() {
                 glBaseUrl = cfg.glBaseUrl
                 clientId = cfg.clientId
                 enabled = cfg.enabled
+                sudoWriteback = cfg.sudoWriteback
                 hasSecret = cfg.hasSecret
                 hasServiceToken = cfg.hasServiceToken
                 orgMapText = pretty.toJson(cfg.orgMap ?: JsonParser.parseString("{}"))
@@ -288,12 +290,14 @@ private fun OAuthConfigCard() {
                         enabled = enabled,
                         orgMap = orgMapEl,
                         serviceToken = serviceToken,
+                        sudoWriteback = sudoWriteback,
                     ),
                 )
             }
                 .onSuccess { cfg ->
                     hasSecret = cfg.hasSecret
                     hasServiceToken = cfg.hasServiceToken
+                    sudoWriteback = cfg.sudoWriteback
                     clientSecret = ""
                     serviceToken = ""
                     orgMapText = pretty.toJson(cfg.orgMap ?: JsonParser.parseString("{}"))
@@ -351,6 +355,14 @@ private fun OAuthConfigCard() {
                             placeholder = if (hasServiceToken) stored else "glpat-…",
                             isPassword = true,
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(stringResource(R.string.admin_oauth_sudo), color = c.text2, fontSize = 14.sp)
+                                Text(stringResource(R.string.admin_oauth_sudo_sub), color = c.text3, fontSize = 12.sp)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            TSwitch(checked = sudoWriteback, onCheckedChange = { sudoWriteback = it })
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.admin_oauth_enabled), color = c.text2, fontSize = 14.sp, modifier = Modifier.weight(1f))
                             TSwitch(checked = enabled, onCheckedChange = { enabled = it })
