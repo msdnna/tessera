@@ -1726,6 +1726,9 @@
     <string name="notif_ev_ctx">" “%1$s”"</string>
     <string name="notif_ev_no_ref">?</string>
     <string name="notif_ev_list_sep">", "</string>
+    <!-- No Oxford comma: the web client words English lists in en-GB (utils/format.js
+         localeTag), and that is what Intl.ListFormat produces there. -->
+    <string name="notif_ev_list_last">" and "</string>
     <string name="notif_ev_reason_unknown">unknown error</string>
     <string name="notif_ev_task_assigned">%1$s assigned task #%2$s to you%3$s</string>
     <string name="notif_ev_task_updated">%1$s updated task #%2$s: %3$s</string>

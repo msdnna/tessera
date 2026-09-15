@@ -49,8 +49,24 @@ class NotificationTextTest {
     @Test
     fun `changed fields keep the catalog order and drop unknown names`() {
         val p = """{"event":"task_updated","actor":"Алиса","task_number":7,"fields":["due","title","warp_drive"]}"""
-        assertThat(text("ru", p)).isEqualTo("Алиса изменил(а) задачу #7: название, срок")
-        assertThat(text("en", p)).isEqualTo("Алиса updated task #7: title, due date")
+        assertThat(text("ru", p)).isEqualTo("Алиса изменил(а) задачу #7: название и срок")
+        assertThat(text("en", p)).isEqualTo("Алиса updated task #7: title and due date")
+    }
+
+    /**
+     * Список полей — фраза: перед последним элементом союз, а не запятая, и ровно
+     * так же его склеивают две другие доставки того же уведомления — веб через
+     * `Intl.ListFormat` (ut-format.spec.js) и бэкенд через `notify.joinList`
+     * (locale_test.go). В английском Oxford-запятой нет: веб считает en как en-GB.
+     */
+    @Test
+    fun `the last changed field is joined with a conjunction`() {
+        val one = """{"event":"task_updated","actor":"Алиса","task_number":7,"fields":["priority"]}"""
+        assertThat(text("ru", one)).isEqualTo("Алиса изменил(а) задачу #7: приоритет")
+
+        val three = """{"event":"task_updated","actor":"Алиса","task_number":7,"fields":["title","priority","due"]}"""
+        assertThat(text("ru", three)).isEqualTo("Алиса изменил(а) задачу #7: название, приоритет и срок")
+        assertThat(text("en", three)).isEqualTo("Алиса updated task #7: title, priority and due date")
     }
 
     @Test

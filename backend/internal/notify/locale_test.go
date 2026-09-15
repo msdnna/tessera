@@ -49,6 +49,11 @@ func TestBundlesCarryTheSameKeys(t *testing.T) {
 		if b.ctx == "" || b.fallbackKind == "" || b.digestTitle == "" || b.unknownReason == "" {
 			t.Fatalf("%s: bundle is incomplete", lang)
 		}
+		// Both joiners, not just the comma: a language that forgot listLast would
+		// glue the last two words together rather than fail.
+		if b.listSep == "" || b.listLast == "" {
+			t.Errorf("%s: list joiners are incomplete (sep %q, last %q)", lang, b.listSep, b.listLast)
+		}
 		// All three forms, even where a language only distinguishes two: the
 		// header is rendered through the same rule for every language, and an
 		// empty form would render as a missing word rather than as an error.
@@ -109,7 +114,22 @@ func TestSentenceWording(t *testing.T) {
 			name:    "updated lists changed fields in catalog order",
 			payload: map[string]any{"event": "task_updated", "actor": "Alice", "task_number": float64(7), "fields": []any{"due", "title"}},
 			lang:    "en",
-			want:    "Alice updated task #7: title, due date",
+			want:    "Alice updated task #7: title and due date",
+		},
+		{
+			// The same list the web bell feed words with Intl.ListFormat — see
+			// frontend/tests/ut-format.spec.js. A comma before the last item made
+			// one edit read two different ways depending on where it was delivered.
+			name:    "updated joins the last changed field with a conjunction",
+			payload: map[string]any{"event": "task_updated", "actor": "Алиса", "task_number": float64(7), "fields": []any{"title", "priority", "due"}},
+			lang:    "ru",
+			want:    "Алиса изменил(а) задачу #7: название, приоритет и срок",
+		},
+		{
+			name:    "updated joins three changed fields without an Oxford comma",
+			payload: map[string]any{"event": "task_updated", "actor": "Alice", "task_number": float64(7), "fields": []any{"title", "due", "start"}},
+			lang:    "en",
+			want:    "Alice updated task #7: title, due date and start date",
 		},
 		{
 			name:    "updated drops a field this build doesn't know",

@@ -1794,6 +1794,12 @@
     <string name="notif_ev_ctx">" «%1$s»"</string>
     <string name="notif_ev_no_ref">?</string>
     <string name="notif_ev_list_sep">", "</string>
+    <!-- Соединитель перед ПОСЛЕДНИМ элементом: список слов, а не перечисление через
+         запятую. Веб склеивает тот же список через Intl.ListFormat (conjunction) —
+         «название, срок и приоритет», — и одно уведомление доходит до читателя тремя
+         разными рендерами (колокольчик веба, этот, notify.Sentence для доставок вне
+         приложения), так что голая запятая читалась по-разному. -->
+    <string name="notif_ev_list_last">" и "</string>
     <string name="notif_ev_reason_unknown">неизвестная ошибка</string>
     <string name="notif_ev_task_assigned">%1$s назначил вам задачу #%2$s%3$s</string>
     <string name="notif_ev_task_updated">%1$s изменил(а) задачу #%2$s: %3$s</string>

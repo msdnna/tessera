@@ -117,12 +117,24 @@ fun notificationText(res: Resources, payload: NotificationPayload?, fallback: St
     }
 }
 
-/** «название, срок» — изменённые поля, в порядке каталога и без незнакомых имён. */
+/**
+ * «название, срок и приоритет» — изменённые поля, в порядке каталога и без
+ * незнакомых имён.
+ *
+ * Перед последним элементом стоит союз, а не запятая: список здесь — фраза, и
+ * веб склеивает тот же список через `Intl.ListFormat` (см. `formatList` в
+ * utils/format.js и его тест ut-format.spec.js). Одно уведомление доходит до
+ * читателя тремя рендерами — колокольчик веба, этот и `notify.Sentence` для
+ * доставок наружу, — поэтому запятая на двух из трёх заставляла одну и ту же
+ * правку читаться по-разному.
+ */
 private fun fieldList(res: Resources, fields: List<String>?): String {
     if (fields.isNullOrEmpty()) return ""
     val present = fields.toSet()
     val words = FIELD_NAMES.filterKeys { it in present }.values.map { res.getString(it) }
-    return words.joinToString(res.getString(R.string.notif_ev_list_sep))
+    if (words.size < 2) return words.firstOrNull().orEmpty()
+    return words.dropLast(1).joinToString(res.getString(R.string.notif_ev_list_sep)) +
+        res.getString(R.string.notif_ev_list_last) + words.last()
 }
 
 /** Длительность синхронизации из числа секунд, которое замерил сервер. Раньше он

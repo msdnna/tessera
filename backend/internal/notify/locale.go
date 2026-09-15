@@ -32,6 +32,7 @@ type bundle struct {
 	defaultNames map[string]string // captions for server-seeded names, by name_key (#2800)
 	fallbackKind string            // subject for a kind this bundle doesn't know
 	listSep      string            // how a list of changed fields is joined
+	listLast     string            // the conjunction before its last item — see joinList
 	digestTitle  string
 	digestHeader string // holds {count} and {noun}
 	// digestNoun is the noun {noun} stands for, in the three CLDR forms
@@ -114,6 +115,7 @@ var bundles = map[string]bundle{
 		},
 		fallbackKind:    "Уведомление",
 		listSep:         ", ",
+		listLast:        " и ",
 		digestTitle:     "Сводка уведомлений",
 		digestHeader:    "Сводка — {count} {noun}:",
 		digestNoun:      [3]string{"уведомление", "уведомления", "уведомлений"},
@@ -175,6 +177,9 @@ var bundles = map[string]bundle{
 		},
 		fallbackKind:    "Notification",
 		listSep:         ", ",
+		// No Oxford comma: the web client's locale for English is en-GB (see
+		// utils/format.js localeTag), and that is what Intl.ListFormat words there.
+		listLast:        " and ",
 		digestTitle:     "Notification digest",
 		digestHeader:    "Digest — {count} {noun}:",
 		digestNoun:      [3]string{"notification", "notifications", "notifications"},
@@ -309,7 +314,29 @@ func fieldList(v any, b bundle) string {
 			words = append(words, b.fields[f])
 		}
 	}
-	return strings.Join(words, b.listSep)
+	return joinList(words, b)
+}
+
+// joinList words a list the way the reader's language does — commas between all
+// but the last pair, a conjunction before the last item: «название, срок и
+// приоритет», "title, due date and start date".
+//
+// A worded list, not a punctuated one, because the same notification reaches one
+// reader through three renderers — the web bell feed, the phone's, and this
+// catalogue for everything that leaves the app — and the web one has always joined
+// it with Intl.ListFormat (utils/format.js formatList, conjunction/long). The two
+// that used a bare comma made a single edit read two different ways depending on
+// where it was delivered. English gets no Oxford comma: the web client's locale
+// for it is en-GB (utils/format.js localeTag), which is what Intl words there.
+func joinList(words []string, b bundle) string {
+	switch len(words) {
+	case 0:
+		return ""
+	case 1:
+		return words[0]
+	default:
+		return strings.Join(words[:len(words)-1], b.listSep) + b.listLast + words[len(words)-1]
+	}
 }
 
 // duration words a sync duration from the number of seconds the server measured.
