@@ -20,28 +20,60 @@
 
 /** Locks in the order the server applies them: '' means the row is actionable. */
 export const LOCK_NONE = ''
+export const LOCK_VIEWER = 'viewer'
 export const LOCK_OWNER = 'owner'
 export const LOCK_SELF = 'self'
 
 /**
  * Why a member row's controls are unavailable, as one of the LOCK_* codes.
  *
- * Owner first, matching the handler: the owner rule holds no matter who is
+ * Viewer first, matching the handlers: `requireManager` is the gate every one of
+ * these routes passes before it looks at the target at all, so a plain member
+ * gets 403 on their own row exactly as they do on anybody else's. The dialog
+ * itself is *not* manager-only — ListMembers sits behind `requireMember`, and
+ * the roster is worth reading for everyone — which is precisely why the rule had
+ * to become a row state instead of a door.
+ *
+ * Owner before self, matching the handler: the owner rule holds no matter who is
  * asking, so an owner looking at their own row hears that their role is
  * immutable — not that they may not edit themselves, which would suggest
  * somebody else could.
  *
+ * `canManage` defaults to true so that a caller who has not been taught about
+ * the viewer rule keeps drifting in the one safe direction this file documents:
+ * offering a control the server refuses, never hiding one it would allow.
+ *
  * @param {{user_id?: string, role?: string}|null|undefined} member
- * @param {{ownerId?: string, selfId?: string}} who
- * @returns {''|'owner'|'self'}
+ * @param {{ownerId?: string, selfId?: string, canManage?: boolean}} who
+ * @returns {''|'viewer'|'owner'|'self'}
  */
-export function memberRowLock(member, { ownerId, selfId } = {}) {
+export function memberRowLock(member, { ownerId, selfId, canManage = true } = {}) {
   if (!member) return LOCK_NONE
+  if (!canManage) return LOCK_VIEWER
   // `role === 'owner'` is what the list actually carries; ownerId is accepted
   // too so a caller holding the workspace record does not have to trust the row.
   if (member.role === 'owner' || (ownerId && member.user_id === ownerId)) return LOCK_OWNER
   if (selfId && member.user_id === selfId) return LOCK_SELF
   return LOCK_NONE
+}
+
+/**
+ * What a locked row should say about itself, as a `shell.members.*` key.
+ *
+ * Deliberately not derived from the lock code: the lock answers "why is this
+ * refused", which for a plain member is the same sentence on every row, and a
+ * roster where all four rows read "Участник" tells the reader less than the one
+ * they had before. So the badge keeps naming the row — owner, you, or the role —
+ * while the lock keeps mirroring the server.
+ *
+ * @param {{user_id?: string, role?: string}|null|undefined} member
+ * @param {{ownerId?: string, selfId?: string}} who
+ * @returns {'owner'|'you'|'admin'|'member'}
+ */
+export function memberRowBadge(member, { ownerId, selfId } = {}) {
+  if (member?.role === 'owner' || (ownerId && member?.user_id === ownerId)) return 'owner'
+  if (selfId && member?.user_id === selfId) return 'you'
+  return member?.role === 'admin' ? 'admin' : 'member'
 }
 
 /** Whether this row's role select should be live. */
@@ -75,13 +107,16 @@ const normalizeEmail = (value) =>
  *
  * @param {string} email the address typed into the invite field
  * @param {Array<{user_id?: string, email?: string, role?: string}>} members
- * @param {{ownerId?: string, selfId?: string, selfEmail?: string}} who
- * @returns {''|'owner'|'self'}
+ * @param {{ownerId?: string, selfId?: string, selfEmail?: string, canManage?: boolean}} who
+ * @returns {''|'viewer'|'owner'|'self'}
  */
 export function addMemberRefusal(email, members, who = {}) {
   const typed = normalizeEmail(email)
   if (!typed) return LOCK_NONE
-  const { ownerId, selfId, selfEmail } = who
+  const { ownerId, selfId, selfEmail, canManage = true } = who
+  // AddMember is behind requireManager, so for a plain member no address gets
+  // past the door — including the ones the rules below would have allowed.
+  if (!canManage) return LOCK_VIEWER
   const row = (members || []).find((m) => normalizeEmail(m?.email) === typed)
   // The owner is refused whether or not the caller can see their row, so their
   // address is checked against the list first and the id second.

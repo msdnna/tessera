@@ -81,6 +81,8 @@
     "you": "This is you",
     "cannotSelf": "You cannot demote or remove yourself from the workspace — ask another admin",
     "cannotOwner": "The workspace owner cannot be demoted or removed",
+    "cannotManage": "Only the workspace owner or an admin can change the member list",
+    "readOnly": "Read-only list: the workspace owner or an admin changes who is here.",
     "removeConfirm": "Remove this member from the workspace?",
     "invitations": "Invitations",
     "inviteExpired": "Expired",

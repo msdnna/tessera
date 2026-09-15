@@ -17,9 +17,24 @@ import {
 import { TrashOutline, CopyOutline, MailOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { useWorkspacesStore } from '@/stores/workspaces'
 import { useFormat } from '@/composables/useFormat'
 import { copyText } from '@/utils/clipboard'
-import { LOCK_OWNER, LOCK_SELF, memberRowLock, addMemberRefusal } from '@/utils/members'
+import {
+  LOCK_VIEWER,
+  LOCK_OWNER,
+  LOCK_SELF,
+  memberRowLock,
+  memberRowBadge,
+  addMemberRefusal,
+} from '@/utils/members'
+
+/** Which sentence explains each refusal the add field can hit. */
+const REFUSAL_KEY = {
+  [LOCK_VIEWER]: 'cannotManage',
+  [LOCK_OWNER]: 'cannotOwner',
+  [LOCK_SELF]: 'cannotSelf',
+}
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -31,11 +46,22 @@ const { t } = useI18n()
 const { formatDate } = useFormat()
 const message = useMessage()
 const auth = useAuthStore()
+const wsStore = useWorkspacesStore()
 const members = ref([])
 const invitations = ref([])
 const email = ref('')
 const inviteError = ref('')
 const role = ref('member')
+
+// Whether the viewer may manage anyone here at all. AddMember, UpdateMemberRole,
+// RemoveMember, ListInvitations and DeleteInvitation are all `requireManager`,
+// while the dialog itself is open to every member (ListMembers is
+// `requireMember`, and the tools bar shows the button to everyone). Read off the
+// row for *this* workspace rather than the store's `canManage`, which follows
+// the globally-selected one — the id arrives here as a prop.
+const canManage = computed(() =>
+  ['owner', 'admin'].includes(wsStore.list.find((w) => w.id === props.wsId)?.my_role),
+)
 
 // Who is looking. The dialog knew the owner (the list carries the role) but not
 // the viewer, so an admin's own row offered the same role select and the same
@@ -44,8 +70,10 @@ const role = ref('member')
 const who = computed(() => ({
   selfId: auth.user?.id || '',
   selfEmail: auth.user?.email || '',
+  canManage: canManage.value,
 }))
 const rowLock = (m) => memberRowLock(m, who.value)
+const rowBadge = (m) => t(`shell.members.${memberRowBadge(m, who.value)}`)
 const lastLink = ref('') // link from the most recent invitation, for copying
 // Computed: the role labels sit inside a select, and a frozen table would keep
 // showing the language of the first render — including inside the open dropdown.
@@ -69,15 +97,22 @@ const invitationRows = computed(() =>
   }),
 )
 
+// The two lists are fetched behind different gates — ListMembers is
+// `requireMember`, ListInvitations is `requireManager` — so under `Promise.all`
+// a plain member's 403 on the second threw away the roster the server had
+// already returned with the first: an empty dialog behind a red toast, on the
+// one screen that answers "who else is in this workspace". They are independent
+// now, and the manager-only one is not asked for by someone it would refuse.
 async function load() {
   if (!props.wsId) return
-  try {
-    const [m, inv] = await Promise.all([wsApi.members(props.wsId), wsApi.invitations(props.wsId)])
-    members.value = m.data || []
-    invitations.value = inv.data || []
-  } catch (e) {
-    message.error(e.message)
-  }
+  const [m, inv] = await Promise.allSettled([
+    wsApi.members(props.wsId),
+    canManage.value ? wsApi.invitations(props.wsId) : Promise.resolve({ data: [] }),
+  ])
+  if (m.status === 'fulfilled') members.value = m.value.data || []
+  else message.error(m.reason.message)
+  if (inv.status === 'fulfilled') invitations.value = inv.value.data || []
+  else message.error(inv.reason.message)
 }
 
 // One input: add an already-registered user instantly; otherwise fall back to an
@@ -92,8 +127,7 @@ async function invite() {
   // round trip and says which rule was hit.
   const refused = addMemberRefusal(e, members.value, who.value)
   if (refused) {
-    inviteError.value =
-      refused === LOCK_OWNER ? t('shell.members.cannotOwner') : t('shell.members.cannotSelf')
+    inviteError.value = t(`shell.members.${REFUSAL_KEY[refused]}`)
     return
   }
   inviteError.value = ''
@@ -172,13 +206,11 @@ watch(
             <span class="name">{{ m.name }}</span>
             <span class="mail">{{ m.email }}</span>
           </div>
-          <n-tag v-if="rowLock(m) === LOCK_OWNER" size="small" :bordered="false">
-            {{ t('shell.members.owner') }}
-          </n-tag>
           <!-- A control that vanishes with no word reads as a broken dialog, so
-               the locked row says which rule locked it. -->
-          <n-tag v-else-if="rowLock(m) === LOCK_SELF" size="small" :bordered="false">
-            {{ t('shell.members.you') }}
+               a locked row keeps naming itself: owner, you, or the plain role a
+               reader with no say in it came here to look up. -->
+          <n-tag v-if="rowLock(m)" size="small" :bordered="false">
+            {{ rowBadge(m) }}
           </n-tag>
           <n-select
             v-else
@@ -232,7 +264,12 @@ watch(
         </div>
       </div>
 
-      <div class="invite">
+      <!-- Every door below this line is requireManager. Saying so once beats
+           four controls that answer 403, and beats silence — the roster above is
+           still worth the trip. -->
+      <n-text v-if="!canManage" depth="3" class="hint">{{ t('shell.members.readOnly') }}</n-text>
+
+      <div v-else class="invite">
         <n-text depth="3" class="lbl">{{ t('shell.members.inviteLabel') }}</n-text>
         <n-space>
           <n-input

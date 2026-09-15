@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
 import {
   LOCK_NONE,
+  LOCK_VIEWER,
   LOCK_OWNER,
   LOCK_SELF,
   memberRowLock,
+  memberRowBadge,
   canChangeMemberRole,
   canRemoveMember,
   addMemberRefusal,
@@ -56,6 +58,54 @@ describe('memberRowLock', () => {
     expect(memberRowLock(OTHER, {})).toBe(LOCK_NONE)
     expect(memberRowLock(SELF, {})).toBe(LOCK_NONE)
     expect(memberRowLock(null, WHO)).toBe(LOCK_NONE)
+  })
+})
+
+describe('memberRowLock: рядовой участник', () => {
+  // requireManager — самый первый гейт на AddMember/UpdateMemberRole/
+  // RemoveMember: рядовому участнику сервер отказывает, ещё не посмотрев, чья
+  // это строка. Диалог при этом открыт всем (ListMembers — requireMember).
+  const VIEWER = { ...WHO, selfId: 'u-other', selfEmail: 'other@example.com', canManage: false }
+
+  it('запирает каждую строку, включая чужую', () => {
+    expect(memberRowLock(OTHER, VIEWER)).toBe(LOCK_VIEWER)
+    expect(memberRowLock(SELF, VIEWER)).toBe(LOCK_VIEWER)
+    expect(memberRowLock(OWNER, VIEWER)).toBe(LOCK_VIEWER)
+    expect(canChangeMemberRole(OTHER, VIEWER)).toBe(false)
+    expect(canRemoveMember(OTHER, VIEWER)).toBe(false)
+  })
+
+  it('не отправляет на сервер ни одного адреса', () => {
+    expect(addMemberRefusal('stranger@example.com', LIST, VIEWER)).toBe(LOCK_VIEWER)
+    expect(addMemberRefusal('owner@example.com', LIST, VIEWER)).toBe(LOCK_VIEWER)
+  })
+
+  it('пустое поле остаётся пустым полем, а не отказом', () => {
+    expect(addMemberRefusal('', LIST, VIEWER)).toBe(LOCK_NONE)
+  })
+
+  it('по умолчанию считает зовущего менеджером', () => {
+    // Дрейф в одну безопасную сторону: предложить контрол, который сервер
+    // отклонит, — но не спрятать тот, что он бы пропустил.
+    expect(memberRowLock(OTHER, { selfId: 'u-self' })).toBe(LOCK_NONE)
+    expect(addMemberRefusal('stranger@example.com', LIST, {})).toBe(LOCK_NONE)
+  })
+})
+
+describe('memberRowBadge', () => {
+  // Подпись — не причина отказа: у рядового участника блокировка на всех строках
+  // одна, а называться они должны по-разному.
+  const VIEWER = { selfId: 'u-other', canManage: false }
+
+  it('называет владельца владельцем, себя — собой, остальных — ролью', () => {
+    expect(memberRowBadge(OWNER, VIEWER)).toBe('owner')
+    expect(memberRowBadge(OTHER, VIEWER)).toBe('you')
+    expect(memberRowBadge(SELF, VIEWER)).toBe('admin')
+    expect(memberRowBadge({ user_id: 'u-x', role: 'member' }, VIEWER)).toBe('member')
+  })
+
+  it('владелец побеждает «это вы», как и в правиле сервера', () => {
+    expect(memberRowBadge(OWNER, { selfId: 'u-owner' })).toBe('owner')
   })
 })
 

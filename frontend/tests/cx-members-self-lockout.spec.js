@@ -42,10 +42,14 @@ const OWNER = { user_id: 'u-owner', name: 'Владелец', email: 'owner@exam
 const SELF = { user_id: 'u-self', name: 'Я сам', email: 'admin@example.com', role: 'admin' }
 const OTHER = { user_id: 'u-other', name: 'Коллега', email: 'other@example.com', role: 'member' }
 
+// Все правила ниже — про менеджера: рядовому участнику сервер отказывает раньше,
+// на requireManager, и модалка теперь это отражает (см. cx-members-viewer).
 const open = async (rows = [OWNER, SELF, OTHER], me = SELF) => {
   members.mockResolvedValue({ data: rows })
   const { useAuthStore } = await import('@/stores/auth')
   useAuthStore().setUser(me ? { id: me.user_id, email: me.email, name: me.name } : null)
+  const { useWorkspacesStore } = await import('@/stores/workspaces')
+  useWorkspacesStore().list = [{ id: 'ws-1', my_role: me === OWNER ? 'owner' : 'admin' }]
   const MembersModal = (await import('@/components/MembersModal.vue')).default
   const w = mount(MembersModal, { props: { show: false, wsId: 'ws-1' }, global: { stubs } })
   await w.setProps({ show: true })

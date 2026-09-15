@@ -60,8 +60,12 @@ const DEAD = {
 
 // Загрузка висит на watch без immediate — модалка монтируется закрытой и
 // открывается сменой пропа, ровно как в оболочке.
+// Приглашения вообще показываются только менеджеру (ListInvitations стоит за
+// requireManager), поэтому роль в пространстве — часть исходных условий спека.
 const open = async (rows) => {
   invitations.mockResolvedValue({ data: rows })
+  const { useWorkspacesStore } = await import('@/stores/workspaces')
+  useWorkspacesStore().list = [{ id: 'ws-1', my_role: 'admin' }]
   const MembersModal = (await import('@/components/MembersModal.vue')).default
   const w = mount(MembersModal, { props: { show: false, wsId: 'ws-1' }, global: { stubs } })
   await w.setProps({ show: true })
