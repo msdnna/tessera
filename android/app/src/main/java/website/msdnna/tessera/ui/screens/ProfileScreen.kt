@@ -51,6 +51,7 @@ import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.model.ProfileUpdate
 import website.msdnna.tessera.data.repository.ProfileRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.components.InsecureTlsRow
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
@@ -67,11 +68,14 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.AvatarPickError
 import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.DatePresets
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.avatarInitials
+import website.msdnna.tessera.util.avatarPickError
 import website.msdnna.tessera.util.countryOptions
+import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.isPasswordValid
 import website.msdnna.tessera.util.longDate
 import website.msdnna.tessera.util.normalizeDatePreset
@@ -211,7 +215,7 @@ private fun ProfileCard(
     var jobTitle by remember(user?.id) { mutableStateOf(user?.jobTitle ?: "") }
     var bio by remember(user?.id) { mutableStateOf(user?.bio ?: "") }
     var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<UiText?>(null) }
     var avatarBust by remember { mutableStateOf(0L) }
     var verifySent by remember { mutableStateOf(false) }
 
@@ -222,9 +226,22 @@ private fun ProfileCard(
             runCatching {
                 val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@launch
                 val mime = ctx.contentResolver.getType(uri)
+                // Сказать то же, что скажет сервер, но до того, как на это потрачена
+                // загрузка: снимок с камеры тяжелее 2 МиБ — обычное дело, а по
+                // мобильной сети он уезжает целиком, чтобы вернуться отказом.
+                val bad = avatarPickError(bytes.size.toLong(), mime)
+                if (bad != null) {
+                    error = UiText.Res(
+                        when (bad) {
+                            AvatarPickError.TooLarge -> R.string.settings_avatar_too_large
+                            AvatarPickError.BadType -> R.string.settings_avatar_bad_type
+                        },
+                    )
+                    return@launch
+                }
                 repo.uploadAvatar(bytes, "avatar", mime)
                 avatarBust = System.currentTimeMillis()
-            }.onFailure { error = it.message }
+            }.onFailure { error = errorMessage(it) }
         }
     }
 
@@ -247,7 +264,7 @@ private fun ProfileCard(
                     )
                     if (!user?.avatarUrl.isNullOrBlank()) {
                         TButton(stringResource(R.string.settings_avatar_remove), onClick = {
-                            scope.launch { runCatching { repo.deleteAvatar() }.onFailure { error = it.message } }
+                            scope.launch { runCatching { repo.deleteAvatar() }.onFailure { error = errorMessage(it) } }
                         }, kind = TButtonKind.Ghost)
                     }
                     Text(stringResource(R.string.settings_avatar_hint), color = c.text3, fontSize = 11.sp)
@@ -294,7 +311,7 @@ private fun ProfileCard(
                         error = null
                         runCatching {
                             repo.updateProfile(ProfileUpdate(name, last, first, middle, bio, company, jobTitle))
-                        }.onFailure { error = it.message }
+                        }.onFailure { error = errorMessage(it) }
                         saving = false
                     }
                 },
@@ -323,7 +340,7 @@ private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.Coro
     var next by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<UiText?>(null) }
     var done by remember { mutableStateOf(false) }
     // `next.length >= 8` не совпадало с сервером ни на одном конце правила (#2932):
     // минимум там считается рунами, а потолок в 72 БАЙТА — предел bcrypt — здесь не
@@ -361,7 +378,7 @@ private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.Coro
                                 confirm = ""
                                 done = true
                             }
-                            .onFailure { error = it.message }
+                            .onFailure { error = errorMessage(it) }
                         saving = false
                     }
                 },

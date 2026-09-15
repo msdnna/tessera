@@ -65,6 +65,8 @@
     <string name="settings_avatar_upload">Загрузить</string>
     <string name="settings_avatar_remove">Убрать</string>
     <string name="settings_avatar_hint">PNG/JPEG/GIF/WebP, до 2 МБ</string>
+    <string name="settings_avatar_too_large">Файл больше 2 МБ</string>
+    <string name="settings_avatar_bad_type">Поддерживаются только PNG, JPEG, GIF или WebP</string>
     <string name="settings_email_label">Email (логин)</string>
     <string name="settings_email_verified">Почта подтверждена</string>
     <string name="settings_email_unverified">Почта не подтверждена</string>
