@@ -25,8 +25,10 @@ const menu = useTaskMenu({
 // Month and weekday names are dates, not interface text: they come from Intl in
 // the user's language (#2798's formatting layer) rather than from the locale
 // files — twelve more hand-written names per language is exactly the duplication
-// that layer exists to avoid. The grid is built in the browser's timezone, so
-// every lookup passes `timeZone: null` to keep the label on the same day.
+// that layer exists to avoid. The grid cells are calendar coordinates rather
+// than instants, so their own labels pass `timeZone: null` — a cell built on
+// 1 March must read "March" whatever zone the reader is in. What goes INTO a
+// cell is a different matter; see `dueKey`.
 const { formatDate, formatters } = useFormat()
 
 // Where the week starts, as a JS getDay() value. Settings → Локализация offers
@@ -48,29 +50,55 @@ const weekdays = computed(() =>
   ),
 )
 
-const today = new Date()
-today.setHours(0, 0, 0, 0)
+// The user's today — the calendar day in their timezone preference, not the
+// browser's. `new Date()` was both the highlighted cell and the month the view
+// opens on, so a profile zone a day ahead of the device (or behind it) lit the
+// neighbouring cell at the edges of the day.
+const todayParts = computed(() => formatters.value.today())
 // Cursor points at the first day of the displayed month.
-const cursor = ref(new Date(today.getFullYear(), today.getMonth(), 1))
+const cursor = ref(new Date(todayParts.value.year, todayParts.value.month, 1))
 
 const monthLabel = computed(() =>
   capitalizeFirst(formatDate(cursor.value, { month: 'long', year: 'numeric', timeZone: null })),
 )
 
-function dayKey(d) {
+// The grid cells are calendar coordinates, built from local fields — so their
+// key is read off the same fields. Month is 0-based here to match the `parts()`
+// shape below, which is what a due date's key is built from.
+function cellKey(d) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-// Index tasks that have a due date by local day key.
+// Which day a DUE DATE belongs to is not the same question, and it was answered
+// here with the browser's calendar (#2932). It has two rules, both of which the
+// rest of the app already follows through the formatter set (utils/taskFilter
+// `dueDayOf`, the due pill on the card, the «Сегодня»/«Просрочено» facets):
+//
+//   • a due carrying a time of day is read in the user's TIMEZONE preference;
+//   • a pure UTC midnight is a date-only value (a GitLab issue due, an all-day
+//     due) and is read in UTC in every zone, or it slides to the previous day
+//     for every reader west of it.
+//
+// Reading them off `new Date(...)` instead put the very same task on one day in
+// the calendar layout and on another in the due pill of its own chip.
+function dueKey(value) {
+  const p = formatters.value.parts(value)
+  return p ? `${p.year}-${p.month}-${p.day}` : ''
+}
+
+// Index tasks that have a due date by the day the user sees it on.
 const tasksByDay = computed(() => {
   const map = {}
   for (const task of props.tasks) {
     if (!task.due_date) continue
-    const d = new Date(task.due_date)
-    ;(map[dayKey(d)] ||= []).push(task)
+    ;(map[dueKey(task.due_date)] ||= []).push(task)
   }
   return map
 })
+
+const todayKey = computed(
+  () => `${todayParts.value.year}-${todayParts.value.month}-${todayParts.value.day}`,
+)
 
 const noDate = computed(() => props.tasks.filter((task) => !task.due_date))
 
@@ -86,8 +114,8 @@ const weeks = computed(() => {
     cells.push({
       date: d,
       inMonth: d.getMonth() === first.getMonth(),
-      isToday: d.getTime() === today.getTime(),
-      tasks: tasksByDay.value[dayKey(d)] || [],
+      isToday: cellKey(d) === todayKey.value,
+      tasks: tasksByDay.value[cellKey(d)] || [],
     })
   }
   const rows = []
@@ -99,7 +127,7 @@ function shift(months) {
   cursor.value = new Date(cursor.value.getFullYear(), cursor.value.getMonth() + months, 1)
 }
 function goToday() {
-  cursor.value = new Date(today.getFullYear(), today.getMonth(), 1)
+  cursor.value = new Date(todayParts.value.year, todayParts.value.month, 1)
 }
 </script>
 
