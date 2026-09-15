@@ -293,9 +293,18 @@ data class DocLinksState(
 
     /** Already-linked tasks are dropped from the picker rather than offered and
      *  refused: re-linking the same pair is a no-op server-side, so offering it
-     *  would be a button that appears to do nothing. */
+     *  would be a button that appears to do nothing.
+     *
+     *  "The same pair" is the link's own key — (документ, задача, блок), not the
+     *  task alone. A task linked to the document as a whole may also be linked to
+     *  the clause it implements, which is what the key is for (миграция 0059);
+     *  hiding it by task id made that link unreachable, and the picker simply
+     *  dropped the task with nothing said. So the anchor the panel is armed with
+     *  is part of what counts as already linked. */
     fun candidates(query: String): List<WorkspaceTask> {
-        val linked = links.mapTo(mutableSetOf()) { it.taskId }
+        val linked = links.asSequence()
+            .filter { it.blockId == anchorBlockId }
+            .mapTo(mutableSetOf()) { it.taskId }
         val q = query.trim().lowercase()
         return tasks.asSequence()
             .filter { it.number != null && it.id !in linked }

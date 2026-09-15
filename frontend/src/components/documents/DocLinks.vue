@@ -62,7 +62,19 @@ function openPicker() {
 // Already-linked tasks are dropped from the picker rather than shown and
 // refused: re-linking the same pair is a no-op server-side, so offering it would
 // be a button that appears to do nothing.
-const linkedIds = computed(() => new Set(props.links.map((l) => l.task_id)))
+//
+// "The same pair" is the link's own key — (документ, задача, блок), not the task
+// alone. A task linked to the document as a whole may also be linked to the
+// clause it implements; that is what the key is for (миграция 0059). Filtering by
+// task id alone made that second link unreachable: «Связать блок» opened a picker
+// the task had silently dropped out of. So only the links sitting on the armed
+// anchor count as already linked.
+const linkedIds = computed(
+  () =>
+    new Set(
+      props.links.filter((l) => (l.block_id || '') === props.anchorBlockId).map((l) => l.task_id),
+    ),
+)
 const candidates = computed(() => {
   const q = query.value.trim().toLowerCase()
   // Named `task`, not `t`: `t` is the translation function in this file now.
