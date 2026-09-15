@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"tessera-mcp/internal/model"
 )
@@ -98,6 +99,41 @@ func TestGetTaskByNumberLoadsSubtasks(t *testing.T) {
 	}
 	if len(out.Subtasks) != 1 || out.Subtasks[0].Title != "Этап 2" {
 		t.Fatalf("by-number get_task didn't surface subtasks: %+v", out.Subtasks)
+	}
+}
+
+// The two halves of the anti-duplicate guard have to agree about an archived
+// child. The detail endpoint returns every subtask, archived ones included, and
+// the create side skips only live titles — so get_task must say which is which,
+// or a stateless re-run reads the archived title as "already decomposed" and
+// never recreates the child create_subtasks would have made.
+func TestGetTaskFlagsArchived(t *testing.T) {
+	live, gone := int64(2830), int64(2831)
+	when := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	parent := detail("par", "b1")
+	parent.ColumnID = "c1"
+	parent.ArchivedAt = &when
+	parent.Subtasks = []model.Task{
+		{ID: "st1", Title: "Этап 1", Number: &live},
+		{ID: "st2", Title: "Этап 2", Number: &gone, ArchivedAt: &when},
+	}
+	c, _ := newMux(t, map[string]any{"/api/tasks/par": parent})
+
+	_, out, err := getTask(c)(context.Background(), nil, getTaskInput{TaskID: "par"})
+	if err != nil {
+		t.Fatalf("getTask: %v", err)
+	}
+	if !out.Archived {
+		t.Fatal("an archived task came back looking like an open one")
+	}
+	if len(out.Subtasks) != 2 {
+		t.Fatalf("subtasks = %+v", out.Subtasks)
+	}
+	if out.Subtasks[0].Archived {
+		t.Fatalf("live subtask flagged archived: %+v", out.Subtasks[0])
+	}
+	if !out.Subtasks[1].Archived {
+		t.Fatalf("archived subtask indistinguishable from a live one: %+v", out.Subtasks[1])
 	}
 }
 
