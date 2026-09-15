@@ -138,6 +138,47 @@ func TestPreviewStillRefusesWhenNothingResolves(t *testing.T) {
 	}
 }
 
+// TestPreviewResolvesSeededColumnCaption is the same divergence on /move.
+//
+// A seeded column is stored under its Russian name and captioned by each client
+// from name_key, so an English reader's board says "Done" where the row says
+// «Готово». The run learned to resolve the caption (#2800, matchColumn), the dry
+// run kept comparing the typed text to the stored name only — and answered «нет
+// колонки «Done» на этой доске» in red about the column the task then moved into.
+func TestPreviewResolvesSeededColumnCaption(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Английская подпись колонки")
+	taskID := task["id"].(string)
+	body := "/move Done"
+
+	cmds := previewCommands(t, c, taskID, body)
+	if len(cmds) != 1 {
+		t.Fatalf("preview returned %d commands, want 1", len(cmds))
+	}
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused /move by caption: %q — the run performs it", previewErr)
+	}
+	if !strings.Contains(previewSummary, "Готово") {
+		t.Fatalf("preview summary = %q, want the stored column name in it", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied — preview promised it", applied, failed)
+	}
+
+	done := s.Columns[len(s.Columns)-1]["id"].(string)
+	if got := c.get("/tasks/" + taskID).mapBody(t)["column_id"]; got != done {
+		t.Fatalf("task sits in column %v, want the done column %s", got, done)
+	}
+}
+
 // TestPreviewNamesEveryUnresolvedEntry guards the error text itself: the run
 // lists all the misses, and the preview used to stop at the first one.
 func TestPreviewNamesEveryUnresolvedEntry(t *testing.T) {

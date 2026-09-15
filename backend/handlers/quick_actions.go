@@ -779,12 +779,16 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 		if err != nil {
 			return "", err
 		}
-		for _, col := range cols {
-			if strings.EqualFold(strings.TrimSpace(col.Name), name) {
-				return "перенести в «" + col.Name + "»", nil
-			}
+		// matchColumn, not a name-only loop: the caption fallback of #2800 lives
+		// there, and the dry run has to answer about the same columns the run
+		// moves the task into. Its own loop knew nothing about name_key, so an
+		// English reader typing `/move Done` was told «нет колонки «Done» на этой
+		// доске» in red — and then the comment they sent moved the task anyway.
+		target := matchColumn(cols, name)
+		if target == nil {
+			return "", userErr("нет колонки «%s» на этой доске", name)
 		}
-		return "", userErr("нет колонки «%s» на этой доске", name)
+		return "перенести в «" + target.Name + "»", nil
 	case "close":
 		return "закрыть задачу", nil
 	case "reopen":
