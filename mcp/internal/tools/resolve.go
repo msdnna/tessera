@@ -117,11 +117,16 @@ func projectIDForBoard(ctx context.Context, c *client.Client, boardID string) (s
 	return b.ProjectID, nil
 }
 
-// resolveTags maps tag names (or UUIDs) to tag ids within a project. Tags are
+// resolveTags maps tag names (or UUIDs) to the project's tag rows. Tags are
 // project-scoped, so the same name in another project is a different row.
 // createMissing defaults to off at the call sites: silently creating a tag turns
-// a typo into permanent project clutter.
-func resolveTags(ctx context.Context, c *client.Client, projectID string, names []string, createMissing bool) ([]string, error) {
+// a typo into permanent project clutter. Rows rather than bare ids, so a caller
+// reporting what it did can name the tag the way the project spells it instead
+// of echoing the caller's own casing back at them.
+func resolveTags(ctx context.Context, c *client.Client, projectID string, names []string, createMissing bool) ([]model.Tag, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
 	existing, err := c.ListProjectTags(ctx, projectID)
 	if err != nil {
 		return nil, err
@@ -136,36 +141,100 @@ func resolveTags(ctx context.Context, c *client.Client, projectID string, names 
 	}
 
 	seen := map[string]bool{}
-	var ids []string
+	var out []model.Tag
 	for _, raw := range names {
 		name := strings.TrimSpace(raw)
 		if name == "" {
 			continue
 		}
-		var id string
+		var match model.Tag
 		switch tg, ok := byName[strings.ToLower(name)]; {
 		case ok:
-			id = tg.ID
+			match = tg
 		case byID[name].ID != "":
-			id = name
+			match = byID[name]
 		case createMissing:
 			created, cErr := c.CreateTag(ctx, projectID, name, "")
 			if cErr != nil {
 				return nil, fmt.Errorf("create tag %q: %w", name, cErr)
 			}
 			byName[strings.ToLower(name)] = created
-			id = created.ID
+			match = created
 		default:
 			sort.Strings(known)
 			return nil, fmt.Errorf("no tag %q in this project (pass create_missing=true to add it); existing: %s",
 				name, strings.Join(known, ", "))
 		}
-		if !seen[id] {
-			seen[id] = true
-			ids = append(ids, id)
+		if !seen[match.ID] {
+			seen[match.ID] = true
+			out = append(out, match)
 		}
 	}
-	return ids, nil
+	return out, nil
+}
+
+// tagIDs flattens resolved tag rows to the ids the write endpoints take.
+func tagIDs(tags []model.Tag) []string {
+	if len(tags) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(tags))
+	for _, tg := range tags {
+		ids = append(ids, tg.ID)
+	}
+	return ids
+}
+
+// matchProjectTags is resolveTags' read-only half, for detaching: it returns the
+// rows it recognises and *skips* the rest instead of failing. A name the project
+// does not carry is not an error when the goal is "the task must not have this
+// tag" — that already holds. Attaching keeps the strict resolveTags: there a typo
+// would either do nothing or, with create_missing, litter the project, so it has
+// to be said out loud.
+func matchProjectTags(ctx context.Context, c *client.Client, projectID string, names []string) ([]model.Tag, error) {
+	if len(names) == 0 {
+		return nil, nil
+	}
+	existing, err := c.ListProjectTags(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	byName := make(map[string]model.Tag, len(existing))
+	byID := make(map[string]model.Tag, len(existing))
+	for _, tg := range existing {
+		byName[strings.ToLower(strings.TrimSpace(tg.Name))] = tg
+		byID[tg.ID] = tg
+	}
+	seen := map[string]bool{}
+	var out []model.Tag
+	for _, raw := range names {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			continue
+		}
+		match, ok := byName[strings.ToLower(name)]
+		if !ok {
+			if match, ok = byID[name]; !ok {
+				continue
+			}
+		}
+		if seen[match.ID] {
+			continue
+		}
+		seen[match.ID] = true
+		out = append(out, match)
+	}
+	return out, nil
+}
+
+// tagIDSet indexes a task's tags by id — what a tag write has to be checked
+// against to tell "attached it" from "it was already there".
+func tagIDSet(tags []model.Tag) map[string]bool {
+	out := make(map[string]bool, len(tags))
+	for _, tg := range tags {
+		out[tg.ID] = true
+	}
+	return out
 }
 
 // parseDate accepts an ISO date ("2026-08-21") or a full RFC3339 timestamp.

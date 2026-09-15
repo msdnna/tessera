@@ -56,6 +56,51 @@ func TestSetTagsAddAndRemove(t *testing.T) {
 	}
 }
 
+// Detaching is idempotent: a name the project (or the task) doesn't carry is
+// skipped, not an error — and it must not abort the call after the adds of the
+// same request have already been written.
+func TestSetTagsRemoveUnknownIsSkipped(t *testing.T) {
+	project := []model.Tag{{ID: "tag-bug", Name: "type::bug"}, {ID: "tag-fe", Name: "app::frontend"}}
+	c, mux := newMux(t, tagBoard(project, []model.Tag{{ID: "tag-bug", Name: "type::bug"}}))
+
+	_, out, err := setTags(c)(context.Background(), nil, setTagsInput{
+		TaskID: "t1", Add: []string{"app::frontend"}, Remove: []string{"ghost::nope"},
+	})
+	if err != nil {
+		t.Fatalf("a removal naming a tag the project has never had must not fail the call: %v", err)
+	}
+	if _, ok := mux.writes["POST /api/tasks/t1/tags"]; !ok {
+		t.Fatalf("the add was not applied: %v", mux.writes)
+	}
+	if len(out.Added) != 1 || out.Added[0] != "app::frontend" {
+		t.Fatalf("added = %v", out.Added)
+	}
+	if len(out.Removed) != 0 {
+		t.Fatalf("nothing was detached, yet removed = %v", out.Removed)
+	}
+}
+
+// added/removed report what changed, not what was asked for: re-adding a tag the
+// task already carries and dropping one it never had are both no-ops, and neither
+// may be reported as a change (nor cost a write).
+func TestSetTagsReportsOnlyRealChanges(t *testing.T) {
+	project := []model.Tag{{ID: "tag-bug", Name: "type::bug"}, {ID: "tag-fe", Name: "app::frontend"}}
+	c, mux := newMux(t, tagBoard(project, []model.Tag{{ID: "tag-bug", Name: "type::bug"}}))
+
+	_, out, err := setTags(c)(context.Background(), nil, setTagsInput{
+		TaskID: "t1", Add: []string{"type::bug"}, Remove: []string{"app::frontend"},
+	})
+	if err != nil {
+		t.Fatalf("setTags: %v", err)
+	}
+	if len(out.Added) != 0 || len(out.Removed) != 0 {
+		t.Fatalf("a no-op request reported changes: added=%v removed=%v", out.Added, out.Removed)
+	}
+	for k := range mux.writes {
+		t.Fatalf("a no-op request wrote %q", k)
+	}
+}
+
 func TestSetTagsCreateMissing(t *testing.T) {
 	c, mux := newMux(t, tagBoard([]model.Tag{}, nil))
 	if _, _, err := setTags(c)(context.Background(), nil,

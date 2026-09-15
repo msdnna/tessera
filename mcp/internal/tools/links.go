@@ -16,9 +16,10 @@ import (
 func registerLinks(s *mcp.Server, c *client.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "tessera_set_tags",
-		Description: "Add and/or remove tags on a task by name. Tags are project-scoped: a name is resolved inside " +
-			"the task's project, and an unknown name is an error unless create_missing=true. Remember the board can be " +
-			"grouped by tag, so tagging moves the card.",
+		Description: "Add and/or remove tags on a task by name. Tags are project-scoped: a name in 'add' is resolved " +
+			"inside the task's project and an unknown one is an error unless create_missing=true, while a name in " +
+			"'remove' the task doesn't carry is simply skipped. The reported 'added'/'removed' are what actually " +
+			"changed, not what was asked for. Remember the board can be grouped by tag, so tagging moves the card.",
 	}, setTags(c))
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -67,31 +68,46 @@ func setTags(c *client.Client) mcp.ToolHandlerFor[setTagsInput, setTagsOut] {
 			return nil, setTagsOut{}, err
 		}
 
-		out := setTagsOut{TaskID: d.ID}
-		if len(in.Add) > 0 {
-			ids, rErr := resolveTags(ctx, c, projectID, in.Add, in.CreateMissing)
-			if rErr != nil {
-				return nil, setTagsOut{}, rErr
-			}
-			for _, id := range ids {
-				if err := c.AddTaskTag(ctx, d.ID, id); err != nil {
-					return nil, setTagsOut{}, err
-				}
-			}
-			out.Added = in.Add
+		// Both lists are resolved before anything is written. The adds used to be
+		// applied first and `remove` looked up only afterwards, so one unknown
+		// name in `remove` aborted the call *after* the adds had already landed —
+		// a refusal reported over a task whose tags had changed. Detaching is the
+		// tolerant half, so it cannot fail on a name at all: the old strict lookup
+		// answered "no tag X in this project (pass create_missing=true)" for a
+		// removal, advice that could never work — remove passes createMissing=false
+		// by construction, so the retry it invites returns the same error forever.
+		removeTags, err := matchProjectTags(ctx, c, projectID, in.Remove)
+		if err != nil {
+			return nil, setTagsOut{}, err
 		}
-		if len(in.Remove) > 0 {
-			// Removing only makes sense for tags that exist; never create here.
-			ids, rErr := resolveTags(ctx, c, projectID, in.Remove, false)
-			if rErr != nil {
-				return nil, setTagsOut{}, rErr
+		addTags, err := resolveTags(ctx, c, projectID, in.Add, in.CreateMissing)
+		if err != nil {
+			return nil, setTagsOut{}, err
+		}
+
+		// Write only the tags that actually change something, and report exactly
+		// those. Echoing the request back (as this did) claimed a removal for a tag
+		// the task never carried and an addition for one it already had — which is
+		// the distinction a caller reads the answer to make.
+		on := tagIDSet(d.Tags)
+		out := setTagsOut{TaskID: d.ID}
+		for _, tg := range addTags {
+			if on[tg.ID] {
+				continue
 			}
-			for _, id := range ids {
-				if err := c.RemoveTaskTag(ctx, d.ID, id); err != nil {
-					return nil, setTagsOut{}, err
-				}
+			if err := c.AddTaskTag(ctx, d.ID, tg.ID); err != nil {
+				return nil, setTagsOut{}, err
 			}
-			out.Removed = in.Remove
+			out.Added = append(out.Added, tg.Name)
+		}
+		for _, tg := range removeTags {
+			if !on[tg.ID] {
+				continue
+			}
+			if err := c.RemoveTaskTag(ctx, d.ID, tg.ID); err != nil {
+				return nil, setTagsOut{}, err
+			}
+			out.Removed = append(out.Removed, tg.Name)
 		}
 
 		updated, err := c.GetTask(ctx, d.ID)

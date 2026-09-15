@@ -223,9 +223,11 @@ func buildTaskSpec(ctx context.Context, c *client.Client, boardID, workspaceID s
 		if pErr != nil {
 			return spec, pErr
 		}
-		if spec.tagIDs, err = resolveTags(ctx, c, projectID, f.Tags, createMissingTags); err != nil {
-			return spec, err
+		tags, tErr := resolveTags(ctx, c, projectID, f.Tags, createMissingTags)
+		if tErr != nil {
+			return spec, tErr
 		}
+		spec.tagIDs = tagIDs(tags)
 	}
 	return spec, nil
 }
