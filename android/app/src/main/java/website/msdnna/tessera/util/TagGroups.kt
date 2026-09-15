@@ -85,10 +85,16 @@ data class TagParts(val scope: String, val label: String, val hasScope: Boolean)
 /** Canonical prefixes of GitLab label rules that map a label to a NON-tag action
  *  (status / priority / board / ignore / …). Those labels aren't user tags, so they
  *  are hidden from the ADD tag-picker (web `metaPrefixesFromRules`). Only prefix-type
- *  rules qualify — regex rules can't be reduced to a stable prefix, so their tags stay. */
+ *  rules qualify — regex rules can't be reduced to a stable prefix, so their tags stay.
+ *
+ *  Префиксность спрашивается у [GitlabRule.isPrefixMatch], а не сравнением с `"prefix"`:
+ *  правило с пустым `match_type` сервер разбирает как префиксное, и оно так и работает —
+ *  «S: Done» превращается в колонку. Строгое сравнение выбрасывало такое правило из
+ *  набора, и его мета-лейблы оставались в ADD-пикере: навесив «S: Done» руками, человек
+ *  получал тег, расходящийся с колонкой, которой тот же лейбл управляет. */
 fun metaPrefixesFromRules(rules: List<GitlabRule>): Set<String> =
     rules.asSequence()
-        .filter { it.matchType == "prefix" && it.action.isNotBlank() && it.action != "tag" }
+        .filter { it.isPrefixMatch && it.action.isNotBlank() && it.action != "tag" }
         .map { canonPrefix(it.match) }
         .filter { it.isNotEmpty() }
         .toSet()

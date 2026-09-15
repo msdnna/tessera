@@ -125,6 +125,20 @@ class TagGroupsTest {
         assertThat(metaPrefixesFromRules(emptyList())).isEmpty()
     }
 
+    @Test
+    fun `metaPrefixesFromRules treats a blank match_type as prefix`() {
+        // Поле приходит без omitempty: правило, записанное в JSONB без типа,
+        // доезжает пустой строкой. Сервер такое правило разбирает как префиксное
+        // (всё, что не "regex"), значит «S: Done» реально управляет колонкой — и
+        // его нельзя оставлять в ADD-пикере тегов.
+        val rules = listOf(
+            GitlabRule(match = "S:", matchType = "", action = "status"),
+            GitlabRule(match = "T:", matchType = "", action = "tag"), // tag → excluded
+            GitlabRule(match = "P.*", matchType = "regex", action = "priority"), // regex → excluded
+        )
+        assertThat(metaPrefixesFromRules(rules)).containsExactly("s:")
+    }
+
     // ── buildTagGroups ───────────────────────────────────────────────────────
     @Test
     fun `buildTagGroups sorts groups by label with ungrouped last`() {
