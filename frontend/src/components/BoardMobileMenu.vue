@@ -94,7 +94,15 @@ function onChanged() {
 
   <n-modal v-model:show="tagsOpen">
     <n-card :title="t('board.actions.tags')" style="max-width: 360px" role="dialog">
-      <TagManager :project-id="store.projectId" :tags="store.tagsList" @changed="onChanged" />
+      <!-- prefix-names is not decoration: TagManager merges the prefix-label editor
+           over it, and the endpoint is a full replace — without it a save wipes the
+           project's labels (same props as the desktop BoardActions popover). -->
+      <TagManager
+        :project-id="store.projectId"
+        :tags="store.tagsList"
+        :prefix-names="store.prefixNames"
+        @changed="onChanged"
+      />
     </n-card>
   </n-modal>
 </template>
