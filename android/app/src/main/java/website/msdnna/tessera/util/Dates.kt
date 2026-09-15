@@ -401,13 +401,21 @@ fun localDateTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = Date
 }
 
 /**
- * Just the time of day, in the user's `time_format` preset.
+ * Just the time of day, in the user's calendar and `time_format` preset.
  *
  * Without the date on purpose: the caller is the in-call chat, where every line
  * was said during the same meeting and the date would repeat on all of them.
+ *
+ * Часы читаются в [DateFormatPrefs.zone], как и у соседнего [localDateTimeLabel]:
+ * «local» во всём этом разделе — календарь профиля, а не зона телефона. Пока
+ * здесь стоял безаргументный `Calendar.getInstance()`, у человека с разошедшимся
+ * префом (поездка, зона выставлена руками) одно и то же событие было подписано
+ * двумя разными часами на соседних экранах: строка чата в звонке — зоной
+ * устройства, а лобби и список тех же конференций — зоной профиля. Веб таким не
+ * болеет — его чат идёт через общий `formatDateTime`.
  */
 fun localTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     val millis = parseInstantMillis(iso) ?: return ""
-    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val cal = Calendar.getInstance(fmt.zone).apply { timeInMillis = millis }
     return clock(res, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), fmt)
 }

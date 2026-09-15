@@ -485,6 +485,31 @@ class DatesTest {
             .isEqualTo("14 сен. 2026 г.")
     }
 
+    /**
+     * Часы строки чата в звонке — тот же календарь, что и у полной подписи.
+     *
+     * [localTimeLabel] читал момент безаргументным `Calendar.getInstance()`, то
+     * есть зоной устройства, хотя `fmt` ему передавали (ради 12/24 часов), а его
+     * сосед [localDateTimeLabel] — и лобби, и список тех же конференций — идёт
+     * зоной профиля. У человека с разошедшимся префом одно событие было подписано
+     * двумя разными часами на соседних экранах.
+     */
+    @Test
+    fun `localTimeLabel reads the clock in the profile zone`() {
+        val saved = TimeZone.getDefault()
+        try {
+            // Зона устройства заведомо не равна ни одной из проверяемых.
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
+            assertThat(localTimeLabel(ru, lateEvening, utc)).isEqualTo("22:00")
+            assertThat(localTimeLabel(ru, lateEvening, DateFormatPrefs(zoneId = "Europe/Moscow")))
+                .isEqualTo("01:00")
+            // И тот же час, что показывает полная подпись: разъехаться им нечем.
+            assertThat(localDateTimeLabel(ru, lateEvening, msk)).endsWith("01:00")
+        } finally {
+            TimeZone.setDefault(saved)
+        }
+    }
+
     /** Дата-только значение (UTC-полночь) зоне профиля не подчиняется — это день, а не момент. */
     @Test
     fun `a date-only due keeps its UTC day in every zone`() {
