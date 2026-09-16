@@ -37,11 +37,14 @@ const IGNORED = new Set([
   'project.moved',
   'project.estimation', // see workspace.estimation above
   'board.created',
-  'board.deleted',
   // Handled by their own branch in the board's event handler, and neither needs
   // the board itself re-fetched.
   'workspace_commands.updated',
   'gitlab.conflict',
+  // This board being deleted is not something a re-fetch can answer — there is
+  // nothing left to fetch. The board's own branch compares the id and leaves for
+  // Home; every other board's deletion really is none of our business (#2932).
+  'board.deleted',
   // A link between two tasks changed. No card carries a relation (the board rows
   // have no such field), so a task-list re-fetch would buy nothing; the only
   // consumer is the Gantt's edge list, which the board pokes by its own branch
@@ -106,6 +109,18 @@ export function partialKinds(kind) {
 export function relationTouchesBoard(ev, boardId) {
   if (ev?.type !== 'task.relation' || !boardId) return false
   return ev?.data?.board_id === boardId || ev?.data?.related_board_id === boardId
+}
+
+// Is this event the open board's own retirement?
+//
+// `board.deleted` carries a bare `{id}`, and the board it names is usually not
+// ours — the event is workspace-scoped, so every board in the workspace hears
+// about every other. Only the match matters, and when it matches there is
+// nothing to re-fetch: the server took the columns, the cards and their uploads
+// with it (#2932).
+export function boardGone(ev, boardId) {
+  if (ev?.type !== 'board.deleted' || !boardId) return false
+  return ev?.data?.id === boardId
 }
 
 // A full task payload (as opposed to `{id}` / `{task_id}`) is recognised by the

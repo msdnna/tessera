@@ -342,6 +342,73 @@ describe('workspaces store', () => {
     expect(s.commands.map((c) => c.key)).toEqual(['close', 'hold'])
   })
 
+  // #2932: board.created/updated/deleted are workspace events, but the sidebar
+  // tree used to hear none of them — refresh() deliberately leaves expanded
+  // boards alone, and the open board ignores board CRUD. So only the client that
+  // pressed the button ever re-read boardsByProject: a colleague's new board
+  // stayed invisible, their rename stayed stale, and a board they deleted kept
+  // sitting in everybody's sidebar, handing out «Не найдено» to whoever clicked.
+  describe('onBoardEvent keeps the sidebar tree in sync with other clients', () => {
+    const loaded = () => {
+      const s = useWorkspacesStore()
+      s.boardsByProject = {
+        p1: [
+          { id: 'b1', project_id: 'p1', name: 'Спринт', position: 1 },
+          { id: 'b3', project_id: 'p1', name: 'Хотелки', position: 3 },
+        ],
+        p2: [{ id: 'b9', project_id: 'p2', name: 'Чужая', position: 1 }],
+      }
+      return s
+    }
+
+    it('вставляет созданную доску на её место по position', () => {
+      const s = loaded()
+      s.onBoardEvent({
+        type: 'board.created',
+        data: { id: 'b2', project_id: 'p1', name: 'Багфиксы', position: 2 },
+      })
+      expect(s.boardsByProject.p1.map((b) => b.id)).toEqual(['b1', 'b2', 'b3'])
+    })
+
+    it('не дублирует доску, которую создавший уже подгрузил сам', () => {
+      const s = loaded()
+      s.onBoardEvent({ type: 'board.created', data: { id: 'b1', project_id: 'p1', position: 1 } })
+      expect(s.boardsByProject.p1).toHaveLength(2)
+    })
+
+    it('не трогает проект, чьи доски ещё не раскрыты — он подтянет правду сам', () => {
+      const s = loaded()
+      s.onBoardEvent({ type: 'board.created', data: { id: 'b7', project_id: 'p7', position: 1 } })
+      expect(s.boardsByProject.p7).toBeUndefined()
+    })
+
+    it('подхватывает чужое переименование', () => {
+      const s = loaded()
+      s.onBoardEvent({ type: 'board.updated', data: { id: 'b1', project_id: 'p1', name: 'Релиз' } })
+      expect(s.boardsByProject.p1[0].name).toBe('Релиз')
+      // Переименование не переставляет доски.
+      expect(s.boardsByProject.p1.map((b) => b.id)).toEqual(['b1', 'b3'])
+    })
+
+    // board.deleted несёт голый {id} — без project_id, так что доску приходится
+    // искать по всем загруженным спискам.
+    it('убирает удалённую доску, хотя событие не называет проект', () => {
+      const s = loaded()
+      s.onBoardEvent({ type: 'board.deleted', data: { id: 'b3' } })
+      expect(s.boardsByProject.p1.map((b) => b.id)).toEqual(['b1'])
+      expect(s.boardsByProject.p2).toHaveLength(1)
+    })
+
+    it('событие о незагруженной доске ничего не ломает', () => {
+      const s = loaded()
+      const before = s.boardsByProject
+      s.onBoardEvent({ type: 'board.deleted', data: { id: 'b404' } })
+      s.onBoardEvent({ type: 'board.deleted', data: {} })
+      s.onBoardEvent({ type: 'task.deleted', data: { id: 'b1' } })
+      expect(s.boardsByProject).toBe(before)
+    })
+  })
+
   // #2932: a ring in the group edges breaks the sidebar in two ways, and the
   // tree is built from parent_id in both. Drawing starts at the root, so a ring
   // is unreachable from it: the groups in it — and every project inside them —

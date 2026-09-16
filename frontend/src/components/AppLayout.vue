@@ -92,6 +92,10 @@ useRealtime(
     conflicts.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
+    // Boards created/renamed/deleted elsewhere in this workspace → keep the
+    // sidebar tree honest. Here at the layout rather than in the sidebar: the
+    // tree is a store, and ProjectRow only mounts for an expanded project.
+    if (ev.scope === ws.currentId) ws.onBoardEvent(ev)
     // The estimation config is resolved from the store by the board, the task
     // modal, the charts and the «Этапы» screen alike, so it is patched here at
     // the layout rather than in any one of them.

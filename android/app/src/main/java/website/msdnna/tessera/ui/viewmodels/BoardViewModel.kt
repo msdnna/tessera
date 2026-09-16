@@ -26,6 +26,8 @@ import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
+import website.msdnna.tessera.data.realtime.boardGone
+import website.msdnna.tessera.data.realtime.projectGone
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.BoardFilter
@@ -477,10 +479,10 @@ class BoardViewModel(
         if (ev.scope != workspaceId) return
         // This board's project was deleted or transferred away elsewhere → its board
         // is gone; signal the host to leave for Home (web project.deleted handler).
-        if (ev.type == "project.deleted" &&
-            projectId.isNotBlank() &&
-            ev.data?.get("id")?.asString == projectId
-        ) {
+        // Same one level down: the board itself retired, and nothing is left to
+        // reload — the server took its columns, cards and uploads with it, so leave
+        // before the reload below starts 404-ing (#2932).
+        if (projectGone(ev, projectId) || boardGone(ev, boardId)) {
             _gone.value = true
             return
         }
@@ -496,7 +498,14 @@ class BoardViewModel(
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
             delay(REALTIME_DEBOUNCE_MS)
-            if (!dragging) silentReload()
+            // Guarded: silentReload() goes to the network on somebody else's action,
+            // and its list calls are bare (no runCatching of their own). An
+            // unguarded throw here — a board or project pulled out from under us, a
+            // blinked connection, a 5xx — escapes viewModelScope and kills the app,
+            // on an event the reader never asked for. Staying silent is the point of
+            // this path: the screen keeps the copy it has, and the next event (or a
+            // pull-to-refresh) brings it up to date.
+            if (!dragging) runCatching { silentReload() }
         }
     }
 

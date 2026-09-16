@@ -6,6 +6,7 @@ import {
   mergeTaskRow,
   applyTaskPatch,
   applySubtaskPatch,
+  boardGone,
 } from '@/utils/boardEvents'
 
 const BOARD = 'b1'
@@ -99,6 +100,22 @@ describe('classifyEvent — таблица маршрутизации', () => {
     expect(kinds).toContain('columns')
     expect(kinds).toContain('tasks')
     expect(kinds).toContain('board')
+  })
+
+  // Удаление ОТКРЫТОЙ доски: сервер уносит её колонки, карточки и вложения и
+  // шлёт голое board.deleted {id}. Перечитывать нечего — доски больше нет, — так
+  // что событие остаётся 'ignore', а распознаёт его отдельный предикат: без него
+  // читатель (и сам удаливший — сайдбар после удаления никуда не уводит)
+  // продолжает таскать карточки, которых уже нет, и каждый вызов идёт в 404. #2932
+  it('удаление доски не перечитывается, а распознаётся предикатом', () => {
+    expect(ev('board.deleted', { id: BOARD })).toBe('ignore')
+    expect(boardGone({ type: 'board.deleted', data: { id: BOARD } }, BOARD)).toBe(true)
+    // Чужая доска того же пространства — не наше дело.
+    expect(boardGone({ type: 'board.deleted', data: { id: 'b2' } }, BOARD)).toBe(false)
+    // Ни другое событие про ту же доску, ни пустой id не считаются уходом.
+    expect(boardGone({ type: 'board.updated', data: { id: BOARD } }, BOARD)).toBe(false)
+    expect(boardGone({ type: 'board.deleted', data: {} }, BOARD)).toBe(false)
+    expect(boardGone({ type: 'board.deleted', data: { id: BOARD } }, null)).toBe(false)
   })
 
   it('обычные классификации остаются одним запросом', () => {

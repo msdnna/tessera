@@ -70,6 +70,7 @@ import {
   applyTaskPatch,
   applySubtaskPatch,
   relationTouchesBoard,
+  boardGone,
 } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
@@ -1336,6 +1337,18 @@ useRealtime((ev) => {
   // (the resolver lives in the GitLab modal's «Конфликты» entry).
   if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
     message.warning(t('board.toast.gitlabConflict'))
+  }
+  // The open board was retired. DeleteBoard takes its columns, cards and uploads
+  // with it and announces a bare `board.deleted`, so there is nothing left to
+  // re-fetch: leave for Home, the way onProjectGone does one level up. Above the
+  // drag/suppress guard on purpose — this must not be swallowed by a drag in
+  // flight, and it fires for the deleter too: the sidebar's «Удалить» doesn't
+  // navigate, so whoever pressed it was left standing on a dead board where every
+  // card drag and every new task 404s (#2932).
+  if (boardGone(ev, props.boardId)) {
+    message.info(t('board.toast.boardGone'))
+    router.push('/')
+    return
   }
   // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()

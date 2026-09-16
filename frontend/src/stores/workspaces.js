@@ -136,6 +136,50 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     }
   }
 
+  // Apply somebody else's board CRUD to the sidebar tree (#2932).
+  //
+  // `board.created` / `board.updated` / `board.deleted` are workspace-scoped
+  // events, but until now only the client that pressed the button ever re-read
+  // `boardsByProject`: `refresh()` deliberately leaves expanded boards alone, and
+  // the open board ignores board.* CRUD (utils/boardEvents.js). So a board a
+  // colleague added stayed invisible, their rename stayed stale, and — worst —
+  // a board they deleted kept sitting in everybody's sidebar, handing out a
+  // «Не найдено» to whoever clicked it.
+  //
+  // Only lists already loaded are touched: a project nobody expanded yet will
+  // fetch the current truth on its first expand anyway.
+  function onBoardEvent(ev) {
+    const data = ev?.data
+    if (!data?.id) return
+    if (ev.type === 'board.updated') {
+      upsertBoard(data)
+    } else if (ev.type === 'board.created') {
+      addBoard(data)
+    } else if (ev.type === 'board.deleted') {
+      dropBoard(data.id)
+    }
+  }
+
+  // Insert a board a colleague just created, keeping the list in the order the
+  // server lists it in (by position). Ignores a board we somehow already hold —
+  // the creator's own loadBoards can land first.
+  function addBoard(board) {
+    const list = boardsByProject.value[board.project_id]
+    if (!list || list.some((b) => b.id === board.id)) return
+    const next = [...list, board].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+    boardsByProject.value = { ...boardsByProject.value, [board.project_id]: next }
+  }
+
+  // Drop a deleted board. `board.deleted` carries a bare id — no project — so the
+  // board is looked up across the loaded lists.
+  function dropBoard(id) {
+    const entries = Object.entries(boardsByProject.value)
+    if (!entries.some(([, list]) => list.some((b) => b.id === id))) return
+    boardsByProject.value = Object.fromEntries(
+      entries.map(([pid, list]) => [pid, list.filter((b) => b.id !== id)]),
+    )
+  }
+
   // tree helpers (groups/projects are flat; build the tree by parent_id/group_id)
   //
   // effectiveParent is the parent_id the tree is actually drawn from: an edge
@@ -250,6 +294,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     loadCommands,
     setCustomCommands,
     upsertBoard,
+    onBoardEvent,
     loadWorkspaces,
     selectWorkspace,
     ensureWorkspace,
