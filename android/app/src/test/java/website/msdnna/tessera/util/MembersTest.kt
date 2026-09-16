@@ -82,4 +82,24 @@ class MembersTest {
             assertThat(canRemoveMember(m, "u-admin", true)).isEqualTo(lock == MemberLock.NONE)
         }
     }
+
+    @Test
+    fun `срок приглашения решает, живая строка или мёртвая`() {
+        // Граница взята у веба (`until.getTime() <= Date.now()`), а не у сервера:
+        // тот отвергает токен строго ПОСЛЕ `expires_at`, но расхождение в один
+        // тик подписи не касается, а совпасть с соседним клиентом она обязана.
+        val now = 1_760_000_000_000L
+        assertThat(inviteExpired(millisToUtcIso(now - 60_000), now)).isTrue()
+        assertThat(inviteExpired(millisToUtcIso(now), now)).isTrue()
+        assertThat(inviteExpired(millisToUtcIso(now + 60_000), now)).isFalse()
+    }
+
+    @Test
+    fun `нечитаемый срок не объявляют истёкшим`() {
+        // Пустая и битая строка дают «не истекло» — подпись тогда не рисуется
+        // вовсе. Иначе одно только отсутствие даты гасило бы живое приглашение.
+        assertThat(inviteExpired(null)).isFalse()
+        assertThat(inviteExpired("")).isFalse()
+        assertThat(inviteExpired("2026-09-23")).isFalse()
+    }
 }

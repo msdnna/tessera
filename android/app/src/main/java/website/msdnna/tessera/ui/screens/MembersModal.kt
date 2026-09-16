@@ -24,10 +24,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -52,15 +54,19 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.MembersUiState
 import website.msdnna.tessera.ui.viewmodels.MembersViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.MemberBadge
 import website.msdnna.tessera.util.MemberLock
+import website.msdnna.tessera.util.inviteExpired
+import website.msdnna.tessera.util.localDateLabel
 import website.msdnna.tessera.util.memberRowBadge
 import website.msdnna.tessera.util.memberRowLock
 
@@ -178,15 +184,40 @@ private fun MembersManagement(
             Text(stringResource(R.string.members_invitations), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
             Spacer(Modifier.height(4.dp))
             state.invitations.forEach { inv ->
+                // Срок приглашения: протухшая строка гаснет и подписана «Истекло»,
+                // живая — датой, до которой ссылку ещё примут (#2932, зеркало веба).
+                val expired = inviteExpired(inv.expiresAt)
+                val until = if (expired) "" else localDateLabel(LocalResources.current, inv.expiresAt, LocalDateFormat.current)
+                // Мёртвой строке место в списке — отозвать её больше негде, — но
+                // читаться как «ждём ответа» она не должна: гасим, как веб (0.6).
+                val dim = if (expired) Modifier.alpha(0.6f) else Modifier
                 Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    IonIcon(Ion.LINK, size = 16.dp, tint = c.text3)
+                    Box(dim) { IonIcon(Ion.LINK, size = 16.dp, tint = c.text3) }
                     Spacer(Modifier.width(8.dp))
-                    Text(inv.email, color = c.text2, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text(
+                        inv.email,
+                        color = c.text2,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f).then(dim),
+                    )
                     Text(
                         stringResource(if (inv.role == "admin") R.string.members_role_admin else R.string.members_role_member),
                         color = c.text3,
                         fontSize = 11.sp,
                     )
+                    if (expired || until.isNotEmpty()) {
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            if (expired) {
+                                stringResource(R.string.members_invite_expired)
+                            } else {
+                                stringResource(R.string.members_invite_until, until)
+                            },
+                            color = if (expired) TesseraDanger else c.text3,
+                            fontSize = 11.sp,
+                        )
+                    }
                     Spacer(Modifier.width(6.dp))
                     IonIconButton(Ion.TRASH, onClick = { onRevokeInvite(inv.id) }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
                 }

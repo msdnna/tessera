@@ -109,3 +109,23 @@ fun canChangeMemberRole(member: Member?, meId: String = "", canManage: Boolean =
 /** Whether this row should offer the remove button. */
 fun canRemoveMember(member: Member?, meId: String = "", canManage: Boolean = true): Boolean =
     memberRowLock(member, meId, canManage) == MemberLock.NONE
+
+/**
+ * Whether a pending invitation has already run out of time (#2932).
+ *
+ * `ListInvitations` drops only the accepted ones, so an invitation stays in the
+ * response for good once written, while every path that redeems one refuses it
+ * past `expires_at` — a week after it was issued (`invitationTTL`). Unmarked,
+ * such a row tells the manager «приглашён, ещё не принял» about a link that
+ * answers «invalid or expired invitation». There is no unique key on
+ * (workspace, email) either, so re-invites pile up as rows that look the same
+ * and only the newest of them works; the date is what tells them apart.
+ *
+ * An unparseable or missing timestamp counts as *not* expired, exactly as on the
+ * web: the row then carries no date at all, and «Истекло» is a claim worth
+ * making only when there is something to read it from.
+ */
+fun inviteExpired(expiresAt: String?, nowMillis: Long = System.currentTimeMillis()): Boolean {
+    val until = parseInstantMillis(expiresAt) ?: return false
+    return until <= nowMillis
+}

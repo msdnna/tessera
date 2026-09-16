@@ -1110,6 +1110,8 @@
     <!-- Workspace members -->
     <string name="members_title">Members</string>
     <string name="members_invitations">Invitations</string>
+    <string name="members_invite_expired">Expired</string>
+    <string name="members_invite_until">until %1$s</string>
     <string name="members_invite_title">Invite by email</string>
     <string name="members_invite_action">Invite</string>
     <string name="members_invite_hint">An existing account is added right away; a new one gets an invite link.</string>

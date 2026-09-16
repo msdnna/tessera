@@ -401,6 +401,28 @@ fun localDateTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = Date
 }
 
 /**
+ * Just the day of an instant, in the user's calendar and `date_format` preset —
+ * the app's [formatDate][localDateTimeLabel] without the clock.
+ *
+ * For values whose hour carries no meaning to the reader: an invitation expires
+ * at whatever minute it was issued a week earlier, and «до 23.09.2026» is the
+ * whole of what a manager needs from it. Веб подписывает такие сроки тем же
+ * `formatDate`, то есть датой в зоне профиля, — [longDate] здесь не годится: она
+ * режет сырую строку и на восточной зоне назвала бы вчерашний день.
+ */
+fun localDateLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
+    val millis = parseInstantMillis(iso) ?: return ""
+    val cal = Calendar.getInstance(fmt.zone).apply { timeInMillis = millis }
+    return presetDate(
+        res,
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH),
+        fmt.datePreset,
+    )
+}
+
+/**
  * Just the time of day, in the user's calendar and `time_format` preset.
  *
  * Without the date on purpose: the caller is the in-call chat, where every line

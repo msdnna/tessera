@@ -391,6 +391,31 @@ class DatesTest {
             .matches("""\d+ \S+ 2026, \d{2}:\d{2}""")
     }
 
+    // ── localDateLabel (#2932) ───────────────────────────────────────────────
+    @Test
+    fun `localDateLabel — день инстанта в зоне профиля, без часов`() {
+        // Тот же момент, прочитанный двумя зонами, даёт РАЗНЫЕ дни: срок
+        // приглашения, истекающий 15 июня в 23:30 UTC, у владивостокского
+        // профиля наступает уже 16-го. Ради этого функция и парсит инстант,
+        // вместо того чтобы, как longDate, резать сырую строку.
+        val iso = "2026-06-15T23:30:00Z"
+        val utc = DateFormatPrefs(datePreset = DatePresets.SHORT, zoneId = "UTC")
+        val vlad = DateFormatPrefs(datePreset = DatePresets.SHORT, zoneId = "Asia/Vladivostok")
+        assertThat(localDateLabel(ru, iso, utc)).isEqualTo("15.06.2026")
+        assertThat(localDateLabel(ru, iso, vlad)).isEqualTo("16.06.2026")
+        // Часов в подписи нет ни в одной локали — этим она и отличается от соседа.
+        assertThat(localDateLabel(en, iso, DateFormatPrefs(datePreset = DatePresets.MEDIUM, zoneId = "UTC")))
+            .isEqualTo("15 Jun 2026")
+    }
+
+    @Test
+    fun `localDateLabel пуст для нечитаемого`() {
+        assertThat(localDateLabel(ru, null)).isEmpty()
+        assertThat(localDateLabel(ru, "bad")).isEmpty()
+        // Голая дата — не инстант: подписывать её этой функцией не просят.
+        assertThat(localDateLabel(ru, "2026-06-15")).isEmpty()
+    }
+
     // ── пресеты даты и 12-часовое время (#2857) ───────────────────────────────
     @Test
     fun `longDate renders every date preset`() {

@@ -1137,6 +1137,8 @@
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>
     <string name="members_invitations">Приглашения</string>
+    <string name="members_invite_expired">Истекло</string>
+    <string name="members_invite_until">до %1$s</string>
     <string name="members_invite_title">Пригласить по email</string>
     <string name="members_invite_action">Пригласить</string>
     <string name="members_invite_hint">Зарегистрированного добавим сразу; нового — приглашение по ссылке.</string>
