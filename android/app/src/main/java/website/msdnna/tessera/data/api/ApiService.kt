@@ -89,6 +89,11 @@ interface ApiService {
     @POST("auth/refresh")
     suspend fun refresh(@Body body: RefreshRequest): AuthResponse
 
+    /** Revokes the presented refresh token. Public and idempotent: an unknown or
+     *  already-dead token is still a successful logout (backend Logout). */
+    @POST("auth/logout")
+    suspend fun logout(@Body body: RefreshRequest)
+
     @GET("auth/me")
     suspend fun me(): MeResponse
 

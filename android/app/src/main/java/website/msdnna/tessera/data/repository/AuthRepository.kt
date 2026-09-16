@@ -6,6 +6,7 @@ import website.msdnna.tessera.data.model.AuthProviders
 import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.LoginRequest
 import website.msdnna.tessera.data.model.Preferences
+import website.msdnna.tessera.data.model.RefreshRequest
 import website.msdnna.tessera.data.model.RegisterRequest
 import website.msdnna.tessera.data.model.User
 
@@ -52,10 +53,32 @@ class AuthRepository {
         return user
     }
 
-    suspend fun logout() {
+    /**
+     * Drops every local trace of the session. Kept separate from [logout] because
+     * the expiry paths reach here with a token the server has already refused —
+     * a revoke call would say nothing and only delay the login screen behind a
+     * round-trip (mirrors the web `clearSession`).
+     */
+    suspend fun clearSession() {
         RetrofitClient.authToken = ""
         RetrofitClient.refreshToken = ""
         prefs.clearSession()
+    }
+
+    /**
+     * Signs out on purpose: the refresh token is revoked on the server first,
+     * then the local session goes. Without the revoke the row stays tradable for
+     * its full 30-day TTL — rotation renews it — so "Выйти" ended the session on
+     * this screen only, and a copy of the token taken off the device outlived it
+     * by a month. Best-effort: offline must not leave anyone stuck signed in, and
+     * the endpoint is idempotent, so a lost response costs nothing.
+     */
+    suspend fun logout() {
+        val refresh = RetrofitClient.refreshToken
+        if (refresh.isNotBlank()) {
+            runCatching { AppContainer.api().logout(RefreshRequest(refresh)) }
+        }
+        clearSession()
     }
 
     /** Adopts a freshly issued session. Not private because a password change

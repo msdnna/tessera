@@ -234,7 +234,8 @@ fun AppRoot(
             scope.launch { prefs.setTokens(access, refresh) }
         }
         RetrofitClient.onUnauthorized = {
-            scope.launch { authRepo.logout() }
+            // Refresh has already been refused — there is nothing left to revoke.
+            scope.launch { authRepo.clearSession() }
         }
         onDispose {
             RetrofitClient.onTokensRefreshed = null
@@ -274,7 +275,9 @@ fun AppRoot(
                         // is kept, so it comes up pre-filled to edit (#2920).
                         secondaryLabel = stringResource(R.string.gate_change_server),
                         onSecondary = {
-                            scope.launch { authRepo.logout() }
+                            // This gate is up because the server won't answer, so
+                            // there is nobody to revoke against — drop it locally.
+                            scope.launch { authRepo.clearSession() }
                             boot = Boot.Done
                         },
                     )
@@ -284,7 +287,8 @@ fun AppRoot(
                         message = stringResource(R.string.gate_session_message),
                         primaryLabel = stringResource(R.string.gate_session_relogin),
                         onPrimary = {
-                            scope.launch { authRepo.logout() }
+                            // The stored session is what the server just rejected.
+                            scope.launch { authRepo.clearSession() }
                             boot = Boot.Done
                         },
                         secondaryLabel = stringResource(R.string.gate_exit),
