@@ -551,7 +551,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
 		return
 	}
-	prev, next, ok := h.neighborColumnPositions(c, req.BeforeID, req.AfterID)
+	prev, next, ok := h.neighborColumnPositions(c, col.BoardID, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
@@ -562,7 +562,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 			})
 		},
 		func() (*float64, *float64, bool) {
-			return h.neighborColumnPositions(c, req.BeforeID, req.AfterID)
+			return h.neighborColumnPositions(c, col.BoardID, req.BeforeID, req.AfterID)
 		})
 	if !ok {
 		return
@@ -624,11 +624,21 @@ func (h *API) DeleteColumn(c *gin.Context) {
 
 // neighborColumnPositions resolves the positions of the before/after columns.
 // Returns (nil, nil) bounds when an id is absent; writes 400 and returns ok=false
-// if a referenced column can't be loaded.
-func (h *API) neighborColumnPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
+// if a referenced column can't be loaded or doesn't stand on [boardID].
+//
+// The board check is the point, not a formality: every board numbers its columns
+// on its OWN float8 ladder, so a neighbour from another board contributes a
+// position that means nothing here — the moved column would land at an arbitrary
+// end of its own row. A neighbour id is client-supplied and can go stale (a drag
+// deliberately freezes the board, so a colleague's edits arrive only after the
+// drop), and `GetColumn` takes a bare id: without this, the id also answers
+// "does this column exist?" for workspaces the caller isn't a member of. Same
+// 400 either way, so the reply tells the two cases apart no better than the
+// honest one did (#2932).
+func (h *API) neighborColumnPositions(c *gin.Context, boardID uuid.UUID, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
 	if beforeID != nil {
 		col, err := h.q.GetColumn(c, *beforeID)
-		if err != nil {
+		if err != nil || col.BoardID != boardID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid before_id"})
 			return nil, nil, false
 		}
@@ -636,7 +646,7 @@ func (h *API) neighborColumnPositions(c *gin.Context, beforeID, afterID *uuid.UU
 	}
 	if afterID != nil {
 		col, err := h.q.GetColumn(c, *afterID)
-		if err != nil {
+		if err != nil || col.BoardID != boardID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid after_id"})
 			return nil, nil, false
 		}

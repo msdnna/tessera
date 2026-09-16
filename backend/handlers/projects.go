@@ -188,7 +188,7 @@ func (h *API) MoveProjectGroup(c *gin.Context) {
 	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
 		return
 	}
-	prev, next, ok := h.neighborGroupPositions(c, req.BeforeID, req.AfterID)
+	prev, next, ok := h.neighborGroupPositions(c, g.WorkspaceID, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
@@ -199,7 +199,7 @@ func (h *API) MoveProjectGroup(c *gin.Context) {
 			})
 		},
 		func() (*float64, *float64, bool) {
-			return h.neighborGroupPositions(c, req.BeforeID, req.AfterID)
+			return h.neighborGroupPositions(c, g.WorkspaceID, req.BeforeID, req.AfterID)
 		})
 	if !ok {
 		return
@@ -421,7 +421,7 @@ func (h *API) MoveProject(c *gin.Context) {
 	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
 		return
 	}
-	prev, next, ok := h.neighborProjectPositions(c, req.BeforeID, req.AfterID)
+	prev, next, ok := h.neighborProjectPositions(c, p.WorkspaceID, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
@@ -432,7 +432,7 @@ func (h *API) MoveProject(c *gin.Context) {
 			})
 		},
 		func() (*float64, *float64, bool) {
-			return h.neighborProjectPositions(c, req.BeforeID, req.AfterID)
+			return h.neighborProjectPositions(c, p.WorkspaceID, req.BeforeID, req.AfterID)
 		})
 	if !ok {
 		return
@@ -768,10 +768,19 @@ func (h *API) projectInWorkspace(c *gin.Context, projectID, wsID uuid.UUID) bool
 	return true
 }
 
-func (h *API) neighborGroupPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
+// neighborGroupPositions / neighborProjectPositions resolve the before/after
+// bounds of a sidebar reorder. The neighbour must live in the SAME workspace as
+// the item being moved — that is the scope its ladder is numbered on
+// (RebalanceProjectGroupPositions / RebalanceProjectPositions respace per
+// workspace), so a neighbour from another one contributes a position that says
+// nothing about where the drop should land, and the item ends up at an arbitrary
+// end of the sidebar. `GetProjectGroup`/`GetProject` take a bare id, so without
+// the check the reply also answers "does this id exist?" for a workspace the
+// caller isn't a member of — same 400 now, whichever it was (#2932).
+func (h *API) neighborGroupPositions(c *gin.Context, wsID uuid.UUID, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
 	if beforeID != nil {
 		g, err := h.q.GetProjectGroup(c, *beforeID)
-		if err != nil {
+		if err != nil || g.WorkspaceID != wsID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid before_id"})
 			return nil, nil, false
 		}
@@ -779,7 +788,7 @@ func (h *API) neighborGroupPositions(c *gin.Context, beforeID, afterID *uuid.UUI
 	}
 	if afterID != nil {
 		g, err := h.q.GetProjectGroup(c, *afterID)
-		if err != nil {
+		if err != nil || g.WorkspaceID != wsID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid after_id"})
 			return nil, nil, false
 		}
@@ -788,10 +797,10 @@ func (h *API) neighborGroupPositions(c *gin.Context, beforeID, afterID *uuid.UUI
 	return prev, next, true
 }
 
-func (h *API) neighborProjectPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
+func (h *API) neighborProjectPositions(c *gin.Context, wsID uuid.UUID, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
 	if beforeID != nil {
 		p, err := h.q.GetProject(c, *beforeID)
-		if err != nil {
+		if err != nil || p.WorkspaceID != wsID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid before_id"})
 			return nil, nil, false
 		}
@@ -799,7 +808,7 @@ func (h *API) neighborProjectPositions(c *gin.Context, beforeID, afterID *uuid.U
 	}
 	if afterID != nil {
 		p, err := h.q.GetProject(c, *afterID)
-		if err != nil {
+		if err != nil || p.WorkspaceID != wsID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid after_id"})
 			return nil, nil, false
 		}

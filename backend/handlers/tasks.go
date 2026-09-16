@@ -486,7 +486,7 @@ func (h *API) MoveTask(c *gin.Context) {
 	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
 		return
 	}
-	prev, next, ok := h.neighborTaskPositions(c, req.BeforeID, req.AfterID)
+	prev, next, ok := h.neighborTaskPositions(c, t, req.ColumnID, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
@@ -840,11 +840,37 @@ func (h *API) nextTaskPosition(c *gin.Context, columnID uuid.UUID, parentID *uui
 	return positionBetween(&maxPos, nil), nil
 }
 
-// neighborTaskPositions resolves the positions of the before/after tasks.
-func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
+// sameList reports whether [n] is a sibling of the card being dropped — i.e. it
+// belongs to the list the drop lands in, so its position is on the same ladder as
+// the one being computed. A subtask orders itself among its parent's children, a
+// top-level card among the top-level cards of the destination column.
+func sameList(n, moved db.Task, columnID uuid.UUID) bool {
+	if moved.ParentID != nil {
+		return n.ParentID != nil && *n.ParentID == *moved.ParentID
+	}
+	return n.ParentID == nil && n.ColumnID == columnID
+}
+
+// neighborTaskPositions resolves the positions of the before/after tasks. Both
+// must be siblings of [moved] at the destination (see sameList); anything else is
+// rejected with the same 400 an unknown id gets.
+//
+// Positions are per-list float8 ladders — a column's cards are numbered with no
+// regard for any other column — so a neighbour from elsewhere hands the midpoint
+// arithmetic a number that means nothing in the destination, and the card lands
+// at an arbitrary slot with no error anywhere. The ids come from the client and
+// really do go stale: both clients deliberately freeze the board for the duration
+// of a drag (web `suppress()`, Android `dragging`), so a colleague moving the
+// card you are aiming next to reaches you only after the drop. Deleted neighbours
+// were always answered honestly (GetTask fails → 400 → the board reloads); a
+// neighbour that merely moved away was the silent case.
+//
+// It also stops a bare id from reporting whether a task exists in a workspace the
+// caller has no membership in — GetTask is scoped by nothing but the id (#2932).
+func (h *API) neighborTaskPositions(c *gin.Context, moved db.Task, columnID uuid.UUID, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
 	if beforeID != nil {
 		t, err := h.q.GetTask(c, *beforeID)
-		if err != nil {
+		if err != nil || !sameList(t, moved, columnID) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid before_id"})
 			return nil, nil, false
 		}
@@ -852,7 +878,7 @@ func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID
 	}
 	if afterID != nil {
 		t, err := h.q.GetTask(c, *afterID)
-		if err != nil {
+		if err != nil || !sameList(t, moved, columnID) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid after_id"})
 			return nil, nil, false
 		}
@@ -887,7 +913,7 @@ func (h *API) positionForDrop(c *gin.Context, t db.Task, columnID uuid.UUID, bef
 		fail(c, err)
 		return 0, false
 	}
-	prev, next, ok := h.neighborTaskPositions(c, beforeID, afterID)
+	prev, next, ok := h.neighborTaskPositions(c, t, columnID, beforeID, afterID)
 	if !ok {
 		return 0, false
 	}
