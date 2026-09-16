@@ -29,6 +29,7 @@ import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.realtime.boardGone
 import website.msdnna.tessera.data.realtime.projectGone
+import website.msdnna.tessera.data.realtime.touchesBoard
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.BoardFilter
@@ -487,11 +488,10 @@ class BoardViewModel(
             _gone.value = true
             return
         }
-        if (!ev.type.startsWith("task") && !ev.type.startsWith("column") &&
-            !ev.type.startsWith("board") && !ev.type.startsWith("milestone")
-        ) {
-            return
-        }
+        // Из чего доска состоит — то её и перезагружает (см. touchesBoard: карточки,
+        // колонки, доска и дорожки обеих группировок — этапы и теги). Перечитывать
+        // ничего дополнительно не нужно: silentReload() и так тянет tags и prefixNames.
+        if (!touchesBoard(ev)) return
         // Board-activity toast for create/move on THIS board (any actor) — shown
         // regardless of the reload suppression below so own actions confirm too.
         if (ev.type == "task.created" || ev.type == "task.moved") pushActivity(ev)

@@ -57,6 +57,43 @@ class BoardEventsTest {
         assertThat(projectGone(ev("board.deleted", "b-1"), "b-1")).isFalse()
     }
 
+    // ── что вообще перезагружает доску ──
+    //
+    // Теги — дорожки ровно в той же мере, что этапы: при группировке по тегам
+    // колонка ЕСТЬ тег. Пока `tag.*` отсеивались, один экран вёл себя по-разному
+    // по одной кнопке группировки — по этапам дорожки живые, по тегам мёртвые.
+
+    @Test
+    fun `события тегов доску перезагружают`() {
+        assertThat(touchesBoard(ev("tag.created", "t-1"))).isTrue()
+        assertThat(touchesBoard(ev("tag.updated", "t-1"))).isTrue()
+        // Удаление тега сервер шлёт ОДНИМ событием, без событий по задачам: не
+        // перечитаешь — дорожка остаётся на доске вместе со стоящими в ней карточками.
+        assertThat(touchesBoard(ev("tag.deleted", "t-1"))).isTrue()
+        // Из префиксов собираются подписи дорожек и меню группировки.
+        assertThat(touchesBoard(ev("tag_prefixes.updated", null))).isTrue()
+    }
+
+    @Test
+    fun `теги и этапы на одних правах`() {
+        assertThat(touchesBoard(ev("milestone.created", "m-1")))
+            .isEqualTo(touchesBoard(ev("tag.created", "t-1")))
+    }
+
+    @Test
+    fun `содержимое доски перезагружает её`() {
+        for (type in listOf("task.updated", "column.moved", "board.updated", "milestone.deleted")) {
+            assertThat(touchesBoard(ev(type, "x-1"))).isTrue()
+        }
+    }
+
+    @Test
+    fun `посторонние события доску не трогают`() {
+        for (type in listOf("note.created", "notification", "project.updated", "group.moved", "conference.started")) {
+            assertThat(touchesBoard(ev(type, "x-1"))).isFalse()
+        }
+    }
+
     @Test
     fun `битая нагрузка не роняет разбор`() {
         // Колбэк сокета разбирает данные из сети: у Gson `asString` бросает и на
