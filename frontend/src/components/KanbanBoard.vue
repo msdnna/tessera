@@ -1877,9 +1877,11 @@ async function restoreFromArchive(taskId) {
         :subtasks-by-parent="sortedSubtasksByParent"
         :subtasks-total-by-parent="subtasksByParent"
         :subtasks-expanded="subtasksExpanded"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
         @create="createInQuadrant"
+        @restore="restoreFromArchive"
       />
 
       <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
@@ -2022,8 +2024,13 @@ async function restoreFromArchive(taskId) {
           </template>
         </draggable>
 
-        <!-- inline new column (status mode) -->
-        <div v-if="groupMode === 'status'" class="add-col" :class="{ 'add-col-mobile': isMobile }">
+        <!-- inline new column (status mode; never in the archive — the tile would
+             create a live column on the board from a read-only view) -->
+        <div
+          v-if="groupMode === 'status' && !archivedMode"
+          class="add-col"
+          :class="{ 'add-col-mobile': isMobile }"
+        >
           <n-input
             v-if="addingColumn"
             ref="colInput"

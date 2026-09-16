@@ -20,8 +20,15 @@ const props = defineProps({
   // A task is "urgent" when its due date falls within this many days (or is
   // overdue). Default = roughly the current week.
   urgentWindowDays: { type: Number, default: 7 },
+  // The archive view (?archived=1) shows archived cards and promises to be
+  // read-only. The kanban keeps that promise everywhere (column/card draggables,
+  // «+ задача», TaskCard, TaskModal); the matrix is the same board in another
+  // layout, so it has to keep it too — otherwise the archive still offers the
+  // quadrant «＋» (which creates a LIVE task in the board's first column, gone
+  // from view the moment it lands), the quadrant drag and the live card menu.
+  readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed', 'create'])
+const emit = defineEmits(['open', 'changed', 'create', 'restore'])
 const message = useMessage()
 const { t } = useI18n()
 // The urgency axis is a calendar-day window in the user's timezone, so it needs
@@ -121,6 +128,7 @@ const setAddInput = (el) => {
   addInput.value = el
 }
 function startAdd(qi) {
+  if (props.readonly) return
   addingIn.value = qi
   newTitle.value = ''
   // Focus once the input mounts (n-input `autofocus` doesn't fire on a v-if mount).
@@ -157,6 +165,7 @@ function submitAdd(qi) {
         </div>
         <span class="m-count">{{ buckets[q.i].length }}</span>
         <button
+          v-if="!readonly"
           type="button"
           class="m-add"
           :title="t('board.matrix.addTask')"
@@ -172,6 +181,7 @@ function submitAdd(qi) {
         item-key="id"
         class="m-list"
         :class="{ 'fade-bottom': addingIn === q.i }"
+        :disabled="readonly"
         :animation="150"
         :delay="120"
         :delay-on-touch-only="true"
@@ -183,7 +193,7 @@ function submitAdd(qi) {
         <template #item="{ element }">
           <div class="m-card-wrap">
             <button
-              v-if="isPinned(element)"
+              v-if="isPinned(element) && !readonly"
               type="button"
               class="m-pin"
               :title="t('board.matrix.pinned')"
@@ -198,8 +208,10 @@ function submitAdd(qi) {
               :subtasks-total="(subtasksTotalByParent[element.id] || []).length"
               :subtasks-expanded="subtasksExpanded"
               :dragging="dragging"
+              :readonly="readonly"
               @open="$emit('open', $event)"
               @changed="$emit('changed')"
+              @restore="$emit('restore', $event)"
             />
           </div>
         </template>
