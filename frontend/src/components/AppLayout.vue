@@ -34,6 +34,7 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { useDesktopDeepLink } from '@/composables/useDesktopDeepLink'
+import { treeEventNeedsRefresh } from '@/utils/treeEvents'
 
 const { t } = useI18n()
 const ws = useWorkspacesStore()
@@ -92,6 +93,11 @@ useRealtime(
     conflicts.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
+    // Somebody else's project/group CRUD → re-read the tree. Strictly after the
+    // two handlers above: both answer a question about the tree as it was BEFORE
+    // the event (which project the current route points at, what address it used
+    // to have), and a refresh in front of them would erase that answer.
+    if (treeEventNeedsRefresh(ev, ws.currentId)) ws.refresh()
     // Boards created/renamed/deleted elsewhere in this workspace → keep the
     // sidebar tree honest. Here at the layout rather than in the sidebar: the
     // tree is a store, and ProjectRow only mounts for an expanded project.
@@ -115,22 +121,22 @@ function onProjectSlugChanged(ev) {
   const known = ws.projects.find((p) => p.id === ev.data?.id)
   if (!known || !ev.data?.slug || known.slug === ev.data.slug) return
   const viewing = route.params.projectSlug === known.slug
-  ws.refresh()
   if (viewing) {
     router.replace({ ...route, params: { ...route.params, projectSlug: ev.data.slug } })
   }
 }
 
 // A project leaving the current workspace (deleted, or transferred elsewhere) fires
-// `project.deleted` in that workspace. Keep every connected client's tree in sync,
-// and — for anyone viewing a board of that project — bail to Home before the board
-// starts 404-ing (the "Не найдено" toast the user reported). The deleter/transferrer
-// already navigates locally; this no-ops for them (they're no longer on that route).
+// `project.deleted` in that workspace. For anyone viewing a board of that project,
+// bail to Home before the board starts 404-ing (the "Не найдено" toast the user
+// reported). The deleter/transferrer already navigates locally; this no-ops for
+// them (they're no longer on that route). Dropping the project from the sidebar
+// tree is treeEventNeedsRefresh's job, one event table over — the id → slug
+// lookup below has to run while the tree still holds the departing project.
 function onProjectGone(ev) {
   if (ev.type !== 'project.deleted' || ev.scope !== ws.currentId) return
   const slug = route.params.projectSlug
   const viewing = slug && ws.projects.find((p) => p.slug === slug)?.id === ev.data?.id
-  ws.refresh() // drop it from the sidebar tree for everyone in this workspace
   if (viewing) {
     message.info(t('shell.layout.projectGone'))
     router.push('/')
