@@ -80,9 +80,8 @@ class MembersViewModel(
         viewModelScope.launch {
             val added = runCatching { repo.addMember(workspaceId, email, role) }
             if (added.isSuccess) {
-                _state.update {
-                    it.copy(busy = false, lastInviteLink = "", members = repo.members(workspaceId), invitations = repo.invitations(workspaceId))
-                }
+                _state.update { it.copy(lastInviteLink = "") }
+                refreshLists()
                 return@launch
             }
             val failure = added.exceptionOrNull()!!
@@ -91,8 +90,11 @@ class MembersViewModel(
             if (rawErrorText(failure)?.contains("no user", ignoreCase = true) == true) {
                 runCatching { repo.createInvitation(workspaceId, email, role) }
                     .onSuccess { inv ->
-                        val invs = repo.invitations(workspaceId)
-                        _state.update { it.copy(busy = false, lastInviteLink = inv.link, invitations = invs) }
+                        // Ссылку показываем ДО перечитывания списка: приглашение уже
+                        // создано, и при выключенном SMTP она — единственный носитель
+                        // токена. Упавший следом GET не должен её съесть.
+                        _state.update { it.copy(lastInviteLink = inv.link) }
+                        refreshLists()
                     }
                     .onFailure { e -> _state.update { it.copy(busy = false, error = errorMessage(e)) } }
             } else {
@@ -101,19 +103,56 @@ class MembersViewModel(
         }
     }
 
+    /**
+     * Перечитывает ростер и приглашения после успешной записи — и не роняет
+     * приложение, если сеть мигнула ровно тут.
+     *
+     * Раньше оба запроса стояли прямо в аргументах `_state.copy(...)` внутри
+     * `_state.update { }` в [invite]. Это давало две беды сразу. Первая: бросок
+     * из них уходил из `viewModelScope.launch` без обработчика — не «ошибка в
+     * диалоге», а падение процесса, причём участник на сервере уже добавлен, а
+     * приглашение уже создано. Вторая: `update` — inline-цикл с
+     * compareAndSet-ретраем, так что любое конкурентное обновление состояния за
+     * те сотни миллисекунд, пока идут запросы, молча повторяло оба GET.
+     *
+     * Отсюда правило: сеть — до `update`, а `update` остаётся чистой подстановкой
+     * уже полученных значений.
+     */
+    private suspend fun refreshLists() {
+        val members = runCatching { repo.members(workspaceId) }
+        val invitations = runCatching { repo.invitations(workspaceId) }
+        _state.update {
+            it.copy(
+                busy = false,
+                members = members.getOrDefault(it.members),
+                invitations = invitations.getOrDefault(it.invitations),
+                // Сама запись прошла, упало только перечитывание — говорим об этом,
+                // но не выдаём за отказ в добавлении.
+                error = (members.exceptionOrNull() ?: invitations.exceptionOrNull())
+                    ?.let(::errorMessage) ?: it.error,
+            )
+        }
+    }
+
+    // Ниже — то же правило, что в [refreshLists]: сначала запрос, потом `update`.
+    // Здесь бросок ловит launchCatching, так что падения не было, но повтор
+    // compareAndSet переспрашивал бы сервер второй раз.
     fun remove(userId: String) = launchCatching {
         repo.removeMember(workspaceId, userId)
-        _state.update { it.copy(members = repo.members(workspaceId)) }
+        val members = repo.members(workspaceId)
+        _state.update { it.copy(members = members) }
     }
 
     fun changeRole(userId: String, role: String) = launchCatching {
         repo.updateMemberRole(workspaceId, userId, role)
-        _state.update { it.copy(members = repo.members(workspaceId)) }
+        val members = repo.members(workspaceId)
+        _state.update { it.copy(members = members) }
     }
 
     fun revokeInvite(invId: String) = launchCatching {
         repo.deleteInvitation(workspaceId, invId)
-        _state.update { it.copy(invitations = repo.invitations(workspaceId)) }
+        val invitations = repo.invitations(workspaceId)
+        _state.update { it.copy(invitations = invitations) }
     }
 
     fun clearError() = _state.update { it.copy(error = null) }
