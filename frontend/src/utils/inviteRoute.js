@@ -21,6 +21,21 @@ export function invitePath(token) {
   return tok ? `/invite?token=${encodeURIComponent(tok)}` : '/invite'
 }
 
+// inviteOutcomeRoute points at the accept page to *report* an outcome the
+// server already decided, rather than to attempt an acceptance.
+//
+// Registration is the one fork where the token is spent server-side (it rides
+// in the register call), so the accept page never runs for it and the invitee
+// would otherwise be dropped on the board with no word about a token that
+// granted nothing. `outcome` is what authResponse.invite said; the page reads it
+// instead of calling accept, which would answer "already used" about the very
+// invitation it just applied.
+export function inviteOutcomeRoute(token, outcome) {
+  const tok = typeof token === 'string' ? token : ''
+  const out = typeof outcome === 'string' ? outcome : ''
+  return { path: '/invite', query: { token: tok, outcome: out } }
+}
+
 // loginRouteForInvite sends a would-be invitee to the login form so it returns
 // them to this invitation afterwards. Without a token it is the plain form.
 export function loginRouteForInvite(token) {

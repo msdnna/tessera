@@ -113,5 +113,5 @@ func (h *AuthHandler) OAuthHandoff(c *gin.Context) {
 	}
 	// Never cookie mode: the desktop shell is cross-origin against the API and stores the
 	// refresh token itself, which is why this handoff exists in the first place.
-	h.issueMode(c, user, false)
+	h.issueMode(c, user, false, "")
 }

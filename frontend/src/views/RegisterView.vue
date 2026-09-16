@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
 import { passwordError } from '@/utils/password'
-import { loginRouteForInvite } from '@/utils/inviteRoute'
+import { loginRouteForInvite, inviteOutcomeRoute } from '@/utils/inviteRoute'
 import { stashPendingInvite } from '@/utils/pendingInvite'
 
 const { t } = useI18n()
@@ -65,7 +65,21 @@ async function submit() {
   if (!validate()) return
   loading.value = true
   try {
-    await authStore.register(email.value.trim(), name.value.trim(), password.value, inviteToken)
+    const outcome = await authStore.register(
+      email.value.trim(),
+      name.value.trim(),
+      password.value,
+      inviteToken,
+    )
+    // The account is created either way, so a token that granted nothing has to
+    // be said out loud here — the invited address is exactly what the invitee
+    // cannot check (the link is as often pasted into a chat as mailed), and on
+    // the board there is no sign of a workspace they never joined. The accept
+    // page owns those words, and for a mismatch also the way out of it.
+    if (inviteToken && outcome && outcome !== 'applied') {
+      router.replace(inviteOutcomeRoute(inviteToken, outcome))
+      return
+    }
     router.push('/')
   } catch (e) {
     formError.value = e.message

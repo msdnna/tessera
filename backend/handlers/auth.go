@@ -67,6 +67,9 @@ type authResponse struct {
 	RefreshToken string   `json:"refresh_token,omitempty"`
 	User         userDTO  `json:"user"`
 	Preferences  prefsDTO `json:"preferences"`
+	// What became of an invitation token presented at sign-up (see
+	// acceptInvitationToken). Absent everywhere else — only Register takes one.
+	Invite string `json:"invite,omitempty"`
 }
 
 // rejectBadPassword answers 400 when a new password cannot be stored, and
@@ -154,10 +157,12 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	// itself proves nothing, and invitations sit pending for a week, so joining
 	// on a bare email match would hand the workspace to whoever registers the
 	// invitee's address first. The rest wait for email verification.
-	h.acceptInvitationToken(c, user, req.InviteToken)
+	invite := h.acceptInvitationToken(c, user, req.InviteToken)
 	h.sendVerification(c, user)
 
-	h.issue(c, user)
+	// The outcome rides back with the session: the account exists either way, and
+	// a client that presented a token has no other way to learn whether it took.
+	h.issueMode(c, user, wantsCookieAuth(c), invite)
 }
 
 // Login authenticates by email + password.
@@ -276,7 +281,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 
 	// Rotation stays in the channel it arrived on: a cookie-mode client gets the
 	// new token back as a cookie even if it forgot the header.
-	h.issueMode(c, user, fromCookie || wantsCookieAuth(c))
+	h.issueMode(c, user, fromCookie || wantsCookieAuth(c), "")
 }
 
 // refreshGrace is how long a just-rotated refresh token keeps working. Rotation
@@ -378,13 +383,14 @@ func (h *AuthHandler) mintTokens(c *gin.Context, user db.User) (access, refresh 
 // issue mints an access + refresh pair and returns them with the user profile,
 // honouring the delivery mode the client asked for.
 func (h *AuthHandler) issue(c *gin.Context, user db.User) {
-	h.issueMode(c, user, wantsCookieAuth(c))
+	h.issueMode(c, user, wantsCookieAuth(c), "")
 }
 
 // issueMode is issue() with the delivery mode decided by the caller — Refresh
 // needs it, because a token that arrived in a cookie goes back in a cookie
-// regardless of headers.
-func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool) {
+// regardless of headers — and with the fate of a presented invitation token,
+// which only Register has one of.
+func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool, invite string) {
 	access, refresh, ok := h.mintTokens(c, user)
 	if !ok {
 		return
@@ -394,6 +400,7 @@ func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool) {
 		RefreshToken: refresh,
 		User:         buildUserDTO(c, h.q, user),
 		Preferences:  loadPrefsDTO(c, h.q, user.ID),
+		Invite:       invite,
 	}
 	if cookieMode {
 		h.setRefreshCookie(c, refresh)

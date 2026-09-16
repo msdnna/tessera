@@ -94,6 +94,7 @@
       "ok": "Done! You have joined the workspace.",
       "fail": "This invitation is no longer valid — it has expired or was already used.",
       "wrongAccount": "This invitation was sent to a different address. Sign in with the account it was mailed to.",
+      "error": "The invitation could not be applied. Open the link again or ask for a new invitation.",
       "switchAccount": "Sign in with another account"
     },
     "oauth": {

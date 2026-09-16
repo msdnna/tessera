@@ -67,32 +67,57 @@ func (h *AuthHandler) acceptPendingInvitations(c *gin.Context, user db.User) {
 	}
 }
 
+// What became of an invitation token presented at registration. Reported back
+// to the client (authResponse.Invite) because the account is created either way:
+// the outcome is the only thing that tells the newcomer apart from someone who
+// signed up plainly, and it is never visible in the session itself.
+const (
+	inviteApplied       = "applied"
+	inviteEmailMismatch = "email_mismatch"
+	inviteInvalid       = "invalid"
+	inviteFailed        = "failed"
+)
+
 // acceptInvitationToken applies the single invitation the raw token identifies,
 // used at registration so an invitee who followed the emailed link lands in the
 // workspace straight away. The token is the proof of mailbox ownership, so the
 // invitation must be addressed to exactly the email being registered; anything
-// off (unknown, expired, already accepted, different address) silently grants
-// nothing — registration itself still succeeds.
-func (h *AuthHandler) acceptInvitationToken(c *gin.Context, user db.User, rawToken string) {
+// off (unknown, expired, already accepted, different address) grants nothing —
+// registration itself still succeeds.
+//
+// Returns what happened, "" when no token was presented. Granting nothing used
+// to be silent, and the address is the one thing the invitee cannot check: the
+// link is routinely copied out of CreateInvitation's response and pasted into a
+// chat (that is what it is returned for when SMTP is off), so the invited
+// mailbox is never seen and the register form gets whatever address its owner
+// usually types. The reply was then indistinguishable from a joined one, and
+// they landed on the board with a personal workspace and no membership, the only
+// copy of the token left behind in the message (#2932).
+func (h *AuthHandler) acceptInvitationToken(c *gin.Context, user db.User, rawToken string) string {
 	if rawToken == "" {
-		return
+		return ""
 	}
 	inv, err := h.q.GetInvitationByHash(c, auth.HashRefreshToken(rawToken))
 	if err != nil || inv.AcceptedAt != nil || time.Now().After(inv.ExpiresAt) {
-		return
+		return inviteInvalid
 	}
 	if !strings.EqualFold(inv.Email, user.Email) {
-		return
+		return inviteEmailMismatch
 	}
 	if !invitationRaisesRole(c, h.q, inv.WorkspaceID, user.ID, inv.Role) {
+		// Spent with nothing left to grant, which for the invitee is the same as
+		// applied: they are a member of that workspace by the time they see the
+		// board.
 		soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
-		return
+		return inviteApplied
 	}
 	if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{
 		WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
-	}); err == nil {
-		soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
+	}); err != nil {
+		return inviteFailed
 	}
+	soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
+	return inviteApplied
 }
 
 // VerifyEmail consumes a verification token and marks the email verified.

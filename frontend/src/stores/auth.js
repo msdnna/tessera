@@ -84,6 +84,11 @@ export const useAuthStore = defineStore('auth', () => {
     const res = await auth.register(payload)
     setAuth(res.data)
     if (theme.language !== chosen) theme.setLocale({ language: chosen })
+    // What became of that token, for the form to act on: the account is created
+    // whatever happened to it, so nothing else in the session tells an invitee
+    // who joined the workspace apart from one whose invitation was addressed to
+    // another mailbox. "" on a plain sign-up.
+    return res.data?.invite || ''
   }
 
   // setUser refreshes the cached user after a profile edit.

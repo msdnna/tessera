@@ -12,15 +12,33 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 const ws = useWorkspacesStore()
-const state = ref('pending') // pending | ok | fail | wrongAccount
+const state = ref('pending') // pending | ok | fail | wrongAccount | error
 
 // The server's own words, not the localized sentence: `message` is written in
 // whatever language the UI is in and is rewritten outright the day this sentinel
 // joins the errors catalogue (#2932).
 const WRONG_ACCOUNT = 'this invitation is for a different email'
 
+// `?outcome=` — the register form arriving with a verdict instead of a request.
+// There the token was spent inside the register call, so re-accepting it here
+// would report "already used" about an invitation that had just been applied,
+// or replay a mismatch the server has already answered.
+const OUTCOME_STATE = {
+  email_mismatch: 'wrongAccount',
+  invalid: 'fail',
+  failed: 'error',
+}
+
 onMounted(async () => {
   const token = route.query.token
+  const outcome = route.query.outcome
+  if (outcome) {
+    // An unknown verdict is still a failure to join, and saying so beats a
+    // blank page: this reads a query parameter, and a future server value
+    // arriving at an older build must not leave the invitee with nothing.
+    state.value = OUTCOME_STATE[outcome] || 'fail'
+    return
+  }
   if (!token) {
     state.value = 'fail'
     return
