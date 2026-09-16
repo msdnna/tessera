@@ -95,11 +95,16 @@ function onCtx(e) {
   ctxY.value = e.clientY
   nextTick(() => (ctxShow.value = true))
 }
+// Deleting a column takes every card standing in it (the server cascades through
+// tasks.column_id and purges their uploads), so the menu never calls the API
+// straight off: it opens the same confirm the «…» popover shows, anchored where
+// the menu stood. Same shape as the task card's right-click delete.
+const ctxDeleteConfirm = ref(false)
 function onCtxSelect(key) {
   ctxShow.value = false
   if (key === 'rename') startRename()
   else if (key === 'done') toggleDone()
-  else if (key === 'delete') removeCol()
+  else if (key === 'delete') ctxDeleteConfirm.value = true
 }
 
 const message = useMessage()
@@ -250,6 +255,18 @@ async function removeCol() {
       @select="onCtxSelect"
       @clickoutside="ctxShow = false"
     />
+    <n-popconfirm
+      v-model:show="ctxDeleteConfirm"
+      :x="ctxX"
+      :y="ctxY"
+      :positive-button-props="{ type: 'error', 'data-testid': 'column-ctx-delete-confirm' }"
+      :positive-text="t('common.action.delete')"
+      @positive-click="removeCol"
+      @clickoutside="ctxDeleteConfirm = false"
+    >
+      <template #trigger><span /></template>
+      {{ t('board.column.deleteConfirm') }}
+    </n-popconfirm>
   </div>
 </template>
 

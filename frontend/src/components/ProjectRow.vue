@@ -451,13 +451,23 @@ function onBoardCtx(e, b) {
   bcY.value = e.clientY
   nextTick(() => (bcShow.value = true))
 }
+// Deleting a board takes its columns and every card standing on them, with no
+// undo, so the menu never calls the API straight off: it arms the same confirm
+// the board's «…» popover shows, anchored where the menu stood (the task card's
+// right-click delete has the same shape). It matters most on touch — this menu
+// also opens on a long press in the mobile drawer.
+const bcDeleteConfirm = ref(false)
 function onBoardCtxSelect(key) {
   const b = bcTarget.value
   bcShow.value = false
   if (!b) return
   if (key === 'open') router.push(`/project/${props.project.slug}/board/${b.slug}`)
   else if (key === 'rename') startBoardRename(b)
-  else if (key === 'delete') removeBoard(b)
+  else if (key === 'delete') bcDeleteConfirm.value = true
+}
+function confirmBoardDelete() {
+  const b = bcTarget.value
+  if (b) removeBoard(b)
 }
 
 // Touch long-press → context menus (the native contextmenu is unreliable on the
@@ -741,6 +751,18 @@ async function addBoard() {
       @select="onBoardCtxSelect"
       @clickoutside="bcShow = false"
     />
+    <n-popconfirm
+      v-model:show="bcDeleteConfirm"
+      :x="bcX"
+      :y="bcY"
+      :positive-button-props="{ type: 'error', 'data-testid': 'board-ctx-delete-confirm' }"
+      :positive-text="t('common.action.delete')"
+      @positive-click="confirmBoardDelete"
+      @clickoutside="bcDeleteConfirm = false"
+    >
+      <template #trigger><span /></template>
+      {{ t('project.board.deleteConfirm', { name: bcTarget?.name || '' }) }}
+    </n-popconfirm>
 
     <ConfirmByName
       v-model:show="confirmDelete"
