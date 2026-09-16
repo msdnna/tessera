@@ -21,12 +21,12 @@ fun boardGone(ev: RealtimeEvent, boardId: String): Boolean =
     ev.type == "board.deleted" && boardId.isNotBlank() && eventId(ev) == boardId
 
 /**
- * Способно ли событие изменить то, что нарисовано на открытой доске?
+ * Способно ли событие изменить то, что нарисовано на ОТКРЫТОЙ доске [boardId]?
  *
- * Доска перечитывается целиком, поэтому список — не оптимизация, а описание
- * того, из чего она состоит: карточки (`task.*`), колонки (`column.*`), сама
- * доска (`board.*`) и дорожки группировок — этапы (`milestone.*`) и **теги**
- * (`tag.*`, включая `tag_prefixes.updated`).
+ * Доска перечитывается целиком, поэтому список префиксов — не оптимизация, а
+ * описание того, из чего она состоит: карточки (`task.*`), колонки
+ * (`column.*`), сама доска (`board.*`) и дорожки группировок — этапы
+ * (`milestone.*`) и **теги** (`tag.*`, включая `tag_prefixes.updated`).
  *
  * Теги стоят здесь на тех же правах, что этапы, и по той же причине: при
  * группировке по тегам колонка ЕСТЬ тег, а появляется и исчезает она только
@@ -36,12 +36,46 @@ fun boardGone(ev: RealtimeEvent, boardId: String): Boolean =
  * что удалённый тег оставался на доске вместе со стоящими в нём карточками, а
  * переименованный держал старое имя и цвет в чипах до перезахода.
  *
- * Сузить `tag.*` по проекту нечем: у `tag.deleted` полезная нагрузка — голое
- * `{id}`. Веб по этой же причине классифицирует все `tag.*` одинаково
- * (`frontend/src/utils/boardEvents.js`, `META`).
+ * **Одного префикса мало: события воркспейс-скоупные.** Про каждую карточку и
+ * каждую колонку ЛЮБОЙ доски пространства слышат ВСЕ открытые доски, а
+ * перезагрузка здесь стоит восьми запросов (`silentReload`: доска, колонки,
+ * задачи, подзадачи, связи, теги, этапы, подписи префиксов) — на телефоне, по
+ * чужому действию, без единого изменения на экране. Поэтому событие, которое
+ * НАЗЫВАЕТ свою доску, сверяется с открытой; событие, которое доску не
+ * называет (`tag.*` — у `tag.deleted` голое `{id}`, `milestone.*`), по-прежнему
+ * перезагружает: лишнее чтение — безопасный способ ошибиться. Тот же разбор у
+ * веба, там же и подробности (`frontend/src/utils/boardEvents.js`).
+ *
+ * Два исключения, ради которых [hasTask] и существует:
+ *  * карточка, УХОДЯЩАЯ с этой доски (перенос из модалки или `setParent` на
+ *    карточку другой доски), объявляется задачей уже ПОСЛЕ переноса — событие
+ *    называет доску, КУДА она ушла, и от чужой карточки неотличимо. Отсеять его
+ *    значит оставить карточку со всем поддеревом нарисованной у всех, кроме
+ *    переносившего: перетаскивание ответит 400, а открытие покажет задачу чужой
+ *    доски. Поэтому событие о задаче, которую экран ещё ДЕРЖИТ, перезагружает;
+ *  * `task.relation` не про карточку, а про стрелку между двумя (`dependencies`),
+ *    и называет ОБА конца: пара с одним концом здесь — это как раз появление или
+ *    исчезновение стрелки.
  */
-fun touchesBoard(ev: RealtimeEvent): Boolean =
-    BOARD_EVENT_PREFIXES.any { ev.type.startsWith(it) }
+fun touchesBoard(ev: RealtimeEvent, boardId: String, hasTask: (String) -> Boolean): Boolean {
+    val type = ev.type
+    if (!BOARD_EVENT_PREFIXES.any { type.startsWith(it) }) return false
+    // Экран ещё не знает своей доски — сверять не с чем, перезагружаем.
+    if (boardId.isBlank()) return true
+    if (type == "task.relation") {
+        return eventString(ev, "board_id") == boardId || eventString(ev, "related_board_id") == boardId
+    }
+    // У `board.*` полезная нагрузка — сама доска: её id лежит в `id`, поля
+    // `board_id` у неё нет. Своё `board.deleted` до сюда не доходит (boardGone),
+    // а чужие `board.created`/`board.deleted`/`board.updated` отсеются по id.
+    val owner = if (type.startsWith("board.")) eventId(ev) else eventString(ev, "board_id")
+    if (owner.isNullOrBlank() || owner == boardId) return true
+    if (type.startsWith("task.")) {
+        val id = eventId(ev)
+        return id != null && hasTask(id)
+    }
+    return false
+}
 
 private val BOARD_EVENT_PREFIXES = listOf("task", "column", "board", "milestone", "tag")
 
@@ -52,5 +86,8 @@ private val BOARD_EVENT_PREFIXES = listOf("task", "column", "board", "milestone"
  * это разбор данных из сети внутри колбэка сокета — там исключению взяться
  * неоткуда, кроме как уронить приложение.
  */
-private fun eventId(ev: RealtimeEvent): String? =
-    ev.data?.get("id")?.takeIf { it.isJsonPrimitive }?.asString
+private fun eventId(ev: RealtimeEvent): String? = eventString(ev, "id")
+
+/** Строковое поле нагрузки события, или null (см. [eventId] про Gson). */
+private fun eventString(ev: RealtimeEvent, key: String): String? =
+    ev.data?.get(key)?.takeIf { it.isJsonPrimitive }?.asString

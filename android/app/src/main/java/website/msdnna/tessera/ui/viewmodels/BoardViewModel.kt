@@ -489,9 +489,11 @@ class BoardViewModel(
             return
         }
         // Из чего доска состоит — то её и перезагружает (см. touchesBoard: карточки,
-        // колонки, доска и дорожки обеих группировок — этапы и теги). Перечитывать
-        // ничего дополнительно не нужно: silentReload() и так тянет tags и prefixNames.
-        if (!touchesBoard(ev)) return
+        // колонки, доска и дорожки обеих группировок — этапы и теги), и только ЭТА
+        // доска: события воркспейс-скоупные, а перезагрузка — восемь запросов.
+        // Перечитывать ничего дополнительно не нужно: silentReload() и так тянет
+        // tags и prefixNames.
+        if (!touchesBoard(ev, boardId, ::holdsTask)) return
         // Board-activity toast for create/move on THIS board (any actor) — shown
         // regardless of the reload suppression below so own actions confirm too.
         if (ev.type == "task.created" || ev.type == "task.moved") pushActivity(ev)
@@ -508,6 +510,18 @@ class BoardViewModel(
             // pull-to-refresh) brings it up to date.
             if (!dragging) runCatching { silentReload() }
         }
+    }
+
+    /**
+     * Держит ли экран сейчас эту карточку?
+     *
+     * Ответ на вопрос «эта задача с чужой доски — не наша ли, которая только что
+     * УШЛА?» (см. touchesBoard). Подзадачи наравне с карточками: вместе с
+     * родителем уезжает и всё поддерево, и нарисовано оно тем же списком.
+     */
+    private fun holdsTask(id: String): Boolean {
+        val s = _state.value
+        return s.tasks.any { it.id == id } || s.subtasks.any { it.id == id }
     }
 
     /** Builds an activity toast from a create/move event on the current board. The

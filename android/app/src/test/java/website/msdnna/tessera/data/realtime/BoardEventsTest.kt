@@ -18,6 +18,12 @@ import org.junit.Test
  * Оба события воркспейс-скоупные, так что чужие удаления обязаны проходить
  * мимо: иначе одна удалённая доска выкидывала бы с экрана всех, кто смотрит
  * СВОИ доски того же пространства.
+ *
+ * Ниже — та же мысль про перезагрузку (`touchesBoard`): событие о ЛЮБОЙ доске
+ * пространства долетает до всех открытых, а перезагрузка стоит восьми запросов,
+ * поэтому событие, которое называет свою доску, сверяется с открытой. Два
+ * исключения — карточка, УХОДЯЩАЯ с доски (событие называет доску, куда она
+ * ушла), и `task.relation` с одним концом здесь.
  */
 class BoardEventsTest {
     private fun ev(type: String, id: String?): RealtimeEvent {
@@ -25,6 +31,30 @@ class BoardEventsTest {
         if (id != null) data.addProperty("id", id)
         return RealtimeEvent(scope = "ws-1", type = type, data = data)
     }
+
+    /** Нагрузка `{id, board_id}` — так сервер шлёт колонки и карточки. */
+    private fun onBoard(type: String, boardId: String, id: String = "x-1"): RealtimeEvent {
+        val data = JsonObject()
+        data.addProperty("id", id)
+        data.addProperty("board_id", boardId)
+        return RealtimeEvent(scope = "ws-1", type = type, data = data)
+    }
+
+    /** `task.relation` называет ОБА конца — доски обеих связанных задач. */
+    private fun relation(boardId: String, relatedBoardId: String): RealtimeEvent {
+        val data = JsonObject()
+        data.addProperty("task_id", "t-1")
+        data.addProperty("related_task_id", "t-2")
+        data.addProperty("board_id", boardId)
+        data.addProperty("related_board_id", relatedBoardId)
+        return RealtimeEvent(scope = "ws-1", type = "task.relation", data = data)
+    }
+
+    /** Открытая доска в тестах про перезагрузку. */
+    private val myBoard = "b-1"
+
+    private fun touches(ev: RealtimeEvent, held: Set<String> = emptySet()): Boolean =
+        touchesBoard(ev, myBoard, held::contains)
 
     @Test
     fun `удаление именно этой доски узнаётся`() {
@@ -65,33 +95,100 @@ class BoardEventsTest {
 
     @Test
     fun `события тегов доску перезагружают`() {
-        assertThat(touchesBoard(ev("tag.created", "t-1"))).isTrue()
-        assertThat(touchesBoard(ev("tag.updated", "t-1"))).isTrue()
+        assertThat(touches(ev("tag.created", "t-1"))).isTrue()
+        assertThat(touches(ev("tag.updated", "t-1"))).isTrue()
         // Удаление тега сервер шлёт ОДНИМ событием, без событий по задачам: не
         // перечитаешь — дорожка остаётся на доске вместе со стоящими в ней карточками.
-        assertThat(touchesBoard(ev("tag.deleted", "t-1"))).isTrue()
+        assertThat(touches(ev("tag.deleted", "t-1"))).isTrue()
         // Из префиксов собираются подписи дорожек и меню группировки.
-        assertThat(touchesBoard(ev("tag_prefixes.updated", null))).isTrue()
+        assertThat(touches(ev("tag_prefixes.updated", null))).isTrue()
     }
 
     @Test
     fun `теги и этапы на одних правах`() {
-        assertThat(touchesBoard(ev("milestone.created", "m-1")))
-            .isEqualTo(touchesBoard(ev("tag.created", "t-1")))
+        assertThat(touches(ev("milestone.created", "m-1")))
+            .isEqualTo(touches(ev("tag.created", "t-1")))
     }
 
     @Test
     fun `содержимое доски перезагружает её`() {
-        for (type in listOf("task.updated", "column.moved", "board.updated", "milestone.deleted")) {
-            assertThat(touchesBoard(ev(type, "x-1"))).isTrue()
+        for (type in listOf("task.updated", "task.moved", "column.moved", "column.deleted")) {
+            assertThat(touches(onBoard(type, myBoard))).isTrue()
         }
+        // У `board.*` нагрузка — сама доска: её id лежит в `id`.
+        assertThat(touches(ev("board.updated", myBoard))).isTrue()
+        // Этапы доску не называют — перезагружаем, не сверяя.
+        assertThat(touches(ev("milestone.deleted", "m-1"))).isTrue()
     }
 
     @Test
     fun `посторонние события доску не трогают`() {
         for (type in listOf("note.created", "notification", "project.updated", "group.moved", "conference.started")) {
-            assertThat(touchesBoard(ev(type, "x-1"))).isFalse()
+            assertThat(touches(ev(type, "x-1"))).isFalse()
         }
+    }
+
+    // ── чужая доска того же пространства ──
+    //
+    // События воркспейс-скоупные: про каждую карточку и каждую колонку ЛЮБОЙ
+    // доски пространства слышат ВСЕ открытые доски. Перезагрузка здесь стоит
+    // восьми запросов (silentReload), поэтому событие, которое НАЗЫВАЕТ свою
+    // доску, обязано сверяться с открытой.
+
+    @Test
+    fun `события чужой доски не перезагружают эту`() {
+        for (type in listOf("task.updated", "task.created", "column.created", "column.moved", "column.deleted")) {
+            assertThat(touches(onBoard(type, "b-2"))).isFalse()
+        }
+        // Переименование, иконка, смена завершающей колонки — всё это `board.updated`
+        // по чужой доске.
+        assertThat(touches(ev("board.updated", "b-2"))).isFalse()
+        // Заведённая рядом доска этой не касается вовсе.
+        assertThat(touches(ev("board.created", "b-2"))).isFalse()
+    }
+
+    @Test
+    fun `событие без доски в нагрузке перезагружает`() {
+        // Лишнее чтение — безопасный способ ошибиться: сверять не с чем.
+        assertThat(touches(ev("task.deleted", "t-9"))).isTrue()
+        assertThat(touches(ev("column.updated", null))).isTrue()
+    }
+
+    @Test
+    fun `экран без доски перезагружается на всём`() {
+        assertThat(touchesBoard(onBoard("task.updated", "b-2"), "") { false }).isTrue()
+    }
+
+    // ── карточка, уходящая с доски ──
+
+    @Test
+    fun `карточку с этой доски унесли — перезагружаем`() {
+        // Перенос объявляется задачей уже ПОСЛЕ него: событие называет доску, КУДА
+        // она ушла, и от чужой карточки неотличимо. Отсеять — оставить её
+        // нарисованной у всех, кроме переносившего.
+        val leaving = onBoard("task.moved", "b-2", id = "t-7")
+        assertThat(touches(leaving, held = setOf("t-7"))).isTrue()
+        // А карточку, которой экран не держал, действительно не наше дело.
+        assertThat(touches(leaving, held = setOf("t-8"))).isFalse()
+    }
+
+    @Test
+    fun `колонка чужой доски карточкой не притворяется`() {
+        // Исключение — только для `task.*`: id колонки, случайно совпавший с
+        // карточкой, перезагрузку не вызывает.
+        assertThat(touches(onBoard("column.deleted", "b-2", id = "t-7"), held = setOf("t-7"))).isFalse()
+    }
+
+    // ── связи между задачами ──
+
+    @Test
+    fun `связь с одним концом на этой доске перезагружает`() {
+        // Стрелка рисуется, только когда ОБА конца здесь, поэтому пара с одним
+        // концом — это как раз появление или исчезновение стрелки.
+        assertThat(touches(relation(myBoard, "b-2"))).isTrue()
+        assertThat(touches(relation("b-2", myBoard))).isTrue()
+        // Обе задачи на чужих досках — рисовать нечего.
+        assertThat(touches(relation("b-2", "b-3"))).isFalse()
     }
 
     @Test
