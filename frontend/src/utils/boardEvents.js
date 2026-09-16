@@ -58,7 +58,7 @@ const META = new Set(['tag.created', 'tag.updated', 'tag.deleted', 'tag_prefixes
 // recomputes from that list via its watcher.
 const MILESTONE_PREFIX = 'milestone.'
 
-export function classifyEvent(ev, { boardId } = {}) {
+export function classifyEvent(ev, { boardId, hasTask } = {}) {
   const type = ev?.type
   if (typeof type !== 'string') return 'ignore'
   if (IGNORED.has(type) || type.startsWith(MILESTONE_PREFIX)) return 'ignore'
@@ -77,8 +77,23 @@ export function classifyEvent(ev, { boardId } = {}) {
 
   // Events that name a board tell us straight away whether they concern us.
   // (Only some do: the id-only payloads carry no board at all.)
+  //
+  // One exception, and it is the whole reason `hasTask` exists: a card LEAVING
+  // this board is announced with the task as it is AFTER the move, so the event
+  // names the board it went to — indistinguishable here from a stranger's. Both
+  // doors onto another board (TransferTask from the modal's breadcrumb, and
+  // setParent onto a card that lives elsewhere — backend task_ops.go applyParent)
+  // broadcast exactly that `task.moved`. Ignoring it leaves the card, and its
+  // whole subtree, drawn on a board it no longer belongs to for everyone but the
+  // person who moved it: dragging it answers 400 ("column does not belong to this
+  // board"), and opening it shows another board's task. So when the event names a
+  // task we are still holding, re-read the lists — that is the card going away (#2932).
   const evBoard = ev?.data?.board_id
-  if (evBoard && boardId && evBoard !== boardId) return 'ignore'
+  if (evBoard && boardId && evBoard !== boardId) {
+    const id = ev?.data?.id
+    if (type.startsWith('task.') && typeof id === 'string' && hasTask?.(id)) return 'tasks'
+    return 'ignore'
+  }
 
   if (type.startsWith('task.')) {
     return isFullTask(ev?.data) ? 'patch' : 'tasks'

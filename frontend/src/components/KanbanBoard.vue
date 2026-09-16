@@ -781,14 +781,23 @@ const showTaskModal = ref(false)
 // including when the browser Back button pops the entry.
 // The URL carries the readable task number (#252), not the UUID. numberOf maps a
 // task UUID to its number from the loaded board data.
-function numberOf(id) {
+function rowById(id) {
   const t = allTasks.value.find((x) => x.id === id)
-  if (t?.number != null) return t.number
+  if (t) return t
   for (const arr of Object.values(subtasksByParent.value)) {
     const s = arr.find((x) => x.id === id)
-    if (s?.number != null) return s.number
+    if (s) return s
   }
   return null
+}
+function numberOf(id) {
+  return rowById(id)?.number ?? null
+}
+// Is this task one the board currently draws (a card or a subtask under one)?
+// Only the realtime router asks: an event naming another board is ours after all
+// when it names a card we still hold — that is the card leaving (see classifyEvent).
+function taskOnBoard(id) {
+  return !!rowById(id)
 }
 function openTask(id) {
   selectedTaskId.value = id
@@ -1362,7 +1371,7 @@ useRealtime((ev) => {
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
   if (dragging.value || Date.now() < suppressReloadUntil) return
   // Route the event instead of reloading the whole board for every one of them.
-  const kind = classifyEvent(ev, { boardId: props.boardId })
+  const kind = classifyEvent(ev, { boardId: props.boardId, hasTask: taskOnBoard })
   if (kind === 'ignore') return
   if (kind === 'patch') {
     // A full task payload can be merged into the card with no request at all —

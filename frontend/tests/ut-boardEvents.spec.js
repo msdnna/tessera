@@ -147,6 +147,36 @@ describe('classifyEvent — таблица маршрутизации', () => {
     expect(ev('task.synced', { board_id: BOARD, created: 1, updated: 2 })).toBe('tasks')
   })
 
+  // Уход карточки на другую доску объявляется задачей ПОСЛЕ перенода: board_id в
+  // событии — уже целевой, от чужого его отличает только то, что карточку мы всё
+  // ещё держим. Обе двери на другую доску (перенос из хлебной крошки модалки и
+  // setParent на карточку соседней доски) шлют именно такой task.moved (#2932).
+  describe('карточка уехала с этой доски', () => {
+    const mine = (type, data) =>
+      classifyEvent({ type, data }, { boardId: BOARD, hasTask: (id) => id === 't1' })
+
+    it('task.moved с чужим board_id про НАШУ карточку перечитывает списки', () => {
+      expect(mine('task.moved', full({ id: 't1', board_id: 'other' }))).toBe('tasks')
+    })
+
+    it('та же карточка на своей доске по-прежнему патчится без запросов', () => {
+      expect(mine('task.moved', full({ id: 't1' }))).toBe('patch')
+    })
+
+    it('чужая карточка на чужой доске остаётся чужой', () => {
+      expect(mine('task.moved', full({ id: 't9', board_id: 'other' }))).toBe('ignore')
+      expect(mine('task.updated', full({ id: 't9', board_id: 'other' }))).toBe('ignore')
+    })
+
+    it('не-task событие чужой доски молчит, даже совпав по id', () => {
+      expect(mine('gitlab.something', { id: 't1', board_id: 'other' })).toBe('ignore')
+    })
+
+    it('без hasTask поведение прежнее — чужая доска молчит', () => {
+      expect(ev('task.moved', full({ id: 't1', board_id: 'other' }))).toBe('ignore')
+    })
+  })
+
   it('неизвестный тип перезагружает задачи, а не молча теряется', () => {
     expect(ev('task.somethingNew', { id: 't1' })).toBe('tasks')
     expect(ev('totally.unknown', {})).toBe('tasks')
