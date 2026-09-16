@@ -19,6 +19,8 @@ import {
   OAUTH_DONE_EVENT,
 } from '@/composables/useDesktopOAuth'
 import { isTauri } from '@/utils/serverBase'
+import { invitePath } from '@/utils/inviteRoute'
+import { takePendingInvite } from '@/utils/pendingInvite'
 import { useResponsive } from '@/composables/useResponsive'
 
 const theme = useThemeStore()
@@ -70,6 +72,9 @@ async function onDesktopOAuth({ code, state, error }) {
   // login; anything else is dropped without a trace — no routing, no OAUTH_DONE_EVENT,
   // so a forged link can neither sign the user in (#2932) nor cancel a real sign-in.
   if (!consumeOAuthState(state)) return
+  // Same detour as on web, same rule: taken on every return, spent only on a
+  // sign-in that worked (#2932).
+  const invite = takePendingInvite()
   let reason = error
   if (!reason) {
     // The deep link carries a one-time code, not the session (#2932) — redeem it. Its own
@@ -85,7 +90,7 @@ async function onDesktopOAuth({ code, state, error }) {
       try {
         await useAuthStore().loginWithTokens(tokens.access, tokens.refresh)
         window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: null } }))
-        router.replace('/')
+        router.replace(invite ? invitePath(invite) : '/')
         return
       } catch {
         reason = 'userinfo_failed'

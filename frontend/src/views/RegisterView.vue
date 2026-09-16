@@ -9,6 +9,7 @@ import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
 import { passwordError } from '@/utils/password'
 import { loginRouteForInvite } from '@/utils/inviteRoute'
+import { stashPendingInvite } from '@/utils/pendingInvite'
 
 const { t } = useI18n()
 
@@ -34,6 +35,10 @@ onMounted(async () => {
   }
 })
 function registerWithGitlab() {
+  // The token cannot ride in the URL across the provider's redirect, so it waits
+  // in the tab: the callback picks it up and finishes the acceptance. Without
+  // this the SSO invitee signs up into a workspace they were never joined to.
+  stashPendingInvite(inviteToken)
   window.location.href = auth.gitlabAuthorizeUrl()
 }
 

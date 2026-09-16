@@ -9,6 +9,7 @@ import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
 import { isTauri } from '@/utils/serverBase'
 import { inviteTokenFromNext, registerRouteForInvite } from '@/utils/inviteRoute'
+import { stashPendingInvite } from '@/utils/pendingInvite'
 import {
   startDesktopGitlabLogin,
   OAUTH_DONE_EVENT,
@@ -74,6 +75,9 @@ onUnmounted(() => {
 
 async function loginWithGitlab() {
   formError.value = ''
+  // `?next=` is replayed by the password form below, but it cannot survive the
+  // provider's redirect — park the invitation so the callback replays it instead.
+  stashPendingInvite(inviteTokenFromNext(route.query.next))
   // Web: a top-level navigation, which is what the SameSite=Lax state cookie needs.
   if (!isTauri()) {
     window.location.href = auth.gitlabAuthorizeUrl()
