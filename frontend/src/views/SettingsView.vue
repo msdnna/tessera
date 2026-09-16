@@ -170,6 +170,29 @@ const pwValid = computed(() => !!pw.current && isPasswordValid(pw.next) && pw.ne
 // ordinary Russian passphrase — which used to reach the server and come back as
 // "internal error" (#2932). A dead button would say none of that.
 const pwFieldError = computed(() => (pw.next ? passwordError(pw.next) : ''))
+// A GitLab-provisioned account is created without a password hash, so the
+// server can only ever answer this form "current password is incorrect" — an
+// unwinnable form whose refusal reads like a typo. `provider` would be the
+// wrong flag to hide it on: a recovery link sets a password without changing
+// it, and afterwards the form works like anyone else's (#2932).
+const hasPassword = computed(() => auth.user?.has_password !== false)
+const pwLinkSending = ref(false)
+const pwLinkSent = ref(false)
+
+// Sets the first password the same way the login screen recovers a forgotten
+// one — the account's own address, the server's own single-use link.
+async function sendPasswordLink() {
+  pwError.value = ''
+  pwLinkSending.value = true
+  try {
+    await accountFlows.forgotPassword(auth.user?.email)
+    pwLinkSent.value = true
+  } catch (e) {
+    pwError.value = e.message
+  } finally {
+    pwLinkSending.value = false
+  }
+}
 
 async function changePassword() {
   pwError.value = ''
@@ -355,31 +378,54 @@ async function resendVerify() {
     <!-- Security -->
     <section class="card">
       <h2>{{ t('settings.security.title') }}</h2>
-      <div class="grid3">
-        <label class="field"
-          ><span>{{ t('settings.security.current') }}</span
-          ><n-input v-model:value="pw.current" type="password" show-password-on="click"
-        /></label>
-        <label class="field"
-          ><span>{{ t('settings.security.next') }}</span
-          ><n-input v-model:value="pw.next" type="password" show-password-on="click"
-        /></label>
-        <label class="field"
-          ><span>{{ t('settings.security.confirm') }}</span
-          ><n-input v-model:value="pw.confirm" type="password" show-password-on="click"
-        /></label>
-      </div>
-      <div class="row-end">
-        <span v-if="pwError || pwFieldError" class="err">{{ pwError || pwFieldError }}</span>
-        <transition name="fade">
-          <span v-if="pwSaved" class="saved"
-            ><n-icon :component="CheckmarkCircle" /> {{ t('settings.security.changed') }}</span
+
+      <!-- No password to change: offer to set one instead of a form that can
+           only be refused. -->
+      <template v-if="!hasPassword">
+        <p class="hint">{{ t('settings.security.noPassword', { email: auth.user?.email }) }}</p>
+        <div class="row-end">
+          <span v-if="pwError" class="err">{{ pwError }}</span>
+          <span v-if="pwLinkSent" class="saved">
+            <n-icon :component="CheckmarkCircle" />
+            {{ t('settings.security.linkSent', { email: auth.user?.email }) }}
+          </span>
+          <n-button v-else type="primary" :loading="pwLinkSending" @click="sendPasswordLink">
+            {{ t('settings.security.setLink') }}
+          </n-button>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="grid3">
+          <label class="field"
+            ><span>{{ t('settings.security.current') }}</span
+            ><n-input v-model:value="pw.current" type="password" show-password-on="click"
+          /></label>
+          <label class="field"
+            ><span>{{ t('settings.security.next') }}</span
+            ><n-input v-model:value="pw.next" type="password" show-password-on="click"
+          /></label>
+          <label class="field"
+            ><span>{{ t('settings.security.confirm') }}</span
+            ><n-input v-model:value="pw.confirm" type="password" show-password-on="click"
+          /></label>
+        </div>
+        <div class="row-end">
+          <span v-if="pwError || pwFieldError" class="err">{{ pwError || pwFieldError }}</span>
+          <transition name="fade">
+            <span v-if="pwSaved" class="saved"
+              ><n-icon :component="CheckmarkCircle" /> {{ t('settings.security.changed') }}</span
+            >
+          </transition>
+          <n-button
+            type="primary"
+            :disabled="!pwValid"
+            :loading="pwSaving"
+            @click="changePassword"
+            >{{ t('settings.security.change') }}</n-button
           >
-        </transition>
-        <n-button type="primary" :disabled="!pwValid" :loading="pwSaving" @click="changePassword">{{
-          t('settings.security.change')
-        }}</n-button>
-      </div>
+        </div>
+      </template>
     </section>
 
     <!-- Notifications (channels + routing) -->

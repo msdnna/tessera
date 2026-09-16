@@ -35,6 +35,14 @@ type userDTO struct {
 	Company       string    `json:"company"`
 	JobTitle      string    `json:"job_title"`
 	AvatarURL     string    `json:"avatar_url,omitempty"`
+	// Whether the account has a password at all. A GitLab-provisioned account is
+	// created with an empty hash (bcrypt of "" never matches), so ChangeMyPassword
+	// can only ever answer it "current password is incorrect" — the settings form
+	// is unwinnable and the refusal reads like a typo. `provider` can't stand in
+	// for this: ResetPassword doesn't check the provider, so such an account can
+	// set a password from a recovery link and then needs the form like anyone
+	// else. Only the hash knows (#2932).
+	HasPassword bool `json:"has_password"`
 	// When the account was created. The web client uses it to decide whether to
 	// show the "What's New" changelog: only accounts that predate the running
 	// build (i.e. actually updated into it) see it, not brand-new sign-ups (#2749).
@@ -77,6 +85,7 @@ func buildUserDTO(c *gin.Context, q *db.Queries, u db.User) userDTO {
 		ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin, EmailVerified: u.EmailVerified,
 		Provider: u.Provider, LastName: u.LastName, FirstName: u.FirstName, MiddleName: u.MiddleName,
 		Bio: u.Bio, Company: u.Company, JobTitle: u.JobTitle, CreatedAt: u.CreatedAt,
+		HasPassword: u.PasswordHash != "",
 	}
 	if has, err := q.UserHasAvatar(c, u.ID); err == nil && has {
 		dto.AvatarURL = "/api/users/" + u.ID.String() + "/avatar"

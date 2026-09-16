@@ -33,7 +33,10 @@
     "confirm": "Repeat new password",
     "change": "Change password",
     "changed": "Password changed",
-    "invalid": "Check the fields: the new password must be at least 8 characters and match the confirmation"
+    "invalid": "Check the fields: the new password must be at least 8 characters and match the confirmation",
+    "noPassword": "This account has no password — it signs in through an external provider. To set one, we'll send a link to {email}.",
+    "setLink": "Send a link",
+    "linkSent": "If the account exists, a link has been sent to {email}"
   },
   "appearance": {
     "title": "Appearance",

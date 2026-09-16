@@ -89,6 +89,9 @@
     <string name="settings_password_repeat">Повторите новый</string>
     <string name="settings_password_changed">Пароль изменён</string>
     <string name="settings_password_submit">Сменить пароль</string>
+    <string name="settings_password_none">У этого аккаунта нет пароля — вход идёт через внешнего провайдера. Чтобы задать пароль, пришлём ссылку на %1$s.</string>
+    <string name="settings_password_link_send">Прислать ссылку</string>
+    <string name="settings_password_link_sent">Если аккаунт существует, ссылка отправлена на %1$s</string>
 
     <!-- Настройки: оформление -->
     <string name="settings_appearance_title">Оформление</string>

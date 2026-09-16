@@ -83,6 +83,9 @@
     <string name="settings_password_repeat">Repeat the new one</string>
     <string name="settings_password_changed">Password changed</string>
     <string name="settings_password_submit">Change password</string>
+    <string name="settings_password_none">This account has no password — it signs in through an external provider. To set one, we\'ll send a link to %1$s.</string>
+    <string name="settings_password_link_send">Send a link</string>
+    <string name="settings_password_link_sent">If the account exists, a link has been sent to %1$s</string>
 
     <!-- Settings: appearance -->
     <string name="settings_appearance_title">Appearance</string>

@@ -162,7 +162,7 @@ fun ProfileScreen() {
         Text(stringResource(R.string.settings_title), color = c.text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 
         ProfileCard(user, repo, scope, ctx)
-        PasswordCard(repo, scope)
+        PasswordCard(user, repo, scope)
         AppearanceCard(p, repo, scope)
         LocalizationCard(p, repo, scope)
         ConnectionCard(prefs, scope)
@@ -335,8 +335,19 @@ private fun AvatarPreview(user: website.msdnna.tessera.data.model.User?, bust: L
 }
 
 @Composable
-private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.CoroutineScope) {
+private fun PasswordCard(
+    user: website.msdnna.tessera.data.model.User?,
+    repo: ProfileRepository,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
     val c = Tessera.colors
+    // Пароля нет — форму показывать нечего: сервер сверяет текущий через bcrypt
+    // по пустому хешу и может ответить только отказом. Вместо неё — тот же путь,
+    // которым пароль восстанавливают с экрана входа (#2932).
+    if (user != null && !user.hasPassword) {
+        SetPasswordCard(user.email, repo, scope)
+        return
+    }
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
@@ -384,6 +395,55 @@ private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.Coro
                     }
                 },
             )
+        }
+    }
+}
+
+/**
+ * Карточка «Безопасность» для аккаунта без пароля: объяснение и кнопка, которая
+ * просит у сервера одноразовую ссылку на собственный адрес аккаунта. Ответ
+ * /auth/forgot-password намеренно одинаков для существующего и несуществующего
+ * адреса, поэтому и подпись после отправки говорит «если аккаунт существует».
+ */
+@Composable
+private fun SetPasswordCard(
+    email: String,
+    repo: ProfileRepository,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    val c = Tessera.colors
+    var sending by remember { mutableStateOf(false) }
+    var sent by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<UiText?>(null) }
+
+    TCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                stringResource(R.string.settings_security_title),
+                color = c.text1,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(stringResource(R.string.settings_password_none, email), color = c.text3, fontSize = 13.sp)
+            TFormError(error)
+            if (sent) {
+                Text(stringResource(R.string.settings_password_link_sent, email), color = c.primary, fontSize = 13.sp)
+            } else {
+                TButton(
+                    stringResource(R.string.settings_password_link_send),
+                    loading = sending,
+                    onClick = {
+                        scope.launch {
+                            sending = true
+                            error = null
+                            runCatching { repo.forgotPassword(email) }
+                                .onSuccess { sent = true }
+                                .onFailure { error = errorMessage(it) }
+                            sending = false
+                        }
+                    },
+                )
+            }
         }
     }
 }
