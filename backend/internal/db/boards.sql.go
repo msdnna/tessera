@@ -271,9 +271,11 @@ func (q *Queries) GetColumn(ctx context.Context, id uuid.UUID) (BoardColumn, err
 }
 
 const listBoards = `-- name: ListBoards :many
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE project_id = $1 ORDER BY position
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE project_id = $1 ORDER BY position, created_at, id
 `
 
+// ListBoards: created_at/id break position ties — see ListColumns below, the
+// midpoint scheme is the same one level up.
 func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board, error) {
 	rows, err := q.db.Query(ctx, listBoards, projectID)
 	if err != nil {
@@ -307,9 +309,18 @@ func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board,
 }
 
 const listColumns = `-- name: ListColumns :many
-SELECT id, board_id, name, color, position, created_at, updated_at, name_key FROM board_columns WHERE board_id = $1 ORDER BY position
+SELECT id, board_id, name, color, position, created_at, updated_at, name_key FROM board_columns WHERE board_id = $1 ORDER BY position, created_at, id
 `
 
+// ListColumns: created_at/id break position ties, exactly as for cards
+// (tasks.sql ListBoardTasks). Two siblings really can share a position — a
+// create reads Max*Position outside the insert's transaction, so two concurrent
+// creates land on the same value, and two reorders into one gap compute the same
+// midpoint. `ORDER BY position` alone then leaves them to the planner: the board
+// swaps them between reads. This also has to match RebalanceColumnPositions,
+// which numbers by (position, created_at, id) and promises to keep "the order
+// they already had" — without the tie-break here that order is the one the
+// reader never saw, so the respace silently swaps two columns for everyone.
 func (q *Queries) ListColumns(ctx context.Context, boardID uuid.UUID) ([]BoardColumn, error) {
 	rows, err := q.db.Query(ctx, listColumns, boardID)
 	if err != nil {

@@ -3,8 +3,10 @@ INSERT INTO boards (project_id, name, slug, position)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- ListBoards: created_at/id break position ties — see ListColumns below, the
+-- midpoint scheme is the same one level up.
 -- name: ListBoards :many
-SELECT * FROM boards WHERE project_id = $1 ORDER BY position;
+SELECT * FROM boards WHERE project_id = $1 ORDER BY position, created_at, id;
 
 -- name: GetBoard :one
 SELECT * FROM boards WHERE id = $1;
@@ -69,8 +71,17 @@ INSERT INTO board_columns (board_id, name, name_key, color, position)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
+-- ListColumns: created_at/id break position ties, exactly as for cards
+-- (tasks.sql ListBoardTasks). Two siblings really can share a position — a
+-- create reads Max*Position outside the insert's transaction, so two concurrent
+-- creates land on the same value, and two reorders into one gap compute the same
+-- midpoint. `ORDER BY position` alone then leaves them to the planner: the board
+-- swaps them between reads. This also has to match RebalanceColumnPositions,
+-- which numbers by (position, created_at, id) and promises to keep "the order
+-- they already had" — without the tie-break here that order is the one the
+-- reader never saw, so the respace silently swaps two columns for everyone.
 -- name: ListColumns :many
-SELECT * FROM board_columns WHERE board_id = $1 ORDER BY position;
+SELECT * FROM board_columns WHERE board_id = $1 ORDER BY position, created_at, id;
 
 -- name: GetColumn :one
 SELECT * FROM board_columns WHERE id = $1;

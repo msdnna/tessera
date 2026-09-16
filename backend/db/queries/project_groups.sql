@@ -3,8 +3,10 @@ INSERT INTO project_groups (workspace_id, parent_id, name, position)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- ListProjectGroups: created_at/id break position ties — see ListColumns
+-- (boards.sql); the sidebar orders itself by the same midpoint scheme.
 -- name: ListProjectGroups :many
-SELECT * FROM project_groups WHERE workspace_id = $1 ORDER BY position;
+SELECT * FROM project_groups WHERE workspace_id = $1 ORDER BY position, created_at, id;
 
 -- name: GetProjectGroup :one
 SELECT * FROM project_groups WHERE id = $1;

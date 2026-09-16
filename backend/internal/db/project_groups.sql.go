@@ -79,9 +79,11 @@ func (q *Queries) GetProjectGroup(ctx context.Context, id uuid.UUID) (ProjectGro
 }
 
 const listProjectGroups = `-- name: ListProjectGroups :many
-SELECT id, workspace_id, name, position, created_at, updated_at, parent_id, icon, color, icon_mode FROM project_groups WHERE workspace_id = $1 ORDER BY position
+SELECT id, workspace_id, name, position, created_at, updated_at, parent_id, icon, color, icon_mode FROM project_groups WHERE workspace_id = $1 ORDER BY position, created_at, id
 `
 
+// ListProjectGroups: created_at/id break position ties — see ListColumns
+// (boards.sql); the sidebar orders itself by the same midpoint scheme.
 func (q *Queries) ListProjectGroups(ctx context.Context, workspaceID uuid.UUID) ([]ProjectGroup, error) {
 	rows, err := q.db.Query(ctx, listProjectGroups, workspaceID)
 	if err != nil {

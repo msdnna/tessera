@@ -131,9 +131,11 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode FROM projects WHERE workspace_id = $1 ORDER BY position
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode FROM projects WHERE workspace_id = $1 ORDER BY position, created_at, id
 `
 
+// ListProjects: created_at/id break position ties — see ListColumns
+// (boards.sql); the sidebar orders itself by the same midpoint scheme.
 func (q *Queries) ListProjects(ctx context.Context, workspaceID uuid.UUID) ([]Project, error) {
 	rows, err := q.db.Query(ctx, listProjects, workspaceID)
 	if err != nil {
