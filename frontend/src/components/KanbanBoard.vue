@@ -1937,6 +1937,7 @@ async function restoreFromArchive(taskId) {
                 :total="colCounts(dcol).total"
                 :estimate="columnEstimate(dcol)"
                 :editable="groupMode === 'status'"
+                :readonly="archivedMode"
                 :is-done="groupMode === 'status' && dcol.key === doneColumnId"
                 :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
                 :collapsed="isColCollapsed(dcol)"

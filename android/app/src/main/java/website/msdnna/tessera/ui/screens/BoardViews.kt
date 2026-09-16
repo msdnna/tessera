@@ -412,6 +412,16 @@ fun KanbanView(
                     val laneColor = parseHexColor(lane.color, Tessera.colors.text3)
                     val laneHasColor = !lane.color.isNullOrBlank()
                     val column = state.columns.firstOrNull { it.id == lane.id }
+                    // `canAdd` only says the lane is a real status column. Editing it
+                    // also needs the board not to be in the read-only archive: a column
+                    // delete cascades through tasks.column_id and takes every card
+                    // standing in it, archived or not (TaskIDsInColumn filters on
+                    // column_id alone), while the archive shows — and counts — only the
+                    // archived ones. Confirming «delete the column and its tasks» over a
+                    // header reading «3» would destroy the column's live cards and their
+                    // uploads, with no undo. Card DnD and «add» are already closed in the
+                    // archive below; the column header catches up here.
+                    val columnEditable = lane.canAdd && !state.archivedMode
                     var renamingCol by remember { mutableStateOf(false) }
                     val collapsed = state.isLaneCollapsed(lane.id, lane.tasks.size)
                     // Column body tint: a barely-there wash of the column colour over
@@ -471,7 +481,7 @@ fun KanbanView(
                                     Modifier.fillMaxWidth()
                                         // Long-press the header to drag the whole column.
                                         .then(
-                                            if (lane.canAdd && column != null) {
+                                            if (columnEditable && column != null) {
                                                 Modifier.draggableColumn(drag, column) { onDropColumn(lane.id) }
                                             } else {
                                                 Modifier
@@ -521,7 +531,7 @@ fun KanbanView(
                                             maxLines = 1,
                                             // Tap the title to rename inline (status lanes only).
                                             modifier = Modifier.weight(1f)
-                                                .then(if (lane.canAdd) Modifier.clickableNoRipple { renamingCol = true } else Modifier),
+                                                .then(if (columnEditable) Modifier.clickableNoRipple { renamingCol = true } else Modifier),
                                         )
                                     }
                                     // Σ estimate of the milestone's cards (web parity: shown
@@ -561,7 +571,7 @@ fun KanbanView(
                                         },
                                         modifier = Modifier.testTag(TestTags.columnCount(lane.id)),
                                     )
-                                    if (lane.canAdd) {
+                                    if (columnEditable) {
                                         Spacer(Modifier.width(6.dp))
                                         ColumnMenu(lane, state, vm, onRename = { renamingCol = true })
                                     }
