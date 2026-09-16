@@ -33,9 +33,6 @@ class ReminderViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(ReminderUiState())
     val state: StateFlow<ReminderUiState> = _state.asStateFlow()
 
-    // Ids we last scheduled, so a reload can cancel alarms for deleted reminders.
-    private var scheduledIds: Set<String> = emptySet()
-
     init {
         load()
     }
@@ -70,9 +67,10 @@ class ReminderViewModel(app: Application) : AndroidViewModel(app) {
         resync(items)
     }
 
-    private fun resync(items: List<Reminder>) {
-        ReminderScheduler.rescheduleAll(getApplication<android.app.Application>(), items, scheduledIds)
-        scheduledIds = items.map { it.id }.toSet()
+    // Набор ранее заведённых будильников планировщик держит сам, в DataStore:
+    // экран пересоздаётся чаще, чем живут будильники (#2932).
+    private suspend fun resync(items: List<Reminder>) {
+        ReminderScheduler.sync(getApplication<android.app.Application>(), items)
     }
 
     private fun launchCatching(block: suspend () -> Unit) {

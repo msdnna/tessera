@@ -24,7 +24,7 @@ object ReminderSync {
 
             val reminders = ReminderRepository().list()
             ReminderNotifications.ensureChannel(context)
-            ReminderScheduler.rescheduleAll(context, reminders)
+            ReminderScheduler.sync(context, reminders)
         }
     }
 }

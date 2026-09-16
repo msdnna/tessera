@@ -5,6 +5,8 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.core.app.NotificationManagerCompat
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Reminder
 import website.msdnna.tessera.util.parseInstantMillis
 
@@ -58,6 +60,44 @@ object ReminderScheduler {
     fun rescheduleAll(context: Context, reminders: List<Reminder>, previousIds: Set<String> = emptySet()) {
         (previousIds + reminders.map { it.id }).forEach { cancel(context, it) }
         reminders.forEach { schedule(context, it) }
+    }
+
+    /**
+     * То же, но «что было заведено раньше» берётся из DataStore, а не из памяти
+     * вызывающего (#2932).
+     *
+     * Будильник живёт в системе, а приложение — нет: процесс перезапускается,
+     * экран напоминаний пересоздаётся, и набор, лежавший полем ViewModel, каждый
+     * раз начинался с пустого. Отменялось поэтому только то, что попало в ту же
+     * загрузку, — напоминание, удалённое с другого устройства, всё равно звонило
+     * в свой час.
+     */
+    suspend fun sync(context: Context, reminders: List<Reminder>) {
+        val previous = AppContainer.prefs.scheduledReminderIds()
+        rescheduleAll(context, reminders, previous)
+        AppContainer.prefs.setScheduledReminderIds(reminders.map { it.id }.toSet())
+    }
+
+    /**
+     * Снимает всё, что эта сессия оставила на устройстве: будильники и уже
+     * показанные по ним уведомления (#2932).
+     *
+     * Вызывается на выходе из аккаунта. Локальный будильник — единственный путь
+     * доставки напоминания, а его текст лежит прямо в `PendingIntent`, то есть
+     * переживает и токен, и профиль: без этой уборки личные напоминания
+     * продолжали всплывать на экране уже вышедшего человека, а на общем
+     * устройстве — у следующего вошедшего.
+     */
+    suspend fun cancelAllScheduled(context: Context) {
+        val ids = AppContainer.prefs.scheduledReminderIds()
+        val manager = NotificationManagerCompat.from(context)
+        ids.forEach { id ->
+            cancel(context, id)
+            // Сработавший будильник уже нарисовал уведомление — оно висит в шторке
+            // со своим текстом, и отмена будильника его не убирает.
+            runCatching { manager.cancel(id.hashCode()) }
+        }
+        AppContainer.prefs.setScheduledReminderIds(emptySet())
     }
 
     private fun pendingIntent(context: Context, reminder: Reminder, create: Boolean): PendingIntent? {

@@ -71,6 +71,13 @@ class AppPreferences(private val context: Context) {
         // Services — the device then lives on the live-socket path only.
         val FCM_TOKEN = stringPreferencesKey("fcm_token")
         val OAUTH_NONCE = stringPreferencesKey("oauth_nonce")
+
+        // Напоминания, под которые на устройстве заведены будильники (#2932).
+        // Набор обязан пережить процесс: будильник живёт в системе, а не в
+        // приложении, и снять его можно только зная id. Пока этот список был
+        // полем ViewModel, всё, что не попало в текущую загрузку, оставалось
+        // висеть — в том числе после выхода из аккаунта.
+        val SCHEDULED_REMINDERS = stringSetPreferencesKey("scheduled_reminders")
     }
 
     /** Stable id for the notification "device" channel so this device is routable and
@@ -252,6 +259,16 @@ class AppPreferences(private val context: Context) {
             prefs.remove(Keys.USER_JSON)
             prefs.remove(Keys.PREFS_JSON)
         }
+    }
+
+    /** Id напоминаний, под которые сейчас заведены локальные будильники.
+     *  Читается разово (не потоком): к нему обращаются планировщик и выход из
+     *  аккаунта — оба вне композиции. */
+    suspend fun scheduledReminderIds(): Set<String> =
+        context.dataStore.data.first()[Keys.SCHEDULED_REMINDERS] ?: emptySet()
+
+    suspend fun setScheduledReminderIds(ids: Set<String>) {
+        context.dataStore.edit { it[Keys.SCHEDULED_REMINDERS] = ids }
     }
 
     val currentWorkspaceId: Flow<String> = context.dataStore.data.map { it[Keys.CURRENT_WORKSPACE] ?: "" }
