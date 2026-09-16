@@ -72,6 +72,7 @@ import website.msdnna.tessera.util.AvatarPickError
 import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.DatePresets
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.avatarBustUrl
 import website.msdnna.tessera.util.avatarInitials
 import website.msdnna.tessera.util.avatarPickError
 import website.msdnna.tessera.util.countryOptions
@@ -323,7 +324,7 @@ private fun ProfileCard(
 @Composable
 private fun AvatarPreview(user: website.msdnna.tessera.data.model.User?, bust: Long) {
     val c = Tessera.colors
-    val url = user?.avatarUrl?.takeIf { it.isNotBlank() }?.let { "${RetrofitClient.serverRoot}$it?t=$bust" }
+    val url = avatarBustUrl(RetrofitClient.serverRoot, user?.avatarUrl, bust)
     Box(Modifier.size(72.dp).clip(CircleShape).background(accentGradient(c.primary)), contentAlignment = Alignment.Center) {
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(72.dp).clip(CircleShape))

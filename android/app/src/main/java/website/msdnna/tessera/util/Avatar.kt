@@ -39,3 +39,26 @@ fun avatarPickError(size: Long, mime: String?): AvatarPickError? {
     if (type.isNotEmpty() && type !in AVATAR_TYPES) return AvatarPickError.BadType
     return null
 }
+
+/**
+ * Абсолютный адрес аватара с меткой, сбивающей кэш после перезаливки (#2932).
+ *
+ * Разделитель выбирается, а не приклеивается: `avatar_url` — это НЕ всегда
+ * `/api/users/<id>/avatar`. Аккаунту без своей картинки сервер (`buildUserDTO`)
+ * отдаёт подписанный прокси-адрес гитлабовского аватара, а он уже несёт строку
+ * запроса — `/api/gitlab/avatar?ws=…&u=…&sig=<hmac>`. Второй знак вопроса не
+ * начинает новый параметр, а уезжает в ЗНАЧЕНИЕ последнего: `sig` перестаёт
+ * сходиться с hmac, и вместо картинки приходит 403. Метка ставится с первой
+ * же отрисовки (`bust = 0`), так что превью было пустым всегда, хотя тот же
+ * аватар рядом, в подвале меню, рисуется — там метки нет.
+ *
+ * Зеркало веба: `SettingsView.vue` строит ту же метку через
+ * `u.includes('?') ? '&' : '?'`.
+ *
+ * Пустой (или отсутствующий) адрес остаётся ничем — рисовать нечего.
+ */
+fun avatarBustUrl(serverRoot: String, avatarUrl: String?, bust: Long): String? {
+    val path = avatarUrl?.takeIf { it.isNotBlank() } ?: return null
+    val sep = if (path.contains('?')) '&' else '?'
+    return "$serverRoot$path${sep}t=$bust"
+}
