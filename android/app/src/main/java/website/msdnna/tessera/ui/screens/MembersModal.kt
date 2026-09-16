@@ -56,8 +56,13 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.ui.viewmodels.MembersUiState
 import website.msdnna.tessera.ui.viewmodels.MembersViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.MemberBadge
+import website.msdnna.tessera.util.MemberLock
+import website.msdnna.tessera.util.memberRowBadge
+import website.msdnna.tessera.util.memberRowLock
 
 /**
  * Подписи ролей. Это функция, а не `val` уровня файла: карта с готовым текстом
@@ -98,80 +103,45 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
 
                 else -> Column(Modifier.heightIn(max = 320.dp).verticalScroll(rememberScrollState())) {
                     state.members.forEach { m ->
-                        MemberRow(m, onRemove = { vm.remove(m.userId) }, onChangeRole = { vm.changeRole(m.userId, it) })
-                    }
-                }
-            }
-
-            // Pending invitations (by email; invitee may not have an account yet).
-            if (state.invitations.isNotEmpty()) {
-                Spacer(Modifier.height(14.dp))
-                Text(stringResource(R.string.members_invitations), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                Spacer(Modifier.height(4.dp))
-                state.invitations.forEach { inv ->
-                    Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                        IonIcon(Ion.LINK, size = 16.dp, tint = c.text3)
-                        Spacer(Modifier.width(8.dp))
-                        Text(inv.email, color = c.text2, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
-                        Text(
-                            stringResource(if (inv.role == "admin") R.string.members_role_admin else R.string.members_role_member),
-                            color = c.text3,
-                            fontSize = 11.sp,
+                        MemberRow(
+                            member = m,
+                            meId = state.meId,
+                            canManage = state.canManage,
+                            onRemove = { vm.remove(m.userId) },
+                            onChangeRole = { vm.changeRole(m.userId, it) },
                         )
-                        Spacer(Modifier.width(6.dp))
-                        IonIconButton(Ion.TRASH, onClick = { vm.revokeInvite(inv.id) }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
                     }
                 }
             }
 
-            Spacer(Modifier.height(16.dp))
-            Text(stringResource(R.string.members_invite_title), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(6.dp))
-            TTextField(
-                value = email,
-                onValueChange = { email = it },
-                placeholder = "email@example.com",
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            )
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RoleChip(stringResource(R.string.members_role_member), role == "member") { role = "member" }
-                Spacer(Modifier.width(8.dp))
-                RoleChip(stringResource(R.string.members_role_admin), role == "admin") { role = "admin" }
-                Spacer(Modifier.weight(1f))
-                TButton(
-                    stringResource(R.string.members_invite_action),
-                    enabled = email.isNotBlank() && !state.busy,
-                    loading = state.busy,
-                    onClick = {
+            // Everything below writes, and every write here is `requireManager`:
+            // the invitation list, its trash icons, and the invite form all answer
+            // 403 to a plain member. They get the roster and a line saying why it
+            // is all they get — a hidden control is an inconvenience, one that
+            // 403s is a bug report.
+            if (!state.canManage) {
+                if (!state.loading) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(stringResource(R.string.members_read_only), color = c.text3, fontSize = 12.sp)
+                }
+            } else {
+                MembersManagement(
+                    state = state,
+                    email = email,
+                    onEmailChange = { email = it },
+                    role = role,
+                    onRoleChange = { role = it },
+                    onInvite = {
                         vm.invite(email, role)
                         email = ""
                     },
+                    onRevokeInvite = { vm.revokeInvite(it) },
+                    onCopyLink = { clipboard.setText(AnnotatedString(state.lastInviteLink)) },
                 )
             }
-            Text(
-                stringResource(R.string.members_invite_hint),
-                color = c.text3,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-            // The most recent invitation's link, for copying (also emailed when SMTP on).
-            if (state.lastInviteLink.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        state.lastInviteLink,
-                        color = c.text2,
-                        fontSize = 12.sp,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    TButton(stringResource(R.string.members_copy_link), kind = TButtonKind.Secondary, onClick = {
-                        clipboard.setText(AnnotatedString(state.lastInviteLink))
-                    })
-                }
-            }
+
+            // Outside the manager half: a failed roster load is the one error a
+            // plain member can still hit here.
             TFormError(state.error, modifier = Modifier.padding(top = 6.dp))
 
             Spacer(Modifier.height(14.dp))
@@ -182,12 +152,111 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
     }
 }
 
+/**
+ * The manager-only half of the dialog: pending invitations and the invite form.
+ *
+ * Split out rather than guarded field by field so the gate reads as one decision
+ * — the same one `requireManager` makes on the server for every route this half
+ * calls (#2932).
+ */
 @Composable
-private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (String) -> Unit) {
+private fun MembersManagement(
+    state: MembersUiState,
+    email: String,
+    onEmailChange: (String) -> Unit,
+    role: String,
+    onRoleChange: (String) -> Unit,
+    onInvite: () -> Unit,
+    onRevokeInvite: (String) -> Unit,
+    onCopyLink: () -> Unit,
+) {
+    val c = Tessera.colors
+    Column {
+        // Pending invitations (by email; invitee may not have an account yet).
+        if (state.invitations.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            Text(stringResource(R.string.members_invitations), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(4.dp))
+            state.invitations.forEach { inv ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    IonIcon(Ion.LINK, size = 16.dp, tint = c.text3)
+                    Spacer(Modifier.width(8.dp))
+                    Text(inv.email, color = c.text2, fontSize = 13.sp, maxLines = 1, modifier = Modifier.weight(1f))
+                    Text(
+                        stringResource(if (inv.role == "admin") R.string.members_role_admin else R.string.members_role_member),
+                        color = c.text3,
+                        fontSize = 11.sp,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    IonIconButton(Ion.TRASH, onClick = { onRevokeInvite(inv.id) }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
+                }
+            }
+        }
+
+        Spacer(Modifier.height(16.dp))
+        Text(stringResource(R.string.members_invite_title), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+        Spacer(Modifier.height(6.dp))
+        TTextField(
+            value = email,
+            onValueChange = onEmailChange,
+            placeholder = "email@example.com",
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+        )
+        Spacer(Modifier.height(8.dp))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RoleChip(stringResource(R.string.members_role_member), role == "member") { onRoleChange("member") }
+            Spacer(Modifier.width(8.dp))
+            RoleChip(stringResource(R.string.members_role_admin), role == "admin") { onRoleChange("admin") }
+            Spacer(Modifier.weight(1f))
+            TButton(
+                stringResource(R.string.members_invite_action),
+                enabled = email.isNotBlank() && !state.busy,
+                loading = state.busy,
+                onClick = onInvite,
+            )
+        }
+        Text(
+            stringResource(R.string.members_invite_hint),
+            color = c.text3,
+            fontSize = 11.sp,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        // The most recent invitation's link, for copying (also emailed when SMTP on).
+        if (state.lastInviteLink.isNotBlank()) {
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    state.lastInviteLink,
+                    color = c.text2,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                TButton(stringResource(R.string.members_copy_link), kind = TButtonKind.Secondary, onClick = onCopyLink)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberRow(
+    member: Member,
+    meId: String,
+    canManage: Boolean,
+    onRemove: () -> Unit,
+    onChangeRole: (String) -> Unit,
+) {
     val c = Tessera.colors
     var confirm by remember { mutableStateOf(false) }
     var roleMenu by remember { mutableStateOf(false) }
     val roles = roleLabels()
+    val lock = memberRowLock(member, meId, canManage)
+    val badge = when (memberRowBadge(member, meId)) {
+        MemberBadge.OWNER -> roles.getValue("owner")
+        MemberBadge.YOU -> stringResource(R.string.members_you)
+        MemberBadge.ROLE -> roles[member.role] ?: member.role
+    }
     Row(
         Modifier.fillMaxWidth().padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -198,11 +267,14 @@ private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (Strin
             Text(member.name.ifBlank { "—" }, color = c.text1, fontSize = 14.sp, maxLines = 1)
             if (member.email.isNotBlank()) Text(member.email, color = c.text3, fontSize = 12.sp, maxLines = 1)
         }
-        if (member.role == "owner") {
+        // A locked row is a plain badge: the workspace owner's role is immutable,
+        // the viewer's own row would be a self-demotion, and for someone who
+        // passes no `requireManager` at all every row is locked alike.
+        if (lock != MemberLock.NONE) {
             Box(
                 Modifier.clip(RoundedCornerShape(RadiusSm)).background(c.surfaceAlt).padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
-                Text(roles.getValue("owner"), color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                Text(badge, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
             }
         } else {
             // Tap the role badge to switch member ↔ admin.
@@ -212,7 +284,7 @@ private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (Strin
                         .clickableNoRipple { roleMenu = true }.padding(horizontal = 8.dp, vertical = 3.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text(roles[member.role] ?: member.role, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                    Text(badge, color = c.text2, fontSize = 11.sp, fontWeight = FontWeight.Medium)
                     Spacer(Modifier.width(3.dp))
                     IonIcon(Ion.CHEVRON_DOWN, size = 12.dp, tint = c.text3)
                 }
@@ -228,7 +300,7 @@ private fun MemberRow(member: Member, onRemove: () -> Unit, onChangeRole: (Strin
                 }
             }
         }
-        if (member.role != "owner") {
+        if (lock == MemberLock.NONE) {
             Spacer(Modifier.width(6.dp))
             Box {
                 IonIconButton(Ion.TRASH, onClick = { confirm = true }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)

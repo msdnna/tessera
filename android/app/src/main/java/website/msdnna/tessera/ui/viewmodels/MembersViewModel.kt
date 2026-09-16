@@ -5,12 +5,15 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Invitation
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.repository.WorkspaceRepository
 import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.util.canManageMembers
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.rawErrorText
 
@@ -21,24 +24,51 @@ data class MembersUiState(
     val invitations: List<Invitation> = emptyList(),
     val lastInviteLink: String = "",
     val busy: Boolean = false,
+    /** The viewer, so their own row can stop offering self-demotion and self-removal. */
+    val meId: String = "",
+    /** Whether the viewer passes `requireManager` here — see [canManageMembers]. */
+    val canManage: Boolean = false,
 )
 
 /** Workspace members modal: list members, invite (instant add or email link), remove. */
 class MembersViewModel(
     private val repo: WorkspaceRepository = WorkspaceRepository(),
+    // Injected so the dialog's rules can be tested without a DataStore; production
+    // reads the signed-in profile exactly as the board does.
+    private val readMeId: suspend () -> String = { AppContainer.prefs.user.first()?.id.orEmpty() },
 ) : ViewModel() {
     private val _state = MutableStateFlow(MembersUiState())
     val state: StateFlow<MembersUiState> = _state.asStateFlow()
 
     private var workspaceId: String = ""
 
+    /**
+     * The two lists are fetched behind different gates — ListMembers is
+     * `requireMember`, ListInvitations is `requireManager` — so fetching them in
+     * one `runCatching` threw away the roster the server had already returned
+     * when the second answered 403: an empty dialog behind a red error, on the
+     * one screen that answers "who else is in this workspace". They are
+     * independent now, and the manager-only one is not asked for at all by
+     * someone the server would refuse it to.
+     */
     fun load(workspaceId: String) {
         this.workspaceId = workspaceId
         _state.update { it.copy(loading = true, error = null) }
-        launchCatching {
-            val members = repo.members(workspaceId)
-            val invs = repo.invitations(workspaceId)
-            _state.update { it.copy(loading = false, members = members, invitations = invs) }
+        viewModelScope.launch {
+            val meId = runCatching { readMeId() }.getOrDefault("")
+            val roster = runCatching { repo.members(workspaceId) }
+            val members = roster.getOrElse { e ->
+                _state.update { it.copy(loading = false, meId = meId, error = errorMessage(e)) }
+                return@launch
+            }
+            val canManage = canManageMembers(members, meId)
+            _state.update {
+                it.copy(loading = false, meId = meId, members = members, canManage = canManage)
+            }
+            if (!canManage) return@launch
+            runCatching { repo.invitations(workspaceId) }
+                .onSuccess { invs -> _state.update { it.copy(invitations = invs) } }
+                .onFailure { e -> _state.update { it.copy(error = errorMessage(e)) } }
         }
     }
 

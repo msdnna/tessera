@@ -1116,6 +1116,8 @@
     <string name="members_role_owner">Owner</string>
     <string name="members_role_admin">Admin</string>
     <string name="members_role_member">Member</string>
+    <string name="members_you">This is you</string>
+    <string name="members_read_only">Read-only list: the workspace owner or an admin changes who is here.</string>
 
     <!-- Admin: account list -->
     <string name="admin_users_count">Accounts on this instance — %1$d</string>

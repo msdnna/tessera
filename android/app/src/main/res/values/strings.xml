@@ -1143,6 +1143,8 @@
     <string name="members_role_owner">Владелец</string>
     <string name="members_role_admin">Админ</string>
     <string name="members_role_member">Участник</string>
+    <string name="members_you">Это вы</string>
+    <string name="members_read_only">Список только для чтения: менять состав может владелец или админ пространства.</string>
 
     <!-- Администрирование: список аккаунтов -->
     <string name="admin_users_count">Пользователи экземпляра — %1$d</string>
