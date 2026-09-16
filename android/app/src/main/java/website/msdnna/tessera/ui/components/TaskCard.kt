@@ -549,10 +549,30 @@ private fun ArchiveCardMenu(task: Task, vm: BoardViewModel, onOpen: (Task) -> Un
 }
 
 /**
+ * Что делать с набранным текстом: имя для отправки, либо `null` — отменить.
+ *
+ * Отменяем не только на пустой строке, но и когда текст совпал с исходным: редактор
+ * коммитит по потере фокуса, так что «открыл и тапнул мимо» — самый частый его исход,
+ * и он не должен превращаться в запрос. Для колонки это не просто лишний PATCH:
+ * у засеянной колонки редактор открывается ПОДПИСЬЮ, собранной из ресурсов по
+ * `name_key` (BoardViews.columnCaption, #2800), а сервер хранит рядом собственное
+ * русское имя. У читателя с нерусским интерфейсом такой холостой коммит присылает
+ * подпись как новое имя — оно не равно хранимому, и UpdateColumn (boards.sql
+ * `name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END`) снимает `name_key`
+ * НАВСЕГДА: колонка остаётся переведённой для всех, включая коллег, чей язык она
+ * только что потеряла, и вернуть ключ из интерфейса нечем (#2932). Веб от этого
+ * закрыт таким же сравнением в ColumnHeader.commitRename.
+ */
+internal fun inlineTitleResult(initial: String, text: String): String? {
+    val t = text.trim()
+    return if (t.isEmpty() || t == initial.trim()) null else t
+}
+
+/**
  * A borderless single-line title editor reused by cards and column headers:
  * auto-focuses, commits on Enter or focus-loss (after first focus), cancels on
- * blank. [fontSize]/[fontWeight] let the caller match the static title it stands
- * in for.
+ * blank or on an unchanged title ([inlineTitleResult]). [fontSize]/[fontWeight]
+ * let the caller match the static title it stands in for.
  */
 @Composable
 fun InlineTitleEditor(
@@ -571,8 +591,8 @@ fun InlineTitleEditor(
     fun finish() {
         if (done) return
         done = true
-        val t = text.trim()
-        if (t.isEmpty()) onCancel() else onCommit(t)
+        val t = inlineTitleResult(initial, text)
+        if (t == null) onCancel() else onCommit(t)
     }
     LaunchedEffect(Unit) { focus.requestFocus() }
     BasicTextField(
