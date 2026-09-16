@@ -366,8 +366,8 @@ func (h *API) DeleteBoard(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// SetDoneColumn configures which column auto-completes tasks (or clears it,
-// reverting to the rightmost-column fallback, when column_id is null).
+// SetDoneColumn configures which column auto-completes tasks (or, when column_id
+// is null, leaves the board without one at all — see doneColumnID, #2588).
 func (h *API) SetDoneColumn(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -606,19 +606,58 @@ func (h *API) DeleteColumn(c *gin.Context) {
 	}
 	// Same cascade as DeleteBoard, one level down: tasks.column_id is the FK, so
 	// dropping a column deletes every card standing in it. See TaskIDsInColumn.
+	//
+	// Deleting the board's completing column also clears boards.done_column_id —
+	// that FK is ON DELETE SET NULL (migration 0007, back when NULL meant "fall
+	// back to the rightmost column"). Since #2588 NULL means the opposite: the
+	// board has NO completing column and stops closing anything (doneColumnID has
+	// no fallback, so applyMove never sets completed_at). Nothing announces that:
+	// the reader deletes «Готово», makes a new last column, drags cards into it
+	// and they just never complete. Migration 0046 repaired exactly this state for
+	// legacy NULL boards by pinning them to their rightmost column; do the same
+	// repair here, in the transaction that opens it.
 	var gone []uuid.UUID
+	var repointed *db.Board
 	if err := h.inTx(c, func(q *db.Queries) error {
-		var err error
+		board, err := q.GetBoard(c, col.BoardID)
+		if err != nil {
+			return err
+		}
+		// Read the pointer BEFORE the delete: afterwards NULL no longer tells a
+		// board that just lost its done column from one deliberately left without.
+		wasDone := board.DoneColumnID != nil && *board.DoneColumnID == id
 		if gone, err = q.TaskIDsInColumn(c, id); err != nil {
 			return err
 		}
-		return q.DeleteColumn(c, id)
+		if err = q.DeleteColumn(c, id); err != nil {
+			return err
+		}
+		if !wasDone {
+			return nil
+		}
+		// Rightmost of what is left, read through ListColumns so "rightmost" means
+		// the same column the board shows last. An empty board keeps the NULL —
+		// there is nothing to point at.
+		cols, err := q.ListColumns(c, col.BoardID)
+		if err != nil || len(cols) == 0 {
+			return err
+		}
+		last := cols[len(cols)-1].ID
+		updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: col.BoardID, DoneColumnID: &last})
+		if err != nil {
+			return err
+		}
+		repointed = &updated
+		return nil
 	}); err != nil {
 		fail(c, err)
 		return
 	}
 	h.purgeTaskUploads(gone)
 	h.broadcast(wsID, "column.deleted", gin.H{"id": id, "board_id": col.BoardID})
+	if repointed != nil {
+		h.broadcast(wsID, "board.updated", *repointed)
+	}
 	c.Status(http.StatusNoContent)
 }
 
