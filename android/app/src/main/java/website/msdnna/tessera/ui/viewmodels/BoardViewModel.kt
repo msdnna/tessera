@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.data.model.BoardViewConfig
@@ -559,6 +560,29 @@ class BoardViewModel(
         _activity.update { list -> list.filterNot { it.key == key } }
     }
 
+    /**
+     * Какая колонка доски завершает задачи после перечитывания.
+     *
+     * [fetched] — строка доски, которую только что прочитал перезагрузчик, или
+     * null, если его best-effort чтение сорвалось. **Сорванное чтение — не
+     * ответ:** записать его null прямо в состояние значит молча снять с доски
+     * завершающую колонку из-за моргнувшей сети или 5xx, и сказать об этом
+     * некому — путь нарочно тихий. Экран после этого рисует завершающую колонку
+     * обычной, её же меню предлагает «сделать завершающей» (BoardViews: `isDone`),
+     * а «Готово» в модалке задачи перестаёт ПЕРЕНОСИТЬ карточку туда и просто
+     * штампует `completed` на месте (TaskModal: `doneTarget` == null →
+     * `setCompleted(true)`). Поэтому держим [current], пока чтение не удастся.
+     * Ровно так же строкой рядом ведёт себя `projectId` (`?: projectId`).
+     *
+     * Id всё равно отбрасывается, когда такой колонки нет в свежем [columns]:
+     * её удалили, а `boards.done_column_id` объявлен ON DELETE SET NULL — значит
+     * завершающей у доски действительно больше нет, удалось перечитать её или нет.
+     */
+    private fun resolveDoneColumn(fetched: Board?, current: String?, columns: List<BoardColumn>): String? {
+        val id = if (fetched != null) fetched.doneColumnId else current
+        return id?.takeIf { wanted -> columns.any { it.id == wanted } }
+    }
+
     /** Refreshes board data without the loading spinner (for live updates). */
     private suspend fun silentReload() {
         if (boardId.isBlank()) return
@@ -575,7 +599,7 @@ class BoardViewModel(
         // would cost two extra list calls on every realtime echo here.
         _state.update {
             it.copy(
-                doneColumnId = board?.doneColumnId,
+                doneColumnId = resolveDoneColumn(board, it.doneColumnId, columns),
                 columns = columns,
                 tasks = tasks,
                 subtasks = subtasks,
@@ -650,11 +674,16 @@ class BoardViewModel(
         reloadColumns()
     }
 
-    /** Toggles which column auto-completes tasks (passing the current done id clears it). */
+    /** Toggles which column auto-completes tasks (passing the current done id clears it).
+     *
+     *  Состояние берётся из ответа самого PATCH'а — он и есть обновлённая строка
+     *  доски. Отдельное перечитывание было лишним походом в сеть, а его
+     *  best-effort null попадал в состояние как «завершающей нет»: сорвись оно
+     *  сразу после успешной записи, экран показал бы ровно обратное тому, что
+     *  человек только что сделал. */
     fun setDoneColumn(columnId: String?) = launchCatching {
-        repo.setDoneColumn(boardId, columnId)
-        val board = runCatching { repo.board(boardId) }.getOrNull()
-        _state.update { it.copy(doneColumnId = board?.doneColumnId) }
+        val board = repo.setDoneColumn(boardId, columnId)
+        _state.update { it.copy(doneColumnId = board.doneColumnId) }
         markLocalChange()
     }
 
@@ -695,7 +724,7 @@ class BoardViewModel(
         val subtasks = scopedSubtasks()
         _state.update {
             it.copy(
-                doneColumnId = if (withBoard) board?.doneColumnId else it.doneColumnId,
+                doneColumnId = resolveDoneColumn(if (withBoard) board else null, it.doneColumnId, columns),
                 columns = columns,
                 tasks = tasks,
                 subtasks = subtasks,
