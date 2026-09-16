@@ -53,10 +53,28 @@ class MembersViewModel(
      */
     fun load(workspaceId: String) {
         this.workspaceId = workspaceId
-        _state.update { it.copy(loading = true, error = null) }
+        // Всё состояние ниже принадлежит ОДНОМУ пространству, а ViewModel живёт
+        // дольше окна: `viewModel()` в MembersModal привязан к активности, не к
+        // диалогу, так что открытие на другом пространстве заставало в нём
+        // ростер, приглашения и ссылку предыдущего (#2932). Видно это было не
+        // только мельканием: ветка с упавшим ростером возвращается, ничего не
+        // записав, — и чужой список оставался на экране под красной плашкой,
+        // выдавая себя за этот. Ссылка вдобавок — носитель токена приглашения в
+        // то, другое пространство.
+        _state.update {
+            it.copy(
+                loading = true,
+                error = null,
+                members = emptyList(),
+                invitations = emptyList(),
+                lastInviteLink = "",
+                canManage = false,
+            )
+        }
         viewModelScope.launch {
             val meId = runCatching { readMeId() }.getOrDefault("")
             val roster = runCatching { repo.members(workspaceId) }
+            if (stale(workspaceId)) return@launch
             val members = roster.getOrElse { e ->
                 _state.update { it.copy(loading = false, meId = meId, error = errorMessage(e)) }
                 return@launch
@@ -66,11 +84,23 @@ class MembersViewModel(
                 it.copy(loading = false, meId = meId, members = members, canManage = canManage)
             }
             if (!canManage) return@launch
-            runCatching { repo.invitations(workspaceId) }
+            val invitations = runCatching { repo.invitations(workspaceId) }
+            if (stale(workspaceId)) return@launch
+            invitations
                 .onSuccess { invs -> _state.update { it.copy(invitations = invs) } }
                 .onFailure { e -> _state.update { it.copy(error = errorMessage(e)) } }
         }
     }
+
+    /**
+     * Ответ пришёл уже не про то пространство, что открыто сейчас.
+     *
+     * Две загрузки бывают в полёте одновременно: диалог закрыли, переключили
+     * пространство и открыли снова, пока первый запрос ещё идёт. Без этой
+     * проверки поздний ответ дописывал бы в состояние ростер предыдущего — ту же
+     * картину, что и отсутствие сброса выше, только с задержкой.
+     */
+    private fun stale(requested: String): Boolean = workspaceId != requested
 
     // Add an already-registered user instantly; otherwise create an email
     // invitation (link surfaced for sharing). Mirrors the web flow.

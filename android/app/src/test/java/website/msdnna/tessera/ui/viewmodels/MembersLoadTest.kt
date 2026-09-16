@@ -6,7 +6,9 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -46,16 +48,21 @@ class MembersLoadTest {
     @After
     fun tearDown() = Dispatchers.resetMain()
 
-    private fun forbidden(): HttpException {
+    private fun httpError(code: Int, error: String): HttpException {
         val raw = okhttp3.Response.Builder()
-            .code(403)
-            .message("forbidden")
+            .code(code)
+            .message(error)
             .protocol(okhttp3.Protocol.HTTP_1_1)
             .request(okhttp3.Request.Builder().url("http://localhost/").build())
             .build()
-        val body = """{"error":"forbidden"}""".toResponseBody("application/json".toMediaType())
+        val body = """{"error":"$error"}""".toResponseBody("application/json".toMediaType())
         return HttpException(Response.error<Any>(body, raw))
     }
+
+    private fun forbidden(): HttpException = httpError(403, "forbidden")
+
+    /** Отказ `AddMember`, по которому диалог уходит в ветку приглашения. */
+    private fun noSuchUser(): HttpException = httpError(404, "no user with that email")
 
     private fun vm(meId: String) = MembersViewModel(repo, readMeId = { meId })
 
@@ -121,6 +128,57 @@ class MembersLoadTest {
         assertThat(s.error).isNotNull()
         assertThat(s.members).isEmpty()
         coVerify(exactly = 0) { repo.invitations(any()) }
+    }
+
+    @Test
+    fun `диалог на другом пространстве не показывает данные предыдущего`() = runTest(dispatcher) {
+        // ViewModel привязан к активности, а не к окну: закрыли диалог,
+        // переключили пространство, открыли снова — и в состоянии всё ещё лежат
+        // ростер, приглашения и ссылка прошлого. Тут вдобавок падает ростер
+        // второго, так что без сброса чужие данные не мелькают, а остаются.
+        coEvery { repo.members("ws-1") } returns roster
+        coEvery { repo.invitations("ws-1") } returns listOf(Invitation(id = "i-1", email = "new@e.com", role = "member"))
+        coEvery { repo.addMember("ws-1", "new@e.com", "member") } throws noSuchUser()
+        coEvery { repo.createInvitation("ws-1", "new@e.com", "member") } returns
+            Invitation(id = "i-1", email = "new@e.com", role = "member", link = "https://t/invite?token=secret")
+        coEvery { repo.members("ws-2") } throws forbidden()
+        val model = vm("u-owner")
+
+        model.load("ws-1")
+        model.invite("new@e.com", "member")
+        advanceUntilIdle()
+        assertThat(model.state.value.invitations).isNotEmpty()
+        assertThat(model.state.value.lastInviteLink).isNotEmpty()
+
+        model.load("ws-2")
+        advanceUntilIdle()
+
+        val s = model.state.value
+        assertThat(s.members).isEmpty()
+        assertThat(s.invitations).isEmpty()
+        assertThat(s.canManage).isFalse()
+        // Ссылка — носитель токена приглашения в ws-1; в диалоге ws-2 ей не место.
+        assertThat(s.lastInviteLink).isEmpty()
+        assertThat(s.error).isNotNull()
+    }
+
+    @Test
+    fun `поздний ответ прошлого пространства не дописывается в состояние`() = runTest(dispatcher) {
+        // Две загрузки в полёте разом: диалог переоткрыли на другом пространстве,
+        // пока первый запрос ещё шёл.
+        coEvery { repo.members("ws-1") } coAnswers {
+            delay(50)
+            roster
+        }
+        coEvery { repo.members("ws-2") } returns listOf(plain)
+        val model = vm("u-plain")
+
+        model.load("ws-1")
+        advanceTimeBy(10)
+        model.load("ws-2")
+        advanceUntilIdle()
+
+        assertThat(model.state.value.members.map { it.userId }).containsExactly("u-plain")
     }
 
     @Test

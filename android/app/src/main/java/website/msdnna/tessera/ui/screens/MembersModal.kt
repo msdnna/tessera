@@ -125,13 +125,18 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
             // 403 to a plain member. They get the roster and a line saying why it
             // is all they get — a hidden control is an inconvenience, one that
             // 403s is a bug report.
-            if (!state.canManage) {
-                if (!state.loading) {
+            // Пока ростер не приехал, здесь не рисуется ничего: право управлять
+            // выводится из него же, и половина, показанная раньше него, — это
+            // половина по данным прошлого открытия диалога.
+            when {
+                state.loading -> Unit
+
+                !state.canManage -> {
                     Spacer(Modifier.height(10.dp))
                     Text(stringResource(R.string.members_read_only), color = c.text3, fontSize = 12.sp)
                 }
-            } else {
-                MembersManagement(
+
+                else -> MembersManagement(
                     state = state,
                     email = email,
                     onEmailChange = { email = it },

@@ -75,6 +75,8 @@ const who = computed(() => ({
 const rowLock = (m) => memberRowLock(m, who.value)
 const rowBadge = (m) => t(`shell.members.${memberRowBadge(m, who.value)}`)
 const lastLink = ref('') // link from the most recent invitation, for copying
+// Which workspace the three lists above currently describe — see load().
+const loadedWsId = ref('')
 // Computed: the role labels sit inside a select, and a frozen table would keep
 // showing the language of the first render — including inside the open dropdown.
 const roleOptions = computed(() => [
@@ -105,10 +107,34 @@ const invitationRows = computed(() =>
 // now, and the manager-only one is not asked for by someone it would refuse.
 async function load() {
   if (!props.wsId) return
+  // Everything held here belongs to one workspace, and this component outlives
+  // all of them: it sits in WorkspaceTools' tree for good, closed only by
+  // `show`, while `wsId` follows the sidebar. Reopening it elsewhere therefore
+  // found the previous workspace's roster, its pending invitations and its
+  // invite link still in place — and a load that fails leaves them there for
+  // good, passing another workspace's list off as this one's (#2932). The link
+  // is the worst of the three: it carries the token of an invitation into that
+  // other workspace.
+  //
+  // Only on an actual change of workspace: `load()` is also the refresh after
+  // every write, and the invitation link is written by one of them — blanking it
+  // on every call would have the re-read eat the link it was just handed, which
+  // with SMTP off is the only copy of that token anywhere.
+  const wsId = props.wsId
+  if (loadedWsId.value !== wsId) {
+    loadedWsId.value = wsId
+    members.value = []
+    invitations.value = []
+    lastLink.value = ''
+    inviteError.value = ''
+  }
   const [m, inv] = await Promise.allSettled([
-    wsApi.members(props.wsId),
-    canManage.value ? wsApi.invitations(props.wsId) : Promise.resolve({ data: [] }),
+    wsApi.members(wsId),
+    canManage.value ? wsApi.invitations(wsId) : Promise.resolve({ data: [] }),
   ])
+  // Switched away while these were in flight (close, pick another workspace,
+  // reopen): the answers are about the workspace that is no longer on screen.
+  if (wsId !== props.wsId) return
   if (m.status === 'fulfilled') members.value = m.value.data || []
   else message.error(m.reason.message)
   if (inv.status === 'fulfilled') invitations.value = inv.value.data || []
