@@ -665,7 +665,12 @@ class BoardViewModel(
 
     fun deleteColumn(columnId: String) = launchCatching {
         repo.deleteColumn(columnId)
-        reloadColumns()
+        // boards.done_column_id is an ON DELETE SET NULL reference, so dropping the
+        // completing column leaves the board without one. Nothing else would tell us:
+        // markLocalChange() below swallows our own `column.deleted` echo, and the
+        // stored id would go on naming a column that no longer exists (the web does
+        // the same re-read on its column-purge — utils/boardEvents.js).
+        reloadColumns(withBoard = true)
     }
 
     fun moveColumn(columnId: String, beforeId: String?, afterId: String?) = launchCatching {
@@ -673,8 +678,29 @@ class BoardViewModel(
         reloadColumns()
     }
 
-    private suspend fun reloadColumns() {
-        _state.update { it.copy(columns = repo.columns(boardId), tasks = repo.tasks(boardId), subtasks = repo.subtasks(boardId)) }
+    /** Re-reads the columns and the cards standing in them after a column mutation.
+     *
+     *  The cards come from [scopedTasks]/[scopedSubtasks], never from a bare
+     *  `repo.tasks(boardId)`: a column edit must not quietly widen the board past the
+     *  scope the user is looking at. Under a sprint scope that alone was enough to
+     *  repopulate the board with every card while the «Этап» chip still claimed the
+     *  narrowing. In the archive it was worse — the archive chip stayed up and the
+     *  lanes filled with LIVE cards, while the card menu is chosen by the scope flag
+     *  (TaskCard: `state.archivedMode`), so a live task offered «Удалить навсегда».
+     */
+    private suspend fun reloadColumns(withBoard: Boolean = false) {
+        val board = if (withBoard) runCatching { repo.board(boardId) }.getOrNull() else null
+        val columns = repo.columns(boardId)
+        val tasks = scopedTasks()
+        val subtasks = scopedSubtasks()
+        _state.update {
+            it.copy(
+                doneColumnId = if (withBoard) board?.doneColumnId else it.doneColumnId,
+                columns = columns,
+                tasks = tasks,
+                subtasks = subtasks,
+            )
+        }
         markLocalChange()
     }
 
