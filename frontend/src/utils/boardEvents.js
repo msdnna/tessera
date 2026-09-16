@@ -15,6 +15,7 @@
 //   columns — re-fetch the column list only
 //   board   — re-fetch the board record only
 //   meta    — re-fetch the workspace meta only (tags, members, milestones, …)
+//   column-purge — re-fetch columns AND tasks AND the board (see partialKinds)
 const IGNORED = new Set([
   // Not about this board's contents.
   'note.created',
@@ -60,6 +61,14 @@ export function classifyEvent(ev, { boardId } = {}) {
   if (IGNORED.has(type) || type.startsWith(MILESTONE_PREFIX)) return 'ignore'
   if (META.has(type)) return 'meta'
   if (type === 'integration.sync') return 'meta'
+  // Deleting a column takes every card standing in it with it (the server
+  // cascades through tasks.column_id), yet it broadcasts a single
+  // `column.deleted` — no task events at all. Re-reading just the column list
+  // would leave those cards in `allTasks`: invisible when grouped by status
+  // (their column_id no longer matches any rendered column), but fully alive in
+  // the tag/milestone groupings and in the list/calendar/gantt views, which
+  // bucket every task regardless of its column. Hence its own kind (#2932).
+  if (type === 'column.deleted') return 'column-purge'
   if (type.startsWith('column.')) return 'columns'
   if (type === 'board.updated') return 'board'
 
@@ -74,6 +83,18 @@ export function classifyEvent(ev, { boardId } = {}) {
   // Unknown type: re-fetch the tasks. A new event type added on the backend must
   // not silently stop updating the board — that failure would be invisible.
   return 'tasks'
+}
+
+// The partial re-fetches a classification asks for, in the order they should be
+// scheduled. Every kind but `column-purge` maps to the one fetch it names; a
+// purge needs the columns (the deleted one must go), the tasks (its cards died
+// with it) and the board record — `boards.done_column_id` is an ON DELETE SET
+// NULL reference, so deleting the completing column silently leaves the board
+// without one, and a stale copy would keep pointing at a column that is gone.
+const PARTIAL_KINDS = { 'column-purge': ['columns', 'tasks', 'board'] }
+
+export function partialKinds(kind) {
+  return PARTIAL_KINDS[kind] || [kind]
 }
 
 // Does a `task.relation` event change the arrows drawn on this board?

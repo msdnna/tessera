@@ -66,6 +66,7 @@ import { filterBoardTasks } from '@/utils/taskFilter'
 import { useFormat } from '@/composables/useFormat'
 import {
   classifyEvent,
+  partialKinds,
   applyTaskPatch,
   applySubtaskPatch,
   relationTouchesBoard,
@@ -1370,7 +1371,7 @@ useRealtime((ev) => {
     schedulePartial('tasks')
     return
   }
-  schedulePartial(kind)
+  for (const k of partialKinds(kind)) schedulePartial(k)
 }, scheduleReload)
 
 // Raise a live activity toast for a task create/move on the currently-open board.

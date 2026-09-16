@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   classifyEvent,
+  partialKinds,
   isFullTask,
   mergeTaskRow,
   applyTaskPatch,
@@ -77,7 +78,6 @@ describe('classifyEvent — таблица маршрутизации', () => {
   it('колонки, доска и мета — каждая своим запросом', () => {
     expect(ev('column.created', {})).toBe('columns')
     expect(ev('column.updated', {})).toBe('columns')
-    expect(ev('column.deleted', {})).toBe('columns')
     expect(ev('column.moved', {})).toBe('columns')
     expect(ev('board.updated', {})).toBe('board')
     expect(ev('tag.created', {})).toBe('meta')
@@ -85,6 +85,26 @@ describe('classifyEvent — таблица маршрутизации', () => {
     expect(ev('tag.deleted', {})).toBe('meta')
     expect(ev('tag_prefixes.updated', {})).toBe('meta')
     expect(ev('integration.sync', {})).toBe('meta')
+  })
+
+  // Удаление колонки уносит с собой все карточки в ней (сервер каскадит через
+  // tasks.column_id), а в WS летит ОДНО событие column.deleted — ни одного
+  // task.deleted. Перечитать только список колонок мало: осиротевшие задачи
+  // остаются в allTasks и в группировке по тегам/вехам (и в list/gantt/calendar)
+  // раскладываются как живые — видимые и кликабельные. Плюс done_column_id
+  // доски мог обнулиться (FK ON DELETE SET NULL). #2932
+  it('удаление колонки перечитывает и задачи, и доску, не только колонки', () => {
+    expect(ev('column.deleted', {})).toBe('column-purge')
+    const kinds = partialKinds('column-purge')
+    expect(kinds).toContain('columns')
+    expect(kinds).toContain('tasks')
+    expect(kinds).toContain('board')
+  })
+
+  it('обычные классификации остаются одним запросом', () => {
+    for (const k of ['tasks', 'columns', 'board', 'meta']) {
+      expect(partialKinds(k), k).toEqual([k])
+    }
   })
 
   it('task-события с полным объектом патчатся, id-only идут в ре-фетч', () => {
