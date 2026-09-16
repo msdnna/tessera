@@ -296,15 +296,15 @@ fun KanbanView(
     // смене языка AppLocale подставляет другой объект Resources (см. columnCaption).
     val res = LocalResources.current
     val lanes = remember(
+        // Колонки, карточки, фильтр и сортировка входят сюда одним ключом
+        // (BoardUiState.filterSortKey) — вместе с подзадачами, календарём и
+        // GitLab-участниками, которых фильтр читает не напрямую.
+        state.filterSortKey,
         state.groupByTag,
         state.groupByMilestone,
         state.tagPrefix,
-        state.columns,
-        state.tasks,
         state.tags,
         state.milestones,
-        state.filter,
-        state.sortLevels,
         noTagLabel,
         noMilestoneLabel,
         res,
@@ -866,7 +866,7 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val (year, month) = cursor
 
     // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
-    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
+    val tasks = remember(state.filterSortKey) { state.applyFilterSort(state.tasks) }
     // Ячейки месяца строятся из Calendar в календаре пользователя, поэтому и
     // раскладывать задачи по ним надо тем же днём (dueDayKey с тем же [fmt]), а не
     // срезом сырой ISO-строки.
@@ -1655,7 +1655,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
 
     // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
-    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
+    val tasks = remember(state.filterSortKey) { state.applyFilterSort(state.tasks) }
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
     val unscheduled = tasks.filter { it.startDate == null && it.dueDate == null }
 
@@ -2016,7 +2016,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
 
     // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
-    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
+    val tasks = remember(state.filterSortKey) { state.applyFilterSort(state.tasks) }
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
     val unscheduled = tasks.filter { it.startDate == null && it.dueDate == null }
 

@@ -249,6 +249,28 @@ data class BoardUiState(
     /** Display list for a column: the active filter + sort applied. */
     fun visibleTasksIn(columnId: String): List<Task> = applyFilterSort(tasksIn(columnId))
 
+    /**
+     * Всё, что [applyFilterSort] читает ПОМИМО переданного ей списка, — ключ для
+     * любого `remember`, который кэширует её результат.
+     *
+     * Кэш нужен: дорожки Канбана и строки таймлайна пересобираются на каждом кадре
+     * перетаскивания, а фильтрация с сортировкой — O(n log n) на колонку. Но ключи
+     * легко недобрать, потому что функция читает не только [tasks] и [filter].
+     * Через [filteredBoard] в неё входят [subtasks] (родитель остаётся на доске
+     * из-за подходящего РЕБЁНКА — см. `filterBoardTasks`), [dateFormat] (календарь
+     * `FilterClock` для «Сегодня»/«Просрочено») и [gitlabMembers] (сопоставление
+     * автора GitLab-карточки с человеком), а через сортировку — [columns]
+     * (позиции колонок для уровня «по статусу»).
+     *
+     * Списки сравниваются структурно, поэтому «изменились только подзадачи» — не
+     * теоретический случай: перезагрузка кладёт равный по содержимому [tasks], и
+     * ключ из (tasks, filter, sortLevels) остаётся прежним. Карточка, которую
+     * подняла подзадача, не уходила с доски после снятия тега с подзадачи и не
+     * появлялась после навешивания — до первого чужого события (#2932).
+     */
+    val filterSortKey: List<Any?>
+        get() = listOf(tasks, subtasks, filter, sortLevels, columns, dateFormat, gitlabMembers)
+
     /** Applies the active [filter] then the multi-level [sortLevels]. Used by every view. */
     fun applyFilterSort(list: List<Task>): List<Task> {
         // Every caller passes a subset of [tasks], so membership in the precomputed
