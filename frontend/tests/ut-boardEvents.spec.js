@@ -102,6 +102,27 @@ describe('classifyEvent — таблица маршрутизации', () => {
     expect(kinds).toContain('board')
   })
 
+  // Колонки и board.updated летят в ВЕСЬ воркспейс, а не только на свою доску:
+  // коллега переименовал колонку на соседней доске — и у всех открытых досок был
+  // лишний GET /columns, а его удаление колонки стоило каждой трёх запросов
+  // (column-purge). Оба вида событий называют свою доску — board.updated самим
+  // board-рядом (поле id), колоночные — board_id, — так что чужое отсеивается. #2932
+  it('колоночные события и board.updated с ЧУЖОЙ доски не трогают эту', () => {
+    expect(ev('column.created', { board_id: 'b2' })).toBe('ignore')
+    expect(ev('column.updated', { board_id: 'b2' })).toBe('ignore')
+    expect(ev('column.moved', { board_id: 'b2' })).toBe('ignore')
+    expect(ev('column.deleted', { id: 'c9', board_id: 'b2' })).toBe('ignore')
+    expect(ev('board.updated', { id: 'b2' })).toBe('ignore')
+  })
+
+  it('те же события со СВОЕЙ доски обрабатываются как раньше', () => {
+    expect(ev('column.created', { board_id: BOARD })).toBe('columns')
+    expect(ev('column.updated', { board_id: BOARD })).toBe('columns')
+    expect(ev('column.moved', { board_id: BOARD })).toBe('columns')
+    expect(ev('column.deleted', { id: 'c9', board_id: BOARD })).toBe('column-purge')
+    expect(ev('board.updated', { id: BOARD })).toBe('board')
+  })
+
   // Удаление ОТКРЫТОЙ доски: сервер уносит её колонки, карточки и вложения и
   // шлёт голое board.deleted {id}. Перечитывать нечего — доски больше нет, — так
   // что событие остаётся 'ignore', а распознаёт его отдельный предикат: без него

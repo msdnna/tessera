@@ -64,6 +64,22 @@ export function classifyEvent(ev, { boardId, hasTask } = {}) {
   if (IGNORED.has(type) || type.startsWith(MILESTONE_PREFIX)) return 'ignore'
   if (META.has(type)) return 'meta'
   if (type === 'integration.sync') return 'meta'
+
+  // Column CRUD and `board.updated` are workspace-scoped like everything else, so
+  // they reach every open board in the workspace — a colleague renaming a column
+  // three boards over used to cost this board a column re-fetch, and a delete over
+  // there cost it three (see `column-purge`). Both kinds name their board, so
+  // scope them before classifying. `board.updated` carries the board row itself
+  // (`id` — a board has no `board_id`), the column payloads carry `board_id`.
+  //
+  // A payload naming no board falls through to the old behaviour: an unnecessary
+  // reload is the safe way to be wrong here (#2932).
+  if (type.startsWith('column.') || type === 'board.updated') {
+    const owner = type === 'board.updated' ? ev?.data?.id : ev?.data?.board_id
+    if (owner && boardId && owner !== boardId) return 'ignore'
+    if (type === 'board.updated') return 'board'
+    if (type !== 'column.deleted') return 'columns'
+  }
   // Deleting a column takes every card standing in it with it (the server
   // cascades through tasks.column_id), yet it broadcasts a single
   // `column.deleted` — no task events at all. Re-reading just the column list
@@ -72,8 +88,6 @@ export function classifyEvent(ev, { boardId, hasTask } = {}) {
   // the tag/milestone groupings and in the list/calendar/gantt views, which
   // bucket every task regardless of its column. Hence its own kind (#2932).
   if (type === 'column.deleted') return 'column-purge'
-  if (type.startsWith('column.')) return 'columns'
-  if (type === 'board.updated') return 'board'
 
   // Events that name a board tell us straight away whether they concern us.
   // (Only some do: the id-only payloads carry no board at all.)

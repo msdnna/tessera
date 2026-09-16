@@ -595,6 +595,15 @@ func (h *API) DeleteColumn(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
+	// Read the row before the delete purely for its board: the event below is
+	// workspace-scoped, so without a board every open board in the workspace has to
+	// treat the deletion as possibly its own and re-read its columns, its cards and
+	// its board record (frontend classifyEvent → `column-purge`).
+	col, err := h.q.GetColumn(c, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	// Same cascade as DeleteBoard, one level down: tasks.column_id is the FK, so
 	// dropping a column deletes every card standing in it. See TaskIDsInColumn.
 	var gone []uuid.UUID
@@ -609,7 +618,7 @@ func (h *API) DeleteColumn(c *gin.Context) {
 		return
 	}
 	h.purgeTaskUploads(gone)
-	h.broadcast(wsID, "column.deleted", gin.H{"id": id})
+	h.broadcast(wsID, "column.deleted", gin.H{"id": id, "board_id": col.BoardID})
 	c.Status(http.StatusNoContent)
 }
 
