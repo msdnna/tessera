@@ -75,6 +75,7 @@ import {
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
+import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
@@ -278,6 +279,14 @@ const groupTags = computed(() =>
 // Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
 // create, no inline edits) with a Restore action. Reuses all board filters/grouping.
 const archivedMode = computed(() => route.query.archived === '1')
+// Is the «+ колонка» tile part of this row? Status grouping only (tag/milestone lanes
+// are not columns to create), and never in the archive — the tile would create a live
+// column on the board from a read-only view. Asked in two places that must agree: the
+// tile's own v-if and colWidth's reservation of ADD_COL_W. They were written out
+// separately, and when the archive gate was added to the template the arithmetic kept
+// reserving the tile's 232px there — every column in an archived board came out that
+// much narrower between them, with a dead band along the right edge.
+const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMode.value)
 function exitArchive() {
   const q = { ...route.query }
   delete q.archived
@@ -713,9 +722,7 @@ watch(boardScroll, (el) => {
   ro.observe(el)
   measure()
 })
-const GAP = 12
-const ADD_COL_W = 220
-const STRIP_W = 44 // collapsed-column strip width (keep in sync with .col.collapsed)
+const GAP = BOARD_GAP
 const COL_MIN = 220 // narrowest a column may get before we switch to scrolling
 const COL_MAX = 420
 // Card-size presets (customize view): the size changes the card composition (see
@@ -728,38 +735,20 @@ const CARD_SIZES = {
 }
 const cardCap = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).cap)
 const cardMin = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).min)
-const colWidth = computed(() => {
-  const cw = containerWidth.value
-  if (!cw) return 280 // pre-measure fallback
-  // Mobile: one column a little under full width so the next one peeks and the
-  // swipe (scroll-snap, see CSS) reads as a smooth page-turn.
-  if (isMobile.value) return Math.max(cw - 28, 200)
-  // Collapsed columns render as a 44px strip (see .col.collapsed) — reserve their
-  // fixed width and divide the rest among the EXPANDED columns only, so collapsing
-  // a column hands its width to the neighbours instead of leaving a gap on the right.
-  const cols = displayColumns.value
-  const n = cols.length || 1
-  const nCollapsed = cols.filter((c) => isColCollapsed(c)).length
-  const nExpanded = Math.max(n - nCollapsed, 1)
-  // Reserve the "+ колонка" tile (status mode) + the gaps + the collapsed strips,
-  // plus a few px slack so sub-pixel rounding can't trip the horizontal scrollbar.
-  const reserved =
-    (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 4 + nCollapsed * STRIP_W
-  const fit = Math.floor((cw - reserved) / nExpanded)
-  // Fill the viewport while comfortable; the width band comes from the chosen card
-  // size (compact narrower, large wider), so columns never get too narrow to hold
-  // their fields and scroll horizontally once they'd shrink past the band's min.
-  //
-  // A `fit`-wide column always fits the row (that's how `reserved` is derived);
-  // clamping UP to the band min is what can overrun the board by a couple px and raise
-  // a full-width horizontal scrollbar for columns that essentially fit. So only clamp
-  // up — and let the board scroll — once columns would get *meaningfully* narrower than
-  // the min; within a gap's worth of it, keep the fitting width so no stray scrollbar
-  // appears when everything is already visible (#2743).
-  if (fit > cardCap.value) return cardCap.value
-  if (fit >= cardMin.value - GAP) return fit
-  return cardMin.value
-})
+// The layout maths lives in utils/boardLayout.js; the board only supplies what it
+// draws. `addTile` is the same condition as the tile's own v-if — the two used to
+// be spelled out separately and drifted apart in the archive (see showAddColumn).
+const colWidth = computed(() =>
+  columnWidth({
+    containerWidth: containerWidth.value,
+    isMobile: isMobile.value,
+    count: displayColumns.value.length,
+    collapsed: displayColumns.value.filter((c) => isColCollapsed(c)).length,
+    addTile: showAddColumn.value,
+    min: cardMin.value,
+    cap: cardCap.value,
+  }),
+)
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 
 // User-chosen board background (preference): a CSS colour or an image URL.
@@ -2026,11 +2015,7 @@ async function restoreFromArchive(taskId) {
 
         <!-- inline new column (status mode; never in the archive — the tile would
              create a live column on the board from a read-only view) -->
-        <div
-          v-if="groupMode === 'status' && !archivedMode"
-          class="add-col"
-          :class="{ 'add-col-mobile': isMobile }"
-        >
+        <div v-if="showAddColumn" class="add-col" :class="{ 'add-col-mobile': isMobile }">
           <n-input
             v-if="addingColumn"
             ref="colInput"

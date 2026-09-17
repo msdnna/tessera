@@ -100,10 +100,27 @@ describe('BoardMatrixView in the archive view', () => {
 const kanban = readFileSync(resolve(process.cwd(), 'src/components/KanbanBoard.vue'), 'utf8')
 
 describe('KanbanBoard wiring for the archive view', () => {
+  // The condition now has a name — `showAddColumn` — because colWidth has to ask the
+  // same question when it reserves the tile's width (#2932). Pin both halves: the
+  // flag still excludes the archive, and both the tile and the layout maths read it.
   it('drops the «+ колонка» tile in the archive', () => {
-    const tile = kanban.match(/v-if="groupMode === 'status'[^"]*"\s*\n?\s*class="add-col"/)
+    const flag = kanban.match(/const showAddColumn = computed\(\(\) => ([^)]*)\)/)
+    expect(flag, 'showAddColumn is gone').toBeTruthy()
+    expect(flag[1]).toContain("groupMode.value === 'status'")
+    expect(flag[1]).toContain('!archivedMode.value')
+
+    const tile = kanban.match(
+      /v-if="([^"]*)"\s*\n?\s*class="add-col"|v-if="([^"]*)" class="add-col"/,
+    )
     expect(tile, 'the add-col tile still has its own v-if').toBeTruthy()
-    expect(tile[0]).toContain('!archivedMode')
+    expect(tile[1] ?? tile[2]).toBe('showAddColumn')
+  })
+
+  // The width reservation is the half that used to be spelled out separately and
+  // drifted: it kept subtracting the tile's 220px + a gap in the archive, where the
+  // tile is not drawn. See tests/ut-boardLayout.spec.js for the arithmetic itself.
+  it('reserves the tile width from the same flag', () => {
+    expect(kanban).toContain('addTile: showAddColumn.value')
   })
 
   it('hands the matrix its archive flag', () => {
