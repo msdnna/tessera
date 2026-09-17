@@ -304,6 +304,12 @@ const archivedMode = computed(() => isArchiveQuery(route.query))
 // reserving the tile's 232px there — every column in an archived board came out that
 // much narrower between them, with a dead band along the right edge.
 const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMode.value)
+// Can the columns be dragged into a new order right now? Status grouping only (tag
+// and milestone lanes have no stored order to write back), never in the archive.
+// Asked in two places that must agree: the column draggable's `:disabled`, and the
+// `.col-drag` handle class on the collapsed strip — a collapsed column renders no
+// header, so the strip is the only element left that can carry the handle.
+const canReorderColumns = computed(() => groupMode.value === 'status' && !archivedMode.value)
 function exitArchive() {
   router.replace({ query: withoutArchiveQuery(route.query) })
 }
@@ -1930,7 +1936,7 @@ async function restoreFromArchive(taskId) {
           group="columns"
           item-key="key"
           handle=".col-drag"
-          :disabled="groupMode !== 'status' || archivedMode"
+          :disabled="!canReorderColumns"
           class="cols"
           :class="{ dragging }"
           :animation="150"
@@ -1968,10 +1974,18 @@ async function restoreFromArchive(taskId) {
                    caption carries the column name too: the vertical title is capped
                    at 260px and ellipsised, and under TAG grouping that name is a tag
                    («сложность::высокая»), which is the very case `.col-title` got its
-                   own `title` for. -->
+                   own `title` for.
+                   It is also the column's drag handle while collapsed. The board's
+                   column draggable takes `handle: '.col-drag'`, and ColumnHeader
+                   stamps that class on the status glyph and the caption — both inside
+                   `.col-head`, which a collapsed column hides outright. So a folded
+                   column could not be reordered at all, and with «collapse empty
+                   columns» on that is EVERY empty column — precisely the ones being
+                   arranged while a board is still being set up. -->
               <button
                 v-if="colCollapsedNow(dcol)"
                 class="col-strip"
+                :class="{ 'col-drag': canReorderColumns }"
                 type="button"
                 :title="stripTitle(dcol)"
                 @click="toggleCollapse(dcol)"
@@ -2681,6 +2695,14 @@ async function restoreFromArchive(taskId) {
   font: inherit;
   color: inherit;
   cursor: pointer;
+}
+/* The grab hand for the strip-as-drag-handle. ColumnHeader has the same rule for
+   its own `.col-drag` elements, but that one is `<style scoped>` on a different
+   component and never reaches this button — and `.col-strip` right above sets
+   `cursor: pointer`, which a bare `.col-drag` selector would tie with and lose to
+   on source order. Two classes, so it wins outright. */
+.col-strip.col-drag {
+  cursor: grab;
 }
 .col-strip:focus-visible {
   outline: 2px solid var(--t-primary);
