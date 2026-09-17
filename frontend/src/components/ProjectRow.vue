@@ -93,7 +93,15 @@ function startBoardRename(b) {
   boardNameEdit.value = b.name
   nextTick(() => boardEditInput.value?.focus?.())
 }
+function cancelBoardRename() {
+  editingBoardId.value = null
+  boardNameEdit.value = ''
+}
 async function commitBoardRename(b) {
+  // Guarded on the row still being the one under edit: Esc (and a committing
+  // Enter) close the field, and anything arriving after that — the blur of a
+  // removed node, a second commit — must not write.
+  if (editingBoardId.value !== b.id) return
   editingBoardId.value = null
   const n = boardNameEdit.value.trim()
   if (!n || n === b.name) return
@@ -192,7 +200,18 @@ function startRename() {
   renaming.value = true
   nextTick(() => renameInput.value?.focus())
 }
+// Esc abandons the rename, and `commitRename` refuses to fire once the field is
+// closed. Without both, Esc did nothing at all here: the input stayed open with
+// the edited text, and the click that followed went through `@blur` and PUT the
+// rename the reader had just cancelled. Same shape in the board rename and the
+// column header below/next door — every other inline field in the app answers
+// Esc, these commit to shared data and did not.
+function cancelRename() {
+  renaming.value = false
+  nameEdit.value = ''
+}
 async function commitRename() {
+  if (!renaming.value) return
   renaming.value = false
   const n = nameEdit.value.trim()
   if (!n || n === props.project.name) return
@@ -523,6 +542,13 @@ function startAddBoard() {
   newBoardName.value = ''
   nextTick(() => boardInput.value?.focus())
 }
+// Esc drops the typed name as well as closing the field: `addBoard` also fires on
+// blur, and a name left behind would be created by the next stray focus+blur of a
+// reopened input.
+function cancelAddBoard() {
+  addingBoard.value = false
+  newBoardName.value = ''
+}
 async function addBoard() {
   const n = newBoardName.value.trim()
   // Clear + close before await so the @blur on input removal doesn't duplicate.
@@ -566,6 +592,7 @@ async function addBoard() {
         v-model:value="nameEdit"
         size="tiny"
         @keyup.enter="commitRename"
+        @keyup.esc="cancelRename"
         @blur="commitRename"
       />
       <span v-else class="name" @click="toggle" @dblclick="startRename">{{ project.name }}</span>
@@ -694,6 +721,7 @@ async function addBoard() {
             size="tiny"
             @click.stop
             @keyup.enter="commitBoardRename(b)"
+            @keyup.esc="cancelBoardRename"
             @blur="commitBoardRename(b)"
           />
           <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
@@ -732,6 +760,7 @@ async function addBoard() {
             :placeholder="t('project.board.namePlaceholder')"
             data-tour="board-name"
             @keyup.enter="addBoard"
+            @keyup.esc="cancelAddBoard"
             @blur="addBoard"
           />
         </div>

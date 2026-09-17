@@ -147,7 +147,23 @@ function startRename() {
   nameEdit.value = props.dcol.name
   renaming.value = true
 }
+// Esc abandons the rename. Every other inline field on the board already answers
+// it (the column's «＋ задача», the board's «＋ колонка», a card's «＋ подзадача»,
+// the matrix quick-add), and this one had no handler at all — so Esc did nothing
+// visible, the field stayed open with the edited text, and the next click away
+// went through `@blur` and PUT the rename the reader had just cancelled. A column
+// name is workspace-shared data, not local view state.
+function cancelRename() {
+  renaming.value = false
+  nameEdit.value = ''
+}
 async function commitRename() {
+  // Closing the field is what marks the gesture finished: Esc unmounts the input
+  // and a browser fires no blur for a node that is simply removed, but the guard
+  // is on the commit rather than on that behaviour — it also makes the blur that
+  // follows an Enter (or a second commit from any other path) a no-op instead of
+  // a duplicate PUT.
+  if (!renaming.value) return
   renaming.value = false
   const n = nameEdit.value.trim()
   if (!n || n === props.dcol.name) return
@@ -199,7 +215,9 @@ async function removeCol() {
       v-model:value="nameEdit"
       size="tiny"
       autofocus
+      data-testid="column-rename-input"
       @keyup.enter="commitRename"
+      @keyup.esc="cancelRename"
       @blur="commitRename"
     />
     <!-- `title` is not decoration here: the caption is clipped to one line below,

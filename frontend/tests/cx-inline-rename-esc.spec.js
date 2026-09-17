@@ -1,0 +1,184 @@
+// Esc abandons an inline rename — and the click that follows must not commit it (#2932).
+//
+// The board's inline *create* fields have always answered Esc: «＋ задача»
+// (KanbanBoard `@keyup.esc="cancelAddTask"`), «＋ колонка», a card's «＋ подзадача»,
+// the matrix quick-add. The inline *rename* fields did not — the column header, the
+// sidebar's project rename, the sidebar's board rename and the «новая доска» field
+// each bound only `@keyup.enter` and `@blur`.
+//
+// Esc there did nothing visible: the input stayed open with the edited text still in
+// it. A reader who pressed Esc and then clicked elsewhere — the habit the rest of the
+// app trains — went out through `@blur`, and the rename they had just cancelled was
+// PUT. Column and board names are workspace-shared data, broadcast to every other
+// open client; this is not local view state that a stray write merely annoys.
+//
+// Two halves are pinned below: Esc closes the field without writing, and a commit
+// that arrives after the field is closed (the blur of a removed node, a second call
+// from any other path) is a no-op rather than a duplicate write.
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { mount } from '@vue/test-utils'
+
+const columnsUpdate = vi.fn(() => Promise.resolve({ data: {} }))
+const boardsUpdate = vi.fn(() => Promise.resolve({ data: {} }))
+
+vi.mock('naive-ui', async () => {
+  const actual = await vi.importActual('naive-ui')
+  return {
+    ...actual,
+    useMessage: () => ({ error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() }),
+  }
+})
+
+vi.mock('@/api', () => ({
+  columns: { update: columnsUpdate, remove: vi.fn() },
+  boards: { update: boardsUpdate, remove: vi.fn(), create: vi.fn() },
+  projects: { milestones: vi.fn(() => Promise.resolve({ data: [] })), createBoard: vi.fn() },
+  tasks: {},
+}))
+
+const { default: ColumnHeader } = await import('@/components/ColumnHeader.vue')
+
+const DCOL = { key: 'c1', name: 'В процессе', rawName: 'В процессе' }
+
+// Мount editable (a real status column outside the archive) — that is the only
+// state in which the rename opens at all.
+const mountHead = () =>
+  mount(ColumnHeader, {
+    props: { dcol: DCOL, count: 3, total: 3, editable: true },
+    global: { stubs: { TesseraIcon: true } },
+  })
+
+// The rename input replaces the caption, so it is the only `.n-input` in the header.
+const renameInput = (w) => w.find('.n-input input')
+
+async function openRename(w) {
+  await w.find('.col-title').trigger('dblclick')
+  return renameInput(w)
+}
+
+beforeEach(() => {
+  columnsUpdate.mockClear()
+  boardsUpdate.mockClear()
+})
+
+describe('column header rename — Esc (#2932)', () => {
+  it('opens the rename on dblclick with the current name', async () => {
+    const w = mountHead()
+    const inp = await openRename(w)
+    expect(inp.exists()).toBe(true)
+    expect(inp.element.value).toBe(DCOL.name)
+    w.unmount()
+  })
+
+  // The gesture that renamed a column nobody asked to rename.
+  it('closes the field on Esc without writing', async () => {
+    const w = mountHead()
+    const inp = await openRename(w)
+    await inp.setValue('Готово')
+    await inp.trigger('keyup.esc')
+    expect(columnsUpdate).not.toHaveBeenCalled()
+    expect(w.find('.n-input input').exists()).toBe(false)
+    expect(w.find('.col-title').text()).toBe(DCOL.name)
+    w.unmount()
+  })
+
+  // …and the blur that a browser may still deliver on the way out stays silent.
+  it('stays silent when a blur follows the Esc', async () => {
+    const w = mountHead()
+    const inp = await openRename(w)
+    await inp.setValue('Готово')
+    await inp.trigger('keyup.esc')
+    await inp.trigger('blur')
+    expect(columnsUpdate).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  // Esc must not become a second way to lose a rename that WAS wanted.
+  it('still renames on Enter', async () => {
+    const w = mountHead()
+    const inp = await openRename(w)
+    await inp.setValue('Готово')
+    await inp.trigger('keyup.enter')
+    expect(columnsUpdate).toHaveBeenCalledTimes(1)
+    expect(columnsUpdate.mock.calls[0][1]).toMatchObject({ name: 'Готово' })
+    w.unmount()
+  })
+
+  it('still renames on blur', async () => {
+    const w = mountHead()
+    const inp = await openRename(w)
+    await inp.setValue('Готово')
+    await inp.trigger('blur')
+    expect(columnsUpdate).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  // Enter commits and closes; the blur that follows the click away is not a second PUT.
+  it('does not write twice when Enter is followed by a blur', async () => {
+    const w = mountHead()
+    const inp = await openRename(w)
+    await inp.setValue('Готово')
+    await inp.trigger('keyup.enter')
+    await inp.trigger('blur')
+    expect(columnsUpdate).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  // Reopening after an Esc starts from the column's name, not from the abandoned text.
+  it('reopens seeded from the column, not from the cancelled edit', async () => {
+    const w = mountHead()
+    const inp = await openRename(w)
+    await inp.setValue('Готово')
+    await inp.trigger('keyup.esc')
+    const again = await openRename(w)
+    expect(again.element.value).toBe(DCOL.name)
+    w.unmount()
+  })
+})
+
+// The sidebar's three inline fields are read off the source: ProjectRow mounts a
+// whole subtree (stores, long-press composables, the milestone fetch) that this
+// spec has no business standing up, and what regressed is a binding, not logic.
+// Each field is matched by the handler it already had, then required to carry an
+// Esc handler too — so the assertion fails both when a handler is dropped and when
+// a fourth field of the same shape is added without one.
+describe('sidebar inline fields — Esc (#2932)', async () => {
+  const { readFileSync } = await import('node:fs')
+  const { resolve } = await import('node:path')
+  const process = (await import('node:process')).default
+  const src = readFileSync(resolve(process.cwd(), 'src/components/ProjectRow.vue'), 'utf8')
+
+  // Every `<n-input>` element in the template, as raw text.
+  const inputs = src.match(/<n-input\b[\s\S]*?\/>/g) || []
+
+  // Three commit-on-blur fields (project rename, board rename, «новая доска»), plus
+  // the slug field in the modal — that one has no `@blur` at all and is cancelled by
+  // closing the dialog, so it stays out of this contract by construction.
+  it('finds the inline fields and the one modal field', () => {
+    expect(inputs.length).toBe(4)
+    expect(inputs.filter((i) => /@blur=/.test(i))).toHaveLength(3)
+  })
+
+  it('gives every field that commits on blur an Esc handler', () => {
+    const committing = inputs.filter((i) => /@blur=/.test(i))
+    expect(committing.length).toBe(3)
+    for (const i of committing) expect(i).toMatch(/@keyup\.esc=/)
+  })
+
+  // The cancels close the field AND drop the buffer: `addBoard`/`commitRename` also
+  // run on blur, so a name left behind would be created/committed by the next stray
+  // focus+blur of the reopened input.
+  it('cancels clear the buffer, not just the flag', () => {
+    expect(src).toMatch(/function cancelRename\(\)\s*\{[^}]*nameEdit\.value = ''/)
+    expect(src).toMatch(/function cancelBoardRename\(\)\s*\{[^}]*boardNameEdit\.value = ''/)
+    expect(src).toMatch(/function cancelAddBoard\(\)\s*\{[^}]*newBoardName\.value = ''/)
+  })
+
+  // A commit arriving after the field closed must not write.
+  it('guards both renames against a commit on a closed field', () => {
+    expect(src).toMatch(/async function commitRename\(\)\s*\{\s*if \(!renaming\.value\) return/)
+    expect(src).toMatch(
+      /async function commitBoardRename\(b\)\s*\{[\s\S]{0,400}?if \(editingBoardId\.value !== b\.id\) return/,
+    )
+  })
+})
