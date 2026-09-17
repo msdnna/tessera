@@ -37,7 +37,9 @@
     "empty": "No saved views",
     "deleteConfirm": "Delete the view “{name}”?",
     "saved": "View “{name}” saved",
-    "nameTaken": "The name “{name}” is taken by a “{layout}” view — pick another"
+    "nameTaken": "The name “{name}” is taken by a “{layout}” view — pick another",
+    "group": "Saved views",
+    "saveAs": "Save the view…"
   },
   "column": {
     "expand": "Expand the column",

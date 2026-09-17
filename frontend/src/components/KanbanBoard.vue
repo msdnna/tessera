@@ -1451,6 +1451,38 @@ watch(
   },
 )
 
+// Saved views, same story one button over — except the folder and the disk have no
+// fallback trigger at all, so from a phone a view could be neither loaded nor
+// saved. Publish the list the menu has to offer (only this layout's views: a view
+// belongs to its visualization) plus which one is loaded, and answer what the menu
+// asks. The work stays here because the config a save captures is this component's
+// whole toolbar state (currentViewConfig).
+watch(
+  [viewsForLayout, currentViewName],
+  () => {
+    boardViewStore.savedViews = viewsForLayout.value.map((v) => ({ id: v.id, name: v.name }))
+    boardViewStore.currentViewName = currentViewName.value
+  },
+  { immediate: true },
+)
+watch(
+  () => boardViewStore.viewRequest,
+  (req) => {
+    if (!req) return
+    if (req.op === 'apply') {
+      // Look the view up in the full list, not in the published summaries: applyView
+      // needs its `config`, and the ask can name a view the list has since dropped.
+      const v = savedViews.value.find((x) => x.id === req.id)
+      if (v) applyView(v)
+      return
+    }
+    if (req.op === 'save') {
+      newViewName.value = req.name || ''
+      saveView()
+    }
+  },
+)
+
 // Sync the open task to the URL's ?task= (a number, or a legacy UUID). Resolves
 // a number to its task, then canonicalizes the URL to the number form.
 async function applyTaskQuery() {
