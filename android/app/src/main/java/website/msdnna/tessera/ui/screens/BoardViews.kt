@@ -158,12 +158,14 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
+import website.msdnna.tessera.util.ColumnPalette
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TimeAxis
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.WeekGrid
 import website.msdnna.tessera.util.columnCaption
+import website.msdnna.tessera.util.columnSwatchSelected
 import website.msdnna.tessera.util.countWithSubtasks
 import website.msdnna.tessera.util.dueDayKey
 import website.msdnna.tessera.util.dueShort
@@ -734,10 +736,15 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ColumnPalette.forEach { hex ->
-                    val col = parseHexColor(hex, c.text3)
-                    val selected = column?.color.equals(hex, ignoreCase = true)
+                    // The «no colour» swatch is drawn flat in the border grey, exactly as
+                    // the web draws its own (ColumnHeader.vue swatchBg: `var(--t-border)`):
+                    // an accent gradient on it would promise a colour it is there to remove.
+                    val fill =
+                        if (hex.isBlank()) SolidColor(c.border)
+                        else accentGradient(parseHexColor(hex, c.text3))
+                    val selected = columnSwatchSelected(column?.color, hex)
                     Box(
-                        Modifier.size(22.dp).clip(CircleShape).background(accentGradient(col))
+                        Modifier.size(22.dp).clip(CircleShape).background(fill)
                             .then(if (selected) Modifier.border(2.dp, c.text1, CircleShape) else Modifier)
                             .clickableNoRipple {
                                 column?.let { vm.setColumnColor(it, hex) }
@@ -772,11 +779,6 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
         )
     }
 }
-
-/** Column colour swatches (the Naive accent set). */
-private val ColumnPalette = listOf(
-    "#7c5cff", "#2f80ed", "#0eb0a9", "#18a058", "#f0a020", "#e0533d", "#eb2f96", "#9aa0aa",
-)
 
 @Composable
 private fun CreateText(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
