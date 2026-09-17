@@ -10,6 +10,7 @@ import {
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useBoardViewStore } from '@/stores/boardView'
+import { archiveQuery, withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import TagManager from './TagManager.vue'
 import TesseraIcon from './TesseraIcon.vue'
 
@@ -18,6 +19,11 @@ const store = useBoardViewStore()
 const route = useRoute()
 const router = useRouter()
 const tagsOpen = ref(false)
+// This menu is the phone's whole board toolbar (Topbar renders it *instead of*
+// BoardActions), so «Архив» has to carry its own state here: it is ticked while
+// the scope is on and selecting it again leaves — same toggle as the desktop
+// button, same query maths (utils/boardScope).
+const isArchive = computed(() => isArchiveQuery(route.query))
 
 const renderIcon = (comp) => () => h(NIcon, null, { default: () => h(comp) })
 // Tessera icon-pack glyph for the view (layout) menu entries.
@@ -46,11 +52,14 @@ const options = computed(() => [
   },
   { type: 'divider', key: 'd1' },
   { key: 'tags', label: t('board.actions.tags'), icon: renderIcon(PricetagsOutline) },
+  // The label stays «Архив» in both states — the tick below is what says the
+  // scope is on, exactly as it does for the active layout right above it.
   { key: 'archive', label: t('board.actions.archive'), icon: renderIcon(ArchiveOutline) },
 ])
-// Tick the active layout (right-aligned check).
+// Tick whatever is currently on: the active layout, and the archive scope.
 function renderLabel(option) {
-  const active = option.key === 'layout:' + store.layout
+  const active =
+    option.key === 'archive' ? isArchive.value : option.key === 'layout:' + store.layout
   if (!active) return option.label
   return h(
     'div',
@@ -69,9 +78,8 @@ function onSelect(key) {
   if (key.startsWith('layout:')) store.layout = key.slice(7)
   else if (key === 'tags') tagsOpen.value = true
   else if (key === 'archive') {
-    const q = { ...route.query, archived: '1' }
-    delete q.milestone
-    router.push({ query: q })
+    if (isArchive.value) router.replace({ query: withoutArchiveQuery(route.query) })
+    else router.push({ query: archiveQuery(route.query) })
   }
 }
 function onChanged() {

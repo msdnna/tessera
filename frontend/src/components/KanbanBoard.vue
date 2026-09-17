@@ -76,6 +76,7 @@ import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { buildLists, collapseKey } from '@/utils/boardLists'
 import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
+import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { columnName } from '@/utils/defaultNames'
@@ -285,7 +286,7 @@ const groupTags = computed(() =>
 
 // Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
 // create, no inline edits) with a Restore action. Reuses all board filters/grouping.
-const archivedMode = computed(() => route.query.archived === '1')
+const archivedMode = computed(() => isArchiveQuery(route.query))
 // Is the «+ колонка» tile part of this row? Status grouping only (tag/milestone lanes
 // are not columns to create), and never in the archive — the tile would create a live
 // column on the board from a read-only view. Asked in two places that must agree: the
@@ -295,9 +296,7 @@ const archivedMode = computed(() => route.query.archived === '1')
 // much narrower between them, with a dead band along the right edge.
 const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMode.value)
 function exitArchive() {
-  const q = { ...route.query }
-  delete q.archived
-  router.replace({ query: q })
+  router.replace({ query: withoutArchiveQuery(route.query) })
 }
 
 // Sprint scope (navigation overlay): ?milestone=<slug|uuid|backlog>. Drives the
