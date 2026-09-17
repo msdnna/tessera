@@ -207,6 +207,32 @@ export function mergeTaskRow(row, payload) {
 //     for truthiness: a card whose parent is archived is legitimately listed with a
 //     non-null `parent_id` (see the query's NOT EXISTS), and its ordinary updates
 //     must still merge.
+//   * it left the board's server-side sprint scope — see `inBoardScope` below.
+// Does a scoped board still list this task after the patch?
+//
+// `?milestone=` narrows the board SERVER-side (backend handlers/tasks.go →
+// ListBoardTasksWithMeta: `t.milestone_id = @milestone_id`, or `IS NULL` for the
+// backlog scope), so on a sprint-scoped board a task leaving the sprint is not a
+// card that changed — it is a card that is gone. The event that takes it away is
+// an ordinary full `task.updated`: backend `applyMilestone` writes milestone_id
+// and leaves the column, the position and the parent alone, so every other check
+// below passes and the merge would keep drawing the card on a sprint it no longer
+// belongs to, for everyone but the person who moved it (#2932).
+//
+// `scope.milestone` is the scope the caller is showing, already resolved to an id:
+//   * absent   — the board is unscoped, everything stays
+//   * null     — the backlog scope (`?milestone=backlog`): only task with no milestone
+//   * a string — that milestone's id
+// An unresolvable scope is passed as `''`, which no task's milestone_id equals, so
+// every patch falls back to a re-fetch — the safe way to be wrong here.
+//
+// Subtasks need no such check: `ListBoardSubtasksWithMeta` carries no milestone
+// filter, so the sprint scope never decides whether a child is listed.
+export function inBoardScope(payload, scope = {}) {
+  if (!scope || scope.milestone === undefined) return true
+  return (payload?.milestone_id ?? null) === scope.milestone
+}
+
 // Same idea for a subtask: patch it inside its parent's child list. Returns a new
 // map, or null when the caller must re-fetch (unknown parent, the child isn't
 // listed yet, or it moved — parent, column or position changed).
@@ -225,13 +251,14 @@ export function applySubtaskPatch(byParent, payload) {
   return { ...byParent, [pid]: next }
 }
 
-export function applyTaskPatch(rows, payload) {
+export function applyTaskPatch(rows, payload, scope = {}) {
   const i = rows.findIndex((t) => t.id === payload.id)
   if (i === -1) return null
   const row = rows[i]
   if (payload.column_id !== row.column_id) return null
   if (payload.position !== row.position) return null
   if ((payload.parent_id ?? null) !== (row.parent_id ?? null)) return null
+  if (!inBoardScope(payload, scope)) return null
   const next = rows.slice()
   next[i] = mergeTaskRow(row, payload)
   return next

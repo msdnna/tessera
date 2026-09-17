@@ -865,6 +865,22 @@ function taskQuery() {
   return { archived, params: archived ? { archived: 1 } : ms ? { milestone: ms } : undefined }
 }
 
+// The same scope, in the form `applyTaskPatch` checks a patched card against (see
+// utils/boardEvents `inBoardScope`). Derived from `taskQuery()` on purpose: a card
+// may stay drawn only while the server would still list it, so the two must not
+// drift — including the archive branch, where the sprint scope is not sent at all.
+// The server resolves the slug or UUID in `?milestone=`; here it is matched against
+// the project's loaded milestones, and a scope we cannot resolve yet becomes `''`,
+// which matches no task and so re-fetches instead of merging.
+function patchScope() {
+  const { archived } = taskQuery()
+  const s = milestoneScope.value
+  if (archived || !s) return {}
+  if (s === BACKLOG_SCOPE) return { milestone: null }
+  const m = milestonesMap[s] || milestonesList.value.find((mm) => matchesScope(mm, s))
+  return { milestone: m ? m.id : '' }
+}
+
 // Fetch just the task lists (2 requests instead of the full load's 10).
 async function fetchTasks(id) {
   const { archived, params } = taskQuery()
@@ -1392,7 +1408,7 @@ useRealtime((ev) => {
     // returns null and we fall back to re-fetching the lists.
     // The merged row is a fresh plain object; markRaw keeps it consistent with
     // the rest of the rows (see the shallowRef note above).
-    const patched = applyTaskPatch(allTasks.value, ev.data)
+    const patched = applyTaskPatch(allTasks.value, ev.data, patchScope())
     if (patched) {
       allTasks.value = patched.map(markRaw)
       return
