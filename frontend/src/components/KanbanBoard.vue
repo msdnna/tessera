@@ -1826,6 +1826,7 @@ async function restoreFromArchive(taskId) {
         :tags-map="tagsMap"
         :members-map="membersMap"
         :tag-prefix-names="tagPrefixNames"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
       />
@@ -1834,6 +1835,7 @@ async function restoreFromArchive(taskId) {
         v-else-if="layout === 'calendar'"
         :tasks="filteredTasks"
         :status-columns="columns"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
       />
@@ -1849,6 +1851,7 @@ async function restoreFromArchive(taskId) {
         :project-id="board?.project_id"
         :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
       />
@@ -1867,6 +1870,7 @@ async function restoreFromArchive(taskId) {
         :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
         :deps-token="depsToken"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
       />

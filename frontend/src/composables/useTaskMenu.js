@@ -34,7 +34,23 @@ const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () 
 // item red (the card does; the other views keep the plain look).
 // `onSelect(key, task)` gets any key the composable doesn't recognise, so a
 // caller's extra items act without re-implementing the menu.
-export function useTaskMenu({ onOpen, onChanged, onSelect, columns, extra, dangerDelete } = {}) {
+//
+// `readonly` (ref/getter/boolean) is the archive view: the menu simply never
+// opens. Every item on it mutates the live task — «Удалить» is permanent and
+// takes the task's uploads with it — and the archive is a read-only look at
+// cards that are already out of the way. TaskCard has always gated its own
+// contextmenu handler this way; the gate lives here so the list and the chart
+// views (which have no card of their own) inherit it instead of each repeating
+// the check.
+export function useTaskMenu({
+  onOpen,
+  onChanged,
+  onSelect,
+  columns,
+  extra,
+  dangerDelete,
+  readonly,
+} = {}) {
   const show = ref(false)
   const x = ref(0)
   const y = ref(0)
@@ -46,6 +62,10 @@ export function useTaskMenu({ onOpen, onChanged, onSelect, columns, extra, dange
   function resolveColumns() {
     const c = typeof columns === 'function' ? columns() : unref(columns)
     return c || []
+  }
+  // Same three shapes for the archive flag — it is read per gesture, not captured.
+  function isReadonly() {
+    return !!(typeof readonly === 'function' ? readonly() : unref(readonly))
   }
 
   const options = computed(() => {
@@ -87,7 +107,7 @@ export function useTaskMenu({ onOpen, onChanged, onSelect, columns, extra, dange
   })
 
   function open(e, task) {
-    if (pressMoved()) return
+    if (pressMoved() || isReadonly()) return
     target.value = task
     show.value = false
     x.value = e.clientX

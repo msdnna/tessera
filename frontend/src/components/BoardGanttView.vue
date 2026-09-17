@@ -61,6 +61,11 @@ const props = defineProps({
   // the task set nor any task field — so without this the arrows only caught up
   // on a full reload (#2932).
   depsToken: { type: Number, default: 0 },
+  // Archive view (?archived=1): look, don't touch — no context menu, no
+  // drag-to-reschedule, and no drawing or cutting dependency edges. Every one of
+  // those writes to the live task the archived row stands for; the arrows
+  // themselves still render, because reading the graph is the point of the view.
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -72,6 +77,7 @@ const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
 const LEFT_W = 224 // px of the fixed task column (expanded)
@@ -273,6 +279,7 @@ const { drag, geom, onBarDown, renderRows } = useChartBars({
   rowHeight,
   findTask,
   onChanged: () => emit('changed'),
+  readonly: () => props.readonly,
 })
 
 // Bars glide on zoom, but never mid-drag/link or mid-collapse (a transition lags).
@@ -310,6 +317,7 @@ function bodyCoords(e) {
 }
 function onLinkDown(e, t) {
   if (e.button != null && e.button !== 0) return
+  if (props.readonly) return
   e.preventDefault()
   e.stopPropagation()
   const g = geom(t)
@@ -367,6 +375,7 @@ const linkPath = computed(() => {
 
 // ── delete an edge ──
 async function removeEdge(id) {
+  if (props.readonly) return
   try {
     await tasksApi.removeRelation(id)
     await loadDeps()
@@ -454,7 +463,7 @@ onBeforeUnmount(() => {
               :tier="tier"
               :collapsed="leftCollapsed"
               :animate="animate"
-              linkable
+              :linkable="!readonly"
               :link-from-id="link ? link.fromId : null"
               @open="$emit('open', $event)"
               @bar-down="onBarDown"
@@ -487,7 +496,12 @@ onBeforeUnmount(() => {
             <g v-for="a in arrows" :key="a.id" class="g-arrow">
               <path class="g-hit" :d="a.d" />
               <path class="g-line" :d="a.d" marker-end="url(#g-arrowhead)" />
-              <g class="g-del" :transform="`translate(${a.mx},${a.my})`" @click="removeEdge(a.id)">
+              <g
+                v-if="!readonly"
+                class="g-del"
+                :transform="`translate(${a.mx},${a.my})`"
+                @click="removeEdge(a.id)"
+              >
                 <circle r="8" />
                 <path d="M-3 -3 L3 3 M3 -3 L-3 3" />
               </g>

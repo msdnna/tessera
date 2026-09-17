@@ -56,6 +56,9 @@ const props = defineProps({
   subtasksByParent: { type: Object, default: () => ({}) },
   // Project milestones — rendered as dashed vertical due-markers across the chart.
   milestones: { type: Array, default: () => [] },
+  // Archive view (?archived=1): look, don't touch — no context menu, no
+  // drag-to-reschedule. Both write to the live task the archived row stands for.
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -67,6 +70,7 @@ const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
 const LEFT_W = 224 // px of the fixed task/lane column (expanded)
@@ -187,6 +191,7 @@ const { drag, onBarDown, renderRows } = useChartBars({
   rowHeight,
   findTask,
   onChanged: () => emit('changed'),
+  readonly: () => props.readonly,
 })
 
 // Bars glide on zoom, but never mid-drag or mid-collapse (the transition would lag).

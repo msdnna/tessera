@@ -11,6 +11,9 @@ const props = defineProps({
   tasks: { type: Array, default: () => [] },
   // Real board status columns [{ id, name }] for the "move to column" menu.
   statusColumns: { type: Array, default: () => [] },
+  // Archive view (?archived=1): look, don't touch — the right-click menu is the
+  // only thing here that writes, and every item on it edits the live task.
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -20,6 +23,7 @@ const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
 // Month and weekday names are dates, not interface text: they come from Intl in

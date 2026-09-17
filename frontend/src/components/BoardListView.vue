@@ -20,6 +20,9 @@ const props = defineProps({
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
   tagPrefixNames: { type: Object, default: () => ({}) },
+  // Archive view (?archived=1): look, don't touch — the right-click menu is the
+  // only thing here that writes, and every item on it edits the live task.
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -29,6 +32,7 @@ const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
 const { formatDue: fmtDue, formatters } = useDateLocale()
