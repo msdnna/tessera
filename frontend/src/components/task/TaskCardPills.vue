@@ -89,18 +89,30 @@ const projectId = computed(() => bv.projectId)
 // Size preset × customize toggle — the single predicate, shared with the card
 // (which asks it about the meta row's number / GitLab chip).
 const show = (k) => cardFieldVisible(cardSize.value, fieldVis, k)
-// Whether the row has any content at all (drives whether it renders).
+// Whether the row has any content at all (drives whether it renders). Every term
+// mirrors the matching pill's own `v-if` below — including its `stackFields` leg:
+// in stack mode a visible field draws its row even unset, and that row is the
+// field's ONLY trigger on the card. Without that leg here a card with nothing set
+// at all (and «показывать пустые» off) lost the whole block — priority, due, tags
+// and assignees became unreachable from the board on exactly the cards that need
+// them, while a neighbour differing by a single value showed all six rows.
+// Description is the mirror image: its pill is suppressed in stack mode, so its
+// term carries the same `!stackFields`.
 const hasAnyPill = computed(
   () =>
     hasConflict.value ||
-    (show('priority') && (showEmpty.value || props.task.priority)) ||
-    (show('due') && (showEmpty.value || due.value)) ||
-    (show('estimate') && estText.value) ||
-    (show('milestone') && taskMilestone.value) ||
-    (show('description') && hasDescription.value) ||
-    (show('tags') && (showEmpty.value || taskTags.value.length)) ||
+    (show('priority') && (showEmpty.value || stackFields.value || props.task.priority)) ||
+    (show('due') && (showEmpty.value || stackFields.value || due.value)) ||
+    (show('estimate') && (stackFields.value || estText.value)) ||
+    (show('milestone') && (stackFields.value || taskMilestone.value)) ||
+    (show('description') && !stackFields.value && hasDescription.value) ||
+    (show('tags') && (showEmpty.value || stackFields.value || taskTags.value.length)) ||
     (show('assignee') &&
-      (showEmpty.value || author.value || assignees.value.length || glAssignees.value.length)),
+      (showEmpty.value ||
+        stackFields.value ||
+        author.value ||
+        assignees.value.length ||
+        glAssignees.value.length)),
 )
 
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
