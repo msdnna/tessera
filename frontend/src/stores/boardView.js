@@ -81,9 +81,19 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const layout = ref('board') // 'board' | 'list' | 'calendar' | 'timeline' | 'gantt' | 'matrix'
   const archiveOpen = ref(false)
   const reloadNonce = ref(0) // header-driven changes ask the board to reload
+  // The customize drawer is owned by KanbanBoard, but its only trigger used to be
+  // the gear in the composer's right-hand tools — and those slide away (and turn
+  // `pointer-events: none`) as soon as the chips fill the bar, which on a phone is
+  // two or three facets. The phone's menu lives in the header, outside the board,
+  // so it asks for the drawer through a nonce the way the header actions ask for a
+  // reload above.
+  const customizeNonce = ref(0)
 
   function bumpReload() {
     reloadNonce.value++
+  }
+  function openCustomize() {
+    customizeNonce.value++
   }
   function setContext(b, w, p) {
     boardId.value = b
@@ -149,7 +159,9 @@ export const useBoardViewStore = defineStore('boardView', () => {
     layout,
     archiveOpen,
     reloadNonce,
+    customizeNonce,
     bumpReload,
+    openCustomize,
     setContext,
     refill,
     reset,

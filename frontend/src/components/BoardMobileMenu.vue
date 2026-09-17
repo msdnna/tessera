@@ -6,6 +6,7 @@ import {
   PricetagsOutline,
   ArchiveOutline,
   CheckmarkOutline,
+  SettingsOutline,
 } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -39,6 +40,9 @@ const LAYOUT_ICONS = {
   gantt: 'layout-gantt',
   matrix: 'layout-matrix',
 }
+// The customize drawer doesn't apply to the time-axis layouts — same gate the
+// composer's gear button carries (`v-if="!timelineLike"` in KanbanBoard).
+const timelineLike = computed(() => store.layout === 'timeline' || store.layout === 'gantt')
 const options = computed(() => [
   {
     key: 'view',
@@ -51,6 +55,21 @@ const options = computed(() => [
     })),
   },
   { type: 'divider', key: 'd1' },
+  // «Настроить доску» is here because the gear that opens it lives in the composer's
+  // right-hand tools, and those slide out (max-width: 0 + pointer-events: none) once
+  // the chips plus the reserved search slice fill 75% of the bar — on a phone that is
+  // two or three facets. Nothing else opens the drawer, so without this entry the card
+  // size, the pill visibility, the board's name/icon and auto-collapse of empty columns
+  // are simply unreachable from a phone.
+  ...(timelineLike.value
+    ? []
+    : [
+        {
+          key: 'customize',
+          label: t('board.tools.customize'),
+          icon: renderIcon(SettingsOutline),
+        },
+      ]),
   { key: 'tags', label: t('board.actions.tags'), icon: renderIcon(PricetagsOutline) },
   // The label stays «Архив» in both states — the tick below is what says the
   // scope is on, exactly as it does for the active layout right above it.
@@ -76,6 +95,7 @@ function renderLabel(option) {
 }
 function onSelect(key) {
   if (key.startsWith('layout:')) store.layout = key.slice(7)
+  else if (key === 'customize') store.openCustomize()
   else if (key === 'tags') tagsOpen.value = true
   else if (key === 'archive') {
     if (isArchive.value) router.replace({ query: withoutArchiveQuery(route.query) })

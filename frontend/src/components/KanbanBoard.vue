@@ -1439,6 +1439,18 @@ watch(
   },
 )
 
+// The phone's board menu (BoardMobileMenu, in the header) opens the customize
+// drawer through the store: the gear that opens it here sits in the composer's
+// right-hand tools, which slide away once the chips fill the bar. The timeline
+// layouts have no customize panel, so the nonce is ignored there — same gate the
+// gear carries.
+watch(
+  () => boardViewStore.customizeNonce,
+  () => {
+    if (!timelineLike.value) customizeOpen.value = true
+  },
+)
+
 // Sync the open task to the URL's ?task= (a number, or a legacy UUID). Resolves
 // a number to its task, then canonicalizes the URL to the number form.
 async function applyTaskQuery() {
