@@ -244,6 +244,12 @@ function colCollapsedNow(dcol) {
 function toggleCollapse(dcol) {
   colCollapse[colCollapseKey(dcol)] = !isColCollapsed(dcol)
 }
+// Caption of the collapsed strip. The rotated title is clipped (max-height + an
+// ellipsis), and the strip used to advertise a bare «expand the column» — so the
+// one place where the name is unreadable was also the one place that never said it.
+function stripTitle(dcol) {
+  return t('board.column.expandTitle', { name: dcol.name })
+}
 // Turning "auto-collapse empty" ON must collapse EVERY empty column — including
 // ones the user previously expanded by hand (a stale explicit `false` override
 // would otherwise beat the auto rule, which reads as "the toggle does nothing").
@@ -1954,11 +1960,20 @@ async function restoreFromArchive(taskId) {
             >
               <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
-                   drop target survives. -->
-              <div
+                   drop target survives.
+                   A real `<button>`, not a clickable div: the collapse chevron in
+                   the header IS reachable by keyboard (an n-button), and collapsing
+                   hides that header outright — so a column folded from the keyboard
+                   had no way back, the strip never entering the tab order. Its
+                   caption carries the column name too: the vertical title is capped
+                   at 260px and ellipsised, and under TAG grouping that name is a tag
+                   («сложность::высокая»), which is the very case `.col-title` got its
+                   own `title` for. -->
+              <button
                 v-if="colCollapsedNow(dcol)"
                 class="col-strip"
-                :title="t('board.column.expand')"
+                type="button"
+                :title="stripTitle(dcol)"
                 @click="toggleCollapse(dcol)"
               >
                 <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
@@ -1966,7 +1981,7 @@ async function restoreFromArchive(taskId) {
                 <span class="strip-count" :title="colCountTitle(dcol)">{{
                   colCounts(dcol).tasks
                 }}</span>
-              </div>
+              </button>
               <ColumnHeader
                 :dcol="dcol"
                 :count="colCounts(dcol).tasks"
@@ -2654,6 +2669,23 @@ async function restoreFromArchive(taskId) {
      out. The drag drop overlay already covers the whole tile (`inset: 0`) — the
      tap target now agrees with it. */
   flex: 1 0 auto;
+  /* Button reset: the strip is a `<button>` so it can be tabbed to and opened with
+     Enter/Space (the collapse chevron it replaces is an n-button, and collapsing
+     hides it). A button doesn't inherit the page font and brings its own chrome,
+     so the reset has to be explicit — `width: 100%` because a button won't stretch
+     to the tile the way the old block-level div did. */
+  appearance: none;
+  background: none;
+  border: 0;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+.col-strip:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: -2px;
+  border-radius: 8px;
 }
 .strip-chevron {
   font-size: 15px;

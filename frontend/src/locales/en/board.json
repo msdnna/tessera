@@ -42,7 +42,7 @@
     "saveAs": "Save the view…"
   },
   "column": {
-    "expand": "Expand the column",
+    "expandTitle": "{name} — expand the column",
     "addTask": "＋ New task",
     "taskPlaceholder": "Task title, Enter — create",
     "add": "＋ New column",
