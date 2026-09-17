@@ -19,10 +19,31 @@ export const AUTOSAVE_MS = 700 // longer than VIEW_PERSIST_MS: this one costs a 
 export function useBoardAutosave({ enabled, viewName, config, save, guarded }) {
   let timer = null
 
+  function disarm() {
+    if (!timer) return
+    clearTimeout(timer)
+    timer = null
+  }
+
   watch(
     () => (enabled.value && viewName.value ? JSON.stringify(config()) : ''),
     (sig) => {
-      if (!sig || guarded()) return
+      // A bail has to DISARM what is already armed, not merely decline to arm
+      // more — both reasons say the pending write has lost its claim on the view:
+      //   * `!sig` — autosave switched off (or the view unloaded). The toggle is
+      //     the reader saying "stop writing to my saved view", and an edit made a
+      //     moment before that click leaves a timer that fires 700 ms later,
+      //     reads the still-loaded view name and PUTs it anyway. The switch has
+      //     to hold for the change that prompted it, not only for the next one.
+      //   * `guarded()` — a bulk load (applying another view, a layout swap) is
+      //     replacing the very state the pending save was going to capture, so
+      //     what it would send is no longer what the reader edited. KanbanBoard's
+      //     save refuses a config whose layout left the view's own, which covered
+      //     the swap; applying a sibling view stayed a silent extra request.
+      if (!sig || guarded()) {
+        disarm()
+        return
+      }
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => {
         timer = null
@@ -33,10 +54,5 @@ export function useBoardAutosave({ enabled, viewName, config, save, guarded }) {
     },
   )
 
-  onBeforeUnmount(() => {
-    if (timer) {
-      clearTimeout(timer)
-      timer = null
-    }
-  })
+  onBeforeUnmount(disarm)
 }
