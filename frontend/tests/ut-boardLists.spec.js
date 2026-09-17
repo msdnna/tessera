@@ -136,6 +136,49 @@ describe('collapseKey', () => {
     expect(collapseKey('tag', NO_LANE) in colCollapse).toBe(false)
   })
 
+  it('namespaces the tag catch-all per prefix narrowing', () => {
+    // «Тег · сложность» groups only the сложность:: tags, so its catch-all holds
+    // «no сложность:: tag» — a different bucket from «команда»'s and from the
+    // all-tags «no tag at all».
+    expect(collapseKey('tag', NO_LANE, 'сложность')).not.toBe(
+      collapseKey('tag', NO_LANE, 'команда'),
+    )
+    expect(collapseKey('tag', NO_LANE, 'сложность')).not.toBe(collapseKey('tag', NO_LANE))
+    expect(collapseKey('tag', NO_LANE, 'сложность')).toBe(collapseKey('tag', NO_LANE, 'сложность'))
+  })
+
+  it('keeps the bare key for the un-narrowed tag grouping', () => {
+    // Overrides saved before the prefix split are all written under this key —
+    // changing it would silently expand every «Без тегов» lane readers had folded.
+    expect(collapseKey('tag', NO_LANE, '')).toBe(collapseKey('tag', NO_LANE))
+  })
+
+  it('collapsing one prefix’s catch-all leaves the other prefixes alone', () => {
+    // What the board does: fold the huge «no сложность:: tag» lane, then switch the
+    // grouping chip to another narrowing (or back to all tags).
+    const colCollapse = {}
+    colCollapse[collapseKey('tag', NO_LANE, 'сложность')] = true
+    expect(collapseKey('tag', NO_LANE, 'команда') in colCollapse).toBe(false)
+    expect(collapseKey('tag', NO_LANE, '') in colCollapse).toBe(false)
+    expect(collapseKey('milestone', NO_LANE) in colCollapse).toBe(false)
+  })
+
+  it('an expand under one prefix does not cancel auto-collapse under another', () => {
+    // The override is two-valued: an explicit `false` beats autoCollapseEmpty. It
+    // leaked the same way a `true` did, only the symptom was an empty lane staying
+    // wide open in a grouping the reader never expanded it in.
+    const colCollapse = {}
+    colCollapse[collapseKey('tag', NO_LANE, 'сложность')] = false
+    expect(collapseKey('tag', NO_LANE, 'команда') in colCollapse).toBe(false)
+  })
+
+  it('the prefix never touches a real tag lane’s key', () => {
+    // Tag ids are unique across narrowings — prefixing them would drop every
+    // collapse saved for a lane that is literally the same lane.
+    expect(collapseKey('tag', 'g1', 'сложность')).toBe('g1')
+    expect(collapseKey('tag', 'g1', '')).toBe('g1')
+  })
+
   it('a real lane id keeps its override across a grouping switch', () => {
     // Only the catch-all is namespaced — a column collapsed in status grouping is
     // still collapsed when the reader comes back to it.

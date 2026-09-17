@@ -224,9 +224,11 @@ function colCount(dcol) {
   return (lists.value[dcol.key] || []).length
 }
 // Where a lane's explicit override is stored — its key, except for the catch-all
-// lane, whose key `__none__` two different groupings share (see collapseKey).
+// lane, whose key `__none__` two different groupings share (see collapseKey). The
+// tag prefix goes in too: it decides which cards the tag catch-all holds, so each
+// narrowing gets its own override.
 function colCollapseKey(dcol) {
-  return collapseKey(groupMode.value, dcol.key)
+  return collapseKey(groupMode.value, dcol.key, tagPrefix.value)
 }
 // Effective collapsed state: explicit override wins, else the auto-empty rule.
 function isColCollapsed(dcol) {

@@ -37,12 +37,26 @@ export const NO_LANE = '__none__'
  * lane ids already say which lane they are, and prefixing them too would throw
  * away every collapse a reader has saved.
  *
+ * Tag grouping narrowed to one namespace («Тег · Сложность») needs a catch-all of
+ * its own for the same reason: `groupTags` is then only that prefix's tags, so the
+ * lane holds «cards carrying no сложность:: tag» — usually most of the board —
+ * while the un-narrowed mode's lane holds «cards with no tag at all». Different
+ * buckets sharing one `tag:__none__` key: folding away the noisy lane under one
+ * prefix drew the other prefix's (and the all-tags) catch-all as a strip the reader
+ * never touched, and expanding it did the mirror image, cancelling auto-collapse of
+ * an empty catch-all somewhere else. The prefix-less mode keeps the bare
+ * `tag:__none__` key, so overrides saved before this split still land.
+ *
  * @param {string} groupMode 'status' | 'milestone' | anything else = tag grouping
  * @param {string} laneKey the lane's `dcol.key`
+ * @param {string} [tagPrefix] tag grouping's namespace narrowing ('' = all tags)
  * @returns {string} storage key for that lane's override
  */
-export function collapseKey(groupMode, laneKey) {
-  return laneKey === NO_LANE ? `${groupMode}:${NO_LANE}` : laneKey
+export function collapseKey(groupMode, laneKey, tagPrefix = '') {
+  if (laneKey !== NO_LANE) return laneKey
+  const tagLane = groupMode !== 'status' && groupMode !== 'milestone'
+  if (tagLane && tagPrefix) return `${groupMode}:${tagPrefix}:${NO_LANE}`
+  return `${groupMode}:${NO_LANE}`
 }
 
 /**
