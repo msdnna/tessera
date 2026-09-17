@@ -1611,13 +1611,25 @@ async function restoreFromArchive(taskId) {
             {{ groupChip.text }}
           </span>
 
-          <!-- Sort chips: click toggles direction, drag reorders primary/secondary. -->
+          <!-- Sort chips: click toggles direction, drag reorders primary/secondary.
+               The touch trio (delay + delay-on-touch-only + threshold) is the same
+               one every other draggable here carries, and for the same reason: the
+               whole chip is the drag handle, and `.facets` around it scrolls
+               horizontally. With Sortable's defaults a touch-drag starts on the
+               first pixel of movement and preventDefault's the scroll, so on a
+               phone the chip row can't be swiped past the sort chips at all — the
+               swipe silently reorders sort precedence instead (and the deep
+               `persistView` watcher saves it), while a tap meant to flip the
+               direction gets eaten by the drag. -->
           <draggable
             v-if="sortLevels.length"
             :list="sortLevels"
             item-key="field"
             handle=".facet"
             :animation="150"
+            :delay="160"
+            :delay-on-touch-only="true"
+            :touch-start-threshold="6"
             class="sort-chips"
             ghost-class="facet-ghost"
           >
