@@ -1232,7 +1232,15 @@ async function submitAddColumn() {
   }
   suppress()
   try {
-    await boards.createColumn(board.value.id, { name })
+    const { data } = await boards.createColumn(board.value.id, { name })
+    // A column is born empty, so with «сворачивать пустые колонки» on the auto rule
+    // (isColCollapsed) folded it the instant it appeared: the reader typed a name and
+    // got a 44px strip back, with no header, no «＋ задача» and nothing to drop into
+    // (`.col.collapsed` hides them all) — the create gesture undone by the setting.
+    // Write the same explicit `false` a manual expand writes, BEFORE the reload that
+    // draws it, so it never flashes collapsed. Turning the toggle on afterwards still
+    // wins: its watcher clears the overrides of every empty column.
+    if (data?.id) colCollapse[colCollapseKey({ key: data.id })] = false
     newColumnName.value = ''
     addingColumn.value = false
     await load(props.boardId)
