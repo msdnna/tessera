@@ -191,8 +191,13 @@ watch(board, (b) => (boardName.value = b?.name || ''))
 // Save board meta (name / icon / colour / icon_mode) from the customize panel. We
 // always send the full current meta so an icon change doesn't drop the name and
 // vice-versa; the backend still merges tri-state, this just keeps it simple.
+// The archive never gets here — the panel doesn't draw the fields that emit this
+// (see BoardCustomizePanel). Kept as the guard on the call itself, the way
+// BoardMatrixView's startAdd() refuses a stray call with its «＋» already hidden:
+// the name input commits on blur, so any path that leaves a stale value behind
+// would otherwise write it to the live board.
 async function updateBoard(patch) {
-  if (!board.value) return
+  if (!board.value || archivedMode.value) return
   const name = (patch.name ?? board.value.name ?? '').trim()
   if (!name) {
     boardName.value = board.value.name
@@ -2130,6 +2135,7 @@ async function restoreFromArchive(taskId) {
     v-model:auto-collapse-empty="autoCollapseEmpty"
     v-model:subtasks-expanded="subtasksExpanded"
     v-model:autosave-view="autosaveView"
+    :readonly="archivedMode"
     :field-vis="fieldVis"
     :facet-chips="facetChips"
     :add-options="addOptions"

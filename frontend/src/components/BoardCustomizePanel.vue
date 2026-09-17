@@ -27,6 +27,10 @@ const subtasksExpanded = defineModel('subtasksExpanded', { type: Boolean, defaul
 const autosaveView = defineModel('autosaveView', { type: Boolean, default: false })
 
 const props = defineProps({
+  // Archive view (?archived=1): look, don't touch. Everything else this panel holds
+  // is view state (card size, pills, auto-collapse, facets, autosave) and stays
+  // live there — only the board's own branding is a write to shared data.
+  readonly: { type: Boolean, default: false },
   // Per-field pill visibility (mutated via set-field so props stay read-only here).
   fieldVis: { type: Object, default: () => ({}) },
   // Reused composer facets (group/sort/filter) — rendered as summary chips + the
@@ -68,32 +72,42 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
 <template>
   <n-drawer v-model:show="show" :width="340" placement="right">
     <n-drawer-content :title="t('board.customize.title')" closable :native-scrollbar="false">
-      <!-- Board: name, then icon + colour (like projects/groups) -->
-      <div class="sec">
-        <div class="sec-lbl">{{ t('board.customize.board') }}</div>
-        <n-input
-          v-model:value="boardName"
-          size="small"
-          :placeholder="t('board.customize.boardName')"
-          @blur="emit('update-board', { name: boardName })"
-          @keyup.enter="emit('update-board', { name: boardName })"
-        />
-        <div class="board-icp">
-          <IconColorPicker
-            :icon="boardIcon"
-            :color="boardColor"
-            :mode="boardIconMode"
-            :initials="boardInitials"
-            fallback-kanban
-            allow-upload
-            @update:icon="(v) => emit('update-board', { icon: v })"
-            @update:color="(v) => emit('update-board', { color: v })"
-            @update:mode="(v) => emit('update-board', { icon_mode: v })"
+      <!-- Board: name, then icon + colour (like projects/groups). Dropped in the
+           archive: the rest of this drawer is this reader's own view state, but the
+           name/icon/colour are the LIVE board's — `update-board` PUTs them for the
+           whole workspace and re-stamps the sidebar node. The archive is reached by
+           a query flag on the very same board, and its gear (plus the phone's menu
+           entry) opens this same drawer, so a read-only lens was offering a rename
+           and an icon upload. IconColorPicker has no disabled state — and a greyed
+           field nobody may use is noise anyway — so the section comes off whole,
+           the way ColumnHeader drops its «…» menu. -->
+      <template v-if="!readonly">
+        <div class="sec">
+          <div class="sec-lbl">{{ t('board.customize.board') }}</div>
+          <n-input
+            v-model:value="boardName"
+            size="small"
+            :placeholder="t('board.customize.boardName')"
+            @blur="emit('update-board', { name: boardName })"
+            @keyup.enter="emit('update-board', { name: boardName })"
           />
+          <div class="board-icp">
+            <IconColorPicker
+              :icon="boardIcon"
+              :color="boardColor"
+              :mode="boardIconMode"
+              :initials="boardInitials"
+              fallback-kanban
+              allow-upload
+              @update:icon="(v) => emit('update-board', { icon: v })"
+              @update:color="(v) => emit('update-board', { color: v })"
+              @update:mode="(v) => emit('update-board', { icon_mode: v })"
+            />
+          </div>
         </div>
-      </div>
 
-      <n-divider />
+        <n-divider />
+      </template>
 
       <!-- Card size -->
       <div class="sec">
