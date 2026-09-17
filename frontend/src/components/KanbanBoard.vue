@@ -2605,6 +2605,18 @@ async function restoreFromArchive(taskId) {
   align-items: center;
   gap: 8px;
   padding: 4px 0;
+  /* The strip IS the tap target (it carries the expand click), so it has to fill
+     the collapsed tile rather than stop at the height of its own text. Desktop
+     never noticed: `.col` is `align-self: flex-start`, so the tile is already
+     exactly the strip's height. On a phone `.col` stretches to the full board
+     height (mobile block above) while the strip stayed content-sized — chevron,
+     a title capped at 260px, a count — leaving most of the tall 44px tile as
+     dead area that showed `cursor: pointer` and swallowed the tap. And there is
+     nothing else to tap: `.col-head` and its collapse button are hidden on a
+     collapsed column, which is why #2893 kept the strip as the only way back
+     out. The drag drop overlay already covers the whole tile (`inset: 0`) — the
+     tap target now agrees with it. */
+  flex: 1 0 auto;
 }
 .strip-chevron {
   font-size: 15px;
