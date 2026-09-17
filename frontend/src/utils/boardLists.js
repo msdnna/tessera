@@ -23,6 +23,29 @@
 export const NO_LANE = '__none__'
 
 /**
+ * Key under which a lane's explicit collapsed/expanded override is stored.
+ *
+ * Lane keys are ids and unique across the board — except NO_LANE, which every
+ * non-status grouping reuses for its catch-all lane: «Без этапа» when grouping by
+ * milestone, «Без тегов» when grouping by tag. Those are different lanes holding
+ * different cards, and the collapse overrides live in ONE per-board blob that
+ * switching the grouping does not reset. Sharing the key therefore leaks the
+ * gesture across modes: collapsing the noisy «Без этапа» lane leaves «Без тегов»
+ * — usually the fullest lane on a tag-grouped board, the killer feature's own
+ * fallback bucket — drawn as a narrow strip the moment the reader flips the
+ * grouping, with no gesture of their own. Only the catch-all is namespaced: real
+ * lane ids already say which lane they are, and prefixing them too would throw
+ * away every collapse a reader has saved.
+ *
+ * @param {string} groupMode 'status' | 'milestone' | anything else = tag grouping
+ * @param {string} laneKey the lane's `dcol.key`
+ * @returns {string} storage key for that lane's override
+ */
+export function collapseKey(groupMode, laneKey) {
+  return laneKey === NO_LANE ? `${groupMode}:${NO_LANE}` : laneKey
+}
+
+/**
  * Bucket the board's cards by lane key.
  *
  * @param {Object} o

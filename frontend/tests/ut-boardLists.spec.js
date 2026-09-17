@@ -8,7 +8,7 @@
 // the milestones, each of which realtime re-reads on its own. Hence the rule below:
 // every lane that is drawn gets a bucket, empty or not.
 import { describe, it, expect } from 'vitest'
-import { buildLists, NO_LANE } from '@/utils/boardLists'
+import { buildLists, collapseKey, NO_LANE } from '@/utils/boardLists'
 
 const task = (id, over = {}) => ({ id, column_id: 'c1', tag_ids: [], ...over })
 
@@ -104,5 +104,42 @@ describe('buildLists — tag grouping', () => {
   it('survives a card with no tag_ids field at all', () => {
     const map = buildLists({ groupMode: 'tag', groupTags: [{ id: 'g1' }], tasks: [{ id: 't1' }] })
     expect(map[NO_LANE].map((t) => t.id)).toEqual(['t1'])
+  })
+})
+
+// ── collapse overrides ──
+//
+// The second regression this file pins: the catch-all lane's key is the SAME
+// string in two groupings, while the collapse overrides live in one per-board blob
+// that switching the grouping doesn't reset. Collapsing «Без этапа» therefore came
+// back as a collapsed «Без тегов» — on a tag-grouped board the fullest lane there
+// is — without the reader touching it.
+describe('collapseKey', () => {
+  it('keeps a real lane id as its own key', () => {
+    expect(collapseKey('status', 'c1')).toBe('c1')
+    expect(collapseKey('milestone', 'm1')).toBe('m1')
+    expect(collapseKey('tag', 'g1')).toBe('g1')
+  })
+
+  it('namespaces the catch-all lane per grouping', () => {
+    expect(collapseKey('milestone', NO_LANE)).not.toBe(collapseKey('tag', NO_LANE))
+  })
+
+  it('is stable for the same grouping', () => {
+    expect(collapseKey('tag', NO_LANE)).toBe(collapseKey('tag', NO_LANE))
+  })
+
+  it('collapsing «no milestone» leaves «no tags» expanded', () => {
+    // What the board does: colCollapse[key] = true, then the grouping flips.
+    const colCollapse = {}
+    colCollapse[collapseKey('milestone', NO_LANE)] = true
+    expect(collapseKey('tag', NO_LANE) in colCollapse).toBe(false)
+  })
+
+  it('a real lane id keeps its override across a grouping switch', () => {
+    // Only the catch-all is namespaced — a column collapsed in status grouping is
+    // still collapsed when the reader comes back to it.
+    const colCollapse = { c1: true }
+    expect(collapseKey('status', 'c1') in colCollapse).toBe(true)
   })
 })

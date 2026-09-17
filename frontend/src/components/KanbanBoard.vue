@@ -74,7 +74,7 @@ import {
 } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
-import { buildLists } from '@/utils/boardLists'
+import { buildLists, collapseKey } from '@/utils/boardLists'
 import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
@@ -219,9 +219,14 @@ function setFieldVis(key, val) {
 function colCount(dcol) {
   return (lists.value[dcol.key] || []).length
 }
+// Where a lane's explicit override is stored — its key, except for the catch-all
+// lane, whose key `__none__` two different groupings share (see collapseKey).
+function colCollapseKey(dcol) {
+  return collapseKey(groupMode.value, dcol.key)
+}
 // Effective collapsed state: explicit override wins, else the auto-empty rule.
 function isColCollapsed(dcol) {
-  const k = dcol.key
+  const k = colCollapseKey(dcol)
   if (k in colCollapse) return colCollapse[k]
   return autoCollapseEmpty.value && colCount(dcol) === 0
 }
@@ -233,7 +238,7 @@ function colCollapsedNow(dcol) {
   return isColCollapsed(dcol)
 }
 function toggleCollapse(dcol) {
-  colCollapse[dcol.key] = !isColCollapsed(dcol)
+  colCollapse[colCollapseKey(dcol)] = !isColCollapsed(dcol)
 }
 // Turning "auto-collapse empty" ON must collapse EVERY empty column — including
 // ones the user previously expanded by hand (a stale explicit `false` override
@@ -242,7 +247,8 @@ function toggleCollapse(dcol) {
 watch(autoCollapseEmpty, (on) => {
   if (!on) return
   for (const dcol of displayColumns.value) {
-    if (colCount(dcol) === 0 && dcol.key in colCollapse) delete colCollapse[dcol.key]
+    const k = colCollapseKey(dcol)
+    if (colCount(dcol) === 0 && k in colCollapse) delete colCollapse[k]
   }
 })
 // Composer bar: always a single row. The right-side tools slide away (yielding
