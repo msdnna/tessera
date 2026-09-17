@@ -571,6 +571,22 @@ async function loadViews() {
     savedViews.value = []
   }
 }
+// Saved views are per-board, but the board does NOT remount when you switch boards —
+// so everything about the *loaded* view has to be dropped by hand, or it follows you
+// onto a board that has no such view: the button would still claim it as current, an
+// open save dialog would write the name typed for the previous board, and autosave
+// (its switch is per-board localStorage, so it can be on here) would materialise a
+// view named after the other board's on the first toolbar change. The list is emptied
+// too — `loadViews` is a request, and until it lands the popover offers the previous
+// board's views.
+function clearLoadedView() {
+  savedViews.value = []
+  currentViewName.value = ''
+  currentViewLayout.value = ''
+  newViewName.value = ''
+  showSaveView.value = false
+  showLoadView.value = false
+}
 // Snapshot / restore the full toolbar state that a view captures.
 function currentViewConfig() {
   return {
@@ -1554,6 +1570,9 @@ watch(
   async (id) => {
     if (!id) return
     resetCardViewport()
+    // Before restoreView: clearing the name makes the autosave signature empty, so a
+    // write armed on the board we are leaving is disarmed instead of landing here.
+    clearLoadedView()
     restoreView()
     await load(id)
     loadViews()
