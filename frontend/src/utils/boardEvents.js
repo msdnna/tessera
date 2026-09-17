@@ -194,7 +194,19 @@ export function mergeTaskRow(row, payload) {
 //     board, or was previously filtered out server-side by ?milestone=);
 //   * its column or position changed, i.e. the card has to move. Card order
 //     inside a column comes from the array order, not from `position`, so a
-//     silent in-place merge would leave the card sitting in its old slot.
+//     silent in-place merge would leave the card sitting in its old slot;
+//   * its parent changed, i.e. the card stops (or starts) being a card at all.
+//     `ListBoardTasksWithMeta` returns a task only while no parent of it is drawn
+//     in the same view, and nesting is announced by the same full `task.moved` as
+//     a move: backend `applyParent` writes parent_id/board_id/column_id and leaves
+//     `position` alone. Nesting a top-level card under a parent standing in ANOTHER
+//     column therefore fails the column check and re-fetches, but under one in the
+//     SAME column nothing but `parent_id` moved — the merge went through and the
+//     card stayed drawn as a top-level card for every member but the one who nested
+//     it, while never appearing under its new parent either. Compared, not tested
+//     for truthiness: a card whose parent is archived is legitimately listed with a
+//     non-null `parent_id` (see the query's NOT EXISTS), and its ordinary updates
+//     must still merge.
 // Same idea for a subtask: patch it inside its parent's child list. Returns a new
 // map, or null when the caller must re-fetch (unknown parent, the child isn't
 // listed yet, or it moved — parent, column or position changed).
@@ -219,6 +231,7 @@ export function applyTaskPatch(rows, payload) {
   const row = rows[i]
   if (payload.column_id !== row.column_id) return null
   if (payload.position !== row.position) return null
+  if ((payload.parent_id ?? null) !== (row.parent_id ?? null)) return null
   const next = rows.slice()
   next[i] = mergeTaskRow(row, payload)
   return next
