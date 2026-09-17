@@ -192,6 +192,61 @@ data class BoardUiState(
     fun isLaneCollapsed(laneId: String, count: Int): Boolean =
         colCollapse[laneId] ?: (autoCollapseEmpty && count == 0)
 
+    /** Теги, становящиеся дорожками при группировке по тегам: в режиме
+     *  пространства имён — только несущие [tagPrefix] (web `groupTags`). */
+    val groupTags: List<Tag>
+        get() = tags.values
+            .filter { tagPrefix.isEmpty() || it.name.startsWith(tagPrefix) }
+            .sortedBy { it.name }
+
+    /** Этапы в порядке дорожек «По этапам». */
+    val sortedMilestones: List<website.msdnna.tessera.data.model.Milestone>
+        get() = milestones.sortedBy { it.position }
+
+    /**
+     * Дорожки активной группировки как (id → карточки), без подписей: тот же
+     * разбор, из которого Канбан собирает свои `Lane`, но доступный и вне
+     * композиции.
+     *
+     * Живёт здесь ради [emptyLaneIds]: «пусто» для свёртки — это то, что ВИДНО,
+     * то есть счёт ПОСЛЕ фильтра и по тем дорожкам, которые нарисованы, а не по
+     * одному [columns]. Дорожки экрана берут карточки отсюда же, чтобы состав
+     * дорожки и набор пустых не могли разойтись.
+     */
+    val laneBuckets: List<Pair<String, List<Task>>>
+        get() = when {
+            groupByMilestone -> {
+                val ids = sortedMilestones.map { it.id }.toSet()
+                sortedMilestones.map { m -> m.id to applyFilterSort(tasks.filter { it.milestoneId == m.id }) } +
+                    (
+                        NONE_LANE_ID to
+                            applyFilterSort(tasks.filter { it.milestoneId == null || it.milestoneId !in ids })
+                        )
+            }
+
+            groupByTag -> {
+                val ids = groupTags.map { it.id }.toSet()
+                groupTags.map { tag -> tag.id to applyFilterSort(tasks.filter { tag.id in it.tagIds }) } +
+                    (NONE_LANE_ID to applyFilterSort(tasks.filter { t -> t.tagIds.none { it in ids } }))
+            }
+
+            else -> sortedColumns.map { it.id to visibleTasksIn(it.id) }
+        }
+
+    /**
+     * Ids дорожек, НАРИСОВАННЫХ пустыми, — набор, чьи явные overrides сбрасывает
+     * включение «сворачивать пустые» ([setAutoCollapseEmpty]).
+     *
+     * Считается по [laneBuckets], а не по `columns` + `tasksIn`: `tasksIn`
+     * намеренно не фильтрован (его читает перетаскивание), поэтому колонка,
+     * которую фильтр опустошил на экране, в «пустые» не попадала — протухший
+     * `false` выживал и тумблер на ней ничего не делал. По той же причине набор
+     * обходит дорожки АКТИВНОЙ группировки: при «колонках = тегах» и «по этапам»
+     * чистить нужно их, а не статусные колонки (#2932).
+     */
+    val emptyLaneIds: Set<String>
+        get() = laneBuckets.filter { it.second.isEmpty() }.map { it.first }.toSet()
+
     /** Card density: compact renders the title only (no pills). */
     val isCompactCard: Boolean get() = cardSize == "compact"
 
@@ -352,6 +407,12 @@ data class BoardUiState(
     val visibleTasks: List<Task> get() = applyFilterSort(tasks)
 
     val sortedColumns: List<BoardColumn> get() = columns.sortedBy { it.position }
+
+    companion object {
+        /** Id сборной дорожки «Без тега» / «Без этапа» — она не строка в БД, но
+         *  сворачивается и запоминается наравне с остальными. */
+        const val NONE_LANE_ID = "none"
+    }
 }
 
 /** Loads a board (columns + cards + subtasks + tags + members) and performs all
@@ -893,7 +954,9 @@ class BoardViewModel(
     }
 
     /** Toggles the auto-collapse-empty rule. Turning it ON drops explicit overrides
-     *  on the now-empty lanes so the rule visibly takes effect (web watch parity). */
+     *  on the now-empty lanes so the rule visibly takes effect (web watch parity).
+     *  [emptyLaneIds] приходит из [BoardUiState.emptyLaneIds] — дорожки активной
+     *  группировки, пустые ПОСЛЕ фильтра. */
     fun setAutoCollapseEmpty(on: Boolean, emptyLaneIds: Set<String>) {
         _state.update { st ->
             val cleaned = if (on) st.colCollapse.filterKeys { it !in emptyLaneIds } else st.colCollapse

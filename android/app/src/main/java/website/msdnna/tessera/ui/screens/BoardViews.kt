@@ -120,7 +120,6 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
-import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.BoardDragOverlay
@@ -1350,38 +1349,43 @@ private fun MatrixCard(
     }
 }
 
-private fun columnLanes(state: BoardUiState, res: Resources): List<Lane> =
-    state.sortedColumns.map { col ->
+// Карточки дорожек все три сборщика берут из BoardUiState.laneBuckets — там же, где
+// их считает emptyLaneIds для «сворачивать пустые». Раньше состав дорожки жил здесь,
+// а набор пустых — в BoardCustomizePanel по НЕфильтрованному tasksIn, и они
+// разошлись: колонка, опустошённая фильтром, рисовалась пустой, но в «пустые» не
+// попадала (#2932). Здесь остаются только подписи и цвета — то, для чего нужна
+// композиция.
+
+private fun columnLanes(state: BoardUiState, res: Resources): List<Lane> {
+    val buckets = state.laneBuckets.toMap()
+    return state.sortedColumns.map { col ->
         Lane(
-            col.id, columnCaption(res, col), col.color, state.visibleTasksIn(col.id),
+            col.id, columnCaption(res, col), col.color, buckets[col.id].orEmpty(),
             canAdd = true, nameKey = col.nameKey, rawTitle = col.name,
         )
     }
+}
 
 private fun tagLanes(state: BoardUiState, noTagLabel: String): List<Lane> {
     // In namespace mode only tags carrying the prefix become columns; "Без тега"
     // then collects tasks with no tag *in that namespace* (web `rebuildLists`).
-    val tags: List<Tag> = state.tags.values
-        .filter { state.tagPrefix.isEmpty() || it.name.startsWith(state.tagPrefix) }
-        .sortedBy { it.name }
-    val byTag = tags.map { tag ->
-        Lane(tag.id, tag.name, tag.color, state.applyFilterSort(state.tasks.filter { tag.id in it.tagIds }), canAdd = false)
+    val buckets = state.laneBuckets.toMap()
+    val byTag = state.groupTags.map { tag ->
+        Lane(tag.id, tag.name, tag.color, buckets[tag.id].orEmpty(), canAdd = false)
     }
-    val tagIds = tags.map { it.id }.toSet()
-    val untagged = state.applyFilterSort(state.tasks.filter { task -> task.tagIds.none { it in tagIds } })
-    return byTag + Lane("none", noTagLabel, null, untagged, canAdd = false)
+    val untagged = buckets[BoardUiState.NONE_LANE_ID].orEmpty()
+    return byTag + Lane(BoardUiState.NONE_LANE_ID, noTagLabel, null, untagged, canAdd = false)
 }
 
 /** Milestone columns («По этапам»): one read-only lane per milestone (by position)
  *  plus a trailing «Без этапа» for the unassigned (web `rebuildLists` milestone mode). */
 private fun milestoneLanes(state: BoardUiState, noMilestoneLabel: String): List<Lane> {
-    val milestones = state.milestones.sortedBy { it.position }
-    val byMs = milestones.map { m ->
-        Lane(m.id, m.title, null, state.applyFilterSort(state.tasks.filter { it.milestoneId == m.id }), canAdd = false)
+    val buckets = state.laneBuckets.toMap()
+    val byMs = state.sortedMilestones.map { m ->
+        Lane(m.id, m.title, null, buckets[m.id].orEmpty(), canAdd = false)
     }
-    val msIds = milestones.map { it.id }.toSet()
-    val none = state.applyFilterSort(state.tasks.filter { it.milestoneId == null || it.milestoneId !in msIds })
-    return byMs + Lane("none", noMilestoneLabel, null, none, canAdd = false)
+    val none = buckets[BoardUiState.NONE_LANE_ID].orEmpty()
+    return byMs + Lane(BoardUiState.NONE_LANE_ID, noMilestoneLabel, null, none, canAdd = false)
 }
 
 /** Pixel x-positions (track-relative) of milestone due-dates inside the timeline window. */

@@ -79,9 +79,6 @@ fun BoardCustomizePanel(
     onDismiss: () -> Unit,
 ) {
     val c = Tessera.colors
-    // Empty status columns whose explicit override should clear when auto-collapse
-    // turns on (web watch parity) — mirrors the VM's isLaneCollapsed rule.
-    val emptyLaneIds = state.columns.filter { state.tasksIn(it.id).isEmpty() }.map { it.id }.toSet()
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(
             Modifier.testTag(TestTags.BOARD_CUSTOMIZE_PANEL)
@@ -127,7 +124,10 @@ fun BoardCustomizePanel(
 
                 SectionLabel(stringResource(R.string.board_customize_columns))
                 ToggleRow(stringResource(R.string.board_customize_auto_collapse), state.autoCollapseEmpty) {
-                    vm.setAutoCollapseEmpty(it, emptyLaneIds)
+                    // Набор пустых дорожек — из состояния (state.emptyLaneIds): он
+                    // считается по тем же дорожкам, что нарисованы, и по счёту ПОСЛЕ
+                    // фильтра — как решает isLaneCollapsed.
+                    vm.setAutoCollapseEmpty(it, state.emptyLaneIds)
                 }
                 ToggleRow(stringResource(R.string.board_customize_subtasks), state.subtasksExpanded) {
                     vm.toggleSubtasksExpanded()
