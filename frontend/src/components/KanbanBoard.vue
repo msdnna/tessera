@@ -254,8 +254,20 @@ function stripTitle(dcol) {
 // ones the user previously expanded by hand (a stale explicit `false` override
 // would otherwise beat the auto rule, which reads as "the toggle does nothing").
 // Clear overrides on empty columns whenever the toggle flips on.
+//
+// Only when it is the *reader* flipping it, though. The same ref is written in bulk
+// by loadCustomize — for a saved view, a layout swap and the localStorage restore —
+// and there the overrides arriving alongside it are part of the state being restored,
+// not stale leftovers to prune. A view saved with the toggle on AND a couple of empty
+// columns expanded by hand loaded correctly only when the board already had the toggle
+// on (no flip, no watcher); coming from a board with it off, the flip fired and wiped
+// exactly those overrides — and the persist watcher wrote the loss straight back to
+// localStorage. Same view, two different results depending on what was on screen
+// before it. `viewLoadInFlight` is the flag persistView and the autosave already stand
+// down on; it is still set while this watcher runs (it is cleared on `nextTick`, after
+// the pre-flush queue this job sits in).
 watch(autoCollapseEmpty, (on) => {
-  if (!on) return
+  if (!on || viewLoadInFlight()) return
   for (const dcol of displayColumns.value) {
     const k = colCollapseKey(dcol)
     if (colCount(dcol) === 0 && k in colCollapse) delete colCollapse[k]
