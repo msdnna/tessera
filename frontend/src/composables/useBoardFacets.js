@@ -141,17 +141,43 @@ export function useBoardFacets({
         .sort((a, b) => uiCollator().compare(a.label, b.label)),
     ]
   })
-  // Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
-  const groupModeLabel = computed(() => {
-    if (groupMode.value === 'assignee') return t('board.facet.group.assignee')
-    if (groupMode.value === 'none') return t('board.facet.group.none')
-    if (groupMode.value === 'milestone') return t('board.facet.group.milestone')
-    if (groupMode.value === 'tag')
+  // Friendly label for a grouping mode (status / tag[·prefix] / milestone / assignee / none).
+  function groupModeLabelFor(mode) {
+    if (mode === 'assignee') return t('board.facet.group.assignee')
+    if (mode === 'none') return t('board.facet.group.none')
+    if (mode === 'milestone') return t('board.facet.group.milestone')
+    if (mode === 'tag')
       return tagPrefix.value
         ? t('board.facet.group.tagPrefix', { prefix: prefixLabel(tagPrefix.value, tagPrefixNames) })
         : t('board.facet.group.tag')
     return t('board.facet.group.status')
+  }
+  const groupModeLabel = computed(() => groupModeLabelFor(groupMode.value))
+
+  // The grouping chip is a quick switch, and it has to cycle rather than flip: the
+  // board grew from two groupings to five, and the chip kept a status⇄tag toggle.
+  // Milestone grouping is a first-class column mode of the ordinary board (lanes are
+  // the project's milestones, and a task typed into one is stamped with it — see
+  // KanbanBoard's addTask), while `assignee`/`none` are the time-axis swimlanes —
+  // and `assignee` is the DEFAULT grouping there (defaultToolbar). A flip threw any
+  // of those three away on the first click and offered no click back: the timeline
+  // could not be returned to its own default from the chip at all. The cycle walks
+  // the same modes the «+» menu offers for this layout, so whatever the chip reads,
+  // clicking it comes back round. `tagPrefix` is deliberately left alone — it is the
+  // tag lane's own narrowing, and keeping it is what makes leaving and re-entering
+  // «Тег · сложность» land back on the same lanes.
+  const groupModeCycle = computed(() =>
+    timelineLike.value
+      ? ['status', 'tag', 'milestone', 'assignee', 'none']
+      : ['status', 'tag', 'milestone'],
+  )
+  // A mode outside this layout's cycle (a timeline view's `assignee` carried into a
+  // board layout, say) has index -1 and steps to the head of the cycle.
+  const nextGroupMode = computed(() => {
+    const cycle = groupModeCycle.value
+    return cycle[(cycle.indexOf(groupMode.value) + 1) % cycle.length]
   })
+  const nextGroupModeLabel = computed(() => groupModeLabelFor(nextGroupMode.value))
 
   // ── sorting ──
 
@@ -477,7 +503,7 @@ export function useBoardFacets({
   }
   function onChipClick(c) {
     if (c.kind === 'group') {
-      groupMode.value = groupMode.value === 'status' ? 'tag' : 'status'
+      groupMode.value = nextGroupMode.value
     } else if (c.kind === 'sort') {
       const l = sortLevels.value[c.i]
       l.dir = l.dir === 'desc' ? 'asc' : 'desc'
@@ -504,6 +530,8 @@ export function useBoardFacets({
     sortLevels,
     tagPrefixOptions,
     groupModeLabel,
+    nextGroupMode,
+    nextGroupModeLabel,
     sortFieldsForMenu,
     sortFieldLabel,
     cmpLevel,

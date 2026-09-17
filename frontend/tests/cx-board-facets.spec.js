@@ -200,12 +200,12 @@ describe('useBoardFacets — mutations', () => {
     expect(clearMilestoneScope).toHaveBeenCalledTimes(1)
   })
 
-  it('toggles grouping and sort direction from a chip click', () => {
+  it('steps grouping and toggles sort direction from a chip click', () => {
+    // The grouping chip cycles (see cx-group-chip-cycle.spec.js for the modes it
+    // walks and why); here only that a click moves it on and a sort chip flips.
     const { api, groupMode } = facets()
     api.onChipClick({ kind: 'group' })
     expect(groupMode.value).toBe('tag')
-    api.onChipClick({ kind: 'group' })
-    expect(groupMode.value).toBe('status')
 
     api.onAddFacet('s.due')
     api.onChipClick({ kind: 'sort', i: 0 })

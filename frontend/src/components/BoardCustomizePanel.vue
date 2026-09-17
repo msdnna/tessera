@@ -39,6 +39,9 @@ const props = defineProps({
   // same add menu, so this panel doesn't reimplement the composer.
   facetChips: { type: Array, default: () => [] },
   addOptions: { type: Array, default: () => [] },
+  // Label of the grouping the group chip steps to when clicked (the chip cycles —
+  // see useBoardFacets). Shown as its tooltip, the same one the composer carries.
+  groupNextLabel: { type: String, default: '' },
   currentViewName: { type: String, default: '' },
   // Board branding (icon/colour/mode), mirrors projects/groups via IconColorPicker.
   boardIcon: { type: String, default: '' },
@@ -183,11 +186,20 @@ const {
       <div class="sec">
         <div class="sec-lbl">{{ t('board.customize.facets') }}</div>
         <div class="chips">
+          <!-- The group chip does the same thing here as in the composer — one click
+               steps the grouping on — so it gets the same tooltip. It used to be
+               styled `cursor: default`, which read as "summary only" while the click
+               silently regrouped the board. -->
           <span
             v-for="(c, ci) in facetChips"
             :key="ci"
             class="pchip"
             :class="{ group: c.kind === 'group' }"
+            :title="
+              c.kind === 'group' && groupNextLabel
+                ? t('board.composer.groupNext', { next: groupNextLabel })
+                : undefined
+            "
             @click="emit('chip-click', c)"
           >
             {{ c.label }}
@@ -307,9 +319,9 @@ const {
   font-size: 12px;
   cursor: pointer;
 }
-.pchip.group {
-  cursor: default;
-}
+/* No «×» on the group chip (grouping is never "off"), but it IS clickable — it
+   cycles the grouping exactly as the composer's does, so it keeps the pointer the
+   other chips have rather than the `default` that used to deny it. */
 .pchip-x {
   border: none;
   background: none;

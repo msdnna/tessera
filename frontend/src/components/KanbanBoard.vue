@@ -336,6 +336,7 @@ const {
   facetChips,
   filterChips,
   groupChip,
+  nextGroupModeLabel,
   addOptions,
   onAddFacet,
   removeChip,
@@ -1581,11 +1582,14 @@ async function restoreFromArchive(taskId) {
             <n-icon class="facet-ic" :component="GitBranchOutline" :size="14" />
           </button>
 
-          <!-- Grouping chip (toggles status/tag grouping). -->
+          <!-- Grouping chip: one click steps to the next grouping this layout offers
+               (useBoardFacets' cycle). The tooltip names that next mode rather than
+               promising a pair — the board has five groupings, and the chip used to
+               read «Переключить статусы/теги» even while showing «Этап». -->
           <span
             v-if="groupChip"
             class="facet group"
-            :title="t('board.composer.groupToggle')"
+            :title="t('board.composer.groupNext', { next: nextGroupModeLabel })"
             @click="onChipClick(groupChip)"
           >
             <n-icon class="facet-ic" :component="groupChip.icon" :size="13" />
@@ -2071,6 +2075,7 @@ async function restoreFromArchive(taskId) {
     :readonly="archivedMode"
     :field-vis="fieldVis"
     :facet-chips="facetChips"
+    :group-next-label="nextGroupModeLabel"
     :add-options="addOptions"
     :current-view-name="currentViewName"
     :board-icon="board?.icon || ''"

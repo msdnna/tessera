@@ -11,7 +11,7 @@
   "composer": {
     "subtasksOn": "Subtasks expanded",
     "subtasksOff": "Expand subtasks",
-    "groupToggle": "Switch statuses/tags",
+    "groupNext": "Group by: {next}",
     "sortHint": "Click — direction · drag to reorder",
     "remove": "Remove",
     "add": "Add grouping / sorting / filter",
