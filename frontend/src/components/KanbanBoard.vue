@@ -74,6 +74,7 @@ import {
 } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
+import { buildLists } from '@/utils/boardLists'
 import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
@@ -1155,31 +1156,23 @@ function rebuildLists() {
   // 'assignee'/'none' are timeline-only swimlane modes; the board/list views only
   // understand status/tag/milestone columns, so skip rebuilding for those.
   if (!['status', 'tag', 'milestone'].includes(groupMode.value)) return
-  const map = {}
-  if (groupMode.value === 'status') {
-    for (const col of columns.value) map[col.id] = []
-    for (const t of filteredTasks.value) (map[t.column_id] ||= []).push(t)
-  } else if (groupMode.value === 'milestone') {
-    const msIds = new Set(milestonesList.value.map((m) => m.id))
-    for (const m of milestonesList.value) map[m.id] = []
-    map.__none__ = []
-    for (const t of filteredTasks.value) {
-      if (t.milestone_id && msIds.has(t.milestone_id)) map[t.milestone_id].push(t)
-      else map.__none__.push(t)
-    }
-  } else {
-    const tgIds = new Set(groupTags.value.map((t) => t.id))
-    for (const tg of groupTags.value) map[tg.id] = []
-    map.__none__ = []
-    for (const t of filteredTasks.value) {
-      const ids = (t.tag_ids || []).filter((id) => tgIds.has(id))
-      if (!ids.length) map.__none__.push(t)
-      else for (const id of ids) map[id].push(t)
-    }
-  }
-  lists.value = map
+  lists.value = buildLists({
+    groupMode: groupMode.value,
+    columns: columns.value,
+    milestones: milestonesList.value,
+    groupTags: groupTags.value,
+    tasks: filteredTasks.value,
+  })
 }
-watch([filteredTasks, groupMode, tagPrefix, milestonesList], rebuildLists)
+// Watch what the LANES are built from, not a hand-kept subset of it. The sources
+// used to be spelled out one by one ([filteredTasks, groupMode, tagPrefix,
+// milestonesList]) and two were missing — `columns` and the tag list behind
+// `groupTags` — so a lane that appeared without the cards changing came up with no
+// bucket at all, i.e. undroppable (see utils/boardLists). Both gaps were reachable
+// from realtime alone: a `column.*` event re-reads only the columns, a `tag.*` event
+// only the workspace meta. `displayColumns` is exactly that set, already assembled —
+// it is the lanes the board draws, and it is what has to have a bucket each.
+watch([filteredTasks, displayColumns], rebuildLists)
 
 // Mutable mirror of displayColumns for column drag-reorder (status mode only).
 const colModel = ref([])
