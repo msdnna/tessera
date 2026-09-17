@@ -505,6 +505,16 @@ watch(
 watch(showMilestones, (v) => {
   if (v && expanded.value) loadMilestones()
 })
+// …and when a sprint changed anywhere — somebody else's edit, or the reader's own
+// from the board / MilestoneManager. The layout owns the socket and bumps this
+// revision (stores/workspaces.js onMilestoneEvent); a collapsed project has no
+// list to refresh, and loadMilestones() no-ops when sprints aren't shown.
+watch(
+  () => store.milestoneRevFor(props.project.id),
+  () => {
+    if (expanded.value) loadMilestones()
+  },
+)
 
 // inline board creation via the "+" button
 function startAddBoard() {

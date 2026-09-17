@@ -4,6 +4,7 @@ import { workspaces as wsApi, projects as projApi } from '@/api'
 import { useTreeExpand } from '@/composables/useTreeExpand'
 import { resolveEstimation } from '@/utils/estimation'
 import { commandItems } from '@/utils/commands'
+import { milestoneTreeTarget } from '@/utils/treeEvents'
 import { sGet, sSet } from '@/utils/serverStorage'
 
 // workspaces store — holds the list, the current selection, and the
@@ -271,6 +272,32 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   //
   // Patching the store is all that is needed: every consumer resolves through
   // `estimationFor` inside a computed, so the re-render follows.
+  // Sprint-tree revision (#2932). The sidebar's milestone rows live in ProjectRow,
+  // one component instance per expanded project, and the socket is opened once at
+  // the layout — so the event can't be delivered to them directly. Instead the
+  // layout bumps a counter here and each row watches its own:
+  // `milestoneRevFor(projectId)` moves when an event named that project, and when
+  // one named no project at all (see milestoneTreeTarget) it moves for everybody.
+  // A counter rather than the row itself on purpose: a sprint node is drawn from
+  // fields a `{id}` delete can't patch, and the list is two requests at most.
+  const milestoneRev = ref(0) // events with no project → every list is stale
+  const milestoneRevByProject = ref({})
+  function milestoneRevFor(projectId) {
+    return milestoneRev.value + (milestoneRevByProject.value[projectId] || 0)
+  }
+  function onMilestoneEvent(ev) {
+    const target = milestoneTreeTarget(ev, currentId.value)
+    if (target === undefined) return
+    if (target === null) {
+      milestoneRev.value += 1
+      return
+    }
+    milestoneRevByProject.value = {
+      ...milestoneRevByProject.value,
+      [target]: (milestoneRevByProject.value[target] || 0) + 1,
+    }
+  }
+
   function onEstimationEvent(ev) {
     const data = ev?.data
     if (ev?.type === 'workspace.estimation' && data?.workspace_id) {
@@ -308,5 +335,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     setProjectEstimation,
     setWorkspaceEstimation,
     onEstimationEvent,
+    milestoneRevFor,
+    onMilestoneEvent,
   }
 })

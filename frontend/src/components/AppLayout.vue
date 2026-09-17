@@ -106,6 +106,12 @@ useRealtime(
     // modal, the charts and the «Этапы» screen alike, so it is patched here at
     // the layout rather than in any one of them.
     ws.onEstimationEvent(ev)
+    // Sprints created/renamed/closed/deleted elsewhere → invalidate the sidebar's
+    // milestone rows. Same reason as onBoardEvent above: those rows are drawn by
+    // ProjectRow, which only mounts for an expanded project, so the socket can't
+    // reach them — the store carries a per-project revision they watch. It scopes
+    // the event itself (milestoneTreeTarget).
+    ws.onMilestoneEvent(ev)
   },
   // Reconnect / resync: rebuild the sidebar tree, which is the layout-level state
   // that can drift while the socket is down (projects added/removed elsewhere).

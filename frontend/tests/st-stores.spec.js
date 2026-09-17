@@ -409,6 +409,49 @@ describe('workspaces store', () => {
     })
   })
 
+  // #2932: узлы спринтов рисует ProjectRow, а сокет открыт один на приложение —
+  // поэтому событие доезжает до строки проекта ревизией, которую она watch'ит.
+  describe('onMilestoneEvent помечает список спринтов протухшим', () => {
+    const ws = 'w1'
+    const ready = () => {
+      const s = useWorkspacesStore()
+      s.currentId = ws
+      return s
+    }
+
+    it('двигает ревизию только того проекта, который назвало событие', () => {
+      const s = ready()
+      const p1 = s.milestoneRevFor('p1')
+      const p2 = s.milestoneRevFor('p2')
+      s.onMilestoneEvent({
+        type: 'milestone.created',
+        scope: ws,
+        data: { id: 'm1', project_id: 'p1' },
+      })
+      expect(s.milestoneRevFor('p1')).toBe(p1 + 1)
+      expect(s.milestoneRevFor('p2')).toBe(p2)
+    })
+
+    // milestone.deleted — голый {id}: проект неизвестен, значит протухли все.
+    it('двигает ревизию всем, когда событие не называет проект', () => {
+      const s = ready()
+      const p1 = s.milestoneRevFor('p1')
+      const p2 = s.milestoneRevFor('p2')
+      s.onMilestoneEvent({ type: 'milestone.deleted', scope: ws, data: { id: 'm1' } })
+      expect(s.milestoneRevFor('p1')).toBe(p1 + 1)
+      expect(s.milestoneRevFor('p2')).toBe(p2 + 1)
+    })
+
+    it('молчит на чужом пространстве и на не-спринтовых событиях', () => {
+      const s = ready()
+      const p1 = s.milestoneRevFor('p1')
+      s.onMilestoneEvent({ type: 'milestone.created', scope: 'w2', data: { project_id: 'p1' } })
+      s.onMilestoneEvent({ type: 'task.updated', scope: ws, data: { id: 't1' } })
+      s.onMilestoneEvent({ type: 'board.deleted', scope: ws, data: { id: 'b1' } })
+      expect(s.milestoneRevFor('p1')).toBe(p1)
+    })
+  })
+
   // #2932: a ring in the group edges breaks the sidebar in two ways, and the
   // tree is built from parent_id in both. Drawing starts at the root, so a ring
   // is unreachable from it: the groups in it — and every project inside them —

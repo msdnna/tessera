@@ -40,3 +40,31 @@ export function treeEventNeedsRefresh(ev, currentWorkspaceId) {
   if (!currentWorkspaceId || ev?.scope !== currentWorkspaceId) return false
   return TREE_EVENTS.has(ev?.type)
 }
+
+// Sprint (milestone) nodes are the tree's other half: a project on `tree_mode`
+// `milestones`/`both` draws one row per milestone, and ProjectRow fetches that
+// list exactly twice — when the project expands and when the mode flips to
+// include sprints. Nothing else ever re-reads it, because the only listener for
+// `milestone.*` is the OPEN BOARD (utils/boardEvents.js keeps them for its own
+// reloadMilestones branch) and the tree table above covers groups/projects only.
+//
+// So every sprint edit — anyone's, including the reader's own from the board or
+// from MilestoneManager — left the sidebar lying until a collapse+expand: a new
+// sprint never appeared, a rename stayed stale, a closed one kept hanging in the
+// list, and a deleted one stayed as a dead node whose click opens the board
+// scoped to `?milestone=<gone id>` — an empty board with no hint why (#2932).
+const MILESTONE_EVENTS = new Set(['milestone.created', 'milestone.updated', 'milestone.deleted'])
+
+// Which project's sprint list does this event invalidate?
+//
+//   undefined — not a sprint event of the current workspace, do nothing
+//   <id>      — that project's list (created/updated carry the milestone row)
+//   null      — unknown project, so every loaded list has to be re-read:
+//               `milestone.deleted` carries a bare {id}, and so does the GitLab
+//               sync's `milestone.updated` (handlers/gitlab_milestone.go).
+export function milestoneTreeTarget(ev, currentWorkspaceId) {
+  if (!currentWorkspaceId || ev?.scope !== currentWorkspaceId) return undefined
+  if (!MILESTONE_EVENTS.has(ev?.type)) return undefined
+  const pid = ev?.data?.project_id
+  return typeof pid === 'string' && pid ? pid : null
+}

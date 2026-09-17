@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { treeEventNeedsRefresh } from '@/utils/treeEvents'
+import { treeEventNeedsRefresh, milestoneTreeTarget } from '@/utils/treeEvents'
 
 const WS = 'ws-1'
 const ev = (type, over = {}) => ({ type, scope: WS, data: { id: 'x' }, ...over })
@@ -61,5 +61,51 @@ describe('treeEventNeedsRefresh', () => {
     expect(treeEventNeedsRefresh(null, WS)).toBe(false)
     expect(treeEventNeedsRefresh({}, WS)).toBe(false)
     expect(treeEventNeedsRefresh({ scope: WS }, WS)).toBe(false)
+  })
+
+  // Sprint events are NOT a tree refresh: groups/projects don't move, only a
+  // project's own milestone rows do (milestoneTreeTarget below).
+  it('leaves milestone events to milestoneTreeTarget', () => {
+    expect(needs('milestone.created')).toBe(false)
+    expect(needs('milestone.updated')).toBe(false)
+    expect(needs('milestone.deleted')).toBe(false)
+  })
+})
+
+describe('milestoneTreeTarget', () => {
+  const msEv = (type, data) => ({ type, scope: WS, data })
+
+  it('names the project of a create/update (the milestone row travels)', () => {
+    expect(milestoneTreeTarget(msEv('milestone.created', { id: 'm1', project_id: 'p1' }), WS)).toBe(
+      'p1',
+    )
+    expect(milestoneTreeTarget(msEv('milestone.updated', { id: 'm1', project_id: 'p2' }), WS)).toBe(
+      'p2',
+    )
+  })
+
+  // `milestone.deleted` is a bare {id}, and so is the GitLab sync's
+  // `milestone.updated` — no project to scope to, so every loaded list is stale.
+  it('asks for every list when the event names no project', () => {
+    expect(milestoneTreeTarget(msEv('milestone.deleted', { id: 'm1' }), WS)).toBe(null)
+    expect(milestoneTreeTarget(msEv('milestone.updated', { id: 'm1' }), WS)).toBe(null)
+    expect(milestoneTreeTarget(msEv('milestone.created', { id: 'm1', project_id: '' }), WS)).toBe(
+      null,
+    )
+  })
+
+  it('ignores anything that is not a sprint event of this workspace', () => {
+    expect(milestoneTreeTarget(msEv('task.updated', { id: 't1' }), WS)).toBe(undefined)
+    expect(milestoneTreeTarget(msEv('board.created', { id: 'b1' }), WS)).toBe(undefined)
+    expect(
+      milestoneTreeTarget({ type: 'milestone.created', scope: 'ws-2', data: { id: 'm1' } }, WS),
+    ).toBe(undefined)
+    expect(milestoneTreeTarget(msEv('milestone.created', { id: 'm1' }), '')).toBe(undefined)
+  })
+
+  it('survives a malformed event', () => {
+    expect(milestoneTreeTarget(null, WS)).toBe(undefined)
+    expect(milestoneTreeTarget({}, WS)).toBe(undefined)
+    expect(milestoneTreeTarget({ type: 'milestone.deleted', scope: WS }, WS)).toBe(null)
   })
 })
