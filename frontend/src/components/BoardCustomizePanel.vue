@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   NDrawer,
@@ -53,6 +53,39 @@ const emit = defineEmits(['set-field', 'add-facet', 'remove-chip', 'chip-click',
 const { t } = useI18n()
 
 const boardInitials = computed(() => (boardName.value || '?').trim().slice(0, 2).toUpperCase())
+
+// The name field edits a DRAFT, not the live model — the same shape the sidebar's
+// inline board rename has had all along (ProjectRow: a buffer seeded on open, a
+// commit guarded by `n === b.name`). Binding the model itself and emitting
+// `update-board` on every blur AND every Enter, as this field used to, is loose in
+// three ways, all of them writes to data the whole workspace shares:
+//   * Enter then a click away fired the same PUT twice — two `board.updated`
+//     broadcasts, and every open board in the workspace re-fetches its record;
+//   * focusing the field and leaving it untouched still PUT, and the request is a
+//     full replace of name+icon+colour+mode assembled from this client's copy of
+//     the board, so a no-op blur can overwrite a colleague's icon change;
+//   * Esc closes the drawer WITHOUT blurring the input (a browser fires no blur for
+//     a focused node that is simply removed), so the abandoned text was never saved
+//     — yet stayed in the model as the board's displayed name, and the next stray
+//     focus+blur of that field committed the edit the reader had cancelled.
+// The draft answers all three: nothing leaves this component until the text differs
+// from the board's own name, the commit writes the model so a follow-up blur is a
+// no-op, and closing the drawer throws the draft away.
+const nameDraft = ref(boardName.value)
+watch(boardName, (v) => (nameDraft.value = v))
+watch(show, () => (nameDraft.value = boardName.value))
+function commitName() {
+  const n = nameDraft.value.trim()
+  // An empty field is not a rename — restore what the board is called, the way
+  // KanbanBoard's updateBoard refuses a blank name.
+  if (!n) {
+    nameDraft.value = boardName.value
+    return
+  }
+  if (n === boardName.value) return
+  boardName.value = n
+  emit('update-board', { name: n })
+}
 
 // Only the field order is fixed here — the labels are looked up per render, or
 // switching the language would leave this list on the language of the first one
@@ -110,11 +143,12 @@ const {
         <div class="sec">
           <div class="sec-lbl">{{ t('board.customize.board') }}</div>
           <n-input
-            v-model:value="boardName"
+            v-model:value="nameDraft"
             size="small"
             :placeholder="t('board.customize.boardName')"
-            @blur="emit('update-board', { name: boardName })"
-            @keyup.enter="emit('update-board', { name: boardName })"
+            data-testid="board-name-input"
+            @blur="commitName"
+            @keyup.enter="commitName"
           />
           <div class="board-icp">
             <IconColorPicker
