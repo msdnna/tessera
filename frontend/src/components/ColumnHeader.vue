@@ -306,7 +306,6 @@ async function removeCol() {
 }
 .col-stat {
   font-size: 16px;
-  cursor: grab;
   flex: none;
 }
 .col-title {
@@ -327,13 +326,21 @@ async function removeCol() {
   white-space: nowrap;
   font-weight: 600;
   color: var(--t-text1);
-  cursor: grab;
 }
-/* Archive view: nothing here grabs, renames or opens a menu — don't promise a
-   grip the disabled draggable won't honour. */
-.col-head.ro .col-stat,
-.col-head.ro .col-title {
-  cursor: default;
+/* The grab hand belongs to the drag handle, and `.col-drag` IS the handle: the
+   board's column draggable takes `handle: '.col-drag'`, and this component stamps
+   that class exactly when `canEdit` — a real status column outside the archive.
+   The cursor used to sit on `.col-stat`/`.col-title` unconditionally with a
+   `.col-head.ro` rule taking it back, which covered only the archive. The other
+   half of `canEdit` was left promising a grip nothing honours: under tag or
+   milestone grouping — the board's headline feature — the header is `editable:
+   false`, so the lanes are not columns at all. There the column draggable is
+   `:disabled`, dblclick-to-rename returns on `!canEdit` and the «…» menu isn't
+   rendered, yet every lane caption still offered a grab hand, and a tag lane's
+   caption is the widest target in the header. Hanging the cursor on the handle
+   keeps the two in step by construction. */
+.col-drag {
+  cursor: grab;
 }
 .count {
   font-size: 12px;
