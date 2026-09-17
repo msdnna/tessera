@@ -1219,17 +1219,28 @@ async function submitAddTask(dcol) {
 const addingColumn = ref(false)
 const newColumnName = ref('')
 const colInput = ref(null)
+// A create already on the wire. The name input commits on BOTH Enter and blur, and it
+// stays mounted — with the typed name still in it — until the POST comes back: the
+// gesture is re-entrant. A second Enter on a slow link, or clicking away right after
+// the first one, runs submitAddColumn again with the same non-empty name, and the
+// server appends unconditionally (CreateColumn has no dedupe) — two identical columns,
+// of which only the last one gets the expand override below. submitAddTask happens to
+// be immune because it clears its input synchronously before awaiting; doing that here
+// would throw the typed name away whenever the request fails, so the guard is explicit.
+const columnInFlight = ref(false)
 function startAddColumn() {
   addingColumn.value = true
   newColumnName.value = ''
   nextTick(() => colInput.value?.focus?.())
 }
 async function submitAddColumn() {
+  if (columnInFlight.value) return
   const name = newColumnName.value.trim()
   if (!name) {
     addingColumn.value = false
     return
   }
+  columnInFlight.value = true
   suppress()
   try {
     const { data } = await boards.createColumn(board.value.id, { name })
@@ -1245,7 +1256,11 @@ async function submitAddColumn() {
     addingColumn.value = false
     await load(props.boardId)
   } catch (e) {
+    // The name is deliberately left in the input here: the column was not created,
+    // and retyping it is the reader's work, not the error's to take.
     message.error(e.message)
+  } finally {
+    columnInFlight.value = false
   }
 }
 
@@ -2029,6 +2044,7 @@ async function restoreFromArchive(taskId) {
             ref="colInput"
             v-model:value="newColumnName"
             size="small"
+            :loading="columnInFlight"
             :placeholder="t('board.column.namePlaceholder')"
             @keyup.enter="submitAddColumn"
             @keyup.esc="addingColumn = false"
