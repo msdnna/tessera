@@ -1587,15 +1587,24 @@ watch(
 )
 // Switching étapes on the same board (only the query changes, no remount) reloads
 // the scoped task set. Entering/leaving the archive reloads too.
-watch(
-  () => [route.query.milestone, route.query.archived],
-  ([ms]) => {
-    // Opening an étape via the project tree supersedes any manual étape filter in
-    // the composer — clear it, else the scope's tasks would be filtered away.
-    if (ms) filters.milestones = []
-    load(props.boardId)
-  },
-)
+//
+// TWO getters, not one getter returning a pair. A single `() => [a, b]` source hands
+// `watch` a fresh array every run, so its `Object.is` comparison always says
+// "changed" — the callback then fires whenever the *dependency* is touched, and the
+// dependency here is `route.query` as a whole (vue-router swaps that object on every
+// navigation, whatever key moved). The board's own URL carries the open card
+// (`?task=<number>`), so opening a card, canonicalizing its number and closing it
+// again each ran this callback: three full, NON-silent `load()`s — ten requests apiece
+// — for a query key this watcher does not care about, and every one of them raised the
+// n-spin that fades the whole board (the #2695 flicker `silent` exists to avoid).
+// Modal edits already come back through `@changed` → `onChanged`. Given per-key
+// getters, `watch` compares the values themselves and stays quiet.
+watch([() => route.query.milestone, () => route.query.archived], ([ms]) => {
+  // Opening an étape via the project tree supersedes any manual étape filter in
+  // the composer — clear it, else the scope's tasks would be filtered away.
+  if (ms) filters.milestones = []
+  load(props.boardId)
+})
 
 // Restore a task from the archive view (the only mutation allowed there).
 async function restoreFromArchive(taskId) {
