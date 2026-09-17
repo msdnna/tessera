@@ -1201,7 +1201,12 @@ async function submitAddTask(dcol) {
     return
   }
   suppress()
-  newTaskTitle.value = '' // keep the input open for rapid entry
+  // Cleared BEFORE the await on purpose: it keeps the input open for rapid entry and
+  // makes a second Enter read an empty title (the re-entrancy submitAddColumn needs an
+  // explicit flag for). The cost is that the typed title is already gone by the time a
+  // failure comes back — so the failure path puts it back, the way the column input
+  // keeps its name.
+  newTaskTitle.value = ''
   try {
     const res = await boards.createTask(board.value.id, { column_id: columnId, title })
     if (groupMode.value === 'tag' && dcol.tag) await tasksApi.addTag(res.data.id, dcol.tag.id)
@@ -1212,7 +1217,24 @@ async function submitAddTask(dcol) {
     focusTaskInput()
   } catch (e) {
     message.error(e.message)
+    restoreFailedTitle(dcol, title)
   }
+}
+// A create that failed must not eat the title with it: the toast says «не удалось», the
+// task isn't on the board, and retyping it is the reader's work the error has no claim
+// on. The input also commits on blur, so after a failure a stray click outside it used
+// to close the whole add gesture with nothing left behind.
+//
+// Only restored into an input the reader hasn't moved on from: while the POST was on
+// the wire they may have typed the next task (their text wins) or opened the «＋ задача»
+// of another column (dropping this title into that column's input would file it in the
+// wrong lane). A closed input is reopened on the column the title was meant for.
+function restoreFailedTitle(dcol, title) {
+  if (newTaskTitle.value) return
+  if (addingInColumn.value !== null && addingInColumn.value !== dcol.key) return
+  newTaskTitle.value = title
+  addingInColumn.value = dcol.key
+  focusTaskInput()
 }
 
 // ── inline column creation ("+ New column" to the right) ──
