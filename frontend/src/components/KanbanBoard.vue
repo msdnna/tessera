@@ -2657,54 +2657,20 @@ async function restoreFromArchive(taskId) {
    with no snap point of its own is not merely skipped by a swipe, it cannot be
    rested on at all. Collapsing the leftmost column scrolled it off the screen on
    the spot and there was no way back to it. Strips keep their snap point. */
+/* `.col-head` is ColumnHeader's ROOT element, so this scoped rule does reach it
+   (Vue stamps the parent's scope id on a child component's root) — it is the only
+   part of the old inline header that still applies here. Everything INSIDE that
+   component (`.col-title`, `.col-menu`, the swatch grid, the count chip) is a
+   non-root child and carries only ColumnHeader's own scope id: rules for those
+   sat here doing nothing, a standing trap for the next person who edits the
+   caption's layout in this file and sees no effect. They live in
+   ColumnHeader.vue's own <style scoped>. */
 .col-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 8px;
   padding: 0 2px;
-}
-.col-grip {
-  cursor: grab;
-  color: var(--t-text3);
-  font-size: 12px;
-  line-height: 1;
-}
-.col-title {
-  flex: 1;
-  font-weight: 600;
-  color: var(--t-text1);
-}
-.col-menu {
-  font-size: 16px;
-  line-height: 1;
-}
-.col-swatches {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-.cw {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-}
-.cw.active {
-  border-color: var(--t-text1);
-}
-.cs-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.count {
-  font-size: 12px;
-  color: var(--t-text3);
-  background: var(--t-hover);
-  border-radius: 10px;
-  padding: 0 7px;
 }
 .drop {
   flex: 1;

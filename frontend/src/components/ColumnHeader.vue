@@ -202,9 +202,16 @@ async function removeCol() {
       @keyup.enter="commitRename"
       @blur="commitRename"
     />
-    <span v-else class="col-title" :class="{ 'col-drag': canEdit }" @dblclick="startRename">{{
-      dcol.name
-    }}</span>
+    <!-- `title` is not decoration here: the caption is clipped to one line below,
+         and a tag lane's caption is whatever the reader named the tag. -->
+    <span
+      v-else
+      class="col-title"
+      :class="{ 'col-drag': canEdit }"
+      :title="dcol.name"
+      @dblclick="startRename"
+      >{{ dcol.name }}</span
+    >
     <span class="count" :title="countTitle" data-testid="column-count"
       >{{ count }}<span v-if="showTotal" class="count-sub">{{ ' (' + total + ')' }}</span></span
     >
@@ -304,6 +311,20 @@ async function removeCol() {
 }
 .col-title {
   flex: 1;
+  /* A flex item's `min-width` is `auto`, so the caption refuses to shrink below its
+     longest word — and in tag-grouping mode (the board's headline feature) the
+     caption IS a tag name, which routinely has no break opportunity at all
+     («сложность::высокая» with the raw prefix shown). The header then grew past the
+     fixed column width and pushed the count chip, the collapse chevron and the «…»
+     menu out over the neighbouring column, where they overlap its cards and steal
+     clicks — and in a tag lane the chevron is the only way to fold that lane.
+     `min-width: 0` lets it shrink; clipping to one line matches what the collapsed
+     strip (`.strip-title`) and the Android lane title already do, and it keeps every
+     column's header the same height so the card lists start level. */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
   color: var(--t-text1);
   cursor: grab;
