@@ -82,6 +82,32 @@ fun tagParts(name: String, prefixNames: Map<String, String> = emptyMap(), raw: B
 /** Scope/value pair for a tag pill; [hasScope] false means render [label] alone. */
 data class TagParts(val scope: String, val label: String, val hasScope: Boolean)
 
+/**
+ * Заголовок дорожки при группировке доски по тегам (web `tagColumnName`,
+ * KanbanBoard.vue): сырое «сложность::высокая» на доску не выносится никогда.
+ *
+ * [prefixSelected] — выбран ли на доске один префикс. Тогда пространство имён уже
+ * названо в подписи группировки («Тег · Сложность»), и каждая дорожка повторяла бы
+ * его впустую; остаётся только значение. Без выбранного префикса дорожки приходят
+ * из разных пространств, и scope — единственное, что их различает.
+ *
+ * На узкой колонке телефона это не косметика: подпись рисуется в одну строку с
+ * многоточием, а у свёрнутой дорожки — вертикальной полоской в 44dp — от общего
+ * префикса не остаётся ничего, кроме него самого. Карточки в той же дорожке свой
+ * тег уже разбирают ([tagParts] в `Chips`), так что сырое имя расходилось с ними
+ * на одном экране (#2932).
+ */
+fun tagLaneTitle(
+    name: String,
+    prefixNames: Map<String, String> = emptyMap(),
+    prefixSelected: Boolean = false,
+    raw: Boolean = false,
+): String {
+    val parts = tagParts(name, prefixNames, raw)
+    if (!parts.hasScope) return parts.label
+    return if (prefixSelected) parts.label else "${parts.scope}: ${parts.label}"
+}
+
 /** Canonical prefixes of GitLab label rules that map a label to a NON-tag action
  *  (status / priority / board / ignore / …). Those labels aren't user tags, so they
  *  are hidden from the ADD tag-picker (web `metaPrefixesFromRules`). Only prefix-type

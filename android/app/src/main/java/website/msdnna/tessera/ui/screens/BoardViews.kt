@@ -175,6 +175,7 @@ import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
 import website.msdnna.tessera.util.quadrantOf
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.tagLaneTitle
 import website.msdnna.tessera.util.topoByDeps
 
 /**
@@ -296,6 +297,10 @@ fun KanbanView(
     // Ресурсы — тоже ключ memo: подписи засеянных колонок собираются из них, а при
     // смене языка AppLocale подставляет другой объект Resources (см. columnCaption).
     val res = LocalResources.current
+    // Дружественные имена префиксов и режим «короткие префиксы» — тоже ключи memo:
+    // из них собирается подпись тег-дорожки (tagLaneTitle), и без них переключение
+    // тумблера в настройках оставило бы кэш с подписями прежнего вида.
+    val rawPrefix = Tessera.rawTagPrefix
     val lanes = remember(
         // Колонки, карточки, фильтр и сортировка входят сюда одним ключом
         // (BoardUiState.filterSortKey) — вместе с подзадачами, календарём и
@@ -306,13 +311,15 @@ fun KanbanView(
         state.tagPrefix,
         state.tags,
         state.milestones,
+        state.prefixNames,
+        rawPrefix,
         noTagLabel,
         noMilestoneLabel,
         res,
     ) {
         when {
             state.groupByMilestone -> milestoneLanes(state, noMilestoneLabel)
-            state.groupByTag -> tagLanes(state, noTagLabel)
+            state.groupByTag -> tagLanes(state, noTagLabel, rawPrefix)
             else -> columnLanes(state, res)
         }
     }
@@ -1368,12 +1375,22 @@ private fun columnLanes(state: BoardUiState, res: Resources): List<Lane> {
     }
 }
 
-private fun tagLanes(state: BoardUiState, noTagLabel: String): List<Lane> {
+private fun tagLanes(state: BoardUiState, noTagLabel: String, rawPrefix: Boolean): List<Lane> {
     // In namespace mode only tags carrying the prefix become columns; "Без тега"
     // then collects tasks with no tag *in that namespace* (web `rebuildLists`).
     val buckets = state.laneBuckets.toMap()
+    val prefixSelected = state.tagPrefix.isNotEmpty()
     val byTag = state.groupTags.map { tag ->
-        Lane(tag.id, tag.name, tag.color, buckets[tag.id].orEmpty(), canAdd = false)
+        Lane(
+            tag.id,
+            // Подпись разбирается ровно как пилюля тега на карточке ([tagLaneTitle]);
+            // сырое имя остаётся в rawTitle — гид по доске ищет колонку по нему.
+            tagLaneTitle(tag.name, state.prefixNames, prefixSelected, rawPrefix),
+            tag.color,
+            buckets[tag.id].orEmpty(),
+            canAdd = false,
+            rawTitle = tag.name,
+        )
     }
     val untagged = buckets[BoardUiState.NONE_LANE_ID].orEmpty()
     return byTag + Lane(BoardUiState.NONE_LANE_ID, noTagLabel, null, untagged, canAdd = false)
