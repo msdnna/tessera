@@ -10,7 +10,6 @@ import {
   onMounted,
   onBeforeUnmount,
   nextTick,
-  h,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -34,7 +33,6 @@ import {
   TrashOutline,
   AddOutline,
   ChevronForwardOutline,
-  ChevronBackOutline,
   SettingsOutline,
   RibbonOutline,
   ArchiveOutline,
@@ -59,6 +57,7 @@ import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewpo
 import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
 import { useBoardAutosave } from '@/composables/useBoardAutosave'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
+import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
 import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
@@ -93,7 +92,6 @@ import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
 import BoardTimelineView from './BoardTimelineView.vue'
 import BoardGanttView from './BoardGanttView.vue'
-import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -366,83 +364,18 @@ const {
 })
 
 // Mobile: the "+" menu drills into one sub-list at a time (with a «Назад») rather
-// than fanning out side submenus that run off a narrow screen.
-const addShow = ref(false)
-const addLevel = ref(null) // null = top level; else the parent group's key
-const addDir = ref('down') // slide direction for the level transition ('down' = deeper)
-const addMenuOptions = computed(() => {
-  if (!isMobile.value) return addOptions.value
-  if (!addLevel.value) {
-    // Top level as drill-in entries (no side submenu).
-    return addOptions.value.map((o) => ({ label: o.label, key: `nav.${o.key}` }))
-  }
-  const parent = addOptions.value.find((o) => o.key === addLevel.value)
-  return [
-    { label: t('board.composer.back'), key: 'nav.back' },
-    { type: 'divider', key: 'nav.div' },
-    ...(parent?.children || []),
-  ]
-})
-// Custom row rendering on mobile: right-side drill arrows, a spaced «‹ Назад»
-// header, and a vertical slide that plays whenever the level changes (keys differ
-// between levels → the option nodes remount → the animation replays).
-function renderAddLabel(option) {
-  // Assignee-filter rows carry avatar hints — draw the user's face + name like the
-  // on-card assignee picker (both desktop and mobile).
-  if (option.avatarUserId || option.avatarSrc) {
-    const av = h(UserAvatar, {
-      class: 'flt-asgn-av',
-      userId: option.avatarUserId,
-      src: option.avatarSrc,
-      name: option.label,
-    })
-    const txt = h('span', { class: 't-fdd-txt' }, option.label)
-    if (!isMobile.value) return h('span', { class: 'flt-asgn' }, [av, txt])
-    return h(
-      'span',
-      { class: 'flt-asgn t-fdd-row', style: { animation: `t-fdd-${addDir.value} .17s ease` } },
-      [av, txt],
-    )
-  }
-  if (!isMobile.value) return option.label
-  const anim = `t-fdd-${addDir.value} .17s ease`
-  const key = option.key
-  if (key === 'nav.back') {
-    return h('span', { class: 't-fdd-row is-back', style: { animation: anim } }, [
-      h(NIcon, { component: ChevronBackOutline, size: 16 }),
-      h('span', { class: 't-fdd-txt' }, option.label),
-    ])
-  }
-  if (!addLevel.value && typeof key === 'string' && key.startsWith('nav.')) {
-    return h('span', { class: 't-fdd-row is-drill', style: { animation: anim } }, [
-      h('span', { class: 't-fdd-txt' }, option.label),
-      h(NIcon, { component: ChevronForwardOutline, size: 14, class: 't-fdd-arr' }),
-    ])
-  }
-  return h('span', { class: 't-fdd-row', style: { animation: anim } }, [
-    h('span', { class: 't-fdd-txt' }, option.label),
-  ])
-}
-// n-dropdown auto-closes on every select. While drilling we ignore that close
-// (keep the controlled menu open) so the sub-list shows instead of snapping shut.
-let addDrilling = false
-function onAddSelect(key) {
-  if (key === 'nav.back' || key.startsWith('nav.')) {
-    addDir.value = key === 'nav.back' ? 'up' : 'down'
-    addLevel.value = key === 'nav.back' ? null : key.slice(4)
-    addDrilling = true
-    nextTick(() => (addDrilling = false))
-    return
-  }
-  onAddFacet(key)
-  addShow.value = false
-  addLevel.value = null
-}
-function onAddShow(v) {
-  if (!v && addDrilling) return // swallow the select-triggered close mid-drill
-  addShow.value = v
-  if (!v) addLevel.value = null // reset drill state when the menu actually closes
-}
+// than fanning out side submenus that run off a narrow screen. The behaviour lives
+// in a composable because the customize drawer renders the same menu behind its own
+// «+» — and on a phone that drawer is the settings surface one can always reach.
+// Each call site keeps its own open/level state (one shared `show` would pop both
+// dropdowns at once), so this instance belongs to the composer's button alone.
+const {
+  show: addShow,
+  menuOptions: addMenuOptions,
+  renderLabel: renderAddLabel,
+  onSelect: onAddSelect,
+  onShow: onAddShow,
+} = useFacetAddMenu({ options: addOptions, isMobile, onPick: onAddFacet })
 function toggleSubtasksExpanded() {
   subtasksExpanded.value = !subtasksExpanded.value
 }

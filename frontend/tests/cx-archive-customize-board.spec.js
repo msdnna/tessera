@@ -15,7 +15,7 @@
 // Pinned here: `readonly` takes the branding section off (the view settings stay —
 // card size, pills, auto-collapse, facets and autosave are this reader's own state),
 // and KanbanBoard both passes the flag and refuses a stray updateBoard call.
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -35,6 +35,17 @@ vi.mock('naive-ui', async () => {
 // as "absent" — including the ones that must fail on the old code). VTU's teleport
 // stub renders it in place instead.
 const STUBS = { teleport: true, TesseraIcon: true }
+
+// The panel asks useResponsive whether it is on a phone (its «+» drills through the
+// facet menu there instead of fanning submenus off-screen), and jsdom ships no
+// matchMedia — without this the mount throws before a single assertion runs.
+beforeEach(() => {
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })
+})
 
 const mountPanel = (readonly) =>
   mount(BoardCustomizePanel, {

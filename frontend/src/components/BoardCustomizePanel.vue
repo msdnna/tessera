@@ -14,6 +14,8 @@ import {
 } from 'naive-ui'
 import { AddOutline, GitBranchOutline } from '@vicons/ionicons5'
 import IconColorPicker from './IconColorPicker.vue'
+import { useResponsive } from '@/composables/useResponsive'
+import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
 
 // Two-way settings (bound to the board view in KanbanBoard). All persist via the
 // parent's saved-view + localStorage machinery.
@@ -67,6 +69,26 @@ const fields = computed(() =>
   FIELD_KEYS.map((key) => ({ key, label: t(`board.customize.field.${key}`) })),
 )
 const fieldOn = (k) => props.fieldVis?.[k] !== false
+
+// The «+» below opens the composer's own two-level facet menu. On a phone naive's
+// side submenus open past the edge of the screen, which is why the composer drills
+// into one sub-list at a time — and this drawer is the settings surface a phone can
+// always reach (the composer's gear slides away once the chips fill the bar, and
+// BoardMobileMenu's «Настроить вид» lands here), so it was the wrong one to leave
+// fanning out. Own instance, own open/level state: sharing the composer's would pop
+// both dropdowns at once.
+const { isMobile } = useResponsive()
+const {
+  show: addShow,
+  menuOptions: addMenuOptions,
+  renderLabel: renderAddLabel,
+  onSelect: onAddSelect,
+  onShow: onAddShow,
+} = useFacetAddMenu({
+  options: computed(() => props.addOptions),
+  isMobile,
+  onPick: (k) => emit('add-facet', k),
+})
 </script>
 
 <template>
@@ -174,11 +196,14 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
             </button>
           </span>
           <n-dropdown
+            :show="addShow"
             trigger="click"
             placement="bottom-start"
             scrollable
-            :options="addOptions"
-            @select="(k) => emit('add-facet', k)"
+            :options="addMenuOptions"
+            :render-label="renderAddLabel"
+            @update:show="onAddShow"
+            @select="onAddSelect"
           >
             <button class="pchip-add" :title="t('board.composer.add')">
               <n-icon :component="AddOutline" :size="14" />
