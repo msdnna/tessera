@@ -25,6 +25,26 @@ export function canonPrefix(p) {
   return (p || '').trim().toLowerCase()
 }
 
+// Does this tag belong to the namespace the grouping is narrowed to?
+//
+// Compared through `canonPrefix`, like every other answer about a namespace in the
+// app: the backend stores prefix→label rows under the canonical key (handlers/
+// tag_prefixes.go), `buildTagGroups` buckets the filter menu by it, and the pills
+// resolve their friendly scope name through it. Only the lane narrowing («Тег ·
+// Сложность») used to compare raw, as `tag.name.startsWith(prefix)` — so tags a
+// reader (or a GitLab sync) spelled «Сложность::высокая» and «сложность::низкая»
+// were ONE group in the filter menu, under one friendly name, and two different
+// namespaces to the lanes: choosing the prefix drew only the tags of the matching
+// case and swept every other card into «Без тегов», the killer feature's own
+// catch-all. Namespace equality rather than a string prefix also keeps the answer
+// to "is this tag in this namespace" the one `tagNamespace` gives — a raw
+// `startsWith` says yes to anything that merely begins with the same letters
+// (#2932).
+export function tagInPrefix(name, prefix) {
+  if (!prefix) return true
+  return canonPrefix(tagNamespace(name)) === canonPrefix(prefix)
+}
+
 // Display label for a namespace: the configured friendly name, else the trimmed
 // raw prefix (e.g. "S:"), else the "ungrouped" bucket name for prefix-less tags.
 export function prefixLabel(ns, prefixNames = {}) {

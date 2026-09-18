@@ -58,7 +58,7 @@ import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
 import { useBoardAutosave } from '@/composables/useBoardAutosave'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
 import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
-import { tagLaneLabel, metaPrefixesFromRules } from '@/utils/tagGroups'
+import { tagLaneLabel, tagInPrefix, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumLaneEffort, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
 import { filterBoardTasks } from '@/utils/taskFilter'
@@ -319,9 +319,13 @@ const tagPrefix = ref('') // when grouping by tag: only tags with this namespace
 // configured.
 
 // Tags that become columns in tag-grouping mode (filtered by the chosen prefix).
+// Membership is asked through utils/tagGroups (`tagInPrefix`), i.e. by canonical
+// namespace — the same key the filter menu's groups, the prefix labels and the
+// backend's prefix registry use. A raw `startsWith` made «Сложность::» and
+// «сложность::» two different namespaces to the lanes alone (#2932).
 const groupTags = computed(() =>
   tagPrefix.value
-    ? tagsList.value.filter((tag) => (tag.name || '').startsWith(tagPrefix.value))
+    ? tagsList.value.filter((tag) => tagInPrefix(tag.name, tagPrefix.value))
     : tagsList.value,
 )
 

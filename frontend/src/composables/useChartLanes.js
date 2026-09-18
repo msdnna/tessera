@@ -2,7 +2,7 @@ import { computed } from 'vue'
 import { i18n } from '@/i18n'
 import { formatEstimate, formatEstimateFull, sumLaneEffort } from '@/utils/estimation'
 import { columnName } from '@/utils/defaultNames'
-import { tagLaneLabel } from '@/utils/tagGroups'
+import { tagLaneLabel, tagInPrefix } from '@/utils/tagGroups'
 
 // Swimlane grouping for the Timeline and Gantt board views, driven by the shared
 // composer-bar's groupMode ('status' | 'tag' (+ prefix) | 'assignee' | 'none') —
@@ -73,10 +73,12 @@ export function useChartLanes({
           ensure(id || '∅', m?.name || t('board.chart.lane.unassigned')).tasks.push(task)
         }
       } else if (mode === 'tag') {
-        // Respect the prefix when grouping by a tag namespace.
+        // Respect the prefix when grouping by a tag namespace — by canonical
+        // namespace, the same membership the board's own lanes ask for (utils/
+        // tagGroups `tagInPrefix`), so the two surfaces show the same lanes.
         const ids = (task.tag_ids || []).filter((id) => {
           const tag = tagsMap.value[id]
-          return tag && (!tagPrefix.value || (tag.name || '').startsWith(tagPrefix.value))
+          return !!tag && tagInPrefix(tag.name, tagPrefix.value)
         })
         const id = ids[0]
         const tag = id ? tagsMap.value[id] : null

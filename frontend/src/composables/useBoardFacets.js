@@ -12,7 +12,7 @@ import {
 } from '@vicons/ionicons5'
 import { i18n, uiCollator } from '@/i18n'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
-import { tagNamespace, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
+import { tagNamespace, canonPrefix, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
 import { boardGitlabAuthors } from '@/utils/boardFilters'
 import { columnName } from '@/utils/defaultNames'
 import {
@@ -127,16 +127,21 @@ export function useBoardFacets({
   // Detected namespaces from the project tags, for the prefix picker. Labels use
   // the configured friendly name (else the raw prefix), sorted alphabetically.
   const tagPrefixOptions = computed(() => {
-    const set = new Set()
+    // Keyed by the CANONICAL prefix, the way every other answer about a namespace
+    // is (buildTagGroups, the prefix labels, the backend's registry): a Set of raw
+    // namespaces offered «Сложность::» and «сложность::» as two entries — carrying
+    // the same friendly label, since that is looked up canonically, so the menu
+    // read as the same grouping twice, each narrowing to half the tags (#2932).
+    const seen = new Map()
     // `tag`, not `t`: the module-level `t` is the translator now, and shadowing
     // it inside a loop is exactly how a stray Russian label sneaks back in.
     for (const tag of tagsList.value) {
       const ns = tagNamespace(tag.name)
-      if (ns) set.add(ns)
+      if (ns && !seen.has(canonPrefix(ns))) seen.set(canonPrefix(ns), ns)
     }
     return [
       { label: t('board.facet.allTags'), value: '' },
-      ...[...set]
+      ...[...seen.values()]
         .map((p) => ({ label: prefixLabel(p, tagPrefixNames), value: p }))
         .sort((a, b) => uiCollator().compare(a.label, b.label)),
     ]
