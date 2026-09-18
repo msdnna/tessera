@@ -6,7 +6,7 @@ import {
   divergedColumn,
   doneTarget,
   siblingNeighbors,
-  columnTail,
+  moveNeighbors,
 } from '@/utils/status'
 
 const COLS = [
@@ -105,32 +105,36 @@ describe('siblingNeighbors', () => {
   })
 })
 
-describe('columnTail', () => {
-  const tasks = [
-    { id: 't1', column_id: 'c1', position: 65536 },
-    { id: 't2', column_id: 'c2', position: 131072 },
-    { id: 't3', column_id: 'c2', position: 196608 },
-    { id: 't4', column_id: 'c2', position: 98304 },
-  ]
-  it('picks the highest position in the target column, not the last in the array', () => {
-    expect(columnTail(tasks, 'c2', 't1')).toBe('t3')
+describe('moveNeighbors', () => {
+  const subs = [{ id: 's1' }, { id: 's2' }, { id: 's3' }]
+
+  it('names no neighbour for a top-level card — the server appends it', () => {
+    expect(moveNeighbors({ id: 't1', column_id: 'c1' }, [])).toEqual({
+      before_id: null,
+      after_id: null,
+    })
   })
-  it('ignores the moved task itself', () => {
-    expect(columnTail(tasks, 'c2', 't3')).toBe('t2')
-  })
-  it('returns null for an empty target column (task lands first)', () => {
-    expect(columnTail(tasks, 'c3', 't1')).toBeNull()
-    expect(columnTail([{ id: 't1', column_id: 'c1' }], 'c1', 't1')).toBeNull()
-  })
-  it('tolerates missing input', () => {
-    expect(columnTail(null, 'c1', 't1')).toBeNull()
-    expect(columnTail(tasks, null, 't1')).toBeNull()
-  })
-  it('treats a missing position as the lowest', () => {
-    const partial = [
-      { id: 'a', column_id: 'c1' },
-      { id: 'b', column_id: 'c1', position: 5 },
+  // The regression this replaced: the tail was picked from the board's loaded
+  // cards, which under a sprint scope are a slice of the column. Anything the
+  // client names here is one card out of that slice, and before_id alone lands
+  // the card at prev + 65536 — the next card's slot on an untouched ladder.
+  it('names no neighbour even when sibling cards are loaded', () => {
+    const loaded = [
+      { id: 't2', column_id: 'c2', position: 65536 },
+      { id: 't3', column_id: 'c2', position: 131072 },
     ]
-    expect(columnTail(partial, 'c1', null)).toBe('b')
+    expect(moveNeighbors({ id: 't1', column_id: 'c1' }, loaded)).toEqual({
+      before_id: null,
+      after_id: null,
+    })
+  })
+  it('pins a subtask to its row in the parent list', () => {
+    expect(moveNeighbors({ id: 's2', parent_id: 'p1' }, subs)).toEqual({
+      before_id: 's1',
+      after_id: 's3',
+    })
+  })
+  it('tolerates a missing task', () => {
+    expect(moveNeighbors(null, subs)).toEqual({ before_id: null, after_id: null })
   })
 })

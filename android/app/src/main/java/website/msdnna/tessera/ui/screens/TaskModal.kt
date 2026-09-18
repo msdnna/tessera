@@ -798,8 +798,10 @@ private fun PropertyGrid(
         val siblings = remember(boardTasks, parentId) {
             if (parentId == null) emptyList() else boardTasks.filter { it.parentId == parentId }.sortedBy { it.position }
         }
-        fun neighboursFor(target: String) =
-            moveNeighbors(taskId, parentId, target, siblings, parentCandidates)
+        // Same neighbours whatever the target column: a subtask pins its row in the
+        // parent's list, a top-level card names none and is appended by the server —
+        // see moveNeighbors for why this client must not compute the column's end.
+        val neighbours = moveNeighbors(taskId, parentId, siblings)
         val doneCol = doneTarget(columns, doneColumnId)
         PropRow(Ion.CHECK, stringResource(R.string.task_prop_status)) {
             StatusValue(
@@ -807,13 +809,13 @@ private fun PropertyGrid(
                 columnId = columnId,
                 completed = completed,
                 moving = moving,
-                onMove = { target -> vm.moveToColumn(target, neighboursFor(target)) },
+                onMove = { target -> vm.moveToColumn(target, neighbours) },
                 onToggleDone = {
                     when {
                         completed -> vm.setCompleted(false)
 
                         doneCol != null && doneCol.id != columnId ->
-                            vm.moveToColumn(doneCol.id, neighboursFor(doneCol.id))
+                            vm.moveToColumn(doneCol.id, neighbours)
 
                         else -> vm.setCompleted(true)
                     }

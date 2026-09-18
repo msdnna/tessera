@@ -170,6 +170,41 @@ describe('TaskModal status row', () => {
     expect(update).not.toHaveBeenCalled()
   })
 
+  // The regression: the modal used to name the highest-position card of the
+  // target column as before_id, picked out of the board's loaded cards. Those are
+  // a sprint-scoped slice («?milestone=…»), so the "tail" was the last card of the
+  // sprint and before_id alone put the card at prev + 65536 — the slot the next
+  // card already holds. Only the server sees the whole column, so the modal must
+  // name nothing (#2932).
+  it('names no neighbour for a top-level card even with the column loaded', async () => {
+    // Board context in the store = the same-board branch, the one the kanban uses.
+    seedBoardStore({ board: { id: 'b1', name: 'Доска', done_column_id: 'c3' }, columns: COLS })
+    const TaskModal = (await import('@/components/TaskModal.vue')).default
+    const w = mount(TaskModal, {
+      props: {
+        show: false,
+        taskId: 't1',
+        // What a sprint-scoped board hands over: a slice of «В процессе», not all
+        // of it. Card `t9` really sits at the column's end; the client cannot know.
+        boardTopTasks: [
+          { id: 't1', column_id: 'c1', position: 65536 },
+          { id: 't7', column_id: 'c2', position: 65536 },
+        ],
+      },
+      global: { stubs },
+    })
+    await w.setProps({ show: true })
+    await flush(w)
+
+    const [shift] = w.findAll('.st-btn')
+    await shift.trigger('click')
+    expect(move).toHaveBeenCalledWith('t1', {
+      column_id: 'c2',
+      before_id: null,
+      after_id: null,
+    })
+  })
+
   it('moves a subtask from its row, pinned between its siblings', async () => {
     const TaskModal = (await import('@/components/TaskModal.vue')).default
     const w = await openModal(TaskModal)

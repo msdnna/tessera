@@ -68,8 +68,7 @@ import {
   columnById,
   nextColumn,
   doneTarget,
-  siblingNeighbors,
-  columnTail,
+  moveNeighbors,
 } from '@/utils/status'
 import { columnName } from '@/utils/defaultNames'
 import { taskLink } from '@/utils/taskLink'
@@ -766,22 +765,16 @@ const parentTask = ref(null)
 // an ellipsis placeholder rather than a chip with no text.
 const parentLabel = computed(() => parentTask.value?.title || '…')
 
-// Neighbours for PATCH move: a subtask holds its place in the parent's list, a
-// top-level task appends to the end of the target column. Either way we send
-// something — bare nulls mean positionBetween(nil, nil) = 65536, which drops the
-// card near the top of the column and quietly reshuffles it.
-function moveNeighbors(columnId) {
-  if (task.value?.parent_id) return siblingNeighbors(siblings.value, task.value.id)
-  return { before_id: columnTail(parentCandidates.value, columnId, task.value?.id), after_id: null }
-}
-
 async function moveToColumn(columnId) {
   if (props.readonly || !task.value || !columnId || columnId === task.value.column_id) return
   moving.value = true
   try {
+    // Neighbours for the PATCH: a subtask pins its row in the parent's list, a
+    // top-level card names none and is appended by the server — see moveNeighbors
+    // for why this client must not compute the column's end itself.
     await tasksApi.move(task.value.id, {
       column_id: columnId,
-      ...moveNeighbors(columnId),
+      ...moveNeighbors(task.value, siblings.value),
     })
     // A recurring task completed by entering the done column bounces straight
     // back out with an advanced due date — re-read instead of trusting the click.
