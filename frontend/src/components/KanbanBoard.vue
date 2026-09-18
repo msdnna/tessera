@@ -295,6 +295,23 @@ function recomputeComposerFit() {
   const RESERVED_SEARCH = 170
   composerExpanded.value = chipsW + RESERVED_SEARCH >= bar.clientWidth * 0.75
 }
+// Attach the bar's resize observer whenever the element itself arrives — the same
+// late binding `boardScroll` has, and for the same reason: the whole board (the
+// composer included) sits behind `v-if="board"`, and `board` is still null while the
+// first load is on the wire. onMounted therefore ran its `observe` against an empty
+// ref and gave up silently, with no second chance — the component is not remounted
+// when you switch boards, so the observer stayed unattached for the whole session and
+// «re-measure on bar resize» never happened: collapsing the sidebar or narrowing the
+// window left the right-side tools in place while the (nowrap) chips ran past the
+// edge, until some unrelated facet change happened to re-measure. The explicit
+// re-measure here is the first one the mount-time nextTick could not take (the bar
+// did not exist yet), and it does not lean on the observer's initial delivery.
+watch(subbarEl, (el) => {
+  if (!composerRO || !el) return
+  composerRO.disconnect()
+  composerRO.observe(el)
+  nextTick(recomputeComposerFit)
+})
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
 // Friendly display names for tag prefixes (canonical prefix → label, owned by the
@@ -1654,7 +1671,10 @@ onMounted(async () => {
     ro.observe(boardScroll.value)
     measure()
   }
-  // Re-measure the composer fit on bar resize (window / sidebar toggle).
+  // Re-measure the composer fit on bar resize (window / sidebar toggle). The bar is
+  // usually not in the DOM yet at this point (it waits for the first load), so the
+  // attach that matters is the `subbarEl` watcher above; this one only covers a bar
+  // that is already there — i.e. the case that watcher has already missed.
   composerRO = new ResizeObserver(recomputeComposerFit)
   if (subbarEl.value) composerRO.observe(subbarEl.value)
   nextTick(recomputeComposerFit)
