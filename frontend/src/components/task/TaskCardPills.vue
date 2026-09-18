@@ -36,7 +36,7 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { cardFieldVisible } from '@/utils/cardFields'
-import { glAssigneesOf } from '@/utils/assignees'
+import { glAssigneesOf, glPickerMembers } from '@/utils/assignees'
 import { isTaskOverdue } from '@/utils/taskFilter'
 import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
@@ -374,6 +374,13 @@ async function toggleAssignee(uid) {
   }
   emit('changed')
 }
+// GitLab half of the picker: the project roster plus whoever this task already
+// carries that the roster has since dropped — otherwise a person who left the
+// GitLab project stays assigned with no row to un-assign them from (see
+// utils/assignees). Shares the search box with the Tessera half above.
+const glPickerList = computed(() =>
+  glPickerMembers(gitlabMembers.value, glAssignees.value, assigneeQuery.value),
+)
 // GitLab-member assignees: board tasks carry their logins in gitlab_assignee_logins.
 const glAssigneeLogins = computed(() => props.task.gitlab_assignee_logins || [])
 function isGlAssigned(username) {
@@ -820,11 +827,11 @@ async function toggleGlAssignee(m) {
               <span class="aname">{{ m.name }}</span>
               <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
             </div>
-            <template v-if="gitlabMembers.length">
+            <template v-if="glPickerList.length">
               <div class="assignee-sep">GitLab</div>
               <div
-                v-for="m in gitlabMembers"
-                :key="m.gl_user_id"
+                v-for="m in glPickerList"
+                :key="m.gl_username"
                 class="menu-item assignee-item"
                 @click="toggleGlAssignee(m)"
               >
@@ -841,7 +848,7 @@ async function toggleGlAssignee(m) {
                 />
               </div>
             </template>
-            <div v-if="!pickerMembers.length && !gitlabMembers.length" class="assignee-empty">
+            <div v-if="!pickerMembers.length && !glPickerList.length" class="assignee-empty">
               {{ t('task.people.noMatches') }}
             </div>
           </div>

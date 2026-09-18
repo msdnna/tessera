@@ -41,3 +41,52 @@ export function glAssigneesOf(task, glMembers = []) {
     return { login, name: m?.gl_name || login, avatar_url: m?.gl_avatar_url || null }
   })
 }
+
+/**
+ * The GitLab half of an assignee picker: the workspace roster PLUS the GitLab
+ * people this task already carries that the roster no longer holds (#2932).
+ *
+ * The roster is not a list of everyone who can be on a card — it is the project's
+ * CURRENT membership, pruned to it on every refresh (DeleteStaleGitlabProjectMembers)
+ * and refreshed at most hourly. A task's own GitLab assignees outlive it: a row
+ * pinned by hand is `source='user'` and survives every sync rebuild (which only
+ * replaces the `source='gitlab'` set), so someone who has since left the GitLab
+ * project stays assigned indefinitely. The card drew their face (glAssigneesOf) while
+ * the picker, built from the roster alone, had no row for them — no checkmark, and no
+ * way to take them off the task at all.
+ *
+ * Extras are appended after the roster and deduped by login, so the ordinary case
+ * (everyone assignable is a member) renders exactly as before.
+ *
+ * `assigned` accepts either shape the two callers hold: the board row's resolved
+ * `{login, name, avatar_url}` (glAssigneesOf) and the task detail's raw
+ * `{gl_username, gl_name, gl_avatar_url}`. A legacy name-only entry has no login,
+ * cannot be toggled, and is skipped.
+ *
+ * @param {Array<{gl_username?: string, gl_name?: string, gl_avatar_url?: string}>} [glMembers]
+ *   workspace GitLab roster (`boardView.gitlabMembersList`)
+ * @param {Array<Object>} [assigned] the task's own GitLab assignees (either shape)
+ * @param {string} [query] search text; matches display name or login (the Tessera
+ *   half of the same picker filters by name, and the two lists share one box)
+ * @returns {Array<{gl_username: string, gl_name: string, gl_avatar_url: string}>}
+ */
+export function glPickerMembers(glMembers = [], assigned = [], query = '') {
+  const out = []
+  const seen = new Set()
+  const push = (login, name, avatar) => {
+    if (!login || seen.has(login)) return
+    seen.add(login)
+    out.push({ gl_username: login, gl_name: name || login, gl_avatar_url: avatar || '' })
+  }
+  for (const g of glMembers || []) push(g?.gl_username, g?.gl_name, g?.gl_avatar_url)
+  for (const a of assigned || []) {
+    push(a?.gl_username || a?.login, a?.gl_name || a?.name, a?.gl_avatar_url || a?.avatar_url)
+  }
+  const q = String(query || '')
+    .trim()
+    .toLowerCase()
+  if (!q) return out
+  return out.filter(
+    (m) => m.gl_name.toLowerCase().includes(q) || m.gl_username.toLowerCase().includes(q),
+  )
+}

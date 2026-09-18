@@ -76,6 +76,7 @@ import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
 import { copyText } from '@/utils/clipboard'
 import { normalizeTitle } from '@/utils/title'
+import { glPickerMembers } from '@/utils/assignees'
 import {
   dismissesSidebar,
   effectiveTaskLayout,
@@ -437,6 +438,11 @@ const assigneeObjs = computed(() =>
 )
 // External GitLab assignees (display-only) from the task detail.
 const glAssignees = computed(() => task.value?.gitlab_assignees || [])
+// GitLab half of the assignee picker: the project roster plus whoever this task
+// already carries that the roster has since dropped (a hand-pinned assignee who
+// left the GitLab project outlives it) — without them the modal drew the face and
+// offered no row to un-assign it. Same rule as the card's picker; see utils/assignees.
+const glPickerList = computed(() => glPickerMembers(gitlabMembers.value, glAssignees.value))
 // Author = who created the card (read-only): the GitLab issue author for synced
 // tasks, otherwise the Tessera user resolved from created_by.
 const author = computed(() => {
@@ -1464,11 +1470,11 @@ async function onSubtaskChanged() {
                         class="chk"
                       />
                     </div>
-                    <template v-if="gitlabMembers.length">
+                    <template v-if="glPickerList.length">
                       <div class="menu-sep">GitLab</div>
                       <div
-                        v-for="m in gitlabMembers"
-                        :key="m.gl_user_id"
+                        v-for="m in glPickerList"
+                        :key="m.gl_username"
                         class="menu-item"
                         @click="toggleGlAssignee(m)"
                       >
