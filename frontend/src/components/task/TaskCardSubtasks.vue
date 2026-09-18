@@ -16,7 +16,7 @@ import { storeToRefs } from 'pinia'
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGradVert } from '@/utils/gradient'
-import { divergedColumn } from '@/utils/status'
+import { divergedColumn, siblingNeighbors } from '@/utils/status'
 import { columnName } from '@/utils/defaultNames'
 import { taskBasePatch } from '@/utils/taskPatch'
 import TaskMiniCard from '../TaskMiniCard.vue'
@@ -79,14 +79,28 @@ async function onSubChange(evt) {
     return
   }
   if (!evt.moved) return
-  const arr = subModel.value
-  const before = arr[evt.moved.newIndex - 1]
-  const after = arr[evt.moved.newIndex + 1]
+  // Re-ordering a child says nothing about which COLUMN it stands in, and the
+  // two are not the same field by accident: a subtask legitimately lives in
+  // another column than its parent — `subColumn` below draws a chip for exactly
+  // that, and the right-click menu on this very row is how it gets there
+  // (useTaskMenu's `col:` item). Sending the parent's column with a pure reorder
+  // dragged the child back into it: the divergence chip vanished, its journal
+  // gained a «перемещена» entry, its participants were notified of a move nobody
+  // made — and where the parent stands in the board's done column, backend
+  // applyMove's auto-toggle TICKED THE CHILD COMPLETE on the way (or reopened one
+  // dragged under a parent outside it). Its own column is the only answer that
+  // leaves the row where the reader put it (#2932).
+  //
+  // The neighbours are its siblings whatever column each of them is in: a
+  // subtask's float8 ladder is per PARENT, not per column (backend `sameList`
+  // checks only parent_id, and positionForDrop respaces by parent). Same
+  // arithmetic the task modal's own subtask move uses — `siblingNeighbors` reads
+  // it off the list as rendered, which after the drop is the new order.
+  const moved = evt.moved.element
   try {
-    await tasksApi.move(evt.moved.element.id, {
-      column_id: props.task.column_id,
-      before_id: before ? before.id : null,
-      after_id: after ? after.id : null,
+    await tasksApi.move(moved.id, {
+      column_id: moved.column_id || props.task.column_id,
+      ...siblingNeighbors(subModel.value, moved.id),
     })
     emit('changed')
   } catch (e) {
