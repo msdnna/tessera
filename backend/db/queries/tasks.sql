@@ -250,6 +250,40 @@ UPDATE tasks SET board_id = $2, column_id = $3,
     updated_at = now()
 WHERE tasks.id IN (SELECT down.id FROM down);
 
+-- ReopenSubtreeLeavingDone reopens the tasks of a subtree (the root included)
+-- that stand in @done_column_id and are marked completed. Run BEFORE the two
+-- statements above, inside their transaction: it reads the column a task is
+-- leaving, which TransferTask/MoveSubtreeToBoard are about to overwrite.
+--
+-- Completion follows the column — that is the board's rule (applyMove: into the
+-- done column completes, out of it reopens). A transfer changes the column too,
+-- but it goes nowhere near applyMove, so a finished card carried to another
+-- board landed in that board's first column still marked done: struck through in
+-- «К работе», counted as completed, and out of reach of the reopen rule, which
+-- only ever fires for a task standing in a done column. The condition is the
+-- source column, not the flag alone: a task completed anywhere else keeps its
+-- flag, exactly as an in-board move would leave it — a board without a done
+-- column does not tie completion to columns at all, and transferring must not
+-- invent that tie.
+-- name: ReopenSubtreeLeavingDone :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = @root_id
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+), stuck AS (
+    -- The walk carries ids only and the condition is read back off `tasks`: sqlc
+    -- resolves a recursive CTE's own columns nowhere but its select list (same
+    -- corner TaskAncestorIDs notes), and `down.column_id` in a WHERE fails
+    -- generation with «table alias "down" does not exist».
+    SELECT t.id FROM tasks t
+    WHERE t.id IN (SELECT down.id FROM down)
+      AND t.column_id = @done_column_id
+      AND t.completed_at IS NOT NULL
+)
+UPDATE tasks SET completed_at = NULL, updated_at = now()
+WHERE tasks.id IN (SELECT stuck.id FROM stuck)
+RETURNING tasks.id;
+
 -- TaskAncestorIDs returns the task itself followed by its parents, up to the
 -- root. Used to reject attaching a task below one of its own descendants, which
 -- would leave the branch ringed with no root — and a subtask nobody can reach

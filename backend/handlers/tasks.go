@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/gitlab"
 	"tessera/internal/recur"
 	"tessera/middleware"
 )
@@ -509,7 +510,7 @@ func (h *API) TransferTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.loadTask(c, id)
+	t, wsID, ok := h.loadTask(c, id)
 	if !ok {
 		return
 	}
@@ -555,10 +556,30 @@ func (h *API) TransferTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A transfer changes the column, so the board's done-column rule applies to it
+	// exactly as it applies to a move (applyMove): what leaves a done column for a
+	// column that does not complete is reopened. Without it a finished card carried
+	// to another board stood struck-through in that board's first column, still
+	// counted as done and with no gesture left to undo it — the reopen rule fires
+	// only for a task standing in a done column, and this one no longer is.
+	// Resolved before the transaction: it reads the two boards' done-column
+	// pointers, and neither the transfer nor anything it calls writes those.
+	leavingDone := h.doneColumnLeftBy(c, t, req.BoardID, columnID)
 	// Transactional: the task and its subtasks must land on the new board
 	// together — otherwise a crash strands subtasks on the old board.
 	var updated db.Task
+	var reopened []uuid.UUID
 	if err := h.inTx(c, func(q *db.Queries) error {
+		// Before the two moves below: the reopen condition is the column the task
+		// is leaving, which they are about to overwrite.
+		if leavingDone != nil {
+			var err error
+			if reopened, err = q.ReopenSubtreeLeavingDone(c, db.ReopenSubtreeLeavingDoneParams{
+				RootID: id, DoneColumnID: *leavingDone,
+			}); err != nil {
+				return err
+			}
+		}
 		var err error
 		updated, err = q.TransferTask(c, db.TransferTaskParams{
 			ID: id, BoardID: req.BoardID, ColumnID: columnID, Position: positionBetween(&maxPos, nil),
@@ -573,8 +594,46 @@ func (h *API) TransferTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// Same trail an in-board reopen leaves: a journal entry per task, and the
+	// completion mirrored to GitLab (the outbox drops the ones with no issue).
+	actor := middleware.CurrentUser(c)
+	for _, rid := range reopened {
+		h.logEvent(c, rid, "reopened", nil)
+		h.enqueueWriteback(c, rid, actor, gitlab.TrigCompletion, map[string]any{"completed": false})
+	}
 	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
+}
+
+// doneColumnLeftBy names the done column a transfer takes the task out of, or nil
+// when nothing is being left: the source board completes nothing, or the column
+// the task lands in completes on the target board too (so the card stays done,
+// exactly as dragging it between two done columns would).
+//
+// Only the SOURCE board's done column is the condition. A task completed while
+// standing anywhere else keeps its flag — an in-board move leaves such a task
+// alone as well, and a board with no done column does not tie completion to
+// columns at all. A board that cannot be read is treated as completing nothing:
+// the transfer then behaves as it always did.
+func (h *API) doneColumnLeftBy(c *gin.Context, t db.Task, targetBoard, targetColumn uuid.UUID) *uuid.UUID {
+	src, err := h.q.GetBoard(c, t.BoardID)
+	if err != nil {
+		return nil
+	}
+	done := doneColumnID(src)
+	if done == nil {
+		return nil
+	}
+	dst := src
+	if targetBoard != t.BoardID {
+		if dst, err = h.q.GetBoard(c, targetBoard); err != nil {
+			return nil
+		}
+	}
+	if d := doneColumnID(dst); d != nil && *d == targetColumn {
+		return nil
+	}
+	return done
 }
 
 // ArchiveTask soft-deletes a task. ?subtasks=detach keeps the subtasks on the

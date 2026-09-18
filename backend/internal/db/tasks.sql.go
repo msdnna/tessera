@@ -1022,6 +1022,66 @@ func (q *Queries) ReopenSubtasks(ctx context.Context, parentID *uuid.UUID) error
 	return err
 }
 
+const reopenSubtreeLeavingDone = `-- name: ReopenSubtreeLeavingDone :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+), stuck AS (
+    -- The walk carries ids only and the condition is read back off ` + "`" + `tasks` + "`" + `: sqlc
+    -- resolves a recursive CTE's own columns nowhere but its select list (same
+    -- corner TaskAncestorIDs notes), and ` + "`" + `down.column_id` + "`" + ` in a WHERE fails
+    -- generation with «table alias "down" does not exist».
+    SELECT t.id FROM tasks t
+    WHERE t.id IN (SELECT down.id FROM down)
+      AND t.column_id = $2
+      AND t.completed_at IS NOT NULL
+)
+UPDATE tasks SET completed_at = NULL, updated_at = now()
+WHERE tasks.id IN (SELECT stuck.id FROM stuck)
+RETURNING tasks.id
+`
+
+type ReopenSubtreeLeavingDoneParams struct {
+	RootID       uuid.UUID `json:"root_id"`
+	DoneColumnID uuid.UUID `json:"done_column_id"`
+}
+
+// ReopenSubtreeLeavingDone reopens the tasks of a subtree (the root included)
+// that stand in @done_column_id and are marked completed. Run BEFORE the two
+// statements above, inside their transaction: it reads the column a task is
+// leaving, which TransferTask/MoveSubtreeToBoard are about to overwrite.
+//
+// Completion follows the column — that is the board's rule (applyMove: into the
+// done column completes, out of it reopens). A transfer changes the column too,
+// but it goes nowhere near applyMove, so a finished card carried to another
+// board landed in that board's first column still marked done: struck through in
+// «К работе», counted as completed, and out of reach of the reopen rule, which
+// only ever fires for a task standing in a done column. The condition is the
+// source column, not the flag alone: a task completed anywhere else keeps its
+// flag, exactly as an in-board move would leave it — a board without a done
+// column does not tie completion to columns at all, and transferring must not
+// invent that tie.
+func (q *Queries) ReopenSubtreeLeavingDone(ctx context.Context, arg ReopenSubtreeLeavingDoneParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, reopenSubtreeLeavingDone, arg.RootID, arg.DoneColumnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const restoreTask = `-- name: RestoreTask :exec
 WITH RECURSIVE down AS (
     SELECT t.id FROM tasks t WHERE t.id = $1
