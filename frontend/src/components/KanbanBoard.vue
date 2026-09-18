@@ -1256,6 +1256,9 @@ async function onColChange(evt, dcol) {
       dcol,
       list: lists.value[dcol.key],
       collapsed,
+      // The tags that ARE lanes right now (prefix narrowing included) — the drop
+      // into «Без тегов» takes exactly those off the card and leaves the rest.
+      groupTags: groupTags.value,
     })
     for (const it of intents) {
       if (it.op === 'setParent') await tasksApi.setParent(it.id, it.parentId)

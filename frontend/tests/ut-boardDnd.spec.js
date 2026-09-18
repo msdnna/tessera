@@ -142,9 +142,59 @@ describe('planColDrop — tag mode', () => {
     ])
   })
 
-  it('does nothing for a tag column with no tag bound', () => {
-    const evt = { added: { element: { id: 't1' } } }
-    expect(planColDrop({ groupMode: 'tag', evt, dcol: col({ tag: null }) })).toEqual([])
+  it('strips the lane tags when dropped on the «no tags» column', () => {
+    const evt = { added: { element: { id: 't1', tag_ids: ['tagRed', 'tagBlue'] } } }
+    expect(
+      planColDrop({
+        groupMode: 'tag',
+        evt,
+        dcol: col({ tag: null }),
+        groupTags: [{ id: 'tagRed' }, { id: 'tagBlue' }],
+      }),
+    ).toEqual([
+      { op: 'removeTag', id: 't1', tagId: 'tagRed' },
+      { op: 'removeTag', id: 't1', tagId: 'tagBlue' },
+    ])
+  })
+
+  it('leaves tags that are not lanes on the card', () => {
+    // Grouping narrowed to a namespace: the lane means "no сложность:: tag", and
+    // the card's other tags are invisible to this grouping.
+    const evt = { added: { element: { id: 't1', tag_ids: ['tagRed', 'tagOther'] } } }
+    expect(
+      planColDrop({
+        groupMode: 'tag',
+        evt,
+        dcol: col({ tag: null }),
+        groupTags: [{ id: 'tagRed' }],
+      }),
+    ).toEqual([{ op: 'removeTag', id: 't1', tagId: 'tagRed' }])
+  })
+
+  it('plans nothing for a card that already carries no lane tag', () => {
+    const evt = { added: { element: { id: 't1', tag_ids: [] } } }
+    expect(
+      planColDrop({
+        groupMode: 'tag',
+        evt,
+        dcol: col({ tag: null }),
+        groupTags: [{ id: 'tagRed' }],
+      }),
+    ).toEqual([])
+  })
+
+  it('takes nothing off a card LEAVING the «no tags» column', () => {
+    // It left because the destination lane gave it a tag — that lane's own `added`
+    // persists the change; there is nothing for the catch-all to undo.
+    const evt = { removed: { element: { id: 't1', tag_ids: ['tagRed'] } } }
+    expect(
+      planColDrop({
+        groupMode: 'tag',
+        evt,
+        dcol: col({ tag: null }),
+        groupTags: [{ id: 'tagRed' }],
+      }),
+    ).toEqual([])
   })
 })
 

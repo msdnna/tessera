@@ -60,7 +60,10 @@ export function canSortWithinLane(groupMode) {
 //               top-level (setParent → null) before the move.
 //   milestone — single-value: the destination's `added` sets or clears the
 //               milestone; the source's `removed` is ignored (the new value wins).
-//   tag       — `added` adds the column's tag, `removed` removes it.
+//   tag       — `added` adds the column's tag, `removed` removes it. The catch-all
+//               lane («Без тегов») carries no tag of its own, so a drop there means
+//               the mirror image: strip the GROUPING tags the card holds — see
+//               clearLaneTags.
 //
 // Neither non-status rule set has anything to say about a bare `moved` (a re-order
 // inside one lane) — see canSortWithinLane above, which is what keeps the board
@@ -70,7 +73,14 @@ export function canSortWithinLane(groupMode) {
 // component maps ops to API calls. Keeping this a list (not direct calls) is what
 // makes the setParent-then-move ordering and the collapsed/subtask branches
 // assertable in isolation.
-export function planColDrop({ groupMode, evt, dcol, list = [], collapsed = false }) {
+export function planColDrop({
+  groupMode,
+  evt,
+  dcol,
+  list = [],
+  collapsed = false,
+  groupTags = [],
+}) {
   const intents = []
   if (groupMode === 'status') {
     const info = evt.added || evt.moved
@@ -95,10 +105,39 @@ export function planColDrop({ groupMode, evt, dcol, list = [], collapsed = false
       else intents.push({ op: 'clearMilestone', id })
     }
   } else {
-    if (evt.added && dcol.tag)
-      intents.push({ op: 'addTag', id: evt.added.element.id, tagId: dcol.tag.id })
+    if (evt.added) {
+      if (dcol.tag) intents.push({ op: 'addTag', id: evt.added.element.id, tagId: dcol.tag.id })
+      else intents.push(...clearLaneTags(evt.added.element, groupTags))
+    }
+    // The catch-all lane has no tag to take off a card LEAVING it: the card left
+    // because the destination lane gave it one, which that lane's `added` persists.
     if (evt.removed && dcol.tag)
       intents.push({ op: 'removeTag', id: evt.removed.element.id, tagId: dcol.tag.id })
   }
   return intents
+}
+
+// Dropping a card into the tag grouping's catch-all lane («Без тегов»).
+//
+// That lane holds the cards carrying none of the lane tags (utils/boardLists'
+// NO_LANE bucket), and `dcol.tag` is null for it — so the rule above, which only
+// knew the lane's own tag, produced NO intent at all. The lane is a live drop
+// target all the same (every lane renders the same `group="tasks"` draggable), so
+// the card visibly moved there, nothing was requested, and the debounced reload put
+// it back ~200 ms later: the phantom gesture canSortWithinLane was written for, in
+// the one grouping where the drop does mean something. Milestone grouping's own
+// catch-all has always persisted the mirror («Без этапа» → clearMilestone).
+//
+// Only tags that ARE lanes come off. With the grouping narrowed to a namespace
+// («Тег · Сложность») the lane means "carries no сложность:: tag", so the card's
+// other tags — invisible to this grouping — have to survive the drop.
+//
+// The lane a card is dragged OUT of emits its own `removed`, so a card standing in
+// two tag lanes has one of its removals planned twice. That is harmless: the API's
+// detach is a bare DELETE and takes a missing row as done.
+function clearLaneTags(element, groupTags) {
+  const lane = new Set((groupTags || []).map((tg) => tg && tg.id).filter(Boolean))
+  return (element.tag_ids || [])
+    .filter((id) => lane.has(id))
+    .map((tagId) => ({ op: 'removeTag', id: element.id, tagId }))
 }
