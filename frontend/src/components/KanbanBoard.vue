@@ -59,7 +59,7 @@ import { useBoardAutosave } from '@/composables/useBoardAutosave'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
 import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
 import { tagLaneLabel, metaPrefixesFromRules } from '@/utils/tagGroups'
-import { sumEstimates, formatEstimate } from '@/utils/estimation'
+import { sumLaneEffort, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
 import { filterBoardTasks } from '@/utils/taskFilter'
 import { useFormat } from '@/composables/useFormat'
@@ -1192,9 +1192,15 @@ const shownCountTitle = computed(() => {
     : t('board.composer.shownTitleFlat', { tasks: c.tasks })
 })
 
+// «Σ» in a milestone lane's header. Counted through sumLaneEffort, not by summing
+// the rows' own `estimate`: a card with no estimate of its own prints the rollup of
+// its subtasks, and the header has to agree with the cards standing under it. The
+// FILTERED child map is the one the cards are drawn from (sortedSubtasksByParent is
+// the same membership, re-ordered), so the total narrows with the composer exactly
+// as the cards do.
 function columnEstimate(dcol) {
   if (groupMode.value !== 'milestone') return ''
-  const v = sumEstimates(lists.value[dcol.key] || [])
+  const v = sumLaneEffort(lists.value[dcol.key] || [], filteredSubtasksByParent.value)
   return v ? formatEstimate(v, estCfg.value) : ''
 }
 

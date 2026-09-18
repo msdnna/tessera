@@ -169,6 +169,8 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   tagPrefix: toRef(props, 'tagPrefix'),
   prefixNames: toRef(props, 'tagPrefixNames'),
   estCfg,
+  // See the Timeline: a decomposed card's effort lives in its children.
+  subtasksByParent: toRef(props, 'subtasksByParent'),
 })
 
 const overdueCount = computed(

@@ -267,3 +267,41 @@ export function sumEstimates(tasks) {
   }
   return any ? sum : null
 }
+
+// What ONE card is worth: its own estimate, or — when it has none — the rollup of
+// its subtasks. This is the number the card itself prints (TaskCardPills: `own ??
+// rollup`, with the «Σ …» rollup tooltip), so anything totalling a set of cards has
+// to read them the same way.
+//
+// Only the direct children, matching the card: the rollup chip sums the child list
+// handed to it, not the whole tree.
+export function effectiveEstimate(task, subtasks) {
+  return task?.estimate ?? sumEstimates(subtasks)
+}
+
+// Total effort a lane holds — a kanban column's «Σ» header, a Timeline/Gantt
+// swimlane's effort chip (#2932).
+//
+// It used to be `sumEstimates(lane)`, i.e. the OWN estimates of the lane's rows, and
+// a lane holds top-level cards only (buildLists buckets filteredTasks; the charts'
+// `source` is the scheduled top-level tasks, their children drawn as sub-bars inside
+// the parent's row). So a task whose work was planned entirely in its subtasks — no
+// own estimate, every child estimated — showed «Σ 5д» on its own card and contributed
+// exactly nothing to the total above it. The header is what a sprint's load is read
+// off, and the tasks it silently dropped were the decomposed ones: the big ones.
+//
+// `subtasksByParent` must be the same child map the cards are drawn from (the
+// FILTERED one on the board), or the header stops agreeing with the cards under it
+// for the opposite reason.
+export function sumLaneEffort(tasks, subtasksByParent = {}) {
+  let sum = 0
+  let any = false
+  for (const t of tasks || []) {
+    const e = effectiveEstimate(t, subtasksByParent[t?.id])
+    if (e != null && e > 0) {
+      sum += e
+      any = true
+    }
+  }
+  return any ? sum : null
+}

@@ -152,6 +152,9 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   tagPrefix: toRef(props, 'tagPrefix'),
   prefixNames: toRef(props, 'tagPrefixNames'),
   estCfg,
+  // The lane's effort total reads a card's subtasks when the card itself carries no
+  // estimate — the same child map the sub-bars are drawn from.
+  subtasksByParent: toRef(props, 'subtasksByParent'),
 })
 
 const overdueCount = computed(

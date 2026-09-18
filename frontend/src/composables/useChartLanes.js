@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import { i18n } from '@/i18n'
-import { formatEstimate, formatEstimateFull, sumEstimates } from '@/utils/estimation'
+import { formatEstimate, formatEstimateFull, sumLaneEffort } from '@/utils/estimation'
 import { columnName } from '@/utils/defaultNames'
 import { tagLaneLabel } from '@/utils/tagGroups'
 
@@ -25,6 +25,7 @@ export function useChartLanes({
   tagPrefix,
   prefixNames,
   estCfg,
+  subtasksByParent,
 }) {
   const lanes = computed(() => {
     const mode = groupMode.value
@@ -74,15 +75,21 @@ export function useChartLanes({
     return arr
   })
 
-  // Effort total per lane (sum of estimates), shown in the lane header. The unit
-  // comes from the project's estimation config.
+  // Effort total per lane, shown in the lane header. The unit comes from the
+  // project's estimation config.
+  //
+  // Same rule as the kanban column's «Σ» (utils/estimation `sumLaneEffort`): a lane
+  // holds top-level rows, their subtasks are drawn as sub-bars INSIDE the parent's
+  // row (useChartRows `subBars`), so a task planned entirely in its children carried
+  // no own estimate and counted as zero effort here.
+  const laneTotal = (lane) => sumLaneEffort(lane.tasks, subtasksByParent?.value || {})
   function laneEffort(lane) {
-    const total = sumEstimates(lane.tasks)
+    const total = laneTotal(lane)
     return total != null ? formatEstimate(total, estCfg.value) : ''
   }
   // Spelled-out lane total for the effort tooltip (a sum → no projected window).
   function laneEffortFull(lane) {
-    const total = sumEstimates(lane.tasks)
+    const total = laneTotal(lane)
     return total != null ? formatEstimateFull(total, estCfg.value) : ''
   }
 
