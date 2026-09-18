@@ -284,3 +284,26 @@ export function applyTaskPatch(rows, payload, scope = {}) {
   next[i] = mergeTaskRow(row, payload)
   return next
 }
+
+// Who to credit for a live event in the board-activity toast.
+//
+// `ev.actor` is set only for user-initiated actions; it is deliberately EMPTY for
+// system/worker ones (recurrence on schedule, GitLab sync — see the Event doc in
+// backend/internal/realtime/hub.go). The task's `created_by` is NOT a stand-in for
+// it: a recurring task's clone inherits the author of the FIRST occurrence, so the
+// night's worker run showed up as "you created task #N" over your own avatar — or
+// blamed a sleeping colleague for a move nobody made. No actor → no name and no
+// face, and the toast falls back to "someone", which is exactly true.
+//
+// A known actor who isn't in the board's member map (left the workspace, or the map
+// hasn't loaded yet) gets the same treatment: an avatar for an id with no member
+// behind it renders as a blank circle.
+export function toastActor(ev, { selfId = null, members = {} } = {}) {
+  const actorId = ev?.actor || null
+  const member = actorId ? members[actorId] : null
+  return {
+    actorId: member ? actorId : null,
+    actorName: member?.name || '',
+    self: !!actorId && actorId === selfId,
+  }
+}

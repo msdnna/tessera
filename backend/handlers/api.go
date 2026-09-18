@@ -339,6 +339,23 @@ func (h *API) broadcastAs(c *gin.Context, workspaceID uuid.UUID, eventType strin
 	h.broadcastEvent(workspaceID, eventType, middleware.CurrentUser(c).String(), payload)
 }
 
+// broadcastByActor is broadcastAs for code paths that carry the acting user as a
+// plain id instead of a gin.Context (the recurrence engine, shared by the HTTP
+// handler and the worker). uuid.Nil means "nobody in particular" and MUST stay an
+// empty actor: a zero uuid on the wire reads to clients as a real person, and the
+// board-activity toast would credit the night's worker run to a member (#2932).
+func (h *API) broadcastByActor(workspaceID uuid.UUID, eventType string, actorID uuid.UUID, payload any) {
+	h.broadcastEvent(workspaceID, eventType, actorTag(actorID), payload)
+}
+
+// actorTag renders an actor id for the wire: empty string for uuid.Nil.
+func actorTag(id uuid.UUID) string {
+	if id == uuid.Nil {
+		return ""
+	}
+	return id.String()
+}
+
 // broadcastToUser fans an event out to one person's sockets only, still inside
 // the workspace scope. Use it whenever the payload is that person's business
 // alone — leaving such an event to the plain workspace broadcast puts its text in

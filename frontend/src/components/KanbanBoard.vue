@@ -71,6 +71,7 @@ import {
   applySubtaskPatch,
   relationTouchesBoard,
   boardGone,
+  toastActor,
 } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
@@ -1564,17 +1565,12 @@ function pushActivity(ev) {
     if (isDone && !wasDone) verb = 'completed'
     else if (!isDone && wasDone) verb = 'reopened'
   }
-  const actorId = ev.actor || task.created_by || null
-  const self = !!actorId && actorId === auth.user?.id
-  const m = actorId ? membersMap[actorId] : null
   activityToasts.value?.push({
     id: task.id,
     number: task.number ?? null,
     title: task.title || t('task.fallbackTitle'),
     verb,
-    actorId: m ? actorId : null,
-    actorName: m?.name || '',
-    self,
+    ...toastActor(ev, { selfId: auth.user?.id ?? null, members: membersMap }),
   })
 }
 

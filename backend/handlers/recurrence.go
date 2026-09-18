@@ -257,7 +257,12 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 		}
 	}
 	h.logEventActor(ctx, clone.ID, actorID, "created", nil)
-	h.broadcast(wsID, "task.created", clone)
+	// The journal already knows who caused this (logEventActor above) — the live
+	// event has to say it too. Closing a "create a duplicate" recurring task is a
+	// person's action, and the clone's created_by is the author of the FIRST
+	// occurrence, so an actor-less event left clients no honest way to attribute it
+	// (#2932). The schedule worker passes uuid.Nil and stays anonymous.
+	h.broadcastByActor(wsID, "task.created", actorID, clone)
 	return clone, nil
 }
 
