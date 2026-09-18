@@ -527,10 +527,11 @@ func (h *API) qaMove(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd quickact.Cm
 	default:
 		summary = "задача переоткрыта («" + target.Name + "»)"
 	}
-	// Append to the target column (or to the parent's subtask list): a quick
-	// action has no drag neighbours, and positionBetween(nil, nil) would drop the
-	// task onto the same position as everything else appended that way.
-	pos, err := h.nextTaskPosition(c, target.ID, t.ParentID)
+	// A quick action has no drag neighbours, so the slot is the server's to pick —
+	// the same answer the move endpoint gives an unanchored move: a top-level card
+	// appends to the end of the destination column, a subtask keeps its place among
+	// its parent's children (unanchoredPosition).
+	pos, err := h.unanchoredPosition(c, *t, target.ID)
 	if err != nil {
 		return "", err
 	}

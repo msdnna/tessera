@@ -1012,15 +1012,34 @@ func (h *API) positionForDrop(c *gin.Context, t db.Task, columnID uuid.UUID, bef
 //     exactly as it was — which is what the same two clients ask for explicitly by
 //     sending the sibling neighbours of the row where it already stands.
 func (h *API) positionForUnanchoredMove(c *gin.Context, t db.Task, columnID uuid.UUID) (float64, bool) {
-	if t.ParentID != nil {
-		return t.Position, true
-	}
-	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	pos, err := h.unanchoredPosition(c, t, columnID)
 	if err != nil {
 		fail(c, err)
 		return 0, false
 	}
-	return positionBetween(&maxPos, nil), true
+	return pos, true
+}
+
+// unanchoredPosition is the rule above without the HTTP reply, for the callers
+// that report their own errors — quick actions, whose `/move`, `/close` and
+// `/reopen` are a column change with no neighbours either.
+//
+// They used to append through nextTaskPosition, which is CreateTask's rule: a
+// NEW subtask belongs at the end of its parent's list. A subtask that merely
+// changed column does not — it was already standing somewhere among its
+// siblings, and `/close` on the first of three children dropped it to the bottom
+// of the parent's list. Nothing in the gesture said "reorder my children", and
+// the same move from the task modal (which sends the sibling neighbours of the
+// row the subtask already stands on) leaves the order alone (#2932).
+func (h *API) unanchoredPosition(c *gin.Context, t db.Task, columnID uuid.UUID) (float64, error) {
+	if t.ParentID != nil {
+		return t.Position, nil
+	}
+	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	if err != nil {
+		return 0, err
+	}
+	return positionBetween(&maxPos, nil), nil
 }
 
 // recurrenceToStore validates a client-supplied recurrence rule and returns its
