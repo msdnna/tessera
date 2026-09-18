@@ -2057,6 +2057,7 @@ async function restoreFromArchive(taskId) {
         :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
+        @restore="restoreFromArchive"
       />
 
       <BoardCalendarView
@@ -2066,6 +2067,7 @@ async function restoreFromArchive(taskId) {
         :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
+        @restore="restoreFromArchive"
       />
 
       <BoardTimelineView
@@ -2084,6 +2086,7 @@ async function restoreFromArchive(taskId) {
         :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
+        @restore="restoreFromArchive"
       />
 
       <BoardGanttView
@@ -2105,6 +2108,7 @@ async function restoreFromArchive(taskId) {
         :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
+        @restore="restoreFromArchive"
       />
 
       <BoardMatrixView

@@ -11,7 +11,9 @@
 // chart views additionally let a bar be dragged to new dates, and the Gantt let a
 // dependency edge be drawn or cut.
 //
-// Pinned here: the shared menu never opens under `readonly`, the shared bar drag
+// Pinned here: the shared menu opens under `readonly` with nothing but the
+// archive's own two items (and not at all for a caller that has not opted into
+// «Вернуть из архива» — see cx-archive-restore-menu.spec.js), the shared bar drag
 // never starts, and the board hands the flag to all four views.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { ref } from 'vue'
@@ -145,12 +147,15 @@ describe('BoardListView in the archive view', () => {
       global: { stubs: { UserAvatar: true, TagPill: true } },
     })
 
-  it('swallows the right-click on an archived row', async () => {
+  // The row's menu is the only affordance this layout has, so under the archive it
+  // opens with the archive's own items alone — never with an edit on it.
+  it('offers nothing but open + restore on an archived row', async () => {
     const w = mountList(true)
     await w.find('.lv-row').trigger('contextmenu')
     await frame()
 
-    expect(w.vm.menu.show.value).toBe(false)
+    expect(w.vm.menu.show.value).toBe(true)
+    expect(w.vm.menu.options.value.map((o) => o.key)).toEqual(['open', 'restore'])
     w.unmount()
   })
 

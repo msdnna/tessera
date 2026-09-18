@@ -6,6 +6,7 @@ import {
   FlagOutline,
   ArrowForwardOutline,
   ArchiveOutline,
+  ArrowUndoOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
@@ -42,10 +43,24 @@ const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () 
 // contextmenu handler this way; the gate lives here so the list and the chart
 // views (which have no card of their own) inherit it instead of each repeating
 // the check.
+//
+// `onRestore(id)` is the one exception, and it is opt-in. «Вернуть из архива» is
+// the archive's OWN action rather than an edit of a live card, and TaskCard has
+// always carried it as the ↺ button that replaces its action bar there — so on the
+// board and in the matrix (which draws the same card) an archived task can be
+// restored, while Список / Календарь / Таймлайн / Гантт have no card of their own
+// and nothing but this menu. The layout is per-board localStorage, so a reader
+// whose board sits on «Список» opens ?archived=1, sees the archived rows and has no
+// way at all to bring one back until they think to switch visualization. A caller
+// that passes `onRestore` therefore gets a menu under `readonly` too — exactly two
+// items, «Открыть» and «Вернуть из архива», neither of which writes to the task's
+// own fields. A caller that does not (TaskCard, anyone yet to opt in) keeps the
+// flat refusal.
 export function useTaskMenu({
   onOpen,
   onChanged,
   onSelect,
+  onRestore,
   columns,
   extra,
   dangerDelete,
@@ -68,8 +83,17 @@ export function useTaskMenu({
     return !!(typeof readonly === 'function' ? readonly() : unref(readonly))
   }
 
+  // The archive's own menu. Built from the same reactive read as the gate below, so
+  // a view whose scope flips without remounting (the archive chip is a route query)
+  // swaps menus with it.
+  const readonlyOptions = computed(() => [
+    { label: tr('task.menu.open'), key: 'open', icon: menuIcon(OpenOutline) },
+    { label: tr('task.action.restore'), key: 'restore', icon: menuIcon(ArrowUndoOutline) },
+  ])
+
   const options = computed(() => {
     const t = target.value
+    if (isReadonly()) return readonlyOptions.value
     const cols = resolveColumns().filter((c) => c.id !== t?.column_id)
     return [
       { label: tr('task.menu.open'), key: 'open', icon: menuIcon(OpenOutline) },
@@ -107,7 +131,8 @@ export function useTaskMenu({
   })
 
   function open(e, task) {
-    if (pressMoved() || isReadonly()) return
+    if (pressMoved()) return
+    if (isReadonly() && !onRestore) return
     target.value = task
     show.value = false
     x.value = e.clientX
@@ -121,6 +146,11 @@ export function useTaskMenu({
     show.value = false
     if (!t) return
     if (key === 'open') return onOpen?.(t.id)
+    if (key === 'restore') return onRestore?.(t.id)
+    // Nothing else may fire while the scope is read-only. The archive menu offers
+    // only the two keys above, but the flag can flip (route query) with the menu
+    // already open, and a dropdown that was built live would still hand us «Удалить».
+    if (isReadonly()) return
     if (key === 'delete') {
       deleteConfirmShow.value = true
       return
@@ -147,9 +177,12 @@ export function useTaskMenu({
     }
   }
 
+  // Both confirms are bound to popconfirms the view keeps mounted, so they can be
+  // reached by a positive-click landing after the scope turned read-only — the same
+  // race `select` guards, one step further along.
   async function confirmDelete() {
     const t = target.value
-    if (!t) return
+    if (!t || isReadonly()) return
     try {
       await tasksApi.remove(t.id)
       onChanged?.()
@@ -160,7 +193,7 @@ export function useTaskMenu({
 
   async function confirmArchive() {
     const t = target.value
-    if (!t) return
+    if (!t || isReadonly()) return
     try {
       await tasksApi.archive(t.id)
       onChanged?.()

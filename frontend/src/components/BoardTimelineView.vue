@@ -66,7 +66,7 @@ const props = defineProps({
   // drag-to-reschedule. Both write to the live task the archived row stands for.
   readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed'])
+const emit = defineEmits(['open', 'changed', 'restore'])
 
 // Estimation unit/config of the project — drives every estimate the chart renders
 // (lane totals, the ghost bar, the hover card).
@@ -75,6 +75,9 @@ const estCfg = computed(() => wsStore.estimationFor(props.projectId))
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
+  // The archive's own action: this layout has no card, so the menu is the only
+  // place «Вернуть из архива» can live (see useTaskMenu).
+  onRestore: (id) => emit('restore', id),
   columns: () => props.statusColumns,
   readonly: () => props.readonly,
 })
