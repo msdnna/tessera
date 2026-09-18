@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
+import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
 
 // Characterisation tests for the kanban drop-persistence rules extracted from
 // KanbanBoard (#2670). Input = a Sortable change event (+ list snapshot); output =
@@ -145,5 +145,39 @@ describe('planColDrop — tag mode', () => {
   it('does nothing for a tag column with no tag bound', () => {
     const evt = { added: { element: { id: 't1' } } }
     expect(planColDrop({ groupMode: 'tag', evt, dcol: col({ tag: null }) })).toEqual([])
+  })
+})
+
+// Re-ordering a card INSIDE one lane (#2932). Card order is `position`, which is
+// per COLUMN — a tag/milestone lane collects cards out of every column, so its
+// neighbours are not the card's neighbours in the order `position` defines. There
+// is nothing to persist, and the two rule sets say so by producing no intents for
+// a bare `moved`. The board therefore must not offer the gesture: it used to leave
+// those lanes sortable, so the card landed in its new slot, nothing was sent, and
+// the debounced reload put it back a fifth of a second later.
+describe('canSortWithinLane — which grouping owns card order', () => {
+  it('status columns do', () => {
+    expect(canSortWithinLane('status')).toBe(true)
+  })
+
+  it('tag and milestone lanes do not', () => {
+    expect(canSortWithinLane('tag')).toBe(false)
+    expect(canSortWithinLane('milestone')).toBe(false)
+  })
+
+  it('and neither do the timeline-only swimlane modes, or an unknown one', () => {
+    expect(canSortWithinLane('assignee')).toBe(false)
+    expect(canSortWithinLane('none')).toBe(false)
+    expect(canSortWithinLane(undefined)).toBe(false)
+  })
+
+  it('is exactly the modes whose planner can act on a bare `moved`', () => {
+    const evt = { moved: { element: { id: 't2' }, newIndex: 0 } }
+    const list = [{ id: 't1' }, { id: 't2' }]
+    for (const groupMode of ['status', 'tag', 'milestone']) {
+      const dcol = col({ tag: { id: 'tagRed' }, milestone: { id: 'm9' } })
+      const intents = planColDrop({ groupMode, evt, dcol, list })
+      expect(intents.length > 0).toBe(canSortWithinLane(groupMode))
+    }
   })
 })

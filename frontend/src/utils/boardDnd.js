@@ -30,6 +30,25 @@ export function planColumnReorder(evt, colModel, groupMode) {
   }
 }
 
+// May a card be re-ordered INSIDE a lane, or only dragged between lanes?
+//
+// Only status columns own their cards' order. Card order comes from `position`,
+// which is per COLUMN — and a tag/milestone lane collects cards out of every
+// column of the board, so the neighbours a card lands between there are not its
+// neighbours in the column `position` orders it in. There is no `move` those two
+// indices could be turned into: `planColDrop` has no rule for a bare `moved`
+// outside status mode, and returns no intents at all for one.
+//
+// The lanes stayed sortable anyway, so the gesture *looked* like it worked:
+// Sortable re-ordered the lane on drop, `onColChange` dispatched nothing, and the
+// debounced reload it schedules rebuilt the lists ~200 ms later and put the card
+// back where it started — no request, no error, no explanation, and the same drag
+// one grouping over (status) persists. Cross-lane drops are untouched: those carry
+// `added`/`removed`, which DO mean something here (set the milestone, add the tag).
+export function canSortWithinLane(groupMode) {
+  return groupMode === 'status'
+}
+
 // planColDrop turns a Sortable change event on a destination column into the
 // ordered list of task mutations it implies. `groupMode` selects the rule set:
 //
@@ -42,6 +61,10 @@ export function planColumnReorder(evt, colModel, groupMode) {
 //   milestone — single-value: the destination's `added` sets or clears the
 //               milestone; the source's `removed` is ignored (the new value wins).
 //   tag       — `added` adds the column's tag, `removed` removes it.
+//
+// Neither non-status rule set has anything to say about a bare `moved` (a re-order
+// inside one lane) — see canSortWithinLane above, which is what keeps the board
+// from offering that gesture in the first place.
 //
 // Returns an array of intents (possibly empty). Each intent is `{ op, ... }`; the
 // component maps ops to API calls. Keeping this a list (not direct calls) is what

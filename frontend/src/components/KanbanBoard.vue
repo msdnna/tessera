@@ -72,7 +72,7 @@ import {
   boardGone,
 } from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
-import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
+import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
 import { buildLists, collapseKey } from '@/utils/boardLists'
 import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
 import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
@@ -324,6 +324,11 @@ const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMo
 // `.col-drag` handle class on the collapsed strip — a collapsed column renders no
 // header, so the strip is the only element left that can carry the handle.
 const canReorderColumns = computed(() => groupMode.value === 'status' && !archivedMode.value)
+// May a card be re-ordered inside its own lane? Only status columns own card
+// order (`position` is per column, and a tag/milestone lane spans all of them) —
+// the rule and the reason live in utils/boardDnd, next to the planner that has no
+// intent for such a drop. Cross-lane drags stay on in every grouping.
+const canSortCards = computed(() => canSortWithinLane(groupMode.value))
 function exitArchive() {
   router.replace({ query: withoutArchiveQuery(route.query) })
 }
@@ -2116,6 +2121,7 @@ async function restoreFromArchive(taskId) {
                 filter=".add-sub, .sub-add-input"
                 :prevent-on-filter="false"
                 :disabled="archivedMode"
+                :sort="canSortCards"
                 :animation="150"
                 :delay="160"
                 :delay-on-touch-only="true"
