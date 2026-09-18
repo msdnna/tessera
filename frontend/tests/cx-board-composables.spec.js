@@ -101,18 +101,52 @@ describe('useCardViewport', () => {
     expect(api.vis['col::t1']).toBe(false)
   })
 
-  it('freezes visibility swaps while a drag is in flight', () => {
+  it('freezes visibility swaps while a drag is in flight, then replays them', async () => {
     // SortableJS needs a stable DOM for the duration of a drag: collapsing a card
-    // mid-drag would pull the drop target out from under it.
+    // mid-drag would pull the drop target out from under it. But an observer
+    // reports CHANGES, and the entry muted here is never re-delivered — note that
+    // the drag ends without a second callback, exactly as the browser behaves.
+    // Without the replay the card stayed a blank placeholder in plain view.
     const frozen = ref(false)
     const { api } = host(() => useCardViewport({ frozen }))
     const el = wrapperEl()
     api.regCard(el, 'col::t1')
     frozen.value = true
+    await nextTick()
     FakeIO.instances[0].cb([{ target: el, isIntersecting: true }])
     expect(api.vis['col::t1']).toBeUndefined()
     frozen.value = false
+    await nextTick()
+    expect(api.vis['col::t1']).toBe(true)
+  })
+
+  it('replays only the last state a card reached during the drag', async () => {
+    // A card that came into view and left again is back where it started: the
+    // backlog is keyed per card, so the drop applies one value, not a history.
+    const frozen = ref(false)
+    const { api } = host(() => useCardViewport({ frozen }))
+    const el = wrapperEl()
+    api.regCard(el, 'col::t1')
+    FakeIO.instances[0].cb([{ target: el, isIntersecting: false }])
+    frozen.value = true
+    await nextTick()
     FakeIO.instances[0].cb([{ target: el, isIntersecting: true }])
+    FakeIO.instances[0].cb([{ target: el, isIntersecting: false }])
+    frozen.value = false
+    await nextTick()
+    expect(api.vis['col::t1']).toBe(false)
+  })
+
+  it('a drag that changed nothing leaves visibility alone', async () => {
+    const frozen = ref(false)
+    const { api } = host(() => useCardViewport({ frozen }))
+    const el = wrapperEl()
+    api.regCard(el, 'col::t1')
+    FakeIO.instances[0].cb([{ target: el, isIntersecting: true }])
+    frozen.value = true
+    await nextTick()
+    frozen.value = false
+    await nextTick()
     expect(api.vis['col::t1']).toBe(true)
   })
 
