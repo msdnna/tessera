@@ -124,7 +124,24 @@ function startTitleEdit() {
   editingTitle.value = true
   nextTick(() => titleInput.value?.focus?.())
 }
+// Esc abandons the edit — the rule every other inline field on the board already
+// follows (the column header's rename, «＋ задача», «＋ колонка», the card's own
+// «＋ подзадача», the matrix quick-add). This one had no handler at all, so Esc
+// did nothing visible: the field stayed open with the edited text, and the click
+// away that a reader makes next went out through `@blur` and PUT the rename they
+// had just cancelled. A task title is workspace-shared data, broadcast to every
+// other open client — not local view state a stray write merely annoys.
+function cancelTitleEdit() {
+  editingTitle.value = false
+  titleEdit.value = ''
+}
 async function commitTitle() {
+  // Closing the field is what marks the gesture finished: Esc unmounts the input
+  // and a browser fires no blur for a node that is simply removed, but the guard
+  // is on the commit rather than on that behaviour — it also makes the blur that
+  // follows an Enter (or a second commit from any other path) a no-op instead of
+  // a duplicate PUT.
+  if (!editingTitle.value) return
   editingTitle.value = false
   const n = normalizeTitle(titleEdit.value)
   if (!n || n === props.task.title) return
@@ -243,6 +260,7 @@ async function submitAddSub() {
           class="title-edit"
           @click.stop
           @keyup.enter="commitTitle"
+          @keyup.esc="cancelTitleEdit"
           @blur="commitTitle"
         />
         <n-tooltip

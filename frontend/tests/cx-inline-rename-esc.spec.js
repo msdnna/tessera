@@ -15,11 +15,20 @@
 // Two halves are pinned below: Esc closes the field without writing, and a commit
 // that arrives after the field is closed (the blur of a removed node, a second call
 // from any other path) is a no-op rather than a duplicate write.
+//
+// The card's own title is the fourth field of that shape and was missed when the
+// three above were fixed: a board card renames inline on dblclick, commits on Enter
+// AND on blur, and bound no Esc — so the same cancelled edit reached the server from
+// the card instead of the column header.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
+import * as naive from 'naive-ui'
+import { seedBoardStore } from './helpers/boardStore'
 
 const columnsUpdate = vi.fn(() => Promise.resolve({ data: {} }))
 const boardsUpdate = vi.fn(() => Promise.resolve({ data: {} }))
+const tasksUpdate = vi.fn(() => Promise.resolve({ data: {} }))
 
 vi.mock('naive-ui', async () => {
   const actual = await vi.importActual('naive-ui')
@@ -31,9 +40,33 @@ vi.mock('naive-ui', async () => {
 
 vi.mock('@/api', () => ({
   columns: { update: columnsUpdate, remove: vi.fn() },
-  boards: { update: boardsUpdate, remove: vi.fn(), create: vi.fn() },
-  projects: { milestones: vi.fn(() => Promise.resolve({ data: [] })), createBoard: vi.fn() },
-  tasks: {},
+  boards: {
+    update: boardsUpdate,
+    remove: vi.fn(),
+    create: vi.fn(),
+    createTask: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+  projects: {
+    milestones: vi.fn(() => Promise.resolve({ data: [] })),
+    createBoard: vi.fn(),
+    createTag: vi.fn(),
+  },
+  tasks: {
+    update: tasksUpdate,
+    move: vi.fn(),
+    setParent: vi.fn(),
+    remove: vi.fn(),
+    archive: vi.fn(),
+    description: vi.fn(() => Promise.resolve({ data: { description: '' } })),
+    addTag: vi.fn(),
+    removeTag: vi.fn(),
+    addAssignee: vi.fn(),
+    removeAssignee: vi.fn(),
+    pinGitlabAssignee: vi.fn(),
+    removeGitlabAssignee: vi.fn(),
+    dueNotify: vi.fn(),
+  },
+  users: { updatePrefs: vi.fn() },
 }))
 
 const { default: ColumnHeader } = await import('@/components/ColumnHeader.vue')
@@ -59,6 +92,7 @@ async function openRename(w) {
 beforeEach(() => {
   columnsUpdate.mockClear()
   boardsUpdate.mockClear()
+  tasksUpdate.mockClear()
 })
 
 describe('column header rename — Esc (#2932)', () => {
@@ -180,5 +214,110 @@ describe('sidebar inline fields — Esc (#2932)', async () => {
     expect(src).toMatch(
       /async function commitBoardRename\(b\)\s*\{[\s\S]{0,400}?if \(editingBoardId\.value !== b\.id\) return/,
     )
+  })
+})
+
+// The board card renames the same way the column header does — dblclick on the
+// title, Enter or blur commits — and is mounted for real here (its own store
+// context, the pill row and the child list are cheap enough) so the contract is
+// pinned on behaviour rather than on the template text.
+describe('card title rename — Esc (#2932)', () => {
+  const TASK = { id: 't1', board_id: 'b1', column_id: 'c1', title: 'Родитель', number: 7 }
+  const stubs = {
+    ...naive,
+    ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
+    RichContent: true,
+    DueEditor: true,
+    draggable: {
+      template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
+      props: ['list'],
+    },
+  }
+
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    // The child list asks useResponsive whether it is on a phone, and jsdom has no
+    // matchMedia — without this the card fails to mount at all.
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })
+  })
+
+  const mountCard = async () => {
+    seedBoardStore({ columns: [{ id: 'c1', name: 'К работе', position: 1 }] })
+    const TaskCard = (await import('@/components/TaskCard.vue')).default
+    const w = mount(TaskCard, { props: { task: TASK }, global: { stubs } })
+    await w.vm.$nextTick()
+    return w
+  }
+  const openRename = async (w) => {
+    await w.find('.title').trigger('dblclick')
+    return w.find('.title-edit input')
+  }
+
+  it('opens the rename on dblclick with the current title', async () => {
+    const w = await mountCard()
+    const inp = await openRename(w)
+    expect(inp.exists()).toBe(true)
+    expect(inp.element.value).toBe(TASK.title)
+    w.unmount()
+  })
+
+  // The gesture that renamed a card nobody asked to rename.
+  it('closes the field on Esc without writing', async () => {
+    const w = await mountCard()
+    const inp = await openRename(w)
+    await inp.setValue('Другое имя')
+    await inp.trigger('keyup.esc')
+    expect(tasksUpdate).not.toHaveBeenCalled()
+    expect(w.find('.title-edit input').exists()).toBe(false)
+    expect(w.find('.title').text()).toBe(TASK.title)
+    w.unmount()
+  })
+
+  // …and the blur that a browser may still deliver on the way out stays silent.
+  it('stays silent when a blur follows the Esc', async () => {
+    const w = await mountCard()
+    const inp = await openRename(w)
+    await inp.setValue('Другое имя')
+    await inp.trigger('keyup.esc')
+    await inp.trigger('blur')
+    expect(tasksUpdate).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('still renames on Enter, and the following blur is not a second PUT', async () => {
+    const w = await mountCard()
+    const inp = await openRename(w)
+    await inp.setValue('Другое имя')
+    await inp.trigger('keyup.enter')
+    await inp.trigger('blur')
+    expect(tasksUpdate).toHaveBeenCalledTimes(1)
+    expect(tasksUpdate.mock.calls[0][1]).toMatchObject({ title: 'Другое имя' })
+    // Inline edits never carry the description — the card payload has none (#2665).
+    expect(tasksUpdate.mock.calls[0][1]).not.toHaveProperty('description')
+    w.unmount()
+  })
+
+  it('still renames on blur', async () => {
+    const w = await mountCard()
+    const inp = await openRename(w)
+    await inp.setValue('Другое имя')
+    await inp.trigger('blur')
+    expect(tasksUpdate).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  // Reopening after an Esc starts from the task, not from the abandoned text.
+  it('reopens seeded from the task, not from the cancelled edit', async () => {
+    const w = await mountCard()
+    const inp = await openRename(w)
+    await inp.setValue('Другое имя')
+    await inp.trigger('keyup.esc')
+    const again = await openRename(w)
+    expect(again.element.value).toBe(TASK.title)
+    w.unmount()
   })
 })
