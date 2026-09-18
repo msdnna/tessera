@@ -129,6 +129,27 @@ export function partialKinds(kind) {
   return PARTIAL_KINDS[kind] || [kind]
 }
 
+// What has to be re-fetched to catch up on an event the board DROPPED instead of
+// routing it.
+//
+// The board mutes realtime for the whole of a drag (`dragging` — SortableJS has to
+// see a stable DOM, see useBoardDragScroll) and simply returns, so the event is
+// gone. A drag that ends in a drop is covered by the drop's own reload; a drag that
+// changes nothing — a card picked up and put back, dropped outside every column, or
+// abandoned with Esc — emits no `change` at all and schedules no reload, so whatever
+// a colleague did during those seconds (a card created, moved or renamed, a column
+// added, a column deleted with its cards) stayed off the board until some unrelated
+// event happened to touch it.
+//
+// A dropped `patch` cannot be merged after the fact: its payload is the task as it
+// was at that moment, and of a burst only the last one is worth applying. So it
+// degrades to the same task re-fetch its own fallback would have done (#2932).
+export function missedRefetchKinds(kind) {
+  if (!kind || kind === 'ignore') return []
+  if (kind === 'patch') return ['tasks']
+  return partialKinds(kind)
+}
+
 // Does a `task.relation` event change the arrows drawn on this board?
 //
 // The backend returns an edge only when BOTH its endpoints sit on the queried

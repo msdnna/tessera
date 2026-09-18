@@ -66,6 +66,7 @@ import { useFormat } from '@/composables/useFormat'
 import {
   classifyEvent,
   partialKinds,
+  missedRefetchKinds,
   applyTaskPatch,
   applySubtaskPatch,
   relationTouchesBoard,
@@ -828,6 +829,10 @@ const RELOAD_DEBOUNCE_MS = 200
 let reloadTimer = null
 function scheduleReload() {
   clearTimeout(reloadTimer)
+  // A full reload re-reads everything a partial fetch could, so the backlog of
+  // events dropped during the drag is settled by it — dropping a card must not
+  // cost an extra task fetch on top of the reload the drop already schedules.
+  missedKinds.clear()
   reloadTimer = setTimeout(() => load(props.boardId, { silent: true }), RELOAD_DEBOUNCE_MS)
 }
 
@@ -856,6 +861,34 @@ function schedulePartial(kind) {
       message.error(e.message)
     }
   }, PARTIAL_DEBOUNCE_MS[kind])
+}
+
+// Realtime events the drag guard threw away, as the partial re-fetches that catch
+// up on them (see utils/boardEvents `missedRefetchKinds`). The guard has to drop
+// them — the board holds still while a card is in the air — but a drag that ends
+// without moving anything schedules no reload of its own, and until this backlog
+// existed those events were simply lost.
+//
+// The suppression window needs no such bookkeeping: it is armed by our OWN
+// mutations, and every one of them ends in a load() or a scheduleReload() that
+// brings the same data back.
+const missedKinds = new Set()
+function rememberMissed(ev) {
+  const kind = classifyEvent(ev, { boardId: props.boardId, hasTask: taskOnBoard })
+  for (const k of missedRefetchKinds(kind)) missedKinds.add(k)
+}
+function flushMissed() {
+  if (!missedKinds.size) return
+  const kinds = [...missedKinds]
+  missedKinds.clear()
+  for (const k of kinds) schedulePartial(k)
+}
+// vuedraggable emits `change` before `end`, so a drag that really moved something
+// has already called scheduleReload() by now — and that clears the backlog, so the
+// two never fetch the same thing twice.
+function onBoardDragEnd() {
+  onDragEnd()
+  flushMissed()
 }
 
 // Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
@@ -1442,7 +1475,14 @@ useRealtime((ev) => {
   if (relationTouchesBoard(ev, props.boardId)) depsToken.value++
   // Board-activity toast for create/move on THIS board (any actor).
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
-  if (dragging.value || Date.now() < suppressReloadUntil) return
+  // A drag holds the board still (SortableJS needs a stable DOM), so the event
+  // cannot be acted on now — but it must not be forgotten either: remember what it
+  // would have cost and fetch that once the card lands (#2932).
+  if (dragging.value) {
+    rememberMissed(ev)
+    return
+  }
+  if (Date.now() < suppressReloadUntil) return
   // Route the event instead of reloading the whole board for every one of them.
   const kind = classifyEvent(ev, { boardId: props.boardId, hasTask: taskOnBoard })
   if (kind === 'ignore') return
@@ -2046,7 +2086,7 @@ async function restoreFromArchive(taskId) {
           :delay-on-touch-only="true"
           :touch-start-threshold="6"
           @start="onDragStart"
-          @end="onDragEnd"
+          @end="onBoardDragEnd"
           @change="onColumnReorder"
         >
           <template #item="{ element: dcol }">
@@ -2127,7 +2167,7 @@ async function restoreFromArchive(taskId) {
                 :delay-on-touch-only="true"
                 :touch-start-threshold="6"
                 @start="onCardDragStart"
-                @end="onDragEnd"
+                @end="onBoardDragEnd"
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element, index }">
