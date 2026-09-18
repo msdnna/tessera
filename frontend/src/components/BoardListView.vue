@@ -7,6 +7,7 @@ import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { isTaskOverdue } from '@/utils/taskFilter'
+import { glAssigneesOf } from '@/utils/assignees'
 import UserAvatar from './UserAvatar.vue'
 import TagPill from './TagPill.vue'
 
@@ -19,6 +20,9 @@ const props = defineProps({
   lists: { type: Object, default: () => ({}) },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
+  // Workspace GitLab roster (`boardView.gitlabMembersList`), for the assignees who
+  // have no Tessera account — same prop the timeline and the Gantt take.
+  gitlabMembers: { type: Array, default: () => [] },
   tagPrefixNames: { type: Object, default: () => ({}) },
   // Archive view (?archived=1): look, don't touch — the right-click menu is the
   // only thing here that writes, and every item on it edits the live task.
@@ -40,6 +44,12 @@ const { formatDue: fmtDue, formatters } = useDateLocale()
 // rows, and they used to disagree about which of them were late. The formatter set
 // goes in so the red row is bucketed in the same calendar fmtDue prints.
 const isOverdue = (task) => isTaskOverdue(task, new Date(), formatters.value)
+// An assignee without a Tessera account is not «не назначено»: they arrive in a
+// field of their own (`gitlab_assignee_logins`), and this is the layout where the
+// people column is the only thing saying who holds the card. The card, the chart
+// lanes and the «Исполнитель» facet all draw them — the list rows did not, so on a
+// GitLab-synced board every row looked unassigned.
+const glAssignees = (task) => glAssigneesOf(task, props.gitlabMembers)
 </script>
 
 <template>
@@ -94,6 +104,14 @@ const isOverdue = (task) => isTaskOverdue(task, new Date(), formatters.value)
             :user-id="uid"
             :name="membersMap[uid]?.name"
             :title="membersMap[uid]?.name"
+          />
+          <UserAvatar
+            v-for="(g, i) in glAssignees(task)"
+            :key="`g${i}`"
+            class="lv-ava ext"
+            :src="g.avatar_url"
+            :name="g.name"
+            :title="`${g.name} (GitLab)`"
           />
         </span>
       </div>
@@ -247,6 +265,12 @@ const isOverdue = (task) => isTaskOverdue(task, new Date(), formatters.value)
   justify-content: center;
   margin-left: -4px;
   border: 2px solid var(--t-surface);
+}
+/* External (GitLab) assignee: neutral fill, not the accent gradient — same
+   distinction the card's own avatar row makes. */
+.lv-ava.ext {
+  background: var(--t-text3);
+  opacity: 0.9;
 }
 .lv-empty {
   padding: 6px 8px;

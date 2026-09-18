@@ -2052,6 +2052,7 @@ async function restoreFromArchive(taskId) {
         :lists="lists"
         :tags-map="tagsMap"
         :members-map="membersMap"
+        :gitlab-members="gitlabMembersList"
         :tag-prefix-names="tagPrefixNames"
         :readonly="archivedMode"
         @open="openTask"

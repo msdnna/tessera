@@ -136,8 +136,14 @@ describe('the roster reaches both charts', () => {
     }
   })
 
+  // Asked per tag rather than by counting the bindings on the file: the roster is
+  // board context and other views take it too (the list rows draw the same people),
+  // so a global count says "somebody binds it twice", not "these two do".
   it('KanbanBoard binds the roster on both of them', () => {
-    const bindings = board.match(/:gitlab-members="gitlabMembersList"/g) || []
-    expect(bindings).toHaveLength(2)
+    for (const tag of ['<BoardTimelineView', '<BoardGanttView']) {
+      const rest = board.slice(board.indexOf(tag))
+      const block = rest.slice(0, rest.indexOf('/>'))
+      expect(block).toContain(':gitlab-members="gitlabMembersList"')
+    }
   })
 })
