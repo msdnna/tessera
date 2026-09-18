@@ -895,6 +895,9 @@ func (h *API) neighborTaskPositions(c *gin.Context, moved db.Task, columnID uuid
 // what this needs over the generic positionForReorder that columns, projects and
 // groups use: which list to respace depends on the card, not on the endpoint.
 func (h *API) positionForDrop(c *gin.Context, t db.Task, columnID uuid.UUID, beforeID, afterID *uuid.UUID, prev, next *float64) (float64, bool) {
+	if beforeID == nil && afterID == nil {
+		return h.positionForUnanchoredMove(c, t, columnID)
+	}
 	pos := positionBetween(prev, next)
 	if !positionExhausted(pos, prev, next) {
 		return pos, true
@@ -918,6 +921,47 @@ func (h *API) positionForDrop(c *gin.Context, t db.Task, columnID uuid.UUID, bef
 		return 0, false
 	}
 	return positionBetween(prev, next), true
+}
+
+// positionForUnanchoredMove answers "which slot" for a move that named no
+// neighbours at all — the shape every non-drag caller sends, because outside a
+// drag there is nothing to aim between: the web context menu's «Переместить →
+// колонка» (the only mover the list / calendar / timeline / gantt layouts have)
+// and the MCP client's MoveTask, whose own comment says the position is "left to
+// the server (appended)".
+//
+// It was not appended. positionBetween(nil, nil) is the constant positionGap, and
+// positionGap is precisely where a column's FIRST card sits (CreateTask appends
+// onto a 65536, 131072, 196608 … ladder). So a card moved that way did not land at
+// the end of the destination column — it landed on top of the first card, sharing
+// its position exactly. That tie is the state the rest of this file goes out of its
+// way to prevent (rejectSameNeighbour, positionExhausted, the rebalance above): two
+// cards with one position have no order of their own, and both clients' drop
+// arithmetic against that slot keeps computing the same number. None of those
+// guards fire here, because with both neighbours nil there is no slot to find a
+// collapse in.
+//
+// The two ladders answer differently, for the same reason sameList splits them:
+//
+//   - a top-level card is numbered among the destination COLUMN's top-level cards,
+//     and its old number came from another column's ladder — meaningless there. It
+//     appends, the same way TransferTask and CreateTask do, which is also what the
+//     web task modal and Android already emulate by hand (columnTail / the
+//     rightmost sibling) when they send an explicit before_id.
+//   - a subtask is numbered among its PARENT's children, and changing column does
+//     not move it out of that list. Keeping its position leaves the parent's order
+//     exactly as it was — which is what the same two clients ask for explicitly by
+//     sending the sibling neighbours of the row where it already stands.
+func (h *API) positionForUnanchoredMove(c *gin.Context, t db.Task, columnID uuid.UUID) (float64, bool) {
+	if t.ParentID != nil {
+		return t.Position, true
+	}
+	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	if err != nil {
+		fail(c, err)
+		return 0, false
+	}
+	return positionBetween(&maxPos, nil), true
 }
 
 // recurrenceToStore validates a client-supplied recurrence rule and returns its
