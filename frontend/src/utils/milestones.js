@@ -26,6 +26,34 @@ export function matchesScope(m, scope) {
   return scope === m.slug || scope === m.id
 }
 
+/**
+ * Which milestone a card typed on the board should be born with (#2932).
+ *
+ * `?milestone=` narrows the board SERVER-side (backend handlers/tasks.go →
+ * ListBoardTasksWithMeta: `t.milestone_id = @milestone_id`), so on a sprint-scoped
+ * board a card created without that milestone is not in the list the reload right
+ * after it returns: the card the reader just typed into the column disappears, with
+ * no error and no clue that it exists at all — it is sitting in the backlog. The
+ * milestone GROUPING has always stamped a new card with its lane's milestone; the
+ * sprint scope is the same promise made by the address bar instead of by a lane, and
+ * it was the only one not kept.
+ *
+ * @param {Object} o
+ * @param {string} [o.groupMode] board grouping. `'milestone'` means the lane the
+ *        reader typed into decides — including its «Без этапа» lane, where saying
+ *        "no milestone" out loud must beat the scope. Pass it only where lanes
+ *        exist: the matrix quick-add has none, so there the scope alone decides.
+ * @param {Object} [o.lane] that lane (`dcol`), carrying `milestone`
+ * @param {string|null|undefined} [o.scopeId] the resolved sprint scope: an id, `null`
+ *        for the backlog scope (a card with no milestone is exactly what it lists),
+ *        `''` for a scope that cannot be resolved yet, `undefined` when unscoped
+ * @returns {string|null} milestone id to stamp on the new card, or null for none
+ */
+export function newTaskMilestoneId({ groupMode, lane, scopeId } = {}) {
+  if (groupMode === 'milestone') return lane?.milestone?.id || null
+  return scopeId || null
+}
+
 // toDateOnlyISO turns an n-date-picker value into the date-only instant the rest
 // of the stack expects: pure UTC midnight of the chosen calendar day.
 //

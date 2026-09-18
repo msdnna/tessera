@@ -77,7 +77,7 @@ import { buildLists, collapseKey } from '@/utils/boardLists'
 import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
 import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
-import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
+import { BACKLOG_SCOPE, matchesScope, newTaskMilestoneId } from '@/utils/milestones'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
 import { storeToRefs } from 'pinia'
@@ -881,6 +881,15 @@ function patchScope() {
   return { milestone: m ? m.id : '' }
 }
 
+// The same resolved scope, in the form a newly created card is stamped with (see
+// utils/milestones `newTaskMilestoneId`). Derived from `patchScope()` so the id a
+// card is born with is the very one the list is filtered by: `undefined` on an
+// unscoped board and in the archive, `null` on the backlog scope, `''` for a scope
+// that cannot be resolved yet.
+function scopeMilestoneId() {
+  return patchScope().milestone
+}
+
 // Fetch just the task lists (2 requests instead of the full load's 10).
 async function fetchTasks(id) {
   const { archived, params } = taskQuery()
@@ -1258,6 +1267,14 @@ async function submitAddTask(dcol) {
     message.warning(t('board.column.needStatus'))
     return
   }
+  // A card typed into a lane is stamped with that lane's milestone; one typed on a
+  // sprint-scoped board is stamped with the scope, or the reload that follows would
+  // not list it back (see newTaskMilestoneId).
+  const milestoneId = newTaskMilestoneId({
+    groupMode: groupMode.value,
+    lane: dcol,
+    scopeId: scopeMilestoneId(),
+  })
   suppress()
   // Cleared BEFORE the await on purpose: it keeps the input open for rapid entry and
   // makes a second Enter read an empty title (the re-entrancy submitAddColumn needs an
@@ -1268,8 +1285,7 @@ async function submitAddTask(dcol) {
   try {
     const res = await boards.createTask(board.value.id, { column_id: columnId, title })
     if (groupMode.value === 'tag' && dcol.tag) await tasksApi.addTag(res.data.id, dcol.tag.id)
-    if (groupMode.value === 'milestone' && dcol.milestone)
-      await tasksApi.setMilestone(res.data.id, dcol.milestone.id)
+    if (milestoneId) await tasksApi.setMilestone(res.data.id, milestoneId)
     await load(props.boardId)
     addingInColumn.value = dcol.key // load() reset refs; re-open
     focusTaskInput()
@@ -1353,16 +1369,21 @@ function onChanged() {
 
 // Matrix view quick-add: create the task in the board's first column, then pin it
 // to the chosen Eisenhower quadrant (the matrix has no column to drop into).
+//
+// No lanes here, so the grouping has no say in the new card's milestone — but the
+// sprint scope still filters what the matrix is showing, so it does.
 async function createInQuadrant({ title, quadrant }) {
   const columnId = columns.value[0]?.id
   if (!columnId) {
     message.warning(t('board.column.needStatus'))
     return
   }
+  const milestoneId = newTaskMilestoneId({ scopeId: scopeMilestoneId() })
   suppress()
   try {
     const res = await boards.createTask(board.value.id, { column_id: columnId, title })
     await tasksApi.eisenhower(res.data.id, quadrant)
+    if (milestoneId) await tasksApi.setMilestone(res.data.id, milestoneId)
     await load(props.boardId)
   } catch (e) {
     message.error(e.message)
