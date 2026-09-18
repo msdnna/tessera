@@ -1287,12 +1287,30 @@ async function submitAddTask(dcol) {
     if (groupMode.value === 'tag' && dcol.tag) await tasksApi.addTag(res.data.id, dcol.tag.id)
     if (milestoneId) await tasksApi.setMilestone(res.data.id, milestoneId)
     await load(props.boardId)
-    addingInColumn.value = dcol.key // load() reset refs; re-open
-    focusTaskInput()
+    reopenForRapidEntry(dcol)
   } catch (e) {
     message.error(e.message)
     restoreFailedTitle(dcol, title)
   }
+}
+// Rapid entry: once a card lands, the input stays open on the column it was typed into,
+// focused, so the next title can follow straight away — the reload in between re-renders
+// the column and takes the focus with it.
+//
+// Only where the reader actually still is, though. `load()` does not touch
+// `addingInColumn`, so on the ordinary path it is this column already and nothing but
+// the focus needs restoring; re-assigning it was a no-op there and a bug everywhere
+// else. The create is awaited, and while the POST was on the wire the reader may have
+// left: the input commits on blur, so a click away or an Esc closes the gesture
+// (`addingInColumn === null`), and clicking «＋ задача» on another column opens it
+// there. Writing `dcol.key` back then yanked the open input out of that column and
+// stole the focus — and since `newTaskTitle` is one shared ref, the title they had
+// already begun typing came along, so the next Enter filed it in the lane they had just
+// left. That is the same rule restoreFailedTitle follows on the failure path, from the
+// other side.
+function reopenForRapidEntry(dcol) {
+  if (addingInColumn.value !== dcol.key) return
+  focusTaskInput()
 }
 // A create that failed must not eat the title with it: the toast says «не удалось», the
 // task isn't on the board, and retyping it is the reader's work the error has no claim
