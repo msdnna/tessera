@@ -61,6 +61,23 @@ export function tagParts(name, prefixNames = {}) {
   return { scope: prefixNames[canonPrefix(ns)] || scope, label, hasScope: true }
 }
 
+// Caption for a lane (kanban column, timeline/gantt swimlane) that stands for one
+// tag. The raw "scope::value" a tag is stored under is never a caption: the scope
+// is spelled out through its friendly name, and when the grouping is already
+// narrowed to one namespace («Тег · Сложность») the scope sits in the group's own
+// label, so only the value is left.
+//
+// Shared because the two surfaces drifted: the board went through this rule while
+// the chart lanes printed `tag.name` verbatim — in the one place least able to
+// carry it, a 224px sticky column (LEFT_W) whose caption is ellipsised. Under a
+// narrowed prefix every lane there began with the same long namespace and the
+// value that tells them apart was what got cut off.
+export function tagLaneLabel(tag, { tagPrefix = '', prefixNames = {} } = {}) {
+  const parts = tagParts(tag?.name, prefixNames)
+  if (!parts.hasScope) return parts.label
+  return tagPrefix ? parts.label : `${parts.scope}: ${parts.label}`
+}
+
 // Canonical prefixes governed by a non-"tag" GitLab label rule (status / priority /
 // group / board / ignore). Those labels drive a task field (or are dropped on sync),
 // so the matching tags shouldn't be manually addable in the tag picker — selecting

@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { i18n } from '@/i18n'
 import { formatEstimate, formatEstimateFull, sumEstimates } from '@/utils/estimation'
 import { columnName } from '@/utils/defaultNames'
+import { tagLaneLabel } from '@/utils/tagGroups'
 
 // Swimlane grouping for the Timeline and Gantt board views, driven by the shared
 // composer-bar's groupMode ('status' | 'tag' (+ prefix) | 'assignee' | 'none') —
@@ -22,6 +23,7 @@ export function useChartLanes({
   tagsMap,
   groupMode,
   tagPrefix,
+  prefixNames,
   estCfg,
 }) {
   const lanes = computed(() => {
@@ -49,7 +51,15 @@ export function useChartLanes({
         })
         const id = ids[0]
         const tag = id ? tagsMap.value[id] : null
-        ensure(id || '∅', tag?.name || t('board.chart.lane.noTag'), tag?.color).tasks.push(task)
+        // Captioned the same way the board captions its tag columns (utils/tagGroups
+        // `tagLaneLabel`): the stored "scope::value" is not a caption anywhere, and
+        // least of all here — the lane name sits in a 224px sticky column and is
+        // ellipsised, so under a narrowed prefix every lane read as the same long
+        // namespace with the value that distinguishes them cut off.
+        const label = tag
+          ? tagLaneLabel(tag, { tagPrefix: tagPrefix.value, prefixNames: prefixNames?.value })
+          : ''
+        ensure(id || '∅', label || t('board.chart.lane.noTag'), tag?.color).tasks.push(task)
       } else if (mode === 'status') {
         const col = statusColumns.value.find((c) => c.id === task.column_id)
         ensure(task.column_id || '∅', col?.name || '—', col?.color).tasks.push(task)

@@ -58,7 +58,7 @@ import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
 import { useBoardAutosave } from '@/composables/useBoardAutosave'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
 import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
-import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
+import { tagLaneLabel, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumEstimates, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
 import { filterBoardTasks } from '@/utils/taskFilter'
@@ -1132,14 +1132,11 @@ const displayColumns = computed(() => {
   ]
 })
 
-// Column title for a tag group: the raw "scope::value" is never shown. When the
-// board is already filtered to one prefix the scope sits in the group label
-// ("Тег · Сложность"), so only the value is left; otherwise the friendly scope
-// is spelled out ahead of it.
+// Column title for a tag group: the raw "scope::value" is never shown. The rule
+// lives in utils/tagGroups, next to the split it is built on, because the
+// timeline/gantt swimlanes stand for the same tags and have to read the same.
 function tagColumnName(tag) {
-  const parts = tagParts(tag.name, tagPrefixNames)
-  if (!parts.hasScope) return parts.label
-  return tagPrefix.value ? parts.label : `${parts.scope}: ${parts.label}`
+  return tagLaneLabel(tag, { tagPrefix: tagPrefix.value, prefixNames: tagPrefixNames })
 }
 
 // Estimation rollup per milestone column: Σ of the column's tasks' own estimates,
@@ -2032,6 +2029,7 @@ async function restoreFromArchive(taskId) {
         :tags-map="tagsMap"
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
+        :tag-prefix-names="tagPrefixNames"
         :project-id="board?.project_id"
         :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
@@ -2049,6 +2047,7 @@ async function restoreFromArchive(taskId) {
         :tags-map="tagsMap"
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
+        :tag-prefix-names="tagPrefixNames"
         :project-id="board?.project_id"
         :auto-sort="autoActive"
         :subtasks-by-parent="filteredSubtasksByParent"

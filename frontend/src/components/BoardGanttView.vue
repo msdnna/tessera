@@ -45,6 +45,9 @@ const props = defineProps({
   // 'assignee' | 'none'.
   groupMode: { type: String, default: 'assignee' },
   tagPrefix: { type: String, default: '' },
+  // canonical tag prefix → friendly label, so a tag lane reads the way the board's
+  // tag column does (utils/tagGroups `tagLaneLabel`).
+  tagPrefixNames: { type: Object, default: () => ({}) },
   projectId: { type: String, default: null },
   // { parentId: [subtask, …] } — scheduled subtasks render as thin sub-bars
   // stacked inside their parent's row (no dependency arrows on subtasks).
@@ -164,6 +167,7 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   tagsMap: toRef(props, 'tagsMap'),
   groupMode: toRef(props, 'groupMode'),
   tagPrefix: toRef(props, 'tagPrefix'),
+  prefixNames: toRef(props, 'tagPrefixNames'),
   estCfg,
 })
 

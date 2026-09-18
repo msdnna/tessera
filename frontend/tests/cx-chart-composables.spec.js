@@ -95,7 +95,9 @@ describe('useChartLanes', () => {
     })
     // t2 is filtered out by the prefix, so the lane is the area:: tag, not the first id.
     expect(lanes.value.map((l) => l.key)).toEqual(['t1'])
-    expect(lanes.value[0].label).toBe('area::be')
+    // Captioned like the board's tag column: the namespace the grouping is already
+    // narrowed to is not repeated in every lane (see cx-tag-lane-caption).
+    expect(lanes.value[0].label).toBe('be')
   })
 
   it('keeps the incoming order inside a lane — this is what carries the Gantt «Авто» order', () => {

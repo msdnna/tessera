@@ -28,7 +28,11 @@ defineProps({
         class="lane-dot"
         :style="{ background: lane.color ? hueGrad(lane.color) : 'var(--t-accent-grad)' }"
       />
-      <span class="lane-name">{{ lane.label }}</span>
+      <!-- `title` is not decoration: the left column is a fixed 224px (LEFT_W) and
+           the caption below is clipped to one line, while a tag or status lane is
+           named by whatever the reader called the tag or the column. Same reason
+           the board's `.col-title` carries one. -->
+      <span class="lane-name" :title="lane.label">{{ lane.label }}</span>
       <span class="lane-count">{{ lane.tasks.length }}</span>
       <n-tooltip v-if="effort">
         <template #trigger>
