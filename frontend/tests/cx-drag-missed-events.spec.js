@@ -160,7 +160,9 @@ describe('проводка в KanbanBoard', () => {
   const src = readFileSync(resolve(process.cwd(), 'src/components/KanbanBoard.vue'), 'utf8')
 
   it('гвард перетаскивания запоминает событие, а не выбрасывает его', () => {
-    expect(src).toMatch(/if \(dragging\.value\) \{\s*\n\s*rememberMissed\(ev\)/)
+    expect(src).toMatch(
+      /if \(dragging\.value \|\| layoutDragging\.value\) \{\s*\n\s*rememberMissed\(ev\)/,
+    )
   })
 
   it('оба draggable сливают копилку по окончании жеста', () => {

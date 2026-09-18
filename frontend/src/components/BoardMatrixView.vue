@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import { NIcon, NInput, useMessage } from 'naive-ui'
@@ -28,7 +28,7 @@ const props = defineProps({
   // from view the moment it lands), the quadrant drag and the live card menu.
   readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed', 'create', 'restore'])
+const emit = defineEmits(['open', 'changed', 'create', 'restore', 'drag-state'])
 const message = useMessage()
 const { t } = useI18n()
 // The urgency axis is a calendar-day window in the user's timezone, so it needs
@@ -94,6 +94,28 @@ function rebuild() {
 watch([() => props.tasks, formatters], rebuild, { immediate: true })
 
 const dragging = ref(false)
+
+// A drag has to hold the whole BOARD still, not just this grid (#2932).
+//
+// SortableJS owns the DOM of the list a card is being dragged through, so the
+// board mutes realtime-driven reloads for the duration of a gesture — that is
+// what `dragging` in useBoardDragScroll is for. Only the kanban's own draggables
+// raise it, though, and the flag above is local: a colleague's event arriving
+// mid-gesture took the ordinary route, the board re-fetched its tasks, and
+// `rebuild()` replaced all four buckets with fresh arrays underneath Sortable.
+// The card flickers back, and worse, the drop then reads its index off a list Vue
+// has just rewritten — `onQuadChange` can pin someone else's task to the
+// quadrant. So the grid reports its gesture upwards, where the board's existing
+// drag guard (and its missed-event backlog) already know what to do with it.
+function setDragging(active) {
+  dragging.value = active
+  emit('drag-state', active)
+}
+// Switching layout mid-gesture unmounts the grid, and Sortable's `end` never
+// arrives — without this the board would stay muted for the rest of the session.
+onBeforeUnmount(() => {
+  if (dragging.value) setDragging(false)
+})
 
 // A card dropped into a quadrant pins it there (manual override). Same-quadrant
 // reorders (evt.moved) aren't persisted — the matrix has no meaningful order.
@@ -186,8 +208,8 @@ function submitAdd(qi) {
         :delay="120"
         :delay-on-touch-only="true"
         :touch-start-threshold="6"
-        @start="dragging = true"
-        @end="dragging = false"
+        @start="setDragging(true)"
+        @end="setDragging(false)"
         @change="onQuadChange($event, q.i)"
       >
         <template #item="{ element }">

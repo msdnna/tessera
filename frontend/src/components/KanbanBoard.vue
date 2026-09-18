@@ -908,6 +908,19 @@ function onBoardDragEnd() {
   flushMissed()
 }
 
+// A drag inside another layout (the Eisenhower matrix has a SortableJS grid of its
+// own) holds the board just as still: `dragging` above is raised only by the
+// kanban's own draggables, so without this the matrix's gesture was the one case
+// where a realtime event re-fetched the tasks and rebuilt the quadrants from under
+// Sortable (#2932). The layout reports its gesture; the guard and the backlog are
+// the same ones the kanban uses. No autoscroll setup here on purpose — that rAF
+// loop steers the column strip, which this layout does not render.
+const layoutDragging = ref(false)
+function onLayoutDragState(active) {
+  layoutDragging.value = !!active
+  if (!active) flushMissed()
+}
+
 // Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
 // milestone server-side, so a huge project never loads all its cards at once.
 // ?archived=1 loads the read-only archive instead (subtasks skipped — they are
@@ -1501,7 +1514,7 @@ useRealtime((ev) => {
   // A drag holds the board still (SortableJS needs a stable DOM), so the event
   // cannot be acted on now — but it must not be forgotten either: remember what it
   // would have cost and fetch that once the card lands (#2932).
-  if (dragging.value) {
+  if (dragging.value || layoutDragging.value) {
     rememberMissed(ev)
     return
   }
@@ -2098,6 +2111,7 @@ async function restoreFromArchive(taskId) {
         @changed="onChanged"
         @create="createInQuadrant"
         @restore="restoreFromArchive"
+        @drag-state="onLayoutDragState"
       />
 
       <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
