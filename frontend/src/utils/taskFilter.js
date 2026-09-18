@@ -8,7 +8,7 @@
 // parent's on-card subtask list is narrowed to the matching children. The task
 // modal is untouched and always lists every subtask.
 
-import { matchesAuthor } from './boardFilters'
+import { matchesAssignee, matchesAuthor } from './boardFilters'
 import { defaultFormatters, epochDay } from './format'
 import { NO_MILESTONE } from './facetKeys'
 
@@ -123,14 +123,6 @@ export function matchesHomeDue(t, mode, now = new Date(), f = defaultFormatters(
   return true
 }
 
-function matchesAssignees(t, wanted) {
-  const ids = t.assignee_ids || []
-  const logins = t.gitlab_assignee_logins || []
-  return wanted.some((a) =>
-    typeof a === 'string' && a.startsWith('gl:') ? logins.includes(a.slice(3)) : ids.includes(a),
-  )
-}
-
 function matchesQuery(t, q) {
   return t.title.toLowerCase().includes(q) || (t.number != null && `#${t.number}`.includes(q))
 }
@@ -138,7 +130,11 @@ function matchesQuery(t, q) {
 // Does one task pass every active facet? `facets` limits which facets are
 // considered (subtasks use SUBTASK_FACETS), `now` and `formatters` are passed
 // through to matchesDue, `glLoginByUserId` (tessera user id → gl_username) lets the
-// author facet match GitLab-synced tasks whose Tessera author is null.
+// author facet match GitLab-synced tasks whose Tessera author is null — and the
+// assignee facet the ones carrying a person's GitLab login in place of their user id
+// (see boardFilters). Both person predicates live there, side by side: this module
+// kept a private copy of the assignee one, and it was the copy that never learned
+// about the linked login.
 export function matchesTask(
   t,
   filters,
@@ -147,7 +143,11 @@ export function matchesTask(
   const on = (f) => !facets || facets.includes(f)
   if (on('priorities') && filters.priorities?.length && !filters.priorities.includes(t.priority))
     return false
-  if (on('assignees') && filters.assignees?.length && !matchesAssignees(t, filters.assignees))
+  if (
+    on('assignees') &&
+    filters.assignees?.length &&
+    !matchesAssignee(t, filters.assignees, glLoginByUserId)
+  )
     return false
   if (
     on('authors') &&
