@@ -13,7 +13,7 @@ import {
 import { i18n, uiCollator } from '@/i18n'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
 import { tagNamespace, canonPrefix, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
-import { boardGitlabAuthors } from '@/utils/boardFilters'
+import { boardGitlabAssignees, boardGitlabAuthors } from '@/utils/boardFilters'
 import { columnName } from '@/utils/defaultNames'
 import {
   emptyFilters,
@@ -247,11 +247,32 @@ export function useBoardFacets({
       key: encodeFacet('assignee', m.user_id),
       avatarUserId: m.user_id,
     }))
-    const gl = gitlabMembersList.value.map((g) => ({
-      label: g.gl_name || g.gl_username,
-      key: encodeFacet('assignee', `gl:${g.gl_username}`),
-      avatarSrc: g.gl_avatar_url,
-    }))
+    // Plus the GitLab assignees actually seen on the board, the way the author menu
+    // below takes in the board's GitLab authors: the roster is a cache the backend
+    // refreshes at most hourly, so a person the cards already draw need not be in it
+    // (boardGitlabAssignees). Skipped are the logins of workspace members who have
+    // linked their GitLab account — the roster drops those rows so one person is
+    // never listed twice, and their Tessera entry above already matches the login
+    // (matchesAssignee via glLoginByUserId).
+    const seen = new Set()
+    for (const m of membersList.value) {
+      const login = glLoginByUserId.value?.[m.user_id]
+      if (login) seen.add(login)
+    }
+    const gl = []
+    const pushGl = (username, name, avatar) => {
+      if (!username || seen.has(username)) return
+      seen.add(username)
+      gl.push({
+        label: name || username,
+        key: encodeFacet('assignee', `gl:${username}`),
+        avatarSrc: avatar,
+      })
+    }
+    gitlabMembersList.value.forEach((g) => pushGl(g.gl_username, g.gl_name, g.gl_avatar_url))
+    boardGitlabAssignees(allTasks.value).forEach((a) =>
+      pushGl(a.gl_username, a.gl_name, a.gl_avatar_url),
+    )
     if (!gl.length) return tessera
     return [...tessera, { type: 'group', label: 'GitLab', key: 'fag', children: gl }]
   })

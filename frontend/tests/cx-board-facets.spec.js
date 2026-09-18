@@ -81,7 +81,9 @@ describe('useBoardFacets — chips', () => {
     allTasks.value = [{ gitlab_author: 'outsider', gitlab_author_name: 'Внешний А.' }]
     filters.authors.push('gl:outsider')
     expect(chipText(api, 'author')).toEqual(['Внешний А.'])
-    // The assignee facet has no such source: an assignee is always a roster row.
+    // An assignee's chip has no such source — the task carries their login and no
+    // display name — so it stays the bare login. (The MENU does offer board-seen
+    // assignee logins; see ut-assignee-board-gl-login.spec.js.)
     filters.assignees.push('gl:outsider')
     expect(chipText(api, 'assignee')).toEqual(['outsider'])
   })

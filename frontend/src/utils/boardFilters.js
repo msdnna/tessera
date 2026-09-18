@@ -79,3 +79,32 @@ export function boardGitlabAuthors(tasks) {
   const cmp = uiCollator()
   return [...byLogin.values()].sort((a, b) => cmp.compare(a.gl_name, b.gl_name))
 }
+
+// Distinct GitLab assignee logins present on the board, for the assignee-filter
+// menu — the same hole the authors list above plugs, one facet over (#2932).
+//
+// The roster behind that menu is a CACHE: an incremental sync refreshes it at most
+// once an hour (backend memberRosterTTL) and best-effort at that, while the issues
+// themselves arrive on every pull. So a person newly added to the GitLab project —
+// or one since removed from it, whose old issues still name them — is drawn on the
+// cards (TaskCardPills / the list rows / the chart lanes all read
+// `gitlab_assignee_logins` through glAssigneesOf) and answers `matchesAssignee`
+// perfectly well, yet the facet has no entry to select them with.
+//
+// Only a login can be offered: unlike an author, a GitLab assignee reaches the
+// client as a bare login with no display name on the task, so there is nothing to
+// call them but that (which is exactly what the card shows too). The legacy
+// name-only `gitlab_assignees` field is therefore skipped — matchesAssignee matches
+// logins, so an entry built from a name would select nothing.
+export function boardGitlabAssignees(tasks) {
+  const seen = new Set()
+  for (const t of tasks || []) {
+    for (const login of t?.gitlab_assignee_logins || []) {
+      if (login) seen.add(login)
+    }
+  }
+  const cmp = uiCollator()
+  return [...seen]
+    .sort((a, b) => cmp.compare(a, b))
+    .map((login) => ({ gl_username: login, gl_name: login, gl_avatar_url: '' }))
+}
