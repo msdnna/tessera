@@ -49,6 +49,34 @@ class TagGroupsTest {
         assertThat(canonPrefix("Тег: ")).isEqualTo("тег:")
     }
 
+    // ── tagInPrefix ──────────────────────────────────────────────────────────
+    @Test
+    fun `tagInPrefix without a prefix accepts everything`() {
+        assertThat(tagInPrefix("Сложность::высокая", "")).isTrue()
+        assertThat(tagInPrefix("urgent", "")).isTrue()
+    }
+
+    @Test
+    fun `tagInPrefix matches the namespace regardless of case`() {
+        // Ровно тот случай, ради которого сравнение канонизировано: buildTagGroups
+        // кладёт оба тега в ОДНУ группу, значит и дорожки обязаны видеть оба.
+        assertThat(tagInPrefix("Сложность::высокая", "сложность::")).isTrue()
+        assertThat(tagInPrefix("сложность::низкая", "Сложность::")).isTrue()
+        assertThat(tagInPrefix("S: готово", " s: ")).isTrue()
+    }
+
+    @Test
+    fun `tagInPrefix is namespace equality, not a string prefix`() {
+        // «effort::» и «effortless::» начинаются одинаково — сырой startsWith
+        // затягивал второй тег в дорожки первого.
+        assertThat(tagInPrefix("effortless::да", "effort::")).isFalse()
+        // Тег без пространства имён не принадлежит ни одному.
+        assertThat(tagInPrefix("effort", "effort::")).isFalse()
+        assertThat(tagInPrefix("urgent", "S: ")).isFalse()
+        // Разные пространства не смешиваются.
+        assertThat(tagInPrefix("type::feature", "effort::")).isFalse()
+    }
+
     // ── prefixLabel ──────────────────────────────────────────────────────────
     @Test
     fun `prefixLabel empty is Vne gruppy`() {

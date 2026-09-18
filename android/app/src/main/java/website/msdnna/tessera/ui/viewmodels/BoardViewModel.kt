@@ -40,6 +40,7 @@ import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.filterBoardTasks
 import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.moveItem
+import website.msdnna.tessera.util.tagInPrefix
 
 enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline, Gantt }
 
@@ -193,10 +194,12 @@ data class BoardUiState(
         colCollapse[laneId] ?: (autoCollapseEmpty && count == 0)
 
     /** Теги, становящиеся дорожками при группировке по тегам: в режиме
-     *  пространства имён — только несущие [tagPrefix] (web `groupTags`). */
+     *  пространства имён — только несущие [tagPrefix] (web `groupTags`).
+     *  Принадлежность спрашивается у [tagInPrefix], т.е. по каноническому ключу —
+     *  тому же, по которому разложено меню префиксов. */
     val groupTags: List<Tag>
         get() = tags.values
-            .filter { tagPrefix.isEmpty() || it.name.startsWith(tagPrefix) }
+            .filter { tagInPrefix(it.name, tagPrefix) }
             .sortedBy { it.name }
 
     /** Этапы в порядке дорожек «По этапам». */

@@ -175,6 +175,7 @@ import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
 import website.msdnna.tessera.util.quadrantOf
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.tagInPrefix
 import website.msdnna.tessera.util.tagLaneTitle
 import website.msdnna.tessera.util.topoByDeps
 
@@ -1795,9 +1796,12 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         for (t in scheduled) {
             when (mode) {
                 "tag" -> {
+                    // Принадлежность пространству имён — через `tagInPrefix`, как на
+                    // канбане (BoardViewModel.groupTags) и на вебе: иначе одна и та же
+                    // группировка даёт на дорожках и на колонках разные наборы тегов.
                     val id = t.tagIds.firstOrNull { tid ->
                         val tag = state.tags[tid]
-                        tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+                        tag != null && tagInPrefix(tag.name, state.tagPrefix)
                     }
                     val tag = id?.let { state.tags[it] }
                     bucket(id ?: "∅", tag?.name ?: noTagLabel, tagColor(tag?.color)).add(t)
@@ -2159,9 +2163,10 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         for (t in orderedScheduled) {
             when (mode) {
                 "tag" -> {
+                    // Тот же канонический ключ, что у таймлайна выше и у канбана.
                     val id = t.tagIds.firstOrNull { tid ->
                         val tag = state.tags[tid]
-                        tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+                        tag != null && tagInPrefix(tag.name, state.tagPrefix)
                     }
                     val tag = id?.let { state.tags[it] }
                     bucket(id ?: "∅", tag?.name ?: noTagLabel, tagColor(tag?.color)).add(t)

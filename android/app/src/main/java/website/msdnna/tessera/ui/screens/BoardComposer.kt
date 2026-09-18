@@ -96,6 +96,7 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.UserTextOrder
 import website.msdnna.tessera.util.boardGitlabAuthors
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.canonPrefix
 import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.countWithSubtasks
 import website.msdnna.tessera.util.prefixLabel
@@ -363,9 +364,21 @@ private fun authorLabel(id: String, state: BoardUiState): String {
 private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     // Distinct namespaces present in the tags, labelled by their friendly name and
     // sorted by that label (web `tagPrefixOptions`).
+    //
+    // Различаются по КАНОНИЧЕСКОМУ ключу, как и всякий другой ответ про пространство
+    // имён (`buildTagGroups`, подписи префиксов, реестр на бэкенде): `distinct()` по
+    // сырым пространствам предлагал «Сложность::» и «сложность::» двумя пунктами — с
+    // одинаковой подписью, потому что она-то ищется канонически, — так что меню читалось
+    // как одна и та же группировка дважды, и каждый пункт сужал доску до половины тегов
+    // (#2932, ровно то же на вебе). Побеждает первое встреченное написание.
     val res = LocalResources.current
     val namespaces = remember(state.tagList, state.prefixNames, res) {
-        state.tagList.mapNotNull { tagNamespace(it.name).ifEmpty { null } }.distinct()
+        val seen = LinkedHashMap<String, String>()
+        for (tag in state.tagList) {
+            val ns = tagNamespace(tag.name)
+            if (ns.isNotEmpty()) seen.putIfAbsent(canonPrefix(ns), ns)
+        }
+        seen.values
             .map { it to prefixLabel(res, it, state.prefixNames) }
             .sortedWith(compareBy(UserTextOrder) { it.second })
     }

@@ -38,6 +38,27 @@ fun tagNamespace(name: String): String {
  *  GitLab rule editor stores ("S:"). */
 fun canonPrefix(p: String): String = p.trim().lowercase()
 
+/**
+ * Принадлежит ли тег пространству имён, которым сужена группировка (web `tagInPrefix`).
+ *
+ * Сравнение — через [canonPrefix], как и любой другой ответ про пространство имён в
+ * приложении: [buildTagGroups] раскладывает меню по каноническому ключу, [prefixLabel]
+ * и [tagParts] по нему же находят дружелюбное имя, и в этом ключе бэкенд хранит реестр
+ * префиксов (`handlers/tag_prefixes.go`). Сырым оставалось только сужение дорожек —
+ * `tag.name.startsWith(prefix)`, — и теги, которые человек (или синхронизация GitLab)
+ * написал «Сложность::высокая» и «сложность::низкая», были ОДНОЙ группой в меню, под
+ * одной подписью, и двумя разными пространствами для дорожек: выбор префикса рисовал
+ * только теги совпавшего регистра, а остальные карточки уезжали в «Без тегов» —
+ * собственный catch-all killer-фичи. Равенство пространств вместо префикса строки ещё и
+ * оставляет ответ на «в этом ли пространстве тег» тем же, что даёт [tagNamespace]:
+ * сырой `startsWith` говорит «да» любому имени, просто начинающемуся с тех же букв
+ * (#2932, web это уже починил).
+ */
+fun tagInPrefix(name: String, prefix: String): Boolean {
+    if (prefix.isEmpty()) return true
+    return canonPrefix(tagNamespace(name)) == canonPrefix(prefix)
+}
+
 /** Display label for a namespace: the configured friendly name, else the trimmed
  *  raw prefix (e.g. "S:"), else "Вне группы" for prefix-less tags. */
 fun prefixLabel(res: Resources, ns: String, prefixNames: Map<String, String> = emptyMap()): String {
