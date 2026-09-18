@@ -88,7 +88,14 @@ class SearchViewModel(
             if (mine != seq) return@launch // a newer query superseded this one
             result
                 .onSuccess { res -> _state.update { it.copy(loading = false, results = res, error = null) } }
-                .onFailure { e -> _state.update { it.copy(loading = false, error = errorMessage(e)) } }
+                // Results are dropped along with the failure, and that is the point:
+                // both places that announce a failed search ([searchPane] and the
+                // overlay's own footnote row) are guarded by `results == null`, so a
+                // search that failed while an earlier one's hits were still on screen
+                // said nothing at all — the previous query's rows stayed up as the
+                // answer to the new one. Web clears them the same way (`SearchBar`,
+                // `results.value = EMPTY()` in the catch) (#2932).
+                .onFailure { e -> _state.update { it.copy(loading = false, results = null, error = errorMessage(e)) } }
         }
     }
 
