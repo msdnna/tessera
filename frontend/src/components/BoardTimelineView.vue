@@ -45,6 +45,9 @@ const props = defineProps({
   // Real board status columns [{ id, name }] for the context menu + grouping.
   statusColumns: { type: Array, default: () => [] },
   membersMap: { type: Object, default: () => ({}) },
+  // Workspace GitLab roster [{ gl_username, gl_name, … }] — names the assignee lane
+  // of a person who has no Tessera account (their cards carry only a login).
+  gitlabMembers: { type: Array, default: () => [] },
   tagsMap: { type: Object, default: () => ({}) },
   // Swimlane grouping comes from the shared composer-bar (no duplicate control):
   // 'status' | 'tag' (+ tagPrefix) | 'assignee' | 'none'.
@@ -147,6 +150,7 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   source: scheduled,
   statusColumns: toRef(props, 'statusColumns'),
   membersMap: toRef(props, 'membersMap'),
+  glMembers: toRef(props, 'gitlabMembers'),
   tagsMap: toRef(props, 'tagsMap'),
   groupMode: toRef(props, 'groupMode'),
   tagPrefix: toRef(props, 'tagPrefix'),

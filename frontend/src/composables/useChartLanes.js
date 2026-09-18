@@ -26,7 +26,19 @@ export function useChartLanes({
   prefixNames,
   estCfg,
   subtasksByParent,
+  glMembers,
 }) {
+  // GitLab login → display name, from the workspace roster the board already holds.
+  // Same source the card's assignee pills resolve their names through, so a lane and
+  // the faces standing in it spell the person the same way.
+  const glNameByLogin = computed(() => {
+    const m = {}
+    for (const g of glMembers?.value || []) {
+      if (g?.gl_username) m[g.gl_username] = g.gl_name || g.gl_username
+    }
+    return m
+  })
+
   const lanes = computed(() => {
     const mode = groupMode.value
     const buckets = new Map()
@@ -42,8 +54,24 @@ export function useChartLanes({
     for (const task of source.value) {
       if (mode === 'assignee') {
         const id = (task.assignee_ids || [])[0]
-        const m = id ? membersMap.value[id] : null
-        ensure(id || '∅', m?.name || t('board.chart.lane.unassigned')).tasks.push(task)
+        // An assignee without a Tessera account is not «не назначено». The backend
+        // splits the two: a GitLab member linked to a Tessera user becomes an
+        // ordinary `task_assignees` row (so `assignee_ids` covers them), an unlinked
+        // one lands in `task_gitlab_assignees` and reaches the board only as
+        // `gitlab_assignee_logins`. Reading the first list alone swept every such
+        // card into the unassigned lane — on a GitLab-synced board that is most of
+        // them, and `assignee` is the grouping both charts OPEN with (defaultToolbar).
+        // The same person is a first-class value everywhere else on the bar: the
+        // composer offers them under «Исполнитель» as `gl:<login>` and filters by it
+        // (utils/taskFilter matchesAssignees), and the card draws their face. The
+        // lane key follows that same `gl:` convention (#2932).
+        const login = id ? '' : (task.gitlab_assignee_logins || [])[0]
+        if (login) {
+          ensure(`gl:${login}`, glNameByLogin.value[login] || login).tasks.push(task)
+        } else {
+          const m = id ? membersMap.value[id] : null
+          ensure(id || '∅', m?.name || t('board.chart.lane.unassigned')).tasks.push(task)
+        }
       } else if (mode === 'tag') {
         // Respect the prefix when grouping by a tag namespace.
         const ids = (task.tag_ids || []).filter((id) => {
