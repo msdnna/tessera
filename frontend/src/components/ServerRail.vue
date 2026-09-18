@@ -8,7 +8,7 @@
 // tile in it and nothing to switch to.
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NTooltip, NDropdown, NIcon } from 'naive-ui'
+import { NTooltip, NDropdown, NIcon, NPopconfirm } from 'naive-ui'
 import { AddOutline, LogInOutline } from '@vicons/ionicons5'
 import ServerEditModal from './ServerEditModal.vue'
 import ProjectIcon from './ProjectIcon.vue'
@@ -57,6 +57,23 @@ function openMenu(server, e) {
   showMenu.value = true
 }
 
+// Removing a profile purges its namespace — the refresh token included — and, if
+// it was the last one, puts a fresh profile pointed at the public DEFAULT_BASE in
+// its place (see removeServer). So a slip one item below «Изменить» in this menu
+// signs the user out AND erases the address of a self-hosted server, which the
+// app then has nowhere left to show them: the tile, the tooltip and the edit
+// modal all read it from the profile that no longer exists. Nothing about the
+// gesture warns of that, and there is no undo.
+//
+// Same rule the board already follows for a column delete: the menu never calls
+// the API straight off, it opens a confirm anchored where the menu stood.
+const confirmRemove = ref(false)
+const removeId = ref('')
+const removeName = computed(() => {
+  const s = servers.list.find((x) => x.id === removeId.value)
+  return s ? s.name || serverLabel(s.url) : ''
+})
+
 function onMenu(key) {
   showMenu.value = false
   const server = servers.list.find((s) => s.id === menuServerId.value)
@@ -65,8 +82,20 @@ function onMenu(key) {
     editing.value = server
     showEdit.value = true
   } else if (key === 'remove') {
-    servers.remove(server.id)
+    askRemove(server.id)
   }
+}
+
+function askRemove(id) {
+  removeId.value = id
+  confirmRemove.value = true
+}
+
+function doRemove() {
+  confirmRemove.value = false
+  const id = removeId.value
+  removeId.value = ''
+  if (id) servers.remove(id)
 }
 
 function onSave(patch) {
@@ -75,6 +104,9 @@ function onSave(patch) {
   editing.value = null
 }
 
+// The modal's own «Удалить сервер» confirms in place (ServerEditModal), so by the
+// time it reaches here the answer is already yes — the modal closes and the
+// profile goes, without a second question over the one just answered.
 function onRemove(id) {
   showEdit.value = false
   editing.value = null
@@ -139,6 +171,19 @@ function onRemove(id) {
       @select="onMenu"
       @clickoutside="showMenu = false"
     />
+
+    <n-popconfirm
+      v-model:show="confirmRemove"
+      :x="menuAt.x"
+      :y="menuAt.y"
+      :positive-button-props="{ type: 'error', 'data-testid': 'server-remove-confirm' }"
+      :positive-text="t('shell.servers.remove')"
+      @positive-click="doRemove"
+      @clickoutside="confirmRemove = false"
+    >
+      <template #trigger><span /></template>
+      {{ t('shell.servers.removeConfirm', { name: removeName }) }}
+    </n-popconfirm>
 
     <server-edit-modal
       v-model:show="showEdit"

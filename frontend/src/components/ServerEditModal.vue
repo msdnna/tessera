@@ -2,7 +2,7 @@
 // Add / edit one entry of the desktop server rail (#2930).
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NModal, NCard, NInput, NButton, NSwitch, NAlert } from 'naive-ui'
+import { NModal, NCard, NInput, NButton, NSwitch, NAlert, NPopconfirm } from 'naive-ui'
 import { DEFAULT_COLOR, normalizeUrl, serverLabel, serverUrlMessage } from '@/utils/servers'
 import { initials } from '@/utils/initials'
 import { hueGrad } from '@/utils/gradient'
@@ -109,9 +109,27 @@ function save() {
 
         <template #footer>
           <div class="se-actions">
-            <n-button v-if="server" quaternary type="error" @click="emit('remove', server.id)">
-              {{ t('shell.servers.remove') }}
-            </n-button>
+            <!-- Removing purges the profile's session namespace and, for the last
+                 profile, swaps in a fresh one aimed at the public default — the
+                 typed address is then gone from the app entirely. One click away
+                 from «Сохранить» is too close for that, so it asks first, the way
+                 the board asks before deleting a column. -->
+            <n-popconfirm
+              v-if="server"
+              :positive-button-props="{
+                type: 'error',
+                'data-testid': 'server-edit-remove-confirm',
+              }"
+              :positive-text="t('shell.servers.remove')"
+              @positive-click="emit('remove', server.id)"
+            >
+              <template #trigger>
+                <n-button quaternary type="error">{{ t('shell.servers.remove') }}</n-button>
+              </template>
+              {{
+                t('shell.servers.removeConfirm', { name: server.name || serverLabel(server.url) })
+              }}
+            </n-popconfirm>
             <span class="se-spacer" />
             <n-button quaternary @click="emit('update:show', false)">
               {{ t('common.action.cancel') }}
