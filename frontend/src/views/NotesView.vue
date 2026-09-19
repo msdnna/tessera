@@ -38,18 +38,31 @@ async function loadList() {
   }
 }
 
+// Reflect the open note in the URL by its readable slug (shareable + survives
+// refresh); `null` clears it. One place for both directions on purpose: the
+// query is not a breadcrumb but a live pointer — `loadList()` reads it back on
+// every refetch — so whatever is on screen has to keep it honest.
+function addressNote(param) {
+  if (String(route.query.note ?? '') === String(param ?? '')) return
+  const query = { ...route.query }
+  if (param) query.note = param
+  else delete query.note
+  router.replace({ query })
+}
+
 function select(note) {
   selected.value = note
   title.value = note.title
   body.value = note.body || ''
-  // Reflect the open note in the URL by its readable slug (shareable + survives refresh).
-  const param = note.slug || note.id
-  if (param && String(route.query.note ?? '') !== String(param)) {
-    router.replace({ query: { ...route.query, note: param } })
-  }
+  addressNote(note.slug || note.id)
 }
 
 function newNote() {
+  // Clear the address first: a blank draft is not the note that was open a
+  // moment ago, and the save that follows refetches the list — `loadList()`
+  // cannot tell a leftover slug from "open this note", so it would drop the
+  // freshly created note and put the previous one back in the editor (#2932).
+  addressNote(null)
   selected.value = { id: null }
   title.value = ''
   body.value = ''
@@ -73,7 +86,9 @@ async function save() {
       await notesApi.update(selected.value.id, { title: heading, body: body.value })
     } else {
       const res = await notesApi.create(wsStore.currentId, { title: heading, body: body.value })
-      selected.value = res.data
+      // Through select(), so the new note also takes the address — the refetch
+      // below consults it, and a note nobody addressed is one it will not keep.
+      select(res.data)
     }
     await loadList()
     message.success(t('common.state.saved'))
