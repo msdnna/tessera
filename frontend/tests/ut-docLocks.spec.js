@@ -92,6 +92,49 @@ describe('BlockLocks', () => {
     expect(onBlocked.mock.calls[0][0].name).toBe('Боб')
   })
 
+  // A modifier does not make an erasing key harmless — it makes it hungrier:
+  // Ctrl/Alt+Backspace eats the previous word, Cmd+Backspace the rest of the
+  // line. The guard used to consult only its chord table once any modifier was
+  // down, so every one of these walked straight through the lock.
+  it('swallows word- and line-wise erases inside a locked block', () => {
+    lockBlock(editor, 1)
+    caretIn(editor, 1)
+
+    // Judged by onBlocked, not by the return of `press`: a chord the guard lets
+    // pass can still be claimed by some other plugin's keymap, which would read
+    // as a green.
+    for (const opts of [
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+      { ctrlKey: true, shiftKey: true },
+    ]) {
+      onBlocked.mockClear()
+      expect(press(editor, 'Backspace', opts)).toBe(true)
+      expect(onBlocked).toHaveBeenCalledTimes(1)
+      expect(onBlocked.mock.calls[0][0].name).toBe('Боб')
+    }
+    for (const key of ['Delete', 'Enter']) {
+      onBlocked.mockClear()
+      expect(press(editor, key, { ctrlKey: true })).toBe(true)
+      expect(onBlocked).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  // The other half of the same rule: outside the lock those chords must still
+  // reach the document, and the browser's own Ctrl+Tab must never be eaten.
+  it('leaves modified erases alone outside the lock', () => {
+    lockBlock(editor, 1)
+    caretIn(editor, 0)
+    press(editor, 'Backspace', { ctrlKey: true })
+    press(editor, 'Delete', { metaKey: true })
+    expect(onBlocked).not.toHaveBeenCalled()
+
+    caretIn(editor, 1)
+    expect(press(editor, 'Tab', { ctrlKey: true })).toBe(false)
+    expect(onBlocked).not.toHaveBeenCalled()
+  })
+
   // A lock stops the person from typing in *that* block, not in the document:
   // note that `press` reports whether any plugin handled the key (Enter is
   // claimed by the keymap), so the guard is judged by onBlocked, not by that.

@@ -128,10 +128,20 @@ export function applyBlockLocks(view, locks) {
 // shortcuts stay allowed inside a locked block — being unable to *read* or copy
 // a paragraph someone else is editing would be a strictly worse experience than
 // the lock is worth.
-const EDITING_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab'])
+// These erase or split no matter what is held down with them, so they are
+// checked *before* any chord table: a modifier does not make Backspace harmless,
+// it makes it hungrier — Ctrl/Alt+Backspace eats the previous word and
+// Cmd+Backspace the rest of the line. Consulting EDITING_CHORDS first, as this
+// used to, let every one of those walk through a lock that stopped the bare key.
+const ALWAYS_EDITING_KEYS = new Set(['Enter', 'Backspace', 'Delete'])
+// Tab is the one editing key that stays modifier-sensitive: it only indents when
+// it arrives bare, and Ctrl/Alt+Tab belong to the browser — swallowing those
+// would break tab switching and blame a colleague's lock for it.
+const EDITING_KEYS = new Set([...ALWAYS_EDITING_KEYS, 'Tab'])
 const EDITING_CHORDS = new Set(['v', 'x', 'z', 'y', 'b', 'i', 'u', 'd', 'k'])
 
 function isEditingKey(event) {
+  if (ALWAYS_EDITING_KEYS.has(event.key)) return true
   if (event.ctrlKey || event.metaKey) return EDITING_CHORDS.has(event.key.toLowerCase())
   if (event.altKey) return false
   if (EDITING_KEYS.has(event.key)) return true
