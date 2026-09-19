@@ -576,7 +576,7 @@ func (h *API) qaRelation(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickact
 				missing = append(missing, fmt.Sprintf("#%d (не было связи)", num))
 				continue
 			}
-		} else if rerr := h.applyRelation(c, t, wsID, target, cmd.Key); rerr != nil {
+		} else if rerr := h.applyRelation(c, t, wsID, target, relationKindForCmd(cmd.Key)); rerr != nil {
 			return "", rerr
 		}
 		done = append(done, fmt.Sprintf("#%d", num))

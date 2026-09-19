@@ -525,6 +525,9 @@ func (h *API) applyRelation(c *gin.Context, t db.Task, wsID uuid.UUID, target db
 	if target.ID == t.ID {
 		return userErr("нельзя связать задачу с собой")
 	}
+	if !relationKinds[kind] {
+		return userErr("неизвестный вид связи: %s", kind)
+	}
 	if _, err := h.q.AddTaskRelation(c, db.AddTaskRelationParams{
 		TaskID: t.ID, RelatedTaskID: target.ID, Kind: kind,
 	}); err != nil && !errIsNoRows(err) {

@@ -543,6 +543,30 @@ func (h *API) BoardDependencies(c *gin.Context) {
 	c.JSON(http.StatusOK, orEmpty(rows))
 }
 
+// relationKinds is the closed set of relation kinds the product speaks. The
+// schema comment (0006_collab), both clients' label maps (`task.relations.kind.*`
+// on web, relKindLabel on Android) and the GitLab mapping (gitlab.RelationKind)
+// all name these four and nothing else — and both clients print an unknown kind
+// verbatim, so a fifth one reaches the «Связи» tab as a bare English token.
+// Worse, the uniqueness key and the ListTaskRelations dedup are both
+// (pair, kind): a near-miss kind sits alongside the real one as a second row
+// for the same pair, which the ✕ (DeleteRelationBothWays, also per kind) does
+// not take with it.
+var relationKinds = map[string]bool{
+	"relates": true, "blocks": true, "blocked_by": true, "duplicates": true,
+}
+
+// relationKindForCmd maps a quick-action key to the relation kind it means. Only
+// «/relate» differs from its kind — the command reads as a verb, the kind as a
+// state — and passing the key straight through is exactly how 'relate' got
+// written where 'relates' was meant.
+func relationKindForCmd(key string) string {
+	if key == "relate" {
+		return "relates"
+	}
+	return key
+}
+
 // inverseRelationKind flips a directed relation kind for the referenced task's
 // side (relates/duplicates are symmetric; blocks ⇄ blocked_by).
 func inverseRelationKind(kind string) string {
