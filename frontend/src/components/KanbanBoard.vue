@@ -858,6 +858,15 @@ function scheduleReload() {
   reloadTimer = setTimeout(() => load(props.boardId, { silent: true }), RELOAD_DEBOUNCE_MS)
 }
 
+// Поколение загрузки. Доска НЕ перемонтируется при смене доски (см. комментарий у
+// loadViews), а `?milestone=`/`?archived=1` меняют охват прямо на месте — значит
+// ответ, снятый под прошлый запрос, приходит уже на чужую доску или на чужой охват,
+// и без сверки просто ПРИСВАИВАЕТСЯ: карточки, колонки, и главное — setContext,
+// то есть projectId, по которому дети потом заводят теги и читают конфиг оценок.
+// Номер поколения поднимает только полная загрузка; частичные догрузки его лишь
+// читают, иначе они обесценивали бы полную, с которой идут бок о бок (#2932).
+let loadSeq = 0
+
 // Partial reloads, one debounce timer per kind: a burst of task events must not
 // drag the columns and the workspace meta along with it. Tasks get a slightly
 // wider window because one user action fans out into several task events
@@ -866,11 +875,19 @@ const PARTIAL_DEBOUNCE_MS = { tasks: 400, columns: 200, board: 200, meta: 200 }
 const partialTimers = { tasks: null, columns: null, board: null, meta: null }
 const partialFetch = {
   tasks: () => fetchTasks(props.boardId),
+  // Эти двое живут на таймере: пока он тикал и пока летел ответ, читатель мог уйти
+  // на другую доску — событие покинутой не должно подменить колонки открытой.
   columns: async () => {
-    columns.value = (await boards.columns(props.boardId)).data || []
+    const mine = loadSeq
+    const { data } = await boards.columns(props.boardId)
+    if (mine !== loadSeq) return
+    columns.value = data || []
   },
   board: async () => {
-    board.value = (await boards.get(props.boardId)).data
+    const mine = loadSeq
+    const { data } = await boards.get(props.boardId)
+    if (mine !== loadSeq) return
+    board.value = data
   },
   meta: () => loadWorkspaceMeta(),
 }
@@ -965,11 +982,13 @@ function scopeMilestoneId() {
 
 // Fetch just the task lists (2 requests instead of the full load's 10).
 async function fetchTasks(id) {
+  const mine = loadSeq
   const { archived, params } = taskQuery()
   const [t, s] = await Promise.all([
     boards.tasks(id, params),
     archived ? Promise.resolve({ data: [] }) : boards.subtasks(id),
   ])
+  if (mine !== loadSeq) return
   allTasks.value = (t.data || []).map(markRaw)
   const byParent = {}
   for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(markRaw(sub))
@@ -989,6 +1008,7 @@ async function fetchTasks(id) {
 // Спиннер уместен только там, где показывать нечего — первая загрузка и смена
 // доски. Догрузка уже показанной доски должна быть незаметной.
 async function load(id, { silent = false } = {}) {
+  const mine = ++loadSeq
   if (!silent) loading.value = true
   try {
     const { archived, params } = taskQuery()
@@ -998,6 +1018,9 @@ async function load(id, { silent = false } = {}) {
       boards.tasks(id, params),
       archived ? Promise.resolve({ data: [] }) : boards.subtasks(id),
     ])
+    // Пока летели десять запросов, читатель мог уйти на другую доску, в архив или
+    // на другой этап. Тогда этот ответ описывает не то, что сейчас на экране.
+    if (mine !== loadSeq) return
     board.value = b.data
     columns.value = c.data || []
     // Publish the identity as soon as the board itself is known: cards render
@@ -1013,13 +1036,19 @@ async function load(id, { silent = false } = {}) {
     // filteredTasks, and the watcher below rebuilds once. Calling both made every
     // load rebuild the whole column map twice.
   } catch (e) {
+    // Отказ покинутой доски (её проект удалили, этап исчез) не должен кричать
+    // поверх той, что читатель открыл вместо неё.
+    if (mine !== loadSeq) return
     message.error(e.message)
   } finally {
-    if (!silent) loading.value = false
+    // Спиннер снимает только тот запрос, который его и зажёг: иначе ответ
+    // покинутой доски открывал бы ещё пустую новую.
+    if (!silent && mine === loadSeq) loading.value = false
   }
 }
 
 async function loadWorkspaceMeta() {
+  const mine = loadSeq
   const wsId = wsStore.currentId
   const projectId = board.value?.project_id
   if (!wsId || !projectId) return
@@ -1032,6 +1061,8 @@ async function loadWorkspaceMeta() {
     gitlabApi.listIntegrations(wsId).catch(() => ({ data: { integrations: [] } })),
     projectsApi.milestones(projectId).catch(() => ({ data: [] })),
   ])
+  // Теги, участники и этапы покинутой доски — чужой словарь для открытой.
+  if (mine !== loadSeq) return
   boardViewStore.refill(tagsMap, Object.fromEntries((tg.data || []).map((t) => [t.id, t])))
   boardViewStore.refill(milestonesMap, Object.fromEntries((ms.data || []).map((m) => [m.id, m])))
   boardViewStore.refill(membersMap, Object.fromEntries((mem.data || []).map((m) => [m.user_id, m])))
