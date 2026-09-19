@@ -120,6 +120,44 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     projects.value = p.data || []
   }
 
+  // What a reconnect has to re-read: the workspace *set* first, then the tree.
+  //
+  // The server closes a user's sockets on every membership change (Hub.DropUser)
+  // precisely so the client re-reads which workspaces it belongs to and what it
+  // is in each — that is the whole mechanism by which an add, a removal or a
+  // role change reaches a session that is already open. The resync handler only
+  // ever called refresh(), which re-reads groups and projects of the *current*
+  // workspace, so the server's half of the contract landed nowhere: the list
+  // itself (and with it `my_role`, i.e. all of `canManage`) was fetched once at
+  // mount and never again. A workspace you were just added to stayed missing
+  // from the sidebar, one you were removed from stayed in it and 403'd on every
+  // click, and a promotion to admin took effect only on a page reload (#2932).
+  //
+  // The selection is deliberately left alone while the current workspace is
+  // still ours: a resync is a mid-session event — it also fires after a plain
+  // network outage — and re-picking the first workspace would move the reader
+  // off the board they are looking at. It moves only when that workspace is gone
+  // from the list, which is exactly the removed-from-it case.
+  async function resync() {
+    const res = await wsApi.list()
+    list.value = res.data || []
+    if (currentId.value && list.value.some((w) => w.id === currentId.value)) {
+      await refresh()
+      return
+    }
+    currentId.value = list.value[0]?.id || ''
+    if (currentId.value) {
+      await selectWorkspace(currentId.value)
+      return
+    }
+    // Removed from the last workspace there was: the tree below belongs to a
+    // workspace we can no longer read, and leaving it on screen would offer
+    // projects every click 403s on.
+    groups.value = []
+    projects.value = []
+    boardsByProject.value = {}
+  }
+
   async function loadBoards(projectId) {
     const res = await projApi.boards(projectId)
     boardsByProject.value = { ...boardsByProject.value, [projectId]: res.data || [] }
@@ -327,6 +365,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     ensureWorkspace,
     removeWorkspace,
     refresh,
+    resync,
     loadBoards,
     childGroups,
     parentGroupOf,

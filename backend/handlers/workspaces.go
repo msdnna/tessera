@@ -324,6 +324,19 @@ func (h *API) UpdateMemberRole(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A role change is a membership change, and Hub.DropUser is how one reaches a
+	// client that is already connected: membership is snapshotted at the upgrade,
+	// so the socket has to be closed for the set — and the role inside it — to be
+	// re-read on reconnect. Every other door here already does it (AddMember, which
+	// is this same change by upsert; AcceptInvitation; RemoveMember via
+	// revokeUserSockets); this one did not, so a member promoted to admin kept a
+	// members dialog with no invite form in it until they reloaded the page, and a
+	// demoted admin kept one whose every control answers 403 (#2932).
+	//
+	// Not revokeUserSockets: nothing was taken away here. The document and
+	// conference rooms authorise on membership, which still holds — evicting them
+	// would throw a promoted member out of the call they are in.
+	h.hub.DropUser(userID)
 	c.JSON(http.StatusOK, m)
 }
 

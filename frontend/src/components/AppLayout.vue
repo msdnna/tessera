@@ -113,9 +113,12 @@ useRealtime(
     // the event itself (milestoneTreeTarget).
     ws.onMilestoneEvent(ev)
   },
-  // Reconnect / resync: rebuild the sidebar tree, which is the layout-level state
-  // that can drift while the socket is down (projects added/removed elsewhere).
-  () => ws.refresh(),
+  // Reconnect / resync: rebuild the sidebar, which is the layout-level state that
+  // can drift while the socket is down — the current workspace's tree (projects
+  // added/removed elsewhere), but the workspace set above it too. The server cuts
+  // these sockets on every membership change for exactly that reason, so a resync
+  // that re-read only the tree threw away the one signal it was sent (#2932).
+  () => ws.resync(),
 )
 
 // An admin changing a project's address rewrites the URL of every board under
