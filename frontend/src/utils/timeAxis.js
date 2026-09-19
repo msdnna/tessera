@@ -193,21 +193,46 @@ export function hourStepFor(dayW) {
   return 0
 }
 
+// One hour tick's label, in the user's 12/24h preference and language.
+//
+// The hour ruler was the one band of this header that never got the formatter
+// treatment the two above it did (weekdayShort/monthYear): it built "13" by hand,
+// so a user on a 12-hour clock read "13" on the ruler while the cursor pill
+// hanging off that very tick — `formatTime` in useChartTimeline — said "1:00 PM".
+//
+// A tick names an hour of the day and nothing else, so the instant it formats is
+// synthetic: a local-midnight date pushed to hour h, read in the browser zone
+// (`timeZone: null`) because that is the zone the whole axis is laid out in.
+// `hour: 'numeric'` is what keeps "1 PM" from coming out as "01 AM" under
+// `2-digit`; the 24h side pads back to two digits afterwards so the ruler reads
+// exactly as it always has for everyone who never changed the preference.
+function hourLabel(h, fmt) {
+  const s = fmt.formatTime(new Date(2026, 0, 1, h), {
+    hour: 'numeric',
+    minute: undefined,
+    timeZone: null,
+  })
+  return /^\d+$/.test(s) ? s.padStart(2, '0') : s
+}
+
 // Hour ticks (hours tier) within a pixel window [loPx, hiPx] of the axis — only the
 // visible slice is built so a multi-month board doesn't render thousands of nodes
 // ("lazy lines"). { left, label }, skipping the day boundary (h=0, a major line).
-export function hourTicksInWindow(dayCount, dayW, loPx, hiPx) {
+export function hourTicksInWindow(dayCount, dayW, loPx, hiPx, fmt = defaultFormatters()) {
   const step = hourStepFor(dayW)
   if (!step) return []
   const out = []
   const d0 = Math.max(0, Math.floor(loPx / dayW))
   const d1 = Math.min(dayCount - 1, Math.ceil(hiPx / dayW))
+  // Every day of the window repeats the same 24 labels, so they are formatted once.
+  const labels = new Map()
+  for (let h = step; h < 24; h += step) labels.set(h, hourLabel(h, fmt))
   for (let day = d0; day <= d1; day++) {
     for (let h = step; h < 24; h += step) {
       out.push({
         key: day * 24 + h,
         left: (day + h / 24) * dayW,
-        label: String(h).padStart(2, '0'),
+        label: labels.get(h),
       })
     }
   }

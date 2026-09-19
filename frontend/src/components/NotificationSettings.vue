@@ -32,6 +32,7 @@ import {
 } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { resolvedTimezone } from '@/utils/format'
+import { useFormat } from '@/composables/useFormat'
 import { workspaceName } from '@/utils/defaultNames'
 import { humanizeError } from '@/utils/errors'
 import { useAuthStore } from '@/stores/auth'
@@ -44,14 +45,28 @@ const { t } = useI18n()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const theme = useThemeStore()
+const { formatTime } = useFormat()
 
 // Half-hour time-of-day options (minutes since midnight) for the quiet window.
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const m = i * 30
-  const hh = String(Math.floor(m / 60)).padStart(2, '0')
-  const mm = String(m % 60).padStart(2, '0')
-  return { label: `${hh}:${mm}`, value: m }
-})
+//
+// The labels go through the user's clock preference like every other time this
+// app prints: hand-built "23:00" left the two quiet-window selects on a 24-hour
+// clock for a user who had asked for a 12-hour one everywhere else. Computed for
+// the same reason the option lists below are (#2799) — a constant array would
+// freeze the labels in the language and preference of the first render.
+//
+// The value stays minutes-since-midnight (the wire format); only the label moves.
+// `timeZone: null` because these are wall-clock times of day, not instants: the
+// zone they are evaluated in is `quiet_tz`, sent separately.
+const TIME_OPTIONS = computed(() =>
+  Array.from({ length: 48 }, (_, i) => {
+    const m = i * 30
+    return {
+      label: formatTime(new Date(2026, 0, 1, Math.floor(m / 60), m % 60), { timeZone: null }),
+      value: m,
+    }
+  }),
+)
 
 const channels = ref([])
 const routes = ref([])

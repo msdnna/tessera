@@ -152,7 +152,7 @@ export function useChartTimeline({
     if (tier.value !== 'hours') return []
     const lo = scrollX.value - leftW.value - 200
     const hi = scrollX.value - leftW.value + viewW.value + 200
-    return hourTicksInWindow(range.value.days, dayW.value, lo, hi)
+    return hourTicksInWindow(range.value.days, dayW.value, lo, hi, formatters.value)
   })
   // Minor-gridline period (px): the hour-tick step in the hours tier, else one day.
   const subW = computed(() => {
