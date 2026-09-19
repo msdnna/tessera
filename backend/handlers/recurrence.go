@@ -286,16 +286,23 @@ func (h *API) RunRecurrenceWorker(ctx context.Context) {
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	h.tick(jobRecurrence, opRecurrence)
-	h.withAdvisoryLock(ctx, recurrenceLock, func() { h.advanceScheduleDue(ctx) }) // catch up at startup
+	h.AdvanceRecurrencesOnce(ctx) // catch up at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobRecurrence, opRecurrence)
-			h.withAdvisoryLock(ctx, recurrenceLock, func() { h.advanceScheduleDue(ctx) })
+			h.AdvanceRecurrencesOnce(ctx)
 		}
 	}
+}
+
+// AdvanceRecurrencesOnce runs a single recurrence tick under the worker lock, the
+// way every other background sweep here runs. Reports whether the tick ran; false
+// means another instance holds the lock and is doing the work.
+func (h *API) AdvanceRecurrencesOnce(ctx context.Context) bool {
+	return h.withAdvisoryLock(ctx, recurrenceLock, func() { h.advanceScheduleDue(ctx) })
 }
 
 // advanceScheduleDue advances every schedule-triggered task whose due date has

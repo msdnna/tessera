@@ -639,15 +639,30 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasks
 const listScheduleRecurDue = `-- name: ListScheduleRecurDue :many
 SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks
 WHERE archived_at IS NULL
-  AND completed_at IS NULL
   AND due_date IS NOT NULL
   AND due_date <= now()
   AND recurrence->>'trigger' = 'schedule'
 ORDER BY due_date
 `
 
-// ListScheduleRecurDue returns active tasks whose recurrence fires on a schedule
-// and whose due date has passed — the schedule worker advances each one.
+// ListScheduleRecurDue returns tasks whose recurrence fires on a schedule and
+// whose due date has passed — the schedule worker advances each one.
+//
+// A completed task is deliberately still in: this trigger is the clock-driven one
+// ("due date passes, no close needed"), so closing an occurrence has to be an
+// ordinary act — the occurrence is done, the series is not. Filtering on
+// completed_at IS NULL, the way every other sweep here does, made one tick of the
+// checkbox (or one drag into the done column, which completes the card the same
+// way) end the recurrence for good: nothing else picks the task up, because
+// recurAdvance runs on completion with the "complete" trigger and a schedule rule
+// doesn't match it. The card stayed closed with its rule still on it, and the
+// editor kept promising a repeat that was never coming. applyRecur's reschedule
+// branch already clears completed_at and moves the task to the rule's target
+// column, which is exactly the next occurrence arriving.
+//
+// Archived tasks stay out: the archive is the one place where a card is meant to
+// stop moving, and a series resurrecting itself out of it would be a card nobody
+// can see arriving.
 func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 	rows, err := q.db.Query(ctx, listScheduleRecurDue)
 	if err != nil {
