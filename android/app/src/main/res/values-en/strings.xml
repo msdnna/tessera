@@ -241,6 +241,7 @@
     <string name="task_status_active">Not completed</string>
     <string name="task_due_unset">Not set</string>
     <string name="task_estimate_unset">Not set</string>
+    <string name="task_estimate_unreadable">Cannot read the estimate “%1$s” — e.g. 3d 4h, 1h 30, 90m</string>
     <string name="task_assignees_none">Nobody</string>
     <string name="task_tags_none">None</string>
     <string name="task_tag_new_hint">New tag, Enter</string>

@@ -36,6 +36,17 @@ object Estimation {
     fun resolve(project: Project?, workspace: Workspace?): EstimationConfig =
         project?.estimation ?: workspace?.estimation ?: DEFAULT
 
+    /**
+     * Что значит число без суффикса, если у предыдущего токена суффикс был:
+     * единица на шаг меньше — так пишут «1ч 30» и «1д 4». Минуты — дно лестницы.
+     *
+     * Раньше часами читалось КАЖДОЕ такое число, и «1ч 30» сохранялось как 31 час —
+     * молча, во всех трёх разборах сразу (web `utils/estimation.js`, backend
+     * `internal/quickact`). Единственный разобранный случай, «1d 4» = 720, — это
+     * то же правило: для дня шаг вниз как раз и даёт часы.
+     */
+    private val SMALLER = mapOf('w' to 'd', 'd' to 'h', 'h' to 'm', 'm' to 'm')
+
     private fun minutesPerDay(cfg: EstimationConfig): Double = (cfg.hoursPerDay ?: 8.0) * 60.0
     private fun minutesPerWeek(cfg: EstimationConfig): Double =
         minutesPerDay(cfg) * (cfg.daysPerWeek ?: 5.0)
@@ -80,6 +91,15 @@ object Estimation {
             return if (n != null && n > 0) n else null
         }
 
+        return parseTime(s, cfg)
+    }
+
+    /**
+     * Разбор времени: смешанные токены («1н 2д 3ч 30м») в канонические минуты.
+     * Отдельной функцией, а не веткой [parse] — у той иначе восемь выходов на
+     * один вход, и detekt (ReturnCount) прав: читать это как одну функцию нельзя.
+     */
+    private fun parseTime(s: String, cfg: EstimationConfig): Double? {
         val mpd = minutesPerDay(cfg)
         val unitMin = mapOf('w' to mpd * (cfg.daysPerWeek ?: 5.0), 'd' to mpd, 'h' to 60.0, 'm' to 1.0)
         var total = 0.0
@@ -87,10 +107,14 @@ object Estimation {
         // Кириллица здесь — разбор ввода, а не интерфейс: буквы единиц принимаются
         // в обоих алфавитах независимо от языка профиля.
         val re = Regex("""(\d+(?:\.\d+)?)\s*([a-zа-яё]*)""") // i18n-data
+        // Единица предыдущего токена (null — у него её не было): число без
+        // суффикса читается относительно неё, см. [SMALLER].
+        var prev: Char? = null
+        var first = true
         for (mr in re.findAll(s)) {
             val num = mr.groupValues[1].toDoubleOrNull() ?: continue
             val u = mr.groupValues[2]
-            val key = when (u.firstOrNull()) {
+            val suffix = when (u.firstOrNull()) {
                 'w', 'н' -> 'w'
 
                 'd', 'д' -> 'd'
@@ -99,11 +123,23 @@ object Estimation {
 
                 'm', 'м' -> 'm'
 
-                null -> 'h'
+                null -> null
 
-                // bare number → hours
-                else -> 'h'
+                // Незнакомый суффикс — не часы: «5 попугаев», сохранённые как
+                // пять часов, хуже отказа (так же читает бэкенд, quickact).
+                else -> return null
             }
+            // «1ч 30» — полтора часа, не 31: у числа без суффикса единица на шаг
+            // ниже предыдущей. Одиночное число впереди — часы; второе
+            // безъединичное число подряд не значит ничего.
+            val key = when {
+                suffix != null -> suffix
+                first -> 'h'
+                prev != null -> SMALLER[prev] ?: 'm'
+                else -> return null
+            }
+            prev = suffix
+            first = false
             total += num * (unitMin[key] ?: 0.0)
             matched = true
         }

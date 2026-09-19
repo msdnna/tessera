@@ -249,6 +249,7 @@
     <string name="task_status_active">Не выполнено</string>
     <string name="task_due_unset">Не задан</string>
     <string name="task_estimate_unset">Не задана</string>
+    <string name="task_estimate_unreadable">Не понимаю оценку «%1$s» — например: 3д 4ч, 1ч 30, 90м</string>
     <string name="task_assignees_none">Никто</string>
     <string name="task_tags_none">Нет</string>
     <string name="task_tag_new_hint">Новый тег, Enter</string>

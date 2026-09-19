@@ -1072,6 +1072,7 @@ private fun EstimateValue(
 ) {
     val c = Tessera.colors
     val res = LocalResources.current
+    val estCtx = androidx.compose.ui.platform.LocalContext.current
     val scaleOptions = website.msdnna.tessera.util.Estimation.scaleOptions(cfg)
     val isPoints = scaleOptions.isNotEmpty()
     val label = website.msdnna.tessera.util.Estimation.format(res, estimate, cfg)
@@ -1123,7 +1124,18 @@ private fun EstimateValue(
             placeholder = website.msdnna.tessera.util.Estimation.placeholder(res, cfg),
             onConfirm = {
                 dialog = false
-                onSet(website.msdnna.tessera.util.Estimation.parse(it, cfg))
+                // Непонятый ввод не стирает оценку: поле свободное («1ч 30»,
+                // «3д 4ч», «полдня»), а onSet(parse(...)) превращал любую опечатку
+                // в тихое снятие — число, с которым человек планировал, исчезало
+                // молча. Снять оценку можно строкой «Не задана» рядом.
+                val parsed = website.msdnna.tessera.util.Estimation.parse(it, cfg)
+                if (parsed == null) {
+                    android.widget.Toast
+                        .makeText(estCtx, res.getString(R.string.task_estimate_unreadable, it), android.widget.Toast.LENGTH_LONG)
+                        .show()
+                } else {
+                    onSet(parsed)
+                }
             },
             onDismiss = { dialog = false },
         )

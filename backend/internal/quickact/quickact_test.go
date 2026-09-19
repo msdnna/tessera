@@ -299,7 +299,16 @@ func TestParseEstimate(t *testing.T) {
 		{in: "1d", want: 480},  // 8h day
 		{in: "1w", want: 2400}, // 5d week
 		{in: "1d 4h", want: 720},
-		{in: "1d 4", want: 720}, // the tail-less number is hours too
+		// A number with no suffix takes the unit below the one in front of it —
+		// "1d 4" is a day and four hours, "1ч 30" an hour and a half. Reading
+		// every bare number as hours made the second one 31 hours, in all three
+		// parsers at once (the clients' estimate field does the same arithmetic).
+		{in: "1d 4", want: 720},
+		{in: "1ч 30", want: 90},
+		{in: "1h 30", want: 90},
+		{in: "2ч30", want: 150},
+		{in: "1н 2", want: 2400 + 960},
+		{in: "30м 15", want: 45},
 		// A unit spelled out as a word, read by its first letter — the estimate
 		// field on both clients matches `[a-zа-яё]*` there, and the UI language
 		// here is Russian, so "3 дня" is the ordinary way to type it.

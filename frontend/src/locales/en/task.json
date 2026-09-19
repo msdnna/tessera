@@ -56,6 +56,7 @@
     "rollupHint": "Sum of subtask estimates",
     "clear": "Clear",
     "apply": "OK",
+    "unreadable": "Cannot read the estimate “{value}” — e.g. 3d 4h, 1h 30, 90m",
     "short": {
       "week": "{n}w",
       "day": "{n}d",

@@ -58,6 +58,17 @@ func estimateUnit(word string) (string, bool) {
 	}
 }
 
+// smallerUnit is what a number with no suffix means when the token before it had
+// one: the next unit down, the way "2 часа 30" or "1d 4" is written and read.
+// Minutes are the floor.
+//
+// Every number without a suffix used to be hours, so "/estimate 1ч 30" stored
+// thirty-one hours — and the popover in the clients did the same with the same
+// typing (frontend utils/estimation.js, android util/Estimation.kt, fixed
+// together). The one case that was already covered — `1d 4` = 720 — is this rule
+// too; for days a step down happens to land on hours.
+var smallerUnit = map[string]string{"w": "d", "d": "h", "h": "m", "m": "m"}
+
 // Estimation is the estimate configuration in force for a task (project
 // override → workspace default → the built-in time/8h/5d), reduced to what
 // argument parsing needs. The zero value means the built-in default.
@@ -114,7 +125,10 @@ func ParseEstimate(raw string, cfg Estimation) (float64, error) {
 	}
 
 	var total float64
-	var unitSeen bool
+	// The unit of the previous token, empty when it carried none — a bare number
+	// is read against it (see smallerUnit).
+	prev := ""
+	first := true
 	for _, m := range matches {
 		n, err := strconv.ParseFloat(strings.Replace(m[1], ",", ".", 1), 64)
 		if err != nil {
@@ -124,25 +138,31 @@ func ParseEstimate(raw string, cfg Estimation) (float64, error) {
 		if !ok {
 			return 0, fmt.Errorf("не понимаю оценку %q", raw)
 		}
+		if unit == "" {
+			switch {
+			case first:
+				unit = "h" // the lone leading number: hours
+			case prev != "":
+				unit = smallerUnit[prev] // "2 часа 30" — half past two, not 32 hours
+			default:
+				// A second unit-less number in a row ("2 3") states nothing.
+				return 0, fmt.Errorf("не понимаю оценку %q", raw)
+			}
+			prev = ""
+		} else {
+			prev = unit
+		}
+		first = false
 		switch unit {
-		case "":
-			total += n * 60 // bare number: hours, as in the clients' estimate field
 		case "m":
-			unitSeen = true
 			total += n
 		case "h":
-			unitSeen = true
 			total += n * 60
 		case "d":
-			unitSeen = true
 			total += n * hoursPerDay * 60
 		default: // w
-			unitSeen = true
 			total += n * daysPerWeek * hoursPerDay * 60
 		}
-	}
-	if len(matches) > 1 && !unitSeen {
-		return 0, fmt.Errorf("не понимаю оценку %q", raw)
 	}
 	if total <= 0 {
 		return 0, fmt.Errorf("оценка должна быть больше нуля")

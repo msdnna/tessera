@@ -81,7 +81,7 @@ import {
   formatEstimate,
   formatEstimateFull,
   estimateRangeShort,
-  parseEstimate,
+  parseEstimateInput,
   scaleOptions,
   estimatePlaceholder,
   sumEstimates,
@@ -399,8 +399,17 @@ function setEstimate(val) {
   estimate.value = val && val > 0 ? val : null
   applyMeta()
 }
+// Apply what was typed in the estimate box. An unreadable entry is reported and
+// left alone: the field is free text ("1ч 30", "3д 4ч", "полдня"), and the old
+// `setEstimate(parse(...))` turned every misread into a silent clear — the number
+// a person had planned with vanished on a typo, with nothing on screen to say so.
 function applyEstInput() {
-  setEstimate(parseEstimate(estInput.value, estCfg.value))
+  const { value, ok } = parseEstimateInput(estInput.value, estCfg.value)
+  if (!ok) {
+    message.error(t('task.estimate.unreadable', { value: estInput.value.trim() }))
+    return
+  }
+  setEstimate(value)
 }
 function clearEstimate() {
   estInput.value = ''

@@ -73,6 +73,31 @@ class EstimationTest {
         assertThat(Estimation.parse("abc", time)).isNull()
     }
 
+    /**
+     * Число без суффикса берёт единицу на шаг ниже предыдущей: «1ч 30» — полтора
+     * часа, «1д 4» — день и четыре часа. Раньше часами читалось каждое такое
+     * число, и «1ч 30» сохранялось как 1860 минут — молча, во всех трёх разборах
+     * (web `utils/estimation.js`, backend `internal/quickact`).
+     */
+    @Test
+    fun `parse bare number after a unit steps one unit down`() {
+        assertThat(Estimation.parse("1ч 30", time)).isEqualTo(90.0)
+        assertThat(Estimation.parse("1h 30", time)).isEqualTo(90.0)
+        assertThat(Estimation.parse("2ч30", time)).isEqualTo(150.0)
+        assertThat(Estimation.parse("1d 4", time)).isEqualTo(720.0)
+        assertThat(Estimation.parse("1н 2", time)).isEqualTo(2400.0 + 960)
+        assertThat(Estimation.parse("30м 15", time)).isEqualTo(45.0)
+    }
+
+    /** Гадать не о чем: второе безъединичное число подряд и незнакомый суффикс — отказ. */
+    @Test
+    fun `parse refuses a second bare number and an unknown suffix`() {
+        assertThat(Estimation.parse("2 3", time)).isNull()
+        assertThat(Estimation.parse("1:30", time)).isNull()
+        assertThat(Estimation.parse("5 попугаев", time)).isNull()
+        assertThat(Estimation.parse("2s", time)).isNull()
+    }
+
     @Test
     fun `parse honours custom hours per day`() {
         val cfg = EstimationConfig(unit = "time", hoursPerDay = 6.0, daysPerWeek = 5.0)

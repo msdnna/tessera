@@ -93,26 +93,68 @@ export function parseEstimate(input, cfg) {
   const unitMin = { w: mpd * (cfg?.days_per_week || 5), d: mpd, h: 60, m: 1 }
   let total = 0
   let matched = false
+  // The unit a bare number takes: hours when it stands alone, otherwise a step
+  // down from the unit in front of it (see SMALLER). Anything else is a refusal.
+  let prev = null
   const re = /(\d+(?:\.\d+)?)\s*([a-zа-яё]*)/gi
   let m
   while ((m = re.exec(s))) {
     const num = parseFloat(m[1])
     if (!Number.isFinite(num)) continue
     const u = m[2] || ''
-    let key = 'h' // a bare number is hours
+    let key
     if (u) {
-      const c = u[0]
-      if (c === 'w' || c === 'н') key = 'w'
-      else if (c === 'd' || c === 'д') key = 'd'
-      else if (c === 'h' || c === 'ч') key = 'h'
-      else if (c === 'm' || c === 'м') key = 'm'
+      key = unitKey(u)
+      // An unrecognised suffix is not hours. "5 попугаев" storing five hours is
+      // the mistake the backend parser already refuses to make (quickact
+      // `estimateUnit`), and a field that guesses is worse than one that asks.
+      if (!key) return null
+    } else if (prev == null && !matched) {
+      key = 'h' // the lone bare number: hours
+    } else if (prev) {
+      key = SMALLER[prev] // "1ч 30" = an hour and a half, not thirty-one hours
+    } else {
+      return null // a second bare number in a row means nothing in particular
     }
     total += num * unitMin[key]
     matched = true
+    prev = u ? key : null
   }
   if (!matched) return null
   const mins = Math.round(total)
   return mins > 0 ? mins : null
+}
+
+// The unit letter a written-out suffix reduces to — the first letter decides, so
+// "день"/"дня"/"d" are one unit. null for anything that is not a unit at all.
+function unitKey(word) {
+  const c = word[0]
+  if (c === 'w' || c === 'н') return 'w'
+  if (c === 'd' || c === 'д') return 'd'
+  if (c === 'h' || c === 'ч') return 'h'
+  if (c === 'm' || c === 'м') return 'm'
+  return null
+}
+
+// What a number with no suffix means when it follows one that had a suffix: the
+// next unit down, the way a person writing "1ч 30" or "1д 4" means it. Minutes
+// are the floor, so "30м 15" is 45 minutes rather than a new ladder.
+//
+// Reading EVERY bare number as hours (what this used to do) made "1ч 30" 1860
+// minutes — thirty-one hours — and said nothing about it. The backend's own
+// `1d 4 → 720` case was always this rule; for days it happens to coincide.
+const SMALLER = { w: 'd', d: 'h', h: 'm', m: 'm' }
+
+// Read what the user typed in the estimate field: `ok` separates "the box is
+// empty, drop the estimate" from "I could not read this" — both of which the
+// parser reports as a null value, and the popover used to apply as a clear. An
+// unreadable estimate silently erasing the one already on the task is the worst
+// of the three outcomes: the number came from a person's own plan, and nothing
+// on screen said it had gone.
+export function parseEstimateInput(raw, cfg) {
+  if (raw == null || String(raw).trim() === '') return { value: null, ok: true }
+  const value = parseEstimate(raw, cfg)
+  return value == null ? { value: null, ok: false } : { value, ok: true }
 }
 
 // Format a canonical value for display. Time compresses minutes to working
