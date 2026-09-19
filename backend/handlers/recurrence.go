@@ -68,10 +68,17 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 	if err != nil {
 		return t, false
 	}
+	// The relocation names no neighbours — there is nothing to aim between — so
+	// it takes the same slot rule every other unanchored move takes: a card
+	// appends to the target column, a checklist item keeps the number it already
+	// had. Off the column's tail instead, a recurring *item* was renumbered onto
+	// the wrong ladder entirely (a card's, per column, not its parent's) and so
+	// left the middle of the checklist for the bottom of it — every occurrence,
+	// on a list nobody asked to reorder (#2932).
 	if target != updated.ColumnID {
-		if endPos, merr := h.q.MaxTaskPositionInColumn(ctx, target); merr == nil {
+		if pos, perr := h.unanchoredPosition(ctx, updated, target); perr == nil {
 			if moved, mverr := h.q.MoveTask(ctx, db.MoveTaskParams{
-				ID: updated.ID, ColumnID: target, Position: positionBetween(&endPos, nil),
+				ID: updated.ID, ColumnID: target, Position: pos,
 			}); mverr == nil {
 				updated = moved
 			}
@@ -196,7 +203,13 @@ func shiftBy(ts *time.Time, step time.Duration) *time.Time {
 // counts and out of reach of liftSubtasksFromDone. The reschedule branch never had
 // this: it edits the task in place and UpdateTask does not carry parent_id.
 func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid.UUID, due time.Time, start *time.Time, rule *json.RawMessage, wsID, actorID uuid.UUID) (db.Task, error) {
-	endPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
+	// The duplicate is a new task in whichever list it is born into, so it takes
+	// CreateTask's own rule — the end of the parent's checklist for an item, the
+	// end of the column for a card. The column's tail alone was a card's number
+	// handed to a child: on the ordinary layout (the parent being its column's
+	// only card) "last card + one gap" is exactly the second item's position, and
+	// two children with one number have no order of their own (#2932).
+	clonePos, err := h.nextTaskPosition(ctx, columnID, src.ParentID)
 	if err != nil {
 		return db.Task{}, err
 	}
@@ -207,7 +220,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	clone, err := h.q.CreateTask(ctx, db.CreateTaskParams{
 		BoardID: src.BoardID, ColumnID: columnID, ParentID: src.ParentID,
 		Title: src.Title, Description: src.Description, Priority: src.Priority,
-		DueDate: &due, StartDate: start, Estimate: src.Estimate, Position: positionBetween(&endPos, nil), CreatedBy: src.CreatedBy, Number: &num,
+		DueDate: &due, StartDate: start, Estimate: src.Estimate, Position: clonePos, CreatedBy: src.CreatedBy, Number: &num,
 	})
 	if err != nil {
 		return db.Task{}, err

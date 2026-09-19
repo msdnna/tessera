@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -891,10 +892,11 @@ func (h *API) loadTask(c *gin.Context, id uuid.UUID) (db.Task, uuid.UUID, bool) 
 }
 
 // nextTaskPosition appends to the end of a column (top-level) or a parent's
-// subtask list.
-func (h *API) nextTaskPosition(c *gin.Context, columnID uuid.UUID, parentID *uuid.UUID) (float64, error) {
+// subtask list. Takes a bare context rather than the request's: the recurrence
+// engine spawns tasks off the same rule from a background trigger.
+func (h *API) nextTaskPosition(ctx context.Context, columnID uuid.UUID, parentID *uuid.UUID) (float64, error) {
 	if parentID != nil {
-		subs, err := h.q.ListSubtasks(c, parentID)
+		subs, err := h.q.ListSubtasks(ctx, parentID)
 		if err != nil {
 			return 0, err
 		}
@@ -904,7 +906,7 @@ func (h *API) nextTaskPosition(c *gin.Context, columnID uuid.UUID, parentID *uui
 		last := subs[len(subs)-1].Position
 		return positionBetween(&last, nil), nil
 	}
-	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	maxPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
 	if err != nil {
 		return 0, err
 	}
@@ -1043,11 +1045,15 @@ func (h *API) positionForUnanchoredMove(c *gin.Context, t db.Task, columnID uuid
 // of the parent's list. Nothing in the gesture said "reorder my children", and
 // the same move from the task modal (which sends the sibling neighbours of the
 // row the subtask already stands on) leaves the order alone (#2932).
-func (h *API) unanchoredPosition(c *gin.Context, t db.Task, columnID uuid.UUID) (float64, error) {
+//
+// The recurrence engine relocates a task the same way — to the rule's target
+// column, with nothing to aim between — which is why this takes a bare context
+// and not the request's.
+func (h *API) unanchoredPosition(ctx context.Context, t db.Task, columnID uuid.UUID) (float64, error) {
 	if t.ParentID != nil {
 		return t.Position, nil
 	}
-	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	maxPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
 	if err != nil {
 		return 0, err
 	}
