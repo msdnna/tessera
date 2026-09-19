@@ -109,7 +109,8 @@
     "newPlaceholder": "New milestone…"
   },
   "tags": {
-    "newPlaceholder": "New tag, Enter"
+    "newPlaceholder": "New tag, Enter",
+    "alreadyOn": "That tag is already on the task"
   },
   "people": {
     "author": "Author: {name}",

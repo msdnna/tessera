@@ -110,15 +110,22 @@ async function remove(tag) {
     message.error(e.message)
   }
 }
+const adding = ref(false)
 async function add() {
   const n = newName.value.trim()
-  if (!n) return
+  // Enter and the button share this, and the field keeps its text until the tag is
+  // in — so without the guard a second Enter sent a second create, which the server
+  // refuses as a duplicate («имя занято») of the tag the first one had just made.
+  if (!n || adding.value) return
+  adding.value = true
   try {
     await projectsApi.createTag(props.projectId, { name: n, color: swatches[0] })
     newName.value = ''
     emit('changed')
   } catch (e) {
     message.error(e.message)
+  } finally {
+    adding.value = false
   }
 }
 </script>

@@ -98,6 +98,31 @@ export function tagLaneLabel(tag, { tagPrefix = '', prefixNames = {} } = {}) {
   return tagPrefix ? parts.label : `${parts.scope}: ${parts.label}`
 }
 
+// The tag a typed name already stands for, or null.
+//
+// The task tag picker puts a free text field under a grid that no typing filters,
+// and a project's tags accumulate — grouped by prefix, scrolled, plus whatever a
+// GitLab sync brought in. So typing the name of a tag that already exists is the
+// ordinary way to reach it, not a mistake: without this lookup that Enter went to
+// the server, came back «тег с таким именем уже есть в проекте» (409 — a 500 before
+// that), and left the task untagged with nothing to do but hunt the grid.
+//
+// Matched case-insensitively, exact spelling preferred. A second tag differing only
+// in case is not a useful thing to create — the two sort apart, group apart and split
+// the board's tag lanes in half (same lesson as `tagInPrefix` above).
+export function matchTagByName(tags, typed) {
+  const want = (typed || '').trim()
+  if (!want) return null
+  const lower = want.toLowerCase()
+  let loose = null
+  for (const t of tags || []) {
+    const name = (t?.name || '').trim()
+    if (name === want) return t
+    if (!loose && name.toLowerCase() === lower) loose = t
+  }
+  return loose
+}
+
 // Canonical prefixes governed by a non-"tag" GitLab label rule (status / priority /
 // group / board / ignore). Those labels drive a task field (or are dropped on sync),
 // so the matching tags shouldn't be manually addable in the tag picker — selecting

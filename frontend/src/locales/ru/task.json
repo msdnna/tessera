@@ -109,7 +109,8 @@
     "newPlaceholder": "Новый этап…"
   },
   "tags": {
-    "newPlaceholder": "Новый тег, Enter"
+    "newPlaceholder": "Новый тег, Enter",
+    "alreadyOn": "Этот тег уже на задаче"
   },
   "people": {
     "author": "Автор: {name}",

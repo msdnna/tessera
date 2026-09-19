@@ -59,7 +59,7 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel, priorityOptions as priorityOptionList } from '@/utils/priority'
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
-import { buildTagGroups } from '@/utils/tagGroups'
+import { buildTagGroups, matchTagByName } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { resolvedTimezone } from '@/utils/format'
 import { useFormat } from '@/composables/useFormat'
@@ -420,6 +420,10 @@ const tagPickerGroups = computed(() =>
   buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
 )
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
+// Flat picker set — what a typed name is matched against, so the answer covers
+// exactly the tags the reader could have clicked instead (GitLab meta-prefixed
+// tags are hidden here on purpose: attaching one desyncs from the field it drives).
+const tagPickerFlat = computed(() => tagPickerGroups.value.flatMap((g) => g.tags))
 
 // The tags trigger shows as many WHOLE tag chips as fit on one line, then "+N"
 // (shared with the stacked card row via useTagFit — which also re-observes the
@@ -1013,10 +1017,26 @@ async function toggleTag(id) {
     message.error(e.message)
   }
 }
+const creatingTag = ref(false)
 async function createTag() {
   const n = newTagName.value.trim()
-  if (!n) return
+  // The guard is what makes a second Enter harmless: the field is cleared only once
+  // the tag is on the task, so an impatient repeat used to send a second create —
+  // and the second one came back «имя занято» about the tag the first had just made.
+  if (!n || creatingTag.value) return
+  // A name the project already carries is a request for THAT tag, not for a twin:
+  // the grid above is not filtered by what's typed, so on a long tag list typing the
+  // name is the way to reach it. Creating was a dead end — the server refuses the
+  // duplicate (409) and the task stays untagged.
+  const existing = matchTagByName(tagPickerFlat.value, n)
+  if (existing) {
+    newTagName.value = ''
+    if (selectedTags.value.includes(existing.id)) message.info(t('task.tags.alreadyOn'))
+    else await toggleTag(existing.id)
+    return
+  }
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
+  creatingTag.value = true
   try {
     const res = await projApi.createTag(projectId.value, {
       name: n,
@@ -1028,6 +1048,8 @@ async function createTag() {
     emit('changed')
   } catch (e) {
     message.error(e.message)
+  } finally {
+    creatingTag.value = false
   }
 }
 async function toggleAssignee(uid) {
