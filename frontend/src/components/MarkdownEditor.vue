@@ -691,6 +691,34 @@ function detectSuggest() {
   }
   mq.value = null
 }
+// Does the open popup still describe the text the caret actually sits in?
+//
+// `detectSuggest` runs from `onInput` alone, but the caret moves without any
+// input at all — ArrowLeft/Right, Home/End, PageUp/Down. Nothing re-ran the
+// detector then, so `mq.start` went on pointing at a trigger the caret had left,
+// and `pickSuggest` spliced the chosen mention over that stale range: with the
+// caret sent to the line start, `replaceRange(start, selectionStart, …)` gets an
+// end BEFORE its start and pastes `value.slice(0, start) + text + value.slice(end)`
+// — the stretch between them is emitted twice, i.e. "привет @an" became
+// "привет @anna привет @an". On the native `execCommand` path the damage is
+// quieter but no smaller: the mention lands wherever the caret went and the
+// half-typed handle stays behind.
+//
+// Re-deriving from the live DOM rather than tracking every way a caret can move
+// (clicks, drag-selection, browser shortcuts, a webview's own gestures) is what
+// makes this hold for the paths we don't enumerate below.
+function suggestLive() {
+  const el = ta.value
+  if (!el || !mq.value) return false
+  const end = el.selectionStart
+  if (end !== el.selectionEnd || end < mq.value.start) return false
+  const trigger = mq.value.kind === 'command' ? '/' : '@'
+  return el.value.slice(mq.value.start, end) === trigger + mq.value.query
+}
+// Keys that only move the caret: the popup is never their target, and leaving it
+// on screen would keep offering matches for text the caret is no longer in.
+// `suggestLive` is the backstop for everything this list cannot name.
+const CARET_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'])
 // Place the popup below the trigger char's line, aligned under the trigger.
 // Coords are viewport-relative (the popup is `position: fixed`). After it renders
 // we measure its real size and clamp it into the viewport / flip it above the
@@ -725,6 +753,10 @@ function clampSugPos() {
 // mention would cost the user the undo history of a whole comment.
 function pickSuggest(item) {
   if (!item || !mq.value) return
+  // The row may have been clicked long after the caret wandered off the query —
+  // a mouse click on the popup moves nothing. Dropping the pick beats writing the
+  // mention into a range that no longer spells it.
+  if (!suggestLive()) return (mq.value = null)
   const el = ta.value
   const cmd = isCmd.value
   const insert = cmd ? commandInsertText(item) : `@${item.label} `
@@ -750,6 +782,10 @@ function onSelect() {
   if (!mq.value) refreshBubble()
 }
 function onKeydown(e) {
+  // A keystroke is the first thing that happens after a caret move, so this is
+  // where a popup left behind by one is noticed and dropped — before any branch
+  // below can act on it.
+  if (mq.value && !suggestLive()) mq.value = null
   if (mq.value && sugMatches.value.length) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -761,7 +797,12 @@ function onKeydown(e) {
       mqIndex.value = (mqIndex.value - 1 + sugMatches.value.length) % sugMatches.value.length
       return
     }
-    if (e.key === 'Enter' || e.key === 'Tab') {
+    // Only the BARE Enter/Tab belongs to the popup. The modified ones are
+    // separate gestures of this editor and were being eaten by it: Ctrl/⌘+Enter
+    // is «send» (it reached `emit('submit')` only with the popup shut, so a
+    // comment ending in «@an» refused to send and typed a mention instead),
+    // Shift+Enter is the plain line break, Shift+Tab the outdent.
+    if ((e.key === 'Enter' || e.key === 'Tab') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault()
       pickSuggest(sugMatches.value[mqIndex.value])
       return
@@ -777,6 +818,9 @@ function onKeydown(e) {
       return
     }
   }
+  // Caret-only keys: close the popup as the caret leaves, rather than waiting for
+  // the next keystroke to find it stale.
+  if (mq.value && CARET_KEYS.has(e.key)) mq.value = null
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault()
     if (props.sending) return
