@@ -185,6 +185,16 @@ func shiftBy(ts *time.Time, step time.Duration) *time.Time {
 // are copied and direct subtasks are recreated uncompleted (a clean checklist).
 // start is the duplicate's own start date (already stepped by shiftStart) — the
 // clone is the next occurrence, not a snapshot of the first.
+//
+// The duplicate hangs off the same parent as the original, which for a recurring
+// *checklist item* is the whole point: the rule is written in the same DueEditor
+// whether the modal was opened on a card or on one of its subtasks, and a
+// create_new item left the checklist for good the first time it was ticked. The
+// original stays under the parent as the spent occurrence, so a root clone made
+// the item read as deleted — the parent showed only the completed copy, while the
+// next occurrence stood on the board as a card of its own, outside the subtask
+// counts and out of reach of liftSubtasksFromDone. The reschedule branch never had
+// this: it edits the task in place and UpdateTask does not carry parent_id.
 func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid.UUID, due time.Time, start *time.Time, rule *json.RawMessage, wsID, actorID uuid.UUID) (db.Task, error) {
 	endPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
 	if err != nil {
@@ -195,7 +205,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 		return db.Task{}, err
 	}
 	clone, err := h.q.CreateTask(ctx, db.CreateTaskParams{
-		BoardID: src.BoardID, ColumnID: columnID, ParentID: nil,
+		BoardID: src.BoardID, ColumnID: columnID, ParentID: src.ParentID,
 		Title: src.Title, Description: src.Description, Priority: src.Priority,
 		DueDate: &due, StartDate: start, Estimate: src.Estimate, Position: positionBetween(&endPos, nil), CreatedBy: src.CreatedBy, Number: &num,
 	})
