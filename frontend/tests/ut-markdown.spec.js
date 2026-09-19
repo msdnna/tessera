@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   renderMarkdown,
   renderRich,
-  replaceOutsideCode,
+  replaceOutsideMarkup,
   sanitizeSvgFragment,
   toggleTaskMarker,
   toEditorHtml,
@@ -153,19 +153,19 @@ describe('renderRich', () => {
   })
 })
 
-describe('replaceOutsideCode', () => {
+describe('replaceOutsideMarkup', () => {
   it('applies the callback only outside code elements', () => {
-    const out = replaceOutsideCode('a<code>b</code>c', (part) => part.toUpperCase())
+    const out = replaceOutsideMarkup('a<code>b</code>c', (part) => part.toUpperCase())
     expect(out).toBe('A<code>b</code>C')
   })
 
   it('treats a <pre><code> fence as a single untouched block', () => {
-    const out = replaceOutsideCode('x<pre><code>y</code></pre>z', (part) => part.toUpperCase())
+    const out = replaceOutsideMarkup('x<pre><code>y</code></pre>z', (part) => part.toUpperCase())
     expect(out).toBe('X<pre><code>y</code></pre>Z')
   })
 
   it('passes content through untouched when there is no code at all', () => {
-    expect(replaceOutsideCode('plain', (p) => `[${p}]`)).toBe('[plain]')
+    expect(replaceOutsideMarkup('plain', (p) => `[${p}]`)).toBe('[plain]')
   })
 })
 

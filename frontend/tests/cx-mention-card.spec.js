@@ -95,7 +95,7 @@ describe('RichContent mention cards', () => {
   it('leaves mentions inside code blocks alone — they name no one', async () => {
     const w = await render('`@Ann Lee`')
     // Mentions inside code aren't highlighted at all (renderRich skips code via
-    // replaceOutsideCode), so there is no chip to hover and thus no card.
+    // replaceOutsideMarkup), so there is no chip to hover and thus no card.
     expect(chipIn(w)).toBeNull()
     expect(card()).toBeNull()
     w.unmount()

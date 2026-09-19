@@ -175,16 +175,33 @@ function highlightMentions(html, members) {
   })
 }
 
-// replaceOutsideCode applies `fn` to the stretches of rendered HTML that sit
-// outside <code>/<pre>. Both decorations below rewrite text in already-rendered
-// HTML, and neither may touch a code sample: "#2550" in a diff is not a task
-// link, and "@root" in a shell snippet is not a mention.
-const CODE_BLOCK_RE = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi
-export function replaceOutsideCode(html, fn) {
+// replaceOutsideMarkup applies `fn` to the DISPLAYED TEXT of already-rendered
+// HTML — everything that is neither a code sample nor markup.
+//
+// Two things are stepped over, for two different reasons:
+//
+//   • <code>/<pre> blocks, because their contents are a sample and not prose:
+//     "#2550" in a diff is not a task link, and "@root" in a shell snippet is
+//     not a mention.
+//   • tags themselves, because an attribute is not text. Both decorations below
+//     splice an element in place of what they matched, and an attribute value
+//     carries user prose too: marked writes an image's alt text and a link's
+//     title into one. «![скрин #123](/a.png)» therefore had an <a …> spliced
+//     inside its own alt="…", which ends the attribute at the chip's first
+//     quote — the image lost its alt, the element grew two junk attributes, and
+//     the tail of the chip («#123"&gt;») was drawn as visible text next to it.
+//     A link title took the anchor's own text with it (#2932).
+//
+// Stepping over tags also means a decoration's left-hand boundary at the start
+// of a text run is the run's own start, which both patterns already accept as
+// `^`; the `>` in their lead classes stays for the legacy raw-HTML path, where
+// an unescaped `>` inside an attribute can still leave one in a text run.
+const SKIP_RE = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>|<[^>]*>/gi
+export function replaceOutsideMarkup(html, fn) {
   const s = String(html)
   let out = ''
   let last = 0
-  for (const m of s.matchAll(CODE_BLOCK_RE)) {
+  for (const m of s.matchAll(SKIP_RE)) {
     out += fn(s.slice(last, m.index)) + m[0]
     last = m.index + m[0].length
   }
@@ -210,7 +227,7 @@ export function renderRich(src, members, opts = {}) {
   if (!src) return ''
   const s = String(src)
   const html = looksLikeHtml(s) ? s : marked.parse(s)
-  const decorated = replaceOutsideCode(html, (part) => {
+  const decorated = replaceOutsideMarkup(html, (part) => {
     const withMentions = highlightMentions(part, members)
     return opts.taskRefs ? linkTaskRefs(withMentions) : withMentions
   })
