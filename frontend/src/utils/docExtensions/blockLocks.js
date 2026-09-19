@@ -62,6 +62,62 @@ export function lockAt(state, from, to = from) {
   return null
 }
 
+/**
+ * The holder of the top-level block at `index`, or null when it is free.
+ *
+ * Addressed by index rather than by position because that is the coordinate a
+ * move speaks in (blockMove.js): the commands there are handed "block 2 goes
+ * where block 1 is", and converting that back into positions to ask lockAt
+ * would re-derive the same ranges this reads off directly.
+ *
+ * @param {object} state ProseMirror editor state
+ * @param {number} index index into doc.content
+ * @returns {{block_id: string, name: string}|null}
+ */
+export function lockOnBlockIndex(state, index) {
+  const { locks } = blockLocksKey.getState(state) || { locks: [] }
+  if (!locks.length) return null
+  const block = blockRanges(state.doc)[index]
+  if (!block?.id) return null
+  return locks.find((l) => l.block_id === block.id) || null
+}
+
+/**
+ * The first holder among the blocks a move would relocate, or null when the
+ * whole span is free.
+ *
+ * The span rather than the two endpoints: moving block 4 to the top pushes 0..3
+ * down by one, and a block that changes place in the document has been edited
+ * whether or not it was the one picked up.
+ *
+ * @param {object} state ProseMirror editor state
+ * @param {number} from source index
+ * @param {number} to destination index
+ * @returns {{block_id: string, name: string}|null}
+ */
+export function lockInMoveSpan(state, from, to) {
+  for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
+    const held = lockOnBlockIndex(state, i)
+    if (held) return held
+  }
+  return null
+}
+
+/**
+ * Reports a refused edit through whatever the editor was configured with.
+ *
+ * Read off the plugin state rather than passed around, so a guard living in
+ * another extension (blockMove) tells the user who holds the block in exactly
+ * the same words as the guards inside this one, without the caller having to
+ * configure the callback twice.
+ *
+ * @param {object} state ProseMirror editor state
+ * @param {object} held the lock that refused the edit
+ */
+export function reportBlocked(state, held) {
+  blockLocksKey.getState(state)?.onBlocked?.(held)
+}
+
 /** Pushes a new lock roster into a live editor. */
 export function applyBlockLocks(view, locks) {
   if (!view) return
@@ -116,10 +172,13 @@ export const BlockLocks = Extension.create({
       new Plugin({
         key: blockLocksKey,
         state: {
-          init: () => ({ locks: [] }),
+          // onBlocked rides in the state beside the roster: it is the only way
+          // an extension that is not this one can report a refusal, and every
+          // refusal has to look the same to the reader.
+          init: () => ({ locks: [], onBlocked: options.onBlocked }),
           apply(tr, value) {
             const next = tr.getMeta(SET_LOCKS)
-            return next ? { locks: next } : value
+            return next ? { ...value, locks: next } : value
           },
         },
         props: {
