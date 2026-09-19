@@ -661,6 +661,26 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 		boardID, columnID = parent.BoardID, parent.ColumnID
 	}
 	prevParent := t.ParentID
+	// A task that changes parent changes the LIST it is ordered in — a subtask's
+	// float8 ladder runs per parent, a card's per column — so it needs a position
+	// on the destination ladder, not the one it carried over. Both ladders start
+	// at the same positionGap, so keeping the old number put the first subtask of
+	// a parent on the exact position of the column's first card (the dead slot
+	// positionExhausted describes) and a later sibling into the middle of the
+	// column, wherever its index among its old siblings happened to point.
+	//
+	// The end of the list is the answer the rest of the code already gives for
+	// "a task joins this list" (applyCreateSubtask, CreateTask). It is read
+	// before the update, so the task itself is still in its OLD list and cannot
+	// inflate the maximum of the one it is joining. A no-op re-parent keeps the
+	// position it has: standing still must not send the card to the bottom.
+	position := t.Position
+	if !sameParent(prevParent, parentID) {
+		var err error
+		if position, err = h.nextTaskPosition(c, columnID, parentID); err != nil {
+			return t, err
+		}
+	}
 	// Adopting the parent's board moves the task itself — and a task brings its
 	// own subtree with it, exactly as TransferTask does. Without this, attaching
 	// a task that has children under a parent on another board left the children
@@ -672,7 +692,7 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 	if err := h.inTx(c, func(q *db.Queries) error {
 		var err error
 		updated, err = q.SetTaskParent(c, db.SetTaskParentParams{
-			ID: t.ID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
+			ID: t.ID, ParentID: parentID, BoardID: boardID, ColumnID: columnID, Position: position,
 		})
 		if err != nil || boardID == t.BoardID {
 			// Same board: the descendants stay where they are, keeping whatever

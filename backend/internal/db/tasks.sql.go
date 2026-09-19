@@ -167,9 +167,34 @@ func (q *Queries) DeleteTask(ctx context.Context, id uuid.UUID) ([]uuid.UUID, er
 }
 
 const detachChildren = `-- name: DetachChildren :exec
-UPDATE tasks SET parent_id = NULL, updated_at = now() WHERE parent_id = $1
+UPDATE tasks t
+SET parent_id = NULL,
+    position = (
+        SELECT coalesce(max(p.position), 0) FROM tasks p
+        WHERE p.column_id = t.column_id AND p.parent_id IS NULL
+    ) + 65536 * ord.rn,
+    updated_at = now()
+FROM (
+    SELECT s.id, row_number() OVER (ORDER BY s.position, s.created_at, s.id) AS rn
+    FROM tasks s WHERE s.parent_id = $1
+) ord
+WHERE t.id = ord.id
 `
 
+// DetachChildren empties a parent's subtask list onto the board, and appends the
+// orphans to the end of the top-level ladder of whatever column each of them
+// stands in — for the same reason SetTaskParent writes a position. Keeping their
+// old numbers dropped the whole brood into the middle of the column, the first
+// child landing exactly on the first card.
+//
+// The `max` subquery is correlated to the row's own column (a subtask may stand
+// in another column than its parent) and reads the pre-UPDATE snapshot, where
+// the children being detached still hang off the parent — so it sees the cards
+// that are staying and nothing else. `rn` spaces the brood out by one gap each,
+// keeping the order the subtask list had.
+//
+// Written as UPDATE … FROM (subquery) rather than a CTE: sqlc mis-parses
+// UPDATE … FROM with a leading WITH.
 func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) error {
 	_, err := q.db.Exec(ctx, detachChildren, parentID)
 	return err
@@ -1236,7 +1261,7 @@ func (q *Queries) SetTaskEisenhower(ctx context.Context, arg SetTaskEisenhowerPa
 
 const setTaskParent = `-- name: SetTaskParent :one
 UPDATE tasks
-SET parent_id = $2, board_id = $3, column_id = $4,
+SET parent_id = $2, board_id = $3, column_id = $4, position = $5,
     milestone_id = CASE
         WHEN (SELECT m.project_id FROM milestones m WHERE m.id = tasks.milestone_id)
              IS NOT DISTINCT FROM
@@ -1252,17 +1277,29 @@ type SetTaskParentParams struct {
 	ParentID *uuid.UUID `json:"parent_id"`
 	BoardID  uuid.UUID  `json:"board_id"`
 	ColumnID uuid.UUID  `json:"column_id"`
+	Position float64    `json:"position"`
 }
 
 // SetTaskParent is the other door onto board_id (a task adopts its new parent's
 // board), so it unpins a milestone left behind in another project for the same
 // reason TransferTask does.
+//
+// It also writes `position`, because changing the parent changes which LIST the
+// task is ordered in: a subtask's float8 ladder runs per PARENT, a card's per
+// COLUMN, and both start at the same positionGap. Leaving the old number in
+// place put the first subtask of a parent (65536) on the exact position of the
+// column's first card — the dead slot positionExhausted describes — and a later
+// sibling (196608) somewhere in the middle of the column. The caller computes
+// the end of the destination list; the board's drag already sent a move right
+// after this call, and now the other doors (the modal's «Открепить», a card
+// dropped into a card's subtask list) land somewhere predictable too.
 func (q *Queries) SetTaskParent(ctx context.Context, arg SetTaskParentParams) (Task, error) {
 	row := q.db.QueryRow(ctx, setTaskParent,
 		arg.ID,
 		arg.ParentID,
 		arg.BoardID,
 		arg.ColumnID,
+		arg.Position,
 	)
 	var i Task
 	err := row.Scan(
