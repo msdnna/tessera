@@ -494,11 +494,25 @@ const breadcrumb = computed(() => {
   return parts
 })
 
+// The board keeps ONE TaskModal mounted and swaps `taskId` underneath it (a subtask
+// row, a relation, the «Родитель» link, an activity toast, ?task= in the URL), so two
+// detail loads can be in flight at once and the slower one answers last. Without a
+// token saying which task an answer was asked for, the load the reader has LEFT fills
+// the form — title/description/priority/dates/completed — of the task they are now
+// looking at, and the next Save sends that payload to `props.taskId`: the first task's
+// content written silently over the second one's (#2932).
+//
+// Same idiom as SearchBar, and taken before the first early return for the same
+// reason: a call that goes on to do nothing (the modal closed, taskId cleared) still
+// has to invalidate whatever is in flight, or its answer repopulates what we cleared.
+let loadSeq = 0
 async function loadDetail() {
+  const mine = ++loadSeq
   if (!props.taskId) return
   loading.value = true
   try {
     const res = await tasksApi.get(props.taskId)
+    if (mine !== loadSeq) return
     const t = res.data
     task.value = t
     title.value = t.title
@@ -538,6 +552,8 @@ async function loadDetail() {
         const cols = await boardsApi.columns(t.board_id)
         // parentCandidates powers the "make subtask of…" picker (top-level tasks).
         const bt = await boardsApi.tasks(t.board_id)
+        // Three more round-trips, three more chances for the task to change under us.
+        if (mine !== loadSeq) return
         parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
         // color/position feed the status chip and the "shift right" button; the
         // recurrence selects only ever needed id/name.
@@ -550,19 +566,23 @@ async function loadDetail() {
         }))
         doneColumnId.value = b.data.done_column_id || null
       } catch {
+        if (mine !== loadSeq) return
         boardInfo.value = null
         parentCandidates.value = []
         columns.value = []
         doneColumnId.value = null
       }
     }
-    loadSiblings(t)
-    loadExtras()
-    if (!t.gitlab) loadGlTemplates()
+    loadSiblings(t, mine)
+    loadExtras(mine)
+    if (!t.gitlab) loadGlTemplates(mine)
   } catch (e) {
+    if (mine !== loadSeq) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    // Only the live load owns the spinner: a stale one clearing it would uncover a
+    // half-populated form while the task on screen is still loading.
+    if (mine === loadSeq) loading.value = false
   }
 }
 
@@ -570,15 +590,17 @@ async function loadDetail() {
 // subtask and only to pin its position on a move — best-effort, one extra GET.
 // The same response also carries the parent's own title, which the «Родитель»
 // row shows (#2861) — so that stays one request, not two.
-async function loadSiblings(t) {
+async function loadSiblings(t, mine) {
   siblings.value = []
   parentTask.value = null
   if (!t?.parent_id) return
   try {
     const res = await tasksApi.get(t.parent_id)
+    if (mine !== loadSeq) return
     siblings.value = res.data?.subtasks || []
     parentTask.value = res.data || null
   } catch {
+    if (mine !== loadSeq) return
     siblings.value = []
     parentTask.value = null
   }
@@ -593,15 +615,19 @@ let scrollOnOpen = false
 // The editor can add a file to the task (a non-image drop into the description),
 // and the «Файлы» tab plus its badge count are owned here — so it has to be told.
 async function reloadAttachments() {
+  // Called from the editor (a file dropped into the description), not from a load —
+  // so it takes the current token rather than being handed one.
+  const mine = loadSeq
   try {
     const a = await tasksApi.attachments(props.taskId)
+    if (mine !== loadSeq) return
     attachments.value = a.data || []
     emit('changed')
   } catch {
     /* the file is uploaded either way; the list refreshes on reopen */
   }
 }
-async function loadExtras() {
+async function loadExtras(mine) {
   const id = props.taskId
   // Populate the thread without the enter fade (only later, user-posted comments fade).
   commentsHydrated.value = false
@@ -612,6 +638,9 @@ async function loadExtras() {
     tasksApi.events(id),
     tasksApi.documents(id),
   ])
+  // `id` was captured before the requests, but capturing it never protected the
+  // assignments below — this is the check that does.
+  if (mine !== loadSeq) return
   comments.value = c.status === 'fulfilled' ? c.value.data || [] : []
   relations.value = r.status === 'fulfilled' ? r.value.data || [] : []
   attachments.value = a.status === 'fulfilled' ? a.value.data || [] : []
@@ -633,6 +662,11 @@ watch(
       scrollOnOpen = true
       loadDetail()
     } else {
+      // Invalidate the load in flight: closing is not a new load, so nothing else
+      // bumps the token, and the answer would otherwise repopulate the form of
+      // whatever task is opened next.
+      loadSeq++
+      loading.value = false
       // Closing the panel drops any open reply/edit composer (the subtree stays
       // mounted, so it wouldn't clear itself).
       commentsTab.value?.resetComposers?.()
@@ -803,14 +837,16 @@ const glTemplate = ref(null)
 const glTemplateOptions = computed(() =>
   glTemplates.value.map((t) => ({ label: t.name, value: t.name })),
 )
-async function loadGlTemplates() {
+async function loadGlTemplates(mine) {
   glTemplates.value = []
   glTemplate.value = null
   if (!gitlabFetchTemplates.value || !wsId.value) return
   try {
     const res = await glApi.issueTemplates(wsId.value, gitlabIntegrationId.value)
+    if (mine !== loadSeq) return
     glTemplates.value = res.data || []
   } catch {
+    if (mine !== loadSeq) return
     glTemplates.value = []
   }
 }
