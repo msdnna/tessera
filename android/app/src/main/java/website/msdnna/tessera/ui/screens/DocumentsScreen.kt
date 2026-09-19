@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import website.msdnna.tessera.R
@@ -52,12 +53,14 @@ import website.msdnna.tessera.ui.components.DocEditorController
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.screens.documents.DOC_EXIT_WAIT_MS
 import website.msdnna.tessera.ui.screens.documents.DocAction
 import website.msdnna.tessera.ui.screens.documents.DocBlockView
 import website.msdnna.tessera.ui.screens.documents.DocChrome
 import website.msdnna.tessera.ui.screens.documents.DocChromeInfo
 import website.msdnna.tessera.ui.screens.documents.DocCommentsSheet
 import website.msdnna.tessera.ui.screens.documents.DocDraft
+import website.msdnna.tessera.ui.screens.documents.DocExitGate
 import website.msdnna.tessera.ui.screens.documents.DocExportMenu
 import website.msdnna.tessera.ui.screens.documents.DocHistorySheet
 import website.msdnna.tessera.ui.screens.documents.DocLinksSheet
@@ -66,6 +69,7 @@ import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
 import website.msdnna.tessera.ui.screens.documents.DocumentEditor
 import website.msdnna.tessera.ui.screens.documents.DocumentsList
+import website.msdnna.tessera.ui.screens.documents.docActionNeedsFlush
 import website.msdnna.tessera.ui.screens.documents.docSwitchRows
 import website.msdnna.tessera.ui.screens.documents.statusLabel
 import website.msdnna.tessera.ui.theme.Tessera
@@ -127,6 +131,31 @@ fun DocumentsScreen(
     // reported up by the editor so the same menu's title can carry it.
     var tocOpen by remember { mutableStateOf(false) }
     var saveStatus by remember { mutableStateOf(DocSaveStatus.SAVED) }
+    // Every way out of the editor goes through here (#2932). Asking the page to
+    // write on the way out is not the same as the write landing, and the
+    // WebView carrying it is destroyed the frame `editing` turns false — so the
+    // action is handed to the gate and run once the page reports back.
+    val exitGate = remember { DocExitGate() }
+
+    /**
+     * Runs [exit] once the editor has finished writing, or at once if there is
+     * nothing to write — and at once, too, when no editor is up: the reader
+     * puts nothing on the server and has nothing to wait for.
+     */
+    fun leavingEditor(exit: () -> Unit) {
+        if (editing) exitGate.leave(saveStatus, editorController::save, exit) else exit()
+    }
+
+    // The wait has to end even when the page never answers — a crashed WebView,
+    // a bridge that failed to load. Text is no safer for being kept on screen,
+    // and a document nobody can leave is the worse of the two failures.
+    if (exitGate.waiting) {
+        LaunchedEffect(Unit) {
+            delay(DOC_EXIT_WAIT_MS)
+            exitGate.expire()
+        }
+    }
+
     val ctx = LocalContext.current
     // Both are read in the composition and used outside it: the share sheet is
     // shown from a callback, where `ctx.getString` would give the system's
@@ -235,58 +264,69 @@ fun DocumentsScreen(
                         rows = switchRows,
                         exportFormats = state.templates.exportFormats,
                     ),
+                    // Which actions have to wait for the write is a rule of its
+                    // own (docActionNeedsFlush), not a `save()` remembered in
+                    // each branch — two of these branches used to tear the
+                    // editor down with the last paragraph still in the air, and
+                    // two more never asked to write at all.
                     onAction = { action ->
-                        when (action) {
-                            DocAction.EDIT -> editing = true
+                        val perform: () -> Unit = {
+                            when (action) {
+                                DocAction.EDIT -> editing = true
 
-                            DocAction.READ -> {
-                                // Leaving writes first: the debounce may still
-                                // be holding the last words typed.
-                                editorController.save()
-                                editing = false
-                                vm.refreshOpen()
+                                DocAction.READ -> {
+                                    editing = false
+                                    vm.refreshOpen()
+                                }
+
+                                DocAction.LIST -> {
+                                    editing = false
+                                    vm.close()
+                                }
+
+                                DocAction.COMMENTS -> vm.openComments()
+
+                                DocAction.LINKS -> vm.openLinks()
+
+                                // The journal compares against what the server
+                                // holds, so it is opened after the write and
+                                // not before: a rollback picked from a stale
+                                // journal drops the last sentence typed.
+                                DocAction.HISTORY -> vm.openHistory()
+
+                                DocAction.TOC -> tocOpen = true
+
+                                DocAction.NESTED -> draft = DocDraft.Nested
+
+                                // Drilling into the children closes the open
+                                // document, which releases the editor with it.
+                                DocAction.CHILDREN -> vm.drillInto(doc)
+
+                                DocAction.RENAME -> draft = DocDraft.Rename(doc.title)
+
+                                DocAction.REMOVE -> draft = DocDraft.Remove(state.openChildCount)
                             }
-
-                            DocAction.LIST -> {
-                                editing = false
-                                vm.close()
-                            }
-
-                            DocAction.COMMENTS -> vm.openComments()
-
-                            DocAction.LINKS -> vm.openLinks()
-
-                            // Whatever is still in the debounce is written
-                            // before the journal opens, or the entry it
-                            // compares against would be a minute old — and a
-                            // rollback picked from a stale journal drops the
-                            // last sentence typed.
-                            DocAction.HISTORY -> {
-                                if (editing) editorController.save()
-                                vm.openHistory()
-                            }
-
-                            DocAction.TOC -> tocOpen = true
-
-                            DocAction.NESTED -> draft = DocDraft.Nested
-
-                            DocAction.CHILDREN -> vm.drillInto(doc)
-
-                            DocAction.RENAME -> draft = DocDraft.Rename(doc.title)
-
-                            DocAction.REMOVE -> draft = DocDraft.Remove(state.openChildCount)
+                        }
+                        if (docActionNeedsFlush(action)) leavingEditor(perform) else perform()
+                    },
+                    // The file is built by the server from what the server
+                    // holds, so the export waits like the journal does — the
+                    // alternative is a .docx missing the paragraph that was
+                    // being typed when the menu was opened.
+                    onExport = { format ->
+                        leavingEditor {
+                            vm.exportOpen(
+                                cacheDir = ctx.cacheDir,
+                                format = format,
+                                fileName = docExportFileName(doc.title, format, exportFallbackName),
+                            ) { file -> shareExportedFile(ctx, file, res.getString(R.string.docs_export_share, file.name)) }
                         }
                     },
-                    onExport = { format ->
-                        vm.exportOpen(
-                            cacheDir = ctx.cacheDir,
-                            format = format,
-                            fileName = docExportFileName(doc.title, format, exportFallbackName),
-                        ) { file -> shareExportedFile(ctx, file, res.getString(R.string.docs_export_share, file.name)) }
-                    },
                     onSwitch = { row ->
-                        editing = false
-                        vm.switchTo(row.id)
+                        leavingEditor {
+                            editing = false
+                            vm.switchTo(row.id)
+                        }
                     },
                     onRemoveRow = { row -> vm.removeDocument(row.id) },
                 )
@@ -343,7 +383,12 @@ fun DocumentsScreen(
                 controller = editorController,
                 // The bar showing it belongs to the shell now, so the status is
                 // reported out rather than drawn here.
-                onStatus = { saveStatus = it },
+                // The gate is told before the bar is: an exit waiting on this
+                // page is what turns the page's answer into leaving.
+                onStatus = {
+                    saveStatus = it
+                    exitGate.onStatus(it)
+                },
                 // Handed over once the page says it is up: the bridge is
                 // installed on mount, and calling into it before that is a
                 // no-op that would lose the import silently.
@@ -352,9 +397,11 @@ fun DocumentsScreen(
                 onComments = { target -> vm.openComments(target) },
                 onLinks = { target -> vm.openLinks(target) },
                 onClose = {
-                    editing = false
-                    // The reader under it is showing the text from before the edit.
-                    vm.refreshOpen()
+                    leavingEditor {
+                        editing = false
+                        // The reader under it is showing the text from before the edit.
+                        vm.refreshOpen()
+                    }
                 },
             )
         }
