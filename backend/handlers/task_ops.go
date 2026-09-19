@@ -576,6 +576,48 @@ func (h *API) journalMilestone(c *gin.Context, taskID uuid.UUID, before, after *
 	}
 }
 
+// milestonesLostToBoard names the tasks of a subtree whose milestone the move
+// onto targetBoard is about to drop, and the title each one loses. Call it from
+// inside the move's transaction, with its tx-bound Queries, BEFORE the update:
+// afterwards the task no longer holds the id the title is reachable through.
+//
+// It reads, it does not unpin. A milestone hangs off a PROJECT while a task moves
+// between boards by WORKSPACE, so the three statements a cross-board move runs —
+// TransferTask, SetTaskParent, MoveSubtreeToBoard — each clear milestone_id
+// themselves when the target board stands in another project (#2932, the split
+// that let «Этапы» keep counting a task its own board no longer holds).
+//
+// What they do not do is say so. The journal pair milestone / milestone_removed
+// came later, and a move is the one way a stage comes off a task without anybody
+// asking: the reader drags a card to another project's board and its «Этап»
+// silently empties, with the History — the thing that pair exists for — showing
+// only that it moved. Everything else that clears a field on the way past leaves
+// the same entry a deliberate change would (reopened on a transfer out of a done
+// column, untagged, attachment_removed), and this is the gap in that row.
+//
+// The GitLab sync is deliberately left alone: no override mark, no write-back. A
+// board move inside Tessera is not a statement about the issue, and pushing
+// "milestone removed" to a live GitLab issue because a card changed boards would
+// be the larger surprise — nor does this change what the move already did.
+func (h *API) milestonesLostToBoard(c *gin.Context, q *db.Queries, rootID, targetBoard uuid.UUID) ([]db.SubtreeMilestonesOffProjectRow, error) {
+	project, err := q.ProjectIDForBoard(c, targetBoard)
+	if err != nil {
+		return nil, err
+	}
+	return q.SubtreeMilestonesOffProject(c, db.SubtreeMilestonesOffProjectParams{
+		RootID: rootID, ProjectID: project,
+	})
+}
+
+// journalLostMilestones records a milestone_removed entry per row
+// milestonesLostToBoard returned. Outside the transaction, like every other
+// journal write a move makes (TransferTask's reopened list does the same).
+func (h *API) journalLostMilestones(c *gin.Context, rows []db.SubtreeMilestonesOffProjectRow) {
+	for _, r := range rows {
+		h.logEvent(c, r.ID, "milestone_removed", map[string]any{"title": r.Title})
+	}
+}
+
 // ── relations ──────────────────────────────────────────────────
 
 // applyRelation links two tasks, journalling both sides so the link shows in the
@@ -748,7 +790,18 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 	// once that board or column is deleted (both foreign keys are ON DELETE
 	// CASCADE). One transaction, so a crash cannot split the tree across boards.
 	var updated db.Task
+	var lostMilestones []db.SubtreeMilestonesOffProjectRow
 	if err := h.inTx(c, func(q *db.Queries) error {
+		// The adopted board may belong to another project, in which case the two
+		// statements below drop the subtree's milestones — read what they take
+		// while it is still readable (see milestonesLostToBoard). Same board, same
+		// project: nothing to lose.
+		if boardID != t.BoardID {
+			var err error
+			if lostMilestones, err = h.milestonesLostToBoard(c, q, t.ID, boardID); err != nil {
+				return err
+			}
+		}
 		var err error
 		updated, err = q.SetTaskParent(c, db.SetTaskParentParams{
 			ID: t.ID, ParentID: parentID, BoardID: boardID, ColumnID: columnID, Position: position,
@@ -764,6 +817,7 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 	}); err != nil {
 		return t, err
 	}
+	h.journalLostMilestones(c, lostMilestones)
 	// Mirror the move in GitLab's hierarchy (#2592). Re-parenting to a different parent
 	// is one attach: workItemUpdate replaces the parent, so an explicit detach first
 	// would only produce a window where the child hangs at top-level.

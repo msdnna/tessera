@@ -90,3 +90,33 @@ WHERE milestone_id IS NOT NULL
       IS DISTINCT FROM
       (SELECT p.workspace_id FROM milestones m JOIN projects p ON p.id = m.project_id
        WHERE m.id = tasks.milestone_id);
+
+-- SubtreeMilestonesOffProject names every task of a subtree (the root included)
+-- that is about to lose its milestone to a move onto a board of @project_id,
+-- together with the title it loses. The unpinning itself is done by the move —
+-- TransferTask, MoveSubtreeToBoard and SetTaskParent each carry the same
+-- project_id CASE, because a milestone hangs off a project and a task moves
+-- between boards by workspace. This query exists so the change can be JOURNALLED:
+-- it must run inside the move's transaction and BEFORE it, since afterwards the
+-- task no longer holds the id the title is reachable through.
+--
+-- The condition is deliberately the same shape as the CASE in those three, so a
+-- future change to one is a visible difference here rather than a journal that
+-- quietly stops matching what happened. `IS DISTINCT FROM` is what the CASE's
+-- `IS NOT DISTINCT FROM` keeps, negated: the join to `milestones` already
+-- restricts this to tasks that actually carry one.
+--
+-- The walk carries ids only and the condition is read back off `tasks`: sqlc
+-- resolves a recursive CTE's own columns nowhere but its select list (the same
+-- corner ReopenSubtreeLeavingDone and TaskAncestorIDs note).
+-- name: SubtreeMilestonesOffProject :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = @root_id
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+SELECT t.id, m.title
+FROM tasks t
+JOIN milestones m ON m.id = t.milestone_id
+WHERE t.id IN (SELECT down.id FROM down)
+  AND m.project_id IS DISTINCT FROM @project_id;

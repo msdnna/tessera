@@ -569,7 +569,18 @@ func (h *API) TransferTask(c *gin.Context) {
 	// together — otherwise a crash strands subtasks on the old board.
 	var updated db.Task
 	var reopened []uuid.UUID
+	var lostMilestones []db.SubtreeMilestonesOffProjectRow
 	if err := h.inTx(c, func(q *db.Queries) error {
+		// The target board may stand in another project, in which case the transfer
+		// drops the subtree's milestones on its way past — read what it takes while
+		// it is still readable (see milestonesLostToBoard). A transfer within the
+		// same board is a column change and crosses nothing.
+		if req.BoardID != t.BoardID {
+			var err error
+			if lostMilestones, err = h.milestonesLostToBoard(c, q, id, req.BoardID); err != nil {
+				return err
+			}
+		}
 		// Before the two moves below: the reopen condition is the column the task
 		// is leaving, which they are about to overwrite.
 		if leavingDone != nil {
@@ -594,6 +605,7 @@ func (h *API) TransferTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	h.journalLostMilestones(c, lostMilestones)
 	// Same trail an in-board reopen leaves: a journal entry per task, and the
 	// completion mirrored to GitLab (the outbox drops the ones with no issue).
 	actor := middleware.CurrentUser(c)
