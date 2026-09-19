@@ -2,6 +2,7 @@ import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import {
   DAY_MS,
   startOfDay,
+  dayStartOf,
   parseDate,
   spanOf,
   tierFor,
@@ -129,7 +130,10 @@ export function useChartTimeline({
     return { start: startOfDay(lo), days }
   })
   const axisW = computed(() => range.value.days * dayW.value)
-  const dayIndex = (ms) => Math.round((startOfDay(ms) - range.value.start) / DAY_MS)
+  // `dayStartOf`, not `startOfDay`: callers pass stored dates (milestone due
+  // dates), and an all-day one names a calendar date that has to be read in UTC.
+  // Local midnights — todayMs — come out identical either way.
+  const dayIndex = (ms) => Math.round((dayStartOf(ms) - range.value.start) / DAY_MS)
 
   // Axis header bands. Months always show; the second band is per-day (days/hours
   // tiers) or per-week (weeks tier); the hours tier adds an hour-tick row.

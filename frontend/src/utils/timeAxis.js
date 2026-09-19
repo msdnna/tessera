@@ -52,6 +52,23 @@ export function isAllDayMs(ms) {
   return d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0
 }
 
+// The axis day a STORED date belongs to, as the local midnight that day's column
+// starts at — the value-side counterpart of startOfDay.
+//
+// Not startOfDay for everything, because an all-day value names a calendar DATE,
+// not a moment: milestones are written as pure UTC midnight (utils/milestones
+// toDateOnlyISO) and GitLab hands over "2006-01-02" the same way (client.go
+// parseDate). Reading that instant in the browser zone is only harmless east of
+// UTC — west of it, UTC midnight is the EVENING OF THE DAY BEFORE, so startOfDay
+// returns the previous local day and the marker/bar lands 24h early while the
+// label beside it says the right date (format.js zoneOf reads date-only in UTC).
+// Timed values keep their local reading: for them the clock time is the point.
+export const dayStartOf = (ms) => {
+  const d = new Date(ms)
+  if (!isAllDayMs(ms)) return startOfDay(ms)
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime()
+}
+
 // Parse a serialised task date to epoch ms; null/'' → null (an unset endpoint).
 export const parseDate = (s) => (s ? Date.parse(s) : null)
 
@@ -62,7 +79,7 @@ export function spanOf(t) {
   const d = parseDate(t.due_date)
   const a = s ?? d
   const b = d ?? s
-  return { a: startOfDay(a), b: startOfDay(b), hasStart: s != null, hasDue: d != null }
+  return { a: dayStartOf(a), b: dayStartOf(b), hasStart: s != null, hasDue: d != null }
 }
 
 // Zoom tier from the current px-per-day. Thresholds tuned by feel:
@@ -91,8 +108,8 @@ export function barSpan({ start, due, tier, rangeStart, dayW, minW = 6 }) {
   const dMs = due ?? start
   if (sMs == null) return null
   const honor = tier === 'hours'
-  const leftMs = honor && !isAllDayMs(sMs) ? sMs : startOfDay(sMs)
-  const rightMs = honor && !isAllDayMs(dMs) ? dMs : startOfDay(dMs) + DAY_MS
+  const leftMs = honor && !isAllDayMs(sMs) ? sMs : dayStartOf(sMs)
+  const rightMs = honor && !isAllDayMs(dMs) ? dMs : dayStartOf(dMs) + DAY_MS
   const left = xAt(leftMs, rangeStart, dayW)
   return {
     left,
@@ -106,7 +123,7 @@ export function barSpan({ start, due, tier, rangeStart, dayW, minW = 6 }) {
 // Left edge (epoch ms) a bar/ghost anchors to — honours the start's clock time in the
 // hours tier, else the day start. Used so the estimate ghost lines up with the bar.
 export function anchorMs(startMs, tier) {
-  return tier === 'hours' && !isAllDayMs(startMs) ? startMs : startOfDay(startMs)
+  return tier === 'hours' && !isAllDayMs(startMs) ? startMs : dayStartOf(startMs)
 }
 
 // Day cells for the day/hours band. `fmt` is a formatter set from useFormat();
