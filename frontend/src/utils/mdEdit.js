@@ -167,6 +167,14 @@ function listItem(line) {
   return null
 }
 
+// fenceLinesBefore counts the fence delimiters above lineStart. A ``` line is an
+// *opening* fence only when an even number precedes it; with an odd count the
+// line is the delimiter that closes the block above — and the two look identical
+// to the regex below, so this parity is the only thing telling them apart.
+function fenceLinesBefore(value, lineStart) {
+  return (value.slice(0, lineStart).match(/(^|\n)[ \t]*`{3,}/g) || []).length
+}
+
 // handleEnter returns the next state for a plain Enter at a collapsed caret, or
 // null to let the browser insert an ordinary newline. It covers two cases:
 //   • an opening ``` fence with nothing closing it below → drop a closing fence
@@ -176,10 +184,13 @@ function listItem(line) {
 export function handleEnter(value, caret) {
   const v = String(value)
   const line = currentLine(v, caret)
-  // Code fence: only when the caret sits at the end of the opening line and no
-  // fence closes it further down.
+  // Code fence: only when the caret sits at the end of the line, the line opens
+  // a block rather than closing one, and no fence closes it further down.
+  // Without the parity check, Enter at the end of a just-closed block appended a
+  // third fence — an unpaired opener that swallows the rest of the document into
+  // a code block in the preview.
   const fence = line.text.match(/^(\s*)(`{3,})([^`]*)$/)
-  if (fence && caret === line.end) {
+  if (fence && caret === line.end && fenceLinesBefore(v, line.start) % 2 === 0) {
     const closedBelow = /(^|\n)[ \t]*`{3,}/.test(v.slice(line.end))
     if (!closedBelow) {
       const indent = fence[1]
@@ -190,6 +201,13 @@ export function handleEnter(value, caret) {
   }
   const item = listItem(line.text)
   if (!item) return null
+  // The marker is only carried when the caret already sits in the item's own
+  // content. With the caret still inside the marker — Home then Enter to open a
+  // line above is the everyday way to get there — the marker was copied onto the
+  // text it was still attached to: "|- foo" came back as "- - foo",
+  // "|1. foo" as "2. 1. foo", and on a nested item the indent was split too.
+  const contentAt = line.start + line.text.length - item.content.length
+  if (caret < contentAt) return null
   // Empty item → end the list: clear the marker line, leave the caret on it.
   if (item.content.trim() === '') {
     return { value: v.slice(0, line.start) + v.slice(line.end), start: line.start, end: line.start }
