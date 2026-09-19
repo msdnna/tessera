@@ -40,6 +40,7 @@ import { glAssigneesOf, glPickerMembers } from '@/utils/assignees'
 import { isTaskOverdue } from '@/utils/taskFilter'
 import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
+import PopMenu from '../PopMenu.vue'
 import UserAvatar from '../UserAvatar.vue'
 import DueEditor from '../DueEditor.vue'
 import RichContent from '../RichContent.vue'
@@ -445,7 +446,7 @@ async function toggleGlAssignee(m) {
           }}</span>
         </button>
       </template>
-      <div class="menu">
+      <PopMenu>
         <div
           v-for="o in priorityOptions"
           :key="o.value"
@@ -455,7 +456,7 @@ async function toggleGlAssignee(m) {
           <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
           {{ o.label }}
         </div>
-      </div>
+      </PopMenu>
     </n-popover>
 
     <!-- due date: opens the calendar directly -->
@@ -683,7 +684,7 @@ async function toggleGlAssignee(m) {
           </div>
         </n-popover>
       </template>
-      <div class="menu tagmenu">
+      <PopMenu class="tagmenu">
         <div class="chip-groups">
           <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
             <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
@@ -725,7 +726,7 @@ async function toggleGlAssignee(m) {
           @keyup.enter="createTag"
           @click.stop
         />
-      </div>
+      </PopMenu>
     </n-popover>
 
     <!-- author + assignees merged into one overlapping avatar group: the
@@ -808,7 +809,7 @@ async function toggleGlAssignee(m) {
             </div>
           </n-tooltip>
         </template>
-        <div class="menu assignee-menu">
+        <PopMenu class="assignee-menu">
           <n-input
             v-model:value="assigneeQuery"
             size="tiny"
@@ -852,7 +853,7 @@ async function toggleGlAssignee(m) {
               {{ t('task.people.noMatches') }}
             </div>
           </div>
-        </div>
+        </PopMenu>
       </n-popover>
     </div>
   </div>

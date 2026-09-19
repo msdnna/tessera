@@ -28,6 +28,9 @@
   max-width: 190px;
   border: 1px solid var(--t-border);
   background: var(--t-surface-alt);
+  /* The chip is a <button> wherever it opens the column menu (#2932) — inherit
+     the font so it doesn't fall back to the UA's. */
+  font-family: inherit;
 }
 .col-chip > span:last-child {
   overflow: hidden;

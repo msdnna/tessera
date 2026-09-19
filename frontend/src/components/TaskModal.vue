@@ -63,13 +63,7 @@ import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { resolvedTimezone } from '@/utils/format'
 import { useFormat } from '@/composables/useFormat'
-import {
-  sortedColumns,
-  columnById,
-  nextColumn,
-  doneTarget,
-  moveNeighbors,
-} from '@/utils/status'
+import { sortedColumns, columnById, nextColumn, doneTarget, moveNeighbors } from '@/utils/status'
 import { columnName } from '@/utils/defaultNames'
 import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
@@ -95,6 +89,7 @@ import {
 import { useThemeStore } from '@/stores/theme'
 import { useTagFit } from '@/composables/useTagFit'
 import DueEditor from './DueEditor.vue'
+import PopMenu from './PopMenu.vue'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
@@ -1099,14 +1094,16 @@ async function onSubtaskChanged() {
                  slot empty and threw during render, white-screening the modal. -->
             <n-popover v-if="breadcrumb.length" trigger="click" placement="bottom-start">
               <template #trigger>
-                <div class="crumbs" :title="t('task.head.moveTitle')">
+                <!-- A button, not a div: the breadcrumb is the «move to another
+                     board» trigger, so it has to be tabbable (#2932). -->
+                <button type="button" class="crumbs" :title="t('task.head.moveTitle')">
                   <template v-for="(c, i) in breadcrumb" :key="i">
                     <span class="crumb">{{ c }}</span>
                     <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
                   </template>
-                </div>
+                </button>
               </template>
-              <div class="menu move-menu">
+              <PopMenu class="move-menu">
                 <div class="move-hint">{{ t('task.head.moveHint') }}</div>
                 <div v-for="p in store.projects" :key="p.id" class="move-proj">
                   <div class="menu-item" @click="toggleProj(p.id)">
@@ -1127,7 +1124,7 @@ async function onSubtaskChanged() {
                     }}</span>
                   </div>
                 </div>
-              </div>
+              </PopMenu>
             </n-popover>
             <span class="head-right">
               <span v-if="task?.number" class="tnum">#{{ task.number }}</span>
@@ -1212,7 +1209,7 @@ async function onSubtaskChanged() {
                       {{ priorityLabel(priority) }}
                     </button>
                   </template>
-                  <div class="menu">
+                  <PopMenu>
                     <div
                       v-for="o in priorityOptions"
                       :key="o.value"
@@ -1225,7 +1222,7 @@ async function onSubtaskChanged() {
                       />
                       {{ o.label }}
                     </div>
-                  </div>
+                  </PopMenu>
                 </n-popover>
               </div>
 
@@ -1282,7 +1279,7 @@ async function onSubtaskChanged() {
                     </button>
                   </template>
                   <div class="est-pop">
-                    <div v-if="estOptions.length" class="menu est-menu">
+                    <PopMenu v-if="estOptions.length" class="est-menu">
                       <div class="menu-item" @click="clearEstimate">
                         <span class="grow muted">{{ t('task.value.estimateUnset') }}</span>
                         <n-icon v-if="estimate == null" :component="CheckmarkOutline" class="chk" />
@@ -1300,7 +1297,7 @@ async function onSubtaskChanged() {
                           class="chk"
                         />
                       </div>
-                    </div>
+                    </PopMenu>
                     <div v-else class="est-edit">
                       <n-input
                         v-model:value="estInput"
@@ -1345,7 +1342,7 @@ async function onSubtaskChanged() {
                     </button>
                   </template>
                   <div class="ms-pop">
-                    <div class="menu ms-menu">
+                    <PopMenu class="ms-menu">
                       <div class="menu-item" @click="setMilestone(null)">
                         <span class="grow muted">{{ t('task.value.milestoneUnset') }}</span>
                         <n-icon
@@ -1372,7 +1369,7 @@ async function onSubtaskChanged() {
                           class="chk"
                         />
                       </div>
-                    </div>
+                    </PopMenu>
                     <div class="ms-new">
                       <n-input
                         v-model:value="newMilestoneTitle"
@@ -1448,7 +1445,7 @@ async function onSubtaskChanged() {
                       }}</span>
                     </button>
                   </template>
-                  <div class="menu">
+                  <PopMenu>
                     <div
                       v-for="m in members"
                       :key="m.user_id"
@@ -1484,7 +1481,7 @@ async function onSubtaskChanged() {
                         />
                       </div>
                     </template>
-                  </div>
+                  </PopMenu>
                 </n-popover>
               </div>
 
@@ -1532,7 +1529,7 @@ async function onSubtaskChanged() {
                       <span v-else class="muted">{{ t('task.value.tagsNone') }}</span>
                     </button>
                   </template>
-                  <div class="menu">
+                  <PopMenu>
                     <div class="chip-groups">
                       <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
                         <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
@@ -1573,7 +1570,7 @@ async function onSubtaskChanged() {
                       :placeholder="t('task.tags.newPlaceholder')"
                       @keyup.enter="createTag"
                     />
-                  </div>
+                  </PopMenu>
                 </n-popover>
               </div>
 
@@ -1596,7 +1593,7 @@ async function onSubtaskChanged() {
                         <span>{{ columnName(currentColumn) || t('task.value.columnNone') }}</span>
                       </button>
                     </template>
-                    <div class="menu pmenu">
+                    <PopMenu class="pmenu">
                       <div
                         v-for="c in sortedCols"
                         :key="c.id"
@@ -1607,7 +1604,7 @@ async function onSubtaskChanged() {
                         <span class="col-dot" :style="{ background: c.color }" />
                         <span>{{ columnName(c) }}</span>
                       </div>
-                    </div>
+                    </PopMenu>
                   </n-popover>
                   <span v-else class="val col-chip static">
                     <span class="col-dot" :style="{ background: currentColumn?.color }" />
@@ -1666,7 +1663,7 @@ async function onSubtaskChanged() {
                       <span class="muted">{{ t('task.parent.makeSubtask') }}</span>
                     </button>
                   </template>
-                  <div class="menu pmenu">
+                  <PopMenu class="pmenu">
                     <div
                       v-for="cand in parentCandidates"
                       :key="cand.id"
@@ -1678,7 +1675,7 @@ async function onSubtaskChanged() {
                     <span v-if="!parentCandidates.length" class="muted small">{{
                       t('task.parent.noCandidates')
                     }}</span>
-                  </div>
+                  </PopMenu>
                 </n-popover>
               </div>
 
@@ -2337,6 +2334,11 @@ async function onSubtaskChanged() {
   cursor: pointer;
   padding: 2px 4px;
   border-radius: 6px;
+  /* It became a <button> for keyboard reach (#2932) — strip the UA chrome. */
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: left;
 }
 .crumbs:hover {
   background: var(--t-hover);
