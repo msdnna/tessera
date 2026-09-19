@@ -242,10 +242,13 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 			p = defaultPrefs(n.UserID)
 		}
 		now := time.Now()
-		qEnd, inQuiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, now)
-		if !inQuiet {
-			qEnd = time.Time{}
+		// Asked about an arbitrary instant, not just now: a digest slot is a future
+		// time, and whether *it* falls inside the window is what decides when the
+		// digest may go out (see digestSlot).
+		quietAt := func(t time.Time) (time.Time, bool) {
+			return quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, t)
 		}
+		_, inQuiet := quietAt(now)
 		var deviceTargets []string
 		for _, chID := range r.ChannelIds {
 			ch, ok := chByID[chID]
@@ -271,7 +274,7 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 				}
 				continue
 			}
-			next, group := digestSlot(now, qEnd, p.DigestMinutes, chID)
+			next, group := digestSlot(now, quietAt, p.DigestMinutes, chID)
 			soft(ctx, "CreateNotificationDeliveryAt", h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
 				NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next, DigestGroup: group,
 			}))
@@ -282,8 +285,9 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 }
 
 // digestSlot decides when an outbox row for chID may be sent and which digest
-// group it joins. quietEnd is the zero time outside quiet hours; digestMinutes
-// <= 0 means the user wants no digest.
+// group it joins. quietAt reports the quiet window covering an instant (the end
+// of it, and whether the instant is inside at all); digestMinutes <= 0 means the
+// user wants no digest.
 //
 // The digest window is a slot on a fixed grid, not a per-notification timer. Only
 // rows that one drain tick claims together are ever combined (drainDeliveries
@@ -297,10 +301,10 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 // Quiet hours move the anchor, not the grid: a window that would release a
 // delivery mid-quiet is pushed to the first slot after the window ends, where the
 // whole released burst meets.
-func digestSlot(now, quietEnd time.Time, digestMinutes int32, chID uuid.UUID) (time.Time, string) {
+func digestSlot(now time.Time, quietAt quietFn, digestMinutes int32, chID uuid.UUID) (time.Time, string) {
 	anchor := now
-	if quietEnd.After(anchor) {
-		anchor = quietEnd
+	if qEnd, inQuiet := quietAt(now); inQuiet {
+		anchor = qEnd
 	}
 	if digestMinutes <= 0 {
 		return anchor, ""
@@ -310,8 +314,32 @@ func digestSlot(now, quietEnd time.Time, digestMinutes int32, chID uuid.UUID) (t
 	// an anchor sitting exactly on one still owes its window a chance to fill.
 	window := time.Duration(digestMinutes) * time.Minute
 	end := anchor.Truncate(window).Add(window)
+	// The slot the burst waits for can itself fall inside quiet hours even though
+	// none of its notifications did — a mention at 21:40 with an hourly digest and
+	// a window opening at 22:00 comes due at exactly 22:00. Without the digest that
+	// same mention would have been e-mailed at 21:40, while it was still allowed;
+	// the batching then turns an allowed delivery into a nightly one, which is the
+	// single thing quiet hours are set for. So the slot is checked too, not just
+	// the arrival, and a quiet one is re-anchored to the window's end.
+	if qEnd, inQuiet := quietAt(end); inQuiet {
+		end = qEnd.Truncate(window).Add(window)
+		// A quiet range wider than the grid leaves no free slot to move to (quiet
+		// 00:10–00:00 has one non-quiet instant in the whole day). Fall back to the
+		// anchor, which is a permitted instant by construction — either an arrival
+		// outside the window, or the moment one ends. That costs the batching in a
+		// configuration where no two rows could have shared a slot anyway; being
+		// late at night is the thing worth avoiding, not being uncombined.
+		if _, stillQuiet := quietAt(end); stillQuiet {
+			end = anchor
+		}
+	}
 	return end, fmt.Sprintf("%s:%d", chID, end.Unix())
 }
+
+// quietFn reports the quiet window covering an instant: when it ends, and whether
+// the instant is inside one at all. Bound to a user's prefs by routeNotification;
+// quietWindow is the implementation.
+type quietFn func(time.Time) (time.Time, bool)
 
 // deviceIDOf extracts the stable device id from a device channel's config.
 func deviceIDOf(ch db.NotificationChannel) string { return channelCfgString(ch, "device_id") }
