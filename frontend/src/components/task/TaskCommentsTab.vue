@@ -195,6 +195,23 @@ let cmdTimer = null
 function commandTz() {
   return resolvedTimezone(theme.timezone)
 }
+// ── the task can change under this subtree ──
+// The modal is never remounted: it swaps `taskId` in place (a subtask row, a
+// relation, the «Родитель» link, an activity toast, ?task= in the URL), and this
+// tab stays mounted across the swap — resetComposers below exists for exactly
+// that. So every request here has to name the task it was started for and stop
+// short of the screen if the reader has moved on. Two different mistakes were
+// possible, and both were live:
+//   • the request ADDRESS read after an await — the offline retry keeps a draft
+//     for up to 17s, and resending it took `props.taskId`, i.e. posted the text
+//     into whatever task was open by then. Silent: no error, the comment simply
+//     lands in someone else's thread.
+//   • the ANSWER applied after an await — the left task's thread published
+//     through `update:comments` (the modal owns the list) or its command summary
+//     reloading the task now on screen.
+// `tid` is captured before the first await, used for every call, and re-checked
+// before anything reaches the UI (same idiom as SearchBar/TaskModal/BoardView).
+const isCurrent = (tid) => tid === props.taskId
 // Dry-run the draft against the backend's parser (debounced) instead of
 // re-implementing it here: the hint can never disagree with what will happen.
 watch(newComment, (body) => {
@@ -204,12 +221,15 @@ watch(newComment, (body) => {
     cmdCustom.value = []
     return
   }
+  const tid = props.taskId
   cmdTimer = setTimeout(async () => {
     try {
-      const res = await tasksApi.previewCommands(props.taskId, body, commandTz())
+      const res = await tasksApi.previewCommands(tid, body, commandTz())
+      if (!isCurrent(tid)) return
       cmdPreview.value = res.data?.commands || []
       cmdCustom.value = res.data?.custom || []
     } catch {
+      if (!isCurrent(tid)) return
       cmdPreview.value = []
       cmdCustom.value = []
     }
@@ -298,27 +318,36 @@ async function postComment() {
   const body = newComment.value.trim()
   if (!body || posting.value) return
   const mentions = commentEditor.value?.getMentions?.() || []
+  const tid = props.taskId
   posting.value = true
   try {
     // attempt 0 is the initial send; 1..N are retries, each preceded by its backoff.
     for (let attempt = 0; attempt <= RETRY_BACKOFFS.length; attempt++) {
       try {
-        const res = await tasksApi.addComment(props.taskId, body, mentions, null, commandTz())
+        const res = await tasksApi.addComment(tid, body, mentions, null, commandTz())
         retryInfo.value = null
+        // The text went out, so the composer is cleared even if another task is on
+        // screen by now — leaving the draft would invite sending it a second time,
+        // into that other task.
         newComment.value = ''
         commentEditor.value?.clear?.()
         cmdPreview.value = []
-        const c = await tasksApi.comments(props.taskId)
+        const c = await tasksApi.comments(tid)
+        // What happened is reported either way — the toast names the task's own
+        // result, and the board still has to hear that that task changed. Only the
+        // two screen-level effects are skipped once the reader has moved on: the
+        // thread would replace the open task's list, and reload-detail would
+        // re-fetch a task no command touched.
+        const summary = res.data?.command_summary
+        const ranCommands = summary?.applied?.length || summary?.errors?.length
+        if (ranCommands) reportCommands(summary)
+        emit('changed')
+        if (!isCurrent(tid)) return
         emit('update:comments', c.data || [])
         // Quick actions changed the task itself (assignees, column, dates…), and a
         // command-only comment produces no comment row at all — reload the detail so
         // the modal shows the result rather than the pre-command state.
-        const summary = res.data?.command_summary
-        if (summary?.applied?.length || summary?.errors?.length) {
-          emit('reload-detail')
-          reportCommands(summary)
-        }
-        emit('changed')
+        if (ranCommands) emit('reload-detail')
         scrollToBottom()
         return
       } catch (e) {
@@ -349,18 +378,19 @@ async function postReply(rootId) {
   if (!body || replyingPost.value) return
   const mentions = replyEditor.value?.getMentions?.() || []
   const known = new Set((props.comments || []).map((c) => c.id))
+  const tid = props.taskId
   replyingPost.value = true
   try {
-    const res = await tasksApi.addComment(props.taskId, body, mentions, rootId, commandTz())
+    const res = await tasksApi.addComment(tid, body, mentions, rootId, commandTz())
     cancelReply()
-    const c = await tasksApi.comments(props.taskId)
-    emit('update:comments', c.data || [])
+    const c = await tasksApi.comments(tid)
     const summary = res.data?.command_summary
-    if (summary?.applied?.length || summary?.errors?.length) {
-      emit('reload-detail')
-      reportCommands(summary)
-    }
+    const ranCommands = summary?.applied?.length || summary?.errors?.length
+    if (ranCommands) reportCommands(summary)
     emit('changed')
+    if (!isCurrent(tid)) return
+    emit('update:comments', c.data || [])
+    if (ranCommands) emit('reload-detail')
     // Scroll to the reply itself, not to the end of the list.
     const fresh = (c.data || []).find((x) => !known.has(x.id))
     if (fresh) await scrollToComment(fresh.id)
@@ -404,10 +434,12 @@ async function saveComment() {
   if (props.readonly) return
   const body = editingCommentBody.value.trim()
   if (!body) return
+  const tid = props.taskId
   try {
     await tasksApi.updateComment(editingCommentId.value, body, addedMentions(body))
     editingCommentId.value = null
-    const c = await tasksApi.comments(props.taskId)
+    const c = await tasksApi.comments(tid)
+    if (!isCurrent(tid)) return
     emit('update:comments', c.data || [])
   } catch (e) {
     message.error(e.message)
@@ -422,6 +454,7 @@ async function saveComment() {
 // the thread shatters on screen, which is the outcome the promotion exists to
 // avoid. Android already re-reads here (TaskDetailViewModel.deleteComment).
 async function deleteComment(id) {
+  const tid = props.taskId
   try {
     await tasksApi.removeComment(id)
   } catch (e) {
@@ -429,11 +462,15 @@ async function deleteComment(id) {
     return
   }
   try {
-    const c = await tasksApi.comments(props.taskId)
+    const c = await tasksApi.comments(tid)
+    if (!isCurrent(tid)) return
     emit('update:comments', c.data || [])
   } catch {
     // The delete went through and only the re-read failed: drop the row locally
-    // so the list at least stops showing what is no longer there.
+    // so the list at least stops showing what is no longer there. Only while that
+    // list is still the one on screen — `props.comments` is the OPEN task's thread,
+    // and filtering it once the reader has moved on would cut a row out of it.
+    if (!isCurrent(tid)) return
     emit(
       'update:comments',
       props.comments.filter((x) => x.id !== id),
