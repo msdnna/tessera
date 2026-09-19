@@ -258,6 +258,58 @@ class ConferenceChatTest {
         assertThat(confChatUnread(messages, lastSeenId = "", meId = "me")).isEqualTo(2)
     }
 
+    // ── the anchor outliving the line it names ────────────────────────────
+
+    @Test
+    fun `a deleted anchor falls back to the newest line still there`() {
+        val previous = listOf(
+            msg("a", "1", userId = "them"),
+            msg("b", "2", userId = "them"),
+            msg("seen", "3", userId = "them"),
+            msg("new", "4", userId = "them"),
+        )
+        // The page that reports the deletion is the same page minus the line.
+        val merged = previous.filterNot { it.id == "seen" }
+
+        val anchor = confChatReanchor(previous, merged, "seen")
+
+        assertThat(anchor).isEqualTo("b")
+        // The whole point: one removed line must not badge the rail with a
+        // conversation the reader had already caught up with.
+        assertThat(confChatUnread(merged, lastSeenId = anchor, meId = "me")).isEqualTo(1)
+    }
+
+    @Test
+    fun `an anchor whose line survives is left alone`() {
+        val previous = listOf(msg("a", "1"), msg("seen", "2"), msg("new", "3"))
+
+        assertThat(confChatReanchor(previous, previous, "seen")).isEqualTo("seen")
+        // An empty anchor is a fact — the reader has been shown nothing — and
+        // re-anchoring must not invent a position for it.
+        assertThat(confChatReanchor(previous, previous, "")).isEmpty()
+    }
+
+    @Test
+    fun `nothing above the anchor survived means nothing was seen`() {
+        val previous = listOf(msg("seen", "1"), msg("b", "2"))
+        // The oldest line on screen was the anchor and it is gone: what is left
+        // arrived after it, so the badge is right to count all of it.
+        assertThat(confChatReanchor(previous, listOf(msg("b", "2")), "seen")).isEmpty()
+
+        // A page with no overlap at all replaces the list wholesale (a tunnel
+        // and fifty-one new messages) — again, none of it has been shown.
+        assertThat(confChatReanchor(previous, listOf(msg("z", "9")), "seen")).isEmpty()
+    }
+
+    @Test
+    fun `an anchor from outside the replaced list is kept`() {
+        // Nothing here says where the reader stopped, so guessing a position
+        // would be worse than keeping the id and letting it resolve later.
+        val previous = listOf(msg("a", "1"), msg("b", "2"))
+
+        assertThat(confChatReanchor(previous, previous, "elsewhere")).isEqualTo("elsewhere")
+    }
+
     @Test
     fun `an open sheet never shows a badge`() {
         val messages = listOf(msg("a", "1", userId = "them"))

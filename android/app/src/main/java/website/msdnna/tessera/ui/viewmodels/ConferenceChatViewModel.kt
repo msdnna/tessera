@@ -22,6 +22,7 @@ import website.msdnna.tessera.util.confChatCanRemove
 import website.msdnna.tessera.util.confChatCanSend
 import website.msdnna.tessera.util.confChatMergeTail
 import website.msdnna.tessera.util.confChatPrepend
+import website.msdnna.tessera.util.confChatReanchor
 import website.msdnna.tessera.util.confChatUnread
 import website.msdnna.tessera.util.errorMessage
 
@@ -148,7 +149,14 @@ class ConferenceChatViewModel(
                         // Joining a call mid-conversation is not a hundred unread
                         // messages: the history was not addressed to us, and a
                         // badge about it would be noise on every call we join.
-                        lastSeenId = if (first || s.open) merge.messages.lastOrNull()?.id.orEmpty() else s.lastSeenId,
+                        // A closed sheet keeps its anchor — but only as long as
+                        // the line it names is still there: a deletion reaches
+                        // us as a page without it (see `confChatReanchor`).
+                        lastSeenId = if (first || s.open) {
+                            merge.messages.lastOrNull()?.id.orEmpty()
+                        } else {
+                            confChatReanchor(s.messages, merge.messages, s.lastSeenId)
+                        },
                     )
                 }
             },

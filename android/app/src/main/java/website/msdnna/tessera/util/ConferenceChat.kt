@@ -196,6 +196,36 @@ fun confChatPrepend(older: List<ConferenceMessage>, current: List<ConferenceMess
 }
 
 /**
+ * Moves the unread anchor off a line that is no longer in the log.
+ *
+ * The anchor is an id, and an id only means something while its row is on
+ * screen. A message can leave: its author retracts it, or a host moderates it
+ * away, and every other phone learns about that by the next page simply not
+ * carrying it. Left alone, the anchor then resolves to nothing, «unknown anchor»
+ * means «everything is unread», and one deleted line puts a badge reading the
+ * whole conversation on a rail the reader had already caught up with.
+ *
+ * The position is still known, though, because [previous] still holds it: the
+ * newest surviving line above the vanished one was read too, so that is where
+ * the anchor lands. Nothing above it survived — the page replaced the list
+ * wholesale, which is what a tunnel and fifty-one new messages look like — and
+ * the empty anchor is then the truth: none of what is on screen was shown.
+ */
+fun confChatReanchor(previous: List<ConferenceMessage>, merged: List<ConferenceMessage>, lastSeenId: String): String {
+    if (lastSeenId.isBlank()) return lastSeenId
+    val ids = merged.mapTo(HashSet()) { it.id }
+    if (lastSeenId in ids) return lastSeenId
+    val was = previous.indexOfLast { it.id == lastSeenId }
+    // An anchor that was never in the list we are replacing says nothing about
+    // where the reader stopped; guessing from it would be worse than keeping it.
+    if (was < 0) return lastSeenId
+    for (i in was - 1 downTo 0) {
+        if (previous[i].id in ids) return previous[i].id
+    }
+    return ""
+}
+
+/**
  * How many lines have arrived that this phone has not shown.
  *
  * Counted off ids rather than off nudges (which is what the web does): the room
