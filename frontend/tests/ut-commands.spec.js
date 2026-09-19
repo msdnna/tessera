@@ -148,6 +148,14 @@ describe('hasCommandLine', () => {
     expect(hasCommandLine('просто текст')).toBe(false)
     expect(hasCommandLine('')).toBe(false)
   })
+
+  // KEY_RE (и commandKeyRe на сервере) разрешают ключ с цифры, значит «/1on1» —
+  // такая же команда словаря, как «/approve». Гейт на [a-z] молча не запрашивал
+  // для неё превью, и редактор не показывал ничего.
+  it('counts a digit-led key as a command', () => {
+    expect(hasCommandLine('/1on1')).toBe(true)
+    expect(hasCommandLine('заметка\n/2fa включить')).toBe(true)
+  })
 })
 
 // Сервер держит в quickact.byKey и ключ, и алиасы, а IsBuiltin сверяется именно

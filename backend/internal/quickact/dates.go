@@ -11,9 +11,24 @@ import (
 // relDate matches a relative offset: +3d, -2w, +1m (Russian д/н/м too).
 var relDate = regexp.MustCompile(`^([+-])(\d{1,4})\s*([dwmднм])$`)
 
+// dmyDate matches a day-first date with an optional year: 14.08.2026, 1.9,
+// 04/09/2026. Both separators are accepted in both positions because a date is
+// typed, not picked, and nobody re-reads which one the hint used.
+var dmyDate = regexp.MustCompile(`^(\d{1,2})[./](\d{1,2})(?:[./](\d{4}))?$`)
+
+// isoDate matches the ISO form, month and day unpadded too: 2026-8-14.
+var isoDate = regexp.MustCompile(`^(\d{4})-(\d{1,2})-(\d{1,2})$`)
+
 // ParseDate resolves a /due or /start argument to midnight of the target day in
 // now's location. Accepted: 2026-08-14, 14.08.2026, 14.08 (current year),
 // today/сегодня, tomorrow/завтра, yesterday/вчера, +3d, +2w, +1m.
+//
+// The numeric forms are matched by shape and re-assembled into a padded layout
+// rather than handed to time.Parse as typed: Go's "02" and "01" are fixed-width
+// and reject a single digit, so "1.9" — the ordinary way to write a date in a
+// hurry — came back as «не понимаю дату» while "01.09" worked. Padding here
+// keeps the range checking where it was (31.02 is still an error, because the
+// padded string is still parsed by time.ParseInLocation).
 //
 // Errors are user-facing: they land in the comment's command summary.
 func ParseDate(raw string, now time.Time) (time.Time, error) {
@@ -52,17 +67,36 @@ func ParseDate(raw string, now time.Time) (time.Time, error) {
 		}
 	}
 
-	for _, layout := range []string{"2006-01-02", "02.01.2006", "02/01/2006"} {
-		if t, err := time.ParseInLocation(layout, s, now.Location()); err == nil {
-			return t, nil
-		}
+	if m := isoDate.FindStringSubmatch(s); m != nil {
+		return parseYMD(m[1], m[2], m[3], now, raw)
 	}
-	// Day and month only — assume the current year.
-	if t, err := time.ParseInLocation("02.01", s, now.Location()); err == nil {
-		return time.Date(now.Year(), t.Month(), t.Day(), 0, 0, 0, 0, now.Location()), nil
+	if m := dmyDate.FindStringSubmatch(s); m != nil {
+		year := m[3]
+		if year == "" { // day and month only — assume the current year
+			year = strconv.Itoa(now.Year())
+		}
+		return parseYMD(year, m[2], m[1], now, raw)
 	}
 
 	return time.Time{}, fmt.Errorf("не понимаю дату %q", raw)
+}
+
+// parseYMD assembles the three captured numbers into the padded ISO layout and
+// lets time do the validating — so an impossible day (31.02, month 13) is still
+// the error it always was, and midnight is still midnight in now's zone.
+func parseYMD(year, month, day string, now time.Time, raw string) (time.Time, error) {
+	y, errY := strconv.Atoi(year)
+	mo, errM := strconv.Atoi(month)
+	d, errD := strconv.Atoi(day)
+	if errY != nil || errM != nil || errD != nil { // unreachable: the patterns only match digits
+		return time.Time{}, fmt.Errorf("не понимаю дату %q", raw)
+	}
+	padded := fmt.Sprintf("%04d-%02d-%02d", y, mo, d)
+	t, err := time.ParseInLocation("2006-01-02", padded, now.Location())
+	if err != nil {
+		return time.Time{}, fmt.Errorf("не понимаю дату %q", raw)
+	}
+	return t, nil
 }
 
 // addMonths steps n whole calendar months from t, clamping the day to the target

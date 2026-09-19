@@ -27,7 +27,16 @@ type Result struct {
 
 // cmdLine matches a command line: at most three leading spaces (four would be
 // an indented markdown code block), a slash, the key, then the argument.
-var cmdLine = regexp.MustCompile(`^ {0,3}/([A-Za-z][A-Za-z0-9_-]*)[ \t]*(.*)$`)
+//
+// The key may open with a digit because the workspace dictionary lets one be
+// stored (commandKeyRe in handlers/workspace_commands.go, and the editor's
+// KEY_RE mirrors it — both read `[a-z0-9]` first, and the rejection message
+// promises "латиница, цифры"). A letters-only parser made that promise false in
+// a way nothing reported: "/1on1" saved, appeared in the `/`-popup, inserted
+// itself into the comment — and then was not even recognised as a custom
+// command, so the preview could not say "recognised, does nothing". A digit-led
+// key that matches nothing still ends up where it always did, in the text.
+var cmdLine = regexp.MustCompile(`^ {0,3}/([A-Za-z0-9][A-Za-z0-9_-]*)[ \t]*(.*)$`)
 
 // fenceLine matches a markdown code fence: the marker run, then whatever
 // follows it on the line (the info string of an opening fence).

@@ -169,7 +169,18 @@ func parseDimensionless(s, raw string, cfg Estimation) (float64, error) {
 	return n, nil
 }
 
-var taskRef = regexp.MustCompile(`#?(\d{1,9})`)
+// taskRef matches a whole run of digits, not a bounded prefix of one. A capped
+// `\d{1,9}` has no right edge: the regexp engine takes the first nine digits of
+// a longer number and then matches the leftovers as a second reference, so
+// "/relate #12345678901" (a pasted id, a typo held down on the keyboard) quietly
+// linked task #123456789 *and* task #1 — and #1 exists in every workspace. The
+// length check moved into the loop below, where too many digits means "this is
+// not a task number" rather than "here are two of them".
+var taskRef = regexp.MustCompile(`#?(\d+)`)
+
+// maxTaskRefDigits bounds what can be a task number: workspace numbering is
+// sequential from 1, so nine digits is already far past any real tracker.
+const maxTaskRefDigits = 9
 
 // ParseRefs pulls task numbers out of a relation argument ("#123", "123").
 func ParseRefs(raw string) ([]int32, error) {
@@ -180,6 +191,9 @@ func ParseRefs(raw string) ([]int32, error) {
 	seen := map[int32]bool{}
 	out := make([]int32, 0, len(matches))
 	for _, m := range matches {
+		if len(m[1]) > maxTaskRefDigits {
+			continue
+		}
 		n, err := strconv.ParseInt(m[1], 10, 32)
 		if err != nil || n <= 0 {
 			continue

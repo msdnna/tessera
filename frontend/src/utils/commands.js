@@ -123,6 +123,11 @@ export function commandInsertText(item) {
 
 // hasCommandLine reports whether a body has any line that starts with a slash —
 // the cheap gate before asking the backend for a command preview.
+//
+// A digit counts as the start of a key, the same as a letter: the dictionary
+// editor stores keys matching KEY_RE above, which opens with `[a-z0-9]`, so a
+// letters-only gate skipped the preview request for "/1on1" entirely — the
+// editor showed nothing at all for a command the workspace had defined.
 export function hasCommandLine(body) {
-  return /(?:^|\n)\s*\/[a-z]/i.test(String(body || ''))
+  return /(?:^|\n)\s*\/[a-z0-9]/i.test(String(body || ''))
 }
