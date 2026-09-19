@@ -13,14 +13,51 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   const unread = computed(() => items.value.filter((n) => !n.read_at).length)
 
+  // The feed has no single caller: it is read at mount and again on every resync
+  // (see utils/shellResync.js) — which is to say, exactly while the link is
+  // flapping. So two requests can be in flight at once, and a bare assignment
+  // would leave on screen whichever one ANSWERED last rather than whichever one
+  // was ASKED last (#2932).
+  let loadSeq = 0
+  // Rows the socket delivered while a load was in flight. The server took its
+  // snapshot before them, so the answer cannot know about them — and dropping
+  // them is the loudest form of this bug: a resync raises the load, the
+  // just-restored socket delivers a mention, and the answer erases both the row
+  // and the badge. That missed-while-offline traffic is what resync exists for.
+  // Only the flights still open collect; once an answer is on screen the server
+  // knows about the row and decides for itself whether it is still in the feed.
+  const arrivals = new Set()
+
   async function load() {
+    const seq = ++loadSeq
+    const live = []
+    arrivals.add(live)
     try {
       const res = await api.list()
-      items.value = res.data || []
+      if (seq !== loadSeq) return // a later load has already been asked for
+      const rows = res.data || []
+      for (let i = live.length - 1; i >= 0; i--) {
+        if (!rows.some((x) => x.id === live[i].id)) rows.unshift(live[i])
+      }
+      items.value = rows.map(withLocalRead)
       loaded.value = true
     } catch {
       /* offline / unauthorized — leave whatever we had */
+    } finally {
+      arrivals.delete(live)
     }
+  }
+
+  // Read state only ever moves one way — nothing in the product makes a row
+  // unread again — so an optimistic mark taken while the load was in flight
+  // outranks an answer that predates it. Without this, clicking a notification
+  // at the moment of a resync puts the row (and the badge) back to unread until
+  // the next load. A refusal still rolls the row back: `restore` runs on
+  // whatever array is current by then.
+  function withLocalRead(n) {
+    if (n.read_at) return n
+    const prev = items.value.find((x) => x.id === n.id)
+    return prev?.read_at ? { ...n, read_at: prev.read_at } : n
   }
 
   // Handle a realtime "notification" event addressed to the current user.
@@ -34,6 +71,9 @@ export const useNotificationsStore = defineStore('notifications', () => {
     if (items.value.some((x) => x.id === n.id)) return
     items.value.unshift(n)
     if (items.value.length > 50) items.value.pop()
+    // Remembered for every load still in flight, whose answer was snapshotted
+    // before this row existed (see `arrivals`).
+    for (const live of arrivals) live.push(n)
   }
 
   // Raise a native OS notification when this device's id is among the event's
