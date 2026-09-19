@@ -20,8 +20,9 @@ func registerWrite(s *mcp.Server, c *client.Client) {
 	mcp.AddTool(s, &mcp.Tool{
 		Name: "tessera_add_comment",
 		Description: "Post a Markdown comment on a task or subtask. Optionally embed local image files " +
-			"(e.g. CDP test screenshots) via image_paths — they're uploaded and appended inline. Use this " +
-			"to report results, attach test evidence, or ask the user a clarifying question.",
+			"(e.g. CDP test screenshots) via image_paths — they're uploaded and embedded inline: where the " +
+			"body already has a Markdown image pointing at that file, the upload takes its place; otherwise " +
+			"it is appended. Use this to report results, attach test evidence, or ask a clarifying question.",
 	}, addComment(c))
 
 	mcp.AddTool(s, &mcp.Tool{
@@ -164,7 +165,7 @@ type addCommentInput struct {
 	WorkspaceID string   `json:"workspace_id,omitempty" jsonschema:"workspace UUID (with number) to resolve the task"`
 	Number      int64    `json:"number,omitempty" jsonschema:"the per-workspace task number, e.g. 252"`
 	Body        string   `json:"body" jsonschema:"the comment text (Markdown)"`
-	ImagePaths  []string `json:"image_paths,omitempty" jsonschema:"optional local image file paths to upload and embed inline (the MCP server process must be able to read them)"`
+	ImagePaths  []string `json:"image_paths,omitempty" jsonschema:"optional local image file paths to upload and embed inline — a Markdown image in the body already pointing at one of them is rewritten to the upload instead of duplicated (the MCP server process must be able to read the files)"`
 }
 
 type addCommentOut struct {
@@ -195,7 +196,11 @@ func addComment(c *client.Client) mcp.ToolHandlerFor[addCommentInput, addComment
 			if uerr != nil {
 				return nil, addCommentOut{}, fmt.Errorf("upload image %q: %w", p, uerr)
 			}
-			body = strings.TrimRight(body, "\n") + fmt.Sprintf("\n\n![%s](%s)", name, url)
+			if spliced, inline := embedUploadedImage(body, p, url); inline {
+				body = spliced
+			} else {
+				body = strings.TrimRight(body, "\n") + fmt.Sprintf("\n\n![%s](%s)", name, url)
+			}
 			embedded++
 		}
 
@@ -205,6 +210,56 @@ func addComment(c *client.Client) mcp.ToolHandlerFor[addCommentInput, addComment
 		}
 		return nil, addCommentOut{CommentID: cm.ID, TaskID: taskID, EmbeddedImages: embedded}, nil
 	}
+}
+
+// embedUploadedImage points the Markdown image the caller already wrote for a
+// local file at the copy that was just uploaded, and reports whether it found
+// one to point.
+//
+// image_paths was append-only, and never looked at the body it was appending
+// to. A caller that writes the picture into its own sentence — "до/после: ![до](
+// /tmp/before.png)", which is the natural way to say where a screenshot goes —
+// then shipped a comment carrying two references to the same file: its own,
+// whose target is a path on the agent's disk that no reader's browser can open,
+// and the appended one below. Every reader got a broken image on top of the real
+// one, on exactly the comments that exist to show a picture.
+//
+// The forms matched are the ones a caller writes for a file it is passing
+// alongside: the path verbatim, its cleaned form, a file:// URL, and the bare
+// basename. A bare name is safe to claim — relative to a comment it resolves
+// against the web app's own origin, so it is already broken — and matching it is
+// what makes the shorthand work at all.
+func embedUploadedImage(body, path, url string) (string, bool) {
+	if strings.TrimSpace(body) == "" {
+		return body, false
+	}
+	found := false
+	out := imageMDRe.ReplaceAllStringFunc(body, func(m string) string {
+		sub := imageMDRe.FindStringSubmatch(m)
+		if len(sub) != 3 || !imageTargetIsPath(sub[2], path) {
+			return m
+		}
+		found = true
+		alt := sub[1]
+		if strings.TrimSpace(alt) == "" {
+			alt = filepath.Base(path)
+		}
+		return fmt.Sprintf("![%s](%s)", alt, url)
+	})
+	return out, found
+}
+
+// imageTargetIsPath reports whether a Markdown image target names the local file
+// at path rather than something already on the server.
+func imageTargetIsPath(target, path string) bool {
+	target = strings.TrimPrefix(strings.TrimSpace(target), "file://")
+	if target == "" {
+		return false
+	}
+	if target == filepath.Base(path) {
+		return true
+	}
+	return filepath.Clean(target) == filepath.Clean(path)
 }
 
 // ── update_description ────────────────────────────────────────────────────────
