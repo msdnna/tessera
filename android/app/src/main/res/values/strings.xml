@@ -352,6 +352,10 @@
     <string name="task_event_moved_to">переместил(а) → «%1$s»</string>
     <string name="task_event_assigned">назначил(а) исполнителя</string>
     <string name="task_event_unassigned">снял(а) исполнителя</string>
+    <string name="task_event_tagged">навесил(а) тег</string>
+    <string name="task_event_tagged_with">навесил(а) тег «%1$s»</string>
+    <string name="task_event_untagged">снял(а) тег</string>
+    <string name="task_event_untagged_with">снял(а) тег «%1$s»</string>
     <string name="task_event_comment">оставил(а) комментарий</string>
     <string name="task_event_relation">добавил(а) связь</string>
     <string name="task_event_relation_to">добавил(а) связь с #%1$s</string>

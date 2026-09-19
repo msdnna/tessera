@@ -220,7 +220,8 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	}
 	if tags, terr := h.q.ListTaskTags(ctx, src.ID); terr == nil {
 		for _, tg := range tags {
-			soft(ctx, "AddTaskTag", h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: clone.ID, TagID: tg.ID}))
+			_, addErr := h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: clone.ID, TagID: tg.ID})
+			soft(ctx, "AddTaskTag", addErr)
 		}
 	}
 	if as, aerr := h.q.ListTaskAssignees(ctx, src.ID); aerr == nil {
@@ -256,7 +257,8 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 			// checklist, not a barer one.
 			if tags, terr := h.q.ListTaskTags(ctx, s.ID); terr == nil {
 				for _, tg := range tags {
-					soft(ctx, "AddTaskTag", h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: sub.ID, TagID: tg.ID}))
+					_, addErr := h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: sub.ID, TagID: tg.ID})
+					soft(ctx, "AddTaskTag", addErr)
 				}
 			}
 			if as, aerr := h.q.ListTaskAssignees(ctx, s.ID); aerr == nil {

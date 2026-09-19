@@ -167,6 +167,9 @@ data class TaskEventData(
     /** Number of the task on the other end of a relation. */
     @SerializedName("related") val related: Long? = null,
     @SerializedName("filename") val filename: String? = null,
+    /** Name of the tag attached/detached — `tagged`, `untagged`. Stored by name,
+     *  not by id, so history survives the tag being renamed or deleted. */
+    @SerializedName("tag") val tag: String? = null,
     @SerializedName("applied") val applied: List<String>? = null,
     @SerializedName("failed") val failed: List<String>? = null,
     /** Provider that wrote the entry — `user`/`gitlab`, see `util/Sources.kt`. */

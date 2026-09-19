@@ -40,7 +40,7 @@ class TaskJournalTest {
             "created", "renamed", "description", "priority", "due", "start", "estimate",
             "completed", "reopened", "recurred", "moved", "assigned", "unassigned",
             "archived", "restored", "comment", "relation", "relation_removed",
-            "commands", "synced", "attachment",
+            "tagged", "untagged", "commands", "synced", "attachment",
         )
         for (language in listOf("ru", "en")) {
             for (kind in kinds) {
@@ -78,6 +78,11 @@ class TaskJournalTest {
         assertThat(text("ru", "relation", """{"related":42}""")).isEqualTo("добавил(а) связь с #42")
         assertThat(text("en", "relation_removed", """{"related":42}"""))
             .isEqualTo("removed the link to #42")
+        // Тег записан ИМЕНЕМ, а не id: строка истории должна читаться и после
+        // того, как тег переименовали или удалили совсем.
+        assertThat(text("ru", "tagged", """{"tag":"срочно"}""")).isEqualTo("навесил(а) тег «срочно»")
+        assertThat(text("en", "untagged", """{"tag":"urgent"}"""))
+            .isEqualTo("removed the tag “urgent”")
     }
 
     @Test
@@ -88,6 +93,7 @@ class TaskJournalTest {
         assertThat(text("ru", "moved")).isEqualTo("переместил(а) задачу")
         assertThat(text("ru", "attachment")).isEqualTo("прикрепил(а) файл")
         assertThat(text("ru", "relation")).isEqualTo("добавил(а) связь")
+        assertThat(text("ru", "tagged")).isEqualTo("навесил(а) тег")
     }
 
     @Test

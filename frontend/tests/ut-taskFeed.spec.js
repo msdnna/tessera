@@ -22,6 +22,10 @@ describe('taskFeed.eventText', () => {
       [{ kind: 'comment' }, 'оставил(а) комментарий'],
       [{ kind: 'relation', data: { related: 42 } }, 'добавил(а) связь с #42'],
       [{ kind: 'attachment', data: { filename: 'a.pdf' } }, 'прикрепил(а) файл «a.pdf»'],
+      // The tag travels by name: a board grouped by tags turns a drag into an
+      // attach + a detach, and those two lines are the only trace it leaves.
+      [{ kind: 'tagged', data: { tag: 'срочно' } }, 'навесил(а) тег «срочно»'],
+      [{ kind: 'untagged', data: { tag: 'срочно' } }, 'снял(а) тег «срочно»'],
     ]
     for (const [e, want] of cases) expect(eventText(e), e.kind).toBe(want)
   })
@@ -51,6 +55,8 @@ describe('taskFeed.eventText', () => {
     'commands',
     'relation',
     'relation_removed',
+    'tagged',
+    'untagged',
     'attachment',
     'synced',
   ]

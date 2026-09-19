@@ -95,6 +95,14 @@ export function eventText(e) {
       return t('task.journal.assigned')
     case 'unassigned':
       return t('task.journal.unassigned')
+    // The journal stores the tag's name, not its id — a renamed or deleted tag
+    // must not turn old history into a dangling reference. An entry that carries
+    // no name (a tag whose name was empty) reads as the bare phrase rather than
+    // one with a hole where the name should be.
+    case 'tagged':
+      return d.tag ? t('task.journal.taggedWith', { tag: d.tag }) : t('task.journal.tagged')
+    case 'untagged':
+      return d.tag ? t('task.journal.untaggedWith', { tag: d.tag }) : t('task.journal.untagged')
     case 'archived':
       return t('task.journal.archived')
     case 'restored':

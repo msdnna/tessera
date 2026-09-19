@@ -72,6 +72,8 @@ fun journalText(res: Resources, e: TaskEvent?): String {
         "moved" -> named(res, column, R.string.task_event_moved_to, R.string.task_event_moved)
         "relation" -> named(res, ref, R.string.task_event_relation_to, R.string.task_event_relation)
         "relation_removed" -> named(res, ref, R.string.task_event_relation_removed_to, R.string.task_event_relation_removed)
+        "tagged" -> named(res, d.tag, R.string.task_event_tagged_with, R.string.task_event_tagged)
+        "untagged" -> named(res, d.tag, R.string.task_event_untagged_with, R.string.task_event_untagged)
         "commands" -> commands(res, d)
         "synced" -> res.getString(R.string.task_event_synced, sourceMeta(d.source).label)
         "attachment" -> named(res, d.filename, R.string.task_event_attachment_named, R.string.task_event_attachment)

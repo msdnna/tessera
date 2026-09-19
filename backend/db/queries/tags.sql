@@ -55,10 +55,14 @@ WHERE tt.task_id = t.id
   AND (p.id = $1 OR g.project_id = $1)
   AND p.workspace_id <> g.workspace_id;
 
--- name: AddTaskTag :exec
+-- Both return the number of rows they touched (1 = the tag really was attached /
+-- detached, 0 = the task already was in that state), so the journal records an
+-- actual change rather than a repeated request — the same reason
+-- AddTaskTagSourced counts rows for the sync journal.
+-- name: AddTaskTag :execrows
 INSERT INTO task_tags (task_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;
 
--- name: RemoveTaskTag :exec
+-- name: RemoveTaskTag :execrows
 DELETE FROM task_tags WHERE task_id = $1 AND tag_id = $2;
 
 -- name: ListTaskTags :many

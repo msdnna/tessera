@@ -473,14 +473,28 @@ func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) 
 	if tag.WorkspaceID != wsID {
 		return forbiddenErr{msg: "tag is in another workspace"}
 	}
+	// The journal records the tag by NAME, not by id: an entry has to stay
+	// readable after the tag is renamed away or deleted outright (the M:N row
+	// cascades, the history line must not turn into a dangling uuid). Same shape
+	// as `moved`, which stores the column's name beside its key. A tag has no
+	// name_key — tag names are user content everywhere — so there is nothing to
+	// caption from the client side.
 	if add {
-		if err := h.q.AddTaskTag(c, db.AddTaskTagParams{TaskID: taskID, TagID: tagID}); err != nil {
+		rows, err := h.q.AddTaskTag(c, db.AddTaskTagParams{TaskID: taskID, TagID: tagID})
+		if err != nil {
 			return err
+		}
+		if rows > 0 {
+			h.logEvent(c, taskID, "tagged", map[string]any{"tag": tag.Name})
 		}
 		h.broadcast(wsID, "task.tagged", gin.H{"task_id": taskID, "tag_id": tagID})
 	} else {
-		if err := h.q.RemoveTaskTag(c, db.RemoveTaskTagParams{TaskID: taskID, TagID: tagID}); err != nil {
+		rows, err := h.q.RemoveTaskTag(c, db.RemoveTaskTagParams{TaskID: taskID, TagID: tagID})
+		if err != nil {
 			return err
+		}
+		if rows > 0 {
+			h.logEvent(c, taskID, "untagged", map[string]any{"tag": tag.Name})
 		}
 		h.broadcast(wsID, "task.untagged", gin.H{"task_id": taskID, "tag_id": tagID})
 	}

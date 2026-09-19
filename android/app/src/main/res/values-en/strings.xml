@@ -338,6 +338,10 @@
     <string name="task_event_moved_to">moved it to “%1$s”</string>
     <string name="task_event_assigned">added an assignee</string>
     <string name="task_event_unassigned">removed an assignee</string>
+    <string name="task_event_tagged">added a tag</string>
+    <string name="task_event_tagged_with">added the tag “%1$s”</string>
+    <string name="task_event_untagged">removed a tag</string>
+    <string name="task_event_untagged_with">removed the tag “%1$s”</string>
     <string name="task_event_comment">left a comment</string>
     <string name="task_event_relation">added a relation</string>
     <string name="task_event_relation_to">linked it to #%1$s</string>

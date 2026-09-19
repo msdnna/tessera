@@ -25,7 +25,7 @@ func (q *Queries) AddTaskAssignee(ctx context.Context, arg AddTaskAssigneeParams
 	return err
 }
 
-const addTaskTag = `-- name: AddTaskTag :exec
+const addTaskTag = `-- name: AddTaskTag :execrows
 INSERT INTO task_tags (task_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING
 `
 
@@ -34,9 +34,16 @@ type AddTaskTagParams struct {
 	TagID  uuid.UUID `json:"tag_id"`
 }
 
-func (q *Queries) AddTaskTag(ctx context.Context, arg AddTaskTagParams) error {
-	_, err := q.db.Exec(ctx, addTaskTag, arg.TaskID, arg.TagID)
-	return err
+// Both return the number of rows they touched (1 = the tag really was attached /
+// detached, 0 = the task already was in that state), so the journal records an
+// actual change rather than a repeated request — the same reason
+// AddTaskTagSourced counts rows for the sync journal.
+func (q *Queries) AddTaskTag(ctx context.Context, arg AddTaskTagParams) (int64, error) {
+	result, err := q.db.Exec(ctx, addTaskTag, arg.TaskID, arg.TagID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const createTag = `-- name: CreateTag :one
@@ -327,7 +334,7 @@ func (q *Queries) RemoveTaskAssignee(ctx context.Context, arg RemoveTaskAssignee
 	return err
 }
 
-const removeTaskTag = `-- name: RemoveTaskTag :exec
+const removeTaskTag = `-- name: RemoveTaskTag :execrows
 DELETE FROM task_tags WHERE task_id = $1 AND tag_id = $2
 `
 
@@ -336,9 +343,12 @@ type RemoveTaskTagParams struct {
 	TagID  uuid.UUID `json:"tag_id"`
 }
 
-func (q *Queries) RemoveTaskTag(ctx context.Context, arg RemoveTaskTagParams) error {
-	_, err := q.db.Exec(ctx, removeTaskTag, arg.TaskID, arg.TagID)
-	return err
+func (q *Queries) RemoveTaskTag(ctx context.Context, arg RemoveTaskTagParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removeTaskTag, arg.TaskID, arg.TagID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const stripNonMemberAssignees = `-- name: StripNonMemberAssignees :execrows
