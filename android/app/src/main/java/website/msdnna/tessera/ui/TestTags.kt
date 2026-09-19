@@ -186,6 +186,13 @@ object TestTags {
     const val TASK_COMMENT_INPUT = "task-comment-input"
     const val TASK_COMMENT_SUBMIT = "task-comment-submit"
 
+    /** «✕» комментария — только на своих, потому на него и стоит опираться. */
+    fun taskCommentDelete(id: String) = "task-comment-delete:$id"
+
+    /** «Да» в подтверждении удаления комментария — единственный нажим, доходящий
+     *  до сервера, и единственный, который спек может сделать. */
+    const val TASK_COMMENT_DELETE_CONFIRM = "task-comment-delete-confirm"
+
     /** The in-thread reply composer — at most one is open at a time. */
     const val TASK_REPLY_INPUT = "task-reply-input"
     const val TASK_REPLY_SUBMIT = "task-reply-submit"

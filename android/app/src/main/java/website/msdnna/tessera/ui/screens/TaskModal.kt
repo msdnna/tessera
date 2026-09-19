@@ -1618,13 +1618,16 @@ private fun DescriptionTab(
  * One comment — avatar, header, body (or its editor). [actions] renders the
  * links under the text (Ответить / Свернуть ответы), which differ between a
  * thread root and a reply.
+ *
+ * Takes callbacks rather than the view-model so the row can be drawn against a
+ * comment alone — the same shape as [ConferenceChatSheet], and for the same
+ * reason: what a destructive button does is worth a spec.
  */
 @Composable
-private fun CommentRow(
+internal fun CommentRow(
     cm: Comment,
     avatarSize: Dp,
     meId: String?,
-    vm: TaskDetailViewModel,
     mentionItems: List<MentionItem>,
     onTaskRef: (Int) -> Unit,
     editing: Boolean,
@@ -1634,9 +1637,15 @@ private fun CommentRow(
     onToggleEditPreview: () -> Unit,
     onStartEdit: () -> Unit,
     onEndEdit: () -> Unit,
+    onSaveEdit: (String) -> Unit,
+    onToggleCheck: (Int) -> Unit,
+    onDelete: () -> Unit,
     actions: @Composable () -> Unit,
 ) {
     val c = Tessera.colors
+    // Кому принадлежит открытый попап подтверждения — ключом по id, чтобы
+    // «да» не переехало на соседний комментарий, когда список перестроится.
+    var confirmDelete by remember(cm.id) { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         MemberAvatar(
             avatarSize,
@@ -1663,7 +1672,31 @@ private fun CommentRow(
                 if (cm.authorId != null && cm.authorId == meId) {
                     Spacer(Modifier.weight(1f))
                     IonIconButton(Ion.PENCIL, onStartEdit, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
-                    IonIconButton(Ion.CLOSE, { vm.deleteComment(cm.id) }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                    // Удаление своего комментария — только через подтверждение, как на
+                    // вебе и как у всего остального разрушительного рядом (архив задачи,
+                    // снятие связи, комментарий документа). Промах по иконке 26dp иначе
+                    // стирал текст без отката, а для корня ветки ещё и поднимал чужой
+                    // ответ в корень.
+                    Box {
+                        IonIconButton(
+                            Ion.CLOSE,
+                            { confirmDelete = true },
+                            modifier = Modifier.testTag(TestTags.taskCommentDelete(cm.id)),
+                            boxSize = 26.dp,
+                            iconSize = 14.dp,
+                            tint = c.text3,
+                        )
+                        TConfirmPopover(
+                            expanded = confirmDelete,
+                            message = stringResource(R.string.task_comment_delete_confirm),
+                            confirmTag = TestTags.TASK_COMMENT_DELETE_CONFIRM,
+                            onConfirm = {
+                                confirmDelete = false
+                                onDelete()
+                            },
+                            onDismiss = { confirmDelete = false },
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(2.dp))
@@ -1680,7 +1713,7 @@ private fun CommentRow(
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TButton(stringResource(R.string.common_save), onClick = {
-                        vm.editComment(cm.id, editBody)
+                        onSaveEdit(editBody)
                         onEndEdit()
                     }, modifier = Modifier.height(34.dp))
                     Spacer(Modifier.width(6.dp))
@@ -1702,11 +1735,7 @@ private fun CommentRow(
                     taskRefs = true,
                     onTaskRef = onTaskRef,
                     interactive = own,
-                    onToggleCheck = if (own) {
-                        { i -> vm.editComment(cm.id, toggleTaskMarker(cm.body, i)) }
-                    } else {
-                        null
-                    },
+                    onToggleCheck = if (own) onToggleCheck else null,
                 )
             }
             actions()
@@ -1806,7 +1835,6 @@ private fun CommentsTab(
                 cm = t.root,
                 avatarSize = 26.dp,
                 meId = meId,
-                vm = vm,
                 mentionItems = mentionItems,
                 onTaskRef = onTaskRef,
                 editing = editingId == t.root.id,
@@ -1820,6 +1848,9 @@ private fun CommentsTab(
                     editPreview = false
                 },
                 onEndEdit = { editingId = null },
+                onSaveEdit = { vm.editComment(t.root.id, it) },
+                onToggleCheck = { i -> vm.editComment(t.root.id, toggleTaskMarker(t.root.body, i)) },
+                onDelete = { vm.deleteComment(t.root.id) },
             ) {
                 Row {
                     CommentLink(stringResource(R.string.task_comment_reply)) { startReply(t.root.id, t.root) }
@@ -1844,7 +1875,6 @@ private fun CommentsTab(
                             cm = r,
                             avatarSize = 22.dp,
                             meId = meId,
-                            vm = vm,
                             mentionItems = mentionItems,
                             onTaskRef = onTaskRef,
                             editing = editingId == r.id,
@@ -1858,6 +1888,9 @@ private fun CommentsTab(
                                 editPreview = false
                             },
                             onEndEdit = { editingId = null },
+                            onSaveEdit = { vm.editComment(r.id, it) },
+                            onToggleCheck = { i -> vm.editComment(r.id, toggleTaskMarker(r.body, i)) },
+                            onDelete = { vm.deleteComment(r.id) },
                         ) {
                             CommentLink(stringResource(R.string.task_comment_reply)) { startReply(t.root.id, r) }
                         }

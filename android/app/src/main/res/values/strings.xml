@@ -282,6 +282,7 @@
     <string name="task_comment_edit_placeholder">Комментарий…</string>
     <string name="task_comment_reply">Ответить</string>
     <string name="task_comment_collapse">Свернуть ответы</string>
+    <string name="task_comment_delete_confirm">Удалить комментарий?</string>
     <string name="task_reply_placeholder">Ответить… (@ — упоминание)</string>
     <string name="task_comment_placeholder">Написать комментарий… (@ — упоминание)</string>
     <string name="task_comment_placeholder_commands">Написать комментарий… (@ — упоминание, / — команда)</string>

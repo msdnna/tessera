@@ -273,6 +273,7 @@
     <string name="task_comment_edit_placeholder">Comment…</string>
     <string name="task_comment_reply">Reply</string>
     <string name="task_comment_collapse">Hide replies</string>
+    <string name="task_comment_delete_confirm">Delete the comment?</string>
     <string name="task_reply_placeholder">Reply… (@ — mention)</string>
     <string name="task_comment_placeholder">Write a comment… (@ — mention)</string>
     <string name="task_comment_placeholder_commands">Write a comment… (@ — mention, / — command)</string>
