@@ -278,11 +278,7 @@ func (h *API) DeleteDocument(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if h.docRooms != nil {
-		for _, id := range doomed {
-			h.docRooms.Drop(id)
-		}
-	}
+	h.dropDocRooms(doomed)
 	// The rows are gone, and with them the only pointer to the images they
 	// embedded (#2932). Swept off the delete's own RETURNING rather than off
 	// `doomed`: that list exists to name live rooms and is filtered by workspace,

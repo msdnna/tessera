@@ -125,6 +125,25 @@ func (h *API) dropConfRoom(confID uuid.UUID, reason string) {
 	h.dropConfMedia(confID)
 }
 
+// dropDocRooms empties the rooms of documents that have just been deleted,
+// closing the sockets of whoever is still in them (#2729).
+//
+// Owed by every path a document can die on, not only DeleteDocument: a room
+// socket is keyed by document id and authorises exactly once, at the upgrade, so
+// nothing about the row disappearing reaches it. Left alone, the people who had
+// it open keep their presence badges, keep holding block locks, and keep typing
+// into a row that no longer exists — they find out on the next autosave, which
+// answers 404 with their text still only in the browser. Guarded because the
+// registry is optional wiring the GitLab and job tests build without.
+func (h *API) dropDocRooms(ids []uuid.UUID) {
+	if h.docRooms == nil {
+		return
+	}
+	for _, id := range ids {
+		h.docRooms.Drop(id)
+	}
+}
+
 // revokeUserSockets cuts every live connection a user holds after their access
 // is taken away (#2932).
 //

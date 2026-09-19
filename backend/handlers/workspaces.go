@@ -162,6 +162,11 @@ func (h *API) DeleteWorkspace(c *gin.Context) {
 	}
 	h.purgeTaskUploads(gone)
 	h.purgeDocAssets(c, docs)
+	// The same ids also name live rooms, and the cascade is as invisible to them
+	// as it is to the files: purgeConferences below ends the calls it sweeps
+	// ("workspace deleted"), and a document open in someone's tab is owed the
+	// same. Without it the space is gone while its documents still look editable.
+	h.dropDocRooms(docs)
 	h.purgeConferences(calls)
 	c.Status(http.StatusNoContent)
 }
