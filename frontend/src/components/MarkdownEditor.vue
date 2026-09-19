@@ -719,19 +719,19 @@ function clampSugPos() {
   if (top + r.height > vh - 8 && sugAnchorY - 6 - r.height > 8) top = sugAnchorY - 6 - r.height
   sugPos.value = { top: `${top}px`, left: `${left}px` }
 }
+// Accepting a row swaps the half-typed query for the full mention/command, and
+// goes through replaceRange like every other insertion here: writing the whole
+// value back instead would drop the textarea's native undo stack, so one picked
+// mention would cost the user the undo history of a whole comment.
 function pickSuggest(item) {
   if (!item || !mq.value) return
   const el = ta.value
   const cmd = isCmd.value
   const insert = cmd ? commandInsertText(item) : `@${item.label} `
-  const next = el.value.slice(0, mq.value.start) + insert + el.value.slice(el.selectionStart)
-  setValue(next)
-  const caret = mq.value.start + insert.length
+  const start = mq.value.start
+  const caret = start + insert.length
   mq.value = null
-  nextTick(() => {
-    el.focus()
-    el.selectionStart = el.selectionEnd = caret
-  })
+  replaceRange(start, el.selectionStart, insert, caret, caret)
 }
 
 // Tab indents rather than moving focus — but that turns the field into a keyboard
