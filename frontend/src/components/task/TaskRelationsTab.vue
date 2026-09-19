@@ -23,6 +23,9 @@ const { t } = useI18n()
 
 const relNumber = ref(null)
 const relKind = ref('relates')
+// A link is being created right now. The field is cleared only once the request
+// comes back, so without this an impatient second Enter sent a second create.
+const linking = ref(false)
 // Kind labels are resolved per render (a plain array would freeze them at the
 // language the tab first mounted in — pitfall 1 of #2799).
 const REL_KINDS = ['relates', 'blocks', 'blocked_by', 'duplicates']
@@ -46,8 +49,24 @@ function openRelPicker() {
   relPickerOpen.value = true
   ensureRelTasks()
 }
-// Filter by typed number/title, drop the current task and numberless ones,
-// then group by project → board so long lists stay navigable.
+// Numbers already linked with the kind the picker is armed with. The relation's
+// key is (pair, kind) — the list arrives in this task's own frame, with the
+// inverse rows' kinds already flipped (ListTaskRelations), so a row here means
+// exactly what the same (number, kind) would create.
+const linkedNumbers = computed(
+  () =>
+    new Set(
+      props.relations.filter((r) => r.kind === relKind.value).map((r) => Number(r.related_number)),
+    ),
+)
+// Filter by typed number/title, drop the current task, numberless ones and the
+// ones already linked with this kind, then group by project → board so long
+// lists stay navigable.
+//
+// Already-linked is dropped rather than offered and refused, the same call
+// DocLinks makes: re-linking the same (pair, kind) is a no-op server-side (ON
+// CONFLICT DO NOTHING), so the row would be a button that visibly does nothing —
+// while still writing a second «добавил связь» line into both tasks' history.
 const relGroups = computed(() => {
   const q = String(relNumber.value || '')
     .trim()
@@ -56,6 +75,7 @@ const relGroups = computed(() => {
   const index = {}
   for (const rt of relTasks.value) {
     if (rt.id === props.taskId || rt.number == null) continue
+    if (linkedNumbers.value.has(Number(rt.number))) continue
     if (q && !(`#${rt.number}`.includes(q) || rt.title.toLowerCase().includes(q))) continue
     const pk = rt.project_name || '—'
     const bk = rt.board_name || '—'
@@ -90,17 +110,63 @@ function relDeleteHint(r) {
     ? t('task.relations.deleteExternalConfirm', { source: src.label })
     : t('task.relations.deleteConfirm')
 }
+// What was typed, read as a task number. The field carries a «#» prefix and every
+// task in the product is named «#123», so a pasted «#123» means 123 — `Number()`
+// alone made it NaN and the press was eaten.
+function typedNumber() {
+  const raw = String(relNumber.value ?? '')
+    .trim()
+    .replace(/^#/, '')
+    .trim()
+  const n = Number(raw)
+  return raw !== '' && Number.isInteger(n) && n > 0 ? n : null
+}
+
+// Resolves the press into a task number, or null if there is nothing to send.
+//
+// The field is «№ или название» and the picker under it filters by both, so a
+// typed title has to lead somewhere: `Number('оплата')` is NaN, and the old
+// `if (!n) return` dropped Enter and «Связать» on the floor without a word — a
+// dead end on the one input the tab advertises. A single match is unambiguous and
+// gets linked; anything else opens the filtered list instead of going quiet.
+function resolveTarget() {
+  const n = typedNumber()
+  if (n != null) return n
+  if (!String(relNumber.value ?? '').trim()) {
+    relPickerOpen.value = true // empty field: show the list, never link at random
+    return null
+  }
+  const matches = relGroups.value.flatMap((g) => g.tasks)
+  if (matches.length === 1) return Number(matches[0].number)
+  relPickerOpen.value = true
+  if (!matches.length) message.warning(t('task.relations.noMatches'))
+  return null
+}
+
 async function addRelation() {
-  const n = Number(relNumber.value)
-  if (!n) return
-  // The task this tab is about, taken before the first await. The modal is not
-  // remounted when the task under it changes — and this tab is the fastest way
-  // there is to change it, since clicking a relation row opens the other end.
-  // Reading props afterwards re-read the relations of whichever task that left
-  // us with: the list of the task we walked away from landed under the open one's
-  // label, and the ✕ on such a row unlinks by id — the other task's link (#2932).
-  const tid = props.taskId
+  if (linking.value) return
+  linking.value = true
   try {
+    // A typed title is resolved against the picker's list, and Enter can beat the
+    // lazy fetch that focusing the field started.
+    if (typedNumber() == null) await ensureRelTasks()
+    const n = resolveTarget()
+    if (!n) return
+    // Already linked with this kind: the request would come back 201 having done
+    // nothing, leaving the reader with an unchanged list and no explanation.
+    if (linkedNumbers.value.has(n)) {
+      message.info(t('task.relations.already', { number: n }))
+      relNumber.value = null
+      relPickerOpen.value = false
+      return
+    }
+    // The task this tab is about, taken before the first await. The modal is not
+    // remounted when the task under it changes — and this tab is the fastest way
+    // there is to change it, since clicking a relation row opens the other end.
+    // Reading props afterwards re-read the relations of whichever task that left
+    // us with: the list of the task we walked away from landed under the open one's
+    // label, and the ✕ on such a row unlinks by id — the other task's link (#2932).
+    const tid = props.taskId
     await tasksApi.addRelation(tid, n, relKind.value)
     relNumber.value = null
     relPickerOpen.value = false
@@ -110,6 +176,8 @@ async function addRelation() {
     emit('changed')
   } catch (e) {
     message.error(e.message)
+  } finally {
+    linking.value = false
   }
 }
 async function removeRelation(id) {
@@ -205,7 +273,7 @@ async function removeRelation(id) {
           </div>
         </div>
       </n-popover>
-      <n-button size="small" class="rel-go" @click="addRelation">{{
+      <n-button size="small" class="rel-go" :loading="linking" @click="addRelation">{{
         t('task.relations.link')
       }}</n-button>
     </div>

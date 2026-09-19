@@ -170,6 +170,7 @@
     "unlink": "Remove the relation",
     "searchPlaceholder": "№ or title",
     "noMatches": "Nothing found",
+    "already": "#{number} is already linked",
     "deleteConfirm": "Remove the relation?",
     "deleteExternalConfirm": "This relation will come back on the next {source} sync. Delete it?",
     "kind": {

@@ -170,6 +170,7 @@
     "unlink": "Убрать связь",
     "searchPlaceholder": "№ или название",
     "noMatches": "Ничего не найдено",
+    "already": "Связь с #{number} уже есть",
     "deleteConfirm": "Убрать связь?",
     "deleteExternalConfirm": "Эта связь вернётся при следующем синке {source}. Удалить?",
     "kind": {
