@@ -8,7 +8,7 @@
 // field survives the size preset and the customize toggles it renders nothing.
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover, NTooltip, NInput } from 'naive-ui'
+import { NIcon, NPopover, NTooltip, NInput, useMessage } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
@@ -67,6 +67,7 @@ const conflictsStore = useConflictsStore()
 const hasConflict = computed(() => conflictsStore.has(props.task.id))
 const { formatDue, formatters } = useFormat()
 const { t } = useI18n()
+const message = useMessage()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
 
@@ -315,12 +316,29 @@ async function loadDescriptionPreview() {
   }
 }
 
+// Every write below goes through here: a refusal is reported and the board
+// re-read either way. The pills draw straight off `props.task`, so a rejected
+// promise on its own is indistinguishable from a click that missed — no toast,
+// no change, and the board still holding whatever it held (including a change a
+// racing second client DID make). Same contract the right-click menu over this
+// card already follows (composables/useTaskMenu.js).
+//
+// @returns {boolean} whether the write went through
+async function run(fn) {
+  try {
+    await fn()
+  } catch (e) {
+    message.error(e.message)
+    emit('changed')
+    return false
+  }
+  emit('changed')
+  return true
+}
 // Inline edits send the full-replace body minus the description — see
 // utils/taskPatch.js for why omitting it matters.
-async function apply(patch) {
-  await tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch })
-  emit('changed')
-}
+const apply = (patch) =>
+  run(() => tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch }))
 const setPriority = (p) => apply({ priority: p })
 
 // Per-task due-notification override sentinels (-1 / 'inherit' = user default).
@@ -330,50 +348,52 @@ const dueEnabledSel = computed(() => {
 })
 const dueLeadSel = computed(() => props.task.due_lead_minutes ?? -1)
 const dueRepeatSel = computed(() => props.task.due_repeat_minutes ?? -1)
-async function saveDueNotify(patch) {
+function saveDueNotify(patch) {
   const lead = patch.lead ?? dueLeadSel.value
   const repeat = patch.repeat ?? dueRepeatSel.value
   const enabled = patch.enabled ?? dueEnabledSel.value
-  try {
-    await tasksApi.dueNotify(props.task.id, {
+  return run(() =>
+    tasksApi.dueNotify(props.task.id, {
       lead_minutes: lead === -1 ? null : lead,
       repeat_minutes: repeat === -1 ? null : repeat,
       enabled: enabled === 'inherit' ? null : enabled === 'on',
-    })
-    emit('changed')
-  } catch (e) {
-    void e
-  }
+    }),
+  )
 }
 
-async function toggleTag(id) {
-  if (hasTag(id)) await tasksApi.removeTag(props.task.id, id)
-  else await tasksApi.addTag(props.task.id, id)
-  emit('changed')
-}
+const toggleTag = (id) =>
+  run(() =>
+    hasTag(id) ? tasksApi.removeTag(props.task.id, id) : tasksApi.addTag(props.task.id, id),
+  )
 async function createTag() {
   const n = newTagName.value.trim()
   if (!n) return
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
-  const res = await projectsApi.createTag(projectId.value, {
-    name: n,
-    color: palette[Math.floor(Math.random() * palette.length)],
+  // The name is cleared only once both calls are through: a create that landed
+  // but failed to attach leaves the tag on the project, and the row it is about
+  // to appear in is the one to retry from.
+  const ok = await run(async () => {
+    const res = await projectsApi.createTag(projectId.value, {
+      name: n,
+      color: palette[Math.floor(Math.random() * palette.length)],
+    })
+    await tasksApi.addTag(props.task.id, res.data.id)
   })
-  await tasksApi.addTag(props.task.id, res.data.id)
-  newTagName.value = ''
-  emit('changed')
+  if (ok) newTagName.value = ''
 }
 async function toggleAssignee(uid) {
   const adding = !isAssigned(uid)
-  if (adding) await tasksApi.addAssignee(props.task.id, uid)
-  else await tasksApi.removeAssignee(props.task.id, uid)
-  if (adding) {
+  const ok = await run(() =>
+    adding ? tasksApi.addAssignee(props.task.id, uid) : tasksApi.removeAssignee(props.task.id, uid),
+  )
+  // The MRU is «people you actually assign», so a refused pick must not enter it
+  // — it would push a name nobody was assigned to the top of every other picker.
+  if (ok && adding) {
     // Bump to the front of the MRU list (cap the stored history).
     const next = [uid, ...recentAssignees.value.filter((x) => x !== uid)].slice(0, 30)
     recentAssignees.value = next
     localStorage.setItem(RECENT_ASSIGNEES_KEY, JSON.stringify(next))
   }
-  emit('changed')
 }
 // GitLab half of the picker: the project roster plus whoever this task already
 // carries that the roster has since dropped — otherwise a person who left the
@@ -387,16 +407,16 @@ const glAssigneeLogins = computed(() => props.task.gitlab_assignee_logins || [])
 function isGlAssigned(username) {
   return glAssigneeLogins.value.includes(username)
 }
-async function toggleGlAssignee(m) {
-  if (isGlAssigned(m.gl_username)) await tasksApi.removeGitlabAssignee(props.task.id, m.gl_username)
-  else
-    await tasksApi.pinGitlabAssignee(props.task.id, {
-      gl_username: m.gl_username,
-      gl_name: m.gl_name,
-      gl_avatar_url: m.gl_avatar_url,
-    })
-  emit('changed')
-}
+const toggleGlAssignee = (m) =>
+  run(() =>
+    isGlAssigned(m.gl_username)
+      ? tasksApi.removeGitlabAssignee(props.task.id, m.gl_username)
+      : tasksApi.pinGitlabAssignee(props.task.id, {
+          gl_username: m.gl_username,
+          gl_name: m.gl_name,
+          gl_avatar_url: m.gl_avatar_url,
+        }),
+  )
 </script>
 
 <template>

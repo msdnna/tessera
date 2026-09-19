@@ -10,7 +10,7 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import { NIcon, NPopover } from 'naive-ui'
+import { NIcon, NPopover, useMessage } from 'naive-ui'
 import { CheckmarkCircle, EllipseOutline } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
 import { tasks as tasksApi } from '@/api'
@@ -48,6 +48,7 @@ const membersMap = bv.membersMap
 const tagPrefixNames = bv.prefixNames
 const { formatDue } = useDateLocale()
 const { t } = useI18n()
+const message = useMessage()
 // The hover preview is a pointer affordance and on a phone it is actively
 // harmful (#2893): a touch fires `mouseover` but never `mouseleave`, so the card
 // opens on the FIRST tap and stays up. It is placed to the right of a row that
@@ -116,9 +117,17 @@ function subDue(s) {
 function subColumn(s) {
   return divergedColumn(s, props.task.column_id, columns.value)
 }
+// The row's tick draws off `s.completed_at`, so a refused write looked exactly
+// like a click that missed: no toast, no change, and the parent never asked to
+// re-read. Reported and resynced either way, like the drag above and like the
+// right-click menu over the same row (composables/useTaskMenu.js).
 async function toggleSubDone(s) {
   if (props.readonly) return
-  await tasksApi.update(s.id, { ...taskBasePatch(s), completed: !s.completed_at })
+  try {
+    await tasksApi.update(s.id, { ...taskBasePatch(s), completed: !s.completed_at })
+  } catch (e) {
+    message.error(e.message)
+  }
   emit('changed')
 }
 </script>

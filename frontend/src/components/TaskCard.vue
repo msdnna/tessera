@@ -6,7 +6,7 @@
 // is the card frame itself.
 import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip, NInput, NDropdown, NPopconfirm } from 'naive-ui'
+import { NIcon, NTooltip, NInput, NDropdown, NPopconfirm, useMessage } from 'naive-ui'
 import {
   CheckmarkCircle,
   CheckmarkOutline,
@@ -59,6 +59,7 @@ const bv = useBoardViewStore()
 const { columns, cardSize } = storeToRefs(bv)
 const fieldVis = bv.fieldVis
 const { t } = useI18n()
+const message = useMessage()
 
 // Size preset × customize toggle, shared with the pill row (utils/cardFields.js)
 // so the two can't drift apart. The card asks it only about the meta row.
@@ -145,13 +146,43 @@ async function commitTitle() {
   editingTitle.value = false
   const n = normalizeTitle(titleEdit.value)
   if (!n || n === props.task.title) return
-  await apply({ title: n })
+  if (!(await apply({ title: n }))) restoreFailedTitle(n)
+}
+// A refused rename must not take the typed title with it. The editor is closed
+// before the PUT goes out (see commitTitle), so a failure otherwise leaves the
+// old title on the card and nothing to retry from — the same loss KanbanBoard's
+// restoreFailedTitle exists to prevent on the create side, and retyping is the
+// reader's work the error has no claim on.
+//
+// Only into an editor the reader hasn't moved on from, though: while the PUT was
+// on the wire they may have reopened it and typed the next name (their text
+// wins). A closed editor is reopened on the title that failed.
+function restoreFailedTitle(title) {
+  if (editingTitle.value) return
+  titleEdit.value = title
+  editingTitle.value = true
+  nextTick(() => titleInput.value?.focus?.())
 }
 // Inline edits send the full-replace body minus the description — see
 // utils/taskPatch.js for why omitting it matters.
+//
+// A refusal is reported and the board re-read: the card draws every field off
+// its prop, so without the resync it keeps showing state the server never
+// accepted (and misses what a racing second client DID change). Same contract
+// the right-click menu over this card already follows — useTaskMenu wraps each
+// of these writes and calls onChanged() on both paths.
+//
+// @returns {boolean} whether the write went through
 async function apply(patch) {
-  await tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch })
+  try {
+    await tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch })
+  } catch (e) {
+    message.error(e.message)
+    emit('changed')
+    return false
+  }
   emit('changed')
+  return true
 }
 const toggleDone = () => apply({ completed: !done.value })
 
