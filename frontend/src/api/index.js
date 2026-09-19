@@ -46,12 +46,18 @@ function storedRefreshToken() {
   return cookieAuth() ? null : sGet('tessera_refresh_token')
 }
 
+// Bumped by every non-GET request. An in-flight GET issued before the bump was
+// answered by a server that had not seen the write yet, so it may no longer be
+// joinable — see sharedGet below.
+let writeGeneration = 0
+
 // Attach the access token on every request + track liveness for the connection
 // overlay (start now, paired end in the response/error handlers below). Requests
 // flagged `skipLoader` (e.g. GitLab sync, which is intentionally long and shows
 // its own in-modal loader) are excluded from the global slow/offline overlay.
 api.interceptors.request.use((config) => {
   if (!config.skipLoader) reqStart()
+  if ((config.method || 'get').toLowerCase() !== 'get') writeGeneration++
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }
@@ -243,7 +249,17 @@ api.interceptors.response.use(
 // once. Sharing one in-flight request collapses those duplicate round-trips.
 // Each caller still gets its OWN deep clone of the data, so no consumer can
 // mutate another's copy. Only genuinely concurrent calls share; once the request
-// settles the key is dropped, so this never serves stale data on a later fetch.
+// settles the key is dropped, so a later fetch always goes to the server.
+//
+// "Concurrent" is not enough on its own, though. The list refetch that follows a
+// write (create a tag, invite a member, add a milestone) is the one read that
+// must not be coalesced: a slow GET started before the write — the board loads
+// tags, members and milestones on open and on every resync — is still in flight
+// when the write lands, and joining it hands the caller a list without the row
+// it just created. The picker then looks like the write did nothing, and stays
+// that way until something else happens to refetch. So an entry is joinable only
+// while no write has been issued since it started; after one, the next caller
+// opens a fresh request and the two coexist under the same key.
 const inflightGets = new Map()
 function cloneData(d) {
   if (d == null) return d
@@ -255,12 +271,18 @@ function cloneData(d) {
 }
 function sharedGet(url, config) {
   const key = url + '::' + JSON.stringify(config?.params ?? null)
-  let p = inflightGets.get(key)
-  if (!p) {
-    p = api.get(url, config).finally(() => inflightGets.delete(key))
-    inflightGets.set(key, p)
+  let entry = inflightGets.get(key)
+  if (!entry || entry.gen !== writeGeneration) {
+    // Two entries can now share a key, so the cleanup has to check it is still
+    // the current one — otherwise a superseded request settling would drop the
+    // fresh entry and the next caller would open a third request.
+    entry = { gen: writeGeneration, p: null }
+    entry.p = api.get(url, config).finally(() => {
+      if (inflightGets.get(key) === entry) inflightGets.delete(key)
+    })
+    inflightGets.set(key, entry)
   }
-  return p.then((res) => ({ ...res, data: cloneData(res.data) }))
+  return entry.p.then((res) => ({ ...res, data: cloneData(res.data) }))
 }
 
 export const auth = {
