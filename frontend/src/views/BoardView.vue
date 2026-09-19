@@ -15,8 +15,20 @@ const wsStore = useWorkspacesStore()
 // human-readable form whatever the entry point.
 const boardId = ref(null)
 
+// Which resolution the screen is waiting for (#2932). Clicking a second board
+// while the first is still resolving leaves two requests in flight, and they
+// come back in network order — so every step after an await asks whether it is
+// still the answer being waited for. Nothing here is a harmless stale render:
+// KanbanBoard is keyed on `boardId` (a remount), `ensureWorkspace` moves the
+// whole app's scope, and the canonicalization REWRITES THE URL — a late answer
+// for the board the reader left would take them back to it, address bar and all,
+// with nothing on screen to say why. Same comparison as HomeView / NotesView /
+// TaskModal.
+let resolveSeq = 0
+
 async function resolve() {
   const { projectSlug, boardSlug, id } = route.params
+  const mine = ++resolveSeq
   try {
     let board
     if (projectSlug && boardSlug) {
@@ -30,16 +42,23 @@ async function resolve() {
       boardId.value = null
       return
     }
+    if (mine !== resolveSeq) return
     // Before boardId: assigning it mounts KanbanBoard, which reads currentId
     // straight away for its realtime scope filter and for the workspace members
     // it loads. Switching after would still render the board with the wrong
     // workspace's context (#2721).
     await wsStore.ensureWorkspace(board.workspace_id)
+    if (mine !== resolveSeq) return
     boardId.value = board.id
     const pslug = projectSlug || (await projectsApi.get(board.project_id)).data.slug
+    if (mine !== resolveSeq) return
     const target = `/project/${pslug}/board/${board.slug}`
     if (route.path !== target) router.replace({ path: target, query: route.query })
   } catch {
+    // A board that failed to resolve blanks the view — but only if it is still
+    // the board being asked for. An abandoned 404 must not take down the one
+    // that answered in the meantime.
+    if (mine !== resolveSeq) return
     boardId.value = null
   }
 }
