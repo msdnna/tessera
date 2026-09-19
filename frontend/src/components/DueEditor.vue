@@ -32,11 +32,45 @@ const props = defineProps({
 // `notify` is separate (different endpoint).
 const emit = defineEmits(['apply', 'notify'])
 
+// A pure UTC midnight is how this whole app spells "date-only" — no time of day,
+// read in UTC everywhere (utils/format `isDateOnly`, timeAxis, and
+// `normalizeDueIn` right below). That reading exists for dates that arrive
+// without a clock (GitLab issues/milestones, legacy dues), but nothing stopped
+// this editor from minting one by accident: it builds instants out of LOCAL
+// calendar fields, so in every zone with a whole-hour (or :30/:45) offset exactly
+// one time of day lands on 00:00Z — 20:00 in New York in summer, 19:00 in winter,
+// 03:00 in Moscow, 05:30 in Kolkata. The picked time was then thrown away by the
+// very next read: the card, the calendar layout and the Today/Tomorrow facets all
+// showed the *next* day with no clock, and re-opening the editor snapped the due
+// to that day's local midnight — which the following commit saved, moving the
+// task again (#2932).
+//
+// A second is the smallest thing that says "this one does have a time of day", and
+// it is invisible everywhere: no label this app renders shows seconds, and the
+// recurrence carries the clock forward whole so every occurrence stays consistent.
+// Deliberate local midnight is left exactly as it is — an all-day due picked in a
+// zone off UTC is not UTC midnight anyway, and in UTC itself it is the date-only
+// value the user asked for.
+function toWire(ms) {
+  if (ms == null) return null
+  const d = new Date(ms)
+  const meansTimeOfDay = d.getHours() !== 0 || d.getMinutes() !== 0
+  if (
+    meansTimeOfDay &&
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0
+  ) {
+    return new Date(ms + 1000).toISOString()
+  }
+  return d.toISOString()
+}
+
 // commit sends the current start/due dates + recurrence rule as one patch.
 function commit() {
   emit('apply', {
-    due_date: localDue.value != null ? new Date(localDue.value).toISOString() : null,
-    start_date: localStart.value != null ? new Date(localStart.value).toISOString() : null,
+    due_date: toWire(localDue.value),
+    start_date: toWire(localStart.value),
     recurrence: buildRule(),
   })
 }
