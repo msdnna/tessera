@@ -40,6 +40,8 @@ const inputRef = ref(null)
 const EMPTY = () => ({ tasks: [], notes: [], documents: [] })
 const NO_MORE = () => ({ tasks: false, notes: false, documents: false })
 
+const DEBOUNCE_MS = 220
+
 let debounce = null
 let seq = 0
 
@@ -55,8 +57,47 @@ watch(q, (val) => {
   }
   loading.value = true
   open.value = true
-  debounce = setTimeout(() => runSearch(term), 220)
+  debounce = setTimeout(() => runSearch(term), DEBOUNCE_MS)
 })
+
+// The search box outlives a workspace switch: it sits in the topbar and the shell
+// swaps `ws.currentId` without remounting it, so hits fetched for the workspace
+// the reader has left had nothing to invalidate them. Clicking the switcher blurs
+// the input and closes the panel, but the typed term stays in the box — and
+// focusing it again re-opens the panel over those hits (`@focus` only needs a
+// non-empty term) without asking anything of the server, since the watcher above
+// fires on keystrokes alone. The rows then point into the other workspace: opening
+// one navigates to a board this workspace does not contain, and the board resolves
+// `?task=<number>` against the *current* workspace, fails, and leaves the reader
+// on a stranger's board with no explanation.
+//
+// Android has never had this — SearchViewModel.bind() drops the whole state when
+// the workspace id changes — so the divergence was web's alone (#2932).
+watch(
+  () => ws.currentId,
+  () => {
+    // Invalidate the request in flight before anything else: it was asked of the
+    // previous workspace, and without this its answer lands afterwards and
+    // repopulates the panel we are clearing.
+    seq++
+    clearTimeout(debounce)
+    results.value = EMPTY()
+    more.value = NO_MORE()
+    error.value = ''
+    const term = q.value.trim()
+    if (!term) {
+      // Nothing typed: the bumped `seq` above also means the in-flight request's
+      // `finally` will not clear the spinner, so clear it here.
+      loading.value = false
+      return
+    }
+    // Re-ask, rather than clearing the box: the term is still on screen, and an
+    // empty panel under it would read as "nothing matched" — a statement about
+    // the new workspace that nobody has checked.
+    loading.value = true
+    debounce = setTimeout(() => runSearch(term), DEBOUNCE_MS)
+  },
+)
 
 async function runSearch(term) {
   // The sequence number is taken before the first early return, not after: a

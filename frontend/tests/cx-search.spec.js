@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { reactive } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 
 // The workspace search dropdown (#2932).
@@ -17,6 +18,10 @@ import { mount, flushPromises } from '@vue/test-utils'
 //   - the server caps every kind at 25 hits. A panel that shows the cap with no
 //     sign of it presents an arbitrary slice, ordered by task number, as the
 //     whole answer.
+//   - the box lives in the topbar and is never remounted, so after a workspace
+//     switch it kept showing the previous workspace's hits. Rows that open a
+//     board the reader can no longer reach, under a term that was never asked of
+//     the workspace they are now in.
 //
 // The happy path is asserted alongside each of them: a fix that painted an error
 // banner over every successful search would satisfy the first assertion on its
@@ -29,8 +34,10 @@ const push = vi.fn()
 vi.mock('vue-router', () => ({ useRouter: () => ({ push }) }))
 
 // The two stores this component reads. `currentId` is a plain property rather
-// than a ref so a spec can move it between mounts.
-const ws = { currentId: 'ws-1' }
+// than a ref so a spec can move it between mounts — but the object is reactive,
+// because the component watches that property: a switch has to reach it the way
+// the real Pinia store's does.
+const ws = reactive({ currentId: 'ws-1' })
 vi.mock('@/stores/workspaces', () => ({ useWorkspacesStore: () => ws }))
 vi.mock('@/stores/help', () => ({
   useHelpStore: () => ({ find: () => [], openDrawer: vi.fn() }),
@@ -160,5 +167,75 @@ describe('SearchBar', () => {
     await type(w2, 'ровно два')
     expect(w2.find('.more').exists()).toBe(false)
     w2.unmount()
+  })
+
+  it('does not keep the previous workspace on screen after a switch', async () => {
+    search.mockResolvedValue(answer([hit(7)]))
+
+    const w = mount(SearchBar)
+    await type(w, 'отчёт')
+    expect(w.text()).toContain('Задача 7')
+
+    // The reader clicks the workspace switcher. The component is not remounted —
+    // it lives in the topbar — and the term stays in the box.
+    search.mockResolvedValue(answer([hit(42)]))
+    ws.currentId = 'ws-2'
+    await flushPromises()
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+    await flushPromises()
+
+    expect(w.text()).not.toContain('Задача 7')
+    expect(w.text()).toContain('Задача 42')
+    // And the re-ask went to the workspace the reader is now in.
+    expect(search).toHaveBeenLastCalledWith('ws-2', 'отчёт')
+    w.unmount()
+  })
+
+  it('drops the answer to a request the workspace switch outran', async () => {
+    // The race the switch also has to settle: a request sent to the old
+    // workspace resolves *after* the switch. Without the sequence bump its rows
+    // land in a panel that now belongs to a different workspace.
+    let release
+    search.mockImplementationOnce(
+      () => new Promise((res) => (release = () => res(answer([hit(7)])))),
+    )
+
+    const w = mount(SearchBar)
+    await type(w, 'отчёт')
+    expect(search).toHaveBeenCalledTimes(1)
+
+    search.mockResolvedValue(answer([hit(42)]))
+    ws.currentId = 'ws-2'
+    await flushPromises()
+
+    release()
+    await flushPromises()
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+    await flushPromises()
+
+    expect(w.text()).not.toContain('Задача 7')
+    expect(w.text()).toContain('Задача 42')
+    w.unmount()
+  })
+
+  it('clears the panel on a switch even with an empty box', async () => {
+    // Clearing the box leaves `q` empty; a later switch must not fire a request
+    // for an empty term, and must not leave the spinner up either.
+    search.mockResolvedValue(answer([hit(7)]))
+    const w = mount(SearchBar)
+    await type(w, 'отчёт')
+    await type(w, '')
+    search.mockClear()
+
+    ws.currentId = 'ws-2'
+    await flushPromises()
+    vi.advanceTimersByTime(300)
+    await flushPromises()
+
+    expect(search).not.toHaveBeenCalled()
+    expect(w.find('.loading').exists()).toBe(false)
+    w.unmount()
   })
 })
