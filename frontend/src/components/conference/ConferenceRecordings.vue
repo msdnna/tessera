@@ -71,7 +71,9 @@ async function download(rec) {
     // Revoked late, not immediately (handOffBlob): revoking before the browser
     // has started the download cancels it — and these files are large enough
     // for that gap to be real rather than theoretical.
-    handOffBlob(data, rec.file_name || 'recording.mp4')
+    // Awaited: on the desktop handOffBlob opens a Save-as and writes the file
+    // itself, and a failure there belongs in the catch below.
+    await handOffBlob(data, rec.file_name || 'recording.mp4')
     error.value = ''
   } catch (e) {
     error.value = e.message

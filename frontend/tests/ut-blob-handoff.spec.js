@@ -17,7 +17,7 @@ vi.mock('@/utils/serverBase', () => ({ isTauri: (...a) => isTauri(...a) }))
 
 const { saveAttachment } = await import('@/utils/download')
 const { downloadBlob } = await import('@/utils/docOffice')
-const { BLOB_REVOKE_DELAY_MS } = await import('@/utils/blobHandoff')
+const { BLOB_REVOKE_DELAY_MS, handOffBlob } = await import('@/utils/blobHandoff')
 
 let createObjectURL
 let revokeObjectURL
@@ -88,5 +88,47 @@ describe('saveAttachment (web path)', () => {
 
     expect(createObjectURL).not.toHaveBeenCalled()
     expect(revokeObjectURL).not.toHaveBeenCalled()
+  })
+})
+
+// The desktop shell registers no download handler — wry only installs one when
+// the app asks for it, and desktop/src-tauri never does — so `<a download>`
+// starts nothing there and the file silently never appears. saveAttachment knew
+// that and took a Save-as path; the three downloads that went through
+// handOffBlob did not, and every one of them was dead in the desktop client
+// (#2932). Same assertion shape as the case above: the plugins are absent from
+// the unit environment, so what is pinned is that the browser dance is not the
+// path taken.
+describe('the desktop client never hands a blob to the browser', () => {
+  beforeEach(() => {
+    isTauri.mockReturnValue(true)
+  })
+
+  it('does not, for a document export', async () => {
+    await downloadBlob(new Blob(['x']), 'Отчёт.docx').catch(() => {})
+
+    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(anchor.click).not.toHaveBeenCalled()
+  })
+
+  it('does not, for a conference file', async () => {
+    try {
+      await handOffBlob(new Blob(['x']), 'скрин.png')
+    } catch {
+      // The dialog/fs plugins are not installed in the unit environment.
+    }
+
+    expect(createObjectURL).not.toHaveBeenCalled()
+    expect(anchor.click).not.toHaveBeenCalled()
+  })
+
+  it('still uses the browser everywhere else', async () => {
+    isTauri.mockReturnValue(false)
+
+    const outcome = await handOffBlob(new Blob(['x']), 'запись.mp4')
+
+    expect(anchor.download).toBe('запись.mp4')
+    expect(anchor.click).toHaveBeenCalled()
+    expect(outcome).toBe('downloaded')
   })
 })

@@ -202,7 +202,8 @@ export function exportRefusalKey(status) {
  *
  * @param {Blob} blob
  * @param {string} filename
+ * @returns {Promise<'saved'|'downloaded'|'cancelled'>}
  */
 export function downloadBlob(blob, filename) {
-  handOffBlob(blob, filename)
+  return handOffBlob(blob, filename)
 }

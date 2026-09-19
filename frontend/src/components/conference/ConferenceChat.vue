@@ -264,8 +264,9 @@ async function download(att) {
   try {
     const { data } = await confApi.attachment(att.id)
     // handOffBlob owns the click-then-revoke-late dance — revoking before the
-    // browser has started the download cancels it.
-    handOffBlob(data, att.filename)
+    // browser has started the download cancels it — and the desktop Save-as it
+    // takes instead of that dance, which is why this is awaited.
+    await handOffBlob(data, att.filename)
   } catch (e) {
     message.error(e.message)
   }

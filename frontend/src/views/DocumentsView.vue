@@ -744,7 +744,10 @@ async function exportAs(format) {
     // would export the document as it was a second ago.
     await flushSave()
     const res = await docsApi.exportFile(selected.value.id, format)
-    downloadBlob(res.data, exportFileName(selected.value.title, format))
+    // Awaited: on the desktop this is a Save-as dialog and a write to disk, and
+    // a failed write has to reach the catch below rather than an unhandled
+    // rejection nobody sees.
+    await downloadBlob(res.data, exportFileName(selected.value.title, format))
   } catch (err) {
     message.error(exportError(err))
   } finally {
