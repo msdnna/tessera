@@ -75,28 +75,59 @@ const recNudge = ref(0)
 const openId = computed(() => route.params.id || '')
 
 // ── list ───────────────────────────────────────────────────────────────
+
+// Four things ask for the list — the mount, the status radio, the workspace
+// switcher and the socket — and nothing held their answers apart, so whichever
+// arrived LAST won, not whichever was asked last. Clicking «Живые» and then
+// «Завершённые» while the first request is still out leaves the live calls on
+// screen under the «Завершённые» radio, and nothing refetches until the reader
+// touches the filter again; the same race across a workspace switch shows the
+// previous workspace's calls. A busy call (participants joining) fires several
+// `load()`s a second, so the reordering is not hypothetical.
+//
+// The counter is the same device SearchBar.vue uses for its debounced query, and
+// the same comparison-after-await Android has always done (#2932).
+let loadSeq = 0
+let detailSeq = 0
+
 async function load() {
+  // Bumped before the early return, not after: a request already in flight has to
+  // be invalidated even by a call that goes on to do nothing, or its answer lands
+  // later and refills the list we are clearing.
+  const mine = ++loadSeq
   if (!ws.currentId) {
     list.value = []
+    loading.value = false
     return
   }
   loading.value = true
   try {
     const { data } = await confApi.list(ws.currentId, filter.value === 'all' ? '' : filter.value)
+    if (mine !== loadSeq) return
     list.value = data || []
   } catch (e) {
+    // A superseded request's failure is about a list nobody is looking at; its
+    // toast would blame the filter the reader just switched to.
+    if (mine !== loadSeq) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    // Only the request that lit the spinner puts it out.
+    if (mine === loadSeq) loading.value = false
   }
 }
 
 // ── one conference ─────────────────────────────────────────────────────
+// The lobby needs the guard even more than the list does: on the way in it calls
+// `ensureWorkspace` with the ANSWER's workspace, so a late reply about the call
+// the reader has left does not merely redraw the lobby — it drags the whole app
+// into that call's workspace, retargeting the tree, the board and the socket.
 async function loadDetail(id) {
+  const mine = ++detailSeq
   detailLoading.value = true
   detailMissing.value = false
   try {
     const { data } = await confApi.get(id)
+    if (mine !== detailSeq) return
     detail.value = data
     // An invitation notification deep-links straight here, and the backend
     // authorises a call against ITS workspace — so the lobby can open while the
@@ -106,10 +137,12 @@ async function loadDetail(id) {
     // Idempotent when we are already there.
     const confWs = data?.conference?.workspace_id
     if (confWs) await ws.ensureWorkspace(confWs)
+    if (mine !== detailSeq) return
     // Prefetch the workspace roster so the room's invite popover is ready before
     // it is opened; skipped for an ended call, which cannot be invited to.
     if (canInvite.value) loadMembers(confWs)
   } catch (e) {
+    if (mine !== detailSeq) return
     // A deleted (or foreign-workspace) conference answers 404 — say so on the
     // page instead of leaving the previous conference on screen under a new id.
     detail.value = null
@@ -119,7 +152,7 @@ async function loadDetail(id) {
     // matched nothing, so the page said "conference not found" *and* toasted it.
     if (e.status !== 404 && e.status !== 403) message.error(e.message)
   } finally {
-    detailLoading.value = false
+    if (mine === detailSeq) detailLoading.value = false
   }
 }
 
@@ -361,8 +394,12 @@ function timeLine(c) {
 watch(openId, (id) => {
   if (id) loadDetail(id)
   else {
+    // Leaving the lobby invalidates the fetch it started, or that answer lands on
+    // the list and draws the lobby back over it.
+    detailSeq++
     detail.value = null
     detailMissing.value = false
+    detailLoading.value = false
   }
 })
 
