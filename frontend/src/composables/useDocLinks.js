@@ -26,6 +26,15 @@ export function useDocLinks() {
   const error = ref('')
 
   let docId = ''
+  // Generation counter over the fetches below. The panel is not remounted when
+  // the reader opens another document — the documents section owns one editor
+  // and re-points it (#2727) — so nothing invalidates an answer that is already
+  // in flight when `open()` is called again. Without this, the answer to the
+  // document just left lands last and wins: the panel then lists the links of a
+  // document nobody has on screen, and — louder — its approval route, so
+  // `state` reports "на согласовании" about the wrong document and the sign
+  // button carries the other document's approval id into `decide()`.
+  let seq = 0
 
   // The document's single answer to "согласован ли он" — an open route if there
   // is one, else the newest closed one, else null for a document never sent.
@@ -46,33 +55,49 @@ export function useDocLinks() {
   /** Points the composable at a document and loads both lists. */
   async function open(id) {
     docId = id || ''
+    // Invalidate before clearing, not after: the request in flight was asked of
+    // the previous document, and its answer would otherwise refill the lists we
+    // are emptying right now.
+    seq++
     links.value = []
     approvals.value = []
     error.value = ''
     if (docId) await load()
+    else loading.value = false
   }
 
   function close() {
     docId = ''
+    seq++
     links.value = []
     approvals.value = []
     error.value = ''
+    // The in-flight answer is disowned above, so it will not clear the spinner
+    // on its way out — a panel returning to the grid mid-load would otherwise
+    // keep spinning until the next document is opened.
+    loading.value = false
   }
 
   async function load() {
     if (!docId) return
+    const mine = ++seq
+    // Pinned for the round trip: `docId` is a plain variable the reader can move
+    // out from under us between the two calls below.
+    const id = docId
     loading.value = true
     try {
       // One await, not two: the panel renders links and protocols together, and
       // sequencing them would show it half-built for a round trip.
-      const [l, a] = await Promise.all([docsApi.links(docId), docsApi.approvals(docId)])
+      const [l, a] = await Promise.all([docsApi.links(id), docsApi.approvals(id)])
+      if (mine !== seq) return // another document is on screen now
       links.value = l.data || []
       approvals.value = a.data || []
       error.value = ''
     } catch (e) {
+      if (mine !== seq) return // a flap on a document nobody is reading
       error.value = e.message || i18n.global.t('documents.links.error.load')
     } finally {
-      loading.value = false
+      if (mine === seq) loading.value = false
     }
   }
 
