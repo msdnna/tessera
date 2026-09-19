@@ -30,8 +30,16 @@ const stateFilter = ref('active') // 'active' | 'all'
 // Per-project milestone-management modal (reuses the existing manager).
 const mgr = ref({ show: false, projectId: null, projectName: '' })
 
+// Only the newest request may write to the list. A workspace switch abandons the
+// one before it, and an abandoned request that answers last would leave another
+// space's milestones on screen with nothing left to refetch them. The counter is
+// bumped even by the empty-workspace path: it also clears the list, so a request
+// still in flight must not refill what it just emptied.
+let loadSeq = 0
+
 async function load() {
   const ws = store.currentId
+  const mine = ++loadSeq
   if (!ws) {
     list.value = []
     return
@@ -39,11 +47,16 @@ async function load() {
   loading.value = true
   try {
     const { data } = await wsApi.milestones(ws)
+    if (mine !== loadSeq) return
     list.value = data || []
   } catch (e) {
+    // A superseded request's failure is about a workspace nobody is looking at;
+    // its toast would blame the space the reader just switched to.
+    if (mine !== loadSeq) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    // Only the request that lit the spinner puts it out.
+    if (mine === loadSeq) loading.value = false
   }
 }
 

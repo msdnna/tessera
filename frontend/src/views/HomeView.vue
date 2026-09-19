@@ -80,8 +80,16 @@ const visibleTasks = computed(() => {
   }
 })
 
+// Only the newest request may write to the page. A workspace switch abandons the
+// one before it, and that one is still on its way: without the comparison below
+// the space the reader left decides the screen by finishing last — its tasks
+// under the new space's name, and clicking a row routes to a board outside the
+// current scope. Nothing refetches them, because the switch has already happened.
+let loadSeq = 0
+
 async function load() {
   const wsId = wsStore.currentId
+  const mine = ++loadSeq
   if (!wsId) return
   loading.value = true
   try {
@@ -97,6 +105,7 @@ async function load() {
       wsApi.tagPrefixes(wsId),
       wsApi.members(wsId),
     ])
+    if (mine !== loadSeq) return
     summary.value = s.data
     allTasks.value = tasks.data || []
     for (const k of Object.keys(tagsMap)) delete tagsMap[k]
@@ -106,7 +115,8 @@ async function load() {
     for (const k of Object.keys(membersMap)) delete membersMap[k]
     for (const m of mem.data || []) membersMap[m.user_id] = m
   } finally {
-    loading.value = false
+    // Only the request that lit the spinner puts it out.
+    if (mine === loadSeq) loading.value = false
   }
 }
 

@@ -22,10 +22,20 @@ const selected = ref(null)
 const title = ref('')
 const body = ref('')
 
+// Only the newest request may write to the list. Five things ask for it — the
+// mount, the workspace switch, the `?note=` query, a save and a delete — and none
+// of them waited for the one before. An abandoned request answering last is worse
+// here than a stale list: the block below re-opens a note by the address, so a
+// note of the workspace the reader has left lands in the editor, and the next
+// Сохранить writes into it.
+let loadSeq = 0
+
 async function loadList() {
   if (!wsStore.currentId) return
+  const mine = ++loadSeq
   try {
     const res = await notesApi.list(wsStore.currentId)
+    if (mine !== loadSeq) return
     list.value = res.data || []
     const wanted = route.query.note
     if (wanted) {
@@ -34,6 +44,9 @@ async function loadList() {
       if (found) select(found)
     }
   } catch (e) {
+    // A superseded request's failure is about a workspace nobody is looking at;
+    // its toast would blame the space the reader just switched to.
+    if (mine !== loadSeq) return
     message.error(e.message)
   }
 }
