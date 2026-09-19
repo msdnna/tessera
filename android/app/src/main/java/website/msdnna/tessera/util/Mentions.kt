@@ -139,6 +139,24 @@ fun mentionIdsIn(src: String, items: List<MentionItem>): List<String> {
     return out.toList()
 }
 
+/**
+ * Whom an edit ADDED: the members [after] mentions, minus those [before] already
+ * did — the list `PATCH /comments/:id` is handed.
+ *
+ * Only the difference travels, and it has to be computed here. The server keeps
+ * the previous body as plain text, without the roster a handle becomes a chip
+ * against, so it can tell neither who was mentioned before nor who is now;
+ * sending the whole set instead would ping everyone named in the comment again
+ * every time its author fixed a typo. Sending nothing — what the edit path did
+ * until #2932 — breaks the promise the chip makes: the edit composer offers the
+ * same @-popup the main one does, so «@Иван, посмотри» added by an edit looks
+ * exactly like a mention Иван was told about.
+ */
+fun addedMentionIds(before: String, after: String, items: List<MentionItem>): List<String> {
+    val was = mentionIdsIn(before, items).toSet()
+    return mentionIdsIn(after, items).filterNot(was::contains)
+}
+
 /** True when the '@' at [at] starts a token the renderer would chip. */
 private fun opensMention(text: String, at: Int): Boolean {
     var i = at - 1

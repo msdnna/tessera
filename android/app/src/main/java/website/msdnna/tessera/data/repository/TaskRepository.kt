@@ -42,8 +42,11 @@ class TaskRepository {
      *  POST, иначе подсказка назовёт не тот день. */
     suspend fun previewCommands(taskId: String, body: String): CommandPreview =
         api.previewCommands(taskId, PreviewCommandsRequest(body), AppContainer.callerZone())
-    suspend fun editComment(commentId: String, body: String): Comment =
-        api.updateComment(commentId, UpdateCommentRequest(body))
+
+    /** [mentions] — ids the edit ADDED (see [UpdateCommentRequest]); empty for an
+     *  edit that names nobody new, e.g. ticking a checkbox. */
+    suspend fun editComment(commentId: String, body: String, mentions: List<String> = emptyList()): Comment =
+        api.updateComment(commentId, UpdateCommentRequest(body, mentions))
     suspend fun deleteComment(commentId: String) = api.deleteComment(commentId)
 
     suspend fun relations(taskId: String): List<Relation> = api.relations(taskId).orEmpty()

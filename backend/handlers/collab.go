@@ -366,6 +366,17 @@ func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uu
 }
 
 // UpdateComment edits a comment's body.
+//
+// `mentions` carries the people this edit ADDED — not everyone the new text
+// mentions. Both are needed and only the client can tell them apart: an
+// @-handle becomes a chip by being rendered against the roster, which is where
+// `mentionIdsIn` lives on either client, while the server holds the old body as
+// plain text and has no way to say which of its handles already drew one. Left
+// to the whole set, every typo fix would notify the same people again.
+//
+// Sending them at all is the point: the edit composer offers the same @-popup
+// the main one does, so "@Иван, посмотри" added by an edit draws a resolved chip
+// — and the chip the reader sees IS the promise that the person was told.
 func (h *API) UpdateComment(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -379,7 +390,8 @@ func (h *API) UpdateComment(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if _, _, ok := h.loadTask(c, cm.TaskID); !ok {
+	t, wsID, ok := h.loadTask(c, cm.TaskID)
+	if !ok {
 		return
 	}
 	if cm.AuthorID == nil || *cm.AuthorID != middleware.CurrentUser(c) {
@@ -387,7 +399,8 @@ func (h *API) UpdateComment(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Body string `json:"body" binding:"required"`
+		Body     string      `json:"body" binding:"required"`
+		Mentions []uuid.UUID `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -405,6 +418,10 @@ func (h *API) UpdateComment(c *gin.Context) {
 		h.enqueueWriteback(c, cm.TaskID, middleware.CurrentUser(c), gitlab.TrigComment,
 			map[string]any{"op": "edit", "comment_id": id.String(), "gl_note_id": *cm.GlNoteID, "body": req.Body})
 	}
+	// Only the mention notice goes out, never the generic "commented" one: an edit
+	// is not a new comment, and the task's participants were already told about
+	// this one when it was written.
+	h.notifyMentions(c, t, wsID, req.Mentions, req.Body)
 	c.JSON(http.StatusOK, updated)
 }
 

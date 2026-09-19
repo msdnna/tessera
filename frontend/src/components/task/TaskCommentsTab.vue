@@ -25,7 +25,7 @@ import { fmtWhen, groupThreads } from '@/utils/taskFeed'
 import { useFormat } from '@/composables/useFormat'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
-import { buildMentionItems } from '@/utils/mentions'
+import { buildMentionItems, mentionIdsIn } from '@/utils/mentions'
 import { scrollParent } from '@/utils/dom'
 import MarkdownEditor from '../MarkdownEditor.vue'
 import RichContent from '../RichContent.vue'
@@ -56,6 +56,9 @@ const newComment = ref('')
 const commentEditor = ref(null)
 const editingCommentId = ref(null)
 const editingCommentBody = ref('')
+// The body as it stood when editing started — the baseline the mention delta is
+// measured against (see addedMentions).
+const editingCommentOriginal = ref('')
 // True while a comment POST is in flight (spinner on the send button, guards
 // double-submit); retryInfo holds { attempt, max } while waiting to retry an
 // offline send, else null.
@@ -386,13 +389,23 @@ function reportCommands(summary) {
 function startEditComment(c) {
   editingCommentId.value = c.id
   editingCommentBody.value = c.body
+  editingCommentOriginal.value = c.body
+}
+// Who this edit newly mentions: the people the saved text chips, minus the ones
+// the text already chipped before it was opened for editing. Computed here
+// rather than server-side because only this side holds the roster a handle is
+// rendered against — and only the difference is sent, or fixing a typo would
+// notify everyone named in the comment all over again.
+function addedMentions(body) {
+  const before = new Set(mentionIdsIn(editingCommentOriginal.value, mentionItems.value))
+  return mentionIdsIn(body, mentionItems.value).filter((id) => !before.has(id))
 }
 async function saveComment() {
   if (props.readonly) return
   const body = editingCommentBody.value.trim()
   if (!body) return
   try {
-    await tasksApi.updateComment(editingCommentId.value, body)
+    await tasksApi.updateComment(editingCommentId.value, body, addedMentions(body))
     editingCommentId.value = null
     const c = await tasksApi.comments(props.taskId)
     emit('update:comments', c.data || [])

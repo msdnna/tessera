@@ -1848,7 +1848,9 @@ private fun CommentsTab(
                     editPreview = false
                 },
                 onEndEdit = { editingId = null },
-                onSaveEdit = { vm.editComment(t.root.id, it) },
+                // The body as it stood before the edit + the roster: together they
+                // say whom this edit newly mentions (vm.editComment).
+                onSaveEdit = { vm.editComment(t.root.id, it, t.root.body, mentionItems) },
                 onToggleCheck = { i -> vm.editComment(t.root.id, toggleTaskMarker(t.root.body, i)) },
                 onDelete = { vm.deleteComment(t.root.id) },
             ) {
@@ -1888,7 +1890,7 @@ private fun CommentsTab(
                                 editPreview = false
                             },
                             onEndEdit = { editingId = null },
-                            onSaveEdit = { vm.editComment(r.id, it) },
+                            onSaveEdit = { vm.editComment(r.id, it, r.body, mentionItems) },
                             onToggleCheck = { i -> vm.editComment(r.id, toggleTaskMarker(r.body, i)) },
                             onDelete = { vm.deleteComment(r.id) },
                         ) {

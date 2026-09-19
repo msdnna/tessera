@@ -26,6 +26,7 @@ import website.msdnna.tessera.data.repository.TaskRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.MentionItem
 import website.msdnna.tessera.util.MoveNeighbors
+import website.msdnna.tessera.util.addedMentionIds
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.hasCommandLine
 import website.msdnna.tessera.util.mentionIdsIn
@@ -352,9 +353,22 @@ class TaskDetailViewModel(
     /** Marks the posted-commands report as shown (it is a one-shot toast). */
     fun consumeCommandNotice() = _state.update { it.copy(commandNotice = null) }
 
-    fun editComment(commentId: String, body: String) = mutate {
+    /**
+     * Edits one's own comment. [oldBody] is what it said before, [mentions] the
+     * roster it is rendered against — together they say who this edit newly
+     * mentions, and only those people are notified: the edit composer offers the
+     * same @-popup the main one does, so a «@Иван, посмотри» added by an edit
+     * draws a resolved chip, and that chip is the promise Иван was told. Sending
+     * everyone the text mentions instead would ping them all again on a typo fix.
+     */
+    fun editComment(
+        commentId: String,
+        body: String,
+        oldBody: String = body,
+        mentions: List<MentionItem> = emptyList(),
+    ) = mutate {
         if (body.isBlank()) return@mutate
-        taskRepo.editComment(commentId, body)
+        taskRepo.editComment(commentId, body, addedMentionIds(oldBody, body, mentions))
         _state.update { it.copy(comments = taskRepo.comments(taskId), changed = true) }
     }
 

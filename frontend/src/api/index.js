@@ -682,7 +682,12 @@ export const tasks = {
   // the real POST, or the hint would name a different day than the command sets.
   previewCommands: (id, body, tz) =>
     api.post(`/tasks/${id}/commands/preview`, { body }, { skipLoader: true, params: { tz } }),
-  updateComment: (commentId, body) => api.patch(`/comments/${commentId}`, { body }),
+  // `mentions` are the people this edit ADDED, not everyone the new text
+  // mentions — the server cannot tell them apart (it holds the old body as plain
+  // text, without the roster a handle becomes a chip against), and re-sending
+  // the whole set would notify the same people on every typo fix.
+  updateComment: (commentId, body, mentions) =>
+    api.patch(`/comments/${commentId}`, { body, mentions }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),
   addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),

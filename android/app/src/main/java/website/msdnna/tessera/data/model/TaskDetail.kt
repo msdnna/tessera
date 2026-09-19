@@ -186,7 +186,16 @@ data class CreateCommentRequest(
     @SerializedName("parent_id") val parentId: String? = null,
 )
 
-data class UpdateCommentRequest(@SerializedName("body") val body: String)
+/**
+ * An edited body plus the people the edit ADDED to it — not everyone the new
+ * text mentions. The server cannot tell the two apart: it keeps the old body as
+ * plain text, without the roster a handle is rendered against, so it would
+ * either notify nobody or notify everyone named again on every typo fix.
+ */
+data class UpdateCommentRequest(
+    @SerializedName("body") val body: String,
+    @SerializedName("mentions") val mentions: List<String> = emptyList(),
+)
 
 data class AddRelationRequest(
     @SerializedName("number") val number: Long,
