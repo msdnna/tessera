@@ -49,6 +49,65 @@ func TestDeletingAColumnTakesItsTasksAttachments(t *testing.T) {
 	}
 }
 
+// TestDeletingAColumnTakesSubtasksStandingElsewhere: the sweep reads the doomed
+// tasks off column_id, on the grounds that a subtree is wholly inside whichever
+// container holds its root. That holds for a board, a project and a workspace —
+// MoveSubtreeToBoard exists to keep it holding — but not for a column: a subtask
+// is a card of its own, the board draws it and a drag moves it, so it stands
+// wherever it was dragged and its parent stands somewhere else.
+//
+// tasks.parent_id is ON DELETE CASCADE, so deleting the parent's column takes
+// that subtask too, out of a column nobody deleted and at any depth. Its
+// task_attachments rows go with it — and its directory is not in the sweep's
+// list, so the bytes stay on disk with nothing left pointing at them.
+func TestDeletingAColumnTakesSubtasksStandingElsewhere(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	s := mkStack(t, owner)
+	doomed, kept, third := s.col(t, 0), s.col(t, 1), s.col(t, 2)
+
+	parent := mkTask(t, owner, s.Board, doomed, "Эпик в удаляемой колонке")["id"].(string)
+	attachFile(t, owner, parent, "план.md", []byte("# план"))
+
+	subtask := func(t *testing.T, parentID, title, column string) string {
+		t.Helper()
+		id := owner.expect(t, owner.post("/boards/"+s.Board+"/tasks", map[string]any{
+			"title": title, "column_id": doomed, "parent_id": parentID,
+		}), http.StatusCreated)["id"].(string)
+		// Dragged out of the parent's column, which is the whole point.
+		owner.expect(t, owner.patch("/tasks/"+id+"/move",
+			map[string]any{"column_id": column}), http.StatusOK)
+		return id
+	}
+	// A child one column over and a grandchild two: the cascade is not depth-limited,
+	// so neither is the sweep that has to match it.
+	child := subtask(t, parent, "Подзадача в работе", kept)
+	attachFile(t, owner, child, "патч.diff", []byte("--- a\n+++ b"))
+	grandchild := subtask(t, child, "Под-подзадача на ревью", third)
+	attachFile(t, owner, grandchild, "лог.txt", []byte("trace"))
+
+	neighbour := mkTask(t, owner, s.Board, kept, "Карточка в соседней колонке")["id"].(string)
+	attachFile(t, owner, neighbour, "сосед.txt", []byte("neighbour"))
+
+	owner.expect(t, owner.del("/columns/"+doomed), http.StatusNoContent)
+
+	// The cascade really does reach them — otherwise the file assertions below
+	// would pass for the wrong reason.
+	for _, id := range []string{child, grandchild} {
+		if got := owner.get("/tasks/" + id); got.Status != http.StatusNotFound {
+			t.Fatalf("subtask %s survived its parent's column delete: %d", id, got.Status)
+		}
+	}
+	for _, id := range []string{parent, child, grandchild} {
+		if n, ok := countFiles(t, taskUploadDir(id)); ok {
+			t.Fatalf("task %s kept %d attachment file(s) no row points at", id, n)
+		}
+	}
+	if n, ok := countFiles(t, taskUploadDir(neighbour)); !ok || n != 1 {
+		t.Fatalf("the sweep reached a card that was not deleted: %d file(s) left (exists=%v)", n, ok)
+	}
+}
+
 // TestDeletingABoardTakesEveryTaskAttachment: a board is the unit a team retires,
 // and it holds the whole tree — subtasks included, each with its own directory.
 func TestDeletingABoardTakesEveryTaskAttachment(t *testing.T) {

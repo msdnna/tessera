@@ -504,11 +504,27 @@ DELETE FROM tasks WHERE tasks.id IN (SELECT id FROM down) RETURNING tasks.id;
 -- first, inside the same transaction as the delete — a snapshot no concurrent insert
 -- can slip a task past.
 --
--- Subtasks need no recursion here, unlike DeleteTask: every task carries its own
+-- Subtasks need no recursion in the three below: every task carries its own
 -- board_id/column_id (MoveSubtreeToBoard exists to keep it that way), so a subtree is
--- already wholly inside whichever container holds its root.
+-- already wholly inside whichever board, project or workspace holds its root.
+--
+-- A COLUMN is the exception, and TaskIDsInColumn recurses for it: a subtask is a card
+-- of its own — the board draws it, a drag moves it — so it stands in whatever column
+-- it was dragged to while its parent stands in another. tasks.parent_id is ON DELETE
+-- CASCADE, so deleting the parent's column takes that subtask as well, at any depth
+-- and out of a column nobody deleted; without the descent its directory is never
+-- swept and the bytes outlive every row that knew where they were.
+--
+-- UNION rather than UNION ALL for the same reason as TaskAncestorIDs: an install that
+-- already grew a ring must get an answer instead of spinning. It also collapses the
+-- duplicate ids a subtask standing in the doomed column alongside its parent produces.
 -- name: TaskIDsInColumn :many
-SELECT id FROM tasks WHERE column_id = $1;
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.column_id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+SELECT id FROM down;
 
 -- name: TaskIDsOnBoard :many
 SELECT id FROM tasks WHERE board_id = $1;

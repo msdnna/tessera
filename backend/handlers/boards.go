@@ -605,7 +605,9 @@ func (h *API) DeleteColumn(c *gin.Context) {
 		return
 	}
 	// Same cascade as DeleteBoard, one level down: tasks.column_id is the FK, so
-	// dropping a column deletes every card standing in it. See TaskIDsInColumn.
+	// dropping a column deletes every card standing in it — and tasks.parent_id then
+	// takes their subtasks out of whatever columns those were dragged to.
+	// TaskIDsInColumn walks that tree, because the sweep needs the whole of it.
 	//
 	// Deleting the board's completing column also clears boards.done_column_id —
 	// that FK is ON DELETE SET NULL (migration 0007, back when NULL meant "fall
