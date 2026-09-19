@@ -297,7 +297,8 @@ func listTasks(c *client.Client) mcp.ToolHandlerFor[listTasksInput, taskListOut]
 		if err != nil {
 			return nil, taskListOut{}, err
 		}
-		now := time.Now()
+		// The reader's calendar, not the process's — see client.Location.
+		now := time.Now().In(c.Location(ctx))
 		ranked := rank.Tasks(tasks, rank.Options{IncludeCompleted: in.IncludeCompleted, Now: now})
 		out := taskListOut{Count: len(ranked)}
 		for _, t := range ranked {
@@ -320,7 +321,7 @@ func myTasks(c *client.Client) mcp.ToolHandlerFor[workspaceInput, taskListOut] {
 		if err != nil {
 			return nil, taskListOut{}, err
 		}
-		now := time.Now()
+		now := time.Now().In(c.Location(ctx))
 		ranked := rank.Tasks(tasks, rank.Options{Now: now})
 		out := taskListOut{Count: len(ranked)}
 		for _, t := range ranked {
@@ -332,7 +333,7 @@ func myTasks(c *client.Client) mcp.ToolHandlerFor[workspaceInput, taskListOut] {
 
 func nextTask(c *client.Client) mcp.ToolHandlerFor[nextTaskInput, nextTaskOut] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in nextTaskInput) (*mcp.CallToolResult, nextTaskOut, error) {
-		now := time.Now()
+		now := time.Now().In(c.Location(ctx))
 		switch {
 		case in.BoardID != "":
 			enr, err := boardEnrichment(ctx, c, in.BoardID)
@@ -387,7 +388,7 @@ func getTask(c *client.Client) mcp.ToolHandlerFor[getTaskInput, taskDetailOut] {
 			return nil, taskDetailOut{}, err
 		}
 
-		now := time.Now()
+		now := time.Now().In(c.Location(ctx))
 		out := taskDetailOut{
 			ID: d.ID, Number: d.Number, Title: d.Title, Description: d.Description,
 			Priority: d.Priority, PriorityLabel: priorityLabel(d.Priority),

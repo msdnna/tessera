@@ -30,6 +30,7 @@ type Client struct {
 	selfMu     sync.Mutex // guards the memoised /auth/me lookup
 	selfLoaded bool
 	selfID     string
+	selfLoc    *time.Location // profile timezone, nil when unset or unloadable
 }
 
 // New builds a client for the given API base URL and token. Timeouts mirror the
@@ -124,25 +125,70 @@ func (c *Client) do(req *http.Request, method, path string, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// SelfID returns the user id owning the token (via /auth/me), memoised for the
-// process. Best-effort: returns "" if the lookup fails, so callers must treat an
-// empty id as "unknown" rather than a match.
-func (c *Client) SelfID(ctx context.Context) string {
-	c.selfMu.Lock()
-	defer c.selfMu.Unlock()
+// loadSelf performs the memoised /auth/me lookup, which answers two questions at
+// once: who owns the token, and which calendar they live in. Caller holds selfMu.
+//
+// Best-effort throughout: a failed lookup leaves both answers at their "unknown"
+// value rather than failing the tool that asked. The zone is skipped when the
+// profile leaves it blank — on the web that blank means "whatever the browser
+// is", a value the server cannot re-derive (see resolvedTimezone in
+// frontend/src/utils/format.js), and here it means the same thing: fall through
+// to the process's own zone.
+func (c *Client) loadSelf(ctx context.Context) {
 	if c.selfLoaded {
-		return c.selfID
+		return
 	}
 	c.selfLoaded = true
 	var out struct {
 		User struct {
 			ID string `json:"id"`
 		} `json:"user"`
+		Preferences struct {
+			Timezone string `json:"timezone"`
+		} `json:"preferences"`
 	}
-	if err := c.get(ctx, "/auth/me", nil, &out); err == nil {
-		c.selfID = out.User.ID
+	if err := c.get(ctx, "/auth/me", nil, &out); err != nil {
+		return
 	}
+	c.selfID = out.User.ID
+	if tz := strings.TrimSpace(out.Preferences.Timezone); tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			c.selfLoc = loc
+		}
+	}
+}
+
+// SelfID returns the user id owning the token (via /auth/me), memoised for the
+// process. Best-effort: returns "" if the lookup fails, so callers must treat an
+// empty id as "unknown" rather than a match.
+func (c *Client) SelfID(ctx context.Context) string {
+	c.selfMu.Lock()
+	defer c.selfMu.Unlock()
+	c.loadSelf(ctx)
 	return c.selfID
+}
+
+// Location returns the calendar the token's owner lives in — the profile
+// timezone, else the process's own zone.
+//
+// Everything that buckets by day has to use it, because a due date is a day, not
+// an instant: it is stored as midnight in the writer's zone and carries that
+// offset back (`"due":"2026-09-19T00:00:00+03:00"`). Ranking against the
+// *process's* midnight therefore answered a different question than every other
+// surface the same user reads — the backend resolves the same profile zone for
+// its own day buckets (callerLocation in handlers/api.go) and the web lets the
+// `timezone` preference win over the browser's zone (utils/taskFilter.js). With
+// the MCP host an hour west of the profile, every task due today came back
+// `overdue: true` for the whole of the day it was actually due on, and next_task
+// put it ahead of work that really was late.
+func (c *Client) Location(ctx context.Context) *time.Location {
+	c.selfMu.Lock()
+	defer c.selfMu.Unlock()
+	c.loadSelf(ctx)
+	if c.selfLoc != nil {
+		return c.selfLoc
+	}
+	return time.Local
 }
 
 // ListWorkspaces returns the workspaces the token's owner belongs to.
