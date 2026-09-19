@@ -10,7 +10,6 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/jobs"
-	"tessera/internal/observability"
 )
 
 // ── Admin: background jobs panel ───────────────────────────
@@ -142,6 +141,15 @@ func (h *API) GetJob(c *gin.Context) {
 // beside a second press of the button) double-sends a notification and
 // double-advances a recurrence. The lock is taken here, before the response,
 // rather than inside the goroutine, so a skipped run isn't reported as started.
+//
+// It runs through runDetached, on the process's background context rather than a
+// fresh one, because it is the same sweep a tick loop runs and shutdown has to
+// treat it the same way. On its own context the run is invisible to shutdown:
+// the pool closes under it mid-sweep (drain's whole ordering rests on nothing
+// being left to write), and settleDelivery — which reads ctx.Err() to tell a
+// deploy stopping mid-send from a verdict on the delivery — is told the process
+// is fine, so a notification that never went out is either marked failed for
+// good or left claimed for RequeueStaleDeliveries to send a second time (#2932).
 func (h *API) RunJob(c *gin.Context) {
 	if _, ok := h.requireGlobalAdmin(c); !ok {
 		return
@@ -157,13 +165,12 @@ func (h *API) RunJob(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "job is already running"})
 		return
 	}
-	go func() {
-		// Detached one-shot run: guard the process against a panic in the job, and
-		// free the lock however it ends.
-		defer release()
-		defer observability.Recover("job:" + key)
-		runner.run(context.Background())
-	}()
+	// Free the lock however the run ends, including when it never starts.
+	if !h.runDetached("job:"+key, func(ctx context.Context) { defer release(); runner.run(ctx) }) {
+		release()
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "server is shutting down"})
+		return
+	}
 	c.JSON(http.StatusAccepted, gin.H{"started": true})
 }
 

@@ -122,6 +122,12 @@ func main() {
 		}()
 	}
 
+	// The same ctx and WaitGroup for work the handlers start and the request does
+	// not wait for — the jobs panel's "run now". It runs the very sweeps the loops
+	// below run, so drain has to wait for it before the pool closes, exactly as it
+	// waits for them (#2932).
+	rh.WireBackgroundScope(ctx, &workers)
+
 	// Record the tick-loop workers in the jobs registry (heartbeat entries) and start
 	// the supervisor that logs a periodic summary of in-flight background jobs.
 	rh.RegisterBackgroundWorkers()

@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -120,6 +121,11 @@ func TestMain(m *testing.M) {
 	// (GitLab write-back, notifications) created by the flow tests.
 	rh.RegisterBackgroundWorkers()
 	workerCtx, stopWorkers := context.WithCancel(ctx)
+	// Work a request starts but does not wait for (the jobs panel's "run now")
+	// belongs to the same scope as the loops below, as it does in main: it runs
+	// the same sweeps against the same pool, and teardown closes that pool.
+	var detached sync.WaitGroup
+	rh.WireBackgroundScope(workerCtx, &detached)
 	go rh.RunSyncWorker(workerCtx)
 	go rh.RunGitlabWriteBackWorker(workerCtx)
 	go rh.RunNotificationWorker(workerCtx)
@@ -133,6 +139,7 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 	stopWorkers()
+	detached.Wait()
 	testPool.Close()
 	os.Exit(code)
 }

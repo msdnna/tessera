@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -53,6 +54,26 @@ type API struct {
 	webhooks       webhookQueue             // debounced dirty set of GitLab integrations poked by a webhook (#2594)
 	egressDir      string                   // uploadDir as the egress recorder sees it (#2877); empty falls back to uploadDir
 	recTemplateURL string                   // internal url of our egress recording page (#2877); empty ⇒ egress's built-in grid
+	bgCtx          context.Context          // process lifetime for detached job runs (nil until WireBackgroundScope)
+	bgWG           *sync.WaitGroup          // shutdown waits on it, alongside the tick loops
+}
+
+// WireBackgroundScope hands the handlers the process's shutdown context and the
+// WaitGroup shutdown drains, so work started from a request but outliving it —
+// the /admin/jobs "run now" action — belongs to the same lifecycle as the tick
+// loops instead of running loose (#2932).
+//
+// Both halves matter. The context is what tells a sweep it is being shut down:
+// settleDelivery reads ctx.Err() to tell a deploy stopping mid-send from a
+// verdict on the delivery, and on a detached context that question always
+// answers "no". The WaitGroup is what keeps the pool open under it — main closes
+// the pool after draining, on the stated assumption that nothing is still
+// writing.
+//
+// Optional wiring: unwired (the test harnesses, which own no process lifecycle)
+// a detached run falls back to its own background context and nothing waits.
+func (h *API) WireBackgroundScope(ctx context.Context, wg *sync.WaitGroup) {
+	h.bgCtx, h.bgWG = ctx, wg
 }
 
 // WireOps injects the ops-observability dependencies that live outside NewAPI's
