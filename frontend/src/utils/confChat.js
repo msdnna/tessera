@@ -10,6 +10,10 @@
  *
  * The Android client keeps the same three in `util/ConferenceChat.kt`; when one
  * of them moves on the server, all three copies move together.
+ *
+ * `mergeChatTail` at the bottom is the log's rather than the composer's, and
+ * lives here for the same reason: a rule that only ever runs inside a component
+ * is a rule nobody can pin with a test.
  */
 
 /** The server's `maxChatBody`, in *code points* — see {@link confChatBodyLength}. */
@@ -78,4 +82,53 @@ export function confChatCanSend(draft, pendingCount, sending) {
   if (sending) return false
   if (confChatBodyTooLong(draft)) return false
   return confChatBodyLength(draft) > 0 || pendingCount > 0
+}
+
+/**
+ * Whether message `a` comes before message `b` in the log.
+ *
+ * The server's cursor is (created_at, id) — see `ListConferenceMessages` — and
+ * this is that order, restated for the client. `created_at` is compared as an
+ * instant rather than as text: Go drops trailing zeros from the fractional
+ * second, so "10:00:00.1Z" and "10:00:00.05Z" sort the wrong way round as
+ * strings. The id is the tie-break, exactly as in SQL.
+ */
+function chatBefore(a, b) {
+  const ta = Date.parse(a?.created_at) || 0
+  const tb = Date.parse(b?.created_at) || 0
+  if (ta !== tb) return ta < tb
+  return String(a?.id || '') < String(b?.id || '')
+}
+
+/**
+ * Folds a freshly fetched tail page into the log already on screen.
+ *
+ * The room socket's nudge carries no payload, so the rail's only answer is to
+ * refetch the newest page — but *replacing* the log with that page throws away
+ * every older page the reader paged back through. In a lively call that happens
+ * on every line anybody types: the message being re-read vanishes mid-sentence
+ * and the view lands somewhere arbitrary, which is the very thing the "don't
+ * scroll unless the reader is at the bottom" rule exists to prevent (#2932).
+ *
+ * So: keep what is strictly older than the page's first message, and let the
+ * page be the truth from there on — a line deleted inside that window really
+ * goes away, which a blind append would keep on screen forever. An empty page
+ * means an empty chat (the tail is the newest PAGE messages; nothing can hide
+ * behind it), so nothing is kept.
+ *
+ * The id filter is the belt to the cursor's braces: two messages a microsecond
+ * apart land in the same millisecond once `Date.parse` is done with them, and a
+ * message that straddles the boundary that way must not be drawn twice — Vue
+ * would key both rows the same.
+ *
+ * @param {Array<object>} current what the rail shows now, oldest first
+ * @param {Array<object>} fresh the newly fetched tail page, oldest first
+ * @returns {Array<object>} the merged log, oldest first
+ */
+export function mergeChatTail(current, fresh) {
+  const page = fresh || []
+  if (!page.length) return []
+  const ids = new Set(page.map((m) => m?.id))
+  const older = (current || []).filter((m) => !ids.has(m?.id) && chatBefore(m, page[0]))
+  return [...older, ...page]
 }

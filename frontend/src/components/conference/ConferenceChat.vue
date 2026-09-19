@@ -39,6 +39,7 @@ import {
   confChatBodyTooLong,
   confChatCanSend,
   confChatPickError,
+  mergeChatTail,
 } from '@/utils/confChat'
 import { handOffBlob } from '@/utils/blobHandoff'
 import { formatFileSize } from '@/utils/docPdf'
@@ -110,15 +111,25 @@ async function scrollToEnd(force = false) {
   if (el) el.scrollTop = el.scrollHeight
 }
 
-/** Loads the newest page, replacing what is on screen. */
+/**
+ * Loads the newest page and folds it into what is on screen.
+ *
+ * Folds rather than replaces: a reader who paged back keeps their history when
+ * the next nudge arrives — see `mergeChatTail`. `has_more` describes what is
+ * older than the fetched page, so it only answers for the rail while the rail
+ * holds nothing older itself; once history is loaded, the flag the last
+ * "load older" left behind is the true one.
+ */
 async function loadTail() {
   if (!props.conferenceId) return
   loading.value = true
   try {
     const { data } = await confApi.messages(props.conferenceId, { limit: PAGE })
     const stick = atBottom()
-    messages.value = data?.messages || []
-    hasMore.value = !!data?.has_more
+    const fresh = data?.messages || []
+    const merged = mergeChatTail(messages.value, fresh)
+    messages.value = merged
+    if (merged.length === fresh.length) hasMore.value = !!data?.has_more
     await scrollToEnd(stick)
   } catch (e) {
     // A 403/404 here means the conference went away under us; the screen around
@@ -285,7 +296,17 @@ watch(
   { deep: true, immediate: true },
 )
 
-watch(() => props.conferenceId, loadTail, { immediate: true })
+// A different call is a different conversation: drop the log before fetching,
+// or the fold above would carry the previous room's history into it.
+watch(
+  () => props.conferenceId,
+  () => {
+    messages.value = []
+    hasMore.value = false
+    loadTail()
+  },
+  { immediate: true },
+)
 // Someone said something. The nudge carries no payload by design, so the answer
 // is always "go and read the tail".
 watch(

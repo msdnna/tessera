@@ -8,6 +8,7 @@ import {
   confChatBodyTooLong,
   confChatCanSend,
   confChatPickError,
+  mergeChatTail,
 } from '@/utils/confChat'
 
 /** A stand-in for a picked File — only `size` and `name` are ever read. */
@@ -153,5 +154,60 @@ describe('conference chat composer rules', () => {
       expect(confChatCanSend('ага', 0, true)).toBe(false)
       expect(confChatCanSend('', 1, true)).toBe(false)
     })
+  })
+})
+
+// The log's rule, not the composer's: the nudge is payload-free, so every line
+// anybody types makes the rail refetch the newest page. Dropping the pages the
+// reader paged back through on each of those is what made a busy call's history
+// unreadable (#2932).
+describe('mergeChatTail', () => {
+  function m(id, at, body = id) {
+    return { id, body, created_at: at }
+  }
+
+  it('keeps the history the reader paged back through', () => {
+    const shown = [m('m1', '2026-09-03T10:00:00Z'), m('m2', '2026-09-03T10:01:00Z')]
+    const fresh = [m('m2', '2026-09-03T10:01:00Z'), m('m3', '2026-09-03T10:02:00Z')]
+    expect(mergeChatTail(shown, fresh).map((x) => x.id)).toEqual(['m1', 'm2', 'm3'])
+  })
+
+  it('lets the page be the truth from its first message onward', () => {
+    // m3 was deleted by its author while the rail was open. Everything the page
+    // covers is the page's word, so m3 goes off the screen — a blind append
+    // would keep it there for as long as the call lasts. What the page does not
+    // cover (m1, from an older page) is not its business.
+    const shown = [
+      m('m1', '2026-09-03T10:00:00Z'),
+      m('m2', '2026-09-03T10:01:00Z'),
+      m('m3', '2026-09-03T10:02:00Z'),
+    ]
+    const fresh = [m('m2', '2026-09-03T10:01:00Z'), m('m4', '2026-09-03T10:03:00Z')]
+    expect(mergeChatTail(shown, fresh).map((x) => x.id)).toEqual(['m1', 'm2', 'm4'])
+  })
+
+  it('draws no message twice', () => {
+    const shown = [m('m1', '2026-09-03T10:00:00Z'), m('m2', '2026-09-03T10:00:00Z')]
+    const fresh = [m('m2', '2026-09-03T10:00:00Z'), m('m3', '2026-09-03T10:00:00Z')]
+    const ids = mergeChatTail(shown, fresh).map((x) => x.id)
+    expect(ids).toEqual(['m1', 'm2', 'm3'])
+    expect(new Set(ids).size).toBe(ids.length)
+  })
+
+  it('empties the log when the chat is empty', () => {
+    // The tail is the newest PAGE messages: nothing can hide behind an empty one.
+    expect(mergeChatTail([m('m1', '2026-09-03T10:00:00Z')], [])).toEqual([])
+  })
+
+  it('orders a same-millisecond pair by id, as the server does', () => {
+    const shown = [m('a', '2026-09-03T10:00:00.5Z'), m('b', '2026-09-03T10:00:00.5Z')]
+    const fresh = [m('b', '2026-09-03T10:00:00.5Z')]
+    expect(mergeChatTail(shown, fresh).map((x) => x.id)).toEqual(['a', 'b'])
+  })
+
+  it('takes the page as-is when nothing is on screen', () => {
+    const fresh = [m('m1', '2026-09-03T10:00:00Z')]
+    expect(mergeChatTail([], fresh)).toEqual(fresh)
+    expect(mergeChatTail(undefined, fresh)).toEqual(fresh)
   })
 })

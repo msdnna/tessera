@@ -197,6 +197,85 @@ describe('loading the conversation', () => {
     w.unmount()
   })
 
+  it('keeps the history it paged back through when the next nudge lands', async () => {
+    // The nudge fires on every line anybody types. Answering it by *replacing*
+    // the log with the newest page threw away the older pages the reader had
+    // just loaded: in a busy call the message being re-read vanished mid-
+    // sentence and the view landed somewhere arbitrary — the very thing the
+    // "don't scroll unless at the bottom" rule exists to prevent (#2932).
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm5', body: 'последнее', created_at: '2026-09-03T10:05:00Z' })], true),
+    )
+    const w = await rail()
+
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm4', body: 'раньше', created_at: '2026-09-03T10:04:00Z' })], false),
+    )
+    await w.find('[data-testid="conference-chat-older"]').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('раньше')
+
+    api.messages.mockResolvedValue(
+      page(
+        [
+          msg({ id: 'm5', body: 'последнее', created_at: '2026-09-03T10:05:00Z' }),
+          msg({ id: 'm6', body: 'новое', created_at: '2026-09-03T10:06:00Z' }),
+        ],
+        true,
+      ),
+    )
+    await w.setProps({ nudge: 1 })
+    await flushPromises()
+
+    const rows = w.findAll('[data-testid="conference-chat-message"]')
+    expect(rows.map((r) => r.text()).join(' | ')).toContain('раньше')
+    expect(rows).toHaveLength(3)
+    expect(w.text()).toContain('новое')
+    // …and the page's own has_more must not resurrect the "load older" button:
+    // everything older is already on screen, the last paging said so.
+    expect(w.find('[data-testid="conference-chat-older"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('takes a message deleted by someone else off the rail', async () => {
+    // The fold must not become "append whatever is new": inside the fetched
+    // window the page is the truth, deletions included.
+    api.messages.mockResolvedValue(
+      page([
+        msg({ id: 'm1', body: 'первое', created_at: '2026-09-03T10:00:00Z' }),
+        msg({ id: 'm2', body: 'ошибка', created_at: '2026-09-03T10:01:00Z' }),
+      ]),
+    )
+    const w = await rail()
+    expect(w.text()).toContain('ошибка')
+
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm1', body: 'первое', created_at: '2026-09-03T10:00:00Z' })]),
+    )
+    await w.setProps({ nudge: 1 })
+    await flushPromises()
+
+    expect(w.text()).not.toContain('ошибка')
+    w.unmount()
+  })
+
+  it('starts the log over when the rail is pointed at another call', async () => {
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm1', body: 'в первом звонке', created_at: '2026-09-03T10:00:00Z' })]),
+    )
+    const w = await rail()
+
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm9', body: 'во втором', created_at: '2026-09-04T10:00:00Z' })]),
+    )
+    await w.setProps({ conferenceId: 'c2' })
+    await flushPromises()
+
+    expect(w.text()).not.toContain('в первом звонке')
+    expect(w.text()).toContain('во втором')
+    w.unmount()
+  })
+
   it('offers no "load older" when the whole chat fits', async () => {
     api.messages.mockResolvedValue(page([msg()], false))
     const w = await rail()
