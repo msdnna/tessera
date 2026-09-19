@@ -74,7 +74,10 @@ async function onSubChange(evt) {
     try {
       await tasksApi.setParent(evt.added.element.id, props.task.id)
     } catch (e) {
-      void e
+      // A card dropped in here and refused goes back where it came from on the
+      // resync below — which is exactly what a drop that missed the list looks
+      // like. The reader has to be told the server said no (#2932).
+      message.error(e.message)
     }
     emit('changed')
     return
@@ -105,7 +108,7 @@ async function onSubChange(evt) {
     })
     emit('changed')
   } catch (e) {
-    void e
+    message.error(e.message)
     emit('changed')
   }
 }

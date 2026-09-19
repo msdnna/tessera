@@ -13,6 +13,7 @@ import { tasks as tasksApi } from '@/api'
 import { i18n } from '@/i18n'
 import { priorityOptions } from '@/utils/priority'
 import { pressMoved } from '@/utils/dnd'
+import { useToast } from '@/composables/useToast'
 import { taskBasePatch } from '@/utils/taskPatch'
 import { columnName } from '@/utils/defaultNames'
 
@@ -72,6 +73,13 @@ export function useTaskMenu({
   const target = ref(null) // the task object the menu acts on
   const deleteConfirmShow = ref(false)
   const archiveConfirmShow = ref(false)
+  // Every item on this menu writes to a live task, and a refusal used to end in a
+  // bare resync: the card snapped back to where it was and said nothing, which
+  // reads exactly like a click that missed. The card's OWN edits already report
+  // through a toast (#2932) — the menu over that same card has to match, or the
+  // two surfaces disagree about whether the server answered at all.
+  const toast = useToast()
+  const reportFailure = (e) => toast?.error(e?.message || String(e))
 
   // `columns` may be a getter function, a ref, or a plain array.
   function resolveColumns() {
@@ -172,7 +180,8 @@ export function useTaskMenu({
         return onSelect?.(key, t)
       }
       onChanged?.()
-    } catch {
+    } catch (e) {
+      reportFailure(e)
       onChanged?.()
     }
   }
@@ -186,7 +195,11 @@ export function useTaskMenu({
     try {
       await tasksApi.remove(t.id)
       onChanged?.()
-    } catch {
+    } catch (e) {
+      // The loudest of the three: the reader confirmed a permanent delete and the
+      // row is still there afterwards. Silence there reads as «the confirm didn't
+      // take» and invites a second, third attempt at something already refused.
+      reportFailure(e)
       onChanged?.()
     }
   }
@@ -197,7 +210,8 @@ export function useTaskMenu({
     try {
       await tasksApi.archive(t.id)
       onChanged?.()
-    } catch {
+    } catch (e) {
+      reportFailure(e)
       onChanged?.()
     }
   }

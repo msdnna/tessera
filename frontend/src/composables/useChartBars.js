@@ -2,6 +2,7 @@ import { ref, computed, unref, onBeforeUnmount } from 'vue'
 import { tasks as tasksApi } from '@/api'
 import { formatEstimate, estimateToDays, estimateTooltip } from '@/utils/estimation'
 import { useFormat } from '@/composables/useFormat'
+import { useToast } from '@/composables/useToast'
 import {
   DAY_MS,
   HOUR_MS,
@@ -42,6 +43,10 @@ export function useChartBars({
   readonly,
 }) {
   const { formatters } = useFormat()
+  // A refused reschedule is invisible without this: `onChanged()` re-reads the
+  // board, the bar slides back to the dates it had, and the gesture looks like one
+  // that simply did not catch. Same rule the card and its context menu follow.
+  const toast = useToast()
   // During a drag we hold a transient preview so only the dragged bar re-renders.
   const drag = ref(null) // { id, mode, startX, baseStart, baseDue, hasStart, hasDue }
   const preview = ref(null) // { id, start, due }
@@ -173,7 +178,8 @@ export function useChartBars({
         completed: !!t.completed_at,
       })
       onChanged()
-    } catch {
+    } catch (e) {
+      toast?.error(e?.message || String(e))
       onChanged()
     }
   }
