@@ -35,6 +35,7 @@ import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { useDesktopDeepLink } from '@/composables/useDesktopDeepLink'
 import { treeEventNeedsRefresh } from '@/utils/treeEvents'
+import { resyncShell } from '@/utils/shellResync'
 
 const { t } = useI18n()
 const ws = useWorkspacesStore()
@@ -113,12 +114,12 @@ useRealtime(
     // the event itself (milestoneTreeTarget).
     ws.onMilestoneEvent(ev)
   },
-  // Reconnect / resync: rebuild the sidebar, which is the layout-level state that
-  // can drift while the socket is down — the current workspace's tree (projects
-  // added/removed elsewhere), but the workspace set above it too. The server cuts
-  // these sockets on every membership change for exactly that reason, so a resync
-  // that re-read only the tree threw away the one signal it was sent (#2932).
-  () => ws.resync(),
+  // Reconnect / resync: re-read every piece of layout-level state the socket is
+  // the only live source for — the sidebar (tree + the workspace set above it),
+  // the notification feed and the GitLab conflicts. See utils/shellResync.js for
+  // why each one belongs there; all three are loaded once in onMounted below and
+  // would otherwise stay at their pre-outage frame until a page reload (#2932).
+  () => resyncShell({ workspaces: ws, notifications: notes, conflicts }),
 )
 
 // An admin changing a project's address rewrites the URL of every board under
