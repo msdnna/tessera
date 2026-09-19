@@ -2,8 +2,8 @@
 import { ref, computed, reactive, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { NSpin } from 'naive-ui'
-import { CheckmarkDoneOutline } from '@vicons/ionicons5'
+import { NSpin, NButton, useMessage } from 'naive-ui'
+import { CheckmarkDoneOutline, CloudOfflineOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -20,6 +20,7 @@ import UserAvatar from '@/components/UserAvatar.vue'
 import TagPill from '@/components/TagPill.vue'
 
 const { t } = useI18n()
+const message = useMessage()
 const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
@@ -30,6 +31,9 @@ const theme = useThemeStore()
 const { formatDue: dueLabel, formatters } = useDateLocale()
 
 const loading = ref(false)
+// Непустая строка = последнюю загрузку отказали. Держим её отдельно от тоста:
+// тост уезжает через пару секунд, а место списка должно объяснять, почему он пуст.
+const loadError = ref('')
 const summary = ref(null)
 const allTasks = ref([])
 const tagsMap = reactive({})
@@ -86,12 +90,26 @@ const visibleTasks = computed(() => {
 // under the new space's name, and clicking a row routes to a board outside the
 // current scope. Nothing refetches them, because the switch has already happened.
 let loadSeq = 0
+// The workspace the rows on screen were read for, so a failure can tell «this
+// list is stale» from «this list is fine, only its refresh went missing».
+let loadedWs = ''
+
+// Разобрать экран: показывать нечего, и ни одна плитка больше ни за что не отвечает.
+function clearPage() {
+  summary.value = null
+  allTasks.value = []
+  for (const k of Object.keys(tagsMap)) delete tagsMap[k]
+  for (const k of Object.keys(prefixNames)) delete prefixNames[k]
+  for (const k of Object.keys(membersMap)) delete membersMap[k]
+  loadedWs = ''
+}
 
 async function load() {
   const wsId = wsStore.currentId
   const mine = ++loadSeq
   if (!wsId) return
   loading.value = true
+  loadError.value = ''
   try {
     // Destructured as `tasks`, not `t` — the short name is the translation
     // function in this file now.
@@ -114,6 +132,23 @@ async function load() {
     for (const p of pfx.data || []) prefixNames[p.prefix] = p.label
     for (const k of Object.keys(membersMap)) delete membersMap[k]
     for (const m of mem.data || []) membersMap[m.user_id] = m
+    loadedWs = wsId
+  } catch (e) {
+    // Пять запросов летят вместе, и отказ любого — 403 после исключения из
+    // пространства, 404 у только что удалённого, 500 из summary — оставлял эту
+    // страницу вообще без ответа: rejection никто не ловил, так что экран садился
+    // на «Здесь пока пусто» с нулями в плитках и ни словом о случившемся. Это
+    // утверждение о пространстве, которого мы не прочитали.
+    //
+    // Отказ покинутого пространства — не про то, что открыто сейчас: его тост
+    // обвинил бы пространство, в которое читатель только что перешёл.
+    if (mine !== loadSeq) return
+    loadError.value = e.message
+    message.error(e.message)
+    // Строки другого пространства — это ссылки: клик уводит на доску за пределами
+    // текущей области, и обновить их уже нечем, переключение состоялось. Чужое
+    // убираем, своё оставляем — там пропала только перезагрузка.
+    if (loadedWs !== wsId) clearPage()
   } finally {
     // Only the request that lit the spinner puts it out.
     if (mine === loadSeq) loading.value = false
@@ -198,8 +233,20 @@ watch(() => wsStore.currentId, load)
           </span>
         </div>
 
+        <!-- Отказ не «пусто»: пока он на экране, место списка объясняет причину и
+             предлагает перечитать, а не сообщает, что задач нет. -->
         <empty-state
-          v-if="!visibleTasks.length && !loading"
+          v-if="loadError && !loading"
+          :icon="CloudOfflineOutline"
+          :text="loadError"
+          style="margin-top: 40px"
+        >
+          <n-button size="small" secondary @click="load">
+            {{ $t('common.action.retry') }}
+          </n-button>
+        </empty-state>
+        <empty-state
+          v-else-if="!visibleTasks.length && !loading"
           :icon="CheckmarkDoneOutline"
           :text="$t('shell.home.empty')"
           style="margin-top: 40px"

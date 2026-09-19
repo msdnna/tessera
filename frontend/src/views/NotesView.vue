@@ -29,14 +29,20 @@ const body = ref('')
 // note of the workspace the reader has left lands in the editor, and the next
 // Сохранить writes into it.
 let loadSeq = 0
+// The workspace the list on screen was read for. A save/delete refetch asks for the
+// SAME space, so its failure says nothing about the rows already there; a switch asks
+// for another one, and then those rows are exactly the trap described above.
+let loadedWs = ''
 
 async function loadList() {
-  if (!wsStore.currentId) return
+  const ws = wsStore.currentId
+  if (!ws) return
   const mine = ++loadSeq
   try {
-    const res = await notesApi.list(wsStore.currentId)
+    const res = await notesApi.list(ws)
     if (mine !== loadSeq) return
     list.value = res.data || []
+    loadedWs = ws
     const wanted = route.query.note
     if (wanted) {
       // Accept a readable slug or a (legacy) UUID.
@@ -48,6 +54,14 @@ async function loadList() {
     // its toast would blame the space the reader just switched to.
     if (mine !== loadSeq) return
     message.error(e.message)
+    // Отказ — не отмена переключения: список остаётся от покинутого пространства,
+    // а это не просто чужие строки — клик по такой открывает чужую заметку, и
+    // Сохранить пишет в неё. Свой список при неудачной перезагрузке не трогаем.
+    if (loadedWs !== ws) {
+      list.value = []
+      selected.value = null
+      loadedWs = ''
+    }
   }
 }
 
