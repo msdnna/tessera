@@ -112,6 +112,24 @@ async function scrollToEnd(force = false) {
 }
 
 /**
+ * Whether an answer asked of `id` is still about the call on screen.
+ *
+ * The rail is reused across calls — `ConferenceRoom` carries no `:key`, only a
+ * changing `conferenceId` — so the watcher at the bottom of this file clears the
+ * log on a switch. That is half an invalidation: the request already in flight
+ * belongs to the call the reader has left, and nothing stopped its answer from
+ * landing afterwards. `mergeChatTail` then folds the previous call's page into
+ * this one — and since the page it replaces is the newer conversation, the rail
+ * ends up showing the old call's messages and nothing else, under the new call's
+ * header, until something else refetches. Android has compared the id back after
+ * the await since the rail was written (`ConferenceChatViewModel`); the web side
+ * had only the clearing half (#2932).
+ */
+function stale(id) {
+  return id !== props.conferenceId
+}
+
+/**
  * Loads the newest page and folds it into what is on screen.
  *
  * Folds rather than replaces: a reader who paged back keeps their history when
@@ -121,10 +139,12 @@ async function scrollToEnd(force = false) {
  * "load older" left behind is the true one.
  */
 async function loadTail() {
-  if (!props.conferenceId) return
+  const id = props.conferenceId
+  if (!id) return
   loading.value = true
   try {
-    const { data } = await confApi.messages(props.conferenceId, { limit: PAGE })
+    const { data } = await confApi.messages(id, { limit: PAGE })
+    if (stale(id)) return
     const stick = atBottom()
     const fresh = data?.messages || []
     const merged = mergeChatTail(messages.value, fresh)
@@ -132,6 +152,7 @@ async function loadTail() {
     if (merged.length === fresh.length) hasMore.value = !!data?.has_more
     await scrollToEnd(stick)
   } catch (e) {
+    if (stale(id)) return
     // A 403/404 here means the conference went away under us; the screen around
     // this rail already says so, and a second toast would only repeat it.
     // `e.status`, not `e.response.status`: the api client rejects with an error
@@ -139,7 +160,7 @@ async function loadTail() {
     // nothing, so the toast this line exists to suppress was shown anyway.
     if (![403, 404].includes(e.status)) message.error(e.message)
   } finally {
-    loading.value = false
+    if (!stale(id)) loading.value = false
   }
 }
 
@@ -147,13 +168,15 @@ async function loadTail() {
 async function loadOlder() {
   const oldest = messages.value[0]
   if (!oldest || loading.value) return
+  const id = props.conferenceId
   loading.value = true
   try {
-    const { data } = await confApi.messages(props.conferenceId, {
+    const { data } = await confApi.messages(id, {
       limit: PAGE,
       before_at: oldest.created_at,
       before_id: oldest.id,
     })
+    if (stale(id)) return
     const older = data?.messages || []
     // Anchor the view on the message that was at the top, so prepending history
     // does not teleport the reader.
@@ -164,9 +187,10 @@ async function loadOlder() {
     await nextTick()
     if (el) el.scrollTop = el.scrollHeight - before
   } catch (e) {
+    if (stale(id)) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    if (!stale(id)) loading.value = false
   }
 }
 
@@ -216,13 +240,18 @@ const canSend = computed(() => confChatCanSend(draft.value, pending.value.length
 
 async function send() {
   if (!canSend.value) return
+  const id = props.conferenceId
   sending.value = true
   const body = draft.value.trim()
   const files = pending.value
   try {
     const { data } = files.length
-      ? await confApi.postMessageWithFiles(props.conferenceId, body, files)
-      : await confApi.postMessage(props.conferenceId, body)
+      ? await confApi.postMessageWithFiles(id, body, files)
+      : await confApi.postMessage(id, body)
+    // Sent to the call we have since left: it is stored and the people still in
+    // that room will see it, but appending it here would put it in a conversation
+    // it was never part of.
+    if (stale(id)) return
     draft.value = ''
     pending.value = []
     // Append our own message rather than refetching: the server answers with the
@@ -303,6 +332,11 @@ watch(
   () => {
     messages.value = []
     hasMore.value = false
+    // The request in flight no longer speaks for this rail and will not clear the
+    // spinner itself (see `stale`); the fetch below turns it back on. Without
+    // this, leaving for a call with no id at all — the room unmounts nothing —
+    // would leave the rail spinning with nothing on the way.
+    loading.value = false
     loadTail()
   },
   { immediate: true },
