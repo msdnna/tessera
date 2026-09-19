@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, toRef, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { NPopconfirm } from 'naive-ui'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
@@ -387,10 +388,31 @@ const linkPath = computed(() => {
 })
 
 // ── delete an edge ──
-async function removeEdge(id) {
+// Behind a confirmation, like every other door onto the same relation: the ✕ in
+// the task modal's «Связи» tab is a popconfirm on web and on Android, and the
+// unlink is not undoable anywhere. Here the target is worse than a list row — an
+// 8px circle that appears on hover at the *midpoint* of an S-curve, in the one
+// place where several arrows cross and each one's ✕ lands on a neighbour's path.
+//
+// The confirm is anchored to the pointer, not to an element: `.g-del` is an SVG
+// <g>, which Naive's trigger slot cannot host. That's the same manual `:show` +
+// `:x`/`:y` popconfirm with an empty trigger that ChartTaskMenu already uses for
+// the chart's delete/archive.
+const edgeConfirm = ref(null) // { id, x, y } — the edge awaiting confirmation
+function askRemoveEdge(e, a) {
   if (props.readonly) return
+  edgeConfirm.value = { id: a.id, x: e.clientX, y: e.clientY }
+}
+function onEdgeConfirmShow(v) {
+  if (!v) edgeConfirm.value = null
+}
+async function removeEdge() {
+  const c = edgeConfirm.value
+  edgeConfirm.value = null
+  if (props.readonly) return
+  if (!c) return
   try {
-    await tasksApi.removeRelation(id)
+    await tasksApi.removeRelation(c.id)
     await loadDeps()
     emit('changed')
   } catch {
@@ -513,7 +535,7 @@ onBeforeUnmount(() => {
                 v-if="!readonly"
                 class="g-del"
                 :transform="`translate(${a.mx},${a.my})`"
-                @click="removeEdge(a.id)"
+                @click="askRemoveEdge($event, a)"
               >
                 <circle r="8" />
                 <path d="M-3 -3 L3 3 M3 -3 L-3 3" />
@@ -526,6 +548,21 @@ onBeforeUnmount(() => {
               marker-end="url(#g-arrowhead)"
             />
           </svg>
+
+          <!-- unlink confirmation for the arrow ✕ (anchored to the click, see above) -->
+          <n-popconfirm
+            :show="!!edgeConfirm"
+            :x="edgeConfirm ? edgeConfirm.x : 0"
+            :y="edgeConfirm ? edgeConfirm.y : 0"
+            :positive-button-props="{ type: 'error' }"
+            :positive-text="t('common.action.delete')"
+            @update:show="onEdgeConfirmShow"
+            @positive-click="removeEdge"
+            @clickoutside="edgeConfirm = null"
+          >
+            <template #trigger><span /></template>
+            {{ t('task.relations.deleteConfirm') }}
+          </n-popconfirm>
         </div>
 
         <div v-if="!lanes.length" class="tl-empty">{{ t('board.chart.empty') }}</div>

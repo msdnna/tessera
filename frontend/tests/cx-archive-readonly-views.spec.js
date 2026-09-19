@@ -235,5 +235,8 @@ describe('BoardGanttView dependency editing in the archive', () => {
     expect(del).toContain('v-if="!readonly"')
     const fn = gantt.slice(gantt.indexOf('async function removeEdge'))
     expect(fn.slice(0, fn.indexOf('\n}'))).toContain('if (props.readonly) return')
+    // The × now only arms a confirmation, so that step is a door of its own.
+    const ask = gantt.slice(gantt.indexOf('function askRemoveEdge'))
+    expect(ask.slice(0, ask.indexOf('\n}'))).toContain('if (props.readonly) return')
   })
 })
