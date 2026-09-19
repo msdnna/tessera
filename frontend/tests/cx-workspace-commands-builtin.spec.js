@@ -57,6 +57,9 @@ const open = async (rows) => {
   const { useWorkspacesStore } = await import('@/stores/workspaces')
   const store = useWorkspacesStore()
   commands.mockResolvedValue({ data: { builtin: BUILTIN, custom: rows, can_manage: true } })
+  // Как в приложении: реестр читается только для открытого пространства —
+  // ответ для любого другого стор теперь отбрасывает (#2932).
+  store.currentId = 'ws-1'
   await store.loadCommands('ws-1')
   const Modal = (await import('@/components/WorkspaceCommandsModal.vue')).default
   const w = mount(Modal, { props: { show: false, workspaceId: 'ws-1' }, global: { stubs } })

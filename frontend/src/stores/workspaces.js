@@ -30,8 +30,19 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   // manager-only action is still gated server-side (requireManager).
   const canManage = computed(() => ['owner', 'admin'].includes(current.value?.my_role))
 
+  // The workspace *set* has its own sequence token, separate from the tree's
+  // below: loadWorkspaces and resync are the two callers that read it, and a
+  // resync fires on every reconnect — i.e. exactly when two of them can be in
+  // flight at once. The list decides more than sidebar rows: `my_role` (all of
+  // `canManage`) rides on it, and the selection is re-picked from it, so an
+  // older snapshot landing last can yank the reader out of a workspace they
+  // were just added to and back into the first one they can see.
+  let listSeq = 0
+
   async function loadWorkspaces() {
+    const seq = ++listSeq
     const res = await wsApi.list()
+    if (seq !== listSeq) return // a later list read won — its selection stands
     list.value = res.data || []
     if (!currentId.value || !list.value.some((w) => w.id === currentId.value)) {
       currentId.value = list.value[0]?.id || ''
@@ -77,13 +88,20 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
 
   // Load the command registry. Best-effort: a failure must not break the board,
   // it only means the `/`-popup stays silent (same as an empty dictionary).
+  //
+  // Both halves check the workspace is still the open one — the failing half no
+  // less than the succeeding one: quick actions are per-workspace, so a late
+  // answer (or a late timeout) from the one we left would otherwise hand the
+  // open board somebody else's dictionary, or blank the one it just loaded.
   async function loadCommands(id) {
     try {
       const res = await wsApi.commands(id)
+      if (id !== currentId.value) return
       builtinCommands.value = res.data?.builtin || []
       customCommands.value = res.data?.custom || []
       commandsCanManage.value = !!res.data?.can_manage
     } catch {
+      if (id !== currentId.value) return
       builtinCommands.value = []
       customCommands.value = []
       commandsCanManage.value = false
@@ -116,6 +134,12 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     const id = currentId.value
     if (!id) return
     const [g, p] = await Promise.all([wsApi.groups(id), wsApi.projects(id)])
+    // The switch away is what this guards, not another refresh: a rename or a
+    // resync can leave this request in flight while the reader moves on, and
+    // the tree it answers with belongs to the workspace they left — a sidebar
+    // full of projects the current scope has never heard of, every one of them
+    // a click out of it.
+    if (id !== currentId.value) return
     groups.value = g.data || []
     projects.value = p.data || []
   }
@@ -139,7 +163,9 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   // off the board they are looking at. It moves only when that workspace is gone
   // from the list, which is exactly the removed-from-it case.
   async function resync() {
+    const seq = ++listSeq
     const res = await wsApi.list()
+    if (seq !== listSeq) return // a later reconnect already re-read the set
     list.value = res.data || []
     if (currentId.value && list.value.some((w) => w.id === currentId.value)) {
       await refresh()
@@ -158,8 +184,14 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     boardsByProject.value = {}
   }
 
+  // Boards are keyed by project, so a late answer can't overwrite another
+  // project's list — but it can re-populate the map selectWorkspace just
+  // cleared, with boards of a project that no longer belongs to the open
+  // workspace. Harmless to drop: whoever expands that project again refetches.
   async function loadBoards(projectId) {
+    const ws = currentId.value
     const res = await projApi.boards(projectId)
+    if (ws !== currentId.value) return
     boardsByProject.value = { ...boardsByProject.value, [projectId]: res.data || [] }
   }
 
