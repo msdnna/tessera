@@ -354,11 +354,28 @@ ${richStyles(c, interactive)}
   // data-handle carries who was written, so a tap can be resolved to the person.
   function escapeRe(s){ return s.replace(/[-.*+?^()|[\]\\{}$]/g, '\\$&'); }
   function attr(s){ return s.replace(/"/g, '&quot;'); }
+  // A handle needs a right-hand boundary too, or the longest-first scan chips a
+  // member found inside someone else's handle: "@ivanov" would draw "@ivan"
+  // stamped as that member (web utils/markdown.js handleEndsAt). '\w' is ASCII
+  // here while the names are usually not, so the letter test is written as
+  // "changes under case folding". A dot ends a handle only when no word follows,
+  // keeping a mention that closes a sentence a chip.
+  function wordChar(c){
+    if (!c) return false;
+    if ((c >= '0' && c <= '9') || c === '_' || c === '-') return true;
+    return c.toLowerCase() !== c.toUpperCase();
+  }
+  function handleEndsAt(s, i){
+    var c = s.charAt(i);
+    if (wordChar(c)) return false;
+    return !(c === '.' && wordChar(s.charAt(i + 1)));
+  }
   function highlightMentions(html){
     var labels = MENTIONS.filter(Boolean).sort(function(a,b){ return b.length - a.length; }).map(escapeRe);
     if (!labels.length) return html;
-    var re = new RegExp('(^|[\\s>(])@(' + labels.join('|') + ')', 'g');
-    return html.replace(re, function(_, lead, handle){
+    var re = new RegExp('(^|[\\s>(])@(' + labels.join('|') + ')(?![\\w-])(?!\\.[\\w-])', 'g');
+    return html.replace(re, function(whole, lead, handle, offset){
+      if (!handleEndsAt(html, offset + whole.length)) return whole;
       return lead + '<span class="mention" data-handle="' + attr(handle) + '">@' + handle + '</span>';
     });
   }

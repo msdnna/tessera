@@ -98,6 +98,9 @@ fun buildMentionItems(members: List<Member>, gitlabMembers: List<GitlabMember>):
  */
 private const val MARKUP_LEAD = "*_~[\\"
 
+/** The closing half of [MARKUP_LEAD]: what the same markup leaves on the right. */
+private const val MARKUP_TAIL = "*_~]"
+
 /**
  * The workspace members a piece of content mentions, in the order they are written
  * and without repeats — the list handed to the server so those people are notified.
@@ -132,7 +135,16 @@ fun mentionIdsIn(src: String, items: List<MentionItem>): List<String> {
     while (i < text.length) {
         val at = text.indexOf('@', i)
         if (at < 0) break
-        val handle = if (opensMention(text, at)) handles.firstOrNull { text.startsWith(it, at + 1) } else null
+        // Markup that opened the token closes it again on the other side, and the
+        // renderer sees a tag there rather than text — `_@Иван_` is `<em>@Иван</em>`.
+        val afterMarkup = at > 0 && text[at - 1] in MARKUP_LEAD
+        val handle = if (opensMention(text, at)) {
+            handles.firstOrNull {
+                text.startsWith(it, at + 1) && handleEndsAt(text, at + 1 + it.length, afterMarkup)
+            }
+        } else {
+            null
+        }
         handle?.let { resolveMention(items, it)?.avatarUserId?.let(out::add) }
         i = at + 1 + (handle?.length ?: 0)
     }
@@ -156,6 +168,32 @@ fun addedMentionIds(before: String, after: String, items: List<MentionItem>): Li
     val was = mentionIdsIn(before, items).toSet()
     return mentionIdsIn(after, items).filterNot(was::contains)
 }
+
+/**
+ * True when the handle that stops at [i] really ends there rather than running on
+ * into the word — the right-hand boundary the prefix match above lacks.
+ *
+ * Without it the longest-first scan chips a member found in the middle of someone
+ * else's handle: «@Ивановна» resolves to the member «Иван» and notifies them, for
+ * a mention the reader never wrote. A dot ends a handle only when nothing word-like
+ * follows, so «@ivan.petrov» is not «@ivan» while «@Иван.» closing a sentence still
+ * counts (#2932).
+ */
+private fun handleEndsAt(text: String, i: Int, afterMarkup: Boolean): Boolean {
+    // A delimiter run only closes markup when the markup was opened on the other
+    // side ([MARKUP_LEAD]): `_@Иван_` ends in a tag, while a lone trailing '_' in
+    // `@Иван_` is part of the word, exactly as the renderer's regex reads them.
+    if (afterMarkup) {
+        var j = i
+        while (j < text.length && text[j] in MARKUP_TAIL) j++
+        if (j > i && !isHandleChar(text.getOrNull(j))) return true
+    }
+    val c = text.getOrNull(i) ?: return true
+    if (isHandleChar(c)) return false
+    return !(c == '.' && isHandleChar(text.getOrNull(i + 1)))
+}
+
+private fun isHandleChar(c: Char?): Boolean = c != null && (c.isLetterOrDigit() || c == '_' || c == '-')
 
 /** True when the '@' at [at] starts a token the renderer would chip. */
 private fun opensMention(text: String, at: Int): Boolean {

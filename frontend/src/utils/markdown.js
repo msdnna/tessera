@@ -105,6 +105,31 @@ function escapeAttrFromHtml(s) {
   return String(s).replace(/"/g, '&quot;')
 }
 
+// wordChar reports whether `c` continues a handle. Written by hand rather than as
+// `\w`, which is ASCII-only in a JS regex while the names being matched are
+// usually Cyrillic: the letter test is "changes under case folding", which holds
+// for every alphabet.
+function wordChar(c) {
+  if (!c) return false
+  if ((c >= '0' && c <= '9') || c === '_' || c === '-') return true
+  return c.toLowerCase() !== c.toUpperCase()
+}
+
+// handleEndsAt reports whether the handle that stops at index `i` really ends
+// there, or runs on into the word — the right-hand boundary the alternation below
+// cannot express for non-ASCII names. Without it "@Ивановна" draws a chip reading
+// "@Иван", stamped with that member's id: the reader hovers the wrong person and,
+// because mentionIdsIn reads its ids straight off these chips, the wrong person is
+// notified (#2932).
+//
+// A dot ends a handle only when nothing word-like follows, so "@ivan.petrov" is
+// not a mention of "@ivan" while "@Иван." closing a sentence still draws its chip.
+function handleEndsAt(s, i) {
+  const c = s.charAt(i)
+  if (wordChar(c)) return false
+  return !(c === '.' && wordChar(s.charAt(i + 1)))
+}
+
 // highlightMentions wraps "@…" tokens in a styled span. Known members are matched
 // on both `label` (what the composer inserts today — a GitLab login) and `display`
 // (their name): comments written before mentions switched to logins still hold
@@ -133,8 +158,16 @@ function highlightMentions(html, members) {
     .map(escapeRe)
   // Generic handle: a letter/digit then word chars, dots or hyphens.
   alts.push('[A-Za-z0-9][\\w.-]*')
-  const re = new RegExp(`(^|[\\s>(])@(${alts.join('|')})`, 'g')
-  return html.replace(re, (_, lead, handle) => {
+  // The trailing lookaheads fence a member alternative off from an ASCII
+  // continuation *inside the engine*, so "@ivanov" and "@ivan.petrov" backtrack
+  // past the member "ivan" into the generic token and are drawn as the unresolved
+  // handles they are. A bare dot is deliberately allowed through — requiring a
+  // word after it is what keeps "@Иван." closing a sentence a chip, since no
+  // generic alternative can match Cyrillic. The non-ASCII continuations `\w`
+  // cannot see are left to handleEndsAt.
+  const re = new RegExp(`(^|[\\s>(])@(${alts.join('|')})(?![\\w-])(?!\\.[\\w-])`, 'g')
+  return html.replace(re, (whole, lead, handle, offset) => {
+    if (!handleEndsAt(html, offset + whole.length)) return whole
     const m = byHandle.get(handle)
     const id = m && m.id ? ` data-id="${escapeAttrFromHtml(m.id)}"` : ''
     const label = ` data-label="${escapeAttrFromHtml(handle)}"`

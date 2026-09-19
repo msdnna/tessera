@@ -71,6 +71,32 @@ describe('mentionIdsIn', () => {
     expect(sent).toEqual(drawn)
   })
 
+  // The written handle is nobody's: the roster has "Иван" and "Иванов", not
+  // "Ивановна". A prefix match used to hand it to "Иван" — a resolved chip reading
+  // "@Иван" followed by the stray "овна", and a "you were mentioned" for someone
+  // the author never named (#2932).
+  it('notifies nobody when the written handle merely starts with a member name', () => {
+    const { sent, drawn } = bothWays('@Ивановна посмотри')
+    expect(sent).toEqual([])
+    expect(sent).toEqual(drawn)
+  })
+
+  it('draws an unknown ASCII handle as itself rather than as the member it starts with', () => {
+    // "e.polyansky" is a member; "e.polyanskyy" is not, and the generic token has
+    // to claim the whole of it.
+    const { sent, drawn } = bothWays('@e.polyanskyy посмотри')
+    expect(sent).toEqual([])
+    expect(sent).toEqual(drawn)
+    expect(renderRich('@e.polyanskyy посмотри', ITEMS)).toContain('>@e.polyanskyy<')
+  })
+
+  it('keeps a mention that ends the sentence on a full stop', () => {
+    // The boundary must not swallow punctuation: a dot closes a handle unless a
+    // word follows it, so "@Иван." is still Иван and "@Иван.Петров" is neither.
+    expect(mentionIdsIn('спроси @Иван.', ITEMS)).toEqual(['u3'])
+    expect(mentionIdsIn('спроси @Иван.Петрова', ITEMS)).toEqual([])
+  })
+
   it('leaves a GitLab-only handle without a Tessera notification', () => {
     const { sent, drawn } = bothWays('@v.sokolov привет')
     expect(drawn).toEqual([])
