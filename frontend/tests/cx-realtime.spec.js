@@ -25,13 +25,22 @@ class FakeWebSocket {
     this.url = url
     this.protocols = protocols
     this.readyState = 1
-    this.close = vi.fn()
+    // close() is not instantaneous in a browser: the socket goes to CLOSING and
+    // only reaches CLOSED (and fires onclose) once the handshake finishes. The
+    // gap between the two is where a reconnect can race, so model it.
+    this.close = vi.fn(() => {
+      if (this.readyState !== FakeWebSocket.CLOSED) this.readyState = FakeWebSocket.CLOSING
+    })
     opened.push(this)
   }
   // Drive the composable's handler as the browser would on a dropped socket.
   drop() {
     this.readyState = FakeWebSocket.CLOSED
     this.onclose?.()
+  }
+  // Finish a close handshake that close() started.
+  finishClose() {
+    this.drop()
   }
 }
 
@@ -141,6 +150,59 @@ describe('useRealtime', () => {
     opened[1].onopen()
 
     expect(onResync).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
+  // Waking from sleep is exactly the case reconnectNow was written for, and it
+  // arrives with the old socket half-dead: onerror has already called close(),
+  // so the socket sits in CLOSING while `online` fires. Replacing it must also
+  // let go of it — otherwise its onclose still fires on the way out, schedules a
+  // reconnect on top of the live replacement, and leaves that replacement open
+  // with nothing referencing it: every event arrives twice and unmount can no
+  // longer close it.
+  it('lets go of the closing socket it replaces on wake-up', () => {
+    setToken('jwt')
+    const onEvent = vi.fn()
+    const w = mountRealtime(onEvent)
+    const first = opened[0]
+    first.onopen()
+
+    first.onerror() // the link died; the composable closes the socket
+    expect(first.readyState).toBe(FakeWebSocket.CLOSING)
+
+    window.dispatchEvent(new Event('online'))
+    expect(opened).toHaveLength(2)
+    const live = opened[1]
+    live.onopen()
+
+    // The old socket's close handshake completes only now.
+    first.finishClose()
+    vi.advanceTimersByTime(60000)
+
+    expect(opened).toHaveLength(2) // no third socket behind the live one
+    live.onmessage({ data: JSON.stringify({ scope: 's', type: 'task.updated' }) })
+    expect(onEvent).toHaveBeenCalledTimes(1) // delivered once, not twice
+
+    w.unmount()
+    expect(live.close).toHaveBeenCalled() // unmount still owns the live socket
+  })
+
+  // Same trap, one step further: the discarded socket's own handlers must not
+  // reach back through the composable's `ws` binding and close the replacement.
+  it('does not let a discarded socket error the live one shut', () => {
+    setToken('jwt')
+    const w = mountRealtime()
+    const first = opened[0]
+    first.onopen()
+
+    first.onerror()
+    window.dispatchEvent(new Event('online'))
+    const live = opened[1]
+    live.onopen()
+
+    first.onerror?.() // a late error frame on the socket we walked away from
+    expect(live.readyState).toBe(1) // the live socket is untouched
+
     w.unmount()
   })
 })

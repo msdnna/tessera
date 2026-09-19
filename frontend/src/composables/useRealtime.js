@@ -37,6 +37,22 @@ export function useRealtime(onEvent, onResync) {
     retry = setTimeout(connect, Math.random() * cap)
   }
 
+  // discard lets go of a socket we are replacing (or unmounting): detach every
+  // handler, then close it. Detaching is the point — a socket closed but still
+  // wired keeps calling back long after we stopped listening to it. Its onclose
+  // would schedule a reconnect on top of the live replacement, leaving that
+  // replacement open with nothing referencing it (events arrive twice; unmount
+  // can no longer close it), and its onerror would close whatever `ws` points at
+  // by then, which is someone else's socket.
+  function discard(sock) {
+    if (!sock) return
+    sock.onopen = null
+    sock.onmessage = null
+    sock.onclose = null
+    sock.onerror = null
+    sock.close()
+  }
+
   function connect() {
     // Read the token on every (re)connect rather than once: a refresh-on-401
     // may have rotated it since the last attempt, and the reconnect is what
@@ -48,10 +64,18 @@ export function useRealtime(onEvent, onResync) {
       scheduleReconnect()
       return
     }
+    // Whatever we held is not ours any more. Every path that reaches a new
+    // socket goes through here, so this is the one place that has to let go of
+    // the old one — including reconnectNow's, where the old socket is still
+    // CLOSING and its onclose has not fired yet.
+    discard(ws)
     // Web: ws(s)://<location.host>/api/ws. Desktop (Tauri): derived from the
     // configured server origin. See utils/serverBase.js.
-    ws = new WebSocket(wsURL(), ['bearer', token])
-    ws.onopen = () => {
+    // Handlers close over `sock`, not `ws`: by the time a late frame arrives,
+    // `ws` may already be the replacement.
+    const sock = new WebSocket(wsURL(), ['bearer', token])
+    ws = sock
+    sock.onopen = () => {
       attempts = 0 // healthy connection → reset the backoff
       // A reconnect (not the first open) means we were offline for a while and
       // missed events; reload rather than resume mid-stream. The first open is
@@ -59,7 +83,7 @@ export function useRealtime(onEvent, onResync) {
       if (everConnected) onResync?.()
       everConnected = true
     }
-    ws.onmessage = (e) => {
+    sock.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
         // The server dropped at least one event for us; reload the view instead
@@ -73,10 +97,10 @@ export function useRealtime(onEvent, onResync) {
         // ignore malformed frames
       }
     }
-    ws.onclose = () => {
+    sock.onclose = () => {
       if (!closed) scheduleReconnect()
     }
-    ws.onerror = () => ws && ws.close()
+    sock.onerror = () => sock.close()
   }
 
   // The OS can silently kill the socket on sleep/hibernate (notably when the
@@ -106,9 +130,7 @@ export function useRealtime(onEvent, onResync) {
     clearTimeout(retry)
     window.removeEventListener('online', reconnectNow)
     document.removeEventListener('visibilitychange', onVisible)
-    if (ws) {
-      ws.onclose = null
-      ws.close()
-    }
+    discard(ws)
+    ws = null
   })
 }
