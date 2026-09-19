@@ -74,23 +74,55 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
-  async function markRead(id) {
+  // Marking read is optimistic — the bell answers the click before the server
+  // does — and an optimistic write owes the reader a rollback. Both calls used to
+  // swallow the refusal in an empty `catch`: the unread count dropped to zero, the
+  // server kept every row unread, and the feed went on claiming otherwise until the
+  // next load() brought them all back with no explanation. The board settled this
+  // class long ago (onColChange, onQuadChange, moveSidebar*: report and resync);
+  // these two were the last optimistic writes without an undo (#2932).
+  //
+  // The toast comes in as an argument, like useSidebarDnd's: useMessage() is only
+  // reachable from a setup context and a store is instantiated from anywhere.
+  //
+  // Rollback restores exactly what the optimistic pass overwrote, looked up by id:
+  // a row read earlier must not be dragged back into unread, a row that arrived
+  // over the socket mid-flight was never touched, and one the feed dropped
+  // meanwhile is not resurrected.
+  async function markRead(id, message) {
     const n = items.value.find((x) => x.id === id)
-    if (n && !n.read_at) n.read_at = new Date().toISOString()
+    // The request goes out either way — the row may have aged out of the capped
+    // feed — but only a write of our own is undone.
+    const marked = !!n && !n.read_at
+    if (marked) n.read_at = new Date().toISOString()
     try {
       await api.markRead(id)
-    } catch {
-      /* best-effort */
+    } catch (e) {
+      if (marked) restore([id])
+      message?.error(e.message)
     }
   }
 
-  async function markAllRead() {
+  async function markAllRead(message) {
     const now = new Date().toISOString()
-    for (const n of items.value) if (!n.read_at) n.read_at = now
+    const marked = []
+    for (const n of items.value) {
+      if (n.read_at) continue
+      n.read_at = now
+      marked.push(n.id)
+    }
     try {
       await api.markAllRead()
-    } catch {
-      /* best-effort */
+    } catch (e) {
+      restore(marked)
+      message?.error(e.message)
+    }
+  }
+
+  function restore(ids) {
+    for (const id of ids) {
+      const n = items.value.find((x) => x.id === id)
+      if (n) n.read_at = null
     }
   }
 

@@ -1,6 +1,16 @@
 <script setup>
 import { ref, computed, h } from 'vue'
-import { NButton, NIcon, NBadge, NPopover, NTooltip, NSwitch, NText, NDropdown } from 'naive-ui'
+import {
+  NButton,
+  NIcon,
+  NBadge,
+  NPopover,
+  NTooltip,
+  NSwitch,
+  NText,
+  NDropdown,
+  useMessage,
+} from 'naive-ui'
 import {
   SunnyOutline,
   MoonOutline,
@@ -49,6 +59,7 @@ const { isMobile } = useResponsive()
 const { formatTime, formatters } = useFormat()
 // A bare `t` is safe here again: the colour-swatch loop below is `ct`, not `t`.
 const { t, te } = useI18n()
+const message = useMessage()
 
 const showMembers = ref(false)
 const showGitlab = ref(false)
@@ -108,7 +119,10 @@ function onIntegrationSelect(key) {
 }
 
 function openNotification(n) {
-  notes.markRead(n.id)
+  // The toast travels as an argument because the store cannot reach useMessage()
+  // (see stores/notifications.js): a refused mark rolls the row back to unread,
+  // and the reader is told why instead of watching the dot reappear.
+  notes.markRead(n.id, message)
   // Switch the active workspace if the task lives in another one, so the sidebar
   // tree reflects where the opened task actually is.
   if (n.workspace_id && n.workspace_id !== ws.currentId) {
@@ -221,7 +235,7 @@ function noteText(n) {
             size="tiny"
             type="primary"
             class="ngrad"
-            @click="notes.markAllRead()"
+            @click="notes.markAllRead(message)"
           >
             {{ t('shell.tools.markAllRead') }}
           </n-button>
