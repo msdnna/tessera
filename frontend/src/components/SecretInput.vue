@@ -27,6 +27,10 @@ const { t } = useI18n()
 
 const showEraser = computed(() => props.stored && props.resettable)
 
+const eraserLabel = computed(() =>
+  props.cleared ? t('common.secret.undoClear') : t('common.secret.clear'),
+)
+
 const effectivePlaceholder = computed(() => {
   if (props.cleared) return t('common.secret.clearedPlaceholder')
   if (props.stored) return props.storedPlaceholder || props.placeholder
@@ -59,13 +63,21 @@ function undo() {
     @update:value="onInput"
   >
     <template v-if="showEraser" #suffix>
-      <!-- @mousedown.prevent: keep focus in the field so the eye doesn't flicker -->
+      <!-- @mousedown.prevent: keep focus in the field so the eye doesn't flicker.
+           tabindex + Enter/Space: this eraser is the *only* way to wipe a stored
+           secret (an empty value means "keep"), so without them the whole feature
+           is mouse-only — and arming disables the input, putting undo out of
+           keyboard reach too. Same shape as VersionBadge.vue. -->
       <span
         class="secret-eraser"
         role="button"
-        :title="cleared ? t('common.secret.undoClear') : t('common.secret.clear')"
+        tabindex="0"
+        :title="eraserLabel"
+        :aria-label="eraserLabel"
         @mousedown.prevent
         @click="cleared ? undo() : arm()"
+        @keydown.enter.prevent="cleared ? undo() : arm()"
+        @keydown.space.prevent="cleared ? undo() : arm()"
       >
         <n-icon :size="16" :component="cleared ? ArrowUndoOutline : BackspaceOutline" />
       </span>
@@ -86,5 +98,12 @@ function undo() {
 }
 .secret-eraser:hover {
   color: var(--t-accent, #7c5cff);
+}
+/* Now that the eraser is tabbable it needs a visible stop for the keyboard. */
+.secret-eraser:focus-visible {
+  color: var(--t-accent, #7c5cff);
+  outline: 2px solid var(--t-accent, #7c5cff);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 </style>
