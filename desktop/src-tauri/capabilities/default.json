@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capabilities for the Tessera desktop main window. No static fs:scope on purpose: the only write is saveAttachment() right after the Save-as dialog, and tauri-plugin-dialog grants the picked path at runtime (allow_file in its save command). A blanket scope would instead hand every injected script write-anywhere.",
+  "description": "Capabilities for the Tessera desktop main window. No static fs:scope on purpose: the only write is saveAttachment() right after the Save-as dialog, and tauri-plugin-dialog grants the picked path at runtime (allow_file in its save command). A blanket scope would instead hand every injected script write-anywhere. The clipboard is granted one direction per call site and no more — read-image for the Linux image-paste fallback (MarkdownEditor.vue), write-text for copyText() (utils/clipboard.js); the pairing is pinned by a test in src/lib.rs, because an ungranted call is rejected inside a try/catch and simply stops working.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -12,7 +12,7 @@
     "notification:default",
     "dialog:default",
     "clipboard-manager:allow-read-image",
-    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
     "updater:default",
     "process:allow-restart",
     "autostart:allow-enable",

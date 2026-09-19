@@ -259,6 +259,83 @@ mod hardening {
         );
     }
 
+    // The clipboard plugin ships an *empty* default permission set on purpose — its own
+    // wording is that the clipboard is "inherently dangerous", so read and write are each
+    // opt-in. That makes the grant below easy to get wrong in the one direction nothing
+    // reports: a call the capability file never allowed does not fail loudly, it is
+    // rejected by the ACL inside a `try` and falls through to the browser path the Tauri
+    // branch exists to avoid (WebKitGTK's navigator.clipboard / execCommand — see
+    // frontend/src/utils/clipboard.js). So the two sides are pinned to each other here.
+    const CLIPBOARD_PLUGIN: &str = "'@tauri-apps/plugin-clipboard-manager'";
+
+    // clipboard_calls collects the plugin functions a source file pulls in, reading the
+    // one form both call sites use: `const { writeText } = await import('…')`.
+    fn clipboard_calls(src: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        for line in src.lines().filter(|l| l.contains(CLIPBOARD_PLUGIN)) {
+            let (Some(open), Some(close)) = (line.find('{'), line.find('}')) else {
+                continue;
+            };
+            if close < open {
+                continue;
+            }
+            names.extend(
+                line[open + 1..close]
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .map(str::to_string),
+            );
+        }
+        names
+    }
+
+    // permission_of names the ACL entry one call needs: writeText → allow-write-text.
+    fn permission_of(js_name: &str) -> String {
+        let mut kebab = String::new();
+        for c in js_name.chars() {
+            if c.is_ascii_uppercase() {
+                kebab.push('-');
+                kebab.push(c.to_ascii_lowercase());
+            } else {
+                kebab.push(c);
+            }
+        }
+        format!("clipboard-manager:allow-{kebab}")
+    }
+
+    #[test]
+    fn the_clipboard_grant_is_exactly_what_the_webview_calls() {
+        const COPY: &str = include_str!("../../../frontend/src/utils/clipboard.js");
+        const EDITOR: &str = include_str!("../../../frontend/src/components/MarkdownEditor.vue");
+
+        let mut needed: Vec<String> = [COPY, EDITOR]
+            .iter()
+            .flat_map(|src| clipboard_calls(src))
+            .map(|name| permission_of(&name))
+            .collect();
+        needed.sort();
+        needed.dedup();
+
+        let caps: Value =
+            serde_json::from_str(CAPABILITIES).expect("capabilities must be valid JSON");
+        let mut granted: Vec<String> = caps["permissions"]
+            .as_array()
+            .expect("capabilities must list permissions")
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|p| p.starts_with("clipboard-manager:"))
+            .map(str::to_string)
+            .collect();
+        granted.sort();
+
+        assert_eq!(
+            granted, needed,
+            "the clipboard grant and the webview's calls disagree — a missing entry makes \
+             that call fail silently at runtime, an extra one is a permission nothing asks for"
+        );
+    }
+
     // Plugins are another script-execution path, and a rewritten <base> relocates every
     // relative asset URL — both sit outside script-src.
     #[test]
