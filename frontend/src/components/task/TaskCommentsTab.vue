@@ -400,15 +400,31 @@ async function saveComment() {
     message.error(e.message)
   }
 }
+// Deleting a comment re-reads the thread instead of filtering the row out
+// locally, because removing a *root* is not a removal of one row server-side:
+// the oldest reply is promoted to root and the rest are re-hung under it
+// (promoteThreadSuccessor), precisely so one "✕" never takes someone else's text
+// with it. A local filter keeps those replies pointing at the row that is gone,
+// and groupThreads then draws each of them as a standalone top-level comment —
+// the thread shatters on screen, which is the outcome the promotion exists to
+// avoid. Android already re-reads here (TaskDetailViewModel.deleteComment).
 async function deleteComment(id) {
   try {
     await tasksApi.removeComment(id)
+  } catch (e) {
+    message.error(e.message)
+    return
+  }
+  try {
+    const c = await tasksApi.comments(props.taskId)
+    emit('update:comments', c.data || [])
+  } catch {
+    // The delete went through and only the re-read failed: drop the row locally
+    // so the list at least stops showing what is no longer there.
     emit(
       'update:comments',
       props.comments.filter((x) => x.id !== id),
     )
-  } catch (e) {
-    message.error(e.message)
   }
 }
 // Toggle a task checkbox inside a rendered (own) comment → rewrite its markdown
