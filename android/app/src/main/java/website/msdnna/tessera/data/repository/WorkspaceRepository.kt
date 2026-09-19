@@ -11,6 +11,7 @@ import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.UpdateGroupRequest
 import website.msdnna.tessera.data.model.UpdateProjectRequest
 import website.msdnna.tessera.data.model.Workspace
+import website.msdnna.tessera.data.model.orInherit
 
 /** Reads/writes the workspace → group → project → board hierarchy. */
 class WorkspaceRepository {
@@ -70,16 +71,16 @@ class WorkspaceRepository {
             website.msdnna.tessera.data.model.TransferProjectRequest(workspaceId),
         ).strippedAssignees
 
-    /** Two-level estimation config; null clears it (inherit). */
+    /** Two-level estimation config; null clears it (inherit) — see [orInherit]. */
     suspend fun setProjectEstimation(
         projectId: String,
         config: website.msdnna.tessera.data.model.EstimationConfig?,
-    ): Project = api.setProjectEstimation(projectId, config)
+    ): Project = api.setProjectEstimation(projectId, config.orInherit())
 
     suspend fun setWorkspaceEstimation(
         workspaceId: String,
         config: website.msdnna.tessera.data.model.EstimationConfig?,
-    ): website.msdnna.tessera.data.model.Workspace = api.setWorkspaceEstimation(workspaceId, config)
+    ): website.msdnna.tessera.data.model.Workspace = api.setWorkspaceEstimation(workspaceId, config.orInherit())
 
     suspend fun boards(projectId: String): List<Board> = api.boards(projectId).orEmpty()
     suspend fun createBoard(projectId: String, name: String): Board = api.createBoard(projectId, NameRequest(name))

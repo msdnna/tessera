@@ -19,6 +19,7 @@ import website.msdnna.tessera.data.model.SetEisenhowerRequest
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
+import website.msdnna.tessera.data.model.orInherit
 import website.msdnna.tessera.data.model.taskPatch
 import website.msdnna.tessera.data.model.toWireJson
 
@@ -92,16 +93,17 @@ class BoardRepository {
     ): List<website.msdnna.tessera.data.model.TagPrefix> =
         api.setTagPrefixes(projectId, website.msdnna.tessera.data.model.SetTagPrefixesRequest(prefixes)).orEmpty()
 
-    /** Two-level estimation config; pass null to clear (inherit). */
+    /** Two-level estimation config; pass null to clear (inherit) — see [website.msdnna.tessera.data.model.orInherit]. */
     suspend fun setWorkspaceEstimation(
         workspaceId: String,
         config: website.msdnna.tessera.data.model.EstimationConfig?,
-    ): website.msdnna.tessera.data.model.Workspace = api.setWorkspaceEstimation(workspaceId, config)
+    ): website.msdnna.tessera.data.model.Workspace =
+        api.setWorkspaceEstimation(workspaceId, config.orInherit())
 
     suspend fun setProjectEstimation(
         projectId: String,
         config: website.msdnna.tessera.data.model.EstimationConfig?,
-    ): website.msdnna.tessera.data.model.Project = api.setProjectEstimation(projectId, config)
+    ): website.msdnna.tessera.data.model.Project = api.setProjectEstimation(projectId, config.orInherit())
 
     suspend fun createTask(boardId: String, columnId: String, title: String, parentId: String? = null): Task =
         api.createTask(boardId, CreateTaskRequest(columnId = columnId, title = title, parentId = parentId))

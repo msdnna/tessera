@@ -293,4 +293,21 @@ func TestEstimationConfig(t *testing.T) {
 	if cleared["estimation"] != nil {
 		t.Fatalf("cleared project estimation = %v, want null", cleared["estimation"])
 	}
+
+	// A unit-less body clears it the same way. This is not a curiosity of the
+	// parser: Android has no other way to say "inherit" — Retrofit refuses a null
+	// `@Body` before the call leaves the device — so the phone sends `{"unit":""}`
+	// (data/model EstimationConfig.INHERIT) where the web omits the body (#2932).
+	c.expect(t, c.put("/projects/"+s.Project+"/estimation",
+		map[string]any{"unit": "points", "points_scale": "linear"}), http.StatusOK)
+	cleared = c.expect(t, c.put("/projects/"+s.Project+"/estimation",
+		map[string]any{"unit": ""}), http.StatusOK)
+	if cleared["estimation"] != nil {
+		t.Fatalf("unit-less project estimation = %v, want null", cleared["estimation"])
+	}
+	wsCleared := c.expect(t, c.put("/workspaces/"+s.WS+"/estimation",
+		map[string]any{"unit": ""}), http.StatusOK)
+	if wsCleared["estimation"] != nil {
+		t.Fatalf("unit-less workspace estimation = %v, want null", wsCleared["estimation"])
+	}
 }

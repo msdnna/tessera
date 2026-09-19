@@ -404,13 +404,15 @@ interface ApiService {
     @PUT("projects/{id}/tag-prefixes")
     suspend fun setTagPrefixes(@Path("id") projectId: String, @Body body: SetTagPrefixesRequest): List<TagPrefix>?
 
-    // Two-level estimation config; body is the config object directly, or null to
-    // clear (workspace → built-in default, project → inherit workspace).
+    // Two-level estimation config; the body is the config object directly. To clear
+    // it (workspace → built-in default, project → inherit workspace) send the
+    // unit-less EstimationConfig.INHERIT: Retrofit rejects a null @Body before the
+    // request leaves the device, so "no body" — the web's way — is not available here.
     @PUT("workspaces/{id}/estimation")
-    suspend fun setWorkspaceEstimation(@Path("id") workspaceId: String, @Body body: EstimationConfig?): Workspace
+    suspend fun setWorkspaceEstimation(@Path("id") workspaceId: String, @Body body: EstimationConfig): Workspace
 
     @PUT("projects/{id}/estimation")
-    suspend fun setProjectEstimation(@Path("id") projectId: String, @Body body: EstimationConfig?): Project
+    suspend fun setProjectEstimation(@Path("id") projectId: String, @Body body: EstimationConfig): Project
 
     // ── Quick actions: command registry (workspace) + comment dry-run ────────
     // The built-in list comes from the backend's own registry, so a command added

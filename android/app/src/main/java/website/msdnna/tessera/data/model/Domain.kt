@@ -13,7 +13,20 @@ data class EstimationConfig(
     @SerializedName("days_per_week") val daysPerWeek: Double? = null,
     @SerializedName("points_scale") val pointsScale: String? = null, // fibonacci|tshirt|linear
     @SerializedName("custom_label") val customLabel: String? = null,
-)
+) {
+    companion object {
+        /**
+         * «Наследовать»: на бэкенде тело без единицы значит ровно это —
+         * `normalizeEstimationConfig` (handlers/estimation.go) возвращает на нём
+         * nil, как и на пустом теле, которое шлёт веб. Телефону пустое тело
+         * недоступно: Retrofit не пускает null в `@Body`.
+         */
+        val INHERIT = EstimationConfig(unit = "")
+    }
+}
+
+/** Конфиг для отправки: `null` (сброс) едет как [EstimationConfig.INHERIT]. */
+fun EstimationConfig?.orInherit(): EstimationConfig = this ?: EstimationConfig.INHERIT
 
 /** A workspace — the top of the hierarchy. Mirrors the sqlc `Workspace`. */
 data class Workspace(
