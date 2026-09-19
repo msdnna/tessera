@@ -70,6 +70,26 @@ export function withStoredAnchor(rule, stored, dueChanged) {
   return out
 }
 
+// triggerColumnMissing reports a column-triggered rule that can never fire.
+//
+// The server advances such a rule in exactly one place — a move whose target
+// column id equals `trigger_column` verbatim (handlers/task_ops.go) — so an
+// unset column matches nothing and neither does one that has since been deleted
+// from the board. Both states are reachable without any error: the trigger-column
+// select opens on its placeholder and picking the event alone already commits the
+// rule, and columns outlive nothing that points at them.
+//
+// `columnIds` is the board's current column ids. An empty/absent list means the
+// caller cannot see the board (the editor's `columns` prop defaults to `[]`), and
+// "I don't know the columns" is not "the column is gone" — only an unnamed column
+// is knowable then.
+export function triggerColumnMissing(rule, columnIds) {
+  if (!rule || !rule.freq || rule.trigger !== 'column') return false
+  if (!rule.trigger_column) return true
+  if (!columnIds || !columnIds.length) return false
+  return !columnIds.includes(rule.trigger_column)
+}
+
 const dayKey = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 

@@ -242,6 +242,8 @@
     "event": "Event",
     "triggerColumn": "Trigger column",
     "columnPlaceholder": "Pick a column",
+    "columnUnset": "Until a column is picked, this repeat will never fire.",
+    "columnGone": "That column is no longer on the board — this repeat will never fire. Pick another one.",
     "moveTo": "Move to",
     "targetDefault": "First column (default)",
     "createDuplicate": "Create a duplicate",

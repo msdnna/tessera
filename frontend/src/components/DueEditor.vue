@@ -18,6 +18,7 @@ import {
   unitLabel,
   occurrenceKeys,
   withStoredAnchor,
+  triggerColumnMissing,
 } from '@/utils/recurrence'
 import { resolvedTimezone } from '@/utils/format'
 
@@ -236,7 +237,20 @@ const gridDays = computed(() => {
 const previewRule = computed(() =>
   withStoredAnchor(rule.value, props.recurrence, localDue.value !== normalizeDueIn(props.due)),
 )
-const occKeys = computed(() => occurrenceKeys(previewRule.value, localDue.value, 24))
+// A column-triggered rule with no reachable trigger column never advances — the
+// server matches the column id verbatim and an unset (or deleted) one matches
+// nothing. Highlighting "upcoming occurrences" for it is the same promise the
+// skip-weekends and anchor fixes took back, only here not one of those days is
+// ever going to come, so the grid says nothing and the panel says why instead.
+const deadTriggerColumn = computed(() =>
+  triggerColumnMissing(
+    previewRule.value,
+    props.columns.map((c) => c.id),
+  ),
+)
+const occKeys = computed(() =>
+  deadTriggerColumn.value ? new Set() : occurrenceKeys(previewRule.value, localDue.value, 24),
+)
 
 function onDayClick(d) {
   // Custom-recurrence date-picking only applies to the due date.
@@ -462,6 +476,13 @@ const dueRepeatOpts = computed(() => [
               "
             />
           </label>
+          <div v-if="deadTriggerColumn" class="de-warn">
+            {{
+              previewRule && previewRule.trigger_column
+                ? t('task.recur.columnGone')
+                : t('task.recur.columnUnset')
+            }}
+          </div>
 
           <label class="de-field">
             <span class="muted">{{ t('task.recur.moveTo') }}</span>
@@ -697,6 +718,19 @@ const dueRepeatOpts = computed(() => [
 .de-hint {
   font-size: 12px;
   line-height: 1.35;
+}
+/* "this rule cannot fire" — the same soft red every other inline warning in the
+   app wears (.auth-error, the overdue pill), not an error state of the select:
+   the rule is saved, it just will not do anything until a column is named. */
+.de-warn {
+  margin-top: -2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #e0533d;
+  background: color-mix(in srgb, #e0533d 12%, transparent);
+  border: 1px solid color-mix(in srgb, #e0533d 32%, transparent);
 }
 .muted {
   color: var(--t-text3);
