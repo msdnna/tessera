@@ -247,10 +247,21 @@ const anchorY = computed(() => {
 })
 // ── dependencies (blocking edges) ──
 const deps = ref([]) // normalised [{ id, blocker, blocked }]
+// Номер поколения запроса рёбер. Несколько запросов в полёте — здесь норма, а не
+// редкость: список переспрашивается на КАЖДОЕ изменение состава задач (а состав
+// двигает любой фильтр доски — набор в поиске, чип исполнителя, «только мои») и
+// на каждое событие о связи. Без сверки снимок покинутого фильтра перерисовывал
+// стрелки поверх свежих, а ответ, снятый ДО удаления связи, возвращал удалённую
+// стрелку — и она залипала до следующего события (#2932).
+let depsSeq = 0
 async function loadDeps() {
+  // Номер берём до early return: запрос, уже летящий к прежней доске, надо
+  // обесценить даже вызовом, который сам ничего не спросит.
+  const mine = ++depsSeq
   if (!props.boardId) return
   try {
     const rows = (await boardsApi.dependencies(props.boardId)).data || []
+    if (mine !== depsSeq) return
     // Normalise raw relation rows to blocker→blocked. Dedupe so a pair linked from
     // both sides ('blocks' + 'blocked_by') draws a single arrow.
     const seen = new Set()
@@ -265,6 +276,10 @@ async function loadDeps() {
     }
     deps.value = out
   } catch {
+    // Гасить стрелки имеет право только тот запрос, ответа которого ждут. Иначе
+    // флап сети на устаревшем запросе убирал с экрана рёбра, только что
+    // приехавшие по свежему.
+    if (mine !== depsSeq) return
     deps.value = []
   }
 }
