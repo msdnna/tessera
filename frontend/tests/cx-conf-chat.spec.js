@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { NPopconfirm } from 'naive-ui'
 
 // The chat rail of a call (#2864, subtask #2873).
 //
@@ -445,7 +446,9 @@ describe('deleting', () => {
     api.messages.mockResolvedValue(page([msg({ id: 'gone', body: 'ошибся' })]))
     const w = await rail()
 
-    await w.find('[data-testid="conference-chat-delete"]').trigger('click')
+    // The bin only opens the prompt now — the guard itself is covered by
+    // cx-conf-chat-delete-confirm.spec.js.
+    w.findComponent(NPopconfirm).vm.$emit('positive-click')
     await flushPromises()
 
     expect(api.removeMessage).toHaveBeenCalledWith('gone')

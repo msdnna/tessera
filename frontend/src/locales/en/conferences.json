@@ -122,6 +122,7 @@
     "attach": "Attach a file",
     "download": "Download",
     "delete": "Delete message",
+    "confirmDelete": "Delete this message? It disappears for everyone.",
     "loadOlder": "Show earlier messages",
     "unknownAuthor": "Unknown author",
     "closed": "The conference has ended — the chat is read-only",

@@ -20,7 +20,7 @@
 // every screenshot of every call in memory for the life of the tab.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NInput, NModal, NSpin, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NModal, NPopconfirm, NSpin, NTooltip, useMessage } from 'naive-ui'
 import {
   AttachOutline,
   CloseOutline,
@@ -391,17 +391,29 @@ onBeforeUnmount(() => {
           <div class="msg-head">
             <span class="who">{{ m.user_name || $t('conferences.chat.unknownAuthor') }}</span>
             <span class="at">{{ when(m.created_at) }}</span>
-            <n-button
+            <!-- Behind a confirmation like every other destructive action in a
+                 call (recording, kick, end) and like the same bin on Android:
+                 the server drops the line for everyone in the room and nudges
+                 them to refetch, so a misclick on a 12px icon is not undoable. -->
+            <n-popconfirm
               v-if="canRemove(m)"
-              text
-              size="tiny"
-              class="del"
-              :title="$t('conferences.chat.delete')"
-              data-testid="conference-chat-delete"
-              @click="remove(m)"
+              :positive-button-props="{ type: 'error' }"
+              :positive-text="$t('conferences.chat.delete')"
+              @positive-click="remove(m)"
             >
-              <n-icon :component="TrashOutline" />
-            </n-button>
+              <template #trigger>
+                <n-button
+                  text
+                  size="tiny"
+                  class="del"
+                  :title="$t('conferences.chat.delete')"
+                  data-testid="conference-chat-delete"
+                >
+                  <n-icon :component="TrashOutline" />
+                </n-button>
+              </template>
+              {{ $t('conferences.chat.confirmDelete') }}
+            </n-popconfirm>
           </div>
           <div v-if="m.body" class="text">{{ m.body }}</div>
 
