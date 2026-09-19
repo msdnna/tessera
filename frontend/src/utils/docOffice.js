@@ -1,5 +1,6 @@
 import { handOffBlob } from './blobHandoff'
 import { htmlToDoc } from './docImport'
+import { ensureBlockIds } from './docExtensions/blockId'
 import { normalizeOfficeHtml } from './docOfficeHtml'
 import { isPageSetup } from './docPage'
 import { PDF_EXTENSION, formatFileSize, isPdfFile, pdfDocument } from './docPdf'
@@ -110,17 +111,7 @@ export async function importOfficeFile(api, wsId, file, opts = {}) {
   const doc = res.data?.document
   if (!doc?.id) throw new Error(i18n.global.t('documents.file.noDocument'))
 
-  // A PDF comes back as a stored file rather than as HTML — there is nothing to
-  // parse, and the body is the single block that points at it.
-  //
-  // Everything else goes through normalizeOfficeHtml first: the sidecar speaks
-  // legacy HTML (<font>, <center>, class rules in a <style> block) that the
-  // schema cannot see, so without that step the colours, sizes, rules and code
-  // blocks of the source document are dropped at parse time (#2755).
-  const content = res.data?.pdf
-    ? pdfDocument(res.data.pdf)
-    : withImportedPage(htmlToDoc(normalizeOfficeHtml(res.data.html || '')), res.data.page)
-  const saved = await api.updateContent(doc.id, content, doc.updated_at)
+  const saved = await api.updateContent(doc.id, importedBody(res.data), doc.updated_at)
   return {
     document: saved?.data?.updated_at ? { ...doc, updated_at: saved.data.updated_at } : doc,
     // True when the source file's sections disagreed about page geometry, so the
@@ -133,6 +124,34 @@ export async function importOfficeFile(api, wsId, file, opts = {}) {
     // older backend does not send it, so the caller must treat it as optional.
     imagesDroppedReason: String(res.data.images_dropped_reason || ''),
   }
+}
+
+/**
+ * The document body an import response becomes.
+ *
+ * A PDF comes back as a stored file rather than as HTML — there is nothing to
+ * parse, and the body is the single block that points at it.
+ *
+ * Everything else goes through normalizeOfficeHtml first: the sidecar speaks
+ * legacy HTML (<font>, <center>, class rules in a <style> block) that the schema
+ * cannot see, so without that step the colours, sizes, rules and code blocks of
+ * the source document are dropped at parse time (#2755).
+ *
+ * Both branches end in ensureBlockIds, and the PDF one is why this is a function
+ * rather than two lines at the call site: the parsed branch got its ids from
+ * htmlToDoc, the hand-assembled one got none, and the body was then *saved*
+ * that way. The editor does stamp ids when it opens a document, but that
+ * transaction is marked BLOCK_ID_META and deliberately does not count as an edit
+ * (DocEditor), so nothing writes it back — and a PDF document is rarely typed
+ * into. Every open therefore invented a new id, and a comment or a task link on
+ * the PDF block detached from it on reload (#2932).
+ *
+ * @param {{pdf?: object, html?: string, page?: *}} data import response body
+ * @returns {object} ProseMirror document JSON, every block carrying an id
+ */
+export function importedBody(data) {
+  if (data?.pdf) return ensureBlockIds(pdfDocument(data.pdf))
+  return withImportedPage(htmlToDoc(normalizeOfficeHtml(data?.html || '')), data?.page)
 }
 
 /**

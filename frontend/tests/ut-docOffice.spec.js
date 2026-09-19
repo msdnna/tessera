@@ -10,6 +10,8 @@ import {
   isOfficeFile,
 } from '@/utils/docOffice'
 import { BLOB_REVOKE_DELAY_MS } from '@/utils/blobHandoff'
+import { ensureBlockIds } from '@/utils/docExtensions/blockId'
+import { blockIdsInOrder, splitThreads } from '@/utils/docComments'
 
 function fakeFile(name, size = 10) {
   return { name, size }
@@ -156,6 +158,53 @@ describe('importOfficeFile', () => {
     expect(content.attrs.page).toEqual({ w: 210, h: 297, ml: 20, mr: 20, mt: 20, mb: 20 })
     // Nothing was reduced to one sheet, so the import must not warn that it was.
     expect(sectionsDiffer).toBe(false)
+  })
+
+  it('gives an imported PDF the block id every other import path writes', async () => {
+    // A PDF comes back as a stored file rather than as HTML, so its body is
+    // assembled by hand instead of being parsed — and that is the path that
+    // skipped ensureBlockIds. The id matters here for the same reason it does
+    // everywhere else: comments, task links and locks address a block by it.
+    const api = stubApi({
+      importFile: vi.fn(async () => ({
+        data: {
+          document: { id: 'doc-1', updated_at: 'v1' },
+          pdf: { src: '/api/documents/asset?doc=doc-1&n=scan.pdf&sig=x', name: 'Скан.pdf', size: 9 },
+        },
+      })),
+    })
+    await importOfficeFile(api, 'ws-1', fakeFile('Скан.pdf'))
+    const content = api.updateContent.mock.calls[0][1]
+
+    expect(content.content[0].type).toBe('pdfEmbed')
+    expect(content.content[0].attrs.id).toBeTruthy()
+  })
+
+  it('keeps a comment on an imported PDF anchored across reloads', async () => {
+    // The failure the missing id produces, end to end. The editor stamps ids on
+    // open, but that transaction is marked BLOCK_ID_META and deliberately does
+    // not count as an edit, so nothing saves it — and a PDF document is rarely
+    // typed into. Without an id in the stored body every open invents a new one
+    // and the discussion about the file detaches from it.
+    const api = stubApi({
+      importFile: vi.fn(async () => ({
+        data: {
+          document: { id: 'doc-1', updated_at: 'v1' },
+          pdf: { src: '/api/documents/asset?doc=doc-1&n=scan.pdf&sig=x', name: 'Скан.pdf', size: 9 },
+        },
+      })),
+    })
+    await importOfficeFile(api, 'ws-1', fakeFile('Скан.pdf'))
+    const stored = api.updateContent.mock.calls[0][1]
+
+    // Two opens of the same stored body, as DocEditor does it.
+    const firstOpen = ensureBlockIds(stored)
+    const secondOpen = ensureBlockIds(stored)
+    const anchored = firstOpen.content[0].attrs.id
+    expect(secondOpen.content[0].attrs.id).toBe(anchored)
+
+    const thread = { block_id: anchored }
+    expect(splitThreads([thread], blockIdsInOrder(secondOpen)).detached).toEqual([])
   })
 
   it('passes the folder the user is looking at', async () => {
