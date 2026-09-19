@@ -355,7 +355,11 @@
     "attachment": "attached a file",
     "attachmentNamed": "attached the file “{name}”",
     "attachmentRemoved": "removed a file",
-    "attachmentRemovedNamed": "removed the file “{name}”"
+    "attachmentRemovedNamed": "removed the file “{name}”",
+    "milestone": "linked it to a milestone",
+    "milestoneNamed": "linked it to the milestone “{name}”",
+    "milestoneRemoved": "unlinked it from a milestone",
+    "milestoneRemovedNamed": "unlinked it from the milestone “{name}”"
   },
   "ref": {
     "notFound": "Task #{number} not found"

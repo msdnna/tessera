@@ -355,7 +355,11 @@
     "attachment": "прикрепил(а) файл",
     "attachmentNamed": "прикрепил(а) файл «{name}»",
     "attachmentRemoved": "удалил(а) файл",
-    "attachmentRemovedNamed": "удалил(а) файл «{name}»"
+    "attachmentRemovedNamed": "удалил(а) файл «{name}»",
+    "milestone": "привязал(а) к этапу",
+    "milestoneNamed": "привязал(а) к этапу «{name}»",
+    "milestoneRemoved": "отвязал(а) от этапа",
+    "milestoneRemovedNamed": "отвязал(а) от этапа «{name}»"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"

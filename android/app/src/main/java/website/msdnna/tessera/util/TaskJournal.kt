@@ -70,6 +70,10 @@ fun journalText(res: Resources, e: TaskEvent?): String {
     // that wraps would force a blank line between every branch of the block
     // (ktlint blank-line-between-when-conditions) — so the local keeps them short.
     val file = d.filename
+    // Название этапа — по той же причине, что и имя файла выше: обе половины пары
+    // читают одно поле, а ветка с переносом заставила бы разделять пустой строкой
+    // весь блок (ktlint blank-line-between-when-conditions).
+    val stage = d.title
     return when (e.kind) {
         "renamed" -> named(res, d.to, R.string.task_event_renamed_to, R.string.task_event_renamed)
         "priority" -> priority(res, d.to)
@@ -82,6 +86,8 @@ fun journalText(res: Resources, e: TaskEvent?): String {
         "synced" -> res.getString(R.string.task_event_synced, sourceMeta(d.source).label)
         "attachment" -> named(res, file, R.string.task_event_attachment_named, R.string.task_event_attachment)
         "attachment_removed" -> named(res, file, R.string.task_event_attachment_removed_named, R.string.task_event_attachment_removed)
+        "milestone" -> named(res, stage, R.string.task_event_milestone_named, R.string.task_event_milestone)
+        "milestone_removed" -> named(res, stage, R.string.task_event_milestone_removed_named, R.string.task_event_milestone_removed)
         else -> e.kind
     }
 }

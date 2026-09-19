@@ -356,6 +356,10 @@
     <string name="task_event_attachment_named">attached the file “%1$s”</string>
     <string name="task_event_attachment_removed">removed a file</string>
     <string name="task_event_attachment_removed_named">removed the file “%1$s”</string>
+    <string name="task_event_milestone">linked it to a milestone</string>
+    <string name="task_event_milestone_named">linked it to the milestone “%1$s”</string>
+    <string name="task_event_milestone_removed">unlinked it from a milestone</string>
+    <string name="task_event_milestone_removed_named">unlinked it from the milestone “%1$s”</string>
     <string name="task_event_archived">archived the task</string>
     <string name="task_event_restored">restored the task</string>
 

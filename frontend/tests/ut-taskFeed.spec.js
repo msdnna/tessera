@@ -29,6 +29,10 @@ describe('taskFeed.eventText', () => {
       // attach + a detach, and those two lines are the only trace it leaves.
       [{ kind: 'tagged', data: { tag: 'срочно' } }, 'навесил(а) тег «срочно»'],
       [{ kind: 'untagged', data: { tag: 'срочно' } }, 'снял(а) тег «срочно»'],
+      // The stage is named for the tag's reason: «Этапы» recomputes its progress
+      // from this pointer, and the milestone may be renamed or deleted later.
+      [{ kind: 'milestone', data: { title: 'Этап 1' } }, 'привязал(а) к этапу «Этап 1»'],
+      [{ kind: 'milestone_removed', data: { title: 'Этап 1' } }, 'отвязал(а) от этапа «Этап 1»'],
     ]
     for (const [e, want] of cases) expect(eventText(e), e.kind).toBe(want)
   })
@@ -62,6 +66,8 @@ describe('taskFeed.eventText', () => {
     'untagged',
     'attachment',
     'attachment_removed',
+    'milestone',
+    'milestone_removed',
     'synced',
   ]
 

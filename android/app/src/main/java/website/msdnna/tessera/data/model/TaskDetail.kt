@@ -173,6 +173,10 @@ data class TaskEventData(
     /** Name of the tag attached/detached — `tagged`, `untagged`. Stored by name,
      *  not by id, so history survives the tag being renamed or deleted. */
     @SerializedName("tag") val tag: String? = null,
+    /** Title of the milestone pinned/unpinned — `milestone`, `milestone_removed`.
+     *  By title for the tag's reason: the task's milestone_id is ON DELETE SET
+     *  NULL, so an id would dangle the moment the stage is deleted. */
+    @SerializedName("title") val title: String? = null,
     @SerializedName("applied") val applied: List<String>? = null,
     @SerializedName("failed") val failed: List<String>? = null,
     /** Provider that wrote the entry — `user`/`gitlab`, see `util/Sources.kt`. */

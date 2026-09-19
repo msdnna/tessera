@@ -514,14 +514,24 @@ func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID
 	// every task carrying the id without a workspace filter of its own, so an
 	// unchecked milestone_id lets an outsider inflate a stranger's milestone
 	// progress with a task the victim can neither see nor unpin.
+	var title string
 	if milestoneID != nil {
-		if err := h.sameWorkspaceMilestone(c, *milestoneID, wsID); err != nil {
+		m, err := h.sameWorkspaceMilestone(c, *milestoneID, wsID)
+		if err != nil {
 			return err
 		}
+		title = m.Title
+	}
+	// Read before writing: the journal entry below is the difference between the
+	// two states, and after the UPDATE the previous milestone is unrecoverable.
+	before, err := h.q.GetTask(c, taskID)
+	if err != nil {
+		return err
 	}
 	if err := h.q.SetTaskMilestone(c, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: milestoneID}); err != nil {
 		return err
 	}
+	h.journalMilestone(c, taskID, before.MilestoneID, milestoneID, title)
 	// A manual milestone change on a GitLab-linked task wins over the sync.
 	soft(c, "MarkGitlabMilestoneOverridden", h.q.MarkGitlabMilestoneOverridden(c, taskID))
 	h.enqueueWriteback(c, taskID, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
@@ -529,6 +539,41 @@ func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID
 		h.broadcast(wsID, "task.updated", t)
 	}
 	return nil
+}
+
+// journalMilestone records a milestone change as the pair milestone /
+// milestone_removed — the shape every other field of a task has had all along
+// (tagged/untagged, assigned/unassigned, attachment/attachment_removed), and the
+// one the milestone was missing: pinning a task to a stage, dragging it to
+// another one or unpinning it left no trace at all, while the «Этапы» screen
+// recomputed task_count / done_count / Σestimate of both stages from it. A
+// roadmap that moved and a history that says nothing is exactly the pair a
+// reader cannot reconcile, and the /milestone quick action made it worse: the
+// history then showed "ran the commands" and not what the command did.
+//
+// The entry carries the milestone's TITLE rather than its id, for the reason the
+// tag does: a milestone may be renamed or deleted (SetTaskMilestone's column is
+// ON DELETE SET NULL), and history must not decay into a dangling uuid. A
+// re-pin of the milestone the task already carries writes nothing — the same
+// no-op guard AddTaskTag gets from its rows count.
+func (h *API) journalMilestone(c *gin.Context, taskID uuid.UUID, before, after *uuid.UUID, title string) {
+	switch {
+	case before == nil && after == nil:
+		return
+	case before != nil && after != nil && *before == *after:
+		return
+	case after != nil:
+		h.logEvent(c, taskID, "milestone", map[string]any{"title": title})
+	default:
+		// Cleared: the title of what was there is what the reader needs, and it is
+		// only reachable from the row the task pointed at a moment ago. A stage
+		// deleted in between leaves the bare phrase rather than a hole.
+		var was string
+		if m, err := h.q.GetMilestone(c, *before); err == nil {
+			was = m.Title
+		}
+		h.logEvent(c, taskID, "milestone_removed", map[string]any{"title": was})
+	}
 }
 
 // ── relations ──────────────────────────────────────────────────
@@ -749,20 +794,22 @@ func (h *API) sameWorkspaceTask(c *gin.Context, t db.Task, wsID uuid.UUID) error
 }
 
 // sameWorkspaceMilestone is sameWorkspaceTask for a milestone id from a request
-// body: milestones hang off a project, so the workspace comes one hop away.
-func (h *API) sameWorkspaceMilestone(c *gin.Context, milestoneID, wsID uuid.UUID) error {
+// body: milestones hang off a project, so the workspace comes one hop away. The
+// milestone itself comes back because the caller journals it by title and would
+// otherwise read the same row a second time.
+func (h *API) sameWorkspaceMilestone(c *gin.Context, milestoneID, wsID uuid.UUID) (db.Milestone, error) {
 	m, err := h.q.GetMilestone(c, milestoneID)
 	if err != nil {
-		return userErr("invalid milestone")
+		return db.Milestone{}, userErr("invalid milestone")
 	}
 	other, err := h.q.WorkspaceIDForProject(c, m.ProjectID)
 	if err != nil {
-		return userErr("invalid milestone")
+		return db.Milestone{}, userErr("invalid milestone")
 	}
 	if other != wsID {
-		return forbiddenErr{msg: "milestone is in another workspace"}
+		return db.Milestone{}, forbiddenErr{msg: "milestone is in another workspace"}
 	}
-	return nil
+	return m, nil
 }
 
 // applyArchive soft-deletes a task. detach keeps its subtasks on the board

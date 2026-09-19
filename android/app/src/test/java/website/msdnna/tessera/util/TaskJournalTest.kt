@@ -41,6 +41,7 @@ class TaskJournalTest {
             "completed", "reopened", "recurred", "moved", "assigned", "unassigned",
             "archived", "restored", "comment", "relation", "relation_removed",
             "tagged", "untagged", "commands", "synced", "attachment", "attachment_removed",
+            "milestone", "milestone_removed",
         )
         for (language in listOf("ru", "en")) {
             for (kind in kinds) {
@@ -87,6 +88,12 @@ class TaskJournalTest {
         // Тег записан ИМЕНЕМ, а не id: строка истории должна читаться и после
         // того, как тег переименовали или удалили совсем.
         assertThat(text("ru", "tagged", """{"tag":"срочно"}""")).isEqualTo("навесил(а) тег «срочно»")
+        // Этап — тоже названием: tasks.milestone_id стоит ON DELETE SET NULL, так
+        // что id повис бы ровно тогда, когда старая запись и нужна.
+        assertThat(text("ru", "milestone", """{"title":"Этап 1"}"""))
+            .isEqualTo("привязал(а) к этапу «Этап 1»")
+        assertThat(text("en", "milestone_removed", """{"title":"Stage 1"}"""))
+            .isEqualTo("unlinked it from the milestone “Stage 1”")
         assertThat(text("en", "untagged", """{"tag":"urgent"}"""))
             .isEqualTo("removed the tag “urgent”")
     }
@@ -101,6 +108,7 @@ class TaskJournalTest {
         assertThat(text("ru", "attachment_removed")).isEqualTo("удалил(а) файл")
         assertThat(text("ru", "relation")).isEqualTo("добавил(а) связь")
         assertThat(text("ru", "tagged")).isEqualTo("навесил(а) тег")
+        assertThat(text("ru", "milestone_removed")).isEqualTo("отвязал(а) от этапа")
     }
 
     @Test

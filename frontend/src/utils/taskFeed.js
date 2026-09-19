@@ -139,6 +139,18 @@ export function eventText(e) {
       return d.filename
         ? t('task.journal.attachmentRemovedNamed', { name: d.filename })
         : t('task.journal.attachmentRemoved')
+    // Like the tag, the stage is recorded by name: it may be renamed or deleted
+    // (the task's milestone_id is ON DELETE SET NULL) and the line has to keep
+    // reading. An entry with no name — a stage deleted before the unpin was
+    // journalled — falls back to the bare phrase.
+    case 'milestone':
+      return d.title
+        ? t('task.journal.milestoneNamed', { name: d.title })
+        : t('task.journal.milestone')
+    case 'milestone_removed':
+      return d.title
+        ? t('task.journal.milestoneRemovedNamed', { name: d.title })
+        : t('task.journal.milestoneRemoved')
     default:
       return e.kind
   }
