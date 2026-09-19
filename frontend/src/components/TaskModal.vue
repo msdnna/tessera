@@ -1940,7 +1940,11 @@ async function onSubtaskChanged() {
                     />
                   </span>
                 </template>
-                <TaskDocumentsTab v-model:links="docLinks" @open-document="openDocument" />
+                <TaskDocumentsTab
+                  v-model:links="docLinks"
+                  :task-id="taskId"
+                  @open-document="openDocument"
+                />
               </n-tab-pane>
 
               <n-tab-pane name="history">

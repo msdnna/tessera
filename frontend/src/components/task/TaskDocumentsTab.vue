@@ -11,6 +11,9 @@ import EmptyState from '../EmptyState.vue'
 
 const props = defineProps({
   links: { type: Array, default: () => [] },
+  // Which task the shown links belong to. Carried only to tell a reply apart
+  // from the task it was asked for — see unlink below.
+  taskId: { type: String, default: null },
 })
 const emit = defineEmits(['update:links', 'open-document'])
 const { t } = useI18n()
@@ -18,7 +21,13 @@ const { t } = useI18n()
 // Unlinking goes through the link row's own endpoint — one row, one id,
 // whichever end you are looking at it from.
 async function unlink(id) {
+  // The modal is one per board and keeps this subtree alive when the task under
+  // it changes, so by the time the reply lands `props.links` may already be the
+  // other task's list — and publishing the filtered copy back would overwrite it
+  // with a list nobody asked for (#2932). The unlink itself stands either way.
+  const tid = props.taskId
   await docsApi.unlinkTask(id)
+  if (tid !== props.taskId) return
   emit(
     'update:links',
     props.links.filter((l) => l.id !== id),

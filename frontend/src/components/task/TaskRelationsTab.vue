@@ -93,11 +93,19 @@ function relDeleteHint(r) {
 async function addRelation() {
   const n = Number(relNumber.value)
   if (!n) return
+  // The task this tab is about, taken before the first await. The modal is not
+  // remounted when the task under it changes — and this tab is the fastest way
+  // there is to change it, since clicking a relation row opens the other end.
+  // Reading props afterwards re-read the relations of whichever task that left
+  // us with: the list of the task we walked away from landed under the open one's
+  // label, and the ✕ on such a row unlinks by id — the other task's link (#2932).
+  const tid = props.taskId
   try {
-    await tasksApi.addRelation(props.taskId, n, relKind.value)
+    await tasksApi.addRelation(tid, n, relKind.value)
     relNumber.value = null
     relPickerOpen.value = false
-    const r = await tasksApi.relations(props.taskId)
+    const r = await tasksApi.relations(tid)
+    if (tid !== props.taskId) return
     emit('update:relations', r.data || [])
     emit('changed')
   } catch (e) {
@@ -105,8 +113,10 @@ async function addRelation() {
   }
 }
 async function removeRelation(id) {
+  const tid = props.taskId
   try {
     await tasksApi.removeRelation(id)
+    if (tid !== props.taskId) return
     emit(
       'update:relations',
       props.relations.filter((x) => x.id !== id),

@@ -42,12 +42,24 @@ async function onFileChosen(ev) {
     ev.target.value = ''
     return
   }
+  // Which task the upload belongs to, taken before the first await. The modal is
+  // one per board and is not remounted when the task under it changes (a click on
+  // a subtask, a relation or «Родителю» swaps `taskId` with this subtree kept
+  // alive), and an upload is the longest thing in it — 25 MB over the wire is a
+  // window with room to spare. Re-reading props afterwards asked the *new* task
+  // for its files: the uploaded one showed up nowhere and got uploaded again.
+  const tid = props.taskId
   uploading.value = true
   try {
     const fd = new FormData()
     fd.append('file', file)
-    await tasksApi.uploadAttachment(props.taskId, fd)
-    const a = await tasksApi.attachments(props.taskId)
+    await tasksApi.uploadAttachment(tid, fd)
+    const a = await tasksApi.attachments(tid)
+    // The list belongs to the modal, so publishing it into another task's tab is
+    // not a harmless stale render: the rows would be #A's files under #B's label,
+    // and the ✕ on one of them deletes by id — the other task's attachment, with
+    // nothing on screen to say so (#2932).
+    if (tid !== props.taskId) return
     emit('update:attachments', a.data || [])
     emit('changed')
   } catch (e) {
@@ -66,8 +78,13 @@ async function downloadAttachment(att) {
   }
 }
 async function deleteAttachment(id) {
+  const tid = props.taskId
   try {
     await tasksApi.removeAttachment(id)
+    // Same guard, other direction: the deletion itself stands (it is addressed by
+    // row id), but the list it edits is whichever one the modal is showing now.
+    // Without this the reply rewrote the open task's list from the left one's.
+    if (tid !== props.taskId) return
     emit(
       'update:attachments',
       props.attachments.filter((x) => x.id !== id),
