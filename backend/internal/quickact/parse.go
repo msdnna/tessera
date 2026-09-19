@@ -29,8 +29,32 @@ type Result struct {
 // an indented markdown code block), a slash, the key, then the argument.
 var cmdLine = regexp.MustCompile(`^ {0,3}/([A-Za-z][A-Za-z0-9_-]*)[ \t]*(.*)$`)
 
-// fenceLine matches an opening or closing markdown code fence.
-var fenceLine = regexp.MustCompile("^ {0,3}(```|~~~)")
+// fenceLine matches a markdown code fence: the marker run, then whatever
+// follows it on the line (the info string of an opening fence).
+var fenceLine = regexp.MustCompile("^ {0,3}(`{3,}|~{3,})(.*)$")
+
+// fence is the code block currently open, if any. The zero value means none.
+//
+// Tracking the marker rather than flipping a boolean on every fence line is what
+// makes quoting markdown inside markdown safe: a block opened with ``` is closed
+// by ``` and by nothing else, so the ~~~ and the ```go inside it are its content.
+// A plain toggle read them as the closing fence, handed the rest of the block to
+// the executor, and then deleted the command line it found there from the
+// comment — the author's snippet came back mangled and the task moved.
+type fence struct {
+	char  byte // '`' or '~'
+	width int  // how many of them opened this block
+}
+
+func (f fence) on() bool { return f.width > 0 }
+
+// closedBy reports whether a fence line ends this block: the same character, at
+// least as long, and nothing but whitespace after it. The last clause is why
+// ```go inside a ``` block is content — a closing fence carries no info string
+// (CommonMark §4.5), and a language tag is how one quotes a code sample.
+func (f fence) closedBy(marker, rest string) bool {
+	return marker[0] == f.char && len(marker) >= f.width && strings.TrimSpace(rest) == ""
+}
 
 // Parse splits a comment body into executable commands and the remaining text.
 //
@@ -51,15 +75,20 @@ func Parse(body string, custom []string) Result {
 	lines := strings.Split(body, "\n")
 	res := Result{}
 	kept := make([]string, 0, len(lines))
-	inFence := false
+	var open fence
 
 	for i, line := range lines {
-		if fenceLine.MatchString(line) {
-			inFence = !inFence
+		if m := fenceLine.FindStringSubmatch(line); m != nil {
+			switch {
+			case !open.on():
+				open = fence{char: m[1][0], width: len(m[1])}
+			case open.closedBy(m[1], m[2]):
+				open = fence{}
+			}
 			kept = append(kept, line)
 			continue
 		}
-		if inFence {
+		if open.on() {
 			kept = append(kept, line)
 			continue
 		}

@@ -93,6 +93,30 @@ func TestParse(t *testing.T) {
 			body:     "```\n/close\n```\n/archive",
 			wantCmds: []string{"archive"}, wantRest: "```\n/close\n```",
 		},
+		// A fence is closed by its own marker, not by any marker. The three cases
+		// below are the ordinary ways of quoting markdown that contains markdown —
+		// and each one used to hand the block's contents to the executor while
+		// deleting the line from the text the author wrote.
+		{
+			name:     "tilde line does not close a backtick fence",
+			body:     "```\n~~~\n/archive\n```\nвот так",
+			wantRest: "```\n~~~\n/archive\n```\nвот так",
+		},
+		{
+			name:     "inner fence does not close a longer outer one",
+			body:     "````\n```\n/close\n```\n````",
+			wantRest: "````\n```\n/close\n```\n````",
+		},
+		{
+			name:     "a marker with an info string opens, never closes",
+			body:     "```md\n```go\n/title Новый заголовок\n```\nпояснение",
+			wantRest: "```md\n```go\n/title Новый заголовок\n```\nпояснение",
+		},
+		{
+			name:     "longer marker closes a shorter fence",
+			body:     "```\n/close\n`````\n/archive",
+			wantCmds: []string{"archive"}, wantRest: "```\n/close\n`````",
+		},
 		{
 			name: "indented four spaces is a code block, not a command",
 			body: "    /close", wantRest: "/close",
