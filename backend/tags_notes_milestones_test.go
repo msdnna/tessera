@@ -20,10 +20,11 @@ func TestTagFlow(t *testing.T) {
 		t.Fatalf("tag scoping: %v", tag)
 	}
 
-	// Duplicate name in the same project violates UNIQUE(project_id, name).
-	// FACT: the handler maps it to a generic 500 (no 409 branch) — see report.
-	if r := c.post("/projects/"+s.Project+"/tags", map[string]any{"name": "bug"}); r.Status != http.StatusInternalServerError {
-		t.Fatalf("duplicate tag: status %d, expected current behavior 500\n%s", r.Status, r.Body)
+	// Duplicate name in the same project violates UNIQUE(project_id, name), and
+	// that is a refusal the reader can act on — 409 with a sentence, not the
+	// generic 500 this used to answer (#2932).
+	if r := c.post("/projects/"+s.Project+"/tags", map[string]any{"name": "bug"}); r.Status != http.StatusConflict {
+		t.Fatalf("duplicate tag: status %d, want 409\n%s", r.Status, r.Body)
 	}
 
 	c.expect(t, c.post("/projects/"+s.Project+"/tags", map[string]any{"name": "feature"}), http.StatusCreated)

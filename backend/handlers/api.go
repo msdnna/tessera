@@ -18,6 +18,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"tessera/internal/confroom"
@@ -441,6 +442,20 @@ func notFound(c *gin.Context, err error) bool {
 		return true
 	}
 	return false
+}
+
+// isUniqueViolation reports Postgres's 23505.
+//
+// Worth a helper because a unique index plays two different roles here. Most of
+// them guard against a bug, and tripping one belongs in `fail` — a 500 is the
+// honest answer. But a few sit on names the user types (a project's tag names)
+// or on a race the schema is deliberately arbitrating (the one-active-recording
+// index), and there a 23505 is the expected outcome of an ordinary request. Those
+// call sites answer 409 with a sentence instead of handing the reader "internal
+// error" and Sentry a typed exception for something nobody broke.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // fail writes a generic 500.

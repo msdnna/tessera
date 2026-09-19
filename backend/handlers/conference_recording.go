@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"tessera/internal/confroom"
 	"tessera/internal/db"
@@ -606,12 +605,4 @@ func (h *API) egressUploadDir() string {
 		return h.egressDir
 	}
 	return h.uploadDir
-}
-
-// isUniqueViolation reports Postgres's 23505. Used where a unique index is doing
-// real work rather than guarding against a bug — here, the one-active-recording
-// index that turns a race between two hosts into a refusal for one of them.
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

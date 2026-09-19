@@ -8,6 +8,11 @@ import (
 	"tessera/internal/db"
 )
 
+// tagNameTaken is the refusal both write paths share. Russian, like every other
+// sentence the API hands a reader (see userErr in task_ops.go); the web client
+// shows `{"error": …}` verbatim.
+const tagNameTaken = "тег с таким именем уже есть в проекте"
+
 // CreateTag adds a project-scoped tag.
 func (h *API) CreateTag(c *gin.Context) {
 	projectID, ok := parseID(c, "id")
@@ -35,6 +40,15 @@ func (h *API) CreateTag(c *gin.Context) {
 	}
 	tag, err := h.q.CreateTag(c, db.CreateTagParams{WorkspaceID: wsID, ProjectID: projectID, Name: req.Name, Color: req.Color})
 	if err != nil {
+		// UNIQUE(project_id, name). The name comes straight from a text field
+		// that does not consult the project's tag list — the one in the task
+		// modal offers «создать» for whatever is typed, and a project's tags are
+		// grouped by prefix and scroll — so a reader hits this by typing a name
+		// that already exists, which is an ordinary outcome and not a fault.
+		if isUniqueViolation(err) {
+			c.JSON(http.StatusConflict, gin.H{"error": tagNameTaken})
+			return
+		}
 		fail(c, err)
 		return
 	}
@@ -109,6 +123,13 @@ func (h *API) UpdateTag(c *gin.Context) {
 	}
 	updated, err := h.q.UpdateTag(c, db.UpdateTagParams{ID: id, Name: req.Name, Color: req.Color})
 	if err != nil {
+		// Same index as CreateTag, reached by renaming onto a name the project
+		// already has. The rename field saves on blur as well as on Enter, so
+		// clicking away from a collision is enough to get here.
+		if isUniqueViolation(err) {
+			c.JSON(http.StatusConflict, gin.H{"error": tagNameTaken})
+			return
+		}
 		fail(c, err)
 		return
 	}
