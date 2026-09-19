@@ -353,7 +353,9 @@
     "commandsMixed": "ran {applied} (failed: {failed})",
     "synced": "synced it with {source}",
     "attachment": "attached a file",
-    "attachmentNamed": "attached the file “{name}”"
+    "attachmentNamed": "attached the file “{name}”",
+    "attachmentRemoved": "removed a file",
+    "attachmentRemovedNamed": "removed the file “{name}”"
   },
   "ref": {
     "notFound": "Task #{number} not found"

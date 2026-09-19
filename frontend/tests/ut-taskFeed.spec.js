@@ -22,6 +22,9 @@ describe('taskFeed.eventText', () => {
       [{ kind: 'comment' }, 'оставил(а) комментарий'],
       [{ kind: 'relation', data: { related: 42 } }, 'добавил(а) связь с #42'],
       [{ kind: 'attachment', data: { filename: 'a.pdf' } }, 'прикрепил(а) файл «a.pdf»'],
+      // Any member may drop any member's file, and the bytes go with the row —
+      // so the removal is the half of the pair that most needs a name on it.
+      [{ kind: 'attachment_removed', data: { filename: 'a.pdf' } }, 'удалил(а) файл «a.pdf»'],
       // The tag travels by name: a board grouped by tags turns a drag into an
       // attach + a detach, and those two lines are the only trace it leaves.
       [{ kind: 'tagged', data: { tag: 'срочно' } }, 'навесил(а) тег «срочно»'],
@@ -58,6 +61,7 @@ describe('taskFeed.eventText', () => {
     'tagged',
     'untagged',
     'attachment',
+    'attachment_removed',
     'synced',
   ]
 
@@ -114,6 +118,7 @@ describe('taskFeed.eventText', () => {
     expect(eventText({ kind: 'moved' })).toBe('переместил(а)')
     expect(eventText({ kind: 'renamed' })).toBe('переименовал(а) → «»')
     expect(eventText({ kind: 'attachment' })).toBe('прикрепил(а) файл')
+    expect(eventText({ kind: 'attachment_removed' })).toBe('удалил(а) файл')
   })
 
   it('names the priority instead of printing its number', () => {

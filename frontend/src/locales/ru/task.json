@@ -353,7 +353,9 @@
     "commandsMixed": "выполнил(а) команды: {applied} (не удалось: {failed})",
     "synced": "синхронизировал(а) с {source}",
     "attachment": "прикрепил(а) файл",
-    "attachmentNamed": "прикрепил(а) файл «{name}»"
+    "attachmentNamed": "прикрепил(а) файл «{name}»",
+    "attachmentRemoved": "удалил(а) файл",
+    "attachmentRemovedNamed": "удалил(а) файл «{name}»"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"

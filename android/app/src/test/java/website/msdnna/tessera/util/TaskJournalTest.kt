@@ -40,7 +40,7 @@ class TaskJournalTest {
             "created", "renamed", "description", "priority", "due", "start", "estimate",
             "completed", "reopened", "recurred", "moved", "assigned", "unassigned",
             "archived", "restored", "comment", "relation", "relation_removed",
-            "tagged", "untagged", "commands", "synced", "attachment",
+            "tagged", "untagged", "commands", "synced", "attachment", "attachment_removed",
         )
         for (language in listOf("ru", "en")) {
             for (kind in kinds) {
@@ -75,6 +75,12 @@ class TaskJournalTest {
             .isEqualTo("renamed it to “Fix the kettle”")
         assertThat(text("ru", "attachment", """{"filename":"смета.pdf"}"""))
             .isEqualTo("прикрепил(а) файл «смета.pdf»")
+        // Снятие вложения уносит и байты, и строку, и удалить файл может любой
+        // участник — имя в записи остаётся единственным следом того, что пропало.
+        assertThat(text("ru", "attachment_removed", """{"filename":"смета.pdf"}"""))
+            .isEqualTo("удалил(а) файл «смета.pdf»")
+        assertThat(text("en", "attachment_removed", """{"filename":"estimate.pdf"}"""))
+            .isEqualTo("removed the file “estimate.pdf”")
         assertThat(text("ru", "relation", """{"related":42}""")).isEqualTo("добавил(а) связь с #42")
         assertThat(text("en", "relation_removed", """{"related":42}"""))
             .isEqualTo("removed the link to #42")
@@ -92,6 +98,7 @@ class TaskJournalTest {
         assertThat(text("ru", "renamed")).isEqualTo("переименовал(а) задачу")
         assertThat(text("ru", "moved")).isEqualTo("переместил(а) задачу")
         assertThat(text("ru", "attachment")).isEqualTo("прикрепил(а) файл")
+        assertThat(text("ru", "attachment_removed")).isEqualTo("удалил(а) файл")
         assertThat(text("ru", "relation")).isEqualTo("добавил(а) связь")
         assertThat(text("ru", "tagged")).isEqualTo("навесил(а) тег")
     }

@@ -66,6 +66,10 @@ fun journalText(res: Resources, e: TaskEvent?): String {
     val d = e.data ?: TaskEventData()
     val column = d.to?.let { columnCaption(res, d.toKey, it) }
     val ref = d.related?.toString()
+    // Both halves of the attachment pair name the same field, and a `when` branch
+    // that wraps would force a blank line between every branch of the block
+    // (ktlint blank-line-between-when-conditions) — so the local keeps them short.
+    val file = d.filename
     return when (e.kind) {
         "renamed" -> named(res, d.to, R.string.task_event_renamed_to, R.string.task_event_renamed)
         "priority" -> priority(res, d.to)
@@ -76,7 +80,8 @@ fun journalText(res: Resources, e: TaskEvent?): String {
         "untagged" -> named(res, d.tag, R.string.task_event_untagged_with, R.string.task_event_untagged)
         "commands" -> commands(res, d)
         "synced" -> res.getString(R.string.task_event_synced, sourceMeta(d.source).label)
-        "attachment" -> named(res, d.filename, R.string.task_event_attachment_named, R.string.task_event_attachment)
+        "attachment" -> named(res, file, R.string.task_event_attachment_named, R.string.task_event_attachment)
+        "attachment_removed" -> named(res, file, R.string.task_event_attachment_removed_named, R.string.task_event_attachment_removed)
         else -> e.kind
     }
 }

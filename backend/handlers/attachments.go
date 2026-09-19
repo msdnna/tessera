@@ -277,7 +277,8 @@ func (h *API) DeleteAttachment(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if _, _, ok := h.loadTask(c, att.TaskID); !ok {
+	_, wsID, ok := h.loadTask(c, att.TaskID)
+	if !ok {
 		return
 	}
 	if err := h.q.DeleteAttachment(c, id); err != nil {
@@ -285,6 +286,17 @@ func (h *API) DeleteAttachment(c *gin.Context) {
 		return
 	}
 	_ = os.Remove(att.StoragePath) // best-effort; the row is already gone
+	// The counterpart of the "attachment" event above, and the reason it has to
+	// exist: this route is the only one where a member destroys someone else's
+	// contribution outright — a comment may be deleted by its author alone
+	// (DeleteComment answers 403 otherwise), while any member of the workspace
+	// may drop any attachment, bytes included. Without this line the history kept
+	// claiming "attached the file X" about a file the Files tab no longer lists,
+	// and nothing anywhere recorded who took it or when. The name is stored on
+	// the event for the same reason as the tag on tagged/untagged: the row it
+	// came from is already gone, so an id would dangle.
+	h.logEvent(c, att.TaskID, "attachment_removed", map[string]any{"filename": att.Filename})
+	h.broadcast(wsID, "task.updated", gin.H{"id": att.TaskID})
 	c.Status(http.StatusNoContent)
 }
 

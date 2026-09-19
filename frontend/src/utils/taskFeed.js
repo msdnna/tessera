@@ -50,7 +50,8 @@ export function groupThreads(comments) {
 // renders the feed re-runs this when the language flips (#2799).
 //
 // Two events come in a "with target" and a "bare" flavour: `moved` and
-// `attachment` only name the destination/file when the journal recorded one.
+// `attachment`/`attachment_removed` only name the destination/file when the
+// journal recorded one.
 // That is two separate keys rather than an interpolated suffix, because the
 // wording around the name is not the same in every language.
 export function eventText(e) {
@@ -134,6 +135,10 @@ export function eventText(e) {
       return d.filename
         ? t('task.journal.attachmentNamed', { name: d.filename })
         : t('task.journal.attachment')
+    case 'attachment_removed':
+      return d.filename
+        ? t('task.journal.attachmentRemovedNamed', { name: d.filename })
+        : t('task.journal.attachmentRemoved')
     default:
       return e.kind
   }

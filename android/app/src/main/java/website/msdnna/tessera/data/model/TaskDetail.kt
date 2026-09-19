@@ -166,6 +166,9 @@ data class TaskEventData(
     @SerializedName("set") val set: Boolean? = null,
     /** Number of the task on the other end of a relation. */
     @SerializedName("related") val related: Long? = null,
+    /** Name of the file attached/removed — `attachment`, `attachment_removed`.
+     *  By name, like the tag below: the row is gone by the time the removal is
+     *  read back, so an id would dangle. */
     @SerializedName("filename") val filename: String? = null,
     /** Name of the tag attached/detached — `tagged`, `untagged`. Stored by name,
      *  not by id, so history survives the tag being renamed or deleted. */

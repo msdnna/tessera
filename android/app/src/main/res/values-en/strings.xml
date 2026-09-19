@@ -354,6 +354,8 @@
     <string name="task_event_synced">synced it with %1$s</string>
     <string name="task_event_attachment">attached a file</string>
     <string name="task_event_attachment_named">attached the file “%1$s”</string>
+    <string name="task_event_attachment_removed">removed a file</string>
+    <string name="task_event_attachment_removed_named">removed the file “%1$s”</string>
     <string name="task_event_archived">archived the task</string>
     <string name="task_event_restored">restored the task</string>
 

@@ -368,6 +368,8 @@
     <string name="task_event_synced">синхронизировал(а) с %1$s</string>
     <string name="task_event_attachment">прикрепил(а) файл</string>
     <string name="task_event_attachment_named">прикрепил(а) файл «%1$s»</string>
+    <string name="task_event_attachment_removed">удалил(а) файл</string>
+    <string name="task_event_attachment_removed_named">удалил(а) файл «%1$s»</string>
     <string name="task_event_archived">архивировал(а) задачу</string>
     <string name="task_event_restored">восстановил(а) задачу</string>
 
