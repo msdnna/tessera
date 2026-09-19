@@ -69,6 +69,16 @@ const (
 	// which is the thing maxChatFiles was written to prevent in the first place
 	// (#2932).
 	routeConfMessages = "/api/conferences/:id/messages"
+	// A template uploaded from a .md or .json file. Sixth repeat, and the one that
+	// reads as nonsense rather than as a limit, because the neighbouring path
+	// works: the same picker and the same parser feed importLocal, which creates
+	// an empty page and PATCHes the body through routeDocContent — so one file was
+	// fine as a document and "request body too large" as a template. The body here
+	// is a whole document (CreateDocumentTemplate takes `content` and hands it to
+	// validateDocContent), so it gets the validator's ceiling, exactly like the
+	// content route. Markdown inflates on the way to a ProseMirror tree, so the
+	// blanket megabyte was reached by source files well under one (#2932).
+	routeDocTemplates = "/api/workspaces/:id/document-templates"
 	// Browser Sentry envelopes. Pinned to the handler's own ceiling rather than
 	// left on the blanket JSON budget so that an operator tightening
 	// MAX_BODY_BYTES doesn't silently start dropping crash reports at the
@@ -246,6 +256,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		// budget equal to it would refuse a document of exactly MaxDocContentBytes
 		// at the transport — the one size the validator promises to accept.
 		routeDocContent: handlers.MaxDocContentBytes + docContentEnvelope,
+		// The same body under a different envelope — the uploaded template carries
+		// title, description and icon beside the document, all of them bounded by
+		// truncateRunes, so the content route's slack covers them too.
+		routeDocTemplates: handlers.MaxDocContentBytes + docContentEnvelope,
 		// The chat's aggregate file ceiling plus its framing, for the same reason:
 		// a budget equal to MaxChatTotalBytes would refuse at the transport the one
 		// batch readChatSubmission promises to take.

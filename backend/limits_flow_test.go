@@ -37,7 +37,7 @@ func TestBodyLimitRoutesExist(t *testing.T) {
 	for _, want := range []string{
 		routeWS, routeUploads, routeAvatar, routeAttachments,
 		routeDocAssets, routeDocImport, routeDocPdf, routeDocContent, routeConfMessages,
-		routeSentryTunnel,
+		routeDocTemplates, routeSentryTunnel,
 	} {
 		if !registered[want] {
 			t.Errorf("body-limit table names %q, which is not a registered route", want)

@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -155,6 +156,35 @@ func TestDocumentTemplateWorkspaceScope(t *testing.T) {
 	}
 	if code := outsider.get("/document-templates/" + tpl["id"].(string)).Status; code == http.StatusOK {
 		t.Fatal("non-member read a template")
+	}
+}
+
+// The same upload path, sized. A template built from a file carries the whole
+// body in the request, so the route's transport budget has to be the ceiling its
+// handler validates against (MaxDocContentBytes) rather than the blanket JSON
+// one — the sixth route to repeat that omission, see routeDocTemplates.
+//
+// What made it read as nonsense rather than as a limit: importing the very same
+// file as a *document* works. That path creates an empty page and PATCHes the
+// body through /content, which has had a budget of its own since #2932, while
+// the template path posts it here in one piece. One picker, one parser, one
+// file — "fine as a page, too large as a template".
+func TestDocumentTemplateUploadTakesFullBody(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	ws := mkWorkspace(t, c, "WS "+t.Name())
+
+	// Past the 1 MiB blanket ceiling and comfortably inside validateDocContent's
+	// 4 MiB, so a 413 here can only have come from the transport. Multi-byte on
+	// purpose: the source file a reader picks is Russian prose, and the markdown
+	// it is parsed from is smaller still than the tree posted here.
+	big := docJSON(strings.Repeat("я", 900_000)) // ~1.8 MB of JSON
+	tpl := c.expect(t, c.post("/workspaces/"+ws+"/document-templates", map[string]any{
+		"title":   "Из большого файла",
+		"content": big,
+	}), http.StatusCreated)
+	if tpl["title"] != "Из большого файла" {
+		t.Fatalf("template = %v", tpl["title"])
 	}
 }
 
