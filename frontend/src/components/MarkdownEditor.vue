@@ -768,6 +768,11 @@ function onKeydown(e) {
     }
     if (e.key === 'Escape') {
       e.preventDefault()
+      // The popup is a layer of its own: this Esc is spent on it and must not
+      // reach the modal underneath (naive-ui closes n-modal from a document
+      // keydown), or dismissing an @-suggestion would throw away the draft
+      // together with the whole task modal.
+      e.stopPropagation()
       mq.value = null
       return
     }
