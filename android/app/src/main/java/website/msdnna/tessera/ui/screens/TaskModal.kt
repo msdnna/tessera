@@ -150,6 +150,7 @@ import website.msdnna.tessera.util.nextColumn
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
+import website.msdnna.tessera.util.relationPickerMatches
 import website.msdnna.tessera.util.shortDate
 import website.msdnna.tessera.util.siblingNeighbors
 import website.msdnna.tessera.util.sortedColumns
@@ -2255,11 +2256,10 @@ private fun RelationsTab(
 
         val q = query.trim().lowercase()
         if (q.isNotEmpty()) {
-            val matches = candidates.asSequence()
-                .filter { it.id != currentTaskId && it.number != null }
-                .filter { "#${it.number}".contains(q) || it.title.lowercase().contains(q) }
-                .take(30)
-                .toList()
+            // Правило подсказки — в util (relationPickerMatches), общее с web: уже
+            // связанные выбранным видом связи в список не попадают, иначе тап по такой
+            // строке ничего не меняет и ничем себя не выдаёт.
+            val matches = relationPickerMatches(candidates, currentTaskId, relations, kind, query)
             Spacer(Modifier.height(6.dp))
             if (matches.isEmpty()) {
                 Text(
