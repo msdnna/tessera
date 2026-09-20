@@ -394,6 +394,59 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 
 // ── column move ────────────────────────────────────────────────
 
+// claimColumnTrigger answers whether THIS request is the one that gets to read
+// the move as a column-triggered recurrence, and takes that right atomically.
+//
+// Entering the trigger column is a state transition, not a field write, and the
+// advance it takes rewrites the very row the move is about: the due date, the
+// start, the whole checklist's window, and under create_new a duplicate on the
+// board. Whether to take it used to be decided by comparing the column read at
+// the start of the request against the one being moved into — and nothing
+// between those two is atomic, so two drags that both read the card outside the
+// column both answered yes.
+//
+// A drag is the easiest of the three closing gestures to make twice: the board
+// is a shared screen, the card snaps back to where it was until the request
+// returns, and the advance is slow (it rebuilds the checklist, copies every
+// attachment's bytes and rewrites the description), so "still in flight" is
+// hundreds of milliseconds rather than the few a person waits before dragging
+// again. The other two doors are bolted from the inside already — the checkbox
+// in applyTaskPatch, the done column's auto-complete in applyMove — and this was
+// the third, opening on the same two failures: under create_new an extra card
+// with the same title, the same checklist and the same rule, repeating on a
+// series of its own forever; under reschedule a card stepped one period while
+// every item of its checklist is stepped two, because each item's window is
+// carried by a RELATIVE shift (#2932).
+//
+// The claim is the optimistic lock already on UpdateTask, armed from the inside
+// against the row this request read. No client sends a version (ExpectedUpdatedAt
+// is nil on every real request), so the write is a no-op rewrite of the fields as
+// read, whose only job is that exactly one of the racing requests survives the
+// WHERE clause. It is taken BEFORE the move on purpose: after it, both requests
+// would be comparing against a row the other one had already written.
+//
+// A losing request still moves the card — two drags into one column carry one
+// drag's worth of intent — it just does not advance the series a second time.
+// A write by something else in the same breath (the schedule worker, a GitLab
+// sync) costs this arrival its advance too: the card is then simply sitting in
+// the trigger column with its rule intact, which the next drag out and back in
+// advances. That is a state a person can see and undo, unlike a duplicate series.
+func (h *API) claimColumnTrigger(c *gin.Context, t db.Task, columnID uuid.UUID) bool {
+	if t.ColumnID == columnID {
+		return false
+	}
+	rule, ok := recur.Parse(t.Recurrence)
+	if !ok || rule.Trigger != recur.TriggerColumn || rule.TriggerColumn != columnID.String() {
+		return false
+	}
+	_, err := h.q.UpdateTask(c, db.UpdateTaskParams{
+		ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
+		DueDate: t.DueDate, CompletedAt: t.CompletedAt, Recurrence: t.Recurrence,
+		StartDate: t.StartDate, Estimate: t.Estimate, ExpectedUpdatedAt: &t.UpdatedAt,
+	})
+	return err == nil
+}
+
 // applyMove moves a task to a column at an explicit position, with the board's
 // done-column auto-complete, column-triggered recurrence, journal, notification
 // and GitLab triggers. The caller computes the position: the REST handler from
@@ -404,6 +457,9 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 	if err != nil || col.BoardID != t.BoardID {
 		return t, userErr("column does not belong to this board")
 	}
+	// Whether this move is the rule's trigger is settled before the move itself,
+	// and settled once — see claimColumnTrigger.
+	triggered := h.claimColumnTrigger(c, t, columnID)
 	updated, err := h.q.MoveTask(c, db.MoveTaskParams{ID: t.ID, ColumnID: columnID, Position: position})
 	if err != nil {
 		return t, err
@@ -473,13 +529,11 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 	}
 
 	// Column-triggered recurrence: moving the task into its configured column
-	// advances it (independent of completion).
-	if t.ColumnID != columnID {
-		if rule, ok := recur.Parse(updated.Recurrence); ok &&
-			rule.Trigger == recur.TriggerColumn && rule.TriggerColumn == columnID.String() {
-			if advanced, acted := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerColumn); acted {
-				updated = advanced
-			}
+	// advances it (independent of completion). The claim taken before the move is
+	// what makes this happen once per arrival.
+	if triggered {
+		if advanced, acted := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerColumn); acted {
+			updated = advanced
 		}
 	}
 
