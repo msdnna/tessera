@@ -284,6 +284,19 @@ UPDATE tasks SET completed_at = NULL, updated_at = now()
 WHERE tasks.id IN (SELECT stuck.id FROM stuck)
 RETURNING tasks.id;
 
+-- ReopenTaskLeavingDone is the statement above for ONE card — the same
+-- condition (standing in @done_column_id and marked completed), without the
+-- walk. A re-parent inside one board moves only the task itself: its
+-- descendants keep the column each of them sits in (applyParent re-boards a
+-- subtree only when the board changes), so reopening the whole subtree there
+-- would clear the flag of a finished child that never left «Готово».
+-- name: ReopenTaskLeavingDone :many
+UPDATE tasks SET completed_at = NULL, updated_at = now()
+WHERE tasks.id = @root_id
+  AND tasks.column_id = @done_column_id
+  AND tasks.completed_at IS NOT NULL
+RETURNING tasks.id;
+
 -- TaskAncestorIDs returns the task itself followed by its parents, up to the
 -- root. Used to reject attaching a task below one of its own descendants, which
 -- would leave the branch ringed with no root — and a subtask nobody can reach

@@ -789,7 +789,25 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 	// only under a parent card present on the same board), and destroyed outright
 	// once that board or column is deleted (both foreign keys are ON DELETE
 	// CASCADE). One transaction, so a crash cannot split the tree across boards.
+	//
+	// Attaching also takes the card OUT of the column it was standing in, and the
+	// board's rule for that gesture is applyMove's: what leaves a done column for a
+	// column that does not complete is reopened. /transfer — the other door onto
+	// board_id and column_id — already follows it; this one did not, so a finished
+	// card pulled under a parent in «К работе» landed struck through in a column
+	// that completes nothing, still counted as done, and out of reach of the reopen
+	// rule, which fires only for a task standing in a done column. Dragging it into
+	// «Готово» and back out was the only way to undo that.
+	//
+	// Resolved before the transaction: it reads the two boards' done-column
+	// pointers, which nothing below writes. A detach moves no card (columnID is the
+	// task's own), hence the guard.
+	var leavingDone *uuid.UUID
+	if columnID != t.ColumnID {
+		leavingDone = h.doneColumnLeftBy(c, t, boardID, columnID)
+	}
 	var updated db.Task
+	var reopened []uuid.UUID
 	var lostMilestones []db.SubtreeMilestonesOffProjectRow
 	if err := h.inTx(c, func(q *db.Queries) error {
 		// The adopted board may belong to another project, in which case the two
@@ -799,6 +817,27 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 		if boardID != t.BoardID {
 			var err error
 			if lostMilestones, err = h.milestonesLostToBoard(c, q, t.ID, boardID); err != nil {
+				return err
+			}
+		}
+		// Before the writes below: the reopen condition is the column being left,
+		// which they are about to overwrite. Which cards are leaving depends on how
+		// far the attach reaches — a cross-board attach carries the whole subtree
+		// into the parent's column (MoveSubtreeToBoard), a same-board one moves only
+		// this task, and reopening a subtree there would clear the flag of a
+		// finished child that never left «Готово».
+		if leavingDone != nil {
+			var err error
+			if boardID != t.BoardID {
+				reopened, err = q.ReopenSubtreeLeavingDone(c, db.ReopenSubtreeLeavingDoneParams{
+					RootID: t.ID, DoneColumnID: *leavingDone,
+				})
+			} else {
+				reopened, err = q.ReopenTaskLeavingDone(c, db.ReopenTaskLeavingDoneParams{
+					RootID: t.ID, DoneColumnID: *leavingDone,
+				})
+			}
+			if err != nil {
 				return err
 			}
 		}
@@ -818,10 +857,17 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 		return t, err
 	}
 	h.journalLostMilestones(c, lostMilestones)
+	actor := middleware.CurrentUser(c)
+	// Same trail an in-board reopen leaves, and the one /transfer leaves for the
+	// same statement: a journal entry per task, and the completion mirrored to
+	// GitLab (the outbox drops the ones with no issue).
+	for _, rid := range reopened {
+		h.logEvent(c, rid, "reopened", nil)
+		h.enqueueWriteback(c, rid, actor, gitlab.TrigCompletion, map[string]any{"completed": false})
+	}
 	// Mirror the move in GitLab's hierarchy (#2592). Re-parenting to a different parent
 	// is one attach: workItemUpdate replaces the parent, so an explicit detach first
 	// would only produce a window where the child hangs at top-level.
-	actor := middleware.CurrentUser(c)
 	switch {
 	case parentID != nil:
 		h.enqueueChildAttach(c, t.ID, *parentID, actor)

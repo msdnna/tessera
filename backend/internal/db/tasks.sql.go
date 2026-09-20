@@ -1122,6 +1122,45 @@ func (q *Queries) ReopenSubtreeLeavingDone(ctx context.Context, arg ReopenSubtre
 	return items, nil
 }
 
+const reopenTaskLeavingDone = `-- name: ReopenTaskLeavingDone :many
+UPDATE tasks SET completed_at = NULL, updated_at = now()
+WHERE tasks.id = $1
+  AND tasks.column_id = $2
+  AND tasks.completed_at IS NOT NULL
+RETURNING tasks.id
+`
+
+type ReopenTaskLeavingDoneParams struct {
+	RootID       uuid.UUID `json:"root_id"`
+	DoneColumnID uuid.UUID `json:"done_column_id"`
+}
+
+// ReopenTaskLeavingDone is the statement above for ONE card — the same
+// condition (standing in @done_column_id and marked completed), without the
+// walk. A re-parent inside one board moves only the task itself: its
+// descendants keep the column each of them sits in (applyParent re-boards a
+// subtree only when the board changes), so reopening the whole subtree there
+// would clear the flag of a finished child that never left «Готово».
+func (q *Queries) ReopenTaskLeavingDone(ctx context.Context, arg ReopenTaskLeavingDoneParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, reopenTaskLeavingDone, arg.RootID, arg.DoneColumnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const restoreTask = `-- name: RestoreTask :exec
 WITH RECURSIVE down AS (
     SELECT t.id FROM tasks t WHERE t.id = $1
