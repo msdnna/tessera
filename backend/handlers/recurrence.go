@@ -242,6 +242,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 			soft(ctx, "AddTaskAssignee", h.q.AddTaskAssignee(ctx, db.AddTaskAssigneeParams{TaskID: clone.ID, UserID: a.ID}))
 		}
 	}
+	h.carryDueNotify(ctx, src, clone.ID)
 	// The step the parent's due date took — each item's own window rides along
 	// so the duplicate's checklist isn't born pinned to the previous occurrence.
 	var step time.Duration
@@ -329,8 +330,34 @@ func (h *API) cloneChecklist(
 				soft(ctx, "AddTaskAssignee", h.q.AddTaskAssignee(ctx, db.AddTaskAssigneeParams{TaskID: sub.ID, UserID: a.ID}))
 			}
 		}
+		h.carryDueNotify(ctx, s, sub.ID)
 		h.cloneChecklist(ctx, s, sub, columnID, step, wsID, seen)
 	}
+}
+
+// carryDueNotify copies a task's own due-notification settings — the lead, the
+// repeat and the on/off switch — onto the occurrence cloned from it.
+//
+// The three live as columns on `tasks` (NULL = inherit the user's default) and the
+// card's due popover is what sets them. The reschedule branch keeps them for free
+// (it edits the task in place, and UpdateTask names none of the three); the
+// duplicate is born from CreateTask with all three NULL, so without this a muted
+// daily chore started notifying again the next day and a report set to warn three
+// days ahead warned an hour ahead — while the popover of the spent occurrence
+// still showed what had been asked for (#2932).
+//
+// Nothing is written when the source set nothing: pinning the user's current
+// default into the clone's row would make the next change to that default stop
+// reaching a task nobody ever customised.
+func (h *API) carryDueNotify(ctx context.Context, src db.Task, dstID uuid.UUID) {
+	if src.DueLeadMinutes == nil && src.DueRepeatMinutes == nil && src.DueNotifyEnabled == nil {
+		return
+	}
+	_, err := h.q.SetTaskDueNotify(ctx, db.SetTaskDueNotifyParams{
+		ID: dstID, DueLeadMinutes: src.DueLeadMinutes,
+		DueRepeatMinutes: src.DueRepeatMinutes, DueNotifyEnabled: src.DueNotifyEnabled,
+	})
+	soft(ctx, "SetTaskDueNotify", err)
 }
 
 // RunRecurrenceWorker drives schedule-triggered recurrences: tasks whose rule
