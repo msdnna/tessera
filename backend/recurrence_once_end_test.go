@@ -92,7 +92,12 @@ func TestCustomDatesExhaustedEndsTheSeries(t *testing.T) {
 
 	d1 := time.Now().AddDate(0, 0, 2).UTC().Truncate(time.Second)
 	d2 := d1.AddDate(0, 0, 5)
-	key := func(ts time.Time) string { return ts.Format("2006-01-02") }
+	// The picked days are UTC days — that is the zone they were formatted in when
+	// they went into the rule — so the day read back has to be taken in UTC too.
+	// The API answers in the server's zone (+03:00 here), and for any run between
+	// 21:00 and midnight UTC that zone is already on the next day: without the
+	// normalization the check fails every night on a perfectly good series.
+	key := func(ts time.Time) string { return ts.UTC().Format("2006-01-02") }
 
 	task := c.expect(t, c.post("/boards/"+s.Board+"/tasks", map[string]any{
 		"title": "Поход к врачу", "column_id": todo, "due_date": rfc3339(d1),
