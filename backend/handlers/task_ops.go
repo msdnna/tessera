@@ -266,6 +266,23 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 		return t, err
 	}
 
+	// The row the request itself wrote — what the person asked for, before any
+	// automatic step taken on top of it. Everything that records *authorship* (the
+	// journal, the notification it feeds, the GitLab "the user overrode this"
+	// flags) diffs against this and not against `updated`.
+	//
+	// A recurring task whose trigger is "complete" advances right below, and the
+	// advance rewrites the same row: completion is cleared again and the due date
+	// (with the start, and the whole checklist's window) steps forward. Diffed
+	// against that, closing the occurrence left no `completed` entry at all — both
+	// ends of the diff are open — and handed the reader the recurrence's own step
+	// as «изменил срок», signed by whoever ticked the box, with the matching
+	// notification to every participant. Dragging the same card into «Готово»
+	// journals it correctly (applyMove logs `completed` before advancing), so one
+	// card had two histories depending on how it was closed. The step itself is
+	// not lost: applyRecur writes its own `recurred` entry carrying the new date,
+	// which is what the drag path shows too (#2932).
+	edited := updated
 	// A recurring task whose trigger is "complete" advances when it enters the
 	// completed state (rescheduled, or duplicated, per its rule).
 	if t.CompletedAt == nil && updated.CompletedAt != nil {
@@ -273,24 +290,30 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 			updated = advanced
 		}
 	}
-	// A manual due-date change on a GitLab-linked task wins over the sync.
-	if !sameTime(t.DueDate, updated.DueDate) {
+	// A manual due-date change on a GitLab-linked task wins over the sync. The
+	// recurrence's step is not one: taken for `updated`, it froze the linked
+	// issue's date sync for good on the first close of a repeating task.
+	if !sameTime(t.DueDate, edited.DueDate) {
 		soft(c, "MarkGitlabDueOverridden", h.q.MarkGitlabDueOverridden(c, t.ID))
 	}
 	// Likewise a manual start-date change wins over the sync.
-	if !sameTime(t.StartDate, updated.StartDate) {
+	if !sameTime(t.StartDate, edited.StartDate) {
 		soft(c, "MarkGitlabStartOverridden", h.q.MarkGitlabStartOverridden(c, t.ID))
 	}
 	// A manual estimate change wins over the GitLab timeEstimate pull.
-	if !sameEstimate(t.Estimate, updated.Estimate) {
+	if !sameEstimate(t.Estimate, edited.Estimate) {
 		soft(c, "MarkGitlabEstimateOverridden", h.q.MarkGitlabEstimateOverridden(c, t.ID))
 	}
-	changes := h.journalUpdate(c, t, updated)
+	changes := h.journalUpdate(c, t, edited)
 	if len(changes) > 0 {
 		h.notifyTaskParticipants(c, updated, wsID, "updated",
 			msgUpdated(h.actorName(c), updated.Number, changes))
 	}
 	// Mirror user-side changes back to a linked GitLab issue (opt-in per integration).
+	// These read `updated` deliberately: a writeback mirrors the state the task is
+	// actually left in, so a recurrence that moved the deadline is a deadline the
+	// linked issue has to learn about, and a close that the recurrence immediately
+	// undid is not a close to push — the issue would stay shut under an open task.
 	actor := middleware.CurrentUser(c)
 	// The explicit "Completed" flag is the legitimate source of a state push
 	// (drives set_state → close/reopen). Column moves use a separate trigger.
