@@ -274,7 +274,7 @@ func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err
 	// endpoint becomes a hot retry loop that never exhausts its attempts.
 	if shuttingDown && errors.Is(err, context.Canceled) {
 		soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{
-			ID: d.ID, LastError: truncErr(err), NextAttemptAt: time.Now(),
+			ID: d.ID, LastError: truncErr(err), NextAttemptAt: h.outsideQuietHours(ctx, d, time.Now()),
 		}))
 		return
 	}
@@ -284,7 +284,39 @@ func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err
 		return
 	}
 	next := time.Now().Add(time.Duration(d.Attempts*d.Attempts) * time.Minute) // 1, 4, 9, 16 min
-	soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{ID: d.ID, LastError: truncErr(err), NextAttemptAt: next}))
+	soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{
+		ID: d.ID, LastError: truncErr(err), NextAttemptAt: h.outsideQuietHours(ctx, d, next),
+	}))
+}
+
+// outsideQuietHours moves a retry that would land inside the recipient's quiet
+// window to the moment the window ends, and leaves every other retry alone.
+//
+// Quiet hours were asked once, at enqueue time: routeNotification defers the row
+// to the end of the window and the device path does not even write a row. Nothing
+// asked again after a failed send, and the backoff is free to pick any minute —
+// a delivery enqueued at 21:59 against an endpoint that is down retries at 22:00,
+// 22:04, 22:13, 22:29 and 22:54, so the message arrives the moment the endpoint
+// recovers, in the middle of the silence the user declared. A push is the loudest
+// case: during quiet hours its row is never written at all, and the backoff was
+// the one way one got in.
+//
+// The window is read off the recipient's prefs, so the answer is the same one
+// routeNotification would give; an unreadable notification or prefs row leaves
+// the backoff untouched rather than holding a delivery on a database hiccup.
+func (h *API) outsideQuietHours(ctx context.Context, d db.NotificationDelivery, next time.Time) time.Time {
+	n, err := h.q.GetNotification(ctx, d.NotificationID)
+	if err != nil {
+		return next
+	}
+	p, perr := h.q.GetNotificationPrefs(ctx, n.UserID)
+	if perr != nil {
+		p = defaultPrefs(n.UserID)
+	}
+	if end, quiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, next); quiet {
+		return end
+	}
+	return next
 }
 
 // deliverGroup renders each notification in a digest group and sends one combined
