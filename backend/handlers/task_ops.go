@@ -241,11 +241,39 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 	}
 	recurrence := recurrenceToStore(reqRecurrence, dueDate, t.Recurrence, t.DueDate)
 
+	// Closing a repeating task is a state transition, not a field write: the
+	// advance below rewrites the very row this statement writes — due date,
+	// completion, start, the whole checklist's window, and under create_new a
+	// duplicate on the board. Whether to take it is decided by comparing the row
+	// read at the start of the request against the one just written, and nothing
+	// between the two is atomic, so two requests that both read the task open
+	// both advance it: one tick of the box, two next occurrences.
+	//
+	// That is not a theoretical interleaving. The board offers the same gesture
+	// from several places at once — the card's checkbox and the modal's, two
+	// people on one board, a second tap on a phone whose first request is still
+	// in flight — and the advance is slow (it rebuilds the checklist, copies
+	// every attachment's bytes and rewrites the description), so "still in
+	// flight" is hundreds of milliseconds, not the few a person waits before
+	// tapping again. Under create_new the extra card then repeats on a series of
+	// its own, forever; under reschedule the parent lands on the right date
+	// while every item's window is stepped twice (#2932).
+	//
+	// The lock is the one already here, taken from the inside: no client sends a
+	// version (ExpectedUpdatedAt is nil on every real request — the web app
+	// doesn't send it and neither does Android), so the check-and-write is armed
+	// against the row we read. It is armed for this transition only; an ordinary
+	// edit keeps last-write-wins, which is what every caller here expects.
+	lock := p.ExpectedUpdatedAt
+	mine := false
+	if lock == nil && p.Completed != nil && *p.Completed && t.CompletedAt == nil && t.Recurrence != nil {
+		lock, mine = &t.UpdatedAt, true
+	}
 	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
 		ID: t.ID, Title: title, Description: description,
 		Priority: priority, DueDate: dueDate, CompletedAt: completedAt,
 		Recurrence: recurrence, StartDate: startDate, Estimate: normalizeEstimate(estimate),
-		ExpectedUpdatedAt: p.ExpectedUpdatedAt,
+		ExpectedUpdatedAt: lock,
 	})
 	if err != nil {
 		// Under an optimistic lock, "no rows" is not a storage failure: the
@@ -253,13 +281,36 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 		// — the row moved on (409, hand back the current one) or it is gone
 		// (404). Everything below this point is a side effect (journal,
 		// notifications, writeback, WS), so a refused write leaves none of it.
-		if p.ExpectedUpdatedAt != nil && errors.Is(err, pgx.ErrNoRows) {
+		if lock != nil && errors.Is(err, pgx.ErrNoRows) {
 			current, gerr := h.q.GetTask(c, t.ID)
 			if errors.Is(gerr, pgx.ErrNoRows) {
 				return t, errTaskGone
 			}
 			if gerr != nil {
 				return t, gerr
+			}
+			// A lock the caller did not ask for must not answer 409, and must
+			// not swallow a close either. The row moved — by whose hand decides
+			// which:
+			//
+			// Closed already: the request said "close this", the row is closed,
+			// and the occurrence that opened is the one the winner opened.
+			// Handing back the current task is the honest answer to a gesture
+			// made twice, with every side effect skipped — the point of the
+			// whole guard.
+			//
+			// Still open: this was not lost to another close but to something
+			// else writing the row in the same breath (the schedule worker, a
+			// GitLab sync), and dropping the tick there would be a checkbox that
+			// answers 200 and stays empty. Make the close once more against what
+			// is on the row now, under the caller's own lock so the retry cannot
+			// become the race it is guarding.
+			if mine {
+				if current.CompletedAt != nil {
+					return current, nil
+				}
+				p.ExpectedUpdatedAt = &current.UpdatedAt
+				return h.applyTaskPatch(c, current, wsID, p)
 			}
 			return t, staleErr{current: current}
 		}
@@ -382,10 +433,17 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 		switch {
 		case targetIsDone && updated.CompletedAt == nil:
 			now := time.Now()
+			// The auto-complete is the other way into the advance, and it races
+			// the same way — two drags of one card into «Готово» closed it twice
+			// and advanced it twice. Here the row we lock against is the one this
+			// request's own move just wrote, so the guard costs a losing drag
+			// nothing but the completion it did not win (applyTaskPatch above
+			// says the rest).
 			if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
 				ID: updated.ID, Title: updated.Title, Description: updated.Description,
 				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
 				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
+				ExpectedUpdatedAt: &updated.UpdatedAt,
 			}); derr == nil {
 				updated = done
 				h.logEvent(c, t.ID, "completed", nil)
@@ -393,6 +451,13 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 				// done with its due date advanced — overriding the move just made.
 				if advanced, ok := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerComplete); ok {
 					updated = advanced
+				}
+			} else if errors.Is(derr, pgx.ErrNoRows) {
+				// The refusal means the row moved on between the move and the
+				// completion — the other drag got there first. Answer with what
+				// it left, not with the half-state this request happens to hold.
+				if current, gerr := h.q.GetTask(c, updated.ID); gerr == nil {
+					updated = current
 				}
 			}
 		case sourceIsDone && !targetIsDone && updated.CompletedAt != nil:
