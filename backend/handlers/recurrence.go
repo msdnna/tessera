@@ -251,6 +251,20 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 		}
 		pos := positionGap
 		for _, s := range subs {
+			// An item in the archive is not part of the routine any more, and
+			// archiving one while keeping the rest is a deliberate gesture with its
+			// own undo (the row stands in the board's archive as an entry of its
+			// own, its parent being active). ListSubtasks does not filter on
+			// archived_at — it is also what nextTaskPosition reads, where an
+			// archived sibling must still hold its place — so the skip belongs
+			// here. Without it CreateTask handed the item back alive, tags and
+			// assignees included, in this occurrence and in every one after: one
+			// archiving, endless copies, while the original stayed in the archive.
+			// The reschedule branch edits the task in place and never resurrected
+			// anything; the duplicate has to match it.
+			if s.ArchivedAt != nil {
+				continue
+			}
 			snum, nerr := h.q.NextWorkspaceTaskNumber(ctx, wsID)
 			if nerr != nil {
 				continue
