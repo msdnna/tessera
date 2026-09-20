@@ -115,7 +115,7 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 // notifiableInWorkspace reports whether userID may still be told about events in
 // wsID.
 //
-// uuid.Nil passes: reminderWorkspace falls back to it for a reminder that is tied
+// uuid.Nil passes: reminderScope falls back to it for a reminder that is tied
 // to no task and no workspace, and that notification carries the user's own text
 // about their own reminder — nothing of anyone else's to leak. A read error is
 // treated as "not notifiable": the alternative is leaking on exactly the

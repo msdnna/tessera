@@ -222,35 +222,44 @@ func (h *API) scanReminders(ctx context.Context) {
 			p = defaultPrefs(r.UserID)
 		}
 		if p.ReminderEnabled {
-			h.deliverNotification(ctx, r.UserID, h.reminderWorkspace(ctx, r), r.TaskID, nil,
+			ws, taskID := h.reminderScope(ctx, r)
+			h.deliverNotification(ctx, r.UserID, ws, taskID, nil,
 				"reminder", msgReminder(r.Message))
 		}
 		soft(ctx, "MarkReminderNotified", h.q.MarkReminderNotified(ctx, r.ID))
 	}
 }
 
-// reminderWorkspace resolves a workspace to scope a reminder notification to: the
-// linked task's workspace, else the user's first workspace (reminders aren't
-// workspace-scoped, but notifications carry a workspace id).
+// reminderScope resolves what a reminder's notification may name: a workspace to
+// scope it to — the linked task's, else the user's first (reminders aren't
+// workspace-scoped, but notifications carry a workspace id) — and the task link
+// itself, kept only while the reader may still follow it.
 //
 // The linked task's workspace is used only while the user is still a member of
 // it. Otherwise this function would hand deliverNotification a workspace its
 // membership gate then refuses, and the reminder would be dropped in silence —
 // on a task that walked out of reach after the reminder was set (the project was
 // transferred, the member was removed) that silence falls on a legitimate
-// reminder whose text is the user's own. The link goes stale; the reminder
-// still has to fire.
-func (h *API) reminderWorkspace(ctx context.Context, r db.Reminder) uuid.UUID {
+// reminder whose text is the user's own. The reminder still has to fire.
+//
+// The task link is dropped on that same fallback, because everything downstream
+// follows a task_id without re-asking about membership: ListNotifications LEFT
+// JOINs tasks for number/board, deliverNotification enriches the socket payload
+// the same way, and templateData renders the task's *current* title into the
+// e-mail or telegram message. Carried past the gate, the fallback that keeps a
+// private reminder alive would also carry a former colleague's edits out with
+// it. What survives is the part that was always the user's own: their text.
+func (h *API) reminderScope(ctx context.Context, r db.Reminder) (uuid.UUID, *uuid.UUID) {
 	if r.TaskID != nil {
 		if t, err := h.q.GetTask(ctx, *r.TaskID); err == nil {
 			if ws, werr := h.q.WorkspaceIDForBoard(ctx, t.BoardID); werr == nil &&
 				h.notifiableInWorkspace(ctx, r.UserID, ws) {
-				return ws
+				return ws, r.TaskID
 			}
 		}
 	}
 	if wss, err := h.q.ListWorkspacesForUser(ctx, r.UserID); err == nil && len(wss) > 0 {
-		return wss[0].ID
+		return wss[0].ID, nil
 	}
-	return uuid.Nil
+	return uuid.Nil, nil
 }

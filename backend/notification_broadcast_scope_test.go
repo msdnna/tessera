@@ -29,7 +29,7 @@ func TestNotificationGoesOnlyToItsRecipientSocket(t *testing.T) {
 			map[string]any{"email": u.Email, "role": "member"}), http.StatusCreated)
 	}
 
-	// Linked to a task so reminderWorkspace resolves to this workspace rather than
+	// Linked to a task so reminderScope resolves to this workspace rather than
 	// the reminder owner's own first one — that is the path where the reminder's
 	// text reaches colleagues.
 	task := mkTask(t, owner, s.Board, s.col(t, 0), "Ремонт склада")
