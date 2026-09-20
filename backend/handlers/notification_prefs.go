@@ -92,6 +92,14 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 			return
 		}
 	}
+	// A window nobody could have meant is refused rather than stored: past a day
+	// the batching is no longer a delay the user traded for, and past int32's
+	// halfway mark the duration arithmetic in digestSlot overflows and starts
+	// scheduling into the past — see maxDigestMinutes.
+	if req.DigestMinutes > maxDigestMinutes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "окно дайджеста не может быть больше суток"})
+		return
+	}
 	p, err := h.q.UpsertNotificationPrefs(c, db.UpsertNotificationPrefsParams{
 		UserID: middleware.CurrentUser(c), DueEnabled: req.DueEnabled,
 		DueLeadMinutes: req.DueLeadMinutes, DueRepeatMinutes: req.DueRepeatMinutes,

@@ -320,10 +320,33 @@ func digestMinutesFor(kind string, digestMinutes int32) int32 {
 	return digestMinutes
 }
 
+// maxDigestMinutes bounds the digest window. The clients offer 5/15/30/60; a day
+// is left reachable so "one digest every morning" stays expressible, and anything
+// past it is refused at the door (UpdateMyNotificationPrefs) and clamped here.
+//
+// The bound is not tidiness. digest_minutes is an int32 that used to be stored
+// with only max(0, …) in front of it, so a value no client offers went straight
+// into the arithmetic below:
+//   - 100000 puts the next slot seven weeks out and 1e9 in the year 2215. That
+//     is not batching, it is a notification swallowed whole, and nothing in the
+//     outbox reports it as anything but pending.
+//   - from 153722868 up, digestMinutes * time.Minute overflows int64 and the
+//     window comes out NEGATIVE. Truncate is documented as a no-op for a
+//     non-positive duration, so the Add then runs backwards: int32 max lands the
+//     slot in 2017. A row that came due in the past is claimed on the very next
+//     tick — which throws away the quiet-hours anchor this function had just set
+//     and sends at 23:00 the message the window deferred to 08:00 (#2932).
+//
+// Clamped rather than only refused, because the refusal cannot reach a prefs row
+// already holding such a value: the screens render it as a window and the user
+// has nothing to correct.
+const maxDigestMinutes = 1440
+
 // digestSlot decides when an outbox row for chID may be sent and which digest
 // group it joins. quietAt reports the quiet window covering an instant (the end
 // of it, and whether the instant is inside at all); digestMinutes <= 0 means the
-// user wants no digest (see digestMinutesFor for the kinds that always mean it).
+// user wants no digest (see digestMinutesFor for the kinds that always mean it),
+// and anything above maxDigestMinutes is clamped to it.
 //
 // The digest window is a slot on a fixed grid, not a per-notification timer. Only
 // rows that one drain tick claims together are ever combined (drainDeliveries
@@ -344,6 +367,9 @@ func digestSlot(now time.Time, quietAt quietFn, digestMinutes int32, chID uuid.U
 	}
 	if digestMinutes <= 0 {
 		return anchor, ""
+	}
+	if digestMinutes > maxDigestMinutes {
+		digestMinutes = maxDigestMinutes
 	}
 	// The configured windows (5/15/30/60 min) all divide an hour, so truncating on
 	// the epoch grid lands on wall-clock boundaries. Always the *next* boundary:
