@@ -50,6 +50,18 @@ const IGNORED = new Set([
   // consumer is the Gantt's edge list, which the board pokes by its own branch
   // (#2932).
   'task.relation',
+  // Somebody commented. The only `task.*` event that changes nothing drawn here:
+  // a board row carries no comment count and no "has comments" flag (backend
+  // handlers/task_list_dto.go ships only has_description) and no card renders
+  // one. Its payload is a bare `{task_id}` — no board_id — so it reached EVERY
+  // open board in the workspace, and every ping the bot writes cost each of them
+  // a full task-list re-fetch.
+  //
+  // Quick actions inside a comment ("/close", "/assign @msdnna") do change the
+  // board, but they broadcast their own events through the shared apply* layer
+  // (task.updated / task.moved / task.tagged / task.assigned …), each classified
+  // on its own — so dropping this one loses nothing (#2932).
+  'task.commented',
 ])
 
 const META = new Set(['tag.created', 'tag.updated', 'tag.deleted', 'tag_prefixes.updated'])

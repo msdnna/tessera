@@ -59,7 +59,7 @@ fun boardGone(ev: RealtimeEvent, boardId: String): Boolean =
  */
 fun touchesBoard(ev: RealtimeEvent, boardId: String, hasTask: (String) -> Boolean): Boolean {
     val type = ev.type
-    if (!BOARD_EVENT_PREFIXES.any { type.startsWith(it) }) return false
+    if (!aboutBoardContents(type)) return false
     // Экран ещё не знает своей доски — сверять не с чем, перезагружаем.
     if (boardId.isBlank()) return true
     if (type == "task.relation") {
@@ -78,6 +78,25 @@ fun touchesBoard(ev: RealtimeEvent, boardId: String, hasTask: (String) -> Boolea
 }
 
 private val BOARD_EVENT_PREFIXES = listOf("task", "column", "board", "milestone", "tag")
+
+/**
+ * Про содержимое доски ли событие вообще — до сверки, ЧЬЕЙ доски оно касается.
+ *
+ * Префиксы — описание того, из чего доска состоит (см. [touchesBoard]), с одним
+ * вычетом: `task.commented`. Это единственное событие семейства `task.*`,
+ * которое на доске не меняет ничего — в строке карточки нет ни счётчика
+ * комментариев, ни признака «комментарии есть» (бэкенд `task_list_dto.go` шлёт
+ * только `has_description`), и карточка ничего такого не рисует. Нагрузка у него
+ * голая — `{task_id}`, без `board_id`, — поэтому сверка «событие называет свою
+ * доску» его не ловит: до правки каждый коммент в ПРОСТРАНСТВЕ (включая каждый
+ * пинг бота) стоил восьми запросов `silentReload` на всех открытых досках.
+ *
+ * Быстрые команды внутри коммента («/close», «/assign») доску меняют — но
+ * приезжают своими событиями через общий слой `apply*` на сервере, так что
+ * глушится ровно один тип, а не класс (#2932).
+ */
+private fun aboutBoardContents(type: String): Boolean =
+    type != "task.commented" && BOARD_EVENT_PREFIXES.any { type.startsWith(it) }
 
 /**
  * `data.id` события как строка, или null.

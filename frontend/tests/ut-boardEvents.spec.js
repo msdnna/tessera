@@ -155,7 +155,8 @@ describe('classifyEvent — таблица маршрутизации', () => {
     expect(ev('task.deleted', { id: 't1' })).toBe('tasks')
     expect(ev('task.restored', { id: 't1' })).toBe('tasks')
     expect(ev('task.archived', { id: 't1' })).toBe('tasks')
-    expect(ev('task.commented', { task_id: 't1' })).toBe('tasks')
+    // task.commented сюда не входит: единственное событие семейства, которое на
+    // доске ничего не меняет — см. cx-comment-events-dont-reload-board.spec.js.
     expect(ev('task.assigned', { task_id: 't1', user_id: 'u1' })).toBe('tasks')
     expect(ev('task.unassigned', { task_id: 't1', user_id: 'u1' })).toBe('tasks')
     expect(ev('task.tagged', { task_id: 't1', tag_id: 'g1' })).toBe('tasks')

@@ -191,6 +191,48 @@ class BoardEventsTest {
         assertThat(touches(relation("b-2", "b-3"))).isFalse()
     }
 
+    // ── комментарии ──
+    //
+    // `task.commented` — единственное событие семейства `task.*`, которое на
+    // доске не меняет НИЧЕГО: в строке карточки нет ни счётчика комментариев, ни
+    // признака «комментарии есть» (бэкенд handlers/task_list_dto.go — там только
+    // has_description), и TaskCard ничего такого не рисует. Потребителей у
+    // события нет ни одного: экран задачи realtime вообще не слушает.
+    //
+    // А нагрузка у него — голое `{task_id}`: ни `board_id`, ни `id`, так что
+    // общая сверка «называет свою доску» его не ловит, и до правки каждый коммент
+    // в ПРОСТРАНСТВЕ (включая каждый пинг бота) стоил телефону восьми запросов
+    // silentReload на всех открытых досках (#2932).
+
+    private fun commented(taskId: String): RealtimeEvent {
+        val data = JsonObject()
+        data.addProperty("task_id", taskId)
+        return RealtimeEvent(scope = "ws-1", type = "task.commented", data = data)
+    }
+
+    @Test
+    fun `коммент доску не перезагружает`() {
+        assertThat(touches(commented("t-1"))).isFalse()
+        // Даже про карточку, которую экран держит: держит он её без комментариев.
+        assertThat(touches(commented("t-7"), held = setOf("t-7"))).isFalse()
+    }
+
+    @Test
+    fun `коммент не перезагружает и ещё не загруженный экран`() {
+        // Общая поблажка «доска неизвестна — перезагружаем» здесь не нужна:
+        // перечитывать из-за коммента нечего и потом.
+        assertThat(touchesBoard(commented("t-1"), "") { false }).isFalse()
+    }
+
+    @Test
+    fun `быстрые команды из коммента приезжают своими событиями`() {
+        // Команды внутри коммента («/close», «/assign») доску меняют — но шлют
+        // СВОИ события через общий слой apply*, и глушится ровно один тип.
+        assertThat(touches(onBoard("task.moved", myBoard, id = "t-1"))).isTrue()
+        assertThat(touches(ev("task.tagged", null))).isTrue()
+        assertThat(touches(ev("task.updated", "t-1"))).isTrue()
+    }
+
     @Test
     fun `битая нагрузка не роняет разбор`() {
         // Колбэк сокета разбирает данные из сети: у Gson `asString` бросает и на
