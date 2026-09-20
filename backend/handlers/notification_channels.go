@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -284,6 +285,20 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 		newCfg["fcm_token"] = tok
 	}
 	cfg, _ := json.Marshal(newCfg)
+
+	// Registration is the moment the server learns this install now belongs to
+	// this user, so it is where a previous owner's push token is taken away (see
+	// StripPushTokenFromOtherOwners). Not on logout: a phone changes hands without
+	// one often enough — offline, or a reinstall followed by a different account.
+	// Before the write, so a failure on the way to it cannot leave the token
+	// standing on both accounts.
+	if n, serr := h.q.StripPushTokenFromOtherOwners(c, db.StripPushTokenFromOtherOwnersParams{
+		UserID: uid, DeviceID: req.DeviceID, FcmToken: newCfg["fcm_token"],
+	}); serr != nil {
+		soft(c, "StripPushTokenFromOtherOwners", serr)
+	} else if n > 0 {
+		log.Printf("notify: device %s changed hands — dropped the push token from %d channel(s) of its previous owner(s)", req.DeviceID, n)
+	}
 
 	if existing, err := h.q.GetDeviceChannel(c, db.GetDeviceChannelParams{UserID: uid, DeviceID: req.DeviceID}); err == nil {
 		// Keep a token we already hold when this call didn't bring one: a

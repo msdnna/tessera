@@ -500,6 +500,49 @@ func (q *Queries) StripChannelFromRoutes(ctx context.Context, arg StripChannelFr
 	return err
 }
 
+const stripPushTokenFromOtherOwners = `-- name: StripPushTokenFromOtherOwners :execrows
+UPDATE notification_channels
+SET config = config - 'fcm_token', updated_at = now()
+WHERE type = 'device'
+  AND user_id <> $1
+  AND config->>'fcm_token' IS NOT NULL
+  AND (config->>'device_id' = $2::text
+       OR config->>'fcm_token' = $3::text)
+`
+
+type StripPushTokenFromOtherOwnersParams struct {
+	UserID   uuid.UUID `json:"user_id"`
+	DeviceID string    `json:"device_id"`
+	FcmToken string    `json:"fcm_token"`
+}
+
+// StripPushTokenFromOtherOwners takes the FCM token away from every OTHER user's
+// device channel that names the same physical install: same device_id (anchored
+// to the hardware on Android, so it survives logout and reinstall) or the same
+// token (issued per app install, never per account).
+//
+// A phone only ever holds one signed-in account, and FCM delivers to the install
+// rather than to the account: whoever has the phone in their hands sees the
+// notification. So a device channel left over from the previous owner kept
+// pushing their private text — a mention, or a reminder that is literally their
+// own sentence — onto a screen that now belongs to someone else. The client half
+// of this is already closed (logout cancels the locally scheduled reminder
+// alarms, #2932); this is the server half, and it has to live on registration
+// rather than on logout, because a handover need not pass through one at all
+// (no network, or the account changed after a reinstall).
+//
+// Only the token goes. The channel row is its owner's own setting, with their
+// label, routing rules and enabled flag hanging off it; if they sign back in on
+// this phone, the next registration puts the token back. Same policy
+// dropPushToken applies to a token FCM has declared dead.
+func (q *Queries) StripPushTokenFromOtherOwners(ctx context.Context, arg StripPushTokenFromOtherOwnersParams) (int64, error) {
+	result, err := q.db.Exec(ctx, stripPushTokenFromOtherOwners, arg.UserID, arg.DeviceID, arg.FcmToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateNotificationChannel = `-- name: UpdateNotificationChannel :one
 UPDATE notification_channels
 SET label = $3, config = $4, secret_enc = $5, enabled = $6, template = $7, updated_at = now()

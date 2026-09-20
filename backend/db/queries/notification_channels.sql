@@ -33,6 +33,34 @@ UPDATE notification_channels SET verified = $3, updated_at = now() WHERE id = $1
 -- name: DeleteNotificationChannel :exec
 DELETE FROM notification_channels WHERE id = $1 AND user_id = $2;
 
+-- StripPushTokenFromOtherOwners takes the FCM token away from every OTHER user's
+-- device channel that names the same physical install: same device_id (anchored
+-- to the hardware on Android, so it survives logout and reinstall) or the same
+-- token (issued per app install, never per account).
+--
+-- A phone only ever holds one signed-in account, and FCM delivers to the install
+-- rather than to the account: whoever has the phone in their hands sees the
+-- notification. So a device channel left over from the previous owner kept
+-- pushing their private text — a mention, or a reminder that is literally their
+-- own sentence — onto a screen that now belongs to someone else. The client half
+-- of this is already closed (logout cancels the locally scheduled reminder
+-- alarms, #2932); this is the server half, and it has to live on registration
+-- rather than on logout, because a handover need not pass through one at all
+-- (no network, or the account changed after a reinstall).
+--
+-- Only the token goes. The channel row is its owner's own setting, with their
+-- label, routing rules and enabled flag hanging off it; if they sign back in on
+-- this phone, the next registration puts the token back. Same policy
+-- dropPushToken applies to a token FCM has declared dead.
+-- name: StripPushTokenFromOtherOwners :execrows
+UPDATE notification_channels
+SET config = config - 'fcm_token', updated_at = now()
+WHERE type = 'device'
+  AND user_id <> @user_id
+  AND config->>'fcm_token' IS NOT NULL
+  AND (config->>'device_id' = @device_id::text
+       OR config->>'fcm_token' = @fcm_token::text);
+
 -- StripChannelFromRoutes drops a channel's id out of every routing rule of its
 -- owner. notification_routes.channel_ids is a plain uuid[] with no FK, so the
 -- channel delete leaves the id behind on its own; the dispatcher then skips the
