@@ -252,13 +252,31 @@ func (h *API) UpdateConference(c *gin.Context) {
 		}
 		ttl = *req.RecordingTTLDays
 	}
-	updated, err := h.q.UpdateConference(c, db.UpdateConferenceParams{
-		ID:               conf.ID,
-		Title:            req.Title,
-		Description:      req.Description,
-		ScheduledAt:      req.ScheduledAt,
-		TaskID:           req.TaskID,
-		RecordingTtlDays: ttl,
+	// Одной транзакцией, потому что срок хранения — это политика конференции, а
+	// не пометка на будущих записях: вместе с полем переезжают даты удаления уже
+	// снятых (#2932). Порознь правка могла бы оставить конференцию с новым
+	// сроком и записями, живущими по старому, — ровно то расхождение, которое
+	// здесь и чинится.
+	var updated db.Conference
+	err := h.inTx(c, func(q *db.Queries) error {
+		var uerr error
+		updated, uerr = q.UpdateConference(c, db.UpdateConferenceParams{
+			ID:               conf.ID,
+			Title:            req.Title,
+			Description:      req.Description,
+			ScheduledAt:      req.ScheduledAt,
+			TaskID:           req.TaskID,
+			RecordingTtlDays: ttl,
+		})
+		if uerr != nil {
+			return uerr
+		}
+		if ttl == conf.RecordingTtlDays {
+			return nil
+		}
+		return q.RestampConferenceRecordings(c, db.RestampConferenceRecordingsParams{
+			ConferenceID: conf.ID, TtlDays: ttl,
+		})
 	})
 	if err != nil {
 		fail(c, err)
