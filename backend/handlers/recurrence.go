@@ -319,7 +319,12 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	if src.DueDate != nil {
 		step = rule.WallStep(*src.DueDate, due)
 	}
-	h.cloneChecklist(ctx, src, clone, columnID, rule, step, wsID, map[uuid.UUID]bool{src.ID: true})
+	// Who became whom, this task included: the relations are carried after the
+	// whole checklist is rebuilt so a link BETWEEN two items of the same plan can
+	// land on the new pair instead of the spent one.
+	mapped := map[uuid.UUID]uuid.UUID{src.ID: clone.ID}
+	h.cloneChecklist(ctx, src, clone, columnID, rule, step, wsID, map[uuid.UUID]bool{src.ID: true}, mapped)
+	h.carryRelations(ctx, wsID, mapped)
 	h.logEventActor(ctx, clone.ID, actorID, "created", nil)
 	// The journal already knows who caused this (logEventActor above) — the live
 	// event has to say it too. Closing a "create a duplicate" recurring task is a
@@ -349,6 +354,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 func (h *API) cloneChecklist(
 	ctx context.Context, src, dst db.Task, columnID uuid.UUID,
 	rule recur.Rule, step time.Duration, wsID uuid.UUID, seen map[uuid.UUID]bool,
+	mapped map[uuid.UUID]uuid.UUID,
 ) {
 	subs, err := h.q.ListSubtasks(ctx, &src.ID)
 	if err != nil {
@@ -403,7 +409,8 @@ func (h *API) cloneChecklist(
 		h.carryDueNotify(ctx, s, sub.ID)
 		h.carryTaskPins(ctx, s, sub.ID)
 		sub = h.carryItemRecurrence(ctx, s, sub)
-		h.cloneChecklist(ctx, s, sub, columnID, rule, step, wsID, seen)
+		mapped[s.ID] = sub.ID
+		h.cloneChecklist(ctx, s, sub, columnID, rule, step, wsID, seen, mapped)
 	}
 }
 
@@ -467,6 +474,88 @@ func (h *API) carryTaskPins(ctx context.Context, src db.Task, dstID uuid.UUID) {
 			ID: dstID, EisenhowerQuadrant: src.EisenhowerQuadrant,
 		})
 		soft(ctx, "SetTaskEisenhower", err)
+	}
+}
+
+// carryRelations hands a task's links — «связана с», «блокирует», «дублирует» —
+// to the occurrence cloned from it. `mapped` is src id → clone id for the whole
+// plan: the card and every item of its checklist.
+//
+// Relations live in a table of their own, so CreateTask knows nothing about them
+// and the duplicate was born unlinked, while the reschedule branch keeps them for
+// free — the relation rows point at the row it edits in place. The half that
+// rots is the one the user did not make: a relation is ONE directed row that BOTH
+// ends display (ListTaskRelations reads either direction), so the link did not
+// vanish with the tick — it stayed on the spent occurrence. «Выкатить релиз» went
+// on saying it was blocked by last week's finished report, the Gantt kept drawing
+// its arrow to a card in «Готово», and the occurrence actually standing on the
+// board was linked to nothing (#2932).
+//
+// Direction is preserved by construction: ListTaskRelations already flips an
+// incoming row to the reader's point of view (the report `blocks` the release),
+// which is exactly the row to write from the clone.
+//
+// Two ends are treated differently. A link to a task outside the plan is copied
+// as is; a link BETWEEN two members of the plan — an item blocking its neighbour,
+// a step linked to its own card — is rewired to the new pair through `mapped`,
+// which is why this runs after the checklist is rebuilt. Left alone it would pin
+// the fresh occurrence to the spent one.
+//
+// Only user-made links travel. The GitLab projection writes edges of its own
+// (gitlab_relations.go, source='gitlab') and reprojects them from the issue
+// graph; a copy of one would land as a user row the sync can neither recognise
+// nor remove, and would outlive the issue link it was made from.
+//
+// Each link that really lands is announced like any other (`task.relation`): the
+// Gantt keeps its edge list in a fetch of its own and re-reads it on that event
+// alone — `task.created` refreshes the bars, not the arrows — so a chart left
+// open over the tick would otherwise draw the dependency to the spent occurrence
+// until the page was reloaded. Nothing is journalled: the journal records what a
+// person did to a task, and the clone's history opens with «created».
+func (h *API) carryRelations(ctx context.Context, wsID uuid.UUID, mapped map[uuid.UUID]uuid.UUID) {
+	for srcID, dstID := range mapped {
+		rels, err := h.q.ListTaskRelations(ctx, srcID)
+		if err != nil {
+			soft(ctx, "ListTaskRelations", err)
+			continue
+		}
+		var dst db.Task
+		for _, r := range rels {
+			if r.Source != "user" {
+				continue
+			}
+			other := r.RelatedTaskID
+			if to, ok := mapped[other]; ok {
+				other = to
+			}
+			if other == dstID {
+				continue
+			}
+			_, addErr := h.q.AddTaskRelation(ctx, db.AddTaskRelationParams{
+				TaskID: dstID, RelatedTaskID: other, Kind: r.Kind,
+			})
+			if errIsNoRows(addErr) {
+				continue // the pair is already on record this way
+			}
+			if addErr != nil {
+				soft(ctx, "AddTaskRelation", addErr)
+				continue
+			}
+			if dst.ID == uuid.Nil {
+				loaded, gerr := h.q.GetTask(ctx, dstID)
+				if gerr != nil {
+					soft(ctx, "GetTask", gerr)
+					continue
+				}
+				dst = loaded
+			}
+			target, gerr := h.q.GetTask(ctx, other)
+			if gerr != nil {
+				soft(ctx, "GetTask", gerr)
+				continue
+			}
+			h.broadcastRelation(wsID, dst, target, r.Kind)
+		}
 	}
 }
 

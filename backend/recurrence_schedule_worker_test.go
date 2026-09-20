@@ -13,12 +13,30 @@ import (
 	"time"
 )
 
-// sweep runs one pass of the recurrence worker, failing if another instance holds
-// the advisory lock (then nothing was swept and every assertion below is moot).
+// sweep runs one pass of the recurrence worker and returns once a pass has
+// actually happened.
+//
+// AdvanceRecurrencesOnce answers false for one reason — somebody else holds the
+// advisory lock — and somebody else always might: the harness runs the real
+// workers, and the neighbouring tests in this file call this too. A sweep is
+// short, so the lock is free again within moments; treating the first refusal as
+// a verdict made these tests fail on a race with the very worker they exercise,
+// not on the behaviour under test. Retrying until the budget runs out is the
+// honest reading of "did the sweep run", and a foreign pass in between changes
+// nothing: every assertion here is about the end state, which a second sweep
+// cannot undo (a task it advanced has a future due date and drops out of the
+// query).
 func sweep(t *testing.T) {
 	t.Helper()
-	if !testAPI.AdvanceRecurrencesOnce(context.Background()) {
-		t.Fatal("the recurrence sweep did not run (advisory lock held elsewhere)")
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		if testAPI.AdvanceRecurrencesOnce(context.Background()) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the recurrence sweep never got the advisory lock in 10s")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 }
 

@@ -6,7 +6,6 @@
 package main
 
 import (
-	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -62,9 +61,7 @@ func TestScheduleRecurrenceSurvivesBeingTickedDone(t *testing.T) {
 		t.Fatalf("fixture is wrong: the done column did not complete the card: %v", moved)
 	}
 
-	if !testAPI.AdvanceRecurrencesOnce(context.Background()) {
-		t.Fatal("the recurrence sweep did not run (advisory lock held elsewhere)")
-	}
+	sweep(t)
 
 	for _, tc := range []struct{ id, how string }{
 		{tickedID, "ticked done in the modal"},
