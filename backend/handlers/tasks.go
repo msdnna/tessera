@@ -630,6 +630,16 @@ func (h *API) TransferTask(c *gin.Context) {
 		h.logEvent(c, rid, "reopened", nil)
 		h.enqueueWriteback(c, rid, actor, gitlab.TrigCompletion, map[string]any{"completed": false})
 	}
+	// The TransferTask statement clears parent_id — a task cannot keep a parent it
+	// no longer stands beside — so a transfer IS a detach, and GitLab's hierarchy
+	// has to hear it exactly as it hears the one made through /parent (#2932).
+	// Left unsent, the work item stays under its parent's and the next pull takes
+	// the re-parent branch, whose SetTaskParent writes parent_id, board_id and
+	// column_id together: the card is dragged back under the old parent on the old
+	// board, undoing the transfer through a sync the user never ran.
+	if t.ParentID != nil {
+		h.enqueueChildDetach(c, id, *t.ParentID, actor)
+	}
 	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
