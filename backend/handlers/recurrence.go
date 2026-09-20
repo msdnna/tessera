@@ -312,6 +312,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	}
 	h.carryDueNotify(ctx, src, clone.ID)
 	h.carryTaskPins(ctx, src, clone.ID)
+	h.moveDocumentLinks(ctx, src.ID, clone.ID)
 	// The step the parent's due date took — each item's own window rides along
 	// so the duplicate's checklist isn't born pinned to the previous occurrence.
 	// Measured on the rule's calendar, for the reason shiftStart gives.
@@ -408,6 +409,7 @@ func (h *API) cloneChecklist(
 		}
 		h.carryDueNotify(ctx, s, sub.ID)
 		h.carryTaskPins(ctx, s, sub.ID)
+		h.moveDocumentLinks(ctx, s.ID, sub.ID)
 		sub = h.carryItemRecurrence(ctx, s, sub)
 		mapped[s.ID] = sub.ID
 		h.cloneChecklist(ctx, s, sub, columnID, rule, step, wsID, seen, mapped)
@@ -512,6 +514,41 @@ func (h *API) carryTaskPins(ctx context.Context, src db.Task, dstID uuid.UUID) {
 // open over the tick would otherwise draw the dependency to the spent occurrence
 // until the page was reloaded. Nothing is journalled: the journal records what a
 // person did to a task, and the clone's history opens with «created».
+// moveDocumentLinks hands a task's document links to the copy of it in the next
+// occurrence — the task modal's «Документы» tab on one side, the document's
+// «Задачи» panel on the other.
+//
+// This is the one carry that MOVES instead of copying, and the difference is the
+// second end. A relation joins two tasks, and the spent occurrence's «Связи» tab
+// is the record of what that week depended on; a document link joins a task to a
+// living artefact, and the document's panel lists every link it has with no
+// filter on completed_at (DocLinks.vue renders the rows it is handed). A copy
+// would therefore leave the регламент naming one more finished task per
+// repetition — a daily chore buries the panel inside a month — while the
+// reschedule branch, editing the same row, shows exactly one link that always
+// names the live occurrence (#2932).
+//
+// The document is told, because its links panel is fed by its own room
+// (docroom.TypeLinks) and hears nothing about tasks: a document open over the
+// tick would otherwise go on listing the spent copy until it was reopened.
+func (h *API) moveDocumentLinks(ctx context.Context, srcID, dstID uuid.UUID) {
+	docs, err := h.q.MoveDocumentTaskLinks(ctx, db.MoveDocumentTaskLinksParams{
+		FromTaskID: srcID, ToTaskID: dstID,
+	})
+	if err != nil {
+		soft(ctx, "MoveDocumentTaskLinks", err)
+		return
+	}
+	seen := map[uuid.UUID]bool{}
+	for _, docID := range docs {
+		if seen[docID] {
+			continue // one link per block, one nudge per document
+		}
+		seen[docID] = true
+		h.notifyDocLinks(docID)
+	}
+}
+
 func (h *API) carryRelations(ctx context.Context, wsID uuid.UUID, mapped map[uuid.UUID]uuid.UUID) {
 	for srcID, dstID := range mapped {
 		rels, err := h.q.ListTaskRelations(ctx, srcID)

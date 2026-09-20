@@ -33,6 +33,24 @@ JOIN documents d ON d.id = l.document_id
 WHERE l.task_id = $1
 ORDER BY l.created_at;
 
+-- MoveDocumentTaskLinks re-points every link of one task at another and returns
+-- the documents that have to be told. Used when a repeating task's create_new
+-- branch builds the next occurrence: the link names the artefact the routine is
+-- governed by, and it belongs to whichever copy is live.
+--
+-- The links are moved rather than copied for what the reads do with them. Both
+-- panels are unfiltered lists (ListDocumentTaskLinks joins tasks and hands
+-- completed_at over for the styling alone), so a copy would leave the document
+-- naming one more finished task every time the chore came round — the reschedule
+-- branch edits the task in place and shows exactly one link on the live
+-- occurrence, which is the shape the duplicate has to match. No conflict is
+-- possible on the way: the destination is a task created moments ago, so it holds
+-- no (document_id, task_id, block_id) of its own.
+-- name: MoveDocumentTaskLinks :many
+UPDATE document_task_links SET task_id = @to_task_id
+WHERE task_id = @from_task_id
+RETURNING document_id;
+
 -- name: GetDocumentTaskLink :one
 SELECT * FROM document_task_links WHERE id = $1;
 

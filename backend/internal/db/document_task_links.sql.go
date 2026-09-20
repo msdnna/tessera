@@ -227,3 +227,47 @@ func (q *Queries) ListTaskDocumentLinks(ctx context.Context, taskID uuid.UUID) (
 	}
 	return items, nil
 }
+
+const moveDocumentTaskLinks = `-- name: MoveDocumentTaskLinks :many
+UPDATE document_task_links SET task_id = $1
+WHERE task_id = $2
+RETURNING document_id
+`
+
+type MoveDocumentTaskLinksParams struct {
+	ToTaskID   uuid.UUID `json:"to_task_id"`
+	FromTaskID uuid.UUID `json:"from_task_id"`
+}
+
+// MoveDocumentTaskLinks re-points every link of one task at another and returns
+// the documents that have to be told. Used when a repeating task's create_new
+// branch builds the next occurrence: the link names the artefact the routine is
+// governed by, and it belongs to whichever copy is live.
+//
+// The links are moved rather than copied for what the reads do with them. Both
+// panels are unfiltered lists (ListDocumentTaskLinks joins tasks and hands
+// completed_at over for the styling alone), so a copy would leave the document
+// naming one more finished task every time the chore came round — the reschedule
+// branch edits the task in place and shows exactly one link on the live
+// occurrence, which is the shape the duplicate has to match. No conflict is
+// possible on the way: the destination is a task created moments ago, so it holds
+// no (document_id, task_id, block_id) of its own.
+func (q *Queries) MoveDocumentTaskLinks(ctx context.Context, arg MoveDocumentTaskLinksParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, moveDocumentTaskLinks, arg.ToTaskID, arg.FromTaskID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var document_id uuid.UUID
+		if err := rows.Scan(&document_id); err != nil {
+			return nil, err
+		}
+		items = append(items, document_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
