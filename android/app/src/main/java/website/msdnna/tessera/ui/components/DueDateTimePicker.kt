@@ -213,15 +213,31 @@ fun DueDateTimePicker(
         )
     }
 
-    // The selected due instant (custom = earliest picked date at the chosen time).
+    // The selected due instant — read off the due field for every frequency,
+    // including the custom one.
+    //
+    // Список дат — это ВСЯ серия, а срок говорит, где серия стоит сейчас: сервер
+    // берёт первую дату строго позже срока (`nextCustom`), так что пройденные даты
+    // списка задача уже не отыграет. Выводить срок из самого списка (минимальная
+    // дата) значило показывать на середине серии её первый день и отдавать его же в
+    // «Готово»: достаточно было открыть форму ради упреждения уведомления, чтобы
+    // отмотать задачу в начало и заставить серию заново отыграть всё пройденное.
+    // Якорь на самую раннюю выбранную дату остался — но, как и в web-редакторе,
+    // только по клику по дню (см. ниже), а не при каждом чтении срока (#2932).
     fun dueMillis(): Long? {
-        if (freq == "custom") {
-            val first = customDates.minOrNull() ?: return null
-            val (yy, mm, dd) = first.split("-").map { it.toInt() }
-            return localCalOf(yy, mm - 1, dd, dueField.hour, dueField.minute).timeInMillis
-        }
         if (!dueField.set) return null
         return localCalOf(dueField.year, dueField.month, dueField.day, dueField.hour, dueField.minute).timeInMillis
+    }
+
+    // Срок = самая ранняя выбранная дата, время дня сохраняем. Пустой список срок
+    // не трогает — его снимает только «очистить срок» рядом с «Готово».
+    fun anchorDueToCustomDates() {
+        val first = customDates.minOrNull() ?: return
+        val (yy, mm, dd) = first.split("-").map { it.toInt() }
+        dueField.year = yy
+        dueField.month = mm - 1
+        dueField.day = dd
+        dueField.set = true
     }
     fun startMillis(): Long? {
         if (!startField.set) return null
@@ -241,6 +257,12 @@ fun DueDateTimePicker(
     // The actively-edited endpoint is the filled "selected" day; the other endpoint
     // is an outlined marker, with the days strictly between shaded as the bar span.
     val isCustomDue = editTarget == "due" && freq == "custom"
+    // Список дат выбирается в этой же сетке, поэтому выбранные дни обязаны остаться
+    // видимыми — но «выбран» это не то же утверждение, что `occ` («задача сработает
+    // в этот день»). Расходятся они на датах, мимо которых серия уже прошла, и на
+    // хвосте за единственным срабатыванием `once`: там выбор рисуется контуром, а не
+    // заливкой, которой `occ` обещает срабатывание (#2932).
+    val pickedKeys = if (freq == "custom") customDates.toSet() else emptySet()
     val selectedKey = if (!isCustomDue && active.set) {
         millisDayKey(localCalOf(active.year, active.month, active.day, active.hour, active.minute).timeInMillis)
     } else {
@@ -330,10 +352,12 @@ fun DueDateTimePicker(
                             isEndpoint = isEnd,
                             isRange = isRange,
                             isOccurrence = !isSel && !isEnd && occKeys.contains(key),
+                            isPicked = !isSel && !isEnd && !occKeys.contains(key) && pickedKeys.contains(key),
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 if (isCustomDue) {
                                     if (customDates.contains(key)) customDates.remove(key) else customDates.add(key)
+                                    anchorDueToCustomDates()
                                 } else {
                                     active.year = cell.get(Calendar.YEAR)
                                     active.month = cell.get(Calendar.MONTH)
@@ -670,6 +694,7 @@ private fun DayCell(
     isEndpoint: Boolean,
     isRange: Boolean,
     isOccurrence: Boolean,
+    isPicked: Boolean = false,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
@@ -688,6 +713,9 @@ private fun DayCell(
                     isRange -> Modifier.background(SolidColor(c.primary.copy(alpha = 0.09f)))
 
                     isOccurrence -> Modifier.background(SolidColor(c.primary.copy(alpha = 0.16f)))
+
+                    // Выбран, но не сработает: контур вместо заливки.
+                    isPicked -> Modifier.border(1.dp, c.primary.copy(alpha = 0.35f), RoundedCornerShape(RadiusMd))
 
                     else -> Modifier
                 },

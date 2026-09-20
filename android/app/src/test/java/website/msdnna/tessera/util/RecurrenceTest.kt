@@ -200,7 +200,33 @@ class RecurrenceTest {
     fun `occurrenceKeys custom returns its dates`() {
         val rule = Recurrence(freq = "custom", dates = listOf("2026-06-10", "2026-06-20"))
         assertThat(occurrenceKeys(rule, localMidnight(2026, 6, 1)))
-            .containsExactly("2026-06-10", "2026-06-20")
+            .containsExactly("2026-06-01", "2026-06-10", "2026-06-20")
+    }
+
+    // occurrenceKeys отвечает на вопрос «в какие дни задача сработает», а не «что
+    // выбрано в списке»: сервер берёт первую дату строго позже срока, так что
+    // пройденные даты не сработают уже никогда, а `once` оставляет ровно одну.
+    // Отдавать сюда весь выбранный список — обещать срабатывания, которых не будет;
+    // сам список подсвечивает редактор отдельно (#2932).
+    @Test
+    fun `occurrenceKeys custom drops the dates the series has walked past`() {
+        val rule = Recurrence(
+            freq = "custom",
+            dates = listOf("2026-03-01", "2026-03-08", "2026-03-15", "2026-03-22"),
+        )
+        assertThat(occurrenceKeys(rule, localMidnight(2026, 3, 15)))
+            .containsExactly("2026-03-15", "2026-03-22")
+    }
+
+    @Test
+    fun `occurrenceKeys custom once stops after the single firing`() {
+        val rule = Recurrence(
+            freq = "custom",
+            once = true,
+            dates = listOf("2026-03-01", "2026-03-08", "2026-03-15", "2026-03-22"),
+        )
+        assertThat(occurrenceKeys(rule, localMidnight(2026, 3, 1)))
+            .containsExactly("2026-03-01", "2026-03-08")
     }
 
     @Test

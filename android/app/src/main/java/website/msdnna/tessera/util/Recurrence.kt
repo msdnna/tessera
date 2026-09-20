@@ -168,14 +168,17 @@ fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
 /**
  * Up to [n] upcoming occurrence day-keys (yyyy-MM-dd) starting at [fromMillis].
  * A one-off rule (`once`) shows just the current due + the single next occurrence.
+ *
+ * Правило по списку дат идёт через тот же цикл, что и остальные частоты, и по той
+ * же причине: сервер берёт первую дату СТРОГО ПОЗЖЕ срока и на `once` роняет
+ * правило после одного срабатывания. Отдача всего выбранного списка обещала
+ * срабатывания, которых не будет, и вдобавок подсвечивала даты, мимо которых серия
+ * уже прошла (#2932). Сам выбранный список — дело редактора, здесь ответ только на
+ * вопрос «в какие дни задача сработает».
  */
 fun occurrenceKeys(rule: Recurrence?, fromMillis: Long?, n: Int = 24): Set<String> {
     val keys = mutableSetOf<String>()
     if (fromMillis == null || rule == null || rule.freq.isBlank()) return keys
-    if (rule.freq == "custom") {
-        rule.dates?.forEach { keys.add(it) }
-        return keys
-    }
     val limit = if (rule.once) 1 else n
     var cur: Long = fromMillis
     keys.add(millisDayKey(cur))
