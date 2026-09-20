@@ -3,6 +3,7 @@ package website.msdnna.tessera.ui.components
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.res.Resources
 import android.graphics.Color as AColor
 import android.net.Uri
 import android.webkit.JavascriptInterface
@@ -10,6 +11,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,26 +21,38 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.io.File
 import java.security.SecureRandom
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONObject
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.api.TlsTrust
+import website.msdnna.tessera.ui.screens.openDownloadedFile
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraColors
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.attachmentIdFromHref
+import website.msdnna.tessera.util.filenameFromContentDisposition
 import website.msdnna.tessera.util.isOwnServerUrl
 import website.msdnna.tessera.util.resolveMention
+import website.msdnna.tessera.util.safeDownloadName
 
 /**
  * Renders stored Markdown exactly like the web `RichContent.vue`: marked → HTML,
@@ -88,6 +102,11 @@ fun RichContent(
 ) {
     val c = Tessera.colors
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // Ресурсы берём в композиции, а не у контекста в момент клика: диалог «чем
+    // открыть» показывается уже вне её, где `ctx.getString` возьмёт язык
+    // системы, а не профиля (тот же приём, что в «Файлах» задачи).
+    val res = LocalResources.current
     val serverRoot = RetrofitClient.serverRoot
     var heightDp by remember { mutableStateOf(1) }
     // Latest callback, so the long-lived JS bridge always calls the current one.
@@ -165,11 +184,19 @@ fun RichContent(
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val url = request.url
-                            if (url.scheme == "http" || url.scheme == "https") {
-                                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url.toString()))) }
-                                return true
+                            return when (val action = linkAction(url.toString(), url.scheme, RetrofitClient.serverRoot)) {
+                                is LinkAction.Attachment -> {
+                                    saveAttachmentLink(ctx, scope, res, action.url)
+                                    true
+                                }
+
+                                is LinkAction.External -> {
+                                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.url))) }
+                                    true
+                                }
+
+                                LinkAction.None -> false
                             }
-                            return false
                         }
 
                         // Inline images live on our backend (`/api/uploads/…`). The
@@ -243,6 +270,75 @@ internal class NonScrollingWebView(context: Context) : WebView(context) {
     override fun onScrollChanged(l: Int, t: Int, oldl: Int, oldt: Int) {
         super.onScrollChanged(l, 0, oldl, oldt)
         if (scrollY != 0) scrollTo(l, 0)
+    }
+}
+
+/**
+ * Что делать с нажатой ссылкой. Решение вынесено из `shouldOverrideUrlLoading`
+ * отдельно, потому что проверяется оно без WebView — а WebView здесь и есть то
+ * место, где проглядели [LinkAction.Attachment].
+ */
+internal sealed interface LinkAction {
+    /**
+     * Ссылка на файл задачи (`/api/attachments/<uuid>/download`) на нашем же
+     * сервере. Такую нельзя отдавать браузеру: маршрут в защищённой группе, а
+     * токен живёт только в памяти приложения — браузер получит 401, и человек
+     * вместо файла увидит страницу с ошибкой. Качаем сами, с `Authorization`.
+     */
+    data class Attachment(val url: String) : LinkAction
+
+    /** Обычная ссылка — уходит в браузер, как и раньше. */
+    data class External(val url: String) : LinkAction
+
+    /** Не http(s) — пусть WebView разбирается сам. */
+    object None : LinkAction
+}
+
+/** Куда ведёт ссылка [url] со схемой [scheme] при сервере [serverRoot]. */
+internal fun linkAction(url: String, scheme: String?, serverRoot: String): LinkAction {
+    if (scheme != "http" && scheme != "https") return LinkAction.None
+    // Своим считаем только по origin (см. isOwnServerUrl): путь вида
+    // `/api/attachments/<uuid>/download` на чужом хосте — чужая ссылка, и
+    // заголовок с токеном ей не полагается.
+    if (attachmentIdFromHref(url) != null && isOwnServerUrl(url, serverRoot)) return LinkAction.Attachment(url)
+    return LinkAction.External(url)
+}
+
+/**
+ * Скачивает файл по ссылке из текста и отдаёт его системе — как кнопка в
+ * «Файлах» задачи, только имя файла берётся из ответа сервера: в самой ссылке
+ * его нет, там uuid строки.
+ */
+private fun saveAttachmentLink(ctx: Context, scope: CoroutineScope, res: Resources, url: String) {
+    scope.launch {
+        val saved = withContext(Dispatchers.IO) { runCatching { fetchAttachmentFile(ctx, url) }.getOrNull() }
+        if (saved == null) {
+            Toast.makeText(ctx, res.getString(R.string.task_file_download_failed), Toast.LENGTH_LONG).show()
+            return@launch
+        }
+        openDownloadedFile(ctx, saved.file, saved.mime, res.getString(R.string.task_file_open_chooser, saved.file.name))
+    }
+}
+
+/** Скачанный файл и тип, которым его объявил сервер. */
+private class SavedAttachment(val file: File, val mime: String?)
+
+/** Тянет вложение с Bearer'ом в тот же кэш, куда его кладёт «Файлы» задачи. */
+private fun fetchAttachmentFile(ctx: Context, url: String): SavedAttachment? {
+    val builder = Request.Builder().url(url).get()
+    val token = RetrofitClient.authToken
+    if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
+    richHttp.get().newCall(builder.build()).execute().use { resp ->
+        if (!resp.isSuccessful) return null
+        val fallback = attachmentIdFromHref(url) ?: "file"
+        val name = safeDownloadName(filenameFromContentDisposition(resp.header("Content-Disposition")), fallback)
+        // Тот же каталог, что у TaskRepository.downloadAttachment: FileProvider
+        // раздаёт наружу ровно его (res/xml/file_paths.xml).
+        val dir = File(ctx.cacheDir, "attachments").apply { mkdirs() }
+        val out = File(dir, name)
+        resp.body.byteStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+        val mime = resp.header("Content-Type")?.substringBefore(";")?.trim()
+        return SavedAttachment(out, mime?.takeIf { it.isNotBlank() })
     }
 }
 
