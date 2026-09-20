@@ -14,6 +14,30 @@ SELECT * FROM tags WHERE workspace_id = $1 ORDER BY name;
 -- name: GetTag :one
 SELECT * FROM tags WHERE id = $1;
 
+-- GetProjectTagByName finds a project's tag the way every READER of a tag name
+-- compares one: trimmed and case-insensitively. The storage constraint is
+-- byte-exact (UNIQUE (project_id, name), migration 0023) while nothing downstream
+-- is: `canonPrefix` lowercases a namespace on all three clients, the web picker's
+-- `matchTagByName` resolves a typed name case-insensitively, and the MCP
+-- `resolveTags` does the same — so «Сложность::высокая» and «сложность::высокая»
+-- were two rows that every consumer treats as one name and the board draws as two
+-- lanes with the SAME caption (under a narrowed prefix `tagLaneLabel` prints only
+-- the value), splitting the killer feature's cards between them.
+--
+-- Oldest first, so with twins already in the table the answer is stable and the
+-- original row is the one everything collapses onto (#2932).
+-- name: GetProjectTagByName :one
+SELECT * FROM tags
+WHERE project_id = $1 AND lower(btrim(name)) = lower(btrim(@name::text))
+ORDER BY created_at, id
+LIMIT 1;
+
+-- SetTagColor refreshes just the colour. Used by the GitLab sync when the label it
+-- is ensuring already exists under a different spelling: the row keeps the name the
+-- project gave it, only the colour follows GitLab.
+-- name: SetTagColor :one
+UPDATE tags SET color = $2 WHERE id = $1 RETURNING *;
+
 -- EnsureTag returns the project tag with this name, creating it (with the given
 -- color) if absent. On conflict it refreshes the colour only when a non-empty
 -- one is supplied, so the GitLab sync keeps label colours current without wiping

@@ -1724,7 +1724,7 @@ func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UU
 		if color == "" {
 			color = autoTagColor(t.Name)
 		}
-		tag, err := h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, ProjectID: projectID, Name: t.Name, Color: color})
+		tag, err := h.ensureProjectTag(ctx, wsID, projectID, t.Name, color)
 		if err != nil {
 			continue
 		}
@@ -1735,6 +1735,40 @@ func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UU
 	}
 	removed, _ = h.q.DeleteStaleGitlabTaskTags(ctx, db.DeleteStaleGitlabTaskTagsParams{TaskID: taskID, Column2: ids})
 	return added, removed
+}
+
+// ensureProjectTag is the sync's door onto the project tag vocabulary: the tag this
+// GitLab label stands for, created if the project has nothing for it yet.
+//
+// `EnsureTag` alone is not that door. Its ON CONFLICT rides the byte-exact
+// UNIQUE (project_id, name), so a label GitLab spells «Сложность::высокая» inserts a
+// SECOND row next to the «сложность::высокая» somebody made by hand — and this is the
+// likeliest way a project ever gets such a pair, since a GitLab label vocabulary is
+// authored by strangers to Tessera. What follows is the split the handlers' own
+// `tagNameFree` describes: two lanes with the same caption, half the cards behind
+// each, and the sync steadily pushing its issues into the one nobody filters by.
+//
+// So the existing tag is looked up the way readers compare names first, and only its
+// colour follows GitLab — the name stays as the project spells it, which is also what
+// keeps the sync from renaming a tag under the reader on every pull. Only when there
+// is no such tag does EnsureTag run, and it keeps handling the exact-match race (#2932).
+func (h *API) ensureProjectTag(ctx context.Context, wsID, projectID uuid.UUID, name, color string) (db.Tag, error) {
+	existing, err := h.q.GetProjectTagByName(ctx, db.GetProjectTagByNameParams{ProjectID: projectID, Name: name})
+	switch {
+	case err == nil:
+		if color == "" || existing.Color == color {
+			return existing, nil
+		}
+		updated, uErr := h.q.SetTagColor(ctx, db.SetTagColorParams{ID: existing.ID, Color: color})
+		if uErr != nil {
+			// The colour is cosmetic; the pairing this tag is about is not.
+			return existing, nil
+		}
+		return updated, nil
+	case !errors.Is(err, pgx.ErrNoRows):
+		return db.Tag{}, err
+	}
+	return h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, ProjectID: projectID, Name: name, Color: color})
 }
 
 // syncProjectMembers refreshes the integration's assignable GitLab member roster

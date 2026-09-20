@@ -153,6 +153,44 @@ func (q *Queries) EnsureTag(ctx context.Context, arg EnsureTagParams) (Tag, erro
 	return i, err
 }
 
+const getProjectTagByName = `-- name: GetProjectTagByName :one
+SELECT id, workspace_id, name, color, created_at, project_id FROM tags
+WHERE project_id = $1 AND lower(btrim(name)) = lower(btrim($2::text))
+ORDER BY created_at, id
+LIMIT 1
+`
+
+type GetProjectTagByNameParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Name      string    `json:"name"`
+}
+
+// GetProjectTagByName finds a project's tag the way every READER of a tag name
+// compares one: trimmed and case-insensitively. The storage constraint is
+// byte-exact (UNIQUE (project_id, name), migration 0023) while nothing downstream
+// is: `canonPrefix` lowercases a namespace on all three clients, the web picker's
+// `matchTagByName` resolves a typed name case-insensitively, and the MCP
+// `resolveTags` does the same — so «Сложность::высокая» and «сложность::высокая»
+// were two rows that every consumer treats as one name and the board draws as two
+// lanes with the SAME caption (under a narrowed prefix `tagLaneLabel` prints only
+// the value), splitting the killer feature's cards between them.
+//
+// Oldest first, so with twins already in the table the answer is stable and the
+// original row is the one everything collapses onto (#2932).
+func (q *Queries) GetProjectTagByName(ctx context.Context, arg GetProjectTagByNameParams) (Tag, error) {
+	row := q.db.QueryRow(ctx, getProjectTagByName, arg.ProjectID, arg.Name)
+	var i Tag
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Color,
+		&i.CreatedAt,
+		&i.ProjectID,
+	)
+	return i, err
+}
+
 const getTag = `-- name: GetTag :one
 SELECT id, workspace_id, name, color, created_at, project_id FROM tags WHERE id = $1
 `
@@ -349,6 +387,32 @@ func (q *Queries) RemoveTaskTag(ctx context.Context, arg RemoveTaskTagParams) (i
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const setTagColor = `-- name: SetTagColor :one
+UPDATE tags SET color = $2 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at, project_id
+`
+
+type SetTagColorParams struct {
+	ID    uuid.UUID `json:"id"`
+	Color string    `json:"color"`
+}
+
+// SetTagColor refreshes just the colour. Used by the GitLab sync when the label it
+// is ensuring already exists under a different spelling: the row keeps the name the
+// project gave it, only the colour follows GitLab.
+func (q *Queries) SetTagColor(ctx context.Context, arg SetTagColorParams) (Tag, error) {
+	row := q.db.QueryRow(ctx, setTagColor, arg.ID, arg.Color)
+	var i Tag
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Color,
+		&i.CreatedAt,
+		&i.ProjectID,
+	)
+	return i, err
 }
 
 const stripNonMemberAssignees = `-- name: StripNonMemberAssignees :execrows
