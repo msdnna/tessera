@@ -156,6 +156,24 @@ func (h *API) scanDueTasks(ctx context.Context) {
 			if !dueShouldFire(now, *t.DueDate, lead, repeat, prior) {
 				continue
 			}
+			// A repeat is a nag — "keep reminding me until I deal with it" — and a
+			// nag that cannot reach anyone is not a nag, it is a queue. Inside quiet
+			// hours routeNotification defers every external delivery to the end of
+			// the window, and the deferred rows all land on that same instant: a
+			// task repeating every 15 minutes across a 22:00–08:00 night stockpiles
+			// forty identical messages and empties them into the inbox at 08:00, out
+			// of the one feature whose whole purpose is that the night stays quiet.
+			// So the repeat is dropped rather than deferred. The first warning is
+			// not: it still fires and still waits for the window to end, so the
+			// morning carries it exactly once. Nothing is advanced here either —
+			// last_fired_at keeps its old value, so the repeat resumes on the first
+			// tick after the window (#2932).
+			if dueAlreadyFired(*t.DueDate, prior) {
+				if _, inQuiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes),
+					int(p.QuietEndMinutes), p.QuietTz, now); inQuiet {
+					continue
+				}
+			}
 			h.deliverNotification(ctx, uid, wsID, &t.ID, nil, "due_soon", dueMsg(t))
 			soft(ctx, "UpsertDueNotificationState", h.q.UpsertDueNotificationState(ctx, db.UpsertDueNotificationStateParams{
 				TaskID: t.ID, UserID: uid, FiredDue: *t.DueDate,
@@ -173,13 +191,21 @@ func dueShouldFire(now, due time.Time, lead, repeat int32, prior *db.DueNotifica
 	if now.Before(due.Add(-time.Duration(lead) * time.Minute)) {
 		return false // not yet inside the lead window
 	}
-	if prior == nil || !prior.FiredDue.Equal(due) {
+	if !dueAlreadyFired(due, prior) {
 		return true // never fired, or the due date moved → re-arm
 	}
 	if repeat <= 0 {
 		return false // one-shot, already fired
 	}
 	return !now.Before(prior.LastFiredAt.Add(time.Duration(repeat) * time.Minute))
+}
+
+// dueAlreadyFired reports whether the per-(task,user) state records a fire for
+// this exact due date — i.e. whether a fire now would be a repeat nag rather
+// than the first warning. A due date that moved since the last fire re-arms the
+// state, so it counts as never fired.
+func dueAlreadyFired(due time.Time, prior *db.DueNotificationState) bool {
+	return prior != nil && prior.FiredDue.Equal(due)
 }
 
 // dueRecipients are the users who hear about a task's due date: its assignees plus
