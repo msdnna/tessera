@@ -183,16 +183,43 @@ WITH RECURSIVE down AS (
     SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
 )
 UPDATE tasks SET archived_at = now(), updated_at = now()
-WHERE id IN (SELECT id FROM down);
+-- Only the rows this archive actually takes. A subtask already in the archive
+-- keeps the stamp it went in with: that is the date the archive list sorts on
+-- (archived_at DESC), so re-stamping reshuffled entries nobody touched — and it
+-- erased the one thing that tells "went in with this root" from "was already
+-- there", which is what RestoreTask below reads to know what to give back.
+WHERE id IN (SELECT id FROM down) AND archived_at IS NULL;
 
+-- RestoreTask gives back what THIS archive took, which is not the same as the
+-- whole subtree: a subtask can go to the archive on its own, long before its
+-- parent does. The archive view lists such a row as an entry of its own
+-- (ListBoardArchivedWithMeta below, the `parent_id IS NULL OR parent is active`
+-- branch), so it is a deliberate gesture with its own undo. Restoring the whole
+-- subtree undid it too — the subtask came back onto the board together with the
+-- ones the cascade had taken, with nothing said anywhere, and the archive the
+-- user would go looking in no longer held it.
+--
+-- "Archived with this root" is readable from the data: ArchiveTaskCascade stamps
+-- the subtree in a single UPDATE, so every row it took carries the root's exact
+-- archived_at (now() is the transaction timestamp). A subtask archived in an
+-- earlier request carries an older one and stays put. The root's stamp rides
+-- down the walk rather than being re-read in a second subquery — sqlc cannot
+-- resolve a CTE alias next to a second `tasks` reference in an UPDATE's WHERE.
+-- The root matches its own stamp, so it is always in; a root that is not
+-- archived at all matches nothing (NULL = NULL is unknown), which is the no-op
+-- restoring an active task already was.
 -- name: RestoreTask :exec
 WITH RECURSIVE down AS (
-    SELECT t.id FROM tasks t WHERE t.id = $1
+    SELECT t.id, t.archived_at, t.archived_at AS root_archived_at
+    FROM tasks t WHERE t.id = $1
     UNION
-    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+    SELECT t.id, t.archived_at, down.root_archived_at
+    FROM tasks t JOIN down ON t.parent_id = down.id
+), taken AS (
+    SELECT down.id FROM down WHERE down.archived_at = down.root_archived_at
 )
 UPDATE tasks SET archived_at = NULL, updated_at = now()
-WHERE id IN (SELECT id FROM down);
+WHERE id IN (SELECT id FROM taken);
 
 -- ArchiveTaskIfActive/RestoreTaskIfArchived are idempotent single-task variants for
 -- the GitLab sync (closed_policy=archive_closed_sprints): no-op + no updated_at churn
