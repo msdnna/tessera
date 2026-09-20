@@ -13,7 +13,7 @@ import {
 import { i18n, uiCollator } from '@/i18n'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
 import { tagNamespace, canonPrefix, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
-import { boardGitlabAssignees, boardGitlabAuthors } from '@/utils/boardFilters'
+import { boardGitlabAssignees, boardGitlabAuthors, linkedMemberLogins } from '@/utils/boardFilters'
 import { columnName } from '@/utils/defaultNames'
 import {
   emptyFilters,
@@ -254,11 +254,7 @@ export function useBoardFacets({
     // linked their GitLab account — the roster drops those rows so one person is
     // never listed twice, and their Tessera entry above already matches the login
     // (matchesAssignee via glLoginByUserId).
-    const seen = new Set()
-    for (const m of membersList.value) {
-      const login = glLoginByUserId.value?.[m.user_id]
-      if (login) seen.add(login)
-    }
+    const seen = linkedMemberLogins(membersList.value, glLoginByUserId.value)
     const gl = []
     const pushGl = (username, name, avatar) => {
       if (!username || seen.has(username)) return
@@ -280,14 +276,15 @@ export function useBoardFacets({
   // GitLab values, `fc.` = creator keys), plus the GitLab authors actually seen on the
   // board: an issue can be opened by someone outside the project's member roster.
   // Logins already represented by a Tessera row (linked accounts) are skipped so one
-  // person never shows up twice.
+  // person never shows up twice — by the same rule as the assignee menu above, over
+  // this workspace's members and not the whole roster map (see linkedMemberLogins).
   const authorFilterMenu = computed(() => {
     const tessera = membersList.value.map((m) => ({
       label: m.name,
       key: encodeFacet('author', m.user_id),
       avatarUserId: m.user_id,
     }))
-    const seen = new Set(Object.values(glLoginByUserId.value))
+    const seen = linkedMemberLogins(membersList.value, glLoginByUserId.value)
     const gl = []
     const pushGl = (username, name, avatar) => {
       if (!username || seen.has(username)) return

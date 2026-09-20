@@ -408,33 +408,60 @@ fun boardGitlabAssignees(tasks: List<Task>): List<GitlabAuthor> {
 }
 
 /**
- * The GitLab bucket of the «Исполнитель» filter menu: the project's GitLab members plus the
- * assignee logins actually seen on the board, minus everyone already reachable another way.
+ * The GitLab bucket of a person filter menu: the project's GitLab members plus the logins
+ * [onBoard] found on the cards themselves, minus everyone already reachable another way.
  *
  * Skipped are [selected] values (an active chip is not offered again) and the logins of
  * workspace [members] who have linked their GitLab account — the person's own Tessera entry
- * sits above in the menu and matches the login through [matchesAssignee]'s lookup, so a
+ * sits above in the menu and matches the login through the person predicates' lookup, so a
  * `gl:` entry would list one person twice.
  *
  * The skip set is built from the [members] of THIS workspace, not from [glLoginByUserId]
- * wholesale: that map covers the whole roster, and a GitLab person linked to an account
- * with no membership here has no Tessera entry on this board to fall back to.
+ * wholesale: that map is the GitLab *project* roster keyed by Tessera user id, and the
+ * backend resolves those ids by joining `oauth_identities` / `gitlab_credentials` on the
+ * login alone (`ListGitlabProjectMembersByWorkspace`) — with no membership check. So it
+ * also covers people who have a Tessera account but are not members here (linked GitLab in
+ * another workspace, or since left this one), and those have no Tessera entry on this board
+ * to fall back to: skipping their login left them with no way into the facet at all.
  */
-fun assigneeFacetGitlabOptions(
+private fun facetGitlabOptions(
     members: List<website.msdnna.tessera.data.model.Member>,
     gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
-    tasks: List<Task>,
     glLoginByUserId: Map<String, String>,
     selected: Set<String>,
+    onBoard: List<GitlabAuthor>,
 ): List<GitlabAuthor> {
     val seen = members.mapNotNullTo(mutableSetOf()) { glLoginByUserId[it.userId] }
     val all = buildList {
         gitlabMembers.forEach {
             add(GitlabAuthor(it.glUsername, it.glName.ifBlank { it.glUsername }, it.glAvatarUrl))
         }
-        addAll(boardGitlabAssignees(tasks))
+        addAll(onBoard)
     }
     return all.filter { a ->
         a.username.isNotBlank() && "$GL_PREFIX${a.username}" !in selected && seen.add(a.username)
     }
 }
+
+/** The GitLab bucket of the «Исполнитель» menu — see [facetGitlabOptions]. The board's own
+ *  logins come from [boardGitlabAssignees]: the roster is a cache the backend refreshes
+ *  hourly at best, so a login the cards already draw need not be in it. */
+fun assigneeFacetGitlabOptions(
+    members: List<website.msdnna.tessera.data.model.Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    tasks: List<Task>,
+    glLoginByUserId: Map<String, String>,
+    selected: Set<String>,
+): List<GitlabAuthor> =
+    facetGitlabOptions(members, gitlabMembers, glLoginByUserId, selected, boardGitlabAssignees(tasks))
+
+/** The GitLab bucket of the «Автор» menu — see [facetGitlabOptions]. The board's own logins
+ *  come from [boardGitlabAuthors]: an issue can be opened by someone outside the roster. */
+fun authorFacetGitlabOptions(
+    members: List<website.msdnna.tessera.data.model.Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    tasks: List<Task>,
+    glLoginByUserId: Map<String, String>,
+    selected: Set<String>,
+): List<GitlabAuthor> =
+    facetGitlabOptions(members, gitlabMembers, glLoginByUserId, selected, boardGitlabAuthors(tasks))

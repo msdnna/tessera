@@ -91,10 +91,10 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.SortField
 import website.msdnna.tessera.util.BoardFilter
 import website.msdnna.tessera.util.DueFilter
-import website.msdnna.tessera.util.GitlabAuthor
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.UserTextOrder
 import website.msdnna.tessera.util.assigneeFacetGitlabOptions
+import website.msdnna.tessera.util.authorFacetGitlabOptions
 import website.msdnna.tessera.util.boardGitlabAuthors
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.canonPrefix
@@ -564,14 +564,16 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                     // GitLab logins: the project's GitLab members plus the authors actually
                     // seen on the board (an issue can be opened by someone outside the
                     // roster). A login already covered by a linked Tessera row is skipped
-                    // so one person never shows up twice (web parity).
-                    val seen = state.glLoginByUserId.values.toMutableSet()
-                    val glAuthors = buildList {
-                        state.gitlabMembers.forEach { add(GitlabAuthor(it.glUsername, it.glName.ifBlank { it.glUsername }, it.glAvatarUrl)) }
-                        addAll(boardGitlabAuthors(state.tasks))
-                    }.filter { a ->
-                        a.username.isNotBlank() && "gl:${a.username}" !in f.authorIds && seen.add(a.username)
-                    }
+                    // so one person never shows up twice — by the member rule of
+                    // `authorFacetGitlabOptions`, not the whole roster map, which also
+                    // covers accounts with no membership here and so hid them entirely.
+                    val glAuthors = authorFacetGitlabOptions(
+                        state.members,
+                        state.gitlabMembers,
+                        state.tasks,
+                        state.glLoginByUserId,
+                        f.authorIds,
+                    )
                     if (glAuthors.isNotEmpty()) {
                         MenuSectionHeader("GitLab")
                         glAuthors.forEach { a ->

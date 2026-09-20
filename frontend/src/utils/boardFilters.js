@@ -46,6 +46,29 @@ export function matchesAssignee(task, selected, glLoginByUserId = {}) {
   })
 }
 
+// The logins a person facet must NOT offer as a `gl:` entry: those of THIS
+// workspace's members who have linked their GitLab account. Their own Tessera row
+// sits in the menu already and matches the login through the lookups above, so a
+// `gl:` entry would list one person twice.
+//
+// Built from `members`, not from `glLoginByUserId` wholesale (#2932). That map is
+// the GitLab *project* roster keyed by Tessera user id, and the backend resolves
+// those ids by joining oauth_identities / gitlab_credentials on the login alone
+// (ListGitlabProjectMembersByWorkspace) — no membership check. So it also covers
+// people with a Tessera account who are not members here: someone who linked
+// GitLab in another workspace, or who has since left this one. Skipping their
+// login left them with no entry at all — no Tessera row, because they are not in
+// the member list, and no `gl:` row either — while their issues sat on the board
+// answering a `gl:` value perfectly well.
+export function linkedMemberLogins(members, glLoginByUserId = {}) {
+  const out = new Set()
+  for (const m of members || []) {
+    const login = glLoginByUserId?.[m?.user_id]
+    if (login) out.add(login)
+  }
+  return out
+}
+
 // Author facet. GitLab-synced tasks have `created_by IS NULL` — their author lives
 // in `gitlab_author` — so a Tessera person also matches through the GitLab login
 // linked to their account (`glLoginByUserId`: tessera user id → gl_username).
