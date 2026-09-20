@@ -242,59 +242,13 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 			soft(ctx, "AddTaskAssignee", h.q.AddTaskAssignee(ctx, db.AddTaskAssigneeParams{TaskID: clone.ID, UserID: a.ID}))
 		}
 	}
-	if subs, serr := h.q.ListSubtasks(ctx, &src.ID); serr == nil {
-		// The step the parent's due date took — each item's own window rides along
-		// so the duplicate's checklist isn't born pinned to the previous occurrence.
-		var step time.Duration
-		if src.DueDate != nil {
-			step = due.Sub(*src.DueDate)
-		}
-		pos := positionGap
-		for _, s := range subs {
-			// An item in the archive is not part of the routine any more, and
-			// archiving one while keeping the rest is a deliberate gesture with its
-			// own undo (the row stands in the board's archive as an entry of its
-			// own, its parent being active). ListSubtasks does not filter on
-			// archived_at — it is also what nextTaskPosition reads, where an
-			// archived sibling must still hold its place — so the skip belongs
-			// here. Without it CreateTask handed the item back alive, tags and
-			// assignees included, in this occurrence and in every one after: one
-			// archiving, endless copies, while the original stayed in the archive.
-			// The reschedule branch edits the task in place and never resurrected
-			// anything; the duplicate has to match it.
-			if s.ArchivedAt != nil {
-				continue
-			}
-			snum, nerr := h.q.NextWorkspaceTaskNumber(ctx, wsID)
-			if nerr != nil {
-				continue
-			}
-			sub, cerr := h.q.CreateTask(ctx, db.CreateTaskParams{
-				BoardID: src.BoardID, ColumnID: columnID, ParentID: &clone.ID,
-				Title: s.Title, Description: s.Description, Priority: s.Priority,
-				DueDate: shiftBy(s.DueDate, step), StartDate: shiftBy(s.StartDate, step),
-				Estimate: s.Estimate, Position: pos, CreatedBy: src.CreatedBy, Number: &snum,
-			})
-			pos += positionGap
-			if cerr != nil {
-				continue
-			}
-			// The reschedule branch keeps each item's estimate, tags and assignees
-			// (it never touches them); the duplicate must hand back the same
-			// checklist, not a barer one.
-			if tags, terr := h.q.ListTaskTags(ctx, s.ID); terr == nil {
-				for _, tg := range tags {
-					_, addErr := h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: sub.ID, TagID: tg.ID})
-					soft(ctx, "AddTaskTag", addErr)
-				}
-			}
-			if as, aerr := h.q.ListTaskAssignees(ctx, s.ID); aerr == nil {
-				for _, a := range as {
-					soft(ctx, "AddTaskAssignee", h.q.AddTaskAssignee(ctx, db.AddTaskAssigneeParams{TaskID: sub.ID, UserID: a.ID}))
-				}
-			}
-		}
+	// The step the parent's due date took — each item's own window rides along
+	// so the duplicate's checklist isn't born pinned to the previous occurrence.
+	var step time.Duration
+	if src.DueDate != nil {
+		step = due.Sub(*src.DueDate)
 	}
+	h.cloneChecklist(ctx, src, clone, columnID, step, wsID, map[uuid.UUID]bool{src.ID: true})
 	h.logEventActor(ctx, clone.ID, actorID, "created", nil)
 	// The journal already knows who caused this (logEventActor above) — the live
 	// event has to say it too. Closing a "create a duplicate" recurring task is a
@@ -303,6 +257,80 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	// (#2932). The schedule worker passes uuid.Nil and stays anonymous.
 	h.broadcastByActor(wsID, "task.created", actorID, clone)
 	return clone, nil
+}
+
+// cloneChecklist copies src's checklist under dst — every level of it, not just
+// the first.
+//
+// Nesting has no depth limit (CreateTask hangs a subtask off a subtask without
+// complaint, and the board draws and counts every level), so a repeating task
+// planned two levels deep is ordinary. This used to be one flat loop over
+// ListSubtasks(src), which returns the DIRECT children only: the duplicate
+// collapsed such a plan into its first level, and the steps below it were not
+// archived, not moved and not reported — they simply were not in the new
+// occurrence, nor in any after it. The reschedule branch edits the task in place
+// and carries the whole subtree, and the duplicate has to match it.
+//
+// `seen` carries the source ids already walked. The re-parent guard keeps the
+// tree acyclic, but this walk must not be the thing that depends on it: a ring
+// would otherwise spin creating tasks until something gave (the same reason
+// documentSubtreeIDs dedups its own walk).
+func (h *API) cloneChecklist(
+	ctx context.Context, src, dst db.Task, columnID uuid.UUID,
+	step time.Duration, wsID uuid.UUID, seen map[uuid.UUID]bool,
+) {
+	subs, err := h.q.ListSubtasks(ctx, &src.ID)
+	if err != nil {
+		return
+	}
+	pos := positionGap
+	for _, s := range subs {
+		// An item in the archive is not part of the routine any more, and
+		// archiving one while keeping the rest is a deliberate gesture with its
+		// own undo (the row stands in the board's archive as an entry of its
+		// own, its parent being active). ListSubtasks does not filter on
+		// archived_at — it is also what nextTaskPosition reads, where an
+		// archived sibling must still hold its place — so the skip belongs
+		// here. Without it CreateTask handed the item back alive, tags and
+		// assignees included, in this occurrence and in every one after: one
+		// archiving, endless copies, while the original stayed in the archive.
+		// The reschedule branch edits the task in place and never resurrected
+		// anything; the duplicate has to match it. Skipping the row skips what
+		// hangs below it too: an archived item takes its own steps with it.
+		if s.ArchivedAt != nil || seen[s.ID] {
+			continue
+		}
+		seen[s.ID] = true
+		snum, nerr := h.q.NextWorkspaceTaskNumber(ctx, wsID)
+		if nerr != nil {
+			continue
+		}
+		sub, cerr := h.q.CreateTask(ctx, db.CreateTaskParams{
+			BoardID: src.BoardID, ColumnID: columnID, ParentID: &dst.ID,
+			Title: s.Title, Description: s.Description, Priority: s.Priority,
+			DueDate: shiftBy(s.DueDate, step), StartDate: shiftBy(s.StartDate, step),
+			Estimate: s.Estimate, Position: pos, CreatedBy: src.CreatedBy, Number: &snum,
+		})
+		pos += positionGap
+		if cerr != nil {
+			continue
+		}
+		// The reschedule branch keeps each item's estimate, tags and assignees
+		// (it never touches them); the duplicate must hand back the same
+		// checklist, not a barer one.
+		if tags, terr := h.q.ListTaskTags(ctx, s.ID); terr == nil {
+			for _, tg := range tags {
+				_, addErr := h.q.AddTaskTag(ctx, db.AddTaskTagParams{TaskID: sub.ID, TagID: tg.ID})
+				soft(ctx, "AddTaskTag", addErr)
+			}
+		}
+		if as, aerr := h.q.ListTaskAssignees(ctx, s.ID); aerr == nil {
+			for _, a := range as {
+				soft(ctx, "AddTaskAssignee", h.q.AddTaskAssignee(ctx, db.AddTaskAssigneeParams{TaskID: sub.ID, UserID: a.ID}))
+			}
+		}
+		h.cloneChecklist(ctx, s, sub, columnID, step, wsID, seen)
+	}
 }
 
 // RunRecurrenceWorker drives schedule-triggered recurrences: tasks whose rule
