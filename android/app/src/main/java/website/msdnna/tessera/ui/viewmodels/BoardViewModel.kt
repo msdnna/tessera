@@ -391,6 +391,17 @@ data class BoardUiState(
 
     fun subtaskCount(parentId: String): Int = subtasks.count { it.parentId == parentId }
 
+    /** «Σ» дорожки: суммарные трудозатраты её карточек, прочитанные так же, как их
+     *  печатает сама карточка — своя оценка, а без неё свёртка подзадач (util
+     *  [Estimation.laneEffort]). Дети берутся из [visibleSubtasksOf], то есть ровно
+     *  те, из которых карточка нарисована. */
+    fun laneEffort(rows: List<Task>): Double? =
+        website.msdnna.tessera.util.Estimation.laneEffort(
+            rows,
+            { it.estimate },
+            { t -> visibleSubtasksOf(t.id).map { it.estimate } },
+        )
+
     /** Parent id → children for the lane/composer counters (web `countSubtaskMap`).
      *
      *  Neither map alone is enough. The filtered one only carries the parents that

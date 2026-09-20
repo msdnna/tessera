@@ -547,8 +547,8 @@ fun KanbanView(
                                     // only when grouped «По этапам», in the board's unit).
                                     if (state.groupByMilestone) {
                                         val res = LocalResources.current
-                                        val eff = remember(lane.tasks, state.estimation, res) {
-                                            Estimation.sum(lane.tasks.map { it.estimate })
+                                        val eff = remember(lane.tasks, state.subtasks, state.filter, state.estimation, res) {
+                                            state.laneEffort(lane.tasks)
                                                 ?.let { Estimation.format(res, it, state.estimation).ifBlank { null } }
                                         }
                                         if (eff != null) {
@@ -1653,9 +1653,11 @@ private sealed interface TlBodyRow
 private data class TlLaneHeaderRow(val lane: TLane) : TlBodyRow
 private data class TlTaskRow(val task: Task) : TlBodyRow
 
-/** Summed estimate of a lane's tasks, formatted in the board's unit, or null when none set. */
+/** Трудозатраты дорожки в единице доски, или null — если не оценена ни одна строка.
+ *  Через [BoardUiState.laneEffort], а не сложением своих `estimate`: строка без своей
+ *  оценки рисует свёртку подзадач, и шапка обязана считать её так же. */
 private fun laneEffort(res: Resources, lane: TLane, state: BoardUiState): String? {
-    val total = website.msdnna.tessera.util.Estimation.sum(lane.tasks.map { it.estimate }) ?: return null
+    val total = state.laneEffort(lane.tasks) ?: return null
     return website.msdnna.tessera.util.Estimation.format(res, total, state.estimation).ifBlank { null }
 }
 

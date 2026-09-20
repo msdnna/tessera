@@ -800,8 +800,11 @@ private fun MilestonePill(task: Task, state: BoardUiState, stacked: Boolean = fa
 private fun EstimatePill(task: Task, state: BoardUiState, stacked: Boolean = false) {
     val c = Tessera.colors
     val own = task.estimate
+    // visibleSubtasksOf, а не сырой state.subtasks: свёртка считается по тем детям, что
+    // карточка и рисует, поэтому под фильтром она сужается вместе с ними (паритет с
+    // вебом, sortedSubtasksByParent) и сходится с «Σ» в шапке дорожки.
     val rollup = website.msdnna.tessera.util.Estimation.sum(
-        state.subtasks.filter { it.parentId == task.id }.map { it.estimate },
+        state.visibleSubtasksOf(task.id).map { it.estimate },
     )
     val value = own ?: rollup
     val text = website.msdnna.tessera.util.Estimation.format(LocalResources.current, value, state.estimation)
