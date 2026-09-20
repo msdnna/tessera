@@ -188,6 +188,24 @@ func (r Rule) WithAnchor(due time.Time) Rule {
 	return r
 }
 
+// SameCalendarDay reports whether two instants are the same day on the calendar
+// the rule is written against — the rule's zone, the same one every branch of
+// Next reads.
+//
+// It exists because "the user moved this series" and "the user moved the clock"
+// are different edits, and only the first one may re-derive the monthly/yearly
+// anchor (see recurrenceToStore). Comparing instants conflated them: the due
+// editor keeps the month grid and the time picker in separate controls, so
+// nudging a reminder from 09:00 to 10:00 changed the instant without touching
+// the day — and on an occurrence February had clamped to the 28th, that silently
+// re-anchored a "every 31st" series to the 28th for good.
+func (r Rule) SameCalendarDay(a, b time.Time) bool {
+	loc := r.loc()
+	ya, ma, da := a.In(loc).Date()
+	yb, mb, db := b.In(loc).Date()
+	return ya == yb && ma == mb && da == db
+}
+
 // Marshal returns the canonical JSON form, suitable for storage.
 func (r Rule) Marshal() (*json.RawMessage, bool) {
 	n, ok := r.normalized()

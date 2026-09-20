@@ -234,8 +234,20 @@ const gridDays = computed(() => {
 // panel below rebuilds the rule out of its own controls, and those never held the
 // monthly/yearly day-of-month anchor, so a task that February has parked on the
 // 28th would otherwise be shown a March 28th it is never going to fire on.
+//
+// "Moved" is a change of *day*, not of instant — the month grid and the time
+// picker are separate controls here, and the server drops the anchor on the same
+// terms (`sameRuleDay`, handlers/tasks.go). Reading a 09:00 → 10:00 nudge as a
+// reschedule made this preview promise a March 28th while the server, correctly,
+// kept the 31st (#2932).
+const dueDayMoved = computed(() => {
+  const a = localDue.value
+  const b = normalizeDueIn(props.due)
+  if (a == null || b == null) return a !== b
+  return startOfDayMs(a) !== startOfDayMs(b)
+})
 const previewRule = computed(() =>
-  withStoredAnchor(rule.value, props.recurrence, localDue.value !== normalizeDueIn(props.due)),
+  withStoredAnchor(rule.value, props.recurrence, dueDayMoved.value),
 )
 // A column-triggered rule with no reachable trigger column never advances — the
 // server matches the column id verbatim and an unset (or deleted) one matches

@@ -137,6 +137,22 @@ describe('recurrence preview honours the stored anchor', () => {
     expect(highlighted(w)).toEqual([12])
   })
 
+  it('keeps the anchor when only the time of day is nudged', async () => {
+    // The month grid and the time picker are separate controls, and moving the
+    // clock is not moving the series: the server keeps the anchor across a
+    // day-preserving edit (`sameRuleDay`), so the preview must too. Reading the
+    // nudge as a reschedule promised a March 28 the task will never fire on.
+    const w = mountWith({
+      due: new Date(2026, 1, 28, 9, 0).getTime(),
+      recurrence: { freq: 'monthly', interval: 1, day: 31, tz: 'Europe/Moscow' },
+    })
+    await nextTick()
+    editor(w).vm.setTime(new Date(2026, 5, 1, 10, 0).getTime()) // 09:00 → 10:00
+    await nextTick()
+    await forward(w, 1) // March 2026
+    expect(highlighted(w)).toEqual([31])
+  })
+
   it('drops the anchor when the frequency changes', async () => {
     // `recurrenceToStore` only carries the anchor across a rule of the *same* freq.
     const w = mountWith({

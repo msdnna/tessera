@@ -1118,7 +1118,7 @@ func recurrenceToStore(reqRaw *json.RawMessage, reqDue *time.Time, prevRaw *json
 		rule.TZ = prev.TZ
 	}
 	if rule.Freq == recur.FreqMonthly || rule.Freq == recur.FreqYearly {
-		if hadPrev && prev.Freq == rule.Freq && sameTime(reqDue, prevDue) {
+		if hadPrev && prev.Freq == rule.Freq && sameRuleDay(rule, reqDue, prevDue) {
 			rule.Day, rule.Month = prev.Day, prev.Month
 		} else if reqDue != nil {
 			rule = rule.WithAnchor(*reqDue)
@@ -1126,6 +1126,22 @@ func recurrenceToStore(reqRaw *json.RawMessage, reqDue *time.Time, prevRaw *json
 	}
 	canon, _ := rule.Marshal()
 	return canon
+}
+
+// sameRuleDay reports whether two optional due dates name the same calendar day
+// in the rule's zone (absent counts as equal only to absent).
+//
+// The anchor is carried over on "the due date was not moved", and what moves a
+// monthly series is the *day*, not the clock: the editor edits the two with
+// separate controls, so an instant comparison read a 09:00 → 10:00 nudge as a
+// reschedule and re-derived the anchor from whatever day the occurrence happened
+// to sit on — the 28th, if February had clamped it, which is precisely the state
+// the anchor exists to survive (#2932).
+func sameRuleDay(rule recur.Rule, a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return rule.SameCalendarDay(*a, *b)
 }
 
 func orEmptyTags(tags []db.Tag) []db.Tag {

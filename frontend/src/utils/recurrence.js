@@ -61,6 +61,10 @@ export function everyLabel(freq, n) {
 // the same terms the server uses: same frequency, due date untouched. In every
 // other case the server re-derives the anchor from the due date, which is exactly
 // what `nextOccurrence` falls back to on its own.
+//
+// `dueChanged` means the due *day* moved, not the instant: the editor edits the
+// calendar day and the time of day with separate controls, and the server keeps
+// the anchor across a clock-only edit (`sameRuleDay`, handlers/tasks.go).
 export function withStoredAnchor(rule, stored, dueChanged) {
   if (!rule || (rule.freq !== 'monthly' && rule.freq !== 'yearly')) return rule
   if (dueChanged || !stored || stored.freq !== rule.freq) return rule
