@@ -494,6 +494,56 @@ func digestSlot(now time.Time, quietAt quietFn, digestMinutes int32, chID uuid.U
 	return end, fmt.Sprintf("%s:%d", chID, end.Unix())
 }
 
+// reanchorDeliveries re-applies a freshly saved schedule to the outbox rows that
+// are still waiting on the old one.
+//
+// digestSlot runs once, at enqueue time, and writes its answer into
+// next_attempt_at as an absolute instant. The prefs behind that answer then keep
+// changing, and nothing used to carry the change across — so the setting lied in
+// both directions at once. Turning quiet hours off at 23:30 ("I'm still up, send
+// them") answered 200 and left every held row waiting for 08:00: a queue frozen
+// by a setting that no longer exists, with the switch on screen saying otherwise.
+// Widening the window to 10:00 was worse: the rows deferred to 08:00 still fired
+// at 08:00, inside the silence just declared, out of the one feature whose whole
+// purpose is that the night stays quiet.
+//
+// The recomputation is exact rather than approximate: created_at is the arrival
+// digestSlot was given, so feeding it back with the new prefs reproduces the
+// decision that would have been made had the row arrived now — including the
+// digest group, so rows that land on the same new slot still combine into one
+// message instead of scattering. Rows that already went out for a send keep their
+// own timing; see ListReschedulableDeliveries (#2932).
+//
+// Best-effort: the prefs are saved either way, and a failure here leaves the
+// queue on its old schedule rather than the save on an error.
+func (h *API) reanchorDeliveries(ctx context.Context, uid uuid.UUID, p db.NotificationPref) {
+	rows, err := h.q.ListReschedulableDeliveries(ctx, uid)
+	if err != nil {
+		return
+	}
+	quietAt := func(t time.Time) (time.Time, bool) {
+		return quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, t)
+	}
+	for _, d := range rows {
+		next, group := digestSlot(d.CreatedAt, quietAt, digestMinutesFor(d.Kind, p.DigestMinutes), d.ChannelID)
+		soft(ctx, "RescheduleDelivery", h.q.RescheduleDelivery(ctx, db.RescheduleDeliveryParams{
+			ID: d.ID, NextAttemptAt: next, DigestGroup: group,
+		}))
+	}
+}
+
+// scheduleChanged reports whether a prefs save touched anything digestSlot reads.
+// Saving the same window back must not reshuffle the outbox: the recomputation is
+// anchored on created_at while the stored value came from time.Now() a moment
+// later, so an untouched row can still shift across a grid boundary.
+func scheduleChanged(before, after db.NotificationPref) bool {
+	return before.QuietEnabled != after.QuietEnabled ||
+		before.QuietStartMinutes != after.QuietStartMinutes ||
+		before.QuietEndMinutes != after.QuietEndMinutes ||
+		before.QuietTz != after.QuietTz ||
+		before.DigestMinutes != after.DigestMinutes
+}
+
 // quietFn reports the quiet window covering an instant: when it ends, and whether
 // the instant is inside one at all. Bound to a user's prefs by routeNotification;
 // quietWindow is the implementation.

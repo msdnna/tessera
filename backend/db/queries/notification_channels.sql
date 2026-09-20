@@ -174,6 +174,31 @@ WHERE id = $1;
 -- name: MarkDeliveryFailed :exec
 UPDATE notification_deliveries SET status = 'failed', last_error = $2, updated_at = now() WHERE id = $1;
 
+-- ListReschedulableDeliveries returns the user's outbox rows whose send time is
+-- still nothing but a scheduling decision: pending and never attempted, so
+-- next_attempt_at is exactly what digestSlot put there at enqueue time and can be
+-- recomputed from created_at (the arrival) without losing anything.
+--
+-- attempts > 0 is excluded on purpose: there next_attempt_at is a quadratic
+-- backoff after a failed send, and re-deriving it from the arrival would drag a
+-- row an hour old straight back into the queue — a dead endpoint turned into a
+-- hot retry loop. Those rows ask about quiet hours again on their own, in
+-- outsideQuietHours.
+-- name: ListReschedulableDeliveries :many
+SELECT d.id, d.channel_id, d.created_at, n.kind
+FROM notification_deliveries d
+JOIN notifications n ON n.id = d.notification_id
+WHERE n.user_id = $1 AND d.status = 'pending' AND d.attempts = 0;
+
+-- RescheduleDelivery moves an untouched pending row to a freshly computed slot.
+-- The status/attempts guard is repeated here, not just in the SELECT above: the
+-- worker may have claimed the row in between, and a claimed row must keep the
+-- time its own send decided.
+-- name: RescheduleDelivery :exec
+UPDATE notification_deliveries
+SET next_attempt_at = $2, digest_group = $3, updated_at = now()
+WHERE id = $1 AND status = 'pending' AND attempts = 0;
+
 -- GetDeviceChannel finds a user's device channel by its stable device id (stored
 -- in config). Used by auto-registration to upsert idempotently.
 -- name: GetDeviceChannel :one

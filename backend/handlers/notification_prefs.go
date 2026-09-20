@@ -108,8 +108,16 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "окно дайджеста не может быть больше суток"})
 		return
 	}
+	// Read before write: the outbox rows already deferred by the old window have
+	// to be re-anchored to the new one, and only a real change may do it (see
+	// reanchorDeliveries / scheduleChanged).
+	uid := middleware.CurrentUser(c)
+	before, berr := h.q.GetNotificationPrefs(c, uid)
+	if berr != nil {
+		before = defaultPrefs(uid)
+	}
 	p, err := h.q.UpsertNotificationPrefs(c, db.UpsertNotificationPrefsParams{
-		UserID: middleware.CurrentUser(c), DueEnabled: req.DueEnabled,
+		UserID: uid, DueEnabled: req.DueEnabled,
 		DueLeadMinutes: req.DueLeadMinutes, DueRepeatMinutes: req.DueRepeatMinutes,
 		ReminderEnabled:   req.ReminderEnabled,
 		QuietEnabled:      req.QuietEnabled,
@@ -121,6 +129,9 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 	if err != nil {
 		fail(c, err)
 		return
+	}
+	if scheduleChanged(before, p) {
+		h.reanchorDeliveries(c, uid, p)
 	}
 	c.JSON(http.StatusOK, prefsViewOf(p))
 }
