@@ -39,7 +39,7 @@ class ReminderAlarmLifecycleTest {
         AppContainer.init(context)
         alarms = Shadows.shadowOf(context.getSystemService(AlarmManager::class.java))
         // DataStore живёт файлом и переживает тест — начинаем с чистого набора.
-        runBlocking { AppContainer.prefs.setScheduledReminderIds(emptySet()) }
+        runBlocking { AppContainer.prefs.setScheduledReminders(emptyList()) }
     }
 
     /** Напоминание на [minutesAhead] минут вперёд — будильнику есть на что вставать. */
@@ -66,6 +66,39 @@ class ReminderAlarmLifecycleTest {
         // на общем устройстве у того, кто вошёл следующим.
         assertThat(alarms.scheduledAlarms).isEmpty()
         assertThat(AppContainer.prefs.scheduledReminderIds()).isEmpty()
+        // Вместе с будильниками уходит и сохранённый текст: иначе следующая же
+        // перезагрузка взвела бы их заново, уже без сессии.
+        assertThat(AppContainer.prefs.scheduledReminders()).isEmpty()
+    }
+
+    @Test
+    fun `перезагрузка без сети всё равно взводит будильники`() = runBlocking<Unit> {
+        ReminderScheduler.sync(context, listOf(reminder("a", 10), reminder("b", 20)))
+
+        // Перезагрузка: будильники система стёрла, DataStore пережил. Снимаем их
+        // мимо планировщика, чтобы сохранённый список остался нетронутым — это и
+        // есть состояние, в котором просыпается BootReceiver.
+        listOf("a", "b").forEach { ReminderScheduler.cancel(context, it) }
+        assertThat(alarms.scheduledAlarms).isEmpty()
+
+        // Сети ещё нет (BOOT_COMPLETED приходит раньше связи), список у сервера не
+        // спросить — взводим по последнему известному.
+        ReminderScheduler.rearmFromCache(context)
+
+        assertThat(alarms.scheduledAlarms).hasSize(2)
+    }
+
+    @Test
+    fun `перевзвод из кэша не воскрешает удалённое напоминание`() = runBlocking<Unit> {
+        ReminderScheduler.sync(context, listOf(reminder("a", 10), reminder("b", 20)))
+        // «b» удалили — сеть в тот раз была, кэш обновился.
+        ReminderScheduler.sync(context, listOf(reminder("a", 10)))
+        ReminderScheduler.cancel(context, "a")
+
+        ReminderScheduler.rearmFromCache(context)
+
+        assertThat(alarms.scheduledAlarms).hasSize(1)
+        assertThat(AppContainer.prefs.scheduledReminders().map { it.id }).containsExactly("a")
     }
 
     @Test

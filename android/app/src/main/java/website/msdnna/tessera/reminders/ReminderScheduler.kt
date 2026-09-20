@@ -75,7 +75,26 @@ object ReminderScheduler {
     suspend fun sync(context: Context, reminders: List<Reminder>) {
         val previous = AppContainer.prefs.scheduledReminderIds()
         rescheduleAll(context, reminders, previous)
-        AppContainer.prefs.setScheduledReminderIds(reminders.map { it.id }.toSet())
+        AppContainer.prefs.setScheduledReminders(reminders)
+    }
+
+    /**
+     * Взводит будильники по последнему сохранённому списку, не ходя в сеть (#2932).
+     *
+     * Перезагрузка стирает будильники — их заводят заново из [BootReceiver], а тот
+     * до сих пор начинал с запроса списка у сервера. Но `BOOT_COMPLETED` приходит
+     * раньше, чем поднимается сеть, и на телефоне без связи запрос просто падал:
+     * `runCatching` внутри [ReminderSync] это глотал, и «будильники остались как
+     * были» после ребута означало «не осталось ни одного». Напоминание молчало до
+     * следующего открытия экрана — то есть ровно тогда, когда человек уже и так
+     * смотрит в приложение.
+     *
+     * Ничего не отменяет: отменять после ребута нечего, а повторный [schedule]
+     * идёт под `FLAG_UPDATE_CURRENT` и просто заменяет уже заведённый будильник —
+     * поэтому вызов безопасен и перед удачным походом в сеть, и после него.
+     */
+    suspend fun rearmFromCache(context: Context) {
+        AppContainer.prefs.scheduledReminders().forEach { schedule(context, it) }
     }
 
     /**
@@ -97,7 +116,7 @@ object ReminderScheduler {
             // со своим текстом, и отмена будильника его не убирает.
             runCatching { manager.cancel(id.hashCode()) }
         }
-        AppContainer.prefs.setScheduledReminderIds(emptySet())
+        AppContainer.prefs.setScheduledReminders(emptyList())
     }
 
     private fun pendingIntent(context: Context, reminder: Reminder, create: Boolean): PendingIntent? {

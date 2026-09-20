@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import website.msdnna.tessera.BuildConfig
 import website.msdnna.tessera.data.model.Preferences as UserPrefs
+import website.msdnna.tessera.data.model.Reminder
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.util.normalizeLanguage
 import website.msdnna.tessera.util.resolveLanguage
@@ -78,6 +79,15 @@ class AppPreferences(private val context: Context) {
         // полем ViewModel, всё, что не попало в текущую загрузку, оставалось
         // висеть — в том числе после выхода из аккаунта.
         val SCHEDULED_REMINDERS = stringSetPreferencesKey("scheduled_reminders")
+
+        // Те же напоминания целиком, а не одними id (#2932). Исключение из
+        // «online-first, домен тут не живёт» ровно на ширину доставки: будильник
+        // перезагрузку не переживает, а BootReceiver поднимается раньше сети —
+        // без сохранённых времени и текста перевзводить после ребута нечего.
+        // Текст напоминания и так лежит на устройстве, в extras будильника, так
+        // что новой поверхности эта запись не открывает: чистится она тем же
+        // выходом из аккаунта, что и набор id.
+        val SCHEDULED_REMINDERS_JSON = stringPreferencesKey("scheduled_reminders_json")
     }
 
     /** Stable id for the notification "device" channel so this device is routable and
@@ -267,8 +277,26 @@ class AppPreferences(private val context: Context) {
     suspend fun scheduledReminderIds(): Set<String> =
         context.dataStore.data.first()[Keys.SCHEDULED_REMINDERS] ?: emptySet()
 
-    suspend fun setScheduledReminderIds(ids: Set<String>) {
-        context.dataStore.edit { it[Keys.SCHEDULED_REMINDERS] = ids }
+    /** Последний известный список напоминаний — то, по чему перезагрузка
+     *  перевзводит будильники, не дожидаясь сети. Битый или отсутствующий JSON
+     *  читается как пустой список: перевзвод best-effort, падать тут нечему. */
+    suspend fun scheduledReminders(): List<Reminder> {
+        val raw = context.dataStore.data.first()[Keys.SCHEDULED_REMINDERS_JSON] ?: return emptyList()
+        return runCatching { gson.fromJson(raw, Array<Reminder>::class.java)?.toList() }
+            .getOrNull()
+            .orEmpty()
+    }
+
+    /** Пишет обе записи одной транзакцией: id (по ним снимают будильники) и
+     *  полезную нагрузку (по ней их заводят заново). Разъехаться им нельзя —
+     *  иначе после ребута окажется, что снимать есть что, а взводить нечего. */
+    suspend fun setScheduledReminders(items: List<Reminder>) {
+        val ids = items.map { it.id }.toSet()
+        val json = gson.toJson(items)
+        context.dataStore.edit {
+            it[Keys.SCHEDULED_REMINDERS] = ids
+            it[Keys.SCHEDULED_REMINDERS_JSON] = json
+        }
     }
 
     val currentWorkspaceId: Flow<String> = context.dataStore.data.map { it[Keys.CURRENT_WORKSPACE] ?: "" }
