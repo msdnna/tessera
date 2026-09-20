@@ -134,6 +134,60 @@ class RichContentHtmlTest {
             .that(doc).contains("el.innerHTML = DOMPurify.sanitize(")
     }
 
+    /**
+     * #2932: декорации (#123 → ссылка, @имя → чип) переписывают уже отрисованный
+     * HTML, а прятали от них только `<code>`/`<pre>`. Теги оставались открытыми,
+     * поэтому «![скрин #123](/a.png)» вставлял `<a …>` внутрь `alt="…"`: атрибут
+     * обрывался на первой кавычке чипа, подпись у картинки пропадала, появлялись
+     * мусорные атрибуты, а хвост чипа («#123"&gt;») рисовался как текст. У ссылки
+     * с `title` так же терялся её собственный текст. Ровно это починено на web
+     * (`utils/markdown.js` replaceOutsideMarkup), здесь — порт.
+     *
+     * JS-движка в JVM-тесте нет, поэтому свойство снимается с самого документа:
+     * берём **то самое** регулярное выражение, которым он режет разметку, и
+     * прогоняем по нему отрисованный HTML. Декорации получают ровно те куски,
+     * которые останутся между совпадениями, — они и проверяются: внутренность
+     * тега в них попасть не должна, а обычный текст обязан.
+     */
+    @Test
+    fun `decorations are handed the displayed text only, never the inside of a tag`() {
+        val doc = html(false)
+        val js = Regex("""var re = /(.+?)/gi, out""").find(doc)?.groupValues?.get(1)
+        assertWithMessage("в документе не нашлось правила, по которому режется HTML").that(js).isNotNull()
+        // JS-литерал экранирует '/' внутри регулярки — java.util.regex этого не ждёт.
+        val skip = Regex(js!!.replace("""\/""", "/"), RegexOption.IGNORE_CASE)
+
+        // Куски, которые достанутся декорациям: всё между совпадениями skip.
+        fun parts(html: String): List<String> {
+            val out = mutableListOf<String>()
+            var last = 0
+            skip.findAll(html).forEach { m ->
+                out += html.substring(last, m.range.first)
+                last = m.range.last + 1
+            }
+            return out + html.substring(last)
+        }
+
+        val img = """<p><img src="/a.png" alt="скрин #123 от @anna"></p>"""
+        assertWithMessage("подпись картинки видна декорациям — чип уедет внутрь alt=\"…\"")
+            .that(parts(img).filter { it.isNotBlank() }).isEmpty()
+        val link = """<p><a href="/x" title="спроси @anna">тык</a></p>"""
+        assertWithMessage("title ссылки виден декорациям — чип уедет внутрь атрибута")
+            .that(parts(link).joinToString("")).doesNotContain("@anna")
+        assertWithMessage("текст самой ссылки декорациям виден быть обязан")
+            .that(parts(link).joinToString("")).contains("тык")
+        assertWithMessage("обычный текст перестал доходить до декораций")
+            .that(parts("<p>см. #123 и @anna</p>").joinToString("")).contains("#123 и @anna")
+        assertWithMessage("пример кода снова виден декорациям")
+            .that(parts("<p><code>#123 @anna</code></p>").joinToString("")).doesNotContain("#123")
+        // Правило выше — ровно то, по которому режет документ; эти две строки лишь
+        // держат его на месте, чтобы разбиение не осталось от другой функции.
+        assertWithMessage("документ снова декорирует в обход разметки")
+            .that(doc).contains("replaceOutsideMarkup(marked.parse(")
+        assertWithMessage("старый разделитель (только код) остался в документе")
+            .that(doc).doesNotContain("replaceOutsideCode")
+    }
+
     /** Тема светлая/тёмная различает файл, а не только цвета вокруг. */
     @Test
     fun `the light and dark documents pick different hljs themes`() {

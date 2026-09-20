@@ -386,11 +386,22 @@ ${richStyles(c, interactive)}
       return lead + '<a class="task-ref" data-task-ref="' + n + '" href="#">#' + n + '</a>';
     });
   }
-  // Both decorations rewrite already-rendered HTML and neither may touch a code
-  // sample: "#2550" in a diff is not a task link and "@root" in a shell snippet
-  // is not a mention (port of the web replaceOutsideCode).
-  function replaceOutsideCode(html, fn){
-    var re = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi, out = '', last = 0, m;
+  // Both decorations rewrite already-rendered HTML, so `fn` must only ever see
+  // the DISPLAYED TEXT — everything that is neither a code sample nor markup
+  // (port of the web replaceOutsideMarkup).
+  //
+  //   • <code>/<pre> blocks, because their contents are a sample and not prose:
+  //     "#2550" in a diff is not a task link and "@root" in a shell snippet is
+  //     not a mention.
+  //   • tags themselves, because an attribute is not text. marked writes an
+  //     image's alt and a link's title into one, and a decoration splices an
+  //     element in place of what it matched - so an image captioned "#123" put an
+  //     <a ...> inside its own alt="...", which ends at the chip's first quote:
+  //     the image lost its caption, grew junk attributes, and the tail of the
+  //     chip was drawn as visible text. A link title took the anchor's own text
+  //     down with it (#2932).
+  function replaceOutsideMarkup(html, fn){
+    var re = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>|<[^>]*>/gi, out = '', last = 0, m;
     while ((m = re.exec(html)) !== null) {
       out += fn(html.slice(last, m.index)) + m[0];
       last = m.index + m[0].length;
@@ -404,7 +415,7 @@ ${richStyles(c, interactive)}
   // their safe opening, without class the mention and task-ref chips lose theirs.
   var SANITIZE_OPTS = {ADD_ATTR: ['target', 'rel', 'class', 'data-handle', 'data-task-ref']};
   var el = document.getElementById('content');
-  el.innerHTML = DOMPurify.sanitize(replaceOutsideCode(marked.parse(SRC || ''), function(part){
+  el.innerHTML = DOMPurify.sanitize(replaceOutsideMarkup(marked.parse(SRC || ''), function(part){
     var withMentions = highlightMentions(part);
     return TASK_REFS ? linkTaskRefs(withMentions) : withMentions;
   }), SANITIZE_OPTS);
