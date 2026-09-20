@@ -51,7 +51,7 @@ func buildSenders(mailer mail.Mailer, fcmCredentialsFile string) map[string]noti
 	return s
 }
 
-// emailSender delivers via the server mailer (no-op-logs when SMTP is unset).
+// emailSender delivers via the server mailer.
 type emailSender struct{ mailer mail.Mailer }
 
 func (s emailSender) Send(_ context.Context, ch notify.Channel, msg notify.Message) error {
@@ -59,6 +59,18 @@ func (s emailSender) Send(_ context.Context, ch notify.Channel, msg notify.Messa
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return notify.Permanent(errors.New("email channel needs an address"))
+	}
+	// A mailer with no SMTP behind it logs the body and reports success — which is
+	// what keeps a verification or reset link reachable on a self-host that never
+	// configured one (mail.noop). Transactional mail has a reader for that log;
+	// an outbox row does not. Settling on that nil closes the row as 'sent', so
+	// the channel's delivery history reads "доставлено" on every notification
+	// while not one e-mail ever left the server — the channel is silently a
+	// blackhole and nothing anywhere says so. Permanent: SMTP does not appear
+	// between two retries, and a failed row carries the reason where the user
+	// looks for it.
+	if !s.mailer.Enabled() {
+		return notify.Permanent(errors.New(smtpNotConfigured))
 	}
 	// msg.Body is the fully rendered message (link included by the template).
 	return s.mailer.Send(addr, msg.Title, msg.Body)

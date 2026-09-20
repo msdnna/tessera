@@ -76,6 +76,12 @@ type channelReq struct {
 // short notification bodies, not documents).
 const maxTemplateLen = 8192
 
+// smtpNotConfigured is what an e-mail channel says on a server with no SMTP —
+// as the probe's warning and as the outbox row's last_error. Shown verbatim by
+// both clients (frontend/src/utils/errors.js, android Errors.kt), so it travels
+// as an English sentinel they word themselves, like every other refusal here.
+const smtpNotConfigured = "smtp is not configured"
+
 // validateTemplate rejects an over-long or unparseable template (it must render
 // against the sample data without error).
 //
@@ -406,6 +412,21 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 		return
 	}
 	msg := notify.Message{Kind: "test", Title: notify.Title("test", lang), Body: body, Link: h.publicURL}
+	// An e-mail probe on a server without SMTP is answered here rather than by the
+	// sender, which refuses outright (see emailSender.Send) — the probe is the one
+	// caller that has a reader to explain this to, and the sentinel below is what
+	// both clients word for them. The template was rendered first, so a broken one
+	// is still reported.
+	//
+	// What it must not do is award `verified`. The badge is a claim about a
+	// destination that answered a probe; here nothing left the server, and the
+	// green mark would sit on a channel that provably cannot deliver — pointing
+	// away from the failure exactly where the help sends the reader to look
+	// ("4. The channel is verified"). Configuring SMTP and probing again earns it.
+	if row.Type == "email" && !h.mailer.Enabled() {
+		c.JSON(http.StatusOK, gin.H{"ok": true, "warning": smtpNotConfigured})
+		return
+	}
 	if err := sender.Send(c, ch, msg); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"ok": false, "error": err.Error()})
 		return
@@ -413,13 +434,7 @@ func (h *API) TestNotificationChannel(c *gin.Context) {
 	soft(c, "SetNotificationChannelVerified", h.q.SetNotificationChannelVerified(c, db.SetNotificationChannelVerifiedParams{
 		ID: id, UserID: uid, Verified: true,
 	}))
-	resp := gin.H{"ok": true}
-	if row.Type == "email" && !h.mailer.Enabled() {
-		// Shown verbatim by both clients (the web puts it on the channel row,
-		// Android in a snackbar), so it travels as a sentinel they translate.
-		resp["warning"] = "smtp is not configured"
-	}
-	c.JSON(http.StatusOK, resp)
+	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
 // PreviewNotificationTemplate renders a template against sample data so the editor
