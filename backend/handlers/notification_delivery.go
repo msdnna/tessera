@@ -183,9 +183,12 @@ func (h *API) drainDeliveries(ctx context.Context) {
 			h.settleDelivery(ctx, ds[0], h.deliverOne(ctx, ds[0]))
 			continue
 		}
-		err := h.deliverGroup(ctx, ds)
+		// Per row, not one verdict for the whole group: a row the digest could not
+		// render never travelled with it, and settling it on the send's outcome
+		// would close it as sent.
+		outcomes := h.deliverGroup(ctx, ds)
 		for _, d := range ds {
-			h.settleDelivery(ctx, d, err)
+			h.settleDelivery(ctx, d, outcomes[d.ID])
 		}
 	}
 }
@@ -231,42 +234,71 @@ func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err
 
 // deliverGroup renders each notification in a digest group and sends one combined
 // message through the shared channel. All rows in a group share a channel.
-func (h *API) deliverGroup(ctx context.Context, ds []db.NotificationDelivery) error {
+//
+// Returns the outcome per delivery id, because the rows of a group do not share
+// one. A channel template is validated once, against notify.SampleData, where
+// every field is filled — a real notification is poorer than the sample (a
+// reminder carries no task), so a template can pass the form and still fail on
+// the row in front of it. deliverOne reports that as a permanent failure with the
+// error on the row, which is what the channel's delivery history shows. A digest
+// that settled every row on the send's outcome would instead close the dropped
+// ones as sent: the items are missing from the message, the outbox says
+// delivered, and nothing anywhere names the broken template. So a row that never
+// made it into the message carries its own verdict, exactly the one deliverOne
+// would have given it.
+func (h *API) deliverGroup(ctx context.Context, ds []db.NotificationDelivery) map[uuid.UUID]error {
+	out := make(map[uuid.UUID]error, len(ds))
+	groupErr := func(err error) map[uuid.UUID]error {
+		for _, d := range ds {
+			out[d.ID] = err
+		}
+		return out
+	}
 	row, err := h.q.GetNotificationChannelByID(ctx, ds[0].ChannelID)
 	if err != nil {
-		return notify.Permanent(fmt.Errorf("channel gone: %w", err))
+		return groupErr(notify.Permanent(fmt.Errorf("channel gone: %w", err)))
 	}
 	if !row.Enabled {
-		return notify.Permanent(errors.New("channel disabled"))
+		return groupErr(notify.Permanent(errors.New("channel disabled")))
 	}
 	sender, ok := h.senders[row.Type]
 	if !ok {
-		return notify.Permanent(fmt.Errorf("no sender for channel type %q", row.Type))
+		return groupErr(notify.Permanent(fmt.Errorf("no sender for channel type %q", row.Type)))
 	}
 	ch, err := h.channelFromRow(row)
 	if err != nil {
-		return notify.Permanent(err)
+		return groupErr(notify.Permanent(err))
 	}
 	// One channel means one owner, so the whole digest is written in that user's
 	// language — looked up once, not per row.
 	lang := h.userLang(ctx, row.UserID)
 	parts := make([]string, 0, len(ds))
+	carried := make([]uuid.UUID, 0, len(ds))
 	for _, d := range ds {
 		n, nerr := h.q.GetNotification(ctx, d.NotificationID)
 		if nerr != nil {
+			out[d.ID] = notify.Permanent(fmt.Errorf("notification gone: %w", nerr))
 			continue
 		}
-		if body, rerr := renderChannel(row.Template, h.templateData(ctx, n, lang)); rerr == nil {
-			parts = append(parts, "• "+body)
+		body, rerr := renderChannel(row.Template, h.templateData(ctx, n, lang))
+		if rerr != nil {
+			out[d.ID] = notify.Permanent(fmt.Errorf("template render: %w", rerr))
+			continue
 		}
+		parts = append(parts, "• "+body)
+		carried = append(carried, d.ID)
 	}
 	if len(parts) == 0 {
-		return nil
+		return out // nothing to send; every row already carries why it is not in it
 	}
 	combined := fmt.Sprintf("%s\n\n%s", notify.DigestHeader(len(parts), lang), strings.Join(parts, "\n\n"))
-	return sender.Send(ctx, ch, notify.Message{
+	sendErr := sender.Send(ctx, ch, notify.Message{
 		Kind: "digest", Title: notify.DigestTitle(lang), Body: combined, Link: h.publicURL,
 	})
+	for _, id := range carried {
+		out[id] = sendErr
+	}
+	return out
 }
 
 // deliverOne sends a single outbox row. A missing notification/channel or a
