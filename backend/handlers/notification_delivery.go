@@ -130,7 +130,11 @@ func (h *API) notifiableInWorkspace(ctx context.Context, userID, wsID uuid.UUID)
 }
 
 const (
-	notifyWorkerTick    = 10 * time.Second
+	notifyWorkerTick = 10 * time.Second
+	// notifyBatchSize is how many delivery *batches* one drain claims, not rows:
+	// a digest group is claimed whole, because only rows returned by the same
+	// claim are ever combined into one message (see ClaimPendingDeliveries). An
+	// ungrouped delivery is a batch of one.
 	notifyBatchSize     = 20
 	maxDeliveryAttempts = 5
 )

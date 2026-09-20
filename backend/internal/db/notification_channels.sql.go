@@ -18,16 +18,36 @@ SET status = 'sending', attempts = attempts + 1, updated_at = now()
 WHERE id IN (
     SELECT id FROM notification_deliveries
     WHERE status = 'pending' AND next_attempt_at <= now()
+      AND COALESCE(NULLIF(digest_group, ''), id::text) IN (
+          SELECT COALESCE(NULLIF(digest_group, ''), id::text) AS batch_key
+          FROM notification_deliveries
+          WHERE status = 'pending' AND next_attempt_at <= now()
+          GROUP BY batch_key
+          ORDER BY min(next_attempt_at), batch_key
+          LIMIT $1
+      )
     ORDER BY next_attempt_at
-    LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
 RETURNING id, notification_id, channel_id, status, attempts, last_error, next_attempt_at, created_at, updated_at, digest_group
 `
 
-// ClaimPendingDeliveries atomically grabs up to $1 due pending rows, marking them
+// ClaimPendingDeliveries atomically grabs up to $1 due batches, marking their rows
 // 'sending' and bumping the attempt counter, so concurrent/queued workers never
 // pick the same row (FOR UPDATE SKIP LOCKED).
+//
+// A batch, not a row: drainDeliveries can only combine what one claim returned,
+// so a digest group cut by the limit leaves the app twice — the stream of
+// separate messages the window exists to replace. And the cut is not an edge
+// case: digestSlot rounds every user's slot onto the same wall-clock grid, so the
+// groups of many users come due at the very same instant and a plain row limit
+// slices whichever ones it reaches. A row outside a digest is its own batch (the
+// key falls back to its id), so ungrouped deliveries still go one by one.
+//
+// The limit therefore bounds batches rather than rows: a single group is claimed
+// whole however big it grew. It is bounded by one user's traffic through one
+// channel within one digest window, and a burst that large is better read as one
+// long digest than as ceil(n/20) of them.
 func (q *Queries) ClaimPendingDeliveries(ctx context.Context, limit int32) ([]NotificationDelivery, error) {
 	rows, err := q.db.Query(ctx, claimPendingDeliveries, limit)
 	if err != nil {
