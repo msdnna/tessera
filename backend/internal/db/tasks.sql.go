@@ -171,7 +171,7 @@ func (q *Queries) DeleteTask(ctx context.Context, id uuid.UUID) ([]uuid.UUID, er
 	return items, nil
 }
 
-const detachChildren = `-- name: DetachChildren :exec
+const detachChildren = `-- name: DetachChildren :many
 UPDATE tasks t
 SET parent_id = NULL,
     position = (
@@ -184,6 +184,7 @@ FROM (
     FROM tasks s WHERE s.parent_id = $1
 ) ord
 WHERE t.id = ord.id
+RETURNING t.id
 `
 
 // DetachChildren empties a parent's subtask list onto the board, and appends the
@@ -200,9 +201,30 @@ WHERE t.id = ord.id
 //
 // Written as UPDATE … FROM (subquery) rather than a CTE: sqlc mis-parses
 // UPDATE … FROM with a leading WITH.
-func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) error {
-	_, err := q.db.Exec(ctx, detachChildren, parentID)
-	return err
+//
+// RETURNING the ids because the caller owes GitLab a child_detach per child it
+// just dropped to top-level (#2932) — the same push PATCH /tasks/:id/parent
+// sends for the same gesture. They have to be named: nothing else does, the
+// parent is archived or gone by then, and a walk after the fact finds no
+// children at all.
+func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, detachChildren, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getTask = `-- name: GetTask :one

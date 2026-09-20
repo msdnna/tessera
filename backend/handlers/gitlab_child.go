@@ -40,6 +40,29 @@ func (h *API) enqueueChildDetach(ctx context.Context, childID uuid.UUID, prevPar
 	h.enqueueChildWriteback(ctx, childID, &prevParentID, actorID, gitlab.KindChildDetach)
 }
 
+// pushDetachedChildren queues a detach for every subtask that DetachChildren just
+// dropped to top-level — the ?subtasks=detach half of archiving and of deleting a
+// parent (#2932). PATCH /tasks/:id/parent already pushes the same gesture one child
+// at a time; these two doors move a whole brood at once and used to move it in
+// Tessera only.
+//
+// Leaving GitLab alone is not a no-op there: the issues stay under the parent's work
+// item, so the next pull reads the hierarchy back and re-parents the tasks under a
+// parent that is by then archived (drawn on no board and in no archive) or gone. The
+// user's «keep them on the board» is undone by a sync they did not ask for.
+//
+// Best-effort per child, like every other enqueue here: a subtask with no issue of
+// its own is gated out inside and costs nothing.
+func (h *API) pushDetachedChildren(c *gin.Context, children []uuid.UUID, prevParentID uuid.UUID) {
+	if len(children) == 0 {
+		return
+	}
+	actor := middleware.CurrentUser(c)
+	for _, id := range children {
+		h.enqueueChildDetach(c, id, prevParentID, actor)
+	}
+}
+
 // enqueueChildWriteback is the shared body. kind may be empty for the attach direction,
 // in which case it is decided from the child's link state (no link → create).
 func (h *API) enqueueChildWriteback(ctx context.Context, childID uuid.UUID, parentID *uuid.UUID, actorID uuid.UUID, kind string) {

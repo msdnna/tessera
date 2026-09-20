@@ -938,11 +938,13 @@ func (h *API) sameWorkspaceMilestone(c *gin.Context, milestoneID, wsID uuid.UUID
 // applyArchive soft-deletes a task. detach keeps its subtasks on the board
 // (re-parented to null); otherwise they are archived with the parent.
 func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach bool) error {
+	var detached []uuid.UUID
 	// Transactional: detach-then-archive must be atomic, else a crash leaves the
 	// parent archived with its subtasks still active on the board (or vice versa).
 	if err := h.inTx(c, func(q *db.Queries) error {
 		if detach {
-			if err := q.DetachChildren(c, &t.ID); err != nil {
+			var err error
+			if detached, err = q.DetachChildren(c, &t.ID); err != nil {
 				return err
 			}
 			return q.ArchiveTask(c, t.ID)
@@ -951,6 +953,7 @@ func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach boo
 	}); err != nil {
 		return err
 	}
+	h.pushDetachedChildren(c, detached, t.ID)
 	h.logEvent(c, t.ID, "archived", nil)
 	h.notifyTaskParticipants(c, t, wsID, "archived",
 		msgArchived(h.actorName(c), t.Number, t.Title))

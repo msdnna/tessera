@@ -382,7 +382,13 @@ RETURNING *;
 --
 -- Written as UPDATE … FROM (subquery) rather than a CTE: sqlc mis-parses
 -- UPDATE … FROM with a leading WITH.
--- name: DetachChildren :exec
+--
+-- RETURNING the ids because the caller owes GitLab a child_detach per child it
+-- just dropped to top-level (#2932) — the same push PATCH /tasks/:id/parent
+-- sends for the same gesture. They have to be named: nothing else does, the
+-- parent is archived or gone by then, and a walk after the fact finds no
+-- children at all.
+-- name: DetachChildren :many
 UPDATE tasks t
 SET parent_id = NULL,
     position = (
@@ -394,7 +400,8 @@ FROM (
     SELECT s.id, row_number() OVER (ORDER BY s.position, s.created_at, s.id) AS rn
     FROM tasks s WHERE s.parent_id = $1
 ) ord
-WHERE t.id = ord.id;
+WHERE t.id = ord.id
+RETURNING t.id;
 
 -- name: MaxTaskPositionInColumn :one
 SELECT coalesce(max(position), 0)::double precision

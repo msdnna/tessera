@@ -739,10 +739,16 @@ func (h *API) DeleteTask(c *gin.Context) {
 	}
 	// ?subtasks=detach keeps subtasks (re-parented to null); default cascades.
 	if c.Query("subtasks") == "detach" {
-		if err := h.q.DetachChildren(c, &id); err != nil {
+		detached, err := h.q.DetachChildren(c, &id)
+		if err != nil {
 			fail(c, err)
 			return
 		}
+		// Before the delete, while the parent's own link is still readable: a detach
+		// resolves its integration from the CHILD's link, but the journal entry names
+		// the parent, and the push is the same one /parent sends (see
+		// pushDetachedChildren).
+		h.pushDetachedChildren(c, detached, id)
 	}
 	gone, err := h.q.DeleteTask(c, id)
 	if err != nil {
