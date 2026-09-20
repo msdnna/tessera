@@ -3,7 +3,11 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -313,6 +317,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	h.carryDueNotify(ctx, src, clone.ID)
 	h.carryTaskPins(ctx, src, clone.ID)
 	h.moveDocumentLinks(ctx, src.ID, clone.ID)
+	clone = h.carryAttachments(ctx, src, clone)
 	// The step the parent's due date took — each item's own window rides along
 	// so the duplicate's checklist isn't born pinned to the previous occurrence.
 	// Measured on the rule's calendar, for the reason shiftStart gives.
@@ -410,6 +415,7 @@ func (h *API) cloneChecklist(
 		h.carryDueNotify(ctx, s, sub.ID)
 		h.carryTaskPins(ctx, s, sub.ID)
 		h.moveDocumentLinks(ctx, s.ID, sub.ID)
+		sub = h.carryAttachments(ctx, s, sub)
 		sub = h.carryItemRecurrence(ctx, s, sub)
 		mapped[s.ID] = sub.ID
 		h.cloneChecklist(ctx, s, sub, columnID, rule, step, wsID, seen, mapped)
@@ -628,6 +634,119 @@ func (h *API) carryItemRecurrence(ctx context.Context, src, dst db.Task) db.Task
 		return dst
 	}
 	return updated
+}
+
+// carryAttachments hands a task's files to the copy of it in the next
+// occurrence, description links included.
+//
+// The template is what makes this a carry rather than a tidiness: a weekly
+// report is a rule with the blank form pinned to it, and under «создавать
+// копию» the form stayed on the spent copy in «Готово» while the live
+// occurrence showed an empty «Вложения». The reschedule branch keeps the files
+// for free — it edits the same row, and the attachment rows go on pointing at it.
+//
+// The FILE is copied, not just the row. storage_path is written under
+// <uploadDir>/<task id>/ and purgeTaskUploads wipes that directory per task id,
+// on the stated grounds that no row is ever copied to another task — two rows
+// sharing one path would make deleting the spent occurrence, the ordinary way to
+// clear a finished month, delete the live one's bytes.
+//
+// The description is rewritten for the same reason. MarkdownEditor writes an
+// uploaded file into the text as `[имя](/api/attachments/<id>/download)`, and the
+// text travels verbatim, so the duplicate was born naming rows belonging to the
+// previous occurrence — which the next delete turns into a dead link, in this
+// occurrence and in every one after it (#2932).
+//
+// Copied rather than moved, unlike moveDocumentLinks: the spent occurrence's
+// «Вложения» is the record of what that week produced, and an archive stripped of
+// the filled-in report would be worse than the empty one this fixes. That the
+// files pile up occurrence by occurrence is the reschedule branch's behaviour
+// too — after N repetitions the live task holds the same N files either way,
+// which is the standard every other carry here is measured against.
+//
+// A file that cannot be copied is skipped rather than recorded: a row pointing at
+// bytes that are not there is the one state the download route cannot tell from a
+// deleted file. Nothing is journalled — the clone's history opens with «created».
+func (h *API) carryAttachments(ctx context.Context, src, dst db.Task) db.Task {
+	atts, err := h.q.ListTaskAttachments(ctx, src.ID)
+	if err != nil {
+		soft(ctx, "ListTaskAttachments", err)
+		return dst
+	}
+	if len(atts) == 0 {
+		return dst
+	}
+	dir := h.taskUploadDir(dst.ID)
+	if mkErr := os.MkdirAll(dir, 0o750); mkErr != nil {
+		soft(ctx, "carryAttachments mkdir", mkErr)
+		return dst
+	}
+	rewrite := map[string]string{}
+	for _, a := range atts {
+		path := filepath.Join(dir, uuid.NewString()+filepath.Ext(a.Filename))
+		if cpErr := copyStoredFile(a.StoragePath, path); cpErr != nil {
+			soft(ctx, "carryAttachments copy", cpErr)
+			continue
+		}
+		copied, cErr := h.q.CreateAttachment(ctx, db.CreateAttachmentParams{
+			TaskID: dst.ID, UploaderID: a.UploaderID, Filename: a.Filename,
+			ContentType: a.ContentType, Size: a.Size, StoragePath: path,
+		})
+		if cErr != nil {
+			_ = os.Remove(path)
+			soft(ctx, "CreateAttachment", cErr)
+			continue
+		}
+		rewrite[a.ID.String()] = copied.ID.String()
+	}
+	return h.relinkAttachments(ctx, dst, rewrite)
+}
+
+// relinkAttachments points the copy's description at the copy's own rows.
+//
+// Only the ids this occurrence really copied are substituted: a link to a file
+// that failed to travel is left naming the row that still exists, which at least
+// resolves while the spent occurrence does.
+func (h *API) relinkAttachments(ctx context.Context, dst db.Task, rewrite map[string]string) db.Task {
+	if dst.Description == "" || len(rewrite) == 0 {
+		return dst
+	}
+	text := dst.Description
+	for oldID, newID := range rewrite {
+		text = strings.ReplaceAll(text, "/attachments/"+oldID+"/", "/attachments/"+newID+"/")
+	}
+	if text == dst.Description {
+		return dst
+	}
+	if err := h.q.SetTaskDescription(ctx, db.SetTaskDescriptionParams{ID: dst.ID, Description: text}); err != nil {
+		soft(ctx, "SetTaskDescription", err)
+		return dst
+	}
+	dst.Description = text
+	return dst
+}
+
+// copyStoredFile duplicates an attachment's bytes into the next occurrence's
+// directory.
+func copyStoredFile(from, to string) error {
+	// #nosec G304 -- `from` is a storage_path this server wrote (uploadDir/<task
+	// id>/<uuid><ext>) and `to` is built the same way here; neither carries
+	// anything a client chose.
+	in, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = in.Close() }()
+	// #nosec G304 -- see above.
+	out, err := os.Create(to)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // RunRecurrenceWorker drives schedule-triggered recurrences: tasks whose rule
