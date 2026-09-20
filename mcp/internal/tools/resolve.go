@@ -237,16 +237,35 @@ func tagIDSet(tags []model.Tag) map[string]bool {
 	return out
 }
 
-// parseDate accepts an ISO date ("2026-08-21") or a full RFC3339 timestamp.
+// parseDateIn accepts an ISO date ("2026-08-21") or a full RFC3339 timestamp,
+// reading anything that carries no offset of its own in loc.
+//
+// loc is the *profile's* zone, not the process's, and that is the whole point.
+// A due date is a calendar day stored as midnight in the writer's own calendar,
+// and every reader turns it back into a day by re-expressing that instant in the
+// zone it is reading from (dueDayOf in frontend/src/utils/taskFilter.js,
+// callerLocation in handlers/api.go, rank.IsOverdue here). Midnight taken in a
+// zone *ahead* of the reader's is therefore an instant that still belongs to the
+// previous day over there: written from a host on MSK for a profile on New York
+// time, "2026-09-21" arrived as the 20th — a day early on the board, and overdue
+// in my_tasks on the very day it was asked for. The reading half already asks
+// /auth/me for the zone (Client.Location); this is the same rule on the way out.
+//
+// A full RFC3339 timestamp names its own offset and is left alone — the zone
+// only fills in what the caller did not say.
+//
 // Relative wording ("завтра") is deliberately not parsed here — that is the
 // backend quick-action engine's job, and a second parser would drift from it.
-func parseDate(s string) (*time.Time, error) {
+func parseDateIn(s string, loc *time.Location) (*time.Time, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, nil
 	}
+	if loc == nil {
+		loc = time.Local
+	}
 	for _, layout := range []string{time.RFC3339, "2006-01-02T15:04:05", "2006-01-02 15:04", "2006-01-02"} {
-		if t, err := time.ParseInLocation(layout, s, time.Local); err == nil {
+		if t, err := time.ParseInLocation(layout, s, loc); err == nil {
 			return &t, nil
 		}
 	}

@@ -192,11 +192,11 @@ func buildTaskSpec(ctx context.Context, c *client.Client, boardID, workspaceID s
 	if f.Priority < 0 || f.Priority > 4 {
 		return spec, fmt.Errorf("priority must be 0..4 (0 none … 4 urgent)")
 	}
-	due, err := parseDate(f.DueDate)
+	due, err := parseDateIn(f.DueDate, c.Location(ctx))
 	if err != nil {
 		return spec, err
 	}
-	start, err := parseDate(f.StartDate)
+	start, err := parseDateIn(f.StartDate, c.Location(ctx))
 	if err != nil {
 		return spec, err
 	}
@@ -447,7 +447,7 @@ func updateTask(c *client.Client) mcp.ToolHandlerFor[updateTaskInput, updateTask
 			if f.val == nil {
 				continue
 			}
-			t, err := parseDate(*f.val)
+			t, err := parseDateIn(*f.val, c.Location(ctx))
 			if err != nil {
 				return nil, updateTaskOut{}, err
 			}

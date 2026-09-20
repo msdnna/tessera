@@ -298,18 +298,18 @@ func TestMoveDescriptionWritesTargetBeforeClearingSource(t *testing.T) {
 }
 
 func TestParseDate(t *testing.T) {
-	if got, err := parseDate(""); err != nil || got != nil {
+	if got, err := parseDateIn("", time.Local); err != nil || got != nil {
 		t.Fatalf("empty date = %v %v", got, err)
 	}
-	got, err := parseDate("2026-08-21")
+	got, err := parseDateIn("2026-08-21", time.Local)
 	if err != nil || got.Year() != 2026 || got.Month() != 8 || got.Day() != 21 {
 		t.Fatalf("iso date = %v %v", got, err)
 	}
-	if _, err := parseDate("2026-08-21T10:30:00Z"); err != nil {
+	if _, err := parseDateIn("2026-08-21T10:30:00Z", time.Local); err != nil {
 		t.Fatalf("rfc3339: %v", err)
 	}
 	// Relative wording belongs to the backend's quick actions, not here.
-	if _, err := parseDate("завтра"); err == nil {
+	if _, err := parseDateIn("завтра", time.Local); err == nil {
 		t.Fatal("expected an error for relative wording")
 	}
 }
