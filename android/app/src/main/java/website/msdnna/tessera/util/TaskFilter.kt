@@ -105,14 +105,34 @@ fun gitlabLogin(v: String): String = if (isGitlabValue(v)) v.removePrefix(GL_PRE
 /**
  * Assignee facet: a task matches when any selected person is among its Tessera assignees
  * or its GitLab assignee logins. An empty selection filters nothing.
+ *
+ * A Tessera person also matches through their linked GitLab login ([glLoginByUserId]:
+ * tessera user id → gl_username), exactly as [matchesAuthor] does — the task can carry
+ * that login instead of their user id. The sync resolves a GitLab assignee to a Tessera
+ * account when it can, so the two never coexist on one row, but a login lands in
+ * `gitlab_assignee_logins` whenever the account was not resolvable AT THAT MOMENT: a
+ * member pinned by hand before they had an account (`source='user'` rows survive every
+ * sync rebuild), or an issue synced before the person linked theirs and not touched in
+ * GitLab since.
+ *
+ * Their login is then no longer offered as a `gl:` option either — the menu drops a
+ * GitLab member who maps to a workspace member ([assigneeFacetGitlabOptions]), so one
+ * person is never listed twice. Without this lookup that card answered to NO value of
+ * the facet at all: not to the person's own entry, and not to a `gl:` entry the menu no
+ * longer has. Web fixed it first (`frontend/src/utils/boardFilters.js`); this is the port.
  */
-fun matchesAssignee(task: Task, selected: Set<String>): Boolean {
+fun matchesAssignee(task: Task, selected: Set<String>, glLoginByUserId: Map<String, String> = emptyMap()): Boolean {
     if (selected.isEmpty()) return true
     return selected.any { a ->
         // `gl:` values carry the LOGIN, so they match gitlabAssigneeLogins — matching the
         // parallel `gitlabAssignees` (display names) silently found nothing whenever a
         // GitLab member's name differed from their username.
-        if (isGitlabValue(a)) gitlabLogin(a) in task.gitlabAssigneeLogins else a in task.assigneeIds
+        if (isGitlabValue(a)) {
+            gitlabLogin(a) in task.gitlabAssigneeLogins
+        } else {
+            val login = glLoginByUserId[a]
+            a in task.assigneeIds || (login != null && login in task.gitlabAssigneeLogins)
+        }
     }
 }
 
@@ -188,7 +208,7 @@ private fun passesFacet(
 ): Boolean = when (facet) {
     TaskFacet.Priorities -> filter.priorities.isEmpty() || task.priority in filter.priorities
 
-    TaskFacet.Assignees -> matchesAssignee(task, filter.assigneeIds)
+    TaskFacet.Assignees -> matchesAssignee(task, filter.assigneeIds, glLoginByUserId)
 
     TaskFacet.Authors -> matchesAuthor(task, filter.authorIds, glLoginByUserId)
 
@@ -357,4 +377,64 @@ fun boardGitlabAuthors(tasks: List<Task>): List<GitlabAuthor> {
     // Latin precedes Cyrillic, case/ё are folded and digits compare by value — a
     // code-unit sort disagrees on all three ([UserTextOrder]).
     return byLogin.values.sortedWith { a, b -> UserTextOrder.compare(a.name, b.name) }
+}
+
+/**
+ * Distinct GitLab assignee logins present on the board — the same hole [boardGitlabAuthors]
+ * plugs, one facet over (#2932).
+ *
+ * The roster behind the «Исполнитель» menu is a CACHE: an incremental sync refreshes it at
+ * most once an hour (backend `memberRosterTTL`) and best-effort at that, while the issues
+ * themselves arrive on every pull. So a person newly added to the GitLab project — or one
+ * since removed from it, whose old issues still name them — is drawn on the cards (the
+ * assignee row reads `gitlabAssigneeLogins`) and answers [matchesAssignee] perfectly well,
+ * yet the facet has no entry to select them with.
+ *
+ * Only a login can be offered: unlike an author, a GitLab assignee reaches the client as a
+ * bare login with no display name on the task, so there is nothing to call them but that
+ * (which is exactly what the card shows too). The legacy name-only `gitlabAssignees` field
+ * is therefore skipped — [matchesAssignee] matches logins, so an entry built from a name
+ * would select nothing.
+ */
+fun boardGitlabAssignees(tasks: List<Task>): List<GitlabAuthor> {
+    val seen = LinkedHashSet<String>()
+    for (t in tasks) {
+        for (login in t.gitlabAssigneeLogins) {
+            if (login.isNotBlank()) seen += login
+        }
+    }
+    return seen.sortedWith { a, b -> UserTextOrder.compare(a, b) }
+        .map { GitlabAuthor(it, it, "") }
+}
+
+/**
+ * The GitLab bucket of the «Исполнитель» filter menu: the project's GitLab members plus the
+ * assignee logins actually seen on the board, minus everyone already reachable another way.
+ *
+ * Skipped are [selected] values (an active chip is not offered again) and the logins of
+ * workspace [members] who have linked their GitLab account — the person's own Tessera entry
+ * sits above in the menu and matches the login through [matchesAssignee]'s lookup, so a
+ * `gl:` entry would list one person twice.
+ *
+ * The skip set is built from the [members] of THIS workspace, not from [glLoginByUserId]
+ * wholesale: that map covers the whole roster, and a GitLab person linked to an account
+ * with no membership here has no Tessera entry on this board to fall back to.
+ */
+fun assigneeFacetGitlabOptions(
+    members: List<website.msdnna.tessera.data.model.Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    tasks: List<Task>,
+    glLoginByUserId: Map<String, String>,
+    selected: Set<String>,
+): List<GitlabAuthor> {
+    val seen = members.mapNotNullTo(mutableSetOf()) { glLoginByUserId[it.userId] }
+    val all = buildList {
+        gitlabMembers.forEach {
+            add(GitlabAuthor(it.glUsername, it.glName.ifBlank { it.glUsername }, it.glAvatarUrl))
+        }
+        addAll(boardGitlabAssignees(tasks))
+    }
+    return all.filter { a ->
+        a.username.isNotBlank() && "$GL_PREFIX${a.username}" !in selected && seen.add(a.username)
+    }
 }

@@ -94,6 +94,7 @@ import website.msdnna.tessera.util.DueFilter
 import website.msdnna.tessera.util.GitlabAuthor
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.UserTextOrder
+import website.msdnna.tessera.util.assigneeFacetGitlabOptions
 import website.msdnna.tessera.util.boardGitlabAuthors
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.canonPrefix
@@ -520,22 +521,28 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                             leading = { MemberAvatar(22.dp, nm, userId = m.userId) },
                         )
                     }
-                    // GitLab-only assignees (no Tessera account) filter by "gl:<username>",
-                    // matched against a card's gitlab_assignees (web parity).
-                    val glUnlinked = state.gitlabMembers.filter {
-                        it.tesseraUserId == null && "gl:${it.glUsername}" !in f.assigneeIds
-                    }
-                    if (glUnlinked.isNotEmpty()) {
+                    // GitLab assignees filter by "gl:<username>", matched against a card's
+                    // gitlab_assignee_logins. The roster is only half the list: it is a
+                    // cache the backend refreshes hourly at best, so a login the cards
+                    // already draw need not be in it (web parity — see
+                    // `assigneeFacetGitlabOptions`).
+                    val glAssignees = assigneeFacetGitlabOptions(
+                        state.members,
+                        state.gitlabMembers,
+                        state.tasks,
+                        state.glLoginByUserId,
+                        f.assigneeIds,
+                    )
+                    if (glAssignees.isNotEmpty()) {
                         MenuSectionHeader("GitLab")
-                        glUnlinked.forEach { m ->
-                            val nm = m.glName.ifBlank { m.glUsername }
+                        glAssignees.forEach { m ->
                             TMenuItem(
-                                nm,
+                                m.name,
                                 onClick = {
-                                    vm.setFilter(f.copy(assigneeIds = f.assigneeIds + "gl:${m.glUsername}"))
+                                    vm.setFilter(f.copy(assigneeIds = f.assigneeIds + "gl:${m.username}"))
                                     close()
                                 },
-                                leading = { MemberAvatar(22.dp, nm, avatarUrl = m.glAvatarUrl, muted = true) },
+                                leading = { MemberAvatar(22.dp, m.name, avatarUrl = m.avatarUrl, muted = true) },
                             )
                         }
                     }
