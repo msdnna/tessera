@@ -193,6 +193,13 @@ fun DueDateTimePicker(
         if (active.day > maxDay) active.day = maxDay
     }
 
+    // «Не по выходным» и чипы дней недели отвечают на один и тот же вопрос, и при
+    // расхождении сервер оставляет за чипами последнее слово (`recur.normalized`):
+    // толчок выходного дня на понедельник переписывал выбранный день и попутно
+    // съедал интервал правила (#2932). Галочки тут тогда просто нет — как в
+    // web-редакторе (`skipWeekendsMoot`), — и правило её не несёт.
+    val skipWeekendsMoot = freq == "weekly" && weekdaySet.isNotEmpty()
+
     fun buildRule(): Recurrence? {
         if (freq.isBlank()) return null
         if (freq == "custom" && customDates.isEmpty()) return null
@@ -209,7 +216,7 @@ fun DueDateTimePicker(
             targetColumn = targetColumn,
             createNew = createNew,
             once = !forever,
-            skipWeekends = skipWeekends && (freq == "daily" || freq == "weekly"),
+            skipWeekends = skipWeekends && !skipWeekendsMoot && (freq == "daily" || freq == "weekly"),
         )
     }
 
@@ -493,7 +500,7 @@ fun DueDateTimePicker(
                 Spacer(Modifier.height(10.dp))
                 ToggleRow(stringResource(R.string.due_picker_duplicate), createNew) { createNew = it }
                 ToggleRow(stringResource(R.string.due_picker_forever), forever) { forever = it }
-                if (freq == "daily" || freq == "weekly") {
+                if ((freq == "daily" || freq == "weekly") && !skipWeekendsMoot) {
                     ToggleRow(stringResource(R.string.due_picker_skip_weekends), skipWeekends) { skipWeekends = it }
                 }
             }

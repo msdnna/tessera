@@ -138,7 +138,13 @@ fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
     return when (rule.freq) {
         "daily" -> applySkip((from.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, iv) }.timeInMillis, rule.skipWeekends)
 
-        "weekly" -> applySkip(nextWeekly(from, rule), rule.skipWeekends)
+        // Явный набор дней недели уже сказал, в какие дни повторять, поэтому сервер
+        // снимает с такого правила skip_weekends (`recur.normalized`) вместо того,
+        // чтобы дать толчку переписать выбранные дни и отнять у правила интервал —
+        // разбор там. Зеркалим, чтобы сетка подсвечивала ту серию, которую сервер и
+        // отыграет: правила, сохранённые до этого, лежат в базе с обоими полями и
+        // приезжают на клиент как есть (#2932).
+        "weekly" -> applySkip(nextWeekly(from, rule), rule.skipWeekends && rule.weekdays.isNullOrEmpty())
 
         "monthly" -> {
             val total = from.get(Calendar.MONTH) + iv
