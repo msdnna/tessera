@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -222,9 +223,41 @@ func (h *API) UpdateNotificationChannel(c *gin.Context) {
 		enabled = *req.Enabled
 	}
 	cfgJSON, _ := json.Marshal(cfg)
-	updated, err := h.q.UpdateNotificationChannel(c, db.UpdateNotificationChannelParams{
+	// `verified` is a claim about a destination that answered a probe, so it is
+	// given back when the edit moves the channel off that destination: another
+	// URL/address/chat, another credential, or none at all. Otherwise a token
+	// pasted over a working one keeps the green badge — and a bad credential is a
+	// *permanent* delivery error (no retries), so the badge would be pointing away
+	// from the failure exactly where the help sends the reader to look for it
+	// ("4. The channel is verified"). Re-probing earns it back.
+	//
+	// Both configs are canonical JSON of a decoded map (Go sorts object keys), so
+	// they compare byte-wise; a fresh seal of the same secret differs by its nonce
+	// and reads as a change, which errs toward asking for a probe.
+	oldCfg, _ := json.Marshal(parseConfig(row.Config))
+	reprobe := row.Verified && (!bytes.Equal(oldCfg, cfgJSON) || secEnc != row.SecretEnc)
+	arg := db.UpdateNotificationChannelParams{
 		ID: id, UserID: uid, Label: strings.TrimSpace(req.Label),
 		Config: cfgJSON, SecretEnc: secEnc, Enabled: enabled, Template: tmpl,
+	}
+	var updated db.NotificationChannel
+	err = h.inTx(c, func(q *db.Queries) error {
+		var uerr error
+		if updated, uerr = q.UpdateNotificationChannel(c, arg); uerr != nil {
+			return uerr
+		}
+		if !reprobe {
+			return nil
+		}
+		// One transaction with the edit: a window where the new destination wears
+		// the old destination's badge is the whole thing being fixed.
+		if uerr = q.SetNotificationChannelVerified(c, db.SetNotificationChannelVerifiedParams{
+			ID: id, UserID: uid, Verified: false,
+		}); uerr != nil {
+			return uerr
+		}
+		updated.Verified = false
+		return nil
 	})
 	if err != nil {
 		fail(c, err)
