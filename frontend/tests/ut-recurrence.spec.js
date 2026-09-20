@@ -158,8 +158,27 @@ describe('occurrenceKeys', () => {
     expect(occurrenceKeys({ freq: 'daily' }, null).size).toBe(0)
   })
 
-  it('custom returns exactly the listed dates', () => {
-    const keys = occurrenceKeys({ freq: 'custom', dates: ['2026-01-01', '2026-02-02'] }, Date.now())
+  it('custom returns the listed dates still ahead of the due one', () => {
+    const from = new Date(2026, 0, 1, 9).getTime()
+    const keys = occurrenceKeys({ freq: 'custom', dates: ['2026-01-01', '2026-02-02'] }, from)
+    expect([...keys].sort()).toEqual(['2026-01-01', '2026-02-02'])
+  })
+
+  it('custom drops the dates the series has already walked past', () => {
+    // This used to hand the whole picked list back whatever the due date was —
+    // "upcoming occurrences" that had already happened (#2932). The editor shows
+    // the picked list under its own mark.
+    const from = new Date(2026, 1, 2, 9).getTime()
+    const keys = occurrenceKeys({ freq: 'custom', dates: ['2026-01-01', '2026-02-02'] }, from)
+    expect([...keys].sort()).toEqual(['2026-02-02'])
+  })
+
+  it('a "once" custom rule stops after the single date the server will fire', () => {
+    const from = new Date(2026, 0, 1, 9).getTime()
+    const keys = occurrenceKeys(
+      { freq: 'custom', once: true, dates: ['2026-01-01', '2026-02-02', '2026-03-03'] },
+      from,
+    )
     expect([...keys].sort()).toEqual(['2026-01-01', '2026-02-02'])
   })
 

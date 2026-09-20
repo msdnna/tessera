@@ -215,13 +215,17 @@ export function nextOccurrence(rule, from) {
 // occurrences returns up to `n` date keys (YYYY-MM-DD) of upcoming occurrences,
 // starting at `fromTs` itself — for highlighting the calendar. A one-off rule
 // (`once`) shows just the current due + the single next occurrence.
+//
+// A custom rule walks its date list through the same loop as every other freq,
+// and for the same reason: `once` is offered for custom rules too, and the server
+// then fires the first date past the due one and drops the rule. Handing the whole
+// picked list back here promised firings that were never going to happen — and lit
+// up the dates the series had already walked past on top of that (#2932). The
+// picked list is the *editor's* business to show; this function only answers
+// "which days will fire".
 export function occurrenceKeys(rule, fromTs, n = 24) {
   const keys = new Set()
   if (!fromTs || !rule || !rule.freq) return keys
-  if (rule.freq === 'custom') {
-    for (const s of rule.dates || []) keys.add(s)
-    return keys
-  }
   const limit = rule.once ? 1 : n
   let cur = new Date(fromTs)
   keys.add(dayKey(cur))

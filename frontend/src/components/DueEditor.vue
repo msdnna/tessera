@@ -263,6 +263,12 @@ const deadTriggerColumn = computed(() =>
 const occKeys = computed(() =>
   deadTriggerColumn.value ? new Set() : occurrenceKeys(previewRule.value, localDue.value, 24),
 )
+// The custom date list is picked in this very grid, so the picked days have to
+// stay visible — but being on the list is not the same claim as `occ`, which says
+// the task will fire that day. They part company for the dates the series has
+// already walked past, and for everything beyond the single occurrence a one-off
+// rule («Повторять всегда» off) has left (#2932).
+const pickedKeys = computed(() => (freq.value === 'custom' ? new Set(dates.value) : new Set()))
 
 function onDayClick(d) {
   // Custom-recurrence date-picking only applies to the due date.
@@ -605,6 +611,11 @@ const dueRepeatOpts = computed(() => [
               endpt: dayKey(d) === altKey && dayKey(d) !== selectedKey,
               range: inRange(d) && dayKey(d) !== selectedKey && dayKey(d) !== altKey,
               occ: dayKey(d) !== selectedKey && dayKey(d) !== altKey && occKeys.has(dayKey(d)),
+              pick:
+                dayKey(d) !== selectedKey &&
+                dayKey(d) !== altKey &&
+                !occKeys.has(dayKey(d)) &&
+                pickedKeys.has(dayKey(d)),
               today: dayKey(d) === todayKey,
             }"
             @click="onDayClick(d)"
@@ -868,6 +879,13 @@ const dueRepeatOpts = computed(() => [
   background: color-mix(in srgb, var(--t-primary) 16%, transparent);
   color: var(--t-primary);
   font-weight: 500;
+}
+/* a day on the custom list that isn't an upcoming occurrence: already past, or
+   past the end of a one-off rule — picked, but nothing will fire there, so it gets
+   an outline instead of the filled tint `occ` uses to promise a firing */
+.de-day.pick {
+  color: var(--t-text2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t-primary) 35%, transparent);
 }
 /* the span between start and due */
 .de-day.range {
