@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -74,6 +75,23 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 	if req.DueRepeatMinutes < 0 {
 		req.DueRepeatMinutes = 0
 	}
+	// The window is read in this zone, and quietWindow resolves it with
+	// time.LoadLocation — a name it cannot resolve leaves UTC in place without a
+	// word (pinned by TestQuietWindowUnknownZoneSilentlyMeansUTC). Stored
+	// unvalidated it makes the feature lie in a way both clients corroborate: the
+	// PUT answers 200 and echoes the string, so the screens print the zone the
+	// user picked while the server silences a window shifted by their whole
+	// offset. Refused at the door instead — a rejected save is visible, a night
+	// spent unsilenced is not. Empty stays legal: it is the documented "evaluate
+	// in UTC" value and the default for a user who never customised. Checked even
+	// with quiet hours off, so a bad zone cannot lie in wait for the switch.
+	tz := strings.TrimSpace(req.QuietTz)
+	if tz != "" {
+		if _, err := time.LoadLocation(tz); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "неизвестный часовой пояс: " + tz})
+			return
+		}
+	}
 	p, err := h.q.UpsertNotificationPrefs(c, db.UpsertNotificationPrefsParams{
 		UserID: middleware.CurrentUser(c), DueEnabled: req.DueEnabled,
 		DueLeadMinutes: req.DueLeadMinutes, DueRepeatMinutes: req.DueRepeatMinutes,
@@ -81,7 +99,7 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 		QuietEnabled:      req.QuietEnabled,
 		QuietStartMinutes: clampMinuteOfDay(req.QuietStartMinutes),
 		QuietEndMinutes:   clampMinuteOfDay(req.QuietEndMinutes),
-		QuietTz:           strings.TrimSpace(req.QuietTz),
+		QuietTz:           tz,
 		DigestMinutes:     max(0, req.DigestMinutes),
 	})
 	if err != nil {
