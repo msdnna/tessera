@@ -311,6 +311,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 		}
 	}
 	h.carryDueNotify(ctx, src, clone.ID)
+	h.carryTaskPins(ctx, src, clone.ID)
 	// The step the parent's due date took — each item's own window rides along
 	// so the duplicate's checklist isn't born pinned to the previous occurrence.
 	// Measured on the rule's calendar, for the reason shiftStart gives.
@@ -400,6 +401,7 @@ func (h *API) cloneChecklist(
 			}
 		}
 		h.carryDueNotify(ctx, s, sub.ID)
+		h.carryTaskPins(ctx, s, sub.ID)
 		h.cloneChecklist(ctx, s, sub, columnID, rule, step, wsID, seen)
 	}
 }
@@ -427,6 +429,44 @@ func (h *API) carryDueNotify(ctx context.Context, src db.Task, dstID uuid.UUID) 
 		DueRepeatMinutes: src.DueRepeatMinutes, DueNotifyEnabled: src.DueNotifyEnabled,
 	})
 	soft(ctx, "SetTaskDueNotify", err)
+}
+
+// carryTaskPins copies where a task was pinned — its stage and its place on the
+// Eisenhower matrix — onto the occurrence cloned from it.
+//
+// Both are plain columns on `tasks` that CreateTask does not take, so the
+// duplicate is born with milestone_id and eisenhower_quadrant NULL, while the
+// reschedule branch keeps them for free (UpdateTask names neither). Same shape as
+// carryDueNotify above, and the same conclusion: what a person pinned has to
+// survive the repeat.
+//
+// The stage is the one that hurts. ListWorkspaceMilestones rolls a milestone up
+// over `tasks t ON t.milestone_id = m.id` — task_count, done_count, Σ estimate —
+// and the board can be scoped to one stage, so a repeating task pinned to a
+// sprint dropped out of both the moment it was first ticked: the progress bar
+// lost a task and the scoped board stopped listing it, while the card stood on
+// the unscoped board showing «Не задан» where the stage had been. The matrix
+// placement went the same way — a card deliberately dragged into "important, not
+// urgent" fell back to the derived quadrant, every occurrence (#2932).
+//
+// Neither is written when the source has none: NULL means "no stage" and "derive
+// the quadrant from priority + due date", and both are the right answer to copy.
+//
+// The milestone needs no workspace check here (applyMilestone's concern): the
+// clone is born on the source's own board, so a stage the source could hold is
+// one the clone can.
+func (h *API) carryTaskPins(ctx context.Context, src db.Task, dstID uuid.UUID) {
+	if src.MilestoneID != nil {
+		soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{
+			ID: dstID, MilestoneID: src.MilestoneID,
+		}))
+	}
+	if src.EisenhowerQuadrant != nil {
+		_, err := h.q.SetTaskEisenhower(ctx, db.SetTaskEisenhowerParams{
+			ID: dstID, EisenhowerQuadrant: src.EisenhowerQuadrant,
+		})
+		soft(ctx, "SetTaskEisenhower", err)
+	}
 }
 
 // RunRecurrenceWorker drives schedule-triggered recurrences: tasks whose rule
