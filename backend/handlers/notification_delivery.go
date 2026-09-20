@@ -174,6 +174,8 @@ const notifyTurnedOff = "адресат отключил уведомления 
 const (
 	dueTaskClosed   = "задача закрыта"
 	dueTaskArchived = "задача убрана в архив"
+	dueDateCleared  = "у задачи больше нет срока"
+	dueDateMoved    = "срок отодвинули, до него ещё далеко"
 )
 
 // deliveryStillAllowed re-asks, at send time, the questions that were answered
@@ -257,7 +259,11 @@ func (h *API) deliveryStillWanted(ctx context.Context, n db.Notification) error 
 		wanted = p.DueEnabled
 		if n.TaskID != nil {
 			if t, terr := h.q.GetTask(ctx, *n.TaskID); terr == nil {
-				if err := dueStillWorthWarningAbout(t); err != nil {
+				lead := p.DueLeadMinutes
+				if t.DueLeadMinutes != nil {
+					lead = *t.DueLeadMinutes
+				}
+				if err := dueStillWorthWarningAbout(t, lead, time.Now()); err != nil {
 					return err
 				}
 				if t.DueNotifyEnabled != nil {
@@ -272,10 +278,12 @@ func (h *API) deliveryStillWanted(ctx context.Context, n db.Notification) error 
 	return nil
 }
 
-// dueStillWorthWarningAbout re-applies the scanner's own gate to the task a held
-// due-date warning is about: ListDueTasksForScan selects `completed_at IS NULL
-// AND archived_at IS NULL`, so a closed or archived card is one the scanner would
-// not warn about at all.
+// dueStillWorthWarningAbout re-applies the scanner's own gates to the task a held
+// due-date warning is about. There are three, and scanDueTasks asks all three:
+// ListDueTasksForScan selects `completed_at IS NULL AND archived_at IS NULL`, the
+// loop skips a task with no due date at all, and dueShouldFire refuses anything
+// still outside the lead window `now >= due − lead`. A card failing any of them is
+// one the scanner would not warn about.
 //
 // It asked once, when the notification was created, and the outbox row it led to
 // is not sent then — quiet hours hold it to the end of the window, a whole night.
@@ -285,17 +293,37 @@ func (h *API) deliveryStillWanted(ctx context.Context, n db.Notification) error 
 // задачи подходит" about a task closed the evening before, from a board where it
 // is no longer even visible.
 //
+// The deadline itself is the third gate and the one the user is likeliest to
+// move: "срок подходит" is not a record of an event, it is a claim about the
+// present, and it stops being true the moment the deadline does. Dropped
+// overnight, it arrives about a task that has no deadline at all; pushed out a
+// week, about one nobody needs reminding of yet — and because a moved due date
+// re-arms the per-(task,user) state, the correct warning still comes later, in
+// its own time. The stale message does not replace the right one, it is added to
+// it. Only "further away than the warning reaches" refuses: a deadline pulled in,
+// or merely nudged while still inside the lead window, is approaching, which is
+// all the message ever claimed.
+//
 // Only the state at send time counts — a card closed and reopened overnight is
 // open, and its warning still goes out. The check is scoped to the due kind
 // (deliveryStillWanted's own guard): a closed task still has a discussion, and
 // answering "no" for a comment or a mention on it would turn a checkbox into a
 // blackhole for the whole card.
-func dueStillWorthWarningAbout(t db.Task) error {
+func dueStillWorthWarningAbout(t db.Task, lead int32, now time.Time) error {
 	if t.CompletedAt != nil {
 		return notify.Permanent(errors.New(dueTaskClosed))
 	}
 	if t.ArchivedAt != nil {
 		return notify.Permanent(errors.New(dueTaskArchived))
+	}
+	if t.DueDate == nil {
+		return notify.Permanent(errors.New(dueDateCleared))
+	}
+	// Same arithmetic as dueShouldFire, clamp included: the stored lead may hold a
+	// value no client offers, and `time.Duration(x) * time.Minute` overflows to a
+	// NEGATIVE window from 153722868 minutes up (see maxDueMinutes).
+	if now.Before(t.DueDate.Add(-time.Duration(clampDueMinutes(lead)) * time.Minute)) {
+		return notify.Permanent(errors.New(dueDateMoved))
 	}
 	return nil
 }
