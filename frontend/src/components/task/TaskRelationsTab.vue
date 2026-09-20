@@ -15,6 +15,10 @@ const props = defineProps({
   taskId: { type: String, default: null },
   relations: { type: Array, default: () => [] },
   wsId: { type: String, default: null },
+  // The modal opened from the archive is read-only: the links are there to be
+  // followed, not rewired. Without this the ✕ and the "link" form stayed live on
+  // an archived task, and both went through to the API (#2932).
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:relations', 'changed', 'open-related'])
 
@@ -144,7 +148,7 @@ function resolveTarget() {
 }
 
 async function addRelation() {
-  if (linking.value) return
+  if (props.readonly || linking.value) return
   linking.value = true
   try {
     // A typed title is resolved against the picker's list, and Enter can beat the
@@ -181,6 +185,7 @@ async function addRelation() {
   }
 }
 async function removeRelation(id) {
+  if (props.readonly) return
   const tid = props.taskId
   try {
     await tasksApi.removeRelation(id)
@@ -212,6 +217,7 @@ async function removeRelation(id) {
         <span class="rel-title">{{ r.related_title }}</span>
       </button>
       <n-popconfirm
+        v-if="!readonly"
         :positive-button-props="{ type: 'error' }"
         :positive-text="t('common.action.delete')"
         @positive-click="removeRelation(r.id)"
@@ -230,7 +236,7 @@ async function removeRelation(id) {
       :icon="GitMergeOutline"
       :text="t('task.relations.empty')"
     />
-    <div class="rel-add">
+    <div v-if="!readonly" class="rel-add">
       <n-select
         v-model:value="relKind"
         :options="relKindOptions"

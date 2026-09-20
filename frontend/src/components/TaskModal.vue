@@ -1927,6 +1927,7 @@ async function onSubtaskChanged() {
                   v-model:relations="relations"
                   :task-id="taskId"
                   :ws-id="wsId"
+                  :readonly="readonly"
                   @changed="emit('changed')"
                   @open-related="openRelated"
                 />
@@ -1949,6 +1950,7 @@ async function onSubtaskChanged() {
                 <TaskFilesTab
                   v-model:attachments="attachments"
                   :task-id="taskId"
+                  :readonly="readonly"
                   @changed="emit('changed')"
                 />
               </n-tab-pane>
@@ -1974,6 +1976,7 @@ async function onSubtaskChanged() {
                 <TaskDocumentsTab
                   v-model:links="docLinks"
                   :task-id="taskId"
+                  :readonly="readonly"
                   @open-document="openDocument"
                 />
               </n-tab-pane>

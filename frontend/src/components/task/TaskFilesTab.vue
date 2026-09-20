@@ -16,6 +16,10 @@ import EmptyState from '../EmptyState.vue'
 const props = defineProps({
   taskId: { type: String, default: null },
   attachments: { type: Array, default: () => [] },
+  // The modal opened from the archive is read-only. Downloading stays — that is
+  // most of why an archived task is opened at all — but uploading a file onto it
+  // and deleting one off it do not (#2932).
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:attachments', 'changed'])
 
@@ -28,9 +32,11 @@ const uploading = ref(false)
 // separator — so the whole label comes from utils/upload, where it can be
 // pinned with a test (#2932).
 function pickFile() {
+  if (props.readonly) return
   fileInput.value?.click?.()
 }
 async function onFileChosen(ev) {
+  if (props.readonly) return
   const file = ev.target.files?.[0]
   if (!file) return
   // Say what the server would say, before spending the upload on it. Its own
@@ -78,6 +84,7 @@ async function downloadAttachment(att) {
   }
 }
 async function deleteAttachment(id) {
+  if (props.readonly) return
   const tid = props.taskId
   try {
     await tasksApi.removeAttachment(id)
@@ -105,6 +112,7 @@ async function deleteAttachment(id) {
         <n-icon :component="DownloadOutline" />
       </button>
       <n-popconfirm
+        v-if="!readonly"
         :positive-button-props="{ type: 'error' }"
         :positive-text="t('common.action.delete')"
         @positive-click="deleteAttachment(a.id)"
@@ -123,8 +131,8 @@ async function deleteAttachment(id) {
       :icon="AttachOutline"
       :text="t('task.files.empty')"
     />
-    <input ref="fileInput" type="file" hidden @change="onFileChosen" />
-    <n-button size="small" :loading="uploading" @click="pickFile">
+    <input v-if="!readonly" ref="fileInput" type="file" hidden @change="onFileChosen" />
+    <n-button v-if="!readonly" size="small" :loading="uploading" @click="pickFile">
       <template #icon><n-icon :component="AttachOutline" /></template>
       {{ t('task.files.attach') }}
     </n-button>

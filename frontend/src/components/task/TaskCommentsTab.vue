@@ -416,6 +416,14 @@ function reportCommands(summary) {
     message.warning(`/${err.key}: ${err.error}`)
   }
 }
+// Whether this comment's own controls (✎ / ✕ / its checkboxes) are live. Author
+// alone is not enough: the modal opened from the archive is read-only, and the
+// archived task's thread is there to be read. Without the readonly half, "✕"
+// deleted for real out of the archive and "✎" opened an editor whose Save is
+// already guarded — so the typed text vanished without a word (#2932).
+function ownLive(c) {
+  return !props.readonly && !!c.author_id && c.author_id === meId.value
+}
 function startEditComment(c) {
   editingCommentId.value = c.id
   editingCommentBody.value = c.body
@@ -454,6 +462,7 @@ async function saveComment() {
 // the thread shatters on screen, which is the outcome the promotion exists to
 // avoid. Android already re-reads here (TaskDetailViewModel.deleteComment).
 async function deleteComment(id) {
+  if (props.readonly) return
   const tid = props.taskId
   try {
     await tasksApi.removeComment(id)
@@ -480,6 +489,7 @@ async function deleteComment(id) {
 // Toggle a task checkbox inside a rendered (own) comment → rewrite its markdown
 // and persist. Optimistic; reverts on failure.
 async function onCommentCheck(c, i) {
+  if (props.readonly) return
   const prev = c.body
   const next = toggleTaskMarker(prev, i)
   if (next === prev) return
@@ -517,7 +527,7 @@ async function onCommentCheck(c, i) {
                   · GitLab
                 </span>
                 <span class="c-when">{{ fmtWhen(th.root.created_at, formatters) }}</span>
-                <span v-if="th.root.author_id === meId" class="c-acts">
+                <span v-if="ownLive(th.root)" class="c-acts">
                   <button
                     class="c-act"
                     :title="t('common.action.edit')"
@@ -564,7 +574,7 @@ async function onCommentCheck(c, i) {
                 :members="mentionItems"
                 mention-cards
                 task-refs
-                :interactive="th.root.author_id === meId"
+                :interactive="ownLive(th.root)"
                 @toggle="onCommentCheck(th.root, $event)"
               />
               <div class="c-thread-acts">
@@ -613,7 +623,7 @@ async function onCommentCheck(c, i) {
                       }}</span>
                       <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
                       <span class="c-when">{{ fmtWhen(r.created_at, formatters) }}</span>
-                      <span v-if="r.author_id === meId" class="c-acts">
+                      <span v-if="ownLive(r)" class="c-acts">
                         <button
                           class="c-act"
                           :title="t('common.action.edit')"
@@ -660,7 +670,7 @@ async function onCommentCheck(c, i) {
                       :members="mentionItems"
                       mention-cards
                       task-refs
-                      :interactive="r.author_id === meId"
+                      :interactive="ownLive(r)"
                       @toggle="onCommentCheck(r, $event)"
                     />
                     <div v-if="!readonly" class="c-thread-acts">
