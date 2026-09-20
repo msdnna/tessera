@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -66,7 +67,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 
 	// Reschedule the same task.
 	updated, err := h.q.UpdateTask(ctx, db.UpdateTaskParams{
-		ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
+		ID: t.ID, Title: t.Title, Description: untickDescription(t.Description), Priority: t.Priority,
 		DueDate: &next, CompletedAt: nil, Recurrence: carry, StartDate: nextStart, Estimate: t.Estimate,
 	})
 	if err != nil {
@@ -172,6 +173,16 @@ func (h *API) carryChecklistFrom(
 			continue
 		}
 		seen[s.ID] = true
+		// The item's own description gets the same reset the card's does — an
+		// item is a task in its own right and holds a description of its own.
+		// One statement per item that actually has a ticked box: the three bulk
+		// ones above cannot do it (a fence has to be read line by line), and a
+		// routine's checklist is a handful of rows.
+		if fresh := untickDescription(s.Description); fresh != s.Description {
+			soft(ctx, "SetTaskDescription", h.q.SetTaskDescription(ctx, db.SetTaskDescriptionParams{
+				ID: s.ID, Description: fresh,
+			}))
+		}
 		h.carryChecklistFrom(ctx, s.ID, target, done, zone, shift, seen)
 	}
 }
@@ -291,7 +302,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	}
 	clone, err := h.q.CreateTask(ctx, db.CreateTaskParams{
 		BoardID: src.BoardID, ColumnID: columnID, ParentID: src.ParentID,
-		Title: src.Title, Description: src.Description, Priority: src.Priority,
+		Title: src.Title, Description: untickDescription(src.Description), Priority: src.Priority,
 		DueDate: &due, StartDate: start, Estimate: src.Estimate, Position: clonePos, CreatedBy: src.CreatedBy, Number: &num,
 	})
 	if err != nil {
@@ -390,7 +401,7 @@ func (h *API) cloneChecklist(
 		}
 		sub, cerr := h.q.CreateTask(ctx, db.CreateTaskParams{
 			BoardID: src.BoardID, ColumnID: columnID, ParentID: &dst.ID,
-			Title: s.Title, Description: s.Description, Priority: s.Priority,
+			Title: s.Title, Description: untickDescription(s.Description), Priority: s.Priority,
 			DueDate: shiftBy(rule, s.DueDate, step), StartDate: shiftBy(rule, s.StartDate, step),
 			Estimate: s.Estimate, Position: pos, CreatedBy: src.CreatedBy, Number: &snum,
 		})
@@ -483,6 +494,62 @@ func (h *API) carryTaskPins(ctx context.Context, src db.Task, dstID uuid.UUID) {
 		})
 		soft(ctx, "SetTaskEisenhower", err)
 	}
+}
+
+// taskMarkerRe matches a GFM task-list marker that is ticked: the line's list
+// bullet, the bracket, and the x inside it. Mirrors the frontend's
+// TASK_MARKER_RE (utils/markdown.js) character for character, including the
+// blockquote prefix — «> - [x] …» is drawn with a real box — and the space the
+// bracket must be followed by, without which GFM renders literal text.
+var taskMarkerRe = regexp.MustCompile("^([ \t>]*(?:[-*+]|[0-9]+[.)])[ \t]+\\[)[xX](\\]([ \t]|$))")
+
+// fenceRe matches the opening or closing line of a fenced code block.
+var fenceRe = regexp.MustCompile("^[ \t]{0,3}(```|~~~)")
+
+// untickDescription hands a description to the next occurrence with its
+// checkboxes empty again.
+//
+// A description is the other place a routine's steps get written. RichContent
+// draws a real <input> for every GFM task item and a click rewrites the stored
+// markdown (toggleTaskMarker), so «- [ ] полить цветы» in the description of a
+// daily chore is the same checklist the subtasks are, written the cheap way.
+// Everything else about being half-done is undone on purpose when a task
+// recurs — completed_at cleared, ReopenSubtasks unticking every item at every
+// depth, LiftSubtasksFromColumn taking them out of «Готово» — and the
+// description was the one place it was not: from the second occurrence on the
+// list came back fully ticked, with no gesture to reset it short of editing the
+// markdown by hand every time (#2932). The spent occurrence keeps its ticks;
+// it is the record of what was done.
+//
+// A fenced block is skipped. «- [x] …» inside one is a code SAMPLE — drawn as
+// text, with no box — and a description that documents a checklist is exactly
+// where such a sample lives; toggleTaskMarker guards the same line from the
+// other side. Nothing else about the markdown is touched, and a description
+// with no boxes comes back byte for byte.
+func untickDescription(desc string) string {
+	if !strings.Contains(desc, "[") {
+		return desc
+	}
+	lines := strings.Split(desc, "\n")
+	inFence := false
+	changed := false
+	for i, line := range lines {
+		if fenceRe.MatchString(line) {
+			inFence = !inFence
+			continue
+		}
+		if inFence {
+			continue
+		}
+		if fresh := taskMarkerRe.ReplaceAllString(line, "$1 $2"); fresh != line {
+			lines[i] = fresh
+			changed = true
+		}
+	}
+	if !changed {
+		return desc
+	}
+	return strings.Join(lines, "\n")
 }
 
 // carryRelations hands a task's links — «связана с», «блокирует», «дублирует» —
