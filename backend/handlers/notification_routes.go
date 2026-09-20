@@ -261,7 +261,23 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 	for _, ch := range chans {
 		chByID[ch.ID] = ch
 	}
+	// A reminder tied to no task belongs to no workspace. Reminders are personal,
+	// and the workspace id on the row is carriage rather than scope:
+	// reminderScope stamps the user's first workspace so the notification is a
+	// valid row and reaches the socket, and it hands back a task id only when that
+	// workspace is genuinely the reminder's. Read as scope, the stamp lets a rule
+	// about a workspace claim an alarm clock that has nothing to do with it —
+	// "не беспокоить меня ничем из рабочего пространства" silences the user's own
+	// reminders, and the non-mute form sends them to the channel picked for work
+	// while the rule below never sees them. Usually the stamp lands on the personal
+	// workspace every account is created with, which hides this; a user who works
+	// only in a shared one and deletes the personal one moves the stamp there
+	// (#2932). Muting reminders as such is a matcher on the kind, which still
+	// applies — that is the knob for it.
 	ev := notify.Event{Kind: n.Kind, WorkspaceID: n.WorkspaceID}
+	if n.Kind == evReminder && n.TaskID == nil {
+		ev.WorkspaceID = uuid.Nil
+	}
 	for _, r := range routes {
 		if !r.Enabled {
 			continue
