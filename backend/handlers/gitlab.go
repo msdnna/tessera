@@ -1165,8 +1165,15 @@ func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claim
 		}
 		// Grouped parent → mirror its GitLab children as Tessera subtasks (under
 		// the parent's board/column; completion follows the child's own state).
-		if res.Group {
-			c, u, kidIIDs := r.mirrorChildren(ctx, childrenOf[issue.GlobalID], taskID, bc, col)
+		//
+		// Keyed off childrenOf rather than res.Group, which is the same question
+		// asked twice: fetchGroupedChildren fills it exactly for the issues it
+		// asked — grouped now, or grouped according to the link — and only when
+		// the answer had children in it. Whatever it CLAIMED has to be mirrored
+		// here, or the claim ("synced as a subtask under its parent") is a lie and
+		// the child is passed over by both halves of the pass.
+		if kids := childrenOf[issue.GlobalID]; len(kids) > 0 {
+			c, u, kidIIDs := r.mirrorChildren(ctx, kids, taskID, bc, col, childrenOf, map[string]bool{issue.GlobalID: true})
 			created += c
 			updated += u
 			syncedIIDs = append(syncedIIDs, kidIIDs...)
@@ -1181,8 +1188,27 @@ func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claim
 // parent's column rather than falling back to the default (#2819 — that fallback would
 // yank every statusless child to "К работе" on each pull). Completion follows the
 // column the child actually lands in, so `completed` and the column cannot disagree.
-func (r *syncRun) mirrorChildren(ctx context.Context, kids []gitlab.Issue, parentID uuid.UUID, bc *syncBoard, col db.BoardColumn) (created, updated int, syncedIIDs []int64) {
+//
+// Recurses, because a GitLab hierarchy is not one level deep and neither is a Tessera
+// one: an epic groups an issue that groups a task. fetchGroupedChildren asks EVERY
+// grouped issue of the run for its children, so a grandchild is claimed by the middle
+// issue and skipped by mirrorIssues — and this function, which mirrors that middle
+// issue, used to stop right there. Nobody mirrored the grandchild then: on a first
+// sync it got no task at all (and the delete-detection pass still saw its issue in the
+// fetch, so nothing reported it missing), and on an already-mirrored board its task
+// silently stopped being updated, every later run passing it over the same way.
+//
+// `visited` carries the GlobalIDs already placed on this branch, seeded with the root
+// parent. Nothing on the Tessera side could survive a ring (a subtask reachable from no
+// root is drawn nowhere), and GitLab's own hierarchy forbids one — but the children
+// come off the wire, and an unbounded descent over a ring is a hung sync worker rather
+// than a wrong board. The same reason TaskAncestorIDs dedups its walk.
+func (r *syncRun) mirrorChildren(ctx context.Context, kids []gitlab.Issue, parentID uuid.UUID, bc *syncBoard, col db.BoardColumn, childrenOf map[string][]gitlab.Issue, visited map[string]bool) (created, updated int, syncedIIDs []int64) {
 	for _, kid := range kids {
+		if visited[kid.GlobalID] {
+			continue
+		}
+		visited[kid.GlobalID] = true
 		kres := r.rules.Resolve(kid.Labels)
 		kcol, kdone := col, (*time.Time)(nil)
 		if kres.StatusSet || kid.State == "closed" {
@@ -1202,6 +1228,15 @@ func (r *syncRun) mirrorChildren(ctx context.Context, kids []gitlab.Issue, paren
 			created++
 		} else {
 			updated++
+		}
+		// The kid's own children, in the board and column IT landed in — the same
+		// placement rule one level down, so a grandchild with no status of its own
+		// stays with its parent instead of jumping to the epic's column.
+		if grandkids := childrenOf[kid.GlobalID]; len(grandkids) > 0 {
+			gc, gu, gIIDs := r.mirrorChildren(ctx, grandkids, ktid, bc, kcol, childrenOf, visited)
+			created += gc
+			updated += gu
+			syncedIIDs = append(syncedIIDs, gIIDs...)
 		}
 	}
 	return created, updated, syncedIIDs
