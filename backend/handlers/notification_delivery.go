@@ -167,6 +167,15 @@ const membershipEnded = "адресат больше не участник пр�
 // switched this kind of notification off between the enqueue and the send.
 const notifyTurnedOff = "адресат отключил уведомления этого типа"
 
+// dueTaskClosed / dueTaskArchived are what an outbox row's history shows when the
+// task a due-date warning is about stopped being one worth warning about between
+// the enqueue and the send. Two reasons rather than one: the gesture is different
+// and the history is where the user looks for which of them silenced the message.
+const (
+	dueTaskClosed   = "задача закрыта"
+	dueTaskArchived = "задача убрана в архив"
+)
+
 // deliveryStillAllowed re-asks, at send time, the questions that were answered
 // when the row was written, and reports a refusal as the error the outbox row
 // settles on: is the recipient still in the workspace, and do they still want
@@ -224,7 +233,9 @@ func (h *API) deliveryStillAllowed(ctx context.Context, n db.Notification) error
 // an assignment) has no such knob, and answering "no" for them would turn one
 // checkbox into a global blackhole. The per-task override wins over the user
 // default exactly as it does in scanDueTasks — same precedence, or the two places
-// would disagree about the same card.
+// would disagree about the same card. A due warning is asked one more question on
+// the way: whether its task is still one the scanner would warn about at all (see
+// dueStillWorthWarningAbout).
 //
 // A refusal is permanent: a switch left off does not come back between two
 // retries, and last_error is where the channel's history explains the gap. Unread
@@ -245,13 +256,46 @@ func (h *API) deliveryStillWanted(ctx context.Context, n db.Notification) error 
 	if n.Kind == kindDueSoon {
 		wanted = p.DueEnabled
 		if n.TaskID != nil {
-			if t, terr := h.q.GetTask(ctx, *n.TaskID); terr == nil && t.DueNotifyEnabled != nil {
-				wanted = *t.DueNotifyEnabled
+			if t, terr := h.q.GetTask(ctx, *n.TaskID); terr == nil {
+				if err := dueStillWorthWarningAbout(t); err != nil {
+					return err
+				}
+				if t.DueNotifyEnabled != nil {
+					wanted = *t.DueNotifyEnabled
+				}
 			}
 		}
 	}
 	if !wanted {
 		return notify.Permanent(errors.New(notifyTurnedOff))
+	}
+	return nil
+}
+
+// dueStillWorthWarningAbout re-applies the scanner's own gate to the task a held
+// due-date warning is about: ListDueTasksForScan selects `completed_at IS NULL
+// AND archived_at IS NULL`, so a closed or archived card is one the scanner would
+// not warn about at all.
+//
+// It asked once, when the notification was created, and the outbox row it led to
+// is not sent then — quiet hours hold it to the end of the window, a whole night.
+// What the user does inside that gap is exactly what the warning was sent to
+// provoke: they finish the task, or sweep the card into the archive. Nothing
+// between there and the transport looked again, so the morning delivered "срок
+// задачи подходит" about a task closed the evening before, from a board where it
+// is no longer even visible.
+//
+// Only the state at send time counts — a card closed and reopened overnight is
+// open, and its warning still goes out. The check is scoped to the due kind
+// (deliveryStillWanted's own guard): a closed task still has a discussion, and
+// answering "no" for a comment or a mention on it would turn a checkbox into a
+// blackhole for the whole card.
+func dueStillWorthWarningAbout(t db.Task) error {
+	if t.CompletedAt != nil {
+		return notify.Permanent(errors.New(dueTaskClosed))
+	}
+	if t.ArchivedAt != nil {
+		return notify.Permanent(errors.New(dueTaskArchived))
 	}
 	return nil
 }

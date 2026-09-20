@@ -214,9 +214,17 @@ func heldDelivery(t *testing.T, userID, kind string) string {
 }
 
 // mkOverdueTask создаёт просроченную задачу БЕЗ пер-задачных настроек срока:
-// такая наследует пользовательский тумблер, который тест и выключает. Сканер
-// харнесса на это время придержан локом.
+// такая наследует пользовательский тумблер, который тест и выключает.
 func mkOverdueTask(t *testing.T, c *client) string {
+	t.Helper()
+	_, id := mkOverdueTaskIn(t, c)
+	return id
+}
+
+// mkOverdueTaskIn — то же, но отдаёт и стек, в котором задача живёт: тесту про
+// закрытую карточку нужен её workspace. Сканер харнесса на время создания
+// придержан локом.
+func mkOverdueTaskIn(t *testing.T, c *client) (stack, string) {
 	t.Helper()
 	release := holdScannerLock(t)
 	defer release()
@@ -226,7 +234,7 @@ func mkOverdueTask(t *testing.T, c *client) string {
 	c.expect(t, c.patch("/tasks/"+id, map[string]any{
 		"due_date": time.Now().Add(-30 * time.Minute).Format(time.RFC3339),
 	}), http.StatusOK)
-	return id
+	return s, id
 }
 
 // morningCame отматывает срок отправки в прошлое: харнесс не умеет переводить
