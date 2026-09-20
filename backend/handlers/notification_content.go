@@ -43,6 +43,16 @@ const (
 // and its id travels in the payload (see msgConferenceInvited).
 const kindConferenceInvite = "conference_invite"
 
+// The routing kinds of the two notifications the user has a switch for:
+// "уведомления о сроке" (also a per-task override) and "напоминания". Stored on
+// the notification row and read by timedKinds and deliveryStillWanted. Note these
+// are the stored kinds, not the payload event names above — evDueSoon is
+// "task_due_soon" while the row says "due_soon".
+const (
+	kindDueSoon  = "due_soon"
+	kindReminder = "reminder"
+)
+
 // notifyMsg is one notification's content: the legacy pre-rendered sentence and
 // the structured payload. Build one with the msg* helpers below — never write a
 // payload inline at a call site, or the event names drift out of this file.

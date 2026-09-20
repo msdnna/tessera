@@ -386,8 +386,8 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 // counted backwards from the deadline ("warn me 15 minutes before"); a
 // conference invitation may point at a call that is live right now.
 var timedKinds = map[string]bool{
-	"reminder":           true,
-	"due_soon":           true,
+	kindReminder:         true,
+	kindDueSoon:          true,
 	kindConferenceInvite: true,
 }
 

@@ -163,8 +163,14 @@ func (h *API) notifiableInWorkspace(ctx context.Context, userID, wsID uuid.UUID)
 // the workspace between the enqueue and the send.
 const membershipEnded = "адресат больше не участник пространства"
 
-// deliveryStillAllowed re-asks the membership question at send time, and reports
-// a refusal as the error the outbox row settles on.
+// notifyTurnedOff is what an outbox row's history shows when the recipient
+// switched this kind of notification off between the enqueue and the send.
+const notifyTurnedOff = "адресат отключил уведомления этого типа"
+
+// deliveryStillAllowed re-asks, at send time, the questions that were answered
+// when the row was written, and reports a refusal as the error the outbox row
+// settles on: is the recipient still in the workspace, and do they still want
+// this kind of notification at all.
 //
 // deliverNotification already gated on membership — but it gated hours earlier.
 // An outbox row is not sent when it is written: quiet hours hold it until the
@@ -183,6 +189,9 @@ const membershipEnded = "адресат больше не участник пр�
 // notify.Permanent) lets the row retry instead of being dropped on a database
 // hiccup.
 func (h *API) deliveryStillAllowed(ctx context.Context, n db.Notification) error {
+	if err := h.deliveryStillWanted(ctx, n); err != nil {
+		return err
+	}
 	if n.WorkspaceID == nil {
 		return nil
 	}
@@ -195,6 +204,56 @@ func (h *API) deliveryStillAllowed(ctx context.Context, n db.Notification) error
 	default:
 		return fmt.Errorf("membership check: %w", err)
 	}
+}
+
+// deliveryStillWanted re-asks the recipient's own switch for the kinds that have
+// one: "уведомления о сроке" (the user default, or the per-task override the card
+// carries) and "напоминания".
+//
+// The switch is read once, in scanDueTasks / scanReminders, when the notification
+// is created. The outbox row it leads to is not sent then: quiet hours hold it to
+// the end of the window — a whole night — and a digest to the end of its slot.
+// Inside that gap the user gets to change their mind, and the gesture that says
+// so is exactly this switch: turning the type off at 23:30, or clearing the
+// due-date checkbox on the very card the held message is about. Nothing between
+// there and the transport looked again, so the morning delivered a warning about
+// a deadline the user had already told the server to stop warning about, from a
+// screen still showing the switch turned off.
+//
+// Only kinds that name a switch are asked: everything else (a mention, a comment,
+// an assignment) has no such knob, and answering "no" for them would turn one
+// checkbox into a global blackhole. The per-task override wins over the user
+// default exactly as it does in scanDueTasks — same precedence, or the two places
+// would disagree about the same card.
+//
+// A refusal is permanent: a switch left off does not come back between two
+// retries, and last_error is where the channel's history explains the gap. Unread
+// prefs fall back to the defaults (both on), and an unreadable task leaves the
+// user default in place: a database hiccup must not drop a message the user never
+// refused.
+func (h *API) deliveryStillWanted(ctx context.Context, n db.Notification) error {
+	// The kind first, the prefs after: every other notification has no switch to
+	// ask about, and the drain already reads four rows per delivery.
+	if n.Kind != kindDueSoon && n.Kind != kindReminder {
+		return nil
+	}
+	p, perr := h.q.GetNotificationPrefs(ctx, n.UserID)
+	if perr != nil {
+		p = defaultPrefs(n.UserID)
+	}
+	wanted := p.ReminderEnabled
+	if n.Kind == kindDueSoon {
+		wanted = p.DueEnabled
+		if n.TaskID != nil {
+			if t, terr := h.q.GetTask(ctx, *n.TaskID); terr == nil && t.DueNotifyEnabled != nil {
+				wanted = *t.DueNotifyEnabled
+			}
+		}
+	}
+	if !wanted {
+		return notify.Permanent(errors.New(notifyTurnedOff))
+	}
+	return nil
 }
 
 const (
