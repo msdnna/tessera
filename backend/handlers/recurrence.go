@@ -402,6 +402,7 @@ func (h *API) cloneChecklist(
 		}
 		h.carryDueNotify(ctx, s, sub.ID)
 		h.carryTaskPins(ctx, s, sub.ID)
+		sub = h.carryItemRecurrence(ctx, s, sub)
 		h.cloneChecklist(ctx, s, sub, columnID, rule, step, wsID, seen)
 	}
 }
@@ -467,6 +468,40 @@ func (h *API) carryTaskPins(ctx context.Context, src db.Task, dstID uuid.UUID) {
 		})
 		soft(ctx, "SetTaskEisenhower", err)
 	}
+}
+
+// carryItemRecurrence copies a checklist item's OWN repeat rule onto the copy of
+// it in the next occurrence, and returns that copy (the rule lives on `tasks`, so
+// writing it produces a newer row).
+//
+// A subtask may carry a rule of its own: the DueEditor is the same popover
+// whether the modal was opened on a card or on one of its items, which is the
+// very reason cloneRecurringTask rebuilds a recurring item under the same parent
+// instead of as a card. So a weekly report whose step «свериться с бухгалтерией»
+// repeats monthly is an ordinary plan.
+//
+// The parent's rule is put back on the duplicate by hand (setTaskRecurrence, via
+// `carry`) because CreateTask takes no recurrence — each item's rule needs the
+// same treatment and was not getting it, while the reschedule branch keeps every
+// item's rule for free (it edits them in place, and none of ReopenSubtasks /
+// LiftSubtasksFromColumn / ShiftSubtaskWindow names the column). From the second
+// occurrence on the step simply stopped repeating, with nothing said: the new
+// card's popover reads «Не повторять», and the only copy still holding the rule
+// is the spent occurrence standing in «Готово» (#2932).
+//
+// Copied verbatim, one-shots included — a `once` item is one the reschedule
+// branch also hands forward until the item itself is ticked. Nothing is written
+// when the source has no rule: an item that never repeated must not start.
+func (h *API) carryItemRecurrence(ctx context.Context, src, dst db.Task) db.Task {
+	if src.Recurrence == nil {
+		return dst
+	}
+	updated, err := h.setTaskRecurrence(ctx, dst, src.Recurrence)
+	if err != nil {
+		soft(ctx, "carryItemRecurrence", err)
+		return dst
+	}
+	return updated
 }
 
 // RunRecurrenceWorker drives schedule-triggered recurrences: tasks whose rule
