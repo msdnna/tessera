@@ -1212,16 +1212,14 @@ const estCfg = computed(() => wsStore.estimationFor(board.value?.project_id))
 // once per list/filter change rather than per render — each entry walks the whole
 // subtask tree.
 //
-// Neither map alone is enough. The filtered one is keyed by TOP-LEVEL tasks only
-// (see utils/taskFilter), so walking it would stop one level down and undercount
-// a deeper tree; the raw one knows every level but ignores the composer, so a
-// filter-narrowed parent would still report all of its children. Merged, the
-// narrowed list wins where the filter produced one and the raw map supplies the
-// levels below it.
-const countSubtaskMap = computed(() => ({
-  ...subtasksByParent.value,
-  ...filteredSubtasksByParent.value,
-}))
+// Counted off the FILTERED map, which now carries every depth (#2932). It used to
+// be keyed by top-level tasks only, so the raw map had to be merged under it to
+// supply the levels below — and that merge is what made the number disagree with
+// the board: under a filter a narrowed parent reported its matching children, but
+// their children came back unfiltered, so the total counted work the composer had
+// just hidden. The filtered map is self-contained now: a branch it keeps, it keeps
+// whole.
+const countSubtaskMap = computed(() => filteredSubtasksByParent.value)
 const countsByCol = computed(() => {
   const out = {}
   for (const [key, arr] of Object.entries(lists.value)) {

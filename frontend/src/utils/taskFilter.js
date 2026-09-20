@@ -7,6 +7,13 @@
 // invisible under an "assignee = me" filter. When only a subtask matched, the
 // parent's on-card subtask list is narrowed to the matching children. The task
 // modal is untouched and always lists every subtask.
+//
+// That rule holds at EVERY depth (#2932). Subtasks are a tree and the board loads
+// all of it in one flat parent_id → children map (ListBoardSubtasksWithMeta returns
+// every task with a parent_id, not just the first level), but the walk here used to
+// read direct children only. A grandchild assigned to you therefore took its whole
+// branch off the board — no card for its parent, so no way to reach it at all,
+// which is the very thing #2602 was about, one level further down.
 
 import { matchesAssignee, matchesAuthor } from './boardFilters'
 import { defaultFormatters, epochDay } from './format'
@@ -193,12 +200,61 @@ export function hasAnyFacets(filters) {
   return hasSubtaskFacets(filters) || !!filters.statuses?.length
 }
 
+// Copy the branch under `id` into `out` untouched, at every depth — what a task
+// that matched by itself takes with it: its children are not the reason it is
+// visible, so none of them is hidden.
+//
+// `seen` is every id already placed on this walk. The child map is flat and comes
+// from the server, so a parent chain that looped back on itself would otherwise
+// recurse forever — countWithSubtasks guards the same map for the same reason.
+function emitSubtree(id, byParent, out, seen) {
+  const subs = byParent[id]
+  if (!subs?.length) return
+  out[id] = subs
+  for (const s of subs) {
+    if (!s?.id || seen.has(s.id)) continue
+    seen.add(s.id)
+    emitSubtree(s.id, byParent, out, seen)
+  }
+}
+
+// Does this subtask — or anything under it — survive the filter? Writes the child
+// lists it keeps into `out.subs` and records every level it had to narrow in
+// `out.narrowed`, then answers whether its parent may count it as a hit.
+//
+// Same two branches as a top-level card: matched by itself → the whole branch
+// below stays; matched only through a descendant → the child list is narrowed to
+// the surviving ones, so what is drawn is the path down to the match and nothing
+// else. Nothing is written when the answer is false, so a dead branch leaves no
+// trace in the result.
+function keepSubtree(node, byParent, ctx, out, seen) {
+  if (!node?.id || seen.has(node.id)) return false
+  seen.add(node.id)
+  const opts = {
+    facets: SUBTASK_FACETS,
+    now: ctx.now,
+    glLoginByUserId: ctx.glLoginByUserId,
+    formatters: ctx.formatters,
+  }
+  if (matchesTask(node, ctx.filters, opts)) {
+    emitSubtree(node.id, byParent, out.subs, seen)
+    return true
+  }
+  const subs = byParent[node.id] || []
+  if (!subs.length) return false
+  const hits = subs.filter((s) => keepSubtree(s, byParent, ctx, out, seen))
+  if (!hits.length) return false
+  out.subs[node.id] = hits
+  if (hits.length < subs.length) out.narrowed.add(node.id)
+  return true
+}
+
 // Filter a board's tasks and subtasks together.
 //
 // Returns:
 //   tasks            — visible top-level tasks (unsorted; the caller sorts)
-//   subtasksByParent — per-parent child lists, narrowed for parents that only
-//                      survived because a child matched
+//   subtasksByParent — per-parent child lists at every depth, narrowed for parents
+//                      that only survived because a descendant matched
 //   narrowedParents  — Set of parent ids whose child list was narrowed (the card
 //                      shows an "N из M" hint and disables subtask drag-reorder)
 export function filterBoardTasks({
@@ -218,8 +274,7 @@ export function filterBoardTasks({
   if (!hasAnyFacets(filters)) {
     const outSubs = {}
     for (const t of tasks) {
-      const subs = subtasksByParent[t.id]
-      if (subs?.length) outSubs[t.id] = subs
+      if (t?.id) emitSubtree(t.id, subtasksByParent, outSubs, new Set([t.id]))
     }
     return { tasks: tasks.slice(), subtasksByParent: outSubs, narrowedParents: new Set() }
   }
@@ -230,12 +285,15 @@ export function filterBoardTasks({
   const outSubs = {}
   const narrowedParents = new Set()
 
+  const ctx = { filters, now: clock, glLoginByUserId, formatters: fmt }
+  const out = { subs: outSubs, narrowed: narrowedParents }
+
   for (const t of tasks) {
     const subs = subtasksByParent[t.id] || []
     const selfOk = matchesTask(t, filters, { now: clock, glLoginByUserId, formatters: fmt })
     if (selfOk) {
       outTasks.push(t)
-      if (subs.length) outSubs[t.id] = subs
+      emitSubtree(t.id, subtasksByParent, outSubs, new Set([t.id]))
       continue
     }
     if (!subFacets || !subs.length) continue
@@ -251,14 +309,8 @@ export function filterBoardTasks({
       })
     )
       continue
-    const hits = subs.filter((s) =>
-      matchesTask(s, filters, {
-        facets: SUBTASK_FACETS,
-        now: clock,
-        glLoginByUserId,
-        formatters: fmt,
-      }),
-    )
+    const seen = new Set([t.id])
+    const hits = subs.filter((s) => keepSubtree(s, subtasksByParent, ctx, out, seen))
     if (!hits.length) continue
     outTasks.push(t)
     outSubs[t.id] = hits
