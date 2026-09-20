@@ -89,6 +89,22 @@ func (h *API) CreateTask(c *gin.Context) {
 			respondOpError(c, err)
 			return
 		}
+		// The parent must stand on THIS board, the one the URL names — a subtask
+		// living anywhere else is drawn nowhere. The two board queries split the
+		// work by the parent's archived state, not by its board:
+		// ListBoardTasksWithMeta drops the child (it has a parent the same view
+		// would draw, so it is not "top-level for this view") while
+		// ListBoardSubtasksWithMeta serves it (its board_id matches and the parent
+		// is active) — and the board files a subtask under a parent card that is
+		// not in the payload, so nothing ever renders it. On the parent's board it
+		// is not fetched at all. The other doors onto this pair already hold the
+		// invariant: applyParent adopts the parent's board and carries the subtree
+		// with it, /transfer clears parent_id and moves the subtree, and only the
+		// column check above — not this one — used to stand here.
+		if parent.BoardID != boardID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "parent task belongs to another board"})
+			return
+		}
 	}
 
 	pos, err := h.nextTaskPosition(c, req.ColumnID, req.ParentID)
