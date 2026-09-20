@@ -103,14 +103,16 @@ JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
 WHERE p.workspace_id = $1
   AND t.archived_at IS NULL
-  AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%')
-ORDER BY t.number DESC
+  AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%'
+       OR t.number = $3::bigint)
+ORDER BY (t.number = $3::bigint) DESC, t.number DESC
 LIMIT 26
 `
 
 type SearchTasksParams struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
-	Column2     *string   `json:"column_2"`
+	Term        *string   `json:"term"`
+	Number      int64     `json:"number"`
 }
 
 type SearchTasksRow struct {
@@ -134,8 +136,18 @@ type SearchTasksRow struct {
 // the whole answer (#2932). Counting instead — a second COUNT(*) per kind — would
 // pay for a full scan to render a number nobody reads. If the constant moves,
 // these three have to move with it; the truncation test pins the pair.
+// A task is also addressable by its number, the way it is written everywhere else
+// in the product (`#2932` on a card, `?task=2932` in a URL, the board's own search
+// box). @number carries the digits the handler read out of the query, or 0 when
+// there were none — 0 is not a task number (they start at 1), so the branch costs
+// a comparison and never widens a text search by accident.
+//
+// The exact number wins the ordering. A search for `2932` also matches every task
+// whose description mentions it, and those are the rows with the higher numbers:
+// by `number DESC` alone the task actually named #2932 sorts below its own
+// mentions, and past the page cut it is not in the answer at all (#2932).
 func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]SearchTasksRow, error) {
-	rows, err := q.db.Query(ctx, searchTasks, arg.WorkspaceID, arg.Column2)
+	rows, err := q.db.Query(ctx, searchTasks, arg.WorkspaceID, arg.Term, arg.Number)
 	if err != nil {
 		return nil, err
 	}

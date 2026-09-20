@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -26,6 +27,23 @@ import (
 // byte-for-byte what the trigram indexes of migration 0052 were built for.
 var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
+// queryNumber reads a task number out of a search term: `2932` and `#2932` both
+// mean the task numbered 2932, which is how the number is written on a card, in a
+// URL (`?task=2932`) and in the board's own search box. Anything else — a term
+// with letters in it, a bare `#`, a number too large to be one — is 0, the value
+// SearchTasks treats as "no number was typed" (numbers start at 1).
+//
+// Only the whole term counts. `2932` inside `отчёт 2932` is a word in a sentence,
+// not an address, and the text match already covers it; treating it as a number
+// would pull an unrelated task to the top of every such search.
+func queryNumber(q string) int64 {
+	n, err := strconv.ParseInt(strings.TrimPrefix(q, "#"), 10, 64)
+	if err != nil || n < 1 {
+		return 0
+	}
+	return n
+}
+
 // searchLimit is how many hits of each kind one search answers with. The
 // queries ask for one more than this (db/queries/search.sql) and page() throws
 // the extra away, so the two constants have to stay in step.
@@ -46,8 +64,8 @@ func page[T any](rows []T) ([]T, bool) {
 	return orEmpty(rows), false
 }
 
-// Search looks up tasks (title/description), notes (title/body) and documents
-// (title) within a workspace, up to searchLimit of each.
+// Search looks up tasks (title/description/number), notes (title/body) and
+// documents (title) within a workspace, up to searchLimit of each.
 //
 // The response carries has_more per kind rather than a total. The clients use it
 // to say "the first 25 — narrow the search", which is the honest thing to show
@@ -70,7 +88,11 @@ func (h *API) Search(c *gin.Context) {
 		return
 	}
 	term := likeEscaper.Replace(q)
-	tasks, err := h.q.SearchTasks(c, db.SearchTasksParams{WorkspaceID: wsID, Column2: &term})
+	tasks, err := h.q.SearchTasks(c, db.SearchTasksParams{
+		WorkspaceID: wsID,
+		Term:        &term,
+		Number:      queryNumber(q),
+	})
 	if err != nil {
 		fail(c, err)
 		return

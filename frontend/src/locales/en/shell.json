@@ -71,7 +71,7 @@
     "nothing": "Nothing found",
     "failed": "Search failed",
     "more": "Showing the first {n} — narrow the search",
-    "hint": "Searches task titles and descriptions, note titles and text, document titles and help articles"
+    "hint": "Searches task numbers, titles and descriptions, note titles and text, document titles and help articles"
   },
   "members": {
     "title": "Workspace members",

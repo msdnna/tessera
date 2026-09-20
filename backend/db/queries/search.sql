@@ -10,15 +10,26 @@
 -- pay for a full scan to render a number nobody reads. If the constant moves,
 -- these three have to move with it; the truncation test pins the pair.
 
+-- A task is also addressable by its number, the way it is written everywhere else
+-- in the product (`#2932` on a card, `?task=2932` in a URL, the board's own search
+-- box). @number carries the digits the handler read out of the query, or 0 when
+-- there were none — 0 is not a task number (they start at 1), so the branch costs
+-- a comparison and never widens a text search by accident.
+--
+-- The exact number wins the ordering. A search for `2932` also matches every task
+-- whose description mentions it, and those are the rows with the higher numbers:
+-- by `number DESC` alone the task actually named #2932 sorts below its own
+-- mentions, and past the page cut it is not in the answer at all (#2932).
 -- name: SearchTasks :many
 SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
-WHERE p.workspace_id = $1
+WHERE p.workspace_id = @workspace_id
   AND t.archived_at IS NULL
-  AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%')
-ORDER BY t.number DESC
+  AND (t.title ILIKE '%' || @term || '%' OR t.description ILIKE '%' || @term || '%'
+       OR t.number = @number::bigint)
+ORDER BY (t.number = @number::bigint) DESC, t.number DESC
 LIMIT 26;
 
 -- name: SearchNotes :many
