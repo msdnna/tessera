@@ -84,49 +84,98 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 			}
 		}
 	}
-	soft(ctx, "ReopenSubtasks", h.q.ReopenSubtasks(ctx, &t.ID))
-	h.liftSubtasksFromDone(ctx, t, target)
-	// The checklist travels with the parent: a subtask is a task in its own right
-	// (its own card, its own bar, its own overdue badge), so leaving its dates on
-	// the previous occurrence makes every item of the second run be born late.
-	if t.DueDate != nil {
-		soft(ctx, "ShiftSubtaskWindow", h.q.ShiftSubtaskWindow(ctx, db.ShiftSubtaskWindowParams{
-			ShiftSeconds: next.Sub(*t.DueDate).Seconds(), ParentID: t.ID,
-		}))
-	}
+	h.carryChecklist(ctx, t, target, next)
 	h.logEventActor(ctx, t.ID, actorID, "recurred", map[string]any{"due": next})
 	return updated, true
 }
 
-// liftSubtasksFromDone takes the reopened checklist out of the board's done column
-// and lands it where the parent just landed.
+// carryChecklist hands the next occurrence the parent's whole checklist: unticked,
+// out of the board's done column, and re-dated by the step the parent's due date
+// just took.
 //
-// A subtask is a task in its own right — its own card, its own column — and it is
+// The checklist travels with the parent because a subtask is a task in its own
+// right — its own card, its own column, its own bar, its own overdue badge. It is
 // closed either by its checkbox or by being dragged into the done column, where
-// MoveTask's auto-toggle sets completed_at. Those two facts are kept in step
-// everywhere else, so ReopenSubtasks clearing only completed_at left an item the
-// board still draws under «Готово» with an empty checkbox, and dragging it out
-// again then found nothing to reopen. The parent already moves (recurTargetColumn
-// is resolved right above), and the create_new branch builds the duplicate's
-// checklist in the target column from the start; this is the reschedule branch
-// saying the same thing.
+// MoveTask's auto-toggle sets completed_at, and those two facts are kept in step
+// everywhere else: clearing completed_at alone left an item the board still draws
+// under «Готово» with an empty checkbox, and dragging it out again then found
+// nothing to reopen. Leaving its dates on the previous occurrence makes every item
+// of the second run be born late.
+//
+// All of that is dispatched by carryChecklistFrom below, which is where the depth
+// lives.
+func (h *API) carryChecklist(ctx context.Context, t db.Task, target uuid.UUID, next time.Time) {
+	var shift *float64
+	if t.DueDate != nil {
+		s := next.Sub(*t.DueDate).Seconds()
+		shift = &s
+	}
+	h.carryChecklistFrom(ctx, t.ID, target, h.doneColumnToLeave(ctx, t, target), shift,
+		map[uuid.UUID]bool{t.ID: true})
+}
+
+// carryChecklistFrom applies the carry to one node's direct children and then to
+// theirs — the whole subtree, not its first level.
+//
+// Nesting has no depth limit (CreateTask hangs a subtask off a subtask without
+// complaint, and the board draws and counts every level), so a repeating task
+// decomposed two levels deep is ordinary. All three statements name parent_id, so
+// on their own they reach the DIRECT children only, and everything below the first
+// level stayed exactly where the previous occurrence ended it: still ticked, still
+// parked under «Готово», still dated for a deadline already past. The second run
+// of the routine was born half-done and overdue, and it got worse every cycle.
+// cloneChecklist already walks the whole subtree for the create_new branch; this
+// is the reschedule branch saying the same thing about the same checklist.
 //
 // Only items sitting in the done column move: one parked in «В процессе» is where
-// its owner left it, and a recurrence is not a reason to tidy that away.
-func (h *API) liftSubtasksFromDone(ctx context.Context, t db.Task, target uuid.UUID) {
-	board, err := h.q.GetBoard(ctx, t.BoardID)
+// its owner left it, and a recurrence is not a reason to tidy that away. Archived
+// items are deliberately not singled out here — they stay archived either way, and
+// the reschedule branch has never looked at the checklist's archived state.
+//
+// `seen` guards the walk itself rather than leaning on the re-parent guard, for
+// the reason cloneChecklist gives: a ring must not spin here.
+func (h *API) carryChecklistFrom(
+	ctx context.Context, parentID, target uuid.UUID, done *uuid.UUID,
+	shift *float64, seen map[uuid.UUID]bool,
+) {
+	soft(ctx, "ReopenSubtasks", h.q.ReopenSubtasks(ctx, &parentID))
+	if done != nil {
+		soft(ctx, "LiftSubtasksFromColumn", h.q.LiftSubtasksFromColumn(ctx, db.LiftSubtasksFromColumnParams{
+			TargetColumn: target, ParentID: parentID, FromColumn: *done,
+		}))
+	}
+	if shift != nil {
+		soft(ctx, "ShiftSubtaskWindow", h.q.ShiftSubtaskWindow(ctx, db.ShiftSubtaskWindowParams{
+			ShiftSeconds: *shift, ParentID: parentID,
+		}))
+	}
+	subs, err := h.q.ListSubtasks(ctx, &parentID)
 	if err != nil {
 		return
 	}
-	done := doneColumnID(board)
-	// No done column configured, or the rule deliberately recurs *into* it — then
-	// there is nothing to lift and nowhere else to put it.
-	if done == nil || *done == target {
-		return
+	for _, s := range subs {
+		if seen[s.ID] {
+			continue
+		}
+		seen[s.ID] = true
+		h.carryChecklistFrom(ctx, s.ID, target, done, shift, seen)
 	}
-	soft(ctx, "LiftSubtasksFromColumn", h.q.LiftSubtasksFromColumn(ctx, db.LiftSubtasksFromColumnParams{
-		TargetColumn: target, ParentID: t.ID, FromColumn: *done,
-	}))
+}
+
+// doneColumnToLeave resolves the done column a recurrence has to take the
+// checklist out of: nil when the board has none configured, or when the rule
+// deliberately recurs *into* it — then there is nothing to lift and nowhere else
+// to put it.
+func (h *API) doneColumnToLeave(ctx context.Context, t db.Task, target uuid.UUID) *uuid.UUID {
+	board, err := h.q.GetBoard(ctx, t.BoardID)
+	if err != nil {
+		return nil
+	}
+	done := doneColumnID(board)
+	if done == nil || *done == target {
+		return nil
+	}
+	return done
 }
 
 // recurTargetColumn resolves where a recurred task lands: the rule's target column
