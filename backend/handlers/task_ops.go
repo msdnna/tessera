@@ -622,12 +622,35 @@ func (h *API) journalLostMilestones(c *gin.Context, rows []db.SubtreeMilestonesO
 
 // applyRelation links two tasks, journalling both sides so the link shows in the
 // referenced task's history too (relations are stored one-way).
+//
+// Linking a pair that is already linked this way is a no-op, and says so: it
+// writes no journal entry and puts nothing on the socket. Pressing «Связать»
+// twice, or repeating "/blocks #N", cannot add a second row (AddTaskRelation is
+// ON CONFLICT DO NOTHING) — announcing it anyway left both histories collecting
+// arrivals for a link that had been there all along, and woke every open Gantt
+// to re-read an unchanged graph. applyUnlink already draws exactly this line at
+// the other end: it journals only when rows actually went away.
+//
+// "Already linked this way" is asked of both directions, not just this row's:
+// both tasks show the same link whichever end made it (ListTaskRelations reads
+// either direction and collapses the pair), and the ✕ takes both halves — so
+// #20 "blocked_by" #10 adds nothing to #10 "blocks" #20 but a redundant row.
 func (h *API) applyRelation(c *gin.Context, t db.Task, wsID uuid.UUID, target db.Task, kind string) error {
 	if target.ID == t.ID {
 		return userErr("нельзя связать задачу с собой")
 	}
 	if !relationKinds[kind] {
 		return userErr("неизвестный вид связи: %s", kind)
+	}
+	existed, err := h.q.RelationExistsBothWays(c, db.RelationExistsBothWaysParams{
+		TaskID: t.ID, RelatedTaskID: target.ID,
+		Kind: kind, InverseKind: inverseRelationKind(kind),
+	})
+	if err != nil {
+		return err
+	}
+	if existed {
+		return nil
 	}
 	if _, err := h.q.AddTaskRelation(c, db.AddTaskRelationParams{
 		TaskID: t.ID, RelatedTaskID: target.ID, Kind: kind,

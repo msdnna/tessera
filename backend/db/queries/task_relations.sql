@@ -74,6 +74,22 @@ JOIN tasks rt ON rt.id = r.related_task_id
 WHERE t.board_id = $1 AND rt.board_id = $1
   AND r.kind IN ('blocks', 'blocked_by');
 
+-- RelationExistsBothWays answers "are these two already linked this way?" using
+-- the same predicate the ✕ deletes by (DeleteRelationBothWays): a relation is
+-- one directed row, but both tasks show it and either end may have made it, so
+-- #10 "blocks" #20 and #20 "blocked_by" #10 are the same statement — and the
+-- symmetric kinds map to themselves.
+--
+-- Not the same question as AddTaskRelation's ON CONFLICT, whose key is the row
+-- (task_id, related_task_id, kind) and so misses the half written from the other
+-- end entirely.
+-- name: RelationExistsBothWays :one
+SELECT EXISTS (
+    SELECT 1 FROM task_relations
+    WHERE (task_id = $1 AND related_task_id = $2 AND kind = sqlc.arg(kind))
+       OR (task_id = $2 AND related_task_id = $1 AND kind = sqlc.arg(inverse_kind))
+);
+
 -- name: GetTaskRelation :one
 SELECT * FROM task_relations WHERE id = $1;
 

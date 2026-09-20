@@ -337,3 +337,39 @@ func (q *Queries) ListTaskRelations(ctx context.Context, taskID uuid.UUID) ([]Li
 	}
 	return items, nil
 }
+
+const relationExistsBothWays = `-- name: RelationExistsBothWays :one
+SELECT EXISTS (
+    SELECT 1 FROM task_relations
+    WHERE (task_id = $1 AND related_task_id = $2 AND kind = $3)
+       OR (task_id = $2 AND related_task_id = $1 AND kind = $4)
+)
+`
+
+type RelationExistsBothWaysParams struct {
+	TaskID        uuid.UUID `json:"task_id"`
+	RelatedTaskID uuid.UUID `json:"related_task_id"`
+	Kind          string    `json:"kind"`
+	InverseKind   string    `json:"inverse_kind"`
+}
+
+// RelationExistsBothWays answers "are these two already linked this way?" using
+// the same predicate the ✕ deletes by (DeleteRelationBothWays): a relation is
+// one directed row, but both tasks show it and either end may have made it, so
+// #10 "blocks" #20 and #20 "blocked_by" #10 are the same statement — and the
+// symmetric kinds map to themselves.
+//
+// Not the same question as AddTaskRelation's ON CONFLICT, whose key is the row
+// (task_id, related_task_id, kind) and so misses the half written from the other
+// end entirely.
+func (q *Queries) RelationExistsBothWays(ctx context.Context, arg RelationExistsBothWaysParams) (bool, error) {
+	row := q.db.QueryRow(ctx, relationExistsBothWays,
+		arg.TaskID,
+		arg.RelatedTaskID,
+		arg.Kind,
+		arg.InverseKind,
+	)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
