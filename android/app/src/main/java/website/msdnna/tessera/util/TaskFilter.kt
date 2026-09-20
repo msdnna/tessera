@@ -15,6 +15,15 @@ import website.msdnna.tessera.data.model.Task
  * subtask list is narrowed to the matching children. The task modal is untouched and
  * always lists every subtask.
  *
+ * That rule holds at EVERY depth (#2932). Subtasks are a tree and the board loads all of
+ * it into one flat parent id → children map (`BoardViewModel.subtasks` is every task with
+ * a parent_id, not just the first level — [countWithSubtasks] walks the same map through
+ * all of them), but the pass here used to read direct children only. A grandchild
+ * assigned to you therefore took its whole branch off the board — no card for its
+ * parent, so no way to reach it at all, which is the very thing #2602 was about, one
+ * level further down. Web had the same hole and was fixed first
+ * (`frontend/src/utils/taskFilter.js`); this is the port.
+ *
  * Pure functions: no Compose, no network, no clock reads (the caller passes a
  * [FilterClock]) — so the whole module is unit-testable.
  */
@@ -239,42 +248,94 @@ fun filterBoardTasks(
     glLoginByUserId: Map<String, String> = emptyMap(),
 ): FilteredBoard {
     val subFacets = hasSubtaskFacets(filter)
+    val walk = SubtaskWalk(subtasksByParent, filter, clock, glLoginByUserId)
     val visible = LinkedHashSet<String>()
-    val outSubs = mutableMapOf<String, List<Task>>()
-    val narrowed = mutableSetOf<String>()
-
     for (t in tasks) {
-        val subs = subtasksByParent[t.id].orEmpty()
-        if (matchesTask(t, filter, clock, glLoginByUserId = glLoginByUserId)) {
-            visible += t.id
-            if (subs.isNotEmpty()) outSubs[t.id] = subs
-        } else {
-            val hits = if (subFacets) liftingChildren(t, subs, filter, clock, glLoginByUserId) else emptyList()
-            if (hits.isNotEmpty()) {
-                visible += t.id
-                outSubs[t.id] = hits
-                if (hits.size < subs.size) narrowed += t.id
-            }
-        }
+        if (walk.keepCard(t, subFacets)) visible += t.id
     }
-    return FilteredBoard(visible, outSubs, narrowed)
+    return FilteredBoard(visible, walk.out, walk.narrowed)
 }
 
 /**
- * The children that keep a non-matching [parent] on the board, or empty when none do.
- * The parent must still pass the facets a subtask cannot stand in for (its board column),
- * otherwise the card would appear in a column it isn't in.
+ * Does this top-level card stay on the board? Same two branches as a subtask
+ * ([keepSubtree]) — matched by itself → its whole tree stays as it is; matched only
+ * through something below → the child list is narrowed to the surviving branches.
  */
-private fun liftingChildren(
-    parent: Task,
-    subs: List<Task>,
-    filter: BoardFilter,
-    clock: FilterClock,
-    glLoginByUserId: Map<String, String>,
-): List<Task> {
-    if (subs.isEmpty()) return emptyList()
-    if (!matchesTask(parent, filter, clock, setOf(TaskFacet.Statuses), glLoginByUserId)) return emptyList()
-    return subs.filter { matchesTask(it, filter, clock, SUBTASK_FACETS, glLoginByUserId) }
+private fun SubtaskWalk.keepCard(t: Task, subFacets: Boolean): Boolean {
+    if (matchesTask(t, filter, clock, glLoginByUserId = glLoginByUserId)) {
+        emitSubtree(t.id, mutableSetOf(t.id))
+        return true
+    }
+    val subs = byParent[t.id].orEmpty()
+    if (!subFacets || subs.isEmpty()) return false
+    // The card itself failed. It may still be lifted by something below it — but only if
+    // it passes the facets a subtask cannot stand in for (its board column), otherwise
+    // the card would appear in a column it isn't in.
+    if (!matchesTask(t, filter, clock, setOf(TaskFacet.Statuses), glLoginByUserId)) return false
+    val seen = mutableSetOf(t.id)
+    val hits = subs.filter { keepSubtree(it, seen) }
+    if (hits.isEmpty()) return false
+    out[t.id] = hits
+    if (hits.size < subs.size) narrowed += t.id
+    return true
+}
+
+/**
+ * One filtering pass over the subtask tree: everything [keepSubtree] reads besides the
+ * node it is looking at, plus what it writes. Bundled so the recursion carries two
+ * arguments instead of eight.
+ */
+private class SubtaskWalk(
+    val byParent: Map<String, List<Task>>,
+    val filter: BoardFilter,
+    val clock: FilterClock,
+    val glLoginByUserId: Map<String, String>,
+    val out: MutableMap<String, List<Task>> = mutableMapOf(),
+    val narrowed: MutableSet<String> = mutableSetOf(),
+)
+
+/**
+ * Copy the branch under [id] into [SubtaskWalk.out] untouched, at every depth — what a
+ * task that matched by itself takes with it: its children are not the reason it is
+ * visible, so none of them is hidden.
+ *
+ * [seen] is every id already placed on this walk. The child map is flat and comes from
+ * the server, so a parent chain that looped back on itself would otherwise recurse
+ * forever — [countWithSubtasks] guards the same map for the same reason.
+ */
+private fun SubtaskWalk.emitSubtree(id: String, seen: MutableSet<String>) {
+    val subs = byParent[id].orEmpty()
+    if (subs.isEmpty()) return
+    out[id] = subs
+    for (s in subs) {
+        if (s.id.isEmpty() || !seen.add(s.id)) continue
+        emitSubtree(s.id, seen)
+    }
+}
+
+/**
+ * Does this subtask — or anything under it — survive the filter? Writes the child lists
+ * it keeps into [SubtaskWalk.out] and records every level it had to narrow in
+ * [SubtaskWalk.narrowed], then answers whether its parent may count it as a hit.
+ *
+ * Same two branches as a top-level card: matched by itself → the whole branch below
+ * stays; matched only through a descendant → the child list is narrowed to the surviving
+ * ones, so what is drawn is the path down to the match and nothing else. Nothing is
+ * written when the answer is false, so a dead branch leaves no trace in the result.
+ */
+private fun SubtaskWalk.keepSubtree(node: Task, seen: MutableSet<String>): Boolean {
+    if (node.id.isEmpty() || !seen.add(node.id)) return false
+    if (matchesTask(node, filter, clock, SUBTASK_FACETS, glLoginByUserId)) {
+        emitSubtree(node.id, seen)
+        return true
+    }
+    val subs = byParent[node.id].orEmpty()
+    if (subs.isEmpty()) return false
+    val hits = subs.filter { keepSubtree(it, seen) }
+    if (hits.isEmpty()) return false
+    out[node.id] = hits
+    if (hits.size < subs.size) narrowed += node.id
+    return true
 }
 
 /** A GitLab author seen on the board, for the author-filter menu. */
