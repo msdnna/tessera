@@ -278,6 +278,10 @@
 
     <!-- Модалка задачи: описание и комментарии -->
     <string name="task_description_placeholder">Добавьте описание…</string>
+    <!-- Архивная задача открывается только на просмотр: подпись в подвале модалки и
+         текст пустого описания там, где редактора с плейсхолдером уже нет. -->
+    <string name="task_readonly_note">Архивная задача — только просмотр</string>
+    <string name="task_description_empty">_Нет описания_</string>
     <string name="task_someone">Кто-то</string>
     <string name="task_comments_empty">Комментариев пока нет</string>
     <string name="task_comment_edit_placeholder">Комментарий…</string>

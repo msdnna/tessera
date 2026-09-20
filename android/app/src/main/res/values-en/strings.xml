@@ -269,6 +269,10 @@
 
     <!-- Task modal: description and comments -->
     <string name="task_description_placeholder">Add a description…</string>
+    <!-- An archived task opens for reading only: the modal's footer note, and the
+         empty-description text where there is no editor placeholder left to show. -->
+    <string name="task_readonly_note">Archived task — view only</string>
+    <string name="task_description_empty">_No description_</string>
     <string name="task_someone">Someone</string>
     <string name="task_comments_empty">No comments yet</string>
     <string name="task_comment_edit_placeholder">Comment…</string>

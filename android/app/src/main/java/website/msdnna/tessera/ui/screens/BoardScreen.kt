@@ -278,6 +278,10 @@ fun BoardScreen(
             breadcrumb = breadcrumb,
             estimation = state.estimation,
             commands = state.commandRows,
+            // The archive is a scope to look at, not to work in — the board already
+            // refuses drag, «+ задача» and the card's own pills there, and the modal
+            // behind a tap has to say the same thing (#2932, web `:readonly`).
+            readonly = state.archivedMode,
             // Leaving for a document closes the modal: the documents section is a
             // top-level destination, and a modal left open over it would come
             // back on top of the reader when the section is left again.

@@ -77,6 +77,10 @@ data class TaskDetailUiState(
     val glCreatedNotice: UiText? = null,
     /** True once any mutation happened, so the host can refresh the board on close. */
     val changed: Boolean = false,
+    /** The task is being *looked at*, not worked on — the archive scope (web parity,
+     *  #2932). Every write refuses (see [TaskDetailViewModel.mutate]); reading, and
+     *  the one on-demand read that looks like a write (downloading a file), stay. */
+    val readOnly: Boolean = false,
 )
 
 /**
@@ -100,11 +104,11 @@ class TaskDetailViewModel(
     private var workspaceId: String = ""
     private var projectId: String = "" // the task's project — scopes new tags
 
-    fun load(taskId: String, workspaceId: String, projectId: String) {
+    fun load(taskId: String, workspaceId: String, projectId: String, readOnly: Boolean = false) {
         this.taskId = taskId
         this.workspaceId = workspaceId
         this.projectId = projectId
-        _state.update { TaskDetailUiState(loading = true) }
+        _state.update { TaskDetailUiState(loading = true, readOnly = readOnly) }
         launchCatching {
             val detail = taskRepo.detail(taskId)
             _state.update { it.copy(loading = false, detail = detail) }
@@ -488,15 +492,22 @@ class TaskDetailViewModel(
     }
 
     /** Downloads an attachment (auth'd) to a cache file and hands it back for
-     *  opening/sharing via the host's FileProvider. */
-    fun downloadAttachment(cacheDir: File, attachmentId: String, filename: String, onReady: (File) -> Unit) = mutate {
+     *  opening/sharing via the host's FileProvider. Goes through [sideEffect], not
+     *  [mutate]: it changes nothing on the server, and an archived task is opened
+     *  mostly to get its files back. */
+    fun downloadAttachment(cacheDir: File, attachmentId: String, filename: String, onReady: (File) -> Unit) = sideEffect {
         val file = taskRepo.downloadAttachment(cacheDir, attachmentId, filename)
         onReady(file)
     }
 
-    /** Uploads an inline editor image and returns its public URL (null on failure). */
-    suspend fun uploadMediaUrl(bytes: ByteArray, filename: String, mime: String?): String? =
-        runCatching { taskRepo.uploadMedia(bytes, filename, mime) }.getOrNull()
+    /** Uploads an inline editor image and returns its public URL (null on failure).
+     *  Suspends into the caller instead of going through [mutate], so it carries the
+     *  read-only gate itself — an archived task has no editor to paste into, and a
+     *  file left on disk with no text pointing at it is a leak nobody can find. */
+    suspend fun uploadMediaUrl(bytes: ByteArray, filename: String, mime: String?): String? {
+        if (_state.value.readOnly) return null
+        return runCatching { taskRepo.uploadMedia(bytes, filename, mime) }.getOrNull()
+    }
 
     // ── lifecycle actions ────────────────────────────────────────────────────
 
@@ -531,7 +542,20 @@ class TaskDetailViewModel(
 
     private val numberCache = mutableMapOf<Int, String>()
 
+    /**
+     * The funnel every write goes through — and the second layer of the read-only
+     * (archive) mode: the UI hides the buttons, this refuses to go to the API even
+     * if one is reached anyway. Silent on purpose, like the web guards: nothing was
+     * offered, so there is nothing to explain.
+     */
     private fun mutate(block: suspend () -> Unit) {
+        if (_state.value.readOnly) return
+        sideEffect(block)
+    }
+
+    /** [mutate] without the read-only gate: for an on-demand *read* that runs like
+     *  a write (downloading a file), which the archive still hands out. */
+    private fun sideEffect(block: suspend () -> Unit) {
         viewModelScope.launch {
             runCatching { block() }.exceptionOrNull()?.let { e ->
                 _state.update { it.copy(error = errorMessage(e)) }
