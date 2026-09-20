@@ -1260,6 +1260,8 @@
     <string name="due_picker_trigger">Event</string>
     <string name="due_picker_trigger_column">Trigger column</string>
     <string name="due_picker_trigger_column_hint">Pick a column</string>
+    <string name="due_picker_trigger_column_unset">Until a column is picked, this repeat will never fire.</string>
+    <string name="due_picker_trigger_column_gone">That column is no longer on the board — this repeat will never fire. Pick another one.</string>
     <string name="due_picker_move_to">Move to</string>
     <string name="due_picker_first_column">First column</string>
     <string name="due_picker_duplicate">Create a duplicate</string>

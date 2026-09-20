@@ -63,6 +63,7 @@ import website.msdnna.tessera.util.millisDayKey
 import website.msdnna.tessera.util.millisToUtcIso
 import website.msdnna.tessera.util.occurrenceKeys
 import website.msdnna.tessera.util.parseInstantMillis
+import website.msdnna.tessera.util.triggerColumnMissing
 import website.msdnna.tessera.util.withStoredAnchor
 
 /** Заголовки столбцов календаря — тот же строчный словарь, что у оси таймлайна. */
@@ -260,7 +261,12 @@ fun DueDateTimePicker(
     // the 28th would otherwise be shown a March 28th it is never going to fire on.
     val previewRule = withStoredAnchor(buildRule(), initialRecurrence, dueMillis() != initialDueMillis)
     val deadNoDue = dueDateMissing(previewRule, dueMillis())
-    val occKeys = occurrenceKeys(previewRule, dueMillis(), 24)
+    // Правило «по переносу в колонку» без достижимой колонки не сработает ни разу:
+    // сервер сверяет id дословно, и пустая строка не совпадёт ни с одним uuid.
+    // Подсвечивать «ближайшие срабатывания» такому правилу — то же обещание, что
+    // сетка уже забрала назад у пройденных дат и у хвоста за `once` (#2932).
+    val deadTriggerColumn = triggerColumnMissing(previewRule, columns.map { it.id })
+    val occKeys = if (deadTriggerColumn) emptySet() else occurrenceKeys(previewRule, dueMillis(), 24)
     // The actively-edited endpoint is the filled "selected" day; the other endpoint
     // is an outlined marker, with the days strictly between shaded as the bar span.
     val isCustomDue = editTarget == "due" && freq == "custom"
@@ -487,6 +493,23 @@ fun DueDateTimePicker(
                         triggerColumn,
                         placeholder = stringResource(R.string.due_picker_trigger_column_hint),
                     ) { triggerColumn = it }
+                    if (deadTriggerColumn) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(
+                                if (previewRule?.triggerColumn.isNullOrBlank()) {
+                                    R.string.due_picker_trigger_column_unset
+                                } else {
+                                    R.string.due_picker_trigger_column_gone
+                                },
+                            ),
+                            color = TesseraDanger, fontSize = 12.sp, lineHeight = 16.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(TesseraDanger.copy(alpha = 0.12f), RoundedCornerShape(RadiusSm))
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(8.dp))

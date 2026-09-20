@@ -130,6 +130,31 @@ fun dueDateMissing(rule: Recurrence?, dueMillis: Long?): Boolean {
     return dueMillis == null
 }
 
+/**
+ * True for a column-triggered rule whose trigger column can never be reached —
+ * the sibling of [dueDateMissing], and mirrors web `triggerColumnMissing`.
+ *
+ * The server advances such a rule in exactly one place: a move whose target column
+ * id equals `trigger_column` verbatim (`rule.TriggerColumn == columnID.String()`,
+ * backend handlers/task_ops.go). An unset column is the empty string there and
+ * matches no uuid; one deleted from the board (or left behind when the task moved
+ * to another board) matches nothing either. Both states are reachable without a
+ * single error on this form: the column select opens on its placeholder and
+ * «Готово» commits `trigger = "column"` with `triggerColumn = null` as it stands,
+ * after which the card draws its repeat badge like any live rule (#2932).
+ *
+ * [columnIds] is the board's current column ids, as handed to the picker. An empty
+ * list means the caller cannot see the board, and "I don't know the columns" is not
+ * "the column is gone" — only an unset column is knowable then.
+ */
+fun triggerColumnMissing(rule: Recurrence?, columnIds: List<String>): Boolean {
+    if (rule == null || rule.freq.isBlank() || rule.trigger != "column") return false
+    val picked = rule.triggerColumn
+    if (picked.isNullOrBlank()) return true
+    if (columnIds.isEmpty()) return false
+    return !columnIds.contains(picked)
+}
+
 /** Next occurrence after [fromMillis], or null when the recurrence has ended. */
 fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
     if (rule == null || rule.freq.isBlank()) return null

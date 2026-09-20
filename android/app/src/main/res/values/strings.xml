@@ -1287,6 +1287,8 @@
     <string name="due_picker_trigger">Событие</string>
     <string name="due_picker_trigger_column">Колонка-триггер</string>
     <string name="due_picker_trigger_column_hint">Выберите колонку</string>
+    <string name="due_picker_trigger_column_unset">Пока колонка не выбрана, повторение не сработает ни разу.</string>
+    <string name="due_picker_trigger_column_gone">Этой колонки больше нет на доске — повторение не сработает. Выберите другую.</string>
     <string name="due_picker_move_to">Переносить в</string>
     <string name="due_picker_first_column">Первая колонка</string>
     <string name="due_picker_duplicate">Создавать дубликат</string>

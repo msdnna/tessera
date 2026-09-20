@@ -292,4 +292,40 @@ class RecurrenceTest {
         assertThat(keyOf(next)).isEqualTo("2026-03-30")
         assertThat(hourOf(next)).isEqualTo(22)
     }
+
+    // ── мёртвая колонка-триггер (#2932) ──
+    // Сервер сверяет id дословно, так что не совпадает ни пустая колонка, ни
+    // выбывшая с доски: правило хранится, бейдж рисуется, срабатываний нет.
+
+    private val board = listOf("col-1", "col-2")
+
+    @Test
+    fun `the column trigger without a column can never fire`() {
+        val rule = Recurrence(freq = "daily", trigger = "column")
+        assertThat(triggerColumnMissing(rule, board)).isTrue()
+        assertThat(triggerColumnMissing(rule.copy(triggerColumn = ""), board)).isTrue()
+    }
+
+    @Test
+    fun `a column that has left the board can never fire`() {
+        val rule = Recurrence(freq = "daily", trigger = "column", triggerColumn = "col-gone")
+        assertThat(triggerColumnMissing(rule, board)).isTrue()
+        assertThat(triggerColumnMissing(rule.copy(triggerColumn = "col-2"), board)).isFalse()
+    }
+
+    @Test
+    fun `the other triggers are not judged by a column`() {
+        assertThat(triggerColumnMissing(Recurrence(freq = "daily"), board)).isFalse()
+        assertThat(triggerColumnMissing(Recurrence(freq = "daily", trigger = "schedule"), board)).isFalse()
+        assertThat(triggerColumnMissing(Recurrence(freq = "", trigger = "column"), board)).isFalse()
+        assertThat(triggerColumnMissing(null, board)).isFalse()
+    }
+
+    @Test
+    fun `an unknown board only judges the unset column`() {
+        // Пустой список колонок значит «доску не видно» — это не «колонки больше нет».
+        val gone = Recurrence(freq = "daily", trigger = "column", triggerColumn = "col-gone")
+        assertThat(triggerColumnMissing(gone, emptyList())).isFalse()
+        assertThat(triggerColumnMissing(gone.copy(triggerColumn = null), emptyList())).isTrue()
+    }
 }
