@@ -21,9 +21,26 @@ import (
 // (completion or a column move). It computes the next occurrence from the current
 // due date and hands off to applyRecur. Returns (task, true) when it acted; for a
 // non-matching trigger, a one-off task, or no due date it is a no-op (t, false).
+//
+// An archived task is a no-op too. The archive is where a card stops moving, and
+// the rest of this file already says so three times over — ListScheduleRecurDue
+// filters archived_at ("a series resurrecting itself out of the archive would be
+// a card nobody can see arriving"), cloneChecklist skips an archived item and
+// everything under it, carryChecklistFrom skips it in the reschedule branch. The
+// root's own advance was the one door left open, and only the schedule trigger
+// went through a query: the other two ride an ordinary PATCH, which refuses
+// nothing on an archived row. Archiving is board-wide and a board is a shared
+// screen left open, so it takes no more than a stale tab — one person archives
+// the card, another ticks its checkbox or drags it into the trigger column. What
+// came out was the failure the other three guards name: create_new put a live
+// duplicate on the board, descended from a card that is not on it, every
+// occurrence; reschedule cleared completed_at and stepped the due date, so the
+// card went into the archive finished and came back open with a deadline in the
+// future. Suspended, not ended: the rule stays on the row, and restoring the card
+// brings the series back with it (#2932).
 func (h *API) recurAdvance(ctx context.Context, t db.Task, wsID, actorID uuid.UUID, trigger string) (db.Task, bool) {
 	rule, ok := recur.Parse(t.Recurrence)
-	if !ok || rule.Trigger != trigger || t.DueDate == nil {
+	if !ok || rule.Trigger != trigger || t.DueDate == nil || t.ArchivedAt != nil {
 		return t, false
 	}
 	next, hasNext := rule.Next(*t.DueDate)
