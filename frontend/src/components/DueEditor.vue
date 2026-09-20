@@ -19,6 +19,7 @@ import {
   occurrenceKeys,
   withStoredAnchor,
   triggerColumnMissing,
+  dueDateMissing,
 } from '@/utils/recurrence'
 import { resolvedTimezone } from '@/utils/format'
 
@@ -260,8 +261,18 @@ const deadTriggerColumn = computed(() =>
     props.columns.map((c) => c.id),
   ),
 )
+// The other way a rule ends up unable to fire, and the one the panel gives no
+// sign of: the task has no due date. Every trigger advances *from* that date —
+// the server refuses the rule a starting point (`recurAdvance`), the schedule
+// worker never selects the row — while this editor takes the frequency, commits
+// it and draws the repeat on the card. The grid is empty here anyway (there is
+// no date to count from), which is exactly what made it look like an ordinary
+// "nothing to show yet" (#2932).
+const deadNoDue = computed(() => dueDateMissing(previewRule.value, localDue.value))
 const occKeys = computed(() =>
-  deadTriggerColumn.value ? new Set() : occurrenceKeys(previewRule.value, localDue.value, 24),
+  deadTriggerColumn.value || deadNoDue.value
+    ? new Set()
+    : occurrenceKeys(previewRule.value, localDue.value, 24),
 )
 // The custom date list is picked in this very grid, so the picked days have to
 // stay visible — but being on the list is not the same claim as `occ`, which says
@@ -429,6 +440,8 @@ const dueRepeatOpts = computed(() => [
         <n-select size="small" :value="freq" :options="freqOpts" @update:value="setFreq" />
 
         <template v-if="freq">
+          <div v-if="deadNoDue" class="de-warn">{{ t('task.recur.dueUnset') }}</div>
+
           <div v-if="freq !== 'custom'" class="de-row">
             <span class="muted">{{ everyLabel(freq, interval) }}</span>
             <n-input-number

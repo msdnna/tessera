@@ -94,6 +94,25 @@ export function triggerColumnMissing(rule, columnIds) {
   return !columnIds.includes(rule.trigger_column)
 }
 
+// dueDateMissing reports a rule that can never fire because the task has no due
+// date — the sibling of triggerColumnMissing above, and just as final.
+//
+// Every one of the three triggers reads the due date and only the due date:
+// `recurAdvance` (backend/handlers/recurrence.go) returns a no-op for
+// `t.DueDate == nil` before it looks at the trigger at all, so neither ticking
+// the task nor dragging it into the trigger column advances anything, and the
+// schedule worker's own query filters `due_date IS NOT NULL` besides. The rule
+// is still accepted and stored (the editor commits it the moment a frequency is
+// picked, and the card draws its repeat badge), so «каждый понедельник» on a
+// task nobody dated looks live and is not (#2932).
+//
+// `due` is the editor's local timestamp for the due date: a number of ms, or
+// null/undefined when unset.
+export function dueDateMissing(rule, due) {
+  if (!rule || !rule.freq) return false
+  return due === null || due === undefined
+}
+
 const dayKey = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 

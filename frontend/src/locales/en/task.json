@@ -242,6 +242,7 @@
     "event": "Event",
     "triggerColumn": "Trigger column",
     "columnPlaceholder": "Pick a column",
+    "dueUnset": "Until a due date is set, this repeat will never fire: the next occurrence is counted from it. Pick a date in the calendar on the right.",
     "columnUnset": "Until a column is picked, this repeat will never fire.",
     "columnGone": "That column is no longer on the board — this repeat will never fire. Pick another one.",
     "moveTo": "Move to",
