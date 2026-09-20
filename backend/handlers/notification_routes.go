@@ -274,7 +274,7 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 				}
 				continue
 			}
-			next, group := digestSlot(now, quietAt, p.DigestMinutes, chID)
+			next, group := digestSlot(now, quietAt, digestMinutesFor(n.Kind, p.DigestMinutes), chID)
 			soft(ctx, "CreateNotificationDeliveryAt", h.q.CreateNotificationDeliveryAt(ctx, db.CreateNotificationDeliveryAtParams{
 				NotificationID: n.ID, ChannelID: chID, NextAttemptAt: next, DigestGroup: group,
 			}))
@@ -284,10 +284,46 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 	return nil
 }
 
+// timedKinds are the notifications that name an instant the reader is already
+// waiting for, rather than reporting that something happened. A reminder is an
+// alarm set for a minute the user chose; a due-date warning is the same minute
+// counted backwards from the deadline ("warn me 15 minutes before"); a
+// conference invitation may point at a call that is live right now.
+var timedKinds = map[string]bool{
+	"reminder":           true,
+	"due_soon":           true,
+	kindConferenceInvite: true,
+}
+
+// digestMinutesFor is the digest window that applies to one notification: the
+// user's, except for the kinds that carry their own deadline.
+//
+// A digest slot is always in the future — up to the whole window — and the point
+// of it is to trade a little lateness for one message instead of ten. That trade
+// is only the user's to make on a stream of activity. On a notification that
+// names a moment, the batching silently overrides the timing the user set
+// elsewhere: an hourly digest turns a reminder set for 14:00 into one that rings
+// at 14:59, delivers "warn me 15 minutes before the deadline" after the deadline
+// (a lead shorter than the window cannot survive it), and carries an invitation
+// to a call that ended while the window filled. The same argument is already
+// made a few lines up for device pushes, which take neither a digest group nor a
+// deferral — "a push that arrives batched half an hour late is worse than no
+// push at all" (#2932). It holds for e-mail and telegram too.
+//
+// Quiet hours are untouched: those are silence the user asked for by the clock,
+// and a reminder may legitimately wait for the morning. This is only about the
+// window whose whole purpose is convenience.
+func digestMinutesFor(kind string, digestMinutes int32) int32 {
+	if timedKinds[kind] {
+		return 0
+	}
+	return digestMinutes
+}
+
 // digestSlot decides when an outbox row for chID may be sent and which digest
 // group it joins. quietAt reports the quiet window covering an instant (the end
 // of it, and whether the instant is inside at all); digestMinutes <= 0 means the
-// user wants no digest.
+// user wants no digest (see digestMinutesFor for the kinds that always mean it).
 //
 // The digest window is a slot on a fixed grid, not a per-notification timer. Only
 // rows that one drain tick claims together are ever combined (drainDeliveries
