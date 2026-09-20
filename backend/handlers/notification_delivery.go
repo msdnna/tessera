@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 	"tessera/internal/mail"
@@ -139,6 +140,44 @@ func (h *API) notifiableInWorkspace(ctx context.Context, userID, wsID uuid.UUID)
 	}
 	_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: wsID, UserID: userID})
 	return err == nil
+}
+
+// membershipEnded is what an outbox row's history shows when the recipient left
+// the workspace between the enqueue and the send.
+const membershipEnded = "адресат больше не участник пространства"
+
+// deliveryStillAllowed re-asks the membership question at send time, and reports
+// a refusal as the error the outbox row settles on.
+//
+// deliverNotification already gated on membership — but it gated hours earlier.
+// An outbox row is not sent when it is written: quiet hours hold it until the
+// window ends (a whole night), and a digest holds it to the end of its slot. The
+// membership can end inside that gap, and nothing between here and the transport
+// looks again: the worker renders the row and sends it to a former colleague's
+// inbox. Worse than the send itself is what it carries — templateData reads the
+// task's *current* title, so the message states a title the team gave it after
+// the reader was removed. That is the same leak reminderScope refuses to carry
+// (#2932); this is the other door to it, the one that opens with time rather
+// than with a stale reference.
+//
+// A refusal is permanent: a membership does not come back between two retries,
+// and the row's last_error is where the channel's history explains the gap. A
+// read error is not a refusal — it is transient, and returning it plain (not
+// notify.Permanent) lets the row retry instead of being dropped on a database
+// hiccup.
+func (h *API) deliveryStillAllowed(ctx context.Context, n db.Notification) error {
+	if n.WorkspaceID == uuid.Nil {
+		return nil
+	}
+	_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: n.WorkspaceID, UserID: n.UserID})
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, pgx.ErrNoRows):
+		return notify.Permanent(errors.New(membershipEnded))
+	default:
+		return fmt.Errorf("membership check: %w", err)
+	}
 }
 
 const (
@@ -296,6 +335,13 @@ func (h *API) deliverGroup(ctx context.Context, ds []db.NotificationDelivery) ma
 			out[d.ID] = notify.Permanent(fmt.Errorf("notification gone: %w", nerr))
 			continue
 		}
+		// Per row, though the channel's owner is one user: the rows of a digest
+		// come from different workspaces, and leaving one behind must not cost the
+		// reader the rest of their summary.
+		if merr := h.deliveryStillAllowed(ctx, n); merr != nil {
+			out[d.ID] = merr
+			continue
+		}
 		body, rerr := renderChannel(row.Template, h.templateData(ctx, n, lang))
 		if rerr != nil {
 			out[d.ID] = notify.Permanent(fmt.Errorf("template render: %w", rerr))
@@ -324,6 +370,9 @@ func (h *API) deliverOne(ctx context.Context, d db.NotificationDelivery) error {
 	n, err := h.q.GetNotification(ctx, d.NotificationID)
 	if err != nil {
 		return notify.Permanent(fmt.Errorf("notification gone: %w", err))
+	}
+	if err := h.deliveryStillAllowed(ctx, n); err != nil {
+		return err
 	}
 	row, err := h.q.GetNotificationChannelByID(ctx, d.ChannelID)
 	if err != nil {
