@@ -107,6 +107,29 @@ fun withStoredAnchor(rule: Recurrence?, stored: Recurrence?, dueChanged: Boolean
     )
 }
 
+/**
+ * True for a rule that can never fire because the task has no due date.
+ *
+ * Every one of the three triggers reads the due date and only the due date:
+ * `recurAdvance` (backend/handlers/recurrence.go) returns a no-op while
+ * `t.DueDate == nil` before it even looks at the trigger, so neither ticking the
+ * task nor dragging it into the trigger column advances anything, and the
+ * schedule worker's own query filters `due_date IS NOT NULL` besides.
+ *
+ * The rule is still accepted and stored, and the card draws its repeat badge, so
+ * «каждый понедельник» on a task nobody dated looks live and is not (#2932). On
+ * this form the door is wide open: picking a frequency chip sets the frequency
+ * and nothing else, so a task without a due date commits the rule as it stands
+ * (web's own editor dates the task for you, then lets «очистить срок» take it
+ * back). Same shape as the dead trigger column — the panel has to say so.
+ *
+ * [dueMillis] is the picker's selected due instant, null when unset.
+ */
+fun dueDateMissing(rule: Recurrence?, dueMillis: Long?): Boolean {
+    if (rule == null || rule.freq.isBlank()) return false
+    return dueMillis == null
+}
+
 /** Next occurrence after [fromMillis], or null when the recurrence has ended. */
 fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
     if (rule == null || rule.freq.isBlank()) return null

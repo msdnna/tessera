@@ -1283,6 +1283,7 @@
     <!-- Выбор срока: повтор задачи -->
     <string name="due_picker_repeat">Повтор задачи</string>
     <string name="due_picker_custom_hint">Отметьте даты повтора в календаре выше.</string>
+    <string name="due_picker_no_due">Пока не задан срок, повторение не сработает ни разу: следующая дата считается от него. Выберите дату в календаре выше.</string>
     <string name="due_picker_trigger">Событие</string>
     <string name="due_picker_trigger_column">Колонка-триггер</string>
     <string name="due_picker_trigger_column_hint">Выберите колонку</string>

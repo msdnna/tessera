@@ -53,9 +53,11 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.columnCaption
+import website.msdnna.tessera.util.dueDateMissing
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.millisDayKey
 import website.msdnna.tessera.util.millisToUtcIso
@@ -234,6 +236,7 @@ fun DueDateTimePicker(
     // the monthly/yearly day-of-month anchor, so a task that February has parked on
     // the 28th would otherwise be shown a March 28th it is never going to fire on.
     val previewRule = withStoredAnchor(buildRule(), initialRecurrence, dueMillis() != initialDueMillis)
+    val deadNoDue = dueDateMissing(previewRule, dueMillis())
     val occKeys = occurrenceKeys(previewRule, dueMillis(), 24)
     // The actively-edited endpoint is the filled "selected" day; the other endpoint
     // is an outlined marker, with the days strictly between shaded as the bar span.
@@ -384,6 +387,22 @@ fun DueDateTimePicker(
             }
 
             if (freq.isNotBlank()) {
+                // The rule is dead without a due date — everything below counts
+                // from it (see dueDateMissing). Nothing else on this form would
+                // say so: the calendar above simply stays unmarked, which reads
+                // as «ещё нечего показать», and the card gets its repeat badge
+                // all the same (#2932).
+                if (deadNoDue) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        stringResource(R.string.due_picker_no_due),
+                        color = TesseraDanger, fontSize = 12.sp, lineHeight = 16.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(TesseraDanger.copy(alpha = 0.12f), RoundedCornerShape(RadiusSm))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
+                }
                 if (freq != "custom") {
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {

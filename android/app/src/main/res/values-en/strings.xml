@@ -1256,6 +1256,7 @@
     <!-- Due picker: task recurrence -->
     <string name="due_picker_repeat">Repeat task</string>
     <string name="due_picker_custom_hint">Mark the repeat dates on the calendar above.</string>
+    <string name="due_picker_no_due">Until a due date is set, this repeat will never fire: the next occurrence is counted from it. Pick a date in the calendar above.</string>
     <string name="due_picker_trigger">Event</string>
     <string name="due_picker_trigger_column">Trigger column</string>
     <string name="due_picker_trigger_column_hint">Pick a column</string>
