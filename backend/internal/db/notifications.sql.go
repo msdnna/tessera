@@ -32,7 +32,7 @@ RETURNING id, user_id, workspace_id, task_id, actor_id, kind, text, read_at, cre
 
 type CreateNotificationParams struct {
 	UserID      uuid.UUID       `json:"user_id"`
-	WorkspaceID uuid.UUID       `json:"workspace_id"`
+	WorkspaceID *uuid.UUID      `json:"workspace_id"`
 	TaskID      *uuid.UUID      `json:"task_id"`
 	ActorID     *uuid.UUID      `json:"actor_id"`
 	Kind        string          `json:"kind"`
@@ -81,7 +81,7 @@ LIMIT 50
 type ListNotificationsRow struct {
 	ID          uuid.UUID       `json:"id"`
 	UserID      uuid.UUID       `json:"user_id"`
-	WorkspaceID uuid.UUID       `json:"workspace_id"`
+	WorkspaceID *uuid.UUID      `json:"workspace_id"`
 	TaskID      *uuid.UUID      `json:"task_id"`
 	ActorID     *uuid.UUID      `json:"actor_id"`
 	Kind        string          `json:"kind"`

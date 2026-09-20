@@ -95,7 +95,7 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 		return
 	}
 	n, err := h.q.CreateNotification(ctx, db.CreateNotificationParams{
-		UserID: userID, WorkspaceID: wsID, TaskID: taskID, ActorID: actorID,
+		UserID: userID, WorkspaceID: optionalWorkspace(wsID), TaskID: taskID, ActorID: actorID,
 		Kind: kind, Text: msg.text, Payload: msg.json(),
 	})
 	if err != nil {
@@ -134,6 +134,23 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 // treated as "not notifiable": the alternative is leaking on exactly the
 // transient failure an attacker cannot arrange, for the sake of a notification
 // the next comment re-sends.
+// optionalWorkspace turns the caller's workspace into the stored one: uuid.Nil
+// means the notification belongs to no workspace and the column is left NULL.
+//
+// The column used to be NOT NULL REFERENCES workspaces(id), so the Nil that
+// reminderScope hands over for a reminder tied to no task and no workspace did
+// not survive the INSERT — the foreign key rejected it, deliverNotification
+// returned on the error, and scanReminders marked the reminder fired anyway.
+// The alarm a user set for themselves never rang and never came back: reachable
+// for anyone who deleted the personal workspace their account was created with
+// and is in no other one (#2932).
+func optionalWorkspace(wsID uuid.UUID) *uuid.UUID {
+	if wsID == uuid.Nil {
+		return nil
+	}
+	return &wsID
+}
+
 func (h *API) notifiableInWorkspace(ctx context.Context, userID, wsID uuid.UUID) bool {
 	if wsID == uuid.Nil {
 		return true
@@ -166,10 +183,10 @@ const membershipEnded = "адресат больше не участник пр�
 // notify.Permanent) lets the row retry instead of being dropped on a database
 // hiccup.
 func (h *API) deliveryStillAllowed(ctx context.Context, n db.Notification) error {
-	if n.WorkspaceID == uuid.Nil {
+	if n.WorkspaceID == nil {
 		return nil
 	}
-	_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: n.WorkspaceID, UserID: n.UserID})
+	_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: *n.WorkspaceID, UserID: n.UserID})
 	switch {
 	case err == nil:
 		return nil
@@ -492,16 +509,20 @@ func (h *API) templateData(ctx context.Context, n db.Notification, lang string) 
 			d.Actor = u.Name
 		}
 	}
-	if w, err := h.q.GetWorkspace(ctx, n.WorkspaceID); err == nil {
-		// The personal workspace is stored under its Russian seed name (#2800) and
-		// captioned from name_key by whoever displays it. This delivery leaves the
-		// app, so the caption is picked here, in the recipient's language; a name
-		// the user chose has no key and is carried as typed.
-		key := ""
-		if w.NameKey != nil {
-			key = *w.NameKey
+	// A notification outside every workspace (a personal reminder) leaves the
+	// caption empty, which the templates already render as an absent field.
+	if n.WorkspaceID != nil {
+		if w, err := h.q.GetWorkspace(ctx, *n.WorkspaceID); err == nil {
+			// The personal workspace is stored under its Russian seed name (#2800) and
+			// captioned from name_key by whoever displays it. This delivery leaves the
+			// app, so the caption is picked here, in the recipient's language; a name
+			// the user chose has no key and is carried as typed.
+			key := ""
+			if w.NameKey != nil {
+				key = *w.NameKey
+			}
+			d.Workspace = notify.DefaultName(key, w.Name, lang)
 		}
-		d.Workspace = notify.DefaultName(key, w.Name, lang)
 	}
 	return d
 }

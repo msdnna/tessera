@@ -274,7 +274,10 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 	// only in a shared one and deletes the personal one moves the stamp there
 	// (#2932). Muting reminders as such is a matcher on the kind, which still
 	// applies — that is the knob for it.
-	ev := notify.Event{Kind: n.Kind, WorkspaceID: n.WorkspaceID}
+	ev := notify.Event{Kind: n.Kind}
+	if n.WorkspaceID != nil {
+		ev.WorkspaceID = *n.WorkspaceID
+	}
 	if n.Kind == evReminder && n.TaskID == nil {
 		ev.WorkspaceID = uuid.Nil
 	}
