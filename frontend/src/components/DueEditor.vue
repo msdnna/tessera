@@ -325,6 +325,11 @@ const targetColumn = ref(null)
 const createNew = ref(false)
 const recurForever = ref(true)
 const skipWeekends = ref(false)
+// Picking the weekdays by hand answers the skip's only question, so the server
+// drops the flag for such a rule (recur.normalized) — it used to rewrite the very
+// days the chips below show, and cost the rule its interval doing it. Leaving the
+// box on screen would leave a checkbox that unchecks itself on reopen (#2932).
+const skipWeekendsMoot = computed(() => freq.value === 'weekly' && weekdays.value.length > 0)
 
 watch(
   () => props.recurrence,
@@ -355,7 +360,11 @@ function buildRule() {
   if (targetColumn.value) r.target_column = targetColumn.value
   if (createNew.value) r.create_new = true
   if (!recurForever.value) r.once = true
-  if (skipWeekends.value && (freq.value === 'daily' || freq.value === 'weekly'))
+  if (
+    skipWeekends.value &&
+    !skipWeekendsMoot.value &&
+    (freq.value === 'daily' || freq.value === 'weekly')
+  )
     r.skip_weekends = true
   // Every field above names a *calendar* day — a weekday, a day of the month, a
   // date off this calendar, "not on a weekend" — and the calendar they name is the
@@ -555,7 +564,7 @@ const dueRepeatOpts = computed(() => [
             {{ t('task.recur.forever') }}
           </n-checkbox>
           <n-checkbox
-            v-if="freq === 'daily' || freq === 'weekly'"
+            v-if="(freq === 'daily' || freq === 'weekly') && !skipWeekendsMoot"
             size="small"
             :checked="skipWeekends"
             @update:checked="

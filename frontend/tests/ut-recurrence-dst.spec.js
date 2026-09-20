@@ -45,10 +45,14 @@ describe('skip_weekends через осенний перевод часов', ()
     expect(clock(next)).toBe('00:00')
   })
 
-  it('еженедельное правило по субботам сдвигается на понедельник', () => {
-    // Пн 19.10, повтор по субботам → сб 24.10 → пн 26.10.
-    const mon = new Date(2026, 9, 19, 9, 30, 0, 0)
-    const next = nextOccurrence({ freq: 'weekly', weekdays: [6], skip_weekends: true }, mon)
+  it('еженедельное правило сдвигается на понедельник', () => {
+    // Сб 17.10, повтор раз в неделю → сб 24.10 → пн 26.10 (толчок перешагивает
+    // 25-часовые сутки 25.10). День недели здесь ВЫВОДИТСЯ из срока, а не выбран
+    // чипами: правилу с явным набором дней skip_weekends больше не достаётся —
+    // он переписывал ровно те дни, которые выбрали руками, и съедал интервал
+    // (ut-recurrence-skip-weekdays, #2932).
+    const sat = new Date(2026, 9, 17, 9, 30, 0, 0)
+    const next = nextOccurrence({ freq: 'weekly', skip_weekends: true }, sat)
     expect(key(next)).toBe('2026-10-26')
     expect(clock(next)).toBe('09:30')
   })

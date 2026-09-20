@@ -204,7 +204,14 @@ export function nextOccurrence(rule, from) {
       return applySkip(n, rule.skip_weekends)
     }
     case 'weekly':
-      return applySkip(nextWeekly(from, { ...rule, interval: iv }), rule.skip_weekends)
+      // An explicit weekday set already says which days, so the server drops the
+      // skip for it (recur.normalized) rather than let the push rewrite them and
+      // cost the rule its interval — see there. Mirrored so the grid previews the
+      // series the server will actually fire (#2932).
+      return applySkip(
+        nextWeekly(from, { ...rule, interval: iv }),
+        rule.skip_weekends && !(rule.weekdays || []).length,
+      )
     case 'monthly': {
       const total = from.getMonth() + iv
       const y = from.getFullYear() + Math.floor(total / 12)

@@ -121,6 +121,20 @@ func (r Rule) normalized() (Rule, bool) {
 	if r.Freq != FreqDaily && r.Freq != FreqWeekly {
 		r.SkipWeekends = false
 	}
+	// A weekly rule with an explicit weekday set has already answered the only
+	// question the skip asks — which days — so the skip has nothing left to do
+	// but contradict it, and contradicting it costs the rule its interval. The
+	// push writes its result back as the anchor of the next step: a Saturday
+	// pushed to Monday lands in the *following* Mon-started week, where
+	// nextWeekly finds the same Saturday five days out rather than a fortnight.
+	// "Every 2 weeks on Saturdays" therefore settled into plain weekly Mondays
+	// from the second occurrence on — neither the chosen day nor the chosen
+	// interval survived, while the editor's chips kept showing Saturday (#2932).
+	// Dropping the flag here changes only the self-contradictory case: on any
+	// weekday a person would actually pick alongside it, applySkip was a no-op.
+	if r.Freq == FreqWeekly && len(r.Weekdays) > 0 {
+		r.SkipWeekends = false
+	}
 	// An unknown zone is dropped rather than rejected: a rule that repeats is more
 	// useful than no rule at all, and UTC is the behaviour it had before.
 	r.TZ = strings.TrimSpace(r.TZ)
