@@ -185,6 +185,32 @@ func (h *API) revokeUserSockets(userID uuid.UUID, reason string) {
 	}
 }
 
+// syncRoomModeration re-resolves what a member may moderate in this workspace's
+// live calls after their role changed (#2932).
+//
+// revokeUserSockets is the wrong tool for a demotion — it ends the person's call
+// — and doing nothing is the wrong answer too: the conference seat copies the
+// workspace role into a boolean at the upgrade and never looks again, so an
+// ex-admin keeps kicking and force-muting the meeting they are already in. This
+// is the middle: the seat stays, the right that came with the role does not.
+//
+// The conference list is read here rather than in the registry because only this
+// side knows which calls belong to the workspace whose role changed. A storage
+// error is not worth failing the role change over — the membership row is
+// already written and is what every later request reads — but it does leave a
+// stale right in a live room, so it is logged rather than swallowed.
+func (h *API) syncRoomModeration(ctx context.Context, workspaceID, userID uuid.UUID, role string) {
+	if h.confRooms == nil {
+		return
+	}
+	ids, err := h.q.ConferenceIDsInWorkspace(ctx, workspaceID)
+	if err != nil {
+		log.Printf("conference moderation not re-resolved for %s in %s: %v", userID, workspaceID, err)
+		return
+	}
+	h.confRooms.SetModeration(ids, userID, role == "owner" || role == "admin")
+}
+
 // SocketRevoker hands revokeUserSockets to AuthHandler, which owns the two
 // password doors but none of the three socket registries (#2932). Same shape as
 // ConfEnforcer: one behaviour, handed across the seam as a function rather than

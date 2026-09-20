@@ -88,6 +88,11 @@ const (
 	TypeDenied  = "denied"
 	TypeChat    = "chat"
 	TypeEnded   = "ended"
+	// TypeSeat corrects what the welcome frame said about *this* connection, and
+	// goes only to it. The seat is resolved once at the upgrade, so before this
+	// the only way a workspace role change reached a call in progress was for the
+	// person to leave it and come back (#2932).
+	TypeSeat = "seat"
 
 	TypeMedia         = "media"
 	TypeHand          = "hand"
@@ -312,6 +317,15 @@ type welcomeMsg struct {
 	CanModerate  bool   `json:"can_moderate"`
 	ConferenceID string `json:"conference_id"`
 	StageTTLMs   int64  `json:"stage_ttl_ms"`
+}
+
+// seatMsg re-states what the welcome frame told one connection about itself,
+// after something outside the room changed the answer. Only the two fields that
+// can move: the connection id and the conference are what they were.
+type seatMsg struct {
+	Type        string `json:"type"`
+	Role        string `json:"role"`
+	CanModerate bool   `json:"can_moderate"`
 }
 
 // deniedMsg answers a command the room refused. Action names the command so the
@@ -1024,6 +1038,75 @@ func (rs *Rooms) EvictUser(userID uuid.UUID, reason string) {
 			enforce.Evicted(confID, userID)
 		}
 	}
+}
+
+// SetModeration re-resolves a user's moderation right in the named conferences
+// after their workspace role changed (#2932).
+//
+// The companion to EvictUser, for the change that takes away less than all of
+// it. A demotion from admin to member is not a revoked membership: the person
+// may still attend the call, and throwing them out of it would be a punishment
+// the role change never asked for. What it does take away is the right that came
+// with the role — and that right is a boolean copied into the seat at the
+// upgrade, so without this it outlives the demotion for as long as the tab stays
+// open, and the ex-admin goes on kicking and force-muting the room.
+//
+// Scoped to a list of conferences, unlike EvictUser, which sweeps every room it
+// holds. Evicting wider is safe because ConnectConference re-checks membership
+// and re-admits whoever may still attend; *demoting* wider is not — the same
+// person may be an admin of another workspace and in a call there, and the
+// registry is keyed by conference and cannot tell the two apart. The caller,
+// which knows the workspace, supplies its conferences.
+//
+// manager is the workspace half of the seat's rule (conferenceSeat): a manager
+// moderates every call in the workspace, and everyone else moderates only the
+// calls they host — which is what Role already records, the creator included. So
+// the new value is derivable here, and a demotion cannot strip a host of the
+// rights their own meeting gave them.
+func (rs *Rooms) SetModeration(confIDs []uuid.UUID, userID uuid.UUID, manager bool) {
+	if len(confIDs) == 0 {
+		return
+	}
+	rs.mu.Lock()
+	here := make([]*Room, 0, len(confIDs))
+	for _, id := range confIDs {
+		if room, ok := rs.rooms[id]; ok {
+			here = append(here, room)
+		}
+	}
+	rs.mu.Unlock()
+	for _, room := range here {
+		room.setModeration(userID, manager)
+	}
+}
+
+// setModeration applies the new right to every connection this user holds here
+// — a person with the call open in two tabs is two seats, and a revocation that
+// stopped at one of them would leave the other moderating.
+//
+// The one who changed is told, and nobody else: CanModerate is not in the
+// roster, it rides in the welcome frame, so this is the only news the rest of
+// the room would get from a snapshot they already have. The seat frame is what
+// keeps the client from painting a kick button its next click gets "not a
+// moderator" for — the refusal is real either way, which is the half that
+// matters, but a control that refuses is a bug report.
+func (r *Room) setModeration(userID uuid.UUID, manager bool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	changed := false
+	for p := range r.members {
+		if p.UserID != userID {
+			continue
+		}
+		want := manager || p.Role == RoleHost
+		if p.CanModerate == want {
+			continue
+		}
+		p.CanModerate = want
+		changed = true
+		p.deliver(encode(seatMsg{Type: TypeSeat, Role: p.Role, CanModerate: want}))
+	}
+	return changed
 }
 
 // connectionsOf lists a user's participants in this room — a user may have the

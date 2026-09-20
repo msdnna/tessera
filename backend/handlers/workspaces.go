@@ -276,7 +276,11 @@ func (h *API) AddMember(c *gin.Context) {
 	}
 	// Live sockets snapshot their workspace set at connect; drop the new
 	// member's so they reconnect and start receiving this workspace's events.
+	// This route is an upsert, so it is also a role change — and carries the same
+	// duty to the live calls as UpdateMemberRole below: re-adding an admin as a
+	// plain member must take their moderation with it.
 	h.hub.DropUser(user.ID)
+	h.syncRoomModeration(c, id, user.ID, role)
 	c.JSON(http.StatusCreated, m)
 }
 
@@ -338,10 +342,19 @@ func (h *API) UpdateMemberRole(c *gin.Context) {
 	// members dialog with no invite form in it until they reloaded the page, and a
 	// demoted admin kept one whose every control answers 403 (#2932).
 	//
-	// Not revokeUserSockets: nothing was taken away here. The document and
-	// conference rooms authorise on membership, which still holds — evicting them
-	// would throw a promoted member out of the call they are in.
+	// Not revokeUserSockets: the membership itself still holds, and the document
+	// and conference rooms authorise on that — evicting them would throw a member
+	// out of the call they are in over a change that never took their seat away.
+	//
+	// The moderation right inside those calls *is* taken away by a demotion,
+	// though, and it is not re-read from the membership: conferenceSeat copies the
+	// workspace role into the seat at the upgrade. Closing the board socket does
+	// nothing for it, so a demoted admin went on kicking and force-muting the
+	// meeting they were already in. syncRoomModeration is the narrow revocation
+	// that case needs — and it grants as well as takes, so a promotion reaches a
+	// call in progress instead of waiting for the next join.
 	h.hub.DropUser(userID)
+	h.syncRoomModeration(c, id, userID, req.Role)
 	c.JSON(http.StatusOK, m)
 }
 
