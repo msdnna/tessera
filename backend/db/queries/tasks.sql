@@ -451,9 +451,16 @@ RETURNING *;
 
 -- ReopenSubtasks clears the completion of a recurring task's direct subtasks when
 -- the parent recurs, so a checklist starts fresh for the next occurrence.
+--
+-- An archived item is not part of the routine any more, so all three statements
+-- here spare it (the reason cloneChecklist gives for skipping it in the duplicate:
+-- archiving one item while keeping the rest is a deliberate gesture with its own
+-- undo). archived_at itself was never touched, so the board showed nothing — but
+-- the archive entry lost its tick, left «Готово» for the rule's target column and
+-- took a period onto its dates, every occurrence, and handed that back on restore.
 -- name: ReopenSubtasks :exec
 UPDATE tasks SET completed_at = NULL, updated_at = now()
-WHERE parent_id = $1 AND completed_at IS NOT NULL;
+WHERE parent_id = $1 AND completed_at IS NOT NULL AND archived_at IS NULL;
 
 -- LiftSubtasksFromColumn takes a recurring parent's direct subtasks out of the
 -- board's done column when the parent recurs. On this board "in the done column"
@@ -465,7 +472,8 @@ WHERE parent_id = $1 AND completed_at IS NOT NULL;
 -- name: LiftSubtasksFromColumn :exec
 UPDATE tasks SET column_id = sqlc.arg(target_column)::uuid, updated_at = now()
 WHERE parent_id = sqlc.arg(parent_id)::uuid
-  AND column_id = sqlc.arg(from_column)::uuid;
+  AND column_id = sqlc.arg(from_column)::uuid
+  AND archived_at IS NULL;
 
 -- ShiftSubtaskWindow moves a recurring parent's direct subtasks by the same step
 -- its due date just took, so the whole checklist travels to the next occurrence
@@ -479,7 +487,8 @@ SET due_date   = due_date   + make_interval(secs => sqlc.arg(shift_seconds)::dou
     start_date = start_date + make_interval(secs => sqlc.arg(shift_seconds)::double precision),
     updated_at = now()
 WHERE parent_id = sqlc.arg(parent_id)::uuid
-  AND (due_date IS NOT NULL OR start_date IS NOT NULL);
+  AND (due_date IS NOT NULL OR start_date IS NOT NULL)
+  AND archived_at IS NULL;
 
 -- ListScheduleRecurDue returns tasks whose recurrence fires on a schedule and
 -- whose due date has passed — the schedule worker advances each one.

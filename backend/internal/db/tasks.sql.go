@@ -266,6 +266,7 @@ const liftSubtasksFromColumn = `-- name: LiftSubtasksFromColumn :exec
 UPDATE tasks SET column_id = $1::uuid, updated_at = now()
 WHERE parent_id = $2::uuid
   AND column_id = $3::uuid
+  AND archived_at IS NULL
 `
 
 type LiftSubtasksFromColumnParams struct {
@@ -1079,11 +1080,18 @@ func (q *Queries) RebalanceSubtaskPositions(ctx context.Context, arg RebalanceSu
 
 const reopenSubtasks = `-- name: ReopenSubtasks :exec
 UPDATE tasks SET completed_at = NULL, updated_at = now()
-WHERE parent_id = $1 AND completed_at IS NOT NULL
+WHERE parent_id = $1 AND completed_at IS NOT NULL AND archived_at IS NULL
 `
 
 // ReopenSubtasks clears the completion of a recurring task's direct subtasks when
 // the parent recurs, so a checklist starts fresh for the next occurrence.
+//
+// An archived item is not part of the routine any more, so all three statements
+// here spare it (the reason cloneChecklist gives for skipping it in the duplicate:
+// archiving one item while keeping the rest is a deliberate gesture with its own
+// undo). archived_at itself was never touched, so the board showed nothing — but
+// the archive entry lost its tick, left «Готово» for the rule's target column and
+// took a period onto its dates, every occurrence, and handed that back on restore.
 func (q *Queries) ReopenSubtasks(ctx context.Context, parentID *uuid.UUID) error {
 	_, err := q.db.Exec(ctx, reopenSubtasks, parentID)
 	return err
@@ -1470,6 +1478,7 @@ SET due_date   = due_date   + make_interval(secs => $1::double precision),
     updated_at = now()
 WHERE parent_id = $2::uuid
   AND (due_date IS NOT NULL OR start_date IS NOT NULL)
+  AND archived_at IS NULL
 `
 
 type ShiftSubtaskWindowParams struct {

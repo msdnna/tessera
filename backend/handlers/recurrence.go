@@ -128,9 +128,16 @@ func (h *API) carryChecklist(ctx context.Context, t db.Task, target uuid.UUID, n
 // is the reschedule branch saying the same thing about the same checklist.
 //
 // Only items sitting in the done column move: one parked in «В процессе» is where
-// its owner left it, and a recurrence is not a reason to tidy that away. Archived
-// items are deliberately not singled out here — they stay archived either way, and
-// the reschedule branch has never looked at the checklist's archived state.
+// its owner left it, and a recurrence is not a reason to tidy that away.
+//
+// An archived item is skipped — by all three statements (they filter on
+// archived_at) and by the walk below, which does not descend into one, the same
+// way cloneChecklist skips an archived row and everything under it. Leaving it
+// archived was not enough: the row is an entry of the board's archive in its own
+// right, and un-ticking it, moving it out of «Готово» and stepping its dates every
+// occurrence is what the archive then gave back on restore — an item that went in
+// finished came out open, in the rule's target column, with a deadline a week in
+// the future (#2932).
 //
 // `seen` guards the walk itself rather than leaning on the re-parent guard, for
 // the reason cloneChecklist gives: a ring must not spin here.
@@ -154,7 +161,7 @@ func (h *API) carryChecklistFrom(
 		return
 	}
 	for _, s := range subs {
-		if seen[s.ID] {
+		if s.ArchivedAt != nil || seen[s.ID] {
 			continue
 		}
 		seen[s.ID] = true
