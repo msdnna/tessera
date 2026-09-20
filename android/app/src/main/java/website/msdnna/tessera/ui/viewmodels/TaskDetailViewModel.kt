@@ -77,9 +77,10 @@ data class TaskDetailUiState(
     val glCreatedNotice: UiText? = null,
     /** True once any mutation happened, so the host can refresh the board on close. */
     val changed: Boolean = false,
-    /** The task is being *looked at*, not worked on — the archive scope (web parity,
-     *  #2932). Every write refuses (see [TaskDetailViewModel.mutate]); reading, and
-     *  the one on-demand read that looks like a write (downloading a file), stay. */
+    /** The task is being *looked at*, not worked on — the archive scope OR the task's
+     *  own [TaskDetail.isArchived] (web parity, #2932). Every write refuses (see
+     *  [TaskDetailViewModel.mutate]); reading, and the one on-demand read that looks
+     *  like a write (downloading a file), stay. */
     val readOnly: Boolean = false,
 )
 
@@ -111,7 +112,13 @@ class TaskDetailViewModel(
         _state.update { TaskDetailUiState(loading = true, readOnly = readOnly) }
         launchCatching {
             val detail = taskRepo.detail(taskId)
-            _state.update { it.copy(loading = false, detail = detail) }
+            // OR, not assignment: the flag passed in is the SCOPE the modal was
+            // opened from (the board's archive area), while `archivedAt` is the
+            // task's own state. Both make it read-only, and neither implies the
+            // other — a relation, a notification, a `#N` chip or a reminder
+            // deep-link all open a task on the LIVE board, where the scope says
+            // "editable" about a task that is in the archive (#2932).
+            _state.update { it.copy(loading = false, detail = detail, readOnly = it.readOnly || detail.isArchived) }
             // Board columns for the status row / recurrence selects, and the board
             // itself for its done column (both best-effort). Read from the task's
             // own board id, so a task opened from the relations tab (possibly on

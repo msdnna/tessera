@@ -1796,6 +1796,12 @@ async function restoreFromArchive(taskId) {
     await tasksApi.restore(taskId)
     allTasks.value = allTasks.value.filter((t) => t.id !== taskId)
     message.success(t('board.toast.restored'))
+    // Restoring from the ACTIVE board — an archived task opened past the archive
+    // scope (a relation, a notification, a document link) now offers Restore in
+    // its read-only footer (#2932). The filter above is the archive list's move:
+    // here the task was never in it, and the card that must now appear is missing
+    // until the board is re-read. Silent, so the board doesn't flash for it.
+    if (!archivedMode.value) await load(props.boardId, { silent: true })
   } catch (e) {
     message.error(e.message)
   }

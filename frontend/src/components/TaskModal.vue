@@ -160,6 +160,16 @@ const router = useRouter()
 const message = useMessage()
 const loading = ref(false)
 const task = ref(null)
+// Read-only is a property of the TASK, not of the screen it was opened from.
+// The `readonly` prop carries the board's archive SCOPE (?archived=1); `archived_at`
+// carries the task's own state — and half the doors into this modal walk past the
+// scope entirely: a relation (openRelated pushes ?task= with no archived=1), a
+// notification (ListNotifications doesn't filter the archive), a document link, a
+// `#N` chip, a copied link. The backend has no archive guard at all — archive is a
+// client convention — so an archived task reached that way took edits for real: its
+// pills were live, its status picker moved it back onto the board, comments posted.
+// Hence the OR: the scope alone was only ever half the answer (#2932).
+const ro = computed(() => props.readonly || !!task.value?.archived_at)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
@@ -704,7 +714,7 @@ function buildPayload() {
 }
 // Tappable fields persist immediately; Save commits the text fields.
 async function applyMeta() {
-  if (props.readonly) return
+  if (ro.value) return
   try {
     const res = await tasksApi.update(props.taskId, buildPayload())
     task.value = res.data
@@ -808,7 +818,7 @@ const parentTask = ref(null)
 const parentLabel = computed(() => parentTask.value?.title || '…')
 
 async function moveToColumn(columnId) {
-  if (props.readonly || !task.value || !columnId || columnId === task.value.column_id) return
+  if (ro.value || !task.value || !columnId || columnId === task.value.column_id) return
   moving.value = true
   try {
     // Neighbours for the PATCH: a subtask pins its row in the parent's list, a
@@ -832,7 +842,7 @@ async function moveToColumn(columnId) {
 // The checkmark closes the task through the board's done column (so the backend
 // stamps completed_at and logs it); boards without one fall back to the flag.
 async function closeTask() {
-  if (props.readonly || !task.value) return
+  if (ro.value || !task.value) return
   if (completed.value) return setCompleted(false)
   if (doneCol.value && doneCol.value.id !== task.value.column_id)
     return moveToColumn(doneCol.value.id)
@@ -933,7 +943,7 @@ async function toggleGlGroup() {
   }
 }
 async function save() {
-  if (props.readonly) return
+  if (ro.value) return
   try {
     await tasksApi.update(props.taskId, buildPayload())
     emit('changed')
@@ -1251,11 +1261,11 @@ async function onSubtaskChanged() {
             v-model:value="title"
             :placeholder="t('task.head.titlePlaceholder')"
             class="title-input plain"
-            :readonly="readonly"
+            :readonly="ro"
           />
 
           <div class="tm-col-left">
-            <div class="props" :class="{ 'tm-ro': readonly }">
+            <div class="props" :class="{ 'tm-ro': ro }">
               <!-- priority -->
               <!-- data-tour-set marks a filled field for the Get Started guide
                    (#2759): its steps end when the user actually sets the value,
@@ -1650,7 +1660,7 @@ async function onSubtaskChanged() {
                 >
                 <div class="status-row">
                   <n-popover
-                    v-if="!readonly && sortedCols.length"
+                    v-if="!ro && sortedCols.length"
                     trigger="click"
                     placement="bottom-start"
                   >
@@ -1677,7 +1687,7 @@ async function onSubtaskChanged() {
                     <span class="col-dot" :style="{ background: currentColumn?.color }" />
                     <span>{{ columnName(currentColumn) || '—' }}</span>
                   </span>
-                  <template v-if="!readonly">
+                  <template v-if="!ro">
                     <button
                       class="st-btn"
                       :disabled="!nextCol || moving"
@@ -1720,7 +1730,7 @@ async function onSubtaskChanged() {
                   >
                     <span class="parent-title">{{ parentLabel }}</span>
                   </button>
-                  <button v-if="!readonly" class="val detach" @click="detachFromParent">
+                  <button v-if="!ro" class="val detach" @click="detachFromParent">
                     {{ t('task.parent.detach') }}
                   </button>
                 </div>
@@ -1784,7 +1794,7 @@ async function onSubtaskChanged() {
               v-model:template-value="glTemplate"
               data-tour="tm-description"
               :data-tour-set="descSaved ? '' : null"
-              :readonly="readonly"
+              :readonly="ro"
               :members="mentionItems"
               :task-id="taskId"
               :initial-mode="descInitialMode"
@@ -1836,7 +1846,7 @@ async function onSubtaskChanged() {
                   v-model:template-value="glTemplate"
                   data-tour="tm-description"
                   :data-tour-set="descSaved ? '' : null"
-                  :readonly="readonly"
+                  :readonly="ro"
                   :members="mentionItems"
                   :task-id="taskId"
                   :initial-mode="descInitialMode"
@@ -1877,7 +1887,7 @@ async function onSubtaskChanged() {
                   ref="commentsTab"
                   v-model:comments="comments"
                   :task-id="taskId"
-                  :readonly="readonly"
+                  :readonly="ro"
                   :hydrated="commentsHydrated"
                   @changed="emit('changed')"
                   @reload-detail="loadDetail"
@@ -1901,7 +1911,7 @@ async function onSubtaskChanged() {
                 <TaskSubtasksTab
                   :task="task"
                   :columns="columns"
-                  :readonly="readonly"
+                  :readonly="ro"
                   :gitlab-can-group="gitlabCanGroup"
                   @open="emit('open', $event)"
                   @changed="onSubtaskChanged"
@@ -1927,7 +1937,7 @@ async function onSubtaskChanged() {
                   v-model:relations="relations"
                   :task-id="taskId"
                   :ws-id="wsId"
-                  :readonly="readonly"
+                  :readonly="ro"
                   @changed="emit('changed')"
                   @open-related="openRelated"
                 />
@@ -1950,7 +1960,7 @@ async function onSubtaskChanged() {
                 <TaskFilesTab
                   v-model:attachments="attachments"
                   :task-id="taskId"
-                  :readonly="readonly"
+                  :readonly="ro"
                   @changed="emit('changed')"
                 />
               </n-tab-pane>
@@ -1976,7 +1986,7 @@ async function onSubtaskChanged() {
                 <TaskDocumentsTab
                   v-model:links="docLinks"
                   :task-id="taskId"
-                  :readonly="readonly"
+                  :readonly="ro"
                   @open-document="openDocument"
                 />
               </n-tab-pane>
@@ -1997,7 +2007,7 @@ async function onSubtaskChanged() {
       </n-spin>
 
       <template #footer>
-        <div v-if="readonly" class="footer">
+        <div v-if="ro" class="footer">
           <span class="ro-note">{{ t('task.footer.readonly') }}</span>
           <n-space :wrap="false" :size="8">
             <n-button @click="close">{{ t('common.action.close') }}</n-button>

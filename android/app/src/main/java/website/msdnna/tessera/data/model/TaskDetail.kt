@@ -20,6 +20,11 @@ data class TaskDetail(
     @SerializedName("estimate") val estimate: Double? = null,
     @SerializedName("created_by") val createdBy: String? = null,
     @SerializedName("completed_at") val completedAt: String? = null,
+    // The task's OWN archive state. Read-only used to be derived from the board's
+    // archive scope alone, but half the doors into the modal walk past it — a
+    // relation, a notification, a `#N` chip, a reminder deep-link all open the task
+    // on the live board — and the backend has no archive guard of its own (#2932).
+    @SerializedName("archived_at") val archivedAt: String? = null,
     @SerializedName("number") val number: Long? = null,
     @SerializedName("recurrence") val recurrence: Recurrence? = null,
     @SerializedName("due_lead_minutes") val dueLeadMinutes: Int? = null,
@@ -37,6 +42,7 @@ data class TaskDetail(
     @SerializedName("gitlab") val gitlab: GitlabLink? = null,
 ) {
     val isCompleted: Boolean get() = completedAt != null
+    val isArchived: Boolean get() = archivedAt != null
     val tags: List<Tag> get() = tagsRaw.orEmpty()
     val assignees: List<AssigneeUser> get() = assigneesRaw.orEmpty()
     val gitlabAssignees: List<GitlabAssignee> get() = gitlabAssigneesRaw.orEmpty()
