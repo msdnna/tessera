@@ -1446,6 +1446,48 @@ func resolveParentRef(claimedBy *uuid.UUID, hierarchyKnown bool) parentRef {
 	}
 }
 
+// ringWithParent reports whether hanging taskID under parentID would close a
+// parent ring — that is, whether the proposed parent is the task itself or sits
+// somewhere below it. The same question applyParent asks before every manual
+// attach, and for the same reason: a subtask is drawn under its parent and
+// ListBoardTasksWithMeta takes only parent_id IS NULL, so a ring reachable from no
+// root is drawn on no board, and the cards are gone for every member with nothing
+// in the UI left to undo it with.
+//
+// The pull normally cannot build one: a mirrored issue nobody claimed is detached
+// to top level before its own children are placed, so an issue that becomes the
+// parent of its current Tessera parent loses that parent in the same run. The
+// exception is the one branch that deliberately keeps a stale parent — a grouped
+// parent whose children could not be listed leaves its subtasks alone (#2592) —
+// and there one half of a run kept А under Б while the other half put Б under А.
+// Every later run then wrote nothing at all, the claim being already satisfied.
+//
+// Refusing leaves the task where it is: the GitLab hierarchy is re-applied by the
+// next run, once the side that must move has moved. A failed lookup refuses too —
+// an unverifiable parent is not a reason to risk the shape of the board.
+func (h *API) ringWithParent(ctx context.Context, taskID uuid.UUID, parentID *uuid.UUID, iid int64, j *syncJournal) bool {
+	if parentID == nil {
+		return false // a detach cannot close anything
+	}
+	ancestors, err := h.q.TaskAncestorIDs(ctx, *parentID)
+	if err != nil {
+		log.Printf("gitlab sync: ancestors of proposed parent %s failed: %v", parentID, err)
+		return true
+	}
+	for _, id := range ancestors {
+		if id != taskID {
+			continue
+		}
+		log.Printf("gitlab sync: refusing to hang task %s under its own descendant %s", taskID, parentID)
+		j.add(journalAction{
+			Direction: "pull", EntityType: "task", Op: "skip", TaskID: &taskID, GlIid: &iid,
+			Summary: "иерархия #" + strconv.FormatInt(iid, 10) + ": родитель из GitLab — подзадача этой же задачи, связь не применена",
+		})
+		return true
+	}
+	return false
+}
+
 // sameUUIDPtr reports whether two optional UUIDs are equal.
 func sameUUIDPtr(a, b *uuid.UUID) bool {
 	if a == nil || b == nil {
@@ -1555,8 +1597,9 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		}
 		// Re-parent if the grouping changed (e.g. an issue became a child, or a
 		// child was detached). SetTaskParent also fixes board/column. Skipped entirely
-		// when the parent is unknown this run — see parentRef.
-		if parent.known && !sameUUIDPtr(t.ParentID, parentID) {
+		// when the parent is unknown this run — see parentRef — and when the move
+		// would close a ring (see ringWithParent).
+		if parent.known && !sameUUIDPtr(t.ParentID, parentID) && !h.ringWithParent(ctx, link.TaskID, parentID, iid, j) {
 			if reparented, perr := h.q.SetTaskParent(ctx, db.SetTaskParentParams{
 				ID: link.TaskID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
 			}); perr == nil {

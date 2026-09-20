@@ -129,6 +129,12 @@ type fakeGitlab struct {
 	// widget reports and the sync mirrors as Tessera subtasks.
 	children map[int64][]int64
 
+	// Parent iids whose Hierarchy widget answers with an error instead of a list.
+	// The sync treats that as "the parent of these subtasks is unknown this run"
+	// (see distrustChildren) rather than as a detach, and that branch has rules of
+	// its own — a test that never fails the query cannot reach them.
+	childrenErr map[int64]bool
+
 	// Every path the backend asked for, as it arrived on the wire. The asset
 	// proxy test reads it to see where a signed link actually pointed.
 	seen []string
@@ -191,6 +197,7 @@ func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
 		templates: map[string]string{}, nextIID: 100, nextMsID: 9000,
 		linkedItemsWidget: true,
 		children:          map[int64][]int64{},
+		childrenErr:       map[int64]bool{},
 		uploads:           map[string]fakeUpload{},
 	}
 	f.srv = httptest.NewServer(f)
@@ -373,7 +380,12 @@ func (f *fakeGitlab) childItemsQuery(w http.ResponseWriter, vars map[string]any)
 	iid, _ := strconv.ParseInt(fmt.Sprint(vars["iid"]), 10, 64)
 	f.mu.Lock()
 	kids := append([]int64(nil), f.children[iid]...)
+	boom := f.childrenErr[iid]
 	f.mu.Unlock()
+	if boom {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "hierarchy widget unavailable"})
+		return
+	}
 	nodes := make([]any, 0, len(kids))
 	for _, k := range kids {
 		nodes = append(nodes, map[string]any{"iid": strconv.FormatInt(k, 10)})
