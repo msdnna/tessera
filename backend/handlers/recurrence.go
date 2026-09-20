@@ -45,7 +45,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 	if rule.Once {
 		carry = nil
 	}
-	nextStart := shiftStart(t.StartDate, t.DueDate, next)
+	nextStart := shiftStart(rule, t.StartDate, t.DueDate, next)
 
 	if rule.CreateNew {
 		// Strip the rule from the original (it's now a historical instance) and
@@ -54,7 +54,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 		if err != nil {
 			original = t
 		}
-		if _, cerr := h.cloneRecurringTask(ctx, t, target, next, nextStart, carry, wsID, actorID); cerr == nil {
+		if _, cerr := h.cloneRecurringTask(ctx, t, target, next, nextStart, rule, carry, wsID, actorID); cerr == nil {
 			h.logEventActor(ctx, t.ID, actorID, "recurred", map[string]any{"due": next, "cloned": true})
 		}
 		return original, true
@@ -84,7 +84,7 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 			}
 		}
 	}
-	h.carryChecklist(ctx, t, target, next)
+	h.carryChecklist(ctx, t, rule, target, next)
 	h.logEventActor(ctx, t.ID, actorID, "recurred", map[string]any{"due": next})
 	return updated, true
 }
@@ -104,13 +104,16 @@ func (h *API) applyRecur(ctx context.Context, t db.Task, wsID, actorID uuid.UUID
 //
 // All of that is dispatched by carryChecklistFrom below, which is where the depth
 // lives.
-func (h *API) carryChecklist(ctx context.Context, t db.Task, target uuid.UUID, next time.Time) {
+// The step handed down is the one the rule's calendar took (WallStep), not the
+// elapsed one: on the day a zone changes its offset the two differ by an hour,
+// and only the calendar one keeps each item on the clock its parent kept.
+func (h *API) carryChecklist(ctx context.Context, t db.Task, rule recur.Rule, target uuid.UUID, next time.Time) {
 	var shift *float64
 	if t.DueDate != nil {
-		s := next.Sub(*t.DueDate).Seconds()
+		s := rule.WallStep(*t.DueDate, next).Seconds()
 		shift = &s
 	}
-	h.carryChecklistFrom(ctx, t.ID, target, h.doneColumnToLeave(ctx, t, target), shift,
+	h.carryChecklistFrom(ctx, t.ID, target, h.doneColumnToLeave(ctx, t, target), rule.ZoneName(), shift,
 		map[uuid.UUID]bool{t.ID: true})
 }
 
@@ -143,7 +146,7 @@ func (h *API) carryChecklist(ctx context.Context, t db.Task, target uuid.UUID, n
 // the reason cloneChecklist gives: a ring must not spin here.
 func (h *API) carryChecklistFrom(
 	ctx context.Context, parentID, target uuid.UUID, done *uuid.UUID,
-	shift *float64, seen map[uuid.UUID]bool,
+	zone string, shift *float64, seen map[uuid.UUID]bool,
 ) {
 	soft(ctx, "ReopenSubtasks", h.q.ReopenSubtasks(ctx, &parentID))
 	if done != nil {
@@ -153,7 +156,7 @@ func (h *API) carryChecklistFrom(
 	}
 	if shift != nil {
 		soft(ctx, "ShiftSubtaskWindow", h.q.ShiftSubtaskWindow(ctx, db.ShiftSubtaskWindowParams{
-			ShiftSeconds: *shift, ParentID: parentID,
+			Zone: zone, ShiftSeconds: *shift, ParentID: parentID,
 		}))
 	}
 	subs, err := h.q.ListSubtasks(ctx, &parentID)
@@ -165,7 +168,7 @@ func (h *API) carryChecklistFrom(
 			continue
 		}
 		seen[s.ID] = true
-		h.carryChecklistFrom(ctx, s.ID, target, done, shift, seen)
+		h.carryChecklistFrom(ctx, s.ID, target, done, zone, shift, seen)
 	}
 }
 
@@ -220,26 +223,35 @@ func (h *API) setTaskRecurrence(ctx context.Context, t db.Task, rule *json.RawMe
 // half-hour meeting reads as a month-long effort, and it drags the chart's whole
 // axis with it.
 //
-// The step is measured as elapsed time, not calendar arithmetic, because the
-// window's length is what has to survive: a monthly rule landing on a short
-// February moves due by 28 days, and the start has to move 28 too or the window
-// silently changes size. A task with no start (or no previous due to measure
-// from) keeps none — a bar for a task nobody scheduled to begin would be the same
-// invention in the other direction.
-func shiftStart(start, prevDue *time.Time, next time.Time) *time.Time {
+// The step is the whole distance the due date travelled, not calendar
+// arithmetic of its own, because the window's length is what has to survive: a
+// monthly rule landing on a short February moves due by 28 days, and the start
+// has to move 28 too or the window silently changes size. A task with no start
+// (or no previous due to measure from) keeps none — a bar for a task nobody
+// scheduled to begin would be the same invention in the other direction.
+//
+// That distance is measured on the rule's calendar (WallStep) and applied to the
+// start's clock, because the two readings part company on the day a zone changes
+// its offset: a daily task due 09:00 is due 09:00 again the next day, 23 elapsed
+// hours later across a spring-forward, and a start at 08:00 that same morning has
+// to read 08:00 too. Adding the 23 hours to the instant read 07:00 instead — the
+// window grew an hour, and it stayed grown until the clocks went back (#2932).
+func shiftStart(rule recur.Rule, start, prevDue *time.Time, next time.Time) *time.Time {
 	if start == nil || prevDue == nil {
 		return start
 	}
-	shifted := start.Add(next.Sub(*prevDue))
+	shifted := rule.ShiftWall(*start, rule.WallStep(*prevDue, next))
 	return &shifted
 }
 
-// shiftBy moves an optional timestamp by step, keeping "no date" as no date.
-func shiftBy(ts *time.Time, step time.Duration) *time.Time {
+// shiftBy moves an optional timestamp by step on the rule's calendar, keeping
+// "no date" as no date. The step comes from WallStep, so it advances the clock
+// reading — see shiftStart for why the instant is the wrong thing to move.
+func shiftBy(rule recur.Rule, ts *time.Time, step time.Duration) *time.Time {
 	if ts == nil || step == 0 {
 		return ts
 	}
-	shifted := ts.Add(step)
+	shifted := rule.ShiftWall(*ts, step)
 	return &shifted
 }
 
@@ -258,7 +270,7 @@ func shiftBy(ts *time.Time, step time.Duration) *time.Time {
 // next occurrence stood on the board as a card of its own, outside the subtask
 // counts and out of reach of liftSubtasksFromDone. The reschedule branch never had
 // this: it edits the task in place and UpdateTask does not carry parent_id.
-func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid.UUID, due time.Time, start *time.Time, rule *json.RawMessage, wsID, actorID uuid.UUID) (db.Task, error) {
+func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid.UUID, due time.Time, start *time.Time, rule recur.Rule, carry *json.RawMessage, wsID, actorID uuid.UUID) (db.Task, error) {
 	// The duplicate is a new task in whichever list it is born into, so it takes
 	// CreateTask's own rule — the end of the parent's checklist for an item, the
 	// end of the column for a card. The column's tail alone was a card's number
@@ -282,8 +294,8 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 		return db.Task{}, err
 	}
 	// CreateTask doesn't take a recurrence rule — set it on the clone afterwards.
-	if rule != nil {
-		if c2, uerr := h.setTaskRecurrence(ctx, clone, rule); uerr == nil {
+	if carry != nil {
+		if c2, uerr := h.setTaskRecurrence(ctx, clone, carry); uerr == nil {
 			clone = c2
 		}
 	}
@@ -301,11 +313,12 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 	h.carryDueNotify(ctx, src, clone.ID)
 	// The step the parent's due date took — each item's own window rides along
 	// so the duplicate's checklist isn't born pinned to the previous occurrence.
+	// Measured on the rule's calendar, for the reason shiftStart gives.
 	var step time.Duration
 	if src.DueDate != nil {
-		step = due.Sub(*src.DueDate)
+		step = rule.WallStep(*src.DueDate, due)
 	}
-	h.cloneChecklist(ctx, src, clone, columnID, step, wsID, map[uuid.UUID]bool{src.ID: true})
+	h.cloneChecklist(ctx, src, clone, columnID, rule, step, wsID, map[uuid.UUID]bool{src.ID: true})
 	h.logEventActor(ctx, clone.ID, actorID, "created", nil)
 	// The journal already knows who caused this (logEventActor above) — the live
 	// event has to say it too. Closing a "create a duplicate" recurring task is a
@@ -334,7 +347,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 // documentSubtreeIDs dedups its own walk).
 func (h *API) cloneChecklist(
 	ctx context.Context, src, dst db.Task, columnID uuid.UUID,
-	step time.Duration, wsID uuid.UUID, seen map[uuid.UUID]bool,
+	rule recur.Rule, step time.Duration, wsID uuid.UUID, seen map[uuid.UUID]bool,
 ) {
 	subs, err := h.q.ListSubtasks(ctx, &src.ID)
 	if err != nil {
@@ -365,7 +378,7 @@ func (h *API) cloneChecklist(
 		sub, cerr := h.q.CreateTask(ctx, db.CreateTaskParams{
 			BoardID: src.BoardID, ColumnID: columnID, ParentID: &dst.ID,
 			Title: s.Title, Description: s.Description, Priority: s.Priority,
-			DueDate: shiftBy(s.DueDate, step), StartDate: shiftBy(s.StartDate, step),
+			DueDate: shiftBy(rule, s.DueDate, step), StartDate: shiftBy(rule, s.StartDate, step),
 			Estimate: s.Estimate, Position: pos, CreatedBy: src.CreatedBy, Number: &snum,
 		})
 		pos += positionGap
@@ -387,7 +400,7 @@ func (h *API) cloneChecklist(
 			}
 		}
 		h.carryDueNotify(ctx, s, sub.ID)
-		h.cloneChecklist(ctx, s, sub, columnID, step, wsID, seen)
+		h.cloneChecklist(ctx, s, sub, columnID, rule, step, wsID, seen)
 	}
 }
 

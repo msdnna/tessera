@@ -206,6 +206,46 @@ func (r Rule) SameCalendarDay(a, b time.Time) bool {
 	return ya == yb && ma == mb && da == db
 }
 
+// ZoneName is the IANA name of the zone the rule's calendar arithmetic runs in
+// ("UTC" for a blank or unknown one) — for handing the same calendar to SQL that
+// Next does its stepping on.
+func (r Rule) ZoneName() string {
+	return r.loc().String()
+}
+
+// WallStep measures the step an advance just took on the rule's calendar: the
+// difference between the two *clock readings* in the rule's zone, not between
+// the two instants.
+//
+// The two differ on the day a zone changes its offset, and that is the whole
+// point. Next steps calendar days (AddDate/time.Date), so an occurrence due at
+// 09:00 stays due at 09:00 — but across a spring-forward that is 23 elapsed
+// hours, and across the autumn one 25. Handed on as a plain interval to the rest
+// of the occurrence — the start date, every checklist item — those 23 hours are
+// right only for a row whose own window happens to straddle the transition as
+// well. Everything else is moved an hour off the parent it belongs to, and an
+// item scheduled just after midnight is moved onto the previous date (#2932).
+func (r Rule) WallStep(prev, next time.Time) time.Duration {
+	loc := r.loc()
+	return wallClock(next, loc).Sub(wallClock(prev, loc))
+}
+
+// ShiftWall moves ts by a wall-clock step measured by WallStep: the clock reading
+// advances by step on the rule's calendar, and the instant follows from whatever
+// offset that zone has on the resulting day.
+func (r Rule) ShiftWall(ts time.Time, step time.Duration) time.Time {
+	loc := r.loc()
+	w := wallClock(ts, loc).Add(step)
+	return time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), w.Second(), w.Nanosecond(), loc)
+}
+
+// wallClock reads t's clock in loc and returns it as a zone-free instant, so
+// that plain subtraction measures calendar distance rather than elapsed time.
+func wallClock(t time.Time, loc *time.Location) time.Time {
+	t = t.In(loc)
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.UTC)
+}
+
 // Marshal returns the canonical JSON form, suitable for storage.
 func (r Rule) Marshal() (*json.RawMessage, bool) {
 	n, ok := r.normalized()

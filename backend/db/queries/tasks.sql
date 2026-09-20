@@ -477,14 +477,23 @@ WHERE parent_id = sqlc.arg(parent_id)::uuid
 
 -- ShiftSubtaskWindow moves a recurring parent's direct subtasks by the same step
 -- its due date just took, so the whole checklist travels to the next occurrence
--- instead of staying pinned — and overdue — at the first one. The shift is elapsed
--- time, not calendar arithmetic, for the reason shiftStart gives: what has to
--- survive is the length of each item's window. NULL + interval is NULL, so an item
--- nobody scheduled keeps no dates.
+-- instead of staying pinned — and overdue — at the first one. What has to survive
+-- is the length of each item's window (the reason shiftStart gives), so the step
+-- is applied to the *clock*, not to the instant: the shift is read on the rule's
+-- calendar (recur.Rule.WallStep) and added inside the rule's zone, which is the
+-- calendar recur.Next stepped the parent's due date on. Added to the instant
+-- instead, the 23-hour day a zone loses to a spring-forward moved every item that
+-- did not itself straddle the transition an hour off its parent — and one
+-- scheduled just after midnight onto the previous date (#2932). NULL + interval
+-- is NULL, so an item nobody scheduled keeps no dates.
 -- name: ShiftSubtaskWindow :exec
 UPDATE tasks
-SET due_date   = due_date   + make_interval(secs => sqlc.arg(shift_seconds)::double precision),
-    start_date = start_date + make_interval(secs => sqlc.arg(shift_seconds)::double precision),
+SET due_date   = (due_date   AT TIME ZONE sqlc.arg(zone)::text
+                    + make_interval(secs => sqlc.arg(shift_seconds)::double precision))
+                 AT TIME ZONE sqlc.arg(zone)::text,
+    start_date = (start_date AT TIME ZONE sqlc.arg(zone)::text
+                    + make_interval(secs => sqlc.arg(shift_seconds)::double precision))
+                 AT TIME ZONE sqlc.arg(zone)::text,
     updated_at = now()
 WHERE parent_id = sqlc.arg(parent_id)::uuid
   AND (due_date IS NOT NULL OR start_date IS NOT NULL)

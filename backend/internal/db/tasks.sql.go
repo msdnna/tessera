@@ -1473,27 +1473,37 @@ func (q *Queries) SetTaskTitle(ctx context.Context, arg SetTaskTitleParams) erro
 
 const shiftSubtaskWindow = `-- name: ShiftSubtaskWindow :exec
 UPDATE tasks
-SET due_date   = due_date   + make_interval(secs => $1::double precision),
-    start_date = start_date + make_interval(secs => $1::double precision),
+SET due_date   = (due_date   AT TIME ZONE $1::text
+                    + make_interval(secs => $2::double precision))
+                 AT TIME ZONE $1::text,
+    start_date = (start_date AT TIME ZONE $1::text
+                    + make_interval(secs => $2::double precision))
+                 AT TIME ZONE $1::text,
     updated_at = now()
-WHERE parent_id = $2::uuid
+WHERE parent_id = $3::uuid
   AND (due_date IS NOT NULL OR start_date IS NOT NULL)
   AND archived_at IS NULL
 `
 
 type ShiftSubtaskWindowParams struct {
+	Zone         string    `json:"zone"`
 	ShiftSeconds float64   `json:"shift_seconds"`
 	ParentID     uuid.UUID `json:"parent_id"`
 }
 
 // ShiftSubtaskWindow moves a recurring parent's direct subtasks by the same step
 // its due date just took, so the whole checklist travels to the next occurrence
-// instead of staying pinned — and overdue — at the first one. The shift is elapsed
-// time, not calendar arithmetic, for the reason shiftStart gives: what has to
-// survive is the length of each item's window. NULL + interval is NULL, so an item
-// nobody scheduled keeps no dates.
+// instead of staying pinned — and overdue — at the first one. What has to survive
+// is the length of each item's window (the reason shiftStart gives), so the step
+// is applied to the *clock*, not to the instant: the shift is read on the rule's
+// calendar (recur.Rule.WallStep) and added inside the rule's zone, which is the
+// calendar recur.Next stepped the parent's due date on. Added to the instant
+// instead, the 23-hour day a zone loses to a spring-forward moved every item that
+// did not itself straddle the transition an hour off its parent — and one
+// scheduled just after midnight onto the previous date (#2932). NULL + interval
+// is NULL, so an item nobody scheduled keeps no dates.
 func (q *Queries) ShiftSubtaskWindow(ctx context.Context, arg ShiftSubtaskWindowParams) error {
-	_, err := q.db.Exec(ctx, shiftSubtaskWindow, arg.ShiftSeconds, arg.ParentID)
+	_, err := q.db.Exec(ctx, shiftSubtaskWindow, arg.Zone, arg.ShiftSeconds, arg.ParentID)
 	return err
 }
 
