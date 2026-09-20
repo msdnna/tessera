@@ -75,6 +75,14 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 	if req.DueRepeatMinutes < 0 {
 		req.DueRepeatMinutes = 0
 	}
+	// Только кламп снизу здесь и стоял, и всё, что выше, уходило в
+	// `time.Duration(x) * time.Minute` — переполнение int64 переворачивает знак и
+	// превращает «раз в 4084 года» в «каждую минуту», а «за 4084 года до срока» —
+	// в «через трое суток после». См. maxDueMinutes.
+	if req.DueLeadMinutes > maxDueMinutes || req.DueRepeatMinutes > maxDueMinutes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "срок предупреждения и интервал повтора не могут быть больше года"})
+		return
+	}
 	// The window is read in this zone, and quietWindow resolves it with
 	// time.LoadLocation — a name it cannot resolve leaves UTC in place without a
 	// word (pinned by TestQuietWindowUnknownZoneSilentlyMeansUTC). Stored
@@ -141,6 +149,13 @@ func (h *API) SetTaskDueNotify(c *gin.Context) {
 	}
 	if req.RepeatMinutes != nil && *req.RepeatMinutes < 0 {
 		*req.RepeatMinutes = 0
+	}
+	// Вторая дверь к той же арифметике: пер-задачный override побеждает
+	// пользовательский дефолт, так что граница здесь та же (см. maxDueMinutes).
+	if (req.LeadMinutes != nil && *req.LeadMinutes > maxDueMinutes) ||
+		(req.RepeatMinutes != nil && *req.RepeatMinutes > maxDueMinutes) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "срок предупреждения и интервал повтора не могут быть больше года"})
+		return
 	}
 	t, err := h.q.SetTaskDueNotify(c, db.SetTaskDueNotifyParams{
 		ID: id, DueLeadMinutes: req.LeadMinutes, DueRepeatMinutes: req.RepeatMinutes, DueNotifyEnabled: req.Enabled,

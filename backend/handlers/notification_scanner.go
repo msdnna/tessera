@@ -182,12 +182,35 @@ func (h *API) scanDueTasks(ctx context.Context) {
 	}
 }
 
+// maxDueMinutes bounds the lead and repeat of a due-date notification. A year is
+// far past anything the popover offers (minutes to days) and still leaves "warn me
+// a season ahead" expressible; anything past it is refused at the door — in both
+// UpdateMyNotificationPrefs and SetTaskDueNotify — and clamped here.
+//
+// The bound is not tidiness. Both are int32 and used to be stored behind nothing
+// but a clamp at zero, so a value no client offers went straight into
+// `time.Duration(x) * time.Minute`, which overflows int64 from 153722868 up and
+// comes out NEGATIVE. Each field then breaks in the direction opposite to what was
+// asked for:
+//   - repeat: the next nag is last_fired_at + interval, so a negative interval is
+//     always in the past. "Repeat every 4084 years" (int32 max) becomes a fire on
+//     every scanner tick — one message a minute, for as long as the task is late.
+//   - lead: the window is due − lead, so a negative lead pushes it PAST the due
+//     date. "Warn me 4084 years ahead" becomes silence until three days after the
+//     deadline.
+//
+// Clamped rather than only refused, because the refusal cannot reach a prefs row
+// or a task override already holding such a value — the screens render it as an
+// interval and the user has nothing to correct (#2932).
+const maxDueMinutes = 525600 // 365 дней
+
 // dueShouldFire decides whether a due-date notification should fire now, given the
 // effective lead/repeat (minutes), the task's due date, the prior per-(task,user)
 // state (nil = never fired), and the current time. It fires once when now enters
 // the lead window [due-lead, ∞); if the due date changed since the last fire it
 // re-arms; and with a positive repeat it fires again every repeat minutes.
 func dueShouldFire(now, due time.Time, lead, repeat int32, prior *db.DueNotificationState) bool {
+	lead, repeat = clampDueMinutes(lead), clampDueMinutes(repeat)
 	if now.Before(due.Add(-time.Duration(lead) * time.Minute)) {
 		return false // not yet inside the lead window
 	}
@@ -198,6 +221,18 @@ func dueShouldFire(now, due time.Time, lead, repeat int32, prior *db.DueNotifica
 		return false // one-shot, already fired
 	}
 	return !now.Before(prior.LastFiredAt.Add(time.Duration(repeat) * time.Minute))
+}
+
+// clampDueMinutes keeps a stored lead/repeat inside [0, maxDueMinutes], so the
+// duration arithmetic above cannot overflow whatever is already in the database.
+func clampDueMinutes(m int32) int32 {
+	if m < 0 {
+		return 0
+	}
+	if m > maxDueMinutes {
+		return maxDueMinutes
+	}
+	return m
 }
 
 // dueAlreadyFired reports whether the per-(task,user) state records a fire for
