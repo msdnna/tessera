@@ -38,6 +38,12 @@ const props = defineProps({
   subtasksTotal: { type: Number, default: 0 },
   // Render subtasks as full property cards (vs compact name-only rows).
   subtasksExpanded: { type: Boolean, default: false },
+  // The board's composer holds a manual sort, so `subtasks` arrives in the SORT's
+  // order and not in the stored one — the child rows may be re-ordered on screen
+  // while `position` says something else. Locks child re-ordering for the same
+  // reason `subtasksTotal` does: the neighbours a drop names would be the wrong
+  // siblings. Drops from elsewhere (nesting) stay on.
+  sorted: { type: Boolean, default: false },
   // This card is itself a first-level subtask shown below its parent: darker
   // shade, no nested-subtask cascade, no "create subtask" button.
   nested: { type: Boolean, default: false },
@@ -365,6 +371,7 @@ async function submitAddSub() {
       :compact="isCompact"
       :dragging="dragging"
       :narrowed="subsNarrowed"
+      :sorted="sorted"
       :readonly="readonly"
       @open="emit('open', $event)"
       @changed="emit('changed')"

@@ -45,8 +45,19 @@ export function planColumnReorder(evt, colModel, groupMode) {
 // back where it started — no request, no error, no explanation, and the same drag
 // one grouping over (status) persists. Cross-lane drops are untouched: those carry
 // `added`/`removed`, which DO mean something here (set the milestone, add the tag).
-export function canSortWithinLane(groupMode) {
-  return groupMode === 'status'
+//
+// `sorted` — the composer holds a manual sort («Сортировка: Приоритет ↓», …) — is
+// the same refusal for the other reason the rendered order can stop being the
+// stored one. A status column owns its cards' order, but the board does not draw
+// it: `lists` is built from `filteredTasks`, i.e. `sortByLevels(...)`, so the two
+// cards a drop lands between are neighbours in the SORT and their `position`
+// values stand in arbitrary relative order. The midpoint of a pair handed over
+// swapped is a valid float that means nothing — the card lands at a random slot of
+// the stored ladder, and `positionExhausted` (which only catches a collapsed slot)
+// never fires on it. On screen the drop was invisible, because the reload re-sorts;
+// the scrambled order surfaced later, for everyone, once the sort came off.
+export function canSortWithinLane(groupMode, sorted = false) {
+  return groupMode === 'status' && !sorted
 }
 
 // planColDrop turns a Sortable change event on a destination column into the
@@ -69,6 +80,15 @@ export function canSortWithinLane(groupMode) {
 // inside one lane) — see canSortWithinLane above, which is what keeps the board
 // from offering that gesture in the first place.
 //
+// `sorted` (the composer holds a manual sort) narrows the status rule set the same
+// way, and for the reason spelled out on canSortWithinLane: the neighbours around
+// `newIndex` are the SORT's, not the ladder's. A re-order inside the column plans
+// nothing at all; a drop from another column still persists — the column change is
+// real — but names no slot, which is the shape the context menu's «Переместить →
+// колонка» already sends and which the server appends (backend
+// positionForUnanchoredMove). That also covers the collapsed-column top-pin: with a
+// sort on, "the top" is the sort's top and not a slot on the ladder either.
+//
 // Returns an array of intents (possibly empty). Each intent is `{ op, ... }`; the
 // component maps ops to API calls. Keeping this a list (not direct calls) is what
 // makes the setParent-then-move ordering and the collapsed/subtask branches
@@ -80,13 +100,18 @@ export function planColDrop({
   list = [],
   collapsed = false,
   groupTags = [],
+  sorted = false,
 }) {
   const intents = []
   if (groupMode === 'status') {
     const info = evt.added || evt.moved
     if (!info) return intents
-    const before = collapsed ? null : list[info.newIndex - 1]
-    const after = collapsed ? list.find((t) => t.id !== info.element.id) : list[info.newIndex + 1]
+    if (sorted && !evt.added) return intents
+    const before = sorted || collapsed ? null : list[info.newIndex - 1]
+    let after = null
+    if (!sorted) {
+      after = collapsed ? list.find((t) => t.id !== info.element.id) : list[info.newIndex + 1]
+    }
     // A subtask dragged out onto a column becomes top-level again — before moving.
     if (evt.added && info.element.parent_id) {
       intents.push({ op: 'setParent', id: info.element.id, parentId: null })

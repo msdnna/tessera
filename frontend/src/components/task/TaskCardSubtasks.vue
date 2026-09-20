@@ -36,6 +36,17 @@ const props = defineProps({
   // The composer filter hid part of the children: reordering a partial list
   // would write meaningless float8 positions, so child DnD is locked.
   narrowed: { type: Boolean, default: false },
+  // A composer sort re-ordered the children on the way here, so the rows are drawn
+  // in the SORT's order while `position` still orders them the stored way. Same
+  // meaningless float8 as `narrowed`, arrived at differently — a drop would name
+  // the siblings it landed between on SCREEN, and the midpoint of two positions
+  // handed over in arbitrary relative order puts the child at a random slot of the
+  // parent's ladder. Invisible on the spot (the reload re-sorts) and permanent.
+  //
+  // Unlike `narrowed` this only takes RE-ORDERING off (`:sort`), not the list
+  // itself: a card dragged in from the board still nests, which is a `setParent`
+  // and carries no position at all.
+  sorted: { type: Boolean, default: false },
   // Archive view: rows are display-only (no completion toggle).
   readonly: { type: Boolean, default: false },
 })
@@ -83,6 +94,11 @@ async function onSubChange(evt) {
     return
   }
   if (!evt.moved) return
+  // `:sort` already keeps Sortable from emitting this under a composer sort; the
+  // guard is repeated here because the neighbours below are read off `subModel`,
+  // which IS the sorted list — anything that reaches this line with `sorted` set
+  // would write the wrong siblings' midpoint into the parent's ladder.
+  if (props.sorted) return
   // Re-ordering a child says nothing about which COLUMN it stands in, and the
   // two are not the same field by accident: a subtask legitimately lives in
   // another column than its parent — `subColumn` below draws a chip for exactly
@@ -155,6 +171,7 @@ async function toggleSubDone(s) {
       :delay="300"
       :touch-start-threshold="6"
       :disabled="narrowed"
+      :sort="!sorted"
       @click.stop
       @change="onSubChange"
     >

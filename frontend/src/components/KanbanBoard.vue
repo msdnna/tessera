@@ -347,11 +347,6 @@ const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMo
 // `.col-drag` handle class on the collapsed strip — a collapsed column renders no
 // header, so the strip is the only element left that can carry the handle.
 const canReorderColumns = computed(() => groupMode.value === 'status' && !archivedMode.value)
-// May a card be re-ordered inside its own lane? Only status columns own card
-// order (`position` is per column, and a tag/milestone lane spans all of them) —
-// the rule and the reason live in utils/boardDnd, next to the planner that has no
-// intent for such a drop. Cross-lane drags stay on in every grouping.
-const canSortCards = computed(() => canSortWithinLane(groupMode.value))
 function exitArchive() {
   router.replace({ query: withoutArchiveQuery(route.query) })
 }
@@ -434,6 +429,20 @@ const {
 function toggleSubtasksExpanded() {
   subtasksExpanded.value = !subtasksExpanded.value
 }
+
+// Is the composer holding a manual sort right now? Then the order on screen is NOT
+// the stored `position` order — `lists` comes from `filteredTasks`, which is
+// `sortByLevels(...)`, and `sortedSubtasksByParent` re-orders each card's children
+// the same way — so every neighbour read off a rendered list means something other
+// than it says. Asked in three places that must agree: the card list's `:sort`, the
+// planner that turns a drop into an API call, and the child list on each card.
+const composerSorted = computed(() => sortLevels.value.length > 0)
+// May a card be re-ordered inside its own lane? Only status columns own card
+// order (`position` is per column, and a tag/milestone lane spans all of them),
+// and only while nothing re-orders them on the way to the screen — the rule and
+// both reasons live in utils/boardDnd, next to the planner that has no intent for
+// such a drop. Cross-lane drags stay on in every grouping.
+const canSortCards = computed(() => canSortWithinLane(groupMode.value, composerSorted.value))
 
 // "Авто" dependency-graph ordering — Gantt only. Active only while the composer
 // is in its no-group/no-sort state, so any manual grouping/sort transparently
@@ -1130,7 +1139,10 @@ function sortByLevels(arr) {
 
 // Subtasks mirror the parent sort: when a composer sort is active each parent's
 // children follow it too; with no sort we keep the raw stored order so on-card
-// drag-reorder stays authoritative.
+// drag-reorder stays authoritative. Which is why `composerSorted` also travels
+// down to the card — while the sort re-orders this list, the row a child is
+// dropped next to is not its neighbour in the parent's ladder, so the gesture is
+// refused there rather than persisted against the wrong siblings.
 const sortedSubtasksByParent = computed(() => {
   const src = filterResult.value.subtasksByParent
   if (!sortLevels.value.length) return src
@@ -1323,6 +1335,10 @@ async function onColChange(evt, dcol) {
       // The tags that ARE lanes right now (prefix narrowing included) — the drop
       // into «Без тегов» takes exactly those off the card and leaves the rest.
       groupTags: groupTags.value,
+      // A manual sort re-orders the rendered list, so `newIndex`'s neighbours are
+      // not the card's neighbours on the `position` ladder — the slot is left to
+      // the server (and a pure re-order plans nothing at all).
+      sorted: composerSorted.value,
     })
     for (const it of intents) {
       if (it.op === 'setParent') await tasksApi.setParent(it.id, it.parentId)
@@ -2265,6 +2281,7 @@ async function restoreFromArchive(taskId) {
                       :subtasks="sortedSubtasksByParent[element.id] || []"
                       :subtasks-total="(subtasksByParent[element.id] || []).length"
                       :subtasks-expanded="subtasksExpanded"
+                      :sorted="composerSorted"
                       :dragging="draggingCard"
                       :readonly="archivedMode"
                       @open="openTask"
