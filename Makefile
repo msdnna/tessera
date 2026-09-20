@@ -487,9 +487,16 @@ lint-android: ## Run ktlint + detekt on the Android app
 format-android: ## Auto-format Kotlin sources via ktlint
 	@$(ANDROID_GRADLE) :app:ktlintFormat
 
+# Narrows the unit tier the same way E2E_ANDROID_TESTS narrows the e2e one, e.g.
+#   make test-android ANDROID_TESTS='*RecurrenceTest,*DuePickerCustomDatesTest'
+# Same comma rule: Gradle takes one pattern per `--tests`, and a comma inside a
+# single pattern matches nothing and fails with «No tests found». Empty = all.
+ANDROID_TESTS ?=
+android_test_filters = $(foreach t,$(subst $(comma),$(space),$(ANDROID_TESTS)),--tests '$(t)')
+
 .PHONY: test-android
-test-android: ## Run Android unit tests
-	@$(ANDROID_GRADLE) :app:testDebugUnitTest
+test-android: ## Run Android unit tests (ANDROID_TESTS='<pattern>[,<pattern>]' narrows)
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest $(android_test_filters)
 
 # Narrows the e2e tier to one class or method, e.g.
 #   make test-e2e-android E2E_ANDROID_TESTS='website.msdnna.tessera.e2e.TaskModalE2eTest'
