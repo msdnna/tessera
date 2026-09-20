@@ -301,8 +301,8 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 		if opts.Mute {
 			return nil // matched a mute rule — deliver nowhere
 		}
-			// A rule with nothing left to deliver through does not get to consume the
-			// notification. Silence is what mute is for, and both clients write it as
+		// A rule with nothing left to deliver through does not get to consume the
+		// notification. Silence is what mute is for, and both clients write it as
 		// an explicit options.mute (the empty channel list merely comes with it),
 		// so an empty list on its own is never a user asking for quiet. It is what
 		// the server itself leaves behind: deleting a channel strips its id out of
