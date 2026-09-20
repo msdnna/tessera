@@ -1528,6 +1528,29 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 				t = reparented
 			}
 		}
+		// A board rule ("B: вторая" → that board's id) routes an issue to a board of
+		// its own, so a label added in GitLab moves an already-mirrored task. Both
+		// statements above write board_id onto THAT TASK ALONE — and a task's subtasks
+		// are not all mirrors of GitLab children: anything typed into the modal as a
+		// checklist item has no link of its own and is never visited by the sync, so
+		// it kept the board its parent had just left.
+		//
+		// A subtask is drawn only under a parent card present on the same board, so
+		// such a row is on nobody's board — and board_id/column_id are ON DELETE
+		// CASCADE, so deleting that stale column later takes it along. Every other door
+		// onto board_id already handles this: applyParent carries the subtree,
+		// TransferTask refuses to leave one behind by detaching.
+		//
+		// Linked children of a grouped parent are re-placed right after this by
+		// mirrorChildren, into the board and column their own labels resolve to, so
+		// moving them here costs nothing and covers the run that stops before it
+		// reaches them.
+		if boardID != old.BoardID {
+			rootID := link.TaskID
+			soft(ctx, "MoveSubtreeToBoard", h.q.MoveSubtreeToBoard(ctx, db.MoveSubtreeToBoardParams{
+				ParentID: &rootID, BoardID: boardID, ColumnID: t.ColumnID,
+			}))
+		}
 		if _, uerr := h.q.UpdateGitlabLink(ctx, db.UpdateGitlabLinkParams{
 			TaskID: link.TaskID, GlIid: issue.IID, GlWebUrl: issue.WebURL,
 			GlUpdatedAt: issue.UpdatedAt,
