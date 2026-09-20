@@ -282,6 +282,34 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 		if opts.Mute {
 			return nil // matched a mute rule — deliver nowhere
 		}
+			// A rule with nothing left to deliver through does not get to consume the
+			// notification. Silence is what mute is for, and both clients write it as
+		// an explicit options.mute (the empty channel list merely comes with it),
+		// so an empty list on its own is never a user asking for quiet. It is what
+		// the server itself leaves behind: deleting a channel strips its id out of
+		// every rule that named it (StripChannelFromRoutes), and a rule that named
+		// only that one is left matching first with nowhere to go. Consumed there,
+		// the list being first-match-wins, the catch-all below never sees the
+		// notification: dropping the telegram channel stopped mentions from
+		// reaching e-mail as well, while the settings screen showed a rule with no
+		// channels and no "muted" badge, which says nothing at all (#2932).
+		//
+		// Ids that resolve to nothing count the same way: rules written before the
+		// strip existed still carry the id of a channel that is gone, which the
+		// loop below skips one by one and so also delivers nowhere, the same
+		// blackhole by the other road. A channel that exists but is switched off
+		// is not this case: turning one off is a deliberate pause, and rerouting
+		// its rule's traffic to whatever sits underneath would be a destination
+		// the user never picked.
+		live := 0
+		for _, chID := range r.ChannelIds {
+			if _, ok := chByID[chID]; ok {
+				live++
+			}
+		}
+		if live == 0 {
+			continue
+		}
 		// Resolve the user's prefs once for both quiet-hours deferral and digest
 		// batching. Quiet hours hold external delivery until the window ends; a
 		// digest window holds it long enough to combine a burst (whichever is later
