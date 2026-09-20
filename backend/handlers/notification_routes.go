@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -47,6 +48,42 @@ type routeReq struct {
 	Enabled    *bool           `json:"enabled"`
 }
 
+// parseRule reads a rule's condition and options out of the two JSONB blobs it
+// is stored as. Both columns are free-form, so nothing but this parse says
+// whether what the user wrote is a rule at all.
+//
+// It has to be checked, not shrugged off, because the zero value is not a
+// neutral one: notify.Matcher documents the empty object as a catch-all, so a
+// matcher the server cannot read comes out matching *everything*. The list is
+// first-match-wins, so one such rule at the top of it is the only rule the user
+// has left. "Silence mentions" written as {"kinds":"mention"} — a string where
+// an array belongs — is that mistake in its shortest form, and it swallowed even
+// a reminder the user had set as an alarm (#2932). The clients round-trip the
+// whole rule and so never produced it; a PAT script writing the one field it
+// means to set did.
+func parseRule(matcher, options json.RawMessage) (notify.Matcher, notify.RouteOptions, error) {
+	var m notify.Matcher
+	if err := json.Unmarshal(orJSONObj(matcher), &m); err != nil {
+		return m, notify.RouteOptions{}, fmt.Errorf("matcher: %w", err)
+	}
+	var o notify.RouteOptions
+	if err := json.Unmarshal(orJSONObj(options), &o); err != nil {
+		return m, o, fmt.Errorf("options: %w", err)
+	}
+	return m, o, nil
+}
+
+// ruleReadable refuses a rule whose matcher or options do not parse. Answering
+// 400 is the honest reply: the rule as written has no meaning the router could
+// carry out, and storing it would silently widen it to every notification.
+func ruleReadable(c *gin.Context, matcher, options json.RawMessage) bool {
+	if _, _, err := parseRule(matcher, options); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "правило не разобрать: " + err.Error()})
+		return false
+	}
+	return true
+}
+
 // ListNotificationRoutes returns the current user's routing rules, ordered.
 func (h *API) ListNotificationRoutes(c *gin.Context) {
 	rows, err := h.q.ListNotificationRoutes(c, middleware.CurrentUser(c))
@@ -71,6 +108,9 @@ func (h *API) CreateNotificationRoute(c *gin.Context) {
 	}
 	if !h.channelsOwned(c, uid, req.ChannelIDs) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "одного из каналов не существует"})
+		return
+	}
+	if !ruleReadable(c, req.Matcher, req.Options) {
 		return
 	}
 	pos := req.Position
@@ -155,6 +195,9 @@ func (h *API) UpdateNotificationRoute(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "одного из каналов не существует"})
 		return
 	}
+	if !ruleReadable(c, arg.Matcher, arg.Options) {
+		return
+	}
 	row, err := h.q.UpdateNotificationRoute(c, arg)
 	if notFound(c, err) {
 		return
@@ -223,13 +266,19 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 		if !r.Enabled {
 			continue
 		}
-		var m notify.Matcher
-		_ = json.Unmarshal(orJSONObj(r.Matcher), &m)
+		// A rule the server cannot read is not applied. Skipping is what the
+		// refusal at the door cannot do for a row already in the table: the
+		// alternative is the zero matcher, which is a catch-all, so a rule that
+		// named one kind would claim every notification the user gets and the
+		// rules below it would never be reached (#2932).
+		m, opts, perr := parseRule(r.Matcher, r.Options)
+		if perr != nil {
+			log.Printf("notify: routing rule %s is unreadable, skipped: %v", r.ID, perr)
+			continue
+		}
 		if !m.Matches(ev) {
 			continue
 		}
-		var opts notify.RouteOptions
-		_ = json.Unmarshal(orJSONObj(r.Options), &opts)
 		if opts.Mute {
 			return nil // matched a mute rule — deliver nowhere
 		}
