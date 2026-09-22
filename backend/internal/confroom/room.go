@@ -1223,6 +1223,22 @@ func (rs *Rooms) Close() {
 	}
 }
 
+// UserMuted reports whether a live room is holding a force-mute against a user.
+//
+// The registry-level twin of Room.Muted, for callers outside a socket: the media
+// token endpoint asks before it decides what a join token may publish. A
+// conference with no live room answers false — the flag is on the participant's
+// row too, and that is what the caller falls back to.
+func (rs *Rooms) UserMuted(confID, userID uuid.UUID) bool {
+	rs.mu.Lock()
+	room, ok := rs.rooms[confID]
+	rs.mu.Unlock()
+	if !ok {
+		return false
+	}
+	return room.Muted(userID)
+}
+
 // UserPresent reports whether a user still has at least one live connection in a
 // conference. The socket handler checks this after a disconnect to tell "closed
 // one of two tabs" (still in the call) from "left the call" (reconcile the DB).

@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
+	"tessera/internal/db"
 	"tessera/internal/livekit"
 	"tessera/middleware"
 )
@@ -82,15 +83,21 @@ func (h *API) ConferenceToken(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// Everyone in a Tessera conference is a full participant, with one exception:
+	// a host has taken this one's microphone away.
+	sources := []string(nil)
+	if h.conferenceForceMuted(c, conf.ID, uid) {
+		sources = livekit.SourcesWithoutMic()
+	}
 	token, err := h.livekit.JoinToken(uid.String(), h.userDisplayName(c, uid), livekit.Grants{
 		Room: room,
-		// Everyone in a Tessera conference is a full participant. Mute is a
-		// room-state decision (#2869) and force-mute is served by RoomService
-		// with our role check in front of it — neither belongs in the grant,
-		// which the client could otherwise simply re-request.
-		CanPublish:     true,
-		CanSubscribe:   true,
-		CanPublishData: true,
+		// An ordinary mute is a room-state decision (#2869) and does not belong in
+		// the grant, which the client could otherwise simply re-request. A
+		// force-mute does, for the opposite reason — see conferenceForceMuted.
+		CanPublish:        true,
+		CanSubscribe:      true,
+		CanPublishData:    true,
+		CanPublishSources: sources,
 	}, 0)
 	if err != nil {
 		fail(c, err)
@@ -103,6 +110,38 @@ func (h *API) ConferenceToken(c *gin.Context) {
 		Identity:  uid.String(),
 		ExpiresIn: int(livekit.TokenTTL.Seconds()),
 	})
+}
+
+// conferenceForceMuted reports whether a host has silenced this user in this
+// conference — the live room's word first, the participant row as the fallback.
+//
+// Why the token has to carry it (#2932). A force-mute is enforced at the SFU by
+// narrowing the participant's publish sources through RoomService, and that
+// narrowing lives on the participant *session*: LiveKit authorises a join once,
+// from the token, and a reconnecting client is a brand new participant built
+// from a brand new token. So the enforcement the moderation path installs is
+// undone by anything that re-joins the media — a dropped connection, a page
+// reload, a second tab — while our own side still shows the person as muted,
+// because that half *is* durable (it is on their row, and conferenceSeat seeds
+// it back into the room). What came out was the failure the whole moderation
+// file exists to prevent: the roster says silenced, the microphone is live
+// again, and only a client that ignores the flag has to notice.
+//
+// Two sources, because neither alone covers the join: the room holds the flag
+// the moment a host sets it, while the row is written by a background enforcer
+// (a token minted in that window would miss it) and is all that is left once the
+// last person leaves and the room is forgotten.
+//
+// A read failure is not a refusal — the ordinary case for "no row" is a member
+// opening the call before their join lands, and nobody may be muted yet.
+func (h *API) conferenceForceMuted(c *gin.Context, confID, uid uuid.UUID) bool {
+	if h.confRooms != nil && h.confRooms.UserMuted(confID, uid) {
+		return true
+	}
+	part, err := h.q.GetConferenceParticipant(c, db.GetConferenceParticipantParams{
+		ConferenceID: confID, UserID: uid,
+	})
+	return err == nil && part.ForceMuted
 }
 
 // userDisplayName resolves the label LiveKit shows for a participant. Mirrors
