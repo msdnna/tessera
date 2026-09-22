@@ -130,6 +130,12 @@ type namedRef struct {
 type partialList struct {
 	done    []string // labels of entries that resolved (and, in a real run, applied)
 	missing []string // labels of entries that named nothing
+	// ambiguous are entries that named MORE than one member — a miss of a
+	// different kind, so they get their own clause rather than being folded into
+	// missing: "не нашёл" would be a lie about a handle the workspace does carry,
+	// twice over. Only mentions can land here; tags and relations are resolved by
+	// a unique name and a unique number. Each label carries its candidates.
+	ambiguous []string
 }
 
 // summary renders the applied half plus, in parentheses, what was skipped.
@@ -137,6 +143,9 @@ func (p partialList) summary(verb, skipLabel string) string {
 	s := verb + " " + strings.Join(p.done, ", ")
 	if len(p.missing) > 0 {
 		s += " (" + skipLabel + ": " + strings.Join(p.missing, ", ") + ")"
+	}
+	if len(p.ambiguous) > 0 {
+		s += " (неоднозначно: " + strings.Join(p.ambiguous, "; ") + ")"
 	}
 	return s
 }
@@ -152,14 +161,42 @@ func resolveMentions(members []db.ListMembersRow, logins []string) ([]namedRef, 
 	var refs []namedRef
 	var p partialList
 	for _, login := range logins {
-		member, ok := matchMember(members, login)
-		if !ok {
+		member, rivals := matchMember(members, login)
+		switch {
+		case len(rivals) > 0:
+			p.ambiguous = append(p.ambiguous, "@"+login+" → "+memberLabels(rivals))
+		case member == uuid.Nil:
 			p.missing = append(p.missing, "@"+login)
-			continue
+		default:
+			refs = append(refs, namedRef{id: member, label: "@" + login})
 		}
-		refs = append(refs, namedRef{id: member, label: "@" + login})
 	}
 	return refs, p
+}
+
+// memberLabels names the members a mention could have meant, each with the email
+// that tells them apart — an email is unique per account, so it is the one thing
+// the writer can retype to mean exactly one person.
+func memberLabels(rows []db.ListMembersRow) string {
+	out := make([]string, 0, len(rows))
+	for _, m := range rows {
+		out = append(out, m.Name+" <"+m.Email+">")
+	}
+	return strings.Join(out, ", ")
+}
+
+// mentionMissErr is why an /assign or /unassign applied to nobody: handles that
+// named no one, handles that named several, or both. Kept apart from missed()
+// because the two halves need different sentences — see partialList.ambiguous.
+func mentionMissErr(p partialList) error {
+	switch {
+	case len(p.ambiguous) == 0:
+		return userErr("не нашёл участника: %s", p.missed())
+	case len(p.missing) == 0:
+		return userErr("неоднозначно: %s", strings.Join(p.ambiguous, "; "))
+	}
+	return userErr("не нашёл участника: %s; неоднозначно: %s",
+		p.missed(), strings.Join(p.ambiguous, "; "))
 }
 
 // resolveTagNames does the same for tag names within the task's project. The
@@ -215,7 +252,7 @@ func (h *API) qaAssign(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickact.C
 		part.done = append(part.done, ref.label)
 	}
 	if len(part.done) == 0 {
-		return "", userErr("не нашёл участника: %s", part.missed())
+		return "", mentionMissErr(part)
 	}
 	verb := "назначен"
 	if !add {
@@ -226,26 +263,64 @@ func (h *API) qaAssign(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quickact.C
 	return part.summary(verb, "не найдены"), nil
 }
 
-// matchMember resolves a mention to a workspace member by GitLab login, email
-// local-part, full email or display name (all case-insensitive) — the same
-// shapes the frontend's @-autocomplete offers. The GitLab login is what the
-// autocomplete now inserts for OAuth-linked members, so `/assign @e.polyansky`
-// has to resolve even when it matches neither the email nor the name.
-func matchMember(members []db.ListMembersRow, login string) (uuid.UUID, bool) {
-	login = strings.ToLower(login)
-	for _, m := range members {
-		email := strings.ToLower(m.Email)
-		if email == login || strings.ToLower(m.Name) == login {
-			return m.UserID, true
+// mentionShapes are the ways a mention can name a workspace member, MOST
+// SPECIFIC FIRST: full email (unique per account), then the GitLab login the
+// @-autocomplete inserts for OAuth-linked members, then the email's local part,
+// then the display name — whatever the person typed into their profile, and the
+// only shape a workspace can legitimately hold twice.
+//
+// The order is the whole point. This used to be a loop over MEMBERS that tried
+// all four shapes on each row, so the winner was not the closest match but the
+// earliest row: a member whose local part or display name happened to read like
+// another member's GitLab login took the mention away from its real owner, and
+// «/assign @ivan» put the task on the wrong Ivan while reporting back the very
+// handle that was asked for. Nothing downstream can tell that apart from a
+// deliberate assignment. Same fix, and same reasoning, as the MCP server's
+// matchMember (#2932).
+var mentionShapes = []func(m db.ListMembersRow, want string) bool{
+	func(m db.ListMembersRow, want string) bool {
+		return strings.ToLower(strings.TrimSpace(m.Email)) == want
+	},
+	func(m db.ListMembersRow, want string) bool {
+		return m.GlUsername != "" && strings.ToLower(strings.TrimSpace(m.GlUsername)) == want
+	},
+	func(m db.ListMembersRow, want string) bool {
+		local, _, ok := strings.Cut(strings.ToLower(strings.TrimSpace(m.Email)), "@")
+		return ok && local == want
+	},
+	func(m db.ListMembersRow, want string) bool {
+		return strings.ToLower(strings.TrimSpace(m.Name)) == want
+	},
+}
+
+// matchMember resolves a mention to a workspace member, trying the shapes above
+// in order. A shape that exactly one member answers to wins outright; a shape
+// two of them answer to resolves to nobody and returns the rivals, so the caller
+// can name them instead of guessing between them (the ambiguity never reaches a
+// later, vaguer shape — two «Иван» are not disambiguated by looking at names
+// harder). A miss returns uuid.Nil and no rivals.
+func matchMember(members []db.ListMembersRow, login string) (uuid.UUID, []db.ListMembersRow) {
+	want := strings.ToLower(strings.TrimSpace(login))
+	if want == "" {
+		return uuid.Nil, nil
+	}
+	for _, hits := range mentionShapes {
+		var found []db.ListMembersRow
+		for _, m := range members {
+			if hits(m, want) {
+				found = append(found, m)
+			}
 		}
-		if m.GlUsername != "" && strings.ToLower(m.GlUsername) == login {
-			return m.UserID, true
-		}
-		if local, _, ok := strings.Cut(email, "@"); ok && local == login {
-			return m.UserID, true
+		switch len(found) {
+		case 0:
+			continue
+		case 1:
+			return found[0].UserID, nil
+		default:
+			return uuid.Nil, found
 		}
 	}
-	return uuid.Nil, false
+	return uuid.Nil, nil
 }
 
 // commandNow is the clock a date command reads: the present moment, in the
@@ -727,7 +802,7 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 			part.done = append(part.done, ref.label)
 		}
 		if len(part.done) == 0 {
-			return "", userErr("не нашёл участника: %s", part.missed())
+			return "", mentionMissErr(part)
 		}
 		verb := "назначить"
 		if cmd.Key != "assign" {
