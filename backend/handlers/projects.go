@@ -317,7 +317,10 @@ func (h *API) GetProject(c *gin.Context) {
 	c.JSON(http.StatusOK, p)
 }
 
-// UpdateProject edits name/color/icon and group membership.
+// UpdateProject edits name/color/icon and group membership. It writes group_id
+// just like create and move do, so it needs the same guard: this is the third
+// door into the project tree, and a foreign group here drops the project out of
+// the sidebar exactly as it would there (groupParentAllowed, #2932).
 func (h *API) UpdateProject(c *gin.Context) {
 	p, ok := h.loadProject(c)
 	if !ok {
@@ -333,6 +336,9 @@ func (h *API) UpdateProject(c *gin.Context) {
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !h.groupParentAllowed(c, p.WorkspaceID, uuid.Nil, req.GroupID) {
 		return
 	}
 	updated, err := h.q.UpdateProject(c, db.UpdateProjectParams{

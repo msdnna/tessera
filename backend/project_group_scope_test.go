@@ -6,7 +6,7 @@ import (
 )
 
 // TestProjectGroupMustBeInSameWorkspace pins the group_id a caller sends in the
-// body of a project create/move. The route's :id is checked (requireMember /
+// body of a project create/update/move. The route's :id is checked (requireMember /
 // loadProject), but group_id is a second reference to a row in a tree that
 // belongs to one workspace by definition, and nothing tied the two together:
 // the foreign key accepts any existing group, including one from a workspace
@@ -54,6 +54,17 @@ func TestProjectGroupMustBeInSameWorkspace(t *testing.T) {
 		}
 	})
 
+	// The third door: a plain edit writes group_id too (UpdateProject sets it in
+	// the same statement as name/colour), so "rename the project" is a re-parent
+	// with no guard of its own unless one is put there.
+	t.Run("a rename carrying a foreign group is refused", func(t *testing.T) {
+		r := attacker.patch("/projects/"+project,
+			map[string]any{"name": "общий проект", "group_id": foreignGroup})
+		if r.Status != http.StatusForbidden {
+			t.Fatalf("update into foreign group: got %d %s, want 403", r.Status, r.Body)
+		}
+	})
+
 	t.Run("the project stays where the sidebar can find it", func(t *testing.T) {
 		got := shared.get("/workspaces/" + sharedWS + "/projects").listBody(t)
 		for _, p := range got {
@@ -75,6 +86,19 @@ func TestProjectGroupMustBeInSameWorkspace(t *testing.T) {
 			map[string]any{"group_id": nil}), http.StatusOK)
 		if got["group_id"] != nil {
 			t.Fatalf("project group_id = %v, want nil (root)", got["group_id"])
+		}
+		// The guard must not cost the edit path its ordinary re-group: a rename
+		// that carries a group of the project's own workspace still goes through,
+		// and so does a rename back to the root.
+		got = shared.expect(t, shared.patch("/projects/"+project,
+			map[string]any{"name": "общий проект", "group_id": sibling}), http.StatusOK)
+		if got["group_id"] != sibling {
+			t.Fatalf("update group_id = %v, want %s", got["group_id"], sibling)
+		}
+		got = shared.expect(t, shared.patch("/projects/"+project,
+			map[string]any{"name": "общий проект", "group_id": nil}), http.StatusOK)
+		if got["group_id"] != nil {
+			t.Fatalf("update group_id = %v, want nil (root)", got["group_id"])
 		}
 	})
 }
