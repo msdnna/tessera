@@ -12,6 +12,63 @@ import (
 	"github.com/google/uuid"
 )
 
+const cancelApprovalsAcrossWorkspaces = `-- name: CancelApprovalsAcrossWorkspaces :execrows
+UPDATE document_approvals a
+SET status = 'cancelled', closed_at = now()
+WHERE a.status = 'pending'
+  AND a.document_id IN (SELECT d.id FROM documents d WHERE d.project_id = $1)
+  AND EXISTS (
+    SELECT 1 FROM document_approval_steps s
+    WHERE s.approval_id = a.id
+      AND s.status = 'pending'
+      AND s.approver_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM memberships m
+        WHERE m.workspace_id = $2 AND m.user_id = s.approver_id
+      )
+  )
+`
+
+type CancelApprovalsAcrossWorkspacesParams struct {
+	ProjectID   *uuid.UUID `json:"project_id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+}
+
+// CancelApprovalsAcrossWorkspaces closes every open route on a project's
+// documents that the project's transfer has just made unsignable.
+//
+// CreateDocumentApproval refuses an approver who is not a member of the
+// document's workspace, and says why: "someone who cannot open it can only ever
+// stall it". A transfer walks the documents into another workspace and leaves
+// the steps pointing at the people the *source* workspace asked, so the door's
+// rule is broken from behind — and unlike the other cross-workspace links, this
+// one has no reader to sever. There is nothing to cut: the harm is that the
+// route survives intact and can never be finished. loadDocumentApproval
+// authorizes on the document's workspace, so the stranded approver is answered
+// 403, and no endpoint adds or replaces a step in a route already raised. The
+// document keeps its «на согласовании» badge until a manager of a workspace that
+// never raised the route happens to notice and cancel it by hand — and in
+// sequential mode everyone queued behind the stranded step waits on it forever.
+//
+// Cancelling is the whole remedy: the protocol is kept, as CancelDocumentApproval
+// keeps it ("the record that a document was sent for approval and pulled back is
+// exactly the kind of thing a журнал согласований exists to keep"), and the team
+// that now owns the document can raise a fresh route with its own people — which
+// the one-open-route rule would have refused while this one hung.
+//
+// Only a route with a *pending* step held by a stranger is touched. One whose
+// remaining approvers are members of both sides is signable exactly as before and
+// must not be voided, and a step already decided is a signature, not a debt. An
+// approver_id of NULL is a deleted account — a route stalled for its own reasons
+// long before this transfer, and not this query's business to close.
+func (q *Queries) CancelApprovalsAcrossWorkspaces(ctx context.Context, arg CancelApprovalsAcrossWorkspacesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, cancelApprovalsAcrossWorkspaces, arg.ProjectID, arg.WorkspaceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const closeDocumentApproval = `-- name: CloseDocumentApproval :one
 UPDATE document_approvals
 SET status = $2, closed_at = now()

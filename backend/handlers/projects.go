@@ -458,9 +458,11 @@ func (h *API) MoveProject(c *gin.Context) {
 // GitLab bindings — to another workspace. A dangerous operation: it re-stamps the
 // denormalized workspace_id across the project's tags/tag_prefixes/notes and any
 // GitLab integrations, re-numbers its tasks out of the target's counter, strips
-// assignees who aren't members of the target workspace, and severs the relations,
+// assignees who aren't members of the target workspace, severs the relations,
 // milestone links, document links and task tags whose two ends the move would put
-// in different workspaces. Requires membership in BOTH the source (checked by loadProject) and
+// in different workspaces, and cancels the document approval routes the move leaves
+// waiting on somebody who can no longer open the document.
+// Requires membership in BOTH the source (checked by loadProject) and
 // the target workspace. The project lands ungrouped at the target's root.
 func (h *API) TransferProject(c *gin.Context) {
 	p, ok := h.loadProject(c)
@@ -665,6 +667,24 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The seventh is the open approval route on a document that travels, and it is
+	// the one with nothing to sever: both of its ends move together. What breaks is
+	// the rule CreateDocumentApproval enforces at the door — every approver must be
+	// a member of the document's workspace, because "someone who cannot open it can
+	// only ever stall it" — which this transfer invalidates from behind, leaving the
+	// route pointing at the people the *source* workspace asked. They are answered
+	// 403 by loadDocumentApproval from here on, nothing adds or replaces a step in a
+	// route already raised, and the one-open-route rule then refuses the new owners
+	// a route of their own. So the stalled ones are closed here rather than left for
+	// a manager to find: the protocol stays in the журнал, as a cancellation always
+	// does, and the document is free to be sent round its new workspace.
+	cancelledApprovals, err := qtx.CancelApprovalsAcrossWorkspaces(c, db.CancelApprovalsAcrossWorkspacesParams{
+		ProjectID: &p.ID, WorkspaceID: req.WorkspaceID,
+	})
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	if err := tx.Commit(c); err != nil {
 		fail(c, err)
 		return
@@ -678,6 +698,7 @@ func (h *API) TransferProject(c *gin.Context) {
 		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,
 		"unlinked_documents": unlinkedDocs, "detached_documents": detachedDocs,
 		"stripped_tags": strippedTags, "unpinned_conferences": unpinnedConfs,
+		"cancelled_approvals": cancelledApprovals,
 	})
 }
 
