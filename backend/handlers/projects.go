@@ -685,10 +685,25 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The travelling documents are also live rooms, and a transfer is as invisible
+	// to them as a delete is: ConnectDocument authorizes once, at the upgrade,
+	// against the workspace the document had then. Everyone sitting in these rooms
+	// is by definition a member of the *source* workspace — the target's people
+	// could not open the document before this call — so leaving the rooms up hands
+	// them the presence badges of the new owners' editors, keeps announcing every
+	// save of a document they are now answered 403 for, and keeps their block locks
+	// held, which is a veto on the new workspace's editing that nobody there can
+	// lift. Dropped after the commit, for the reason DeleteWorkspace drops its own.
+	movedDocs, err := qtx.DocumentIDsInProject(c, &p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	if err := tx.Commit(c); err != nil {
 		fail(c, err)
 		return
 	}
+	h.dropDocRooms(movedDocs)
 
 	// The project leaves the source workspace and joins the target — tell both.
 	h.broadcast(p.WorkspaceID, "project.deleted", gin.H{"id": p.ID})

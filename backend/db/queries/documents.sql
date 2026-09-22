@@ -120,6 +120,16 @@ SELECT (
 -- name: ReassignProjectDocumentsWorkspace :exec
 UPDATE documents SET workspace_id = $2 WHERE project_id = $1;
 
+-- DocumentIDsInProject names the documents a project transfer is about to carry
+-- into another workspace, so their live rooms can be dropped the way a workspace
+-- delete drops the ones its cascade takes (DocumentIDsInWorkspace).
+--
+-- Read inside the transfer's transaction: project_id does not move, so the list
+-- is the same before and after the re-stamp, but reading it there is what makes
+-- it the list the transfer actually took.
+-- name: DocumentIDsInProject :many
+SELECT id FROM documents WHERE project_id = $1;
+
 -- name: DocumentsMissingSlug :many
 SELECT id, workspace_id, title FROM documents WHERE slug = '';
 

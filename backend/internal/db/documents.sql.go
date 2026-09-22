@@ -225,6 +225,37 @@ func (q *Queries) DocumentAncestorIDs(ctx context.Context, id uuid.UUID) ([]uuid
 	return items, nil
 }
 
+const documentIDsInProject = `-- name: DocumentIDsInProject :many
+SELECT id FROM documents WHERE project_id = $1
+`
+
+// DocumentIDsInProject names the documents a project transfer is about to carry
+// into another workspace, so their live rooms can be dropped the way a workspace
+// delete drops the ones its cascade takes (DocumentIDsInWorkspace).
+//
+// Read inside the transfer's transaction: project_id does not move, so the list
+// is the same before and after the re-stamp, but reading it there is what makes
+// it the list the transfer actually took.
+func (q *Queries) DocumentIDsInProject(ctx context.Context, projectID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, documentIDsInProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const documentIDsInWorkspace = `-- name: DocumentIDsInWorkspace :many
 SELECT id FROM documents WHERE workspace_id = $1
 `
