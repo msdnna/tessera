@@ -345,14 +345,58 @@ class DocumentsViewModel(
 
     private var workspaceId: String = ""
 
+    /**
+     * Loads a workspace's documents.
+     *
+     * A change of workspace wipes the state first (#2932). Everything in it but
+     * the converter belongs to ONE workspace, and the ViewModel outlives it:
+     * `viewModel()` in DocumentsScreen is bound to the host, not to the
+     * workspace, and the section stays mounted while the workspace under it is
+     * switched — so the grid, the breadcrumb trail, the open reader and the
+     * pickers of the links panel were all still the previous one's. Nor does the
+     * reset alone suffice: the failing branch returns without writing anything,
+     * which left the other workspace's documents on screen under a red banner,
+     * passing for this one's — and tapping a tile there opens a document from a
+     * workspace the reader has since left.
+     *
+     * [reload] comes through here with the same id and must NOT close the
+     * reader, hence the reset is gated on the id actually changing.
+     */
     fun load(workspaceId: String) {
+        val switched = workspaceId != this.workspaceId
         this.workspaceId = workspaceId
-        _state.update { it.copy(loading = true, error = null) }
-        launchCatching {
-            val docs = repo.list(workspaceId)
-            _state.update { it.copy(loading = false).withDocs(docs) }
+        _state.update {
+            if (switched) {
+                DocumentsUiState(
+                    loading = true,
+                    // The converter describes the server, not the workspace.
+                    // Re-asking would grey out the office half of the import
+                    // picker for a round trip and answer the same thing.
+                    templates = DocTemplatesState(converter = it.templates.converter),
+                )
+            } else {
+                it.copy(loading = true, error = null)
+            }
+        }
+        viewModelScope.launch {
+            val result = runCatching { repo.list(workspaceId) }
+            if (stale(workspaceId)) return@launch
+            result.fold(
+                onSuccess = { docs -> _state.update { it.copy(loading = false, error = null).withDocs(docs) } },
+                onFailure = { e -> _state.update { it.copy(loading = false, error = errorMessage(e)) } },
+            )
         }
     }
+
+    /**
+     * The answer is no longer about the workspace that is open now.
+     *
+     * Two loads are in flight at once whenever the workspace is switched while
+     * the first list is still on the wire: the old request is in
+     * [viewModelScope], which the composition restarting does not cancel, so
+     * without this check a slow answer overwrites the list that replaced it.
+     */
+    private fun stale(requested: String): Boolean = workspaceId != requested
 
     /**
      * Opens a document. The tile's own row is shown immediately (title, so the
@@ -739,19 +783,20 @@ class DocumentsViewModel(
      */
     private fun ensureLinkPickers() {
         if (workspaceId.isBlank()) return
+        val requested = workspaceId
         val l = _state.value.links
         if (l.tasks.isEmpty()) {
             viewModelScope.launch {
-                runCatching { taskRepo.workspaceTasks(workspaceId) }.getOrNull()?.let { tasks ->
-                    _state.update { it.copy(links = it.links.copy(tasks = tasks)) }
-                }
+                val tasks = runCatching { taskRepo.workspaceTasks(requested) }.getOrNull()
+                if (stale(requested)) return@launch
+                tasks?.let { rows -> _state.update { it.copy(links = it.links.copy(tasks = rows)) } }
             }
         }
         if (l.members.isEmpty()) {
             viewModelScope.launch {
-                runCatching { wsRepo.members(workspaceId) }.getOrNull()?.let { members ->
-                    _state.update { it.copy(links = it.links.copy(members = members)) }
-                }
+                val members = runCatching { wsRepo.members(requested) }.getOrNull()
+                if (stale(requested)) return@launch
+                members?.let { rows -> _state.update { it.copy(links = it.links.copy(members = rows)) } }
             }
         }
     }
@@ -945,8 +990,10 @@ class DocumentsViewModel(
         _state.update { it.copy(templates = it.templates.copy(sheetOpen = true, error = null)) }
         if (workspaceId.isBlank()) return
         _state.update { it.copy(templates = it.templates.copy(loading = true)) }
+        val requested = workspaceId
         viewModelScope.launch {
-            val result = runCatching { repo.templates(workspaceId) }
+            val result = runCatching { repo.templates(requested) }
+            if (stale(requested)) return@launch
             _state.update { st ->
                 result.fold(
                     onSuccess = { saved ->
