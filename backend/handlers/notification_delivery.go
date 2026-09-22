@@ -178,6 +178,11 @@ const (
 	dueDateMoved    = "срок отодвинули, до него ещё далеко"
 )
 
+// taskMovedAway is what an outbox row's history shows when the task a held
+// notification names left the recipient's reach between the enqueue and the
+// send — the project it lives in was transferred to another workspace.
+const taskMovedAway = "задача переехала в другое пространство"
+
 // deliveryStillAllowed re-asks, at send time, the questions that were answered
 // when the row was written, and reports a refusal as the error the outbox row
 // settles on: is the recipient still in the workspace, and do they still want
@@ -203,18 +208,72 @@ func (h *API) deliveryStillAllowed(ctx context.Context, n db.Notification) error
 	if err := h.deliveryStillWanted(ctx, n); err != nil {
 		return err
 	}
-	if n.WorkspaceID == nil {
+	if n.WorkspaceID != nil {
+		_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: *n.WorkspaceID, UserID: n.UserID})
+		switch {
+		case err == nil:
+		case errors.Is(err, pgx.ErrNoRows):
+			return notify.Permanent(errors.New(membershipEnded))
+		default:
+			return fmt.Errorf("membership check: %w", err)
+		}
+	}
+	return h.deliveryStillInReach(ctx, n)
+}
+
+// deliveryStillInReach asks the membership question the check above cannot: not
+// "is the recipient still in the workspace the row was written for", but "is the
+// task this message names still in a workspace they belong to".
+//
+// The two stopped being the same question the moment a project could be
+// transferred. TransferProject re-stamps the denormalized workspace_id across a
+// project's tags, notes, documents and GitLab bindings, and severs the six kinds
+// of link whose two ends the move would put in different workspaces — relations,
+// milestones, document links, document parents, task tags, conferences — each
+// because the read on the other side never re-checks the boundary. A notification
+// is in neither list: its workspace_id keeps pointing at the source, and the
+// recipient never left the source, so the gate above sees a membership and waves
+// the row through. What travels with it is the part templateData reads live —
+// the task's *current* title, written by the team the task now belongs to, and
+// its number, re-stamped out of that workspace's counter.
+//
+// So this is the third door into the leak deliveryStillAllowed exists to close,
+// after the recipient walking out (RemoveMember) and the message waiting too
+// long (quiet hours): here it is the task that walks out, under a row that was
+// correct when it was written.
+//
+// A reminder is the exception, for the reason reminderScope already gives: its
+// text is the user's own, about their own alarm, and refusing it would silence
+// a private message over someone else's reorganisation. It is delivered — minus
+// the task fields, which templateData drops for exactly this case.
+//
+// A refusal is permanent (a project does not transfer back between two retries),
+// and a read error is not a refusal: taskStillInReach answers "yes" on one, so a
+// database hiccup cannot drop a delivery the recipient never lost.
+func (h *API) deliveryStillInReach(ctx context.Context, n db.Notification) error {
+	if n.TaskID == nil || n.Kind == kindReminder {
 		return nil
 	}
-	_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: *n.WorkspaceID, UserID: n.UserID})
-	switch {
-	case err == nil:
+	if h.taskStillInReach(ctx, n.UserID, *n.TaskID) {
 		return nil
-	case errors.Is(err, pgx.ErrNoRows):
-		return notify.Permanent(errors.New(membershipEnded))
-	default:
-		return fmt.Errorf("membership check: %w", err)
 	}
+	return notify.Permanent(errors.New(taskMovedAway))
+}
+
+// taskStillInReach reports whether userID may still be shown taskID, asked about
+// the workspace the task is in *now* rather than the one a stored row remembers.
+// An unreadable task or board answers yes: the caller's job is to refuse a
+// delivery that would leak, not one whose lookup failed.
+func (h *API) taskStillInReach(ctx context.Context, userID, taskID uuid.UUID) bool {
+	t, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return true
+	}
+	ws, werr := h.q.WorkspaceIDForBoard(ctx, t.BoardID)
+	if werr != nil {
+		return true
+	}
+	return h.notifiableInWorkspace(ctx, userID, ws)
 }
 
 // deliveryStillWanted re-asks the recipient's own switch for the kinds that have
@@ -629,7 +688,7 @@ func (h *API) templateData(ctx context.Context, n db.Notification, lang string) 
 		Text:  notifySentence(n, lang),
 		Link:  h.notifyLink(n),
 	}
-	if n.TaskID != nil {
+	if n.TaskID != nil && h.taskRenderable(ctx, n) {
 		if t, err := h.q.GetTask(ctx, *n.TaskID); err == nil {
 			d.TaskTitle = t.Title
 			d.TaskNumber = t.Number
@@ -656,6 +715,24 @@ func (h *API) templateData(ctx context.Context, n db.Notification, lang string) 
 		}
 	}
 	return d
+}
+
+// taskRenderable reports whether a delivery may render the task it names into
+// its message — the second half of deliveryStillInReach, and the half a reminder
+// needs.
+//
+// Only a reminder is asked. Every other kind that names an out-of-reach task was
+// already refused upstream and never reaches a template, so repeating the two
+// reads for it would buy nothing; a reminder is deliberately let through, and it
+// is here that it drops the one part of the message that is not its owner's —
+// the current title and number of a task that walked into another workspace.
+// This mirrors reminderScope's split on the scanning side: the alarm still
+// rings, the stranger's edits stay behind.
+func (h *API) taskRenderable(ctx context.Context, n db.Notification) bool {
+	if n.Kind != kindReminder {
+		return true
+	}
+	return h.taskStillInReach(ctx, n.UserID, *n.TaskID)
 }
 
 // channelFromRow decodes a stored channel into the transport-facing form,
