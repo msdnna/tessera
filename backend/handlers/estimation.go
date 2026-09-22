@@ -83,12 +83,28 @@ func clampFloat(v, lo, hi, def float64) float64 {
 	return v
 }
 
-// SetWorkspaceEstimation sets the workspace-wide default estimation config. The
-// body is the config object directly; `null` / `{}` clears it back to the
-// built-in default.
+// SetWorkspaceEstimation sets the workspace-wide default estimation config
+// (owner or admin). The body is the config object directly; `null` / `{}` clears
+// it back to the built-in default.
+//
+// Manager-only, like every other write to this row: UpdateWorkspace renames it
+// and SetWorkspaceCommands turns its quick actions on and off, and both sit
+// behind requireManager. This one stood behind requireMember, and it is not the
+// milder of the three — the unit is what every estimate in the workspace *means*.
+// Nothing is converted when it changes: the column stores minutes, and the
+// clients resolve project → workspace → built-in default to decide how to render
+// and how to read back what is typed. Flipping the default from time to points
+// therefore re-labels every «2 ч» on every board as points, and moving
+// hours_per_day re-scales every day-shaped figure at once — including the one the
+// backend itself parses, since ParseEstimate takes the same resolved config
+// (estimateConfig), so «/estimate 1д» stops meaning what the last person to type
+// it meant. Board-wide, instant, and attributed to nobody: the row carries no
+// author and the change goes out as a bare workspace.estimation broadcast.
+// The panel offered it to everyone too — the menu entry is gated on canManage in
+// the same change (#2932).
 func (h *API) SetWorkspaceEstimation(c *gin.Context) {
 	id, ok := parseID(c, "id")
-	if !ok || !h.requireMember(c, id) {
+	if !ok || !h.requireManager(c, id) {
 		return
 	}
 	canon, errMsg := h.bindEstimation(c)
