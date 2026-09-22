@@ -197,11 +197,21 @@ function highlightMentions(html, members) {
 // `^`; the `>` in their lead classes stays for the legacy raw-HTML path, where
 // an unescaped `>` inside an attribute can still leave one in a text run.
 const SKIP_RE = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>|<[^>]*>/gi
-export function replaceOutsideMarkup(html, fn) {
+
+// SKIP_DECORATED_RE is SKIP_RE plus a finished mention chip, taken whole. Used for
+// the pass that runs AFTER highlightMentions (see renderRich): a chip's text names a
+// person, not prose, so "#5" inside «@Отдел #5» is no more a task link than "#2550"
+// in a code sample — and an <a> spliced into a chip would sit inside the element the
+// hover card resolves, swallowing the hover on the half it covers. Both attribute
+// orders are matched: today's chips are written by highlightMentions, the legacy
+// TipTap-era ones lead with data-type (#2932).
+const SKIP_DECORATED_RE =
+  /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>|<span[^>]*\b(?:class="mention"|data-type="mention")[^>]*>[\s\S]*?<\/span>|<[^>]*>/gi
+export function replaceOutsideMarkup(html, fn, skip = SKIP_RE) {
   const s = String(html)
   let out = ''
   let last = 0
-  for (const m of s.matchAll(SKIP_RE)) {
+  for (const m of s.matchAll(skip)) {
     out += fn(s.slice(last, m.index)) + m[0]
     last = m.index + m[0].length
   }
@@ -227,10 +237,19 @@ export function renderRich(src, members, opts = {}) {
   if (!src) return ''
   const s = String(src)
   const html = looksLikeHtml(s) ? s : marked.parse(s)
-  const decorated = replaceOutsideMarkup(html, (part) => {
-    const withMentions = highlightMentions(part, members)
-    return opts.taskRefs ? linkTaskRefs(withMentions) : withMentions
-  })
+  // One walk per decoration, not one walk running both: what the first one splices in
+  // is markup, and the second must read it as markup too. Chained inside a single
+  // callback, linkTaskRefs saw the <span> highlightMentions had just written as plain
+  // text — so a member named «Отдел #5» got an <a> spliced into its own data-label,
+  // which ends the attribute at the chip's first quote. The chip then lost its label,
+  // wore `data-task-ref`/`href` as attributes of its own, and the tail («#5">») was
+  // drawn as visible text beside it. The same attribute breakout as the alt/title one
+  // replaceOutsideMarkup was written for, one layer in: the walk protected the markup
+  // that arrived, not the markup the decorations produce (#2932).
+  const withMentions = replaceOutsideMarkup(html, (part) => highlightMentions(part, members))
+  const decorated = opts.taskRefs
+    ? replaceOutsideMarkup(withMentions, linkTaskRefs, SKIP_DECORATED_RE)
+    : withMentions
   return DOMPurify.sanitize(decorated, SANITIZE_OPTS)
 }
 
