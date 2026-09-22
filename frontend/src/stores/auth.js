@@ -4,6 +4,8 @@ import { auth, setAccessToken, restoreSession } from '@/api'
 import { sGet, sSet, sRemove } from '@/utils/serverStorage'
 import { useThemeStore } from './theme'
 import { useNotificationsStore } from './notifications'
+import { useWorkspacesStore } from './workspaces'
+import { useGitlabStore } from './gitlab'
 
 export const useAuthStore = defineStore('auth', () => {
   // #2684: the access token is deliberately NOT read back from localStorage —
@@ -51,6 +53,10 @@ export const useAuthStore = defineStore('auth', () => {
     // The bell holds the departing reader's own rows, and nothing else clears
     // them: sign-out is a route change, not a reload (#2932).
     useNotificationsStore().reset()
+    // Same rule for the two other caches that describe a person rather than a
+    // server: the sidebar tree (with `my_role` on it) and the GitLab connection.
+    useWorkspacesStore().reset()
+    useGitlabStore().reset()
   }
 
   // logout revokes the session server-side — the refresh token outlives the tab

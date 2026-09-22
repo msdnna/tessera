@@ -377,6 +377,43 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     }
   }
 
+  // reset drops the tree when the session ends. Everything below belongs to one
+  // reader: the workspace list carries `my_role` (and with it all of
+  // `canManage`), the groups/projects/boards are the names of somebody's private
+  // scopes, and the command dictionary is per-workspace. Sign-out is a route
+  // change, not a reload — only a server switch reloads (stores/servers.js) — so
+  // without this the next sign-in in the same tab paints the previous reader's
+  // sidebar: their project and board names, clickable, every click a 403 (#2932).
+  //
+  // Not a flash either. AppLayout's mount awaits loadWorkspaces() before anything
+  // else it does, so a single failed list request leaves that sidebar up for the
+  // rest of the session, with manager-only controls decided by a role the new
+  // reader does not hold.
+  //
+  // Bumping both sequences is the other half: a list read or a workspace switch
+  // raised by the departing session can still be in flight, and its answer is
+  // indistinguishable from a fresh one — it would refill the tree a moment after
+  // the clear.
+  //
+  // `currentId` deliberately survives. It is the remembered workspace of the
+  // *server*, not of the user (serverStorage keys it per server, and a reload
+  // reads it back regardless), and loadWorkspaces already drops it when the new
+  // reader turns out not to be a member. Clearing it here would only cost the
+  // same person their board across an ordinary sign-out and back in.
+  function reset() {
+    listSeq++
+    selectSeq++
+    list.value = []
+    groups.value = []
+    projects.value = []
+    boardsByProject.value = {}
+    builtinCommands.value = []
+    customCommands.value = []
+    commandsCanManage.value = false
+    milestoneRev.value = 0
+    milestoneRevByProject.value = {}
+  }
+
   return {
     list,
     currentId,
@@ -408,5 +445,6 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     onEstimationEvent,
     milestoneRevFor,
     onMilestoneEvent,
+    reset,
   }
 })

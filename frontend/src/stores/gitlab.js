@@ -36,5 +36,18 @@ export const useGitlabStore = defineStore('gitlab', () => {
     username.value = ''
   }
 
-  return { connected, baseUrl, username, loaded, load, connect, disconnect }
+  // A GitLab connection belongs to one account, so it goes when the session does
+  // (#2932). `loaded` above is a latch — the settings screen paints from the
+  // store as soon as it is set and never re-reads — so a stale connection is not
+  // a flash: the next reader in the same tab is told they are signed in to
+  // GitLab as somebody else, and the integration controls that state gates
+  // (create issue, link, sync) are offered on their behalf.
+  function reset() {
+    connected.value = false
+    baseUrl.value = ''
+    username.value = ''
+    loaded.value = false
+  }
+
+  return { connected, baseUrl, username, loaded, load, connect, disconnect, reset }
 })
