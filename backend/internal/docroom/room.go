@@ -437,14 +437,34 @@ func New() *Rooms {
 }
 
 // Join puts a participant into a document's room, creating it if needed.
+//
+// The registry lock is held across room.join, so that a participant is in
+// r.members by the time anyone else can look the room up. Released first — as it
+// was — the join had a window in which the room was reachable but still empty,
+// and a Leave landing there ran its own "did someone join?" re-check against
+// members the joiner had not been added to yet: the room is dropped from the
+// registry, and join then files the newcomer into an entry nothing can find
+// (#2932). That window is not theoretical — a page reload tears the old socket
+// down while the new one connects, which is exactly this pair of calls racing on
+// one document.
+//
+// Being unreachable is worse than the missing presence badge suggests. Notify,
+// Send, Drop, Close and EvictUser all walk rs.rooms, so an orphaned participant
+// stops being told the body was saved, survives the document being deleted,
+// survives shutdown — and, the reason this matters here, survives having their
+// membership revoked, which EvictUser exists to prevent.
+//
+// The cost is a snapshot broadcast to one room under the registry lock. deliver
+// never blocks (a participant that cannot keep up is closed, not waited for), so
+// this is bounded by the room's size, and joins are rare next to lock traffic.
 func (rs *Rooms) Join(docID uuid.UUID, p *Participant) *Room {
 	rs.mu.Lock()
+	defer rs.mu.Unlock()
 	room, ok := rs.rooms[docID]
 	if !ok {
 		room = newRoom(docID)
 		rs.rooms[docID] = room
 	}
-	rs.mu.Unlock()
 	room.join(p, time.Now())
 	return room
 }
