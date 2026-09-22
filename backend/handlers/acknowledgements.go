@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 
@@ -52,7 +53,11 @@ func (h *API) AcknowledgeMe(c *gin.Context) {
 		return
 	}
 	key := strings.TrimSpace(req.Key)
-	if key == "" || len(key) > maxAckKeyLen {
+	// Characters, not bytes — the bound is stated in characters and is compared
+	// against a key the client composed. Measured with len() a Cyrillic key hit
+	// the limit at 100 characters, and the refusal is invisible: the affordance
+	// the flag was meant to retire simply comes back on the next launch (#2932).
+	if key == "" || utf8.RuneCountInString(key) > maxAckKeyLen {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "key must be 1-200 chars"})
 		return
 	}
