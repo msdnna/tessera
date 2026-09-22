@@ -437,16 +437,49 @@ func workspaceIDForTask(ctx context.Context, c *client.Client, d model.TaskDetai
 }
 
 // matchMember resolves an email or name (case-insensitive) to a member's user id.
+//
+// Email first, and only then name — the two are not interchangeable. An email is
+// unique per account; a display name is whatever the person typed, and a
+// workspace with two «Иван Петров» in it is the ordinary case, not the exotic
+// one. Scanning both at once and returning the first row that matched either
+// column therefore let list order decide who gets the task: the assignment
+// succeeded, reported the name the caller asked for, and put it on the wrong
+// person — silently, since nothing downstream can tell an ambiguous match from a
+// deliberate one. (It also meant a member whose *name* happens to read like
+// another member's address could win over the address's real owner.)
+//
+// So: an exact email match is authoritative and returns immediately. A name is
+// only accepted when exactly one member carries it; two carriers is an error
+// that names the candidates with their emails, because an email is the
+// disambiguator the caller can retype. This mirrors resolveColumn/resolveTags,
+// which already refuse a reference they cannot pin down and list what is on
+// offer rather than guessing (#2932).
 func matchMember(ref string, members []model.Member) (string, error) {
 	want := strings.ToLower(strings.TrimSpace(ref))
-	var names []string
+	names := make([]string, 0, len(members))
+	var byName []model.Member
 	for _, m := range members {
 		names = append(names, m.Name)
-		if strings.ToLower(m.Email) == want || strings.ToLower(strings.TrimSpace(m.Name)) == want {
+		if want != "" && strings.ToLower(strings.TrimSpace(m.Email)) == want {
 			return m.UserID, nil
 		}
+		if want != "" && strings.ToLower(strings.TrimSpace(m.Name)) == want {
+			byName = append(byName, m)
+		}
 	}
-	return "", fmt.Errorf("no workspace member matching %q; members: %s", ref, strings.Join(names, ", "))
+	switch len(byName) {
+	case 1:
+		return byName[0].UserID, nil
+	case 0:
+		return "", fmt.Errorf("no workspace member matching %q; members: %s", ref, strings.Join(names, ", "))
+	default:
+		labels := make([]string, 0, len(byName))
+		for _, m := range byName {
+			labels = append(labels, fmt.Sprintf("%s <%s>", m.Name, m.Email))
+		}
+		return "", fmt.Errorf("%q matches %d workspace members — use the email or the user id instead: %s",
+			ref, len(byName), strings.Join(labels, ", "))
+	}
 }
 
 // ── list_columns ──────────────────────────────────────────────────────────────

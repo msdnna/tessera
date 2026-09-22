@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"strings"
 	"testing"
 
 	"tessera-mcp/internal/model"
@@ -56,6 +57,56 @@ func TestMatchMember(t *testing.T) {
 	}
 	if _, err := matchMember("nobody", members); err == nil {
 		t.Error("matchMember(nobody) expected error")
+	}
+}
+
+// Two people in one workspace share a display name — the ordinary case, not the
+// exotic one. Picking the first row silently assigns the task to whichever of
+// them the members list happened to return first.
+func TestMatchMemberRefusesAnAmbiguousName(t *testing.T) {
+	members := []model.Member{
+		{UserID: "u-ivan-1", Email: "ivan.petrov@example.com", Name: "Иван Петров"},
+		{UserID: "u-ivan-2", Email: "i.petrov@example.com", Name: "Иван Петров"},
+	}
+
+	id, err := matchMember("Иван Петров", members)
+	if err == nil {
+		t.Fatalf("matchMember on a shared name returned %q; want an error naming both candidates", id)
+	}
+	for _, want := range []string{"ivan.petrov@example.com", "i.petrov@example.com"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not offer %q as a disambiguator", err, want)
+		}
+	}
+
+	// The email still pins each of them down — that is the way out the error offers.
+	for _, tc := range []struct{ ref, want string }{
+		{"ivan.petrov@example.com", "u-ivan-1"},
+		{"I.Petrov@Example.com", "u-ivan-2"},
+	} {
+		got, mErr := matchMember(tc.ref, members)
+		if mErr != nil || got != tc.want {
+			t.Errorf("matchMember(%q) = %q,%v; want %q,nil", tc.ref, got, mErr, tc.want)
+		}
+	}
+}
+
+// An email is unique per account; a display name is free text. When one member's
+// name reads like another member's address, the address's owner must win however
+// the list is ordered.
+func TestMatchMemberPrefersTheEmailOverALookalikeName(t *testing.T) {
+	impostorFirst := []model.Member{
+		{UserID: "u-impostor", Email: "mallory@example.com", Name: "alice@example.com"},
+		{UserID: "u-alice", Email: "alice@example.com", Name: "Alice"},
+	}
+	if got, err := matchMember("alice@example.com", impostorFirst); err != nil || got != "u-alice" {
+		t.Errorf("matchMember = %q,%v; want the address owner u-alice,nil", got, err)
+	}
+
+	// Same set, opposite order: the answer must not depend on it.
+	ownerFirst := []model.Member{impostorFirst[1], impostorFirst[0]}
+	if got, err := matchMember("alice@example.com", ownerFirst); err != nil || got != "u-alice" {
+		t.Errorf("matchMember (reordered) = %q,%v; want u-alice,nil", got, err)
 	}
 }
 
