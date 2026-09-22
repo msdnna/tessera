@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import { auth, setAccessToken, restoreSession } from '@/api'
 import { sGet, sSet, sRemove } from '@/utils/serverStorage'
 import { useThemeStore } from './theme'
+import { useNotificationsStore } from './notifications'
 
 export const useAuthStore = defineStore('auth', () => {
   // #2684: the access token is deliberately NOT read back from localStorage —
@@ -47,6 +48,9 @@ export const useAuthStore = defineStore('auth', () => {
     sRemove('tessera_refresh_token')
     sRemove('tessera_user')
     useThemeStore().reset()
+    // The bell holds the departing reader's own rows, and nothing else clears
+    // them: sign-out is a route change, not a reload (#2932).
+    useNotificationsStore().reset()
   }
 
   // logout revokes the session server-side — the refresh token outlives the tab

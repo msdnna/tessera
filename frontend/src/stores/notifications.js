@@ -166,7 +166,25 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
+  // reset drops the feed when the session ends. The bell is per-user and the app
+  // does not reload on sign-out — only a server switch does (stores/servers.js) —
+  // so without this the next sign-in in the same tab inherits the previous
+  // reader's rows and badge: their mentions, with the task titles in them, on
+  // someone else's screen. Visible until load() answers, and for good when it
+  // does not: the catch there deliberately keeps whatever was on screen, which is
+  // right for a flapping link and wrong for a feed that belongs to nobody (#2932).
+  //
+  // Bumping the sequence is the other half. A load raised for the departing
+  // session can still be in flight, and an answer that lands after the clear is
+  // indistinguishable from a fresh one — it would refill the feed a moment later.
+  //
+  // Emptying `arrivals` changes nothing on screen (the sequence check already
+  // throws that answer away before it reads its collector); it is there so a
+  // request that never settles — the offline case this feed is full of — stops
+  // being a place every later onEvent appends to for the rest of the tab's life.
   function reset() {
+    loadSeq++
+    arrivals.clear()
     items.value = []
     loaded.value = false
   }
