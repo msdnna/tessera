@@ -95,11 +95,20 @@ const glLabel = () =>
   ])
 const integrationOptions = computed(() => [
   { label: glLabel, key: 'gitlab', icon: () => h(NIcon, null, { default: () => h(LogoGitlab) }) },
-  {
-    label: t('shell.tools.estimation'),
-    key: 'estimation',
-    icon: () => h(NIcon, null, { default: () => h(TimerOutline) }),
-  },
+  // Same door, same reason as the dictionary below: the unit is a workspace
+  // setting, and its PUT is gated by requireManager server-side (#2932). Read off
+  // `canManage` rather than a server flag of its own — the commands panel needs
+  // one because its endpoint answers can_manage per feature, while this is the
+  // plain workspace role the sidebar already has.
+  ...(ws.canManage
+    ? [
+        {
+          label: t('shell.tools.estimation'),
+          key: 'estimation',
+          icon: () => h(NIcon, null, { default: () => h(TimerOutline) }),
+        },
+      ]
+    : []),
   // The dictionary is workspace settings: owner/admin only (the PUT is gated by
   // requireManager server-side, this only hides a door that would 403).
   ...(ws.commandsCanManage
