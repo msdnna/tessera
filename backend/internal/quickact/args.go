@@ -2,6 +2,7 @@ package quickact
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -84,6 +85,54 @@ type Estimation struct {
 // types and sees, the number is what gets stored.
 var tshirtSizes = map[string]float64{"xs": 1, "s": 2, "m": 3, "l": 5, "xl": 8, "xxl": 13}
 
+// MaxEstimate bounds what an /estimate argument may resolve to — minutes in a
+// time workspace, a plain count in a points / custom one.
+//
+// The bound exists because the two ways out of this file could both hand back a
+// number no estimate column can hold, and neither said so (#2932).
+//
+//   - A points/custom argument goes straight to strconv.ParseFloat, which
+//     accepts "inf", "infinity" and "nan" as spellings of a float. `/estimate
+//     nan` therefore returned NaN with a nil error, and NaN fails every
+//     comparison, so the `n <= 0` guard below waved it through.
+//   - A time argument is multiplied by up to daysPerWeek*hoursPerDay*60. float64
+//     overflow is silent: a long enough run of digits ("/estimate 3" + 306
+//     zeros + "h") came out as +Inf, again with a nil error, again past a
+//     `total <= 0` check that is false for +Inf.
+//
+// What made that worse than a nonsense estimate is where the value went next.
+// handlers.normalizeEstimate maps anything non-finite to nil — its job is to
+// keep the column clean — and nil on a patch means *clear the estimate*. So the
+// command answered «оценка nan» under «применено» while the estimate the task
+// really had was silently set back to NULL. An unreadable estimate erasing the
+// one already on the task is what parseEstimateInput on web calls the worst of
+// the three outcomes; this was the door left open to it.
+//
+// The ceiling is below math.MaxInt32 on purpose: Android rounds the parsed
+// value with roundToInt, which clamps at 2147483647, so anything above that is
+// already read differently by the three clients. A billion minutes is nineteen
+// centuries — far past any estimate a person means to type.
+const MaxEstimate = 1e9
+
+// boundEstimate is the single exit check for a parsed estimate: finite, above
+// zero and inside the ceiling. NaN is named explicitly because it answers false
+// to every ordering comparison, which is exactly how it got through before.
+// The ceiling refusal does not echo the argument the way the others do: the
+// only way to reach it is a run of digits long enough to overflow, and quoting
+// three hundred of them back into the command summary puts them on the task's
+// comment thread for everyone.
+func boundEstimate(v float64, raw string) (float64, error) {
+	switch {
+	case math.IsNaN(v):
+		return 0, fmt.Errorf("не понимаю оценку %q", strings.TrimSpace(raw))
+	case v <= 0:
+		return 0, fmt.Errorf("оценка должна быть больше нуля")
+	case v > MaxEstimate:
+		return 0, fmt.Errorf("оценка слишком большая")
+	}
+	return v, nil
+}
+
 // ParseEstimate resolves an /estimate argument to the stored value, reading it
 // exactly the way the estimate field in the clients reads its input — a comment
 // and a popover that set the same number must not disagree about what it means.
@@ -164,10 +213,7 @@ func ParseEstimate(raw string, cfg Estimation) (float64, error) {
 			total += n * daysPerWeek * hoursPerDay * 60
 		}
 	}
-	if total <= 0 {
-		return 0, fmt.Errorf("оценка должна быть больше нуля")
-	}
-	return total, nil
+	return boundEstimate(total, raw)
 }
 
 // parseDimensionless reads the argument of a points / custom-unit workspace: a
@@ -183,10 +229,7 @@ func parseDimensionless(s, raw string, cfg Estimation) (float64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("не понимаю оценку %q (нужно число)", raw)
 	}
-	if n <= 0 {
-		return 0, fmt.Errorf("оценка должна быть больше нуля")
-	}
-	return n, nil
+	return boundEstimate(n, raw)
 }
 
 // taskRef matches a whole run of digits, not a bounded prefix of one. A capped

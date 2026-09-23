@@ -67,6 +67,21 @@ function trimNum(v) {
   return Number.isInteger(v) ? String(v) : String(+Number(v).toFixed(2))
 }
 
+// The ceiling on a parsed estimate — minutes for time, a plain count for
+// points/custom. Mirrors quickact.MaxEstimate on the backend, which explains
+// the number; here it does one more job.
+//
+// Without it the time branch below could return Infinity. `total` is a sum of
+// products, and JS overflows to Infinity silently, so a long enough run of
+// digits (a pasted id, a key held down) came out of the field as Infinity —
+// which Math.round leaves alone and `mins > 0` accepts. parseEstimateInput then
+// reported `{ ok: true }`, the popover applied it, and JSON.stringify turned
+// Infinity into `null` on the way out: a PATCH that reads as "clear the
+// estimate". That is the exact outcome the comment on parseEstimateInput calls
+// the worst of the three, reached through arithmetic rather than through a
+// typo (#2932).
+const MAX_ESTIMATE = 1e9
+
 // Parse free-text input into the canonical number, or null when unparseable.
 // Time accepts mixed tokens ("1w 2d 3h 30m"), English (w/d/h/m) or Russian
 // (н/д/ч/м) units, decimals, and a bare number (taken as hours). Points/custom
@@ -86,7 +101,7 @@ export function parseEstimate(input, cfg) {
       if (hit) return hit.value
     }
     const n = parseFloat(s)
-    return Number.isFinite(n) && n > 0 ? n : null
+    return Number.isFinite(n) && n > 0 && n <= MAX_ESTIMATE ? n : null
   }
 
   const mpd = minutesPerDay(cfg)
@@ -122,7 +137,7 @@ export function parseEstimate(input, cfg) {
   }
   if (!matched) return null
   const mins = Math.round(total)
-  return mins > 0 ? mins : null
+  return Number.isFinite(mins) && mins > 0 && mins <= MAX_ESTIMATE ? mins : null
 }
 
 // The unit letter a written-out suffix reduces to — the first letter decides, so
