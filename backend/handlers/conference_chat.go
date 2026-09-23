@@ -204,11 +204,20 @@ func (h *API) PostConferenceMessage(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "conference has ended"})
 		return
 	}
+	uid := middleware.CurrentUser(c)
+	// A kick has to reach this rail too (#2932). Posting is broadcast live into
+	// the call by the nudge below, so without this the person a host just threw
+	// out keeps talking to everyone in it — in text instead of audio, and for the
+	// full cooldown. See refuseKicked for why the other two entrances alone were
+	// not enough. Checked before readChatSubmission so a refused message costs no
+	// multipart parse and no disk.
+	if h.refuseKicked(c, conf.ID, uid) {
+		return
+	}
 	body, files, ok := h.readChatSubmission(c)
 	if !ok {
 		return
 	}
-	uid := middleware.CurrentUser(c)
 
 	// Files land on disk before the transaction so their paths can go into it,
 	// and are swept back up if it fails: a row without its bytes is a broken

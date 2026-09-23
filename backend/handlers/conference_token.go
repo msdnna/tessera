@@ -69,10 +69,7 @@ func (h *API) ConferenceToken(c *gin.Context) {
 		return
 	}
 	uid := middleware.CurrentUser(c)
-	if until, kicked := h.confRooms.KickedUntil(conf.ID, uid); kicked {
-		c.JSON(http.StatusForbidden, gin.H{
-			"error": "removed from this conference", "retry_after": until.UTC(),
-		})
+	if h.refuseKicked(c, conf.ID, uid) {
 		return
 	}
 
@@ -110,6 +107,36 @@ func (h *API) ConferenceToken(c *gin.Context) {
 		Identity:  uid.String(),
 		ExpiresIn: int(livekit.TokenTTL.Seconds()),
 	})
+}
+
+// refuseKicked writes the "you were removed" refusal and reports whether it
+// did, so every way of taking part in a call can share one gate.
+//
+// There are three of them, and until #2932 only two were guarded. The presence
+// socket checks before upgrading (ConnectConference) and the media token checks
+// before minting (above); the chat did not check at all, so a kick took away the
+// roster and the microphone and left the text rail — which is broadcast live to
+// everyone still in the call — wide open for the whole cooldown. That is the
+// same failure the token check exists to prevent, in the one channel where the
+// victim of a kick is still holding a working credential: a chat POST is an
+// ordinary workspace-member request, so nothing else about the removal stops it.
+//
+// Conservative when the registry is missing: confRooms is nil until
+// WireConfRooms, and a server with no room state has no cooldowns to serve, so
+// there is nothing to refuse. Reading it through here also keeps the nil out of
+// the callers, which dereferenced it directly.
+func (h *API) refuseKicked(c *gin.Context, confID, uid uuid.UUID) bool {
+	if h.confRooms == nil {
+		return false
+	}
+	until, kicked := h.confRooms.KickedUntil(confID, uid)
+	if !kicked {
+		return false
+	}
+	c.JSON(http.StatusForbidden, gin.H{
+		"error": "removed from this conference", "retry_after": until.UTC(),
+	})
+	return true
 }
 
 // conferenceForceMuted reports whether a host has silenced this user in this
