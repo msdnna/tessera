@@ -228,6 +228,9 @@ func (h *API) CreateDocumentApproval(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// Raising a route pins a manual snapshot. After the commit, so the route row
+	// exists and the version it pins is protected from the prune (#2932).
+	h.pruneManualVersions(c, doc.ID)
 	h.notifyDocLinks(doc.ID)
 	c.JSON(http.StatusCreated, approval)
 }
