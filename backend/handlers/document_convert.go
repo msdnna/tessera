@@ -283,6 +283,15 @@ func (h *API) createImportedDocument(c *gin.Context, wsID uuid.UUID, fileName st
 			c.JSON(http.StatusBadRequest, gin.H{"error": "malformed project_id"})
 			return db.Document{}, false
 		}
+		// Same check the JSON create and PATCH do on this field: the route
+		// vouches for the workspace, nothing vouches for the project, and
+		// TransferProject re-stamps workspace_id on a project's documents by
+		// project_id alone. Placement arrives here as form fields rather than
+		// JSON, which is how the import paths kept the hole after the other
+		// three were closed.
+		if !h.projectInWorkspace(c, id, wsID) {
+			return db.Document{}, false
+		}
 		projectID = &id
 	}
 

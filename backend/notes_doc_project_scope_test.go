@@ -1,6 +1,9 @@
 package main
 
 import (
+	"bytes"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"testing"
 )
@@ -111,5 +114,97 @@ func TestNoteAndDocumentProjectMustBeInSameWorkspace(t *testing.T) {
 		victim.expect(t, victim.del("/projects/"+vs.Project), http.StatusNoContent)
 
 		author.expect(t, author.get("/notes/"+noteID), http.StatusOK)
+	})
+}
+
+// importDocument posts a file to the import endpoint with the placement fields
+// the client sends alongside it. uploadFile cannot: placement arrives as form
+// fields here, not as JSON, and that difference is exactly why the import paths
+// were the ones left unguarded.
+func importDocument(t *testing.T, c *client, wsID, projectID, filename string, content []byte) resp {
+	t.Helper()
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+	if projectID != "" {
+		if err := w.WriteField("project_id", projectID); err != nil {
+			t.Fatalf("multipart field: %v", err)
+		}
+	}
+	fw, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		t.Fatalf("multipart file: %v", err)
+	}
+	if _, err := fw.Write(content); err != nil {
+		t.Fatalf("multipart write: %v", err)
+	}
+	_ = w.Close()
+	req, err := http.NewRequest(http.MethodPost, testServer.URL+"/api/workspaces/"+wsID+"/documents/import", &buf)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	defer res.Body.Close()
+	data, _ := io.ReadAll(res.Body)
+	return resp{Status: res.StatusCode, Body: data, Header: res.Header}
+}
+
+// TestImportedDocumentProjectMustBeInSameWorkspace covers the fourth door into
+// documents.project_id, the one the guard above did not reach: an import.
+//
+// Create and PATCH take placement as JSON and are checked; an import takes it as
+// multipart form fields next to the file, through createImportedDocument, and
+// that path checked parent_id and let project_id through. The consequence is the
+// same one and worse, because an imported document is a shared one: pinned to a
+// stranger's project it rides TransferProject's `WHERE project_id = $1` out of
+// the workspace it was written in — whatever the team filled into it by then —
+// and into a workspace of the pinner's choosing.
+//
+// The PDF branch carries the test because it is the import that needs no
+// sidecar; the converted branch reaches the same createImportedDocument.
+func TestImportedDocumentProjectMustBeInSameWorkspace(t *testing.T) {
+	t.Parallel()
+	victim := signup(t)
+	vs := mkStack(t, victim)
+
+	author := signup(t) // member of nothing the victim owns
+	as := mkStack(t, author)
+
+	t.Run("an import cannot be pinned to a project of another workspace", func(t *testing.T) {
+		r := importDocument(t, author, as.WS, vs.Project, "Договор.pdf", pdfFixture)
+		if r.Status != http.StatusBadRequest {
+			t.Fatalf("import into foreign project: got %d %s, want 400", r.Status, r.Body)
+		}
+	})
+
+	t.Run("an unknown project_id is refused too", func(t *testing.T) {
+		r := importDocument(t, author, as.WS, "00000000-0000-0000-0000-000000000001",
+			"Договор.pdf", pdfFixture)
+		if r.Status != http.StatusNotFound {
+			t.Fatalf("import into unknown project: got %d %s, want 404", r.Status, r.Body)
+		}
+	})
+
+	t.Run("the refusal leaves no half-made document behind", func(t *testing.T) {
+		docs := author.get("/workspaces/" + as.WS + "/documents").listBody(t)
+		if len(docs) != 0 {
+			t.Fatalf("refused imports still created %d documents: %v", len(docs), docs)
+		}
+	})
+
+	t.Run("an import into the caller's own project still lands", func(t *testing.T) {
+		body := author.expect(t, importDocument(t, author, as.WS, as.Project,
+			"Договор.pdf", pdfFixture), http.StatusCreated)
+		doc, ok := body["document"].(map[string]any)
+		if !ok {
+			t.Fatalf("no document in the import response: %#v", body)
+		}
+		if pid, _ := doc["project_id"].(string); pid != as.Project {
+			t.Fatalf("project_id = %v, want own project %s", doc["project_id"], as.Project)
+		}
 	})
 }
