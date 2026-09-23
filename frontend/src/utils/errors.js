@@ -99,6 +99,14 @@ const SENTINELS = {
   // click of the dialog they were just using.
   'requires admin or owner': 'requiresManager',
   'requires admin': 'requiresAdmin',
+  // The two bounds a saved board view now has (#2932). Unlike most of this list
+  // these are not stale-tab rarities: no client mirrors either rule, so the
+  // toolbar's «Сохранить вид» is where an ordinary user meets them — the count
+  // once their picker is full, the size if a future config grows past the
+  // ceiling. Both are plain sentences rather than patterns: the ceilings are a
+  // decision about a dropdown, not a number the reader can act on.
+  'view limit reached': 'boardViewLimitReached',
+  'view config is too large': 'boardViewConfigTooLarge',
   // The transport's own refusal, from middleware.BodyLimit — not a handler's
   // sentence at all, which is why it reads like a protocol error rather than
   // something a person did. An ordinary user reaches it by writing a very long

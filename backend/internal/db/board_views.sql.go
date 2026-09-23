@@ -11,6 +11,50 @@ import (
 	"github.com/google/uuid"
 )
 
+const boardViewNameExists = `-- name: BoardViewNameExists :one
+SELECT EXISTS (
+    SELECT 1 FROM board_views WHERE board_id = $1 AND user_id = $2 AND name = $3
+)
+`
+
+type BoardViewNameExistsParams struct {
+	BoardID uuid.UUID `json:"board_id"`
+	UserID  uuid.UUID `json:"user_id"`
+	Name    string    `json:"name"`
+}
+
+// BoardViewNameExists answers whether the save about to happen is an overwrite
+// rather than a new row. Only asked once the count is already at the cap, and
+// what makes the cap safe to have: the board's autosave re-saves the loaded view
+// on every toolbar change, so refusing by count alone would freeze the layout of
+// exactly the user who uses the feature most.
+func (q *Queries) BoardViewNameExists(ctx context.Context, arg BoardViewNameExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, boardViewNameExists, arg.BoardID, arg.UserID, arg.Name)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const countBoardViews = `-- name: CountBoardViews :one
+SELECT count(*) FROM board_views WHERE board_id = $1 AND user_id = $2
+`
+
+type CountBoardViewsParams struct {
+	BoardID uuid.UUID `json:"board_id"`
+	UserID  uuid.UUID `json:"user_id"`
+}
+
+// CountBoardViews counts one user's saved views on one board — the guard in
+// front of creating another. Scoped per (board, user) like every other read
+// here: the rows are private to their owner, so the bound has to be too, or one
+// member filling their own picker would lock the board's views for everybody.
+func (q *Queries) CountBoardViews(ctx context.Context, arg CountBoardViewsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countBoardViews, arg.BoardID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const deleteBoardView = `-- name: DeleteBoardView :exec
 DELETE FROM board_views WHERE id = $1
 `
