@@ -22,12 +22,36 @@ export const ID_BEARING_TYPES = [
 // newBlockId is short and collision-safe enough for identifiers scoped to one
 // document. crypto.randomUUID is not used because the id ends up in the stored
 // JSON for every block, and 36 bytes per paragraph adds up over a long page.
+//
+// The randomness source is picked *before* the digits are rendered, and that
+// ordering is the whole point. Optional-calling it into a zero-filled array
+// looks guarded and is not: the loop below turns eight zero bytes into
+// "0000000000000000", which is a perfectly truthy string, so a trailing
+// `|| Math.random()` can never run (#2932). Every block would then be stamped
+// with the same id — and the id is what locks, comments and links are anchored
+// to, so one caret would show every paragraph as held, one annotation would
+// appear on all of them, and every block link would land on the first.
 export function newBlockId() {
   const rnd = new Uint8Array(8)
-  ;(globalThis.crypto || {}).getRandomValues?.(rnd)
+  const source = globalThis.crypto
+  if (typeof source?.getRandomValues === 'function') source.getRandomValues(rnd)
+  else for (let i = 0; i < rnd.length; i++) rnd[i] = Math.floor(Math.random() * 256)
   let out = ''
   for (const b of rnd) out += b.toString(16).padStart(2, '0')
-  return out || Math.random().toString(16).slice(2, 18)
+  return out
+}
+
+// freshBlockId draws an id nothing in this document is using yet. Eight random
+// bytes make a repeat vanishingly unlikely, but uniqueness is an invariant both
+// callers below assert rather than hope for — they re-issue an id precisely
+// because a duplicate breaks anchoring — so it belongs in the draw, not in the
+// odds. The suffix is the last resort a degraded source would need.
+function freshBlockId(seen) {
+  for (let i = 0; i < 8; i++) {
+    const id = newBlockId()
+    if (!seen.has(id)) return id
+  }
+  return `${newBlockId()}-${seen.size}`
 }
 
 const blockIdPluginKey = new PluginKey('blockId')
@@ -52,7 +76,7 @@ export function ensureBlockIds(json) {
     const next = { ...node }
     if (types.has(next.type)) {
       const id = next.attrs?.id
-      next.attrs = { ...(next.attrs || {}), id: !id || seen.has(id) ? newBlockId() : id }
+      next.attrs = { ...(next.attrs || {}), id: !id || seen.has(id) ? freshBlockId(seen) : id }
       seen.add(next.attrs.id)
     }
     if (Array.isArray(next.content)) next.content = next.content.map(walk)
@@ -88,7 +112,7 @@ function stampIds(state) {
   for (const pos of fixes) {
     const node = tr.doc.nodeAt(pos)
     if (!node) continue
-    const id = newBlockId()
+    const id = freshBlockId(seen)
     seen.add(id)
     tr.setNodeMarkup(pos, undefined, { ...node.attrs, id })
   }
