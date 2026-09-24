@@ -18,9 +18,9 @@ const (
 	// triggers must not run beside the cron one on another process.
 	gitlabSyncLock      = "gitlab_sync"
 	gitlabWritebackLock = "gitlab_writeback"
-	notifyDeliveryLock  = "notify_delivery"
-	// NotifyScanLock is exported so an integration test in another package can hold
-	// it the way a second instance would.
+	// NotifyDeliveryLock and NotifyScanLock are exported so an integration test in
+	// another package can hold one the way a second instance would.
+	NotifyDeliveryLock = "notify_delivery"
 	NotifyScanLock     = "notify_scan"
 	recurrenceLock     = "recurrence"
 	confRecordingsLock = "conference_recordings"

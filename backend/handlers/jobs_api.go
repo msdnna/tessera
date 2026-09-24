@@ -204,7 +204,7 @@ func (h *API) workerRunners() map[string]workerRunner {
 		jobGitlabSyncCron:    {gitlabSyncLock, h.autoSyncDue},
 		jobGitlabWebhookCron: {gitlabSyncLock, h.drainWebhookDirty},
 		jobGitlabWriteback:   {gitlabWritebackLock, h.drainWritebacks},
-		jobNotifyDelivery:    {notifyDeliveryLock, h.drainDeliveries},
+		jobNotifyDelivery:    {NotifyDeliveryLock, h.drainDeliveries},
 		jobNotifyScanner: {NotifyScanLock, func(ctx context.Context) {
 			h.scanDueTasks(ctx)
 			h.scanReminders(ctx)

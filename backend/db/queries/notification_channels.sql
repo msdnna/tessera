@@ -184,11 +184,23 @@ UPDATE notification_deliveries SET status = 'failed', last_error = $2, updated_a
 -- row an hour old straight back into the queue — a dead endpoint turned into a
 -- hot retry loop. Those rows ask about quiet hours again on their own, in
 -- outsideQuietHours.
+--
+-- A device channel is excluded for the same reason routeNotification never gives
+-- one a slot to begin with: a push is not scheduled, it is sent or it is not.
+-- Its row is written with next_attempt_at = now and no digest group — "a push
+-- that arrives batched half an hour late is worse than no push at all" — and
+-- inside quiet hours it is not written at all, so a row that exists is one
+-- already cleared to go. Recomputed here it would be taken back: digestSlot
+-- moves it up to a whole day forward and hands it a group, and a group is what
+-- makes drainDeliveries combine pushes into one "Сводка" message that carries
+-- neither the task nor the conference it was about (#2932).
 -- name: ListReschedulableDeliveries :many
 SELECT d.id, d.channel_id, d.created_at, n.kind
 FROM notification_deliveries d
 JOIN notifications n ON n.id = d.notification_id
-WHERE n.user_id = $1 AND d.status = 'pending' AND d.attempts = 0;
+JOIN notification_channels ch ON ch.id = d.channel_id
+WHERE n.user_id = $1 AND d.status = 'pending' AND d.attempts = 0
+  AND ch.type <> 'device';
 
 -- RescheduleDelivery moves an untouched pending row to a freshly computed slot.
 -- The status/attempts guard is repeated here, not just in the SELECT above: the
