@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -462,9 +463,30 @@ func parseID(c *gin.Context, name string) (uuid.UUID, bool) {
 }
 
 // notFound reports whether err is pgx.ErrNoRows and, if so, writes 404.
+//
+// It is a writer, not a predicate: on true the response is already sent and the
+// caller's only move is `return`. A caller with a better sentence to offer must
+// reach for notFoundMsg instead of writing one after this — gin appends a second
+// render to the first rather than replacing it.
 func notFound(c *gin.Context, err error) bool {
+	return notFoundMsg(c, err, "not found")
+}
+
+// notFoundMsg is notFound with the route's own sentence — the one that names
+// WHICH task number or email came up empty, rather than the bare "not found".
+//
+// It exists because the obvious way to say that spelled `if notFound(c, err) {
+// c.JSON(404, …) }`, and that is two answers to one request: gin's Render does
+// not replace a body already written, it writes after it, so the wire carried
+// `{"error":"not found"}{"error":"задача #5 не найдена"}`. Both clients parse a
+// refusal strictly — axios' default transform runs JSON.parse, Gson refuses a
+// document that is not fully consumed — so the doubled body parsed as nothing at
+// all and the toast fell back to axios' own «Request failed with status code
+// 404». The sentence the route went out of its way to write was unreachable from
+// either client, and asking for it cost a malformed body (#2932).
+func notFoundMsg(c *gin.Context, err error, format string, args ...any) bool {
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf(format, args...)})
 		return true
 	}
 	return false

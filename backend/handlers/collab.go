@@ -512,8 +512,7 @@ func (h *API) AddRelation(c *gin.Context) {
 	}
 	num := req.Number
 	target, err := h.q.GetTaskByNumber(c, db.GetTaskByNumberParams{WorkspaceID: wsID, Number: &num})
-	if notFound(c, err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("задача #%d не найдена", req.Number)})
+	if notFoundMsg(c, err, "задача #%d не найдена", req.Number) {
 		return
 	}
 	if err != nil {

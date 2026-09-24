@@ -242,8 +242,7 @@ func (h *API) AddMember(c *gin.Context) {
 		return
 	}
 	user, err := h.q.GetUserByEmail(c, strings.ToLower(req.Email))
-	if notFound(c, err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "no user with that email"})
+	if notFoundMsg(c, err, "no user with that email") {
 		return
 	}
 	if err != nil {
