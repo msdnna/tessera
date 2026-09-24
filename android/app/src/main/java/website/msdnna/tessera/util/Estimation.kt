@@ -47,6 +47,26 @@ object Estimation {
      */
     private val SMALLER = mapOf('w' to 'd', 'd' to 'h', 'h' to 'm', 'm' to 'm')
 
+    /**
+     * Потолок разобранной оценки: минуты во временном пространстве, просто счёт —
+     * в points/custom. Та же граница, что у веба (`utils/estimation.js`
+     * MAX_ESTIMATE) и у бэкенда (`quickact.MaxEstimate`), и по той же причине —
+     * число, которого не держит ни одна колонка, приезжает сюда обычной опечаткой:
+     * вставленный id, зажатая клавиша (#2932).
+     *
+     * Здесь отсутствие потолка пряталось за `roundToInt`, который зажимает по
+     * `Int.MAX_VALUE`: «999999999999» часов уходило в задачу как 2147483647 минут —
+     * около четырёх тысяч лет, — и поле молча принимало то, от чего popover на вебе
+     * и `/estimate` в комментарии отказываются с текстом. А в points/custom
+     * достаточно длинный прогон цифр переполняет double до +Inf, и проверка
+     * `n > 0` его пропускала: в PATCH уходило число, которого в JSON нет.
+     */
+    const val MAX_ESTIMATE = 1.0e9
+
+    /** Единственная проверка выхода: конечное, больше нуля и внутри [MAX_ESTIMATE]. */
+    private fun bounded(v: Double?): Double? =
+        if (v != null && v.isFinite() && v > 0 && v <= MAX_ESTIMATE) v else null
+
     private fun minutesPerDay(cfg: EstimationConfig): Double = (cfg.hoursPerDay ?: 8.0) * 60.0
     private fun minutesPerWeek(cfg: EstimationConfig): Double =
         minutesPerDay(cfg) * (cfg.daysPerWeek ?: 5.0)
@@ -87,8 +107,7 @@ object Estimation {
             if (unit == "points" && cfg.pointsScale == "tshirt") {
                 TSHIRT.firstOrNull { it.first.lowercase() == s }?.let { return it.second.toDouble() }
             }
-            val n = leadingNumber(s)
-            return if (n != null && n > 0) n else null
+            return bounded(leadingNumber(s))
         }
 
         return parseTime(s, cfg)
@@ -144,7 +163,9 @@ object Estimation {
             matched = true
         }
         if (!matched) return null
-        val mins = total.roundToInt()
+        // Потолок — ДО округления: `roundToInt` зажимает по `Int.MAX_VALUE` и тем
+        // превращает переполнение в правдоподобное число, см. [MAX_ESTIMATE].
+        val mins = bounded(total)?.roundToInt() ?: 0
         return if (mins > 0) mins.toDouble() else null
     }
 

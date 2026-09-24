@@ -98,6 +98,35 @@ class EstimationTest {
         assertThat(Estimation.parse("2s", time)).isNull()
     }
 
+    /**
+     * Потолок оценки — тот же 1e9, что у веба (`utils/estimation.js MAX_ESTIMATE`)
+     * и у бэкенда (`quickact.MaxEstimate`). Без него длинный прогон цифр —
+     * вставленный id, зажатая клавиша — доезжал до `roundToInt`, а тот зажимает
+     * по Int.MAX_VALUE: поле молча принимало 2147483647 минут (около 4085 лет)
+     * там, где два других разбора отказываются.
+     */
+    @Test
+    fun `parse refuses an estimate past the ceiling`() {
+        assertThat(Estimation.parse("999999999999", time)).isNull() // часы → 6e13 минут
+        assertThat(Estimation.parse("1000000000м", time)).isEqualTo(1.0e9) // ровно потолок — ещё можно
+        assertThat(Estimation.parse("1000000001м", time)).isNull()
+        assertThat(Estimation.parse("2000000000", fib)).isNull()
+        assertThat(Estimation.parse("2000000000", custom)).isNull()
+    }
+
+    /**
+     * Переполнение double молчаливо: достаточно длинная строка цифр даёт +Inf, и
+     * проверка `n > 0` его пропускала. Дальше значение уходило в PATCH числом,
+     * которого в JSON не существует.
+     */
+    @Test
+    fun `parse refuses an overflowing run of digits`() {
+        val huge = "9".repeat(400)
+        assertThat(Estimation.parse(huge, time)).isNull()
+        assertThat(Estimation.parse(huge, fib)).isNull()
+        assertThat(Estimation.parse("${huge}ч", time)).isNull()
+    }
+
     @Test
     fun `parse honours custom hours per day`() {
         val cfg = EstimationConfig(unit = "time", hoursPerDay = 6.0, daysPerWeek = 5.0)
