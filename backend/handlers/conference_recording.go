@@ -253,7 +253,13 @@ func (h *API) StartConferenceRecording(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "recording could not be started: " + err.Error()})
 		return
 	}
-	rec, err = h.q.SetConferenceRecordingEgress(c, db.SetConferenceRecordingEgressParams{
+	// Into its own variable, not back into rec: a failed sqlc call returns a
+	// zero-valued row, and the rollback below is the one thing on this path that
+	// still needs the claimed row's id. Assigning through it would hand
+	// releaseRecordingClaim a nil uuid — deleting nothing, leaving the row active,
+	// and refusing every future recording of this conference on the unique index
+	// until the background worker times the claim out minutes later.
+	claimed, err := h.q.SetConferenceRecordingEgress(c, db.SetConferenceRecordingEgressParams{
 		ID: rec.ID, EgressID: info.EgressID,
 	})
 	if err != nil {
@@ -267,6 +273,7 @@ func (h *API) StartConferenceRecording(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	rec = claimed
 
 	view := viewRecording(rec)
 	if name := h.userName(c, uid); name != "" {
