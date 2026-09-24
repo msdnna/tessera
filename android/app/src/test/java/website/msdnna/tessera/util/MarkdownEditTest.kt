@@ -136,6 +136,38 @@ class MarkdownEditTest {
     }
 
     @Test
+    fun `enter at the end of a closing fence does not open a third one`() {
+        // The closing ``` is the same three characters as an opening one; only the
+        // parity of the fences above tells them apart. Counting wrong appended an
+        // unpaired opener that swallowed the rest of the document in the preview.
+        assertThat(handleEnter("```\ncode\n```", 12)).isNull()
+    }
+
+    @Test
+    fun `a fence that opens the block after a closed one still self-closes`() {
+        // Two delimiters above → even → this line opens a block, and nothing
+        // closes it below, so the pair is still completed.
+        val e = handleEnter("```\na\n```\n```kt", 15)!!
+        assertThat(e.text).isEqualTo("```\na\n```\n```kt\n\n```")
+    }
+
+    @Test
+    fun `a caret inside the marker gets an ordinary newline`() {
+        // Home then Enter to open a line above: carrying the marker here copies it
+        // onto the text it was still attached to.
+        assertThat(handleEnter("- foo", 0)).isNull()
+        assertThat(handleEnter("  1. foo", 3)).isNull()
+        assertThat(handleEnter("- [ ] foo", 4)).isNull()
+    }
+
+    @Test
+    fun `a caret at the first character of the content still carries the marker`() {
+        // The boundary itself belongs to the content — that is where Home lands on
+        // a line the user then wants to split.
+        assertThat(handleEnter("- foo", 2)!!.text).isEqualTo("- \n- foo")
+    }
+
+    @Test
     fun `enter carries the bullet marker to the next line`() {
         val e = handleEnter("- a", 3)!!
         assertThat(e.text).isEqualTo("- a\n- ")
