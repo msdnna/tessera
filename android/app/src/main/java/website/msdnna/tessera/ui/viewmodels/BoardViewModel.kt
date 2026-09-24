@@ -2,6 +2,7 @@ package website.msdnna.tessera.ui.viewmodels
 
 import android.os.SystemClock
 import androidx.annotation.StringRes
+import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -472,7 +473,36 @@ class BoardViewModel(
     private var activityWindowStart = 0L
     private var activityWindowCount = 0
 
-    @Volatile var dragging = false
+    @Volatile private var draggingNow = false
+
+    // Событие, выброшенное guard'ом перетаскивания. Пока карточка в воздухе, доска
+    // обязана стоять на месте, поэтому realtime глушится целиком — но drag, который
+    // ничего не сдвинул (карточку подняли и вернули, бросили мимо колонки, отпустили
+    // на месте), не шлёт на сервер ничего и своей перезагрузки не планирует. Без
+    // этого флага чужие изменения за те секунды просто пропадали — до следующего
+    // события или pull-to-refresh. Веб ведёт такой же список (`utils/boardEvents`
+    // missedRefetchKinds + KanbanBoard flushMissed), только там догон частичный, а
+    // здесь доска перечитывается целиком — значит хватает одного «было» (#2932).
+    //
+    // Окну подавления своих эхо (`suppressUntil`) такая бухгалтерия не нужна: его
+    // взводят НАШИ же мутации, и каждая заканчивается reload()/silentReload().
+    @Volatile private var missedWhileDragging = false
+
+    /**
+     * Идёт ли прямо сейчас перетаскивание карточки или колонки (экран ставит флаг
+     * из `BoardViews`). Снятие флага догоняет то, что realtime потерял за время
+     * жеста, — см. [missedWhileDragging].
+     */
+    var dragging: Boolean
+        get() = draggingNow
+        set(value) {
+            if (draggingNow == value) return
+            draggingNow = value
+            if (!value && missedWhileDragging) {
+                missedWhileDragging = false
+                viewModelScope.launch { runCatching { silentReload() } }
+            }
+        }
 
     fun load(boardId: String, workspaceId: String) {
         this.boardId = boardId
@@ -567,14 +597,32 @@ class BoardViewModel(
 
     // ── realtime ─────────────────────────────────────────────────────────────
 
+    /**
+     * Адрес доски без [load] — вход для юнит-теста.
+     *
+     * [load] читает конфиг вида из DataStore, то есть уходит на настоящий
+     * Dispatchers.IO, которого виртуальное время `runTest` не ждёт (подробнее —
+     * `BoardColumnScopeTest`), а событиям сокета нужна именно заполненная пара
+     * id: без неё `silentReload()` выходит на первой же строке.
+     */
+    @VisibleForTesting
+    internal fun bindTargetForTest(boardId: String, workspaceId: String) {
+        this.boardId = boardId
+        this.workspaceId = workspaceId
+    }
+
     private fun ensureRealtime() {
         if (realtime != null) return
         realtime = RealtimeClient(::onRealtimeEvent).also { it.connect() }
     }
 
     /** Workspace-scoped board events reload the board; our own echoes and
-     *  in-progress drags are filtered out. Debounced to coalesce bursts. */
-    private fun onRealtimeEvent(ev: RealtimeEvent) {
+     *  in-progress drags are filtered out. Debounced to coalesce bursts.
+     *
+     *  `internal` (а не private) ради теста: события приходят из сокета, а
+     *  проверяется здесь чистое правило «что делать с событием». */
+    @VisibleForTesting
+    internal fun onRealtimeEvent(ev: RealtimeEvent) {
         if (ev.scope != workspaceId) return
         // This board's project was deleted or transferred away elsewhere → its board
         // is gone; signal the host to leave for Home (web project.deleted handler).
@@ -594,7 +642,13 @@ class BoardViewModel(
         // Board-activity toast for create/move on THIS board (any actor) — shown
         // regardless of the reload suppression below so own actions confirm too.
         if (ev.type == "task.created" || ev.type == "task.moved") pushActivity(ev)
-        if (dragging || SystemClock.elapsedRealtime() < suppressUntil) return
+        // Жест держит доску неподвижной, поэтому событие выбрасывается — но
+        // запоминается: на отпускании его догонит перезагрузка (см. [dragging]).
+        if (dragging) {
+            missedWhileDragging = true
+            return
+        }
+        if (SystemClock.elapsedRealtime() < suppressUntil) return
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
             delay(REALTIME_DEBOUNCE_MS)
@@ -605,7 +659,9 @@ class BoardViewModel(
             // on an event the reader never asked for. Staying silent is the point of
             // this path: the screen keeps the copy it has, and the next event (or a
             // pull-to-refresh) brings it up to date.
-            if (!dragging) runCatching { silentReload() }
+            // Жест мог начаться уже после того, как событие приняли: тогда эта
+            // перезагрузка так же теряется, и догонять её тоже на отпускании.
+            if (dragging) missedWhileDragging = true else runCatching { silentReload() }
         }
     }
 
