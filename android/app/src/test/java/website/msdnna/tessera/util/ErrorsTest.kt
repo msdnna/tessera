@@ -103,6 +103,22 @@ class ErrorsTest {
             .isEqualTo("Too many saved views on this board — delete one to add another")
     }
 
+    /** Потолок связей документа — по той же причине, что и границы вида доски:
+     *  правило клиент не зеркалит, а привязка задачи с телефона есть
+     *  (DocLinksSheet → `linkTask`), и `writeLinks` печатает ответ сервера прямо в
+     *  панель. Соседний отказ («block id is too long») в каталоге отсутствует
+     *  намеренно — якорь рисует редактор, руками его не вводят, так что клиент,
+     *  который в него упёрся, сломан, а не переполнен. */
+    @Test
+    fun `humanizeError maps the document link ceiling`() {
+        assertThat(humanizeError("link limit reached")?.resolve(ru))
+            .isEqualTo("К документу привязано слишком много задач — отвяжите ненужные")
+        assertThat(humanizeError("link limit reached")?.resolve(en))
+            .isEqualTo("Too many tasks linked to this document — unlink some first")
+        assertThat(humanizeError("block id is too long")?.resolve(ru))
+            .isEqualTo("block id is too long")
+    }
+
     /** Опечатка в текущем пароле — единственный отказ из этого каталога, до
      *  которого обычный пользователь доходит обычным путём. Печатается прямо в
      *  форме (ProfileScreen, TFormError), и до #2932 — по-английски. */

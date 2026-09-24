@@ -107,6 +107,12 @@ const SENTINELS = {
   // decision about a dropdown, not a number the reader can act on.
   'view limit reached': 'boardViewLimitReached',
   'view config is too large': 'boardViewConfigTooLarge',
+  // The ceiling on a document's task links, for the same reason as the two above:
+  // no client mirrors it, so the links panel is where it is met. Its sibling
+  // refusal ("block id is too long") is deliberately absent — the anchor is drawn
+  // by the editor, never typed, so a client that trips it is broken rather than
+  // full, and the generic fallback says as much.
+  'link limit reached': 'docLinkLimitReached',
   // The rate limiter's refusal (middleware.RateLimit), and the one sentinel on
   // this list an ordinary user meets without doing anything wrong (#2932). The
   // login route is throttled at ten attempts a minute keyed by IP *and* by
