@@ -464,7 +464,19 @@ func attrInt(attrs map[string]any, key string, def int) int {
 // member's own browser, so it keeps the <img>; the .fodt export is opened by the
 // sidecar, so it writes a link instead of an image the converter would fetch on
 // the server's behalf (#2932, renderFODTRemoteImage).
-func (h *API) inlineDocAsset(wsID uuid.UUID) func(string) string {
+//
+// The exporting document's own workspace is deliberately NOT part of the check.
+// It was, and that quietly broke every picture in a transferred project:
+// TransferProject re-stamps documents.workspace_id but nothing rewrites the
+// bodies, so the src still names the workspace the URL was minted in and the
+// recomputed signature stopped matching — the export fell through to a link the
+// sidecar cannot fetch, and the .docx came back with the images missing while the
+// editor still showed them. Verifying against the workspace the URL itself names
+// is the same thing DocumentAsset does one route over, and it is the whole of the
+// capability: a signature Tessera minted. It gives an exporter nothing they did
+// not already have, since that route is public precisely because an <img> cannot
+// authenticate — anyone holding the URL can fetch the bytes without an export.
+func (h *API) inlineDocAsset() func(string) string {
 	return func(src string) string {
 		if src == "" || !strings.Contains(src, "/api/documents/asset") {
 			return src
@@ -478,14 +490,18 @@ func (h *API) inlineDocAsset(wsID uuid.UUID) func(string) string {
 		if err != nil {
 			return src
 		}
+		wsID, err := uuid.Parse(q.Get("ws"))
+		if err != nil {
+			return src
+		}
 		name := filepath.Base(q.Get("n"))
 		if !docAssetNameRe.MatchString(name) {
 			return src
 		}
 		// The signature is re-checked rather than trusted: the src came out of
-		// stored content, and content is user input. Without this, a member of one
-		// workspace could put another workspace's asset URL in their document and
-		// have the export read the file for them.
+		// stored content, and content is user input. Without this, a member could
+		// point the export at any path under the asset root and have it read the
+		// file for them.
 		if q.Get("sig") != h.signAsset(wsID, docAssetRel(docID, name)) {
 			return src
 		}

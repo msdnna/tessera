@@ -353,7 +353,7 @@ func (h *API) ExportDocument(c *gin.Context) {
 	// carries a single @page rule and would flatten a document's sections onto one
 	// sheet (#2849), which is the whole of what #2827 set out to fix.
 	if format == "html" {
-		out := []byte(renderDocHTML(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID)))
+		out := []byte(renderDocHTML(doc.Title, root, h.inlineDocAsset()))
 		c.Header("Content-Disposition", contentDisposition(doc.Title+"."+spec.ext))
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Data(http.StatusOK, spec.mime, out)
@@ -364,7 +364,7 @@ func (h *API) ExportDocument(c *gin.Context) {
 		converterUnavailable(c, converter.ErrDisabled)
 		return
 	}
-	src := []byte(renderDocFODT(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID)))
+	src := []byte(renderDocFODT(doc.Title, root, h.inlineDocAsset()))
 	out, err := h.converter.Convert(c, src, "fodt", format)
 	if err != nil {
 		converterUnavailable(c, err)
