@@ -210,4 +210,23 @@ describe('mergeChatTail', () => {
     expect(mergeChatTail([], fresh)).toEqual(fresh)
     expect(mergeChatTail(undefined, fresh)).toEqual(fresh)
   })
+
+  it('drops the history rather than leaving a hole when the page does not reach it', () => {
+    // The socket went down for a minute of a busy call and came back to more
+    // than a page of new lines, so the tail shares nothing with what is held.
+    // Stitching the halves would put m3..m9 nowhere: the log would read m1, m2,
+    // m10 with no sign of the gap, and "показать более ранние" pages back from
+    // m1 — away from it. Keeping only the page loses m1/m2 to a tap.
+    const shown = [m('m1', '2026-09-03T10:00:00Z'), m('m2', '2026-09-03T10:01:00Z')]
+    const fresh = [m('m10', '2026-09-03T10:10:00Z'), m('m11', '2026-09-03T10:11:00Z')]
+    expect(mergeChatTail(shown, fresh).map((x) => x.id)).toEqual(['m10', 'm11'])
+  })
+
+  it('stitches on a single shared message', () => {
+    // One id in common is enough: the page reaches the log, so nothing can be
+    // hiding between them.
+    const shown = [m('m1', '2026-09-03T10:00:00Z'), m('m2', '2026-09-03T10:01:00Z')]
+    const fresh = [m('m2', '2026-09-03T10:01:00Z')]
+    expect(mergeChatTail(shown, fresh).map((x) => x.id)).toEqual(['m1', 'm2'])
+  })
 })

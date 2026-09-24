@@ -116,6 +116,16 @@ function chatBefore(a, b) {
  * means an empty chat (the tail is the newest PAGE messages; nothing can hide
  * behind it), so nothing is kept.
  *
+ * Stitching requires the page to actually touch what is on screen, and that is
+ * what the id overlap below decides. Come back from a tunnel to more than PAGE
+ * new lines and the page no longer reaches the log we hold: keeping both halves
+ * would paint the conversation with a silent hole in the middle, and the missing
+ * lines are the ones nobody can ask for — "показать более ранние" pages back
+ * from the *oldest* message on screen, so it walks away from the gap rather than
+ * into it. The page alone is then the truth; the history it displaces is one
+ * "load older" away, while the hole was permanent (#2932). Android's
+ * `confChatMergeTail` has decided it this way since the rail was written.
+ *
  * The id filter is the belt to the cursor's braces: two messages a microsecond
  * apart land in the same millisecond once `Date.parse` is done with them, and a
  * message that straddles the boundary that way must not be drawn twice — Vue
@@ -129,6 +139,8 @@ export function mergeChatTail(current, fresh) {
   const page = fresh || []
   if (!page.length) return []
   const ids = new Set(page.map((m) => m?.id))
-  const older = (current || []).filter((m) => !ids.has(m?.id) && chatBefore(m, page[0]))
+  const shown = current || []
+  if (!shown.some((m) => ids.has(m?.id))) return [...page]
+  const older = shown.filter((m) => !ids.has(m?.id) && chatBefore(m, page[0]))
   return [...older, ...page]
 }
