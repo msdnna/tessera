@@ -283,6 +283,16 @@ func (h *API) createImportedDocument(c *gin.Context, wsID uuid.UUID, fileName st
 			c.JSON(http.StatusBadRequest, gin.H{"error": "malformed project_id"})
 			return db.Document{}, false
 		}
+		// The same check the parent above already gets, and the same one
+		// CreateDocument gives its own project_id (documents.go). It was missing
+		// here alone, on the path both imports share: a project from another
+		// workspace was accepted verbatim, and ReassignProjectDocumentsWorkspace
+		// re-stamps workspace_id by project_id alone, so the next transfer of that
+		// project carried the imported document out of the workspace it was
+		// imported into — away from the team that owns it (#2932).
+		if !h.projectInWorkspace(c, id, wsID) {
+			return db.Document{}, false
+		}
 		projectID = &id
 	}
 
