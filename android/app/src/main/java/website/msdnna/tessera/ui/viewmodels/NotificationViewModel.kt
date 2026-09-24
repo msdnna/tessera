@@ -40,7 +40,9 @@ data class NotificationUiState(
  * Owns the persistent-notification feed + bell badge (web `notifications`
  * store). Loads once, then a live socket reloads it on `notification` events
  * (the backend broadcasts one when a notification is created). Read state is
- * applied optimistically so the badge updates instantly.
+ * applied optimistically so the badge updates instantly — and rolled back if the
+ * server refuses, because a load that answers meanwhile must not undo it either
+ * (see [withLocalRead] and [loadSeq]).
  */
 class NotificationViewModel(
     private val repo: NotificationRepository = NotificationRepository(),
@@ -77,21 +79,78 @@ class NotificationViewModel(
         }
     }
 
-    fun load() = launchCatching {
-        val items = repo.list()
-        _state.update { it.copy(loading = false, items = items) }
+    // У ленты нет единственного вызывающего: она читается на старте и заново по
+    // каждому событию сокета — то есть ровно тогда, когда связь и мигает. Значит
+    // два запроса могут быть в полёте одновременно, и простое присваивание
+    // оставило бы на экране тот, что ОТВЕТИЛ последним, а не тот, что последним
+    // СПРОСИЛИ. Отмена [reloadJob] тут не помогает: она снимает только задержку
+    // дребезга, сам `load()` уходит в отдельную корутину и живёт своей жизнью.
+    // Веб закрыл этот же случай счётчиком `loadSeq` (frontend/src/stores/notifications.js, #2932).
+    private var loadSeq = 0
+
+    fun load() {
+        val seq = ++loadSeq
+        viewModelScope.launch {
+            val result = runCatching { repo.list() }
+            if (seq != loadSeq) return@launch // уже спросили заново — этот ответ протух
+            result.fold(
+                onSuccess = { rows ->
+                    _state.update { s -> s.copy(loading = false, items = rows.map { withLocalRead(it, s.items) }) }
+                },
+                onFailure = { e -> _state.update { it.copy(loading = false, error = errorMessage(e)) } },
+            )
+        }
     }
 
+    // Прочитанность движется только в одну сторону — снова непрочитанной строку в
+    // продукте не делает ничто, — поэтому оптимистичная отметка, поставленная пока
+    // загрузка была в полёте, старше ответа, который её не видел. Без этого тап по
+    // уведомлению в момент перезагрузки возвращает строку (и счётчик) в
+    // непрочитанные до следующей загрузки. Откат отказа при этом работает: [restore]
+    // правит тот список, который актуален к тому моменту.
+    private fun withLocalRead(fresh: Notification, prev: List<Notification>): Notification {
+        if (!fresh.isUnread) return fresh
+        val was = prev.firstOrNull { it.id == fresh.id } ?: return fresh
+        return if (was.isUnread) fresh else fresh.copy(readAt = was.readAt)
+    }
+
+    // Оптимистичная запись должна читателю откат. Раньше отказ сервера просто
+    // оседал в `error`: счётчик падал в ноль, сервер держал строки непрочитанными,
+    // и лента продолжала утверждать обратное до следующей загрузки.
     fun markRead(notification: Notification) {
-        if (notification.isUnread) {
+        if (!notification.isUnread) return
+        // Запрос уходит в любом случае — строка могла выпасть из ограниченной
+        // ленты, — но откатываем только свою же запись.
+        val marked = _state.value.items.any { it.id == notification.id && it.isUnread }
+        if (marked) {
             _state.update { s -> s.copy(items = s.items.map { if (it.id == notification.id) it.copy(readAt = NOW_SENTINEL) else it }) }
-            launchCatching { repo.markRead(notification.id) }
+        }
+        viewModelScope.launch {
+            runCatching { repo.markRead(notification.id) }.onFailure { e ->
+                if (marked) restore(listOf(notification.id))
+                _state.update { it.copy(error = errorMessage(e)) }
+            }
         }
     }
 
     fun markAllRead() {
+        val marked = _state.value.items.filter { it.isUnread }.map { it.id }
         _state.update { s -> s.copy(items = s.items.map { if (it.isUnread) it.copy(readAt = NOW_SENTINEL) else it }) }
-        launchCatching { repo.markAllRead() }
+        viewModelScope.launch {
+            runCatching { repo.markAllRead() }.onFailure { e ->
+                restore(marked)
+                _state.update { it.copy(error = errorMessage(e)) }
+            }
+        }
+    }
+
+    /** Возвращает в непрочитанные ровно те строки, которые перекрыл оптимистичный
+     *  проход, по id: прочитанную раньше назад не тащим, пришедшую по сокету не
+     *  трогали, а выпавшую из ленты не воскрешаем. */
+    private fun restore(ids: List<String>) {
+        if (ids.isEmpty()) return
+        val set = ids.toSet()
+        _state.update { s -> s.copy(items = s.items.map { if (it.id in set) it.copy(readAt = null) else it }) }
     }
 
     private fun ensureRealtime() {
@@ -149,15 +208,6 @@ class NotificationViewModel(
     override fun onCleared() {
         realtime?.close()
         realtime = null
-    }
-
-    private fun launchCatching(block: suspend () -> Unit) {
-        viewModelScope.launch {
-            val result = runCatching { block() }
-            result.exceptionOrNull()?.let { e ->
-                _state.update { it.copy(loading = false, error = errorMessage(e)) }
-            }
-        }
     }
 
     private companion object {
