@@ -162,7 +162,20 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
 
     convert_to, out_ext, _ = TARGETS[target]
     with tempfile.TemporaryDirectory(prefix="conv-") as tmp:
-        src = os.path.join(tmp, "input." + src_ext)
+        # Source and output live in separate directories, and that is load-bearing
+        # rather than tidy. With one directory the output path is built from the
+        # same stem as the input ("input." + ext), so a request whose source
+        # extension equals its target — from=html&to=html, which is what EVERY
+        # .html import is — pointed both at the same file. The "produced no
+        # output" check below then read the *input* and passed, so a soffice run
+        # that wrote nothing at all was answered 200 with the raw uploaded bytes
+        # instead of 422. Measured: with soffice stubbed to exit 0 writing
+        # nothing, docx/odt/rtf/txt were refused and html alone came back "converted".
+        indir = os.path.join(tmp, "in")
+        outdir = os.path.join(tmp, "out")
+        os.makedirs(indir)
+        os.makedirs(outdir)
+        src = os.path.join(indir, "input." + src_ext)
         with open(src, "wb") as fh:
             fh.write(data)
 
@@ -180,7 +193,7 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
             "--convert-to",
             convert_to,
             "--outdir",
-            tmp,
+            outdir,
             src,
         ]
         try:
@@ -188,7 +201,7 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
         except subprocess.TimeoutExpired:
             raise ConvertError(504, "conversion timed out after %ds" % CONVERT_TIMEOUT)
 
-        out = os.path.join(tmp, "input." + out_ext)
+        out = os.path.join(outdir, "input." + out_ext)
         if not os.path.exists(out):
             # soffice exits 0 on inputs it cannot parse and simply writes
             # nothing, so the exit code is not the signal — the missing file is.
@@ -200,7 +213,7 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
 
         if target == "html":
             text = raw.decode("utf-8", "replace")
-            return _inline_images(text, tmp).encode("utf-8")
+            return _inline_images(text, outdir).encode("utf-8")
         return raw
 
 

@@ -86,3 +86,7 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/blob-report/
 frontend/e2e/.auth/
+
+# Bytecode cache of the conversion sidecar's tests (converter/server_test.py)
+__pycache__/
+*.pyc

@@ -152,6 +152,14 @@ lint-frontend: ## Lint + format-check frontend
 test-frontend: ## Run frontend tests
 	cd frontend && corepack yarn test
 
+# The conversion sidecar is not a versioned component and has no dependencies of
+# its own, so its tests are plain stdlib unittest and run without a toolchain.
+# Not part of the `test` aggregate for the same reason android and desktop are
+# not: it is a deploy-time service, tested when it is touched.
+.PHONY: test-converter
+test-converter: ## Run conversion sidecar tests (soffice stubbed; no LibreOffice needed)
+	cd converter && python3 -m unittest server_test -v
+
 .PHONY: test-frontend-cover
 test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.html,lcov.info})
 	cd frontend && corepack yarn test:coverage
