@@ -79,6 +79,18 @@ private val sentinels = mapOf(
     "no user with that email" to R.string.err_no_user_with_email,
     "job is already running" to R.string.err_job_already_running,
     "too many approvers" to R.string.err_too_many_approvers,
+    // Отказ ограничителя частоты (`middleware.RateLimit`) — единственная строка
+    // здесь, до которой доходят, не сделав ничего неправильного (#2932). Вход
+    // throttled на десять попыток в минуту, и ключ считается И по IP, И по
+    // адресу: офис за одним NAT делит один бюджет. Опечатка в пароле утром в
+    // понедельник — и форма отвечала английской фразой, которая вдобавок молчит
+    // о главном: что помогает просто подождать.
+    "too many requests" to R.string.err_too_many_requests,
+    // Две границы сохранённого вида доски. Клиент их не зеркалит, а сохранение
+    // вида на телефоне есть (BoardComposer → `saveView`), так что до обеих
+    // доходят обычным путём — как на вебе, откуда эта карта и списана.
+    "view limit reached" to R.string.err_board_view_limit_reached,
+    "view config is too large" to R.string.err_board_view_config_too_large,
     // Четыре гварда членства в пространстве и ранг, который остаётся после них
     // (#2932). Модалка участников гасит свою строку (см. MembersModal), так что
     // сюда доходит устаревшая вкладка: другой админ поменял роли, пока эта была

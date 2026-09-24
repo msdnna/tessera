@@ -1444,6 +1444,9 @@
     <string name="err_template_too_long">The template is longer than %1$s characters — shorten it</string>
     <string name="err_template_error">Template error: %1$s</string>
     <string name="err_smtp_not_configured">SMTP is not configured on the server — the email was logged, not sent</string>
+    <string name="err_too_many_requests">Too many attempts — wait a minute and try again</string>
+    <string name="err_board_view_limit_reached">Too many saved views on this board — delete one to add another</string>
+    <string name="err_board_view_config_too_large">This view\'s settings do not fit into a saved view</string>
     <string name="err_body_too_large">The request is too large — shorten the text or the attachment</string>
     <string name="err_doc_content_too_large">The document is larger than %1$s MB — split it into several pages</string>
     <string name="err_chat_attachments_too_large">The attachments add up to more than %1$s MB — send them in several messages</string>

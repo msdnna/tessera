@@ -1495,6 +1495,9 @@
     <string name="err_template_too_long">Шаблон длиннее %1$s символов — сократите его</string>
     <string name="err_template_error">Ошибка в шаблоне: %1$s</string>
     <string name="err_smtp_not_configured">SMTP на сервере не настроен — письмо записано в лог, но не отправлено</string>
+    <string name="err_too_many_requests">Слишком много попыток — подождите минуту и попробуйте снова</string>
+    <string name="err_board_view_limit_reached">Сохранённых видов доски слишком много — удалите ненужный, чтобы добавить новый</string>
+    <string name="err_board_view_config_too_large">Настройки вида не помещаются в сохранение</string>
     <string name="err_body_too_large">Слишком большой запрос — сократите текст или вложение</string>
     <string name="err_doc_content_too_large">Документ больше %1$s МБ — разделите его на несколько страниц</string>
     <string name="err_chat_attachments_too_large">Вложения весят больше %1$s МБ — отправьте их несколькими сообщениями</string>

@@ -107,6 +107,14 @@ const SENTINELS = {
   // decision about a dropdown, not a number the reader can act on.
   'view limit reached': 'boardViewLimitReached',
   'view config is too large': 'boardViewConfigTooLarge',
+  // The rate limiter's refusal (middleware.RateLimit), and the one sentinel on
+  // this list an ordinary user meets without doing anything wrong (#2932). The
+  // login route is throttled at ten attempts a minute keyed by IP *and* by
+  // email, so a whole office behind one address shares one budget: mistype a
+  // password on a busy morning and the form answered with a bare English
+  // "too many requests", which does not even say the thing that matters — that
+  // waiting fixes it.
+  'too many requests': 'tooManyRequests',
   // The transport's own refusal, from middleware.BodyLimit — not a handler's
   // sentence at all, which is why it reads like a protocol error rather than
   // something a person did. An ordinary user reaches it by writing a very long

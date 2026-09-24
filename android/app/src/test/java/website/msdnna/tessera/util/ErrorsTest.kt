@@ -75,6 +75,34 @@ class ErrorsTest {
             .isEqualTo("Password is too long — at most 72 bytes")
     }
 
+    /**
+     * Отказ ограничителя частоты. До него доходят, не сделав ничего
+     * неправильного: вход throttled на десять попыток в минуту, и ключ считается
+     * И по IP, И по адресу, так что офис за одним NAT делит один бюджет. Фраза
+     * должна называть выход — подождать, — а не только факт (#2932).
+     */
+    @Test
+    fun `humanizeError maps the rate-limit refusal`() {
+        assertThat(humanizeError("too many requests")?.resolve(ru))
+            .isEqualTo("Слишком много попыток — подождите минуту и попробуйте снова")
+        assertThat(humanizeError("TOO MANY REQUESTS")?.resolve(ru))
+            .isEqualTo("Слишком много попыток — подождите минуту и попробуйте снова")
+        assertThat(humanizeError("too many requests")?.resolve(en))
+            .isEqualTo("Too many attempts — wait a minute and try again")
+    }
+
+    /** Две границы сохранённого вида доски: правило клиент не зеркалит, а
+     *  сохранение вида на телефоне есть, так что обе встречаются обычным путём. */
+    @Test
+    fun `humanizeError maps both saved-view bounds`() {
+        assertThat(humanizeError("view limit reached")?.resolve(ru))
+            .isEqualTo("Сохранённых видов доски слишком много — удалите ненужный, чтобы добавить новый")
+        assertThat(humanizeError("view config is too large")?.resolve(ru))
+            .isEqualTo("Настройки вида не помещаются в сохранение")
+        assertThat(humanizeError("view limit reached")?.resolve(en))
+            .isEqualTo("Too many saved views on this board — delete one to add another")
+    }
+
     /** Опечатка в текущем пароле — единственный отказ из этого каталога, до
      *  которого обычный пользователь доходит обычным путём. Печатается прямо в
      *  форме (ProfileScreen, TFormError), и до #2932 — по-английски. */

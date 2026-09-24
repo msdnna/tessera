@@ -23,6 +23,7 @@
     "invitationWrongAccount": "This invitation was sent to a different address",
     "boardViewLimitReached": "Too many saved views on this board — delete one to add another",
     "boardViewConfigTooLarge": "This view's settings do not fit into a saved view",
+    "tooManyRequests": "Too many attempts — wait a minute and try again",
     "bodyTooLarge": "The request is too large — shorten the text or the attachment",
     "docContentTooLarge": "The document is larger than {limit} — split it into several pages",
     "chatAttachmentsTooLarge": "The attachments add up to more than {limit} — send them in several messages",
