@@ -118,21 +118,28 @@ export const useConferenceSession = defineStore('conferenceSession', () => {
   }
 
   /**
-   * Leave the call for good: drop our seat on the server, then tear the session
-   * down. This is what the mini-window's hang-up calls — ConferenceRoom is not
-   * mounted there to run the view's own leave flow.
+   * Leave the call for good: tear the session down, then drop our seat on the
+   * server. This is what the mini-window's hang-up calls — ConferenceRoom is not
+   * mounted there to run the view's own leave flow — and what signing out calls
+   * (stores/auth.js).
+   *
+   * The local teardown goes FIRST, and that order is load-bearing rather than
+   * cosmetic: `confApi.leave` is a network request with no deadline of its own,
+   * so hanging up while offline used to leave the microphone publishing until it
+   * finally failed. Closing the room socket also tells the server we are gone —
+   * the seat is dropped by the socket's own close — so the request below is the
+   * bookkeeping half, and losing it costs nothing that matters (#2932).
    */
   async function hangup() {
     const id = activeId.value
-    if (id) {
-      try {
-        await confApi.leave(id)
-      } catch {
-        // The seat may already be gone (ended, kicked); tearing down locally is
-        // still the right next step.
-      }
-    }
     await stop()
+    if (!id) return
+    try {
+      await confApi.leave(id)
+    } catch {
+      // The seat may already be gone (ended, kicked, or released by the socket
+      // we just closed); we are out of the call either way.
+    }
   }
 
   // Walk back into a call after a full page reload (#2888): the membership

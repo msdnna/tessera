@@ -6,6 +6,8 @@ import { useThemeStore } from './theme'
 import { useNotificationsStore } from './notifications'
 import { useWorkspacesStore } from './workspaces'
 import { useGitlabStore } from './gitlab'
+import { useConflictsStore } from './conflicts'
+import { useConferenceSession } from './conference'
 
 export const useAuthStore = defineStore('auth', () => {
   // #2684: the access token is deliberately NOT read back from localStorage —
@@ -44,6 +46,21 @@ export const useAuthStore = defineStore('auth', () => {
   // clearSession drops every local trace of the session. Kept separate from
   // logout() because expiry paths need it without a server round-trip.
   function clearSession() {
+    // Before the token goes: a live call is the one piece of session state that
+    // keeps *publishing* after the store forgets who we are. The SFU token was
+    // already issued and LiveKit only checks its signature, so signing out —
+    // which in an SPA is a route change, not a reload — left the camera and the
+    // microphone in the room, streaming to everyone still in it, with the sign-in
+    // screen on top. Nothing else tore it down either: the session deliberately
+    // outlives the views (#2888), so unmounting the shell is not the end of it.
+    // Run first so the seat is released while the access token is still good
+    // (#2932).
+    const conference = useConferenceSession()
+    if (conference.active) conference.hangup()
+    // Open GitLab write-back conflicts: badge count on the header, orange marks
+    // on cards. The store's own `clear()` was written for this and never wired
+    // to anything (#2932).
+    useConflictsStore().clear()
     setToken('')
     refreshToken.value = ''
     user.value = null
