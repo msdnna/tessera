@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   consumeOAuthState,
   exchangeOAuthCode,
@@ -146,6 +146,84 @@ describe('consumeOAuthState', () => {
     expect(second).not.toBe(first)
     expect(consumeOAuthState(first)).toBe(false)
     expect(consumeOAuthState(second)).toBe(true)
+  })
+})
+
+// #2932: the desktop shell can be pointed at several Tessera servers (#2930), and the rail
+// that switches between them lives at the app root *precisely* so it also works on the login
+// screen. So "start a GitLab login on A, switch to B while the system browser is still open"
+// is a supported gesture, not an exotic one — and the handoff that comes back carries A's
+// one-time code, which exchangeOAuthCode() posts to whichever server is active by then. That
+// code is a bearer credential for a full session (handlers/oauth_handoff.go says so in as
+// many words), server profiles are arbitrary user-typed addresses, and B would have the rest
+// of the code's 60 seconds to spend it at A. Binding the pending nonce to the profile that
+// started the login is what keeps a handoff on its own server.
+describe('consumeOAuthState across server profiles (#2930)', () => {
+  function desktop(on = true) {
+    if (on) window.__TAURI_INTERNALS__ = {}
+    else delete window.__TAURI_INTERNALS__
+  }
+
+  // Two profiles with `active` selected — the state the app boots in after the rail's
+  // switchTo() has reloaded the page.
+  function registry(active) {
+    localStorage.setItem(
+      'tessera_servers',
+      JSON.stringify([
+        { id: 'srv-a', name: 'A', url: 'https://a.example', color: '#7c5cff', icon: '' },
+        { id: 'srv-b', name: 'B', url: 'https://b.example', color: '#7c5cff', icon: '' },
+      ]),
+    )
+    localStorage.setItem('tessera_active_server', active)
+  }
+
+  async function startLogin() {
+    const { startDesktopGitlabLogin } = await import('@/composables/useDesktopOAuth')
+    expect(await startDesktopGitlabLogin('https://a.example/api/auth/gitlab/authorize')).toBe(true)
+    return new URL(opened.at(-1)).searchParams.get('app_state')
+  }
+
+  beforeEach(() => {
+    localStorage.clear()
+    opened.length = 0
+    desktop()
+  })
+  afterEach(() => {
+    desktop(false)
+    localStorage.clear()
+  })
+
+  it('drops a handoff that lands after the app switched servers', async () => {
+    registry('srv-a')
+    const state = await startLogin()
+    // The rail switches to B and reloads; A's callback fires the deep link now.
+    localStorage.setItem('tessera_active_server', 'srv-b')
+    expect(consumeOAuthState(state)).toBe(false)
+  })
+
+  it('still accepts the handoff on the server that started the login', async () => {
+    registry('srv-a')
+    const state = await startLogin()
+    expect(consumeOAuthState(state)).toBe(true)
+  })
+
+  it('leaves A’s pending login alone when the handoff is dropped on B', async () => {
+    registry('srv-a')
+    const state = await startLogin()
+    localStorage.setItem('tessera_active_server', 'srv-b')
+    expect(consumeOAuthState(state)).toBe(false)
+    // Coming back must not find a nonce that was burned on another server's behalf.
+    localStorage.setItem('tessera_active_server', 'srv-a')
+    expect(consumeOAuthState(state)).toBe(true)
+  })
+
+  // Control: on the web build there are no profiles, skey() is the identity function, and
+  // both the key and every case above this block stay byte-identical to before.
+  it('is unchanged on the web build', async () => {
+    desktop(false)
+    const state = await startLogin()
+    expect(localStorage.getItem('tessera_oauth_state')).toBe(state)
+    expect(consumeOAuthState(state)).toBe(true)
   })
 })
 

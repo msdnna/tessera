@@ -29,6 +29,11 @@ export const SESSION_KEYS = [
   'tessera_dark',
   'tessera_ws',
   'tessera_device_id',
+  // The pending GitLab-handoff nonce (useDesktopOAuth). It belongs to one server for a
+  // sharper reason than the rest: a handoff accepted under it hands that server's
+  // one-time code to whichever server is active, so the list has to cover it or the
+  // namespacing there has a hole on exactly one install — the one being migrated.
+  'tessera_oauth_state',
 ]
 
 // isTauri reports whether we're running inside the Tauri webview. It lives here

@@ -1,5 +1,6 @@
 import { auth } from '@/api'
 import { isTauri } from '@/utils/serverBase'
+import { skey } from '@/utils/serverStorage'
 
 // Desktop GitLab login (#2696). The webview must never navigate to the OAuth provider
 // itself — that takes the app off its own frontend with no way back, which was the bug.
@@ -26,6 +27,19 @@ export const OAUTH_WAIT_MS = 120_000
 // Where the pending flow's nonce waits for the handoff. localStorage, not memory: the
 // deep link may arrive through a *second* process launch (the app was closed while the
 // user was signing in), and an in-memory value would be gone by then.
+//
+// Per server profile on desktop (#2930), which is what `skey()` adds — on web it is the
+// identity function and this is the same plain key it always was. The nonce says "this app
+// is waiting for a handoff", and since #2930 that is only half an answer: the shell can be
+// pointed at several servers, and the rail that switches between them sits at the app root
+// *precisely* so it works on the login screen too. Start a GitLab login on A, switch to B
+// while the system browser is still open, and the deep link from A's callback lands in an
+// app whose axios baseURL is now B — a flat key would call that the pending login, and
+// exchangeOAuthCode() would post A's one-time code to B. That code is a bearer credential
+// for a full session, exactly like a refresh token (see handlers/oauth_handoff.go), server
+// profiles are addresses the user typed, and B would have the rest of the code's 60 seconds
+// to spend it at A. Namespacing means B simply has nothing pending, so the handoff is
+// dropped the way any unsolicited one is — and A's own nonce is left where it was.
 const OAUTH_STATE_KEY = 'tessera_oauth_state'
 
 // newOAuthState mints the nonce that ties a handoff to a login *this app* started
@@ -45,14 +59,17 @@ function newOAuthState() {
 // alone: otherwise a page that fires a junk deep link mid-login would cancel the real one.
 export function consumeOAuthState(received) {
   let pending = null
+  // skey() reads the registry, so it goes inside the guard with the read it keys: a
+  // storage failure has to come out as "nothing pending", not as a throw the OS-level
+  // deep-link handler would have to catch.
   try {
-    pending = localStorage.getItem(OAUTH_STATE_KEY)
+    pending = localStorage.getItem(skey(OAUTH_STATE_KEY))
   } catch {
     /* storage unavailable — treat as nothing pending */
   }
   if (!pending || !received || received !== pending) return false
   try {
-    localStorage.removeItem(OAUTH_STATE_KEY)
+    localStorage.removeItem(skey(OAUTH_STATE_KEY))
   } catch {
     /* nothing to clean up */
   }
@@ -98,7 +115,7 @@ export async function startDesktopGitlabLogin(authorizeUrl) {
     // can come back at any moment, including into a freshly launched process.
     const state = newOAuthState()
     try {
-      localStorage.setItem(OAUTH_STATE_KEY, state)
+      localStorage.setItem(skey(OAUTH_STATE_KEY), state)
     } catch {
       /* storage unavailable — the handoff will be rejected, which beats accepting it */
     }
