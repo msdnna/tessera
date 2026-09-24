@@ -513,15 +513,10 @@ func (h *API) carryTaskPins(ctx context.Context, src db.Task, dstID uuid.UUID) {
 	}
 }
 
-// taskMarkerRe matches a GFM task-list marker that is ticked: the line's list
-// bullet, the bracket, and the x inside it. Mirrors the frontend's
-// TASK_MARKER_RE (utils/markdown.js) character for character, including the
-// blockquote prefix — «> - [x] …» is drawn with a real box — and the space the
-// bracket must be followed by, without which GFM renders literal text.
-var taskMarkerRe = regexp.MustCompile("^([ \t>]*(?:[-*+]|[0-9]+[.)])[ \t]+\\[)[xX](\\]([ \t]|$))")
-
-// fenceRe matches the opening or closing line of a fenced code block.
-var fenceRe = regexp.MustCompile("^[ \t]{0,3}(```|~~~)")
+// tickedMarkerRe matches the ticked form of a task-list marker — the line's list
+// bullet, the bracket, and the x inside it — so the x can be replaced by a space.
+// Which lines it is offered is taskMarkerLines' business, not a regexp's.
+var tickedMarkerRe = regexp.MustCompile(`^([ \t>]*(?:[-*+]|[0-9]{1,9}[.)])[ \t]+\[)[xX](\])`)
 
 // untickDescription hands a description to the next occurrence with its
 // checkboxes empty again.
@@ -538,27 +533,25 @@ var fenceRe = regexp.MustCompile("^[ \t]{0,3}(```|~~~)")
 // markdown by hand every time (#2932). The spent occurrence keeps its ticks;
 // it is the record of what was done.
 //
-// A fenced block is skipped. «- [x] …» inside one is a code SAMPLE — drawn as
-// text, with no box — and a description that documents a checklist is exactly
-// where such a sample lives; toggleTaskMarker guards the same line from the
-// other side. Nothing else about the markdown is touched, and a description
-// with no boxes comes back byte for byte.
+// Only the lines that really draw a box are touched, which taskMarkerLines
+// answers for all three clients at once. «- [x] …» inside a code block is a
+// SAMPLE — drawn as text, with no box — and a description that documents a
+// checklist is exactly where such a sample lives; toggleTaskMarker guards the
+// same line from the other side, on both clients. A fence-only line scan knew
+// the ``` at the left margin and nothing else, so the sample was rewritten
+// wherever it sat one level in: inside a list item («1. Прогнать чек-лист:» with
+// the block indented under it — four columns, which is ordinary), in an indented
+// code block, or past a ~~~ line that the scan read as a second fence while
+// marked reads it as content (#2932). Nothing else about the markdown is
+// touched, and a description with no boxes comes back byte for byte.
 func untickDescription(desc string) string {
 	if !strings.Contains(desc, "[") {
 		return desc
 	}
 	lines := strings.Split(desc, "\n")
-	inFence := false
 	changed := false
-	for i, line := range lines {
-		if fenceRe.MatchString(line) {
-			inFence = !inFence
-			continue
-		}
-		if inFence {
-			continue
-		}
-		if fresh := taskMarkerRe.ReplaceAllString(line, "$1 $2"); fresh != line {
+	for _, i := range taskMarkerLines(desc) {
+		if fresh := tickedMarkerRe.ReplaceAllString(lines[i], "${1} ${2}"); fresh != lines[i] {
 			lines[i] = fresh
 			changed = true
 		}
