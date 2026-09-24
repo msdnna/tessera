@@ -9,6 +9,21 @@ ON CONFLICT (document_id, task_id, block_id)
 DO UPDATE SET quote = EXCLUDED.quote
 RETURNING *;
 
+-- CountDocumentTaskLinks and DocumentTaskLinkExists are the pair the cap needs:
+-- how many links this document already carries, and whether the one being asked
+-- for is among them. Two statements rather than one because they answer
+-- different questions — the count decides whether the cap applies, the existence
+-- check decides whether this particular call would add a row or refresh one that
+-- is already there (see maxDocTaskLinks).
+-- name: CountDocumentTaskLinks :one
+SELECT count(*) FROM document_task_links WHERE document_id = $1;
+
+-- name: DocumentTaskLinkExists :one
+SELECT EXISTS (
+    SELECT 1 FROM document_task_links
+    WHERE document_id = @document_id AND task_id = @task_id AND block_id = @block_id
+);
+
 -- ListDocumentTaskLinks returns a document's links with enough of each task to
 -- render the row without a second round trip per link. board_id rides along
 -- because the panel's job is to navigate to the task, and the board is what the

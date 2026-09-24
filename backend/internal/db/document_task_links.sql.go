@@ -12,6 +12,23 @@ import (
 	"github.com/google/uuid"
 )
 
+const countDocumentTaskLinks = `-- name: CountDocumentTaskLinks :one
+SELECT count(*) FROM document_task_links WHERE document_id = $1
+`
+
+// CountDocumentTaskLinks and DocumentTaskLinkExists are the pair the cap needs:
+// how many links this document already carries, and whether the one being asked
+// for is among them. Two statements rather than one because they answer
+// different questions — the count decides whether the cap applies, the existence
+// check decides whether this particular call would add a row or refresh one that
+// is already there (see maxDocTaskLinks).
+func (q *Queries) CountDocumentTaskLinks(ctx context.Context, documentID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countDocumentTaskLinks, documentID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createDocumentTaskLink = `-- name: CreateDocumentTaskLink :one
 INSERT INTO document_task_links (document_id, task_id, block_id, quote, created_by)
 VALUES ($1, $2, $3, $4, $5)
@@ -89,6 +106,26 @@ DELETE FROM document_task_links WHERE id = $1
 func (q *Queries) DeleteDocumentTaskLink(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, deleteDocumentTaskLink, id)
 	return err
+}
+
+const documentTaskLinkExists = `-- name: DocumentTaskLinkExists :one
+SELECT EXISTS (
+    SELECT 1 FROM document_task_links
+    WHERE document_id = $1 AND task_id = $2 AND block_id = $3
+)
+`
+
+type DocumentTaskLinkExistsParams struct {
+	DocumentID uuid.UUID `json:"document_id"`
+	TaskID     uuid.UUID `json:"task_id"`
+	BlockID    string    `json:"block_id"`
+}
+
+func (q *Queries) DocumentTaskLinkExists(ctx context.Context, arg DocumentTaskLinkExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, documentTaskLinkExists, arg.DocumentID, arg.TaskID, arg.BlockID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const getDocumentTaskLink = `-- name: GetDocumentTaskLink :one
