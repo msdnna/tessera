@@ -387,26 +387,30 @@ func (h *AuthHandler) Me(c *gin.Context) {
 // mintTokens creates an access + refresh pair and stores the refresh hash. On
 // failure it writes a 500 and returns ok=false. Shared by issue() (JSON response)
 // and the OAuth callback (redirect handoff).
-func (h *AuthHandler) mintTokens(c *gin.Context, user db.User) (access, refresh string, ok bool) {
+// The refresh-token row's id travels back with the pair: it is the session's
+// identity, and the media cookie is signed against it so that revoking the row
+// takes the image credential with it (see auth.NewMediaToken).
+func (h *AuthHandler) mintTokens(c *gin.Context, user db.User) (access, refresh string, sessionID uuid.UUID, ok bool) {
 	access, err := auth.NewAccessToken(h.secret, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return "", "", false
+		return "", "", uuid.Nil, false
 	}
 	refresh, hash, err := auth.NewRefreshToken()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return "", "", false
+		return "", "", uuid.Nil, false
 	}
-	if _, err := h.q.CreateRefreshToken(c, db.CreateRefreshTokenParams{
+	row, err := h.q.CreateRefreshToken(c, db.CreateRefreshTokenParams{
 		UserID:    user.ID,
 		TokenHash: hash,
 		ExpiresAt: time.Now().Add(auth.RefreshTokenTTL),
-	}); err != nil {
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return "", "", false
+		return "", "", uuid.Nil, false
 	}
-	return access, refresh, true
+	return access, refresh, row.ID, true
 }
 
 // issue mints an access + refresh pair and returns them with the user profile,
@@ -420,7 +424,7 @@ func (h *AuthHandler) issue(c *gin.Context, user db.User) {
 // regardless of headers — and with the fate of a presented invitation token,
 // which only Register has one of.
 func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool, invite string) {
-	access, refresh, ok := h.mintTokens(c, user)
+	access, refresh, sessionID, ok := h.mintTokens(c, user)
 	if !ok {
 		return
 	}
@@ -436,8 +440,10 @@ func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool, i
 		res.RefreshToken = "" // omitempty drops it from the body entirely
 		// Same client, same trip: the browser also needs the credential that
 		// <img> requests to /api/uploads can carry (#2685). Reissued on every
-		// refresh, so a long-lived session never outlives its media cookie.
-		h.setMediaCookie(c, user.ID)
+		// refresh, so a long-lived session never outlives its media cookie — and
+		// signed against the refresh row just created, so the reverse holds too
+		// and the cookie never outlives the session (#2932).
+		h.setMediaCookie(c, user.ID, sessionID)
 	}
 	c.JSON(http.StatusOK, res)
 }

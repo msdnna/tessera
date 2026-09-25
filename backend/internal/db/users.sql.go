@@ -121,17 +121,6 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
-const isUserActive = `-- name: IsUserActive :one
-SELECT active FROM users WHERE id = $1
-`
-
-func (q *Queries) IsUserActive(ctx context.Context, id uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, isUserActive, id)
-	var active bool
-	err := row.Scan(&active)
-	return active, err
-}
-
 const listUsers = `-- name: ListUsers :many
 SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at
 FROM users

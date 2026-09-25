@@ -70,6 +70,38 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 	return i, err
 }
 
+const mediaSessionLive = `-- name: MediaSessionLive :one
+SELECT (u.active AND rt.revoked_at IS NULL AND rt.expires_at > now())::boolean AS live
+FROM refresh_tokens rt
+JOIN users u ON u.id = rt.user_id
+WHERE rt.id = $1 AND rt.user_id = $2
+`
+
+type MediaSessionLiveParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+// MediaSessionLive answers "is the session this media cookie names still
+// running, on an account that is still switched on?" — the one lookup
+// middleware.MediaAuth makes per inline image (#2932).
+//
+// Both halves in one round trip because both are the same question asked of the
+// same credential, and the route pays for it once per image. The session half is
+// what a password change, a logout and a rotation all already act on; the
+// `active` half is the per-account check this absorbs (it used to be a standalone
+// IsUserActive lookup), kept because deactivation leaves the refresh rows alone
+// on purpose — it is a pause, and the cookie has to come back with the account.
+//
+// user_id is matched as well as id so a token signed for one account can never
+// borrow another's session id, however it came by one.
+func (q *Queries) MediaSessionLive(ctx context.Context, arg MediaSessionLiveParams) (bool, error) {
+	row := q.db.QueryRow(ctx, mediaSessionLive, arg.ID, arg.UserID)
+	var live bool
+	err := row.Scan(&live)
+	return live, err
+}
+
 const revokeAllUserTokens = `-- name: RevokeAllUserTokens :exec
 UPDATE refresh_tokens
 SET revoked_at = now(), expires_at = now() - interval '1 second'

@@ -280,7 +280,7 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 		return
 	}
 
-	access, refresh, ok := h.mintTokens(c, user)
+	access, refresh, sessionID, ok := h.mintTokens(c, user)
 	if !ok {
 		return // mintTokens already wrote a 500
 	}
@@ -300,7 +300,7 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	// history and in window.location, where injected script can read it — which
 	// would defeat the whole point of hiding the token from JavaScript.
 	h.setRefreshCookie(c, refresh)
-	h.setMediaCookie(c, user.ID)
+	h.setMediaCookie(c, user.ID, sessionID)
 	frag := url.Values{"access_token": {access}}
 	c.Redirect(http.StatusFound, base+"/oauth/callback#"+frag.Encode())
 }

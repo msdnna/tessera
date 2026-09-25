@@ -96,9 +96,10 @@ func TestClearRefreshCookieMatchesAttributes(t *testing.T) {
 func TestMediaCookieScopeAndSubject(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	uid := uuid.New()
+	session := uuid.New()
 
 	ck := setCookieNamed(t, "https://tessera.example", mediaCookieName, func(h *AuthHandler, c *gin.Context) {
-		h.setMediaCookie(c, uid)
+		h.setMediaCookie(c, uid, session)
 	})
 	if !ck.HttpOnly || !ck.Secure {
 		t.Errorf("attributes: HttpOnly=%v Secure=%v", ck.HttpOnly, ck.Secure)
@@ -109,12 +110,17 @@ func TestMediaCookieScopeAndSubject(t *testing.T) {
 	if ck.SameSite != http.SameSiteLaxMode {
 		t.Errorf("SameSite = %v, want Lax", ck.SameSite)
 	}
-	got, err := auth.ParseMediaToken(testSecret, ck.Value)
+	got, gotSession, err := auth.ParseMediaToken(testSecret, ck.Value)
 	if err != nil {
 		t.Fatalf("cookie value is not a valid media token: %v", err)
 	}
 	if got != uid {
 		t.Errorf("media token subject = %s, want %s", got, uid)
+	}
+	// The session the cookie is scoped to: revoking that refresh row is what
+	// takes the image credential down with it (#2932).
+	if gotSession != session {
+		t.Errorf("media token session = %s, want %s", gotSession, session)
 	}
 }
 
