@@ -1894,9 +1894,10 @@ func (h *API) syncProjectMembers(ctx context.Context, client *gitlab.Client, int
 }
 
 // reconcileAssignees rebuilds the GitLab-sourced assignee set: a GitLab assignee
-// whose username maps to a Tessera user becomes a real (gitlab-sourced) assignee;
-// the rest are stored as external display-only assignees. Manual ('user')
-// assignees are left untouched.
+// whose username maps to a Tessera user *of this workspace* (resolveAssignee)
+// becomes a real (gitlab-sourced) assignee; the rest — outsiders included — are
+// stored as external display-only assignees. Manual ('user') assignees are left
+// untouched.
 // applyClosedPolicy archives (or un-archives) a synced task per the integration's
 // closed_policy. For archive_closed_sprints a closed issue in a closed milestone is
 // moved to the archive; anything else (open issue, or closed issue in an open/no
@@ -1916,14 +1917,7 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 	soft(ctx, "DeleteGitlabSourcedAssignees", h.q.DeleteGitlabSourcedAssignees(ctx, taskID)) // only the sync-made set is rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))
 	for _, p := range people {
-		// Resolve the GitLab assignee to a Tessera user. Prefer the "Login with
-		// GitLab" OAuth identity (the canonical, self-owned link) over a legacy
-		// connected-PAT credential — so a person's tasks land on the account they
-		// actually sign in with, not on whoever configured the integration token.
-		uid, err := h.q.GetUserIDByOAuthUsername(ctx, p.Login)
-		if err != nil {
-			uid, err = h.q.GetUserIDByGitlabUsername(ctx, p.Login)
-		}
+		uid, err := h.resolveAssignee(ctx, wsID, p.Login)
 		if err == nil {
 			soft(ctx, "AddTaskAssigneeSourced", h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"}))
 			tesseraIDs = append(tesseraIDs, uid)
@@ -1935,6 +1929,43 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 		}
 	}
 	soft(ctx, "DeleteStaleGitlabAssignees", h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs}))
+}
+
+// resolveAssignee maps a GitLab username to the Tessera user who may hold a task
+// in wsID, or reports an error so the caller stores the person as an external
+// (display-only) assignee instead.
+//
+// The OAuth identity wins over a legacy connected-PAT credential: it is the
+// canonical, self-owned link, so a person's tasks land on the account they
+// actually sign in with rather than on whoever configured the integration token.
+//
+// The membership check is the part that cannot be dropped. Both lookups are keyed
+// by GitLab username *alone* — neither table knows about workspaces, and a
+// username is not even scoped to one GitLab instance, so the row they find may
+// belong to someone who has never been in wsID. Writing them into task_assignees
+// breaks an invariant this codebase states in three other places: AddTaskAssignee
+// verifies membership for a user_id that arrives in a request body,
+// notifyMentions and notifyThread skip a non-member outright, and
+// TransferProject runs StripNonMemberAssignees to clear the ones a move left
+// behind. The harm is what ListTaskAssignees reads back — it selects u.email
+// along with u.name — so the team that merely bound its board to a GitLab
+// project was handed the address and name of an outsider.
+//
+// A non-member is not an error case for the sync: the "no Tessera account at all"
+// branch is exactly right for them, and keeps the issue's assignee visible on the
+// card under their GitLab name and avatar.
+func (h *API) resolveAssignee(ctx context.Context, wsID uuid.UUID, login string) (uuid.UUID, error) {
+	uid, err := h.q.GetUserIDByOAuthUsername(ctx, login)
+	if err != nil {
+		uid, err = h.q.GetUserIDByGitlabUsername(ctx, login)
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: wsID, UserID: uid}); err != nil {
+		return uuid.Nil, err
+	}
+	return uid, nil
 }
 
 // syncComments upserts each GitLab note as a comment, idempotent by note id, with
