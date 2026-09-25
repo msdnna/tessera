@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -2201,8 +2202,29 @@ func (h *API) ListGitlabMembers(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+// maxGitlabAssigneeFieldLen bounds the two strings a pin carries. GitLab itself
+// stops a username at 255 characters and a display name at 255, so anything past
+// that describes no real member — it is only a way to grow the row. The username
+// is refused (it is half the primary key, and a truncated one would pin somebody
+// else and write back to them); the name is truncated, since it is a label under
+// a face and a call that fails because a label was long is worse than a short label.
+const maxGitlabAssigneeFieldLen = 255
+
 // PinTaskGitlabAssignee pins a GitLab project member (who may have no Tessera
 // account) as an assignee of a task, surviving the sync rebuild (source='user').
+//
+// The face is looked up, never accepted. Every other path that hands a GitLab
+// avatar to a client wraps it in avatarProxyURL — a same-origin, HMAC-signed
+// "/api/gitlab/avatar?…" link this server fetches itself — which is the whole
+// point of GitlabAvatar: no client ever opens a connection to the GitLab instance
+// to paint a member. This route used to take gl_avatar_url off the request body
+// and store it verbatim, so any member could pin an assignee whose avatar was an
+// arbitrary absolute URL; it is rendered as <img src> by the task modal, the card
+// pills, the mention list and the facet menus (and by MemberAvatar on Android),
+// the SPA declares no img-src and the Android client has no CSP at all, so the
+// address became a beacon telling its owner the IP, the user agent and the moment
+// of everyone who opened the task. The client has nothing here the server can't
+// read out of the synced roster, so it reads it (#2932).
 func (h *API) PinTaskGitlabAssignee(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -2213,21 +2235,49 @@ func (h *API) PinTaskGitlabAssignee(c *gin.Context) {
 		return
 	}
 	var req struct {
-		GlUsername  string `json:"gl_username" binding:"required"`
-		GlName      string `json:"gl_name"`
-		GlAvatarURL string `json:"gl_avatar_url"`
+		GlUsername string `json:"gl_username" binding:"required"`
+		GlName     string `json:"gl_name"`
+		// gl_avatar_url is deliberately absent: both clients still send one (they
+		// echo the roster row they picked) and it is ignored.
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	username := strings.TrimSpace(req.GlUsername)
+	if username == "" {
+		// binding:"required" only rejects the empty string; a username of spaces
+		// pins a member nobody can name and write-back has nothing to address.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "gl_username must not be blank"})
+		return
+	}
+	if utf8.RuneCountInString(username) > maxGitlabAssigneeFieldLen {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("gl_username exceeds %d characters", maxGitlabAssigneeFieldLen),
+		})
+		return
+	}
+	name := truncateRunes(strings.TrimSpace(req.GlName), maxGitlabAssigneeFieldLen)
+	// A rostered member is described by the roster, not by the caller. An unknown
+	// username (a GitLab account this workspace never synced, or a legacy pin) keeps
+	// the caller's name and gets no avatar — the clients already fall back to
+	// initials on an empty string.
+	avatar := ""
+	if m, err := h.q.GetGitlabMemberByUsername(c, db.GetGitlabMemberByUsernameParams{
+		WorkspaceID: wsID, GlUsername: username,
+	}); err == nil {
+		avatar = m.GlAvatarUrl
+		if m.GlName != "" {
+			name = m.GlName
+		}
+	}
 	if err := h.q.PinGitlabAssignee(c, db.PinGitlabAssigneeParams{
-		TaskID: id, GlUsername: req.GlUsername, GlName: req.GlName, GlAvatarUrl: req.GlAvatarURL,
+		TaskID: id, GlUsername: username, GlName: name, GlAvatarUrl: avatar,
 	}); err != nil {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "gl_username": req.GlUsername})
+	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "gl_username": username})
 	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	c.Status(http.StatusNoContent)
 }

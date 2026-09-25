@@ -638,6 +638,42 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 	return i, err
 }
 
+const getGitlabMemberByUsername = `-- name: GetGitlabMemberByUsername :one
+SELECT m.gl_name, m.gl_avatar_url
+FROM gitlab_project_members m
+JOIN gitlab_integrations i ON i.id = m.integration_id
+WHERE i.workspace_id = $1 AND m.gl_username = $2
+ORDER BY (m.gl_avatar_url <> '') DESC, m.gl_user_id
+LIMIT 1
+`
+
+type GetGitlabMemberByUsernameParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	GlUsername  string    `json:"gl_username"`
+}
+
+type GetGitlabMemberByUsernameRow struct {
+	GlName      string `json:"gl_name"`
+	GlAvatarUrl string `json:"gl_avatar_url"`
+}
+
+// GetGitlabMemberByUsername resolves a GitLab username to the roster entry the
+// sync wrote for it, anywhere in the workspace — the display name and the avatar
+// URL the sync already ran through avatarProxyURL. PinTaskGitlabAssignee reads
+// the face from here instead of believing the caller (#2932).
+//
+// A workspace may hold several integrations, so the username can match more than
+// one row and the order has to be spelled out: an entry that actually has an
+// avatar wins, and gl_user_id breaks the remaining tie. Without it the winner
+// would be whatever the heap happened to return and could change after any
+// unrelated write to the table.
+func (q *Queries) GetGitlabMemberByUsername(ctx context.Context, arg GetGitlabMemberByUsernameParams) (GetGitlabMemberByUsernameRow, error) {
+	row := q.db.QueryRow(ctx, getGitlabMemberByUsername, arg.WorkspaceID, arg.GlUsername)
+	var i GetGitlabMemberByUsernameRow
+	err := row.Scan(&i.GlName, &i.GlAvatarUrl)
+	return i, err
+}
+
 const getGitlabMemberIDByUsername = `-- name: GetGitlabMemberIDByUsername :one
 SELECT gl_user_id FROM gitlab_project_members WHERE integration_id = $1 AND gl_username = $2
 `

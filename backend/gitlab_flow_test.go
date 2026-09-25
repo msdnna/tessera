@@ -68,6 +68,10 @@ type glMember struct {
 	ID       int64
 	Username string
 	Name     string
+	// Avatar is the absolute avatar URL GitLab reports for the member. Empty in
+	// most fixtures (the roster is usually checked by name); a test that cares
+	// where a pinned assignee's face comes from sets it.
+	Avatar string
 }
 
 // graphqlLinkType translates a REST link_type (how fixtures are written) into the
@@ -589,7 +593,7 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		out := make([]any, 0, len(f.members))
 		for _, m := range f.members {
 			out = append(out, map[string]any{
-				"id": m.ID, "username": m.Username, "name": m.Name, "avatar_url": "", "access_level": 30,
+				"id": m.ID, "username": m.Username, "name": m.Name, "avatar_url": m.Avatar, "access_level": 30,
 			})
 		}
 		f.mu.Unlock()
