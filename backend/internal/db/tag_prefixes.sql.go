@@ -52,11 +52,26 @@ func (q *Queries) ListTagPrefixes(ctx context.Context, projectID uuid.UUID) ([]T
 }
 
 const listWorkspaceTagPrefixes = `-- name: ListWorkspaceTagPrefixes :many
-SELECT project_id, workspace_id, prefix, label, created_at, updated_at FROM tag_prefixes WHERE workspace_id = $1 ORDER BY prefix
+SELECT tp.project_id, tp.workspace_id, tp.prefix, tp.label, tp.created_at, tp.updated_at FROM tag_prefixes tp
+JOIN projects p ON p.id = tp.project_id
+WHERE tp.workspace_id = $1
+ORDER BY tp.prefix, p.created_at, p.id
 `
 
 // ListWorkspaceTagPrefixes returns prefix names across all projects in a
-// workspace, for cross-project views (Home). Same prefix may repeat per project.
+// workspace, for cross-project views (Home). Same prefix may repeat per project,
+// and the handler keeps the first row of each — so the order among the repeats
+// is what decides whose wording the whole workspace is shown.
+//
+// Ordering by prefix alone left that to physical row order. SetTagPrefixes is a
+// DELETE-then-INSERT over the project's *whole* set, so renaming any one group
+// moved all of that project's rows to the end of the table and handed every
+// prefix it shares with a neighbour the neighbour's wording — a group header on
+// Home renaming itself after an edit that never mentioned it (#2932).
+//
+// The tie-break is therefore the project, not the row: the oldest project using
+// the prefix owns the workspace-wide label, which no later edit anywhere can
+// move. id closes the case of two projects created in the same tick.
 func (q *Queries) ListWorkspaceTagPrefixes(ctx context.Context, workspaceID uuid.UUID) ([]TagPrefix, error) {
 	rows, err := q.db.Query(ctx, listWorkspaceTagPrefixes, workspaceID)
 	if err != nil {

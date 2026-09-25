@@ -166,6 +166,76 @@ func TestWorkspaceTagPrefixes(t *testing.T) {
 	}
 }
 
+// The workspace-wide label of a shared prefix must be the same label tomorrow.
+//
+// The list is deduped by taking the first row per prefix, so which project's
+// wording Home shows is decided by the order the rows come back in. Ordering by
+// prefix alone leaves that to physical row order — and SetTagPrefixes is
+// DELETE-then-INSERT over the project's whole set, so editing ANY label in one
+// project moves all of its rows to the end of the table and hands the shared
+// group the other project's wording, with nothing in the request saying so
+// (#2932).
+func TestWorkspaceTagPrefixLabelDoesNotDrift(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	p2 := mkProject(t, c, s.WS, s.Group, "Второй проект "+t.Name())
+
+	c.put("/projects/"+s.Project+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{
+			{"prefix": "effort::", "label": "Сложность"},
+			{"prefix": "prio:", "label": "Приоритет"},
+		},
+	})
+	c.put("/projects/"+p2+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{{"prefix": "effort::", "label": "Другая подпись"}},
+	})
+
+	label := func() string {
+		r := c.get("/workspaces/" + s.WS + "/tag-prefixes")
+		if r.Status != http.StatusOK {
+			t.Fatalf("list ws prefixes: status %d\n%s", r.Status, r.Body)
+		}
+		for _, p := range r.listBody(t) {
+			if p["prefix"] == "effort::" {
+				return p["label"].(string)
+			}
+		}
+		t.Fatalf("effort:: missing from the workspace list")
+		return ""
+	}
+
+	// The project that defined the prefix first is the one whose wording the
+	// workspace shows — a rule that survives every later edit.
+	const want = "Сложность"
+	if got := label(); got != want {
+		t.Fatalf("effort:: label = %q, want %q (the older project's wording)", got, want)
+	}
+
+	// An edit that does not touch the shared prefix at all: the first project
+	// renames its OWN other group.
+	c.put("/projects/"+s.Project+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{
+			{"prefix": "effort::", "label": "Сложность"},
+			{"prefix": "prio:", "label": "Важность"},
+		},
+	})
+	if got := label(); got != want {
+		t.Fatalf("after an unrelated rename effort:: label = %q, want %q", got, want)
+	}
+
+	// And one in the second project, which does not own the wording.
+	c.put("/projects/"+p2+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{
+			{"prefix": "effort::", "label": "Другая подпись"},
+			{"prefix": "area::", "label": "Область"},
+		},
+	})
+	if got := label(); got != want {
+		t.Fatalf("after the second project's edit effort:: label = %q, want %q", got, want)
+	}
+}
+
 // Notes: workspace-scoped CRUD.
 func TestNoteFlow(t *testing.T) {
 	t.Parallel()
