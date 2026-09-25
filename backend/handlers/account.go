@@ -51,6 +51,7 @@ func (h *AuthHandler) acceptPendingInvitations(c *gin.Context, user db.User) {
 	if err != nil {
 		return
 	}
+	granted := false
 	for _, inv := range invites {
 		// A pending invitation may raise the role, never lower one granted since
 		// (see invitationRaisesRole) — this path fires on every OAuth sign-in, so a
@@ -62,8 +63,15 @@ func (h *AuthHandler) acceptPendingInvitations(c *gin.Context, user db.User) {
 		if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{
 			WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
 		}); err == nil {
+			granted = true
 			soft(c, "MarkInvitationAccepted", h.q.MarkInvitationAccepted(c, inv.ID))
 		}
+	}
+	// The verification link is clicked with the app already open in another tab:
+	// that session's socket was scoped before this grant and will never hear
+	// about the workspace it just joined (see AuthHandler.rescope).
+	if granted {
+		h.rescope(user.ID)
 	}
 }
 

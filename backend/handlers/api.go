@@ -219,6 +219,13 @@ func (h *API) syncRoomModeration(ctx context.Context, workspaceID, userID uuid.U
 // to reach into.
 func (h *API) SocketRevoker() func(uuid.UUID, string) { return h.revokeUserSockets }
 
+// ScopeRefresher hands AuthHandler the way to re-scope a user's board sockets
+// after it granted them a membership (#2932). Hub.DropUser alone, not
+// revokeUserSockets: the client reconnects and resolves its workspaces again,
+// while the document and conference rooms — which a grant did not touch — stay
+// as they are.
+func (h *API) ScopeRefresher() func(uuid.UUID) { return h.hub.DropUser }
+
 // notifyConfRoom nudges everyone currently in a conference that something they
 // are looking at changed outside the socket — today the chat (#2873).
 //

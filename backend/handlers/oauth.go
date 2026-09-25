@@ -409,6 +409,7 @@ func (h *AuthHandler) applyOrgMap(c *gin.Context, p db.OauthProvider, token stri
 	if err != nil {
 		return
 	}
+	granted := false
 	for groupPath, cfg := range m {
 		if !groups[groupPath] {
 			continue
@@ -439,7 +440,15 @@ func (h *AuthHandler) applyOrgMap(c *gin.Context, p db.OauthProvider, token stri
 			membershipRank(existing) >= membershipRank(role) {
 			continue
 		}
-		_, _ = h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: wsID, UserID: user.ID, Role: role})
+		if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: wsID, UserID: user.ID, Role: role}); err == nil {
+			granted = true
+		}
+	}
+	// Signing in with GitLab in one tab must not leave the session already open
+	// in another holding the workspace list from before the mapping ran (see
+	// AuthHandler.rescope).
+	if granted {
+		h.rescope(user.ID)
 	}
 }
 

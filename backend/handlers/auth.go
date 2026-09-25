@@ -33,11 +33,19 @@ type AuthHandler struct {
 	// (#2932). Optional: tests that build an AuthHandler directly leave it nil,
 	// and a nil revoker simply means "no sockets to cut here".
 	revokeSockets func(uuid.UUID, string)
+	// rescopeSockets re-resolves the workspaces a user's live board sockets may
+	// receive events for, after this layer has *granted* a membership (#2932).
+	// Optional, like revokeSockets.
+	rescopeSockets func(uuid.UUID)
 }
 
 // WireSocketRevoker injects the socket revocation behaviour owned by API (see
 // API.SocketRevoker). Called once at router construction, before any request.
 func (h *AuthHandler) WireSocketRevoker(revoke func(uuid.UUID, string)) { h.revokeSockets = revoke }
+
+// WireScopeRefresher injects the re-scoping behaviour owned by API (see
+// API.ScopeRefresher). Called once at router construction, before any request.
+func (h *AuthHandler) WireScopeRefresher(rescope func(uuid.UUID)) { h.rescopeSockets = rescope }
 
 // dropSockets ends every live connection the user holds. Both password doors
 // call it: a socket authenticates once, at the upgrade, and then lives on
@@ -47,6 +55,27 @@ func (h *AuthHandler) WireSocketRevoker(revoke func(uuid.UUID, string)) { h.revo
 func (h *AuthHandler) dropSockets(userID uuid.UUID, reason string) {
 	if h.revokeSockets != nil {
 		h.revokeSockets(userID, reason)
+	}
+}
+
+// rescope tells the user's live board sockets that their workspace list grew.
+//
+// The scopes are resolved once, at the upgrade, and are immutable for the life
+// of the connection — so every membership change has to reach the socket from
+// the outside. Removal is loud (revokeSockets) and the workspace endpoints
+// already drop the user on add/accept; this is the same reflex for the two
+// grants that happen *inside* the auth layer, where a session is typically
+// already open: applying a pending invitation on email verification, and the
+// OAuth org map on sign-in. Without it the newcomer's board renders (the list
+// refetches over HTTP) and then sits frozen until a reload they have no reason
+// to perform.
+//
+// Deliberately not revokeSockets: nothing was taken away, so ending the
+// person's call and evicting them from the document they have open would be a
+// worse answer than the bug.
+func (h *AuthHandler) rescope(userID uuid.UUID) {
+	if h.rescopeSockets != nil {
+		h.rescopeSockets(userID)
 	}
 }
 

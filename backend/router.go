@@ -204,6 +204,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// (#2932). Wired after WireDocRooms/WireConfRooms above so the revoker closes
 	// over an API that already has them.
 	authHandler.WireSocketRevoker(rh.SocketRevoker())
+	// The mirror image of the revoker: the auth layer also *grants* memberships
+	// (a pending invitation applied on email verification, the OAuth org map),
+	// and a socket that resolved its scopes at the upgrade cannot learn about
+	// them on its own (#2932).
+	authHandler.WireScopeRefresher(rh.ScopeRefresher())
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 
