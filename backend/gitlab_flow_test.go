@@ -148,6 +148,13 @@ type fakeGitlab struct {
 	// API, the project web route, the avatar URL), and the proxy tries them in
 	// that order, so the fake answers on any path ending in a registered key.
 	uploads map[string]fakeUpload
+
+	// Called just before the fake answers POST /milestones, while the backend is
+	// still blocked on that round trip. The push handler writes its link row only
+	// after this returns, so a test can race the native milestone out from under
+	// it — the one window in which the remote milestone exists and the link does
+	// not. Like `delay`, a knob for catching the handler mid-flight.
+	onCreateMilestone func()
 }
 
 // fakeUpload is one attachment the fake instance hands back, declared type and
@@ -640,7 +647,13 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.nextMsID++
 		id := f.nextMsID
+		hook := f.onCreateMilestone
 		f.mu.Unlock()
+		// Outside the lock: the hook talks to the backend over HTTP, and the
+		// handler it reaches may well come back to this fake.
+		if hook != nil {
+			hook()
+		}
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"id": id, "iid": id - 9000, "state": "active",
 			"web_url": f.srv.URL + "/" + f.projectPath + "/-/milestones/" + strconv.FormatInt(id-9000, 10),
