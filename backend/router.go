@@ -228,7 +228,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	r.Use(gin.Recovery())
 	trusted := cfg.TrustedProxies
 	if len(trusted) == 0 {
-		trusted = []string{"127.0.0.1", "::1"}
+		trusted = config.DefaultTrustedProxies
 	}
 	if err := r.SetTrustedProxies(trusted); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)

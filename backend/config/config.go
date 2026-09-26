@@ -56,8 +56,8 @@ type Config struct {
 	// Reverse proxies whose X-Forwarded-For is trusted when deriving the client
 	// IP. This is what the rate limiter keys on, so getting it wrong collapses
 	// every client behind the proxy into a single bucket (or, the other way,
-	// lets a client pick its own bucket). Defaults to loopback — override with
-	// TRUSTED_PROXIES (comma-separated) when the proxy is a separate host.
+	// lets a client pick its own bucket). Override with TRUSTED_PROXIES
+	// (comma-separated IPs or CIDRs); see DefaultTrustedProxies.
 	TrustedProxies []string
 	// Throttle the unauthenticated auth routes. On by default; RATE_LIMIT_ENABLED=false
 	// turns it off (single-user installs behind a private network).
@@ -137,6 +137,34 @@ const (
 	DefaultMaxUploadBytes     int64 = 9 << 20  // 8 MiB media + framing
 	DefaultMaxAttachmentBytes int64 = 26 << 20 // 25 MiB attachment + framing
 )
+
+// DefaultTrustedProxies is the trusted-proxy list when TRUSTED_PROXIES is unset:
+// loopback plus the private ranges, which is where a reverse proxy in front of
+// this process actually sits.
+//
+// Loopback alone — the old default — was wrong for the only deployment the repo
+// ships. The edge is the nginx container (deploy/Caddyfile → frontend:80 →
+// tessera_backend), so the peer gin sees is a compose-network address in
+// 172.16/12, never loopback; an untrusted peer means the forwarded-for chain is
+// ignored and c.ClientIP() returns that one container address for every caller
+// on the internet. The rate limiter keys on it, so /auth/login, /auth/register
+// and /auth/refresh shared a single bucket instance-wide and ten logins in six
+// seconds answered 429 to everyone, while the access log recorded one address
+// for every request (#2932).
+//
+// Trusting a range only decides whose X-Forwarded-For is believed, and it is
+// believed right-to-left: gin walks the chain from the peer end, skipping
+// trusted hops, and stops at the first address that is not one — so a caller
+// inside a private network still cannot name a *public* address as itself. The
+// half that makes this safe is the proxy overwriting or appending to the header
+// rather than passing the client's through untouched (frontend/nginx.conf uses
+// $proxy_add_x_forwarded_for; Caddy's reverse_proxy appends by default). Set
+// TRUSTED_PROXIES explicitly to narrow this when the backend port is reachable
+// from a private network without going through the proxy.
+var DefaultTrustedProxies = []string{
+	"127.0.0.1", "::1",
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
+}
 
 // fatal reports a fail-closed misconfiguration and stops the process.
 //
@@ -275,7 +303,7 @@ func New() *Config {
 
 		GracefulTimeout:      getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
 		PATTouchInterval:     getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
-		TrustedProxies:       splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
+		TrustedProxies:       splitCSV(getEnv("TRUSTED_PROXIES", strings.Join(DefaultTrustedProxies, ","))),
 		RateLimitEnabled:     getEnvBool("RATE_LIMIT_ENABLED", true),
 		MediaRequireAuth:     getEnvBool("MEDIA_REQUIRE_AUTH", false),
 		ConverterURL:         getEnv("CONVERTER_URL", ""),

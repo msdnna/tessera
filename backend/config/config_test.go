@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -90,8 +91,17 @@ func TestLimitDefaults(t *testing.T) {
 		cfg.MaxAttachmentBytes != DefaultMaxAttachmentBytes {
 		t.Errorf("body limits: %d/%d/%d", cfg.MaxBodyBytes, cfg.MaxUploadBytes, cfg.MaxAttachmentBytes)
 	}
-	if len(cfg.TrustedProxies) != 2 {
-		t.Errorf("trusted proxies default = %v, want the loopback pair", cfg.TrustedProxies)
+	if !slices.Equal(cfg.TrustedProxies, DefaultTrustedProxies) {
+		t.Errorf("trusted proxies default = %v, want %v", cfg.TrustedProxies, DefaultTrustedProxies)
+	}
+	// The private ranges are the load-bearing part: the shipped deployment's edge
+	// is a container on the compose network, so a loopback-only list means gin
+	// ignores the forwarded chain and the rate limiter keys every caller on that
+	// one container address (#2932).
+	for _, want := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
+		if !slices.Contains(cfg.TrustedProxies, want) {
+			t.Errorf("default trusted proxies %v do not cover %s", cfg.TrustedProxies, want)
+		}
 	}
 }
 
