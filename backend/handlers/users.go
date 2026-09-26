@@ -313,6 +313,15 @@ func (h *API) GetUserAvatar(c *gin.Context) {
 	etag := avatarETag(ver)
 	c.Header("ETag", etag)
 	c.Header("Cache-Control", "private, no-cache")
+	// Public, same-origin, and serving bytes a user uploaded — the three
+	// properties that put the same pair on /uploads, the document assets and both
+	// GitLab proxies (streamProxied). The upload gate is the first line and the
+	// load-bearing one (UploadMyAvatar sniffs and stores the verdict, accepting
+	// only png/jpeg/gif/webp), but it is the stored type that is trusted here, and
+	// a gate should not be the only thing between an upload and the origin holding
+	// the session. Both are inert for the real images this route exists to serve.
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
 	if etagMatches(c.GetHeader("If-None-Match"), etag) {
 		c.Status(http.StatusNotModified)
 		return
