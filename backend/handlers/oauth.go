@@ -348,7 +348,21 @@ func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glU
 
 	// Auto-register. GitLab may hide the email (scope/privacy) — synthesise a stable
 	// placeholder so the NOT NULL/unique email holds; the user can set a real one later.
-	count, _ := h.q.CountUsers(c)
+	// The admin bit is decided by "is this the very first account on the
+	// instance", so the count has to be known rather than assumed. Discarding
+	// the error made that decision fail *open*: the zero value is 0, which reads
+	// as "first user", so one transient failure on this single query — a pool
+	// acquire timeout under load, a connection reaped by a proxy, a failover —
+	// handed the freshly auto-registered GitLab user the global admin bit. That
+	// bit is the top of the instance: every account's address (GET /admin/users),
+	// promotion of anyone else (PATCH /admin/users/:id/admin) and a password
+	// reset link for any account (POST /admin/users/:id/reset-link).
+	// Register, the sibling path that makes the same count == 0 decision, already
+	// answers a failed CountUsers by refusing (auth.go).
+	count, err := h.q.CountUsers(c)
+	if err != nil {
+		return db.User{}, errors.New("create_failed")
+	}
 	name := glUser.Name
 	if name == "" {
 		name = glUser.Username

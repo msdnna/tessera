@@ -67,6 +67,14 @@ func configureIDP(t *testing.T, baseURL string) {
 // final redirect. A cookie jar carries the CSRF state cookie between the two.
 func gitlabSignIn(t *testing.T) url.Values {
 	t.Helper()
+	return gitlabSignInAt(t, testServer.URL)
+}
+
+// gitlabSignInAt is gitlabSignIn against a named instance — the provider row is
+// global, so a test that needs its own router (a fault-injecting one, say) can
+// drive the same browser leg against it.
+func gitlabSignInAt(t *testing.T, baseURL string) url.Values {
+	t.Helper()
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		t.Fatalf("cookie jar: %v", err)
@@ -74,7 +82,7 @@ func gitlabSignIn(t *testing.T) url.Values {
 	cl := &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
-	res, err := cl.Get(testServer.URL + "/api/auth/gitlab/authorize")
+	res, err := cl.Get(baseURL + "/api/auth/gitlab/authorize")
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
 	}
@@ -87,7 +95,7 @@ func gitlabSignIn(t *testing.T) url.Values {
 	if state == "" {
 		t.Fatalf("authorize did not mint a state: %s", res.Header.Get("Location"))
 	}
-	res, err = cl.Get(testServer.URL + "/api/auth/gitlab/callback?code=any&state=" + url.QueryEscape(state))
+	res, err = cl.Get(baseURL + "/api/auth/gitlab/callback?code=any&state=" + url.QueryEscape(state))
 	if err != nil {
 		t.Fatalf("callback: %v", err)
 	}
