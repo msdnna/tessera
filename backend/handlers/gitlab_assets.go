@@ -383,6 +383,15 @@ func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) boo
 		if r.URL.Host != ghost {
 			r.Header.Del("PRIVATE-TOKEN")
 			r.Header.Del("Authorization")
+			// Referer too, and for the same reason: the third attempt carries the
+			// PAT in the query string, and net/http sets Referer to the previous
+			// URL verbatim (it strips userinfo, never the query). So on the hop
+			// that leaves GitLab the Referer *is* the credential — which is not a
+			// hypothetical hop: an instance that stores uploads in object storage
+			// answers the avatar route with a 302 to a presigned URL on another
+			// host, and that route is exactly the one the query-param attempt
+			// exists for.
+			r.Header.Del("Referer")
 		}
 		return nil
 	}
