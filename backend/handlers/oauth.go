@@ -312,7 +312,26 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glUser gitlab.OAuthUserInfo) (db.User, error) {
 	providerUserID := strconv.FormatInt(glUser.ID, 10)
 
-	if id, err := h.q.GetOAuthIdentity(c, db.GetOAuthIdentityParams{Provider: "gitlab", ProviderUserID: providerUserID}); err == nil {
+	// A recorded identity names a person only together with the instance that
+	// issued it: provider_user_id is GitLab's numeric id, and every GitLab counts
+	// from 1 in its own sequence, so id 7 on one is unrelated to id 7 on another.
+	// oauth_identities carries gl_base_url for exactly that reason — it was being
+	// written on every login and never read, so the stored ids went on matching
+	// after the provider row was pointed elsewhere (a move to self-hosted, a
+	// restore whose ids restarted, a staging instance configured by mistake) and
+	// whoever held the matching number on the new instance signed straight into
+	// the account it used to mean, ahead of the email check below (#2932).
+	//
+	// A mismatch is not an error, it is simply not a match: the login falls
+	// through to the email leg, which is the stronger claim anyway (GitLab
+	// vouches for the address, and the local side must have proven it). That
+	// keeps the same instance under a new name — https://, a DNS rename —
+	// working, because CreateOAuthUser pre-verifies the address it provisioned;
+	// the upsert at the end then re-stamps gl_base_url and the next login matches
+	// by id again. An empty stored value predates the recording rather than
+	// naming another instance, so it is backfilled, not rejected.
+	if id, err := h.q.GetOAuthIdentity(c, db.GetOAuthIdentityParams{Provider: "gitlab", ProviderUserID: providerUserID}); err == nil &&
+		sameGitlabInstance(id.GlBaseUrl, p.GlBaseUrl) {
 		user, uerr := h.q.GetUserByID(c, id.UserID)
 		if uerr != nil {
 			return db.User{}, errors.New("account_missing")
@@ -386,6 +405,18 @@ func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glU
 	h.acceptPendingInvitations(c, user)
 	h.upsertIdentity(c, user.ID, providerUserID, glUser, p.GlBaseUrl)
 	return user, nil
+}
+
+// sameGitlabInstance reports whether a stored identity was issued by the GitLab
+// the provider row now points at. Both sides are normalised the way
+// upsertIdentity stores them (trailing slash trimmed); "" is a row written
+// before the base URL was recorded and matches anything, since refusing it would
+// fork a second account for someone who never changed instances.
+func sameGitlabInstance(stored, configured string) bool {
+	if stored == "" {
+		return true
+	}
+	return strings.EqualFold(strings.TrimRight(stored, "/"), strings.TrimRight(configured, "/"))
 }
 
 func (h *AuthHandler) upsertIdentity(c *gin.Context, userID uuid.UUID, providerUserID string, glUser gitlab.OAuthUserInfo, baseURL string) {
