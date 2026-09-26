@@ -227,9 +227,12 @@ SELECT task_id, gl_global_id FROM gitlab_links WHERE integration_id = $1;
 SELECT gl_global_id, gl_updated_at, title_hash, labels_hash FROM gitlab_links WHERE integration_id = $1;
 
 -- ── sync reconciliation: mixed tags / assignees ────────────
--- Resolve a GitLab username to a Tessera user (via their linked credential).
--- name: GetUserIDByGitlabUsername :one
-SELECT user_id FROM gitlab_credentials WHERE gl_username = $1;
+-- Resolve a GitLab username to the Tessera users who connected it (via their
+-- linked credential). :many for the same reason as GetUserIDsByOAuthUsername:
+-- the PK here is user_id, so nothing stops two credentials from carrying one
+-- gl_username — a renamed account keeps its old name until its owner reconnects.
+-- name: GetUserIDsByGitlabUsername :many
+SELECT DISTINCT user_id FROM gitlab_credentials WHERE gl_username = $1;
 
 -- AddTaskTagSourced returns the number of rows inserted (1 = newly attached, 0 =
 -- the tag was already on the task) so the sync journal can record actual additions.

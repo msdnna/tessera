@@ -741,17 +741,33 @@ func (q *Queries) GetGitlabUploadSourceByURL(ctx context.Context, arg GetGitlabU
 	return source_key, err
 }
 
-const getUserIDByGitlabUsername = `-- name: GetUserIDByGitlabUsername :one
-SELECT user_id FROM gitlab_credentials WHERE gl_username = $1
+const getUserIDsByGitlabUsername = `-- name: GetUserIDsByGitlabUsername :many
+SELECT DISTINCT user_id FROM gitlab_credentials WHERE gl_username = $1
 `
 
 // ── sync reconciliation: mixed tags / assignees ────────────
-// Resolve a GitLab username to a Tessera user (via their linked credential).
-func (q *Queries) GetUserIDByGitlabUsername(ctx context.Context, glUsername string) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getUserIDByGitlabUsername, glUsername)
-	var user_id uuid.UUID
-	err := row.Scan(&user_id)
-	return user_id, err
+// Resolve a GitLab username to the Tessera users who connected it (via their
+// linked credential). :many for the same reason as GetUserIDsByOAuthUsername:
+// the PK here is user_id, so nothing stops two credentials from carrying one
+// gl_username — a renamed account keeps its old name until its owner reconnects.
+func (q *Queries) GetUserIDsByGitlabUsername(ctx context.Context, glUsername string) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, getUserIDsByGitlabUsername, glUsername)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const linkedIidsForIntegration = `-- name: LinkedIidsForIntegration :many

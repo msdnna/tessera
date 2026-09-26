@@ -1954,10 +1954,21 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 // A non-member is not an error case for the sync: the "no Tessera account at all"
 // branch is exactly right for them, and keeps the issue's assignee visible on the
 // card under their GitLab name and avatar.
+//
+// An ambiguous login takes that same branch. A GitLab username is unique on the
+// instance *right now*, but both tables keep what was true at some past login:
+// a rename is only written back when its owner signs in (or reconnects their
+// PAT) again, so between the rename and that login the old name still names its
+// former owner. Let someone else take the freed login — GitLab frees it
+// immediately — and the same string maps to two people. Neither is "the" match,
+// and picking one is not a coin flip in the user's favour: the stale row is the
+// older one, so the plan tends to return exactly the wrong person, who then gets
+// the task in "my tasks" and its notifications while the issue's real assignee
+// never sees it. Membership does not catch this — both are usually colleagues.
 func (h *API) resolveAssignee(ctx context.Context, wsID uuid.UUID, login string) (uuid.UUID, error) {
-	uid, err := h.q.GetUserIDByOAuthUsername(ctx, login)
+	uid, err := oneUser(h.q.GetUserIDsByOAuthUsername(ctx, login))
 	if err != nil {
-		uid, err = h.q.GetUserIDByGitlabUsername(ctx, login)
+		uid, err = oneUser(h.q.GetUserIDsByGitlabUsername(ctx, login))
 	}
 	if err != nil {
 		return uuid.Nil, err
@@ -1966,6 +1977,25 @@ func (h *API) resolveAssignee(ctx context.Context, wsID uuid.UUID, login string)
 		return uuid.Nil, err
 	}
 	return uid, nil
+}
+
+// errAmbiguousLogin reports a GitLab username that names more than one Tessera
+// user — see resolveAssignee for how that happens.
+var errAmbiguousLogin = errors.New("gitlab login resolves to more than one user")
+
+// oneUser unwraps a username lookup: exactly one user is a match, none or several
+// are not.
+func oneUser(ids []uuid.UUID, err error) (uuid.UUID, error) {
+	switch {
+	case err != nil:
+		return uuid.Nil, err
+	case len(ids) == 1:
+		return ids[0], nil
+	case len(ids) == 0:
+		return uuid.Nil, pgx.ErrNoRows
+	default:
+		return uuid.Nil, errAmbiguousLogin
+	}
 }
 
 // syncComments upserts each GitLab note as a comment, idempotent by note id, with

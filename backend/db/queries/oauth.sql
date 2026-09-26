@@ -33,10 +33,19 @@ SET user_id = EXCLUDED.user_id,
     updated_at = now()
 RETURNING *;
 
--- GetUserIDByOAuthUsername resolves a GitLab username to a Tessera user via a
--- recorded OAuth identity (login-grade link, complements gitlab_credentials).
--- name: GetUserIDByOAuthUsername :one
-SELECT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_username = $1;
+-- GetUserIDsByOAuthUsername resolves a GitLab username to the Tessera users that
+-- recorded it (login-grade link, complements gitlab_credentials).
+--
+-- :many, not :one, because a username names at most one person *at a moment* and
+-- this table spans time: UNIQUE is on (provider, provider_user_id), the numeric
+-- id, while provider_username is only indexed. A row's name is refreshed by its
+-- owner's next login, so a rename in GitLab leaves the old name recorded until
+-- then — and if someone else takes the freed login and signs in, two live rows
+-- carry it. The caller must see both and decline to guess; as :one it silently
+-- got whichever row the plan returned first (in practice the stale one, which is
+-- physically older).
+-- name: GetUserIDsByOAuthUsername :many
+SELECT DISTINCT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_username = $1;
 
 -- GetGitlabUsernameForUser returns a user's GitLab username from their OAuth
 -- identity (for attributing issues created under a shared service token).
