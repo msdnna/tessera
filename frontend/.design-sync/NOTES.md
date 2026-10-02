@@ -80,6 +80,8 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
 - `[FONT_MISSING] "JetBrains Mono"` — it is the 3rd entry of a monospace stack
   (`ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace`) in
   MarkdownEditor/WorkspaceCommandsModal; the app itself never ships it either.
+  The system monospace substitute was accepted by the user (2026-10-02, #2950);
+  revisit only if a v2 design picks a brand mono font.
 - `[RENDER_THIN] Icon / TesseraIcon` ("paint nothing" heuristic) — glyph-only
   previews; the sheets show every glyph.
 
