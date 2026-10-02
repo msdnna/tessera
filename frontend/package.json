@@ -11,6 +11,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:desktop": "TESSERA_DESKTOP=1 vite build",
+    "build:ds": "vite build --config design-system/vite.config.js",
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

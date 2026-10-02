@@ -1,0 +1,13 @@
+{
+  "name": "@tessera/design-system",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tessera web UI (Vue 3 + Naive UI) packaged as React components for Claude Design",
+  "type": "module",
+  "module": "dist/index.js",
+  "types": "types/index.d.ts",
+  "peerDependencies": {
+    "react": "^19",
+    "react-dom": "^19"
+  }
+}

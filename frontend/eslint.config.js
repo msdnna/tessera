@@ -21,6 +21,11 @@ export default [
       'coverage/**',
       'playwright-report/**',
       'test-results/**',
+      // Claude Design sync (#2950): staged converter + generated bundle.
+      '.ds-sync/**',
+      'ds-bundle/**',
+      '.design-sync/.cache/**',
+      'design-system/dist/**',
     ],
   },
   js.configs.recommended,

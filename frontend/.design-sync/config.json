@@ -1,0 +1,40 @@
+{
+  "projectId": "1fe4b16c-2c9f-4f81-b5ab-6a61f893daeb",
+  "shape": "package",
+  "pkg": "@tessera/design-system",
+  "globalName": "Tessera",
+  "buildCmd": "corepack yarn build:ds",
+  "cssEntry": "dist/style.css",
+  "provider": {
+    "component": "TesseraProvider"
+  },
+  "overrides": {
+    "Modal": {
+      "cardMode": "single",
+      "viewport": "900x620"
+    },
+    "TaskCard": {
+      "cardMode": "column"
+    },
+    "Tooltip": {
+      "cardMode": "single",
+      "primaryStory": "Pinned"
+    },
+    "TesseraProvider": {
+      "cardMode": "column"
+    },
+    "MarkdownEditor": {
+      "cardMode": "column"
+    },
+    "EmptyState": {
+      "cardMode": "column"
+    },
+    "Card": {
+      "cardMode": "column"
+    },
+    "Tabs": {
+      "cardMode": "column"
+    }
+  },
+  "readmeHeader": ".design-sync/conventions.md"
+}
