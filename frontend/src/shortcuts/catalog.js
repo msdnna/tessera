@@ -12,7 +12,8 @@
 //   group    cheat-sheet section; omitted for hidden helper bindings
 //   display  hand-written caps for rows that stand for several bindings
 //   digit    caption of the digit range of a `digit` chord
-//   command  shown in the palette's «Команды» section (+ its icon/subtitle)
+//   command  shown in the palette's «Команды» section; the value is its icon
+//   to       route a key-less command opens (palette only)
 //   input    also fires while the cursor is in a text field
 //   modal    also fires while a modal dialog is open
 //   repeat   fires on auto-repeat (held arrow keys)
@@ -29,6 +30,13 @@ export const CATALOG = [
   { id: 'nav.goMine', keys: 'g m', group: 'nav', command: 'HomeOutline' },
   { id: 'nav.sidebar', keys: '[', group: 'nav', command: 'EyeOutline' },
   { id: 'nav.shortcuts', keys: '?', group: 'nav', command: 'KeypadOutline' },
+
+  // Pages: palette commands without a key of their own.
+  { id: 'go.notes', command: 'DocumentTextOutline', to: '/notes' },
+  { id: 'go.documents', command: 'DocumentsOutline', to: '/documents' },
+  { id: 'go.reminders', command: 'AlarmOutline', to: '/reminders' },
+  { id: 'go.milestones', command: 'TrailSignOutline', to: '/milestones' },
+  { id: 'go.settings', command: 'SettingsOutline', to: '/settings' },
 
   // ── board ──
   { id: 'board.addTask', keys: 'c', group: 'board' },
@@ -76,6 +84,10 @@ export const CATALOG = [
   { id: 'palette.actions', group: 'palette', display: [['tab']] },
   { id: 'palette.open', group: 'palette', display: [['enter']] },
   { id: 'palette.prefix', group: 'palette', display: [['#', '@', '>']] },
+  { id: 'palette.back', display: [['shift', 'tab']] },
+  { id: 'palette.close', display: [['escape']] },
+  { id: 'palette.newTab', display: [['mod', 'enter']] },
+  { id: 'palette.copyLink', display: [['mod', 'shift', 'C']] },
 
   // ── view ──
   { id: 'view.theme', keys: 'shift+t', group: 'view', command: 'ContrastOutline' },

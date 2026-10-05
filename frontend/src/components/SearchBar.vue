@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NInput, NIcon, NSpin, NText } from 'naive-ui'
+import { NInput, NIcon, NSpin } from 'naive-ui'
 import {
   SearchOutline,
   CheckmarkCircle,
@@ -12,7 +12,7 @@ import {
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
-import { useShortcuts } from '@/composables/useShortcuts'
+import { usePaletteStore } from '@/stores/palette'
 import { useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -123,15 +123,24 @@ function gotoDocument(d) {
   router.push(`/documents/${d.slug || d.id}`)
 }
 
-// ⌘K / Ctrl+K puts the cursor in the search from anywhere (#2953). The full
-// command palette replaces this in a later stage; the hint in the field is only
-// shown because this binding is real.
-useShortcuts({
-  'nav.palette': () => {
-    inputRef.value?.focus()
-    inputRef.value?.select?.()
-  },
-})
+// The ⌘K palette (#2957) is the search everywhere; this field stays the board's
+// title filter. Off a board there is nothing to filter, so the field is just the
+// palette's doorway: focusing it opens the palette.
+const palette = usePaletteStore()
+function openPalette() {
+  const term = q.value.trim()
+  open.value = false
+  if (onBoard.value) q.value = ''
+  palette.show(term)
+}
+function onFocus() {
+  if (!onBoard.value) {
+    inputRef.value?.blur()
+    openPalette()
+    return
+  }
+  if (q.value.trim()) open.value = true
+}
 
 // A help hit opens the drawer, not the help page: the reader asked a question
 // from wherever they were, and the answer should not cost them that screen.
@@ -150,7 +159,7 @@ function gotoHelp(h) {
       :placeholder="t(onBoard ? 'shell.search.placeholderBoard' : 'shell.search.placeholder')"
       :input-props="{ 'data-testid': 'header-search' }"
       clearable
-      @focus="q.trim() && (open = true)"
+      @focus="onFocus"
       @blur="close"
       @keydown.esc="q = ''"
     >
@@ -236,9 +245,16 @@ function gotoHelp(h) {
           <empty-state :icon="SearchOutline" :text="t('shell.search.nothing')" size="small" />
         </div>
       </template>
-      <div class="hint">
-        <n-text depth="3">{{ t('shell.search.hint') }}</n-text>
-      </div>
+      <!-- Everything else (boards, people, commands) lives in the palette. -->
+      <button
+        class="row everywhere"
+        data-testid="search-everywhere"
+        @mousedown.prevent="openPalette"
+      >
+        <n-icon class="ico" :component="SearchOutline" />
+        <span class="ttl">{{ t('shell.search.everywhere') }}</span>
+        <ShortcutKeys id="nav.palette" />
+      </button>
     </div>
   </div>
 </template>
@@ -330,10 +346,12 @@ function gotoHelp(h) {
 .empty {
   padding: 12px;
 }
-.hint {
-  margin-top: 6px;
-  padding: 6px 8px 2px;
-  font-size: 11px;
+.row.everywhere {
+  margin-top: 4px;
+  color: var(--t-text2);
+}
+.row.everywhere .ttl {
+  flex: 1;
 }
 /* The search field sits right on the canvas: a filled 34px well (v2, #2953). */
 .search :deep(.n-input) {

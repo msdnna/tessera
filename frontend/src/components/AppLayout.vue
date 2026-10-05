@@ -16,6 +16,7 @@ import {
 import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import ShortcutKeys from './ShortcutKeys.vue'
 import ShortcutPending from './ShortcutPending.vue'
+import CommandPalette from './palette/CommandPalette.vue'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
@@ -42,6 +43,7 @@ import { useDesktopDeepLink } from '@/composables/useDesktopDeepLink'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { install as installShortcuts } from '@/shortcuts/dispatcher'
 import { useThemeStore } from '@/stores/theme'
+import { usePaletteStore } from '@/stores/palette'
 import { sGet } from '@/utils/serverStorage'
 
 const { t } = useI18n()
@@ -74,7 +76,9 @@ onMounted(() => (uninstallShortcuts = installShortcuts()))
 onBeforeUnmount(() => uninstallShortcuts?.())
 
 const theme = useThemeStore()
+const palette = usePaletteStore()
 useShortcuts({
+  'nav.palette': () => palette.toggle(),
   // v2 (#2953): no drag-resizing — one width, collapsed to the icon rail by the
   // edge button or the `[` key. The drawer on mobile has its own button.
   'nav.sidebar': () => !isMobile.value && toggle(),
@@ -311,6 +315,9 @@ watch(
          from the sidebar's «Помощь» menu. Not a route — reading the manual must
          not cost the reader the board they had open. -->
     <HelpCenterModal />
+
+    <!-- ⌘K: search, commands and task actions (#2957). -->
+    <CommandPalette />
 
     <!-- «G …» while a multi-key shortcut waits for its next key (#2956). -->
     <ShortcutPending />

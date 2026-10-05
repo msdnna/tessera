@@ -153,6 +153,16 @@ export function handleKeydown(e) {
   }, SEQ_TIMEOUT)
 }
 
+// For the palette's «Команды»: is anyone on screen handling this shortcut right
+// now, and run it as if its keys were pressed.
+export function isLive(id) {
+  return !!liveHandler(id)
+}
+
+export function runShortcut(id, ...args) {
+  fire(id, args, null)
+}
+
 let installed = 0
 export function install() {
   if (installed++ === 0) window.addEventListener('keydown', handleKeydown)

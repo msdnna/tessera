@@ -12,6 +12,63 @@ import (
 	"github.com/google/uuid"
 )
 
+const searchBoards = `-- name: SearchBoards :many
+SELECT b.id, b.name, b.slug, b.icon, b.color, b.icon_mode, p.slug AS project_slug, p.name AS project_name
+FROM boards b
+JOIN projects p ON p.id = b.project_id
+WHERE p.workspace_id = $1
+  AND (b.name ILIKE '%' || $2::text || '%' OR p.name ILIKE '%' || $2::text || '%')
+ORDER BY (b.name ILIKE '%' || $2::text || '%') DESC, p.name, b.position
+LIMIT 10
+`
+
+type SearchBoardsParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Q           string    `json:"q"`
+}
+
+type SearchBoardsRow struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Slug        string    `json:"slug"`
+	Icon        string    `json:"icon"`
+	Color       string    `json:"color"`
+	IconMode    string    `json:"icon_mode"`
+	ProjectSlug string    `json:"project_slug"`
+	ProjectName string    `json:"project_name"`
+}
+
+// SearchBoards finds boards by their own name or their project's — «Маркетинг»
+// should surface every board of that project.
+func (q *Queries) SearchBoards(ctx context.Context, arg SearchBoardsParams) ([]SearchBoardsRow, error) {
+	rows, err := q.db.Query(ctx, searchBoards, arg.WorkspaceID, arg.Q)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchBoardsRow
+	for rows.Next() {
+		var i SearchBoardsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Icon,
+			&i.Color,
+			&i.IconMode,
+			&i.ProjectSlug,
+			&i.ProjectName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchDocuments = `-- name: SearchDocuments :many
 SELECT id, title, slug
 FROM documents
@@ -95,35 +152,53 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Sea
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at,
+       t.priority, t.column_id, b.name AS board_name, p.name AS project_name,
+       bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color,
+       m.title AS milestone_title
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
+JOIN board_columns bc ON bc.id = t.column_id
+LEFT JOIN milestones m ON m.id = t.milestone_id
 WHERE p.workspace_id = $1
   AND t.archived_at IS NULL
-  AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%')
-ORDER BY t.number DESC
+  AND (t.title ILIKE '%' || $2::text || '%'
+       OR t.description ILIKE '%' || $2::text || '%'
+       OR t.number::text = ltrim($2::text, '#'))
+ORDER BY (t.number::text = ltrim($2::text, '#')) DESC, t.number DESC
 LIMIT 25
 `
 
 type SearchTasksParams struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
-	Column2     *string   `json:"column_2"`
+	Q           string    `json:"q"`
 }
 
 type SearchTasksRow struct {
-	ID          uuid.UUID  `json:"id"`
-	BoardID     uuid.UUID  `json:"board_id"`
-	BoardSlug   string     `json:"board_slug"`
-	ProjectSlug string     `json:"project_slug"`
-	Number      *int64     `json:"number"`
-	Title       string     `json:"title"`
-	ParentID    *uuid.UUID `json:"parent_id"`
-	CompletedAt *time.Time `json:"completed_at"`
+	ID             uuid.UUID  `json:"id"`
+	BoardID        uuid.UUID  `json:"board_id"`
+	BoardSlug      string     `json:"board_slug"`
+	ProjectSlug    string     `json:"project_slug"`
+	Number         *int64     `json:"number"`
+	Title          string     `json:"title"`
+	ParentID       *uuid.UUID `json:"parent_id"`
+	CompletedAt    *time.Time `json:"completed_at"`
+	Priority       int32      `json:"priority"`
+	ColumnID       uuid.UUID  `json:"column_id"`
+	BoardName      string     `json:"board_name"`
+	ProjectName    string     `json:"project_name"`
+	ColumnName     string     `json:"column_name"`
+	ColumnNameKey  *string    `json:"column_name_key"`
+	ColumnColor    string     `json:"column_color"`
+	MilestoneTitle *string    `json:"milestone_title"`
 }
 
+// SearchTasks matches a substring of the title or description, or the task's
+// number («2950» / «#2950»), which then sorts first. The row carries what the
+// ⌘K palette prints under the title: status column, board, project, milestone.
 func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]SearchTasksRow, error) {
-	rows, err := q.db.Query(ctx, searchTasks, arg.WorkspaceID, arg.Column2)
+	rows, err := q.db.Query(ctx, searchTasks, arg.WorkspaceID, arg.Q)
 	if err != nil {
 		return nil, err
 	}
@@ -140,6 +215,14 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Sea
 			&i.Title,
 			&i.ParentID,
 			&i.CompletedAt,
+			&i.Priority,
+			&i.ColumnID,
+			&i.BoardName,
+			&i.ProjectName,
+			&i.ColumnName,
+			&i.ColumnNameKey,
+			&i.ColumnColor,
+			&i.MilestoneTitle,
 		); err != nil {
 			return nil, err
 		}

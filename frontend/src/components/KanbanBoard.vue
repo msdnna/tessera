@@ -1200,6 +1200,15 @@ watch(
   (n) => (boardViewStore.shownTasks = n),
   { immediate: true },
 )
+// The ⌘K palette (#2957) reads this board's rows to move a task to a column's
+// end, and asks it to filter by a person picked under «Люди».
+boardViewStore.taskSource = () => allTasks.value
+watch(
+  () => boardViewStore.assigneeFilter,
+  (req) => {
+    if (req?.userId) filters.assignees = [req.userId]
+  },
+)
 const shownCountLabel = computed(() => {
   const c = shownCounts.value
   return c.total > c.tasks

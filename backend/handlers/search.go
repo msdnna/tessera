@@ -9,8 +9,9 @@ import (
 	"tessera/internal/db"
 )
 
-// Search looks up tasks (by title), notes (title/body) and documents (title)
-// within a workspace.
+// Search looks up tasks (title/description/number), boards (own or project
+// name), notes (title/body) and documents (title) within a workspace — the
+// header search and the ⌘K palette both read it.
 func (h *API) Search(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok || !h.requireMember(c, wsID) {
@@ -18,10 +19,15 @@ func (h *API) Search(c *gin.Context) {
 	}
 	q := strings.TrimSpace(c.Query("q"))
 	if q == "" {
-		c.JSON(http.StatusOK, gin.H{"tasks": []any{}, "notes": []any{}, "documents": []any{}})
+		c.JSON(http.StatusOK, gin.H{"tasks": []any{}, "boards": []any{}, "notes": []any{}, "documents": []any{}})
 		return
 	}
-	tasks, err := h.q.SearchTasks(c, db.SearchTasksParams{WorkspaceID: wsID, Column2: &q})
+	tasks, err := h.q.SearchTasks(c, db.SearchTasksParams{WorkspaceID: wsID, Q: q})
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	boards, err := h.q.SearchBoards(c, db.SearchBoardsParams{WorkspaceID: wsID, Q: q})
 	if err != nil {
 		fail(c, err)
 		return
@@ -36,7 +42,12 @@ func (h *API) Search(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"tasks": orEmpty(tasks), "notes": orEmpty(notes), "documents": orEmpty(documents)})
+	c.JSON(http.StatusOK, gin.H{
+		"tasks":     orEmpty(tasks),
+		"boards":    orEmpty(boards),
+		"notes":     orEmpty(notes),
+		"documents": orEmpty(documents),
+	})
 }
 
 func orEmpty[T any](s []T) []T {

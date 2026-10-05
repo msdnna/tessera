@@ -87,6 +87,15 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // to fall back to a workspace-wide search (null = no board count yet).
   const searchQ = ref('')
   const shownTasks = ref(null)
+  // The open board's task rows, as a getter (not a copy): the ⌘K palette needs
+  // a column's tail to move a task to its end without refetching the board.
+  const taskSource = ref(null)
+  // «Filter by this person» from the palette (#2957): a request the board
+  // applies to its own filters; `n` makes a repeat of the same person fire.
+  const assigneeFilter = ref(null)
+  function requestAssigneeFilter(userId) {
+    assigneeFilter.value = { userId, n: (assigneeFilter.value?.n || 0) + 1 }
+  }
 
   function bumpReload() {
     reloadNonce.value++
@@ -127,12 +136,17 @@ export const useBoardViewStore = defineStore('boardView', () => {
     archiveOpen.value = false
     searchQ.value = ''
     shownTasks.value = null
+    taskSource.value = null
+    assigneeFilter.value = null
   }
 
   return {
     active,
     searchQ,
     shownTasks,
+    taskSource,
+    assigneeFilter,
+    requestAssigneeFilter,
     boardId,
     wsId,
     projectId,

@@ -63,7 +63,7 @@
     "darkTheme": "Dark theme"
   },
   "search": {
-    "placeholder": "Search tasks, notes and documents…",
+    "placeholder": "Search tasks, boards and commands",
     "placeholderBoard": "Search this board and workspace…",
     "boardNone": "Nothing on this board — results from the whole workspace",
     "tasks": "Tasks",
@@ -72,7 +72,7 @@
     "untitled": "Untitled",
     "help": "Help",
     "nothing": "Nothing found",
-    "hint": "Searches task titles and descriptions, note titles and text, document titles and help articles"
+    "everywhere": "Search everywhere"
   },
   "members": {
     "title": "Workspace members",
@@ -203,6 +203,92 @@
       "theme": "Toggle theme",
       "cardSize": "Card size",
       "collapse": "Collapse column"
+    },
+    "go": {
+      "notes": "Notes",
+      "documents": "Documents",
+      "reminders": "Reminders",
+      "milestones": "Milestones",
+      "settings": "Settings"
+    }
+  },
+  "palette": {
+    "placeholder": "Task, board, person or command…",
+    "placeholderTask": "Action or field…",
+    "placeholderField": {
+      "status": "Status…",
+      "assignees": "Assignee…",
+      "priority": "Priority…",
+      "due": "Due: “tomorrow” or 12.10…",
+      "tags": "Tag — find or create…",
+      "subtask": "Subtask title…"
+    },
+    "back": "back",
+    "nothing": "Nothing found",
+    "typeToSearch": "Start typing — tasks, boards, people and commands",
+    "sections": {
+      "all": "All",
+      "tasks": "Tasks",
+      "boards": "Boards & milestones",
+      "people": "People",
+      "commands": "Commands"
+    },
+    "groups": {
+      "recent": "Recent",
+      "tasks": "Tasks",
+      "boards": "Boards & milestones",
+      "commands": "Commands",
+      "people": "People",
+      "notes": "Notes & documents",
+      "help": "Help",
+      "actions": "Task actions",
+      "more": "More"
+    },
+    "board": "Board",
+    "milestone": "Milestone",
+    "until": "until {date}",
+    "personNeedsBoard": "Open a board to filter by this person",
+    "hint": {
+      "actions": "actions",
+      "open": "open",
+      "choose": "choose",
+      "apply": "apply"
+    },
+    "foot": {
+      "select": "select",
+      "open": "open",
+      "actions": "actions",
+      "newTab": "in a new tab",
+      "apply": "apply",
+      "options": "options",
+      "toActions": "to actions",
+      "toResults": "to results",
+      "prefixes": "# tasks · {'@'} people · > commands",
+      "taskActions": "Task actions · {n}"
+    },
+    "task": {
+      "status": "Change status",
+      "now": "Now: {value}",
+      "assignees": "Assignees",
+      "nobody": "Unassigned",
+      "priority": "Priority",
+      "due": "Due date",
+      "noDue": "No due date",
+      "tags": "Tags",
+      "noTags": "No tags",
+      "subtask": "Create subtask",
+      "subtaskPlaceholder": "Type a title and press ↵",
+      "subtaskCreated": "Subtask created",
+      "createTag": "Create tag “{name}”",
+      "copyLink": "Copy link",
+      "copied": "Link copied",
+      "newTab": "Open in a new tab"
+    },
+    "due": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "nextWeek": "Next week",
+      "none": "Clear due date"
     }
   }
 }
