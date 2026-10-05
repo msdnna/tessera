@@ -14,8 +14,8 @@ import {
   useMessage,
 } from 'naive-ui'
 import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
-import Kbd from './Kbd.vue'
-import { isTypingTarget } from '@/utils/keys'
+import ShortcutKeys from './ShortcutKeys.vue'
+import ShortcutPending from './ShortcutPending.vue'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
@@ -39,6 +39,10 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { useDesktopDeepLink } from '@/composables/useDesktopDeepLink'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { install as installShortcuts } from '@/shortcuts/dispatcher'
+import { useThemeStore } from '@/stores/theme'
+import { sGet } from '@/utils/serverStorage'
 
 const { t } = useI18n()
 const ws = useWorkspacesStore()
@@ -61,18 +65,25 @@ const message = useMessage()
 // Desktop: native-notification click → focus window + open the task.
 useDesktopDeepLink(router)
 
-// ── sidebar collapse ──
-// v2 (#2953): no drag-resizing — one width, collapsed to the icon rail by the
-// edge button or the `[` key (outside text fields; the global shortcut layer
-// takes it over in a later stage).
-function onSidebarKey(e) {
-  if (e.key !== '[' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return
-  if (isMobile.value) return
-  e.preventDefault()
-  toggle()
-}
-onMounted(() => window.addEventListener('keydown', onSidebarKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onSidebarKey))
+// ── keyboard ──
+// The app-wide shortcut layer (v2, #2956): one window listener for every
+// catalog shortcut, installed for as long as the signed-in shell is up. The
+// shell owns the shortcuts that don't belong to any one screen.
+let uninstallShortcuts = null
+onMounted(() => (uninstallShortcuts = installShortcuts()))
+onBeforeUnmount(() => uninstallShortcuts?.())
+
+const theme = useThemeStore()
+useShortcuts({
+  // v2 (#2953): no drag-resizing — one width, collapsed to the icon rail by the
+  // edge button or the `[` key. The drawer on mobile has its own button.
+  'nav.sidebar': () => !isMobile.value && toggle(),
+  'nav.goMine': () => router.push('/'),
+  // The board the user last had open (BoardView remembers it); Home if none.
+  'nav.goBoard': () => router.push(sGet('tessera_last_board') || '/'),
+  'nav.goInbox': () => notes.requestFeed(),
+  'view.theme': () => theme.toggle(),
+})
 
 // Live notifications for the bell + native device notifications, addressed to the
 // current user. Not scoped to the current workspace — onEvent filters by user, and
@@ -218,7 +229,7 @@ watch(
         </template>
         <span class="sider-tip">
           {{ t(collapsed ? 'shell.layout.expand' : 'shell.layout.collapse') }}
-          <Kbd>[</Kbd>
+          <ShortcutKeys id="nav.sidebar" />
         </span>
       </n-tooltip>
 
@@ -300,6 +311,9 @@ watch(
          from the sidebar's «Помощь» menu. Not a route — reading the manual must
          not cost the reader the board they had open. -->
     <HelpCenterModal />
+
+    <!-- «G …» while a multi-key shortcut waits for its next key (#2956). -->
+    <ShortcutPending />
   </div>
 </template>
 

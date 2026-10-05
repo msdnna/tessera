@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, h } from 'vue'
+import { ref, computed, h, watch } from 'vue'
 import { NButton, NIcon, NBadge, NPopover, NTooltip, NSwitch, NText, NDropdown } from 'naive-ui'
 import {
   SunnyOutline,
@@ -59,6 +59,10 @@ const showJobs = ref(false)
 // before navigating — a conference invite (#2875) opens a whole page the popover
 // would otherwise sit on top of.
 const showFeed = ref(false)
+watch(
+  () => notes.feedRequest,
+  () => (showFeed.value = true),
+)
 // Browser Back closes these modals instead of leaving the board.
 useOverlayBack(showMembers, () => (showMembers.value = false))
 useOverlayBack(showGitlab, () => (showGitlab.value = false))

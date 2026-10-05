@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NInput, NIcon, NSpin, NText } from 'naive-ui'
 import {
@@ -11,8 +11,8 @@ import {
   HelpCircleOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
-import Kbd from '@/components/Kbd.vue'
-import { hasModKey, modKeyLabel } from '@/utils/keys'
+import ShortcutKeys from '@/components/ShortcutKeys.vue'
+import { useShortcuts } from '@/composables/useShortcuts'
 import { useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -126,16 +126,12 @@ function gotoDocument(d) {
 // ⌘K / Ctrl+K puts the cursor in the search from anywhere (#2953). The full
 // command palette replaces this in a later stage; the hint in the field is only
 // shown because this binding is real.
-const shortcutLabel = `${modKeyLabel}${modKeyLabel === '⌘' ? '' : ' '}K`
-function onGlobalKey(e) {
-  if (hasModKey(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
-    e.preventDefault()
+useShortcuts({
+  'nav.palette': () => {
     inputRef.value?.focus()
     inputRef.value?.select?.()
-  }
-}
-onMounted(() => window.addEventListener('keydown', onGlobalKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
+  },
+})
 
 // A help hit opens the drawer, not the help page: the reader asked a question
 // from wherever they were, and the answer should not cost them that screen.
@@ -162,7 +158,7 @@ function gotoHelp(h) {
         <n-icon :component="SearchOutline" />
       </template>
       <template #suffix>
-        <Kbd v-if="!q" soft class="search-kbd">{{ shortcutLabel }}</Kbd>
+        <ShortcutKeys v-if="!q" id="nav.palette" joined soft class="search-kbd" />
       </template>
     </n-input>
 

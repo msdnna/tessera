@@ -150,5 +150,59 @@
   "notFound": {
     "title": "Page not found",
     "text": "There is no such page, or it has been moved."
+  },
+  "keys": {
+    "then": "then",
+    "groups": {
+      "nav": "Navigation",
+      "board": "Board",
+      "card": "Selected card",
+      "create": "Quick create",
+      "palette": "⌘K palette",
+      "view": "View"
+    },
+    "nav": {
+      "palette": "Search and commands",
+      "goBoard": "Go to board",
+      "goInbox": "Inbox",
+      "goMine": "My tasks",
+      "sidebar": "Hide / show sidebar",
+      "shortcuts": "This cheat sheet"
+    },
+    "board": {
+      "addTask": "Task in the hovered column",
+      "quick": "Quick actions",
+      "filter": "Filter",
+      "group": "Grouping",
+      "layout": "View: kanban / list / timeline",
+      "select": "Select a card"
+    },
+    "card": {
+      "open": "Open",
+      "complete": "Complete",
+      "status": "Status",
+      "assignees": "Assignees",
+      "priority": "Priority",
+      "due": "Due date",
+      "tags": "Tags",
+      "subtask": "Subtask",
+      "move": "Move to column"
+    },
+    "create": {
+      "task": "Task in “To do”",
+      "reminder": "Reminder",
+      "note": "Note"
+    },
+    "palette": {
+      "select": "Select a result",
+      "actions": "Result actions",
+      "open": "Open",
+      "prefix": "Only tasks / people / commands"
+    },
+    "view": {
+      "theme": "Toggle theme",
+      "cardSize": "Card size",
+      "collapse": "Collapse column"
+    }
   }
 }
