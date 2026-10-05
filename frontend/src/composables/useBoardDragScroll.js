@@ -4,8 +4,9 @@ import { ref, onBeforeUnmount } from 'vue'
 //
 // Sortable's built-in auto-scroll doesn't reliably scroll a nested horizontal
 // container on touch. Rather than chase flaky move events, we read the position of
-// Sortable's own drag image (`.sortable-fallback` on touch, `.sortable-drag` on
-// desktop) each animation frame, with a dragover fallback for desktop.
+// Sortable's own drag clone (`.sortable-fallback` — cards drag in fallback mode
+// everywhere since v2, #2954, so the clone can be styled) each animation frame,
+// with a dragover fallback for native drags (column reordering).
 //
 // `dragging` is also the board's "hold everything" flag: it mutes realtime-driven
 // reloads and freezes card windowing, so SortableJS sees a stable DOM.
@@ -38,8 +39,8 @@ export function useBoardDragScroll({ scrollEl, colWidth, gap, edge = 72, stepCoo
   }
 
   function dragX() {
-    // Touch: the moving clone follows the finger. (On desktop `.sortable-drag` is
-    // the static original, so there we fall back to the dragover X instead.)
+    // Card drags: the moving clone follows the pointer. Column drags are native
+    // (no clone), so there we fall back to the dragover X instead.
     const clone = document.querySelector('.sortable-fallback')
     if (clone) {
       const r = clone.getBoundingClientRect()
@@ -98,6 +99,11 @@ export function useBoardDragScroll({ scrollEl, colWidth, gap, edge = 72, stepCoo
       el.style.scrollBehavior = 'auto'
     }
     window.addEventListener('dragover', onDragOver, { passive: true })
+    // Fallback-mode drags are plain pointer moves, so the press-and-move that
+    // starts one also sweeps a text selection across the cards it passes. Drop
+    // it and keep new ones from starting until the card lands.
+    window.getSelection?.()?.removeAllRanges()
+    document.body.style.userSelect = 'none'
     if (!raf) raf = requestAnimationFrame(tick)
   }
 
@@ -119,6 +125,7 @@ export function useBoardDragScroll({ scrollEl, colWidth, gap, edge = 72, stepCoo
       el.style.scrollBehavior = ''
     }
     window.removeEventListener('dragover', onDragOver)
+    document.body.style.userSelect = ''
     if (raf) {
       cancelAnimationFrame(raf)
       raf = null

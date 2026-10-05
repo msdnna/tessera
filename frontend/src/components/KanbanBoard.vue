@@ -34,6 +34,8 @@ import {
   TrashOutline,
   AddOutline,
   ChevronForwardOutline,
+  ChevronDownOutline,
+  FunnelOutline,
   ChevronBackOutline,
   SettingsOutline,
   RibbonOutline,
@@ -730,6 +732,8 @@ const colWidth = computed(() => {
   return cardMin.value
 })
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
+// The grouping control lists the same choices as the add menu's «Группировка».
+const groupOptions = computed(() => addOptions.value.find((o) => o.key === 'group')?.children || [])
 // A column with no colour of its own (status column left on default, «Без тегов»)
 // is tinted with the neutral grey of the v2 lanes (#2954).
 const NEUTRAL_COLUMN = '#9aa0aa'
@@ -1516,6 +1520,7 @@ async function restoreFromArchive(taskId) {
           :class="{ 'has-clear': hasClearableFacets }"
           data-tour="board-composer"
         >
+          <n-icon class="composer-funnel" :component="FunnelOutline" :size="14" />
           <!-- Scope chips: archive = amber tint, sprint = accent tint (no border). -->
           <span
             v-if="archivedMode"
@@ -1555,17 +1560,6 @@ async function restoreFromArchive(taskId) {
           >
             <n-icon class="facet-ic" :component="GitBranchOutline" :size="14" />
           </button>
-
-          <!-- Grouping chip (toggles status/tag grouping). -->
-          <span
-            v-if="groupChip"
-            class="facet group"
-            :title="t('board.composer.groupToggle')"
-            @click="onChipClick(groupChip)"
-          >
-            <n-icon class="facet-ic" :component="groupChip.icon" :size="13" />
-            {{ groupChip.text }}
-          </span>
 
           <!-- Sort chips: click toggles direction, drag reorders primary/secondary. -->
           <draggable
@@ -1639,6 +1633,29 @@ async function restoreFromArchive(taskId) {
             ×
           </button>
         </div>
+
+        <!-- Grouping: its own control next to the composer (v2, #2954) — a
+             setting of the board, not one more filter. Opens the same grouping
+             options as the composer's add menu. -->
+        <n-dropdown
+          v-if="groupChip"
+          trigger="click"
+          placement="bottom-start"
+          :options="groupOptions"
+          @select="onAddFacet"
+        >
+          <button
+            type="button"
+            class="group-ctl"
+            data-testid="group-control"
+            data-tour="board-grouping"
+          >
+            <n-icon class="gc-ic" :component="groupChip.icon" :size="14" />
+            <span v-if="!isMobile" class="gc-lbl">{{ t('board.facet.menu.group') }}</span>
+            <span class="gc-val">{{ groupChip.text }}</span>
+            <n-icon class="gc-ic" :component="ChevronDownOutline" :size="12" />
+          </button>
+        </n-dropdown>
 
         <BoardMembers v-if="!isMobile" class="subbar-people" />
 
@@ -1888,6 +1905,8 @@ async function restoreFromArchive(taskId) {
                 item-key="id"
                 class="drop t-hoverscroll"
                 ghost-class="ghost"
+                :force-fallback="true"
+                :fallback-on-body="true"
                 filter=".add-sub, .sub-add-input"
                 :prevent-on-filter="false"
                 :disabled="archivedMode"
@@ -2096,6 +2115,7 @@ async function restoreFromArchive(taskId) {
   position: relative;
   flex: 1 1 auto;
   min-width: 0;
+  max-width: 560px;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
@@ -2120,8 +2140,8 @@ async function restoreFromArchive(taskId) {
   font-size: 12.5px;
   height: 24px;
   box-sizing: border-box;
-  padding: 0 4px 0 8px;
-  border-radius: calc(var(--t-r-ctl) - 2px);
+  padding: 0 4px 0 9px;
+  border-radius: var(--t-r-pill);
   background: linear-gradient(
     to top right,
     color-mix(in srgb, var(--t-primary) 14%, var(--t-ctl)),
@@ -2130,13 +2150,39 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text1);
   white-space: nowrap;
 }
-/* The grouping chip is a setting, not a filter: neutral pill. */
-.facet.group {
-  background: var(--t-pill);
-  color: var(--t-text1);
-  font-weight: 600;
+.composer-funnel {
+  flex: none;
+  color: var(--t-text3);
+}
+/* Grouping control beside the composer: «Группировка <value> ⌄» on the control
+   well — a board setting, so neutral, not an accent chip. */
+.group-ctl {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
-  padding-right: 9px;
+}
+.group-ctl:hover {
+  background: var(--t-hover);
+}
+.gc-ic {
+  color: var(--t-text3);
+}
+.gc-lbl {
+  color: var(--t-text3);
+}
+.gc-val {
+  font-weight: 600;
+  color: var(--t-text1);
 }
 /* Sprint scope chip: the accent capsule like any filter. */
 .facet-accent .facet-ic {
@@ -2232,10 +2278,6 @@ async function restoreFromArchive(taskId) {
   flex: none;
   opacity: 0.8;
 }
-.facet.group .facet-ic {
-  color: var(--t-text3);
-  opacity: 1;
-}
 /* Sort chips share the composer gap so a run of them reads as one group. */
 .sort-chips {
   display: inline-flex;
@@ -2311,7 +2353,7 @@ async function restoreFromArchive(taskId) {
   background: none;
   cursor: pointer;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: 7px;
   color: var(--t-text1);
   font-size: 13px;
 }
@@ -2611,6 +2653,23 @@ async function restoreFromArchive(taskId) {
   /* overflow-y:auto forces overflow-x to clip; pad so a focused subtask/task
      input's left border ring isn't cut off. */
   padding: 0 3px;
+}
+/* The card under the pointer (v2, #2954). Sortable runs in fallback mode so the
+   moving copy is a real DOM clone (the browser's native drag image cannot be
+   styled): lifted on the drag shadow and tilted. Sortable drives the clone's own
+   transform and opacity inline, so the tilt goes on the card inside it. The
+   class is Sortable's own: useBoardDragScroll follows that clone to auto-scroll
+   the board at its edges. */
+.sortable-fallback {
+  opacity: 1 !important;
+}
+.sortable-fallback :deep(.card) {
+  --card-fill: var(--t-card-hover);
+  box-shadow: var(--t-sh-drag);
+  transform: translateX(10px) rotate(2.5deg);
+}
+.sortable-fallback :deep(.card-actions) {
+  display: none;
 }
 /* Where the dragged card will land: a recessed slot in the drop colour (v2,
    #2954) rather than a faded copy of the card. */

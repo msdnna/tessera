@@ -99,7 +99,7 @@ describe('theme store', () => {
     s.setThemeMode('light')
     const light = s.themeOverrides
     expect(light.common.primaryColor).toBe(s.activeTheme.primary)
-    expect(light.common.borderRadius).toBe('8px')
+    expect(light.common.borderRadius).toBe('10px')
     // Both themes are built from their own palette (v2, #2951): overlays sit
     // on the `pop` level, text follows the palette.
     expect(light.Modal.color).toBe(LIGHT.pop)

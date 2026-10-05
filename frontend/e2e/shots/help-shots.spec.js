@@ -170,10 +170,11 @@ for (const scheme of ['light', 'dark']) {
 
     test('доска, сгруппированная по тегам', async ({ page }) => {
       await openBoard(page)
-      // The grouping chip toggles status ⇄ tag columns — the feature the board
+      // The grouping control switches status ⇄ tag columns — the feature the board
       // is built around, and the one screenshot that has to be driven, not just
       // navigated to.
-      await page.locator('.facet.group').click()
+      await page.getByTestId('group-control').click()
+      await page.getByTestId('facet-group-tag').click()
       await expect(page.getByTestId('column').first()).toBeVisible()
       await shoot(page, scheme, 'board-tags')
     })

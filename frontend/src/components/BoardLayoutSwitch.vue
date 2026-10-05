@@ -85,7 +85,7 @@ const overflow = computed(() =>
   height: 28px;
   padding: 0 10px;
   border: none;
-  border-radius: calc(var(--t-r-ctl) - 2px);
+  border-radius: calc(var(--t-r-ctl) - 3px);
   background: transparent;
   color: var(--t-text2);
   font: inherit;

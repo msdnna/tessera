@@ -12,7 +12,7 @@
   --t-text3: #767682;
   --t-placeholder: #a9a9b3;
   /* v2 radii (#2951) — theme-independent, so they live here, not in tokens.js. */
-  --t-r-ctl: 8px;
+  --t-r-ctl: 10px;
   --t-r-pill: 999px;
   --t-r-card: 14px;
   --t-r-col: 18px;

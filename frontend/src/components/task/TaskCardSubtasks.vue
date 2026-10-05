@@ -128,6 +128,8 @@ async function toggleSubDone(s) {
       :animation="150"
       :delay="300"
       :touch-start-threshold="6"
+      :force-fallback="true"
+      :fallback-on-body="true"
       :disabled="narrowed"
       @click.stop
       @change="onSubChange"
@@ -223,6 +225,17 @@ async function toggleSubDone(s) {
   padding: 0;
   background: var(--t-drop);
   box-shadow: var(--t-sh-drop);
+}
+/* A dragged subtask (Sortable's fallback clone, see KanbanBoard): lifted onto
+   the popover level with the drag shadow and a slight tilt. */
+.sortable-fallback {
+  opacity: 1 !important;
+}
+.sortable-fallback > * {
+  background: var(--t-pop);
+  border-radius: 7px;
+  box-shadow: var(--t-sh-drag);
+  transform: rotate(1.5deg);
 }
 /* First-level subtasks cascade directly below the parent card (no indent).
    Expanded cards attach with no gap; collapsed text rows get a little spacing. */

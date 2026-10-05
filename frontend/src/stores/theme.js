@@ -140,7 +140,7 @@ export const useThemeStore = defineStore('theme', () => {
       primaryColorHover: p.hover,
       primaryColorPressed: p.pressed,
       primaryColorSuppl: p.suppl,
-      borderRadius: '8px',
+      borderRadius: '10px',
     }
     const buttonPrimaryText = {
       textColorPrimary: onPrimary,

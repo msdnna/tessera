@@ -854,7 +854,7 @@ async function toggleGlAssignee(m) {
   min-height: 26px;
   padding: 3px 6px;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   overflow: hidden;
   opacity: 1;
 }
@@ -1042,8 +1042,8 @@ async function toggleGlAssignee(m) {
    shrink so a long scoped tag truncates instead of overflowing the card. */
 .tname {
   font-size: 12px;
-  padding: 1px 7px;
-  border-radius: 6px;
+  padding: 1px 8px;
+  border-radius: var(--t-r-pill);
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
@@ -1230,7 +1230,7 @@ async function toggleGlAssignee(m) {
   align-items: center;
   gap: 8px;
   padding: 5px 6px;
-  border-radius: 6px;
+  border-radius: 7px;
   cursor: pointer;
   font-size: 13px;
 }

@@ -304,8 +304,8 @@ async function removeCol() {
   min-width: 0;
   font-size: 12.5px;
   font-weight: 600;
-  padding: 1px 8px;
-  border-radius: 6px;
+  padding: 1px 9px;
+  border-radius: var(--t-r-pill);
 }
 .count,
 .col-est {

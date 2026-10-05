@@ -40,8 +40,8 @@
   box-sizing: border-box;
 }
 .tds-TagPill > .tpill:not(.tt) {
-  padding: 1px 7px;
-  border-radius: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
 }
 .tds-slot-box {
   display: inline-flex;
