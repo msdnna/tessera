@@ -39,7 +39,7 @@ const onHome = computed(() => route.path === '/')
 </script>
 
 <template>
-  <div class="topbar" :class="{ mobile }">
+  <div class="topbar" :class="{ mobile, 'page-owned': pageOwnsHeader && !mobile }">
     <n-button v-if="mobile" class="menu-btn" quaternary circle @click="$emit('menu')">
       <n-icon :component="MenuOutline" />
     </n-button>
@@ -114,6 +114,16 @@ const onHome = computed(() => route.path === '/')
   gap: 16px;
   padding: 0 16px;
   position: relative;
+}
+/* An open document fills both sides with its own controls (#2727): the sides
+   take what their content needs and the search gives way in the middle, rather
+   than sliding over the «back» button. */
+.topbar.page-owned {
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+}
+.topbar.page-owned .search-wrap {
+  max-width: 420px;
+  margin: 0 auto;
 }
 /* A phone has no room for three tracks: back to a row where the search takes
    whatever the hamburger and the board menu leave. */
