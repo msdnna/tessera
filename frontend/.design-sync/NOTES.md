@@ -75,6 +75,17 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
 - Avatar images: members passed with `user_id` make UserAvatar request
   `/api/users/<id>/avatar` (404 outside the app) and fall back to initials — benign.
 
+## Claude Design token check (#2951)
+
+- Claude Design lints `_ds_bundle.css` custom properties. It flagged two (fixed in
+  `src/styles/main.css`): `--t-error-grad` as a gradient of bare literals (minified
+  to plain hex stops it can't classify), and `--bgrad`, a helper colour property
+  declared on a global selector (`.n-button--ghost`). Build theme gradients on a
+  colour token (`var(--t-error)`, `var(--t-primary)`) and don't add helper colour
+  properties on global selectors — spell the value out. A `/* @kind color */`
+  annotation would not help: the DS build minifies CSS and strips comments.
+- Scoped helpers inside SFCs (`--card-fill`, `--sub-bg`, `--ghost`…) were not flagged.
+
 ## Known render warns
 
 - `[FONT_MISSING] "JetBrains Mono"` — it is the 3rd entry of a monospace stack
@@ -84,9 +95,17 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   revisit only if a v2 design picks a brand mono font.
 - `[RENDER_THIN] Icon / TesseraIcon` ("paint nothing" heuristic) — glyph-only
   previews; the sheets show every glyph.
+- `[RENDER_THIN] Modal` ("rendered height is 0px") — the NModal teleports to `body`
+  with fixed positioning, so the card root measures 0px; the screenshot shows the
+  whole dialog (checked 2026-10-05, #2951).
 
 ## Re-sync risks
 
+- The project also holds user-authored files the sync does not own:
+  `templates/board-v2/**` (v2 redesign mock-ups, #2951), `shots/**`, `uploads/**`.
+  The standard writes globs never touch them and anchored deletes come only from
+  `upload.deletePaths`; never add these paths to a plan's `deletes`, and on an
+  un-anchored re-sync leave them out of the "files this build doesn't produce" review.
 - `types/index.d.ts` is hand-maintained: a prop added/renamed in a Vue SFC is
   invisible to the design agent until mirrored there.
 - `island.css` duplicates call-site metrics (TagPill chip, avatar) from
