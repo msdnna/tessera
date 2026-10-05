@@ -127,6 +127,9 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
 - In this WSL (mirrored networking) loopback HTTP moves ~330 KB/s regardless of
   server (node or python) and proxy settings: the 4 MB `_ds_bundle.js` takes ~12 s,
   so a preview's `load` sits right under `package-validate`'s 15 s `page.goto`
-  timeout. Under load one random card (Modal, Checkbox) occasionally fails with
-  `[RENDER] page.goto: Timeout 15000ms exceeded` — re-run validate; it is not a
-  render failure. Keep the bundle small (mermaid stub, minify) for this reason too.
+  timeout. One random card fails with `[RENDER] page.goto: Timeout 15000ms exceeded`
+  in most validate runs (2026-10-06: TesseraProvider, ColumnHeader, Card in three
+  consecutive runs) — a different card each time, so it is not a render failure.
+  The driver's verdict then reads `validate: false`; re-run `package-validate.mjs`
+  standalone on the same build until it exits 0 (1–3 tries), then capture/upload.
+  Keep the bundle small (mermaid stub, minify) for this reason too.
