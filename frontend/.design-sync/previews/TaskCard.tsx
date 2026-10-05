@@ -1,9 +1,9 @@
-import { TaskCard, ColumnHeader, TesseraProvider, hueGrad } from '@tessera/design-system'
+import { TaskCard, ColumnHeader, TesseraProvider } from '@tessera/design-system'
 
 const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10)
 
 const columns = [
-  { id: 'todo', name: 'К работе', color: '#9aa0aa' },
+  { id: 'todo', name: 'К работе', color: '#0eb0a9' },
   { id: 'doing', name: 'В процессе', color: '#2f80ed' },
   { id: 'done', name: 'Готово', color: '#18a058' },
 ]
@@ -140,20 +140,19 @@ export const Completed = () => (
 )
 
 // The current board, composed the way KanbanBoard lays it out (see conventions):
-// 280px columns, 12px gap, 14px radius, 3px gradient top bar in the column colour,
-// a faint same-hue wash and a 1px tinted border. Cards carry their own 8px
-// bottom margin; the header gets the board's 8px gap below it.
+// v2 «coloured lanes» — 256px columns, 12px gap, 18px radius, the column colour
+// washed over --t-col (15% dark / 11% light via --t-col-tone), no border; the
+// header and cards are spaced by the lane's 8px gap.
 const colStyle = (c) => ({
-  width: 280,
-  flex: '0 0 280px',
+  width: 256,
+  flex: '0 0 256px',
   boxSizing: 'border-box',
-  borderRadius: 14,
-  padding: 10,
-  border: `1px solid color-mix(in srgb, ${c.color} 12%, var(--t-border))`,
-  borderTop: '3px solid transparent',
-  background: `linear-gradient(color-mix(in srgb, ${c.color} 6%, var(--t-surface-alt)), color-mix(in srgb, ${c.color} 6%, var(--t-surface-alt))) padding-box, ${hueGrad(c.color)} border-box`,
+  borderRadius: 18,
+  padding: 8,
+  background: `color-mix(in srgb, ${c.color} var(--t-col-tone), var(--t-col))`,
   display: 'flex',
   flexDirection: 'column',
+  gap: 8,
 })
 const byCol = (id) => Object.values(tasks).filter((t) => t.column_id === id)
 
@@ -176,11 +175,12 @@ const BoardView = () => (
           first={i === 0}
           isDone={c.id === 'done'}
           editable
-          style={{ marginBottom: 8, padding: '0 2px' }}
         />
-        {byCol(c.id).map((t) => (
-          <TaskCard key={t.id} task={t} subtasks={t.id === 'a1' ? subtasks : []} {...board} />
-        ))}
+        <div>
+          {byCol(c.id).map((t) => (
+            <TaskCard key={t.id} task={t} subtasks={t.id === 'a1' ? subtasks : []} {...board} />
+          ))}
+        </div>
       </div>
     ))}
   </div>

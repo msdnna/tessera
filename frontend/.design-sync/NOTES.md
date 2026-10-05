@@ -110,8 +110,15 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   invisible to the design agent until mirrored there.
 - `island.css` duplicates call-site metrics (TagPill chip, avatar) from
   `TaskCardPills.vue`; if the card's pill/avatar CSS changes, update it.
-- The kanban column recipe in `conventions.md` and the `Board` preview copies
-  KanbanBoard.vue `.col` CSS (280px, 14px radius, 3px gradient top, 6%/12% tints).
+- The kanban column recipe in `conventions.md` and the `Board` / `ColumnHeader`
+  previews copy KanbanBoard.vue `.col` CSS — v2 lanes (#2954): 256px, 8px padding,
+  18px radius, 8px gap, `color-mix(<col> var(--t-col-tone), var(--t-col))`, no
+  border. The status palette (teal/blue/orange/green) mirrors the backend's
+  `defaultColumns` (handlers/boards.go).
+- The v2 surface/shadow tokens (`--t-col`, `--t-card`, `--t-pop`, `--t-sh-*`…) are
+  published at runtime by `themeVars()` (styles/tokens.js), not by a stylesheet:
+  they are in `_ds_bundle.js`, not `_ds_bundle.css`. Validate conventions names
+  against the bundle text for them.
 - The mermaid stub relies on RichContent wrapping `initialize()` in try/catch.
 - Converter deps are network-installed from npm (react@19 latest at sync time).
 
