@@ -213,7 +213,7 @@ async function save() {
 }
 .cmd-err {
   font-size: 11px;
-  color: var(--t-error, #e5484d);
+  color: var(--t-error);
 }
 .cmd-desc {
   flex: 1 1 auto;

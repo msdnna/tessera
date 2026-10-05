@@ -40,6 +40,7 @@ Use the variables, never raw hex, for neutrals:
 | `--t-text1` / `--t-text2` / `--t-text3` | primary / body / muted text       |
 | `--t-placeholder`                       | placeholders                      |
 | `--t-primary` / `--t-on-primary`        | accent / text on accent           |
+| `--t-error` / `--t-error-grad`          | error text / error fill gradient  |
 
 **Accent gradient (the signature of the language).** Every non-neutral element —
 primary buttons, chips, tags, avatars, priority marks, accent text/icons, active

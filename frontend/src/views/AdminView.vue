@@ -460,7 +460,7 @@ onMounted(() => {
 }
 .oauth-warn {
   font-size: 12px;
-  color: var(--t-danger, #e5484d);
+  color: var(--t-error);
 }
 .oauth-mono :deep(textarea) {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

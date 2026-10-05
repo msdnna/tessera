@@ -958,7 +958,7 @@ async function onCommentCheck(c, i) {
   color: var(--t-text2);
 }
 .cmd-chip .err {
-  color: var(--t-error, #e5484d);
+  color: var(--t-error);
 }
 .cmd-note {
   font-style: italic;
