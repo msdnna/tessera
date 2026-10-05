@@ -133,6 +133,16 @@ export const Compact = () => (
   </Lane>
 )
 
+// The board's keyboard selection (arrow keys): accent wash + an inner ring.
+export const Selected = () => (
+  <Lane>
+    <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <TaskCard task={tasks.crash} selected {...board} />
+      <TaskCard task={tasks.perf} {...board} />
+    </div>
+  </Lane>
+)
+
 export const Completed = () => (
   <Lane>
     <TaskCard task={tasks.done} {...board} />

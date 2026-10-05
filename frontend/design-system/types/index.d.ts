@@ -267,6 +267,10 @@ export interface TaskCardProps extends IslandHostProps {
   nested?: boolean
   /** Archive view: display-only with a Restore action. */
   readonly?: boolean
+  /** Picked from the keyboard (the board's arrow-key selection): an accent wash and
+   * a 2px accent ring inside the edge. The board shows it only while the keyboard
+   * is in use — never set it for a pointer click or on a phone. */
+  selected?: boolean
   /** Board tags (TagPill shape) resolved from task.tag_ids. */
   tags?: { id: string; name: string; color?: string }[]
   /** Workspace members resolved from task.assignee_ids / created_by. */

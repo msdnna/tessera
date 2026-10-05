@@ -20,6 +20,7 @@ export const TaskCard = vueIsland(TaskCardVue, {
     subtasksExpanded: !!p.subtasksExpanded,
     nested: !!p.nested,
     readonly: !!p.readonly,
+    selected: !!p.selected,
     parentColumnId: p.parentColumnId ?? null,
   }),
 })
