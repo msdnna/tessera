@@ -1,15 +1,17 @@
 <script setup>
-// «Связи» tab of the task modal: the task's relations plus the cross-board picker
-// that creates them. The list stays owned by the modal (its count is on the tab
+// «Связи» section of the task modal (v2, #2958 — in the properties panel): the
+// task's relations plus the cross-board picker that creates them, folded behind
+// «+ Связать» so the narrow panel isn't a permanent form. The list stays owned by the modal (its count is on the tab
 // label), so edits are published back through `update:relations`. Navigating to a
 // related task closes the modal, which only the modal can do — hence `open-related`.
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NInput, NButton, NSelect, NPopover, NPopconfirm, useMessage } from 'naive-ui'
-import { GitMergeOutline, CloseOutline } from '@vicons/ionicons5'
+import { CloseOutline, AddOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi, workspaces as wsApi } from '@/api'
 import { sourceMeta, isExternalSource } from '@/utils/sources'
-import EmptyState from '../EmptyState.vue'
+import { columnStatusName } from '@/utils/columnStatus'
+import TesseraIcon from '../TesseraIcon.vue'
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -23,6 +25,16 @@ const { t } = useI18n()
 
 const relNumber = ref(null)
 const relKind = ref('relates')
+const adding = ref(false)
+// The linked task's status glyph, from the column the relations list carries.
+function relStatus(r) {
+  return columnStatusName({
+    isDone: !!r.related_completed_at,
+    first: !!r.related_column_first,
+    name: r.related_column_name,
+    nameKey: r.related_column_name_key,
+  })
+}
 // Kind labels are resolved per render (a plain array would freeze them at the
 // language the tab first mounted in — pitfall 1 of #2799).
 const REL_KINDS = ['relates', 'blocks', 'blocked_by', 'duplicates']
@@ -97,6 +109,7 @@ async function addRelation() {
     await tasksApi.addRelation(props.taskId, n, relKind.value)
     relNumber.value = null
     relPickerOpen.value = false
+    adding.value = false
     const r = await tasksApi.relations(props.taskId)
     emit('update:relations', r.data || [])
     emit('changed')
@@ -121,44 +134,45 @@ async function removeRelation(id) {
   <div class="relations">
     <div v-for="r in relations" :key="r.id" class="relrow">
       <span class="rel-kind">{{ relKindLabel(r.kind) }}</span>
-      <span v-if="relSource(r)" class="rel-src" :title="relSource(r).label">
-        <n-icon v-if="relSource(r).icon" :component="relSource(r).icon" :size="12" />
-        {{ relSource(r).label }}
-      </span>
       <button
         class="rel-link"
         :class="{ done: r.related_completed_at }"
         @click="emit('open-related', r)"
       >
+        <TesseraIcon
+          :name="relStatus(r)"
+          :size="14"
+          class="rel-st"
+          :style="{ color: r.related_column_color || 'var(--t-text3)' }"
+        />
         <span class="rel-num">#{{ r.related_number }}</span>
         <span class="rel-title">{{ r.related_title }}</span>
       </button>
+      <span v-if="relSource(r)" class="rel-src" :title="relSource(r).label">
+        <n-icon v-if="relSource(r).icon" :component="relSource(r).icon" :size="12" />
+      </span>
       <n-popconfirm
         :positive-button-props="{ type: 'error' }"
         :positive-text="t('common.action.delete')"
         @positive-click="removeRelation(r.id)"
       >
         <template #trigger>
-          <button class="c-act" :title="t('task.relations.unlink')">
+          <button class="c-act rel-x" :title="t('task.relations.unlink')">
             <n-icon :component="CloseOutline" />
           </button>
         </template>
         {{ relDeleteHint(r) }}
       </n-popconfirm>
     </div>
-    <EmptyState
-      v-if="!relations.length"
-      size="small"
-      :icon="GitMergeOutline"
-      :text="t('task.relations.empty')"
-    />
-    <div class="rel-add">
-      <n-select
-        v-model:value="relKind"
-        :options="relKindOptions"
-        size="small"
-        style="width: 150px"
-      />
+    <div v-if="!relations.length && !adding" class="rel-empty">
+      {{ t('task.relations.empty') }}
+    </div>
+    <button v-if="!adding" type="button" class="rel-open" @click="adding = true">
+      <n-icon :component="AddOutline" :size="14" />
+      {{ t('task.relations.link') }}
+    </button>
+    <div v-else class="rel-add">
+      <n-select v-model:value="relKind" :options="relKindOptions" size="small" />
       <n-popover
         trigger="manual"
         :show="relPickerOpen"
@@ -171,7 +185,6 @@ async function removeRelation(id) {
             v-model:value="relNumber"
             size="small"
             :placeholder="t('task.relations.searchPlaceholder')"
-            style="width: 240px"
             @focus="openRelPicker"
             @keyup.enter="addRelation"
           >
@@ -195,9 +208,14 @@ async function removeRelation(id) {
           </div>
         </div>
       </n-popover>
-      <n-button size="small" class="rel-go" @click="addRelation">{{
-        t('task.relations.link')
-      }}</n-button>
+      <div class="rel-add-acts">
+        <n-button size="small" quaternary @click="adding = false">{{
+          t('common.action.cancel')
+        }}</n-button>
+        <n-button size="small" type="primary" @click="addRelation">{{
+          t('task.relations.link')
+        }}</n-button>
+      </div>
     </div>
   </div>
 </template>
@@ -208,34 +226,34 @@ async function removeRelation(id) {
 .relations {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 .relrow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 4px 0 8px;
+  border-radius: 9px;
+}
+.relrow:hover {
+  background: var(--t-hover);
 }
 .rel-kind {
+  flex: none;
+  width: 64px;
   font-size: 12px;
   color: var(--t-text3);
-  width: 96px;
-  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-/* Source badge: deliberately flat neutral grey — it marks provenance, not an accent,
-   so it must not compete with the accent-gradient chips elsewhere in the modal. */
+/* Source badge: flat neutral — it marks provenance, not an accent. */
 .rel-src {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
   flex: none;
-  padding: 0 6px;
-  height: 18px;
-  border: 1px solid var(--t-border);
-  border-radius: 9px;
-  background: var(--t-surface-alt);
   color: var(--t-text3);
-  font-size: 11px;
-  line-height: 1;
 }
 .rel-link {
   display: flex;
@@ -247,17 +265,17 @@ async function removeRelation(id) {
   background: none;
   cursor: pointer;
   text-align: left;
-  padding: 4px 6px;
-  border-radius: 6px;
+  padding: 0;
   color: var(--t-text1);
+  font: inherit;
   font-size: 13px;
 }
-.rel-link:hover {
-  background: var(--t-hover);
+.rel-st {
+  flex: none;
 }
 .rel-link.done .rel-title {
   text-decoration: line-through;
-  opacity: 0.6;
+  color: var(--t-text3);
 }
 .rel-num {
   color: var(--t-text3);
@@ -269,14 +287,48 @@ async function removeRelation(id) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.rel-x {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.relrow:hover .rel-x,
+.rel-x:focus-visible {
+  opacity: 1;
+}
+.rel-empty {
+  padding: 4px 8px;
+  font-size: 12.5px;
+  color: var(--t-text3);
+}
+.rel-open {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.rel-open:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
 .rel-add {
   display: flex;
-  gap: 8px;
-  align-items: center;
-  margin-top: 8px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 4px 0;
 }
-.rel-go {
-  margin-left: auto;
+.rel-add-acts {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
 }
 .rel-picker {
   max-height: 300px;

@@ -20,7 +20,7 @@
 //   eager    fires on its own key even though longer sequences start with it
 //   prio     wins over other entries completed by the same key (default 0)
 
-export const GROUPS = ['nav', 'board', 'card', 'create', 'palette', 'view']
+export const GROUPS = ['nav', 'board', 'card', 'task', 'create', 'palette', 'view']
 
 export const CATALOG = [
   // ── navigation ──
@@ -68,6 +68,21 @@ export const CATALOG = [
   { id: 'card.move', group: 'card', display: [['mod', '←/→']] },
   { id: 'card.moveLeft', keys: 'mod+arrowleft' },
   { id: 'card.moveRight', keys: 'mod+arrowright' },
+
+  // ── the open task (#2958): the modal's own keys. `modal` because the task
+  // modal is a Naive dialog; the field keys mirror the selected card's, so the
+  // cheat sheet lists only what is new here.
+  { id: 'task.next', keys: 'j', group: 'task', modal: true },
+  { id: 'task.prev', keys: 'k', group: 'task', modal: true },
+  { id: 'task.close', group: 'task', display: [['escape']] },
+  { id: 'task.complete', keys: 'e', modal: true },
+  { id: 'task.status', keys: 's', modal: true },
+  { id: 'task.assignees', keys: 'a', modal: true },
+  { id: 'task.priority', keys: 'p digit', modal: true },
+  { id: 'task.priorityPick', keys: 'p', modal: true },
+  { id: 'task.due', keys: 'd', modal: true },
+  { id: 'task.tags', keys: 'l', modal: true },
+  { id: 'task.subtask', keys: 'shift+n', modal: true },
 
   // ── quick create ──
   { id: 'create.task', keys: 'n t', group: 'create', command: 'AddOutline' },

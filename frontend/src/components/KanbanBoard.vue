@@ -1423,6 +1423,38 @@ function onCardOpen(dcol, id) {
   openTask(id)
 }
 
+// ── J/K in the open task (v2, #2958): the neighbours in the order on screen —
+// the kanban read column by column (collapsed ones skipped, a task in several
+// tag columns counted once), any other view in its own list order. ──
+const navOrder = computed(() => {
+  if (!showTaskModal.value) return []
+  if (layout.value !== 'board') return filteredTasks.value.map((x) => x.id)
+  const seen = new Set()
+  const out = []
+  for (const c of navCols()) {
+    if (c.collapsed) continue
+    for (const id of c.ids) if (!seen.has(id)) seen.add(id) && out.push(id)
+  }
+  return out
+})
+const taskNav = computed(() => {
+  const i = navOrder.value.indexOf(selectedTaskId.value)
+  return i < 0 ? null : { index: i, total: navOrder.value.length }
+})
+function navigateTask(dir) {
+  const order = navOrder.value
+  const id = order[order.indexOf(selectedTaskId.value) + dir]
+  if (!id) return
+  selectedTaskId.value = id
+  // The selection follows, so closing the modal leaves the arrows on this card.
+  if (layout.value === 'board') {
+    const col = navCols().find((c) => c.ids.includes(id))
+    if (col) focusedCard.value = { colKey: col.key, taskId: id }
+  }
+  // Replace, not push: walking through twenty tasks shouldn't take twenty Backs.
+  router.replace({ query: { ...route.query, task: numberOf(id) ?? id } })
+}
+
 async function completeFocused() {
   const task = focusedTask()
   if (!task) return
@@ -2404,8 +2436,10 @@ async function restoreFromArchive(taskId) {
     :task-id="selectedTaskId"
     :board-top-tasks="allTasks"
     :readonly="archivedMode"
+    :nav="taskNav"
     @update:show="(v) => v || closeTask()"
     @changed="onChanged"
+    @navigate="navigateTask"
     @open="openTask"
     @restore="restoreFromArchive"
   />

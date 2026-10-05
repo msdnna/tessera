@@ -159,7 +159,8 @@
       "card": "Selected card",
       "create": "Quick create",
       "palette": "Command palette",
-      "view": "View"
+      "view": "View",
+      "task": "Open task"
     },
     "nav": {
       "palette": "Search and commands",
@@ -216,7 +217,12 @@
     "search": "Find an action or a key",
     "nothing": "Nothing found",
     "footBefore": "Keys show up in tooltips and menu items. This window opens with",
-    "footAfter": "from anywhere."
+    "footAfter": "from anywhere.",
+    "task": {
+      "next": "Next task",
+      "prev": "Previous task",
+      "close": "Close the task"
+    }
   },
   "palette": {
     "placeholder": "Task, board, person or command…",

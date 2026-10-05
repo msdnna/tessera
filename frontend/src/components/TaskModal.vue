@@ -2,55 +2,24 @@
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import {
-  NModal,
-  NCard,
-  NInput,
-  NButton,
-  NSpace,
-  NPopover,
-  NIcon,
-  NSpin,
-  NTabs,
-  NTabPane,
-  NBadge,
-  NPopconfirm,
-  useMessage,
-} from 'naive-ui'
+import { NModal, NInput, NButton, NPopover, NIcon, NSpin, NPopconfirm, useMessage } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
-  PeopleOutline,
-  PersonOutline,
-  PricetagOutline,
-  CheckmarkDoneOutline,
   CheckmarkOutline,
   PlayForwardOutline,
-  CheckmarkCircle,
-  EllipseOutline,
-  ArchiveOutline,
-  ArrowUndoOutline,
-  GitMergeOutline,
-  LayersOutline,
-  LogoGitlab,
-  RepeatOutline,
-  AttachOutline,
-  TrashOutline,
-  TimerOutline,
-  RibbonOutline,
-  ChatbubbleEllipsesOutline,
-  GitBranchOutline,
-  TimeOutline,
-  ChatbubbleEllipses,
-  GitBranch,
-  GitMerge,
-  Attach,
-  Time,
-  ShareSocialOutline,
+  ChevronDownOutline,
   ChevronForwardOutline,
   ChevronBackOutline,
-  DocumentTextOutline,
-  DocumentText,
+  ArchiveOutline,
+  ArrowUndoOutline,
+  LayersOutline,
+  LogoGitlab,
+  OpenOutline,
+  RepeatOutline,
+  TrashOutline,
+  TimeOutline,
+  TrailSignOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, projects as projApi, gitlab as glApi } from '@/api'
 import { storeToRefs } from 'pinia'
@@ -71,6 +40,8 @@ import {
   columnTail,
 } from '@/utils/status'
 import { planComplete } from '@/utils/cardNav'
+import { columnStatusName } from '@/utils/columnStatus'
+import { useShortcuts } from '@/composables/useShortcuts'
 import { columnName } from '@/utils/defaultNames'
 import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
@@ -98,15 +69,15 @@ import DueEditor from './DueEditor.vue'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
+import TesseraIcon from './TesseraIcon.vue'
+import ShortcutKeys from './ShortcutKeys.vue'
+import TaskModalHeader from './task/TaskModalHeader.vue'
 import TaskCommentsTab from './task/TaskCommentsTab.vue'
 import TaskDescriptionTab from './task/TaskDescriptionTab.vue'
-import TaskLayoutSwitch from './TaskLayoutSwitch.vue'
-import HelpHint from './help/HelpHint.vue'
 import TaskSubtasksTab from './task/TaskSubtasksTab.vue'
 import TaskRelationsTab from './task/TaskRelationsTab.vue'
 import TaskFilesTab from './task/TaskFilesTab.vue'
 import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
-import TaskHistoryTab from './task/TaskHistoryTab.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -118,8 +89,11 @@ const props = defineProps({
   // what is already in memory. Stays a prop: it's the board's *task* state, which
   // the board owns, not shared board context.
   boardTopTasks: { type: Array, default: () => [] },
+  // { index, total }: where the task sits in the board's current order — the
+  // header's «2 из 18» and J/K (v2, #2958). The board answers `navigate`.
+  nav: { type: Object, default: null },
 })
-const emit = defineEmits(['update:show', 'changed', 'open', 'restore'])
+const emit = defineEmits(['update:show', 'changed', 'open', 'restore', 'navigate'])
 
 // Board context (workspace/project, tags, members, milestones, the board itself
 // with its columns, and the GitLab integration flags) comes from the board store
@@ -158,7 +132,7 @@ const projectId = computed(() => bv.projectId)
 const store = useWorkspacesStore()
 const theme = useThemeStore()
 const { t } = useI18n()
-const { formatDue, formatters } = useFormat()
+const { formatDue, formatRelative, formatDate, formatters } = useFormat()
 // Tag colour clamped for legible text on the active theme.
 const tagText = (c) => readableHue(c, theme.isDark)
 const router = useRouter()
@@ -174,25 +148,10 @@ const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 // fullscreen, or the first tab in the sidebar layout — #2745).
 const descInitialMode = ref('write')
 
-// ── wide-screen split pane: draggable divider between the left (properties +
-// description) and right (tabs) columns, ratio persisted in localStorage. Only
-// active in the two-column layout (≥1100px); a no-op in the stacked layout. ──
-const SPLIT_KEY = 'tessera_task_split'
-const SPLIT_MIN = 0.3
-const SPLIT_MAX = 0.7
-const formEl = ref(null)
-const splitRatio = ref(loadSplitRatio())
-function loadSplitRatio() {
-  const v = parseFloat(localStorage.getItem(SPLIT_KEY))
-  return v >= SPLIT_MIN && v <= SPLIT_MAX ? v : 0.46
-}
-
-// ── wide-screen only: hide the right column (tabs) to focus on the task's own
-// fields + description. Two handles reach it (a header button and a double-click
-// on the divider grip), since a bare 14px grip isn't a touch target. Persisted in
-// localStorage (non-critical UX state). In the stacked layout the right column IS
-// the comments in the main flow — hiding it would hide the conversation — so the
-// button is gated on `wide` and the state is a no-op there. ──
+// ── wide-screen only: hide the properties panel to give the content the whole
+// width (the «⋯» menu). Persisted in localStorage (non-critical UX state). In the
+// stacked layout the properties are part of the flow, so the state is a no-op
+// there. ──
 const { isMobile: narrow } = useResponsive(1099)
 
 // ── where to show the task: centred modal (default), fullscreen, or a right-hand
@@ -208,9 +167,8 @@ function setLayout(v) {
 }
 
 // `wide` means "there is room for two columns", not "the window is wide": the
-// sidebar layout keeps a wide window but gives the card ~560px, where both the
-// hide-panel button and the divider drag are meaningless (and the drag would
-// "revive" a column that can't fit).
+// sidebar layout keeps a wide window but gives the card ~560px, where the
+// properties panel can't sit beside the content.
 const wide = computed(() => !narrow.value && layout.value !== 'sidebar')
 
 // ── Sidebar layout: a click on empty space dismisses the panel (see
@@ -220,7 +178,7 @@ const wide = computed(() => !narrow.value && layout.value !== 'sidebar')
 // for an outside click. ──
 const cardRef = ref(null)
 function onOutsidePointerDown(e) {
-  if (dismissesSidebar(e.target, cardRef.value?.$el)) emit('update:show', false)
+  if (dismissesSidebar(e.target, cardRef.value)) emit('update:show', false)
 }
 let dismissBound = false
 function bindDismiss(on) {
@@ -254,44 +212,8 @@ function toggleRightPane() {
   } catch {
     /* storage disabled — non-fatal */
   }
-  // The composer's textarea can't measure its height while the panel is collapsed
-  // (0-width) — recompute it once the panel is visible again, or it stays at
-  // whatever it last measured.
-  if (!rightHidden.value) nextTick(() => commentsTab.value?.autoGrow?.())
-}
-
-// grid-template-columns for .form (ignored in the stacked flex layout). The 14px
-// middle track is the divider handle; when the right column is hidden its track
-// collapses to 0fr (the .form transition animates the reflow).
-const splitCols = computed(() => {
-  if (rightHidden.value) return `minmax(0, 1fr) 14px 0fr`
-  return `minmax(0, ${splitRatio.value}fr) 14px minmax(0, ${1 - splitRatio.value}fr)`
-})
-let splitDragging = false
-function startSplitDrag(e) {
-  // Don't start a resize when there's no right column to resize (collapsed or the
-  // stacked layout) — dragging would otherwise "revive" the hidden panel.
-  if (!formEl.value || rightHidden.value || !wide.value) return
-  splitDragging = true
-  e.preventDefault()
-  window.addEventListener('pointermove', onSplitDrag)
-  window.addEventListener('pointerup', endSplitDrag)
-}
-function onSplitDrag(e) {
-  if (!splitDragging || !formEl.value) return
-  const r = formEl.value.getBoundingClientRect()
-  const ratio = (e.clientX - r.left) / r.width
-  splitRatio.value = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, ratio))
-}
-function endSplitDrag() {
-  splitDragging = false
-  window.removeEventListener('pointermove', onSplitDrag)
-  window.removeEventListener('pointerup', endSplitDrag)
-  try {
-    localStorage.setItem(SPLIT_KEY, String(splitRatio.value))
-  } catch {
-    /* storage disabled — non-fatal */
-  }
+  // The content column changes width — the composer re-measures its textarea.
+  nextTick(() => commentsTab.value?.autoGrow?.())
 }
 
 const comments = ref([])
@@ -301,7 +223,7 @@ const comments = ref([])
 // it is a user posting; the tab just renders it.
 const commentsHydrated = ref(false)
 const commentsTab = ref(null)
-const detailTabs = ref(null)
+const subtasksTab = ref(null)
 
 // ── «Поделиться»: copy a shareable link to this task ──
 // The link (/board/<id>?task=<n>) self-canonicalizes to slugs, so it is correct
@@ -341,22 +263,6 @@ const events = ref([])
 // Documents that link to this task (#2732) — the other end of the link the
 // documents panel creates.
 const docLinks = ref([])
-
-// The tab counters load async (comments/relations/files fetched after the modal
-// opens). Naive measures the active-tab underline before the badge exists, so it
-// stops short of the counter until you switch tabs. Re-sync the bar whenever a
-// counter that can affect the active tab's width changes. Declared after all the
-// count refs so the watch's initial getter run doesn't hit a TDZ.
-watch(
-  () => [
-    comments.value.length,
-    relations.value.length,
-    attachments.value.length,
-    docLinks.value.length,
-    task.value?.subtasks?.length,
-  ],
-  () => nextTick(() => detailTabs.value?.syncBarPosition?.()),
-)
 
 const title = ref('')
 const description = ref('')
@@ -475,24 +381,10 @@ const dueNotify = computed(() => {
   }
 })
 
-// Location breadcrumb: group chain → project → board (resolved from the store).
-const breadcrumb = computed(() => {
-  const parts = []
-  const proj = store.projects.find((p) => p.id === boardInfo.value?.projectId)
-  if (proj) {
-    const chain = []
-    let gid = proj.group_id
-    while (gid) {
-      const g = store.groups.find((x) => x.id === gid)
-      if (!g) break
-      chain.unshift(g.name)
-      gid = g.parent_id
-    }
-    parts.push(...chain, proj.name)
-  }
-  if (boardInfo.value?.name) parts.push(boardInfo.value.name)
-  return parts
-})
+// The task's project — the header's icon and first crumb.
+const project = computed(
+  () => store.projects.find((p) => p.id === boardInfo.value?.projectId) || null,
+)
 
 async function loadDetail() {
   if (!props.taskId) return
@@ -891,16 +783,6 @@ async function toggleGlGroup() {
     glGrouping.value = false
   }
 }
-async function save() {
-  if (props.readonly) return
-  try {
-    await tasksApi.update(props.taskId, buildPayload())
-    emit('changed')
-    close()
-  } catch (e) {
-    message.error(e.message)
-  }
-}
 // Archive (soft delete). Subtasks go to the archive with the parent unless the
 // user chooses to detach them (keep them on the board).
 async function archiveTask(detachChildren) {
@@ -926,21 +808,7 @@ async function doDelete() {
   }
 }
 
-// ── transfer to another board (via the breadcrumb) ──
-const moveBoards = ref({}) // projectId -> board[]
-const expandedProj = ref(new Set())
-async function toggleProj(pid) {
-  const s = new Set(expandedProj.value)
-  if (s.has(pid)) s.delete(pid)
-  else {
-    s.add(pid)
-    if (!moveBoards.value[pid]) {
-      const r = await projApi.boards(pid)
-      moveBoards.value = { ...moveBoards.value, [pid]: r.data || [] }
-    }
-  }
-  expandedProj.value = s
-}
+// ── transfer to another board (the header's crumbs menu) ──
 async function transferTo(boardId) {
   try {
     await tasksApi.transfer(props.taskId, { board_id: boardId })
@@ -1069,6 +937,169 @@ async function onSubtaskChanged() {
   await loadDetail()
   emit('changed')
 }
+
+// ── v2 (#2958): no Save/Cancel footer — everything persists as it changes ──
+// The title commits on blur / Enter; the description already persists on blur.
+// Closing flushes whatever is still dirty, so nothing typed is lost.
+async function saveTitle() {
+  if (props.readonly || !task.value) return
+  const next = normalizeTitle(title.value)
+  if (!next) {
+    title.value = task.value.title
+    return
+  }
+  if (next !== task.value.title) await applyMeta()
+}
+function onTitleEnter(e) {
+  e.target?.blur?.()
+}
+// The title grows with its text. Measured by hand: the card animates in and the
+// panel layouts change its width, so a size taken once on mount goes stale — it
+// is re-fitted on load, on open and whenever the field's width changes.
+const titleEl = ref(null)
+function fitTitle() {
+  const el = titleEl.value
+  if (!el) return
+  el.style.height = 'auto'
+  el.style.height = `${el.scrollHeight}px`
+}
+let titleRO = null
+watch(titleEl, (el) => {
+  titleRO?.disconnect()
+  titleRO = null
+  if (!el || typeof ResizeObserver === 'undefined') return
+  let w = 0
+  titleRO = new ResizeObserver(([e]) => {
+    if (Math.round(e.contentRect.width) === w) return
+    w = Math.round(e.contentRect.width)
+    fitTitle()
+  })
+  titleRO.observe(el)
+})
+watch(title, () => nextTick(fitTitle))
+onBeforeUnmount(() => titleRO?.disconnect())
+watch(
+  () => props.show,
+  (show) => {
+    if (show || props.readonly || !task.value) return
+    if (normalizeTitle(title.value) !== task.value.title) saveTitle()
+    else if (description.value !== descSaved.value) saveDesc()
+  },
+)
+
+// ── status glyphs: the board header's four shapes, for any column ──
+function statusIcon(col) {
+  if (!col) return 'status-todo'
+  const cols = sortedCols.value
+  const done = doneCol.value ? col.id === doneCol.value.id : col.id === cols[cols.length - 1]?.id
+  return columnStatusName({
+    isDone: done,
+    first: col.id === cols[0]?.id,
+    name: col.name,
+    nameKey: col.name_key,
+  })
+}
+// The status button carries its column's tone (the mockup's tinted pill).
+const statusTone = computed(() => {
+  const c = currentColumn.value?.color || 'var(--t-primary)'
+  return {
+    '--st-c': c,
+    background: `linear-gradient(to top right, color-mix(in srgb, ${c} 13%, var(--t-pop)), color-mix(in srgb, ${c} 22%, var(--t-pop)))`,
+  }
+})
+const priorityTone = computed(() => {
+  const c = PRIORITY_COLORS[priority.value]
+  return priority.value
+    ? {
+        color: readableHue(c, theme.isDark),
+        background: `linear-gradient(to top right, color-mix(in srgb, ${c} 14%, var(--t-sub)), color-mix(in srgb, ${c} 24%, var(--t-sub)))`,
+      }
+    : {}
+})
+const modifiedLabel = computed(() =>
+  task.value?.updated_at
+    ? t('task.head.modified', { when: formatRelative(task.value.updated_at) })
+    : '',
+)
+const createdLabel = computed(() => {
+  const at = task.value?.created_at
+  if (!at) return ''
+  const when = formatDate(at, { day: 'numeric', month: 'short' })
+  return author.value
+    ? t('task.head.createdBy', { name: author.value.name, when })
+    : t('task.head.created', { when })
+})
+const assigneeNames = computed(() =>
+  [
+    ...assigneeObjs.value.map((u) => (u.name || '').split(/\s+/)[0]),
+    ...glAssignees.value.map((g) => g.gl_name || g.gl_username),
+  ]
+    .filter(Boolean)
+    .join(', '),
+)
+
+// Teleport targets inside this card: the properties panel moves to the side
+// column when there is room for one, and the composer sits under the content.
+// Element refs, not selectors — they resolve inside this card whatever else is
+// on the page, and stay disabled (inline) until the element exists.
+const sideEl = ref(null)
+const composerEl = ref(null)
+
+// ── activity: «Всё» (comments + journal) / «Комментарии» / «Файлы» ──
+const activityMode = ref('all')
+
+// ── field popovers, opened by click or by their key (S/P/A/D/L) ──
+// One controlled slot: a key opens its field's popover, picking a single value
+// (status, priority) closes it, multi-pickers stay open for more.
+const fieldOpen = ref('')
+function setField(name, open) {
+  if (open) fieldOpen.value = name
+  else if (fieldOpen.value === name) fieldOpen.value = ''
+}
+function openField(name) {
+  if (props.readonly) return
+  // The keys reach the panel's fields; a hidden panel comes back first.
+  if (name !== 'status' && wide.value && rightHidden.value) toggleRightPane()
+  nextTick(() => (fieldOpen.value = name))
+}
+function pickPriority(p) {
+  fieldOpen.value = ''
+  setPriority(p)
+}
+function pickColumn(id) {
+  fieldOpen.value = ''
+  moveToColumn(id)
+}
+watch(
+  () => props.taskId,
+  () => (fieldOpen.value = ''),
+)
+
+// ── keys (v2, #2958): J/K walk the board's order, the field keys mirror the
+// selected card's. Live only while this modal is the top layer and nothing in it
+// has an open menu — a dropdown or another dialog keeps its keys.
+function keysLive() {
+  if (!props.show || !task.value || typeof document === 'undefined') return false
+  if (document.querySelectorAll('.n-modal-container .n-modal').length > 1) return false
+  if (document.querySelector('.n-dropdown-menu')) return false
+  return !fieldOpen.value
+}
+const canEdit = () => !props.readonly
+useShortcuts(
+  {
+    'task.next': () => props.nav && emit('navigate', 1),
+    'task.prev': () => props.nav && emit('navigate', -1),
+    'task.complete': () => canEdit() && closeTask(),
+    'task.status': () => openField('status'),
+    'task.assignees': () => openField('assignees'),
+    'task.priority': (d) => canEdit() && setPriority(Number(d)),
+    'task.priorityPick': () => openField('priority'),
+    'task.due': () => openField('due'),
+    'task.tags': () => openField('tags'),
+    'task.subtask': () => canEdit() && subtasksTab.value?.startAdd(),
+  },
+  { when: keysLive },
+)
 </script>
 
 <template>
@@ -1082,865 +1113,63 @@ async function onSubtaskChanged() {
     :show-mask="layout !== 'sidebar'"
     :block-scroll="layout !== 'sidebar'"
     :trap-focus="layout !== 'sidebar'"
+    :auto-focus="false"
     @update:show="emit('update:show', $event)"
   >
-    <n-card
+    <div
       ref="cardRef"
       class="tm-card"
-      :class="{ 'tm-fullscreen': layout === 'fullscreen', 'tm-sidebar': layout === 'sidebar' }"
+      :class="{
+        'tm-fullscreen': layout === 'fullscreen',
+        'tm-sidebar': layout === 'sidebar',
+        'tm-wide': wide,
+        'tm-pane-hidden': wide && rightHidden,
+      }"
       role="dialog"
+      aria-modal="true"
       data-testid="task-modal"
-      :bordered="false"
     >
-      <n-spin :show="loading" :rotate="false">
-        <template #icon><TesseraSpinner /></template>
-        <div ref="formEl" class="form" :style="{ '--tm-cols': splitCols }">
-          <div class="modal-head">
-            <!-- Render the breadcrumb popover only when there's a breadcrumb: an
-                 n-popover #trigger slot must resolve to exactly one child, and an
-                 empty breadcrumb (before boardInfo loads, or if it fails) left the
-                 slot empty and threw during render, white-screening the modal. -->
-            <n-popover v-if="breadcrumb.length" trigger="click" placement="bottom-start">
-              <template #trigger>
-                <div class="crumbs" :title="t('task.head.moveTitle')">
-                  <template v-for="(c, i) in breadcrumb" :key="i">
-                    <span class="crumb">{{ c }}</span>
-                    <span v-if="i < breadcrumb.length - 1" class="sep">/</span>
-                  </template>
-                </div>
-              </template>
-              <div class="menu move-menu">
-                <div class="move-hint">{{ t('task.head.moveHint') }}</div>
-                <div v-for="p in store.projects" :key="p.id" class="move-proj">
-                  <div class="menu-item" @click="toggleProj(p.id)">
-                    <span class="grow">{{ p.name }}</span>
-                    <span class="chev">{{ expandedProj.has(p.id) ? '▾' : '▸' }}</span>
-                  </div>
-                  <div v-if="expandedProj.has(p.id)" class="move-boards">
-                    <div
-                      v-for="bd in moveBoards[p.id] || []"
-                      :key="bd.id"
-                      class="menu-item board"
-                      @click="transferTo(bd.id)"
-                    >
-                      {{ bd.name }}
-                    </div>
-                    <span v-if="!(moveBoards[p.id] || []).length" class="move-hint">{{
-                      t('task.head.noBoards')
-                    }}</span>
-                  </div>
-                </div>
-              </div>
-            </n-popover>
-            <span class="head-right">
-              <span v-if="task?.number" class="tnum">#{{ task.number }}</span>
-              <!-- Share: copy a link to this task; the icon morphs to a checkmark. -->
-              <button
-                v-if="shareUrl"
-                class="head-btn"
-                :class="{ done: shared }"
-                :title="shared ? t('task.head.shareDone') : t('task.head.shareCopy')"
-                @click="shareTask"
-              >
-                <Transition name="tm-share" mode="out-in">
-                  <n-icon
-                    v-if="shared"
-                    key="ok"
-                    :component="CheckmarkOutline"
-                    :size="15"
-                    class="grad-icon"
-                  />
-                  <n-icon v-else key="share" :component="ShareSocialOutline" :size="15" />
-                </Transition>
-              </button>
-              <!-- Where to show the task; reads "where → what's inside", so it sits
-                   before the hide-panel button. Only offered when the choice can
-                   mean something (see effectiveTaskLayout). -->
-              <TaskLayoutSwitch v-if="!narrow" :value="layout" @update:value="setLayout" />
-              <!-- Wide layout only: hide/show the right column (tabs). -->
-              <button
-                v-if="wide"
-                class="head-btn"
-                :title="rightHidden ? t('task.head.showPane') : t('task.head.hidePane')"
-                @click="toggleRightPane"
-              >
-                <n-icon
-                  :component="rightHidden ? ChevronBackOutline : ChevronForwardOutline"
-                  :size="15"
-                />
-              </button>
-              <!-- GitLab provenance moved next to the Tessera number to free up
-                   vertical space (icon + issue iid in parens, links to GitLab). -->
-              <a
-                v-if="task?.gitlab"
-                class="gl-num"
-                :href="task.gitlab.web_url"
-                target="_blank"
-                rel="noopener noreferrer"
-                :title="t('task.head.openInGitlab', { iid: task.gitlab.iid })"
-              >
-                (<n-icon :component="LogoGitlab" :size="12" /> !{{ task.gitlab.iid }})
-              </a>
-              <!-- Contextual help for the task card itself (#2794): the modal
-                   covers the topbar's «?», so it carries its own. -->
-              <HelpHint slug="boards-and-tasks" :size="15" />
-            </span>
-          </div>
-          <n-input
-            v-model:value="title"
-            :placeholder="t('task.head.titlePlaceholder')"
-            class="title-input plain"
-            :readonly="readonly"
-          />
-
-          <div class="tm-col-left">
-            <div class="props" :class="{ 'tm-ro': readonly }">
-              <!-- priority -->
-              <!-- data-tour-set marks a filled field for the Get Started guide
-                   (#2759): its steps end when the user actually sets the value,
-                   not when the picker was opened. Absent (not empty) when unset,
-                   so [data-tour-set] alone selects the filled ones. -->
-              <div class="prow" data-tour="tm-priority" :data-tour-set="priority ? '' : null">
-                <span class="plabel"
-                  ><n-icon :component="FlagOutline" :size="15" />
-                  {{ t('task.field.priority') }}</span
-                >
-                <n-popover trigger="click" placement="bottom-start">
-                  <template #trigger>
-                    <button class="val">
-                      <span
-                        class="dot"
-                        :style="{ background: hueGrad(PRIORITY_COLORS[priority]) }"
-                      />
-                      {{ priorityLabel(priority) }}
-                    </button>
-                  </template>
-                  <div class="menu">
-                    <div
-                      v-for="o in priorityOptions"
-                      :key="o.value"
-                      class="menu-item"
-                      @click="setPriority(o.value)"
-                    >
-                      <span
-                        class="dot"
-                        :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }"
-                      />
-                      {{ o.label }}
-                    </div>
-                  </div>
-                </n-popover>
-              </div>
-
-              <!-- due -->
-              <div class="prow" data-tour="tm-due" :data-tour-set="dueTs ? '' : null">
-                <span class="plabel"
-                  ><n-icon :component="CalendarClearOutline" :size="15" />
-                  {{ t('task.field.due') }}</span
-                >
-                <n-popover trigger="click" placement="bottom-start">
-                  <template #trigger>
-                    <button class="val">
-                      <span>{{ dueLabel || t('task.value.dueUnset') }}</span>
-                      <n-icon
-                        v-if="recurrence"
-                        :component="RepeatOutline"
-                        :size="14"
-                        class="recur-mark"
-                        :title="t('task.field.recurring')"
-                      />
-                    </button>
-                  </template>
-                  <DueEditor
-                    :due="dueTs"
-                    :start="startTs"
-                    :recurrence="recurrence"
-                    :notify="dueNotify"
-                    :columns="columns"
-                    @apply="onDueApply"
-                    @notify="onDueNotify"
-                  />
-                </n-popover>
-              </div>
-
-              <!-- estimate -->
-              <div class="prow">
-                <span class="plabel"
-                  ><n-icon :component="TimerOutline" :size="15" />
-                  {{ t('task.field.estimate') }}</span
-                >
-                <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
-                  <template #trigger>
-                    <button class="val">
-                      <span :class="{ muted: !estFull }">{{
-                        estFull || t('task.value.estimateUnset')
-                      }}</span>
-                      <span v-if="estRange" class="est-range">· {{ estRange }}</span>
-                      <span
-                        v-if="subtaskEstimateLabel"
-                        class="est-rollup"
-                        :title="t('task.estimate.rollupHint')"
-                        >Σ {{ subtaskEstimateLabel }}</span
-                      >
-                    </button>
-                  </template>
-                  <div class="est-pop">
-                    <div v-if="estOptions.length" class="menu est-menu">
-                      <div class="menu-item" @click="clearEstimate">
-                        <span class="grow muted">{{ t('task.value.estimateUnset') }}</span>
-                        <n-icon v-if="estimate == null" :component="CheckmarkOutline" class="chk" />
-                      </div>
-                      <div
-                        v-for="o in estOptions"
-                        :key="o.value"
-                        class="menu-item"
-                        @click="setEstimate(o.value)"
-                      >
-                        <span class="grow">{{ o.label }}</span>
-                        <n-icon
-                          v-if="estimate === o.value"
-                          :component="CheckmarkOutline"
-                          class="chk"
-                        />
-                      </div>
-                    </div>
-                    <div v-else class="est-edit">
-                      <n-input
-                        v-model:value="estInput"
-                        size="small"
-                        :placeholder="estPlaceholder"
-                        @keydown.enter.prevent="applyEstInput"
-                      />
-                      <div class="est-actions">
-                        <n-button size="tiny" tertiary @click="clearEstimate">{{
-                          t('task.estimate.clear')
-                        }}</n-button>
-                        <n-button size="tiny" type="primary" @click="applyEstInput">{{
-                          t('task.estimate.apply')
-                        }}</n-button>
-                      </div>
-                    </div>
-                  </div>
-                </n-popover>
-              </div>
-
-              <!-- milestone («Этап») -->
-              <div class="prow">
-                <span class="plabel"
-                  ><n-icon :component="RibbonOutline" :size="15" />
-                  {{ t('task.field.milestone') }}</span
-                >
-                <n-popover trigger="click" placement="bottom-start">
-                  <template #trigger>
-                    <button class="val">
-                      <span :class="{ muted: !taskMilestone }">
-                        {{ taskMilestone ? taskMilestone.title : t('task.value.milestoneUnset') }}
-                      </span>
-                      <span
-                        v-if="taskMilestone && milestoneRange(taskMilestone, formatters)"
-                        class="est-range"
-                      >
-                        · {{ milestoneRange(taskMilestone, formatters) }}
-                      </span>
-                      <span v-if="taskMilestone?.state === 'closed'" class="est-range"
-                        >· {{ t('task.value.milestoneClosed') }}</span
-                      >
-                    </button>
-                  </template>
-                  <div class="ms-pop">
-                    <div class="menu ms-menu">
-                      <div class="menu-item" @click="setMilestone(null)">
-                        <span class="grow muted">{{ t('task.value.milestoneUnset') }}</span>
-                        <n-icon
-                          v-if="!task?.milestone_id"
-                          :component="CheckmarkOutline"
-                          class="chk"
-                        />
-                      </div>
-                      <div
-                        v-for="m in milestoneOptions"
-                        :key="m.id"
-                        class="menu-item"
-                        @click="setMilestone(m.id)"
-                      >
-                        <span class="grow ms-opt" :class="{ 'ms-closed': m.state === 'closed' }">
-                          <span class="ms-opt-title">{{ m.title }}</span>
-                          <span v-if="milestoneRange(m, formatters)" class="ms-opt-range">{{
-                            milestoneRange(m, formatters)
-                          }}</span>
-                        </span>
-                        <n-icon
-                          v-if="task?.milestone_id === m.id"
-                          :component="CheckmarkOutline"
-                          class="chk"
-                        />
-                      </div>
-                    </div>
-                    <div class="ms-new">
-                      <n-input
-                        v-model:value="newMilestoneTitle"
-                        size="small"
-                        :placeholder="t('task.milestone.newPlaceholder')"
-                        @keydown.enter.prevent="createMilestone"
-                      />
-                      <n-button
-                        size="small"
-                        type="primary"
-                        :disabled="!newMilestoneTitle.trim()"
-                        @click="createMilestone"
-                      >
-                        {{ t('common.action.create') }}
-                      </n-button>
-                    </div>
-                  </div>
-                </n-popover>
-              </div>
-
-              <!-- author (read-only) -->
-              <div v-if="author" class="prow">
-                <span class="plabel"
-                  ><n-icon :component="PersonOutline" :size="15" />
-                  {{ t('task.field.author') }}</span
-                >
-                <div
-                  class="val static"
-                  :title="author.gl ? `@${author.login} · GitLab` : author.name"
-                >
-                  <UserAvatar
-                    class="avatar"
-                    :user-id="author.id"
-                    :src="author.avatar"
-                    :name="author.name"
-                  />
-                  <span class="author-name">{{ author.name }}</span>
-                  <span v-if="author.gl" class="author-gl">@{{ author.login }} · GitLab</span>
-                </div>
-              </div>
-
-              <!-- assignees -->
-              <div
-                class="prow"
-                data-tour="tm-assignees"
-                :data-tour-set="assigneeObjs.length || glAssignees.length ? '' : null"
-              >
-                <span class="plabel"
-                  ><n-icon :component="PeopleOutline" :size="15" />
-                  {{ t('task.field.assignees') }}</span
-                >
-                <n-popover trigger="click" placement="bottom-start">
-                  <template #trigger>
-                    <button class="val">
-                      <UserAvatar
-                        v-for="u in assigneeObjs"
-                        :key="u.user_id"
-                        class="avatar"
-                        :user-id="u.user_id"
-                        :name="u.name"
-                        :title="u.name"
-                      />
-                      <UserAvatar
-                        v-for="(g, i) in glAssignees"
-                        :key="`g${i}`"
-                        class="avatar ext-ava"
-                        :src="g.gl_avatar_url"
-                        :name="g.gl_name || g.gl_username"
-                        :title="`${g.gl_name || g.gl_username} (GitLab)`"
-                      />
-                      <span v-if="!assigneeObjs.length && !glAssignees.length" class="muted">{{
-                        t('task.value.assigneesNone')
-                      }}</span>
-                    </button>
-                  </template>
-                  <div class="menu">
-                    <div
-                      v-for="m in members"
-                      :key="m.user_id"
-                      class="menu-item"
-                      @click="toggleAssignee(m.user_id)"
-                    >
-                      <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
-                      <span class="grow">{{ m.name }}</span>
-                      <n-icon
-                        v-if="selectedAssignees.includes(m.user_id)"
-                        :component="CheckmarkOutline"
-                        class="chk"
-                      />
-                    </div>
-                    <template v-if="gitlabMembers.length">
-                      <div class="menu-sep">GitLab</div>
-                      <div
-                        v-for="m in gitlabMembers"
-                        :key="m.gl_user_id"
-                        class="menu-item"
-                        @click="toggleGlAssignee(m)"
-                      >
-                        <UserAvatar
-                          class="avatar sm"
-                          :src="m.gl_avatar_url"
-                          :name="m.gl_name || m.gl_username"
-                        />
-                        <span class="grow">{{ m.gl_name || m.gl_username }}</span>
-                        <n-icon
-                          v-if="isGlAssigned(m.gl_username)"
-                          :component="CheckmarkOutline"
-                          class="chk"
-                        />
-                      </div>
-                    </template>
-                  </div>
-                </n-popover>
-              </div>
-
-              <!-- tags -->
-              <div class="prow" data-tour="tm-tags" :data-tour-set="tagObjs.length ? '' : null">
-                <span class="plabel"
-                  ><n-icon :component="PricetagOutline" :size="15" />
-                  {{ t('task.field.tags') }}</span
-                >
-                <n-popover trigger="click" placement="bottom-start">
-                  <template #trigger>
-                    <button ref="tagsValEl" class="val tags-val">
-                      <template v-if="tagObjs.length">
-                        <TagPill
-                          v-for="tg in tagObjs.slice(0, visibleTagCount)"
-                          :key="tg.id"
-                          class="chip"
-                          :tag="tg"
-                          :prefix-names="tagPrefixNames"
-                          variant="outline"
-                        />
-                        <span
-                          v-if="visibleTagCount < tagObjs.length"
-                          class="chip chip-more"
-                          :style="{
-                            color: tagText(tagObjs[0].color),
-                            background: softFill(tagObjs[0].color),
-                          }"
-                          >+{{ tagObjs.length - visibleTagCount }}</span
-                        >
-                        <!-- invisible measurement row: natural chip widths, never sliced.
-                             Same component + props as above, else the scope segment
-                             wouldn't be measured and the fit calculation would lie. -->
-                        <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
-                          <TagPill
-                            v-for="tg in tagObjs"
-                            :key="`m${tg.id}`"
-                            class="chip"
-                            :tag="tg"
-                            :prefix-names="tagPrefixNames"
-                            variant="outline"
-                          />
-                        </span>
-                      </template>
-                      <span v-else class="muted">{{ t('task.value.tagsNone') }}</span>
-                    </button>
-                  </template>
-                  <div class="menu">
-                    <div class="chip-groups">
-                      <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
-                        <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
-                        <div class="chip-grid">
-                          <button
-                            v-for="tg in g.tags"
-                            :key="tg.id"
-                            class="tagchip"
-                            :class="{ on: selectedTags.includes(tg.id) }"
-                            :style="
-                              selectedTags.includes(tg.id)
-                                ? {
-                                    background: hueGrad(tg.color),
-                                    color: onColor(tg.color),
-                                    borderColor: 'transparent',
-                                  }
-                                : {
-                                    background: softFill(tg.color),
-                                    color: tagText(tg.color),
-                                    borderColor: (tg.color || '#888') + '66',
-                                  }
-                            "
-                            @click="toggleTag(tg.id)"
-                          >
-                            <TagPill
-                              :tag="tg"
-                              :prefix-names="tagPrefixNames"
-                              variant="inherit"
-                              :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
-                            />
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <n-input
-                      v-model:value="newTagName"
-                      size="tiny"
-                      :placeholder="t('task.tags.newPlaceholder')"
-                      @keyup.enter="createTag"
-                    />
-                  </div>
-                </n-popover>
-              </div>
-
-              <!-- status: current column · shift right · close.
-                   Works the same for a task and for a subtask — one modal. -->
-              <div class="prow">
-                <span class="plabel"
-                  ><n-icon :component="CheckmarkDoneOutline" :size="15" />
-                  {{ t('task.field.status') }}</span
-                >
-                <div class="status-row">
-                  <n-popover
-                    v-if="!readonly && sortedCols.length"
-                    trigger="click"
-                    placement="bottom-start"
-                  >
-                    <template #trigger>
-                      <button class="val col-chip" :disabled="moving">
-                        <span class="col-dot" :style="{ background: currentColumn?.color }" />
-                        <span>{{ columnName(currentColumn) || t('task.value.columnNone') }}</span>
-                      </button>
-                    </template>
-                    <div class="menu pmenu">
-                      <div
-                        v-for="c in sortedCols"
-                        :key="c.id"
-                        class="menu-item col-item"
-                        :class="{ cur: c.id === task?.column_id }"
-                        @click="moveToColumn(c.id)"
-                      >
-                        <span class="col-dot" :style="{ background: c.color }" />
-                        <span>{{ columnName(c) }}</span>
-                      </div>
-                    </div>
-                  </n-popover>
-                  <span v-else class="val col-chip static">
-                    <span class="col-dot" :style="{ background: currentColumn?.color }" />
-                    <span>{{ columnName(currentColumn) || '—' }}</span>
-                  </span>
-                  <template v-if="!readonly">
-                    <button
-                      class="st-btn"
-                      :disabled="!nextCol || moving"
-                      :title="
-                        nextCol
-                          ? t('task.status.next', { name: columnName(nextCol) })
-                          : t('task.status.last')
-                      "
-                      @click="moveToColumn(nextCol?.id)"
-                    >
-                      <n-icon :component="PlayForwardOutline" :size="15" />
-                    </button>
-                    <button
-                      class="st-btn"
-                      :class="{ on: completed }"
-                      :disabled="moving"
-                      :title="completed ? t('task.status.reopen') : t('task.status.complete')"
-                      @click="closeTask"
-                    >
-                      <n-icon
-                        :component="completed ? CheckmarkCircle : EllipseOutline"
-                        :size="15"
-                      />
-                    </button>
-                  </template>
-                </div>
-              </div>
-
-              <!-- parent -->
-              <div class="prow">
-                <span class="plabel"
-                  ><n-icon :component="GitMergeOutline" :size="15" />
-                  {{ t('task.field.parent') }}</span
-                >
-                <div v-if="task?.parent_id" class="parent-row">
-                  <button
-                    class="val parent-chip"
-                    :title="parentTask?.title || ''"
-                    @click="emit('open', task.parent_id)"
-                  >
-                    <span class="parent-title">{{ parentLabel }}</span>
-                  </button>
-                  <button v-if="!readonly" class="val detach" @click="detachFromParent">
-                    {{ t('task.parent.detach') }}
-                  </button>
-                </div>
-                <n-popover v-else trigger="click" placement="bottom-start">
-                  <template #trigger>
-                    <button class="val">
-                      <span class="muted">{{ t('task.parent.makeSubtask') }}</span>
-                    </button>
-                  </template>
-                  <div class="menu pmenu">
-                    <div
-                      v-for="cand in parentCandidates"
-                      :key="cand.id"
-                      class="menu-item"
-                      @click="attachTo(cand.id)"
-                    >
-                      {{ cand.title }}
-                    </div>
-                    <span v-if="!parentCandidates.length" class="muted small">{{
-                      t('task.parent.noCandidates')
-                    }}</span>
-                  </div>
-                </n-popover>
-              </div>
-
-              <!-- create GitLab issue from this task -->
-              <div v-if="task && !task.gitlab && gitlabCanCreate" class="prow">
-                <span class="plabel"><n-icon :component="LogoGitlab" :size="15" /> GitLab</span>
-                <button class="val" :disabled="glCreating" @click="createGlIssue">
-                  <span class="muted">{{
-                    glCreating ? t('task.gitlab.creating') : t('task.gitlab.create')
-                  }}</span>
-                </button>
-              </div>
-
-              <!-- grouped-task marker (#2592): the parent half of the GitLab hierarchy.
-                   A button and not a tag — the grouping label lives in a prefix the pull
-                   rules own, so it is hidden from the tag pickers on purpose. -->
-              <div v-if="task?.gitlab && gitlabCanGroup" class="prow">
-                <span class="plabel"
-                  ><n-icon :component="LayersOutline" :size="15" />
-                  {{ t('task.field.grouping') }}</span
-                >
-                <div class="group-cell">
-                  <span v-if="task.gitlab.is_group" class="group-chip">{{
-                    t('task.gitlab.grouped')
-                  }}</span>
-                  <button class="val" :disabled="glGrouping" @click="toggleGlGroup">
-                    <span class="muted">{{ glGroupAction }}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <!-- Description lives here for the modal / fullscreen layouts. In the
-                 sidebar layout it moves into the first "Описание" tab below so a
-                 long description doesn't bury the other tabs (#2745). -->
-            <TaskDescriptionTab
-              v-if="layout !== 'sidebar'"
-              v-model="description"
-              v-model:template-value="glTemplate"
-              data-tour="tm-description"
-              :data-tour-set="descSaved ? '' : null"
-              :readonly="readonly"
-              :members="mentionItems"
-              :task-id="taskId"
-              :initial-mode="descInitialMode"
-              :show-template="
-                !!(task && !task.gitlab && gitlabFetchTemplates && glTemplates.length)
-              "
-              :template-options="glTemplateOptions"
-              @apply-template="applyGlTemplate"
-              @attachments-changed="reloadAttachments"
-              @blur="saveDesc"
-              @persist="saveDesc"
-            />
-          </div>
-
-          <!-- Draggable divider (wide layout only); drag resizes the two columns,
-               a double-click hides/shows the right column. -->
-          <div
-            class="tm-divider"
-            :title="rightHidden ? t('task.head.dividerHidden') : t('task.head.dividerDrag')"
-            @pointerdown="startSplitDrag"
-            @dblclick="toggleRightPane"
+      <TaskModalHeader
+        :task="task"
+        :project="project"
+        :board-name="boardInfo?.name || ''"
+        :nav="nav"
+        :layout="layout"
+        :narrow="narrow"
+        :shared="shared"
+        :readonly="readonly"
+        @navigate="emit('navigate', $event)"
+        @update:layout="setLayout"
+        @share="shareTask"
+        @close="close"
+        @transfer="transferTo"
+      >
+        <template #more>
+          <a
+            v-if="task?.gitlab"
+            class="menu-item"
+            :href="task.gitlab.web_url"
+            target="_blank"
+            rel="noopener noreferrer"
           >
-            <span class="tm-divider-grip"></span>
+            <n-icon :component="LogoGitlab" :size="15" />
+            <span class="grow">{{ t('task.head.openGitlab') }}</span>
+            <span class="muted">!{{ task.gitlab.iid }}</span>
+          </a>
+          <div v-if="wide" class="menu-item" @click="toggleRightPane">
+            <n-icon
+              :component="rightHidden ? ChevronBackOutline : ChevronForwardOutline"
+              :size="15"
+            />
+            <span>{{ rightHidden ? t('task.head.showPane') : t('task.head.hidePane') }}</span>
           </div>
-
-          <div class="tm-col-right" :class="{ 'tm-col-hidden': rightHidden }">
-            <!-- Subtasks / comments / relations / files / history (#8) -->
-            <!-- Keyed by task so the line indicator doesn't slide when switching
-               between a task and its subtask / related task. -->
-            <n-tabs ref="detailTabs" :key="taskId" type="line" size="small" class="detail-tabs">
-              <!-- Sidebar layout only: description as the first tab so it doesn't
-                   bury the rest of the tabs on long descriptions (#2745). Kept
-                   mounted (display-directive="show") so editor state survives tab
-                   switches. -->
-              <n-tab-pane v-if="layout === 'sidebar'" name="description" display-directive="show">
-                <template #tab>
-                  <span class="tab-lbl">
-                    <n-icon
-                      :component="DocumentTextOutline"
-                      :size="15"
-                      class="tab-ico tab-ico--out"
-                    />
-                    <n-icon :component="DocumentText" :size="15" class="tab-ico tab-ico--fill" />
-                    {{ t('task.tab.description') }}
-                  </span>
-                </template>
-                <TaskDescriptionTab
-                  v-model="description"
-                  v-model:template-value="glTemplate"
-                  data-tour="tm-description"
-                  :data-tour-set="descSaved ? '' : null"
-                  :readonly="readonly"
-                  :members="mentionItems"
-                  :task-id="taskId"
-                  :initial-mode="descInitialMode"
-                  :show-template="
-                    !!(task && !task.gitlab && gitlabFetchTemplates && glTemplates.length)
-                  "
-                  :template-options="glTemplateOptions"
-                  @apply-template="applyGlTemplate"
-                  @attachments-changed="reloadAttachments"
-                  @blur="saveDesc"
-                  @persist="saveDesc"
-                />
-              </n-tab-pane>
-
-              <n-tab-pane name="comments">
-                <template #tab>
-                  <span class="tab-lbl" data-testid="tab-comments">
-                    <n-icon
-                      :component="ChatbubbleEllipsesOutline"
-                      :size="15"
-                      class="tab-ico tab-ico--out"
-                    />
-                    <n-icon
-                      :component="ChatbubbleEllipses"
-                      :size="15"
-                      class="tab-ico tab-ico--fill"
-                    />
-                    {{ t('task.tab.comments') }}
-                    <n-badge
-                      v-if="comments.length"
-                      :value="comments.length"
-                      :max="99"
-                      class="tab-badge"
-                    />
-                  </span>
-                </template>
-                <TaskCommentsTab
-                  ref="commentsTab"
-                  v-model:comments="comments"
-                  :task-id="taskId"
-                  :readonly="readonly"
-                  :hydrated="commentsHydrated"
-                  @changed="emit('changed')"
-                  @reload-detail="loadDetail"
-                />
-              </n-tab-pane>
-
-              <n-tab-pane name="subtasks">
-                <template #tab>
-                  <span class="tab-lbl">
-                    <n-icon :component="GitBranchOutline" :size="15" class="tab-ico tab-ico--out" />
-                    <n-icon :component="GitBranch" :size="15" class="tab-ico tab-ico--fill" />
-                    {{ t('task.tab.subtasks') }}
-                    <n-badge
-                      v-if="task?.subtasks?.length"
-                      :value="task.subtasks.length"
-                      :max="99"
-                      class="tab-badge"
-                    />
-                  </span>
-                </template>
-                <TaskSubtasksTab
-                  :task="task"
-                  :columns="columns"
-                  :readonly="readonly"
-                  :gitlab-can-group="gitlabCanGroup"
-                  @open="emit('open', $event)"
-                  @changed="onSubtaskChanged"
-                  @group-parent="toggleGlGroup"
-                />
-              </n-tab-pane>
-
-              <n-tab-pane name="relations">
-                <template #tab>
-                  <span class="tab-lbl" data-testid="tab-relations">
-                    <n-icon :component="GitMergeOutline" :size="15" class="tab-ico tab-ico--out" />
-                    <n-icon :component="GitMerge" :size="15" class="tab-ico tab-ico--fill" />
-                    {{ t('task.tab.relations') }}
-                    <n-badge
-                      v-if="relations.length"
-                      :value="relations.length"
-                      :max="99"
-                      class="tab-badge"
-                    />
-                  </span>
-                </template>
-                <TaskRelationsTab
-                  v-model:relations="relations"
-                  :task-id="taskId"
-                  :ws-id="wsId"
-                  @changed="emit('changed')"
-                  @open-related="openRelated"
-                />
-              </n-tab-pane>
-
-              <n-tab-pane name="files">
-                <template #tab>
-                  <span class="tab-lbl">
-                    <n-icon :component="AttachOutline" :size="15" class="tab-ico tab-ico--out" />
-                    <n-icon :component="Attach" :size="15" class="tab-ico tab-ico--fill" />
-                    {{ t('task.tab.files') }}
-                    <n-badge
-                      v-if="attachments.length"
-                      :value="attachments.length"
-                      :max="99"
-                      class="tab-badge"
-                    />
-                  </span>
-                </template>
-                <TaskFilesTab
-                  v-model:attachments="attachments"
-                  :task-id="taskId"
-                  @changed="emit('changed')"
-                />
-              </n-tab-pane>
-
-              <n-tab-pane name="documents">
-                <template #tab>
-                  <span class="tab-lbl" data-testid="tab-documents">
-                    <n-icon
-                      :component="DocumentTextOutline"
-                      :size="15"
-                      class="tab-ico tab-ico--out"
-                    />
-                    <n-icon :component="DocumentText" :size="15" class="tab-ico tab-ico--fill" />
-                    {{ t('task.tab.documents') }}
-                    <n-badge
-                      v-if="docLinks.length"
-                      :value="docLinks.length"
-                      :max="99"
-                      class="tab-badge"
-                    />
-                  </span>
-                </template>
-                <TaskDocumentsTab v-model:links="docLinks" @open-document="openDocument" />
-              </n-tab-pane>
-
-              <n-tab-pane name="history">
-                <template #tab>
-                  <span class="tab-lbl" data-testid="tab-history">
-                    <n-icon :component="TimeOutline" :size="15" class="tab-ico tab-ico--out" />
-                    <n-icon :component="Time" :size="15" class="tab-ico tab-ico--fill" />
-                    {{ t('task.tab.history') }}
-                  </span>
-                </template>
-                <TaskHistoryTab :events="events" />
-              </n-tab-pane>
-            </n-tabs>
-          </div>
-        </div>
-      </n-spin>
-
-      <template #footer>
-        <div v-if="readonly" class="footer">
-          <span class="ro-note">{{ t('task.footer.readonly') }}</span>
-          <n-space :wrap="false" :size="8">
-            <n-button @click="close">{{ t('common.action.close') }}</n-button>
-            <n-button type="primary" @click="emit('restore', taskId)">
-              <template #icon><n-icon :component="ArrowUndoOutline" /></template>
-              {{ t('task.action.restore') }}
-            </n-button>
-          </n-space>
-        </div>
-        <div v-else class="footer">
-          <n-space :wrap="false" :size="8">
+          <template v-if="readonly">
+            <div class="menu-item" @click="emit('restore', taskId)">
+              <n-icon :component="ArrowUndoOutline" :size="15" />
+              <span>{{ t('task.action.restore') }}</span>
+            </div>
+          </template>
+          <template v-else>
             <n-popconfirm
               :positive-text="
                 archiveHasSubs ? t('task.footer.archiveBoth') : t('task.confirm.archiveYes')
@@ -1952,10 +1181,10 @@ async function onSubtaskChanged() {
               @negative-click="handleArchiveNegative"
             >
               <template #trigger>
-                <n-button type="primary" ghost>
-                  <template #icon><n-icon :component="ArchiveOutline" /></template>
-                  <span class="fbtn-label">{{ t('task.confirm.archiveYes') }}</span>
-                </n-button>
+                <div class="menu-item" data-testid="task-archive" @click.stop>
+                  <n-icon :component="ArchiveOutline" :size="15" />
+                  <span>{{ t('task.action.archive') }}</span>
+                </div>
               </template>
               {{ archiveHasSubs ? t('task.footer.archiveWithSubs') : t('task.confirm.archive') }}
             </n-popconfirm>
@@ -1965,66 +1194,838 @@ async function onSubtaskChanged() {
               @positive-click="doDelete"
             >
               <template #trigger>
-                <n-button type="error" ghost>
-                  <template #icon><n-icon :component="TrashOutline" /></template>
-                  <span class="fbtn-label">{{ t('common.action.delete') }}</span>
-                </n-button>
+                <div class="menu-item danger" data-testid="task-delete" @click.stop>
+                  <n-icon :component="TrashOutline" :size="15" />
+                  <span>{{ t('task.action.delete') }}</span>
+                </div>
               </template>
               {{ t('task.confirm.delete') }}
             </n-popconfirm>
-          </n-space>
-          <n-space :wrap="false" :size="8">
-            <n-button @click="close">{{ t('common.action.cancel') }}</n-button>
-            <n-button type="primary" data-tour="tm-save" @click="save">{{
-              t('common.action.save')
-            }}</n-button>
-          </n-space>
+          </template>
+        </template>
+      </TaskModalHeader>
+
+      <n-spin :show="loading" :rotate="false" class="tm-spin">
+        <template #icon><TesseraSpinner /></template>
+        <div class="tm-body">
+          <div class="tm-main">
+            <div class="tm-scroll">
+              <div v-if="readonly" class="tm-ro-banner">
+                <span>{{ t('task.footer.readonly') }}</span>
+                <n-button size="small" type="primary" @click="emit('restore', taskId)">
+                  <template #icon><n-icon :component="ArrowUndoOutline" /></template>
+                  {{ t('task.action.restore') }}
+                </n-button>
+              </div>
+
+              <!-- status · shift right · complete · when it last changed -->
+              <div class="tm-actions">
+                <n-popover
+                  v-if="!readonly && sortedCols.length"
+                  :show="fieldOpen === 'status'"
+                  trigger="click"
+                  placement="bottom-start"
+                  @update:show="setField('status', $event)"
+                >
+                  <template #trigger>
+                    <button
+                      class="tm-status col-chip"
+                      :style="statusTone"
+                      :disabled="moving"
+                      data-testid="task-status"
+                    >
+                      <TesseraIcon
+                        :name="statusIcon(currentColumn)"
+                        :size="15"
+                        class="tm-status-ico"
+                      />
+                      <span>{{ columnName(currentColumn) || t('task.value.columnNone') }}</span>
+                      <n-icon :component="ChevronDownOutline" :size="12" class="tm-status-chev" />
+                      <ShortcutKeys id="task.status" />
+                    </button>
+                  </template>
+                  <div class="menu pmenu">
+                    <div
+                      v-for="c in sortedCols"
+                      :key="c.id"
+                      class="menu-item col-item"
+                      :class="{ cur: c.id === task?.column_id }"
+                      @click="pickColumn(c.id)"
+                    >
+                      <TesseraIcon
+                        :name="statusIcon(c)"
+                        :size="14"
+                        :style="{ color: c.color || 'var(--t-text3)' }"
+                      />
+                      <span>{{ columnName(c) }}</span>
+                    </div>
+                  </div>
+                </n-popover>
+                <span v-else class="tm-status col-chip static" :style="statusTone">
+                  <TesseraIcon :name="statusIcon(currentColumn)" :size="15" class="tm-status-ico" />
+                  <span>{{ columnName(currentColumn) || '—' }}</span>
+                </span>
+                <template v-if="!readonly">
+                  <button
+                    class="st-btn tm-next"
+                    :disabled="!nextCol || moving"
+                    :title="
+                      nextCol
+                        ? t('task.status.next', { name: columnName(nextCol) })
+                        : t('task.status.last')
+                    "
+                    @click="moveToColumn(nextCol?.id)"
+                  >
+                    <n-icon :component="PlayForwardOutline" :size="14" />
+                  </button>
+                  <button
+                    class="st-btn tm-done"
+                    :class="{ on: completed }"
+                    :disabled="moving"
+                    :title="completed ? t('task.status.reopen') : t('task.status.complete')"
+                    data-testid="task-complete"
+                    @click="closeTask"
+                  >
+                    <n-icon :component="CheckmarkOutline" :size="15" class="tm-done-ico" />
+                    <span>{{
+                      completed ? t('task.action.completed') : t('task.action.complete')
+                    }}</span>
+                    <ShortcutKeys id="task.complete" />
+                  </button>
+                </template>
+                <span class="grow" />
+                <span v-if="modifiedLabel" class="tm-modified">{{ modifiedLabel }}</span>
+              </div>
+
+              <div class="tm-head-text">
+                <textarea
+                  ref="titleEl"
+                  v-model="title"
+                  rows="1"
+                  class="tm-title"
+                  :placeholder="t('task.head.titlePlaceholder')"
+                  :readonly="readonly"
+                  data-testid="task-title"
+                  @input="fitTitle"
+                  @blur="saveTitle"
+                  @keydown.enter.prevent="onTitleEnter"
+                />
+                <div class="tm-meta">
+                  <span v-if="task?.number">#{{ task.number }}</span>
+                  <span v-if="task?.number && createdLabel">·</span>
+                  <span>{{ createdLabel }}</span>
+                </div>
+              </div>
+
+              <!-- The properties: beside the content when there is room, in the
+                   flow right here otherwise (CSS moves the one panel). -->
+              <Teleport :to="sideEl" :disabled="!wide || !sideEl">
+                <aside v-if="!wide || !rightHidden" class="tm-panel">
+                  <div class="tp-sec">{{ t('task.panel.props') }}</div>
+                  <div class="props" :class="{ 'tm-ro': readonly }">
+                    <!-- status -->
+                    <div class="prow">
+                      <span class="plabel">{{ t('task.field.status') }}</span>
+                      <n-popover
+                        v-if="!readonly && sortedCols.length"
+                        :show="fieldOpen === 'statusPanel'"
+                        trigger="click"
+                        placement="bottom-start"
+                        @update:show="setField('statusPanel', $event)"
+                      >
+                        <template #trigger>
+                          <button class="val">
+                            <TesseraIcon
+                              :name="statusIcon(currentColumn)"
+                              :size="14"
+                              :style="{ color: currentColumn?.color || 'var(--t-text3)' }"
+                            />
+                            <span>{{
+                              columnName(currentColumn) || t('task.value.columnNone')
+                            }}</span>
+                          </button>
+                        </template>
+                        <div class="menu pmenu">
+                          <div
+                            v-for="c in sortedCols"
+                            :key="c.id"
+                            class="menu-item col-item"
+                            :class="{ cur: c.id === task?.column_id }"
+                            @click="pickColumn(c.id)"
+                          >
+                            <TesseraIcon
+                              :name="statusIcon(c)"
+                              :size="14"
+                              :style="{ color: c.color || 'var(--t-text3)' }"
+                            />
+                            <span>{{ columnName(c) }}</span>
+                          </div>
+                        </div>
+                      </n-popover>
+                      <span v-else class="val static">
+                        <TesseraIcon
+                          :name="statusIcon(currentColumn)"
+                          :size="14"
+                          :style="{ color: currentColumn?.color || 'var(--t-text3)' }"
+                        />
+                        <span>{{ columnName(currentColumn) || '—' }}</span>
+                      </span>
+                      <ShortcutKeys id="task.status" class="pkey" />
+                    </div>
+
+                    <!-- priority -->
+                    <!-- data-tour-set marks a filled field for the Get Started guide
+                       (#2759): its steps end when the user actually sets the value,
+                       not when the picker was opened. Absent (not empty) when unset,
+                       so [data-tour-set] alone selects the filled ones. -->
+                    <div class="prow" data-tour="tm-priority" :data-tour-set="priority ? '' : null">
+                      <span class="plabel">{{ t('task.field.priority') }}</span>
+                      <n-popover
+                        :show="fieldOpen === 'priority'"
+                        trigger="click"
+                        placement="bottom-start"
+                        @update:show="setField('priority', $event)"
+                      >
+                        <template #trigger>
+                          <button class="val">
+                            <span v-if="priority" class="prio-pill" :style="priorityTone">
+                              <n-icon :component="FlagOutline" :size="13" />
+                              {{ priorityLabel(priority) }}
+                            </span>
+                            <span v-else class="muted">{{ priorityLabel(0) }}</span>
+                          </button>
+                        </template>
+                        <div class="menu">
+                          <div
+                            v-for="o in priorityOptions"
+                            :key="o.value"
+                            class="menu-item"
+                            @click="pickPriority(o.value)"
+                          >
+                            <span
+                              class="dot"
+                              :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }"
+                            />
+                            <span class="grow">{{ o.label }}</span>
+                            <span class="muted">{{ o.value }}</span>
+                          </div>
+                        </div>
+                      </n-popover>
+                      <ShortcutKeys id="task.priorityPick" class="pkey" />
+                    </div>
+
+                    <!-- assignees -->
+                    <div
+                      class="prow"
+                      data-tour="tm-assignees"
+                      :data-tour-set="assigneeObjs.length || glAssignees.length ? '' : null"
+                    >
+                      <span class="plabel">{{ t('task.field.assignees') }}</span>
+                      <n-popover
+                        :show="fieldOpen === 'assignees'"
+                        trigger="click"
+                        placement="bottom-start"
+                        @update:show="setField('assignees', $event)"
+                      >
+                        <template #trigger>
+                          <button class="val val-people">
+                            <span v-if="assigneeObjs.length || glAssignees.length" class="cascade">
+                              <UserAvatar
+                                v-for="u in assigneeObjs.slice(0, 4)"
+                                :key="u.user_id"
+                                class="avatar"
+                                :user-id="u.user_id"
+                                :name="u.name"
+                                :title="u.name"
+                              />
+                              <UserAvatar
+                                v-for="(g, i) in glAssignees.slice(0, 4)"
+                                :key="`g${i}`"
+                                class="avatar ext-ava"
+                                :src="g.gl_avatar_url"
+                                :name="g.gl_name || g.gl_username"
+                                :title="`${g.gl_name || g.gl_username} (GitLab)`"
+                              />
+                            </span>
+                            <span v-if="assigneeNames" class="people-names">{{
+                              assigneeNames
+                            }}</span>
+                            <span v-else class="muted">{{ t('task.value.assigneesNone') }}</span>
+                          </button>
+                        </template>
+                        <div class="menu pmenu">
+                          <div
+                            v-for="m in members"
+                            :key="m.user_id"
+                            class="menu-item"
+                            @click="toggleAssignee(m.user_id)"
+                          >
+                            <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
+                            <span class="grow">{{ m.name }}</span>
+                            <n-icon
+                              v-if="selectedAssignees.includes(m.user_id)"
+                              :component="CheckmarkOutline"
+                              class="chk"
+                            />
+                          </div>
+                          <template v-if="gitlabMembers.length">
+                            <div class="menu-sep">GitLab</div>
+                            <div
+                              v-for="m in gitlabMembers"
+                              :key="m.gl_user_id"
+                              class="menu-item"
+                              @click="toggleGlAssignee(m)"
+                            >
+                              <UserAvatar
+                                class="avatar sm"
+                                :src="m.gl_avatar_url"
+                                :name="m.gl_name || m.gl_username"
+                              />
+                              <span class="grow">{{ m.gl_name || m.gl_username }}</span>
+                              <n-icon
+                                v-if="isGlAssigned(m.gl_username)"
+                                :component="CheckmarkOutline"
+                                class="chk"
+                              />
+                            </div>
+                          </template>
+                        </div>
+                      </n-popover>
+                      <ShortcutKeys id="task.assignees" class="pkey" />
+                    </div>
+
+                    <!-- author (read-only) -->
+                    <div v-if="author" class="prow">
+                      <span class="plabel">{{ t('task.field.author') }}</span>
+                      <div
+                        class="val static"
+                        :title="author.gl ? `@${author.login} · GitLab` : author.name"
+                      >
+                        <UserAvatar
+                          class="avatar sm"
+                          :user-id="author.id"
+                          :src="author.avatar"
+                          :name="author.name"
+                        />
+                        <span class="author-name">{{ author.name }}</span>
+                        <span v-if="author.gl" class="author-gl">GitLab</span>
+                      </div>
+                    </div>
+
+                    <!-- due -->
+                    <div class="prow" data-tour="tm-due" :data-tour-set="dueTs ? '' : null">
+                      <span class="plabel">{{ t('task.field.due') }}</span>
+                      <n-popover
+                        :show="fieldOpen === 'due'"
+                        trigger="click"
+                        placement="bottom-start"
+                        @update:show="setField('due', $event)"
+                      >
+                        <template #trigger>
+                          <button class="val">
+                            <n-icon :component="CalendarClearOutline" :size="14" class="vico" />
+                            <span :class="{ muted: !dueLabel }">{{
+                              dueLabel || t('task.value.dueUnset')
+                            }}</span>
+                            <n-icon
+                              v-if="recurrence"
+                              :component="RepeatOutline"
+                              :size="14"
+                              class="recur-mark"
+                              :title="t('task.field.recurring')"
+                            />
+                          </button>
+                        </template>
+                        <DueEditor
+                          :due="dueTs"
+                          :start="startTs"
+                          :recurrence="recurrence"
+                          :notify="dueNotify"
+                          :columns="columns"
+                          @apply="onDueApply"
+                          @notify="onDueNotify"
+                        />
+                      </n-popover>
+                      <ShortcutKeys id="task.due" class="pkey" />
+                    </div>
+
+                    <!-- estimate -->
+                    <div class="prow">
+                      <span class="plabel">{{ t('task.field.estimate') }}</span>
+                      <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
+                        <template #trigger>
+                          <button class="val">
+                            <n-icon :component="TimeOutline" :size="14" class="vico" />
+                            <span :class="{ muted: !estFull }">{{
+                              estFull || t('task.value.estimateUnset')
+                            }}</span>
+                            <span v-if="estRange" class="est-range">· {{ estRange }}</span>
+                            <span
+                              v-if="subtaskEstimateLabel"
+                              class="est-rollup"
+                              :title="t('task.estimate.rollupHint')"
+                              >Σ {{ subtaskEstimateLabel }}</span
+                            >
+                          </button>
+                        </template>
+                        <div class="est-pop">
+                          <div v-if="estOptions.length" class="menu est-menu">
+                            <div class="menu-item" @click="clearEstimate">
+                              <span class="grow muted">{{ t('task.value.estimateUnset') }}</span>
+                              <n-icon
+                                v-if="estimate == null"
+                                :component="CheckmarkOutline"
+                                class="chk"
+                              />
+                            </div>
+                            <div
+                              v-for="o in estOptions"
+                              :key="o.value"
+                              class="menu-item"
+                              @click="setEstimate(o.value)"
+                            >
+                              <span class="grow">{{ o.label }}</span>
+                              <n-icon
+                                v-if="estimate === o.value"
+                                :component="CheckmarkOutline"
+                                class="chk"
+                              />
+                            </div>
+                          </div>
+                          <div v-else class="est-edit">
+                            <n-input
+                              v-model:value="estInput"
+                              size="small"
+                              :placeholder="estPlaceholder"
+                              @keydown.enter.prevent="applyEstInput"
+                            />
+                            <div class="est-actions">
+                              <n-button size="tiny" tertiary @click="clearEstimate">{{
+                                t('task.estimate.clear')
+                              }}</n-button>
+                              <n-button size="tiny" type="primary" @click="applyEstInput">{{
+                                t('task.estimate.apply')
+                              }}</n-button>
+                            </div>
+                          </div>
+                        </div>
+                      </n-popover>
+                    </div>
+
+                    <!-- milestone («Этап») -->
+                    <div class="prow">
+                      <span class="plabel">{{ t('task.field.milestone') }}</span>
+                      <n-popover trigger="click" placement="bottom-start">
+                        <template #trigger>
+                          <button class="val">
+                            <n-icon :component="TrailSignOutline" :size="14" class="vico" />
+                            <span :class="{ muted: !taskMilestone }">
+                              {{
+                                taskMilestone ? taskMilestone.title : t('task.value.milestoneUnset')
+                              }}
+                            </span>
+                            <span v-if="taskMilestone?.state === 'closed'" class="est-range"
+                              >· {{ t('task.value.milestoneClosed') }}</span
+                            >
+                          </button>
+                        </template>
+                        <div class="ms-pop">
+                          <div class="menu ms-menu">
+                            <div class="menu-item" @click="setMilestone(null)">
+                              <span class="grow muted">{{ t('task.value.milestoneUnset') }}</span>
+                              <n-icon
+                                v-if="!task?.milestone_id"
+                                :component="CheckmarkOutline"
+                                class="chk"
+                              />
+                            </div>
+                            <div
+                              v-for="m in milestoneOptions"
+                              :key="m.id"
+                              class="menu-item"
+                              @click="setMilestone(m.id)"
+                            >
+                              <span
+                                class="grow ms-opt"
+                                :class="{ 'ms-closed': m.state === 'closed' }"
+                              >
+                                <span class="ms-opt-title">{{ m.title }}</span>
+                                <span v-if="milestoneRange(m, formatters)" class="ms-opt-range">{{
+                                  milestoneRange(m, formatters)
+                                }}</span>
+                              </span>
+                              <n-icon
+                                v-if="task?.milestone_id === m.id"
+                                :component="CheckmarkOutline"
+                                class="chk"
+                              />
+                            </div>
+                          </div>
+                          <div class="ms-new">
+                            <n-input
+                              v-model:value="newMilestoneTitle"
+                              size="small"
+                              :placeholder="t('task.milestone.newPlaceholder')"
+                              @keydown.enter.prevent="createMilestone"
+                            />
+                            <n-button
+                              size="small"
+                              type="primary"
+                              :disabled="!newMilestoneTitle.trim()"
+                              @click="createMilestone"
+                            >
+                              {{ t('common.action.create') }}
+                            </n-button>
+                          </div>
+                        </div>
+                      </n-popover>
+                    </div>
+
+                    <!-- tags -->
+                    <div
+                      class="prow"
+                      data-tour="tm-tags"
+                      :data-tour-set="tagObjs.length ? '' : null"
+                    >
+                      <span class="plabel">{{ t('task.field.tags') }}</span>
+                      <n-popover
+                        :show="fieldOpen === 'tags'"
+                        trigger="click"
+                        placement="bottom-start"
+                        @update:show="setField('tags', $event)"
+                      >
+                        <template #trigger>
+                          <button ref="tagsValEl" class="val tags-val">
+                            <template v-if="tagObjs.length">
+                              <TagPill
+                                v-for="tg in tagObjs.slice(0, visibleTagCount)"
+                                :key="tg.id"
+                                class="chip"
+                                :tag="tg"
+                                :prefix-names="tagPrefixNames"
+                                variant="outline"
+                              />
+                              <span
+                                v-if="visibleTagCount < tagObjs.length"
+                                class="chip chip-more"
+                                :style="{
+                                  color: tagText(tagObjs[0].color),
+                                  background: softFill(tagObjs[0].color),
+                                }"
+                                >+{{ tagObjs.length - visibleTagCount }}</span
+                              >
+                              <!-- invisible measurement row: natural chip widths, never
+                                 sliced. Same component + props as above, else the scope
+                                 segment wouldn't be measured and the fit would lie. -->
+                              <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
+                                <TagPill
+                                  v-for="tg in tagObjs"
+                                  :key="`m${tg.id}`"
+                                  class="chip"
+                                  :tag="tg"
+                                  :prefix-names="tagPrefixNames"
+                                  variant="outline"
+                                />
+                              </span>
+                            </template>
+                            <span v-else class="muted">{{ t('task.value.tagsNone') }}</span>
+                          </button>
+                        </template>
+                        <div class="menu">
+                          <div class="chip-groups">
+                            <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
+                              <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
+                              <div class="chip-grid">
+                                <button
+                                  v-for="tg in g.tags"
+                                  :key="tg.id"
+                                  class="tagchip"
+                                  :class="{ on: selectedTags.includes(tg.id) }"
+                                  :style="
+                                    selectedTags.includes(tg.id)
+                                      ? {
+                                          background: hueGrad(tg.color),
+                                          color: onColor(tg.color),
+                                          borderColor: 'transparent',
+                                        }
+                                      : {
+                                          background: softFill(tg.color),
+                                          color: tagText(tg.color),
+                                          borderColor: (tg.color || '#888') + '66',
+                                        }
+                                  "
+                                  @click="toggleTag(tg.id)"
+                                >
+                                  <TagPill
+                                    :tag="tg"
+                                    :prefix-names="tagPrefixNames"
+                                    variant="inherit"
+                                    :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
+                                  />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                          <n-input
+                            v-model:value="newTagName"
+                            size="tiny"
+                            :placeholder="t('task.tags.newPlaceholder')"
+                            @keyup.enter="createTag"
+                          />
+                        </div>
+                      </n-popover>
+                      <ShortcutKeys id="task.tags" class="pkey" />
+                    </div>
+
+                    <!-- parent -->
+                    <div class="prow">
+                      <span class="plabel">{{ t('task.field.parent') }}</span>
+                      <div v-if="task?.parent_id" class="parent-row">
+                        <button
+                          class="val parent-chip"
+                          :title="parentTask?.title || ''"
+                          @click="emit('open', task.parent_id)"
+                        >
+                          <span class="parent-title">{{ parentLabel }}</span>
+                        </button>
+                        <button v-if="!readonly" class="val detach" @click="detachFromParent">
+                          {{ t('task.parent.detach') }}
+                        </button>
+                      </div>
+                      <n-popover v-else trigger="click" placement="bottom-start">
+                        <template #trigger>
+                          <button class="val">
+                            <span class="muted">{{ t('task.parent.makeSubtask') }}</span>
+                          </button>
+                        </template>
+                        <div class="menu pmenu">
+                          <div
+                            v-for="cand in parentCandidates"
+                            :key="cand.id"
+                            class="menu-item"
+                            @click="attachTo(cand.id)"
+                          >
+                            {{ cand.title }}
+                          </div>
+                          <span v-if="!parentCandidates.length" class="muted small">{{
+                            t('task.parent.noCandidates')
+                          }}</span>
+                        </div>
+                      </n-popover>
+                    </div>
+                  </div>
+
+                  <!-- Разработка: the GitLab issue this task mirrors, or the way to make one. -->
+                  <template v-if="task?.gitlab || (task && gitlabCanCreate && !readonly)">
+                    <div class="tp-sec">{{ t('task.panel.dev') }}</div>
+                    <div v-if="task.gitlab" class="dev-card">
+                      <a
+                        class="dev-line"
+                        :href="task.gitlab.web_url"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        :title="t('task.head.openInGitlab', { iid: task.gitlab.iid })"
+                      >
+                        <n-icon :component="LogoGitlab" :size="15" class="dev-ico" />
+                        <b>!{{ task.gitlab.iid }}</b>
+                        <span class="dev-title">{{ t('task.panel.gitlabIssue') }}</span>
+                        <n-icon :component="OpenOutline" :size="13" class="muted" />
+                      </a>
+                      <div class="dev-sub">
+                        <span class="dev-path">{{ task.gitlab.project_path }}</span>
+                      </div>
+                      <!-- grouped-task marker (#2592): the parent half of the GitLab
+                         hierarchy. A button and not a tag — the grouping label lives in
+                         a prefix the pull rules own. -->
+                      <div v-if="gitlabCanGroup" class="dev-group">
+                        <n-icon :component="LayersOutline" :size="13" class="muted" />
+                        <span v-if="task.gitlab.is_group" class="group-chip">{{
+                          t('task.gitlab.grouped')
+                        }}</span>
+                        <button
+                          v-if="!readonly"
+                          class="val"
+                          :disabled="glGrouping"
+                          @click="toggleGlGroup"
+                        >
+                          <span class="muted">{{ glGroupAction }}</span>
+                        </button>
+                      </div>
+                    </div>
+                    <button v-else class="dev-create" :disabled="glCreating" @click="createGlIssue">
+                      <n-icon :component="LogoGitlab" :size="15" />
+                      {{ glCreating ? t('task.gitlab.creating') : t('task.gitlab.create') }}
+                    </button>
+                  </template>
+
+                  <div class="tp-sec" data-testid="tab-relations" data-tour="tm-links">
+                    {{ t('task.panel.links') }}
+                  </div>
+                  <TaskRelationsTab
+                    v-model:relations="relations"
+                    :task-id="taskId"
+                    :ws-id="wsId"
+                    @changed="emit('changed')"
+                    @open-related="openRelated"
+                  />
+
+                  <template v-if="docLinks.length">
+                    <div class="tp-sec" data-testid="tab-documents">
+                      {{ t('task.panel.documents') }}
+                    </div>
+                    <TaskDocumentsTab v-model:links="docLinks" @open-document="openDocument" />
+                  </template>
+                </aside>
+              </Teleport>
+
+              <TaskDescriptionTab
+                v-model="description"
+                v-model:template-value="glTemplate"
+                class="tm-desc"
+                data-tour="tm-description"
+                :data-tour-set="descSaved ? '' : null"
+                :readonly="readonly"
+                :members="mentionItems"
+                :task-id="taskId"
+                :initial-mode="descInitialMode"
+                :show-template="
+                  !!(task && !task.gitlab && gitlabFetchTemplates && glTemplates.length)
+                "
+                :template-options="glTemplateOptions"
+                @apply-template="applyGlTemplate"
+                @attachments-changed="reloadAttachments"
+                @blur="saveDesc"
+                @persist="saveDesc"
+              />
+
+              <TaskSubtasksTab
+                ref="subtasksTab"
+                class="tm-subs"
+                data-tour="tm-subtasks"
+                :task="task"
+                :columns="columns"
+                :readonly="readonly"
+                :gitlab-can-group="gitlabCanGroup"
+                :done-column-id="doneCol?.id || null"
+                @open="emit('open', $event)"
+                @changed="onSubtaskChanged"
+                @group-parent="toggleGlGroup"
+              />
+
+              <section class="tm-activity" data-tour="tm-activity">
+                <div class="act-head">
+                  <span class="act-title">{{ t('task.activity.title') }}</span>
+                  <div class="seg" role="tablist">
+                    <button
+                      type="button"
+                      class="seg-btn"
+                      :class="{ on: activityMode === 'all' }"
+                      data-testid="tab-history"
+                      @click="activityMode = 'all'"
+                    >
+                      {{ t('task.activity.all') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="seg-btn"
+                      :class="{ on: activityMode === 'comments' }"
+                      data-testid="tab-comments"
+                      @click="activityMode = 'comments'"
+                    >
+                      {{ t('task.activity.comments') }}
+                      <span v-if="comments.length" class="seg-n">· {{ comments.length }}</span>
+                    </button>
+                    <button
+                      type="button"
+                      class="seg-btn"
+                      :class="{ on: activityMode === 'files' }"
+                      data-testid="tab-files"
+                      @click="activityMode = 'files'"
+                    >
+                      {{ t('task.activity.files') }}
+                      <span v-if="attachments.length" class="seg-n"
+                        >· {{ attachments.length }}</span
+                      >
+                    </button>
+                  </div>
+                </div>
+                <TaskCommentsTab
+                  v-show="activityMode !== 'files'"
+                  ref="commentsTab"
+                  v-model:comments="comments"
+                  :task-id="taskId"
+                  :readonly="readonly"
+                  :hydrated="commentsHydrated"
+                  :mode="activityMode === 'all' ? 'all' : 'comments'"
+                  :events="events"
+                  :composer-to="composerEl"
+                  :composer-rows="1"
+                  @changed="emit('changed')"
+                  @reload-detail="loadDetail"
+                />
+                <TaskFilesTab
+                  v-if="activityMode === 'files'"
+                  v-model:attachments="attachments"
+                  :task-id="taskId"
+                  @changed="emit('changed')"
+                />
+              </section>
+            </div>
+            <!-- The comments composer is teleported here: pinned under the column,
+                 outside its scroll (TaskCommentsTab, composer-to). -->
+            <div v-show="!readonly" ref="composerEl" class="tm-composer" />
+          </div>
+          <div v-show="wide && !rightHidden" ref="sideEl" class="tm-side" />
         </div>
-      </template>
-    </n-card>
+      </n-spin>
+    </div>
   </n-modal>
 </template>
 
 <style scoped>
 @import './task/tab-shared.css';
 
+/* ── v2 card (#2958): 1080×800, radius 18, the pop level, the drag shadow ── */
 .tm-card {
-  width: 640px;
-  max-width: 94vw;
+  display: flex;
+  flex-direction: column;
+  width: min(1080px, 96vw);
+  height: min(800px, 92vh);
+  border-radius: var(--t-r-col);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-drag);
+  color: var(--t-text1);
+  /* Popovers inside teleport into this card (#2807), so it must not clip:
+     the columns scroll on their own instead. */
+  --t-surface: var(--t-pop);
 }
-/* Edge-to-edge. The column height budget follows the taller card. */
+/* Narrow screens: one column, the card as tall as its content allows. */
+.tm-card:not(.tm-wide):not(.tm-sidebar):not(.tm-fullscreen) {
+  width: min(680px, 94vw);
+  height: auto;
+  max-height: 92vh;
+}
+/* Edge-to-edge. */
 .tm-card.tm-fullscreen {
   width: 100vw;
-  max-width: none;
   height: 100vh;
+  max-height: none;
   border-radius: 0;
-  --tm-body-max: calc(100vh - 210px);
 }
-/* Right-hand panel: pinned to the edge, board visible (and usable) beside it. The
-   shadow is load-bearing — without a mask the panel would otherwise bleed into the
-   board behind it. */
+/* Right-hand panel: pinned to the edge, board visible (and usable) beside it.
+   The shadow is load-bearing — without a mask the panel would otherwise bleed
+   into the board behind it. */
 .tm-card.tm-sidebar {
   position: fixed;
   inset: 0 0 0 auto;
   width: min(560px, 100vw);
-  max-width: none;
   height: 100vh;
-  border-radius: 12px 0 0 12px;
-  box-shadow: -8px 0 24px rgb(0 0 0 / 0.18);
-  /* The body scrolls inside the panel (see .n-card-content below), so the card is a
-     column: content takes the slack, the footer stays pinned at the bottom edge. */
-  display: flex;
-  flex-direction: column;
-  /* No `overflow: hidden` here on purpose (#2807). Naive teleports popovers into the
-     nearest modal body — this very card — instead of <body>, so clipping the card
-     clips every popover wider than the panel (the due-date calendar is ~490px against
-     560px of panel, so it shifts left and loses its recurrence column). The scroll
-     lives on .n-card-content and the footer clips itself, so the card doesn't need it. */
+  max-height: none;
+  border-radius: var(--t-r-col) 0 0 var(--t-r-col);
 }
-/* Slide in from the right edge and back out to it. The default centred scale-up
-   reads as "a dialog appeared"; a panel docked to the edge has to look like it came
-   from there. Naive puts the transition classes on the card itself, so overriding
-   them here is enough — three classes out-specify its two. */
+/* Slide in from the right edge and back out to it — a panel docked to the edge
+   has to look like it came from there. Naive puts the transition classes on the
+   card itself; three classes out-specify its two. */
 .tm-card.tm-sidebar.fade-in-scale-up-transition-enter-from,
 .tm-card.tm-sidebar.fade-in-scale-up-transition-leave-to {
   opacity: 1;
@@ -2045,413 +2046,400 @@ async function onSubtaskChanged() {
     transition: none;
   }
 }
-.form {
+
+/* The spin wraps the body; both have to pass the height down. */
+.tm-spin {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
 }
-/* Narrow (default): the column wrappers are transparent, so title / props /
-   description / tabs stack exactly as before. Two-column layout kicks in only
-   on wide screens below. The tabs node is never re-mounted (CSS-only reflow),
-   so tab + editor state survive resizing across the breakpoint. */
-.tm-col-left,
-.tm-col-right {
-  display: contents;
+.tm-spin :deep(.n-spin-content) {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
-/* The resize divider only exists in the two-column layout. */
-.tm-divider {
-  display: none;
+.tm-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
 }
-.tm-divider-grip {
-  width: 4px;
-  height: 48px;
-  border-radius: 3px;
-  background: var(--t-border);
-  transition: background 0.15s ease;
+.tm-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
-.tm-divider:hover .tm-divider-grip {
-  background: var(--t-primary);
-}
-/* Two columns are gated on the CARD being wide, not the window: the sidebar layout
-   keeps a wide window but hands the card ~560px, where a two-column grid can't fit.
-   Excluding it here leaves the panel on the already-debugged stacked layout, so no
-   separate narrow-panel styling is needed. */
-@media (min-width: 1100px) {
-  .tm-card:not(.tm-sidebar):not(.tm-fullscreen) {
-    width: min(1240px, 96vw);
-  }
-  .tm-card:not(.tm-sidebar) .form {
-    display: grid;
-    /* left | divider track | right — overridable via the --tm-cols var that the
-       draggable divider writes (persisted in localStorage). The transition
-       animates the collapse/expand when the right column is hidden/shown. */
-    grid-template-columns: var(--tm-cols, minmax(0, 1fr) 14px minmax(0, 1.05fr));
-    align-items: start;
-    transition: grid-template-columns 0.18s ease;
-  }
-  /* Right column collapsed to a 0fr track: fade it out and stop it catching
-     clicks while it shrinks. */
-  .tm-card:not(.tm-sidebar) .tm-col-right {
-    transition: opacity 0.12s ease;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-right.tm-col-hidden {
-    opacity: 0;
-    overflow: hidden;
-    pointer-events: none;
-  }
-  /* Head + title span all three tracks. */
-  .tm-card:not(.tm-sidebar) .modal-head,
-  .tm-card:not(.tm-sidebar) .title-input {
-    grid-column: 1 / -1;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-left {
-    grid-column: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    min-width: 0;
-  }
-  .tm-card:not(.tm-sidebar) .tm-divider {
-    grid-column: 2;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    align-self: stretch;
-    cursor: col-resize;
-    touch-action: none;
-  }
-  /* The right column is a fixed-height flex box that does NOT scroll as a whole:
-     the tab strip stays pinned while the active pane scrolls inside it (so
-     scrolling comments never carry the tabs off-screen). The footer lives in the
-     card's #footer slot so it stays pinned full-width. */
-  .tm-card:not(.tm-sidebar) .tm-col-right {
-    grid-column: 3;
-    min-width: 0;
-    max-height: var(--tm-body-max, calc(90vh - 210px));
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-left {
-    max-height: var(--tm-body-max, calc(90vh - 210px));
-    overflow-y: auto;
-  }
-  /* The tabs fill the right column; the nav is pinned (flex:none), the active pane
-     takes the rest and scrolls. */
-  .tm-card:not(.tm-sidebar) .tm-col-right .detail-tabs {
-    margin: 0;
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tabs-nav) {
-    flex: none;
-  }
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane) {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-  }
-  /* Comments tab: the list scrolls internally, the composer is a pinned footer that
-     sits OUTSIDE the scroll area — so scrolling content can't bleed under its top
-     border (which the previous position:sticky composer did). */
-  .tm-card:not(.tm-sidebar) .tm-col-right .comments {
-    flex: 1;
-    min-height: 0;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-right .c-list {
-    overflow-y: auto;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-right .comment-add {
-    position: static;
-  }
-  /* Idle: reserved gutter, transparent thumb; reveal on hover/focus — one skin for
-     all three scrollers (left column, the active tab pane, the comment list). */
-  .tm-card:not(.tm-sidebar) .tm-col-left,
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane),
-  .tm-card:not(.tm-sidebar) .tm-col-right .c-list {
-    scrollbar-gutter: stable;
-    scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
-    transition: scrollbar-color 0.15s ease;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-left:hover,
-  .tm-card:not(.tm-sidebar) .tm-col-left:focus-within,
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):hover,
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):focus-within,
-  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:hover,
-  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:focus-within {
-    scrollbar-color: var(--t-border) transparent;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-left::-webkit-scrollbar,
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar,
-  .tm-card:not(.tm-sidebar) .tm-col-right .c-list::-webkit-scrollbar {
-    width: 10px;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-left::-webkit-scrollbar-thumb,
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane)::-webkit-scrollbar-thumb,
-  .tm-card:not(.tm-sidebar) .tm-col-right .c-list::-webkit-scrollbar-thumb {
-    border-radius: 5px;
-    border: 3px solid transparent;
-    background: transparent;
-    background-clip: padding-box;
-  }
-  .tm-card:not(.tm-sidebar) .tm-col-left:hover::-webkit-scrollbar-thumb,
-  .tm-card:not(.tm-sidebar) .tm-col-left:focus-within::-webkit-scrollbar-thumb,
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):hover::-webkit-scrollbar-thumb,
-  .tm-card:not(.tm-sidebar) .detail-tabs :deep(.n-tab-pane):focus-within::-webkit-scrollbar-thumb,
-  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:hover::-webkit-scrollbar-thumb,
-  .tm-card:not(.tm-sidebar) .tm-col-right .c-list:focus-within::-webkit-scrollbar-thumb {
-    background: var(--t-border);
-    background-clip: padding-box;
-  }
-}
-/* Sidebar keeps the stacked flow, but the card is a fixed-height panel — the body
-   has to scroll inside it, or everything past the first screenful hangs off the
-   bottom of the viewport with no way to reach it.
-   The element is `n-card-content` with a single dash while its sibling is
-   `n-card__footer` with BEM underscores — Naive is inconsistent here, and mirroring
-   the footer's spelling onto the content yields a rule that matches nothing and
-   fails silently. */
-.tm-card.tm-sidebar :deep(.n-card-content) {
+.tm-scroll {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* The comments composer is `position: sticky; bottom: 0`, so it pins to the
-     scroller's content-box bottom — which Naive's default padding-bottom pushes
-     UP by 20px. That leaves a padding strip below the pinned composer through
-     which the last comment shows while scrolling (the "text bleeds through the
-     form" report). Zero it so the composer sits flush against the scroller's
-     bottom edge, with the footer providing the separation below. */
-  padding-bottom: 0;
-  /* Reserve the scrollbar gutter permanently. Without it the scrollbar eats into
-     the scroller's right edge only while overflowing, so the composer (which lives
-     inside the scroller) ends up narrower than the footer (which does not) and the
-     «Сохранить» button juts past the composer's right border. The footer below
-     reserves the SAME gutter so the two right edges line up in every browser,
-     whatever width `thin` resolves to. */
-  scrollbar-gutter: stable;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 6px 36px 12px 32px;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
 }
-.tm-card.tm-sidebar :deep(.n-card__footer) {
+.tm-scroll:hover,
+.tm-scroll:focus-within {
+  scrollbar-color: var(--t-scroll-thumb, rgba(128, 128, 140, 0.35)) transparent;
+}
+.tm-composer {
   flex: none;
-  /* Match the scroller's reserved gutter (see above) so the action buttons align
-     with the composer's right edge; `overflow: hidden` makes scrollbar-gutter take
-     effect without ever showing a bar. */
-  overflow: hidden;
-  scrollbar-gutter: stable;
-  /* Constant breathing room above the buttons — independent of the composer's
-     content, so the gap looks the same with or without the command-preview line. */
-  padding-top: 14px;
+  padding: 10px 36px 18px 32px;
 }
-.title-input :deep(input) {
-  font-size: 18px;
-  font-weight: 600;
+.tm-composer:empty {
+  display: none;
 }
-.modal-head {
+/* The properties panel's column (wide layouts): one level below the card. */
+.tm-side {
+  flex: 0 0 330px;
+  width: 330px;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  margin: 0 12px 12px 0;
+}
+.tm-side > .tm-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.tm-panel {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 12px 16px;
+  border-radius: 14px;
+  background: var(--t-sub);
+  --t-surface: var(--t-sub);
+}
+/* Stacked (narrow / side panel): the panel sits in the flow after the title. */
+.tm-scroll > .tm-panel {
+  flex: none;
+}
+.tm-card:not(.tm-wide) .tm-scroll {
+  padding: 6px 20px 12px;
+}
+.tm-card:not(.tm-wide) .tm-composer {
+  padding: 10px 20px 16px;
+}
+
+/* ── read-only (archive) ── */
+.tm-ro-banner {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #f0a020 14%, var(--t-pop));
+  color: var(--t-text2);
+  font-size: 13px;
 }
-.head-right {
-  display: inline-flex;
+
+/* ── action row: status · shift · complete · modified ── */
+.tm-actions {
+  display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 30px;
+}
+.tm-status {
+  height: 30px;
+  max-width: 260px;
+  padding: 0 8px 0 9px;
+  gap: 7px;
+  border: none;
+  border-radius: 9px;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tm-status.static {
+  cursor: default;
+}
+.tm-status-ico {
   flex: none;
-  /* Stay pinned right even when the breadcrumb (the other flex child) is absent. */
-  margin-left: auto;
+  color: var(--st-c);
 }
-.tnum {
-  font-size: 12px;
-  color: var(--t-text3);
+.tm-status-chev {
   flex: none;
-}
-/* GitLab provenance, compact, next to the Tessera number. */
-.gl-num {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 12px;
   color: var(--t-text3);
-  text-decoration: none;
 }
-.gl-num:hover {
-  color: var(--t-primary);
-}
-/* Small neutral icon buttons in the head (share, hide/show panel). */
-.head-btn {
+.st-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  gap: 7px;
+  height: 30px;
+  min-width: 30px;
+  padding: 0 8px;
   border: none;
-  background: transparent;
-  color: var(--t-text3);
-  border-radius: 6px;
+  border-radius: 9px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
+  transition: background 0.12s ease;
 }
-.head-btn:hover {
+.st-btn:hover:not(:disabled) {
   background: var(--t-hover);
   color: var(--t-text1);
 }
-/* Share icon morph (share ⇄ checkmark). */
-.tm-share-enter-active,
-.tm-share-leave-active {
-  transition:
-    opacity 0.14s ease,
-    transform 0.14s ease;
+.st-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
-.tm-share-enter-from,
-.tm-share-leave-to {
-  opacity: 0;
-  transform: scale(0.7);
+.tm-done {
+  padding: 0 8px 0 10px;
 }
-@media (prefers-reduced-motion: reduce) {
-  .tm-share-enter-active,
-  .tm-share-leave-active {
-    transition: none;
-  }
-  .tm-share-enter-from,
-  .tm-share-leave-to {
-    transform: none;
-  }
-  .form,
-  .tm-col-right {
-    transition: none;
-  }
+.tm-done-ico {
+  color: #18a058;
 }
-.gl-author {
+.tm-done:hover:not(:disabled) {
+  background: color-mix(in srgb, #18a058 18%, var(--t-pop));
+}
+.tm-done.on {
+  background: color-mix(in srgb, #18a058 16%, var(--t-pop));
+  color: var(--t-text1);
+}
+.tm-modified {
+  font-size: 12.5px;
   color: var(--t-text3);
-}
-.crumbs {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--t-text3);
-  cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 6px;
-}
-.crumbs:hover {
-  background: var(--t-hover);
-  color: var(--t-text2);
-}
-.move-menu {
-  width: 220px;
-  max-height: 300px;
-  overflow-y: auto;
-}
-.move-hint {
-  font-size: 12px;
-  color: var(--t-text3);
-  padding: 4px 6px;
-}
-.move-boards {
-  padding-left: 12px;
-}
-.menu-item.board {
-  color: var(--t-text2);
-}
-.chev {
-  color: var(--t-text3);
-  font-size: 11px;
-}
-.crumb {
   white-space: nowrap;
 }
-.sep {
-  opacity: 0.5;
-}
-/* `.plain` (borderless title field) lives in main.css — the document view uses
-   the same class, and two copies would drift. */
-.props {
+
+/* ── title + meta ── */
+.tm-head-text {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.prow {
+.tm-title {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 23px;
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.tm-title::placeholder {
+  color: var(--t-placeholder);
+}
+.tm-title:focus-visible {
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-primary) 40%, transparent);
+}
+.tm-meta {
+  display: flex;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.tm-desc {
+  max-width: 680px;
+}
+
+/* ── activity ── */
+.tm-activity {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.act-head {
   display: flex;
   align-items: center;
   gap: 12px;
-  min-height: 34px;
+}
+.act-title {
+  font-size: 14.5px;
+  font-weight: 650;
+}
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--t-pill);
+}
+.seg-btn {
+  height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-btn:hover {
+  color: var(--t-text1);
+}
+.seg-btn.on {
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-card);
+  color: var(--t-text1);
+  font-weight: 600;
+}
+.seg-n {
+  color: var(--t-text3);
+  font-weight: 400;
+}
+
+/* ── properties panel ── */
+.tp-sec {
+  padding: 14px 8px 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t-text3);
+}
+.props {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.prow {
+  display: grid;
+  grid-template-columns: 100px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 2px 8px;
+  border-radius: 9px;
+}
+.prow:hover {
+  background: var(--t-hover);
 }
 .plabel {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  width: 140px;
-  flex: none;
-  color: var(--t-text3);
   font-size: 13px;
+  color: var(--t-text3);
+}
+.pkey {
+  opacity: 0.6;
 }
 .val {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
+  min-width: 0;
+  max-width: 100%;
   min-height: 28px;
-  padding: 3px 10px;
-  border-radius: 6px;
-  border: 1px solid transparent;
+  padding: 2px 0;
+  border: none;
   background: transparent;
   color: var(--t-text1);
+  font: inherit;
   font-size: 13px;
+  text-align: left;
   cursor: pointer;
 }
-.val:hover {
-  background: var(--t-hover);
-}
-/* recurrence repeat glyph on the due value */
-.recur-mark {
-  color: var(--t-primary);
-}
-/* grouped-task marker (#2592): badge + toggle share the value slot */
-.group-cell {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.val > span {
   min-width: 0;
 }
-/* Neutral outline, not an accent pill: this states a fact about the issue in GitLab,
-   it is not an action. */
-.group-chip {
-  padding: 1px 7px;
-  border: 1px solid var(--t-border);
-  border-radius: 999px;
-  color: var(--t-text2);
-  font-size: 11px;
-  white-space: nowrap;
-}
-/* Read-only value (Author): no hover affordance, default cursor. */
 .val.static {
   cursor: default;
 }
-.val.static:hover {
-  background: transparent;
+.vico {
+  flex: none;
+  color: var(--t-text2);
 }
-.author-name {
-  color: var(--t-text1);
+.prio-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px 0 8px;
+  border-radius: 12px;
+  font-size: 12.5px;
+  font-weight: 500;
 }
-.author-gl {
+.val-people {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 4px 0;
+}
+.cascade {
+  display: inline-flex;
+}
+.people-names {
+  font-size: 12.5px;
   color: var(--t-text3);
-  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.avatar {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  font-size: 9px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--t-sub);
+}
+.avatar:first-child {
+  margin-left: 0;
+}
+.avatar.sm {
+  width: 20px;
+  height: 20px;
+  margin-left: 0;
+  box-shadow: none;
 }
 /* external GitLab assignee avatar (no Tessera account) */
 .ext-ava {
   background: var(--t-text3);
 }
+.author-name {
+  color: var(--t-text1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.author-gl {
+  color: var(--t-text3);
+  font-size: 12px;
+}
+.recur-mark {
+  color: var(--t-primary);
+}
 .muted {
   color: var(--t-text3);
 }
+.grow {
+  flex: 1;
+}
 .dot {
+  flex: none;
   width: 9px;
   height: 9px;
   border-radius: 50%;
@@ -2465,12 +2453,11 @@ async function onSubtaskChanged() {
 }
 .chip-more {
   color: var(--t-text3);
-  background: var(--t-surface-alt);
+  background: var(--t-pill);
 }
-/* Tags trigger: one line, never spilling past the modal. Only the chips that
-   wholly fit are rendered (+ a measured "+N"); the measurement row is invisible. */
+/* Tags trigger: one line; only the chips that wholly fit are rendered (+ a
+   measured "+N"); the measurement row is invisible. */
 .tags-val {
-  max-width: 100%;
   overflow: hidden;
   flex-wrap: nowrap;
   gap: 5px;
@@ -2484,45 +2471,11 @@ async function onSubtaskChanged() {
   display: inline-flex;
   gap: 6px;
 }
-.avatar {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--t-accent-grad);
-  color: var(--t-on-primary);
-  font-size: 10px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  margin-left: -9px;
-  box-shadow: 0 0 0 2px var(--t-surface-alt);
-}
-.avatar:first-child {
-  margin-left: 0;
-}
-.avatar.sm {
-  margin-left: 0;
-  box-shadow: none;
-}
-/* ── status row: [● column ▾] [▸ shift] [✓ close] ──
-   The chip and its popover menu are shared with the subtasks tab — see
-   task/tab-shared.css, imported at the top of this block. */
-.status-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-/* ── parent row (#2861): [parent title …] [Открепить] ──
-   The title takes whatever the detach button leaves and ellipsises; both the row
-   and the chip need min-width:0, or the flex default (auto) keeps the chip at its
-   text width and pushes «Открепить» out of the modal. */
+/* ── parent row (#2861): [parent title …] [Открепить] ── */
 .parent-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
 .parent-chip {
@@ -2537,31 +2490,89 @@ async function onSubtaskChanged() {
   flex: none;
   color: var(--t-text3);
 }
-.st-btn {
+/* ── «Разработка» ── */
+.dev-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 2px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--t-pop);
+  transition: box-shadow 0.12s ease;
+}
+.dev-card:hover {
+  box-shadow: var(--t-sh-card);
+}
+.dev-line {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--t-text1);
+  font-size: 13px;
+  text-decoration: none;
+}
+.dev-ico {
+  flex: none;
+  color: #e24329;
+}
+.dev-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dev-sub {
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.dev-path {
+  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+.dev-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+/* A fact about the issue in GitLab, not an action — a neutral pill. */
+.group-chip {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.dev-create {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 1px solid var(--t-border);
-  background: transparent;
+  gap: 8px;
+  margin: 0 2px;
+  height: 34px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 10px;
+  background: var(--t-pop);
   color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
   cursor: pointer;
 }
-.st-btn:hover:not(:disabled) {
-  background: var(--t-hover);
+.dev-create:hover:not(:disabled) {
+  color: var(--t-text1);
+  box-shadow: var(--t-sh-card);
 }
-.st-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
+
+/* ── popover menus ── */
+.menu-item.danger {
+  color: #e0533d;
 }
-.st-btn.on {
-  color: var(--t-primary);
-}
-.small {
-  font-size: 12px;
-  padding: 4px;
+a.menu-item {
+  color: inherit;
+  text-decoration: none;
 }
 .menu-sep {
   font-size: 10px;
@@ -2570,17 +2581,15 @@ async function onSubtaskChanged() {
   opacity: 0.6;
   padding: 6px 6px 2px;
 }
-.grow {
-  flex: 1;
-}
 .chk {
   color: var(--t-primary);
 }
-/* estimate rollup hint on the value + popover editor */
-.est-rollup {
-  color: var(--t-text3);
+.small {
   font-size: 12px;
+  padding: 4px;
 }
+/* estimate rollup hint on the value + popover editor */
+.est-rollup,
 .est-range {
   color: var(--t-text3);
   font-size: 12px;
@@ -2597,9 +2606,13 @@ async function onSubtaskChanged() {
   gap: 8px;
   width: 220px;
 }
+.est-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
 .ms-pop {
-  /* Fit the widest option (title + date range on one line) up to a cap, instead
-     of a fixed 240px that forced the period to wrap. */
+  /* Fit the widest option (title + date range on one line) up to a cap. */
   width: max-content;
   min-width: 240px;
   max-width: 380px;
@@ -2611,8 +2624,6 @@ async function onSubtaskChanged() {
 .ms-closed {
   opacity: 0.6;
 }
-/* Title + date range share one line; the title ellipsises if extreme, the range
-   never wraps so the period stays intact. */
 .ms-opt {
   display: flex;
   align-items: baseline;
@@ -2635,13 +2646,6 @@ async function onSubtaskChanged() {
   gap: 6px;
   align-items: center;
   margin-top: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--t-border);
-}
-.est-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
 }
 .chip-groups {
   max-height: 320px;
@@ -2676,102 +2680,26 @@ async function onSubtaskChanged() {
 .tagchip.on {
   font-weight: 600;
 }
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  gap: 8px;
-}
-/* Read-only (archive) modal: property pills become display-only so nothing edits. */
-.props.tm-ro :is(.pill, button, .n-select, .n-tag, [role='button']) {
+/* Read-only (archive) modal: property values become display-only. */
+.props.tm-ro :is(button, .n-select, .n-tag, [role='button']) {
   pointer-events: none;
 }
-.ro-note {
-  font-size: 12px;
-  color: #b5792a;
+.props.tm-ro .pkey {
+  display: none;
 }
-/* Remove naive's tab-strip scroll shadow (shows in the overflow gutter on
-   mobile where the tabs scroll horizontally). */
-.detail-tabs :deep(.n-tabs-nav-scroll-wrapper)::before,
-.detail-tabs :deep(.n-tabs-nav-scroll-wrapper)::after {
-  box-shadow: none !important;
-}
-/* Mobile: drop the archive/delete labels (icons only) so all four footer
-   buttons fit on one row. */
-@media (max-width: 768px) {
-  .fbtn-label {
+/* A phone: no room for key hints in the rows, nor for the long ones in the
+   action row. */
+@media (max-width: 640px) {
+  .pkey,
+  .tm-actions :deep(.sk),
+  .tm-modified {
     display: none;
   }
-  /* Icon-only: drop the icon's trailing margin (reserved for the hidden label)
-     so it sits centred. */
-  .footer :deep(.n-button__icon) {
-    margin: 0;
+  .tm-card:not(.tm-wide) .tm-scroll {
+    padding: 4px 14px 12px;
   }
-}
-
-.detail-tabs {
-  margin-top: 16px;
-  margin-bottom: 12px;
-}
-/* Breathing room between the tab strip and its content. */
-.detail-tabs :deep(.n-tab-pane) {
-  padding-top: 14px;
-}
-/* Accent-gradient underline under the active tab. */
-.detail-tabs :deep(.n-tabs-bar) {
-  background: var(--t-accent-grad);
-}
-/* Tab label = icon + text + counter on one baseline. The icon inherits the tab's
-   text color (currentColor), so the active tab's icon turns accent automatically,
-   matching the text and counter. */
-.tab-lbl {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.tab-lbl .tab-ico {
-  /* inherit currentColor (tab text) — accent when active, dim otherwise */
-  opacity: 0.9;
-}
-/* Inactive tabs show the outline glyph; the active tab swaps to the filled one
-   (accent, matching the visualisation icons). */
-.tab-ico--fill {
-  display: none;
-}
-.detail-tabs :deep(.n-tabs-tab--active .tab-ico--out) {
-  display: none;
-}
-.detail-tabs :deep(.n-tabs-tab--active .tab-ico--fill) {
-  display: inline-flex;
-}
-.tab-badge {
-  margin-left: 0;
-}
-/* Accent (not naive's default red) tab counters, matching the Android client —
-   a small fixed circle (not naive's oversized pill). */
-.tab-badge :deep(.n-badge-sup) {
-  background: var(--t-accent-grad);
-  color: var(--t-on-primary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  min-width: 16px;
-  padding: 0;
-  border-radius: 50%;
-  font-size: 10px;
-  font-weight: 600;
-}
-/* Centre the animated number inside the fixed circle. */
-.tab-badge :deep(.n-badge-sup .n-base-slot-machine) {
-  line-height: 16px;
-  height: 16px;
-}
-/* Dim the counter on inactive tabs (neutral, recedes). */
-.detail-tabs :deep(.n-tabs-tab:not(.n-tabs-tab--active) .n-badge-sup) {
-  background: var(--t-text3);
-  opacity: 0.55;
+  .tm-card:not(.tm-wide) .tm-composer {
+    padding: 8px 14px 14px;
+  }
 }
 </style>
