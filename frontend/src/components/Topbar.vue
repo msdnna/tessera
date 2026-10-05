@@ -65,7 +65,7 @@ const crumbBoard = computed(() => board.board?.name || '')
       <!-- Contextual help for whatever screen is open; hides itself on /help
            and picks its article from the route (#2794). -->
       <HelpHint :size="18" />
-      <!-- When the sidebar is collapsed/narrow, its tools slide over here. -->
+      <!-- When the sidebar is collapsed, its tools slide over here. -->
       <WorkspaceTools v-if="showTools" placement="bottom-end" />
     </div>
   </div>

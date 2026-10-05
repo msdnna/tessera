@@ -204,7 +204,13 @@ function logout() {
         {{ t('shell.user.settings') }}
       </n-tooltip>
       <n-dropdown trigger="click" placement="top-end" :options="moreOptions" @select="onMoreSelect">
-        <n-button quaternary circle size="small" :aria-label="t('shell.user.more')">
+        <n-button
+          quaternary
+          circle
+          size="small"
+          :aria-label="t('shell.user.more')"
+          data-testid="user-menu"
+        >
           <n-icon :component="EllipsisHorizontalOutline" />
         </n-button>
       </n-dropdown>

@@ -33,6 +33,8 @@ test('неверный пароль оставляет на странице в�
   await page.getByTestId('register-submit').click()
   await expect(page.getByTestId('sidebar')).toBeVisible()
 
+  // «Выйти» sits in the footer's «⋯» menu (v2, #2953).
+  await page.getByTestId('user-menu').click()
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
 
@@ -74,6 +76,8 @@ test('логаут разлогинивает и защищает приватн
   await page.getByTestId('register-submit').click()
   await expect(page.getByTestId('sidebar')).toBeVisible()
 
+  // «Выйти» sits in the footer's «⋯» menu (v2, #2953).
+  await page.getByTestId('user-menu').click()
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
 

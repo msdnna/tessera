@@ -56,8 +56,6 @@ import BrandLogo from './BrandLogo.vue'
 defineProps({
   mobile: { type: Boolean, default: false },
   collapsed: { type: Boolean, default: false },
-  // Expanded but too narrow for the brand tools / add-workspace button.
-  narrow: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()
@@ -205,11 +203,7 @@ async function deleteWorkspace() {
       />
       <!-- Tools live here (right of the logo) when expanded; when the rail is
            collapsed (desktop) they move to the header instead. -->
-      <WorkspaceTools
-        v-if="mobile || (!collapsed && !narrow)"
-        class="brand-tools"
-        placement="bottom-start"
-      />
+      <WorkspaceTools v-if="mobile || !collapsed" class="brand-tools" placement="bottom-start" />
     </div>
 
     <div v-if="collapsed" class="rail-sep" />
@@ -222,7 +216,6 @@ async function deleteWorkspace() {
         @update:value="onWorkspaceChange"
       />
       <n-button
-        v-if="!narrow"
         quaternary
         circle
         size="small"
@@ -232,7 +225,7 @@ async function deleteWorkspace() {
         <n-icon :component="AddOutline" />
       </n-button>
       <n-dropdown
-        v-if="!narrow && wsMenuOptions.length"
+        v-if="wsMenuOptions.length"
         trigger="click"
         placement="bottom-end"
         :options="wsMenuOptions"
@@ -426,7 +419,7 @@ async function deleteWorkspace() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  /* Clip rather than scroll when the sidebar is dragged narrow. */
+  /* Clip rather than scroll while the sidebar animates between widths. */
   overflow-x: hidden;
 }
 .brand {
@@ -438,9 +431,8 @@ async function deleteWorkspace() {
   box-sizing: border-box;
 }
 /* Pin the expanded header height to the tool row's height. Otherwise the row
-   collapses to the (shorter) logo height whenever the tools hide at the `narrow`
-   breakpoint or the notification badge changes — and align-items:center then
-   nudges the wordmark vertically (visible jitter while dragging the sidebar).
+   collapses to the (shorter) logo height whenever the notification badge
+   changes — and align-items:center then nudges the wordmark vertically.
    flex-shrink:0 is essential: the sidebar is a flex column that can overflow, and
    without it the flex layout squeezes .brand down to its (tool-less) min-content,
    defeating the fixed height. */

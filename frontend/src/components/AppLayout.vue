@@ -9,8 +9,13 @@ import {
   NLayoutContent,
   NDrawer,
   NDrawerContent,
+  NTooltip,
+  NIcon,
   useMessage,
 } from 'naive-ui'
+import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
+import Kbd from './Kbd.vue'
+import { isTypingTarget } from '@/utils/keys'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
@@ -43,7 +48,7 @@ const conflicts = useConflictsStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
 const { isMobile } = useResponsive()
-const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
+const { collapsed, layoutWidth, toggle } = useSidebarSize()
 
 // The multi-server rail (#2930) is docked at the app root (App.vue) now, not here,
 // so it also covers the login/offline screens. This layout only reserves the
@@ -56,32 +61,18 @@ const message = useMessage()
 // Desktop: native-notification click → focus window + open the task.
 useDesktopDeepLink(router)
 
-// ── draggable sidebar divider ──
-// Drag only engages once the pointer actually moves past a small threshold, so a
-// double-click (to toggle the rail) never flips on the no-transition "resizing"
-// state — the toggle then animates smoothly like the expand.
-const dragging = ref(false)
-let pressX = 0
-function onDragMove(e) {
-  if (!dragging.value && Math.abs(e.clientX - pressX) < 4) return
-  dragging.value = true
-  document.body.style.cursor = 'col-resize'
-  document.body.style.userSelect = 'none'
-  applyDragWidth(e.clientX)
+// ── sidebar collapse ──
+// v2 (#2953): no drag-resizing — one width, collapsed to the icon rail by the
+// edge button or the `[` key (outside text fields; the global shortcut layer
+// takes it over in a later stage).
+function onSidebarKey(e) {
+  if (e.key !== '[' || e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return
+  if (isMobile.value) return
+  e.preventDefault()
+  toggle()
 }
-function stopDrag() {
-  dragging.value = false
-  window.removeEventListener('pointermove', onDragMove)
-  window.removeEventListener('pointerup', stopDrag)
-  document.body.style.cursor = ''
-  document.body.style.userSelect = ''
-}
-function startDrag(e) {
-  pressX = e.clientX
-  window.addEventListener('pointermove', onDragMove)
-  window.addEventListener('pointerup', stopDrag)
-}
-onBeforeUnmount(stopDrag)
+onMounted(() => window.addEventListener('keydown', onSidebarKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onSidebarKey))
 
 // Live notifications for the bell + native device notifications, addressed to the
 // current user. Not scoped to the current workspace — onEvent filters by user, and
@@ -198,36 +189,42 @@ watch(
     }"
   >
     <!-- Desktop: fixed sider + content -->
-    <n-layout
-      v-if="!isMobile"
-      has-sider
-      class="app-layout"
-      :class="{ resizing: dragging }"
-      style="height: 100vh"
-    >
+    <n-layout v-if="!isMobile" has-sider class="app-layout" style="height: 100vh">
       <n-layout-sider
         :width="layoutWidth"
         :show-trigger="false"
         content-style="padding: 0; height: 100%"
       >
-        <Sidebar :mobile="false" :collapsed="collapsed" :narrow="narrow" />
+        <Sidebar :mobile="false" :collapsed="collapsed" />
       </n-layout-sider>
 
-      <!-- Drag to resize; double-click to toggle the icon rail. -->
-      <div
-        class="sider-resizer"
-        :class="{ active: dragging }"
-        :style="{ left: `calc(var(--server-rail-w, 0px) + ${layoutWidth}px)` }"
-        :title="t('shell.layout.resize')"
-        @pointerdown.prevent="startDrag"
-        @dblclick="toggle"
-      >
-        <span class="rz-bar" />
-      </div>
+      <!-- Collapse / expand: a round button on the sidebar's edge, shown while the
+           pointer is over the sidebar (v2, #2953). -->
+      <n-tooltip placement="right" :delay="400">
+        <template #trigger>
+          <button
+            type="button"
+            class="sider-toggle"
+            data-testid="sidebar-toggle"
+            :style="{ left: `calc(var(--server-rail-w, 0px) + ${layoutWidth}px - 12px)` }"
+            :aria-label="t(collapsed ? 'shell.layout.expand' : 'shell.layout.collapse')"
+            @click="toggle"
+          >
+            <n-icon
+              :component="collapsed ? ChevronForwardOutline : ChevronBackOutline"
+              :size="14"
+            />
+          </button>
+        </template>
+        <span class="sider-tip">
+          {{ t(collapsed ? 'shell.layout.expand' : 'shell.layout.collapse') }}
+          <Kbd>[</Kbd>
+        </span>
+      </n-tooltip>
 
       <n-layout class="work-pane">
         <n-layout-header>
-          <Topbar :show-tools="collapsed || narrow" />
+          <Topbar :show-tools="collapsed" />
         </n-layout-header>
         <n-layout-content
           class="page-slot page-slot--desktop"
@@ -351,47 +348,47 @@ watch(
 .page-slot--mobile :deep(.n-layout-scroll-container) {
   --page-pad: 12px;
 }
-/* Drag handle sitting in the gutter between the sidebar and the content. */
-.sider-resizer {
+/* Collapse / expand button on the sidebar's edge: a small round control on the
+   popover level, revealed while the pointer is over the sidebar or the button. */
+.sider-toggle {
   position: fixed;
-  top: 0;
-  height: 100vh;
-  /* Width matches the content's left padding so the bar centres in the gutter
-     between the sidebar and the first column. */
-  width: 16px;
+  /* Mid-height on the edge — where the old resize grip sat, clear of the brand
+     tools and the workspace switcher at the top. */
+  top: calc(50% - 12px);
+  z-index: 6;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: col-resize;
-  z-index: 6;
-  /* Follow the sider's width animation on toggle; no lag while dragging. */
-  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.sider-resizer.active {
-  transition: none;
-}
-.rz-bar {
-  width: 4px;
-  height: 44px;
-  border-radius: 4px;
-  background: var(--t-pill);
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
+  color: var(--t-text2);
+  cursor: pointer;
+  opacity: 0;
   transition:
-    background 0.15s ease,
-    height 0.15s ease;
+    left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease;
 }
-.sider-resizer:hover .rz-bar,
-.sider-resizer.active .rz-bar {
-  background: var(--t-accent-grad-vert);
-  height: 72px;
+.app-layout:has(.n-layout-sider:hover) .sider-toggle,
+.sider-toggle:hover,
+.sider-toggle:focus-visible {
+  opacity: 1;
+}
+.sider-toggle:hover {
+  color: var(--t-text1);
+}
+.sider-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 /* Animate the rail's width on toggle (Naive doesn't transition an externally
    bound :width). */
 .app-layout :deep(.n-layout-sider) {
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-/* While dragging, the sider must track the cursor with no width animation. */
-.app-layout.resizing :deep(.n-layout-sider),
-.app-layout.resizing :deep(.n-layout-sider-scroll-container) {
-  transition: none !important;
 }
 </style>

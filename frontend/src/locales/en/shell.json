@@ -104,7 +104,8 @@
     }
   },
   "layout": {
-    "resize": "Drag to resize (double-click to collapse)",
+    "collapse": "Collapse the sidebar",
+    "expand": "Expand the sidebar",
     "projectGone": "The project was deleted or moved to another workspace — opened “Home”"
   },
   "servers": {
