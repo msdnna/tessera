@@ -37,7 +37,7 @@ import {
   ChevronDownOutline,
   FunnelOutline,
   ChevronBackOutline,
-  SettingsOutline,
+  OptionsOutline,
   RibbonOutline,
   ArchiveOutline,
   GitBranchOutline,
@@ -258,7 +258,6 @@ const switchAvail = ref(Infinity) // px the view switch may take
 const foldFilters = ref(0) // how many filter chips (from the end) sit in «+N»
 const foldSorts = ref(false) // sort chips folded into «+N» too
 const compactGroup = ref(false) // grouping control without its caption
-const hideCount = ref(false) // the shown-count is dropped
 const hideChartHints = ref(false) // Gantt/timeline: its text key hints go first
 // The open Gantt / timeline view: its exposed controller drives ChartControls.
 const chartView = ref(null)
@@ -289,7 +288,6 @@ async function fitSubbar() {
     foldFilters.value = 0
     foldSorts.value = false
     compactGroup.value = false
-    hideCount.value = false
     hideChartHints.value = false
     switchAvail.value = Infinity
     await nextTick()
@@ -325,10 +323,6 @@ async function fitSubbar() {
           break
         }
       }
-    }
-    if (overflowing(bar)) {
-      hideCount.value = true
-      await nextTick()
     }
   } finally {
     fitting = false
@@ -1228,18 +1222,19 @@ watch(
     if (req?.userId) filters.assignees = [req.userId]
   },
 )
-const shownCountLabel = computed(() => {
-  const c = shownCounts.value
-  return c.total > c.tasks
-    ? t('board.composer.shown', { tasks: c.tasks, total: c.total })
-    : t('board.composer.shownFlat', { tasks: c.tasks })
-})
+// The count itself is drawn next to the board in the sidebar (v2, as in the
+// mockup); the board publishes it with its tooltip.
 const shownCountTitle = computed(() => {
   const c = shownCounts.value
   return c.total > c.tasks
     ? t('board.composer.shownTitle', { tasks: c.tasks, total: c.total })
     : t('board.composer.shownTitleFlat', { tasks: c.tasks })
 })
+watch(
+  () => shownCountTitle.value,
+  (v) => (boardViewStore.shownTitle = v),
+  { immediate: true },
+)
 
 function columnEstimate(dcol) {
   if (groupMode.value !== 'milestone') return ''
@@ -1399,9 +1394,16 @@ function navCols() {
     collapsed: isColCollapsed(d),
   }))
 }
+// The selection is kept for the arrows to carry on from (a click on a card
+// sets it), but it is only drawn once the keyboard is in use: a pointer — and a
+// phone, where there is no keyboard at all — never shows the ring.
+const kbdFocus = ref(false)
+function onAnyPointer() {
+  kbdFocus.value = false
+}
 function isFocused(dcol, id) {
   const f = focusedCard.value
-  return !!f && f.colKey === dcol.key && f.taskId === id
+  return kbdFocus.value && !isMobile.value && !!f && f.colKey === dcol.key && f.taskId === id
 }
 function focusedTask() {
   const f = focusedCard.value
@@ -1421,6 +1423,14 @@ function revealFocused() {
   })
 }
 function stepFocus(dir) {
+  // The first arrow after the mouse shows where the selection is, without
+  // moving it off the card that was clicked.
+  if (!kbdFocus.value && focusedTask()) {
+    kbdFocus.value = true
+    revealFocused()
+    return
+  }
+  kbdFocus.value = true
   focusedCard.value = moveFocus(navCols(), focusedCard.value, dir)
   revealFocused()
 }
@@ -1520,6 +1530,7 @@ async function shiftFocused(dir) {
   suppress()
   try {
     await runIntents(intents)
+    kbdFocus.value = true
     focusedCard.value = { colKey: to.key, taskId: task.id }
     await load(props.boardId, { silent: true })
     revealFocused()
@@ -1551,7 +1562,7 @@ useShortcuts(
     'card.clear': () => (focusedCard.value = null),
     'card.open': () => openTask(focusedCard.value.taskId),
   },
-  { when: () => kanbanOn() && !!focusedTask() },
+  { when: () => kanbanOn() && kbdFocus.value && !!focusedTask() },
 )
 useShortcuts(
   {
@@ -1566,7 +1577,7 @@ useShortcuts(
     'card.moveLeft': () => shiftFocused('left'),
     'card.moveRight': () => shiftFocused('right'),
   },
-  { when: () => kanbanOn() && editable() && !!focusedTask() },
+  { when: () => kanbanOn() && editable() && kbdFocus.value && !!focusedTask() },
 )
 useShortcuts(
   {
@@ -1789,6 +1800,7 @@ async function applyTaskQuery() {
 }
 
 onMounted(async () => {
+  window.addEventListener('pointerdown', onAnyPointer, true)
   ro = new ResizeObserver(() => measure())
   if (boardScroll.value) {
     ro.observe(boardScroll.value)
@@ -1804,6 +1816,7 @@ onMounted(async () => {
   applyTaskQuery()
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', onAnyPointer, true)
   ro?.disconnect()
   // Drop any pending debounced reload so it can't fire against a board we've just
   // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
@@ -2016,15 +2029,6 @@ async function restoreFromArchive(taskId) {
             </button>
           </n-dropdown>
 
-          <!-- How much the filter leaves — only while something filters. -->
-          <span
-            v-if="(hasClearableFacets || filters.q) && !hideCount"
-            class="composer-count"
-            data-testid="composer-count"
-            :title="shownCountTitle"
-          >
-            {{ shownCountLabel }}
-          </span>
           <button
             v-if="hasClearableFacets"
             class="facet-clear"
@@ -2119,7 +2123,7 @@ async function restoreFromArchive(taskId) {
                 data-tour="board-customize"
                 @click="customizeOpen = true"
               >
-                <template #icon><n-icon :component="SettingsOutline" /></template>
+                <template #icon><n-icon :component="OptionsOutline" /></template>
               </n-button>
             </template>
             {{ t('board.tools.customize') }}
@@ -2694,14 +2698,6 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text1);
 }
 /* Reference figure, not a control — flat neutral grey, no accent gradient. */
-.composer-count {
-  flex: none;
-  color: var(--t-text3);
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
-  padding-left: 6px;
-}
 .facet-clear {
   flex: none;
   border: none;
@@ -2840,9 +2836,6 @@ async function restoreFromArchive(taskId) {
     margin-left: 4px;
   }
   /* The bar is already squeezed there; the counter is the first thing to drop. */
-  .composer-count {
-    display: none;
-  }
 }
 .vp {
   width: 240px;

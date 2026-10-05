@@ -1,12 +1,11 @@
 {
   "nav": {
-    "home": "Home",
+    "home": "My tasks",
     "notes": "Notes",
     "documents": "Documents",
     "conferences": "Conferences",
     "reminders": "Reminders",
-    "milestones": "Milestones",
-    "newBadge": "new"
+    "milestones": "Milestones"
   },
   "workspace": {
     "create": "New workspace",

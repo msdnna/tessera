@@ -1,12 +1,11 @@
 {
   "nav": {
-    "home": "Главная",
+    "home": "Мои задачи",
     "notes": "Заметки",
     "documents": "Документы",
     "conferences": "Конференции",
     "reminders": "Напоминания",
-    "milestones": "Этапы",
-    "newBadge": "новое"
+    "milestones": "Этапы"
   },
   "workspace": {
     "create": "Новое пространство",

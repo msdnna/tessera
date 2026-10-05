@@ -14,7 +14,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NSpace, NPopconfirm, useMessage } from 'naive-ui'
-import { ChatbubbleEllipsesOutline } from '@vicons/ionicons5'
+import { ChatbubbleEllipsesOutline, FlagOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardViewStore } from '@/stores/boardView'
@@ -25,6 +25,12 @@ import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
 import { buildMentionItems } from '@/utils/mentions'
 import { scrollParent } from '@/utils/dom'
+import { sortedColumns } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
+import { columnStatusName } from '@/utils/columnStatus'
+import { PRIORITY_COLORS } from '@/styles/tokens'
+import { PRIORITY_KEYS, priorityLabel } from '@/utils/priority'
+import TesseraIcon from '../TesseraIcon.vue'
 import MarkdownEditor from '../MarkdownEditor.vue'
 import RichContent from '../RichContent.vue'
 import UserAvatar from '../UserAvatar.vue'
@@ -91,16 +97,42 @@ const feed = computed(() => {
     .map((e) => ({ kind: 'event', key: `e${e.id}`, at: e.created_at, e }))
   return [...ev, ...th].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
 })
-// A move between two named columns is drawn as «from → to» chips in the board's
-// column colours (matched by name: the journal stores names, not ids).
-function colColor(name) {
-  return (bv.columns || []).find((c) => c.name === name)?.color || ''
+// A move is drawn as column chips — «from → to», or just «→ to» for entries
+// written before the journal kept the source — in the board's column colours
+// with the column's status glyph (matched by name: the journal stores names).
+const boardCols = computed(() => sortedColumns(bv.columns || []))
+function colOf(name) {
+  return boardCols.value.find((c) => c.name === name || columnName(c) === name) || null
 }
 function chipStyle(name) {
-  const c = colColor(name)
+  const c = colOf(name)?.color
   return c
     ? { background: `color-mix(in srgb, ${c} 22%, var(--t-pop))`, color: 'var(--t-text1)' }
     : {}
+}
+function chipIcon(name) {
+  const c = colOf(name)
+  if (!c) return null
+  const cols = boardCols.value
+  const doneId = bv.board?.done_column_id || cols[cols.length - 1]?.id
+  return columnStatusName({
+    isDone: c.id === doneId,
+    first: c.id === cols[0]?.id,
+    name: c.name,
+    nameKey: c.name_key,
+  })
+}
+// A priority change gets the priority's own pill, as on the card.
+const prioOf = (e) => {
+  const p = Number(e.data?.to)
+  return e.kind === 'priority' && PRIORITY_KEYS[p] !== undefined ? p : null
+}
+function prioStyle(p) {
+  const c = PRIORITY_COLORS[p]
+  return {
+    color: c,
+    background: `color-mix(in srgb, ${c} 18%, var(--t-pop))`,
+  }
 }
 // id of the thread root whose reply composer is open, and its draft.
 const replyingTo = ref(null)
@@ -470,11 +502,40 @@ async function onCommentCheck(c, i) {
             <UserAvatar class="e-ava" :user-id="it.e.actor_id" :name="it.e.actor_name" />
             <span class="e-text">
               <b>{{ it.e.actor_name || t('task.history.someone') }}</b>
-              <template v-if="it.e.kind === 'moved' && it.e.data?.from && it.e.data?.to">
+              <template v-if="it.e.kind === 'moved' && it.e.data?.to">
                 {{ t('task.journal.movedVerb') }}
-                <span class="e-chip" :style="chipStyle(it.e.data.from)">{{ it.e.data.from }}</span>
+                <template v-if="it.e.data.from">
+                  <span class="e-chip" :style="chipStyle(it.e.data.from)">
+                    <TesseraIcon
+                      v-if="chipIcon(it.e.data.from)"
+                      :name="chipIcon(it.e.data.from)"
+                      :size="13"
+                      :style="{ color: colOf(it.e.data.from)?.color }"
+                    />
+                    {{ it.e.data.from }}
+                  </span>
+                </template>
                 <span class="e-arrow">→</span>
-                <span class="e-chip" :style="chipStyle(it.e.data.to)">{{ it.e.data.to }}</span>
+                <span class="e-chip" :style="chipStyle(it.e.data.to)">
+                  <TesseraIcon
+                    v-if="chipIcon(it.e.data.to)"
+                    :name="chipIcon(it.e.data.to)"
+                    :size="13"
+                    :style="{ color: colOf(it.e.data.to)?.color }"
+                  />
+                  {{ it.e.data.to }}
+                </span>
+              </template>
+              <template v-else-if="prioOf(it.e) != null">
+                {{ t('task.journal.priorityVerb') }}
+                <span class="e-chip e-prio" :style="prioStyle(prioOf(it.e))">
+                  <FlagOutline class="e-flag" />
+                  {{ priorityLabel(prioOf(it.e)) }}
+                </span>
+              </template>
+              <template v-else-if="it.e.kind === 'renamed' && it.e.data?.to">
+                {{ t('task.journal.renamedVerb') }}
+                <span class="e-name">{{ it.e.data.to }}</span>
               </template>
               <template v-else>{{ eventText(it.e) }}</template>
             </span>
@@ -1018,6 +1079,7 @@ async function onCommentCheck(c, i) {
   font-weight: 500;
 }
 .e-chip {
+  gap: 5px;
   display: inline-flex;
   align-items: center;
   height: 24px;
@@ -1027,6 +1089,17 @@ async function onCommentCheck(c, i) {
   color: var(--t-text2);
   font-size: 12.5px;
   font-weight: 600;
+}
+.e-flag {
+  width: 13px;
+  height: 13px;
+}
+.e-prio {
+  font-weight: 600;
+}
+.e-name {
+  color: var(--t-text1);
+  font-weight: 500;
 }
 .e-arrow {
   color: var(--t-text3);

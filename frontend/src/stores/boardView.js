@@ -87,6 +87,9 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // to fall back to a workspace-wide search (null = no board count yet).
   const searchQ = ref('')
   const shownTasks = ref(null)
+  // Its tooltip («показано 5 из 12…») — the count sits next to the board in the
+  // sidebar (v2), not in the sub-toolbar.
+  const shownTitle = ref('')
   // The open board's task rows, as a getter (not a copy): the ⌘K palette needs
   // a column's tail to move a task to its end without refetching the board.
   const taskSource = ref(null)
@@ -141,6 +144,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     archiveOpen.value = false
     searchQ.value = ''
     shownTasks.value = null
+    shownTitle.value = ''
     taskSource.value = null
     assigneeFilter.value = null
   }
@@ -149,6 +153,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     active,
     searchQ,
     shownTasks,
+    shownTitle,
     taskSource,
     assigneeFilter,
     requestAssigneeFilter,

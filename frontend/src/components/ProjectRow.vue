@@ -46,6 +46,7 @@ import { makeSlug } from '@/utils/slug'
 import { workspaceName } from '@/utils/defaultNames'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
+import { useBoardViewStore } from '@/stores/boardView'
 import ProjectIcon from './ProjectIcon.vue'
 import TesseraIcon from './TesseraIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
@@ -65,6 +66,7 @@ const props = defineProps({
 
 const store = useWorkspacesStore()
 const tour = useTourStore()
+const boardView = useBoardViewStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
@@ -677,6 +679,15 @@ async function addBoard() {
             @blur="commitBoardRename(b)"
           />
           <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
+          <!-- The open board's task count — what its filter leaves (v2, as in the
+               mockup). It gives its place to «⋯» under the pointer. -->
+          <span
+            v-if="boardView.boardId === b.id && boardView.shownTasks != null"
+            class="bcount"
+            data-testid="board-count"
+            :title="boardView.shownTitle"
+            >{{ boardView.shownTasks }}</span
+          >
           <n-popover trigger="click" placement="right-start">
             <template #trigger>
               <n-button class="hover-btn" text size="tiny" @click.stop>
@@ -950,6 +961,24 @@ async function addBoard() {
 .board-row {
   font-size: 13px;
   color: var(--t-text2);
+}
+.bcount {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
+}
+.board-row:hover .bcount {
+  display: none;
+}
+/* the hidden «⋯» keeps no width, so the count sits flush right */
+.board-row .hover-btn {
+  flex: none;
+}
+.board-row:not(:hover) .hover-btn {
+  width: 0;
+  overflow: hidden;
 }
 .board-row.active {
   background: var(--t-active);

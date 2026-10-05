@@ -14,6 +14,8 @@ import BrandLogo from '@/components/BrandLogo.vue'
 import ServerEditModal from '@/components/ServerEditModal.vue'
 import RailTile from './RailTile.vue'
 import RailAppearance from './RailAppearance.vue'
+import VersionBadge from '@/components/VersionBadge.vue'
+import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useServersStore } from '@/stores/servers'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -37,6 +39,7 @@ const notes = useNotificationsStore()
 const auth = useAuthStore()
 const help = useHelpStore()
 const dialogs = useWsDialogsStore()
+const whatsNew = useWhatsNewStore()
 useServerBadges()
 
 const desktop = computed(() => servers.enabled && servers.list.length > 0)
@@ -140,7 +143,24 @@ const serverName = (s) => s.name || serverLabel(s.url)
 
 <template>
   <div class="ar" data-testid="app-rail">
-    <div class="ar-logo"><BrandLogo :height="30" :mark="true" :wordmark="false" /></div>
+    <!-- The logo carries the build versions (v2): they used to be a line in the
+         working area's corner, under the FAB. A click opens «Что нового», as the
+         line did (#2812). -->
+    <n-tooltip placement="right" :delay="300">
+      <template #trigger>
+        <button
+          type="button"
+          class="ar-logo"
+          data-testid="rail-logo"
+          :aria-label="t('app.whatsNew.historyTitle')"
+          @click="whatsNew.openHistory()"
+        >
+          <BrandLogo :height="30" :mark="true" :wordmark="false" />
+        </button>
+      </template>
+      <VersionBadge mode="block" />
+      <div class="ar-tip-sub ar-ver-hint">{{ t('app.whatsNew.historyTitle') }}</div>
+    </n-tooltip>
 
     <div class="ar-list" data-tour="ws-switch">
       <!-- Web: one server, the one serving this page — just its workspaces. -->
@@ -301,6 +321,17 @@ const serverName = (s) => s.name || serverLabel(s.url)
   align-items: center;
   justify-content: center;
   margin-bottom: 4px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+}
+.ar-logo:hover {
+  background: var(--t-hover);
+}
+.ar-ver-hint {
+  margin-top: 6px;
 }
 /* The tiles scroll when there are more than fit; the logo and help stay put. */
 .ar-list {

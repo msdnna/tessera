@@ -357,7 +357,9 @@
     "relation": "добавил(а) связь с #{ref}",
     "attachment": "прикрепил(а) файл",
     "attachmentNamed": "прикрепил(а) файл «{name}»",
-    "movedVerb": "перевёл(а)"
+    "movedVerb": "перевёл(а)",
+    "priorityVerb": "изменил(а) приоритет",
+    "renamedVerb": "переименовал(а) в"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"

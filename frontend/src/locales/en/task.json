@@ -357,7 +357,9 @@
     "relation": "linked it to #{ref}",
     "attachment": "attached a file",
     "attachmentNamed": "attached the file “{name}”",
-    "movedVerb": "moved"
+    "movedVerb": "moved",
+    "priorityVerb": "changed the priority to",
+    "renamedVerb": "renamed it to"
   },
   "ref": {
     "notFound": "Task #{number} not found"

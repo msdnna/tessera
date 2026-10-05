@@ -460,9 +460,11 @@ async function submitAddSub() {
 .card.selected::after {
   content: '';
   position: absolute;
-  inset: -2px;
-  border-radius: calc(var(--t-r-card) + 2px);
-  box-shadow: 0 0 0 2px var(--t-primary);
+  /* inside the card's edge: a ring outside it was cut off by the column's
+     scroller (top and left of the first card, the left of the rest) */
+  inset: 0;
+  border-radius: var(--t-r-card);
+  box-shadow: inset 0 0 0 2px var(--t-primary);
   pointer-events: none;
 }
 .prio-bar {

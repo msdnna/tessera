@@ -379,3 +379,26 @@ test('J/K листают задачи доски, P меняет приорит�
   await page.keyboard.press('3')
   await expect.poll(async () => (await backend.get(`/tasks/${first.id}`)).priority).toBe(3)
 })
+
+// Esc closes what is open inside the modal first (#2958 review): a field's
+// popover opened from the keyboard goes, the modal stays; the next Esc closes it.
+test('Esc закрывает сначала меню поля, потом модалку', async ({ page, backend }) => {
+  const { ws, board, columns } = await backend.freshBoard('modal-esc-menu')
+  const title = `Эскейп ${Date.now().toString(36)}`
+  await backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title })
+
+  await openBoard(page, board.id, ws.id)
+  await cardsIn(page, columns[0].name).filter({ hasText: title }).click()
+  const modal = page.getByTestId('task-modal')
+  await expect(modal).toBeVisible()
+
+  await page.keyboard.press('p')
+  // «P» alone opens the priority picker once the «P, then 0–4» wait runs out.
+  const menu = page.locator('.n-popover .menu-item').first()
+  await expect(menu).toBeVisible({ timeout: 3000 })
+  await page.keyboard.press('Escape')
+  await expect(menu).toBeHidden()
+  await expect(modal).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByTestId('task-modal')).toHaveCount(0)
+})

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip, useMessage } from 'naive-ui'
 import {
-  HomeOutline,
+  CheckmarkDoneOutline,
   DocumentTextOutline,
   DocumentsOutline,
   VideocamOutline,
@@ -163,7 +163,7 @@ const wsMenu = useWorkspaceMenu()
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
-            <n-icon :component="HomeOutline" :size="16" />
+            <n-icon :component="CheckmarkDoneOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.home') }}</span>
           </router-link>
         </template>
@@ -182,10 +182,7 @@ const wsMenu = useWorkspaceMenu()
         <template #trigger>
           <router-link to="/documents" class="nav-link" data-nav="documents">
             <n-icon :component="DocumentsOutline" :size="16" />
-            <span v-if="!collapsed" class="nav-label">
-              {{ t('shell.nav.documents')
-              }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
-            </span>
+            <span v-if="!collapsed">{{ t('shell.nav.documents') }}</span>
           </router-link>
         </template>
         {{ t('shell.nav.documents') }}
@@ -194,10 +191,7 @@ const wsMenu = useWorkspaceMenu()
         <template #trigger>
           <router-link to="/conferences" class="nav-link" data-nav="conferences">
             <n-icon :component="VideocamOutline" :size="16" />
-            <span v-if="!collapsed" class="nav-label">
-              {{ t('shell.nav.conferences')
-              }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
-            </span>
+            <span v-if="!collapsed">{{ t('shell.nav.conferences') }}</span>
           </router-link>
         </template>
         {{ t('shell.nav.conferences') }}
@@ -244,7 +238,10 @@ const wsMenu = useWorkspaceMenu()
       </n-dropdown>
     </div>
 
-    <n-scrollbar v-if="!collapsed" class="tree">
+    <!-- content-style, not CSS: Naive styles the content box itself, so a
+         padding rule from here doesn't win — and without one the rows ran flush
+         to the sidebar's right edge. The same 8px gutter as the links above. -->
+    <n-scrollbar v-if="!collapsed" class="tree" content-style="padding: 0 8px">
       <draggable
         :list="rootGrpModel"
         group="sidebar-grp"
@@ -441,22 +438,6 @@ const wsMenu = useWorkspaceMenu()
 .nav-link:hover {
   background: var(--t-hover-side);
 }
-.nav-label {
-  display: inline-flex;
-  align-items: flex-start;
-}
-.nav-badge {
-  margin-left: 3px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  font-size: 9px;
-  line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: lowercase;
-  color: var(--t-primary);
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-}
 /* Active item: the v2 active level (accent mixed over the sidebar) and the
    icon painted with the accent gradient. */
 .nav-link.router-link-active,
@@ -492,8 +473,8 @@ const wsMenu = useWorkspaceMenu()
 }
 .tree {
   flex: 1;
-  padding: 0 6px;
 }
+
 .empty {
   display: block;
   font-size: 12px;

@@ -124,6 +124,25 @@ describe('TaskCommentsTab.vue — «Всё»', () => {
     expect(rows[2].text()).toContain('Кто-то')
   })
 
+  it('draws an old move (no source) as one chip and a priority as its pill', async () => {
+    const w = mount(await load(), {
+      props: {
+        taskId: 't1',
+        comments: [],
+        readonly: true,
+        mode: 'all',
+        events: [
+          { id: 'm', kind: 'moved', data: { to: 'Готово' }, created_at: '2026-03-07T09:00:00Z' },
+          { id: 'p', kind: 'priority', data: { to: 3 }, created_at: '2026-03-07T10:00:00Z' },
+        ],
+      },
+      global: { stubs: { ...stubs, RichContent: true, MarkdownEditor: true } },
+    })
+    const rows = w.findAll('.c-event')
+    expect(rows[0].findAll('.e-chip').map((n) => n.text())).toEqual(['Готово'])
+    expect(rows[1].find('.e-prio').text()).toBe('Высокий')
+  })
+
   it('shows the threads alone in the «Комментарии» mode', async () => {
     const w = await mountTab('comments')
     expect(w.findAll('.c-event')).toHaveLength(0)

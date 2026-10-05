@@ -73,7 +73,16 @@ async function toggleProj(pid) {
 }
 
 const showMore = ref(false)
+const showMove = ref(false)
 const hasNav = computed(() => props.nav && props.nav.total > 1)
+// Esc in the modal closes an open header menu before the modal itself.
+function closeMenus() {
+  if (!showMore.value && !showMove.value) return false
+  showMore.value = false
+  showMove.value = false
+  return true
+}
+defineExpose({ closeMenus })
 </script>
 
 <template>
@@ -82,6 +91,7 @@ const hasNav = computed(() => props.nav && props.nav.total > 1)
          render only once the board is known. -->
     <n-popover
       v-if="project || boardName"
+      v-model:show="showMove"
       trigger="click"
       placement="bottom-start"
       :disabled="readonly"
@@ -210,7 +220,7 @@ const hasNav = computed(() => props.nav && props.nav.total > 1)
       @click="emit('close')"
     >
       <n-icon :component="CloseOutline" :size="18" />
-      <ShortcutKeys id="card.clear" />
+      <ShortcutKeys id="task.close" />
     </button>
   </div>
 </template>

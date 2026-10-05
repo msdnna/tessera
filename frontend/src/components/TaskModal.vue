@@ -319,6 +319,7 @@ function clearEstimate() {
 }
 // Prefill the free-text buffer with the current value when the popover opens.
 function onEstShow(shown) {
+  setField('estimate', shown)
   if (shown) estInput.value = estLabel.value
 }
 
@@ -560,8 +561,19 @@ async function applyMeta() {
     startTs.value = res.data.start_date ? new Date(res.data.start_date).getTime() : null
     estimate.value = res.data.estimate ?? null
     emit('changed')
+    refreshEvents()
   } catch (e) {
     message.error(e.message)
+  }
+}
+// The «Всё» feed shows the journal: a change made here lands in it at once.
+async function refreshEvents() {
+  const id = props.taskId
+  try {
+    const r = await tasksApi.events(id)
+    if (id === props.taskId) events.value = r.data || []
+  } catch {
+    /* the feed catches up on the next open */
   }
 }
 function setPriority(p) {
@@ -880,6 +892,7 @@ async function toggleAssignee(uid) {
       selectedAssignees.value = [...selectedAssignees.value, uid]
     }
     emit('changed')
+    refreshEvents()
   } catch (e) {
     message.error(e.message)
   }
@@ -1085,6 +1098,29 @@ function keysLive() {
   return !fieldOpen.value
 }
 const canEdit = () => !props.readonly
+
+// Esc (v2, #2958): closes what is open inside the modal first — a field's
+// popover, a header menu — and the modal only when nothing is. Naive's own
+// close-on-esc is off: it shut the whole modal over an open dropdown.
+const headerRef = ref(null)
+function onEsc() {
+  if (fieldOpen.value) {
+    fieldOpen.value = ''
+    return
+  }
+  if (headerRef.value?.closeMenus()) return
+  close()
+}
+useShortcuts(
+  { 'task.close': onEsc },
+  {
+    when: () =>
+      props.show &&
+      typeof document !== 'undefined' &&
+      document.querySelectorAll('.n-modal-container .n-modal').length === 1 &&
+      !document.querySelector('.n-dropdown-menu'),
+  },
+)
 useShortcuts(
   {
     'task.next': () => props.nav && emit('navigate', 1),
@@ -1114,6 +1150,7 @@ useShortcuts(
     :block-scroll="layout !== 'sidebar'"
     :trap-focus="layout !== 'sidebar'"
     :auto-focus="false"
+    :close-on-esc="false"
     @update:show="emit('update:show', $event)"
   >
     <div
@@ -1130,6 +1167,7 @@ useShortcuts(
       data-testid="task-modal"
     >
       <TaskModalHeader
+        ref="headerRef"
         :task="task"
         :project="project"
         :board-name="boardInfo?.name || ''"
@@ -1552,7 +1590,12 @@ useShortcuts(
                     <!-- estimate -->
                     <div class="prow">
                       <span class="plabel">{{ t('task.field.estimate') }}</span>
-                      <n-popover trigger="click" placement="bottom-start" @update:show="onEstShow">
+                      <n-popover
+                        :show="fieldOpen === 'estimate'"
+                        trigger="click"
+                        placement="bottom-start"
+                        @update:show="onEstShow"
+                      >
                         <template #trigger>
                           <button class="val">
                             <n-icon :component="TimeOutline" :size="14" class="vico" />
@@ -1597,6 +1640,7 @@ useShortcuts(
                               v-model:value="estInput"
                               size="small"
                               :placeholder="estPlaceholder"
+                              @keydown.esc.stop="fieldOpen = ''"
                               @keydown.enter.prevent="applyEstInput"
                             />
                             <div class="est-actions">
@@ -1615,7 +1659,12 @@ useShortcuts(
                     <!-- milestone («Этап») -->
                     <div class="prow">
                       <span class="plabel">{{ t('task.field.milestone') }}</span>
-                      <n-popover trigger="click" placement="bottom-start">
+                      <n-popover
+                        :show="fieldOpen === 'milestone'"
+                        trigger="click"
+                        placement="bottom-start"
+                        @update:show="setField('milestone', $event)"
+                      >
                         <template #trigger>
                           <button class="val">
                             <n-icon :component="TrailSignOutline" :size="14" class="vico" />
@@ -1666,6 +1715,7 @@ useShortcuts(
                               v-model:value="newMilestoneTitle"
                               size="small"
                               :placeholder="t('task.milestone.newPlaceholder')"
+                              @keydown.esc.stop="fieldOpen = ''"
                               @keydown.enter.prevent="createMilestone"
                             />
                             <n-button
@@ -1770,6 +1820,7 @@ useShortcuts(
                             v-model:value="newTagName"
                             size="tiny"
                             :placeholder="t('task.tags.newPlaceholder')"
+                            @keydown.esc.stop="fieldOpen = ''"
                             @keyup.enter="createTag"
                           />
                         </div>
@@ -1792,7 +1843,13 @@ useShortcuts(
                           {{ t('task.parent.detach') }}
                         </button>
                       </div>
-                      <n-popover v-else trigger="click" placement="bottom-start">
+                      <n-popover
+                        v-else
+                        :show="fieldOpen === 'parent'"
+                        trigger="click"
+                        placement="bottom-start"
+                        @update:show="setField('parent', $event)"
+                      >
                         <template #trigger>
                           <button class="val">
                             <span class="muted">{{ t('task.parent.makeSubtask') }}</span>

@@ -74,7 +74,7 @@ export const CATALOG = [
   // cheat sheet lists only what is new here.
   { id: 'task.next', keys: 'j', group: 'task', modal: true },
   { id: 'task.prev', keys: 'k', group: 'task', modal: true },
-  { id: 'task.close', group: 'task', display: [['escape']] },
+  { id: 'task.close', keys: 'escape', group: 'task', modal: true },
   { id: 'task.complete', keys: 'e', modal: true },
   { id: 'task.status', keys: 's', modal: true },
   { id: 'task.assignees', keys: 'a', modal: true },
