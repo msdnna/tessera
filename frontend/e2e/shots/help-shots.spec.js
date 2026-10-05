@@ -236,8 +236,8 @@ for (const scheme of ['light', 'dark']) {
     const LAYOUTS = [
       { idx: 1, name: 'board-list', ready: '.list-view' },
       { idx: 2, name: 'board-calendar', ready: '.cal-cell' },
-      { idx: 3, name: 'board-timeline', ready: '.tl-toolbar' },
-      { idx: 4, name: 'board-gantt', ready: '.tl-toolbar' },
+      { idx: 3, name: 'board-timeline', ready: '[data-testid="chart-controls"]' },
+      { idx: 4, name: 'board-gantt', ready: '[data-testid="chart-controls"]' },
       { idx: 5, name: 'board-matrix', ready: '.m-colhead' },
     ]
     for (const layout of LAYOUTS) {

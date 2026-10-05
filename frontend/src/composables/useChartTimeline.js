@@ -9,8 +9,12 @@ import {
   buildDays,
   buildMonthBands,
   buildWeekBands,
+  buildWeekRangeBands,
+  buildYearBands,
   hourTicksInWindow,
   hourStepFor,
+  SCALE_DAYW,
+  scaleOfTier,
 } from '@/utils/timeAxis'
 import { estimateToDays } from '@/utils/estimation'
 import { useFormat } from '@/composables/useFormat'
@@ -30,11 +34,11 @@ import { useFormat } from '@/composables/useFormat'
 //   * container px    — scroll container, offset from axis px by leftW + scrollLeft;
 //   * viewport px     — clientX/clientY, used for the fixed-position date pill.
 
-// px per day. The range spans week-grouping (zoomed out) through hour-precision
-// (zoomed in); stops land inside each tier: weeks ≤18, days 24–112, hours ≥140
-// (≥3 hour ticks fit).
-export const ZOOM = [6, 10, 14, 18, 24, 32, 44, 60, 84, 112, 140, 180, 230]
-export const DEFAULT_ZOOM_IDX = 5 // → 32px/day (days tier)
+// px per day. The range spans month-grouping (zoomed out) through hour-precision
+// (zoomed in); stops land inside each tier: months ≤6, weeks 10–18, days 24–112,
+// hours ≥140 (≥3 hour ticks fit).
+export const ZOOM = [4, 6, 10, 14, 18, 24, 32, 44, 60, 84, 112, 140, 180, 230]
+export const DEFAULT_ZOOM_IDX = 5 // → 24px/day: the days scale preset (v2, #2959)
 
 export function useChartTimeline({
   scheduled,
@@ -98,8 +102,14 @@ export function useChartTimeline({
 
   // ── viewport tracking ──
   const todayMs = startOfDay(Date.now())
-  // Current axis granularity tier: 'weeks' | 'days' | 'hours'.
+  // Current axis granularity tier: 'months' | 'weeks' | 'days' | 'hours'.
   const tier = computed(() => tierFor(dayW.value))
+  // The toolbar's scale preset the zoom currently sits in, and a jump to one.
+  const scale = computed(() => scaleOfTier(tier.value))
+  function setScale(name) {
+    const i = ZOOM.indexOf(SCALE_DAYW[name])
+    if (i >= 0) applyZoom(i)
+  }
   // Horizontal scroll position + viewport width, rAF-throttled — drives the windowed
   // hour-tick rendering (only paints the visible slice).
   const scrollX = ref(0)
@@ -124,7 +134,10 @@ export function useChartTimeline({
     }
     lo -= 3 * DAY_MS
     hi += 7 * DAY_MS
-    const days = Math.round((hi - lo) / DAY_MS) + 1
+    // The axis reaches the viewport's right edge at any zoom — a short plan on a
+    // wide screen must not end in a bare stretch of canvas (v2, #2959).
+    const fill = Math.ceil(Math.max(0, viewW.value - leftW.value) / dayW.value) + 1
+    const days = Math.max(Math.round((hi - lo) / DAY_MS) + 1, fill)
     return { start: startOfDay(lo), days }
   })
   const axisW = computed(() => range.value.days * dayW.value)
@@ -137,8 +150,20 @@ export function useChartTimeline({
   const days = computed(() =>
     buildDays(range.value.start, range.value.days, todayMs, formatters.value),
   )
-  const monthBands = computed(() => buildMonthBands(days.value, formatters.value))
+  const monthBands = computed(() =>
+    buildMonthBands(days.value, formatters.value, { short: tier.value === 'months' }),
+  )
   const weekBands = computed(() => (tier.value === 'weeks' ? buildWeekBands(days.value) : []))
+  // v2 header (#2959): the days tier reads week ranges over day numbers, the
+  // months tier years over months.
+  const weekRangeBands = computed(() =>
+    tier.value === 'days' ? buildWeekRangeBands(days.value, formatters.value) : [],
+  )
+  const yearBands = computed(() => (tier.value === 'months' ? buildYearBands(days.value) : []))
+  // Weekend columns behind the bars (days/hours tiers): the offset of the first
+  // Saturday from the range start, for a 7-day repeating backdrop.
+  const weekendOffset = computed(() => (6 - new Date(range.value.start).getDay() + 7) % 7)
+  const todayIndex = computed(() => dayIndex(todayMs))
   // Hour ticks only for the visible viewport slice (+ a margin) — "lazy lines" so a
   // wide board doesn't render thousands of header nodes in the hours tier.
   const hourTicks = computed(() => {
@@ -196,6 +221,12 @@ export function useChartTimeline({
     }
     scrollRaf = requestAnimationFrame(step)
   }
+  // ←/→ on the chart: a week of the current scale at a time.
+  function scrollByDays(n) {
+    const el = scrollEl.value
+    if (!el) return
+    animateScrollLeft(Math.max(0, el.scrollLeft + n * dayW.value))
+  }
   function centerToday(smooth = true) {
     const el = scrollEl.value
     if (!el) return
@@ -206,15 +237,22 @@ export function useChartTimeline({
   // Centre on the ref appearing rather than on onMounted: the scroll container is
   // the component's template ref, so watching it is what guarantees the element
   // exists (and has a width) when we compute the initial scrollLeft.
-  watch(
-    scrollEl,
-    (el) =>
-      el &&
-      nextTick(() => {
-        centerToday(false)
-        syncScroll()
-      }),
-  )
+  // The viewport's width feeds the axis range (it fills the screen), so a resize
+  // re-reads it — a scroll event alone would miss a window that only got wider.
+  let viewRO = null
+  watch(scrollEl, (el) => {
+    viewRO?.disconnect()
+    viewRO = null
+    if (!el) return
+    if (typeof ResizeObserver !== 'undefined') {
+      viewRO = new ResizeObserver(() => syncScroll())
+      viewRO.observe(el)
+    }
+    nextTick(() => {
+      syncScroll()
+      nextTick(() => centerToday(false))
+    })
+  })
 
   // rAF-throttled scroll/resize sync for the windowed hour ticks + row windowing.
   let scrollRaf2 = 0
@@ -315,6 +353,7 @@ export function useChartTimeline({
   })
 
   onBeforeUnmount(() => {
+    viewRO?.disconnect()
     cancelAnimationFrame(scrollRaf)
     cancelAnimationFrame(scrollRaf2)
     clearTimeout(zoomSettle)
@@ -334,6 +373,8 @@ export function useChartTimeline({
     applyZoom,
     zoomIn,
     zoomOut,
+    scale,
+    setScale,
     // axis
     todayMs,
     tier,
@@ -343,6 +384,10 @@ export function useChartTimeline({
     days,
     monthBands,
     weekBands,
+    weekRangeBands,
+    yearBands,
+    weekendOffset,
+    todayIndex,
     hourTicks,
     subW,
     todayLeft,
@@ -356,6 +401,7 @@ export function useChartTimeline({
     syncScroll,
     onScroll,
     centerToday,
+    scrollByDays,
     animateScrollLeft,
     // gestures
     pan,

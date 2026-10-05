@@ -172,6 +172,27 @@ export function useChartBars({
     }
   }
 
+  // ⇧←/⇧→ on a selected bar (v2, #2959): both ends move by whole days, the same
+  // full-replace PATCH the drag sends.
+  async function shiftDays(t, n) {
+    if (!t || !n) return
+    const s = parse(t.start_date)
+    const d = parse(t.due_date)
+    if (s == null && d == null) return
+    try {
+      await tasksApi.update(t.id, {
+        title: t.title,
+        priority: t.priority || 0,
+        due_date: d != null ? new Date(d + n * DAY_MS).toISOString() : null,
+        start_date: s != null ? new Date(s + n * DAY_MS).toISOString() : null,
+        recurrence: t.recurrence || null,
+        completed: !!t.completed_at,
+      })
+    } finally {
+      onChanged()
+    }
+  }
+
   onBeforeUnmount(() => {
     window.removeEventListener('pointermove', onMove)
     window.removeEventListener('pointerup', onUp)
@@ -181,7 +202,7 @@ export function useChartBars({
   // untouched, task rows carry the bar, the ghost envelope and the sub-bars.
   const renderRows = computed(() =>
     vwindow.value.rows.map((r) => {
-      if (r.t === 'lane') return r
+      if (r.t !== 'task') return r
       const ghost = ghostGeom(r.task)
       return {
         t: 'task',
@@ -201,5 +222,5 @@ export function useChartBars({
     }),
   )
 
-  return { drag, preview, geom, ghostGeom, ghostTitle, onBarDown, renderRows }
+  return { drag, preview, geom, ghostGeom, ghostTitle, onBarDown, renderRows, shiftDays }
 }

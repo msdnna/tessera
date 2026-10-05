@@ -84,6 +84,7 @@ import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardCustomizePanel from './BoardCustomizePanel.vue'
 import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
+import ChartControls from './chart/ChartControls.vue'
 import BoardMembers from './BoardMembers.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
 import BoardListView from './BoardListView.vue'
@@ -258,6 +259,11 @@ const foldFilters = ref(0) // how many filter chips (from the end) sit in «+N»
 const foldSorts = ref(false) // sort chips folded into «+N» too
 const compactGroup = ref(false) // grouping control without its caption
 const hideCount = ref(false) // the shown-count is dropped
+const hideChartHints = ref(false) // Gantt/timeline: its text key hints go first
+// The open Gantt / timeline view: its exposed controller drives ChartControls.
+const chartView = ref(null)
+// Its controls join the sub-toolbar once it mounts — fit the row again then.
+watch(chartView, () => nextTick(fitSubbar))
 const hiddenChips = computed(() => {
   const n = filterChips.value.length
   const k = Math.min(foldFilters.value, n)
@@ -284,6 +290,7 @@ async function fitSubbar() {
     foldSorts.value = false
     compactGroup.value = false
     hideCount.value = false
+    hideChartHints.value = false
     switchAvail.value = Infinity
     await nextTick()
     // Whatever the rest of the row needs at full size, the switch may not take.
@@ -291,6 +298,11 @@ async function fitSubbar() {
     const rest = bar.scrollWidth - (sw ? sw.offsetWidth : 0)
     switchAvail.value = Math.max(0, bar.clientWidth - rest)
     await nextTick()
+    // The chart's key hints are only text: they give their room up first.
+    if (overflowing(bar) && timelineLike.value) {
+      hideChartHints.value = true
+      await nextTick()
+    }
     // The composer outranks the grouping caption: drop the caption first.
     if (overflowing(bar)) {
       compactGroup.value = true
@@ -2049,6 +2061,14 @@ async function restoreFromArchive(taskId) {
           </button>
         </n-dropdown>
 
+        <!-- Gantt / timeline: scale, today, key hints, view settings (v2, #2959) -->
+        <ChartControls
+          v-if="timelineLike"
+          :ctl="chartView?.ctl"
+          :hints="!hideChartHints && !isMobile"
+          :compact="isMobile"
+        />
+
         <BoardMembers v-if="!isMobile" class="subbar-people" />
 
         <!-- Right-side tools — slide off to the right while the composer is
@@ -2213,6 +2233,8 @@ async function restoreFromArchive(taskId) {
 
       <BoardTimelineView
         v-else-if="layout === 'timeline'"
+        ref="chartView"
+        :done-column-id="board?.done_column_id || null"
         :tasks="filteredTasks"
         :status-columns="columns"
         :members-map="membersMap"
@@ -2228,6 +2250,8 @@ async function restoreFromArchive(taskId) {
 
       <BoardGanttView
         v-else-if="layout === 'gantt'"
+        ref="chartView"
+        :done-column-id="board?.done_column_id || null"
         :board-id="boardId"
         :tasks="filteredTasks"
         :status-columns="columns"

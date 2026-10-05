@@ -15,7 +15,9 @@ import { useChartTimeline } from '@/composables/useChartTimeline'
 import { useChartLanes } from '@/composables/useChartLanes'
 import { useChartRows } from '@/composables/useChartRows'
 import { useChartBars } from '@/composables/useChartBars'
-import ChartToolbar from './chart/ChartToolbar.vue'
+import { useChartView } from '@/composables/useChartView'
+import { useResponsive } from '@/composables/useResponsive'
+import ChartMilestoneRow from './chart/ChartMilestoneRow.vue'
 import ChartAxisHeader from './chart/ChartAxisHeader.vue'
 import ChartLaneHeader from './chart/ChartLaneHeader.vue'
 import ChartMilestoneMarkers from './chart/ChartMilestoneMarkers.vue'
@@ -52,6 +54,8 @@ const props = defineProps({
   subtasksByParent: { type: Object, default: () => ({}) },
   // Project milestones — rendered as dashed vertical due-markers across the chart.
   milestones: { type: Array, default: () => [] },
+  // boards.done_column_id — picks the «done» status glyph on the rows.
+  doneColumnId: { type: String, default: null },
 })
 const emit = defineEmits(['open', 'changed'])
 
@@ -65,13 +69,15 @@ const menu = useTaskMenu({
   columns: () => props.statusColumns,
 })
 
-const LEFT_W = 224 // px of the fixed task/lane column (expanded)
+// px of the fixed task/lane column (expanded; v2, #2959) — a phone keeps a slim one
+const { isMobile } = useResponsive()
+const LEFT_W = computed(() => (isMobile.value ? 168 : 340))
 // Collapsible left column: collapses to a true 0 (padding + border are zeroed in
 // the .collapsed state) to give the chart full width. Toggle is instant —
 // animating width across every sticky row thrashed layout; `collapsing` suppresses
 // the today-line's left-transition for one frame so it snaps with the rest.
 const leftCollapsed = ref(false)
-const leftW = computed(() => (leftCollapsed.value ? 0 : LEFT_W))
+const leftW = computed(() => (leftCollapsed.value ? 0 : LEFT_W.value))
 const collapsing = ref(false)
 let collapseSettle = 0
 function toggleLeft() {
@@ -88,22 +94,31 @@ const unscheduled = computed(() => props.tasks.filter((t) => !t.start_date && !t
 // ── the chart engine, shared with the Gantt view ──
 // Axis range + header bands, zoom, the scroll viewport, pan/ctrl-wheel and the hover
 // cursor guide all live in useChartTimeline; only the bar layout below is ours.
+const timeline = useChartTimeline({
+  scheduled,
+  milestones: toRef(props, 'milestones'),
+  estCfg,
+  leftW,
+  // A bar drag owns the pointer — the guide would otherwise trail the dragged edge.
+  cursorBlocked: () => !!drag.value,
+})
 const {
   scrollEl,
   bodyEl,
-  ZOOM,
-  zoomIdx,
   dayW,
   zooming,
-  zoomIn,
-  zoomOut,
   todayMs,
   tier,
   range,
   axisW,
+  dayIndex,
   days,
   monthBands,
   weekBands,
+  weekRangeBands,
+  yearBands,
+  weekendOffset,
+  todayIndex,
   hourTicks,
   subW,
   todayLeft,
@@ -112,7 +127,6 @@ const {
   viewH,
   bodyTop,
   onScroll,
-  centerToday,
   pan,
   onPanDown,
   onWheel,
@@ -121,14 +135,7 @@ const {
   cursorLabel,
   onHoverMove,
   onHoverLeave,
-} = useChartTimeline({
-  scheduled,
-  milestones: toRef(props, 'milestones'),
-  estCfg,
-  leftW,
-  // A bar drag owns the pointer — the guide would otherwise trail the dragged edge.
-  cursorBlocked: () => !!drag.value,
-})
+} = timeline
 
 // ── lanes (swimlanes) — driven by the composer-bar's groupMode ──
 // Lane tasks keep the incoming `props.tasks` order, which already reflects the
@@ -141,6 +148,7 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   groupMode: toRef(props, 'groupMode'),
   tagPrefix: toRef(props, 'tagPrefix'),
   estCfg,
+  milestones: toRef(props, 'milestones'),
 })
 
 const overdueCount = computed(
@@ -166,7 +174,8 @@ const counters = computed(() => {
 })
 
 // ── row geometry + virtualization (shared with the Gantt view) ──
-const { subBars, rowHeight, findTask, vwindow } = useChartRows({
+const collapsedLanes = ref(new Set())
+const rowsApi = useChartRows({
   lanes,
   tasks: toRef(props, 'tasks'),
   subtasksByParent: toRef(props, 'subtasksByParent'),
@@ -174,10 +183,13 @@ const { subBars, rowHeight, findTask, vwindow } = useChartRows({
   viewH,
   bodyTop,
   bodyEl,
+  laneH0: 42,
+  collapsedLanes,
 })
+const { subBars, rowHeight, findTask, vwindow } = rowsApi
 
 // ── bar geometry + drag-to-reschedule (shared with the Gantt view) ──
-const { drag, onBarDown, renderRows } = useChartBars({
+const barsApi = useChartBars({
   tier,
   range,
   dayW,
@@ -188,6 +200,27 @@ const { drag, onBarDown, renderRows } = useChartBars({
   findTask,
   onChanged: () => emit('changed'),
 })
+const { drag, onBarDown } = barsApi
+
+// ── v2 (#2959): row meta, lane summaries, selection + keys, the controller the
+// board's sub-toolbar drives ──
+const { viewRows, toggleLane, laneSummary, selectedId, select, selectedLabel, ctl } = useChartView({
+  props,
+  timeline,
+  bars: barsApi,
+  rows: rowsApi,
+  leftW,
+  leftCollapsed,
+  toggleLeft,
+  collapsedLanes,
+  counters,
+  onOpen: (id) => emit('open', id),
+})
+defineExpose({ ctl })
+const msX = (lane) =>
+  lane.milestone?.due_date
+    ? dayIndex(parse(lane.milestone.due_date)) * dayW.value + dayW.value / 2
+    : null
 
 // Bars glide on zoom, but never mid-drag or mid-collapse (the transition would lag).
 const animate = computed(() => !drag.value && !zooming.value && !collapsing.value)
@@ -249,17 +282,6 @@ const hoverEstimateRange = computed(() =>
 
 <template>
   <div class="tl">
-    <ChartToolbar
-      :zoom-idx="zoomIdx"
-      :zoom-count="ZOOM.length"
-      :left-collapsed="leftCollapsed"
-      :counters="counters"
-      @today="centerToday"
-      @zoom-in="zoomIn()"
-      @zoom-out="zoomOut()"
-      @toggle-left="toggleLeft"
-    />
-
     <div
       ref="scrollEl"
       class="tl-scroll"
@@ -280,13 +302,24 @@ const hoverEstimateRange = computed(() =>
           '--tl-sub-w': `${subW}px`,
         }"
       >
+        <div
+          class="tl-backdrop"
+          :class="{ weekends: tier === 'days' || tier === 'hours' }"
+          :style="{
+            left: `${leftW}px`,
+            backgroundPositionX: `${(weekendOffset - 5) * dayW}px`,
+          }"
+        />
         <ChartAxisHeader
           :left-w="leftW"
           :day-w="dayW"
           :tier="tier"
           :collapsed="leftCollapsed"
+          :count="scheduled.length"
           :month-bands="monthBands"
           :week-bands="weekBands"
+          :week-range-bands="weekRangeBands"
+          :year-bands="yearBands"
           :days="days"
           :hour-ticks="hourTicks"
         />
@@ -294,11 +327,22 @@ const hoverEstimateRange = computed(() =>
         <!-- swimlanes (windowed: only rows in/near the viewport render; spacers keep
              the scroll height; one continuous today-line spans the whole body) -->
         <div ref="bodyEl" class="tl-body">
+          <div
+            v-if="tier === 'days' || tier === 'hours'"
+            class="tl-todaycol"
+            :style="{ left: `${leftW + todayIndex * dayW}px`, width: `${dayW}px` }"
+          />
           <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
-          <ChartMilestoneMarkers :markers="milestoneMarkers" :left-w="leftW" />
+          <!-- milestone dates as markers, unless the milestones are the groups
+               (then each closes its group with its own diamond row) -->
+          <ChartMilestoneMarkers
+            v-if="groupMode !== 'milestone'"
+            :markers="milestoneMarkers"
+            :left-w="leftW"
+          />
           <div v-if="cursor" class="tl-cursor" :style="{ left: `${leftW + cursor.axisX}px` }" />
           <div class="tl-vspacer" :style="{ height: `${vwindow.top}px` }" />
-          <template v-for="r in renderRows" :key="r.key">
+          <template v-for="r in viewRows" :key="r.key">
             <ChartLaneHeader
               v-if="r.t === 'lane'"
               :lane="r.lane"
@@ -306,8 +350,20 @@ const hoverEstimateRange = computed(() =>
               :axis-w="axisW"
               :tier="tier"
               :collapsed="leftCollapsed"
+              :folded="collapsedLanes.has(r.lane.key)"
+              :summary="laneSummary(r.lane)"
               :effort="laneEffort(r.lane)"
               :effort-full="laneEffortFull(r.lane)"
+              @toggle="toggleLane"
+            />
+            <ChartMilestoneRow
+              v-else-if="r.t === 'ms'"
+              :lane="r.lane"
+              :left-w="leftW"
+              :axis-w="axisW"
+              :tier="tier"
+              :collapsed="leftCollapsed"
+              :x="msX(r.lane)"
             />
             <ChartTaskRow
               v-else
@@ -317,7 +373,10 @@ const hoverEstimateRange = computed(() =>
               :tier="tier"
               :collapsed="leftCollapsed"
               :animate="animate"
+              :selected="selectedId === r.task.id"
+              :sel-label="selectedId === r.task.id ? selectedLabel : null"
               @open="$emit('open', $event)"
+              @select="select"
               @bar-down="onBarDown"
               @bar-enter="onBarEnter"
               @bar-leave="onBarLeave"

@@ -243,8 +243,22 @@
     "lane": {
       "unassigned": "Unassigned",
       "noTag": "No tag",
-      "all": "All tasks"
-    }
+      "all": "All tasks",
+      "noMilestone": "No milestone"
+    },
+    "people": "People",
+    "scale": {
+      "days": "Days",
+      "weeks": "Weeks",
+      "months": "Months"
+    },
+    "hintScroll": "scroll",
+    "hintZoom": "zoom",
+    "settings": "Customize the view",
+    "workDays": "{n} working day | {n} working days",
+    "overdueBy": "{n} day overdue | {n} days overdue",
+    "lanes": "Collapse / expand the group",
+    "shiftHint": "shift dates"
   },
   "members": {
     "title": "Members · {count}"

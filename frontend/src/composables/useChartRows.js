@@ -28,6 +28,8 @@ export function useChartRows({
   // Initial lane-header height, used until the real one is measured on mount. The
   // two views seed it differently (see the callers) — the measured value wins.
   laneH0 = 30,
+  // Keys of the lanes folded to their header (v2, #2959).
+  collapsedLanes = { value: new Set() },
 }) {
   // Scheduled subtasks of a task (those with a start or due), drawn as sub-bars.
   function subBars(t) {
@@ -61,16 +63,23 @@ export function useChartRows({
   }
 
   // Flat ordered list of visual rows (lane header, then its task rows), matching the
-  // document flow so spacer heights stay exact.
+  // document flow so spacer heights stay exact. A milestone lane closes with the
+  // milestone's own row (its diamond on the due date); a folded lane is its header.
   const flatRows = computed(() => {
     const out = []
     for (const lane of lanes.value) {
       out.push({ t: 'lane', key: `L${lane.key}`, lane })
+      if (collapsedLanes.value.has(lane.key)) continue
       for (const task of lane.tasks) out.push({ t: 'task', key: task.id, task })
+      if (lane.milestone?.due_date) out.push({ t: 'ms', key: `M${lane.key}`, lane })
     }
     return out
   })
-  const rowH = (r) => (r.t === 'lane' ? laneH.value : rowHeight(r.task))
+  const rowH = (r) => {
+    if (r.t === 'lane') return laneH.value
+    if (r.t === 'ms') return ROW_H
+    return rowHeight(r.task)
+  }
   const rowLayout = computed(() => {
     const rows = flatRows.value
     const tops = new Array(rows.length)

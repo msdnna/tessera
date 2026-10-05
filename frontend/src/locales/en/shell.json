@@ -160,7 +160,8 @@
       "create": "Quick create",
       "palette": "Command palette",
       "view": "View",
-      "task": "Open task"
+      "task": "Open task",
+      "chart": "Gantt and timeline"
     },
     "nav": {
       "palette": "Search and commands",
@@ -222,6 +223,14 @@
       "next": "Next task",
       "prev": "Previous task",
       "close": "Close the task"
+    },
+    "chart": {
+      "today": "Jump to today",
+      "scroll": "Scroll in time",
+      "zoom": "Zoom",
+      "select": "Select a task",
+      "shift": "Shift the dates by a day",
+      "open": "Open the task"
     }
   },
   "palette": {

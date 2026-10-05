@@ -7,16 +7,12 @@ import { expectFitsWidth } from './_layout.js'
 // Third round of #2893, point 3: "длинные формулировки в Ганте, и переносы в
 // плашках «просрочено» и «без дат» из-за них".
 //
-// Both halves are one flex row. `.tl-toolbar` is a nowrap row of four rigid
-// items; on 393px the Gantt's hint ("Тяните от правого края задачи к другой,
-// чтобы создать зависимость") has nowhere to go, so it wraps into a five-line
-// column, and the squeeze pushes into the counters — a chip with a 20px radius
-// and two lines of text renders as a circle, which is the "29 без дат" blob in
-// the report.
-//
-// Neither is visible to the width gates: squeezing costs the page no width. So
-// this asserts on the two boxes that actually break — the toolbar's height and
-// each chip's line count.
+// v2 (#2959): the chart's own toolbar row is gone — its controls live in the
+// board's sub-toolbar (ChartControls), the counters and the link hint in the
+// «Настроить вид» popover. The breakage the report showed can still happen there,
+// and the width gates still cannot see it: squeezing costs the page no width. So
+// this asserts on the boxes that would break — the controls' height and each
+// chip's line count — and on the hint staying off a touch screen.
 
 const here = dirname(fileURLToPath(import.meta.url))
 const SHOTS = resolve(here, '../.auth/mobile-shots')
@@ -55,21 +51,18 @@ test('Гант на телефоне: подсказка не растёт в к
   await page.locator('.n-dropdown-option', { hasText: 'Гант' }).first().click()
   await page.waitForTimeout(700)
 
-  const toolbar = page.locator('.tl-toolbar')
-  await expect(toolbar).toBeVisible({ timeout: 10000 })
+  const controls = page.getByTestId('chart-controls')
+  await expect(controls).toBeVisible({ timeout: 10000 })
   await page.screenshot({ path: resolve(SHOTS, 'gantt-toolbar.png'), fullPage: false })
 
-  // Gate 1: the toolbar stays a toolbar. The "Сегодня" button sets the row height
-  // at ~30px, so two rows fit under 90px while the reported five-line column
-  // measured well past 120. The chart itself starts right below it — every pixel
-  // the toolbar takes is taken from the bars.
-  const h = await toolbar.evaluate((el) => el.getBoundingClientRect().height)
-  expect(h, `тулбар Ганта занял ${Math.round(h)}px — подсказка выросла в колонку`).toBeLessThan(90)
+  // Gate 1: the controls stay one row of 34px controls, not a wrapped column.
+  const h = await controls.evaluate((el) => el.getBoundingClientRect().height)
+  expect(h, `контролы Ганта заняли ${Math.round(h)}px — ряд переносится`).toBeLessThan(50)
 
-  // Gate 2: each chip is one line. Measured as height, not as text: a chip that
-  // wraps is what turns into the circle in the screenshot, and its own box is the
-  // only place that shows.
-  const chips = page.locator('.tl-counter')
+  // Gate 2: each counter chip in the settings popover is one line.
+  await page.getByTestId('chart-settings').tap()
+  const chips = page.locator('.cc-counter')
+  await expect(chips.first()).toBeVisible()
   const n = await chips.count()
   expect(n, 'плашек-счётчиков нет — проверять нечего').toBeGreaterThan(0)
   for (let i = 0; i < n; i++) {
@@ -83,10 +76,10 @@ test('Гант на телефоне: подсказка не растёт в к
     )
   }
 
-  // The hint is dropped rather than wrapped, and that is a decision worth
-  // pinning: it describes dragging a link knob that `:hover` reveals at 14px, so
-  // on a touch screen it points at an affordance that does not exist there.
-  await expect(page.locator('.tl-hint')).toBeHidden()
+  // The link hint is dropped rather than shown: it describes dragging a knob
+  // that `:hover` reveals at 14px, an affordance a touch screen does not have.
+  await expect(page.locator('.cc-note')).toBeHidden()
+  await page.keyboard.press('Escape')
 
   await expectFitsWidth(page, 'Гант на телефоне')
 })

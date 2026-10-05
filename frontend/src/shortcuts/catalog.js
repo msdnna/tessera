@@ -20,7 +20,7 @@
 //   eager    fires on its own key even though longer sequences start with it
 //   prio     wins over other entries completed by the same key (default 0)
 
-export const GROUPS = ['nav', 'board', 'card', 'task', 'create', 'palette', 'view']
+export const GROUPS = ['nav', 'board', 'card', 'task', 'chart', 'create', 'palette', 'view']
 
 export const CATALOG = [
   // ── navigation ──
@@ -83,6 +83,24 @@ export const CATALOG = [
   { id: 'task.due', keys: 'd', modal: true },
   { id: 'task.tags', keys: 'l', modal: true },
   { id: 'task.subtask', keys: 'shift+n', modal: true },
+
+  // ── the Gantt / timeline views (#2959): the selected bar and the time axis ──
+  { id: 'chart.today', keys: 't', group: 'chart' },
+  { id: 'chart.scroll', group: 'chart', display: [['arrowleft', 'arrowright']] },
+  { id: 'chart.zoom', group: 'chart', display: [['+', '−']] },
+  { id: 'chart.select', group: 'chart', display: [['arrowup', 'arrowdown']] },
+  { id: 'chart.shift', group: 'chart', display: [['shift', '←/→']] },
+  { id: 'chart.open', keys: 'enter', group: 'chart' },
+  { id: 'chart.left', keys: 'arrowleft', repeat: true },
+  { id: 'chart.right', keys: 'arrowright', repeat: true },
+  { id: 'chart.up', keys: 'arrowup', repeat: true },
+  { id: 'chart.down', keys: 'arrowdown', repeat: true },
+  { id: 'chart.zoomIn', keys: '=' },
+  { id: 'chart.zoomInShift', keys: 'shift+=' },
+  { id: 'chart.zoomOut', keys: '-' },
+  { id: 'chart.shiftLeft', keys: 'shift+arrowleft', repeat: true },
+  { id: 'chart.shiftRight', keys: 'shift+arrowright', repeat: true },
+  { id: 'chart.clear', keys: 'escape' },
 
   // ── quick create ──
   { id: 'create.task', keys: 'n t', group: 'create', command: 'AddOutline' },
