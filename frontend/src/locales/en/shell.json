@@ -316,5 +316,9 @@
     "taskCreated": "Task #{n} created",
     "reminderCreated": "Reminder created",
     "noteCreated": "Note created"
+  },
+  "rail": {
+    "appearance": "Workspace appearance",
+    "add": "Add a workspace or a server"
   }
 }

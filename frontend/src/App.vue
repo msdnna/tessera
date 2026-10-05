@@ -9,7 +9,7 @@ import { naivePack } from '@/i18n/naive'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
 import UpdateToast from '@/components/UpdateToast.vue'
-import ServerRail from '@/components/ServerRail.vue'
+import AppRail from '@/components/rail/AppRail.vue'
 import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
 import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
 import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
@@ -19,17 +19,18 @@ import { useResponsive } from '@/composables/useResponsive'
 const theme = useThemeStore()
 const router = useRouter()
 
-// Desktop server hotbar (#2930). It lives at the app root — NOT inside AppLayout —
+// Desktop rail: servers and their workspaces (#2930, #2955). On desktop it lives
+// at the app root — NOT inside AppLayout —
 // so it is reachable on the login and "no connection" screens too: those render
 // outside AppLayout, and a stuck/expired server would otherwise trap the user
 // with no way to switch away (the rework follow-up). It reserves a gutter via the
-// global `--server-rail-w` custom property, which AppLayout and the connection
+// global `--app-rail-w` custom property, which AppLayout and the connection
 // overlay read to inset themselves past it.
 const { isMobile } = useResponsive()
 const showRail = computed(() => isTauri() && !isMobile.value)
 watchEffect(() => {
   if (typeof document === 'undefined') return
-  document.documentElement.style.setProperty('--server-rail-w', showRail.value ? '56px' : '0px')
+  document.documentElement.style.setProperty('--app-rail-w', showRail.value ? '56px' : '0px')
 })
 
 // Language (#2797). The watch — rather than a call in the settings screen —
@@ -127,8 +128,8 @@ onUnmounted(() => unlistenOAuth?.())
       <!-- Desktop server hotbar, docked at the app root so it survives on the
            login and offline screens (which live outside AppLayout). A fixed
            gutter on the left; AppLayout and the connection overlay inset
-           themselves past it via --server-rail-w. -->
-      <div v-if="showRail" class="app-rail-dock"><ServerRail /></div>
+           themselves past it via --app-rail-w. -->
+      <div v-if="showRail" class="app-rail-dock"><AppRail /></div>
       <router-view v-slot="{ Component }">
         <transition name="fade" mode="out-in">
           <component :is="Component" />

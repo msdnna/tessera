@@ -292,6 +292,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/workspaces", rh.ListWorkspaces)
 			protected.GET("/workspaces/:id", rh.GetWorkspace)
 			protected.PATCH("/workspaces/:id", rh.UpdateWorkspace)
+			protected.PUT("/workspaces/:id/appearance", rh.SetWorkspaceAppearance)
 			protected.DELETE("/workspaces/:id", rh.DeleteWorkspace)
 			protected.GET("/workspaces/:id/search", rh.Search)
 			protected.GET("/workspaces/:id/tasks", rh.ListWorkspaceTasks)

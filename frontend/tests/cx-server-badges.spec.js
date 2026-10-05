@@ -6,11 +6,15 @@ vi.mock('axios', () => ({ default: { post, get } }))
 import { pollServer, resetBadgeCache } from '@/composables/useServerBadges'
 import { sSetFor, sGetFor } from '@/utils/serverStorage'
 
-// A stand-in for the pinia store: pollServer only ever calls these two.
+// A stand-in for the pinia store: pollServer only ever calls these three.
 function fakeStore() {
   return {
     badges: {},
     signedOut: {},
+    workspaces: {},
+    setWorkspaces(id, list) {
+      this.workspaces[id] = list
+    },
     setBadge(id, n) {
       this.badges[id] = n
     },
@@ -21,6 +25,9 @@ function fakeStore() {
 }
 
 const SERVER = { id: 'srv-b', url: 'https://b.example.com' }
+// The count requests only — each successful poll also lists the server's
+// workspaces for the rail (#2955), with the same access token.
+const countCalls = () => get.mock.calls.filter(([url]) => url.endsWith('/unread-count'))
 
 beforeEach(() => {
   localStorage.clear()
@@ -71,7 +78,7 @@ describe('inactive-server badges (#2930)', () => {
     // Rotating the refresh token is the risky part — do it once per access-token
     // lifetime, not once a minute. The later polls are a bare count request.
     expect(post).toHaveBeenCalledTimes(1)
-    expect(get).toHaveBeenCalledTimes(3)
+    expect(countCalls()).toHaveLength(3)
     expect(store.badges[SERVER.id]).toBe(3)
   })
 
@@ -148,7 +155,7 @@ describe('inactive-server badges (#2930)', () => {
     await pollServer(store, SERVER)
 
     expect(post).toHaveBeenCalledTimes(2)
-    expect(get).toHaveBeenCalledTimes(2)
+    expect(countCalls()).toHaveLength(2)
     expect(store.badges[SERVER.id]).toBe(5)
     expect(store.signedOut[SERVER.id]).toBe(false)
   })
@@ -161,5 +168,23 @@ describe('inactive-server badges (#2930)', () => {
     expect(post).not.toHaveBeenCalled()
     expect(store.signedOut[SERVER.id]).toBe(true)
     expect(store.badges[SERVER.id]).toBe(0)
+  })
+
+  it('lists the server’s workspaces for the rail with the same token (#2955)', async () => {
+    sSetFor('tessera_refresh_token', SERVER.id, 'rt-old')
+    post.mockResolvedValue({ data: { access_token: 'at-1', refresh_token: 'rt-new' } })
+    get.mockImplementation(async (url) =>
+      url.endsWith('/workspaces') ? { data: [{ id: 'w1', name: 'Дача' }] } : { data: { count: 1 } },
+    )
+    const store = fakeStore()
+
+    await pollServer(store, SERVER)
+
+    expect(post).toHaveBeenCalledTimes(1)
+    expect(get).toHaveBeenCalledWith(`${SERVER.url}/api/workspaces`, {
+      headers: { Authorization: 'Bearer at-1' },
+      timeout: expect.any(Number),
+    })
+    expect(store.workspaces[SERVER.id]).toEqual([{ id: 'w1', name: 'Дача' }])
   })
 })

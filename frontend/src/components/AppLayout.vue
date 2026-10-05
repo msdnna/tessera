@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
@@ -21,6 +21,7 @@ import QuickActionsFab from './QuickActionsFab.vue'
 import QuickCreateModal from './QuickCreateModal.vue'
 import ShortcutsModal from './ShortcutsModal.vue'
 import Sidebar from './Sidebar.vue'
+import AppRail from './rail/AppRail.vue'
 import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
@@ -59,10 +60,19 @@ const tour = useTourStore()
 const { isMobile } = useResponsive()
 const { collapsed, layoutWidth, toggle } = useSidebarSize()
 
-// The multi-server rail (#2930) is docked at the app root (App.vue) now, not here,
-// so it also covers the login/offline screens. This layout only reserves the
-// gutter it occupies via the global `--server-rail-w` custom property (0 on web
-// and on mobile, where the rail is hidden).
+// The rail (#2955). On desktop it is docked at the app root (App.vue), so it also
+// covers the login/offline screens (#2930); on the web it has nothing to offer
+// there and lives here, with the signed-in shell. Either way this layout
+// reserves its gutter via the global `--app-rail-w` custom property. On a phone
+// the rail moves into the sidebar drawer.
+const webRail = computed(() => !isTauri() && !isMobile.value)
+watchEffect(() => {
+  if (!isTauri())
+    document.documentElement.style.setProperty('--app-rail-w', webRail.value ? '56px' : '0px')
+})
+onBeforeUnmount(() => {
+  if (!isTauri()) document.documentElement.style.setProperty('--app-rail-w', '0px')
+})
 const route = useRoute()
 const router = useRouter()
 const message = useMessage()
@@ -101,6 +111,8 @@ useRealtime(
     conflicts.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
+    // A renamed or recoloured workspace repaints its rail tile everywhere.
+    if (ev.type === 'workspace.updated') ws.patchWorkspace(ev.data)
   },
   // Reconnect / resync: rebuild the sidebar tree, which is the layout-level state
   // that can drift while the socket is down (projects added/removed elsewhere).
@@ -203,9 +215,12 @@ watch(
   <div
     class="app-shell"
     :style="{
-      '--app-content-left': isMobile ? '0px' : `calc(var(--server-rail-w, 0px) + ${layoutWidth}px)`,
+      '--app-content-left': isMobile ? '0px' : `calc(var(--app-rail-w, 0px) + ${layoutWidth}px)`,
     }"
   >
+    <!-- Web rail of workspaces (#2955), docked like the desktop one in App.vue. -->
+    <div v-if="webRail" class="app-rail-dock"><AppRail /></div>
+
     <!-- Desktop: fixed sider + content -->
     <n-layout v-if="!isMobile" has-sider class="app-layout" style="height: 100vh">
       <n-layout-sider
@@ -224,7 +239,7 @@ watch(
             type="button"
             class="sider-toggle"
             data-testid="sidebar-toggle"
-            :style="{ left: `calc(var(--server-rail-w, 0px) + ${layoutWidth}px - 12px)` }"
+            :style="{ left: `calc(var(--app-rail-w, 0px) + ${layoutWidth}px - 12px)` }"
             :aria-label="t(collapsed ? 'shell.layout.expand' : 'shell.layout.collapse')"
             @click="toggle"
           >
@@ -289,7 +304,11 @@ watch(
       <QuickActionsFab />
       <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
         <n-drawer-content body-content-style="padding: 0">
-          <Sidebar :mobile="true" />
+          <!-- The rail rides along in the drawer on a phone (#2955). -->
+          <div class="drawer-split">
+            <AppRail />
+            <Sidebar :mobile="true" class="drawer-sidebar" />
+          </div>
         </n-drawer-content>
       </n-drawer>
     </n-layout>
@@ -340,10 +359,26 @@ watch(
   height: 100vh;
   overflow: hidden;
   /* Reserve the gutter for the app-root server rail (#2930); 0 on web/mobile
-     where --server-rail-w is unset/0. border-box so the padding eats into the
+     where --app-rail-w is unset/0. border-box so the padding eats into the
      100vw width instead of overflowing it. */
   box-sizing: border-box;
-  padding-left: var(--server-rail-w, 0px);
+  padding-left: var(--app-rail-w, 0px);
+}
+/* Same dock as App.vue's desktop rail: pinned left, under Naive's overlays. */
+.app-rail-dock {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+}
+.drawer-split {
+  display: flex;
+  height: 100%;
+}
+.drawer-sidebar {
+  flex: 1;
+  min-width: 0;
 }
 /* Positioning context for the working-area version footer. */
 .work-pane {

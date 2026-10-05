@@ -3,7 +3,6 @@ import { ref, computed, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import {
-  NSelect,
   NButton,
   NInput,
   NModal,
@@ -24,8 +23,10 @@ import {
   RibbonOutline,
   AddOutline,
   FolderOutline,
-  EllipsisHorizontalOutline,
   TrashOutline,
+  ChevronDownOutline,
+  ChevronForwardOutline,
+  ColorPaletteOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -51,7 +52,8 @@ import EmptyState from './EmptyState.vue'
 import SidebarFooter from './SidebarFooter.vue'
 import WorkspaceTools from './WorkspaceTools.vue'
 import SidebarRailNode from './SidebarRailNode.vue'
-import BrandLogo from './BrandLogo.vue'
+import WorkspaceAppearanceModal from './rail/WorkspaceAppearanceModal.vue'
+import { useSidebarSize } from '@/composables/useSidebarSize'
 
 defineProps({
   mobile: { type: Boolean, default: false },
@@ -66,7 +68,7 @@ const message = useMessage()
 const route = useRoute()
 const router = useRouter()
 
-const wsOptions = computed(() => store.list.map((w) => ({ label: workspaceName(w), value: w.id })))
+const { toggle: toggleSidebar } = useSidebarSize()
 const rootGroups = computed(() => store.childGroups(null))
 const ungrouped = computed(() => store.projectsInGroup(null))
 
@@ -103,10 +105,6 @@ const addOptions = computed(() => [
   { label: t('shell.tree.addProject'), key: 'project', icon: menuIcon(DocumentTextOutline) },
   { label: t('shell.tree.addGroup'), key: 'group', icon: menuIcon(FolderOutline) },
 ])
-
-async function onWorkspaceChange(id) {
-  await store.selectWorkspace(id)
-}
 
 // Projects are named in a modal (the name decides the URL address, which is
 // assigned once); groups keep the create-then-rename flow.
@@ -145,20 +143,29 @@ async function createWorkspace() {
   const n = wsModal.value.value.trim()
   if (!n) return
   try {
-    const res = await wsApi.create({ name: n })
+    await store.createWorkspace(n)
     wsModal.value.show = false
     wsModal.value.value = ''
-    await store.loadWorkspaces()
-    await store.selectWorkspace(res.data.id)
   } catch (e) {
     message.error(e.message)
   }
 }
 
-// Workspace settings menu — deletion is owner-only (server enforces it too).
 const isOwner = computed(() => !!store.current && store.current.owner_id === auth.user?.id)
-const wsMenuOptions = computed(() =>
-  isOwner.value
+// The workspace menu under its name: its tile (owners/admins), a new one, and
+// — for the owner — deleting it.
+const wsMenuOptions = computed(() => [
+  ...(store.canManage
+    ? [
+        {
+          label: t('shell.rail.appearance'),
+          key: 'appearance',
+          icon: menuIcon(ColorPaletteOutline),
+        },
+      ]
+    : []),
+  { label: t('shell.workspace.create'), key: 'create', icon: menuIcon(AddOutline) },
+  ...(isOwner.value
     ? [
         {
           label: t('shell.workspace.delete'),
@@ -167,11 +174,14 @@ const wsMenuOptions = computed(() =>
           props: { style: 'color:#e0533d' },
         },
       ]
-    : [],
-)
+    : []),
+])
+const appearanceShow = ref(false)
 const wsDeleteShow = ref(false)
 function onWsMenuSelect(key) {
-  if (key === 'delete') {
+  if (key === 'appearance') appearanceShow.value = true
+  else if (key === 'create') wsModal.value.show = true
+  else if (key === 'delete') {
     if (store.list.length <= 1) {
       message.warning(t('shell.workspace.deleteLast'))
       return
@@ -193,49 +203,38 @@ async function deleteWorkspace() {
 <template>
   <div class="sidebar" data-testid="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
     <div class="brand">
-      <!-- Expanded: wordmark sized so its text stays no taller than the tool icons
-           to its right. Collapsed rail: the mark, a touch larger. -->
-      <BrandLogo
-        class="brand-logo"
-        :height="collapsed ? 26 : 19"
-        :mark="collapsed"
-        :wordmark="!collapsed"
-      />
-      <!-- Tools live here (right of the logo) when expanded; when the rail is
-           collapsed (desktop) they move to the header instead. -->
-      <WorkspaceTools v-if="mobile || !collapsed" class="brand-tools" placement="bottom-start" />
-    </div>
-
-    <div v-if="collapsed" class="rail-sep" />
-
-    <div v-if="!collapsed" class="ws-switch" data-tour="ws-switch">
-      <n-select
-        :value="store.currentId"
-        :options="wsOptions"
-        size="small"
-        @update:value="onWorkspaceChange"
-      />
-      <n-button
-        quaternary
-        circle
-        size="small"
-        :title="t('shell.workspace.create')"
-        @click="wsModal.show = true"
-      >
-        <n-icon :component="AddOutline" />
-      </n-button>
+      <!-- The logo and the workspace tiles live on the rail now (v2, #2955);
+           the header names the current workspace and holds its menu. -->
       <n-dropdown
-        v-if="wsMenuOptions.length"
+        v-if="!collapsed"
         trigger="click"
-        placement="bottom-end"
+        placement="bottom-start"
         :options="wsMenuOptions"
         @select="onWsMenuSelect"
       >
-        <n-button quaternary circle size="small" :title="t('shell.workspace.settings')">
-          <n-icon :component="EllipsisHorizontalOutline" />
-        </n-button>
+        <button type="button" class="ws-head" data-testid="ws-head">
+          <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
+          <n-icon :component="ChevronDownOutline" :size="13" class="ws-head-chev" />
+        </button>
       </n-dropdown>
+      <button
+        v-else
+        type="button"
+        class="ws-expand"
+        :title="t('shell.layout.expand')"
+        @click="toggleSidebar"
+      >
+        <n-icon :component="ChevronForwardOutline" :size="16" />
+      </button>
     </div>
+    <!-- Tools get a row of their own under the name, so a long workspace name
+         isn't squeezed; when the rail is collapsed (desktop) they move to the
+         header instead. -->
+    <div v-if="mobile || !collapsed" class="tools-row">
+      <WorkspaceTools placement="bottom-start" />
+    </div>
+
+    <div v-if="collapsed" class="rail-sep" />
 
     <nav class="nav">
       <n-tooltip :disabled="!collapsed" placement="right">
@@ -404,6 +403,8 @@ async function deleteWorkspace() {
       </n-card>
     </n-modal>
 
+    <WorkspaceAppearanceModal v-model:show="appearanceShow" :workspace="store.current" />
+
     <ConfirmByName
       v-model:show="wsDeleteShow"
       :name="workspaceName(store.current)"
@@ -440,12 +441,55 @@ async function deleteWorkspace() {
   height: 46px;
   flex-shrink: 0;
 }
-.ws-switch > :first-child {
-  flex: 1;
+/* Current workspace, v2 header (#2955): its name and the menu chevron. */
+.ws-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  margin-left: -4px;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
+  cursor: pointer;
 }
-.brand-tools {
-  margin-left: auto;
+.ws-head:hover {
+  background: var(--t-hover-side);
+}
+.ws-head-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-head-chev {
+  flex: none;
+  color: var(--t-text3);
+}
+.ws-expand {
+  width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.ws-expand:hover {
+  background: var(--t-hover-side);
+  color: var(--t-text1);
+}
+.tools-row {
+  display: flex;
+  padding: 0 8px 6px;
 }
 .sidebar.collapsed .brand {
   justify-content: center;
@@ -476,15 +520,6 @@ async function deleteWorkspace() {
   padding: 2px 0;
 }
 /* Brand lockup (mark + wordmark) in the header; collapses to the mark on the rail. */
-.brand-logo {
-  flex: none;
-}
-.ws-switch {
-  display: flex;
-  gap: 6px;
-  padding: 12px;
-  align-items: center;
-}
 .nav {
   display: flex;
   flex-direction: column;

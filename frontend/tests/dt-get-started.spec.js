@@ -22,6 +22,7 @@ const root = process.cwd()
 // selectors, checked separately.
 const MARKUP = [
   'src/components/Sidebar.vue',
+  'src/components/rail/AppRail.vue',
   'src/components/SidebarNode.vue',
   'src/components/ProjectRow.vue',
   'src/components/ProjectCreateModal.vue',

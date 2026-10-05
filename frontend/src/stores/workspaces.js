@@ -38,6 +38,22 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     if (currentId.value) await selectWorkspace(currentId.value)
   }
 
+  // Create a workspace and switch to it (the rail's «+», #2955).
+  async function createWorkspace(name) {
+    const res = await wsApi.create({ name })
+    await loadWorkspaces()
+    await selectWorkspace(res.data.id)
+    return res.data
+  }
+
+  // Merge a changed workspace row (rename, tile appearance — from our own call
+  // or a `workspace.updated` event) into the list without a refetch. The row
+  // from the server lacks `my_role`, which the list carries, so merge, not swap.
+  function patchWorkspace(row) {
+    if (!row?.id) return
+    list.value = list.value.map((w) => (w.id === row.id ? { ...w, ...row } : w))
+  }
+
   // Delete a workspace (owner only, enforced server-side) and re-sync the list.
   // If the deleted one was active, loadWorkspaces() re-picks the first available.
   async function removeWorkspace(id) {
@@ -185,6 +201,8 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     selectWorkspace,
     ensureWorkspace,
     removeWorkspace,
+    createWorkspace,
+    patchWorkspace,
     refresh,
     loadBoards,
     childGroups,

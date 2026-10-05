@@ -315,6 +315,7 @@ export const workspaces = {
   list: () => api.get('/workspaces'),
   get: (id) => api.get(`/workspaces/${id}`),
   create: (data) => api.post('/workspaces', data),
+  update: (id, data) => api.patch(`/workspaces/${id}`, data), // { name }
   // Dangerous: delete a workspace with everything in it (owner only, 403 otherwise).
   remove: (id) => api.delete(`/workspaces/${id}`),
   members: (id) => sharedGet(`/workspaces/${id}/members`),
@@ -330,6 +331,8 @@ export const workspaces = {
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),
   createProject: (id, data) => api.post(`/workspaces/${id}/projects`, data),
+  // Tile of the workspace on the rail (#2955): { color, icon, icon_mode }.
+  setAppearance: (id, data) => api.put(`/workspaces/${id}/appearance`, data),
   search: (id, q) => api.get(`/workspaces/${id}/search`, { params: { q } }),
   tasks: (id, params) => api.get(`/workspaces/${id}/tasks`, { params }),
   // Resolve a per-workspace task number (#252) to its task — for /board/<slug>?task=<number> links.
