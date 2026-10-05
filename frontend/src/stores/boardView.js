@@ -81,6 +81,12 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const layout = ref('board') // 'board' | 'list' | 'calendar' | 'timeline' | 'gantt' | 'matrix'
   const archiveOpen = ref(false)
   const reloadNonce = ref(0) // header-driven changes ask the board to reload
+  // Header search on a board (v2, #2954): the header field is the board's
+  // title filter (KanbanBoard mirrors it into its own filters.q), and the board
+  // publishes how many tasks the current filter leaves so the header knows when
+  // to fall back to a workspace-wide search (null = no board count yet).
+  const searchQ = ref('')
+  const shownTasks = ref(null)
 
   function bumpReload() {
     reloadNonce.value++
@@ -119,10 +125,14 @@ export const useBoardViewStore = defineStore('boardView', () => {
     showEmpty.value = true
     refill(fieldVis, defaultFieldVis())
     archiveOpen.value = false
+    searchQ.value = ''
+    shownTasks.value = null
   }
 
   return {
     active,
+    searchQ,
+    shownTasks,
     boardId,
     wsId,
     projectId,

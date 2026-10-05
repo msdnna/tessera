@@ -11,11 +11,10 @@
   "composer": {
     "subtasksOn": "Subtasks expanded",
     "subtasksOff": "Expand subtasks",
-    "groupToggle": "Switch statuses/tags",
     "sortHint": "Click — direction · drag to reorder",
     "remove": "Remove",
     "add": "Add grouping / sorting / filter",
-    "search": "Search by title…",
+    "more": "{count} more",
     "clear": "Clear all",
     "back": "Back",
     "shown": "showing: {tasks} ({total})",

@@ -64,6 +64,8 @@
   },
   "search": {
     "placeholder": "Search tasks, notes and documents…",
+    "placeholderBoard": "Search this board and workspace…",
+    "boardNone": "Nothing on this board — results from the whole workspace",
     "tasks": "Tasks",
     "notes": "Notes",
     "documents": "Documents",

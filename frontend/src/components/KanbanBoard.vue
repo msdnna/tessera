@@ -234,24 +234,87 @@ watch(autoCollapseEmpty, (on) => {
     if (colCount(dcol) === 0 && dcol.key in colCollapse) delete colCollapse[dcol.key]
   }
 })
-// Composer bar: always a single row. The right-side tools slide away (yielding
-// their width to the chips) only once the chips + a reserved slice for search
-// text fill ≥75% of the bar's full width — measured, not hover-driven. Each chip
-// is pale on its own and turns vivid only under the cursor (search: on focus).
-const composerExpanded = ref(false)
+// ── sub-toolbar fit (v2, #2954) ──
+// One row, never scrolled. Fitting starts from the full bar and gives ground in
+// a fixed order until the row fits: first the view switch takes only what the
+// rest leaves (it shows as many views as fit, the active one always), then the
+// grouping control drops its «Группировка» caption, then the composer folds
+// filter chips from the end into «+N», then the sort chips (taking back what
+// filter chips fit in the room they free), and last the shown-count. Every step
+// is a DOM update + measure inside one frame (the observer and nextTick both run
+// before paint), so nothing flickers.
 const subbarEl = ref(null)
 const composerEl = ref(null)
-const searchEl = ref(null)
-let composerRO = null
-function recomputeComposerFit() {
+const chipsClip = ref(null)
+const switchAvail = ref(Infinity) // px the view switch may take
+const foldFilters = ref(0) // how many filter chips (from the end) sit in «+N»
+const foldSorts = ref(false) // sort chips folded into «+N» too
+const compactGroup = ref(false) // grouping control without its caption
+const hideCount = ref(false) // the shown-count is dropped
+const hiddenChips = computed(() => {
+  const n = filterChips.value.length
+  const k = Math.min(foldFilters.value, n)
+  return Array.from({ length: k }, (_, i) => n - k + i)
+})
+const foldedCount = computed(
+  () => hiddenChips.value.length + (foldSorts.value ? sortLevels.value.length : 0),
+)
+let subbarRO = null
+let fitting = false
+let refit = false // a fit was asked for while one was running
+const overflowing = (bar) => bar.scrollWidth > bar.clientWidth + 1
+async function fitSubbar() {
   const bar = subbarEl.value
-  const search = searchEl.value
-  if (!bar || !search) return
-  // Chips are nowrap and precede the search input, so the input's offset within
-  // the composer equals the chips' total width. Reserve room for typed search.
-  const chipsW = search.offsetLeft
-  const RESERVED_SEARCH = 170
-  composerExpanded.value = chipsW + RESERVED_SEARCH >= bar.clientWidth * 0.75
+  if (!bar) return
+  if (fitting) {
+    refit = true
+    return
+  }
+  fitting = true
+  refit = false
+  try {
+    foldFilters.value = 0
+    foldSorts.value = false
+    compactGroup.value = false
+    hideCount.value = false
+    switchAvail.value = Infinity
+    await nextTick()
+    // Whatever the rest of the row needs at full size, the switch may not take.
+    const sw = [...bar.children].find((el) => el.classList.contains('layout-switch'))
+    const rest = bar.scrollWidth - (sw ? sw.offsetWidth : 0)
+    switchAvail.value = Math.max(0, bar.clientWidth - rest)
+    await nextTick()
+    // The composer outranks the grouping caption: drop the caption first.
+    if (overflowing(bar)) {
+      compactGroup.value = true
+      await nextTick()
+    }
+    for (let i = 0; i < filterChips.value.length && overflowing(bar); i++) {
+      foldFilters.value = i + 1
+      await nextTick()
+    }
+    if (overflowing(bar) && sortLevels.value.length) {
+      foldSorts.value = true
+      await nextTick()
+      // The sorts' room may take some filter chips back out of «+N».
+      while (foldFilters.value > 0) {
+        foldFilters.value--
+        await nextTick()
+        if (overflowing(bar)) {
+          foldFilters.value++
+          await nextTick()
+          break
+        }
+      }
+    }
+    if (overflowing(bar)) {
+      hideCount.value = true
+      await nextTick()
+    }
+  } finally {
+    fitting = false
+  }
+  if (refit) fitSubbar()
 }
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
@@ -555,10 +618,18 @@ watch(
   persistView,
   { deep: true },
 )
-// Re-measure the composer fit when the chip set changes (add/remove a filter,
-// sort, group, scope, or the subtasks toggle); resize is handled by the observer.
-watch([facetChips, archivedMode, milestoneScope, subtasksExpanded], () =>
-  nextTick(recomputeComposerFit),
+// Re-fit the sub-toolbar when the chip set changes (add/remove a filter, sort,
+// group, scope) or the view does; resizes are handled by the observer.
+watch(
+  [
+    facetChips,
+    archivedMode,
+    milestoneScope,
+    layout,
+    isMobile,
+    () => boardViewStore.membersList.length,
+  ],
+  () => nextTick(fitSubbar),
 )
 
 // ── saved views (per-user, server-side; cross-device) ──
@@ -1109,6 +1180,26 @@ function colCountTitle(dcol) {
 // summing the column headers — with tag grouping a task carrying two column tags
 // sits in both lists, and the arithmetic sum would count it twice.
 const shownCounts = computed(() => countWithSubtasks(filteredTasks.value, countSubtaskMap.value))
+// The header search is this board's title filter (v2, #2954): mirror it both
+// ways (a saved view can bring its own query), and publish how many tasks the
+// filter leaves so the header can fall back to a workspace search on zero.
+watch(
+  () => boardViewStore.searchQ,
+  (v) => {
+    if ((filters.q || '') !== v) filters.q = v
+  },
+)
+watch(
+  () => filters.q,
+  (v) => {
+    if (boardViewStore.searchQ !== (v || '')) boardViewStore.searchQ = v || ''
+  },
+)
+watch(
+  () => shownCounts.value.tasks,
+  (n) => (boardViewStore.shownTasks = n),
+  { immediate: true },
+)
 const shownCountLabel = computed(() => {
   const c = shownCounts.value
   return c.total > c.tasks
@@ -1436,10 +1527,10 @@ onMounted(async () => {
     ro.observe(boardScroll.value)
     measure()
   }
-  // Re-measure the composer fit on bar resize (window / sidebar toggle).
-  composerRO = new ResizeObserver(recomputeComposerFit)
-  if (subbarEl.value) composerRO.observe(subbarEl.value)
-  nextTick(recomputeComposerFit)
+  // Re-fit the sub-toolbar on resize (window / sidebar toggle / chip set).
+  subbarRO = new ResizeObserver(() => fitSubbar())
+  if (subbarEl.value) subbarRO.observe(subbarEl.value)
+  nextTick(fitSubbar)
   restoreView()
   await load(props.boardId)
   loadViews()
@@ -1451,7 +1542,7 @@ onBeforeUnmount(() => {
   // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
   clearTimeout(reloadTimer)
   for (const t of Object.values(partialTimers)) clearTimeout(t)
-  composerRO?.disconnect()
+  subbarRO?.disconnect()
   onDragEnd()
   boardViewStore.reset()
 })
@@ -1503,17 +1594,15 @@ async function restoreFromArchive(taskId) {
       :class="{ 'has-bg': !!themeStore.boardBackground }"
       :style="boardBgStyle"
     >
-      <!-- Sub-toolbar under the header: the view switch, then grouping / sort /
-           filters / subtasks + a task-name search, the board's people and its
-           tools on the right. (Теги/Этапы/Архив live in the global header.) -->
+      <!-- Sub-toolbar under the header (v2, #2954): the view switch, the composer
+           (sort + filter chips only — the title search is the header's field),
+           the grouping control, the board's people and its tools. The view switch
+           and the composer share the free width: the switch shows as many views
+           as fit beside the chips, and only when it is down to the active one do
+           extra filter chips fold into «+N». Nothing else shrinks or truncates. -->
       <div ref="subbarEl" class="subbar">
-        <!-- v2 (#2954): the view switch lives at the head of the sub-toolbar. On a
-             phone it is part of the header's board menu instead. -->
-        <BoardLayoutSwitch v-if="!isMobile" />
-        <!-- Composer bar: scope (archive/sprint) + grouping / sort / filters as
-             chips + an add menu + the name search, all in one single-row bar.
-             Each chip is pale until hovered; the right-side tools slide away only
-             once the chips fill ≥75% of the bar. Sort chips are drag-reorderable. -->
+        <!-- On a phone the view switch is part of the header's board menu. -->
+        <BoardLayoutSwitch v-if="!isMobile" :available="switchAvail" @measured="fitSubbar" />
         <div
           ref="composerEl"
           class="composer"
@@ -1521,83 +1610,129 @@ async function restoreFromArchive(taskId) {
           data-tour="board-composer"
         >
           <n-icon class="composer-funnel" :component="FunnelOutline" :size="14" />
-          <!-- Scope chips: archive = amber tint, sprint = accent tint (no border). -->
-          <span
-            v-if="archivedMode"
-            class="facet facet-archive"
-            :title="t('board.scope.archiveTitle')"
-          >
-            <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
-            {{ t('board.scope.archiveChip') }}
-            <button class="facet-x" :title="t('board.scope.archiveExit')" @click.stop="exitArchive">
-              ×
-            </button>
-          </span>
-          <span
-            v-if="milestoneScope"
-            class="facet facet-accent"
-            :title="t('board.scope.milestoneTitle')"
-          >
-            <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
-            {{ milestoneScopeLabel }}
-            <button
-              class="facet-x"
-              :title="t('board.scope.milestoneClear')"
-              @click.stop="clearMilestoneScope"
+          <div ref="chipsClip" class="chips-clip">
+            <!-- Scope chips: archive = amber tint, sprint = accent tint. -->
+            <span
+              v-if="archivedMode"
+              class="facet facet-archive"
+              :title="t('board.scope.archiveTitle')"
             >
-              ×
-            </button>
-          </span>
-
-          <!-- Subtask-expansion toggle (icon-only): accent when on, grey when off. -->
-          <button
-            class="facet subtasks-chip"
-            :class="{ active: subtasksExpanded }"
-            :title="
-              t(subtasksExpanded ? 'board.composer.subtasksOn' : 'board.composer.subtasksOff')
-            "
-            @click.stop="toggleSubtasksExpanded"
-          >
-            <n-icon class="facet-ic" :component="GitBranchOutline" :size="14" />
-          </button>
-
-          <!-- Sort chips: click toggles direction, drag reorders primary/secondary. -->
-          <draggable
-            v-if="sortLevels.length"
-            :list="sortLevels"
-            item-key="field"
-            handle=".facet"
-            :animation="150"
-            class="sort-chips"
-            ghost-class="facet-ghost"
-          >
-            <template #item="{ element: l }">
-              <span
-                class="facet sortable"
-                :title="t('board.composer.sortHint')"
-                @click="toggleSortDir(l)"
+              <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
+              {{ t('board.scope.archiveChip') }}
+              <button
+                class="facet-x"
+                :title="t('board.scope.archiveExit')"
+                @click.stop="exitArchive"
               >
-                <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
-                {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
+                ×
+              </button>
+            </span>
+            <span
+              v-if="milestoneScope"
+              class="facet facet-accent"
+              :title="t('board.scope.milestoneTitle')"
+            >
+              <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
+              {{ milestoneScopeLabel }}
+              <button
+                class="facet-x"
+                :title="t('board.scope.milestoneClear')"
+                @click.stop="clearMilestoneScope"
+              >
+                ×
+              </button>
+            </span>
+
+            <!-- Sort chips: click toggles direction, drag reorders primary/secondary. -->
+            <draggable
+              v-if="sortLevels.length && !foldSorts"
+              :list="sortLevels"
+              item-key="field"
+              handle=".facet"
+              :animation="150"
+              class="sort-chips"
+              ghost-class="facet-ghost"
+            >
+              <template #item="{ element: l }">
+                <span
+                  class="facet sortable"
+                  :title="t('board.composer.sortHint')"
+                  @click="toggleSortDir(l)"
+                >
+                  <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
+                  {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
+                  <button
+                    class="facet-x"
+                    :title="t('board.composer.remove')"
+                    @click.stop="removeSort(l)"
+                  >
+                    ×
+                  </button>
+                </span>
+              </template>
+            </draggable>
+
+            <!-- Filter chips (priority / assignee / tag / status / milestone / due).
+                 The ones that no longer fit stay laid out but invisible; «+N»
+                 below lists them. -->
+            <template v-for="(c, ci) in filterChips" :key="ci">
+              <span v-if="!hiddenChips.includes(ci)" class="facet">
+                <n-icon class="facet-ic" :component="c.icon" :size="13" />
+                {{ c.text }}
                 <button
                   class="facet-x"
                   :title="t('board.composer.remove')"
-                  @click.stop="removeSort(l)"
+                  @click.stop="removeChip(c)"
                 >
                   ×
                 </button>
               </span>
             </template>
-          </draggable>
+          </div>
 
-          <!-- Filter chips (priority / assignee / tag / status / milestone / due). -->
-          <span v-for="(c, ci) in filterChips" :key="ci" class="facet">
-            <n-icon class="facet-ic" :component="c.icon" :size="13" />
-            {{ c.text }}
-            <button class="facet-x" :title="t('board.composer.remove')" @click.stop="removeChip(c)">
-              ×
-            </button>
-          </span>
+          <n-popover v-if="foldedCount" trigger="click" placement="bottom-start">
+            <template #trigger>
+              <button
+                type="button"
+                class="facet facet-more"
+                data-testid="composer-more"
+                :title="t('board.composer.more', { count: foldedCount })"
+              >
+                +{{ foldedCount }}
+              </button>
+            </template>
+            <div class="more-chips">
+              <template v-if="foldSorts">
+                <span
+                  v-for="l in sortLevels"
+                  :key="l.field"
+                  class="facet sortable"
+                  @click="toggleSortDir(l)"
+                >
+                  <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
+                  {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
+                  <button
+                    class="facet-x"
+                    :title="t('board.composer.remove')"
+                    @click.stop="removeSort(l)"
+                  >
+                    ×
+                  </button>
+                </span>
+              </template>
+              <span v-for="ci in hiddenChips" :key="ci" class="facet">
+                <n-icon class="facet-ic" :component="filterChips[ci].icon" :size="13" />
+                {{ filterChips[ci].text }}
+                <button
+                  class="facet-x"
+                  :title="t('board.composer.remove')"
+                  @click.stop="removeChip(filterChips[ci])"
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+          </n-popover>
 
           <n-dropdown
             :show="addShow"
@@ -1614,14 +1749,13 @@ async function restoreFromArchive(taskId) {
             </button>
           </n-dropdown>
 
-          <input
-            ref="searchEl"
-            v-model="filters.q"
-            class="composer-search"
-            data-testid="board-search"
-            :placeholder="t('board.composer.search')"
-          />
-          <span class="composer-count" data-testid="composer-count" :title="shownCountTitle">
+          <!-- How much the filter leaves — only while something filters. -->
+          <span
+            v-if="(hasClearableFacets || filters.q) && !hideCount"
+            class="composer-count"
+            data-testid="composer-count"
+            :title="shownCountTitle"
+          >
             {{ shownCountLabel }}
           </span>
           <button
@@ -1651,7 +1785,9 @@ async function restoreFromArchive(taskId) {
             data-tour="board-grouping"
           >
             <n-icon class="gc-ic" :component="groupChip.icon" :size="14" />
-            <span v-if="!isMobile" class="gc-lbl">{{ t('board.facet.menu.group') }}</span>
+            <span v-if="!isMobile && !compactGroup" class="gc-lbl">{{
+              t('board.facet.menu.group')
+            }}</span>
             <span class="gc-val">{{ groupChip.text }}</span>
             <n-icon class="gc-ic" :component="ChevronDownOutline" :size="12" />
           </button>
@@ -1661,7 +1797,25 @@ async function restoreFromArchive(taskId) {
 
         <!-- Right-side tools — slide off to the right while the composer is
              expanded so the full chip set has room. -->
-        <div class="bar-tools" :class="{ hidden: composerExpanded }">
+        <div class="bar-tools">
+          <!-- Subtasks: compact rows on the card ⇄ full child cards (v2: a tool of
+               its own, out of the composer). -->
+          <n-tooltip>
+            <template #trigger>
+              <n-button
+                size="small"
+                quaternary
+                class="ngrad bar-btn"
+                :type="subtasksExpanded ? 'primary' : 'default'"
+                data-testid="subtasks-toggle"
+                @click="toggleSubtasksExpanded"
+              >
+                <template #icon><n-icon :component="GitBranchOutline" /></template>
+              </n-button>
+            </template>
+            {{ t(subtasksExpanded ? 'board.composer.subtasksOn' : 'board.composer.subtasksOff') }}
+          </n-tooltip>
+
           <!-- "Авто": dependency-graph ordering (Gantt only). Resets the composer to
              no-group/no-sort and orders rows by the blocking graph. -->
           <n-tooltip v-if="layout === 'gantt'">
@@ -2059,6 +2213,8 @@ async function restoreFromArchive(taskId) {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
+  /* The fit keeps everything inside; this only guards a frame mid-resize. */
+  overflow: hidden;
 }
 .subbar-spacer {
   flex: 1;
@@ -2066,6 +2222,12 @@ async function restoreFromArchive(taskId) {
 .subbar-people {
   flex: none;
   margin-left: auto;
+}
+.bar-tools {
+  margin-left: auto;
+}
+.subbar-people + .bar-tools {
+  margin-left: 0;
 }
 /* Sprint scope chip: a persistent, accent-tinted badge showing the active sprint. */
 /* Keep the loader vertically centred during the initial board load (the spin
@@ -2087,51 +2249,55 @@ async function restoreFromArchive(taskId) {
   height: 34px;
   width: 34px;
 }
-/* The tool cluster slides off to the right (and yields its width) while the
-   composer is expanded, giving the chips the full bar width. */
 .bar-tools {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: none;
-  overflow: hidden;
-  transition:
-    max-width 0.28s ease,
-    opacity 0.2s ease,
-    transform 0.28s ease,
-    margin 0.28s ease;
-  max-width: 200px;
 }
-.bar-tools.hidden {
-  max-width: 0;
-  margin-left: -6px;
-  opacity: 0;
-  transform: translateX(16px);
-  pointer-events: none;
-}
-/* composer bar — v2 (#2954): a filled control well, no outline; chips are
-   soft accent capsules, the «+» a round neutral button. */
+/* composer bar — v2 (#2954): a filled control well holding only the sort and
+   filter chips (+ the add button). It takes its content's width; when the row
+   is short it shrinks and the chips clip, the overflow folding into «+N». */
 .composer {
   position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 560px;
+  flex: none;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
   box-sizing: border-box;
   min-height: 34px;
-  padding: 0 6px 0 8px;
+  padding: 0 6px 0 10px;
   border-radius: var(--t-r-ctl);
   background: var(--t-ctl);
-  /* Single row; when the chips exceed the bar width (rare — the tools slide away
-     to yield space) the bar scrolls horizontally rather than wrapping. */
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
   /* Tame the inherited (Naive) line-height so a chip stays 24px tall. */
   line-height: 1.25;
+}
+.chips-clip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chips-clip:empty {
+  display: none;
+}
+.facet.facet-more {
+  flex: none;
+  border: none;
+  padding: 0 9px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.more-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 320px;
 }
 .facet {
   display: inline-flex;
@@ -2238,19 +2404,6 @@ async function restoreFromArchive(taskId) {
 .facet-add:hover {
   color: var(--t-text1);
 }
-.composer-search {
-  flex: 1;
-  min-width: 120px;
-  border: none;
-  background: none;
-  outline: none;
-  color: var(--t-text1);
-  font-size: 13px;
-  padding: 2px 4px;
-}
-.composer-search::placeholder {
-  color: var(--t-text3);
-}
 /* Reference figure, not a control — flat neutral grey, no accent gradient. */
 .composer-count {
   flex: none;
@@ -2288,23 +2441,6 @@ async function restoreFromArchive(taskId) {
 /* Drag placeholder while reordering sort chips. */
 .facet-ghost {
   opacity: 0.4;
-}
-/* Subtask-expansion toggle chip: plain grey when off, accent tint when on. */
-/* Subtask-expansion toggle: icon-only, square-ish; grey off / accent on. */
-.subtasks-chip {
-  flex: none;
-  border: none;
-  cursor: pointer;
-  font: inherit;
-  padding: 0 6px;
-}
-.subtasks-chip:not(.active) {
-  background: var(--t-pill);
-  color: var(--t-text2);
-}
-.subtasks-chip.active .facet-ic {
-  color: var(--t-primary);
-  opacity: 1;
 }
 .sb-prefix {
   width: 170px;
@@ -2413,10 +2549,6 @@ async function restoreFromArchive(taskId) {
     min-width: 0;
     max-width: none;
     margin-left: 4px;
-  }
-  /* On mobile the search is shrinkable so it never forces horizontal overflow. */
-  .composer-search {
-    min-width: 0;
   }
   /* The bar is already squeezed there; the counter is the first thing to drop. */
   .composer-count {

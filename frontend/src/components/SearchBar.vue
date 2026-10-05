@@ -17,11 +17,13 @@ import { useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useHelpStore } from '@/stores/help'
+import { useBoardViewStore } from '@/stores/boardView'
 
 const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspacesStore()
 const help = useHelpStore()
+const board = useBoardViewStore()
 
 const q = ref('')
 const open = ref(false)
@@ -32,7 +34,29 @@ const inputRef = ref(null)
 let debounce = null
 let seq = 0
 
+// On a board (v2, #2954) this field is also the board's title filter: typing
+// narrows the cards right away, and the workspace-wide results only drop down
+// when nothing on the board matches. Off a board it is the global search alone.
+const onBoard = computed(() => board.active)
+const boardHasMatches = computed(() => onBoard.value && board.shownTasks > 0)
+const showPanel = computed(() => open.value && !!q.value.trim() && !boardHasMatches.value)
+// The board can change the filter itself (a saved view brings its own), and
+// moving to another board starts clean.
+watch(
+  () => board.searchQ,
+  (v) => {
+    if (onBoard.value && v !== q.value) q.value = v
+  },
+)
+watch(
+  () => board.boardId,
+  () => {
+    q.value = ''
+  },
+)
+
 watch(q, (val) => {
+  if (onBoard.value) board.searchQ = val
   clearTimeout(debounce)
   const term = val.trim()
   if (!term) {
@@ -127,10 +151,12 @@ function gotoHelp(h) {
     <n-input
       ref="inputRef"
       v-model:value="q"
-      :placeholder="t('shell.search.placeholder')"
+      :placeholder="t(onBoard ? 'shell.search.placeholderBoard' : 'shell.search.placeholder')"
+      :input-props="{ 'data-testid': 'header-search' }"
       clearable
       @focus="q.trim() && (open = true)"
       @blur="close"
+      @keydown.esc="q = ''"
     >
       <template #prefix>
         <n-icon :component="SearchOutline" />
@@ -140,7 +166,10 @@ function gotoHelp(h) {
       </template>
     </n-input>
 
-    <div v-if="open && q.trim()" class="panel">
+    <div v-if="showPanel" class="panel">
+      <!-- On a board the cards are filtered first; this panel only opens when
+           nothing on the board matched, so say where the results come from. -->
+      <div v-if="onBoard" class="board-none">{{ t('shell.search.boardNone') }}</div>
       <!-- Help sits above the server-backed groups and outside the loading
            branch: it is resolved from the bundled index, so it is already there
            while the request is still in flight (#2794). -->
@@ -238,6 +267,11 @@ function gotoHelp(h) {
      would otherwise overlap this dropdown (a plain card stays in the auto layer
      and renders behind it). */
   z-index: 60;
+}
+.board-none {
+  padding: 6px 8px 4px;
+  font-size: 12px;
+  color: var(--t-text3);
 }
 .loading {
   display: flex;

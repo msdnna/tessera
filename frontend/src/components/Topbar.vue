@@ -77,7 +77,9 @@ const crumbBoard = computed(() => board.board?.name || '')
 .topbar {
   height: 52px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 420px) minmax(0, 1fr);
+  /* The right track never goes narrower than its actions; the crumbs on the
+     left are what truncates on a narrow window. */
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 420px) minmax(max-content, 1fr);
   align-items: center;
   gap: 16px;
   padding: 0 16px;
