@@ -40,7 +40,7 @@
   box-sizing: border-box;
 }
 .tds-TagPill > .tpill:not(.tt) {
-  padding: 1px 8px;
+  padding: 1px 7px;
   border-radius: 6px;
 }
 .tds-slot-box {
@@ -48,21 +48,22 @@
   align-items: center;
 }
 
-/* UserAvatar: the board card's .avatar metrics (24px, accent-gradient fill,
-   10px semibold initials); `stacked` adds the overlap ring of an assignee stack. */
+/* UserAvatar: the board card's .avatar metrics (v2: 22px, accent-gradient fill,
+   semibold initials); `stacked` adds the cascade — a 2px ring in the card colour
+   and a 6px overlap (TaskCardPills .avatar). */
 .tds-avatar > .ua {
-  width: var(--tds-ava, 24px);
-  height: var(--tds-ava, 24px);
+  width: var(--tds-ava, 22px);
+  height: var(--tds-ava, 22px);
   border-radius: 50%;
   background: var(--t-accent-grad);
   color: var(--t-on-primary);
-  font-size: calc(var(--tds-ava, 24px) * 0.42);
+  font-size: calc(var(--tds-ava, 22px) * 0.45);
   font-weight: 600;
   box-sizing: border-box;
 }
 .tds-avatar-stacked > .ua {
-  border: 2px solid var(--t-surface);
+  box-shadow: 0 0 0 2px var(--t-card);
 }
 .tds-avatar-stacked + .tds-avatar-stacked {
-  margin-left: calc(var(--tds-ava, 24px) * -0.375);
+  margin-left: calc(var(--tds-ava, 22px) * -0.273);
 }

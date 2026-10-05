@@ -75,6 +75,8 @@ import BoardActivityToasts from './BoardActivityToasts.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardCustomizePanel from './BoardCustomizePanel.vue'
+import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
+import BoardMembers from './BoardMembers.vue'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
@@ -728,6 +730,9 @@ const colWidth = computed(() => {
   return cardMin.value
 })
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
+// A column with no colour of its own (status column left on default, «Без тегов»)
+// is tinted with the neutral grey of the v2 lanes (#2954).
+const NEUTRAL_COLUMN = '#9aa0aa'
 
 // User-chosen board background (preference): a CSS colour or an image URL.
 const themeStore = useThemeStore()
@@ -1494,10 +1499,13 @@ async function restoreFromArchive(taskId) {
       :class="{ 'has-bg': !!themeStore.boardBackground }"
       :style="boardBgStyle"
     >
-      <!-- Sub-toolbar under the header: grouping / sort / filters / subtasks +
-           a task-name search on the right. (Layout + Теги/Архив live in the
-           global header now.) -->
+      <!-- Sub-toolbar under the header: the view switch, then grouping / sort /
+           filters / subtasks + a task-name search, the board's people and its
+           tools on the right. (Теги/Этапы/Архив live in the global header.) -->
       <div ref="subbarEl" class="subbar">
+        <!-- v2 (#2954): the view switch lives at the head of the sub-toolbar. On a
+             phone it is part of the header's board menu instead. -->
+        <BoardLayoutSwitch v-if="!isMobile" />
         <!-- Composer bar: scope (archive/sprint) + grouping / sort / filters as
              chips + an add menu + the name search, all in one single-row bar.
              Each chip is pale until hovered; the right-side tools slide away only
@@ -1631,6 +1639,8 @@ async function restoreFromArchive(taskId) {
             ×
           </button>
         </div>
+
+        <BoardMembers v-if="!isMobile" class="subbar-people" />
 
         <!-- Right-side tools — slide off to the right while the composer is
              expanded so the full chip set has room. -->
@@ -1841,15 +1851,7 @@ async function restoreFromArchive(taskId) {
               :data-column-key="dcol.key"
               :data-column-name="dcol.rawName"
               :class="{ collapsed: colCollapsedNow(dcol) }"
-              :style="{
-                '--col-accent': dcol.color || 'var(--t-primary)',
-                '--col-tint': dcol.color
-                  ? `color-mix(in srgb, ${dcol.color} 6%, var(--t-surface-alt))`
-                  : 'var(--t-surface-alt)',
-                '--col-border': dcol.color
-                  ? `color-mix(in srgb, ${dcol.color} 12%, var(--t-border))`
-                  : 'var(--t-border)',
-              }"
+              :style="{ '--col-c': dcol.color || NEUTRAL_COLUMN }"
             >
               <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
@@ -1875,6 +1877,7 @@ async function restoreFromArchive(taskId) {
                 :is-done="groupMode === 'status' && dcol.key === doneColumnId"
                 :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
                 :collapsed="isColCollapsed(dcol)"
+                :prefix-names="tagPrefixNames"
                 @changed="onChanged"
                 @set-done="onSetDone"
                 @toggle-collapse="toggleCollapse(dcol)"
@@ -1941,16 +1944,16 @@ async function restoreFromArchive(taskId) {
                     @blur="submitAddTask(dcol)"
                   />
                 </div>
-                <n-button
+                <button
                   v-else
-                  text
-                  size="tiny"
-                  class="add-btn"
+                  type="button"
+                  class="add-task"
                   data-testid="add-task-button"
                   @click="startAddTask(dcol)"
                 >
-                  {{ t('board.column.addTask') }}
-                </n-button>
+                  <n-icon :component="AddOutline" :size="15" />
+                  <span class="add-task-label">{{ t('board.column.addTask') }}</span>
+                </button>
               </template>
             </div>
           </template>
@@ -1968,16 +1971,16 @@ async function restoreFromArchive(taskId) {
             @keyup.esc="addingColumn = false"
             @blur="submitAddColumn"
           />
-          <n-button
+          <button
             v-else
-            dashed
-            block
-            class="add-btn"
+            type="button"
+            class="add-col-btn"
             data-testid="add-column"
             @click="startAddColumn"
           >
-            {{ t('board.column.add') }}
-          </n-button>
+            <n-icon :component="AddOutline" :size="16" />
+            <span>{{ t('board.column.add') }}</span>
+          </button>
         </div>
       </div>
 
@@ -2030,16 +2033,20 @@ async function restoreFromArchive(taskId) {
 </template>
 
 <style scoped>
+/* v2 (#2954): the sub-toolbar sits on the canvas with no rule under it — the
+   tinted lanes below are what set the board apart. */
 .subbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--t-border);
+  gap: 8px;
+  margin-bottom: 10px;
 }
 .subbar-spacer {
   flex: 1;
+}
+.subbar-people {
+  flex: none;
+  margin-left: auto;
 }
 /* Sprint scope chip: a persistent, accent-tinted badge showing the active sprint. */
 /* Keep the loader vertically centred during the initial board load (the spin
@@ -2058,8 +2065,8 @@ async function restoreFromArchive(taskId) {
 }
 /* Right-side toolbar buttons match the composer bar's height. */
 .bar-btn {
-  height: 40px;
-  width: 40px;
+  height: 34px;
+  width: 34px;
 }
 /* The tool cluster slides off to the right (and yields its width) while the
    composer is expanded, giving the chips the full bar width. */
@@ -2083,68 +2090,66 @@ async function restoreFromArchive(taskId) {
   transform: translateX(16px);
   pointer-events: none;
 }
-/* composer bar */
+/* composer bar — v2 (#2954): a filled control well, no outline; chips are
+   soft accent capsules, the «+» a round neutral button. */
 .composer {
   position: relative;
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   box-sizing: border-box;
-  min-height: 40px;
-  padding: 8px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  min-height: 34px;
+  padding: 0 6px 0 8px;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
   /* Single row; when the chips exceed the bar width (rare — the tools slide away
      to yield space) the bar scrolls horizontally rather than wrapping. */
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
-  /* Tame the inherited (Naive) line-height so a chip stays 22px tall. */
+  /* Tame the inherited (Naive) line-height so a chip stays 24px tall. */
   line-height: 1.25;
 }
 .facet {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  height: 22px; /* match the adjacent "add filter" (＋) button */
+  gap: 5px;
+  font-size: 12.5px;
+  height: 24px;
   box-sizing: border-box;
-  padding: 0 4px 0 9px;
-  border-radius: 6px;
-  background: var(--t-hover);
-  color: var(--t-text2);
+  padding: 0 4px 0 8px;
+  border-radius: calc(var(--t-r-ctl) - 2px);
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 14%, var(--t-ctl)),
+    color-mix(in srgb, var(--t-primary) 24%, var(--t-ctl))
+  );
+  color: var(--t-text1);
   white-space: nowrap;
-  /* Each chip is pale until hovered, so an idle bar reads calmly (no whole-bar
-     dim/expand). */
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
 }
-.facet:hover {
-  opacity: 1;
-}
+/* The grouping chip is a setting, not a filter: neutral pill. */
 .facet.group {
-  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
-  /* Accent chip text matches its icon (accent, not near-black). */
-  color: var(--t-primary);
+  background: var(--t-pill);
+  color: var(--t-text1);
+  font-weight: 600;
   cursor: pointer;
   padding-right: 9px;
 }
-/* Sprint scope chip: accent tint, no border. */
-.facet-accent {
-  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
-  color: var(--t-primary);
-}
+/* Sprint scope chip: the accent capsule like any filter. */
 .facet-accent .facet-ic {
   color: var(--t-primary);
   opacity: 1;
 }
-/* Archive scope chip: amber tint, no border. */
+/* Archive scope chip: amber capsule. */
 .facet-archive {
-  background: color-mix(in srgb, #e0922f 15%, transparent);
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e0922f 14%, var(--t-ctl)),
+    color-mix(in srgb, #e0922f 24%, var(--t-ctl))
+  );
   color: #b5792a;
 }
 .facet-archive .facet-ic {
@@ -2166,12 +2171,7 @@ async function restoreFromArchive(taskId) {
 }
 .facet-x:hover {
   color: var(--t-text1);
-  background: var(--t-border);
-}
-/* On accent chips the remove-× carries the chip's accent too (matches text/icon). */
-.facet.group .facet-x,
-.facet-accent .facet-x {
-  color: var(--t-primary);
+  background: var(--t-hover);
 }
 .facet-archive .facet-x {
   color: #b5792a;
@@ -2182,15 +2182,15 @@ async function restoreFromArchive(taskId) {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
-  border: 1px dashed var(--t-border);
-  background: none;
-  color: var(--t-primary);
+  border-radius: 50%;
+  border: none;
+  background: var(--t-pill);
+  color: var(--t-text2);
   cursor: pointer;
   flex: none;
 }
 .facet-add:hover {
-  border-color: var(--t-primary);
+  color: var(--t-text1);
 }
 .composer-search {
   flex: 1;
@@ -2201,12 +2201,6 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text1);
   font-size: 13px;
   padding: 2px 4px;
-  /* Pale until the caret is in it (matches the chips' hover behaviour). */
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
-}
-.composer-search:focus {
-  opacity: 1;
 }
 .composer-search::placeholder {
   color: var(--t-text3);
@@ -2239,7 +2233,7 @@ async function restoreFromArchive(taskId) {
   opacity: 0.8;
 }
 .facet.group .facet-ic {
-  color: var(--t-primary);
+  color: var(--t-text3);
   opacity: 1;
 }
 /* Sort chips share the composer gap so a run of them reads as one group. */
@@ -2262,9 +2256,9 @@ async function restoreFromArchive(taskId) {
   font: inherit;
   padding: 0 6px;
 }
-.subtasks-chip.active {
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-  color: var(--t-text1);
+.subtasks-chip:not(.active) {
+  background: var(--t-pill);
+  color: var(--t-text2);
 }
 .subtasks-chip.active .facet-ic {
   color: var(--t-primary);
@@ -2342,8 +2336,8 @@ async function restoreFromArchive(taskId) {
   width: 100%;
 }
 .view-chip {
-  border: 1px solid var(--t-border);
-  background: var(--t-hover);
+  border: none;
+  background: var(--t-pill);
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 11px;
@@ -2351,8 +2345,7 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text2);
 }
 .view-chip:hover {
-  border-color: var(--t-primary);
-  color: var(--t-primary);
+  color: var(--t-text1);
 }
 .task-search {
   width: 220px;
@@ -2433,7 +2426,7 @@ async function restoreFromArchive(taskId) {
 }
 .add-col {
   box-sizing: border-box;
-  flex: 0 0 220px;
+  flex: 0 0 200px;
 }
 .add-col-mobile {
   flex: 0 0 var(--col-w, 220px);
@@ -2463,39 +2456,23 @@ async function restoreFromArchive(taskId) {
   }
 }
 .add-task-input {
-  margin-top: 4px;
+  flex: none;
 }
 .col {
   box-sizing: border-box;
-  width: var(--col-w, 280px);
-  flex: 0 0 var(--col-w, 280px);
-  border-radius: 14px;
-  padding: 10px;
+  width: var(--col-w, 256px);
+  flex: 0 0 var(--col-w, 256px);
+  border-radius: var(--t-r-col);
+  padding: 8px;
   align-self: flex-start;
   max-height: calc(100vh - 180px);
   display: flex;
   flex-direction: column;
-  /* Same-hue diagonal of the column's accent for its top bar. */
-  --col-grad: linear-gradient(
-    to top right,
-    color-mix(in srgb, var(--col-accent) 86%, #000),
-    var(--col-accent) 50%,
-    color-mix(in srgb, var(--col-accent) 86%, #fff)
-  );
-  /* Light 1px border on the sides/bottom (like the cards), plus a 3px gradient
-     TOP accent: the top border is transparent and reveals the gradient painted
-     on the border-box (wrapping the rounded top corners); the other borders stay
-     the opaque neutral colour, and padding-box carries a soft same-hue wash of the
-     column colour (~6%; neutral columns fall back to flat surface).
-     The side/bottom border carries a muted tint of the column colour (~12%, a touch
-     stronger than the wash so it doesn't melt into the fill); neutral columns keep
-     the flat neutral border. */
-  border: 1px solid var(--col-border, var(--t-border));
-  border-top: 3px solid transparent;
-  background:
-    linear-gradient(var(--col-tint, var(--t-surface-alt)), var(--col-tint, var(--t-surface-alt)))
-      padding-box,
-    var(--col-grad) border-box;
+  gap: 8px;
+  /* v2 «coloured lanes» (#2954): the column is a wash of its own colour over the
+     column level — no border, no top bar. The share is a theme token (15% dark,
+     11% light). */
+  background: color-mix(in srgb, var(--col-c) var(--t-col-tone), var(--t-col));
 }
 /* Collapsed column → a narrow strip. The header, card list and add-task button
    stay mounted (the SortableJS drop target must survive) but are hidden; the
@@ -2506,13 +2483,13 @@ async function restoreFromArchive(taskId) {
   position: relative;
   width: 44px;
   flex: 0 0 44px;
-  padding: 8px 2px;
+  padding: 8px 0 14px;
   cursor: pointer;
   overflow: hidden;
 }
 .col.collapsed :deep(.col-head),
 .col.collapsed .drop,
-.col.collapsed .add-btn,
+.col.collapsed .add-task,
 .col.collapsed .add-task-input {
   display: none;
 }
@@ -2534,17 +2511,26 @@ async function restoreFromArchive(taskId) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: 10px;
 }
 .strip-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--t-r-ctl);
   font-size: 15px;
   color: var(--t-text3);
   flex: none;
 }
+.col-strip:hover .strip-chevron {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
 .strip-title {
   writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--t-text1);
   white-space: nowrap;
@@ -2555,9 +2541,7 @@ async function restoreFromArchive(taskId) {
 .strip-count {
   font-size: 12px;
   color: var(--t-text3);
-  background: var(--t-hover);
-  border-radius: 10px;
-  padding: 0 7px;
+  font-variant-numeric: tabular-nums;
   flex: none;
 }
 /* Mobile keeps the same 44px strip as the desktop (#2893), with NO override of
@@ -2573,12 +2557,10 @@ async function restoreFromArchive(taskId) {
    with no snap point of its own is not merely skipped by a swipe, it cannot be
    rested on at all. Collapsing the leftmost column scrolled it off the screen on
    the spot and there was no way back to it. Strips keep their snap point. */
+/* The header's own metrics live in ColumnHeader; the lane's 8px gap spaces it. */
 .col-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  padding: 0 2px;
 }
 .col-grip {
   cursor: grab;
@@ -2630,8 +2612,14 @@ async function restoreFromArchive(taskId) {
      input's left border ring isn't cut off. */
   padding: 0 3px;
 }
-.ghost {
-  opacity: 0.5;
+/* Where the dragged card will land: a recessed slot in the drop colour (v2,
+   #2954) rather than a faded copy of the card. */
+.ghost :deep(.card) {
+  background: var(--t-drop);
+  box-shadow: var(--t-sh-drop);
+}
+.ghost :deep(.card > *) {
+  visibility: hidden;
 }
 /* Off-screen card stand-in: occupies the card's last-measured height so the
    scrollbar and drop positions stay correct while the heavy TaskCard is unmounted
@@ -2639,14 +2627,76 @@ async function restoreFromArchive(taskId) {
 .card-ph {
   pointer-events: none;
 }
-.add-btn {
-  margin-top: 6px;
-  width: 100%;
+/* «Создать задачу» at the foot of the lane: a 34px row in the column's own hue
+   that unfolds while the pointer is over the lane (the lane grows by it, as in
+   the v2 design); touch screens have no hover, so there it is always open.
+   Folded, it also cancels the lane's 8px gap so no stray space is left. */
+.add-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 0;
+  margin-top: -8px;
+  overflow: hidden;
+  padding: 0 7px 0 10px;
+  border: none;
+  border-radius: var(--t-r-card);
+  background: color-mix(in srgb, var(--col-c) 12%, transparent);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    height 0.15s ease,
+    margin 0.15s ease,
+    opacity 0.15s ease,
+    background 0.15s ease;
+}
+.add-task-label {
+  flex: 1;
+}
+.col:hover .add-task,
+.add-task:focus-visible {
+  height: 34px;
+  margin-top: 0;
+  opacity: 1;
+}
+.add-task:hover {
+  background: color-mix(in srgb, var(--col-c) 20%, transparent);
+  color: var(--t-text1);
+}
+@media (hover: none) {
+  .add-task {
+    height: 34px;
+    margin-top: 0;
+    opacity: 1;
+  }
+}
+.add-col-btn {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.4px;
+  gap: 6px;
+  width: 200px;
+  height: 44px;
+  border: none;
+  border-radius: var(--t-r-col);
+  background: var(--t-col);
   color: var(--t-text3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.add-col-btn:hover {
+  color: var(--t-text1);
+}
+.add-col-mobile .add-col-btn {
+  width: 100%;
 }
 .empty-board {
   padding: 24px;

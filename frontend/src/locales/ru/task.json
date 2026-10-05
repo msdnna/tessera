@@ -115,7 +115,12 @@
     "author": "Автор: {name}",
     "assignee": "Исполнитель: {names}",
     "none": "Нет исполнителя",
-    "noMatches": "Никого не найдено"
+    "noMatches": "Никого не найдено",
+    "role": {
+      "author": "Автор",
+      "assignee": "Исполнитель",
+      "gitlab": "Исполнитель · GitLab"
+    }
   },
   "tab": {
     "description": "Описание",

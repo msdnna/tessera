@@ -312,4 +312,10 @@ function gotoHelp(h) {
 .search-kbd {
   margin-right: -2px;
 }
+/* No keyboard to press it on: drop the hint on phones/touch screens. */
+@media (max-width: 768px), (hover: none) {
+  .search-kbd {
+    display: none;
+  }
+}
 </style>

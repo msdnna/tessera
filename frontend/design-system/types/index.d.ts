@@ -322,8 +322,9 @@ export interface TaskMiniCardProps extends IslandHostProps {
 export declare function TaskMiniCard(props: TaskMiniCardProps): ReactElement
 
 export interface ColumnHeaderProps extends IslandHostProps {
-  /** The column: name + colour (tints the status glyph). */
-  column: { id: string; name: string; color?: string }
+  /** The column: name + colour (tints the status glyph and the lane). A tag column
+   * (board grouped by tag) passes `tag` and is titled with that tag's pill. */
+  column: { id: string; name: string; color?: string; tag?: { name: string; color?: string } }
   /** Cards in the column. */
   count?: number
   /** Cards incl. subtasks — shown as "5 (12)" when larger than count. */
@@ -338,6 +339,8 @@ export interface ColumnHeaderProps extends IslandHostProps {
   first?: boolean
   /** The column is collapsed (the board then draws the narrow strip itself). */
   collapsed?: boolean
+  /** Friendly scope names for a tag column's pill, keyed WITH the separator: `{ 'app::': 'App' }`. */
+  prefixNames?: Record<string, string>
   onSetDone?: (columnId: string | null) => void
   onToggleCollapse?: () => void
   onChanged?: () => void
@@ -365,7 +368,7 @@ export interface UserAvatarProps extends IslandHostProps {
   name: string
   /** Photo URL. */
   src?: string
-  /** Diameter in px (default 24, the board card size). */
+  /** Diameter in px (default 22, the board card size). */
   size?: number
   /** Part of an overlapping stack: surface-coloured ring + negative margin. */
   stacked?: boolean

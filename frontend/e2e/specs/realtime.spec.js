@@ -40,6 +40,8 @@ test('две вкладки: карточка, созданная в одной,
     await expect(col).toHaveCount(0)
 
     const target = page.locator(`[data-column-name="${columns[0].name}"]`)
+    // «Создать задачу» unfolds while the pointer is over the lane (v2, #2954).
+    await target.hover()
     await target.getByTestId('add-task-button').click()
     await target.getByTestId('add-task-input').locator('textarea').fill(title)
     await target.getByTestId('add-task-input').locator('textarea').press('Enter')

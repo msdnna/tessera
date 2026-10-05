@@ -115,7 +115,12 @@
     "author": "Author: {name}",
     "assignee": "Assignee: {names}",
     "none": "No assignee",
-    "noMatches": "Nobody found"
+    "noMatches": "Nobody found",
+    "role": {
+      "author": "Author",
+      "assignee": "Assignee",
+      "gitlab": "Assignee · GitLab"
+    }
   },
   "tab": {
     "description": "Description",

@@ -14,9 +14,9 @@ const Island = vueIsland(UserAvatarVue, {
   toProps: ({ name, src }) => ({ name, src }),
 })
 
-// The app sizes avatars at the call site (.avatar on the card: 24px, 10px
+// The app sizes avatars at the call site (.avatar on the card: 22px, 10px
 // initials, accent-gradient fill); the shell applies the same metrics.
-export function UserAvatar({ size = 24, stacked = false, style, className, ...rest }) {
+export function UserAvatar({ size = 22, stacked = false, style, className, ...rest }) {
   return createElement(Island, {
     ...rest,
     className: `tds-avatar${stacked ? ' tds-avatar-stacked' : ''}${className ? ' ' + className : ''}`,

@@ -18,6 +18,8 @@ test('создание колонки и задачи, переименован�
 
   // create a task inside it
   const col = column(page, 'E2E колонка')
+  // «Создать задачу» unfolds while the pointer is over the lane (v2, #2954).
+  await col.hover()
   await col.getByTestId('add-task-button').click()
   await col.getByTestId('add-task-input').locator('textarea').fill('E2E задача')
   await col.getByTestId('add-task-input').locator('textarea').press('Enter')

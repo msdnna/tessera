@@ -42,6 +42,6 @@ test('сайдбар переключается на workspace доски, от�
   // workspace instead of leaving the sidebar describing another one. Asserting on
   // B's project also covers the startup race — AppLayout selects the remembered
   // workspace concurrently, and its slower response must not overwrite B's tree.
-  await expect(page.getByText(b.project.name)).toBeVisible()
+  await expect(page.getByTestId('sidebar').getByText(b.project.name)).toBeVisible()
   await expect(page.getByText(a.project.name)).toHaveCount(0)
 })

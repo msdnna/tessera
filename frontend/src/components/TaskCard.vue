@@ -73,16 +73,11 @@ const subsExpanded = computed(() => props.subtasksExpanded && !isCompact.value)
 const subsNarrowed = computed(() => props.subtasksTotal > props.subtasks.length)
 
 const done = computed(() => !!props.task.completed_at)
-const cardStyle = computed(() => {
-  if (!props.task.priority) return {}
-  const c = PRIORITY_COLORS[props.task.priority]
-  return {
-    '--card-bar': hueGradVert(c),
-    // Whole-card border tinted a very muted priority hue (roughly as subtle as a
-    // column's background wash) — enough to read as "coloured", not to shout.
-    '--card-border': `color-mix(in srgb, ${c} 12%, var(--t-border))`,
-  }
-})
+// v2 (#2954): priority is a 3px vertical-gradient bar inset at the card's left
+// edge. A finished task drops it — its priority no longer asks for attention.
+const prioBar = computed(() =>
+  props.task.priority && !done.value ? hueGradVert(PRIORITY_COLORS[props.task.priority]) : '',
+)
 // Same chip the child rows use, for this card when it is itself a nested subtask.
 const ownColumnChip = computed(() =>
   props.nested ? divergedColumn(props.task, props.parentColumnId, columns.value) : null,
@@ -196,13 +191,13 @@ async function submitAddSub() {
         done,
         nested,
         'has-subs': !nested && subtasks.length,
-        'has-prio': task.priority,
         'tc-readonly': readonly,
+        [`size-${cardSize}`]: true,
       }"
-      :style="cardStyle"
       @click="emit('open', task.id)"
       @contextmenu.prevent.stop="openCtx"
     >
+      <span v-if="prioBar" class="prio-bar" :style="{ background: prioBar }" />
       <!-- Archive view: a single Restore affordance replaces the edit action bar. -->
       <div v-if="readonly && !nested" class="card-actions" @click.stop>
         <button
@@ -278,6 +273,7 @@ async function submitAddSub() {
         <span
           v-if="ownColumnChip"
           class="col-chip"
+          :style="{ '--chip-c': ownColumnChip.color || undefined }"
           :title="t('task.card.columnIs', { name: columnName(ownColumnChip) })"
         >
           <span class="col-dot" :style="{ background: ownColumnChip.color }" />
@@ -292,7 +288,7 @@ async function submitAddSub() {
           :title="t('task.card.openIssue', { iid: task.gitlab_iid })"
           @click.stop
         >
-          <n-icon :component="LogoGitlab" :size="11" />!{{ task.gitlab_iid }}
+          <n-icon :component="LogoGitlab" :size="12" />!{{ task.gitlab_iid }}
         </a>
       </div>
 
@@ -303,13 +299,31 @@ async function submitAddSub() {
         @open="emit('open', $event)"
         @changed="emit('changed')"
       />
+
+      <!-- v2 (#2954): the compact subtask list is a tray INSIDE the card. Its rows
+           open their own task, so clicks stop here instead of opening the parent. -->
+      <div v-if="!nested && !subsExpanded" class="tray-slot" @click.stop>
+        <TaskCardSubtasks
+          :task="task"
+          :subtasks="subtasks"
+          :expanded="false"
+          :compact="isCompact"
+          :dragging="dragging"
+          :narrowed="subsNarrowed"
+          :readonly="readonly"
+          @open="emit('open', $event)"
+          @changed="emit('changed')"
+          @ctx="openCtx"
+        />
+      </div>
     </div>
     <!-- /.card -->
 
     <!-- Subtasks: one always-mounted drop list (shared "tasks" group), so a task
-         can be dropped to nest even on a childless card. -->
+         can be dropped to nest even on a childless card. The expanded stack of
+         full child cards fans out below the card. -->
     <TaskCardSubtasks
-      v-if="!nested"
+      v-if="!nested && subsExpanded"
       :task="task"
       :subtasks="subtasks"
       :expanded="subsExpanded"
@@ -398,37 +412,47 @@ async function submitAddSub() {
 .tw {
   margin-bottom: 8px;
   /* Background shared by the expanded subtask cards and the collapsed list card
-     below (TaskCardSubtasks reads it from here, so there's one definition).
-     Tweak here: alternatives — var(--t-hover), var(--t-border) (greyer),
-     color-mix(in srgb, var(--t-primary) 8%, var(--t-surface)) (accent). */
-  --sub-bg: color-mix(in srgb, var(--t-surface) 70%, var(--t-bg));
+     below (TaskCardSubtasks reads it from here, so there's one definition):
+     the v2 subtask tray level. */
+  --sub-bg: var(--t-sub);
 }
+/* v2 card (#2954): one step above the lane with a soft shadow — no border. The
+   padding follows the card size, plus 5px on the left for the priority bar. */
 .card {
-  --card-fill: var(--t-surface);
+  --card-fill: var(--t-card);
+  --cpx: 12px;
   position: relative;
   background: var(--card-fill);
-  border: 1px solid var(--t-border);
-  border-radius: 12px;
-  padding: 8px 10px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border-radius: var(--t-r-card);
+  padding: 10px var(--cpx);
+  padding-left: calc(var(--cpx) + 5px);
+  box-shadow: var(--t-sh-card);
   cursor: pointer;
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease;
 }
-/* Priority accent: a 3px vertical-gradient LEFT border that wraps the rounded
-   top-left / bottom-left corners (extending onto the top/bottom edges by the
-   radius), exactly like the Android client. Implementation: the left border is
-   transparent and the gradient is painted on the border-box background layer
-   (so it shows through the transparent border and follows the corner radius);
-   the padding-box layer keeps the interior flat. The other three borders stay
-   the opaque neutral colour, hiding the gradient there. */
-.card.has-prio {
-  /* All four borders take a muted priority tint; the left one is then made
-     transparent again to reveal the 3px gradient accent bar below. */
-  border-color: var(--card-border, var(--t-border));
-  border-left-width: 3px;
-  border-left-color: transparent;
-  background:
-    linear-gradient(var(--card-fill), var(--card-fill)) padding-box,
-    var(--card-bar) border-box;
+.card.size-compact {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.card.size-large {
+  --cpx: 14px;
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+.card:hover {
+  --card-fill: var(--t-card-hover);
+  box-shadow: var(--t-sh-hover);
+}
+.prio-bar {
+  position: absolute;
+  left: 6px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 3px;
+  pointer-events: none;
 }
 /* The parent keeps its rounded corners and sits above the subtask stack so the
    children appear to emerge from under it. */
@@ -447,11 +471,10 @@ async function submitAddSub() {
   right: 6px;
   display: flex;
   gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  padding: 3px;
+  border-radius: var(--t-r-tip);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
   opacity: 0;
   transform: translateY(-2px);
   transition:
@@ -470,17 +493,17 @@ async function submitAddSub() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border: none;
   background: transparent;
   color: var(--t-text2);
-  border-radius: 6px;
+  border-radius: 7px;
   cursor: pointer;
 }
 .ca-btn:hover {
   background: var(--t-hover);
-  color: var(--t-primary);
+  color: var(--t-text1);
 }
 /* Touch devices have no hover — keep complete + more persistently reachable
    (there's no on-card checkbox anymore); add-subtask stays in the "⋯" menu. */
@@ -490,7 +513,6 @@ async function submitAddSub() {
     transform: none;
     pointer-events: auto;
     background: transparent;
-    border: none;
     box-shadow: none;
   }
   .ca-sub {
@@ -511,9 +533,9 @@ async function submitAddSub() {
 }
 .card.nested {
   --card-fill: var(--sub-bg);
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 var(--t-r-card) var(--t-r-card);
   padding-top: 16px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--t-sh-card);
 }
 .title-edit {
   flex: 1;
@@ -526,7 +548,7 @@ async function submitAddSub() {
 }
 .card.done .title {
   text-decoration: line-through;
-  opacity: 0.6;
+  color: var(--t-text3);
 }
 /* Title takes the full row and clamps to two lines with an ellipsis; the number
    and GitLab chip live on the meta row below, so the title never wraps around
@@ -536,6 +558,7 @@ async function submitAddSub() {
   min-width: 0;
   font-size: 14px;
   line-height: 20px;
+  font-weight: 500;
   color: var(--t-text1);
   cursor: pointer;
   display: -webkit-box;
@@ -544,40 +567,39 @@ async function submitAddSub() {
   overflow: hidden;
   overflow-wrap: anywhere;
 }
-/* meta row: number + GitLab chip, directly under the title. */
+/* meta row: number + chips, directly under the title. */
 .card-sub {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 3px;
+  gap: 6px;
+  min-width: 0;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
 }
 .tnum {
   flex: none;
-  font-size: 11px;
-  color: var(--t-text3);
 }
-/* "synced from GitLab" chip — links to the source issue. */
+/* "synced from GitLab" chip — links to the source issue. Neutral pill. */
 .gl-chip {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  font-size: 10px;
-  font-weight: 600;
-  line-height: 1;
-  padding: 2px 5px;
-  border-radius: 999px;
+  gap: 3px;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: var(--t-r-pill);
   text-decoration: none;
   color: var(--t-text2);
-  border: 1px solid var(--t-border);
-  background: var(--t-hover);
+  background: var(--t-pill);
 }
 .gl-chip:hover {
-  color: var(--t-primary);
-  border-color: var(--t-primary);
+  color: var(--t-text1);
 }
-/* "this subtask is in another column than its parent" chip — flat neutral, the
-   colour comes from the column itself (a dot), never the accent gradient. */
+/* "this subtask is in another column than its parent" chip — a soft wash of the
+   column's own colour, never the accent. */
 .col-chip {
   flex: 0 1 auto;
   min-width: 0;
@@ -585,13 +607,16 @@ async function submitAddSub() {
   align-items: center;
   gap: 4px;
   max-width: min(140px, 45%);
-  font-size: 10px;
-  line-height: 1;
-  padding: 2px 6px;
-  border-radius: 999px;
-  color: var(--t-text3);
-  border: 1px solid var(--t-border);
-  background: var(--t-surface-alt);
+  height: 18px;
+  padding: 0 7px 0 6px;
+  border-radius: var(--t-r-pill);
+  color: var(--t-text2);
+  font-weight: 500;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--chip-c, var(--t-text3)) 11%, var(--card-fill)),
+    color-mix(in srgb, var(--chip-c, var(--t-text3)) 19%, var(--card-fill))
+  );
 }
 .col-name {
   overflow: hidden;

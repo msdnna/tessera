@@ -10,6 +10,7 @@ import {
   ChevronBackOutline,
 } from '@vicons/ionicons5'
 import TesseraIcon from './TesseraIcon.vue'
+import TagPill from './TagPill.vue'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
@@ -27,6 +28,9 @@ const props = defineProps({
   isDone: { type: Boolean, default: false }, // task-completing column
   first: { type: Boolean, default: false }, // leftmost column (To-Do icon)
   collapsed: { type: Boolean, default: false }, // rendered as a narrow strip
+  // A tag column (grouping by tag, #2954) titles itself with the tag's own pill,
+  // in the board's friendly prefix names (canonical prefix → label).
+  prefixNames: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['changed', 'set-done', 'toggle-collapse'])
 
@@ -180,13 +184,21 @@ async function removeCol() {
       @keyup.enter="commitRename"
       @blur="commitRename"
     />
-    <span v-else class="col-title col-drag" @dblclick="startRename">{{ dcol.name }}</span>
+    <TagPill v-else-if="dcol.tag" :tag="dcol.tag" :prefix-names="prefixNames" class="col-tag" />
+    <span
+      v-else
+      class="col-title col-drag"
+      :class="{ neutral: !editable && !dcol.color }"
+      @dblclick="startRename"
+      >{{ dcol.name }}</span
+    >
     <span class="count" :title="countTitle" data-testid="column-count"
       >{{ count }}<span v-if="showTotal" class="count-sub">{{ ' (' + total + ')' }}</span></span
     >
     <span v-if="estimate" class="col-est" :title="t('board.column.estimateTitle')"
       >Σ {{ estimate }}</span
     >
+    <span class="col-gap" />
     <n-button
       text
       size="tiny"
@@ -254,12 +266,15 @@ async function removeCol() {
 </template>
 
 <style scoped>
+/* v2 (#2954): a 30px row straight on the column's tint — no chips, counts in
+   muted text, the controls are bare 22×24 icon buttons. */
 .col-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 0 2px;
+  gap: 5px;
+  height: 30px;
+  padding: 0 0 0 6px;
+  flex: none;
 }
 .col-stat {
   font-size: 16px;
@@ -267,36 +282,61 @@ async function removeCol() {
   flex: none;
 }
 .col-title {
-  flex: 1;
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 13px;
   font-weight: 600;
   color: var(--t-text1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: grab;
 }
-.count {
-  font-size: 12px;
+/* «Без тегов» / «Без этапа»: the neutral catch-all column reads a step quieter. */
+.col-title.neutral {
+  color: var(--t-text2);
+  cursor: default;
+}
+/* TagPill leaves its box to the call site (a scoped two-tone tag overrides the
+   padding with its own segments). */
+.col-tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 6px;
+}
+.count,
+.col-est {
+  flex: none;
+  font-size: 12.5px;
   color: var(--t-text3);
-  background: var(--t-hover);
-  border-radius: 10px;
-  padding: 0 7px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .count-sub {
-  opacity: 0.7;
+  opacity: 0.85;
 }
-.col-est {
-  font-size: 11px;
+.col-gap {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.col-collapse,
+.col-menu {
+  flex: none;
+  width: 22px;
+  height: 24px;
+  border-radius: 7px;
+  font-size: 14px;
   color: var(--t-text3);
-  white-space: nowrap;
 }
 .col-menu {
-  font-size: 16px;
-}
-.col-collapse {
   font-size: 15px;
-  color: var(--t-text3);
-  flex: none;
 }
-.col-collapse:hover {
+.col-collapse:hover,
+.col-menu:hover {
+  background: var(--t-hover);
   color: var(--t-text1);
 }
 .settings {

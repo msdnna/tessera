@@ -1,7 +1,8 @@
 /**
  * ColumnHeader — the kanban column title row: status glyph tinted with the
  * column colour (todo / in progress / review / done), name, card count
- * (`5 (12)` with subtasks), optional Σ estimate and the column menu.
+ * (`5 (12)` with subtasks), optional Σ estimate and the column menu. A tag
+ * column (`column.tag`, board grouped by tag) is titled with the tag's pill.
  * @category Board
  */
 import ColumnHeaderVue from '@/components/ColumnHeader.vue'
@@ -19,5 +20,6 @@ export const ColumnHeader = vueIsland(ColumnHeaderVue, {
     isDone: !!p.isDone,
     first: !!p.first,
     collapsed: !!p.collapsed,
+    prefixNames: p.prefixNames ?? {},
   }),
 })
