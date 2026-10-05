@@ -94,8 +94,11 @@ Status palette: К работе `#0eb0a9` · В процессе `#2f80ed` · Н
 Inside: `<ColumnHeader column={…} count={n} editable first|isDone />`, then the
 `<TaskCard>`s wrapped in one `<div>` (each card carries its own 8px bottom margin).
 Grouped by tag: `column={{ …, tag: { name, color } }}` + `prefixNames`, no `editable`.
+A card picked from the keyboard (arrow keys) is `<TaskCard selected />` — draw it only
+for keyboard-driven states, never as the result of a click.
 Sidebar project badge: 20px box, 6px radius, `hueGrad(<project colour>)` fill, white
-`<ProjectIcon size={12}>`; the active board row uses `--t-active`.
+`<ProjectIcon size={12}>`; the active board row uses `--t-active` and shows the board's
+task count right-aligned (12px, `--t-text3`).
 
 ## Where the truth lives
 
