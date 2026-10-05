@@ -70,6 +70,7 @@ import {
   siblingNeighbors,
   columnTail,
 } from '@/utils/status'
+import { planComplete } from '@/utils/cardNav'
 import { columnName } from '@/utils/defaultNames'
 import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
@@ -791,9 +792,13 @@ async function moveToColumn(columnId) {
 // stamps completed_at and logs it); boards without one fall back to the flag.
 async function closeTask() {
   if (props.readonly || !task.value) return
-  if (completed.value) return setCompleted(false)
-  if (doneCol.value && doneCol.value.id !== task.value.column_id)
-    return moveToColumn(doneCol.value.id)
+  const plan = planComplete({
+    completed: completed.value,
+    columnId: task.value.column_id,
+    doneColumnId: doneCol.value?.id,
+  })
+  if (plan.op === 'uncomplete') return setCompleted(false)
+  if (plan.op === 'move') return moveToColumn(plan.columnId)
   setCompleted(true)
 }
 

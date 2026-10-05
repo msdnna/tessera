@@ -93,6 +93,11 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // «Filter by this person» from the palette (#2957): a request the board
   // applies to its own filters; `n` makes a repeat of the same person fire.
   const assigneeFilter = ref(null)
+  // «N, then T» (#2956) asks the open board to start its «К работе» quick-add.
+  const quickAdd = ref(0)
+  function requestQuickAdd() {
+    quickAdd.value++
+  }
   function requestAssigneeFilter(userId) {
     assigneeFilter.value = { userId, n: (assigneeFilter.value?.n || 0) + 1 }
   }
@@ -147,6 +152,8 @@ export const useBoardViewStore = defineStore('boardView', () => {
     taskSource,
     assigneeFilter,
     requestAssigneeFilter,
+    quickAdd,
+    requestQuickAdd,
     boardId,
     wsId,
     projectId,

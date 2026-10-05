@@ -39,6 +39,7 @@ async function resolve() {
     if (route.path !== target) router.replace({ path: target, query: route.query })
     // «G, then B» (#2956) comes back here from anywhere.
     sSet('tessera_last_board', target)
+    sSet('tessera_last_board_id', board.id)
   } catch {
     boardId.value = null
   }

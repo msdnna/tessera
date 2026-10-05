@@ -158,7 +158,7 @@
       "board": "Board",
       "card": "Selected card",
       "create": "Quick create",
-      "palette": "⌘K palette",
+      "palette": "Command palette",
       "view": "View"
     },
     "nav": {
@@ -210,7 +210,13 @@
       "reminders": "Reminders",
       "milestones": "Milestones",
       "settings": "Settings"
-    }
+    },
+    "title": "Keyboard shortcuts",
+    "button": "Shortcuts",
+    "search": "Find an action or a key",
+    "nothing": "Nothing found",
+    "footBefore": "Keys show up in tooltips and menu items. This window opens with",
+    "footAfter": "from anywhere."
   },
   "palette": {
     "placeholder": "Task, board, person or command…",
@@ -290,5 +296,25 @@
       "nextWeek": "Next week",
       "none": "Clear due date"
     }
+  },
+  "quick": {
+    "menuTitle": "Quick create",
+    "menuThen": "N, then",
+    "allCommands": "All commands",
+    "title": {
+      "task": "New task in “To do”",
+      "reminder": "New reminder",
+      "note": "New note"
+    },
+    "placeholder": {
+      "task": "Task title",
+      "reminder": "Remind me about…",
+      "note": "Note title",
+      "noteBody": "Text (Markdown) — ⌘↵ to save"
+    },
+    "board": "Board",
+    "taskCreated": "Task #{n} created",
+    "reminderCreated": "Reminder created",
+    "noteCreated": "Note created"
   }
 }

@@ -17,6 +17,9 @@ import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import ShortcutKeys from './ShortcutKeys.vue'
 import ShortcutPending from './ShortcutPending.vue'
 import CommandPalette from './palette/CommandPalette.vue'
+import QuickActionsFab from './QuickActionsFab.vue'
+import QuickCreateModal from './QuickCreateModal.vue'
+import ShortcutsModal from './ShortcutsModal.vue'
 import Sidebar from './Sidebar.vue'
 import Topbar from './Topbar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
@@ -261,6 +264,7 @@ watch(
              in a div because VersionBadge is multi-root (class wouldn't fall
              through to a positioned element). -->
         <div class="area-version"><version-badge mode="row" /></div>
+        <QuickActionsFab />
       </n-layout>
     </n-layout>
 
@@ -282,6 +286,7 @@ watch(
         </router-view>
       </n-layout-content>
       <div class="area-version"><version-badge mode="row" /></div>
+      <QuickActionsFab />
       <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
         <n-drawer-content body-content-style="padding: 0">
           <Sidebar :mobile="true" />
@@ -318,6 +323,9 @@ watch(
 
     <!-- ⌘K: search, commands and task actions (#2957). -->
     <CommandPalette />
+    <!-- Quick create from the FAB / «N, then T/R/M», and the `?` cheat sheet (#2956). -->
+    <QuickCreateModal />
+    <ShortcutsModal />
 
     <!-- «G …» while a multi-key shortcut waits for its next key (#2956). -->
     <ShortcutPending />

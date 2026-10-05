@@ -28,6 +28,7 @@ import TaskCardPills from './task/TaskCardPills.vue'
 import TaskCardSubtasks from './task/TaskCardSubtasks.vue'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useTaskMenu, menuIcon } from '@/composables/useTaskMenu'
+import { keysText } from '@/shortcuts/labels'
 
 const props = defineProps({
   task: { type: Object, required: true },
@@ -43,6 +44,8 @@ const props = defineProps({
   nested: { type: Boolean, default: false },
   // A board drag is in progress → reveal the "drop to nest" zone on childless cards.
   dragging: { type: Boolean, default: false },
+  // Picked with the arrow keys on the board (v2, #2956).
+  selected: { type: Boolean, default: false },
   // Column of the parent card, set only on a nested subtask card: a subtask that
   // sits elsewhere than its parent shows that column as a chip.
   parentColumnId: { type: String, default: null },
@@ -192,6 +195,7 @@ async function submitAddSub() {
         nested,
         'has-subs': !nested && subtasks.length,
         'tc-readonly': readonly,
+        selected,
         [`size-${cardSize}`]: true,
       }"
       @click="emit('open', task.id)"
@@ -214,12 +218,16 @@ async function submitAddSub() {
       <div v-if="!nested && !editingTitle && !readonly" class="card-actions" @click.stop>
         <button
           class="ca-btn ca-complete"
-          :title="done ? t('task.menu.uncomplete') : t('task.menu.complete')"
+          :title="`${done ? t('task.menu.uncomplete') : t('task.menu.complete')} · ${keysText('card.complete')}`"
           @click.stop="toggleDone"
         >
           <n-icon :component="done ? CheckmarkCircle : CheckmarkOutline" :size="15" />
         </button>
-        <button class="ca-btn ca-sub" :title="t('task.menu.addSubtask')" @click.stop="startAddSub">
+        <button
+          class="ca-btn ca-sub"
+          :title="`${t('task.menu.addSubtask')} · ${keysText('card.subtask')}`"
+          @click.stop="startAddSub"
+        >
           <n-icon :component="GitBranchOutline" :size="15" />
         </button>
         <button class="ca-btn ca-more" :title="t('common.action.more')" @click.stop="openCtx">
@@ -444,6 +452,18 @@ async function submitAddSub() {
 .card:hover {
   --card-fill: var(--t-card-hover);
   box-shadow: var(--t-sh-hover);
+}
+/* Keyboard selection (v2, #2956): an accent wash and a ring 2px off the edge. */
+.card.selected {
+  --card-fill: color-mix(in srgb, var(--t-primary) 9%, var(--t-card));
+}
+.card.selected::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: calc(var(--t-r-card) + 2px);
+  box-shadow: 0 0 0 2px var(--t-primary);
+  pointer-events: none;
 }
 .prio-bar {
   position: absolute;

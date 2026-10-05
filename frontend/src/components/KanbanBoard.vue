@@ -70,6 +70,12 @@ import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
+import { moveFocus, neighbourColumn, planShift, planComplete } from '@/utils/cardNav'
+import { doneTarget, columnTail } from '@/utils/status'
+import { todoColumn } from '@/utils/columnStatus'
+import { taskBasePatch } from '@/utils/taskPatch'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { usePaletteStore } from '@/stores/palette'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -79,6 +85,7 @@ import ColumnHeader from './ColumnHeader.vue'
 import BoardCustomizePanel from './BoardCustomizePanel.vue'
 import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
 import BoardMembers from './BoardMembers.vue'
+import ShortcutKeys from './ShortcutKeys.vue'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
@@ -1275,6 +1282,23 @@ async function onColumnReorder(evt) {
   }
 }
 
+// Sends drop/shift intents (utils/boardDnd, utils/cardNav) to the API, in order.
+async function runIntents(intents) {
+  for (const it of intents) {
+    if (it.op === 'setParent') await tasksApi.setParent(it.id, it.parentId)
+    else if (it.op === 'move')
+      await tasksApi.move(it.id, {
+        column_id: it.columnId,
+        before_id: it.beforeId,
+        after_id: it.afterId,
+      })
+    else if (it.op === 'setMilestone') await tasksApi.setMilestone(it.id, it.milestoneId)
+    else if (it.op === 'clearMilestone') await tasksApi.clearMilestone(it.id)
+    else if (it.op === 'addTag') await tasksApi.addTag(it.id, it.tagId)
+    else if (it.op === 'removeTag') await tasksApi.removeTag(it.id, it.tagId)
+  }
+}
+
 // Drag persistence: the rules (neighbour math, collapsed pin, subtask promotion,
 // single-value milestone, tag add/remove) live in utils/boardDnd; here we only
 // dispatch the resulting intents to the API, in order.
@@ -1289,19 +1313,7 @@ async function onColChange(evt, dcol) {
       list: lists.value[dcol.key],
       collapsed,
     })
-    for (const it of intents) {
-      if (it.op === 'setParent') await tasksApi.setParent(it.id, it.parentId)
-      else if (it.op === 'move')
-        await tasksApi.move(it.id, {
-          column_id: it.columnId,
-          before_id: it.beforeId,
-          after_id: it.afterId,
-        })
-      else if (it.op === 'setMilestone') await tasksApi.setMilestone(it.id, it.milestoneId)
-      else if (it.op === 'clearMilestone') await tasksApi.clearMilestone(it.id)
-      else if (it.op === 'addTag') await tasksApi.addTag(it.id, it.tagId)
-      else if (it.op === 'removeTag') await tasksApi.removeTag(it.id, it.tagId)
-    }
+    await runIntents(intents)
     scheduleReload()
   } catch (e) {
     message.error(e.message)
@@ -1354,6 +1366,208 @@ async function submitAddTask(dcol) {
     message.error(e.message)
   }
 }
+
+// ── keyboard (v2, #2956) ──
+// A selected card (arrows), actions on it (↵ E S A P D L ⇧N ⌘←/→) and the
+// board's own keys (C F ⇧G V H ⇧C). `focusedCard` is not `selectedTaskId` —
+// that one is the task open in the modal — and it carries the column too:
+// with tag grouping one task sits in several columns.
+const focusedCard = ref(null)
+// The column under the mouse, for «C — task in the hovered column» and «H».
+const hoveredColKey = ref(null)
+const groupCtlEl = ref(null)
+
+const kanbanOn = () => !!board.value && layout.value === 'board' && !isMobile.value
+const editable = () => !!board.value && !archivedMode.value
+
+function navCols() {
+  return colModel.value.map((d) => ({
+    key: d.key,
+    ids: (lists.value[d.key] || []).map((x) => x.id),
+    collapsed: isColCollapsed(d),
+  }))
+}
+function isFocused(dcol, id) {
+  const f = focusedCard.value
+  return !!f && f.colKey === dcol.key && f.taskId === id
+}
+function focusedTask() {
+  const f = focusedCard.value
+  return f ? (lists.value[f.colKey] || []).find((x) => x.id === f.taskId) || null : null
+}
+function focusedCol() {
+  const key = focusedCard.value?.colKey || hoveredColKey.value
+  return colModel.value.find((d) => d.key === key) || null
+}
+function revealFocused() {
+  nextTick(() => {
+    const f = focusedCard.value
+    if (!f) return
+    boardScroll.value
+      ?.querySelector(`.card-wrap[data-card="${CSS.escape(cardKey(f.colKey, f.taskId))}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  })
+}
+function stepFocus(dir) {
+  focusedCard.value = moveFocus(navCols(), focusedCard.value, dir)
+  revealFocused()
+}
+// A card the filter, a move or a delete took away drops the selection.
+watch(lists, () => {
+  if (focusedCard.value && !focusedTask()) focusedCard.value = null
+})
+// Clicking a card also selects it, so the arrows carry on from there after
+// the modal closes.
+function onCardOpen(dcol, id) {
+  focusedCard.value = { colKey: dcol.key, taskId: id }
+  openTask(id)
+}
+
+async function completeFocused() {
+  const task = focusedTask()
+  if (!task) return
+  const plan = planComplete({
+    completed: !!task.completed_at,
+    columnId: task.column_id,
+    doneColumnId: doneTarget(columns.value, doneColumnId.value)?.id,
+  })
+  suppress()
+  try {
+    if (plan.op === 'move') {
+      await tasksApi.move(task.id, {
+        column_id: plan.columnId,
+        before_id: columnTail(allTasks.value, plan.columnId, task.id),
+        after_id: null,
+      })
+    } else {
+      await tasksApi.update(task.id, { ...taskBasePatch(task), completed: plan.op === 'complete' })
+    }
+    scheduleReload()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function setFocusedPriority(value) {
+  const task = focusedTask()
+  if (!task || value > 4) return
+  suppress()
+  try {
+    await tasksApi.update(task.id, { ...taskBasePatch(task), priority: value })
+    scheduleReload()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function shiftFocused(dir) {
+  const task = focusedTask()
+  const from = focusedCol()
+  const to = from && neighbourColumn(colModel.value, from.key, dir)
+  if (!task || !to) return
+  const intents = planShift({
+    groupMode: groupMode.value,
+    from,
+    to,
+    taskId: task.id,
+    tailId: columnTail(allTasks.value, to.key, task.id),
+  })
+  if (!intents.length) return
+  suppress()
+  try {
+    await runIntents(intents)
+    focusedCard.value = { colKey: to.key, taskId: task.id }
+    await load(props.boardId, { silent: true })
+    revealFocused()
+  } catch (e) {
+    message.error(e.message)
+    load(props.boardId)
+  }
+}
+
+// V, then 1–3: the three main views, in the order of the view switch.
+const LAYOUT_KEYS = ['board', 'list', 'timeline']
+const paletteStore = usePaletteStore()
+const openField = (field) => () => {
+  const task = focusedTask()
+  if (task) paletteStore.openTask(task.id, field)
+}
+
+useShortcuts(
+  {
+    'card.up': () => stepFocus('up'),
+    'card.down': () => stepFocus('down'),
+    'card.left': () => stepFocus('left'),
+    'card.right': () => stepFocus('right'),
+  },
+  { when: kanbanOn },
+)
+useShortcuts(
+  {
+    'card.clear': () => (focusedCard.value = null),
+    'card.open': () => openTask(focusedCard.value.taskId),
+  },
+  { when: () => kanbanOn() && !!focusedTask() },
+)
+useShortcuts(
+  {
+    'card.complete': completeFocused,
+    'card.status': openField('status'),
+    'card.assignees': openField('assignees'),
+    'card.priorityPick': openField('priority'),
+    'card.priority': setFocusedPriority,
+    'card.due': openField('due'),
+    'card.tags': openField('tags'),
+    'card.subtask': openField('subtask'),
+    'card.moveLeft': () => shiftFocused('left'),
+    'card.moveRight': () => shiftFocused('right'),
+  },
+  { when: () => kanbanOn() && editable() && !!focusedTask() },
+)
+useShortcuts(
+  {
+    'board.addTask': () => {
+      const dcol = focusedCol() || colModel.value.find((d) => !isColCollapsed(d))
+      if (dcol) startAddTask(dcol)
+    },
+    'view.collapse': () => {
+      const dcol = focusedCol()
+      if (dcol) toggleCollapse(dcol)
+    },
+  },
+  { when: () => kanbanOn() && editable() },
+)
+useShortcuts(
+  {
+    'board.filter': () => onAddShow(true),
+    'board.group': () => groupCtlEl.value?.click(),
+    'board.layout': (n) => {
+      const next = LAYOUT_KEYS[n - 1]
+      if (next) layout.value = next
+    },
+    'view.cardSize': () => {
+      const sizes = ['compact', 'medium', 'large']
+      cardSize.value = sizes[(sizes.indexOf(cardSize.value) + 1) % sizes.length]
+    },
+  },
+  { when: () => !!board.value && !isMobile.value },
+)
+
+// «N, then T» on a board: the inline quick-add of the «К работе» column — the
+// seeded todo column, else one so named, else the first. Other groupings have
+// no status columns; their first column takes it (submitAddTask files it).
+watch(
+  () => boardViewStore.quickAdd,
+  () => {
+    if (!editable() || layout.value !== 'board') return
+    const cols = colModel.value
+    const todo = groupMode.value === 'status' ? todoColumn(cols) : cols[0]
+    if (todo) {
+      if (isColCollapsed(todo)) toggleCollapse(todo)
+      startAddTask(todo)
+    }
+  },
+)
 
 // ── inline column creation ("+ New column" to the right) ──
 const addingColumn = ref(false)
@@ -1788,6 +2002,7 @@ async function restoreFromArchive(taskId) {
           @select="onAddFacet"
         >
           <button
+            ref="groupCtlEl"
             type="button"
             class="group-ctl"
             data-testid="group-control"
@@ -2032,6 +2247,7 @@ async function restoreFromArchive(taskId) {
               :data-column-name="dcol.rawName"
               :class="{ collapsed: colCollapsedNow(dcol) }"
               :style="{ '--col-c': dcol.color || NEUTRAL_COLUMN }"
+              @mouseenter="hoveredColKey = dcol.key"
             >
               <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
@@ -2082,7 +2298,11 @@ async function restoreFromArchive(taskId) {
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element, index }">
-                  <div :ref="(el) => regCard(el, cardKey(dcol.key, element.id))" class="card-wrap">
+                  <div
+                    :ref="(el) => regCard(el, cardKey(dcol.key, element.id))"
+                    class="card-wrap"
+                    :data-card="cardKey(dcol.key, element.id)"
+                  >
                     <div
                       v-if="
                         colCollapsedNow(dcol) || !(vis[cardKey(dcol.key, element.id)] ?? index < 12)
@@ -2100,7 +2320,8 @@ async function restoreFromArchive(taskId) {
                       :subtasks-expanded="subtasksExpanded"
                       :dragging="draggingCard"
                       :readonly="archivedMode"
-                      @open="openTask"
+                      :selected="isFocused(dcol, element.id)"
+                      @open="(id) => onCardOpen(dcol, id)"
                       @changed="onChanged"
                       @restore="restoreFromArchive"
                     />
@@ -2135,6 +2356,7 @@ async function restoreFromArchive(taskId) {
                 >
                   <n-icon :component="AddOutline" :size="15" />
                   <span class="add-task-label">{{ t('board.column.addTask') }}</span>
+                  <ShortcutKeys v-if="!isMobile" id="board.addTask" class="add-task-key" />
                 </button>
               </template>
             </div>
@@ -2870,6 +3092,9 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text1);
 }
 @media (hover: none) {
+  .add-task-key {
+    display: none;
+  }
   .add-task {
     height: 34px;
     margin-top: 0;

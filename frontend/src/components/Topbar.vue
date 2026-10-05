@@ -9,6 +9,10 @@ import BoardActions from './BoardActions.vue'
 import BoardMobileMenu from './BoardMobileMenu.vue'
 import HelpHint from './help/HelpHint.vue'
 import { useBoardViewStore } from '@/stores/boardView'
+import { useQuickStore } from '@/stores/quick'
+import ShortcutKeys from './ShortcutKeys.vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 
 const props = defineProps({
   mobile: { type: Boolean, default: false },
@@ -16,8 +20,14 @@ const props = defineProps({
 })
 defineEmits(['menu'])
 
+const { t } = useI18n()
 const board = useBoardViewStore()
 const ws = useWorkspacesStore()
+const quick = useQuickStore()
+// An open document fills the header with its own controls (#2727); the
+// cheat-sheet button gives up its place there — `?` still opens the sheet.
+const route = useRoute()
+const pageOwnsHeader = computed(() => /^\/documents\/./.test(route.path))
 // Board actions only make sense on a desktop board view.
 const onBoard = () => board.active && !props.mobile
 // v2 (#2954): on a board the header's left side names where you are — project ›
@@ -64,6 +74,18 @@ const crumbBoard = computed(() => board.board?.name || '')
       <BoardMobileMenu v-if="mobile && board.active" />
       <!-- Contextual help for whatever screen is open; hides itself on /help
            and picks its article from the route (#2794). -->
+      <!-- The cheat sheet (#2956); on a phone there is no keyboard to press. -->
+      <button
+        v-if="!mobile && !pageOwnsHeader"
+        type="button"
+        class="tb-keys"
+        data-testid="shortcuts-button"
+        :title="t('shell.keys.title')"
+        @click="quick.sheetOpen = true"
+      >
+        <span class="tb-keys-l">{{ t('shell.keys.button') }}</span>
+        <ShortcutKeys id="nav.shortcuts" />
+      </button>
       <HelpHint :size="18" />
       <!-- When the sidebar is collapsed, its tools slide over here. -->
       <WorkspaceTools v-if="showTools" placement="bottom-end" />
@@ -115,6 +137,34 @@ const crumbBoard = computed(() => board.board?.name || '')
 }
 .tb-right {
   justify-content: flex-end;
+}
+.tb-keys {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 6px 0 10px;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.tb-keys:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+/* A narrow header keeps just the key cap. */
+@media (max-width: 1439px) {
+  .tb-keys-l {
+    display: none;
+  }
+  .tb-keys {
+    padding: 0 6px;
+  }
 }
 .crumbs {
   display: flex;
