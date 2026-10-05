@@ -2,18 +2,7 @@
 import { ref, computed, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import {
-  NButton,
-  NInput,
-  NModal,
-  NCard,
-  NScrollbar,
-  NText,
-  NIcon,
-  NDropdown,
-  NTooltip,
-  useMessage,
-} from 'naive-ui'
+import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip, useMessage } from 'naive-ui'
 import {
   HomeOutline,
   DocumentTextOutline,
@@ -23,21 +12,18 @@ import {
   RibbonOutline,
   AddOutline,
   FolderOutline,
-  TrashOutline,
   ChevronDownOutline,
   ChevronForwardOutline,
-  ColorPaletteOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
-const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useAuthStore } from '@/stores/auth'
 import { useTourStore } from '@/stores/tour'
+import { useConflictsStore } from '@/stores/conflicts'
+import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
 import { workspaceName } from '@/utils/defaultNames'
-import ConfirmByName from './ConfirmByName.vue'
 import ProjectCreateModal from './ProjectCreateModal.vue'
 import {
   moveSidebarGroup,
@@ -50,9 +36,7 @@ import SidebarNode from './SidebarNode.vue'
 import ProjectRow from './ProjectRow.vue'
 import EmptyState from './EmptyState.vue'
 import SidebarFooter from './SidebarFooter.vue'
-import WorkspaceTools from './WorkspaceTools.vue'
 import SidebarRailNode from './SidebarRailNode.vue'
-import WorkspaceAppearanceModal from './rail/WorkspaceAppearanceModal.vue'
 import { useSidebarSize } from '@/composables/useSidebarSize'
 
 defineProps({
@@ -62,11 +46,10 @@ defineProps({
 
 const { t } = useI18n()
 const store = useWorkspacesStore()
-const auth = useAuthStore()
 const tour = useTourStore()
+const conflicts = useConflictsStore()
 const message = useMessage()
 const route = useRoute()
-const router = useRouter()
 
 const { toggle: toggleSidebar } = useSidebarSize()
 const rootGroups = computed(() => store.childGroups(null))
@@ -137,67 +120,9 @@ async function addAtRoot(key) {
   }
 }
 
-// new-workspace modal
-const wsModal = ref({ show: false, value: '' })
-async function createWorkspace() {
-  const n = wsModal.value.value.trim()
-  if (!n) return
-  try {
-    await store.createWorkspace(n)
-    wsModal.value.show = false
-    wsModal.value.value = ''
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-
-const isOwner = computed(() => !!store.current && store.current.owner_id === auth.user?.id)
-// The workspace menu under its name: its tile (owners/admins), a new one, and
-// — for the owner — deleting it.
-const wsMenuOptions = computed(() => [
-  ...(store.canManage
-    ? [
-        {
-          label: t('shell.rail.appearance'),
-          key: 'appearance',
-          icon: menuIcon(ColorPaletteOutline),
-        },
-      ]
-    : []),
-  { label: t('shell.workspace.create'), key: 'create', icon: menuIcon(AddOutline) },
-  ...(isOwner.value
-    ? [
-        {
-          label: t('shell.workspace.delete'),
-          key: 'delete',
-          icon: dangerIcon(TrashOutline),
-          props: { style: 'color:#e0533d' },
-        },
-      ]
-    : []),
-])
-const appearanceShow = ref(false)
-const wsDeleteShow = ref(false)
-function onWsMenuSelect(key) {
-  if (key === 'appearance') appearanceShow.value = true
-  else if (key === 'create') wsModal.value.show = true
-  else if (key === 'delete') {
-    if (store.list.length <= 1) {
-      message.warning(t('shell.workspace.deleteLast'))
-      return
-    }
-    wsDeleteShow.value = true
-  }
-}
-async function deleteWorkspace() {
-  try {
-    await store.removeWorkspace(store.currentId)
-    message.success(t('shell.workspace.deleted'))
-    router.push('/') // the tree fully changed — land on Home
-  } catch (e) {
-    message.error(e.message)
-  }
-}
+// The workspace menu under its name (v2): members, integrations, appearance,
+// create, delete — the doors of the former tool row live here now.
+const wsMenu = useWorkspaceMenu()
 </script>
 
 <template>
@@ -209,11 +134,16 @@ async function deleteWorkspace() {
         v-if="!collapsed"
         trigger="click"
         placement="bottom-start"
-        :options="wsMenuOptions"
-        @select="onWsMenuSelect"
+        :options="wsMenu.options.value"
+        @select="wsMenu.select"
       >
         <button type="button" class="ws-head" data-testid="ws-head">
           <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
+          <span
+            v-if="conflicts.count"
+            class="ws-head-dot"
+            :title="t('shell.tools.integrationsConflicts', { count: conflicts.count })"
+          />
           <n-icon :component="ChevronDownOutline" :size="13" class="ws-head-chev" />
         </button>
       </n-dropdown>
@@ -227,13 +157,6 @@ async function deleteWorkspace() {
         <n-icon :component="ChevronForwardOutline" :size="16" />
       </button>
     </div>
-    <!-- Tools get a row of their own under the name, so a long workspace name
-         isn't squeezed; when the rail is collapsed (desktop) they move to the
-         header instead. -->
-    <div v-if="mobile || !collapsed" class="tools-row">
-      <WorkspaceTools placement="bottom-start" />
-    </div>
-
     <div v-if="collapsed" class="rail-sep" />
 
     <nav class="nav">
@@ -387,31 +310,6 @@ async function deleteWorkspace() {
     <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
 
     <ProjectCreateModal v-model:show="projModalShow" @created="onProjectCreated" />
-
-    <n-modal v-model:show="wsModal.show">
-      <n-card :title="t('shell.workspace.create')" style="max-width: 360px" role="dialog">
-        <n-input
-          v-model:value="wsModal.value"
-          :placeholder="t('shell.workspace.namePlaceholder')"
-          @keyup.enter="createWorkspace"
-        />
-        <template #footer>
-          <n-button type="primary" @click="createWorkspace">{{
-            t('common.action.create')
-          }}</n-button>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <WorkspaceAppearanceModal v-model:show="appearanceShow" :workspace="store.current" />
-
-    <ConfirmByName
-      v-model:show="wsDeleteShow"
-      :name="workspaceName(store.current)"
-      :title="t('shell.workspace.delete')"
-      :message="t('shell.workspace.deleteMessage')"
-      @confirm="deleteWorkspace"
-    />
   </div>
 </template>
 
@@ -431,12 +329,9 @@ async function deleteWorkspace() {
   min-width: 0;
   box-sizing: border-box;
 }
-/* Pin the expanded header height to the tool row's height. Otherwise the row
-   collapses to the (shorter) logo height whenever the notification badge
-   changes — and align-items:center then nudges the wordmark vertically.
-   flex-shrink:0 is essential: the sidebar is a flex column that can overflow, and
-   without it the flex layout squeezes .brand down to its (tool-less) min-content,
-   defeating the fixed height. */
+/* A fixed header height. flex-shrink:0 is essential: the sidebar is a flex
+   column that can overflow, and without it the flex layout squeezes .brand down
+   to its min-content, defeating the fixed height. */
 .sidebar:not(.collapsed) .brand {
   height: 46px;
   flex-shrink: 0;
@@ -487,9 +382,13 @@ async function deleteWorkspace() {
   background: var(--t-hover-side);
   color: var(--t-text1);
 }
-.tools-row {
-  display: flex;
-  padding: 0 8px 6px;
+/* Unresolved GitLab conflicts — the count is in the menu's Integrations row. */
+.ws-head-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e0922f;
 }
 .sidebar.collapsed .brand {
   justify-content: center;

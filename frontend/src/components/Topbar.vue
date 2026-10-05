@@ -2,7 +2,7 @@
 import { NButton, NIcon } from 'naive-ui'
 import { MenuOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import SearchBar from './SearchBar.vue'
-import WorkspaceTools from './WorkspaceTools.vue'
+import NotificationsBell from './NotificationsBell.vue'
 import { computed } from 'vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import BoardActions from './BoardActions.vue'
@@ -16,7 +16,6 @@ import { useRoute } from 'vue-router'
 
 const props = defineProps({
   mobile: { type: Boolean, default: false },
-  showTools: { type: Boolean, default: false },
 })
 defineEmits(['menu'])
 
@@ -74,6 +73,9 @@ const crumbBoard = computed(() => board.board?.name || '')
       <BoardMobileMenu v-if="mobile && board.active" />
       <!-- Contextual help for whatever screen is open; hides itself on /help
            and picks its article from the route (#2794). -->
+      <!-- The bell is the shell's, not the workspace's (v2): the feed spans
+           every workspace, so it stays here whatever the sidebar does. -->
+      <NotificationsBell />
       <!-- The cheat sheet (#2956); on a phone there is no keyboard to press. -->
       <button
         v-if="!mobile && !pageOwnsHeader"
@@ -87,8 +89,6 @@ const crumbBoard = computed(() => board.board?.name || '')
         <ShortcutKeys id="nav.shortcuts" />
       </button>
       <HelpHint :size="18" />
-      <!-- When the sidebar is collapsed, its tools slide over here. -->
-      <WorkspaceTools v-if="showTools" placement="bottom-end" />
     </div>
   </div>
 </template>

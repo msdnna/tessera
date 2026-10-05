@@ -8,35 +8,35 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { NIcon, NDropdown, NModal, NCard, NInput, NButton, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NDropdown, NTooltip } from 'naive-ui'
 import { AddOutline, HelpCircleOutline, LogInOutline } from '@vicons/ionicons5'
 import BrandLogo from '@/components/BrandLogo.vue'
 import ServerEditModal from '@/components/ServerEditModal.vue'
-import ConfirmByName from '@/components/ConfirmByName.vue'
 import RailTile from './RailTile.vue'
-import WorkspaceAppearanceModal from './WorkspaceAppearanceModal.vue'
+import RailAppearance from './RailAppearance.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useServersStore } from '@/stores/servers'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
 import { useHelpStore } from '@/stores/help'
+import { useWsDialogsStore } from '@/stores/wsDialogs'
+import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
 import { useServerBadges } from '@/composables/useServerBadges'
 import { sSetFor } from '@/utils/serverStorage'
 import { serverLabel } from '@/utils/servers'
 import { workspaceName } from '@/utils/defaultNames'
 import { initials } from '@/utils/initials'
-import { humanizeError } from '@/utils/errors'
 import { tileColor, tileLabel } from './workspaceTile'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
-const message = useMessage()
 const ws = useWorkspacesStore()
 const servers = useServersStore()
 const notes = useNotificationsStore()
 const auth = useAuthStore()
 const help = useHelpStore()
+const dialogs = useWsDialogsStore()
 useServerBadges()
 
 const desktop = computed(() => servers.enabled && servers.list.length > 0)
@@ -81,29 +81,20 @@ async function pick(server, w) {
 }
 
 // ── context menus ──
+// A workspace tile carries the workspace menu (useWorkspaceMenu): the full one
+// on the current workspace — with the sidebar collapsed this is where members
+// and integrations are reached — and appearance / delete on the others.
 const menu = ref({ show: false, x: 0, y: 0, kind: '', target: null })
+const wsMenu = useWorkspaceMenu(() => (menu.value.kind === 'ws' ? menu.value.target : null))
 const menuOptions = computed(() => {
-  const { kind, target } = menu.value
+  const { kind } = menu.value
   if (kind === 'server') {
     return [
       { label: t('common.action.edit'), key: 'server-edit' },
       { label: t('shell.servers.remove'), key: 'server-remove' },
     ]
   }
-  if (kind === 'ws' && target) {
-    const role = target.my_role
-    const out = []
-    if (role === 'owner' || role === 'admin')
-      out.push({ label: t('shell.rail.appearance'), key: 'appearance' })
-    if (target.owner_id === auth.user?.id) {
-      out.push({
-        label: t('shell.workspace.delete'),
-        key: 'delete',
-        props: { style: 'color:#e0533d' },
-      })
-    }
-    return out
-  }
+  if (kind === 'ws') return wsMenu.options.value
   return []
 })
 function openMenu(kind, target, e) {
@@ -111,51 +102,26 @@ function openMenu(kind, target, e) {
   if (!menuOptions.value.length) menu.value.show = false
 }
 
-const appearance = ref({ show: false, workspace: null })
-const del = ref({ show: false, workspace: null })
 const serverEdit = ref({ show: false, server: null })
 
 function onMenu(key) {
-  const target = menu.value.target
+  const { kind, target } = menu.value
+  if (key === 'integrations') return // a submenu head
   menu.value.show = false
-  if (key === 'appearance') appearance.value = { show: true, workspace: target }
-  else if (key === 'delete') {
-    if (ws.list.length <= 1) message.warning(t('shell.workspace.deleteLast'))
-    else del.value = { show: true, workspace: target }
-  } else if (key === 'server-edit') serverEdit.value = { show: true, server: target }
+  if (key === 'server-edit') serverEdit.value = { show: true, server: target }
   else if (key === 'server-remove') servers.remove(target.id)
-  else if (key === 'create') createModal.value = { show: true, name: '' }
-  else if (key === 'server-add') serverEdit.value = { show: true, server: null }
+  else if (kind === 'ws') wsMenu.select(key)
 }
-
-async function deleteWorkspace() {
-  const w = del.value.workspace
-  try {
-    await ws.removeWorkspace(w.id)
-    message.success(t('shell.workspace.deleted'))
-    router.push('/')
-  } catch (e) {
-    message.error(humanizeError(e))
-  }
+function onAdd(key) {
+  if (key === 'server-add') serverEdit.value = { show: true, server: null }
+  else dialogs.open('create')
 }
 
 // ── «+»: a new workspace; on desktop also a new server ──
-const createModal = ref({ show: false, name: '' })
 const addOptions = computed(() => [
   { label: t('shell.workspace.create'), key: 'create' },
   { label: t('shell.servers.addTitle'), key: 'server-add' },
 ])
-async function createWorkspace() {
-  const name = createModal.value.name.trim()
-  if (!name) return
-  try {
-    await ws.createWorkspace(name)
-    createModal.value.show = false
-    if (route.params.projectSlug || route.params.id) router.push('/')
-  } catch (e) {
-    message.error(humanizeError(e))
-  }
-}
 
 function onServerSave(patch) {
   if (serverEdit.value.server) servers.update(serverEdit.value.server.id, patch)
@@ -252,7 +218,7 @@ const serverName = (s) => s.name || serverLabel(s.url)
         trigger="click"
         placement="right-start"
         :options="addOptions"
-        @select="onMenu"
+        @select="onAdd"
       >
         <button
           type="button"
@@ -270,7 +236,7 @@ const serverName = (s) => s.name || serverLabel(s.url)
             class="ar-add"
             data-testid="rail-add"
             :aria-label="t('shell.workspace.create')"
-            @click="createModal = { show: true, name: '' }"
+            @click="dialogs.open('create')"
           >
             <n-icon :component="AddOutline" :size="18" />
           </button>
@@ -279,6 +245,7 @@ const serverName = (s) => s.name || serverLabel(s.url)
       </n-tooltip>
     </div>
 
+    <RailAppearance />
     <n-tooltip v-if="auth.isAuthenticated" placement="right" :delay="300">
       <template #trigger>
         <button
@@ -304,45 +271,6 @@ const serverName = (s) => s.name || serverLabel(s.url)
       @clickoutside="menu.show = false"
     />
 
-    <n-modal v-model:show="createModal.show">
-      <n-card
-        :title="t('shell.workspace.create')"
-        style="max-width: 360px"
-        role="dialog"
-        :bordered="false"
-      >
-        <n-input
-          v-model:value="createModal.name"
-          :placeholder="t('shell.workspace.namePlaceholder')"
-          autofocus
-          @keyup.enter="createWorkspace"
-        />
-        <template #footer>
-          <div class="ar-modal-actions">
-            <n-button size="small" @click="createModal.show = false">{{
-              t('common.action.cancel')
-            }}</n-button>
-            <n-button
-              type="primary"
-              size="small"
-              :disabled="!createModal.name.trim()"
-              @click="createWorkspace"
-            >
-              {{ t('common.action.create') }}
-            </n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <WorkspaceAppearanceModal v-model:show="appearance.show" :workspace="appearance.workspace" />
-    <ConfirmByName
-      v-model:show="del.show"
-      :name="workspaceName(del.workspace)"
-      :title="t('shell.workspace.delete')"
-      :message="t('shell.workspace.deleteMessage')"
-      @confirm="deleteWorkspace"
-    />
     <ServerEditModal
       v-if="servers.enabled"
       v-model:show="serverEdit.show"
@@ -438,10 +366,5 @@ const serverName = (s) => s.name || serverLabel(s.url)
 .ar-tip-sub {
   font-size: 12px;
   opacity: 0.75;
-}
-.ar-modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 </style>

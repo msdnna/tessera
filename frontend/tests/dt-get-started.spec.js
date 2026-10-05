@@ -33,7 +33,7 @@ const MARKUP = [
   'src/components/BoardActions.vue',
   'src/components/SearchBar.vue',
   'src/components/SidebarFooter.vue',
-  'src/components/WorkspaceTools.vue',
+  'src/components/NotificationsBell.vue',
 ]
 const markup = MARKUP.map((f) => readFileSync(resolve(root, f), 'utf8')).join('\n')
 const kanban = readFileSync(resolve(root, 'src/components/KanbanBoard.vue'), 'utf8')

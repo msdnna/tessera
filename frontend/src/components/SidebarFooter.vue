@@ -8,6 +8,7 @@ import {
   LibraryOutline,
   LogOutOutline,
   SchoolOutline,
+  ServerOutline,
   SettingsOutline,
   ShieldCheckmarkOutline,
 } from '@vicons/ionicons5'
@@ -15,6 +16,7 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { useTourStore } from '@/stores/tour'
 import { useHelpStore } from '@/stores/help'
+import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useApiImage } from '@/composables/useApiImage'
 
 const props = defineProps({
@@ -27,6 +29,7 @@ const authStore = useAuthStore()
 const router = useRouter()
 const tour = useTourStore()
 const help = useHelpStore()
+const dialogs = useWsDialogsStore()
 
 // useApiImage: direct URL on web; an axios-fetched blob: URL on desktop (the
 // webview can't load the remote '/api/…/avatar' <img> directly).
@@ -74,9 +77,17 @@ const helpOptions = computed(() => [
 
 // Admin and logout are the rare actions: in the v2 footer (#2953) they sit in a
 // «⋯» menu so the name and e-mail keep their room at the 232px sidebar width.
+// Background jobs run for the whole instance, not a workspace — they joined the
+// administration here when the workspace tool row went away.
 const moreOptions = computed(() => [
   ...(isAdmin.value
     ? [
+        {
+          key: 'jobs',
+          label: t('shell.tools.jobs'),
+          icon: () => h(NIcon, { component: ServerOutline }),
+          props: { 'data-testid': 'jobs-button' },
+        },
         {
           key: 'admin',
           label: t('shell.user.admin'),
@@ -94,6 +105,7 @@ const moreOptions = computed(() => [
 
 function onMoreSelect(key) {
   if (key === 'admin') openAdmin()
+  else if (key === 'jobs') dialogs.open('jobs')
   else logout()
 }
 
@@ -145,6 +157,10 @@ function logout() {
         <n-button size="small" block data-help-center-open @click="openHelp">
           <template #icon><n-icon :component="LibraryOutline" /></template>
           {{ t('shell.user.helpCenter') }}
+        </n-button>
+        <n-button v-if="isAdmin" size="small" block @click="dialogs.open('jobs')">
+          <template #icon><n-icon :component="ServerOutline" /></template>
+          {{ t('shell.tools.jobs') }}
         </n-button>
         <n-button v-if="isAdmin" size="small" block @click="openAdmin">
           <template #icon><n-icon :component="ShieldCheckmarkOutline" /></template>

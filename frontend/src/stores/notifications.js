@@ -100,7 +100,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
   }
 
   // «G, then I» (#2956) asks whichever bell is on screen to open its feed — the
-  // feed is a popover owned by WorkspaceTools, not a page with a route.
+  // feed is a popover owned by NotificationsBell, not a page with a route.
   const feedRequest = ref(0)
   function requestFeed() {
     feedRequest.value++

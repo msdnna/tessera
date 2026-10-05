@@ -20,6 +20,7 @@ import CommandPalette from './palette/CommandPalette.vue'
 import QuickActionsFab from './QuickActionsFab.vue'
 import QuickCreateModal from './QuickCreateModal.vue'
 import ShortcutsModal from './ShortcutsModal.vue'
+import WorkspaceDialogsHost from './WorkspaceDialogsHost.vue'
 import Sidebar from './Sidebar.vue'
 import AppRail from './rail/AppRail.vue'
 import Topbar from './Topbar.vue'
@@ -257,7 +258,7 @@ watch(
 
       <n-layout class="work-pane">
         <n-layout-header>
-          <Topbar :show-tools="collapsed" />
+          <Topbar />
         </n-layout-header>
         <n-layout-content
           class="page-slot page-slot--desktop"
@@ -345,6 +346,7 @@ watch(
     <!-- Quick create from the FAB / «N, then T/R/M», and the `?` cheat sheet (#2956). -->
     <QuickCreateModal />
     <ShortcutsModal />
+    <WorkspaceDialogsHost />
 
     <!-- «G …» while a multi-key shortcut waits for its next key (#2956). -->
     <ShortcutPending />
