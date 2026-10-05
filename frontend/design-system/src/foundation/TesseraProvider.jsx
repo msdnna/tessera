@@ -8,7 +8,7 @@
  * @category Foundation
  */
 import { createElement, useContext, useLayoutEffect, useMemo } from 'react'
-import { DARK, LIGHT, PRIORITY_COLORS } from '@/styles/tokens'
+import { DARK, LIGHT, PRIORITY_COLORS, themeVars } from '@/styles/tokens'
 import { COLOR_THEMES } from '@/stores/theme'
 import { DEFAULT_THEME, TesseraContext, setRootState } from '../runtime/context'
 
@@ -58,23 +58,9 @@ function GradientDefs() {
   )
 }
 
-function themeVars(mode, accent) {
-  const p = mode === 'dark' ? DARK : LIGHT
+function providerVars(mode, accent) {
   const t = COLOR_THEMES.find((x) => x.key === accent) ?? COLOR_THEMES[0]
-  return {
-    '--t-bg': p.bg,
-    '--t-surface': p.surface,
-    '--t-surface-alt': p.surfaceAlt,
-    '--t-input-bg': p.inputBg,
-    '--t-hover': p.hover,
-    '--t-border': p.border,
-    '--t-text1': p.text1,
-    '--t-text2': p.text2,
-    '--t-text3': p.text3,
-    '--t-placeholder': p.placeholder,
-    '--t-primary': t.primary,
-    '--t-on-primary': textOnPrimary(t.primary),
-  }
+  return themeVars(mode === 'dark' ? DARK : LIGHT, t.primary, textOnPrimary(t.primary))
 }
 
 export function TesseraProvider({
@@ -91,7 +77,7 @@ export function TesseraProvider({
     () => ({ mode, accent, language, provided: true }),
     [mode, accent, language],
   )
-  const vars = useMemo(() => themeVars(mode, accent), [mode, accent])
+  const vars = useMemo(() => providerVars(mode, accent), [mode, accent])
 
   useLayoutEffect(() => {
     if (!outermost) return

@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed, watch } from 'vue'
 import { darkTheme } from 'naive-ui'
-import { DARK, LIGHT } from '@/styles/tokens'
+import { DARK, LIGHT, themeVars } from '@/styles/tokens'
 import { users, getAccessToken } from '@/api'
 import { normalizeDatePreset, DEFAULT_PREFS } from '@/utils/format'
 import { sGet, sSet } from '@/utils/serverStorage'
@@ -154,41 +154,60 @@ export const useThemeStore = defineStore('theme', () => {
       buttonBorderColorActive: p.primary,
     }
 
-    if (!isDark.value) {
-      return { common, Button: buttonPrimaryText, Radio: radioActive }
-    }
-
-    const d = DARK
+    // v2 (#2951): both themes are built from the palette — the light theme used
+    // to run on Naive's defaults, which drew its own greys and lines. Overlays
+    // (popovers, menus, tooltips, modals) sit on the `pop` level with v2 shadows;
+    // fields are filled wells with no resting border.
+    const d = palette.value
+    const dark = isDark.value
+    const field = '1px solid transparent'
+    const fieldFocus = `1px solid ${p.primary}`
     return {
       common: {
         ...common,
         textColor1: d.text1,
         textColor2: d.text2,
         textColor3: d.text3,
-        textColorPlaceholder: d.placeholder,
+        placeholderColor: d.placeholder,
         borderColor: d.border,
-        cardBorderColor: d.border,
+        dividerColor: d.border,
+        cardColor: d.card,
+        modalColor: d.pop,
+        popoverColor: d.pop,
+        bodyColor: d.bg,
+        inputColor: d.inputBg,
+        hoverColor: d.hover,
+        boxShadow1: d.shCard,
+        boxShadow2: d.shPop,
+        boxShadow3: d.shDrag,
       },
-      Card: { borderColor: d.border, titleTextColor: d.text1, color: d.surface },
-      Button: { colorQuaternary: d.surfaceAlt, ...buttonPrimaryText },
-      Layout: { color: d.bg, colorHeader: d.surface, borderColor: d.border },
+      Card: { borderColor: d.border, titleTextColor: d.text1, color: d.card },
+      Button: dark ? { colorQuaternary: d.surfaceAlt, ...buttonPrimaryText } : buttonPrimaryText,
+      Layout: {
+        color: d.bg,
+        headerColor: d.bg,
+        siderColor: d.sidebar,
+        headerBorderColor: 'transparent',
+        siderBorderColor: 'transparent',
+      },
       Input: {
-        color: d.surfaceAlt,
-        colorFocus: d.surfaceAlt,
-        borderColor: d.border,
-        borderColorFocus: p.primary,
+        color: d.inputBg,
+        colorFocus: d.inputBg,
+        border: field,
+        borderHover: field,
+        borderFocus: fieldFocus,
         placeholderColor: d.placeholder,
         textColor: d.text2,
       },
       Select: {
         peers: {
           InternalSelection: {
-            color: d.surfaceAlt,
-            colorActive: d.surfaceAlt,
-            border: `1px solid ${d.border}`,
-            borderHover: `1px solid ${p.primary}`,
-            borderActive: `1px solid ${p.primary}`,
-            borderFocus: `1px solid ${p.primary}`,
+            color: d.inputBg,
+            colorActive: d.inputBg,
+            border: field,
+            borderHover: field,
+            borderActive: fieldFocus,
+            borderFocus: fieldFocus,
             textColor: d.text2,
             placeholderColor: d.placeholder,
             arrowColor: d.text3,
@@ -196,30 +215,30 @@ export const useThemeStore = defineStore('theme', () => {
         },
       },
       InternalSelectMenu: {
-        color: d.surfaceAlt,
+        color: d.pop,
         optionTextColor: d.text2,
         optionTextColorActive: d.text1,
         optionColorPending: d.hover,
         optionColorActivePending: d.hover,
       },
-      Popover: { color: d.surfaceAlt },
-      Tooltip: { color: d.surfaceAlt },
+      Popover: { color: d.pop, boxShadow: d.shPop, textColor: d.text1 },
+      Tooltip: { color: d.pop, boxShadow: d.shPop, textColor: d.text1 },
       DatePicker: {
-        panelColor: d.surfaceAlt,
-        panelBoxShadow: '0 6px 24px rgba(0,0,0,0.5)',
+        panelColor: d.pop,
+        panelBoxShadow: d.shPop,
         calendarTitleTextColor: d.text1,
         calendarDaysTextColor: d.text3,
         itemTextColor: d.text2,
         itemTextColorActive: '#fff',
         itemColorHover: d.hover,
-        panelHeaderDividerColor: d.border,
-        panelActionDividerColor: d.border,
+        panelHeaderDividerColor: 'transparent',
+        panelActionDividerColor: 'transparent',
         arrowColor: d.text3,
       },
-      Dropdown: { color: d.surfaceAlt, optionColorHover: d.hover },
-      Modal: { color: d.surface, boxShadow: '0 8px 32px rgba(0,0,0,0.6)' },
-      Dialog: { color: d.surface, textColor: d.text2, titleTextColor: d.text1 },
-      Scrollbar: { color: d.surfaceAlt, colorRail: d.border },
+      Dropdown: { color: d.pop, optionColorHover: d.hover, boxShadow: d.shPop },
+      Modal: { color: d.pop, boxShadow: d.shDrag },
+      Dialog: { color: d.pop, textColor: d.text2, titleTextColor: d.text1 },
+      ...(dark ? { Scrollbar: { color: d.pill, colorRail: d.border } } : {}),
       Tag: { colorBorder: d.border },
       Switch: { railColorActive: p.primary },
       Divider: { color: d.border },
@@ -306,19 +325,8 @@ export const useThemeStore = defineStore('theme', () => {
   // components (sidebar, board columns) follow the theme too.
   function applyCssVars() {
     const root = document.documentElement
-    const p = palette.value
-    root.style.setProperty('--t-bg', p.bg)
-    root.style.setProperty('--t-surface', p.surface)
-    root.style.setProperty('--t-surface-alt', p.surfaceAlt)
-    root.style.setProperty('--t-input-bg', p.inputBg)
-    root.style.setProperty('--t-hover', p.hover)
-    root.style.setProperty('--t-border', p.border)
-    root.style.setProperty('--t-text1', p.text1)
-    root.style.setProperty('--t-text2', p.text2)
-    root.style.setProperty('--t-text3', p.text3)
-    root.style.setProperty('--t-placeholder', p.placeholder)
-    root.style.setProperty('--t-primary', activeTheme.value.primary)
-    root.style.setProperty('--t-on-primary', onPrimaryColor.value)
+    const vars = themeVars(palette.value, activeTheme.value.primary, onPrimaryColor.value)
+    for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v)
     root.setAttribute('data-theme', isDark.value ? 'dark' : 'light')
   }
 

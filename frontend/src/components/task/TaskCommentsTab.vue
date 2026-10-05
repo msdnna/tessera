@@ -866,10 +866,9 @@ async function onCommentCheck(c, i) {
      the offline-retry bar — puts comment text straight through the footer.
      Paint it with --n-color-modal, NOT --t-surface: a card *inside a modal*
      is painted by Naive with `background: var(--n-color-modal)` (card cssr,
-     asModal), and our theme overrides only Card.color / Modal.color — the
-     common `modalColor` var stays Naive's default (dark: rgb(44,44,50) vs our
-     --t-surface #1e1e24). That mismatch is exactly the dark-mode seam that got
-     an earlier background attempt reverted. --n-color-modal is set as a custom
+     asModal), and that colour (common `modalColor`, the v2 `pop` level) is not
+     --t-surface. That mismatch is exactly the dark-mode seam that got an
+     earlier background attempt reverted. --n-color-modal is set as a custom
      property on the .n-card root, so it inherits down here and matches the card
      by construction, in both themes. */
   background: var(--n-color-modal, var(--t-surface));

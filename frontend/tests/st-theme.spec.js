@@ -100,12 +100,14 @@ describe('theme store', () => {
     const light = s.themeOverrides
     expect(light.common.primaryColor).toBe(s.activeTheme.primary)
     expect(light.common.borderRadius).toBe('8px')
-    // Light mode has no dark-only component keys.
-    expect(light.Modal).toBeUndefined()
+    // Both themes are built from their own palette (v2, #2951): overlays sit
+    // on the `pop` level, text follows the palette.
+    expect(light.Modal.color).toBe(LIGHT.pop)
+    expect(light.common.textColor1).toBe(LIGHT.text1)
     s.setThemeMode('dark')
     const dark = s.themeOverrides
     expect(dark.common.primaryColor).toBe(s.activeTheme.primary)
-    expect(dark.Modal).toBeDefined()
+    expect(dark.Modal.color).toBe(DARK.pop)
     expect(dark.common.textColor1).toBe(DARK.text1)
   })
 
@@ -119,11 +121,30 @@ describe('theme store', () => {
     // Naive Input skin (color / placeholderColor), not the modal surface.
     expect(css().getPropertyValue('--t-input-bg')).toBe(DARK.inputBg)
     expect(css().getPropertyValue('--t-placeholder')).toBe(DARK.placeholder)
-    expect(DARK.inputBg).toBe(DARK.surfaceAlt)
+    expect(s.themeOverrides.Input.color).toBe(DARK.inputBg)
     s.setThemeMode('light')
     await nextTick()
     expect(css().getPropertyValue('--t-input-bg')).toBe(LIGHT.inputBg)
     expect(css().getPropertyValue('--t-placeholder')).toBe(LIGHT.placeholder)
+    expect(s.themeOverrides.Input.color).toBe(LIGHT.inputBg)
+  })
+
+  it('applyCssVars publishes the v2 surface levels and shadows', async () => {
+    const s = useThemeStore()
+    const css = () => document.documentElement.style
+    s.setThemeMode('dark')
+    await nextTick()
+    expect(css().getPropertyValue('--t-card')).toBe(DARK.card)
+    expect(css().getPropertyValue('--t-pop')).toBe(DARK.pop)
+    expect(css().getPropertyValue('--t-sidebar')).toBe(DARK.sidebar)
+    expect(css().getPropertyValue('--t-sh-card')).toBe(DARK.shCard)
+    expect(css().getPropertyValue('--t-col-tone')).toBe(DARK.colTone)
+    // Accent-mixed levels resolve against --t-primary where they are declared.
+    expect(css().getPropertyValue('--t-active')).toContain('var(--t-primary)')
+    s.setThemeMode('light')
+    await nextTick()
+    expect(css().getPropertyValue('--t-card')).toBe(LIGHT.card)
+    expect(css().getPropertyValue('--t-col-tone')).toBe(LIGHT.colTone)
   })
 
   it('onPrimaryColor is white on the dark purple accent', () => {
