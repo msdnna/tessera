@@ -46,7 +46,8 @@
     "help": "Help",
     "helpCenter": "Help centre",
     "admin": "Administration",
-    "logout": "Log out"
+    "logout": "Log out",
+    "more": "More"
   },
   "tools": {
     "members": "Members",

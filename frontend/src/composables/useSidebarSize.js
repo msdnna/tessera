@@ -20,7 +20,9 @@ function clampExpanded(w) {
 }
 
 const storedW = parseInt(localStorage.getItem(W_KEY) || '', 10)
-const expandedWidth = ref(Number.isFinite(storedW) ? clampExpanded(storedW) : 264)
+// v2 default (#2953): 232px; the drag range still reaches MAX_EXPANDED.
+export const DEFAULT_EXPANDED = 232
+const expandedWidth = ref(Number.isFinite(storedW) ? clampExpanded(storedW) : DEFAULT_EXPANDED)
 const collapsed = ref(localStorage.getItem(C_KEY) === '1')
 
 watch(expandedWidth, (v) => localStorage.setItem(W_KEY, String(v)))

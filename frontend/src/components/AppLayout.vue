@@ -206,7 +206,6 @@ watch(
       style="height: 100vh"
     >
       <n-layout-sider
-        bordered
         :width="layoutWidth"
         :show-trigger="false"
         content-style="padding: 0; height: 100%"
@@ -227,13 +226,13 @@ watch(
       </div>
 
       <n-layout class="work-pane">
-        <n-layout-header bordered>
+        <n-layout-header>
           <Topbar :show-tools="collapsed || narrow" />
         </n-layout-header>
         <n-layout-content
           class="page-slot page-slot--desktop"
           content-style="padding: 16px"
-          style="height: calc(100vh - 53px)"
+          style="height: calc(100vh - 52px)"
         >
           <router-view v-slot="{ Component }">
             <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
@@ -255,13 +254,13 @@ watch(
 
     <!-- Mobile: hamburger opens the sidebar in a drawer -->
     <n-layout v-else class="work-pane" style="height: 100vh">
-      <n-layout-header bordered>
+      <n-layout-header>
         <Topbar :mobile="true" @menu="drawerOpen = true" />
       </n-layout-header>
       <n-layout-content
         class="page-slot page-slot--mobile"
         content-style="padding: 12px"
-        style="height: calc(100vh - 53px)"
+        style="height: calc(100vh - 52px)"
       >
         <router-view v-slot="{ Component }">
           <!-- see the desktop branch: no out-in, leaving page goes absolute (#2708) -->
@@ -358,7 +357,7 @@ watch(
   top: 0;
   height: 100vh;
   /* Width matches the content's left padding so the bar centres in the gutter
-     between the sidebar border and the first card. */
+     between the sidebar and the first column. */
   width: 16px;
   display: flex;
   align-items: center;
@@ -375,7 +374,7 @@ watch(
   width: 4px;
   height: 44px;
   border-radius: 4px;
-  background: var(--t-border);
+  background: var(--t-pill);
   transition:
     background 0.15s ease,
     height 0.15s ease;

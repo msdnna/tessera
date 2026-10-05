@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NInput, NIcon, NSpin, NText } from 'naive-ui'
 import {
@@ -11,6 +11,8 @@ import {
   HelpCircleOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
+import Kbd from '@/components/Kbd.vue'
+import { hasModKey, modKeyLabel } from '@/utils/keys'
 import { useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -97,6 +99,20 @@ function gotoDocument(d) {
   router.push(`/documents/${d.slug || d.id}`)
 }
 
+// ⌘K / Ctrl+K puts the cursor in the search from anywhere (#2953). The full
+// command palette replaces this in a later stage; the hint in the field is only
+// shown because this binding is real.
+const shortcutLabel = `${modKeyLabel}${modKeyLabel === '⌘' ? '' : ' '}K`
+function onGlobalKey(e) {
+  if (hasModKey(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+    e.preventDefault()
+    inputRef.value?.focus()
+    inputRef.value?.select?.()
+  }
+}
+onMounted(() => window.addEventListener('keydown', onGlobalKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onGlobalKey))
+
 // A help hit opens the drawer, not the help page: the reader asked a question
 // from wherever they were, and the answer should not cost them that screen.
 function gotoHelp(h) {
@@ -113,12 +129,14 @@ function gotoHelp(h) {
       v-model:value="q"
       :placeholder="t('shell.search.placeholder')"
       clearable
-      round
       @focus="q.trim() && (open = true)"
       @blur="close"
     >
       <template #prefix>
         <n-icon :component="SearchOutline" />
+      </template>
+      <template #suffix>
+        <Kbd v-if="!q" soft class="search-kbd">{{ shortcutLabel }}</Kbd>
       </template>
     </n-input>
 
@@ -210,10 +228,9 @@ function gotoHelp(h) {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  background: var(--t-pop);
+  border-radius: var(--t-r-tip);
+  box-shadow: var(--t-sh-pop);
   padding: 6px;
   max-height: 60vh;
   overflow-y: auto;
@@ -284,9 +301,15 @@ function gotoHelp(h) {
   padding: 12px;
 }
 .hint {
-  border-top: 1px solid var(--t-border);
-  margin-top: 4px;
+  margin-top: 6px;
   padding: 6px 8px 2px;
   font-size: 11px;
+}
+/* The search field sits right on the canvas: a filled 34px well (v2, #2953). */
+.search :deep(.n-input) {
+  --n-height: 34px !important;
+}
+.search-kbd {
+  margin-right: -2px;
 }
 </style>

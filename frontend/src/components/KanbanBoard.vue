@@ -2053,7 +2053,7 @@ async function restoreFromArchive(taskId) {
 .board-wrap.has-bg {
   margin: -16px;
   padding: 16px;
-  min-height: calc(100vh - 53px);
+  min-height: calc(100vh - 52px);
   box-sizing: border-box;
 }
 /* Right-side toolbar buttons match the composer bar's height. */
@@ -2365,7 +2365,7 @@ async function restoreFromArchive(taskId) {
   .board-wrap.has-bg {
     margin: -12px;
     padding: 12px;
-    min-height: calc(100dvh - 53px);
+    min-height: calc(100dvh - 52px);
   }
   .sb-label {
     display: none;

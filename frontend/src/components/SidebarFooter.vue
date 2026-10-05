@@ -3,6 +3,7 @@ import { computed, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NIcon, NPopover, NTooltip, NAvatar, NDropdown } from 'naive-ui'
 import {
+  EllipsisHorizontalOutline,
   HelpCircleOutline,
   LibraryOutline,
   LogOutOutline,
@@ -71,6 +72,31 @@ const helpOptions = computed(() => [
   },
 ])
 
+// Admin and logout are the rare actions: in the v2 footer (#2953) they sit in a
+// «⋯» menu so the name and e-mail keep their room at the 232px sidebar width.
+const moreOptions = computed(() => [
+  ...(isAdmin.value
+    ? [
+        {
+          key: 'admin',
+          label: t('shell.user.admin'),
+          icon: () => h(NIcon, { component: ShieldCheckmarkOutline }),
+        },
+      ]
+    : []),
+  {
+    key: 'logout',
+    label: t('shell.user.logout'),
+    icon: () => h(NIcon, { component: LogOutOutline }),
+    props: { 'data-testid': 'logout' },
+  },
+])
+
+function onMoreSelect(key) {
+  if (key === 'admin') openAdmin()
+  else logout()
+}
+
 function onHelpSelect(key) {
   if (key === 'tour') startTour()
   else openHelp()
@@ -133,23 +159,10 @@ function logout() {
     <div v-else class="user">
       <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" @click="openSettings" />
       <n-avatar v-else round :size="30" class="ava" @click="openSettings">{{ initials }}</n-avatar>
-      <span class="uname" @click="openSettings">
-        {{ authStore.user?.name || t('shell.user.profile') }}
+      <span class="uwho" @click="openSettings">
+        <span class="uname">{{ authStore.user?.name || t('shell.user.profile') }}</span>
+        <span v-if="authStore.user?.email" class="umail">{{ authStore.user.email }}</span>
       </span>
-      <n-tooltip v-if="isAdmin">
-        <template #trigger>
-          <n-button
-            quaternary
-            circle
-            size="small"
-            :aria-label="t('shell.user.admin')"
-            @click="openAdmin"
-          >
-            <n-icon :component="ShieldCheckmarkOutline" />
-          </n-button>
-        </template>
-        {{ t('shell.user.admin') }}
-      </n-tooltip>
       <!-- «Помощь» (#2792): one question-mark button opening the guide or the
            help centre. The centre is a modal, so picking it keeps the board
            behind it — that is why it is here and no longer a sidebar item. -->
@@ -190,33 +203,28 @@ function logout() {
         </template>
         {{ t('shell.user.settings') }}
       </n-tooltip>
-      <n-tooltip>
-        <template #trigger>
-          <n-button
-            quaternary
-            circle
-            size="small"
-            :aria-label="t('shell.user.logout')"
-            data-testid="logout"
-            @click="logout"
-          >
-            <n-icon :component="LogOutOutline" />
-          </n-button>
-        </template>
-        {{ t('shell.user.logout') }}
-      </n-tooltip>
+      <n-dropdown trigger="click" placement="top-end" :options="moreOptions" @select="onMoreSelect">
+        <n-button quaternary circle size="small" :aria-label="t('shell.user.more')">
+          <n-icon :component="EllipsisHorizontalOutline" />
+        </n-button>
+      </n-dropdown>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* v2 (#2953): a capsule one level below the sidebar instead of a line above. */
 .sb-footer {
-  border-top: 1px solid var(--t-border);
-  padding: 10px;
+  margin: 8px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--t-foot);
 }
 .sb-footer.collapsed {
   display: flex;
   justify-content: center;
+  margin: 8px auto;
+  padding: 5px;
 }
 .user {
   display: flex;
@@ -237,14 +245,27 @@ function logout() {
   border-radius: 50%;
   object-fit: cover;
 }
-.uname {
+.uwho {
   flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--t-text1);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+.uname,
+.umail {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.uname {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
+}
+.umail {
+  font-size: 11.5px;
+  color: var(--t-text3);
 }
 .user-pop {
   width: 200px;

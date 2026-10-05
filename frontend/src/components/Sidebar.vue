@@ -248,7 +248,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
-            <n-icon :component="HomeOutline" :size="18" />
+            <n-icon :component="HomeOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.home') }}</span>
           </router-link>
         </template>
@@ -257,7 +257,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/notes" class="nav-link" data-nav="notes">
-            <n-icon :component="DocumentTextOutline" :size="18" />
+            <n-icon :component="DocumentTextOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.notes') }}</span>
           </router-link>
         </template>
@@ -266,7 +266,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/documents" class="nav-link" data-nav="documents">
-            <n-icon :component="DocumentsOutline" :size="18" />
+            <n-icon :component="DocumentsOutline" :size="16" />
             <span v-if="!collapsed" class="nav-label">
               {{ t('shell.nav.documents')
               }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
@@ -278,7 +278,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/conferences" class="nav-link" data-nav="conferences">
-            <n-icon :component="VideocamOutline" :size="18" />
+            <n-icon :component="VideocamOutline" :size="16" />
             <span v-if="!collapsed" class="nav-label">
               {{ t('shell.nav.conferences')
               }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
@@ -290,7 +290,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/reminders" class="nav-link" data-nav="reminders">
-            <n-icon :component="AlarmOutline" :size="18" />
+            <n-icon :component="AlarmOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.reminders') }}</span>
           </router-link>
         </template>
@@ -299,7 +299,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/milestones" class="nav-link" data-nav="milestones">
-            <n-icon :component="RibbonOutline" :size="18" />
+            <n-icon :component="RibbonOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.milestones') }}</span>
           </router-link>
         </template>
@@ -468,12 +468,10 @@ async function deleteWorkspace() {
   width: 40px;
   padding: 8px 0;
 }
-/* Thin separators between functional groups (logo / nav / projects) in the
-   collapsed rail. */
+/* Gap between functional groups (logo / nav / projects) in the collapsed rail —
+   v2 separates them with space, not a line (#2953). */
 .rail-sep {
-  height: 1px;
-  background: var(--t-border);
-  margin: 6px 12px;
+  height: 12px;
 }
 .rail-scroll {
   flex: 1;
@@ -503,15 +501,19 @@ async function deleteWorkspace() {
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 14px;
+  gap: 10px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--t-r-ctl);
+  font-size: 13.5px;
   color: var(--t-text2);
   text-decoration: none;
 }
+.nav-link :deep(.n-icon) {
+  color: var(--t-text3);
+}
 .nav-link:hover {
-  background: var(--t-hover);
+  background: var(--t-hover-side);
 }
 .nav-label {
   display: inline-flex;
@@ -529,18 +531,35 @@ async function deleteWorkspace() {
   color: var(--t-primary);
   background: color-mix(in srgb, var(--t-primary) 16%, transparent);
 }
+/* Active item: the v2 active level (accent mixed over the sidebar) and the
+   icon painted with the accent gradient. */
 .nav-link.router-link-active,
 .nav-link.router-link-exact-active {
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-  color: var(--t-primary);
+  background: var(--t-active);
+  color: var(--t-text1);
   font-weight: 600;
+}
+.nav-link.router-link-active :deep([fill='currentColor']),
+.nav-link.router-link-exact-active :deep([fill='currentColor']) {
+  fill: url(#t-accent-grad-svg);
+}
+.nav-link.router-link-active :deep([stroke='currentColor']),
+.nav-link.router-link-exact-active :deep([stroke='currentColor']) {
+  stroke: url(#t-accent-grad-svg);
 }
 .proj-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
-  margin-top: 8px;
+  height: 28px;
+  padding: 0 16px;
+  margin-top: 14px;
+}
+.proj-head :deep(.n-text) {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .nav {
   margin-top: 2px;

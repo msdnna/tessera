@@ -869,13 +869,15 @@ async function addBoard() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
-  border-radius: 6px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-radius: var(--t-r-ctl);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .row:hover {
-  background: var(--t-hover);
+  background: var(--t-hover-side);
 }
 .hover-btn {
   opacity: 0;
@@ -907,9 +909,9 @@ async function addBoard() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
   color: #fff;
   font-size: 10px;
   line-height: 1;
@@ -941,20 +943,24 @@ async function addBoard() {
   color: var(--t-text1);
 }
 /* Match the group→child gutter (SidebarNode .children) so the whole tree shares
-   one indentation style. */
+   one indentation style — indent only, no guide line (v2, #2953). */
 .boards {
-  margin-left: 15px;
-  padding-left: 6px;
-  border-left: 1px solid var(--t-border);
+  margin-left: 14px;
 }
 .board-row {
   font-size: 13px;
   color: var(--t-text2);
 }
 .board-row.active {
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-  color: var(--t-primary);
+  background: var(--t-active);
+  color: var(--t-text1);
   font-weight: 600;
+}
+.board-row.active .bicon :deep([fill='currentColor']) {
+  fill: url(#t-accent-grad-svg);
+}
+.board-row.active .bicon :deep([stroke='currentColor']) {
+  stroke: url(#t-accent-grad-svg);
 }
 .ms-row .bicon {
   color: var(--t-primary);

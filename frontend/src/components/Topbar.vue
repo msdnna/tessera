@@ -96,6 +96,6 @@ const onBoard = () => board.active && !props.mobile
 }
 .search-wrap {
   width: 100%;
-  max-width: 520px;
+  max-width: 420px;
 }
 </style>
