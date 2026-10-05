@@ -13,6 +13,7 @@ import { useQuickStore } from '@/stores/quick'
 import ShortcutKeys from './ShortcutKeys.vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
+import { workspaceName } from '@/utils/defaultNames'
 
 const props = defineProps({
   mobile: { type: Boolean, default: false },
@@ -33,6 +34,8 @@ const onBoard = () => board.active && !props.mobile
 // board. The view switch moved down into the board's sub-toolbar.
 const crumbProject = computed(() => ws.projects.find((p) => p.id === board.projectId)?.name || '')
 const crumbBoard = computed(() => board.board?.name || '')
+// The start screen names itself and the workspace (v2, #2960).
+const onHome = computed(() => route.path === '/')
 </script>
 
 <template>
@@ -56,6 +59,11 @@ const crumbBoard = computed(() => board.board?.name || '')
           class="crumb-sep"
         />
         <span class="crumb crumb-cur">{{ crumbBoard }}</span>
+      </div>
+      <div v-if="onHome && !mobile" class="crumbs" data-testid="home-crumbs">
+        <span class="crumb crumb-cur">{{ t('shell.home.title') }}</span>
+        <span class="crumb-dot">·</span>
+        <span class="crumb">{{ workspaceName(ws.current) }}</span>
       </div>
       <div id="tb-slot-left" class="tb-slot" />
     </div>
@@ -184,7 +192,8 @@ const crumbBoard = computed(() => board.board?.name || '')
   font-weight: 600;
   color: var(--t-text1);
 }
-.crumb-sep {
+.crumb-sep,
+.crumb-dot {
   flex: none;
   color: var(--t-text3);
 }

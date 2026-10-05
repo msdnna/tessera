@@ -33,6 +33,9 @@ export const ALLOWLIST = [
   // server in Russian ("К работе", "На рассмотрении"), so this table matches
   // what the rows are actually called — translating it would stop it matching.
   'src/utils/columnStatus.js',
+  // Quick-entry parser of the start screen (#2960): «завтра», «пт», «!срочный» are
+  // words it matches in what people type, in either language — data, not UI.
+  'src/utils/quickParse.js',
   // Get Started scenario. Every word it says is in the catalogue under
   // `tour.steps.*`; what is left are three selectors scoped to a column by name
   // ("К работе", "В процессе"). Those names are server-seeded user data — the

@@ -76,6 +76,9 @@ onBeforeUnmount(() => {
 })
 const route = useRoute()
 const router = useRouter()
+// The start screen's header is translucent and lies over the page, so the
+// aurora runs under it (v2, #2960).
+const homeGlass = computed(() => route.path === '/')
 const message = useMessage()
 
 // Desktop: native-notification click → focus window + open the task.
@@ -256,14 +259,14 @@ watch(
         </span>
       </n-tooltip>
 
-      <n-layout class="work-pane">
-        <n-layout-header>
+      <n-layout class="work-pane" :class="{ 'home-glass': homeGlass }">
+        <n-layout-header :class="{ 'hdr-glass': homeGlass }">
           <Topbar />
         </n-layout-header>
         <n-layout-content
           class="page-slot page-slot--desktop"
-          content-style="padding: 16px"
-          style="height: calc(100vh - 52px)"
+          :content-style="homeGlass ? 'padding: 68px 16px 16px' : 'padding: 16px'"
+          :style="{ height: homeGlass ? '100vh' : 'calc(100vh - 52px)' }"
         >
           <router-view v-slot="{ Component }">
             <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
@@ -285,14 +288,14 @@ watch(
     </n-layout>
 
     <!-- Mobile: hamburger opens the sidebar in a drawer -->
-    <n-layout v-else class="work-pane" style="height: 100vh">
-      <n-layout-header>
+    <n-layout v-else class="work-pane" :class="{ 'home-glass': homeGlass }" style="height: 100vh">
+      <n-layout-header :class="{ 'hdr-glass': homeGlass }">
         <Topbar :mobile="true" @menu="drawerOpen = true" />
       </n-layout-header>
       <n-layout-content
         class="page-slot page-slot--mobile"
-        content-style="padding: 12px"
-        style="height: calc(100vh - 52px)"
+        :content-style="homeGlass ? 'padding: 64px 12px 12px' : 'padding: 12px'"
+        :style="{ height: homeGlass ? '100vh' : 'calc(100vh - 52px)' }"
       >
         <router-view v-slot="{ Component }">
           <!-- see the desktop branch: no out-in, leaving page goes absolute (#2708) -->
@@ -354,6 +357,25 @@ watch(
 </template>
 
 <style scoped>
+/* v2 start screen (#2960): the header lies over the page, half see-through, and
+   the aurora drifts under it. */
+.home-glass {
+  position: relative;
+}
+.hdr-glass {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  background: color-mix(in srgb, var(--t-bg) 52%, transparent) !important;
+  backdrop-filter: saturate(1.4) blur(18px);
+  -webkit-backdrop-filter: saturate(1.4) blur(18px);
+}
+:global([data-theme='light']) .hdr-glass {
+  background: color-mix(in srgb, var(--t-bg) 58%, transparent) !important;
+}
+
 /* Single transition-trackable root; the inner n-layouts own the 100vh height.
    overflow:hidden pins the shell to the viewport — the scrolling belongs to the
    n-layout-content inside, never to the page itself (#2930). */

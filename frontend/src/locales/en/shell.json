@@ -145,7 +145,51 @@
       "week": "This week",
       "completed": "Completed"
     },
-    "empty": "Nothing here yet"
+    "empty": "Nothing here yet",
+    "title": "My tasks",
+    "greet": {
+      "morning": "Good morning, {name}",
+      "day": "Good afternoon, {name}",
+      "evening": "Good evening, {name}",
+      "night": "Good night, {name}"
+    },
+    "pill": {
+      "today": "{n} for today",
+      "overdue": "{n} overdue",
+      "review": "{n} waits for your review | {n} wait for your review"
+    },
+    "section": {
+      "overdue": "Overdue",
+      "today": "Today",
+      "week": "This week",
+      "later": "Later",
+      "nodate": "No due date"
+    },
+    "allClear": "No open tasks on you",
+    "rowHint": {
+      "open": "open",
+      "complete": "complete",
+      "due": "due"
+    },
+    "quick": {
+      "placeholder": "New task: “Call tomorrow 11:00 !high #tag {'@'}name”",
+      "hintTyping": "create",
+      "hintBoard": "board",
+      "hintIdle": "from anywhere",
+      "untitled": "Untitled",
+      "in": "in",
+      "created": "Task #{n} created",
+      "noBoard": "No board to put the task on",
+      "taskTitle": "Task “{title}”"
+    },
+    "side": {
+      "reminders": "Reminders",
+      "noReminders": "No reminders for today",
+      "week": "Week",
+      "weekDone": "{done} of {total} done",
+      "inbox": "Inbox",
+      "inboxEmpty": "No new notifications"
+    }
   },
   "notFound": {
     "title": "Page not found",
