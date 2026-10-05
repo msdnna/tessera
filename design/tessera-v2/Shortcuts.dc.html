@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<div style="width:920px;border-radius:18px;background:var(--v-pop);box-shadow:var(--v-sh-drag);overflow:hidden;font-family:var(--v-font);color:var(--t-text1)">
+<div style="display:flex;align-items:center;gap:14px;padding:20px 22px 14px">
+<span style="font-size:18px;font-weight:650">Горячие клавиши</span>
+<span style="flex:1"></span>
+<div style="width:280px;height:34px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;border-radius:9px;background:var(--v-input);color:var(--t-placeholder);font-size:13px"><span style="flex:1">Найти действие или клавишу</span></div>
+<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">Esc</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3, minmax(0,1fr));gap:8px 28px;padding:6px 22px 22px;align-items:start">
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="4">
+<div style="display:flex;flex-direction:column;gap:2px;padding-top:10px">
+<div style="padding:0 0 6px;font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--t-text3)">{{ g.title }}</div>
+<sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="4">
+<div style="display:flex;align-items:center;gap:10px;min-height:32px;padding:0 6px;margin:0 -6px;border-radius:7px" style-hover="background:var(--v-hover)">
+<span style="flex:1;min-width:0;font-size:13px;color:var(--t-text2)">{{ r.label }}</span>
+<span style="display:flex;align-items:center;gap:4px;flex:0 0 auto"><sc-for list="{{ r.keys }}" as="k" hint-placeholder-count="1"><sc-if value="{{ k.sep }}" hint-placeholder-val="{{ false }}"><span style="font-size:11px;color:var(--t-text3);padding:0 1px;white-space:nowrap">{{ k.sep }}</span></sc-if><sc-if value="{{ k.k }}" hint-placeholder-val="{{ true }}"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;white-space:nowrap;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k.k }}</span></sc-if></sc-for></span>
+</div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:8px;height:44px;padding:0 22px;background:color-mix(in srgb, var(--v-pop) 55%, var(--v-backdrop));font-size:12.5px;color:var(--t-text3)">
+<span>Клавиши показываются в тултипах и пунктах меню. Это окно открывается клавишей</span>
+<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">?</span>
+<span>из любого места.</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const k = (...a) => a.map((x) => (x === '>>' ? { sep: 'затем' } : { k: x }));
+    return {
+      groups: [
+        { title: 'Навигация', rows: [
+          { label: 'Поиск и команды', keys: k('⌘', 'K') },
+          { label: 'Перейти к доске', keys: k('G', '>>', 'B') },
+          { label: 'Входящие', keys: k('G', '>>', 'I') },
+          { label: 'Мои задачи', keys: k('G', '>>', 'M') },
+          { label: 'Скрыть / показать сайдбар', keys: k('[') },
+          { label: 'Эта шпаргалка', keys: k('?') },
+        ] },
+        { title: 'Доска', rows: [
+          { label: 'Задача в колонку под курсором', keys: k('C') },
+          { label: 'Быстрые действия', keys: k('N') },
+          { label: 'Фильтр', keys: k('F') },
+          { label: 'Группировка', keys: k('⇧', 'G') },
+          { label: 'Вид: канбан / список / таймлайн', keys: k('V', '>>', '1–3') },
+          { label: 'Выбрать карточку', keys: k('↑', '↓', '←', '→') },
+        ] },
+        { title: 'Выбранная карточка', rows: [
+          { label: 'Открыть', keys: k('↵') },
+          { label: 'Выполнить', keys: k('E') },
+          { label: 'Статус', keys: k('S') },
+          { label: 'Исполнители', keys: k('A') },
+          { label: 'Приоритет', keys: k('P', '>>', '0–4') },
+          { label: 'Срок', keys: k('D') },
+          { label: 'Теги', keys: k('L') },
+          { label: 'Подзадача', keys: k('⇧', 'N') },
+          { label: 'Переместить в колонку', keys: k('⌘', '←', '→') },
+        ] },
+        { title: 'Быстро создать', rows: [
+          { label: 'Задача в «К работе»', keys: k('N', '>>', 'T') },
+          { label: 'Напоминание', keys: k('N', '>>', 'R') },
+          { label: 'Заметка', keys: k('N', '>>', 'M') },
+        ] },
+        { title: 'Палитра ⌘K', rows: [
+          { label: 'Выбрать результат', keys: k('↑', '↓') },
+          { label: 'Действия с результатом', keys: k('Tab') },
+          { label: 'Открыть', keys: k('↵') },
+          { label: 'Только задачи / люди / команды', keys: k('#', '@', '>') },
+        ] },
+        { title: 'Вид', rows: [
+          { label: 'Переключить тему', keys: k('⇧', 'T') },
+          { label: 'Размер карточек', keys: k('⇧', 'C') },
+          { label: 'Свернуть колонку', keys: k('H') },
+        ] },
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="width:680px;border-radius:16px;background:var(--v-pop);box-shadow:var(--v-sh-drag);overflow:hidden;font-family:var(--v-font);color:var(--t-text1);--t-surface:var(--v-pop)">
+<div style="display:flex;align-items:center;gap:12px;height:58px;padding:0 16px 0 18px">
+<x-import component-from-global-scope="Tessera.Icon" name="SearchOutline" size="19" color="var(--t-text3)" hint-size="19px,19px"></x-import>
+<sc-if value="{{ scoped }}" hint-placeholder-val="{{ false }}"><span style="flex:0 0 auto;height:28px;display:flex;align-items:center;gap:6px;padding:0 6px 0 8px;border-radius:8px;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 16%, var(--v-pop)), color-mix(in srgb, var(--t-primary) 26%, var(--v-pop)));font-size:13px;white-space:nowrap"><span style="display:flex;color:#2f80ed"><x-import component-from-global-scope="Tessera.TesseraIcon" name="status-progress" size="13" hint-size="13px,13px"></x-import></span><span style="color:var(--t-text3)">#2950</span><span style="font-weight:600">Редизайн доски…</span><x-import component-from-global-scope="Tessera.Icon" name="CloseOutline" size="13" color="var(--t-text3)" hint-size="13px,13px"></x-import></span></sc-if>
+<div style="flex:1;min-width:0;display:flex;align-items:center;font-size:16px;color:var(--t-text1)"><span>{{ query }}</span><span style="width:2px;height:20px;margin-left:1px;border-radius:1px;background:var(--t-primary)"></span><sc-if value="{{ ph }}" hint-placeholder-val="{{ false }}"><span style="margin-left:6px;color:var(--t-placeholder)">{{ ph }}</span></sc-if></div>
+<sc-if value="{{ scoped }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t-text3)"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">⇧Tab</span>назад</span></sc-if>
+<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">Esc</span>
+</div>
+<sc-if value="{{ tabs }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;align-items:center;gap:6px;padding:0 14px 8px">
+<span style="height:26px;display:flex;align-items:center;padding:0 11px;border-radius:13px;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 16%, var(--v-pop)), color-mix(in srgb, var(--t-primary) 26%, var(--v-pop)));font-size:12.5px;font-weight:600">Всё</span>
+<span style="height:26px;display:flex;align-items:center;gap:5px;padding:0 11px;border-radius:13px;background:var(--v-pill);font-size:12.5px;color:var(--t-text2)">Задачи<span style="color:var(--t-text3);font-weight:600">#</span></span>
+<span style="height:26px;display:flex;align-items:center;gap:5px;padding:0 11px;border-radius:13px;background:var(--v-pill);font-size:12.5px;color:var(--t-text2)">Доски и этапы</span>
+<span style="height:26px;display:flex;align-items:center;gap:5px;padding:0 11px;border-radius:13px;background:var(--v-pill);font-size:12.5px;color:var(--t-text2)">Люди<span style="color:var(--t-text3);font-weight:600">@</span></span>
+<span style="height:26px;display:flex;align-items:center;gap:5px;padding:0 11px;border-radius:13px;background:var(--v-pill);font-size:12.5px;color:var(--t-text2)">Команды<span style="color:var(--t-text3);font-weight:600">&gt;</span></span>
+<span style="flex:1"></span>
+<span style="font-size:12px;color:var(--t-text3)">Tab — к разделу</span>
+</div>
+</sc-if>
+<div style="display:flex;flex-direction:column;padding:2px 8px 8px">
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:6px;padding:10px 10px 4px;font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--t-text3)"><span>{{ g.title }}</span><span style="font-weight:500;letter-spacing:0;text-transform:none">{{ g.count }}</span></div>
+<sc-for list="{{ g.rows }}" as="r" hint-placeholder-count="2">
+<div style="position:relative;isolation:isolate;display:flex;align-items:center;gap:12px;height:50px;padding:0 10px;border-radius:10px;cursor:pointer" style-hover="background:var(--v-hover)">
+<sc-if value="{{ r.active }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 18%, var(--v-pop)), color-mix(in srgb, var(--t-primary) 27%, var(--v-pop)))"></div></sc-if>
+<div style="flex:0 0 32px;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--v-pill);color:var(--t-text2)">
+<sc-if value="{{ r.sDoing }}" hint-placeholder-val="{{ false }}"><span style="display:flex;color:#2f80ed"><x-import component-from-global-scope="Tessera.TesseraIcon" name="status-progress" size="16" hint-size="16px,16px"></x-import></span></sc-if>
+<sc-if value="{{ r.sTodo }}" hint-placeholder-val="{{ false }}"><span style="display:flex;color:#0eb0a9"><x-import component-from-global-scope="Tessera.TesseraIcon" name="status-todo" size="16" hint-size="16px,16px"></x-import></span></sc-if>
+<sc-if value="{{ r.sDone }}" hint-placeholder-val="{{ false }}"><span style="display:flex;color:#18a058"><x-import component-from-global-scope="Tessera.TesseraIcon" name="status-done" variant="filled" size="16" hint-size="16px,16px"></x-import></span></sc-if>
+<sc-if value="{{ r.icon }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.Icon" name="{{ r.icon }}" size="16" hint-size="16px,16px"></x-import></sc-if>
+</div>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px">
+<div style="font-size:14px;line-height:19px;color:var(--t-text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"><span>{{ r.pre }}</span><span style="background:color-mix(in srgb, var(--t-primary) 32%, transparent);border-radius:3px;padding:0 1px;font-weight:600">{{ r.m }}</span><span>{{ r.post }}</span></div>
+<sc-if value="{{ r.sub }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;line-height:16px;color:var(--t-text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ r.sub }}</div></sc-if>
+</div>
+<sc-if value="{{ r.value }}" hint-placeholder-val="{{ false }}"><span style="font-size:12.5px;color:var(--t-text2);white-space:nowrap">{{ r.value }}</span></sc-if>
+<sc-if value="{{ r.active }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t-text2);white-space:nowrap">
+<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">Tab</span><span style="margin-right:8px">{{ r.tab }}</span>
+<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">↵</span><span>{{ r.enter }}</span>
+</div></sc-if>
+<sc-if value="{{ r.keys }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:4px"><sc-for list="{{ r.keys }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k }}</span></sc-for></div></sc-if>
+</div>
+</sc-for>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:16px;height:40px;padding:0 16px;background:color-mix(in srgb, var(--v-pop) 55%, var(--v-backdrop));font-size:12px;color:var(--t-text3);white-space:nowrap">
+<sc-for list="{{ foot }}" as="f" hint-placeholder-count="4"><span style="display:flex;align-items:center;gap:6px"><sc-for list="{{ f.keys }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k }}</span></sc-for>{{ f.label }}</span></sc-for>
+<span style="flex:1"></span>
+<span>{{ footRight }}</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const actions = this.props.mode === 'actions';
+    if (actions) {
+      return {
+        scoped: true, tabs: false, query: '', ph: 'Действие или поле…',
+        groups: [
+          { title: 'Действия с задачей', count: '', rows: [
+            { active: true, icon: 'SwapHorizontalOutline', pre: '', m: '', post: 'Изменить статус', sub: 'Сейчас: В процессе', tab: 'выбрать', enter: 'применить' },
+            { icon: 'PersonAddOutline', pre: '', m: '', post: 'Исполнители', sub: 'Мария Соколова, Анна Ким, Илья Петров', keys: ['A'] },
+            { icon: 'FlagOutline', pre: '', m: '', post: 'Приоритет', sub: 'Высокий', keys: ['P'] },
+            { icon: 'CalendarClearOutline', pre: '', m: '', post: 'Срок', sub: '06 окт.', keys: ['D'] },
+            { icon: 'PricetagOutline', pre: '', m: '', post: 'Теги', sub: 'design, app::frontend', keys: ['L'] },
+            { icon: 'GitBranchOutline', pre: '', m: '', post: 'Создать подзадачу', sub: '', keys: ['⇧', 'N'] },
+          ] },
+          { title: 'Ещё', count: '', rows: [
+            { icon: 'LinkOutline', pre: '', m: '', post: 'Копировать ссылку', sub: '', keys: ['⌘', '⇧', 'C'] },
+            { icon: 'OpenOutline', pre: '', m: '', post: 'Открыть в новой вкладке', sub: '', keys: ['⌘', '↵'] },
+          ] },
+        ],
+        foot: [{ keys: ['↑', '↓'], label: 'выбрать' }, { keys: ['↵'], label: 'применить' }, { keys: ['Tab'], label: 'варианты' }, { keys: ['⇧Tab'], label: 'к результатам' }],
+        footRight: 'Действия задачи · 8',
+      };
+    }
+    return {
+      scoped: false, tabs: true, query: 'ре', ph: '',
+      groups: [
+        { title: 'Задачи', count: '3', rows: [
+          { active: true, sDoing: true, pre: '', m: 'Ре', post: 'дизайн доски: убрать разделители, поверхности вместо линий', sub: '#2950 · В процессе · Tessera Web / Спринт 0.150', tab: 'действия', enter: 'открыть' },
+          { sTodo: true, pre: 'Фильтр по исполнителю сбрасывается после пе', m: 'ре', post: 'загрузки', sub: '#2961 · К работе · Спринт 0.150' },
+          { sDone: true, pre: 'Миграция заметок на новый ', m: 'ре', post: 'дактор', sub: '#2920 · Готово · Спринт 0.150' },
+        ] },
+        { title: 'Доски и этапы', count: '2', rows: [
+          { icon: 'TrailSignOutline', pre: '', m: 'Ре', post: 'лиз 0.150', sub: 'Этап · Tessera Web · до 14 окт.' },
+          { icon: 'GridOutline', pre: '', m: 'Ре', post: 'тро команды', sub: 'Доска · Маркетинг / Сайт' },
+        ] },
+        { title: 'Команды', count: '2', rows: [
+          { icon: 'ContrastOutline', pre: 'Пе', m: 'ре', post: 'ключить тему', sub: 'Вид', keys: ['⇧', 'T'] },
+          { icon: 'EyeOutline', pre: '', m: 'Ре', post: 'жим фокуса — скрыть сайдбар', sub: 'Вид', keys: ['['] },
+        ] },
+      ],
+      foot: [{ keys: ['↑', '↓'], label: 'выбрать' }, { keys: ['↵'], label: 'открыть' }, { keys: ['Tab'], label: 'действия' }, { keys: ['⌘', '↵'], label: 'в новой вкладке' }],
+      footRight: '# задачи · @ люди · > команды',
+    };
+  }
+}
+</script>
+</body>
+</html>
