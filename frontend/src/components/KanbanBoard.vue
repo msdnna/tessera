@@ -3087,7 +3087,8 @@ async function restoreFromArchive(taskId) {
 }
 /* Where the dragged card will land: a recessed slot in the drop colour (v2,
    #2954) rather than a faded copy of the card. */
-.ghost :deep(.card) {
+.ghost :deep(.card),
+.ghost :deep(.card:hover) {
   background: var(--t-drop);
   box-shadow: var(--t-sh-drop);
 }

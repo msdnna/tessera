@@ -427,15 +427,10 @@ async function submitAddSub() {
 /* v2 card (#2954): one step above the lane with a soft shadow — no border. The
    padding follows the card size, plus 5px on the left for the priority bar. */
 .card {
-  /* The fill is resolved here and :hover only flips the numeric --_hov: Claude
-     Design's token check reads a colour property declared under :hover as a
-     theme token (#2966). Pills and the avatar ring read --card-fill. */
-  --_hov: 0;
-  --card-fill: color-mix(
-    in srgb,
-    var(--t-card-hover) calc(var(--_hov) * 100%),
-    var(--t-card)
-  );
+  /* Pills and the avatar ring read --card-fill. :hover paints the background
+     directly and declares no custom property: Claude Design's token check flags
+     any property re-declared under a state selector (#2966). */
+  --card-fill: var(--t-card);
   --cpx: 12px;
   position: relative;
   background: var(--card-fill);
@@ -458,12 +453,19 @@ async function submitAddSub() {
   padding-bottom: 13px;
 }
 .card:hover {
-  --_hov: 1;
+  background: var(--t-card-hover);
   box-shadow: var(--t-sh-hover);
 }
-/* Keyboard selection (v2, #2956): an accent wash and a ring 2px off the edge. */
+/* The avatar cascade's ring matches the hovered fill (it reads --card-fill,
+   which stays at rest so the property is never re-declared under :hover). */
+.card:not(.selected):not(.nested):hover :deep(.avatar) {
+  box-shadow: 0 0 0 2px var(--t-card-hover);
+}
+/* Keyboard selection (v2, #2956): an accent wash and a ring 2px off the edge.
+   The background is restated so the wash outranks .card:hover. */
 .card.selected {
   --card-fill: color-mix(in srgb, var(--t-primary) 9%, var(--t-card));
+  background: var(--card-fill);
 }
 .card.selected::after {
   content: '';
@@ -563,6 +565,7 @@ async function submitAddSub() {
 }
 .card.nested {
   --card-fill: var(--sub-bg);
+  background: var(--card-fill);
   border-radius: 0 0 var(--t-r-card) var(--t-r-card);
   padding-top: 16px;
   box-shadow: var(--t-sh-card);

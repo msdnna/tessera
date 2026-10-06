@@ -85,11 +85,13 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   properties on global selectors — spell the value out. A `/* @kind color */`
   annotation would not help: the DS build minifies CSS and strips comments.
 - Scoped helpers inside SFCs (`--card-fill`, `--sub-bg`, `--ghost`…) pass on a
-  plain class rule, but a colour property re-declared under a state selector is
-  flagged as a theme token: `.card[data-v-…]:hover { --card-fill: … }` (2026-10-06,
-  #2966). Under `:hover`/`:focus`… declare only a numeric flag and resolve the
-  colour in the base rule — TaskCard: `--_hov: 0|1` +
-  `color-mix(in srgb, <hover> calc(var(--_hov) * 100%), <base>)`.
+  plain class rule, but Claude Design flags ANY custom property re-declared under a
+  state selector — colour or not (2026-10-06/07, #2966): first
+  `.card:hover { --card-fill }`, then a numeric `--_hov: 0|1` flag (both the base
+  and the :hover declaration). Under `:hover`/`:focus`… set the real property
+  (`background`), never a variable; descendants that read the variable get their
+  own plain hover rule (TaskCard: avatar ring via `.card:hover :deep(.avatar)`).
+  `/* @kind other */` hints don't survive — the DS build strips comments.
 
 ## Known render warns
 
