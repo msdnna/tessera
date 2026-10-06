@@ -1,7 +1,10 @@
 package config
 
 import (
+	"log"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -20,6 +23,7 @@ func clearEnv(t *testing.T) {
 		"MAX_BODY_BYTES", "MAX_UPLOAD_BYTES", "MAX_ATTACHMENT_BYTES",
 		"SENTRY_DSN", "SENTRY_ENV", "SENTRY_TRACES_SAMPLE_RATE",
 		"SENTRY_FRONTEND_DSN", "SENTRY_FRONTEND_TRACES_SAMPLE_RATE",
+		"LIVEKIT_URL", "LIVEKIT_PUBLIC_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET",
 	} {
 		t.Setenv(k, "")
 		os.Unsetenv(k)
@@ -90,8 +94,17 @@ func TestLimitDefaults(t *testing.T) {
 		cfg.MaxAttachmentBytes != DefaultMaxAttachmentBytes {
 		t.Errorf("body limits: %d/%d/%d", cfg.MaxBodyBytes, cfg.MaxUploadBytes, cfg.MaxAttachmentBytes)
 	}
-	if len(cfg.TrustedProxies) != 2 {
-		t.Errorf("trusted proxies default = %v, want the loopback pair", cfg.TrustedProxies)
+	if !slices.Equal(cfg.TrustedProxies, DefaultTrustedProxies) {
+		t.Errorf("trusted proxies default = %v, want %v", cfg.TrustedProxies, DefaultTrustedProxies)
+	}
+	// The private ranges are the load-bearing part: the shipped deployment's edge
+	// is a container on the compose network, so a loopback-only list means gin
+	// ignores the forwarded chain and the rate limiter keys every caller on that
+	// one container address (#2932).
+	for _, want := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
+		if !slices.Contains(cfg.TrustedProxies, want) {
+			t.Errorf("default trusted proxies %v do not cover %s", cfg.TrustedProxies, want)
+		}
 	}
 }
 
@@ -234,6 +247,84 @@ func TestSentryDSNTrimmed(t *testing.T) {
 	t.Setenv("SENTRY_DSN", "  http://key@host/1\n")
 	if got := New().SentryDSN; got != "http://key@host/1" {
 		t.Errorf("SentryDSN = %q, want it trimmed", got)
+	}
+}
+
+// The placeholder JWT_SECRET must be called out, not accepted: it is 43
+// characters long, so the "shorter than 32" warning never fires, and `cp
+// .env.example .env` leaves it in place. Asserted on the log line because in
+// development that warning is the whole guard — the process still boots.
+func TestPlaceholderJWTSecretWarns(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JWT_SECRET", "change-this-to-a-random-secret-min-32-chars")
+	var logged strings.Builder
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	cfg := New()
+
+	if !strings.Contains(logged.String(), "JWT_SECRET is still the .env.example placeholder") {
+		t.Fatalf("placeholder secret accepted without a word; log was:\n%s", logged.String())
+	}
+	if cfg.JWTSecret != "change-this-to-a-random-secret-min-32-chars" {
+		t.Fatalf("the value must still be used in dev, got %q", cfg.JWTSecret)
+	}
+}
+
+// Trimmed, because this one is pasted and copied like any other env value.
+func TestPlaceholderLiveKitSecretWarns(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("LIVEKIT_API_KEY", "devkey")
+	t.Setenv("LIVEKIT_API_SECRET", " devsecret_at_least_32_characters_long\n")
+	var logged strings.Builder
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	New()
+
+	if !strings.Contains(logged.String(), "LIVEKIT_API_SECRET is still the .env.example placeholder") {
+		t.Fatalf("placeholder livekit secret accepted without a word; log was:\n%s", logged.String())
+	}
+}
+
+// A real secret must stay quiet, or the warning becomes noise operators learn to
+// ignore — the failure mode that makes the one above worthless.
+func TestRealSecretsDoNotWarn(t *testing.T) {
+	clearEnv(t)
+	t.Setenv("JWT_SECRET", "7f3c1d9e8a2b4c6d0e5f7a9b1c3d5e7f9a1b3c5d7e9f1a3b")
+	var logged strings.Builder
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	New()
+
+	if strings.Contains(logged.String(), "placeholder") {
+		t.Fatalf("a generated secret must not warn; log was:\n%s", logged.String())
+	}
+}
+
+// The guard is a copy of values that live in another file, so it rots silently:
+// rename the placeholder in .env.example and the list goes on matching a string
+// nobody ships any more. This is the test that notices.
+func TestShippedPlaceholdersMatchEnvExample(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", ".env.example"))
+	if err != nil {
+		t.Skipf("no .env.example next to the repo root: %v", err)
+	}
+	for _, key := range []string{"JWT_SECRET", "LIVEKIT_API_SECRET"} {
+		value := ""
+		for _, line := range strings.Split(string(raw), "\n") {
+			if after, ok := strings.CutPrefix(strings.TrimSpace(line), key+"="); ok {
+				value = strings.TrimSpace(after)
+			}
+		}
+		if value == "" {
+			t.Errorf("%s has no value in .env.example — the guard below cannot be checked", key)
+			continue
+		}
+		if !isPlaceholderSecret(value) {
+			t.Errorf("%s ships %q in .env.example, which isPlaceholderSecret does not know", key, value)
+		}
 	}
 }
 

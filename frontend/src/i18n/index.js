@@ -80,10 +80,16 @@ export async function loadLocaleMessages(locale) {
 
 // Single entry point for switching the UI language: loads the bundle, flips
 // vue-i18n and keeps <html lang> honest (screen readers, hyphenation, :lang()).
+//
+// The desktop tray is drawn outside the webview, so it cannot see any of this and
+// has to be told (#2932) — from here rather than from each caller, because a
+// language switch that forgets leaves a Russian tray under an English window.
 export async function setI18nLocale(locale) {
   const active = await loadLocaleMessages(locale)
   i18n.global.locale.value = active
   document.documentElement.setAttribute('lang', active)
+  const { syncTrayLanguage } = await import('@/utils/desktopTray')
+  await syncTrayLanguage(active)
   return active
 }
 

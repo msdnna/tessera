@@ -56,8 +56,8 @@ type Config struct {
 	// Reverse proxies whose X-Forwarded-For is trusted when deriving the client
 	// IP. This is what the rate limiter keys on, so getting it wrong collapses
 	// every client behind the proxy into a single bucket (or, the other way,
-	// lets a client pick its own bucket). Defaults to loopback — override with
-	// TRUSTED_PROXIES (comma-separated) when the proxy is a separate host.
+	// lets a client pick its own bucket). Override with TRUSTED_PROXIES
+	// (comma-separated IPs or CIDRs); see DefaultTrustedProxies.
 	TrustedProxies []string
 	// Throttle the unauthenticated auth routes. On by default; RATE_LIMIT_ENABLED=false
 	// turns it off (single-user installs behind a private network).
@@ -138,6 +138,34 @@ const (
 	DefaultMaxAttachmentBytes int64 = 26 << 20 // 25 MiB attachment + framing
 )
 
+// DefaultTrustedProxies is the trusted-proxy list when TRUSTED_PROXIES is unset:
+// loopback plus the private ranges, which is where a reverse proxy in front of
+// this process actually sits.
+//
+// Loopback alone — the old default — was wrong for the only deployment the repo
+// ships. The edge is the nginx container (deploy/Caddyfile → frontend:80 →
+// tessera_backend), so the peer gin sees is a compose-network address in
+// 172.16/12, never loopback; an untrusted peer means the forwarded-for chain is
+// ignored and c.ClientIP() returns that one container address for every caller
+// on the internet. The rate limiter keys on it, so /auth/login, /auth/register
+// and /auth/refresh shared a single bucket instance-wide and ten logins in six
+// seconds answered 429 to everyone, while the access log recorded one address
+// for every request (#2932).
+//
+// Trusting a range only decides whose X-Forwarded-For is believed, and it is
+// believed right-to-left: gin walks the chain from the peer end, skipping
+// trusted hops, and stops at the first address that is not one — so a caller
+// inside a private network still cannot name a *public* address as itself. The
+// half that makes this safe is the proxy overwriting or appending to the header
+// rather than passing the client's through untouched (frontend/nginx.conf uses
+// $proxy_add_x_forwarded_for; Caddy's reverse_proxy appends by default). Set
+// TRUSTED_PROXIES explicitly to narrow this when the backend port is reachable
+// from a private network without going through the proxy.
+var DefaultTrustedProxies = []string{
+	"127.0.0.1", "::1",
+	"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "fc00::/7",
+}
+
 // fatal reports a fail-closed misconfiguration and stops the process.
 //
 // Deliberately not log.Fatal: main() calls slog.SetDefault before New(), and
@@ -152,6 +180,31 @@ func fatal(msg string) {
 	os.Exit(1)
 }
 
+// shippedPlaceholders are the secret values .env.example hands out for the
+// operator to replace. They are in the repository, so a value equal to one of
+// them is public knowledge: the JWT placeholder is a signing key anybody can
+// reproduce, which means anybody can mint an access token for any account on the
+// instance.
+//
+// The guards below treat "still the placeholder" as "not set", because that is
+// what it is worth. Only the empty case was caught before, and the placeholder
+// slips past every check meant to catch a weak one: the JWT one is 43 characters
+// long, so the len < 32 warning stays quiet, and `cp .env.example .env` is the
+// documented first step of setting the stack up (#2932).
+var shippedPlaceholders = map[string]bool{
+	// JWT_SECRET
+	"change-this-to-a-random-secret-min-32-chars": true,
+	// LIVEKIT_API_SECRET
+	"devsecret_at_least_32_characters_long": true,
+}
+
+// isPlaceholderSecret reports whether v is one of the values .env.example ships.
+// Only for explicitly set values: an unset one has its own guard, and the dev
+// defaults New substitutes there are announced where they are chosen.
+func isPlaceholderSecret(v string) bool {
+	return shippedPlaceholders[strings.TrimSpace(v)]
+}
+
 // New reads configuration from the environment. In production
 // (APP_ENV=production) JWT_SECRET and DATABASE_URL must be explicitly set —
 // fail-closed prevents the binary from booting with dev defaults.
@@ -159,13 +212,23 @@ func New() *Config {
 	prod := strings.EqualFold(os.Getenv("APP_ENV"), "production")
 
 	jwt := os.Getenv("JWT_SECRET")
-	if jwt == "" {
+	switch {
+	case jwt == "":
 		if prod {
 			fatal("JWT_SECRET is required in production (APP_ENV=production)")
 		}
 		jwt = "dev-secret-change-in-production-min32chars!"
 		log.Println("WARNING: JWT_SECRET not set — using dev default (do NOT use in production)")
-	} else if len(jwt) < 32 {
+	case isPlaceholderSecret(jwt):
+		// Refused in production for the same reason an empty one is: the value
+		// grants nothing the repository does not already publish.
+		if prod {
+			fatal("JWT_SECRET is still the .env.example placeholder — generate one with: openssl rand -hex 32")
+		}
+		log.Println("WARNING: JWT_SECRET is still the .env.example placeholder — anyone can forge a session for any account; generate one with: openssl rand -hex 32")
+	case len(jwt) < 32:
+		// #nosec G706 -- the only interpolated value is a length (an int); the
+		// secret itself never reaches the log
 		log.Printf("WARNING: JWT_SECRET is shorter than 32 chars (%d) — generate a stronger one", len(jwt))
 	}
 
@@ -187,6 +250,8 @@ func New() *Config {
 		if prod {
 			fatal("DATABASE_URL is required in production (APP_ENV=production)")
 		}
+		// #nosec G101 -- the dev-only local DSN, unreachable in production: the
+		// branch above exits when APP_ENV=production
 		dbURL = "postgres://tessera:tessera@localhost:5432/tessera?sslmode=disable"
 		log.Println("WARNING: DATABASE_URL not set — using local dev default")
 	}
@@ -243,9 +308,17 @@ func New() *Config {
 	switch {
 	case (lkKey == "") != (lkSecret == ""):
 		log.Println("WARNING: only one of LIVEKIT_API_KEY/LIVEKIT_API_SECRET is set — conferences stay disabled")
+	case isPlaceholderSecret(lkSecret):
+		// A warning and not fatal even in production, keeping the rule stated
+		// above: conferences are optional and must not hold an install down. The
+		// exposure is narrower than the JWT one too — this secret mints room
+		// tokens (join, kick, list participants), not sessions.
+		log.Println("WARNING: LIVEKIT_API_SECRET is still the .env.example placeholder — anyone can mint conference tokens; generate one with: openssl rand -hex 32")
 	case lkSecret != "" && len(lkSecret) < 32:
 		// livekit-server refuses to start on a shorter secret, so this pair can
 		// never work — say so here rather than in the SFU's container log.
+		// #nosec G706 -- the only interpolated value is a length (an int); the
+		// secret itself never reaches the log
 		log.Printf("WARNING: LIVEKIT_API_SECRET is shorter than 32 chars (%d) — livekit-server will refuse it", len(lkSecret))
 	}
 
@@ -269,7 +342,7 @@ func New() *Config {
 
 		GracefulTimeout:      getEnvDuration("GRACEFUL_TIMEOUT", 20*time.Second),
 		PATTouchInterval:     getEnvDuration("PAT_TOUCH_INTERVAL", 5*time.Minute),
-		TrustedProxies:       splitCSV(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1")),
+		TrustedProxies:       splitCSV(getEnv("TRUSTED_PROXIES", strings.Join(DefaultTrustedProxies, ","))),
 		RateLimitEnabled:     getEnvBool("RATE_LIMIT_ENABLED", true),
 		MediaRequireAuth:     getEnvBool("MEDIA_REQUIRE_AUTH", false),
 		ConverterURL:         getEnv("CONVERTER_URL", ""),

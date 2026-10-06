@@ -14,6 +14,8 @@
     <string name="auth_name_placeholder">What should we call you</string>
     <string name="auth_password_label">Password</string>
     <string name="auth_password_placeholder">••••••••</string>
+    <string name="auth_password_too_short">At least %1$d characters</string>
+    <string name="auth_password_too_long">Password is too long: at most %1$d bytes (a Cyrillic letter takes 2)</string>
     <string name="auth_submit_login">Sign in</string>
     <string name="auth_submit_register">Sign up</string>
     <string name="auth_gitlab">Sign in with GitLab</string>
@@ -57,6 +59,8 @@
     <string name="settings_avatar_upload">Upload</string>
     <string name="settings_avatar_remove">Remove</string>
     <string name="settings_avatar_hint">PNG/JPEG/GIF/WebP, up to 2 MB</string>
+    <string name="settings_avatar_too_large">The file is larger than 2 MB</string>
+    <string name="settings_avatar_bad_type">Only PNG, JPEG, GIF or WebP are supported</string>
     <string name="settings_email_label">Email (login)</string>
     <string name="settings_email_verified">Email verified</string>
     <string name="settings_email_unverified">Email not verified</string>
@@ -79,6 +83,9 @@
     <string name="settings_password_repeat">Repeat the new one</string>
     <string name="settings_password_changed">Password changed</string>
     <string name="settings_password_submit">Change password</string>
+    <string name="settings_password_none">This account has no password — it signs in through an external provider. To set one, we\'ll send a link to %1$s.</string>
+    <string name="settings_password_link_send">Send a link</string>
+    <string name="settings_password_link_sent">If the account exists, a link has been sent to %1$s</string>
 
     <!-- Settings: appearance -->
     <string name="settings_appearance_title">Appearance</string>
@@ -234,6 +241,7 @@
     <string name="task_status_active">Not completed</string>
     <string name="task_due_unset">Not set</string>
     <string name="task_estimate_unset">Not set</string>
+    <string name="task_estimate_unreadable">Cannot read the estimate “%1$s” — e.g. 3d 4h, 1h 30, 90m</string>
     <string name="task_assignees_none">Nobody</string>
     <string name="task_tags_none">None</string>
     <string name="task_tag_new_hint">New tag, Enter</string>
@@ -261,11 +269,16 @@
 
     <!-- Task modal: description and comments -->
     <string name="task_description_placeholder">Add a description…</string>
+    <!-- An archived task opens for reading only: the modal's footer note, and the
+         empty-description text where there is no editor placeholder left to show. -->
+    <string name="task_readonly_note">Archived task — view only</string>
+    <string name="task_description_empty">_No description_</string>
     <string name="task_someone">Someone</string>
     <string name="task_comments_empty">No comments yet</string>
     <string name="task_comment_edit_placeholder">Comment…</string>
     <string name="task_comment_reply">Reply</string>
     <string name="task_comment_collapse">Hide replies</string>
+    <string name="task_comment_delete_confirm">Delete the comment?</string>
     <string name="task_reply_placeholder">Reply… (@ — mention)</string>
     <string name="task_comment_placeholder">Write a comment… (@ — mention)</string>
     <string name="task_comment_placeholder_commands">Write a comment… (@ — mention, / — command)</string>
@@ -294,29 +307,65 @@
 
     <!-- Task modal: files -->
     <string name="task_files_empty">No files yet</string>
+    <string name="task_file_too_large">The file is larger than %1$d MB — the server will not take it</string>
     <string name="task_file_attach">Attach a file</string>
     <string name="task_file_open_chooser">Open “%1$s”</string>
+    <string name="task_file_download_failed">Could not download the file</string>
     <string name="task_attachment_delete_confirm">Delete this attachment?</string>
     <string name="task_file_size_mb">%1$s MB</string>
     <string name="task_file_size_kb">%1$s KB</string>
-    <string name="task_file_size_b">%1$d B</string>
+    <string name="task_file_size_b">%1$s B</string>
 
     <!-- Task modal: history -->
     <string name="task_history_empty">No history yet</string>
+    <!-- The sentence is composed from kind + data (util/TaskJournal.kt). An event
+         that carries a target has two strings: one naming it and a bare one for a
+         record that carries none. Dates and the estimate tell setting from
+         clearing; the neutral wording stays for a record with no flag. -->
     <string name="task_event_created">created the task</string>
     <string name="task_event_renamed">renamed the task</string>
+    <string name="task_event_renamed_to">renamed it to “%1$s”</string>
     <string name="task_event_description">edited the description</string>
     <string name="task_event_priority">changed the priority</string>
+    <string name="task_event_priority_to">changed the priority to %1$s</string>
     <string name="task_event_due">changed the due date</string>
+    <string name="task_event_due_set">set the due date</string>
+    <string name="task_event_due_cleared">cleared the due date</string>
+    <string name="task_event_start">changed the start date</string>
+    <string name="task_event_start_set">set the start date</string>
+    <string name="task_event_start_cleared">cleared the start date</string>
+    <string name="task_event_estimate">changed the estimate</string>
+    <string name="task_event_estimate_set">set the estimate</string>
+    <string name="task_event_estimate_cleared">cleared the estimate</string>
     <string name="task_event_completed">completed the task</string>
     <string name="task_event_reopened">reopened the task</string>
     <string name="task_event_recurred">rescheduled the repeat</string>
     <string name="task_event_moved">moved the task</string>
+    <string name="task_event_moved_to">moved it to “%1$s”</string>
     <string name="task_event_assigned">added an assignee</string>
     <string name="task_event_unassigned">removed an assignee</string>
+    <string name="task_event_tagged">added a tag</string>
+    <string name="task_event_tagged_with">added the tag “%1$s”</string>
+    <string name="task_event_untagged">removed a tag</string>
+    <string name="task_event_untagged_with">removed the tag “%1$s”</string>
     <string name="task_event_comment">left a comment</string>
     <string name="task_event_relation">added a relation</string>
+    <string name="task_event_relation_to">linked it to #%1$s</string>
+    <string name="task_event_relation_removed">removed a relation</string>
+    <string name="task_event_relation_removed_to">removed the link to #%1$s</string>
+    <string name="task_event_commands">ran quick actions</string>
+    <string name="task_event_commands_applied">ran %1$s</string>
+    <string name="task_event_commands_failed">could not run %1$s</string>
+    <string name="task_event_commands_mixed">ran %1$s (failed: %2$s)</string>
+    <string name="task_event_synced">synced it with %1$s</string>
     <string name="task_event_attachment">attached a file</string>
+    <string name="task_event_attachment_named">attached the file “%1$s”</string>
+    <string name="task_event_attachment_removed">removed a file</string>
+    <string name="task_event_attachment_removed_named">removed the file “%1$s”</string>
+    <string name="task_event_milestone">linked it to a milestone</string>
+    <string name="task_event_milestone_named">linked it to the milestone “%1$s”</string>
+    <string name="task_event_milestone_removed">unlinked it from a milestone</string>
+    <string name="task_event_milestone_removed_named">unlinked it from the milestone “%1$s”</string>
     <string name="task_event_archived">archived the task</string>
     <string name="task_event_restored">restored the task</string>
 
@@ -587,14 +636,19 @@
         <item>Sun</item>
     </string-array>
 
-    <!-- Dates: relative labels and assembly. English puts the month first and
-         separates the year with a comma, hence the reordered arguments. -->
+    <!-- Dates: relative labels and assembly. Day before month, like every other
+         locale we ship: the web renders English through en-GB on purpose (see the
+         note on `localeTag` in frontend/src/utils/format.js), so "4 Jun 2026" is
+         the shape a reader already sees there — and the presets below follow the
+         same rule. These three used to be month-first, which made one screen mix
+         both orders: a `short`/`long` preset drew 04/06/2026 and 4 June 2026,
+         while `medium`, which reuses dates_long, drew "Jun 4, 2026". -->
     <string name="dates_today">today</string>
     <string name="dates_tomorrow">tomorrow</string>
     <string name="dates_yesterday">yesterday</string>
-    <string name="dates_short">%2$s %1$d</string>
-    <string name="dates_short_year">%2$s %1$d, %3$d</string>
-    <string name="dates_long">%2$s %1$d, %3$d</string>
+    <string name="dates_short">%1$d %2$s</string>
+    <string name="dates_short_year">%1$d %2$s %3$d</string>
+    <string name="dates_long">%1$d %2$s %3$d</string>
     <string name="dates_at_time">%1$s, %2$s</string>
     <string name="dates_with_time">%1$s %2$s</string>
     <string name="dates_clock">%1$02d:%2$02d</string>
@@ -672,6 +726,8 @@
     <string name="notif_kind_archived">Archiving</string>
     <string name="notif_kind_due_soon">Due dates</string>
     <string name="notif_kind_reminder">Reminders</string>
+    <string name="notif_kind_integration_sync">Integration sync</string>
+    <string name="notif_kind_conference_invite">Conference invitations</string>
 
     <!-- Notifications: due date and quiet hours schedule -->
     <string name="notif_due_enabled">Notify about due dates</string>
@@ -688,6 +744,7 @@
     <string name="notif_lead_1h">1 hour before</string>
     <string name="notif_lead_3h">3 hours before</string>
     <string name="notif_lead_1d">1 day before</string>
+    <string name="notif_lead_2d">2 days before</string>
     <string name="notif_repeat_once">Once</string>
     <string name="notif_repeat_1h">Every hour</string>
     <string name="notif_repeat_3h">Every 3 hours</string>
@@ -1022,6 +1079,7 @@
     <string name="conf_chat_load_older">Show earlier messages</string>
     <string name="conf_chat_unknown_author">Unknown author</string>
     <string name="conf_chat_file_too_big">“%1$s” is larger than 25 MB</string>
+    <string name="conf_chat_files_too_big">The attachments add up to more than 25 MB — send them in several messages</string>
     <string name="conf_chat_too_many_files">At most %1$d files per message</string>
     <string name="conf_chat_too_long">The message is longer than %1$d characters</string>
     <string name="conf_chat_size_b">%1$s B</string>
@@ -1069,6 +1127,8 @@
     <!-- Workspace members -->
     <string name="members_title">Members</string>
     <string name="members_invitations">Invitations</string>
+    <string name="members_invite_expired">Expired</string>
+    <string name="members_invite_until">until %1$s</string>
     <string name="members_invite_title">Invite by email</string>
     <string name="members_invite_action">Invite</string>
     <string name="members_invite_hint">An existing account is added right away; a new one gets an invite link.</string>
@@ -1078,11 +1138,12 @@
     <string name="members_role_owner">Owner</string>
     <string name="members_role_admin">Admin</string>
     <string name="members_role_member">Member</string>
+    <string name="members_you">This is you</string>
+    <string name="members_read_only">Read-only list: the workspace owner or an admin changes who is here.</string>
 
     <!-- Admin: account list -->
     <string name="admin_users_count">Accounts on this instance — %1$d</string>
     <string name="admin_search_placeholder">Search by name or email</string>
-    <string name="admin_load_failed">Could not load the account list</string>
     <string name="admin_nobody_found">Nobody found</string>
     <string name="admin_reset_link_copied">Password-reset link copied</string>
     <string name="admin_badge_you">you</string>
@@ -1102,12 +1163,12 @@
     <!-- Admin: OAuth card -->
     <string name="admin_oauth_title">Sign in with GitLab (OAuth)</string>
     <string name="admin_oauth_badge_on">on</string>
-    <string name="admin_oauth_load_failed">Could not load the OAuth settings</string>
-    <string name="admin_oauth_save_failed">Could not save the settings</string>
     <string name="admin_oauth_orgmap_invalid">org_map: a JSON object is expected</string>
     <string name="admin_oauth_saved">OAuth settings saved</string>
     <string name="admin_oauth_secret_stored">(stored — type to replace)</string>
     <string name="admin_oauth_service_token">Service token (PAT, instance-wide)</string>
+    <string name="admin_oauth_sudo">Write as the acting user (Sudo)</string>
+    <string name="admin_oauth_sudo_sub">issues and write-back go out as the acting user; the service token then has to be an admin PAT (scope api + sudo). Keep this OFF if GitLab or Tessera is reachable from an external network</string>
     <string name="admin_oauth_enabled">Enabled</string>
     <string name="admin_oauth_org_map">org_map (JSON: group path → {workspace_id, admins, users})</string>
     <string name="admin_oauth_callback_hint">Callback URL (set it in the GitLab OAuth app):</string>
@@ -1194,11 +1255,13 @@
 
     <!-- Due picker: task recurrence -->
     <string name="due_picker_repeat">Repeat task</string>
-    <string name="due_picker_every">every</string>
     <string name="due_picker_custom_hint">Mark the repeat dates on the calendar above.</string>
+    <string name="due_picker_no_due">Until a due date is set, this repeat will never fire: the next occurrence is counted from it. Pick a date in the calendar above.</string>
     <string name="due_picker_trigger">Event</string>
     <string name="due_picker_trigger_column">Trigger column</string>
     <string name="due_picker_trigger_column_hint">Pick a column</string>
+    <string name="due_picker_trigger_column_unset">Until a column is picked, this repeat will never fire.</string>
+    <string name="due_picker_trigger_column_gone">That column is no longer on the board — this repeat will never fire. Pick another one.</string>
     <string name="due_picker_move_to">Move to</string>
     <string name="due_picker_first_column">First column</string>
     <string name="due_picker_duplicate">Create a duplicate</string>
@@ -1213,6 +1276,22 @@
     <string name="recur_trigger_complete">On completion</string>
     <string name="recur_trigger_column">On moving to a column</string>
     <string name="recur_trigger_schedule">On schedule</string>
+    <plurals name="recur_every_daily">
+        <item quantity="one">every</item>
+        <item quantity="other">every</item>
+    </plurals>
+    <plurals name="recur_every_weekly">
+        <item quantity="one">every</item>
+        <item quantity="other">every</item>
+    </plurals>
+    <plurals name="recur_every_monthly">
+        <item quantity="one">every</item>
+        <item quantity="other">every</item>
+    </plurals>
+    <plurals name="recur_every_yearly">
+        <item quantity="one">every</item>
+        <item quantity="other">every</item>
+    </plurals>
     <plurals name="recur_unit_daily">
         <item quantity="one">day</item>
         <item quantity="other">days</item>
@@ -1341,6 +1420,8 @@
     <string name="err_no_connection">No connection to the server</string>
     <string name="err_unknown">Unknown error</string>
     <string name="err_invalid_credentials">Wrong email or password</string>
+    <string name="err_password_too_short">Password is too short — at least 8 characters</string>
+    <string name="err_password_too_long">Password is too long — at most 72 bytes</string>
     <string name="err_email_registered">This email is already registered</string>
     <string name="err_email_in_use">This email is already in use</string>
     <string name="err_user_exists">A user with this email already exists</string>
@@ -1348,6 +1429,28 @@
     <string name="err_link_invalid">The link is invalid or has expired</string>
     <string name="err_link_expired">The link has expired</string>
     <string name="err_account_deactivated">Account deactivated</string>
+    <string name="err_current_password_wrong">Current password is incorrect</string>
+    <string name="err_no_user_with_email">No account uses this email — you can send an invitation</string>
+    <string name="err_job_already_running">This job is already running — wait for it to finish</string>
+    <string name="err_too_many_approvers">The approval route asks too many people</string>
+    <string name="err_cannot_change_owner_role">The workspace owner\'s role cannot be changed</string>
+    <string name="err_cannot_remove_owner">The workspace owner cannot be removed</string>
+    <string name="err_cannot_change_own_role">You cannot change your own role — ask another admin</string>
+    <string name="err_cannot_remove_self">You cannot remove yourself from the workspace — ask another admin</string>
+    <string name="err_requires_manager">Workspace admin or owner rights are required</string>
+    <string name="err_requires_admin">Admin rights are required</string>
+    <string name="err_channel_type_unknown">The server has no channel of type “%1$s”</string>
+    <string name="err_channel_requires_field">The “%1$s” channel needs %2$s</string>
+    <string name="err_template_too_long">The template is longer than %1$s characters — shorten it</string>
+    <string name="err_template_error">Template error: %1$s</string>
+    <string name="err_smtp_not_configured">SMTP is not configured on the server — the email was logged, not sent</string>
+    <string name="err_too_many_requests">Too many attempts — wait a minute and try again</string>
+    <string name="err_board_view_limit_reached">Too many saved views on this board — delete one to add another</string>
+    <string name="err_board_view_config_too_large">This view\'s settings do not fit into a saved view</string>
+    <string name="err_doc_link_limit_reached">Too many tasks linked to this document — unlink some first</string>
+    <string name="err_body_too_large">The request is too large — shorten the text or the attachment</string>
+    <string name="err_doc_content_too_large">The document is larger than %1$s MB — split it into several pages</string>
+    <string name="err_chat_attachments_too_large">The attachments add up to more than %1$s MB — send them in several messages</string>
     <string name="err_forbidden">Not enough permissions</string>
     <string name="err_unauthorized">Please sign in again</string>
     <string name="err_not_found">Not found</string>
@@ -1457,6 +1560,8 @@
     <string name="md_link_placeholder">text</string>
     <string name="md_mermaid_start">Start</string>
     <string name="md_mermaid_done">Done</string>
+    <string name="md_image_too_large">The image is larger than %1$d MB — the server will not take it</string>
+    <string name="md_image_type">Only PNG, JPEG, GIF, WebP and BMP are supported</string>
 
     <!-- Captions under the loader (shown only when a load drags on) and the
          screen-level error state. -->
@@ -1501,12 +1606,14 @@
     <string name="help_desktop_note">The article describes the web version — some actions look different in the app.</string>
     <string name="help_not_translated">This article has not been translated yet — showing the original.</string>
 
-    <string name="search_placeholder">Search tasks, notes and help</string>
-    <string name="search_hint">Type a query — searches task titles and descriptions, note titles and text, help articles</string>
+    <string name="search_placeholder">Search tasks, notes, documents and help</string>
+    <string name="search_hint">Type a query — searches task numbers, titles and descriptions, note titles and text, document titles, help articles</string>
     <string name="search_empty">Nothing found</string>
+    <string name="search_more">Showing the first %1$d — narrow the search</string>
     <string name="search_section_help">HELP</string>
     <string name="search_section_tasks">TASKS</string>
     <string name="search_section_notes">NOTES</string>
+    <string name="search_section_documents">DOCUMENTS</string>
 
     <!-- GitLab write-back conflict resolver. Field labels come from task_prop_*;
          the "GitLab" side is the service name and has no key. -->
@@ -1580,7 +1687,7 @@
     <string name="tour_board_open_title">Open the board</string>
     <string name="tour_board_open_body">Tap the board — the kanban opens.</string>
     <string name="tour_task_create_title">Create a task</string>
-    <string name="tour_task_create_body">Press “Create task” in the «К работе» column, type a name and confirm.</string>
+    <string name="tour_task_create_body">Press “Create task” in the “%1$s” column, type a name and confirm.</string>
     <string name="tour_card_fields_title">Right on the card</string>
     <string name="tour_card_fields_body">Priority, due date, tags and assignees are edited without opening the task — just tap the icon on the card.</string>
     <string name="tour_card_open_title">Open the task</string>
@@ -1604,7 +1711,7 @@
     <string name="tour_board_composer_title">Grouping, sorting, filters</string>
     <string name="tour_board_composer_body">The “+” on this bar adds grouping (including by tag), sorting and filters, and next to it is the card layout setting.</string>
     <string name="tour_dnd_card_title">Drag the card</string>
-    <string name="tour_dnd_card_body">A task moves between columns by dragging — that is how its status changes on the board. Drag the card into «В процессе».</string>
+    <string name="tour_dnd_card_body">A task moves between columns by dragging — that is how its status changes on the board. Drag the card into “%1$s”.</string>
     <string name="tour_group_add_title">Projects group up too</string>
     <string name="tour_group_add_body">Once there are many projects, they go into groups. Press “+” above the tree once more.</string>
     <string name="tour_menu_group_title">Pick “Group”</string>
@@ -1619,4 +1726,65 @@
     <string name="tour_nav_footer_body">At the bottom — your profile and settings, next to them notifications.</string>
     <string name="tour_done_title">All set</string>
     <string name="tour_done_body">That is everything you need to start. The guide can be restarted from the same place, at the bottom of the side menu.</string>
+
+    <!-- Built-in quick-action descriptions (see values/strings.xml). -->
+    <string name="cmd_assign_desc">Assign an assignee</string>
+    <string name="cmd_unassign_desc">Remove an assignee (no argument — all of them)</string>
+    <string name="cmd_due_desc">Set the due date</string>
+    <string name="cmd_remove_due_desc">Clear the due date</string>
+    <string name="cmd_start_desc">Set the start date</string>
+    <string name="cmd_remove_start_desc">Clear the start date</string>
+    <string name="cmd_estimate_desc">Set the estimate</string>
+    <string name="cmd_remove_estimate_desc">Clear the estimate</string>
+    <string name="cmd_priority_desc">Set the priority</string>
+    <string name="cmd_title_desc">Change the title</string>
+    <string name="cmd_tag_desc">Add a tag (comma-separated)</string>
+    <string name="cmd_untag_desc">Remove a tag</string>
+    <string name="cmd_milestone_desc">Set the milestone</string>
+    <string name="cmd_remove_milestone_desc">Clear the milestone</string>
+    <string name="cmd_move_desc">Move to a column</string>
+    <string name="cmd_close_desc">Close the task</string>
+    <string name="cmd_reopen_desc">Reopen the task</string>
+    <string name="cmd_archive_desc">Archive the task</string>
+    <string name="cmd_relate_desc">Relate to a task</string>
+    <string name="cmd_blocks_desc">Blocks a task</string>
+    <string name="cmd_blocked_by_desc">Blocked by a task</string>
+    <string name="cmd_duplicates_desc">Duplicates a task</string>
+    <string name="cmd_unlink_desc">Remove a task link</string>
+    <string name="cmd_subtask_desc">Create a subtask</string>
+    <string name="cmd_parent_desc">Make it a subtask of a task</string>
+    <string name="cmd_unparent_desc">Detach from the parent</string>
+
+    <string name="notif_ev_ctx">" “%1$s”"</string>
+    <string name="notif_ev_no_ref">?</string>
+    <string name="notif_ev_list_sep">", "</string>
+    <!-- No Oxford comma: the web client words English lists in en-GB (utils/format.js
+         localeTag), and that is what Intl.ListFormat produces there. -->
+    <string name="notif_ev_list_last">" and "</string>
+    <string name="notif_ev_reason_unknown">unknown error</string>
+    <string name="notif_ev_task_assigned">%1$s assigned task #%2$s to you%3$s</string>
+    <string name="notif_ev_task_updated">%1$s updated task #%2$s: %3$s</string>
+    <string name="notif_ev_task_moved">%1$s moved task #%2$s → “%3$s”</string>
+    <string name="notif_ev_task_archived">%1$s archived task #%2$s%3$s</string>
+    <string name="notif_ev_task_comment">%1$s commented on #%2$s%3$s</string>
+    <string name="notif_ev_task_thread_reply">%1$s replied in the thread on #%2$s%3$s</string>
+    <string name="notif_ev_task_mention">%1$s mentioned you in #%2$s%3$s</string>
+    <string name="notif_ev_task_due_soon">Task #%1$s “%2$s” is due soon</string>
+    <string name="notif_ev_reminder">Reminder</string>
+    <string name="notif_ev_sync_ok">%1$s: +%2$s new, ~%3$s updated, in %4$s</string>
+    <string name="notif_ev_sync_partial">%1$s: +%2$s new, ~%3$s updated, in %4$s (some actions failed)</string>
+    <string name="notif_ev_sync_failed">%1$s: sync failed — %2$s (after %3$s)</string>
+    <string name="notif_ev_conference_invited">%1$s invited you to a conference%2$s</string>
+    <string name="notif_ev_field_title">title</string>
+    <string name="notif_ev_field_description">description</string>
+    <string name="notif_ev_field_priority">priority</string>
+    <string name="notif_ev_field_due">due date</string>
+    <string name="notif_ev_field_start">start date</string>
+    <string name="notif_ev_field_estimate">estimate</string>
+    <string name="notif_ev_field_completed">completed</string>
+    <string name="notif_ev_field_reopened">reopened</string>
+    <string name="notif_ev_duration_instant">less than a second</string>
+    <string name="notif_ev_duration_hm">%1$dh %2$dm</string>
+    <string name="notif_ev_duration_ms">%1$dm %2$ds</string>
+    <string name="notif_ev_duration_s">%1$ds</string>
 </resources>

@@ -6,7 +6,7 @@
 // is the card frame itself.
 import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip, NInput, NDropdown, NPopconfirm } from 'naive-ui'
+import { NIcon, NTooltip, NInput, NDropdown, NPopconfirm, useMessage } from 'naive-ui'
 import {
   CheckmarkCircle,
   CheckmarkOutline,
@@ -39,6 +39,12 @@ const props = defineProps({
   subtasksTotal: { type: Number, default: 0 },
   // Render subtasks as full property cards (vs compact name-only rows).
   subtasksExpanded: { type: Boolean, default: false },
+  // The board's composer holds a manual sort, so `subtasks` arrives in the SORT's
+  // order and not in the stored one — the child rows may be re-ordered on screen
+  // while `position` says something else. Locks child re-ordering for the same
+  // reason `subtasksTotal` does: the neighbours a drop names would be the wrong
+  // siblings. Drops from elsewhere (nesting) stay on.
+  sorted: { type: Boolean, default: false },
   // This card is itself a first-level subtask shown below its parent: darker
   // shade, no nested-subtask cascade, no "create subtask" button.
   nested: { type: Boolean, default: false },
@@ -62,6 +68,7 @@ const bv = useBoardViewStore()
 const { columns, cardSize } = storeToRefs(bv)
 const fieldVis = bv.fieldVis
 const { t } = useI18n()
+const message = useMessage()
 
 // Size preset × customize toggle, shared with the pill row (utils/cardFields.js)
 // so the two can't drift apart. The card asks it only about the meta row.
@@ -122,17 +129,64 @@ function startTitleEdit() {
   editingTitle.value = true
   nextTick(() => titleInput.value?.focus?.())
 }
+// Esc abandons the edit — the rule every other inline field on the board already
+// follows (the column header's rename, «＋ задача», «＋ колонка», the card's own
+// «＋ подзадача», the matrix quick-add). This one had no handler at all, so Esc
+// did nothing visible: the field stayed open with the edited text, and the click
+// away that a reader makes next went out through `@blur` and PUT the rename they
+// had just cancelled. A task title is workspace-shared data, broadcast to every
+// other open client — not local view state a stray write merely annoys.
+function cancelTitleEdit() {
+  editingTitle.value = false
+  titleEdit.value = ''
+}
 async function commitTitle() {
+  // Closing the field is what marks the gesture finished: Esc unmounts the input
+  // and a browser fires no blur for a node that is simply removed, but the guard
+  // is on the commit rather than on that behaviour — it also makes the blur that
+  // follows an Enter (or a second commit from any other path) a no-op instead of
+  // a duplicate PUT.
+  if (!editingTitle.value) return
   editingTitle.value = false
   const n = normalizeTitle(titleEdit.value)
   if (!n || n === props.task.title) return
-  await apply({ title: n })
+  if (!(await apply({ title: n }))) restoreFailedTitle(n)
+}
+// A refused rename must not take the typed title with it. The editor is closed
+// before the PUT goes out (see commitTitle), so a failure otherwise leaves the
+// old title on the card and nothing to retry from — the same loss KanbanBoard's
+// restoreFailedTitle exists to prevent on the create side, and retyping is the
+// reader's work the error has no claim on.
+//
+// Only into an editor the reader hasn't moved on from, though: while the PUT was
+// on the wire they may have reopened it and typed the next name (their text
+// wins). A closed editor is reopened on the title that failed.
+function restoreFailedTitle(title) {
+  if (editingTitle.value) return
+  titleEdit.value = title
+  editingTitle.value = true
+  nextTick(() => titleInput.value?.focus?.())
 }
 // Inline edits send the full-replace body minus the description — see
 // utils/taskPatch.js for why omitting it matters.
+//
+// A refusal is reported and the board re-read: the card draws every field off
+// its prop, so without the resync it keeps showing state the server never
+// accepted (and misses what a racing second client DID change). Same contract
+// the right-click menu over this card already follows — useTaskMenu wraps each
+// of these writes and calls onChanged() on both paths.
+//
+// @returns {boolean} whether the write went through
 async function apply(patch) {
-  await tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch })
+  try {
+    await tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch })
+  } catch (e) {
+    message.error(e.message)
+    emit('changed')
+    return false
+  }
   emit('changed')
+  return true
 }
 const toggleDone = () => apply({ completed: !done.value })
 
@@ -246,6 +300,7 @@ async function submitAddSub() {
           class="title-edit"
           @click.stop
           @keyup.enter="commitTitle"
+          @keyup.esc="cancelTitleEdit"
           @blur="commitTitle"
         />
         <n-tooltip
@@ -338,6 +393,7 @@ async function submitAddSub() {
       :compact="isCompact"
       :dragging="dragging"
       :narrowed="subsNarrowed"
+      :sorted="sorted"
       :readonly="readonly"
       @open="emit('open', $event)"
       @changed="emit('changed')"

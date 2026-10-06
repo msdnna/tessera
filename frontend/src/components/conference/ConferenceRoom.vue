@@ -294,7 +294,7 @@ async function toggleRecording() {
     else await confApi.startRecording(props.conferenceId)
     // The dot is not set here on purpose — it arrives in the next snapshot.
   } catch (e) {
-    recError.value = e.response?.data?.error || e.message
+    recError.value = e.message
   } finally {
     recBusy.value = false
   }

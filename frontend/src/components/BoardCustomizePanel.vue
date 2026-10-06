@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import {
   NDrawer,
@@ -14,6 +14,8 @@ import {
 } from 'naive-ui'
 import { AddOutline, GitBranchOutline } from '@vicons/ionicons5'
 import IconColorPicker from './IconColorPicker.vue'
+import { useResponsive } from '@/composables/useResponsive'
+import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
 
 // Two-way settings (bound to the board view in KanbanBoard). All persist via the
 // parent's saved-view + localStorage machinery.
@@ -27,12 +29,19 @@ const subtasksExpanded = defineModel('subtasksExpanded', { type: Boolean, defaul
 const autosaveView = defineModel('autosaveView', { type: Boolean, default: false })
 
 const props = defineProps({
+  // Archive view (?archived=1): look, don't touch. Everything else this panel holds
+  // is view state (card size, pills, auto-collapse, facets, autosave) and stays
+  // live there — only the board's own branding is a write to shared data.
+  readonly: { type: Boolean, default: false },
   // Per-field pill visibility (mutated via set-field so props stay read-only here).
   fieldVis: { type: Object, default: () => ({}) },
   // Reused composer facets (group/sort/filter) — rendered as summary chips + the
   // same add menu, so this panel doesn't reimplement the composer.
   facetChips: { type: Array, default: () => [] },
   addOptions: { type: Array, default: () => [] },
+  // Label of the grouping the group chip steps to when clicked (the chip cycles —
+  // see useBoardFacets). Shown as its tooltip, the same one the composer carries.
+  groupNextLabel: { type: String, default: '' },
   currentViewName: { type: String, default: '' },
   // Board branding (icon/colour/mode), mirrors projects/groups via IconColorPicker.
   boardIcon: { type: String, default: '' },
@@ -44,6 +53,39 @@ const emit = defineEmits(['set-field', 'add-facet', 'remove-chip', 'chip-click',
 const { t } = useI18n()
 
 const boardInitials = computed(() => (boardName.value || '?').trim().slice(0, 2).toUpperCase())
+
+// The name field edits a DRAFT, not the live model — the same shape the sidebar's
+// inline board rename has had all along (ProjectRow: a buffer seeded on open, a
+// commit guarded by `n === b.name`). Binding the model itself and emitting
+// `update-board` on every blur AND every Enter, as this field used to, is loose in
+// three ways, all of them writes to data the whole workspace shares:
+//   * Enter then a click away fired the same PUT twice — two `board.updated`
+//     broadcasts, and every open board in the workspace re-fetches its record;
+//   * focusing the field and leaving it untouched still PUT, and the request is a
+//     full replace of name+icon+colour+mode assembled from this client's copy of
+//     the board, so a no-op blur can overwrite a colleague's icon change;
+//   * Esc closes the drawer WITHOUT blurring the input (a browser fires no blur for
+//     a focused node that is simply removed), so the abandoned text was never saved
+//     — yet stayed in the model as the board's displayed name, and the next stray
+//     focus+blur of that field committed the edit the reader had cancelled.
+// The draft answers all three: nothing leaves this component until the text differs
+// from the board's own name, the commit writes the model so a follow-up blur is a
+// no-op, and closing the drawer throws the draft away.
+const nameDraft = ref(boardName.value)
+watch(boardName, (v) => (nameDraft.value = v))
+watch(show, () => (nameDraft.value = boardName.value))
+function commitName() {
+  const n = nameDraft.value.trim()
+  // An empty field is not a rename — restore what the board is called, the way
+  // KanbanBoard's updateBoard refuses a blank name.
+  if (!n) {
+    nameDraft.value = boardName.value
+    return
+  }
+  if (n === boardName.value) return
+  boardName.value = n
+  emit('update-board', { name: n })
+}
 
 // Only the field order is fixed here — the labels are looked up per render, or
 // switching the language would leave this list on the language of the first one
@@ -63,37 +105,68 @@ const fields = computed(() =>
   FIELD_KEYS.map((key) => ({ key, label: t(`board.customize.field.${key}`) })),
 )
 const fieldOn = (k) => props.fieldVis?.[k] !== false
+
+// The «+» below opens the composer's own two-level facet menu. On a phone naive's
+// side submenus open past the edge of the screen, which is why the composer drills
+// into one sub-list at a time — and this drawer is the settings surface a phone can
+// always reach (the composer's gear slides away once the chips fill the bar, and
+// BoardMobileMenu's «Настроить вид» lands here), so it was the wrong one to leave
+// fanning out. Own instance, own open/level state: sharing the composer's would pop
+// both dropdowns at once.
+const { isMobile } = useResponsive()
+const {
+  show: addShow,
+  menuOptions: addMenuOptions,
+  renderLabel: renderAddLabel,
+  onSelect: onAddSelect,
+  onShow: onAddShow,
+} = useFacetAddMenu({
+  options: computed(() => props.addOptions),
+  isMobile,
+  onPick: (k) => emit('add-facet', k),
+})
 </script>
 
 <template>
   <n-drawer v-model:show="show" :width="340" placement="right">
     <n-drawer-content :title="t('board.customize.title')" closable :native-scrollbar="false">
-      <!-- Board: name, then icon + colour (like projects/groups) -->
-      <div class="sec">
-        <div class="sec-lbl">{{ t('board.customize.board') }}</div>
-        <n-input
-          v-model:value="boardName"
-          size="small"
-          :placeholder="t('board.customize.boardName')"
-          @blur="emit('update-board', { name: boardName })"
-          @keyup.enter="emit('update-board', { name: boardName })"
-        />
-        <div class="board-icp">
-          <IconColorPicker
-            :icon="boardIcon"
-            :color="boardColor"
-            :mode="boardIconMode"
-            :initials="boardInitials"
-            fallback-kanban
-            allow-upload
-            @update:icon="(v) => emit('update-board', { icon: v })"
-            @update:color="(v) => emit('update-board', { color: v })"
-            @update:mode="(v) => emit('update-board', { icon_mode: v })"
+      <!-- Board: name, then icon + colour (like projects/groups). Dropped in the
+           archive: the rest of this drawer is this reader's own view state, but the
+           name/icon/colour are the LIVE board's — `update-board` PUTs them for the
+           whole workspace and re-stamps the sidebar node. The archive is reached by
+           a query flag on the very same board, and its gear (plus the phone's menu
+           entry) opens this same drawer, so a read-only lens was offering a rename
+           and an icon upload. IconColorPicker has no disabled state — and a greyed
+           field nobody may use is noise anyway — so the section comes off whole,
+           the way ColumnHeader drops its «…» menu. -->
+      <template v-if="!readonly">
+        <div class="sec">
+          <div class="sec-lbl">{{ t('board.customize.board') }}</div>
+          <n-input
+            v-model:value="nameDraft"
+            size="small"
+            :placeholder="t('board.customize.boardName')"
+            data-testid="board-name-input"
+            @blur="commitName"
+            @keyup.enter="commitName"
           />
+          <div class="board-icp">
+            <IconColorPicker
+              :icon="boardIcon"
+              :color="boardColor"
+              :mode="boardIconMode"
+              :initials="boardInitials"
+              fallback-kanban
+              allow-upload
+              @update:icon="(v) => emit('update-board', { icon: v })"
+              @update:color="(v) => emit('update-board', { color: v })"
+              @update:mode="(v) => emit('update-board', { icon_mode: v })"
+            />
+          </div>
         </div>
-      </div>
 
-      <n-divider />
+        <n-divider />
+      </template>
 
       <!-- Card size -->
       <div class="sec">
@@ -147,11 +220,20 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
       <div class="sec">
         <div class="sec-lbl">{{ t('board.customize.facets') }}</div>
         <div class="chips">
+          <!-- The group chip does the same thing here as in the composer — one click
+               steps the grouping on — so it gets the same tooltip. It used to be
+               styled `cursor: default`, which read as "summary only" while the click
+               silently regrouped the board. -->
           <span
             v-for="(c, ci) in facetChips"
             :key="ci"
             class="pchip"
             :class="{ group: c.kind === 'group' }"
+            :title="
+              c.kind === 'group' && groupNextLabel
+                ? t('board.composer.groupNext', { next: groupNextLabel })
+                : undefined
+            "
             @click="emit('chip-click', c)"
           >
             {{ c.label }}
@@ -160,11 +242,14 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
             </button>
           </span>
           <n-dropdown
+            :show="addShow"
             trigger="click"
             placement="bottom-start"
             scrollable
-            :options="addOptions"
-            @select="(k) => emit('add-facet', k)"
+            :options="addMenuOptions"
+            :render-label="renderAddLabel"
+            @update:show="onAddShow"
+            @select="onAddSelect"
           >
             <button class="pchip-add" :title="t('board.composer.add')">
               <n-icon :component="AddOutline" :size="14" />
@@ -268,9 +353,9 @@ const fieldOn = (k) => props.fieldVis?.[k] !== false
   font-size: 12px;
   cursor: pointer;
 }
-.pchip.group {
-  cursor: default;
-}
+/* No «×» on the group chip (grouping is never "off"), but it IS clickable — it
+   cycles the grouping exactly as the composer's does, so it keeps the pointer the
+   other chips have rather than the `default` that used to deny it. */
 .pchip-x {
   border: none;
   background: none;

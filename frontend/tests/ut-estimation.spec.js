@@ -14,6 +14,7 @@ import {
   estimateToDays,
   sumEstimates,
 } from '@/utils/estimation'
+import { createFormatters } from '@/utils/format'
 
 const cfg = DEFAULT_ESTIMATION // time, 8h day, 5d week → 480 min/day, 2400 min/week
 
@@ -46,6 +47,18 @@ describe('parseEstimate (time)', () => {
     expect(parseEstimate('1,5ч', cfg)).toBe(90)
   })
 
+  // A comma is the decimal separator in every token, not just the first one:
+  // "2,5ч 30,5м" used to read as 2.5h + 30h + 5m, because a string `replace`
+  // swaps a single occurrence. The other two parsers of the same syntax
+  // (backend internal/quickact, android util/Estimation.kt) never had the split.
+  it('reads the comma separator in every token, not only the first', () => {
+    expect(parseEstimate('1,5д 2,5ч', cfg)).toBe(parseEstimate('1.5d 2.5h', cfg))
+    expect(parseEstimate('1,5д 2,5ч', cfg)).toBe(720 + 150)
+    expect(parseEstimate('2,5ч 30,5м', cfg)).toBe(Math.round(150 + 30.5))
+    expect(parseEstimate('1,25ч 1,25ч', cfg)).toBe(150)
+    expect(parseEstimate('0,5н 0,5д', cfg)).toBe(1200 + 240)
+  })
+
   it('honours a custom working day/week', () => {
     const c = { unit: 'time', hours_per_day: 6, days_per_week: 4 }
     expect(parseEstimate('1д', c)).toBe(360)
@@ -76,6 +89,18 @@ describe('parseEstimate (points / custom)', () => {
     expect(parseEstimate('0', { unit: 'points' })).toBeNull()
     expect(parseEstimate('-2', { unit: 'points' })).toBeNull()
   })
+
+  // The popover prefills its text box with the *formatted* value and parses that
+  // same string back when the user confirms without editing — so "3 тикетов" has
+  // to survive the round trip, or looking at an estimate would erase it. Android
+  // mirrors this (util/Estimation.kt `leadingNumber`); it used to parse strictly
+  // and did erase it.
+  it('reads the number in front and ignores the unit name behind it', () => {
+    const c = { unit: 'custom', custom_label: 'тикетов' }
+    expect(parseEstimate(formatEstimate(3, c), c)).toBe(3)
+    expect(parseEstimate('2.5 тикетов', c)).toBe(2.5)
+    expect(parseEstimate('тикетов', c)).toBeNull()
+  })
 })
 
 describe('formatEstimate', () => {
@@ -102,6 +127,25 @@ describe('formatEstimate', () => {
   it('formats custom with the label and trims trailing .0', () => {
     expect(formatEstimate(2.5, { unit: 'custom', custom_label: 'шт' })).toBe('2.5 шт')
     expect(formatEstimate(5, { unit: 'custom' })).toBe('5')
+  })
+
+  // The working day is a free decimal (the settings field has no precision, the
+  // backend only clamps to [1, 24]), and 8.2 * 60 is 491.99999999999994. Dividing
+  // by that float left a non-zero residue in the minute branch, so one working day
+  // printed as "1д 5.684341886080802e-14м"; at 8.3 the floor went the other way and
+  // one working day (498 min) lost the day unit and read "8ч 18м". Android rounds
+  // both lengths to whole minutes and printed the plain "1д" all along.
+  it('survives a working day whose minute length is not exact in binary', () => {
+    const c82 = { unit: 'time', hours_per_day: 8.2, days_per_week: 5 }
+    expect(formatEstimate(492, c82)).toBe('1д')
+    expect(formatEstimate(2460, c82)).toBe('1н')
+    expect(formatEstimate(492 + 90, c82)).toBe('1д 1ч 30м')
+
+    const c83 = { unit: 'time', hours_per_day: 8.3, days_per_week: 5 }
+    expect(formatEstimate(498, c83)).toBe('1д')
+    expect(formatEstimate(4.1 * 60, { unit: 'time', hours_per_day: 4.1, days_per_week: 5 })).toBe(
+      '1д',
+    )
   })
 })
 
@@ -152,6 +196,15 @@ describe('formatEstimateFull (russian plurals)', () => {
     expect(formatEstimateFull(5, { unit: 'points' })).toBe('5 SP')
     expect(formatEstimateFull(null, cfg)).toBe('')
   })
+
+  // Same inexact working day as in formatEstimate, one degree worse: the leftover
+  // residue was fed to ICU pluralisation, so the tooltip asked for the plural form
+  // of 5.684341886080802e-14 minutes.
+  it('spells out an inexact working day without a residue', () => {
+    const c = { unit: 'time', hours_per_day: 8.2, days_per_week: 5 }
+    expect(formatEstimateFull(492, c)).toBe('1 день')
+    expect(formatEstimateFull(2460, c)).toBe('1 неделя')
+  })
 })
 
 describe('estimateToDays', () => {
@@ -185,6 +238,34 @@ describe('estimateRangeShort / estimateTooltip', () => {
     expect(estimateRangeShort(null, 2400, cfg)).toBe('')
     expect(estimateRangeShort('garbage', 2400, cfg)).toBe('')
     expect(estimateRangeShort(`${y}-06-15`, null, cfg)).toBe('')
+  })
+
+  // Окно — это отрезок КАЛЕНДАРНЫХ дней, а не start + N×86400000 мс. Конец
+  // считался миллисекундами, а печатался календарной датой в зоне пользователя,
+  // поэтому окно через осенний перевод часов (25-часовое воскресенье) приезжало
+  // на 23:00 предыдущего дня и теряло сутки. Зона берётся из префов, не из
+  // process.env.TZ: на UTC-раннере перевода часов нет и спека была бы зелёной.
+  describe('перевод часов внутри окна', () => {
+    const berlin = createFormatters({ language: 'ru', timezone: 'Europe/Berlin' })
+
+    it('осенью не теряет сутки: 20 окт. + 7 дней = 27 окт.', () => {
+      // 25.10.2026 в Берлине длится 25 ч, и +7×24 ч давали 26 окт. 23:00.
+      const s = estimateRangeShort('2026-10-20T00:00:00+02:00', 2400, cfg, berlin)
+      expect(s).toContain('27 окт.')
+      expect(s).not.toContain('26 окт.')
+    })
+
+    it('весной не прибавляет суток: 24 мар. + 7 дней = 31 мар.', () => {
+      // 29.03.2026 длится 23 ч — обратная ошибка знака.
+      const s = estimateRangeShort('2026-03-24T00:00:00+01:00', 2400, cfg, berlin)
+      expect(s).toContain('31 мар.')
+      expect(s).not.toContain('01 апр.')
+    })
+
+    it('переносит конец через границу года', () => {
+      const s = estimateRangeShort('2026-12-28T00:00:00+01:00', 2400, cfg, berlin)
+      expect(s).toContain('04 янв.')
+    })
   })
 
   it('tooltip = full estimate, with the window in parens when a start exists', () => {

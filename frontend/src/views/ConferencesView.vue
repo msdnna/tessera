@@ -43,6 +43,7 @@ import { useConferenceSession } from '@/stores/conference'
 import { useFormat } from '@/composables/useFormat'
 import { useRealtime } from '@/composables/useRealtime'
 import { hueGrad, tagPillBg } from '@/utils/gradient'
+import { canModerateConference } from '@/utils/confLobby'
 import EmptyState from '@/components/EmptyState.vue'
 import ConferenceRoom from '@/components/conference/ConferenceRoom.vue'
 import ConferenceRecordings from '@/components/conference/ConferenceRecordings.vue'
@@ -74,40 +75,84 @@ const recNudge = ref(0)
 const openId = computed(() => route.params.id || '')
 
 // ── list ───────────────────────────────────────────────────────────────
+
+// Four things ask for the list — the mount, the status radio, the workspace
+// switcher and the socket — and nothing held their answers apart, so whichever
+// arrived LAST won, not whichever was asked last. Clicking «Живые» and then
+// «Завершённые» while the first request is still out leaves the live calls on
+// screen under the «Завершённые» radio, and nothing refetches until the reader
+// touches the filter again; the same race across a workspace switch shows the
+// previous workspace's calls. A busy call (participants joining) fires several
+// `load()`s a second, so the reordering is not hypothetical.
+//
+// The counter is the same device SearchBar.vue uses for its debounced query, and
+// the same comparison-after-await Android has always done (#2932).
+let loadSeq = 0
+let detailSeq = 0
+
 async function load() {
+  // Bumped before the early return, not after: a request already in flight has to
+  // be invalidated even by a call that goes on to do nothing, or its answer lands
+  // later and refills the list we are clearing.
+  const mine = ++loadSeq
   if (!ws.currentId) {
     list.value = []
+    loading.value = false
     return
   }
   loading.value = true
   try {
     const { data } = await confApi.list(ws.currentId, filter.value === 'all' ? '' : filter.value)
+    if (mine !== loadSeq) return
     list.value = data || []
   } catch (e) {
+    // A superseded request's failure is about a list nobody is looking at; its
+    // toast would blame the filter the reader just switched to.
+    if (mine !== loadSeq) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    // Only the request that lit the spinner puts it out.
+    if (mine === loadSeq) loading.value = false
   }
 }
 
 // ── one conference ─────────────────────────────────────────────────────
+// The lobby needs the guard even more than the list does: on the way in it calls
+// `ensureWorkspace` with the ANSWER's workspace, so a late reply about the call
+// the reader has left does not merely redraw the lobby — it drags the whole app
+// into that call's workspace, retargeting the tree, the board and the socket.
 async function loadDetail(id) {
+  const mine = ++detailSeq
   detailLoading.value = true
   detailMissing.value = false
   try {
     const { data } = await confApi.get(id)
+    if (mine !== detailSeq) return
     detail.value = data
+    // An invitation notification deep-links straight here, and the backend
+    // authorises a call against ITS workspace — so the lobby can open while the
+    // app is still pointed at the remembered one. Every scope decision on this
+    // page reads currentId (the realtime filter below, the invite roster), so it
+    // has to follow the call, exactly as BoardView follows a linked board (#2721).
+    // Idempotent when we are already there.
+    const confWs = data?.conference?.workspace_id
+    if (confWs) await ws.ensureWorkspace(confWs)
+    if (mine !== detailSeq) return
     // Prefetch the workspace roster so the room's invite popover is ready before
     // it is opened; skipped for an ended call, which cannot be invited to.
-    if (canInvite.value) loadMembers()
+    if (canInvite.value) loadMembers(confWs)
   } catch (e) {
+    if (mine !== detailSeq) return
     // A deleted (or foreign-workspace) conference answers 404 — say so on the
     // page instead of leaving the previous conference on screen under a new id.
     detail.value = null
     detailMissing.value = true
-    if (e.response?.status !== 404 && e.response?.status !== 403) message.error(e.message)
+    // `e.status`, not `e.response.status` — see the note in ConferenceChat: the
+    // api client rejects with an error of its own, and this check silently
+    // matched nothing, so the page said "conference not found" *and* toasted it.
+    if (e.status !== 404 && e.status !== 403) message.error(e.message)
   } finally {
-    detailLoading.value = false
+    if (mine === detailSeq) detailLoading.value = false
   }
 }
 
@@ -132,7 +177,7 @@ async function act(fn, toast) {
     detail.value.participants = parts || []
     if (toast) message.success(t(toast))
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     busy.value = false
   }
@@ -149,7 +194,7 @@ async function remove(conf) {
     if (openId.value === conf.id) backToList()
     else await load()
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 
@@ -177,12 +222,16 @@ const invitable = computed(() => {
 const canInvite = computed(() => detail.value && detail.value.conference.status !== 'ended')
 
 // Loaded once the lobby opens, so the popover's list is ready on the first click.
+// Asked for the CALL's workspace, not the remembered one: the server lets only
+// members of the call's workspace be invited, so a roster read off currentId
+// would offer people it then refuses and hide the colleagues actually in reach.
 // Silent on failure: the popover just shows an empty list until it succeeds —
 // nothing the person opening a call needs a red toast about.
-async function loadMembers() {
-  if (!wsApi?.members || !ws.currentId) return
+async function loadMembers(wsID) {
+  const scope = wsID || ws.currentId
+  if (!wsApi?.members || !scope) return
   try {
-    const { data } = await wsApi.members(ws.currentId)
+    const { data } = await wsApi.members(scope)
     members.value = data || []
   } catch {
     // non-fatal; invitable stays empty
@@ -199,7 +248,7 @@ async function inviteOne(userId) {
     detail.value.participants = parts || []
     message.success(t('conferences.invite.sent', { count: 1 }))
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 
@@ -251,7 +300,7 @@ async function submit() {
     await load()
     if (data?.id) open(data)
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     dlg.value.saving = false
   }
@@ -267,11 +316,18 @@ const myPart = computed(() =>
   (detail.value?.participants || []).find((p) => p.user_id === me.value),
 )
 const inRoom = computed(() => !!myPart.value?.joined_at && !myPart.value?.left_at)
-const canModerate = computed(() => {
-  const conf = detail.value?.conference
-  if (!conf) return false
-  return conf.created_by === me.value || myPart.value?.role === 'host' || auth.isAdmin
-})
+// The server's rule, not a wider one: the creator, a host in the call, or an
+// owner/admin of THIS workspace (ws.canManage reads the role the workspace list
+// reports for the current one, which the detail loader has already pulled across
+// to the call's workspace). See utils/confLobby.js.
+const canModerate = computed(() =>
+  canModerateConference(
+    detail.value?.conference,
+    detail.value?.participants,
+    me.value,
+    ws.canManage,
+  ),
+)
 // Invited but not in the room yet — never joined, or an open invitation (#2875).
 // The room's rail lists these so an invitation is visible somewhere again after
 // the standalone participants column was dropped (#2881).
@@ -338,8 +394,12 @@ function timeLine(c) {
 watch(openId, (id) => {
   if (id) loadDetail(id)
   else {
+    // Leaving the lobby invalidates the fetch it started, or that answer lands on
+    // the list and draws the lobby back over it.
+    detailSeq++
     detail.value = null
     detailMissing.value = false
+    detailLoading.value = false
   }
 })
 
@@ -359,10 +419,15 @@ watch(
 watch(filter, load)
 watch(
   () => ws.currentId,
-  () => {
+  (id) => {
     // Switching workspaces while a conference is open leaves that conference
-    // outside the visible scope — go back to the list rather than 403.
-    if (openId.value) router.push('/conferences')
+    // outside the visible scope — go back to the list rather than 403. Unless we
+    // switched INTO the open call's own workspace, which is loadDetail pulling
+    // the scope after a deep link: that is the call arriving in scope, not
+    // leaving it, and bouncing there would close the lobby we just opened.
+    if (openId.value && detail.value?.conference?.workspace_id !== id) {
+      router.push('/conferences')
+    }
     load()
   },
 )

@@ -3,7 +3,9 @@
 // active marker, unread badge, faded signed-out server.
 import { setActivePinia, createPinia } from 'pinia'
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
+import { NPopconfirm } from 'naive-ui'
 
 // The badge poller would otherwise reach the network on mount.
 vi.mock('@/composables/useServerBadges', () => ({ useServerBadges: () => ({ poll: vi.fn() }) }))
@@ -18,7 +20,7 @@ import AppRail from '@/components/rail/AppRail.vue'
 import { useServersStore } from '@/stores/servers'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
-import { addServer, setActiveServerId } from '@/utils/servers'
+import { addServer, setActiveServerId, listServers } from '@/utils/servers'
 
 let wrapper = null
 const WS = [
@@ -128,6 +130,49 @@ describe('AppRail on desktop', () => {
     const head = wrapper.findAll('.ar-group')[1].find('button.rt.small')
     expect(head.find('.rt-badge').text()).toBe('99+')
     expect(head.classes()).toContain('muted')
+  })
+
+  // Removing a profile purges its refresh token and, for the last one, replaces
+  // it with a fresh profile aimed at the public default — the address of a
+  // self-hosted server is gone with no undo. The menu item sits one row under
+  // «Изменить»; it must not fire on the slip (#2932).
+  describe('removing a server asks first', () => {
+    async function pickRemove() {
+      await wrapper.findAll('.ar-group')[1].find('button.rt.small').trigger('contextmenu')
+      // The context menu is the manual dropdown (the «+» one opens on click).
+      const menu = wrapper
+        .findAllComponents({ name: 'Dropdown' })
+        .find((d) => d.props('trigger') === 'manual')
+      menu.vm.$emit('select', 'server-remove')
+      await nextTick()
+    }
+
+    it('keeps the profile until the confirm is answered', async () => {
+      const { a, b } = twoServers()
+      mountRail()
+      await pickRemove()
+      expect(listServers().map((s) => s.id)).toEqual([a.id, b.id])
+      expect(wrapper.findComponent(NPopconfirm).props('show')).toBe(true)
+    })
+
+    it('drops the profile once confirmed', async () => {
+      const { a } = twoServers()
+      mountRail()
+      await pickRemove()
+      wrapper.findComponent(NPopconfirm).vm.$emit('positive-click')
+      await nextTick()
+      expect(listServers().map((s) => s.id)).toEqual([a.id])
+    })
+
+    it('leaves the profile alone when the confirm is dismissed', async () => {
+      const { a, b } = twoServers()
+      mountRail()
+      await pickRemove()
+      wrapper.findComponent(NPopconfirm).vm.$emit('clickoutside')
+      await nextTick()
+      expect(listServers().map((s) => s.id)).toEqual([a.id, b.id])
+      expect(wrapper.findComponent(NPopconfirm).props('show')).toBe(false)
+    })
   })
 
   it('keeps each server’s workspaces cached for the next start', () => {

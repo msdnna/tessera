@@ -16,6 +16,17 @@ import website.msdnna.tessera.data.model.AuthResponse
 import website.msdnna.tessera.data.model.RefreshRequest
 
 /**
+ * Ответил ли сервер на `/auth/refresh` вердиктом о сессии, а не «не могу сейчас».
+ *
+ * Правило списано с веба (`frontend/src/api/index.js` refreshFailure, #2750):
+ * вердикт — только клиентские коды, и то без 408/429, которые говорят про момент,
+ * а не про сессию. Всё остальное (5xx, в том числе 503 «storage unavailable» из
+ * бэкендового Refresh) означает, что ответа по существу не было.
+ */
+internal fun isSessionVerdict(code: Int): Boolean =
+    code in 400..499 && code != 408 && code != 429
+
+/**
  * Single owner of the Retrofit/OkHttp stack. Mirrors the web client's auth
  * behaviour (`frontend/src/api/index.js`): Bearer access token on every
  * request, silent refresh-on-401 with a coalesced single in-flight refresh,
@@ -47,13 +58,34 @@ object RetrofitClient {
     private fun Request.withAuth(token: String): Request =
         if (token.isNotBlank()) newBuilder().header("Authorization", "Bearer $token").build() else this
 
+    /**
+     * Чем закончилась попытка обменять refresh-строку на новую пару.
+     *
+     * Разница между двумя видами неудачи — не косметическая: [NoSession] ведёт на
+     * экран входа, [Unavailable] обязан оставить сессию нетронутой.
+     */
+    private sealed interface RefreshOutcome {
+        /** Новая пара получена; внутри — свежий access-токен. */
+        data class Fresh(val access: String) : RefreshOutcome
+
+        /** Сервер вынес вердикт: этой сессии больше нет. */
+        data object NoSession : RefreshOutcome
+
+        /** Ответа по существу не было — сеть, таймаут, 5xx, мусор в теле. */
+        data object Unavailable : RefreshOutcome
+    }
+
     @Suppress("ReturnCount")
-    private fun tryRefresh(baseUrl: String): String? {
+    private fun tryRefresh(baseUrl: String): RefreshOutcome {
         val current = refreshToken
-        if (current.isBlank()) return null
+        if (current.isBlank()) return RefreshOutcome.NoSession
         synchronized(refreshLock) {
-            if (refreshToken != current) return authToken.ifBlank { null }
-            val client = refreshHttpClient ?: return null
+            if (refreshToken != current) {
+                // Пока мы ждали замок, обновился кто-то другой: его результат и есть наш.
+                return authToken.ifBlank { null }
+                    ?.let { RefreshOutcome.Fresh(it) } ?: RefreshOutcome.Unavailable
+            }
+            val client = refreshHttpClient ?: return RefreshOutcome.Unavailable
             val bodyJson = gson.toJson(RefreshRequest(current))
             val req = Request.Builder()
                 .url(baseUrl + "auth/refresh")
@@ -61,18 +93,25 @@ object RetrofitClient {
                 .build()
             return try {
                 client.newCall(req).execute().use { resp ->
-                    if (!resp.isSuccessful) return null
+                    if (!resp.isSuccessful) {
+                        return if (isSessionVerdict(resp.code)) {
+                            RefreshOutcome.NoSession
+                        } else {
+                            RefreshOutcome.Unavailable
+                        }
+                    }
                     val payload = resp.body.string()
-                    if (payload.isBlank()) return null
-                    val parsed = gson.fromJson(payload, AuthResponse::class.java) ?: return null
-                    if (parsed.accessToken.isBlank()) return null
+                    if (payload.isBlank()) return RefreshOutcome.Unavailable
+                    val parsed = gson.fromJson(payload, AuthResponse::class.java)
+                        ?: return RefreshOutcome.Unavailable
+                    if (parsed.accessToken.isBlank()) return RefreshOutcome.Unavailable
                     authToken = parsed.accessToken
                     if (parsed.refreshToken.isNotBlank()) refreshToken = parsed.refreshToken
                     onTokensRefreshed?.invoke(parsed.accessToken, parsed.refreshToken)
-                    parsed.accessToken
+                    RefreshOutcome.Fresh(parsed.accessToken)
                 }
             } catch (_: IOException) {
-                null
+                RefreshOutcome.Unavailable
             }
         }
     }
@@ -110,7 +149,7 @@ object RetrofitClient {
     fun refreshAccess(): String? {
         val baseUrl = currentBaseUrl
         if (baseUrl.isBlank()) return null
-        return tryRefresh(baseUrl)
+        return (tryRefresh(baseUrl) as? RefreshOutcome.Fresh)?.access
     }
 
     private fun buildApiUrl(url: String): String {
@@ -128,14 +167,24 @@ object RetrofitClient {
                 val firstReq = chain.request().withAuth(authToken)
                 var response = chain.proceed(firstReq)
                 if (response.code == 401 && !firstReq.url.encodedPath.endsWith("/auth/refresh")) {
-                    val newAccess = tryRefresh(baseUrl)
-                    if (newAccess != null) {
-                        response.close()
-                        response = chain.proceed(chain.request().withAuth(newAccess))
-                    } else {
-                        authToken = ""
-                        refreshToken = ""
-                        onUnauthorized?.invoke()
+                    when (val outcome = tryRefresh(baseUrl)) {
+                        is RefreshOutcome.Fresh -> {
+                            response.close()
+                            response = chain.proceed(chain.request().withAuth(outcome.access))
+                        }
+
+                        RefreshOutcome.NoSession -> {
+                            authToken = ""
+                            refreshToken = ""
+                            onUnauthorized?.invoke()
+                        }
+
+                        // Обновиться не вышло, но и вердикта не было: сессия жива,
+                        // просто сейчас недоступна. Выбросить человека на экран
+                        // входа из-за мигнувшей сети — это и есть та регрессия,
+                        // которую веб чинил в #2750. Запрос уходит вызывающему
+                        // своей ошибкой, токены остаются на месте.
+                        RefreshOutcome.Unavailable -> Unit
                     }
                 }
                 response

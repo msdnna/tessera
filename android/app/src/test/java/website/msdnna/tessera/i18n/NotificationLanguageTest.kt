@@ -72,7 +72,7 @@ class NotificationLanguageTest {
     /** Заголовок из ресурса перекрывает пустой текстовый: его резолвит нотифаер. */
     @Test
     fun `a push carries its title as a resource id`() {
-        val push = DevicePush("", "текст", null, "id-1", R.string.push_title_mention)
+        val push = DevicePush("", "текст", null, "id-1", titleRes = R.string.push_title_mention)
         assertThat(push.titleRes).isEqualTo(R.string.push_title_mention)
         assertThat(appContext.withLanguage("en").getString(push.titleRes!!)).isEqualTo("You were mentioned")
     }

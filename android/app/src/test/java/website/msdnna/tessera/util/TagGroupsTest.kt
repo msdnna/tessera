@@ -49,6 +49,34 @@ class TagGroupsTest {
         assertThat(canonPrefix("Тег: ")).isEqualTo("тег:")
     }
 
+    // ── tagInPrefix ──────────────────────────────────────────────────────────
+    @Test
+    fun `tagInPrefix without a prefix accepts everything`() {
+        assertThat(tagInPrefix("Сложность::высокая", "")).isTrue()
+        assertThat(tagInPrefix("urgent", "")).isTrue()
+    }
+
+    @Test
+    fun `tagInPrefix matches the namespace regardless of case`() {
+        // Ровно тот случай, ради которого сравнение канонизировано: buildTagGroups
+        // кладёт оба тега в ОДНУ группу, значит и дорожки обязаны видеть оба.
+        assertThat(tagInPrefix("Сложность::высокая", "сложность::")).isTrue()
+        assertThat(tagInPrefix("сложность::низкая", "Сложность::")).isTrue()
+        assertThat(tagInPrefix("S: готово", " s: ")).isTrue()
+    }
+
+    @Test
+    fun `tagInPrefix is namespace equality, not a string prefix`() {
+        // «effort::» и «effortless::» начинаются одинаково — сырой startsWith
+        // затягивал второй тег в дорожки первого.
+        assertThat(tagInPrefix("effortless::да", "effort::")).isFalse()
+        // Тег без пространства имён не принадлежит ни одному.
+        assertThat(tagInPrefix("effort", "effort::")).isFalse()
+        assertThat(tagInPrefix("urgent", "S: ")).isFalse()
+        // Разные пространства не смешиваются.
+        assertThat(tagInPrefix("type::feature", "effort::")).isFalse()
+    }
+
     // ── prefixLabel ──────────────────────────────────────────────────────────
     @Test
     fun `prefixLabel empty is Vne gruppy`() {
@@ -125,6 +153,20 @@ class TagGroupsTest {
         assertThat(metaPrefixesFromRules(emptyList())).isEmpty()
     }
 
+    @Test
+    fun `metaPrefixesFromRules treats a blank match_type as prefix`() {
+        // Поле приходит без omitempty: правило, записанное в JSONB без типа,
+        // доезжает пустой строкой. Сервер такое правило разбирает как префиксное
+        // (всё, что не "regex"), значит «S: Done» реально управляет колонкой — и
+        // его нельзя оставлять в ADD-пикере тегов.
+        val rules = listOf(
+            GitlabRule(match = "S:", matchType = "", action = "status"),
+            GitlabRule(match = "T:", matchType = "", action = "tag"), // tag → excluded
+            GitlabRule(match = "P.*", matchType = "regex", action = "priority"), // regex → excluded
+        )
+        assertThat(metaPrefixesFromRules(rules)).containsExactly("s:")
+    }
+
     // ── buildTagGroups ───────────────────────────────────────────────────────
     @Test
     fun `buildTagGroups sorts groups by label with ungrouped last`() {
@@ -147,6 +189,17 @@ class TagGroupsTest {
         val group = buildTagGroups(ru, tags).first()
         assertThat(group.tags.map { it.name }).containsExactly(
             "Статус: архив", "Статус: в работе", "Статус: готово",
+        ).inOrder()
+    }
+
+    /** Числа в именах тегов сравниваются по величине, как на вебе (`numeric: true`):
+     *  «Спринт: 10» не должен обгонять «Спринт: 2». */
+    @Test
+    fun `buildTagGroups sorts numbered tags by value`() {
+        val tags = listOf(tag("Спринт: 10"), tag("Спринт: 2"), tag("Спринт: 1"))
+        val group = buildTagGroups(ru, tags).first()
+        assertThat(group.tags.map { it.name }).containsExactly(
+            "Спринт: 1", "Спринт: 2", "Спринт: 10",
         ).inOrder()
     }
 

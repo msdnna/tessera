@@ -20,7 +20,7 @@
 // every screenshot of every call in memory for the life of the tab.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NInput, NModal, NSpin, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NModal, NPopconfirm, NSpin, NTooltip, useMessage } from 'naive-ui'
 import {
   AttachOutline,
   CloseOutline,
@@ -32,6 +32,17 @@ import {
 import { conferences as confApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useFormat } from '@/composables/useFormat'
+import {
+  CONF_CHAT_MAX_BODY,
+  CONF_CHAT_MAX_FILES,
+  CONF_CHAT_MAX_TOTAL_BYTES,
+  confChatBodyTooLong,
+  confChatCanSend,
+  confChatPickError,
+  mergeChatTail,
+} from '@/utils/confChat'
+import { handOffBlob } from '@/utils/blobHandoff'
+import { formatFileSize } from '@/utils/docPdf'
 import UserAvatar from '@/components/UserAvatar.vue'
 
 const props = defineProps({
@@ -58,10 +69,11 @@ const message = useMessage()
 const { formatDateTime } = useFormat()
 
 const PAGE = 50
-// 25 MiB — the server's cap. Checked here too so a 30 MB video fails instantly
-// instead of after a minute of uploading.
-const MAX_BYTES = 25 * 1024 * 1024
-const MAX_FILES = 5
+// The composer's four caps are the server's, restated in `@/utils/confChat` —
+// checked here too so a 30 MB video fails instantly instead of after a minute of
+// uploading, and so an over-long body is refused before the press rather than by
+// a 400 whose message is not even translated.
+const MAX_FILES = CONF_CHAT_MAX_FILES
 
 const messages = ref([])
 const hasMore = ref(false)
@@ -99,22 +111,56 @@ async function scrollToEnd(force = false) {
   if (el) el.scrollTop = el.scrollHeight
 }
 
-/** Loads the newest page, replacing what is on screen. */
+/**
+ * Whether an answer asked of `id` is still about the call on screen.
+ *
+ * The rail is reused across calls — `ConferenceRoom` carries no `:key`, only a
+ * changing `conferenceId` — so the watcher at the bottom of this file clears the
+ * log on a switch. That is half an invalidation: the request already in flight
+ * belongs to the call the reader has left, and nothing stopped its answer from
+ * landing afterwards. `mergeChatTail` then folds the previous call's page into
+ * this one — and since the page it replaces is the newer conversation, the rail
+ * ends up showing the old call's messages and nothing else, under the new call's
+ * header, until something else refetches. Android has compared the id back after
+ * the await since the rail was written (`ConferenceChatViewModel`); the web side
+ * had only the clearing half (#2932).
+ */
+function stale(id) {
+  return id !== props.conferenceId
+}
+
+/**
+ * Loads the newest page and folds it into what is on screen.
+ *
+ * Folds rather than replaces: a reader who paged back keeps their history when
+ * the next nudge arrives — see `mergeChatTail`. `has_more` describes what is
+ * older than the fetched page, so it only answers for the rail while the rail
+ * holds nothing older itself; once history is loaded, the flag the last
+ * "load older" left behind is the true one.
+ */
 async function loadTail() {
-  if (!props.conferenceId) return
+  const id = props.conferenceId
+  if (!id) return
   loading.value = true
   try {
-    const { data } = await confApi.messages(props.conferenceId, { limit: PAGE })
+    const { data } = await confApi.messages(id, { limit: PAGE })
+    if (stale(id)) return
     const stick = atBottom()
-    messages.value = data?.messages || []
-    hasMore.value = !!data?.has_more
+    const fresh = data?.messages || []
+    const merged = mergeChatTail(messages.value, fresh)
+    messages.value = merged
+    if (merged.length === fresh.length) hasMore.value = !!data?.has_more
     await scrollToEnd(stick)
   } catch (e) {
+    if (stale(id)) return
     // A 403/404 here means the conference went away under us; the screen around
     // this rail already says so, and a second toast would only repeat it.
-    if (![403, 404].includes(e.response?.status)) message.error(e.message)
+    // `e.status`, not `e.response.status`: the api client rejects with an error
+    // of its own and carries the status there — reading `.response` matched
+    // nothing, so the toast this line exists to suppress was shown anyway.
+    if (![403, 404].includes(e.status)) message.error(e.message)
   } finally {
-    loading.value = false
+    if (!stale(id)) loading.value = false
   }
 }
 
@@ -122,13 +168,15 @@ async function loadTail() {
 async function loadOlder() {
   const oldest = messages.value[0]
   if (!oldest || loading.value) return
+  const id = props.conferenceId
   loading.value = true
   try {
-    const { data } = await confApi.messages(props.conferenceId, {
+    const { data } = await confApi.messages(id, {
       limit: PAGE,
       before_at: oldest.created_at,
       before_id: oldest.id,
     })
+    if (stale(id)) return
     const older = data?.messages || []
     // Anchor the view on the message that was at the top, so prepending history
     // does not teleport the reader.
@@ -139,9 +187,10 @@ async function loadOlder() {
     await nextTick()
     if (el) el.scrollTop = el.scrollHeight - before
   } catch (e) {
+    if (stale(id)) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    if (!stale(id)) loading.value = false
   }
 }
 
@@ -156,12 +205,23 @@ function onFiles(e) {
   // row fires no change event the second time.
   e.target.value = ''
   for (const f of picked) {
-    if (pending.value.length >= MAX_FILES) {
+    // The count refusal stops the loop (nothing after it can fit either); the
+    // two size ones skip just that file, because a smaller one behind it still
+    // can. Warned once per file rather than once per pick — the user picked
+    // them one by one and the name is the only way to tell which was dropped.
+    const reason = confChatPickError(pending.value, f)
+    if (reason === 'tooMany') {
       message.warning(t('conferences.chat.tooManyFiles', { count: MAX_FILES }))
       break
     }
-    if (f.size > MAX_BYTES) {
+    if (reason === 'tooLarge') {
       message.warning(t('conferences.chat.fileTooBig', { name: f.name }))
+      continue
+    }
+    if (reason === 'tooLargeTotal') {
+      message.warning(
+        t('conferences.chat.filesTooBig', { limit: formatFileSize(CONF_CHAT_MAX_TOTAL_BYTES) }),
+      )
       continue
     }
     pending.value.push(f)
@@ -172,19 +232,26 @@ function dropPending(i) {
   pending.value.splice(i, 1)
 }
 
-const canSend = computed(
-  () => !sending.value && (draft.value.trim().length > 0 || pending.value.length > 0),
-)
+// Said before the press rather than after it: the server's answer to an
+// over-long message is a 400, and by then the text has already been typed.
+const tooLong = computed(() => confChatBodyTooLong(draft.value))
+
+const canSend = computed(() => confChatCanSend(draft.value, pending.value.length, sending.value))
 
 async function send() {
   if (!canSend.value) return
+  const id = props.conferenceId
   sending.value = true
   const body = draft.value.trim()
   const files = pending.value
   try {
     const { data } = files.length
-      ? await confApi.postMessageWithFiles(props.conferenceId, body, files)
-      : await confApi.postMessage(props.conferenceId, body)
+      ? await confApi.postMessageWithFiles(id, body, files)
+      : await confApi.postMessage(id, body)
+    // Sent to the call we have since left: it is stored and the people still in
+    // that room will see it, but appending it here would put it in a conversation
+    // it was never part of.
+    if (stale(id)) return
     draft.value = ''
     pending.value = []
     // Append our own message rather than refetching: the server answers with the
@@ -192,7 +259,7 @@ async function send() {
     if (data?.id && !messages.value.some((m) => m.id === data.id)) messages.value.push(data)
     await scrollToEnd(true)
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     sending.value = false
   }
@@ -203,7 +270,7 @@ async function remove(msg) {
     await confApi.removeMessage(msg.id)
     messages.value = messages.value.filter((m) => m.id !== msg.id)
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 
@@ -236,23 +303,13 @@ async function loadPreview(att) {
 async function download(att) {
   try {
     const { data } = await confApi.attachment(att.id)
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = att.filename
-    a.click()
-    // Revoked on the next tick, not immediately: revoking before the browser has
-    // started the download cancels it.
-    setTimeout(() => URL.revokeObjectURL(url), 10000)
+    // handOffBlob owns the click-then-revoke-late dance — revoking before the
+    // browser has started the download cancels it — and the desktop Save-as it
+    // takes instead of that dance, which is why this is awaited.
+    await handOffBlob(data, att.filename)
   } catch (e) {
     message.error(e.message)
   }
-}
-
-function humanSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 
 function when(ts) {
@@ -268,7 +325,22 @@ watch(
   { deep: true, immediate: true },
 )
 
-watch(() => props.conferenceId, loadTail, { immediate: true })
+// A different call is a different conversation: drop the log before fetching,
+// or the fold above would carry the previous room's history into it.
+watch(
+  () => props.conferenceId,
+  () => {
+    messages.value = []
+    hasMore.value = false
+    // The request in flight no longer speaks for this rail and will not clear the
+    // spinner itself (see `stale`); the fetch below turns it back on. Without
+    // this, leaving for a call with no id at all — the room unmounts nothing —
+    // would leave the rail spinning with nothing on the way.
+    loading.value = false
+    loadTail()
+  },
+  { immediate: true },
+)
 // Someone said something. The nudge carries no payload by design, so the answer
 // is always "go and read the tail".
 watch(
@@ -319,17 +391,29 @@ onBeforeUnmount(() => {
           <div class="msg-head">
             <span class="who">{{ m.user_name || $t('conferences.chat.unknownAuthor') }}</span>
             <span class="at">{{ when(m.created_at) }}</span>
-            <n-button
+            <!-- Behind a confirmation like every other destructive action in a
+                 call (recording, kick, end) and like the same bin on Android:
+                 the server drops the line for everyone in the room and nudges
+                 them to refetch, so a misclick on a 12px icon is not undoable. -->
+            <n-popconfirm
               v-if="canRemove(m)"
-              text
-              size="tiny"
-              class="del"
-              :title="$t('conferences.chat.delete')"
-              data-testid="conference-chat-delete"
-              @click="remove(m)"
+              :positive-button-props="{ type: 'error' }"
+              :positive-text="$t('conferences.chat.delete')"
+              @positive-click="remove(m)"
             >
-              <n-icon :component="TrashOutline" />
-            </n-button>
+              <template #trigger>
+                <n-button
+                  text
+                  size="tiny"
+                  class="del"
+                  :title="$t('conferences.chat.delete')"
+                  data-testid="conference-chat-delete"
+                >
+                  <n-icon :component="TrashOutline" />
+                </n-button>
+              </template>
+              {{ $t('conferences.chat.confirmDelete') }}
+            </n-popconfirm>
           </div>
           <div v-if="m.body" class="text">{{ m.body }}</div>
 
@@ -357,7 +441,7 @@ onBeforeUnmount(() => {
                   >
                     <n-icon :component="DocumentOutline" :size="14" />
                     <span class="fname">{{ a.filename }}</span>
-                    <span class="fsize">{{ humanSize(a.size) }}</span>
+                    <span class="fsize">{{ formatFileSize(a.size) }}</span>
                   </button>
                 </template>
                 {{ $t('conferences.chat.download') }}
@@ -377,6 +461,9 @@ onBeforeUnmount(() => {
             <n-icon :component="CloseOutline" />
           </n-button>
         </span>
+      </div>
+      <div v-if="tooLong" class="too-long" data-testid="conference-chat-too-long">
+        {{ $t('conferences.chat.tooLong', { count: CONF_CHAT_MAX_BODY }) }}
       </div>
       <div class="row">
         <!-- Enter sends, Shift+Enter breaks the line: this is a chat, not the
@@ -581,6 +668,13 @@ onBeforeUnmount(() => {
   color: var(--t-text2);
   background: var(--t-hover);
   border-radius: 6px;
+}
+/* The error red is written out rather than read from a token: there is no
+   --t-error, only the --t-error-grad this hue is built from, and a var() naming
+   a token that does not exist would just fall through to the inherited colour. */
+.too-long {
+  font-size: 11px;
+  color: #e5484d;
 }
 .row {
   display: flex;

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.util.Calendar
+import java.util.TimeZone
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.BoardColumn
@@ -52,14 +53,18 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.columnCaption
+import website.msdnna.tessera.util.dueDateMissing
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.millisDayKey
 import website.msdnna.tessera.util.millisToUtcIso
 import website.msdnna.tessera.util.occurrenceKeys
 import website.msdnna.tessera.util.parseInstantMillis
+import website.msdnna.tessera.util.triggerColumnMissing
+import website.msdnna.tessera.util.withStoredAnchor
 
 /** Заголовки столбцов календаря — тот же строчный словарь, что у оси таймлайна. */
 @Composable
@@ -94,11 +99,21 @@ private val NotifyRepeatOpts = listOf<Pair<String?, Int>>(
     "60" to R.string.due_notify_repeat_60, "180" to R.string.due_notify_repeat_180,
     "1440" to R.string.due_notify_repeat_1440,
 )
-private val UnitPlurals = mapOf(
+
+// Обе половины строки интервала («каждые 3 недели») склоняются по одному и тому
+// же числу, поэтому лежат рядом. internal — чтобы RecurrenceLabelsTest проверял
+// ровно ту раскладку, которой пользуется пикер.
+internal val UnitPlurals = mapOf(
     "daily" to R.plurals.recur_unit_daily,
     "weekly" to R.plurals.recur_unit_weekly,
     "monthly" to R.plurals.recur_unit_monthly,
     "yearly" to R.plurals.recur_unit_yearly,
+)
+internal val EveryPlurals = mapOf(
+    "daily" to R.plurals.recur_every_daily,
+    "weekly" to R.plurals.recur_every_weekly,
+    "monthly" to R.plurals.recur_every_monthly,
+    "yearly" to R.plurals.recur_every_yearly,
 )
 
 // weekday index for the chips, 0=Sun..6=Sat, ordered by week-start.
@@ -179,6 +194,13 @@ fun DueDateTimePicker(
         if (active.day > maxDay) active.day = maxDay
     }
 
+    // «Не по выходным» и чипы дней недели отвечают на один и тот же вопрос, и при
+    // расхождении сервер оставляет за чипами последнее слово (`recur.normalized`):
+    // толчок выходного дня на понедельник переписывал выбранный день и попутно
+    // съедал интервал правила (#2932). Галочки тут тогда просто нет — как в
+    // web-редакторе (`skipWeekendsMoot`), — и правило её не несёт.
+    val skipWeekendsMoot = freq == "weekly" && weekdaySet.isNotEmpty()
+
     fun buildRule(): Recurrence? {
         if (freq.isBlank()) return null
         if (freq == "custom" && customDates.isEmpty()) return null
@@ -187,34 +209,73 @@ fun DueDateTimePicker(
             interval = interval.coerceAtLeast(1),
             weekdays = if (freq == "weekly" && weekdaySet.isNotEmpty()) weekdaySet.sorted() else null,
             dates = if (freq == "custom") customDates.sorted() else null,
+            // The zone the calendar above was drawn in — this picker works in local
+            // time throughout, so it is the zone the user actually pointed at.
+            tz = TimeZone.getDefault().id,
             trigger = if (trigger != "complete") trigger else null,
             triggerColumn = if (trigger == "column") triggerColumn else null,
             targetColumn = targetColumn,
             createNew = createNew,
             once = !forever,
-            skipWeekends = skipWeekends && (freq == "daily" || freq == "weekly"),
+            skipWeekends = skipWeekends && !skipWeekendsMoot && (freq == "daily" || freq == "weekly"),
         )
     }
 
-    // The selected due instant (custom = earliest picked date at the chosen time).
+    // The selected due instant — read off the due field for every frequency,
+    // including the custom one.
+    //
+    // Список дат — это ВСЯ серия, а срок говорит, где серия стоит сейчас: сервер
+    // берёт первую дату строго позже срока (`nextCustom`), так что пройденные даты
+    // списка задача уже не отыграет. Выводить срок из самого списка (минимальная
+    // дата) значило показывать на середине серии её первый день и отдавать его же в
+    // «Готово»: достаточно было открыть форму ради упреждения уведомления, чтобы
+    // отмотать задачу в начало и заставить серию заново отыграть всё пройденное.
+    // Якорь на самую раннюю выбранную дату остался — но, как и в web-редакторе,
+    // только по клику по дню (см. ниже), а не при каждом чтении срока (#2932).
     fun dueMillis(): Long? {
-        if (freq == "custom") {
-            val first = customDates.minOrNull() ?: return null
-            val (yy, mm, dd) = first.split("-").map { it.toInt() }
-            return localCalOf(yy, mm - 1, dd, dueField.hour, dueField.minute).timeInMillis
-        }
         if (!dueField.set) return null
         return localCalOf(dueField.year, dueField.month, dueField.day, dueField.hour, dueField.minute).timeInMillis
+    }
+
+    // Срок = самая ранняя выбранная дата, время дня сохраняем. Пустой список срок
+    // не трогает — его снимает только «очистить срок» рядом с «Готово».
+    fun anchorDueToCustomDates() {
+        val first = customDates.minOrNull() ?: return
+        val (yy, mm, dd) = first.split("-").map { it.toInt() }
+        dueField.year = yy
+        dueField.month = mm - 1
+        dueField.day = dd
+        dueField.set = true
     }
     fun startMillis(): Long? {
         if (!startField.set) return null
         return localCalOf(startField.year, startField.month, startField.day, startField.hour, startField.minute).timeInMillis
     }
 
-    val occKeys = occurrenceKeys(buildRule(), dueMillis(), 24)
+    // The due instant the panel opened on — the server re-derives the monthly/yearly
+    // anchor whenever it moves, so it also decides whether the stored one still applies.
+    val initialDueMillis = remember { if (initialIso != null) dueMillis() else null }
+    // Previewed from the rule *plus* the anchor the server keeps on our behalf:
+    // buildRule() rebuilds the rule out of the controls above, and those never held
+    // the monthly/yearly day-of-month anchor, so a task that February has parked on
+    // the 28th would otherwise be shown a March 28th it is never going to fire on.
+    val previewRule = withStoredAnchor(buildRule(), initialRecurrence, dueMillis() != initialDueMillis)
+    val deadNoDue = dueDateMissing(previewRule, dueMillis())
+    // Правило «по переносу в колонку» без достижимой колонки не сработает ни разу:
+    // сервер сверяет id дословно, и пустая строка не совпадёт ни с одним uuid.
+    // Подсвечивать «ближайшие срабатывания» такому правилу — то же обещание, что
+    // сетка уже забрала назад у пройденных дат и у хвоста за `once` (#2932).
+    val deadTriggerColumn = triggerColumnMissing(previewRule, columns.map { it.id })
+    val occKeys = if (deadTriggerColumn) emptySet() else occurrenceKeys(previewRule, dueMillis(), 24)
     // The actively-edited endpoint is the filled "selected" day; the other endpoint
     // is an outlined marker, with the days strictly between shaded as the bar span.
     val isCustomDue = editTarget == "due" && freq == "custom"
+    // Список дат выбирается в этой же сетке, поэтому выбранные дни обязаны остаться
+    // видимыми — но «выбран» это не то же утверждение, что `occ` («задача сработает
+    // в этот день»). Расходятся они на датах, мимо которых серия уже прошла, и на
+    // хвосте за единственным срабатыванием `once`: там выбор рисуется контуром, а не
+    // заливкой, которой `occ` обещает срабатывание (#2932).
+    val pickedKeys = if (freq == "custom") customDates.toSet() else emptySet()
     val selectedKey = if (!isCustomDue && active.set) {
         millisDayKey(localCalOf(active.year, active.month, active.day, active.hour, active.minute).timeInMillis)
     } else {
@@ -304,10 +365,12 @@ fun DueDateTimePicker(
                             isEndpoint = isEnd,
                             isRange = isRange,
                             isOccurrence = !isSel && !isEnd && occKeys.contains(key),
+                            isPicked = !isSel && !isEnd && !occKeys.contains(key) && pickedKeys.contains(key),
                             modifier = Modifier.weight(1f),
                             onClick = {
                                 if (isCustomDue) {
                                     if (customDates.contains(key)) customDates.remove(key) else customDates.add(key)
+                                    anchorDueToCustomDates()
                                 } else {
                                     active.year = cell.get(Calendar.YEAR)
                                     active.month = cell.get(Calendar.MONTH)
@@ -361,10 +424,32 @@ fun DueDateTimePicker(
             }
 
             if (freq.isNotBlank()) {
+                // The rule is dead without a due date — everything below counts
+                // from it (see dueDateMissing). Nothing else on this form would
+                // say so: the calendar above simply stays unmarked, which reads
+                // as «ещё нечего показать», and the card gets its repeat badge
+                // all the same (#2932).
+                if (deadNoDue) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        stringResource(R.string.due_picker_no_due),
+                        color = TesseraDanger, fontSize = 12.sp, lineHeight = 16.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(TesseraDanger.copy(alpha = 0.12f), RoundedCornerShape(RadiusSm))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                    )
+                }
                 if (freq != "custom") {
                     Spacer(Modifier.height(10.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.due_picker_every), color = c.text3, fontSize = 13.sp)
+                        // Префикс склоняется вместе с единицей: при интервале 1 (а это
+                        // значение по умолчанию) «каждые 1 день» читается как ошибка, и
+                        // род у единиц разный — «каждый день», но «каждую неделю».
+                        Text(
+                            pluralStringResource(EveryPlurals.getValue(freq), interval),
+                            color = c.text3, fontSize = 13.sp,
+                        )
                         Spacer(Modifier.width(10.dp))
                         IntervalStepper(value = interval, onChange = { interval = it.coerceIn(1, 99) })
                         Spacer(Modifier.width(10.dp))
@@ -408,6 +493,23 @@ fun DueDateTimePicker(
                         triggerColumn,
                         placeholder = stringResource(R.string.due_picker_trigger_column_hint),
                     ) { triggerColumn = it }
+                    if (deadTriggerColumn) {
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            stringResource(
+                                if (previewRule?.triggerColumn.isNullOrBlank()) {
+                                    R.string.due_picker_trigger_column_unset
+                                } else {
+                                    R.string.due_picker_trigger_column_gone
+                                },
+                            ),
+                            color = TesseraDanger, fontSize = 12.sp, lineHeight = 16.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(TesseraDanger.copy(alpha = 0.12f), RoundedCornerShape(RadiusSm))
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(8.dp))
@@ -421,7 +523,7 @@ fun DueDateTimePicker(
                 Spacer(Modifier.height(10.dp))
                 ToggleRow(stringResource(R.string.due_picker_duplicate), createNew) { createNew = it }
                 ToggleRow(stringResource(R.string.due_picker_forever), forever) { forever = it }
-                if (freq == "daily" || freq == "weekly") {
+                if ((freq == "daily" || freq == "weekly") && !skipWeekendsMoot) {
                     ToggleRow(stringResource(R.string.due_picker_skip_weekends), skipWeekends) { skipWeekends = it }
                 }
             }
@@ -622,6 +724,7 @@ private fun DayCell(
     isEndpoint: Boolean,
     isRange: Boolean,
     isOccurrence: Boolean,
+    isPicked: Boolean = false,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
@@ -640,6 +743,9 @@ private fun DayCell(
                     isRange -> Modifier.background(SolidColor(c.primary.copy(alpha = 0.09f)))
 
                     isOccurrence -> Modifier.background(SolidColor(c.primary.copy(alpha = 0.16f)))
+
+                    // Выбран, но не сработает: контур вместо заливки.
+                    isPicked -> Modifier.border(1.dp, c.primary.copy(alpha = 0.35f), RoundedCornerShape(RadiusMd))
 
                     else -> Modifier
                 },

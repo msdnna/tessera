@@ -18,6 +18,7 @@ import coil.compose.AsyncImage
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.avatarInitials
 
 /**
  * A circular member avatar (shared across the board/filter/modal): the uploaded
@@ -47,18 +48,4 @@ fun MemberAvatar(size: Dp, name: String, userId: String? = null, avatarUrl: Stri
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(size).clip(CircleShape))
         }
     }
-}
-
-/** Up to two initials from a name, mirroring the card/modal avatars ("a.fokin" → AF,
- *  "Name Last" → NL, "msdnna" → MS). */
-fun avatarInitials(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    if (s.contains('.')) {
-        val parts = s.split('.').map { it.trim() }.filter { it.isNotEmpty() }
-        if (parts.size >= 2) return "${parts[0].first()}${parts[1].first()}".uppercase()
-    }
-    val words = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
-    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
-    return s.take(2).uppercase()
 }

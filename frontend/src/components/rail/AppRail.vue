@@ -8,7 +8,7 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { NIcon, NDropdown, NTooltip } from 'naive-ui'
+import { NIcon, NDropdown, NTooltip, NPopconfirm } from 'naive-ui'
 import { AddOutline, HelpCircleOutline, LogInOutline } from '@vicons/ionicons5'
 import BrandLogo from '@/components/BrandLogo.vue'
 import ServerEditModal from '@/components/ServerEditModal.vue'
@@ -107,12 +107,34 @@ function openMenu(kind, target, e) {
 
 const serverEdit = ref({ show: false, server: null })
 
+// Removing a profile purges its namespace — the refresh token included — and, if
+// it was the last one, puts a fresh profile pointed at the public default in its
+// place (servers.remove). A slip one item below «Изменить» would sign the user out
+// AND erase a self-hosted server's address with no undo, so the menu never calls
+// it straight off: it opens a confirm where the menu stood (#2932).
+const removeAsk = ref({ show: false, x: 0, y: 0, id: '', name: '' })
+function askRemove(server) {
+  const { x, y } = menu.value
+  removeAsk.value = {
+    show: true,
+    x,
+    y,
+    id: server.id,
+    name: server.name || serverLabel(server.url),
+  }
+}
+function doRemove() {
+  const { id } = removeAsk.value
+  removeAsk.value = { ...removeAsk.value, show: false, id: '' }
+  if (id) servers.remove(id)
+}
+
 function onMenu(key) {
   const { kind, target } = menu.value
   if (key === 'integrations') return // a submenu head
   menu.value.show = false
   if (key === 'server-edit') serverEdit.value = { show: true, server: target }
-  else if (key === 'server-remove') servers.remove(target.id)
+  else if (key === 'server-remove') askRemove(target)
   else if (kind === 'ws') wsMenu.select(key)
 }
 function onAdd(key) {
@@ -130,6 +152,8 @@ function onServerSave(patch) {
   if (serverEdit.value.server) servers.update(serverEdit.value.server.id, patch)
   else servers.add(patch)
 }
+// The modal's own «Удалить сервер» confirms in place (ServerEditModal), so by the
+// time it reaches here the answer is already yes.
 function onServerRemove(id) {
   serverEdit.value.show = false
   servers.remove(id)
@@ -290,6 +314,21 @@ const serverName = (s) => s.name || serverLabel(s.url)
       @select="onMenu"
       @clickoutside="menu.show = false"
     />
+
+    <n-popconfirm
+      :show="removeAsk.show"
+      :x="removeAsk.x"
+      :y="removeAsk.y"
+      trigger="manual"
+      :positive-button-props="{ type: 'error', 'data-testid': 'server-remove-confirm' }"
+      :positive-text="t('shell.servers.remove')"
+      @positive-click="doRemove"
+      @negative-click="removeAsk.show = false"
+      @clickoutside="removeAsk.show = false"
+    >
+      <template #trigger><span /></template>
+      {{ t('shell.servers.removeConfirm', { name: removeAsk.name }) }}
+    </n-popconfirm>
 
     <ServerEditModal
       v-if="servers.enabled"

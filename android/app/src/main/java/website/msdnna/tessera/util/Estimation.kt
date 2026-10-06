@@ -36,9 +36,56 @@ object Estimation {
     fun resolve(project: Project?, workspace: Workspace?): EstimationConfig =
         project?.estimation ?: workspace?.estimation ?: DEFAULT
 
+    /**
+     * Что значит число без суффикса, если у предыдущего токена суффикс был:
+     * единица на шаг меньше — так пишут «1ч 30» и «1д 4». Минуты — дно лестницы.
+     *
+     * Раньше часами читалось КАЖДОЕ такое число, и «1ч 30» сохранялось как 31 час —
+     * молча, во всех трёх разборах сразу (web `utils/estimation.js`, backend
+     * `internal/quickact`). Единственный разобранный случай, «1d 4» = 720, — это
+     * то же правило: для дня шаг вниз как раз и даёт часы.
+     */
+    private val SMALLER = mapOf('w' to 'd', 'd' to 'h', 'h' to 'm', 'm' to 'm')
+
+    /**
+     * Потолок разобранной оценки: минуты во временном пространстве, просто счёт —
+     * в points/custom. Та же граница, что у веба (`utils/estimation.js`
+     * MAX_ESTIMATE) и у бэкенда (`quickact.MaxEstimate`), и по той же причине —
+     * число, которого не держит ни одна колонка, приезжает сюда обычной опечаткой:
+     * вставленный id, зажатая клавиша (#2932).
+     *
+     * Здесь отсутствие потолка пряталось за `roundToInt`, который зажимает по
+     * `Int.MAX_VALUE`: «999999999999» часов уходило в задачу как 2147483647 минут —
+     * около четырёх тысяч лет, — и поле молча принимало то, от чего popover на вебе
+     * и `/estimate` в комментарии отказываются с текстом. А в points/custom
+     * достаточно длинный прогон цифр переполняет double до +Inf, и проверка
+     * `n > 0` его пропускала: в PATCH уходило число, которого в JSON нет.
+     */
+    const val MAX_ESTIMATE = 1.0e9
+
+    /** Единственная проверка выхода: конечное, больше нуля и внутри [MAX_ESTIMATE]. */
+    private fun bounded(v: Double?): Double? =
+        if (v != null && v.isFinite() && v > 0 && v <= MAX_ESTIMATE) v else null
+
     private fun minutesPerDay(cfg: EstimationConfig): Double = (cfg.hoursPerDay ?: 8.0) * 60.0
     private fun minutesPerWeek(cfg: EstimationConfig): Double =
         minutesPerDay(cfg) * (cfg.daysPerWeek ?: 5.0)
+
+    /**
+     * Число в НАЧАЛЕ строки, как его читает `parseFloat` в веб-оригинале: хвост
+     * после числа игнорируется.
+     *
+     * Строгий `toDoubleOrNull` здесь стирал оценку. Диалог ввода (TaskModal
+     * `EstimateValue`) предзаполняется тем, что вернул [format], а у единицы
+     * `custom` это «12 тикетов» — число и название единицы. Человек открывал
+     * оценку посмотреть, жал «ОК», ничего не поменяв, и получал null: значение
+     * пропадало. Веб на том же сценарии (popover префилится той же подписью)
+     * возвращает 12 и значение сохраняет.
+     */
+    private fun leadingNumber(s: String): Double? =
+        LEADING_NUMBER.find(s)?.value?.toDoubleOrNull()
+
+    private val LEADING_NUMBER = Regex("""^[+-]?(?:\d+(?:\.\d*)?|\.\d+)""")
 
     private fun trimNum(v: Double): String =
         if (v == v.toLong().toDouble()) v.toLong().toString() else ((v * 100).roundToInt() / 100.0).toString()
@@ -47,7 +94,8 @@ object Estimation {
      * Parse free-text into the canonical value, or null when unparseable. Time
      * accepts mixed tokens ("1н 2д 3ч 30м"), English (w/d/h/m) or Russian
      * (н/д/ч/м) units, decimals, and a bare number (taken as hours). Points/custom
-     * take a plain number; a T-shirt size label is accepted too.
+     * take a number — anything after it (the unit's own name, «12 тикетов») is
+     * ignored, see [leadingNumber]; a T-shirt size label is accepted too.
      */
     fun parse(input: String?, cfg: EstimationConfig): Double? {
         if (input == null) return null
@@ -59,10 +107,18 @@ object Estimation {
             if (unit == "points" && cfg.pointsScale == "tshirt") {
                 TSHIRT.firstOrNull { it.first.lowercase() == s }?.let { return it.second.toDouble() }
             }
-            val n = s.toDoubleOrNull()
-            return if (n != null && n > 0) n else null
+            return bounded(leadingNumber(s))
         }
 
+        return parseTime(s, cfg)
+    }
+
+    /**
+     * Разбор времени: смешанные токены («1н 2д 3ч 30м») в канонические минуты.
+     * Отдельной функцией, а не веткой [parse] — у той иначе восемь выходов на
+     * один вход, и detekt (ReturnCount) прав: читать это как одну функцию нельзя.
+     */
+    private fun parseTime(s: String, cfg: EstimationConfig): Double? {
         val mpd = minutesPerDay(cfg)
         val unitMin = mapOf('w' to mpd * (cfg.daysPerWeek ?: 5.0), 'd' to mpd, 'h' to 60.0, 'm' to 1.0)
         var total = 0.0
@@ -70,10 +126,14 @@ object Estimation {
         // Кириллица здесь — разбор ввода, а не интерфейс: буквы единиц принимаются
         // в обоих алфавитах независимо от языка профиля.
         val re = Regex("""(\d+(?:\.\d+)?)\s*([a-zа-яё]*)""") // i18n-data
+        // Единица предыдущего токена (null — у него её не было): число без
+        // суффикса читается относительно неё, см. [SMALLER].
+        var prev: Char? = null
+        var first = true
         for (mr in re.findAll(s)) {
             val num = mr.groupValues[1].toDoubleOrNull() ?: continue
             val u = mr.groupValues[2]
-            val key = when (u.firstOrNull()) {
+            val suffix = when (u.firstOrNull()) {
                 'w', 'н' -> 'w'
 
                 'd', 'д' -> 'd'
@@ -82,16 +142,30 @@ object Estimation {
 
                 'm', 'м' -> 'm'
 
-                null -> 'h'
+                null -> null
 
-                // bare number → hours
-                else -> 'h'
+                // Незнакомый суффикс — не часы: «5 попугаев», сохранённые как
+                // пять часов, хуже отказа (так же читает бэкенд, quickact).
+                else -> return null
             }
+            // «1ч 30» — полтора часа, не 31: у числа без суффикса единица на шаг
+            // ниже предыдущей. Одиночное число впереди — часы; второе
+            // безъединичное число подряд не значит ничего.
+            val key = when {
+                suffix != null -> suffix
+                first -> 'h'
+                prev != null -> SMALLER[prev] ?: 'm'
+                else -> return null
+            }
+            prev = suffix
+            first = false
             total += num * (unitMin[key] ?: 0.0)
             matched = true
         }
         if (!matched) return null
-        val mins = total.roundToInt()
+        // Потолок — ДО округления: `roundToInt` зажимает по `Int.MAX_VALUE` и тем
+        // превращает переполнение в правдоподобное число, см. [MAX_ESTIMATE].
+        val mins = bounded(total)?.roundToInt() ?: 0
         return if (mins > 0) mins.toDouble() else null
     }
 
@@ -188,4 +262,34 @@ object Estimation {
         }
         return if (any) total else null
     }
+
+    /**
+     * Сколько стоит ОДНА карточка: своя оценка, а если её нет — свёртка подзадач.
+     * Ровно то число, что печатает сама карточка (TaskCard `EstimatePill`: `own ?: rollup`,
+     * с приставкой «Σ»), поэтому всё, что суммирует набор карточек, обязано читать их так же.
+     *
+     * Зеркало веба `utils/estimation.js effectiveEstimate`.
+     */
+    fun effective(own: Double?, childEstimates: Iterable<Double?>): Double? =
+        own ?: sum(childEstimates)
+
+    /**
+     * Трудозатраты дорожки — «Σ» в шапке этапа на доске и в дорожке таймлайна (#2932).
+     *
+     * Раньше это была `sum(lane.tasks.map { it.estimate })`, то есть СВОИ оценки строк, а
+     * дорожка держит только верхнеуровневые карточки (подзадачи рисуются под родителем:
+     * на доске — раскрытым списком, в таймлайне — тонкими суб-полосами). Задача, работа
+     * которой расписана целиком по подзадачам — своей оценки нет, у каждого ребёнка есть, —
+     * показывала на карточке «Σ 5д» и не давала в общий итог ровно ничего. По шапке читают
+     * загрузку спринта, а молча выпадали из неё именно декомпозированные, то есть крупные.
+     *
+     * [children] обязан отдавать тот же список детей, из которого нарисована карточка
+     * (BoardUiState `visibleSubtasksOf`), иначе шапка разойдётся с карточками под собой —
+     * только с другой стороны. Зеркало веба `sumLaneEffort`.
+     */
+    fun <T> laneEffort(
+        rows: Iterable<T>,
+        own: (T) -> Double?,
+        children: (T) -> Iterable<Double?>,
+    ): Double? = sum(rows.map { effective(own(it), children(it)) })
 }

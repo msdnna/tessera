@@ -10,7 +10,6 @@ import {
   onMounted,
   onBeforeUnmount,
   nextTick,
-  h,
 } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -36,7 +35,6 @@ import {
   ChevronForwardOutline,
   ChevronDownOutline,
   FunnelOutline,
-  ChevronBackOutline,
   OptionsOutline,
   RibbonOutline,
   ArchiveOutline,
@@ -59,19 +57,35 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
 import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
 import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
+import { useBoardAutosave } from '@/composables/useBoardAutosave'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
-import { tagParts, metaPrefixesFromRules } from '@/utils/tagGroups'
-import { sumEstimates, formatEstimate } from '@/utils/estimation'
+import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
+import { tagLaneLabel, tagInPrefix, metaPrefixesFromRules } from '@/utils/tagGroups'
+import { sumLaneEffort, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
 import { filterBoardTasks } from '@/utils/taskFilter'
-import { classifyEvent, applyTaskPatch, applySubtaskPatch } from '@/utils/boardEvents'
+import { useFormat } from '@/composables/useFormat'
+import {
+  classifyEvent,
+  partialKinds,
+  missedRefetchKinds,
+  applyTaskPatch,
+  applySubtaskPatch,
+  relationTouchesBoard,
+  boardGone,
+  toastActor,
+} from '@/utils/boardEvents'
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
-import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
-import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
+import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
+import { buildLists, collapseKey } from '@/utils/boardLists'
+import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
+import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
+import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
+import { BACKLOG_SCOPE, matchesScope, newTaskMilestoneId } from '@/utils/milestones'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
 import { moveFocus, neighbourColumn, planShift, planComplete } from '@/utils/cardNav'
-import { doneTarget, columnTail } from '@/utils/status'
+import { doneTarget } from '@/utils/status'
 import { todoColumn } from '@/utils/columnStatus'
 import { taskBasePatch } from '@/utils/taskPatch'
 import { useShortcuts } from '@/composables/useShortcuts'
@@ -92,7 +106,6 @@ import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
 import BoardTimelineView from './BoardTimelineView.vue'
 import BoardGanttView from './BoardGanttView.vue'
-import UserAvatar from './UserAvatar.vue'
 
 const props = defineProps({ boardId: { type: String, required: true } })
 
@@ -100,6 +113,9 @@ const message = useMessage()
 // `t` is the translator everywhere below; task/tag loop variables are spelled out
 // (`task`, `tag`) so nothing shadows it (#2799).
 const { t } = useI18n()
+// Only for the «Срок» facet: a card the filter hides (or keeps) has to be the one
+// whose own pill reads that way, and the pill renders through this formatter set.
+const { formatters } = useFormat()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const boardViewStore = useBoardViewStore()
@@ -187,8 +203,13 @@ watch(board, (b) => (boardName.value = b?.name || ''))
 // Save board meta (name / icon / colour / icon_mode) from the customize panel. We
 // always send the full current meta so an icon change doesn't drop the name and
 // vice-versa; the backend still merges tri-state, this just keeps it simple.
+// The archive never gets here — the panel doesn't draw the fields that emit this
+// (see BoardCustomizePanel). Kept as the guard on the call itself, the way
+// BoardMatrixView's startAdd() refuses a stray call with its «＋» already hidden:
+// the name input commits on blur, so any path that leaves a stale value behind
+// would otherwise write it to the live board.
 async function updateBoard(patch) {
-  if (!board.value) return
+  if (!board.value || archivedMode.value) return
   const name = (patch.name ?? board.value.name ?? '').trim()
   if (!name) {
     boardName.value = board.value.name
@@ -216,9 +237,16 @@ function setFieldVis(key, val) {
 function colCount(dcol) {
   return (lists.value[dcol.key] || []).length
 }
+// Where a lane's explicit override is stored — its key, except for the catch-all
+// lane, whose key `__none__` two different groupings share (see collapseKey). The
+// tag prefix goes in too: it decides which cards the tag catch-all holds, so each
+// narrowing gets its own override.
+function colCollapseKey(dcol) {
+  return collapseKey(groupMode.value, dcol.key, tagPrefix.value)
+}
 // Effective collapsed state: explicit override wins, else the auto-empty rule.
 function isColCollapsed(dcol) {
-  const k = dcol.key
+  const k = colCollapseKey(dcol)
   if (k in colCollapse) return colCollapse[k]
   return autoCollapseEmpty.value && colCount(dcol) === 0
 }
@@ -230,16 +258,35 @@ function colCollapsedNow(dcol) {
   return isColCollapsed(dcol)
 }
 function toggleCollapse(dcol) {
-  colCollapse[dcol.key] = !isColCollapsed(dcol)
+  colCollapse[colCollapseKey(dcol)] = !isColCollapsed(dcol)
+}
+// Caption of the collapsed strip. The rotated title is clipped (max-height + an
+// ellipsis), and the strip used to advertise a bare «expand the column» — so the
+// one place where the name is unreadable was also the one place that never said it.
+function stripTitle(dcol) {
+  return t('board.column.expandTitle', { name: dcol.name })
 }
 // Turning "auto-collapse empty" ON must collapse EVERY empty column — including
 // ones the user previously expanded by hand (a stale explicit `false` override
 // would otherwise beat the auto rule, which reads as "the toggle does nothing").
 // Clear overrides on empty columns whenever the toggle flips on.
+//
+// Only when it is the *reader* flipping it, though. The same ref is written in bulk
+// by loadCustomize — for a saved view, a layout swap and the localStorage restore —
+// and there the overrides arriving alongside it are part of the state being restored,
+// not stale leftovers to prune. A view saved with the toggle on AND a couple of empty
+// columns expanded by hand loaded correctly only when the board already had the toggle
+// on (no flip, no watcher); coming from a board with it off, the flip fired and wiped
+// exactly those overrides — and the persist watcher wrote the loss straight back to
+// localStorage. Same view, two different results depending on what was on screen
+// before it. `viewLoadInFlight` is the flag persistView and the autosave already stand
+// down on; it is still set while this watcher runs (it is cleared on `nextTick`, after
+// the pre-flush queue this job sits in).
 watch(autoCollapseEmpty, (on) => {
-  if (!on) return
+  if (!on || viewLoadInFlight()) return
   for (const dcol of displayColumns.value) {
-    if (colCount(dcol) === 0 && dcol.key in colCollapse) delete colCollapse[dcol.key]
+    const k = colCollapseKey(dcol)
+    if (colCount(dcol) === 0 && k in colCollapse) delete colCollapse[k]
   }
 })
 // ── sub-toolbar fit (v2, #2954) ──
@@ -329,6 +376,23 @@ async function fitSubbar() {
   }
   if (refit) fitSubbar()
 }
+// Attach the bar's resize observer whenever the element itself arrives — the same
+// late binding `boardScroll` has, and for the same reason: the whole board (the
+// composer included) sits behind `v-if="board"`, and `board` is still null while the
+// first load is on the wire. onMounted therefore ran its `observe` against an empty
+// ref and gave up silently, with no second chance — the component is not remounted
+// when you switch boards, so the observer stayed unattached for the whole session and
+// «re-measure on bar resize» never happened: collapsing the sidebar or narrowing the
+// window left the right-side tools in place while the (nowrap) chips ran past the
+// edge, until some unrelated facet change happened to re-measure. The explicit
+// re-measure here is the first one the mount-time nextTick could not take (the bar
+// did not exist yet), and it does not lean on the observer's initial delivery.
+watch(subbarEl, (el) => {
+  if (!subbarRO || !el) return
+  subbarRO.disconnect()
+  subbarRO.observe(el)
+  nextTick(fitSubbar)
+})
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
 // Friendly display names for tag prefixes (canonical prefix → label, owned by the
@@ -336,19 +400,35 @@ const tagPrefix = ref('') // when grouping by tag: only tags with this namespace
 // configured.
 
 // Tags that become columns in tag-grouping mode (filtered by the chosen prefix).
+// Membership is asked through utils/tagGroups (`tagInPrefix`), i.e. by canonical
+// namespace — the same key the filter menu's groups, the prefix labels and the
+// backend's prefix registry use. A raw `startsWith` made «Сложность::» and
+// «сложность::» two different namespaces to the lanes alone (#2932).
 const groupTags = computed(() =>
   tagPrefix.value
-    ? tagsList.value.filter((tag) => (tag.name || '').startsWith(tagPrefix.value))
+    ? tagsList.value.filter((tag) => tagInPrefix(tag.name, tagPrefix.value))
     : tagsList.value,
 )
 
 // Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
 // create, no inline edits) with a Restore action. Reuses all board filters/grouping.
-const archivedMode = computed(() => route.query.archived === '1')
+const archivedMode = computed(() => isArchiveQuery(route.query))
+// Is the «+ колонка» tile part of this row? Status grouping only (tag/milestone lanes
+// are not columns to create), and never in the archive — the tile would create a live
+// column on the board from a read-only view. Asked in two places that must agree: the
+// tile's own v-if and colWidth's reservation of ADD_COL_W. They were written out
+// separately, and when the archive gate was added to the template the arithmetic kept
+// reserving the tile's 232px there — every column in an archived board came out that
+// much narrower between them, with a dead band along the right edge.
+const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMode.value)
+// Can the columns be dragged into a new order right now? Status grouping only (tag
+// and milestone lanes have no stored order to write back), never in the archive.
+// Asked in two places that must agree: the column draggable's `:disabled`, and the
+// `.col-drag` handle class on the collapsed strip — a collapsed column renders no
+// header, so the strip is the only element left that can carry the handle.
+const canReorderColumns = computed(() => groupMode.value === 'status' && !archivedMode.value)
 function exitArchive() {
-  const q = { ...route.query }
-  delete q.archived
-  router.replace({ query: q })
+  router.replace({ query: withoutArchiveQuery(route.query) })
 }
 
 // Sprint scope (navigation overlay): ?milestone=<slug|uuid|backlog>. Drives the
@@ -385,6 +465,7 @@ const {
   facetChips,
   filterChips,
   groupChip,
+  nextGroupModeLabel,
   addOptions,
   onAddFacet,
   removeChip,
@@ -413,86 +494,35 @@ const {
 })
 
 // Mobile: the "+" menu drills into one sub-list at a time (with a «Назад») rather
-// than fanning out side submenus that run off a narrow screen.
-const addShow = ref(false)
-const addLevel = ref(null) // null = top level; else the parent group's key
-const addDir = ref('down') // slide direction for the level transition ('down' = deeper)
-const addMenuOptions = computed(() => {
-  if (!isMobile.value) return addOptions.value
-  if (!addLevel.value) {
-    // Top level as drill-in entries (no side submenu).
-    return addOptions.value.map((o) => ({ label: o.label, key: `nav.${o.key}` }))
-  }
-  const parent = addOptions.value.find((o) => o.key === addLevel.value)
-  return [
-    { label: t('board.composer.back'), key: 'nav.back' },
-    { type: 'divider', key: 'nav.div' },
-    ...(parent?.children || []),
-  ]
-})
-// Custom row rendering on mobile: right-side drill arrows, a spaced «‹ Назад»
-// header, and a vertical slide that plays whenever the level changes (keys differ
-// between levels → the option nodes remount → the animation replays).
-function renderAddLabel(option) {
-  // Assignee-filter rows carry avatar hints — draw the user's face + name like the
-  // on-card assignee picker (both desktop and mobile).
-  if (option.avatarUserId || option.avatarSrc) {
-    const av = h(UserAvatar, {
-      class: 'flt-asgn-av',
-      userId: option.avatarUserId,
-      src: option.avatarSrc,
-      name: option.label,
-    })
-    const txt = h('span', { class: 't-fdd-txt' }, option.label)
-    if (!isMobile.value) return h('span', { class: 'flt-asgn' }, [av, txt])
-    return h(
-      'span',
-      { class: 'flt-asgn t-fdd-row', style: { animation: `t-fdd-${addDir.value} .17s ease` } },
-      [av, txt],
-    )
-  }
-  if (!isMobile.value) return option.label
-  const anim = `t-fdd-${addDir.value} .17s ease`
-  const key = option.key
-  if (key === 'nav.back') {
-    return h('span', { class: 't-fdd-row is-back', style: { animation: anim } }, [
-      h(NIcon, { component: ChevronBackOutline, size: 16 }),
-      h('span', { class: 't-fdd-txt' }, option.label),
-    ])
-  }
-  if (!addLevel.value && typeof key === 'string' && key.startsWith('nav.')) {
-    return h('span', { class: 't-fdd-row is-drill', style: { animation: anim } }, [
-      h('span', { class: 't-fdd-txt' }, option.label),
-      h(NIcon, { component: ChevronForwardOutline, size: 14, class: 't-fdd-arr' }),
-    ])
-  }
-  return h('span', { class: 't-fdd-row', style: { animation: anim } }, [
-    h('span', { class: 't-fdd-txt' }, option.label),
-  ])
-}
-// n-dropdown auto-closes on every select. While drilling we ignore that close
-// (keep the controlled menu open) so the sub-list shows instead of snapping shut.
-let addDrilling = false
-function onAddSelect(key) {
-  if (key === 'nav.back' || key.startsWith('nav.')) {
-    addDir.value = key === 'nav.back' ? 'up' : 'down'
-    addLevel.value = key === 'nav.back' ? null : key.slice(4)
-    addDrilling = true
-    nextTick(() => (addDrilling = false))
-    return
-  }
-  onAddFacet(key)
-  addShow.value = false
-  addLevel.value = null
-}
-function onAddShow(v) {
-  if (!v && addDrilling) return // swallow the select-triggered close mid-drill
-  addShow.value = v
-  if (!v) addLevel.value = null // reset drill state when the menu actually closes
-}
+// than fanning out side submenus that run off a narrow screen. The behaviour lives
+// in a composable because the customize drawer renders the same menu behind its own
+// «+» — and on a phone that drawer is the settings surface one can always reach.
+// Each call site keeps its own open/level state (one shared `show` would pop both
+// dropdowns at once), so this instance belongs to the composer's button alone.
+const {
+  show: addShow,
+  menuOptions: addMenuOptions,
+  renderLabel: renderAddLabel,
+  onSelect: onAddSelect,
+  onShow: onAddShow,
+} = useFacetAddMenu({ options: addOptions, isMobile, onPick: onAddFacet })
 function toggleSubtasksExpanded() {
   subtasksExpanded.value = !subtasksExpanded.value
 }
+
+// Is the composer holding a manual sort right now? Then the order on screen is NOT
+// the stored `position` order — `lists` comes from `filteredTasks`, which is
+// `sortByLevels(...)`, and `sortedSubtasksByParent` re-orders each card's children
+// the same way — so every neighbour read off a rendered list means something other
+// than it says. Asked in three places that must agree: the card list's `:sort`, the
+// planner that turns a drop into an API call, and the child list on each card.
+const composerSorted = computed(() => sortLevels.value.length > 0)
+// May a card be re-ordered inside its own lane? Only status columns own card
+// order (`position` is per column, and a tag/milestone lane spans all of them),
+// and only while nothing re-orders them on the way to the screen — the rule and
+// both reasons live in utils/boardDnd, next to the planner that has no intent for
+// such a drop. Cross-lane drags stay on in every grouping.
+const canSortCards = computed(() => canSortWithinLane(groupMode.value, composerSorted.value))
 
 // "Авто" dependency-graph ordering — Gantt only. Active only while the composer
 // is in its no-group/no-sort state, so any manual grouping/sort transparently
@@ -651,9 +681,12 @@ const savedViews = ref([])
 // layout (board views and timeline views are separate sets). Legacy views with
 // no stored layout default to 'board'.
 const viewsForLayout = computed(() =>
-  savedViews.value.filter((v) => (v.config?.layout || 'board') === layout.value),
+  savedViews.value.filter((v) => viewLayout(v) === layout.value),
 )
 const currentViewName = ref('')
+// The visualization the loaded view was saved for. Tracked separately from `layout`
+// because the two come apart the moment the user switches layout with a view loaded.
+const currentViewLayout = ref('')
 const newViewName = ref('')
 const showSaveView = ref(false)
 const showLoadView = ref(false)
@@ -665,6 +698,22 @@ async function loadViews() {
     savedViews.value = []
   }
 }
+// Saved views are per-board, but the board does NOT remount when you switch boards —
+// so everything about the *loaded* view has to be dropped by hand, or it follows you
+// onto a board that has no such view: the button would still claim it as current, an
+// open save dialog would write the name typed for the previous board, and autosave
+// (its switch is per-board localStorage, so it can be on here) would materialise a
+// view named after the other board's on the first toolbar change. The list is emptied
+// too — `loadViews` is a request, and until it lands the popover offers the previous
+// board's views.
+function clearLoadedView() {
+  savedViews.value = []
+  currentViewName.value = ''
+  currentViewLayout.value = ''
+  newViewName.value = ''
+  showSaveView.value = false
+  showLoadView.value = false
+}
 // Snapshot / restore the full toolbar state that a view captures.
 function currentViewConfig() {
   return {
@@ -673,6 +722,7 @@ function currentViewConfig() {
     tagPrefix: tagPrefix.value,
     sortLevels: sortLevels.value,
     subtasksExpanded: subtasksExpanded.value,
+    autoSort: autoSort.value,
     filters: cloneFilters(filters),
     colCollapse: { ...colCollapse },
     autoCollapseEmpty: autoCollapseEmpty.value,
@@ -693,15 +743,30 @@ function applyViewConfig(c) {
     sortLevels.value = [{ field: c.sortBy, dir: c.sortDir || 'asc' }]
   else sortLevels.value = []
   subtasksExpanded.value = !!c.subtasksExpanded
+  // Gantt's «Авто» is part of the view, not of the session: without this a view
+  // saved in auto order loaded as plain scheduled order, and an auto run left on
+  // leaked into the next view (autoActive asks only for gantt + no group + no
+  // sort, which is what most views look like). Views predating the key read as
+  // off — the state they were actually saved in, since it could not be captured.
+  autoSort.value = !!c.autoSort
   Object.assign(filters, cloneFilters(c.filters))
   loadCustomize(c)
 }
 async function saveView() {
   const name = (newViewName.value || currentViewName.value).trim()
   if (!name) return
+  // Names are per-board, not per-layout: the upsert key knows nothing about the
+  // visualization. Refuse rather than let the save quietly destroy a view the
+  // popover never listed (it only offers same-layout ones to overwrite).
+  const taken = conflictingViewLayout(savedViews.value, name, layout.value)
+  if (taken) {
+    message.error(t('board.views.nameTaken', { name, layout: t(`board.layout.${taken}`) }))
+    return
+  }
   try {
     await boards.saveView(props.boardId, { name, config: currentViewConfig() })
     currentViewName.value = name
+    currentViewLayout.value = layout.value
     newViewName.value = ''
     showSaveView.value = false
     await loadViews()
@@ -714,13 +779,17 @@ function applyView(v) {
   withViewLoad(() => {
     applyViewConfig(v.config)
     currentViewName.value = v.name
+    currentViewLayout.value = viewLayout(v)
     showLoadView.value = false
   })
 }
 async function deleteView(v) {
   try {
     await boards.deleteView(v.id)
-    if (currentViewName.value === v.name) currentViewName.value = ''
+    if (currentViewName.value === v.name) {
+      currentViewName.value = ''
+      currentViewLayout.value = ''
+    }
     await loadViews()
   } catch (e) {
     message.error(e.message)
@@ -728,29 +797,26 @@ async function deleteView(v) {
 }
 // Autosave: when enabled and a named view is loaded, re-save it (debounced,
 // silent) as the toolbar/customize state changes. Guarded by restoring/swapping
-// like persistView so applying a view doesn't immediately re-save it.
-const AUTOSAVE_MS = 700 // longer than VIEW_PERSIST_MS: this one costs a request
-let autosaveTimer = null
-async function autosaveCurrent() {
-  const name = currentViewName.value.trim()
-  if (!name) return
-  try {
-    await boards.saveView(props.boardId, { name, config: currentViewConfig() })
-  } catch {
-    /* silent — a failed autosave shouldn't nag; manual save still surfaces errors */
-  }
-}
-watch(
-  () => (autosaveView.value && currentViewName.value ? JSON.stringify(currentViewConfig()) : ''),
-  (sig) => {
-    if (!sig || viewLoadInFlight()) return
-    if (autosaveTimer) clearTimeout(autosaveTimer)
-    autosaveTimer = setTimeout(() => {
-      autosaveTimer = null
-      autosaveCurrent()
-    }, AUTOSAVE_MS)
+// like persistView so applying a view doesn't immediately re-save it; the debounce
+// and its teardown live in the composable.
+useBoardAutosave({
+  enabled: autosaveView,
+  viewName: currentViewName,
+  config: currentViewConfig,
+  guarded: viewLoadInFlight,
+  save: async (name, config) => {
+    // A view belongs to the visualization it was saved for. Switching layout with a
+    // view loaded must not rewrite its layout behind the user's back: that drops it
+    // out of its own list (views are filtered by layout) — the same disappearance
+    // the composable's teardown guards against, just reached from the other side.
+    if (currentViewLayout.value && config.layout !== currentViewLayout.value) return
+    try {
+      await boards.saveView(props.boardId, { name, config })
+    } catch {
+      /* silent — a failed autosave shouldn't nag; manual save still surfaces errors */
+    }
   },
-)
+})
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
@@ -768,9 +834,7 @@ watch(boardScroll, (el) => {
   ro.observe(el)
   measure()
 })
-const GAP = 12
-const ADD_COL_W = 220
-const STRIP_W = 44 // collapsed-column strip width (keep in sync with .col.collapsed)
+const GAP = BOARD_GAP
 const COL_MIN = 220 // narrowest a column may get before we switch to scrolling
 const COL_MAX = 420
 // Card-size presets (customize view): the size changes the card composition (see
@@ -783,38 +847,20 @@ const CARD_SIZES = {
 }
 const cardCap = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).cap)
 const cardMin = computed(() => (CARD_SIZES[cardSize.value] || CARD_SIZES.medium).min)
-const colWidth = computed(() => {
-  const cw = containerWidth.value
-  if (!cw) return 280 // pre-measure fallback
-  // Mobile: one column a little under full width so the next one peeks and the
-  // swipe (scroll-snap, see CSS) reads as a smooth page-turn.
-  if (isMobile.value) return Math.max(cw - 28, 200)
-  // Collapsed columns render as a 44px strip (see .col.collapsed) — reserve their
-  // fixed width and divide the rest among the EXPANDED columns only, so collapsing
-  // a column hands its width to the neighbours instead of leaving a gap on the right.
-  const cols = displayColumns.value
-  const n = cols.length || 1
-  const nCollapsed = cols.filter((c) => isColCollapsed(c)).length
-  const nExpanded = Math.max(n - nCollapsed, 1)
-  // Reserve the "+ колонка" tile (status mode) + the gaps + the collapsed strips,
-  // plus a few px slack so sub-pixel rounding can't trip the horizontal scrollbar.
-  const reserved =
-    (groupMode.value === 'status' ? ADD_COL_W + GAP : 0) + (n - 1) * GAP + 4 + nCollapsed * STRIP_W
-  const fit = Math.floor((cw - reserved) / nExpanded)
-  // Fill the viewport while comfortable; the width band comes from the chosen card
-  // size (compact narrower, large wider), so columns never get too narrow to hold
-  // their fields and scroll horizontally once they'd shrink past the band's min.
-  //
-  // A `fit`-wide column always fits the row (that's how `reserved` is derived);
-  // clamping UP to the band min is what can overrun the board by a couple px and raise
-  // a full-width horizontal scrollbar for columns that essentially fit. So only clamp
-  // up — and let the board scroll — once columns would get *meaningfully* narrower than
-  // the min; within a gap's worth of it, keep the fitting width so no stray scrollbar
-  // appears when everything is already visible (#2743).
-  if (fit > cardCap.value) return cardCap.value
-  if (fit >= cardMin.value - GAP) return fit
-  return cardMin.value
-})
+// The layout maths lives in utils/boardLayout.js; the board only supplies what it
+// draws. `addTile` is the same condition as the tile's own v-if — the two used to
+// be spelled out separately and drifted apart in the archive (see showAddColumn).
+const colWidth = computed(() =>
+  columnWidth({
+    containerWidth: containerWidth.value,
+    isMobile: isMobile.value,
+    count: displayColumns.value.length,
+    collapsed: displayColumns.value.filter((c) => isColCollapsed(c)).length,
+    addTile: showAddColumn.value,
+    min: cardMin.value,
+    cap: cardCap.value,
+  }),
+)
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 // The grouping control lists the same choices as the add menu's «Группировка».
 const groupOptions = computed(() => addOptions.value.find((o) => o.key === 'group')?.children || [])
@@ -841,14 +887,23 @@ const showTaskModal = ref(false)
 // including when the browser Back button pops the entry.
 // The URL carries the readable task number (#252), not the UUID. numberOf maps a
 // task UUID to its number from the loaded board data.
-function numberOf(id) {
+function rowById(id) {
   const t = allTasks.value.find((x) => x.id === id)
-  if (t?.number != null) return t.number
+  if (t) return t
   for (const arr of Object.values(subtasksByParent.value)) {
     const s = arr.find((x) => x.id === id)
-    if (s?.number != null) return s.number
+    if (s) return s
   }
   return null
+}
+function numberOf(id) {
+  return rowById(id)?.number ?? null
+}
+// Is this task one the board currently draws (a card or a subtask under one)?
+// Only the realtime router asks: an event naming another board is ours after all
+// when it names a card we still hold — that is the card leaving (see classifyEvent).
+function taskOnBoard(id) {
+  return !!rowById(id)
 }
 function openTask(id) {
   selectedTaskId.value = id
@@ -898,8 +953,21 @@ const RELOAD_DEBOUNCE_MS = 200
 let reloadTimer = null
 function scheduleReload() {
   clearTimeout(reloadTimer)
+  // A full reload re-reads everything a partial fetch could, so the backlog of
+  // events dropped during the drag is settled by it — dropping a card must not
+  // cost an extra task fetch on top of the reload the drop already schedules.
+  missedKinds.clear()
   reloadTimer = setTimeout(() => load(props.boardId, { silent: true }), RELOAD_DEBOUNCE_MS)
 }
+
+// Поколение загрузки. Доска НЕ перемонтируется при смене доски (см. комментарий у
+// loadViews), а `?milestone=`/`?archived=1` меняют охват прямо на месте — значит
+// ответ, снятый под прошлый запрос, приходит уже на чужую доску или на чужой охват,
+// и без сверки просто ПРИСВАИВАЕТСЯ: карточки, колонки, и главное — setContext,
+// то есть projectId, по которому дети потом заводят теги и читают конфиг оценок.
+// Номер поколения поднимает только полная загрузка; частичные догрузки его лишь
+// читают, иначе они обесценивали бы полную, с которой идут бок о бок (#2932).
+let loadSeq = 0
 
 // Partial reloads, one debounce timer per kind: a burst of task events must not
 // drag the columns and the workspace meta along with it. Tasks get a slightly
@@ -909,11 +977,19 @@ const PARTIAL_DEBOUNCE_MS = { tasks: 400, columns: 200, board: 200, meta: 200 }
 const partialTimers = { tasks: null, columns: null, board: null, meta: null }
 const partialFetch = {
   tasks: () => fetchTasks(props.boardId),
+  // Эти двое живут на таймере: пока он тикал и пока летел ответ, читатель мог уйти
+  // на другую доску — событие покинутой не должно подменить колонки открытой.
   columns: async () => {
-    columns.value = (await boards.columns(props.boardId)).data || []
+    const mine = loadSeq
+    const { data } = await boards.columns(props.boardId)
+    if (mine !== loadSeq) return
+    columns.value = data || []
   },
   board: async () => {
-    board.value = (await boards.get(props.boardId)).data
+    const mine = loadSeq
+    const { data } = await boards.get(props.boardId)
+    if (mine !== loadSeq) return
+    board.value = data
   },
   meta: () => loadWorkspaceMeta(),
 }
@@ -928,6 +1004,47 @@ function schedulePartial(kind) {
   }, PARTIAL_DEBOUNCE_MS[kind])
 }
 
+// Realtime events the drag guard threw away, as the partial re-fetches that catch
+// up on them (see utils/boardEvents `missedRefetchKinds`). The guard has to drop
+// them — the board holds still while a card is in the air — but a drag that ends
+// without moving anything schedules no reload of its own, and until this backlog
+// existed those events were simply lost.
+//
+// The suppression window needs no such bookkeeping: it is armed by our OWN
+// mutations, and every one of them ends in a load() or a scheduleReload() that
+// brings the same data back.
+const missedKinds = new Set()
+function rememberMissed(ev) {
+  const kind = classifyEvent(ev, { boardId: props.boardId, hasTask: taskOnBoard })
+  for (const k of missedRefetchKinds(kind)) missedKinds.add(k)
+}
+function flushMissed() {
+  if (!missedKinds.size) return
+  const kinds = [...missedKinds]
+  missedKinds.clear()
+  for (const k of kinds) schedulePartial(k)
+}
+// vuedraggable emits `change` before `end`, so a drag that really moved something
+// has already called scheduleReload() by now — and that clears the backlog, so the
+// two never fetch the same thing twice.
+function onBoardDragEnd() {
+  onDragEnd()
+  flushMissed()
+}
+
+// A drag inside another layout (the Eisenhower matrix has a SortableJS grid of its
+// own) holds the board just as still: `dragging` above is raised only by the
+// kanban's own draggables, so without this the matrix's gesture was the one case
+// where a realtime event re-fetched the tasks and rebuilt the quadrants from under
+// Sortable (#2932). The layout reports its gesture; the guard and the backlog are
+// the same ones the kanban uses. No autoscroll setup here on purpose — that rAF
+// loop steers the column strip, which this layout does not render.
+const layoutDragging = ref(false)
+function onLayoutDragState(active) {
+  layoutDragging.value = !!active
+  if (!active) flushMissed()
+}
+
 // Sprint navigation: the URL ?milestone=<slug|uuid|backlog> scopes the board to one
 // milestone server-side, so a huge project never loads all its cards at once.
 // ?archived=1 loads the read-only archive instead (subtasks skipped — they are
@@ -940,13 +1057,40 @@ function taskQuery() {
   return { archived, params: archived ? { archived: 1 } : ms ? { milestone: ms } : undefined }
 }
 
+// The same scope, in the form `applyTaskPatch` checks a patched card against (see
+// utils/boardEvents `inBoardScope`). Derived from `taskQuery()` on purpose: a card
+// may stay drawn only while the server would still list it, so the two must not
+// drift — including the archive branch, where the sprint scope is not sent at all.
+// The server resolves the slug or UUID in `?milestone=`; here it is matched against
+// the project's loaded milestones, and a scope we cannot resolve yet becomes `''`,
+// which matches no task and so re-fetches instead of merging.
+function patchScope() {
+  const { archived } = taskQuery()
+  const s = milestoneScope.value
+  if (archived || !s) return {}
+  if (s === BACKLOG_SCOPE) return { milestone: null }
+  const m = milestonesMap[s] || milestonesList.value.find((mm) => matchesScope(mm, s))
+  return { milestone: m ? m.id : '' }
+}
+
+// The same resolved scope, in the form a newly created card is stamped with (see
+// utils/milestones `newTaskMilestoneId`). Derived from `patchScope()` so the id a
+// card is born with is the very one the list is filtered by: `undefined` on an
+// unscoped board and in the archive, `null` on the backlog scope, `''` for a scope
+// that cannot be resolved yet.
+function scopeMilestoneId() {
+  return patchScope().milestone
+}
+
 // Fetch just the task lists (2 requests instead of the full load's 10).
 async function fetchTasks(id) {
+  const mine = loadSeq
   const { archived, params } = taskQuery()
   const [t, s] = await Promise.all([
     boards.tasks(id, params),
     archived ? Promise.resolve({ data: [] }) : boards.subtasks(id),
   ])
+  if (mine !== loadSeq) return
   allTasks.value = (t.data || []).map(markRaw)
   const byParent = {}
   for (const sub of s.data || []) (byParent[sub.parent_id] ||= []).push(markRaw(sub))
@@ -966,6 +1110,7 @@ async function fetchTasks(id) {
 // Спиннер уместен только там, где показывать нечего — первая загрузка и смена
 // доски. Догрузка уже показанной доски должна быть незаметной.
 async function load(id, { silent = false } = {}) {
+  const mine = ++loadSeq
   if (!silent) loading.value = true
   try {
     const { archived, params } = taskQuery()
@@ -975,6 +1120,9 @@ async function load(id, { silent = false } = {}) {
       boards.tasks(id, params),
       archived ? Promise.resolve({ data: [] }) : boards.subtasks(id),
     ])
+    // Пока летели десять запросов, читатель мог уйти на другую доску, в архив или
+    // на другой этап. Тогда этот ответ описывает не то, что сейчас на экране.
+    if (mine !== loadSeq) return
     board.value = b.data
     columns.value = c.data || []
     // Publish the identity as soon as the board itself is known: cards render
@@ -990,13 +1138,19 @@ async function load(id, { silent = false } = {}) {
     // filteredTasks, and the watcher below rebuilds once. Calling both made every
     // load rebuild the whole column map twice.
   } catch (e) {
+    // Отказ покинутой доски (её проект удалили, этап исчез) не должен кричать
+    // поверх той, что читатель открыл вместо неё.
+    if (mine !== loadSeq) return
     message.error(e.message)
   } finally {
-    if (!silent) loading.value = false
+    // Спиннер снимает только тот запрос, который его и зажёг: иначе ответ
+    // покинутой доски открывал бы ещё пустую новую.
+    if (!silent && mine === loadSeq) loading.value = false
   }
 }
 
 async function loadWorkspaceMeta() {
+  const mine = loadSeq
   const wsId = wsStore.currentId
   const projectId = board.value?.project_id
   if (!wsId || !projectId) return
@@ -1009,6 +1163,8 @@ async function loadWorkspaceMeta() {
     gitlabApi.listIntegrations(wsId).catch(() => ({ data: { integrations: [] } })),
     projectsApi.milestones(projectId).catch(() => ({ data: [] })),
   ])
+  // Теги, участники и этапы покинутой доски — чужой словарь для открытой.
+  if (mine !== loadSeq) return
   boardViewStore.refill(tagsMap, Object.fromEntries((tg.data || []).map((t) => [t.id, t])))
   boardViewStore.refill(milestonesMap, Object.fromEntries((ms.data || []).map((m) => [m.id, m])))
   boardViewStore.refill(membersMap, Object.fromEntries((mem.data || []).map((m) => [m.user_id, m])))
@@ -1048,6 +1204,7 @@ const filterResult = computed(() =>
     subtasksByParent: subtasksByParent.value,
     filters,
     glLoginByUserId: glLoginByUserId.value,
+    formatters: formatters.value,
   }),
 )
 
@@ -1075,7 +1232,10 @@ function sortByLevels(arr) {
 
 // Subtasks mirror the parent sort: when a composer sort is active each parent's
 // children follow it too; with no sort we keep the raw stored order so on-card
-// drag-reorder stays authoritative.
+// drag-reorder stays authoritative. Which is why `composerSorted` also travels
+// down to the card — while the sort re-orders this list, the row a child is
+// dropped next to is not its neighbour in the parent's ladder, so the gesture is
+// refused there rather than persisted against the wrong siblings.
 const sortedSubtasksByParent = computed(() => {
   const src = filterResult.value.subtasksByParent
   if (!sortLevels.value.length) return src
@@ -1143,14 +1303,11 @@ const displayColumns = computed(() => {
   ]
 })
 
-// Column title for a tag group: the raw "scope::value" is never shown. When the
-// board is already filtered to one prefix the scope sits in the group label
-// ("Тег · Сложность"), so only the value is left; otherwise the friendly scope
-// is spelled out ahead of it.
+// Column title for a tag group: the raw "scope::value" is never shown. The rule
+// lives in utils/tagGroups, next to the split it is built on, because the
+// timeline/gantt swimlanes stand for the same tags and have to read the same.
 function tagColumnName(tag) {
-  const parts = tagParts(tag.name, tagPrefixNames)
-  if (!parts.hasScope) return parts.label
-  return tagPrefix.value ? parts.label : `${parts.scope}: ${parts.label}`
+  return tagLaneLabel(tag, { tagPrefix: tagPrefix.value, prefixNames: tagPrefixNames })
 }
 
 // Estimation rollup per milestone column: Σ of the column's tasks' own estimates,
@@ -1160,16 +1317,14 @@ const estCfg = computed(() => wsStore.estimationFor(board.value?.project_id))
 // once per list/filter change rather than per render — each entry walks the whole
 // subtask tree.
 //
-// Neither map alone is enough. The filtered one is keyed by TOP-LEVEL tasks only
-// (see utils/taskFilter), so walking it would stop one level down and undercount
-// a deeper tree; the raw one knows every level but ignores the composer, so a
-// filter-narrowed parent would still report all of its children. Merged, the
-// narrowed list wins where the filter produced one and the raw map supplies the
-// levels below it.
-const countSubtaskMap = computed(() => ({
-  ...subtasksByParent.value,
-  ...filteredSubtasksByParent.value,
-}))
+// Counted off the FILTERED map, which now carries every depth (#2932). It used to
+// be keyed by top-level tasks only, so the raw map had to be merged under it to
+// supply the levels below — and that merge is what made the number disagree with
+// the board: under a filter a narrowed parent reported its matching children, but
+// their children came back unfiltered, so the total counted work the composer had
+// just hidden. The filtered map is self-contained now: a branch it keeps, it keeps
+// whole.
+const countSubtaskMap = computed(() => filteredSubtasksByParent.value)
 const countsByCol = computed(() => {
   const out = {}
   for (const [key, arr] of Object.entries(lists.value)) {
@@ -1213,9 +1368,6 @@ watch(
   (n) => (boardViewStore.shownTasks = n),
   { immediate: true },
 )
-// The ⌘K palette (#2957) reads this board's rows to move a task to a column's
-// end, and asks it to filter by a person picked under «Люди».
-boardViewStore.taskSource = () => allTasks.value
 watch(
   () => boardViewStore.assigneeFilter,
   (req) => {
@@ -1236,9 +1388,15 @@ watch(
   { immediate: true },
 )
 
+// «Σ» in a milestone lane's header. Counted through sumLaneEffort, not by summing
+// the rows' own `estimate`: a card with no estimate of its own prints the rollup of
+// its subtasks, and the header has to agree with the cards standing under it. The
+// FILTERED child map is the one the cards are drawn from (sortedSubtasksByParent is
+// the same membership, re-ordered), so the total narrows with the composer exactly
+// as the cards do.
 function columnEstimate(dcol) {
   if (groupMode.value !== 'milestone') return ''
-  const v = sumEstimates(lists.value[dcol.key] || [])
+  const v = sumLaneEffort(lists.value[dcol.key] || [], filteredSubtasksByParent.value)
   return v ? formatEstimate(v, estCfg.value) : ''
 }
 
@@ -1246,31 +1404,23 @@ function rebuildLists() {
   // 'assignee'/'none' are timeline-only swimlane modes; the board/list views only
   // understand status/tag/milestone columns, so skip rebuilding for those.
   if (!['status', 'tag', 'milestone'].includes(groupMode.value)) return
-  const map = {}
-  if (groupMode.value === 'status') {
-    for (const col of columns.value) map[col.id] = []
-    for (const t of filteredTasks.value) (map[t.column_id] ||= []).push(t)
-  } else if (groupMode.value === 'milestone') {
-    const msIds = new Set(milestonesList.value.map((m) => m.id))
-    for (const m of milestonesList.value) map[m.id] = []
-    map.__none__ = []
-    for (const t of filteredTasks.value) {
-      if (t.milestone_id && msIds.has(t.milestone_id)) map[t.milestone_id].push(t)
-      else map.__none__.push(t)
-    }
-  } else {
-    const tgIds = new Set(groupTags.value.map((t) => t.id))
-    for (const tg of groupTags.value) map[tg.id] = []
-    map.__none__ = []
-    for (const t of filteredTasks.value) {
-      const ids = (t.tag_ids || []).filter((id) => tgIds.has(id))
-      if (!ids.length) map.__none__.push(t)
-      else for (const id of ids) map[id].push(t)
-    }
-  }
-  lists.value = map
+  lists.value = buildLists({
+    groupMode: groupMode.value,
+    columns: columns.value,
+    milestones: milestonesList.value,
+    groupTags: groupTags.value,
+    tasks: filteredTasks.value,
+  })
 }
-watch([filteredTasks, groupMode, tagPrefix, milestonesList], rebuildLists)
+// Watch what the LANES are built from, not a hand-kept subset of it. The sources
+// used to be spelled out one by one ([filteredTasks, groupMode, tagPrefix,
+// milestonesList]) and two were missing — `columns` and the tag list behind
+// `groupTags` — so a lane that appeared without the cards changing came up with no
+// bucket at all, i.e. undroppable (see utils/boardLists). Both gaps were reachable
+// from realtime alone: a `column.*` event re-reads only the columns, a `tag.*` event
+// only the workspace meta. `displayColumns` is exactly that set, already assembled —
+// it is the lanes the board draws, and it is what has to have a bucket each.
+watch([filteredTasks, displayColumns], rebuildLists)
 
 // Mutable mirror of displayColumns for column drag-reorder (status mode only).
 const colModel = ref([])
@@ -1319,6 +1469,13 @@ async function onColChange(evt, dcol) {
       dcol,
       list: lists.value[dcol.key],
       collapsed,
+      // The tags that ARE lanes right now (prefix narrowing included) — the drop
+      // into «Без тегов» takes exactly those off the card and leaves the rest.
+      groupTags: groupTags.value,
+      // A manual sort re-orders the rendered list, so `newIndex`'s neighbours are
+      // not the card's neighbours on the `position` ladder — the slot is left to
+      // the server (and a pure re-order plans nothing at all).
+      sorted: composerSorted.value,
     })
     await runIntents(intents)
     scheduleReload()
@@ -1359,19 +1516,66 @@ async function submitAddTask(dcol) {
     message.warning(t('board.column.needStatus'))
     return
   }
+  // A card typed into a lane is stamped with that lane's milestone; one typed on a
+  // sprint-scoped board is stamped with the scope, or the reload that follows would
+  // not list it back (see newTaskMilestoneId).
+  const milestoneId = newTaskMilestoneId({
+    groupMode: groupMode.value,
+    lane: dcol,
+    scopeId: scopeMilestoneId(),
+  })
   suppress()
-  newTaskTitle.value = '' // keep the input open for rapid entry
+  // Cleared BEFORE the await on purpose: it keeps the input open for rapid entry and
+  // makes a second Enter read an empty title (the re-entrancy submitAddColumn needs an
+  // explicit flag for). The cost is that the typed title is already gone by the time a
+  // failure comes back — so the failure path puts it back, the way the column input
+  // keeps its name.
+  newTaskTitle.value = ''
   try {
     const res = await boards.createTask(board.value.id, { column_id: columnId, title })
     if (groupMode.value === 'tag' && dcol.tag) await tasksApi.addTag(res.data.id, dcol.tag.id)
-    if (groupMode.value === 'milestone' && dcol.milestone)
-      await tasksApi.setMilestone(res.data.id, dcol.milestone.id)
+    if (milestoneId) await tasksApi.setMilestone(res.data.id, milestoneId)
     await load(props.boardId)
-    addingInColumn.value = dcol.key // load() reset refs; re-open
-    focusTaskInput()
+    reopenForRapidEntry(dcol)
   } catch (e) {
     message.error(e.message)
+    restoreFailedTitle(dcol, title)
   }
+}
+// Rapid entry: once a card lands, the input stays open on the column it was typed into,
+// focused, so the next title can follow straight away — the reload in between re-renders
+// the column and takes the focus with it.
+//
+// Only where the reader actually still is, though. `load()` does not touch
+// `addingInColumn`, so on the ordinary path it is this column already and nothing but
+// the focus needs restoring; re-assigning it was a no-op there and a bug everywhere
+// else. The create is awaited, and while the POST was on the wire the reader may have
+// left: the input commits on blur, so a click away or an Esc closes the gesture
+// (`addingInColumn === null`), and clicking «＋ задача» on another column opens it
+// there. Writing `dcol.key` back then yanked the open input out of that column and
+// stole the focus — and since `newTaskTitle` is one shared ref, the title they had
+// already begun typing came along, so the next Enter filed it in the lane they had just
+// left. That is the same rule restoreFailedTitle follows on the failure path, from the
+// other side.
+function reopenForRapidEntry(dcol) {
+  if (addingInColumn.value !== dcol.key) return
+  focusTaskInput()
+}
+// A create that failed must not eat the title with it: the toast says «не удалось», the
+// task isn't on the board, and retyping it is the reader's work the error has no claim
+// on. The input also commits on blur, so after a failure a stray click outside it used
+// to close the whole add gesture with nothing left behind.
+//
+// Only restored into an input the reader hasn't moved on from: while the POST was on
+// the wire they may have typed the next task (their text wins) or opened the «＋ задача»
+// of another column (dropping this title into that column's input would file it in the
+// wrong lane). A closed input is reopened on the column the title was meant for.
+function restoreFailedTitle(dcol, title) {
+  if (newTaskTitle.value) return
+  if (addingInColumn.value !== null && addingInColumn.value !== dcol.key) return
+  newTaskTitle.value = title
+  addingInColumn.value = dcol.key
+  focusTaskInput()
 }
 
 // ── keyboard (v2, #2956) ──
@@ -1488,11 +1692,10 @@ async function completeFocused() {
   suppress()
   try {
     if (plan.op === 'move') {
-      await tasksApi.move(task.id, {
-        column_id: plan.columnId,
-        before_id: columnTail(allTasks.value, plan.columnId, task.id),
-        after_id: null,
-      })
+      // No neighbour: the server appends to the end of the WHOLE column. The
+      // loaded cards may be a sprint-scoped slice, whose last card sits
+      // mid-column (#2932, see moveNeighbors in utils/status).
+      await tasksApi.move(task.id, { column_id: plan.columnId, before_id: null, after_id: null })
     } else {
       await tasksApi.update(task.id, { ...taskBasePatch(task), completed: plan.op === 'complete' })
     }
@@ -1524,7 +1727,8 @@ async function shiftFocused(dir) {
     from,
     to,
     taskId: task.id,
-    tailId: columnTail(allTasks.value, to.key, task.id),
+    // null = let the server append to the whole column (see completeFocused).
+    tailId: null,
   })
   if (!intents.length) return
   suppress()
@@ -1628,25 +1832,48 @@ watch(
 const addingColumn = ref(false)
 const newColumnName = ref('')
 const colInput = ref(null)
+// A create already on the wire. The name input commits on BOTH Enter and blur, and it
+// stays mounted — with the typed name still in it — until the POST comes back: the
+// gesture is re-entrant. A second Enter on a slow link, or clicking away right after
+// the first one, runs submitAddColumn again with the same non-empty name, and the
+// server appends unconditionally (CreateColumn has no dedupe) — two identical columns,
+// of which only the last one gets the expand override below. submitAddTask happens to
+// be immune because it clears its input synchronously before awaiting; doing that here
+// would throw the typed name away whenever the request fails, so the guard is explicit.
+const columnInFlight = ref(false)
 function startAddColumn() {
   addingColumn.value = true
   newColumnName.value = ''
   nextTick(() => colInput.value?.focus?.())
 }
 async function submitAddColumn() {
+  if (columnInFlight.value) return
   const name = newColumnName.value.trim()
   if (!name) {
     addingColumn.value = false
     return
   }
+  columnInFlight.value = true
   suppress()
   try {
-    await boards.createColumn(board.value.id, { name })
+    const { data } = await boards.createColumn(board.value.id, { name })
+    // A column is born empty, so with «сворачивать пустые колонки» on the auto rule
+    // (isColCollapsed) folded it the instant it appeared: the reader typed a name and
+    // got a 44px strip back, with no header, no «＋ задача» and nothing to drop into
+    // (`.col.collapsed` hides them all) — the create gesture undone by the setting.
+    // Write the same explicit `false` a manual expand writes, BEFORE the reload that
+    // draws it, so it never flashes collapsed. Turning the toggle on afterwards still
+    // wins: its watcher clears the overrides of every empty column.
+    if (data?.id) colCollapse[colCollapseKey({ key: data.id })] = false
     newColumnName.value = ''
     addingColumn.value = false
     await load(props.boardId)
   } catch (e) {
+    // The name is deliberately left in the input here: the column was not created,
+    // and retyping it is the reader's work, not the error's to take.
     message.error(e.message)
+  } finally {
+    columnInFlight.value = false
   }
 }
 
@@ -1659,16 +1886,21 @@ function onChanged() {
 
 // Matrix view quick-add: create the task in the board's first column, then pin it
 // to the chosen Eisenhower quadrant (the matrix has no column to drop into).
+//
+// No lanes here, so the grouping has no say in the new card's milestone — but the
+// sprint scope still filters what the matrix is showing, so it does.
 async function createInQuadrant({ title, quadrant }) {
   const columnId = columns.value[0]?.id
   if (!columnId) {
     message.warning(t('board.column.needStatus'))
     return
   }
+  const milestoneId = newTaskMilestoneId({ scopeId: scopeMilestoneId() })
   suppress()
   try {
     const res = await boards.createTask(board.value.id, { column_id: columnId, title })
     await tasksApi.eisenhower(res.data.id, quadrant)
+    if (milestoneId) await tasksApi.setMilestone(res.data.id, milestoneId)
     await load(props.boardId)
   } catch (e) {
     message.error(e.message)
@@ -1682,15 +1914,38 @@ useRealtime((ev) => {
   if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
     message.warning(t('board.toast.gitlabConflict'))
   }
+  // The open board was retired. DeleteBoard takes its columns, cards and uploads
+  // with it and announces a bare `board.deleted`, so there is nothing left to
+  // re-fetch: leave for Home, the way onProjectGone does one level up. Above the
+  // drag/suppress guard on purpose — this must not be swallowed by a drag in
+  // flight, and it fires for the deleter too: the sidebar's «Удалить» doesn't
+  // navigate, so whoever pressed it was left standing on a dead board where every
+  // card drag and every new task 404s (#2932).
+  if (boardGone(ev, props.boardId)) {
+    message.info(t('board.toast.boardGone'))
+    router.push('/')
+    return
+  }
   // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
   // Custom command dictionary edited elsewhere → the `/`-popup picks it up live.
   if (ev.type === 'workspace_commands.updated') wsStore.setCustomCommands(ev.data?.commands || [])
+  // A link between two tasks changed → nudge the Gantt to re-read its edge list.
+  // Only pairs with an end on this board can move an arrow here, and only the
+  // Gantt draws them, so this costs nothing on the other layouts.
+  if (relationTouchesBoard(ev, props.boardId)) depsToken.value++
   // Board-activity toast for create/move on THIS board (any actor).
   if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
-  if (dragging.value || Date.now() < suppressReloadUntil) return
+  // A drag holds the board still (SortableJS needs a stable DOM), so the event
+  // cannot be acted on now — but it must not be forgotten either: remember what it
+  // would have cost and fetch that once the card lands (#2932).
+  if (dragging.value || layoutDragging.value) {
+    rememberMissed(ev)
+    return
+  }
+  if (Date.now() < suppressReloadUntil) return
   // Route the event instead of reloading the whole board for every one of them.
-  const kind = classifyEvent(ev, { boardId: props.boardId })
+  const kind = classifyEvent(ev, { boardId: props.boardId, hasTask: taskOnBoard })
   if (kind === 'ignore') return
   if (kind === 'patch') {
     // A full task payload can be merged into the card with no request at all —
@@ -1698,7 +1953,7 @@ useRealtime((ev) => {
     // returns null and we fall back to re-fetching the lists.
     // The merged row is a fresh plain object; markRaw keeps it consistent with
     // the rest of the rows (see the shallowRef note above).
-    const patched = applyTaskPatch(allTasks.value, ev.data)
+    const patched = applyTaskPatch(allTasks.value, ev.data, patchScope())
     if (patched) {
       allTasks.value = patched.map(markRaw)
       return
@@ -1712,7 +1967,7 @@ useRealtime((ev) => {
     schedulePartial('tasks')
     return
   }
-  schedulePartial(kind)
+  for (const k of partialKinds(kind)) schedulePartial(k)
 }, scheduleReload)
 
 // Raise a live activity toast for a task create/move on the currently-open board.
@@ -1730,19 +1985,19 @@ function pushActivity(ev) {
     if (isDone && !wasDone) verb = 'completed'
     else if (!isDone && wasDone) verb = 'reopened'
   }
-  const actorId = ev.actor || task.created_by || null
-  const self = !!actorId && actorId === auth.user?.id
-  const m = actorId ? membersMap[actorId] : null
   activityToasts.value?.push({
     id: task.id,
     number: task.number ?? null,
     title: task.title || t('task.fallbackTitle'),
     verb,
-    actorId: m ? actorId : null,
-    actorName: m?.name || '',
-    self,
+    ...toastActor(ev, { selfId: auth.user?.id ?? null, members: membersMap }),
   })
 }
+
+// Relation-change counter handed to the Gantt view. The chart owns its edge list
+// (a fetch of its own), and a relation change touches no task row, so a plain
+// board reload would not refresh a single arrow (#2932).
+const depsToken = ref(0)
 
 // Refresh just the project's milestones (after the manager edits them, or a remote
 // milestone change) without a full board reload.
@@ -1763,6 +2018,50 @@ watch(
   () => {
     reloadMilestones()
     onChanged()
+  },
+)
+
+// The phone's board menu (BoardMobileMenu, in the header) opens the customize
+// drawer through the store: the gear that opens it here sits in the composer's
+// right-hand tools, which slide away once the chips fill the bar. The timeline
+// layouts have no customize panel, so the nonce is ignored there — same gate the
+// gear carries.
+watch(
+  () => boardViewStore.customizeNonce,
+  () => {
+    if (!timelineLike.value) customizeOpen.value = true
+  },
+)
+
+// Saved views, same story one button over — except the folder and the disk have no
+// fallback trigger at all, so from a phone a view could be neither loaded nor
+// saved. Publish the list the menu has to offer (only this layout's views: a view
+// belongs to its visualization) plus which one is loaded, and answer what the menu
+// asks. The work stays here because the config a save captures is this component's
+// whole toolbar state (currentViewConfig).
+watch(
+  [viewsForLayout, currentViewName],
+  () => {
+    boardViewStore.savedViews = viewsForLayout.value.map((v) => ({ id: v.id, name: v.name }))
+    boardViewStore.currentViewName = currentViewName.value
+  },
+  { immediate: true },
+)
+watch(
+  () => boardViewStore.viewRequest,
+  (req) => {
+    if (!req) return
+    if (req.op === 'apply') {
+      // Look the view up in the full list, not in the published summaries: applyView
+      // needs its `config`, and the ask can name a view the list has since dropped.
+      const v = savedViews.value.find((x) => x.id === req.id)
+      if (v) applyView(v)
+      return
+    }
+    if (req.op === 'save') {
+      newViewName.value = req.name || ''
+      saveView()
+    }
   },
 )
 
@@ -1806,7 +2105,9 @@ onMounted(async () => {
     ro.observe(boardScroll.value)
     measure()
   }
-  // Re-fit the sub-toolbar on resize (window / sidebar toggle / chip set).
+  // Re-fit the sub-toolbar on resize (window / sidebar toggle / chip set). The bar
+  // is usually not in the DOM yet here (it waits for the first load): the
+  // `subbarEl` watcher above is the attach that matters (#2932).
   subbarRO = new ResizeObserver(() => fitSubbar())
   if (subbarEl.value) subbarRO.observe(subbarEl.value)
   nextTick(fitSubbar)
@@ -1831,6 +2132,9 @@ watch(
   async (id) => {
     if (!id) return
     resetCardViewport()
+    // Before restoreView: clearing the name makes the autosave signature empty, so a
+    // write armed on the board we are leaving is disarmed instead of landing here.
+    clearLoadedView()
     restoreView()
     await load(id)
     loadViews()
@@ -1843,15 +2147,24 @@ watch(
 )
 // Switching étapes on the same board (only the query changes, no remount) reloads
 // the scoped task set. Entering/leaving the archive reloads too.
-watch(
-  () => [route.query.milestone, route.query.archived],
-  ([ms]) => {
-    // Opening an étape via the project tree supersedes any manual étape filter in
-    // the composer — clear it, else the scope's tasks would be filtered away.
-    if (ms) filters.milestones = []
-    load(props.boardId)
-  },
-)
+//
+// TWO getters, not one getter returning a pair. A single `() => [a, b]` source hands
+// `watch` a fresh array every run, so its `Object.is` comparison always says
+// "changed" — the callback then fires whenever the *dependency* is touched, and the
+// dependency here is `route.query` as a whole (vue-router swaps that object on every
+// navigation, whatever key moved). The board's own URL carries the open card
+// (`?task=<number>`), so opening a card, canonicalizing its number and closing it
+// again each ran this callback: three full, NON-silent `load()`s — ten requests apiece
+// — for a query key this watcher does not care about, and every one of them raised the
+// n-spin that fades the whole board (the #2695 flicker `silent` exists to avoid).
+// Modal edits already come back through `@changed` → `onChanged`. Given per-key
+// getters, `watch` compares the values themselves and stays quiet.
+watch([() => route.query.milestone, () => route.query.archived], ([ms]) => {
+  // Opening an étape via the project tree supersedes any manual étape filter in
+  // the composer — clear it, else the scope's tasks would be filtered away.
+  if (ms) filters.milestones = []
+  load(props.boardId)
+})
 
 // Restore a task from the archive view (the only mutation allowed there).
 async function restoreFromArchive(taskId) {
@@ -1859,6 +2172,12 @@ async function restoreFromArchive(taskId) {
     await tasksApi.restore(taskId)
     allTasks.value = allTasks.value.filter((t) => t.id !== taskId)
     message.success(t('board.toast.restored'))
+    // Restoring from the ACTIVE board — an archived task opened past the archive
+    // scope (a relation, a notification, a document link) now offers Restore in
+    // its read-only footer (#2932). The filter above is the archive list's move:
+    // here the task was never in it, and the card that must now appear is missing
+    // until the board is re-read. Silent, so the board doesn't flash for it.
+    if (!archivedMode.value) await load(props.boardId, { silent: true })
   } catch (e) {
     message.error(e.message)
   }
@@ -1923,13 +2242,18 @@ async function restoreFromArchive(taskId) {
               </button>
             </span>
 
-            <!-- Sort chips: click toggles direction, drag reorders primary/secondary. -->
+            <!-- Sort chips: click toggles direction, drag reorders primary/secondary. The
+                 touch trio keeps a swipe across the bar from reordering sort
+                 precedence on a phone (#2932). -->
             <draggable
               v-if="sortLevels.length && !foldSorts"
               :list="sortLevels"
               item-key="field"
               handle=".facet"
               :animation="150"
+              :delay="160"
+              :delay-on-touch-only="true"
+              :touch-start-threshold="6"
               class="sort-chips"
               ghost-class="facet-ghost"
             >
@@ -2222,17 +2546,22 @@ async function restoreFromArchive(taskId) {
         :lists="lists"
         :tags-map="tagsMap"
         :members-map="membersMap"
+        :gitlab-members="gitlabMembersList"
         :tag-prefix-names="tagPrefixNames"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
+        @restore="restoreFromArchive"
       />
 
       <BoardCalendarView
         v-else-if="layout === 'calendar'"
         :tasks="filteredTasks"
         :status-columns="columns"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
+        @restore="restoreFromArchive"
       />
 
       <BoardTimelineView
@@ -2242,14 +2571,18 @@ async function restoreFromArchive(taskId) {
         :tasks="filteredTasks"
         :status-columns="columns"
         :members-map="membersMap"
+        :gitlab-members="gitlabMembersList"
         :tags-map="tagsMap"
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
+        :tag-prefix-names="tagPrefixNames"
         :project-id="board?.project_id"
         :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
+        @restore="restoreFromArchive"
       />
 
       <BoardGanttView
@@ -2260,15 +2593,20 @@ async function restoreFromArchive(taskId) {
         :tasks="filteredTasks"
         :status-columns="columns"
         :members-map="membersMap"
+        :gitlab-members="gitlabMembersList"
         :tags-map="tagsMap"
         :group-mode="groupMode"
         :tag-prefix="tagPrefix"
+        :tag-prefix-names="tagPrefixNames"
         :project-id="board?.project_id"
         :auto-sort="autoActive"
         :subtasks-by-parent="filteredSubtasksByParent"
         :milestones="milestonesList"
+        :deps-token="depsToken"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
+        @restore="restoreFromArchive"
       />
 
       <BoardMatrixView
@@ -2277,9 +2615,12 @@ async function restoreFromArchive(taskId) {
         :subtasks-by-parent="sortedSubtasksByParent"
         :subtasks-total-by-parent="subtasksByParent"
         :subtasks-expanded="subtasksExpanded"
+        :readonly="archivedMode"
         @open="openTask"
         @changed="onChanged"
         @create="createInQuadrant"
+        @restore="restoreFromArchive"
+        @drag-state="onLayoutDragState"
       />
 
       <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
@@ -2288,7 +2629,7 @@ async function restoreFromArchive(taskId) {
           group="columns"
           item-key="key"
           handle=".col-drag"
-          :disabled="groupMode !== 'status' || archivedMode"
+          :disabled="!canReorderColumns"
           class="cols"
           :class="{ dragging }"
           :animation="150"
@@ -2296,7 +2637,7 @@ async function restoreFromArchive(taskId) {
           :delay-on-touch-only="true"
           :touch-start-threshold="6"
           @start="onDragStart"
-          @end="onDragEnd"
+          @end="onBoardDragEnd"
           @change="onColumnReorder"
         >
           <template #item="{ element: dcol }">
@@ -2311,11 +2652,28 @@ async function restoreFromArchive(taskId) {
             >
               <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
-                   drop target survives. -->
-              <div
+                   drop target survives.
+                   A real `<button>`, not a clickable div: the collapse chevron in
+                   the header IS reachable by keyboard (an n-button), and collapsing
+                   hides that header outright — so a column folded from the keyboard
+                   had no way back, the strip never entering the tab order. Its
+                   caption carries the column name too: the vertical title is capped
+                   at 260px and ellipsised, and under TAG grouping that name is a tag
+                   («сложность::высокая»), which is the very case `.col-title` got its
+                   own `title` for.
+                   It is also the column's drag handle while collapsed. The board's
+                   column draggable takes `handle: '.col-drag'`, and ColumnHeader
+                   stamps that class on the status glyph and the caption — both inside
+                   `.col-head`, which a collapsed column hides outright. So a folded
+                   column could not be reordered at all, and with «collapse empty
+                   columns» on that is EVERY empty column — precisely the ones being
+                   arranged while a board is still being set up. -->
+              <button
                 v-if="colCollapsedNow(dcol)"
                 class="col-strip"
-                :title="t('board.column.expand')"
+                :class="{ 'col-drag': canReorderColumns }"
+                type="button"
+                :title="stripTitle(dcol)"
                 @click="toggleCollapse(dcol)"
               >
                 <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
@@ -2323,13 +2681,14 @@ async function restoreFromArchive(taskId) {
                 <span class="strip-count" :title="colCountTitle(dcol)">{{
                   colCounts(dcol).tasks
                 }}</span>
-              </div>
+              </button>
               <ColumnHeader
                 :dcol="dcol"
                 :count="colCounts(dcol).tasks"
                 :total="colCounts(dcol).total"
                 :estimate="columnEstimate(dcol)"
                 :editable="groupMode === 'status'"
+                :readonly="archivedMode"
                 :is-done="groupMode === 'status' && dcol.key === doneColumnId"
                 :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
                 :collapsed="isColCollapsed(dcol)"
@@ -2349,12 +2708,13 @@ async function restoreFromArchive(taskId) {
                 filter=".add-sub, .sub-add-input"
                 :prevent-on-filter="false"
                 :disabled="archivedMode"
+                :sort="canSortCards"
                 :animation="150"
                 :delay="160"
                 :delay-on-touch-only="true"
                 :touch-start-threshold="6"
                 @start="onCardDragStart"
-                @end="onDragEnd"
+                @end="onBoardDragEnd"
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element, index }">
@@ -2378,6 +2738,7 @@ async function restoreFromArchive(taskId) {
                       :subtasks="sortedSubtasksByParent[element.id] || []"
                       :subtasks-total="(subtasksByParent[element.id] || []).length"
                       :subtasks-expanded="subtasksExpanded"
+                      :sorted="composerSorted"
                       :dragging="draggingCard"
                       :readonly="archivedMode"
                       :selected="isFocused(dcol, element.id)"
@@ -2423,13 +2784,15 @@ async function restoreFromArchive(taskId) {
           </template>
         </draggable>
 
-        <!-- inline new column (status mode) -->
-        <div v-if="groupMode === 'status'" class="add-col" :class="{ 'add-col-mobile': isMobile }">
+        <!-- inline new column (status mode; never in the archive — the tile would
+             create a live column on the board from a read-only view) -->
+        <div v-if="showAddColumn" class="add-col" :class="{ 'add-col-mobile': isMobile }">
           <n-input
             v-if="addingColumn"
             ref="colInput"
             v-model:value="newColumnName"
             size="small"
+            :loading="columnInFlight"
             :placeholder="t('board.column.namePlaceholder')"
             @keyup.enter="submitAddColumn"
             @keyup.esc="addingColumn = false"
@@ -2483,8 +2846,10 @@ async function restoreFromArchive(taskId) {
     v-model:auto-collapse-empty="autoCollapseEmpty"
     v-model:subtasks-expanded="subtasksExpanded"
     v-model:autosave-view="autosaveView"
+    :readonly="archivedMode"
     :field-vis="fieldVis"
     :facet-chips="facetChips"
+    :group-next-label="nextGroupModeLabel"
     :add-options="addOptions"
     :current-view-name="currentViewName"
     :board-icon="board?.icon || ''"
@@ -2968,6 +3333,44 @@ async function restoreFromArchive(taskId) {
   flex-direction: column;
   align-items: center;
   gap: 10px;
+  padding: 4px 0;
+  /* The strip IS the tap target (it carries the expand click), so it has to fill
+     the collapsed tile rather than stop at the height of its own text. Desktop
+     never noticed: `.col` is `align-self: flex-start`, so the tile is already
+     exactly the strip's height. On a phone `.col` stretches to the full board
+     height (mobile block above) while the strip stayed content-sized — chevron,
+     a title capped at 260px, a count — leaving most of the tall 44px tile as
+     dead area that showed `cursor: pointer` and swallowed the tap. And there is
+     nothing else to tap: `.col-head` and its collapse button are hidden on a
+     collapsed column, which is why #2893 kept the strip as the only way back
+     out. The drag drop overlay already covers the whole tile (`inset: 0`) — the
+     tap target now agrees with it. */
+  flex: 1 0 auto;
+  /* Button reset: the strip is a `<button>` so it can be tabbed to and opened with
+     Enter/Space (the collapse chevron it replaces is an n-button, and collapsing
+     hides it). A button doesn't inherit the page font and brings its own chrome,
+     so the reset has to be explicit — `width: 100%` because a button won't stretch
+     to the tile the way the old block-level div did. */
+  appearance: none;
+  background: none;
+  border: 0;
+  width: 100%;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+/* The grab hand for the strip-as-drag-handle. ColumnHeader has the same rule for
+   its own `.col-drag` elements, but that one is `<style scoped>` on a different
+   component and never reaches this button — and `.col-strip` right above sets
+   `cursor: pointer`, which a bare `.col-drag` selector would tie with and lose to
+   on source order. Two classes, so it wins outright. */
+.col-strip.col-drag {
+  cursor: grab;
+}
+.col-strip:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: -2px;
+  border-radius: 8px;
 }
 .strip-chevron {
   display: flex;
@@ -3013,52 +3416,17 @@ async function restoreFromArchive(taskId) {
    with no snap point of its own is not merely skipped by a swipe, it cannot be
    rested on at all. Collapsing the leftmost column scrolled it off the screen on
    the spot and there was no way back to it. Strips keep their snap point. */
-/* The header's own metrics live in ColumnHeader; the lane's 8px gap spaces it. */
+/* `.col-head` is ColumnHeader's ROOT element, so this scoped rule does reach it
+   (Vue stamps the parent's scope id on a child component's root) — it is the only
+   part of the old inline header that still applies here. Everything INSIDE that
+   component (`.col-title`, `.col-menu`, the swatch grid, the count chip) is a
+   non-root child and carries only ColumnHeader's own scope id: rules for those
+   sat here doing nothing, a standing trap for the next person who edits the
+   caption's layout in this file and sees no effect. They live in
+   ColumnHeader.vue's own <style scoped>. */
 .col-head {
   display: flex;
   align-items: center;
-}
-.col-grip {
-  cursor: grab;
-  color: var(--t-text3);
-  font-size: 12px;
-  line-height: 1;
-}
-.col-title {
-  flex: 1;
-  font-weight: 600;
-  color: var(--t-text1);
-}
-.col-menu {
-  font-size: 16px;
-  line-height: 1;
-}
-.col-swatches {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-.cw {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-}
-.cw.active {
-  border-color: var(--t-text1);
-}
-.cs-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.count {
-  font-size: 12px;
-  color: var(--t-text3);
-  background: var(--t-hover);
-  border-radius: 10px;
-  padding: 0 7px;
 }
 .drop {
   flex: 1;

@@ -66,10 +66,13 @@ const activeRailId = computed(() => {
   if (!proj) return null
   if (!proj.group_id) return proj.id // ungrouped → its own rail node
   let g = store.groups.find((x) => x.id === proj.group_id)
-  while (g?.parent_id) {
-    const parent = store.groups.find((x) => x.id === g.parent_id)
-    if (!parent) break
+  // parentGroupOf, not parent_id: it follows the cycle-broken edges the tree is
+  // drawn from, so this walk ends on the same root the nodes show instead of
+  // going round a ring forever (#2932).
+  let parent = g ? store.parentGroupOf(g.id) : null
+  while (parent) {
     g = parent
+    parent = store.parentGroupOf(g.id)
   }
   return g?.id ?? null
 })

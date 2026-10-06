@@ -20,6 +20,7 @@ import (
 	"tessera/internal/docroom"
 	"tessera/internal/livekit"
 	"tessera/internal/mail"
+	"tessera/internal/observability"
 	"tessera/internal/realtime"
 	"tessera/middleware"
 )
@@ -41,12 +42,67 @@ const (
 	// never got to explain. Found while adding the import route (#2733).
 	routeDocAssets = "/api/documents/:id/assets"
 	routeDocImport = "/api/workspaces/:id/documents/import"
+	// A PDF attached to an open page. Third route to repeat the mistake above:
+	// its handler allows maxDocImportBytes (20 MiB), but with no entry in the
+	// table it ran on the blanket 1 MiB — and a PDF under a megabyte is the
+	// exception, not the rule, so the transport refused nearly every real one
+	// with a 413 the handler never got to phrase (#2932).
+	routeDocPdf = "/api/documents/:id/pdf"
+	// The editor's own save. Fourth repeat of the same omission, and the costly
+	// one: validateDocContent allows a 4 MiB document, but on the blanket budget
+	// anything past a megabyte met a transport 413 — so the validator's ceiling
+	// was unreachable and a long page could not be written at all. Nobody retries
+	// this one by hand either (useDocAutosave requeues the rejected content and
+	// keeps saving, silently, while its author goes on typing), and the office
+	// import PATCHes its converted body through here, so a 20 MiB file the import
+	// route deliberately accepts landed as an empty document (#2932).
+	routeDocContent = "/api/documents/:id/content"
+	// A file dropped into the in-call chat. Fifth repeat, and the one where the
+	// three composers were loudest about a rule the transport did not honour: the
+	// handler, utils/confChat.js and util/ConferenceChat.kt all promise 25 MiB per
+	// file, while the blanket budget refused anything past one — so a screenshot
+	// from a phone left the composer and came back "request body too large".
+	//
+	// Unlike the four above, this route takes several files at once, so the budget
+	// is the *aggregate* one (maxChatTotalBytes) rather than the per-file cap:
+	// maxChatFiles × 25 MiB is 125 MiB of buffered multipart for one line of chat,
+	// which is the thing maxChatFiles was written to prevent in the first place
+	// (#2932).
+	routeConfMessages = "/api/conferences/:id/messages"
+	// A template uploaded from a .md or .json file. Sixth repeat, and the one that
+	// reads as nonsense rather than as a limit, because the neighbouring path
+	// works: the same picker and the same parser feed importLocal, which creates
+	// an empty page and PATCHes the body through routeDocContent — so one file was
+	// fine as a document and "request body too large" as a template. The body here
+	// is a whole document (CreateDocumentTemplate takes `content` and hands it to
+	// validateDocContent), so it gets the validator's ceiling, exactly like the
+	// content route. Markdown inflates on the way to a ProseMirror tree, so the
+	// blanket megabyte was reached by source files well under one (#2932).
+	routeDocTemplates = "/api/workspaces/:id/document-templates"
 	// Browser Sentry envelopes. Pinned to the handler's own ceiling rather than
 	// left on the blanket JSON budget so that an operator tightening
 	// MAX_BODY_BYTES doesn't silently start dropping crash reports at the
 	// transport, where nothing would report the loss.
 	routeSentryTunnel = "/api/sentry-tunnel"
 )
+
+// docContentEnvelope is the slack the content route's budget carries on top of
+// the document itself. The envelope proper is tiny — the updated_at the save is
+// based on and the sender's connection id — and a budget sized to just that
+// would still be wrong, because the transport would then answer for every
+// document a byte past the ceiling. The point of giving this route a budget at
+// all is that the *validator* explains the refusal ("content exceeds N bytes"),
+// so the slack is deliberately wide enough to cover an ordinary overshoot and
+// leave only an absurd body to the transport. Same shape as the media budget,
+// which is 8 MiB of file with a megabyte of framing around it.
+const docContentEnvelope int64 = 1 << 20
+
+// chatFilesEnvelope is the same slack for the chat route: the message body
+// (maxChatBody runes, so at most ~16 KiB of UTF-8) plus a multipart part header
+// per file. Sized like the one above rather than to the framing proper so that an
+// ordinary overshoot is explained by readChatSubmission — "attachments exceed N
+// bytes" names what to drop — and only an absurd body meets the transport.
+const chatFilesEnvelope int64 = 1 << 20
 
 // authRateRules throttles the unauthenticated auth surface — the routes where a
 // cheap anonymous request costs the server a bcrypt round, an outgoing email or
@@ -99,12 +155,22 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// rather than in main() so the four tests that boot newRouter() get a working
 	// document socket too; its sweeper goroutine ends when rh.CloseDocRooms does.
 	rooms := docroom.New()
-	go rooms.Run()
+	// Under the same guard as the realtime hub's loop (main()): a sweeper panic
+	// has no request and no supervisor around it, so it would end the process
+	// instead of the sweep. Reported and dropped, live documents keep their
+	// sockets — only lock expiry stops, until the next restart.
+	go func() {
+		defer observability.Recover("docroom-sweeper")
+		rooms.Run()
+	}()
 	// Per-conference room state (#2869): presence, the screen-share queue and
 	// moderation. Created here for the same reason as the document rooms; its
 	// sweeper goroutine ends when rh.CloseConfRooms does.
 	confRooms := confroom.New()
-	go confRooms.Run()
+	go func() {
+		defer observability.Recover("confroom-sweeper")
+		confRooms.Run()
+	}()
 	wsHandler := handlers.NewWSHandler(hub, rooms, confRooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	// Reports itself disabled when no frontend DSN is configured, so the two
@@ -134,6 +200,15 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// LiveKit through here. Set once, before any room exists — rooms copy it as
 	// they are created.
 	confRooms.SetEnforcer(rh.ConfEnforcer())
+	// Both password doors live on authHandler, all three socket registries on rh
+	// (#2932). Wired after WireDocRooms/WireConfRooms above so the revoker closes
+	// over an API that already has them.
+	authHandler.WireSocketRevoker(rh.SocketRevoker())
+	// The mirror image of the revoker: the auth layer also *grants* memberships
+	// (a pending invitation applied on email verification, the OAuth org map),
+	// and a socket that resolved its scopes at the upgrade cannot learn about
+	// them on its own (#2932).
+	authHandler.WireScopeRefresher(rh.ScopeRefresher())
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 
@@ -153,7 +228,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	r.Use(gin.Recovery())
 	trusted := cfg.TrustedProxies
 	if len(trusted) == 0 {
-		trusted = []string{"127.0.0.1", "::1"}
+		trusted = config.DefaultTrustedProxies
 	}
 	if err := r.SetTrustedProxies(trusted); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)
@@ -179,7 +254,22 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
 		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
 		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
-		routeWS:          middleware.NoBodyLimit,
+		routeDocPdf:      orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		// The validator's ceiling plus the envelope it travels in: the body is the
+		// document *and* the updated_at it is based on *and* the sender's
+		// connection id. Sized from the constant rather than restated, because a
+		// budget equal to it would refuse a document of exactly MaxDocContentBytes
+		// at the transport — the one size the validator promises to accept.
+		routeDocContent: handlers.MaxDocContentBytes + docContentEnvelope,
+		// The same body under a different envelope — the uploaded template carries
+		// title, description and icon beside the document, all of them bounded by
+		// truncateRunes, so the content route's slack covers them too.
+		routeDocTemplates: handlers.MaxDocContentBytes + docContentEnvelope,
+		// The chat's aggregate file ceiling plus its framing, for the same reason:
+		// a budget equal to MaxChatTotalBytes would refuse at the transport the one
+		// batch readChatSubmission promises to take.
+		routeConfMessages: handlers.MaxChatTotalBytes + chatFilesEnvelope,
+		routeWS:           middleware.NoBodyLimit,
 
 		routeSentryTunnel: handlers.MaxEnvelopeBytes,
 	}))
@@ -213,6 +303,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		api.GET("/auth/providers", authHandler.Providers)
 		api.GET("/auth/gitlab/authorize", authHandler.GitlabAuthorize)
 		api.GET("/auth/gitlab/callback", authHandler.GitlabCallback)
+		// Desktop redeems the one-time code from its tessera:// deep link here.
+		// Public like /auth/refresh: the code is the credential.
+		api.POST("/auth/oauth/handoff", authHandler.OAuthHandoff)
 
 		// Live updates. Not in the protected group because the browser
 		// WebSocket API can't send an Authorization header — the handler does
@@ -278,7 +371,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			// Self-service profile / password / preferences / avatar.
 			protected.PATCH("/users/me", rh.UpdateMyProfile)
-			protected.PUT("/users/me/password", rh.ChangeMyPassword)
+			// On AuthHandler, not the resource handler: changing the password
+			// now ends every session and hands back a replacement, so it needs
+			// the signing key and the same delivery modes as login (account.go).
+			protected.PUT("/users/me/password", authHandler.ChangeMyPassword)
 			protected.PUT("/users/me/preferences", rh.UpdateMyPreferences)
 			protected.PUT("/users/me/avatar", rh.UploadMyAvatar)
 			protected.DELETE("/users/me/avatar", rh.DeleteMyAvatar)

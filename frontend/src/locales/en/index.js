@@ -18,6 +18,7 @@ import gitlab from './gitlab.json'
 import tour from './tour.json'
 import help from './help.json'
 import jobs from './jobs.json'
+import commands from './commands.json'
 import errors from './errors.json'
 import whatsNew from './whatsNew.json'
 
@@ -39,6 +40,7 @@ export default {
   tour,
   help,
   jobs,
+  commands,
   errors,
   whatsNew,
 }

@@ -1,8 +1,6 @@
 package website.msdnna.tessera.util
 
 import android.content.res.Resources
-import java.text.Collator
-import java.util.Locale
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.GitlabRule
 import website.msdnna.tessera.data.model.Tag
@@ -18,12 +16,12 @@ import website.msdnna.tessera.data.model.Tag
  *  and the member [tags] (sorted by name). */
 data class TagGroup(val key: String, val label: String, val prefix: String, val tags: List<Tag>)
 
-/** Russian-locale, case-insensitive collator so Cyrillic labels sort naturally.
- *  Локаль сортировки намеренно не следует за языком интерфейса: имена тегов — это
- *  пользовательские данные, они остаются русскими и на английском UI, а порядок
- *  групп не должен переставляться от переключения языка. */
-private val ruCollator: Collator =
-    Collator.getInstance(Locale.forLanguageTag("ru")).apply { strength = Collator.SECONDARY }
+/** Russian-locale, case-insensitive, digit-aware order so Cyrillic labels sort
+ *  naturally and «спринт/2» precedes «спринт/10» exactly as it does on the web
+ *  ([UserTextOrder]). Локаль сортировки намеренно не следует за языком интерфейса:
+ *  имена тегов — это пользовательские данные, они остаются русскими и на английском
+ *  UI, а порядок групп не должен переставляться от переключения языка. */
+private val ruCollator: Comparator<String> = UserTextOrder
 
 /** Namespace of a tag name ("T: bug" → "T: ", "effort::small" → "effort::").
  *  Returns "" when the tag has no prefix. */
@@ -39,6 +37,27 @@ fun tagNamespace(name: String): String {
  *  canonPrefix`) so a namespace derived from a tag ("S: ") lines up with what the
  *  GitLab rule editor stores ("S:"). */
 fun canonPrefix(p: String): String = p.trim().lowercase()
+
+/**
+ * Принадлежит ли тег пространству имён, которым сужена группировка (web `tagInPrefix`).
+ *
+ * Сравнение — через [canonPrefix], как и любой другой ответ про пространство имён в
+ * приложении: [buildTagGroups] раскладывает меню по каноническому ключу, [prefixLabel]
+ * и [tagParts] по нему же находят дружелюбное имя, и в этом ключе бэкенд хранит реестр
+ * префиксов (`handlers/tag_prefixes.go`). Сырым оставалось только сужение дорожек —
+ * `tag.name.startsWith(prefix)`, — и теги, которые человек (или синхронизация GitLab)
+ * написал «Сложность::высокая» и «сложность::низкая», были ОДНОЙ группой в меню, под
+ * одной подписью, и двумя разными пространствами для дорожек: выбор префикса рисовал
+ * только теги совпавшего регистра, а остальные карточки уезжали в «Без тегов» —
+ * собственный catch-all killer-фичи. Равенство пространств вместо префикса строки ещё и
+ * оставляет ответ на «в этом ли пространстве тег» тем же, что даёт [tagNamespace]:
+ * сырой `startsWith` говорит «да» любому имени, просто начинающемуся с тех же букв
+ * (#2932, web это уже починил).
+ */
+fun tagInPrefix(name: String, prefix: String): Boolean {
+    if (prefix.isEmpty()) return true
+    return canonPrefix(tagNamespace(name)) == canonPrefix(prefix)
+}
 
 /** Display label for a namespace: the configured friendly name, else the trimmed
  *  raw prefix (e.g. "S:"), else "Вне группы" for prefix-less tags. */
@@ -84,13 +103,45 @@ fun tagParts(name: String, prefixNames: Map<String, String> = emptyMap(), raw: B
 /** Scope/value pair for a tag pill; [hasScope] false means render [label] alone. */
 data class TagParts(val scope: String, val label: String, val hasScope: Boolean)
 
+/**
+ * Заголовок дорожки при группировке доски по тегам (web `tagColumnName`,
+ * KanbanBoard.vue): сырое «сложность::высокая» на доску не выносится никогда.
+ *
+ * [prefixSelected] — выбран ли на доске один префикс. Тогда пространство имён уже
+ * названо в подписи группировки («Тег · Сложность»), и каждая дорожка повторяла бы
+ * его впустую; остаётся только значение. Без выбранного префикса дорожки приходят
+ * из разных пространств, и scope — единственное, что их различает.
+ *
+ * На узкой колонке телефона это не косметика: подпись рисуется в одну строку с
+ * многоточием, а у свёрнутой дорожки — вертикальной полоской в 44dp — от общего
+ * префикса не остаётся ничего, кроме него самого. Карточки в той же дорожке свой
+ * тег уже разбирают ([tagParts] в `Chips`), так что сырое имя расходилось с ними
+ * на одном экране (#2932).
+ */
+fun tagLaneTitle(
+    name: String,
+    prefixNames: Map<String, String> = emptyMap(),
+    prefixSelected: Boolean = false,
+    raw: Boolean = false,
+): String {
+    val parts = tagParts(name, prefixNames, raw)
+    if (!parts.hasScope) return parts.label
+    return if (prefixSelected) parts.label else "${parts.scope}: ${parts.label}"
+}
+
 /** Canonical prefixes of GitLab label rules that map a label to a NON-tag action
  *  (status / priority / board / ignore / …). Those labels aren't user tags, so they
  *  are hidden from the ADD tag-picker (web `metaPrefixesFromRules`). Only prefix-type
- *  rules qualify — regex rules can't be reduced to a stable prefix, so their tags stay. */
+ *  rules qualify — regex rules can't be reduced to a stable prefix, so their tags stay.
+ *
+ *  Префиксность спрашивается у [GitlabRule.isPrefixMatch], а не сравнением с `"prefix"`:
+ *  правило с пустым `match_type` сервер разбирает как префиксное, и оно так и работает —
+ *  «S: Done» превращается в колонку. Строгое сравнение выбрасывало такое правило из
+ *  набора, и его мета-лейблы оставались в ADD-пикере: навесив «S: Done» руками, человек
+ *  получал тег, расходящийся с колонкой, которой тот же лейбл управляет. */
 fun metaPrefixesFromRules(rules: List<GitlabRule>): Set<String> =
     rules.asSequence()
-        .filter { it.matchType == "prefix" && it.action.isNotBlank() && it.action != "tag" }
+        .filter { it.isPrefixMatch && it.action.isNotBlank() && it.action != "tag" }
         .map { canonPrefix(it.match) }
         .filter { it.isNotEmpty() }
         .toSet()

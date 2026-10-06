@@ -31,6 +31,7 @@ import { quoteFromBlock } from '@/utils/docComments'
 import { scrollToBlockId } from '@/utils/docExtensions/internalLink'
 import { docOutline, headingLabel, internalHref, internalTargetId } from '@/utils/docToc'
 import { MAX_PDF_BYTES, formatFileSize } from '@/utils/docPdf'
+import { mediaPickMessage } from '@/utils/upload'
 import DocToolbar from './DocToolbar.vue'
 
 const props = defineProps({
@@ -102,7 +103,7 @@ function build() {
     editable: props.editable,
     extensions: docExtensions({
       placeholder: props.placeholder,
-      uploadImage: (file) => props.uploadImage?.(file),
+      uploadImage: (file) => uploadImageChecked(file),
       onUploadError: (err) => message.error(err?.message || t('documents.editor.error.image')),
       // The "Изображение" entry of the slash menu opens the picker below; the
       // menu itself has no business knowing about file inputs.
@@ -227,6 +228,33 @@ function syncSlash(e) {
   }
 }
 
+// The undo plugin's state field is named after its key (prosemirror-history
+// builds it from `new PluginKey('history')`).
+const HISTORY_KEY = 'history'
+
+/**
+ * Empties the undo stack.
+ *
+ * prosemirror-history keeps its stack in the plugin's own state field and
+ * exposes no way to clear it, so the stack is dropped the only way the library
+ * allows: take the plugin out of the configuration, which takes its field with
+ * it, and put the same plugin back — the field is missing from the new
+ * configuration, so it is initialised empty. Done through the editor's own
+ * register/unregister rather than by reconfiguring the view directly, which
+ * leaves the editor holding a state the view no longer has.
+ *
+ * Every other plugin keeps both its instance and its state, which is what keeps
+ * the lock and comment decorations on screen across the swap.
+ *
+ * @param {import('@tiptap/core').Editor} e the editor
+ */
+function forgetHistory(e) {
+  const hist = e?.state?.plugins?.find((p) => String(p.key).startsWith(`${HISTORY_KEY}$`))
+  if (!hist) return
+  e.unregisterPlugin(HISTORY_KEY)
+  e.registerPlugin(hist)
+}
+
 watch(
   () => props.modelValue,
   (next) => {
@@ -236,6 +264,14 @@ watch(
     // emitUpdate: false — loading a document is not an edit and must not start
     // an autosave cycle (which would then race the load it came from).
     editor.value.commands.setContent(ensureBlockIds(editableDoc(next)), { emitUpdate: false })
+    // The component is not remounted between documents (DocumentsView keeps one
+    // editor for the whole section, #2727), so without this the undo stack
+    // outlives the document it was recorded against: the first Ctrl+Z in the
+    // document just opened puts the previous one back — and an undo *is* a local
+    // edit, so the autosave then writes the wrong document over this one. Steps
+    // older than the swap are no better: remapped through it, the undo of a
+    // deletion becomes an insertion of the other document's text.
+    forgetHistory(editor.value)
   },
 )
 
@@ -279,13 +315,29 @@ async function onPdfFile(e) {
   }
 }
 
+// The asset route's rules (utils/upload.js), applied before the request rather
+// than after it. Every way an image reaches a page — the picker below, a drop,
+// a paste — goes through this one function, which is the point: the PDF beside
+// it has had a rule since #2733, while an 12 MB photo travelled the wire in full
+// only to come back as `document_assets.go`'s hardcoded Russian "файл слишком
+// большой", in whatever language the reader had chosen (#2932).
+//
+// It throws rather than returning a code because both callers already have a
+// catch that shows `err.message`: the picker below, and the drop/paste plugin
+// via onUploadError.
+function uploadImageChecked(file) {
+  const bad = mediaPickMessage(file)
+  if (bad) throw new Error(bad)
+  return props.uploadImage?.(file)
+}
+
 async function onFile(e) {
   const file = e.target.files && e.target.files[0]
   e.target.value = ''
   if (!file || !props.uploadImage) return
   uploading.value = true
   try {
-    const url = await props.uploadImage(file)
+    const url = await uploadImageChecked(file)
     if (url) editor.value?.chain().focus().setImage({ src: url, alt: file.name }).run()
   } catch (err) {
     message.error(err.message || t('documents.editor.error.image'))

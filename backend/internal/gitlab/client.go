@@ -43,7 +43,7 @@ func newTransport() *http.Transport {
 		TLSHandshakeTimeout: 4 * time.Second,
 	}
 	if strings.EqualFold(os.Getenv("GITLAB_INSECURE_TLS"), "true") {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for self-hosted private CAs
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- opt-in for self-hosted private CAs
 	}
 	return tr
 }

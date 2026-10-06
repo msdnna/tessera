@@ -157,6 +157,7 @@ func downloadAttachment(c *client.Client) mcp.ToolHandlerFor[downloadAttachmentI
 		}
 
 		out := downloadAttachmentOut{DestDir: destDir}
+		taken := map[string]bool{}
 		for _, att := range wanted {
 			// The filename comes from whoever uploaded it: Base() strips any
 			// directory trickery so the write can't escape dest_dir.
@@ -164,6 +165,7 @@ func downloadAttachment(c *client.Client) mcp.ToolHandlerFor[downloadAttachmentI
 			if name == "." || name == string(filepath.Separator) || name == ".." {
 				name = att.ID
 			}
+			name = uniqueName(taken, name)
 			path := filepath.Join(destDir, name)
 			f, cErr := os.Create(path)
 			if cErr != nil {
@@ -183,8 +185,57 @@ func downloadAttachment(c *client.Client) mcp.ToolHandlerFor[downloadAttachmentI
 	}
 }
 
-// pickAttachments narrows a task's attachments to the requested one, or returns
+// uniqueName keeps one call's writes from landing on top of each other.
+//
+// Nothing makes an attachment's filename unique on a task: task_attachments has
+// no unique index over (task_id, filename), and UploadAttachment stores
+// filepath.Base of whatever was picked — so two "screenshot.png" (a re-upload
+// after a correction, the same log picked off two machines) are two ordinary
+// rows. Joining dest_dir with the bare name gave both of them one path, and
+// os.Create truncates: the file left on disk was the last one listed
+// (ListTaskAttachments orders by created_at, so the newest), while the reply
+// still reported every attachment — same path, different ids, different sizes.
+// A reader that opened the first path got the last one's bytes with nothing
+// saying so, and the size beside it belonged to a file that no longer existed
+// anywhere (#2932).
+//
+// The suffix is per call, not per directory: downloading a task twice into the
+// same dest_dir is meant to refresh it in place, so a file must keep the name it
+// had the first time instead of accumulating -2, -3 on every run. Keyed
+// case-insensitively because the server this runs on may sit on a filesystem
+// that is (macOS), where "Log.txt" and "log.txt" are also one file.
+func uniqueName(taken map[string]bool, name string) string {
+	key := strings.ToLower(name)
+	if !taken[key] {
+		taken[key] = true
+		return name
+	}
+	ext := filepath.Ext(name)
+	stem := strings.TrimSuffix(name, ext)
+	if stem == "" {
+		// A dotfile (".gitignore"): Ext reports the whole name, and "-2.gitignore"
+		// would rename the file rather than number it.
+		stem, ext = name, ""
+	}
+	for i := 2; ; i++ {
+		cand := fmt.Sprintf("%s-%d%s", stem, i, ext)
+		if k := strings.ToLower(cand); !taken[k] {
+			taken[k] = true
+			return cand
+		}
+	}
+}
+
+// pickAttachments narrows a task's attachments to the requested ones, or returns
 // them all when neither id nor filename was given.
+//
+// An id names exactly one row, so that match returns alone. A filename does not
+// (see uniqueName), and answering with the first row was the wrong half of the
+// ambiguity: the list is ordered by created_at, so "give me screenshot.png"
+// after a corrected re-upload handed back the version that was replaced. Every
+// match comes back instead — the caller asked for a file by name and gets each
+// file that has it, one path per row, which is the same shape the no-selector
+// branch already returns (#2932).
 func pickAttachments(all []model.Attachment, id, filename string) ([]model.Attachment, error) {
 	if len(all) == 0 {
 		return nil, fmt.Errorf("this task has no attachments")
@@ -193,11 +244,21 @@ func pickAttachments(all []model.Attachment, id, filename string) ([]model.Attac
 		return all, nil
 	}
 	var names []string
+	var matched []model.Attachment
 	for _, att := range all {
 		names = append(names, att.Filename)
-		if (id != "" && att.ID == id) || (filename != "" && strings.EqualFold(att.Filename, filename)) {
-			return []model.Attachment{att}, nil
+		if id != "" {
+			if att.ID == id {
+				return []model.Attachment{att}, nil
+			}
+			continue
 		}
+		if strings.EqualFold(att.Filename, filename) {
+			matched = append(matched, att)
+		}
+	}
+	if len(matched) > 0 {
+		return matched, nil
 	}
 	ref := id
 	if ref == "" {

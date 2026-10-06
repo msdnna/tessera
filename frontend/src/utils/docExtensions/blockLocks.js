@@ -62,6 +62,62 @@ export function lockAt(state, from, to = from) {
   return null
 }
 
+/**
+ * The holder of the top-level block at `index`, or null when it is free.
+ *
+ * Addressed by index rather than by position because that is the coordinate a
+ * move speaks in (blockMove.js): the commands there are handed "block 2 goes
+ * where block 1 is", and converting that back into positions to ask lockAt
+ * would re-derive the same ranges this reads off directly.
+ *
+ * @param {object} state ProseMirror editor state
+ * @param {number} index index into doc.content
+ * @returns {{block_id: string, name: string}|null}
+ */
+export function lockOnBlockIndex(state, index) {
+  const { locks } = blockLocksKey.getState(state) || { locks: [] }
+  if (!locks.length) return null
+  const block = blockRanges(state.doc)[index]
+  if (!block?.id) return null
+  return locks.find((l) => l.block_id === block.id) || null
+}
+
+/**
+ * The first holder among the blocks a move would relocate, or null when the
+ * whole span is free.
+ *
+ * The span rather than the two endpoints: moving block 4 to the top pushes 0..3
+ * down by one, and a block that changes place in the document has been edited
+ * whether or not it was the one picked up.
+ *
+ * @param {object} state ProseMirror editor state
+ * @param {number} from source index
+ * @param {number} to destination index
+ * @returns {{block_id: string, name: string}|null}
+ */
+export function lockInMoveSpan(state, from, to) {
+  for (let i = Math.min(from, to); i <= Math.max(from, to); i++) {
+    const held = lockOnBlockIndex(state, i)
+    if (held) return held
+  }
+  return null
+}
+
+/**
+ * Reports a refused edit through whatever the editor was configured with.
+ *
+ * Read off the plugin state rather than passed around, so a guard living in
+ * another extension (blockMove) tells the user who holds the block in exactly
+ * the same words as the guards inside this one, without the caller having to
+ * configure the callback twice.
+ *
+ * @param {object} state ProseMirror editor state
+ * @param {object} held the lock that refused the edit
+ */
+export function reportBlocked(state, held) {
+  blockLocksKey.getState(state)?.onBlocked?.(held)
+}
+
 /** Pushes a new lock roster into a live editor. */
 export function applyBlockLocks(view, locks) {
   if (!view) return
@@ -72,15 +128,62 @@ export function applyBlockLocks(view, locks) {
 // shortcuts stay allowed inside a locked block — being unable to *read* or copy
 // a paragraph someone else is editing would be a strictly worse experience than
 // the lock is worth.
-const EDITING_KEYS = new Set(['Enter', 'Backspace', 'Delete', 'Tab'])
+// These erase or split no matter what is held down with them, so they are
+// checked *before* any chord table: a modifier does not make Backspace harmless,
+// it makes it hungrier — Ctrl/Alt+Backspace eats the previous word and
+// Cmd+Backspace the rest of the line. Consulting EDITING_CHORDS first, as this
+// used to, let every one of those walk through a lock that stopped the bare key.
+const ALWAYS_EDITING_KEYS = new Set(['Enter', 'Backspace', 'Delete'])
+// Tab is the one editing key that stays modifier-sensitive: it only indents when
+// it arrives bare, and Ctrl/Alt+Tab belong to the browser — swallowing those
+// would break tab switching and blame a colleague's lock for it.
+const EDITING_KEYS = new Set([...ALWAYS_EDITING_KEYS, 'Tab'])
 const EDITING_CHORDS = new Set(['v', 'x', 'z', 'y', 'b', 'i', 'u', 'd', 'k'])
 
 function isEditingKey(event) {
+  if (ALWAYS_EDITING_KEYS.has(event.key)) return true
   if (event.ctrlKey || event.metaKey) return EDITING_CHORDS.has(event.key.toLowerCase())
   if (event.altKey) return false
   if (EDITING_KEYS.has(event.key)) return true
   // A single printable character; named keys ("ArrowLeft", "Shift") are longer.
   return event.key.length === 1
+}
+
+/**
+ * The string prosemirror-history tags its own undo/redo transactions with.
+ *
+ * Read off the live configuration rather than written out: PluginKey numbers
+ * duplicates ('history$', 'history$1', …), and DocEditor re-registers the plugin
+ * to empty the stack between documents.
+ *
+ * @param {object} state ProseMirror editor state
+ * @returns {string} the meta key, or '' when there is no history plugin
+ */
+function historyMetaKey(state) {
+  const hist = state.plugins.find((p) => String(p.key).startsWith('history$'))
+  return hist ? String(hist.key) : ''
+}
+
+/**
+ * The ranges a transaction rewrites, expressed in the document it started from.
+ *
+ * A step's own map speaks in the document *before that step*, so every map past
+ * the first is carried back through the inverse of the ones ahead of it —
+ * otherwise a two-step undo would be checked against positions that only exist
+ * halfway through itself.
+ *
+ * @param {object} tr the transaction
+ * @returns {Array<{from: number, to: number}>}
+ */
+function touchedRanges(tr) {
+  const out = []
+  tr.mapping.maps.forEach((map, i) => {
+    const back = i ? tr.mapping.slice(0, i).invert() : null
+    map.forEach((from, to) => {
+      out.push(back ? { from: back.map(from, -1), to: back.map(to, 1) } : { from, to })
+    })
+  })
+  return out
 }
 
 /**
@@ -93,6 +196,18 @@ function isEditingKey(event) {
  * refused by a transaction filter while anyone holds a lock; and a soft lock is
  * supposed to stop a person from typing, not to make the editor reject its own
  * programmatic edits.
+ *
+ * Undo and redo are the one thing that boundary cannot hold, so they get a
+ * filter of their own. Every input guard asks the same question — is the
+ * *caret* inside a locked block — and for typing that is the whole story,
+ * because typing lands where the caret is. Undo does not: it rewrites wherever
+ * the step it is taking back was recorded. Edit a paragraph, move the caret on
+ * (which releases it, so a colleague can take it), and Ctrl+Z puts your old text
+ * over theirs while the caret sits somewhere entirely legal — and since an undo
+ * is a local edit, the autosave then sends it. So the filter is narrow on
+ * purpose: only transactions prosemirror-history dispatched, checked against the
+ * ranges they actually rewrite. `setContent` and the remote merge carry no
+ * history meta and go through untouched.
  *
  * That is also the honest boundary of the MVP: this is cooperative locking, not
  * a merge. Two clients that both ignore the badge can still write the same block
@@ -116,11 +231,29 @@ export const BlockLocks = Extension.create({
       new Plugin({
         key: blockLocksKey,
         state: {
-          init: () => ({ locks: [] }),
+          // onBlocked rides in the state beside the roster: it is the only way
+          // an extension that is not this one can report a refusal, and every
+          // refusal has to look the same to the reader.
+          init: () => ({ locks: [], onBlocked: options.onBlocked }),
           apply(tr, value) {
             const next = tr.getMeta(SET_LOCKS)
-            return next ? { locks: next } : value
+            return next ? { ...value, locks: next } : value
           },
+        },
+        // Dropping the transaction leaves the history stack untouched — the
+        // whole thing is refused, including the new stack it carried — so the
+        // step stays available and lands once the block comes free.
+        filterTransaction(tr, state) {
+          if (!tr.docChanged) return true
+          const key = historyMetaKey(state)
+          if (!key || tr.getMeta(key) === undefined) return true
+          for (const r of touchedRanges(tr)) {
+            const held = lockAt(state, r.from, r.to)
+            if (!held) continue
+            options.onBlocked(held)
+            return false
+          }
+          return true
         },
         props: {
           decorations(state) {

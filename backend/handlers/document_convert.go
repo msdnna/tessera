@@ -9,7 +9,6 @@ import (
 	"log"
 	"mime/multipart"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -284,6 +283,16 @@ func (h *API) createImportedDocument(c *gin.Context, wsID uuid.UUID, fileName st
 			c.JSON(http.StatusBadRequest, gin.H{"error": "malformed project_id"})
 			return db.Document{}, false
 		}
+		// The same check the parent above already gets, and the same one
+		// CreateDocument gives its own project_id (documents.go). It was missing
+		// here alone, on the path both imports share: a project from another
+		// workspace was accepted verbatim, and ReassignProjectDocumentsWorkspace
+		// re-stamps workspace_id by project_id alone, so the next transfer of that
+		// project carried the imported document out of the workspace it was
+		// imported into — away from the team that owns it (#2932).
+		if !h.projectInWorkspace(c, id, wsID) {
+			return db.Document{}, false
+		}
 		projectID = &id
 	}
 
@@ -344,7 +353,7 @@ func (h *API) ExportDocument(c *gin.Context) {
 	// carries a single @page rule and would flatten a document's sections onto one
 	// sheet (#2849), which is the whole of what #2827 set out to fix.
 	if format == "html" {
-		out := []byte(renderDocHTML(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID)))
+		out := []byte(renderDocHTML(doc.Title, root, h.inlineDocAsset()))
 		c.Header("Content-Disposition", contentDisposition(doc.Title+"."+spec.ext))
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.Data(http.StatusOK, spec.mime, out)
@@ -355,7 +364,7 @@ func (h *API) ExportDocument(c *gin.Context) {
 		converterUnavailable(c, converter.ErrDisabled)
 		return
 	}
-	src := []byte(renderDocFODT(doc.Title, root, h.inlineDocAsset(doc.WorkspaceID)))
+	src := []byte(renderDocFODT(doc.Title, root, h.inlineDocAsset()))
 	out, err := h.converter.Convert(c, src, "fodt", format)
 	if err != nil {
 		converterUnavailable(c, err)
@@ -391,6 +400,9 @@ const (
 
 // dropReasonText is what the user reads in the import warning, so it says what
 // happened to their document rather than which branch was taken.
+//
+// #nosec G101 -- these are user-facing Russian warning texts; the entropy check
+// misreads the literal block as a secret
 var dropReasonText = map[dropReason]string{
 	dropUnreadable:  "не удалось разобрать разметку",
 	dropCountLimit:  "превышен лимит на число картинок в одном импорте",
@@ -496,7 +508,7 @@ func logSuffix(s importImageStats) string {
 // client and to the log — because a document that quietly lost half its figures
 // looks like a successful import until somebody scrolls.
 func (h *API) storeImportedImages(doc db.Document, page string) (string, importImageStats) {
-	dir := filepath.Join(h.uploadDir, "documents", doc.ID.String())
+	dir := h.docAssetDir(doc.ID)
 	stats := importImageStats{}
 	total := 0
 	made := false
@@ -543,14 +555,14 @@ func (h *API) storeImportedImages(doc db.Document, page string) (string, importI
 			return ""
 		}
 		if !made {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
+			if err := os.MkdirAll(dir, 0o750); err != nil {
 				stats.drop(dropMkdir, mime, len(raw))
 				return ""
 			}
 			made = true
 		}
 		fname := uuid.NewString() + ext
-		if err := os.WriteFile(filepath.Join(dir, fname), raw, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, fname), raw, 0o600); err != nil {
 			stats.drop(dropWrite, mime, len(raw))
 			return ""
 		}
@@ -601,23 +613,6 @@ func exportFormatsFor(info converter.Info) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// contentDisposition builds an attachment header that survives a Cyrillic
-// title. The ASCII filename is a fallback for clients that do not read RFC 5987;
-// without the starred form a document called "Протокол" downloads as a row of
-// underscores.
-func contentDisposition(name string) string {
-	ascii := make([]rune, 0, len(name))
-	for _, r := range name {
-		if r < 32 || r > 126 || r == '"' || r == '\\' {
-			ascii = append(ascii, '_')
-			continue
-		}
-		ascii = append(ascii, r)
-	}
-	return fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`,
-		string(ascii), url.PathEscape(name))
 }
 
 // readUpload reads a multipart file into memory under a ceiling.

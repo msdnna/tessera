@@ -42,17 +42,24 @@ func TestAccessTokenWrongSecret(t *testing.T) {
 func TestMediaTokenIsSeparateFromAccessToken(t *testing.T) {
 	secret := "test-secret-at-least-32-characters-long!!"
 	id := uuid.New()
+	session := uuid.New()
 
-	media, err := NewMediaToken(secret, id)
+	media, err := NewMediaToken(secret, id, session)
 	if err != nil {
 		t.Fatalf("NewMediaToken: %v", err)
 	}
-	got, err := ParseMediaToken(secret, media)
+	got, gotSession, err := ParseMediaToken(secret, media)
 	if err != nil {
 		t.Fatalf("ParseMediaToken: %v", err)
 	}
 	if got != id {
 		t.Fatalf("subject mismatch: got %v want %v", got, id)
+	}
+	// The session the cookie names is what revocation acts on (#2932): without it
+	// the verifier has nothing to look up but the account, and the credential
+	// outlives every gesture that ends the session.
+	if gotSession != session {
+		t.Fatalf("session mismatch: got %v want %v", gotSession, session)
 	}
 
 	if _, err := ParseAccessToken(secret, media); err == nil {
@@ -63,10 +70,10 @@ func TestMediaTokenIsSeparateFromAccessToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAccessToken: %v", err)
 	}
-	if _, err := ParseMediaToken(secret, access); err == nil {
+	if _, _, err := ParseMediaToken(secret, access); err == nil {
 		t.Error("an access token was accepted as a media token")
 	}
-	if _, err := ParseMediaToken(secret+"x", media); err == nil {
+	if _, _, err := ParseMediaToken(secret+"x", media); err == nil {
 		t.Error("a media token verified under the wrong secret")
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"tessera/internal/db"
 )
 
@@ -88,6 +90,50 @@ func TestQuietWindow(t *testing.T) {
 	}
 }
 
+// The end of the window is a reading on the user's wall clock, so the day the
+// clocks change must not move it. Computing it as a duration from local midnight
+// did: the autumn Sunday lasts 25 hours, so midnight+7h is 06:00 and the phone
+// starts buzzing an hour before the user said it may; the spring one lasts 23, so
+// the same sum is 08:00 and holds delivery an hour too long. Every other case in
+// TestQuietWindow runs in UTC, where no day is ever anything but 24 hours.
+func TestQuietWindowAcrossClockChange(t *testing.T) {
+	berlin, err := time.LoadLocation("Europe/Berlin")
+	if err != nil {
+		t.Skipf("tzdata for Europe/Berlin unavailable: %v", err)
+	}
+	// Quiet 22:00–07:00 (wrapping), read in the user's own zone.
+	const startMin, endMin = 1320, 420
+	local := func(y int, mo time.Month, d, h, m int) time.Time {
+		return time.Date(y, mo, d, h, m, 0, 0, berlin)
+	}
+	cases := []struct {
+		name string
+		now  time.Time
+		want time.Time
+	}{
+		// 2026-10-25 is the 25-hour Sunday (03:00 CEST → 02:00 CET).
+		{"autumn, inside the long night", local(2026, 10, 25, 1, 0), local(2026, 10, 25, 7, 0)},
+		// Same night entered before midnight — the "resumes tomorrow" branch, which
+		// used to add a flat 24 hours to a day that has 25.
+		{"autumn, entered the evening before", local(2026, 10, 24, 23, 0), local(2026, 10, 25, 7, 0)},
+		// 2026-03-29 is the 23-hour Sunday (02:00 CET → 03:00 CEST).
+		{"spring, inside the short night", local(2026, 3, 29, 1, 0), local(2026, 3, 29, 7, 0)},
+		{"spring, entered the evening before", local(2026, 3, 28, 23, 0), local(2026, 3, 29, 7, 0)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			end, quiet := quietWindow(true, startMin, endMin, "Europe/Berlin", tc.now)
+			if !quiet {
+				t.Fatalf("%s should be inside 22:00–07:00", tc.now.Format(time.RFC3339))
+			}
+			if !end.Equal(tc.want) {
+				t.Errorf("window ends %s, want %s (07:00 on the user's clock)",
+					end.In(berlin).Format(time.RFC3339), tc.want.Format(time.RFC3339))
+			}
+		})
+	}
+}
+
 func TestDueShouldFire(t *testing.T) {
 	due := time.Date(2026, 6, 16, 18, 0, 0, 0, time.UTC)
 	state := func(firedDue time.Time, last time.Time) *db.DueNotificationState {
@@ -116,5 +162,132 @@ func TestDueShouldFire(t *testing.T) {
 				t.Fatalf("dueShouldFire = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// A digest is only ever combined out of rows the drain claims in one tick
+// (deliverGroup groups whatever ClaimPendingDeliveries returned), so two
+// notifications inside the same window have to come due at the *same* instant
+// and under the same group key — otherwise each is delivered on its own and the
+// window is nothing but a delay. The user-facing promise is per-window, not
+// per-notification: "уведомления за окно объединяются в одно сообщение на канал".
+func TestDigestSlotCombinesWholeWindow(t *testing.T) {
+	ch := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	window := int32(30)
+	first := time.Date(2026, 6, 16, 10, 2, 0, 0, time.UTC)
+	later := time.Date(2026, 6, 16, 10, 21, 30, 0, time.UTC) // same 10:00–10:30 window
+
+	at1, g1 := digestSlot(first, noQuiet, window, ch)
+	at2, g2 := digestSlot(later, noQuiet, window, ch)
+	if !at1.Equal(at2) {
+		t.Fatalf("two notifications in one window come due apart: %v vs %v — delivered separately", at1, at2)
+	}
+	if g1 != g2 {
+		t.Fatalf("same window, different digest group: %q vs %q", g1, g2)
+	}
+	if !at1.After(first) || at1.Sub(first) > time.Duration(window)*time.Minute {
+		t.Fatalf("due %v is not inside the window that follows %v", at1, first)
+	}
+
+	// The next window is a separate digest: its rows must not wait for, or merge
+	// into, the one that already went out.
+	next := time.Date(2026, 6, 16, 10, 31, 0, 0, time.UTC)
+	at3, g3 := digestSlot(next, noQuiet, window, ch)
+	if g3 == g1 {
+		t.Fatalf("next window reuses the spent group key %q", g3)
+	}
+	if !at3.After(at1) {
+		t.Fatalf("next window due %v must follow the previous digest %v", at3, at1)
+	}
+}
+
+// noQuiet is digestSlot's "quiet hours off" case.
+func noQuiet(time.Time) (time.Time, bool) { return time.Time{}, false }
+
+// quietHours binds a real quiet window (minutes since midnight, UTC) into the
+// callback digestSlot takes, so these tests exercise quietWindow itself rather
+// than a hand-rolled stand-in — the slot has to be judged at its own instant,
+// which is the part a fixed "ends at" value cannot express.
+func quietHours(startMin, endMin int) quietFn {
+	return func(t time.Time) (time.Time, bool) {
+		return quietWindow(true, startMin, endMin, "UTC", t)
+	}
+}
+
+// Quiet hours and the digest compose: everything released at the window's end is
+// one burst, so it must be combined rather than arrive as a stream. And with no
+// digest configured, delivery still resumes exactly when the quiet window ends.
+func TestDigestSlotWithQuietHours(t *testing.T) {
+	ch := uuid.MustParse("22222222-2222-2222-2222-222222222222")
+	quiet := quietHours(22*60, 8*60) // 22:00–08:00
+	qEnd := time.Date(2026, 6, 16, 8, 0, 0, 0, time.UTC)
+
+	// No digest: quiet hours alone decide, and they only ever push delivery later.
+	now := time.Date(2026, 6, 16, 3, 0, 0, 0, time.UTC)
+	if at, g := digestSlot(now, quiet, 0, ch); !at.Equal(qEnd) || g != "" {
+		t.Fatalf("no digest, quiet → at=%v g=%q, want %v and no group", at, g, qEnd)
+	}
+	if at, _ := digestSlot(now, noQuiet, 0, ch); !at.Equal(now) {
+		t.Fatalf("no digest, no quiet → at=%v, want now", at)
+	}
+
+	// Digest shorter than the remaining quiet time: the window may not release a
+	// delivery before quiet hours are over.
+	at1, g1 := digestSlot(now, quiet, 30, ch)
+	at2, g2 := digestSlot(now.Add(2*time.Hour), quiet, 30, ch)
+	if at1.Before(qEnd) || at2.Before(qEnd) {
+		t.Fatalf("delivery escapes quiet hours: %v / %v before %v", at1, at2, qEnd)
+	}
+	if !at1.Equal(at2) || g1 != g2 {
+		t.Fatalf("quiet-release burst not combined: %v/%q vs %v/%q", at1, g1, at2, g2)
+	}
+}
+
+// A digest slot can fall inside quiet hours even though nothing in it arrived
+// there. The burst waits for the next boundary on the grid, and that boundary
+// may sit past the minute the window opens: a mention at 21:40 with an hourly
+// digest comes due at exactly 22:00. Without the digest the very same mention
+// would have been e-mailed at 21:40, while it was still allowed — so batching
+// turns a permitted delivery into a nightly one, which is the single thing the
+// quiet window is set for (#2932).
+func TestDigestSlotDoesNotLandInsideQuietHours(t *testing.T) {
+	ch := uuid.MustParse("33333333-3333-3333-3333-333333333333")
+	quiet := quietHours(22*60, 8*60) // 22:00–08:00
+	evening := time.Date(2026, 6, 16, 21, 40, 0, 0, time.UTC)
+
+	at, group := digestSlot(evening, quiet, 60, ch)
+	if _, inQuiet := quiet(at); inQuiet {
+		t.Fatalf("digest of a 21:40 notification comes due at %v — inside the quiet window it was batched past", at)
+	}
+
+	// Held, not dropped, and held to the same release a notification that did
+	// arrive mid-quiet gets: the straggler joins the morning digest instead of
+	// becoming a message of its own.
+	night, gNight := digestSlot(time.Date(2026, 6, 17, 2, 0, 0, 0, time.UTC), quiet, 60, ch)
+	if !at.Equal(night) || group != gNight {
+		t.Fatalf("pre-quiet straggler %v/%q is not in the morning digest %v/%q", at, group, night, gNight)
+	}
+
+	// The grid itself is untouched when the user keeps no quiet hours — the slot
+	// only moves because the window is there.
+	if plain, _ := digestSlot(evening, noQuiet, 60, ch); !plain.Equal(time.Date(2026, 6, 16, 22, 0, 0, 0, time.UTC)) {
+		t.Fatalf("no quiet hours → due %v, want the 22:00 boundary", plain)
+	}
+}
+
+// A quiet range wider than the digest grid has no free slot to move to: quiet
+// 00:10–00:00 leaves ten minutes of the day, and every boundary an hourly digest
+// can pick is inside the window. Delivery then falls back to the anchor — the
+// moment the window ends — rather than to a slot the user asked not to be
+// disturbed in.
+func TestDigestSlotQuietWiderThanGrid(t *testing.T) {
+	ch := uuid.MustParse("44444444-4444-4444-4444-444444444444")
+	quiet := quietHours(10, 0) // 00:10 → midnight: all but ten minutes
+	at, _ := digestSlot(time.Date(2026, 6, 16, 12, 0, 0, 0, time.UTC), quiet, 60, ch)
+	if _, inQuiet := quiet(at); inQuiet {
+		t.Fatalf("delivery due at %v, inside an all-day quiet window", at)
+	}
+	if want := time.Date(2026, 6, 17, 0, 0, 0, 0, time.UTC); !at.Equal(want) {
+		t.Fatalf("due %v, want the window's end %v", at, want)
 	}
 }

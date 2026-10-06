@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
@@ -74,19 +75,63 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 	if req.DueRepeatMinutes < 0 {
 		req.DueRepeatMinutes = 0
 	}
+	// Только кламп снизу здесь и стоял, и всё, что выше, уходило в
+	// `time.Duration(x) * time.Minute` — переполнение int64 переворачивает знак и
+	// превращает «раз в 4084 года» в «каждую минуту», а «за 4084 года до срока» —
+	// в «через трое суток после». См. maxDueMinutes.
+	if req.DueLeadMinutes > maxDueMinutes || req.DueRepeatMinutes > maxDueMinutes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "срок предупреждения и интервал повтора не могут быть больше года"})
+		return
+	}
+	// The window is read in this zone, and quietWindow resolves it with
+	// time.LoadLocation — a name it cannot resolve leaves UTC in place without a
+	// word (pinned by TestQuietWindowUnknownZoneSilentlyMeansUTC). Stored
+	// unvalidated it makes the feature lie in a way both clients corroborate: the
+	// PUT answers 200 and echoes the string, so the screens print the zone the
+	// user picked while the server silences a window shifted by their whole
+	// offset. Refused at the door instead — a rejected save is visible, a night
+	// spent unsilenced is not. Empty stays legal: it is the documented "evaluate
+	// in UTC" value and the default for a user who never customised. Checked even
+	// with quiet hours off, so a bad zone cannot lie in wait for the switch.
+	tz := strings.TrimSpace(req.QuietTz)
+	if tz != "" {
+		if _, err := time.LoadLocation(tz); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "неизвестный часовой пояс: " + tz})
+			return
+		}
+	}
+	// A window nobody could have meant is refused rather than stored: past a day
+	// the batching is no longer a delay the user traded for, and past int32's
+	// halfway mark the duration arithmetic in digestSlot overflows and starts
+	// scheduling into the past — see maxDigestMinutes.
+	if req.DigestMinutes > maxDigestMinutes {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "окно дайджеста не может быть больше суток"})
+		return
+	}
+	// Read before write: the outbox rows already deferred by the old window have
+	// to be re-anchored to the new one, and only a real change may do it (see
+	// reanchorDeliveries / scheduleChanged).
+	uid := middleware.CurrentUser(c)
+	before, berr := h.q.GetNotificationPrefs(c, uid)
+	if berr != nil {
+		before = defaultPrefs(uid)
+	}
 	p, err := h.q.UpsertNotificationPrefs(c, db.UpsertNotificationPrefsParams{
-		UserID: middleware.CurrentUser(c), DueEnabled: req.DueEnabled,
+		UserID: uid, DueEnabled: req.DueEnabled,
 		DueLeadMinutes: req.DueLeadMinutes, DueRepeatMinutes: req.DueRepeatMinutes,
 		ReminderEnabled:   req.ReminderEnabled,
 		QuietEnabled:      req.QuietEnabled,
 		QuietStartMinutes: clampMinuteOfDay(req.QuietStartMinutes),
 		QuietEndMinutes:   clampMinuteOfDay(req.QuietEndMinutes),
-		QuietTz:           strings.TrimSpace(req.QuietTz),
+		QuietTz:           tz,
 		DigestMinutes:     max(0, req.DigestMinutes),
 	})
 	if err != nil {
 		fail(c, err)
 		return
+	}
+	if scheduleChanged(before, p) {
+		h.reanchorDeliveries(c, uid, p)
 	}
 	c.JSON(http.StatusOK, prefsViewOf(p))
 }
@@ -115,6 +160,13 @@ func (h *API) SetTaskDueNotify(c *gin.Context) {
 	}
 	if req.RepeatMinutes != nil && *req.RepeatMinutes < 0 {
 		*req.RepeatMinutes = 0
+	}
+	// Вторая дверь к той же арифметике: пер-задачный override побеждает
+	// пользовательский дефолт, так что граница здесь та же (см. maxDueMinutes).
+	if (req.LeadMinutes != nil && *req.LeadMinutes > maxDueMinutes) ||
+		(req.RepeatMinutes != nil && *req.RepeatMinutes > maxDueMinutes) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "срок предупреждения и интервал повтора не могут быть больше года"})
+		return
 	}
 	t, err := h.q.SetTaskDueNotify(c, db.SetTaskDueNotifyParams{
 		ID: id, DueLeadMinutes: req.LeadMinutes, DueRepeatMinutes: req.RepeatMinutes, DueNotifyEnabled: req.Enabled,

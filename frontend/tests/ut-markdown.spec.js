@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   renderMarkdown,
   renderRich,
-  replaceOutsideCode,
+  replaceOutsideMarkup,
   sanitizeSvgFragment,
   toggleTaskMarker,
   toEditorHtml,
@@ -153,19 +153,19 @@ describe('renderRich', () => {
   })
 })
 
-describe('replaceOutsideCode', () => {
+describe('replaceOutsideMarkup', () => {
   it('applies the callback only outside code elements', () => {
-    const out = replaceOutsideCode('a<code>b</code>c', (part) => part.toUpperCase())
+    const out = replaceOutsideMarkup('a<code>b</code>c', (part) => part.toUpperCase())
     expect(out).toBe('A<code>b</code>C')
   })
 
   it('treats a <pre><code> fence as a single untouched block', () => {
-    const out = replaceOutsideCode('x<pre><code>y</code></pre>z', (part) => part.toUpperCase())
+    const out = replaceOutsideMarkup('x<pre><code>y</code></pre>z', (part) => part.toUpperCase())
     expect(out).toBe('X<pre><code>y</code></pre>Z')
   })
 
   it('passes content through untouched when there is no code at all', () => {
-    expect(replaceOutsideCode('plain', (p) => `[${p}]`)).toBe('[plain]')
+    expect(replaceOutsideMarkup('plain', (p) => `[${p}]`)).toBe('[plain]')
   })
 })
 
@@ -193,6 +193,68 @@ describe('toggleTaskMarker', () => {
   it('passes through empty / falsy source', () => {
     expect(toggleTaskMarker('', 0)).toBe('')
     expect(toggleTaskMarker(null, 0)).toBeNull()
+  })
+
+  // The index the preview sends is the position of the clicked <input> among the
+  // rendered checkboxes (RichContent counts them with querySelectorAll), so the
+  // only thing that makes a rewrite correct is this: re-rendering the result must
+  // differ from the original by that one box and nothing else. Asserting on the
+  // markdown text instead would just restate whatever the scanner happens to do.
+  const boxes = (src) => [...renderMarkdown(src).matchAll(/<input\b[^>]*type="checkbox"[^>]*>/g)]
+  function expectFlipsOnly(src, index) {
+    const before = boxes(src).map((m) => m[0])
+    const out = toggleTaskMarker(src, index)
+    const after = boxes(out).map((m) => m[0])
+    expect(after).toHaveLength(before.length)
+    after.forEach((box, i) => {
+      if (i === index) expect(box, `box ${i} must flip`).not.toBe(before[i])
+      else expect(box, `box ${i} must not move`).toBe(before[i])
+    })
+    return out
+  }
+
+  it('skips a marker inside a fenced code block', () => {
+    const src = '```\n- [ ] sample\n```\n\n- [ ] real\n'
+    const out = expectFlipsOnly(src, 0)
+    expect(out).toContain('- [ ] sample') // the code sample is not user state
+  })
+
+  it('skips a marker inside an indented code block', () => {
+    const src = '    - [ ] sample\n\ntext\n\n- [ ] real\n'
+    const out = expectFlipsOnly(src, 0)
+    expect(out).toContain('    - [ ] sample')
+  })
+
+  it('counts a task item inside a blockquote', () => {
+    const src = '> - [ ] quoted\n\n- [ ] real\n'
+    expectFlipsOnly(src, 0)
+    expectFlipsOnly(src, 1)
+  })
+
+  it('skips a bracket pair that renders as plain text', () => {
+    // No space after the "]" — GFM leaves it as literal text, so it is not a box.
+    const src = '- [ ]glued\n\n- [ ] real\n'
+    const out = expectFlipsOnly(src, 0)
+    expect(out).toContain('- [ ]glued')
+  })
+
+  it('follows document order through nested lists', () => {
+    const src = '- [ ] outer\n  - [ ] inner\n- [ ] sibling\n'
+    expectFlipsOnly(src, 0)
+    expectFlipsOnly(src, 1)
+    expectFlipsOnly(src, 2)
+  })
+
+  it('unchecks through the same path', () => {
+    const src = '```\n- [x] sample\n```\n\n- [x] real\n'
+    const out = expectFlipsOnly(src, 0)
+    expect(out).toContain('- [x] sample')
+  })
+
+  it('leaves the source alone when no rendered box has that index', () => {
+    const src = '```\n- [ ] sample\n```\n\n- [ ] real\n'
+    expect(toggleTaskMarker(src, 1)).toBe(src)
+    expect(toggleTaskMarker(src, -1)).toBe(src)
   })
 })
 

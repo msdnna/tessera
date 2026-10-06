@@ -35,7 +35,8 @@ class DocApprovalsTest {
         status: String = DocumentApprovalStatus.PENDING,
         mode: String = DocumentApprovalMode.SEQUENTIAL,
         steps: List<DocumentApprovalStep> = emptyList(),
-    ) = DocumentApproval(id = id, status = status, mode = mode, steps = steps)
+        createdBy: String? = null,
+    ) = DocumentApproval(id = id, status = status, mode = mode, steps = steps, createdBy = createdBy)
 
     @Test
     fun `steps come out in route order, whatever order the server sent them`() {
@@ -181,6 +182,47 @@ class DocApprovalsTest {
         assertThat(
             canRaiseApproval(listOf(route(status = DocumentApprovalStatus.APPROVED), route())),
         ).isFalse()
+    }
+
+    // ── withdrawing a route ─────────────────────────────────────────────────
+    // CancelDocumentApproval takes the route's author and workspace managers and
+    // answers 403 to everyone else. «Отозвать маршрут» sat under every open
+    // route, so the approver the route is waiting on — the likeliest person to
+    // have it open — was shown a button that refuses.
+
+    @Test
+    fun `only the author and a manager may withdraw a route`() {
+        val mine = route(createdBy = "u1", steps = listOf(step("s1", "u2", position = 0)))
+
+        assertThat(canCancelApproval(mine, "u1", "member")).isTrue()
+        // The approver being waited on is not the author.
+        assertThat(canCancelApproval(mine, "u2", "member")).isFalse()
+        assertThat(canCancelApproval(mine, "u2", "admin")).isTrue()
+        assertThat(canCancelApproval(mine, "u2", "owner")).isTrue()
+    }
+
+    @Test
+    fun `a closed route offers nobody the button`() {
+        for (status in listOf(
+            DocumentApprovalStatus.APPROVED,
+            DocumentApprovalStatus.REJECTED,
+            DocumentApprovalStatus.CANCELLED,
+        )) {
+            val closed = route(status = status, createdBy = "u1")
+            assertThat(canCancelApproval(closed, "u1", "owner")).isFalse()
+        }
+    }
+
+    @Test
+    fun `a route whose author is gone is not everybody's to withdraw`() {
+        // created_by goes NULL with the account; comparing two blanks would hand
+        // the button to a session that has not finished loading.
+        val orphan = route(createdBy = null)
+        assertThat(canCancelApproval(orphan, "", "member")).isFalse()
+        assertThat(canCancelApproval(orphan, null, "member")).isFalse()
+        // The roster has not arrived yet, so the role is blank — hidden, not 403.
+        assertThat(canCancelApproval(orphan, "u1", "")).isFalse()
+        assertThat(canCancelApproval(null, "u1", "owner")).isFalse()
     }
 
     @Test

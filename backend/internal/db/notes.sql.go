@@ -160,6 +160,38 @@ func (q *Queries) NotesMissingSlug(ctx context.Context) ([]NotesMissingSlugRow, 
 	return items, nil
 }
 
+const projectNoteSlugs = `-- name: ProjectNoteSlugs :many
+SELECT id, slug FROM notes WHERE project_id = $1 AND slug <> '' ORDER BY created_at
+`
+
+type ProjectNoteSlugsRow struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+}
+
+// ProjectNoteSlugs lists the addresses a project's notes occupy, for the same
+// reason as ProjectDocumentSlugs: notes_ws_slug_key is per workspace and a
+// transfer carries the notes into one that may already use those addresses.
+func (q *Queries) ProjectNoteSlugs(ctx context.Context, projectID *uuid.UUID) ([]ProjectNoteSlugsRow, error) {
+	rows, err := q.db.Query(ctx, projectNoteSlugs, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectNoteSlugsRow
+	for rows.Next() {
+		var i ProjectNoteSlugsRow
+		if err := rows.Scan(&i.ID, &i.Slug); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reassignProjectNotesWorkspace = `-- name: ReassignProjectNotesWorkspace :exec
 UPDATE notes SET workspace_id = $2 WHERE project_id = $1
 `

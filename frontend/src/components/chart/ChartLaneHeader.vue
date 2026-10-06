@@ -40,7 +40,10 @@ defineEmits(['toggle'])
         class="lane-dot"
         :style="{ background: lane.color ? hueGrad(lane.color) : 'var(--t-accent-grad)' }"
       />
-      <span class="lane-name">{{ lane.label }}</span>
+      <!-- `title` is not decoration: the left column is a fixed width and the
+           caption below is clipped to one line, while a tag or status lane is
+           named by whatever the reader called the tag or the column (#2932). -->
+      <span class="lane-name" :title="lane.label">{{ lane.label }}</span>
       <span class="lane-count">{{
         t('task.subtasks.progress', { done: lane.done || 0, total: lane.tasks.length })
       }}</span>

@@ -1,6 +1,7 @@
 package website.msdnna.tessera.util
 
 import com.google.common.truth.Truth.assertThat
+import java.util.Locale
 import org.junit.Test
 import website.msdnna.tessera.data.model.ConferenceMessage
 import website.msdnna.tessera.ui.viewmodels.ConferenceChatUiState
@@ -70,6 +71,46 @@ class ConferenceChatTest {
         assertThat(result.refusal).isEqualTo(ConfPickRefusal.TOO_BIG)
         assertThat(result.refusedName).isEqualTo("huge.mp4")
         assertThat(result.pending).hasSize(CONF_CHAT_MAX_FILES)
+    }
+
+    // The rule that bounds the *request* rather than a file. CONF_CHAT_MAX_FILES
+    // says how many may travel, never how much: five 20 MB videos passed both
+    // checks here and on the web, and the server refused the batch — for most of
+    // this route's life not even with its own sentence, because the route carried
+    // no body budget and the transport answered first with "request body too
+    // large", which names nothing the user picked (#2932).
+    @Test
+    fun `a batch over the total cap is refused, and what fits is kept`() {
+        val ten = 10L * 1024 * 1024
+
+        val result = confChatAccept(
+            emptyList(),
+            listOf(file("а.mp4", ten), file("б.mp4", ten), file("в.mp4", ten)),
+        )
+
+        assertThat(result.pending.map { it.name }).containsExactly("а.mp4", "б.mp4").inOrder()
+        assertThat(result.refusal).isEqualTo(ConfPickRefusal.TOO_BIG_TOTAL)
+        assertThat(result.refusedName).isEqualTo("в.mp4")
+    }
+
+    @Test
+    fun `the total counts what is already queued`() {
+        val already = listOf(file("снято.mp4", CONF_CHAT_MAX_TOTAL_BYTES - 1024))
+
+        val result = confChatAccept(already, listOf(file("ещё.png", 2 * 1024)))
+
+        assertThat(result.pending).hasSize(1)
+        assertThat(result.refusal).isEqualTo(ConfPickRefusal.TOO_BIG_TOTAL)
+    }
+
+    @Test
+    fun `a batch landing exactly on the total cap goes through`() {
+        val half = CONF_CHAT_MAX_TOTAL_BYTES / 2
+
+        val result = confChatAccept(emptyList(), listOf(file("a", half), file("b", CONF_CHAT_MAX_TOTAL_BYTES - half)))
+
+        assertThat(result.pending).hasSize(2)
+        assertThat(result.refusal).isEqualTo(ConfPickRefusal.NONE)
     }
 
     // ── the composer ──────────────────────────────────────────────────────
@@ -217,6 +258,58 @@ class ConferenceChatTest {
         assertThat(confChatUnread(messages, lastSeenId = "", meId = "me")).isEqualTo(2)
     }
 
+    // ── the anchor outliving the line it names ────────────────────────────
+
+    @Test
+    fun `a deleted anchor falls back to the newest line still there`() {
+        val previous = listOf(
+            msg("a", "1", userId = "them"),
+            msg("b", "2", userId = "them"),
+            msg("seen", "3", userId = "them"),
+            msg("new", "4", userId = "them"),
+        )
+        // The page that reports the deletion is the same page minus the line.
+        val merged = previous.filterNot { it.id == "seen" }
+
+        val anchor = confChatReanchor(previous, merged, "seen")
+
+        assertThat(anchor).isEqualTo("b")
+        // The whole point: one removed line must not badge the rail with a
+        // conversation the reader had already caught up with.
+        assertThat(confChatUnread(merged, lastSeenId = anchor, meId = "me")).isEqualTo(1)
+    }
+
+    @Test
+    fun `an anchor whose line survives is left alone`() {
+        val previous = listOf(msg("a", "1"), msg("seen", "2"), msg("new", "3"))
+
+        assertThat(confChatReanchor(previous, previous, "seen")).isEqualTo("seen")
+        // An empty anchor is a fact — the reader has been shown nothing — and
+        // re-anchoring must not invent a position for it.
+        assertThat(confChatReanchor(previous, previous, "")).isEmpty()
+    }
+
+    @Test
+    fun `nothing above the anchor survived means nothing was seen`() {
+        val previous = listOf(msg("seen", "1"), msg("b", "2"))
+        // The oldest line on screen was the anchor and it is gone: what is left
+        // arrived after it, so the badge is right to count all of it.
+        assertThat(confChatReanchor(previous, listOf(msg("b", "2")), "seen")).isEmpty()
+
+        // A page with no overlap at all replaces the list wholesale (a tunnel
+        // and fifty-one new messages) — again, none of it has been shown.
+        assertThat(confChatReanchor(previous, listOf(msg("z", "9")), "seen")).isEmpty()
+    }
+
+    @Test
+    fun `an anchor from outside the replaced list is kept`() {
+        // Nothing here says where the reader stopped, so guessing a position
+        // would be worse than keeping the id and letting it resolve later.
+        val previous = listOf(msg("a", "1"), msg("b", "2"))
+
+        assertThat(confChatReanchor(previous, previous, "elsewhere")).isEqualTo("elsewhere")
+    }
+
     @Test
     fun `an open sheet never shows a badge`() {
         val messages = listOf(msg("a", "1", userId = "them"))
@@ -239,13 +332,34 @@ class ConferenceChatTest {
 
     @Test
     fun `sizes split into a number and a localisable unit`() {
-        assertThat(confFileSize(512)).isEqualTo(ConfFileSize("512", ConfSizeUnit.BYTES))
-        assertThat(confFileSize(2048)).isEqualTo(ConfFileSize("2", ConfSizeUnit.KB))
-        assertThat(confFileSize(3L * 1024 * 1024)).isEqualTo(ConfFileSize("3.0", ConfSizeUnit.MB))
-        // The decimal separator is not localised: «1,5 МБ» would be built by the
-        // locale's formatter and read as one and a half in one language and
-        // fifteen in another.
-        assertThat(confFileSize(1536L * 1024).amount).isEqualTo("1.5")
-        assertThat(confFileSize(-1)).isEqualTo(ConfFileSize("0", ConfSizeUnit.BYTES))
+        assertThat(confFileSize(512, Locale.US)).isEqualTo(ConfFileSize("512", ConfSizeUnit.BYTES))
+        assertThat(confFileSize(2048, Locale.US)).isEqualTo(ConfFileSize("2", ConfSizeUnit.KB))
+        // Three whole megabytes are «3 МБ», not «3.0 МБ» — the fraction digit is a
+        // maximum, the way `Intl.NumberFormat` spends it on the web rail.
+        assertThat(confFileSize(3L * 1024 * 1024, Locale.US))
+            .isEqualTo(ConfFileSize("3", ConfSizeUnit.MB))
+        assertThat(confFileSize(1536L * 1024, Locale.US).amount).isEqualTo("1.5")
+        assertThat(confFileSize(-1, Locale.US)).isEqualTo(ConfFileSize("0", ConfSizeUnit.BYTES))
+    }
+
+    @Test
+    fun `the number is written in the reader's language, like every other file size`() {
+        // The unit comes from the string catalogue and the separator from the
+        // reader's own formatter — both halves are locale business. Formatting the
+        // number in `Locale.US` while the unit said «МБ» is what made one
+        // attachment read «1.4 МБ» in a call and «1,4 МБ» in a document, inside the
+        // same Russian interface (web `formatFileSize` and phone `docFileSize` both
+        // localise it).
+        val ru = Locale.forLanguageTag("ru-RU")
+        assertThat(confFileSize(1536L * 1024, ru).amount).isEqualTo("1,5")
+        assertThat(confFileSize(14_950, ru).amount).isEqualTo("14,6")
+        assertThat(confFileSize(1536L * 1024, Locale.UK).amount).isEqualTo("1.5")
+    }
+
+    @Test
+    fun `kilobytes keep the fraction digit the web rail keeps`() {
+        // Rounding to whole kilobytes was the phone's own rule: the same 14 950-byte
+        // file reads «14.6 KB» on the web and used to read «15 KB» here.
+        assertThat(confFileSize(14_950, Locale.US).amount).isEqualTo("14.6")
     }
 }

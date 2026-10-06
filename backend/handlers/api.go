@@ -7,14 +7,19 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"tessera/internal/confroom"
@@ -51,6 +56,26 @@ type API struct {
 	webhooks       webhookQueue             // debounced dirty set of GitLab integrations poked by a webhook (#2594)
 	egressDir      string                   // uploadDir as the egress recorder sees it (#2877); empty falls back to uploadDir
 	recTemplateURL string                   // internal url of our egress recording page (#2877); empty ⇒ egress's built-in grid
+	bgCtx          context.Context          // process lifetime for detached job runs (nil until WireBackgroundScope)
+	bgWG           *sync.WaitGroup          // shutdown waits on it, alongside the tick loops
+}
+
+// WireBackgroundScope hands the handlers the process's shutdown context and the
+// WaitGroup shutdown drains, so work started from a request but outliving it —
+// the /admin/jobs "run now" action — belongs to the same lifecycle as the tick
+// loops instead of running loose (#2932).
+//
+// Both halves matter. The context is what tells a sweep it is being shut down:
+// settleDelivery reads ctx.Err() to tell a deploy stopping mid-send from a
+// verdict on the delivery, and on a detached context that question always
+// answers "no". The WaitGroup is what keeps the pool open under it — main closes
+// the pool after draining, on the stated assumption that nothing is still
+// writing.
+//
+// Optional wiring: unwired (the test harnesses, which own no process lifecycle)
+// a detached run falls back to its own background context and nothing waits.
+func (h *API) WireBackgroundScope(ctx context.Context, wg *sync.WaitGroup) {
+	h.bgCtx, h.bgWG = ctx, wg
 }
 
 // WireOps injects the ops-observability dependencies that live outside NewAPI's
@@ -107,11 +132,99 @@ func (h *API) CloseConfRooms() {
 // dropConfRoom empties a conference's room, telling whoever is still connected
 // why. Guarded because the registry is optional wiring — the GitLab and job
 // tests build an API without it.
+//
+// Both halves of the call go down, presence and media (#2932). The registry only
+// owns the roster; the audio and video live in the SFU, which authorises a
+// participant once at the join and never re-reads anything afterwards — so a
+// teardown that stopped here would close the sockets while the room itself
+// played on, for anyone who ignores the frame it just sent or who re-presents
+// the join token they still hold. dropConfMedia is deliberately outside the nil
+// guard: a presence room that no longer exists (nobody connected, or a backend
+// that restarted since) says nothing about whether the SFU still has one.
 func (h *API) dropConfRoom(confID uuid.UUID, reason string) {
 	if h.confRooms != nil {
 		h.confRooms.Drop(confID, reason)
 	}
+	h.dropConfMedia(confID)
 }
+
+// dropDocRooms empties the rooms of documents that have just been deleted,
+// closing the sockets of whoever is still in them (#2729).
+//
+// Owed by every path a document can die on, not only DeleteDocument: a room
+// socket is keyed by document id and authorises exactly once, at the upgrade, so
+// nothing about the row disappearing reaches it. Left alone, the people who had
+// it open keep their presence badges, keep holding block locks, and keep typing
+// into a row that no longer exists — they find out on the next autosave, which
+// answers 404 with their text still only in the browser. Guarded because the
+// registry is optional wiring the GitLab and job tests build without.
+func (h *API) dropDocRooms(ids []uuid.UUID) {
+	if h.docRooms == nil {
+		return
+	}
+	for _, id := range ids {
+		h.docRooms.Drop(id)
+	}
+}
+
+// revokeUserSockets cuts every live connection a user holds after their access
+// is taken away (#2932).
+//
+// Three fan-outs, three registries, one revocation. The hub scopes by workspace
+// and can be told to drop a user; the document and conference rooms are keyed by
+// their own object and authorise exactly once, at the upgrade — so dropping only
+// the hub socket leaves an ex-member holding block locks in someone else's
+// document and moderating someone else's call. All three are guarded: the
+// registries are optional wiring the GitLab and job tests build without.
+func (h *API) revokeUserSockets(userID uuid.UUID, reason string) {
+	h.hub.DropUser(userID)
+	if h.docRooms != nil {
+		h.docRooms.EvictUser(userID)
+	}
+	if h.confRooms != nil {
+		h.confRooms.EvictUser(userID, reason)
+	}
+}
+
+// syncRoomModeration re-resolves what a member may moderate in this workspace's
+// live calls after their role changed (#2932).
+//
+// revokeUserSockets is the wrong tool for a demotion — it ends the person's call
+// — and doing nothing is the wrong answer too: the conference seat copies the
+// workspace role into a boolean at the upgrade and never looks again, so an
+// ex-admin keeps kicking and force-muting the meeting they are already in. This
+// is the middle: the seat stays, the right that came with the role does not.
+//
+// The conference list is read here rather than in the registry because only this
+// side knows which calls belong to the workspace whose role changed. A storage
+// error is not worth failing the role change over — the membership row is
+// already written and is what every later request reads — but it does leave a
+// stale right in a live room, so it is logged rather than swallowed.
+func (h *API) syncRoomModeration(ctx context.Context, workspaceID, userID uuid.UUID, role string) {
+	if h.confRooms == nil {
+		return
+	}
+	ids, err := h.q.ConferenceIDsInWorkspace(ctx, workspaceID)
+	if err != nil {
+		log.Printf("conference moderation not re-resolved for %s in %s: %v", userID, workspaceID, err)
+		return
+	}
+	h.confRooms.SetModeration(ids, userID, role == "owner" || role == "admin")
+}
+
+// SocketRevoker hands revokeUserSockets to AuthHandler, which owns the two
+// password doors but none of the three socket registries (#2932). Same shape as
+// ConfEnforcer: one behaviour, handed across the seam as a function rather than
+// by giving the auth layer the hub, the document rooms and the conference rooms
+// to reach into.
+func (h *API) SocketRevoker() func(uuid.UUID, string) { return h.revokeUserSockets }
+
+// ScopeRefresher hands AuthHandler the way to re-scope a user's board sockets
+// after it granted them a membership (#2932). Hub.DropUser alone, not
+// revokeUserSockets: the client reconnects and resolves its workspaces again,
+// while the document and conference rooms — which a grant did not touch — stay
+// as they are.
+func (h *API) ScopeRefresher() func(uuid.UUID) { return h.hub.DropUser }
 
 // notifyConfRoom nudges everyone currently in a conference that something they
 // are looking at changed outside the socket — today the chat (#2873).
@@ -186,6 +299,54 @@ func positionBetween(prev, next *float64) float64 {
 	}
 }
 
+// positionExhausted reports that the midpoint landed *on* a neighbour instead of
+// between them — float8 has no room left in that slot. It happens after ~52 drops
+// into the same gap (each one halves it) and immediately when the two neighbours
+// already share a position. Leaving such a position in place is not a cosmetic
+// rounding loss: two cards with one position have no defined order, and every
+// later drop into that slot computes the same value again, so the slot is dead.
+func positionExhausted(pos float64, prev, next *float64) bool {
+	return (prev != nil && pos <= *prev) || (next != nil && pos >= *next)
+}
+
+// rejectSameNeighbour answers 400 (and reports true) when a reorder names one
+// item as both of its neighbours. That asks to be dropped into a zero-width
+// slot: the midpoint of a position with itself is that position, so the item
+// would land exactly on top of its "neighbour". No respacing can open that slot,
+// because there is no slot — which is why this is a refusal and not a recovery.
+func rejectSameNeighbour(c *gin.Context, beforeID, afterID *uuid.UUID) bool {
+	if beforeID == nil || afterID == nil || *beforeID != *afterID {
+		return false
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": "before_id and after_id must differ"})
+	return true
+}
+
+// positionForReorder is positionBetween with a way out of an exhausted slot, for
+// the lists that order themselves by midpoint but are not tasks: board columns,
+// projects and project groups. When the midpoint collapses onto a neighbour,
+// `respace` puts the sibling list back on the positionGap ladder and `neighbors`
+// re-reads the two neighbour positions so the midpoint can be computed again.
+// (Cards have their own version — positionForDrop — because which list to
+// respace depends on whether the card is a subtask.)
+func (h *API) positionForReorder(c *gin.Context, prev, next *float64,
+	respace func() error, neighbors func() (*float64, *float64, bool),
+) (float64, bool) {
+	pos := positionBetween(prev, next)
+	if !positionExhausted(pos, prev, next) {
+		return pos, true
+	}
+	if err := respace(); err != nil {
+		fail(c, err)
+		return 0, false
+	}
+	prev, next, ok := neighbors()
+	if !ok {
+		return 0, false
+	}
+	return positionBetween(prev, next), true
+}
+
 // membershipResult is the cached outcome of a per-request membership lookup.
 type membershipResult struct {
 	role string
@@ -253,14 +414,44 @@ func (h *API) broadcastAs(c *gin.Context, workspaceID uuid.UUID, eventType strin
 	h.broadcastEvent(workspaceID, eventType, middleware.CurrentUser(c).String(), payload)
 }
 
+// broadcastByActor is broadcastAs for code paths that carry the acting user as a
+// plain id instead of a gin.Context (the recurrence engine, shared by the HTTP
+// handler and the worker). uuid.Nil means "nobody in particular" and MUST stay an
+// empty actor: a zero uuid on the wire reads to clients as a real person, and the
+// board-activity toast would credit the night's worker run to a member (#2932).
+func (h *API) broadcastByActor(workspaceID uuid.UUID, eventType string, actorID uuid.UUID, payload any) {
+	h.broadcastEvent(workspaceID, eventType, actorTag(actorID), payload)
+}
+
+// actorTag renders an actor id for the wire: empty string for uuid.Nil.
+func actorTag(id uuid.UUID) string {
+	if id == uuid.Nil {
+		return ""
+	}
+	return id.String()
+}
+
+// broadcastToUser fans an event out to one person's sockets only, still inside
+// the workspace scope. Use it whenever the payload is that person's business
+// alone — leaving such an event to the plain workspace broadcast puts its text in
+// every colleague's socket and leans on the client to throw it away.
+func (h *API) broadcastToUser(workspaceID, userID uuid.UUID, eventType string, payload any) {
+	h.broadcastEvent(workspaceID, eventType, "", payload, userID)
+}
+
 // broadcastEvent marshals the payload and fans the event out; actor may be "".
-func (h *API) broadcastEvent(workspaceID uuid.UUID, eventType, actor string, payload any) {
+// An optional addressee narrows delivery to that user's sockets.
+func (h *API) broadcastEvent(workspaceID uuid.UUID, eventType, actor string, payload any, to ...uuid.UUID) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return
 	}
+	var user uuid.UUID
+	if len(to) > 0 {
+		user = to[0]
+	}
 	h.hub.Broadcast(realtime.Event{
-		Scope: workspaceID.String(), Type: eventType, Actor: actor, Data: data,
+		Scope: workspaceID.String(), Type: eventType, Actor: actor, Data: data, User: user,
 	})
 }
 
@@ -279,12 +470,47 @@ func parseID(c *gin.Context, name string) (uuid.UUID, bool) {
 }
 
 // notFound reports whether err is pgx.ErrNoRows and, if so, writes 404.
+//
+// It is a writer, not a predicate: on true the response is already sent and the
+// caller's only move is `return`. A caller with a better sentence to offer must
+// reach for notFoundMsg instead of writing one after this — gin appends a second
+// render to the first rather than replacing it.
 func notFound(c *gin.Context, err error) bool {
+	return notFoundMsg(c, err, "not found")
+}
+
+// notFoundMsg is notFound with the route's own sentence — the one that names
+// WHICH task number or email came up empty, rather than the bare "not found".
+//
+// It exists because the obvious way to say that spelled `if notFound(c, err) {
+// c.JSON(404, …) }`, and that is two answers to one request: gin's Render does
+// not replace a body already written, it writes after it, so the wire carried
+// `{"error":"not found"}{"error":"задача #5 не найдена"}`. Both clients parse a
+// refusal strictly — axios' default transform runs JSON.parse, Gson refuses a
+// document that is not fully consumed — so the doubled body parsed as nothing at
+// all and the toast fell back to axios' own «Request failed with status code
+// 404». The sentence the route went out of its way to write was unreachable from
+// either client, and asking for it cost a malformed body (#2932).
+func notFoundMsg(c *gin.Context, err error, format string, args ...any) bool {
 	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf(format, args...)})
 		return true
 	}
 	return false
+}
+
+// isUniqueViolation reports Postgres's 23505.
+//
+// Worth a helper because a unique index plays two different roles here. Most of
+// them guard against a bug, and tripping one belongs in `fail` — a 500 is the
+// honest answer. But a few sit on names the user types (a project's tag names)
+// or on a race the schema is deliberately arbitrating (the one-active-recording
+// index), and there a 23505 is the expected outcome of an ordinary request. Those
+// call sites answer 409 with a sentence instead of handing the reader "internal
+// error" and Sentry a typed exception for something nobody broke.
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }
 
 // fail writes a generic 500.
@@ -340,4 +566,53 @@ func (h *API) inTx(ctx context.Context, fn func(q *db.Queries) error) error {
 		return err
 	}
 	return tx.Commit(ctx)
+}
+
+// callerLocation resolves the calendar the caller lives in, for the handlers that
+// bucket data by day: the zone sent with the request, else the one stored in the
+// profile, else the server's own.
+//
+// The query parameter comes first because an empty profile zone does not mean UTC
+// on the web client — it means "whatever the browser is", a blank the server
+// cannot re-derive, which is why anything sent to the backend carries the resolved
+// zone (see resolvedTimezone in frontend/src/utils/format.js). A zone that fails
+// to load falls through to the next source rather than failing the request: these
+// are summary counts, and a client that sent a typo gets the old behaviour, not a
+// broken screen.
+func (h *API) callerLocation(c *gin.Context, uid uuid.UUID) *time.Location {
+	if loc, ok := loadLocation(c.Query("tz")); ok {
+		return loc
+	}
+	return h.actorLocation(c, &uid)
+}
+
+// actorLocation is callerLocation for work that runs outside the request that
+// caused it — the GitLab writeback worker pushing a due date, say. There is no
+// query parameter to consult there, so the stored profile zone is the whole
+// answer, and an actor who never set one (or a row old enough to predate the
+// column) leaves the server's own zone, which is what that code did before.
+func (h *API) actorLocation(ctx context.Context, uid *uuid.UUID) *time.Location {
+	if uid != nil {
+		if p, err := h.q.GetUserPreferences(ctx, *uid); err == nil {
+			if loc, ok := loadLocation(p.Timezone); ok {
+				return loc
+			}
+		}
+	}
+	return time.Local
+}
+
+// loadLocation resolves an IANA zone name, reporting whether it named one at all.
+// An empty string is "unset", not UTC — time.LoadLocation maps it to UTC, which
+// would swallow the difference between "no preference" and "explicitly UTC".
+func loadLocation(tz string) (*time.Location, bool) {
+	tz = strings.TrimSpace(tz)
+	if tz == "" {
+		return nil, false
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		return nil, false
+	}
+	return loc, true
 }

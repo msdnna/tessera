@@ -11,6 +11,7 @@ import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.preferences.AppPreferences
 import website.msdnna.tessera.util.DEFAULT_LANGUAGE
 import website.msdnna.tessera.util.normalizeLanguage
+import website.msdnna.tessera.util.resolvedTimezone
 
 /**
  * Minimal manual DI. Holds the singletons the app needs and resolves the
@@ -54,4 +55,15 @@ object AppContainer {
      */
     suspend fun language(): String =
         runCatching { prefs.language.first() }.getOrDefault(DEFAULT_LANGUAGE)
+
+    /**
+     * Зона для `?tz=` на ручках, которые сервер считает по дням (#2932): преф
+     * профиля, иначе зона устройства (см. [resolvedTimezone]). `null` — «сказать
+     * нечего»: пустой параметр зоной не является и только стоил бы серверу
+     * следующего источника, поэтому Retrofit его не отправляет.
+     */
+    suspend fun callerZone(): String? =
+        runCatching { resolvedTimezone(prefs.preferences.first().timezone) }
+            .getOrDefault("")
+            .ifEmpty { null }
 }

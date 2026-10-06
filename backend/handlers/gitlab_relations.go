@@ -82,10 +82,12 @@ func (h *API) syncRelations(ctx context.Context, integ db.GitlabIntegration, cli
 			// GitLab links are bidirectional. When both endpoints live in THIS project,
 			// mirror the reverse edge so the relation shows on both tasks even if the
 			// other endpoint fell outside this run's scope (e.g. an incremental sync
-			// that only touched one issue). Its src_iid is this project's own, so the
-			// existing per-src stale-pruning still owns it. Cross-project reverses are
-			// left to the other integration's own sync — recording them here under the
-			// wrong integration_id would break that pruning.
+			// that only touched one issue). That same scope is why the mirror cannot be
+			// left to the per-src pruning below: it is filed under the OTHER issue's
+			// iid, which the run never inspected, so DeleteStaleGitlabIssueLinks takes
+			// the mirrors of the rows it drops as well (#2932). Cross-project reverses
+			// are left to the other integration's own sync — recording them here under
+			// the wrong integration_id would break that pruning.
 			if li.ProjectPath == integ.ProjectPath {
 				if _, err := h.q.UpsertGitlabIssueLink(ctx, db.UpsertGitlabIssueLinkParams{
 					IntegrationID:  integ.ID,

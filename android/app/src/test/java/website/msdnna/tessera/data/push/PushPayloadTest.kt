@@ -59,6 +59,29 @@ class PushPayloadTest {
         assertThat(payload("notification_id" to "", "body" to "Текст")!!.id).isNull()
     }
 
+    // Приглашение в конференцию не указывает ни на какую задачу — id звонка
+    // сервер шлёт отдельным ключом (notify/fcm.go), и без него тап по баннеру
+    // открывал приложение «где бросили» вместо самого звонка.
+    @Test
+    fun `conference id rides alongside the task id`() {
+        val conf = payload(
+            "notification_id" to "n-4",
+            "kind" to "conference_invite",
+            "title" to "Приглашение в конференцию",
+            "body" to "Аня приглашает вас в конференцию «Планёрка»",
+            "conference_id" to "c-7",
+        )
+        assertThat(conf).isNotNull()
+        assertThat(conf!!.conferenceId).isEqualTo("c-7")
+        assertThat(conf.taskId).isNull()
+
+        val task = payload("body" to "Текст", "task_id" to "t-1")
+        assertThat(task!!.conferenceId).isNull()
+
+        val blank = payload("body" to "Текст", "conference_id" to "  ")
+        assertThat(blank!!.conferenceId).isNull()
+    }
+
     // FCM payloads may carry keys we don't know (added server-side later) —
     // they must not break parsing.
     @Test

@@ -3,6 +3,7 @@ package website.msdnna.tessera.ui.components
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.content.res.Resources
 import android.graphics.Color as AColor
 import android.net.Uri
 import android.webkit.JavascriptInterface
@@ -10,6 +11,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,24 +21,38 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import java.io.File
+import java.security.SecureRandom
 import java.util.Locale
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONObject
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.api.TlsTrust
+import website.msdnna.tessera.ui.screens.openDownloadedFile
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraColors
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.attachmentIdFromHref
+import website.msdnna.tessera.util.filenameFromContentDisposition
+import website.msdnna.tessera.util.isOwnServerUrl
 import website.msdnna.tessera.util.resolveMention
+import website.msdnna.tessera.util.safeDownloadName
 
 /**
  * Renders stored Markdown exactly like the web `RichContent.vue`: marked → HTML,
@@ -44,7 +60,12 @@ import website.msdnna.tessera.util.resolveMention
  * A WebView is the faithful (and only sane) way to reproduce mermaid diagrams +
  * syntax highlighting; everything around it (tabs, editor, controls) is native.
  *
- * marked, highlight.js и его тема лежат в `assets/richcontent` — сеть не участвует
+ * Разметка из задачи недоверенная, поэтому — как и на web — между marked и
+ * `innerHTML` стоит DOMPurify: markdown допускает сырой HTML, а этот WebView
+ * куда опаснее вкладки браузера (JS включён, есть мост `AndroidRich`, а
+ * `shouldInterceptRequest` подставляет Bearer к запросам на свой сервер).
+ *
+ * marked, DOMPurify, highlight.js и его тема лежат в `assets/richcontent` — сеть не участвует
  * в отрисовке вообще (#2897: внешний `<link>` на CDN блокировал первый кадр, и на
  * телефоне без выхода наружу описание появлялось через десяток секунд). Из сети
  * тянется только mermaid — он нужен единицам, весит полмегабайта и грузится лениво,
@@ -81,6 +102,11 @@ fun RichContent(
 ) {
     val c = Tessera.colors
     val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // Ресурсы берём в композиции, а не у контекста в момент клика: диалог «чем
+    // открыть» показывается уже вне её, где `ctx.getString` возьмёт язык
+    // системы, а не профиля (тот же приём, что в «Файлах» задачи).
+    val res = LocalResources.current
     val serverRoot = RetrofitClient.serverRoot
     var heightDp by remember { mutableStateOf(1) }
     // Latest callback, so the long-lived JS bridge always calls the current one.
@@ -158,11 +184,19 @@ fun RichContent(
                     webViewClient = object : WebViewClient() {
                         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                             val url = request.url
-                            if (url.scheme == "http" || url.scheme == "https") {
-                                runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url.toString()))) }
-                                return true
+                            return when (val action = linkAction(url.toString(), url.scheme, RetrofitClient.serverRoot)) {
+                                is LinkAction.Attachment -> {
+                                    saveAttachmentLink(ctx, scope, res, action.url)
+                                    true
+                                }
+
+                                is LinkAction.External -> {
+                                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.url))) }
+                                    true
+                                }
+
+                                LinkAction.None -> false
                             }
-                            return false
                         }
 
                         // Inline images live on our backend (`/api/uploads/…`). The
@@ -172,8 +206,10 @@ fun RichContent(
                         // same OkHttp path Coil uses and hand the bytes back.
                         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                             val url = request.url.toString()
-                            val root = RetrofitClient.serverRoot
-                            if (root.isBlank() || !url.startsWith(root) || request.method != "GET") return null
+                            // By origin, not by text: a string prefix would hand the
+                            // session's Bearer to `https://<root>.attacker.example/x`,
+                            // which any `![](…)` in a task can point at.
+                            if (request.method != "GET" || !isOwnServerUrl(url, RetrofitClient.serverRoot)) return null
                             return runCatching { fetchResource(url) }.getOrNull()
                         }
                     }
@@ -237,6 +273,75 @@ internal class NonScrollingWebView(context: Context) : WebView(context) {
     }
 }
 
+/**
+ * Что делать с нажатой ссылкой. Решение вынесено из `shouldOverrideUrlLoading`
+ * отдельно, потому что проверяется оно без WebView — а WebView здесь и есть то
+ * место, где проглядели [LinkAction.Attachment].
+ */
+internal sealed interface LinkAction {
+    /**
+     * Ссылка на файл задачи (`/api/attachments/<uuid>/download`) на нашем же
+     * сервере. Такую нельзя отдавать браузеру: маршрут в защищённой группе, а
+     * токен живёт только в памяти приложения — браузер получит 401, и человек
+     * вместо файла увидит страницу с ошибкой. Качаем сами, с `Authorization`.
+     */
+    data class Attachment(val url: String) : LinkAction
+
+    /** Обычная ссылка — уходит в браузер, как и раньше. */
+    data class External(val url: String) : LinkAction
+
+    /** Не http(s) — пусть WebView разбирается сам. */
+    object None : LinkAction
+}
+
+/** Куда ведёт ссылка [url] со схемой [scheme] при сервере [serverRoot]. */
+internal fun linkAction(url: String, scheme: String?, serverRoot: String): LinkAction {
+    if (scheme != "http" && scheme != "https") return LinkAction.None
+    // Своим считаем только по origin (см. isOwnServerUrl): путь вида
+    // `/api/attachments/<uuid>/download` на чужом хосте — чужая ссылка, и
+    // заголовок с токеном ей не полагается.
+    if (attachmentIdFromHref(url) != null && isOwnServerUrl(url, serverRoot)) return LinkAction.Attachment(url)
+    return LinkAction.External(url)
+}
+
+/**
+ * Скачивает файл по ссылке из текста и отдаёт его системе — как кнопка в
+ * «Файлах» задачи, только имя файла берётся из ответа сервера: в самой ссылке
+ * его нет, там uuid строки.
+ */
+private fun saveAttachmentLink(ctx: Context, scope: CoroutineScope, res: Resources, url: String) {
+    scope.launch {
+        val saved = withContext(Dispatchers.IO) { runCatching { fetchAttachmentFile(ctx, url) }.getOrNull() }
+        if (saved == null) {
+            Toast.makeText(ctx, res.getString(R.string.task_file_download_failed), Toast.LENGTH_LONG).show()
+            return@launch
+        }
+        openDownloadedFile(ctx, saved.file, saved.mime, res.getString(R.string.task_file_open_chooser, saved.file.name))
+    }
+}
+
+/** Скачанный файл и тип, которым его объявил сервер. */
+private class SavedAttachment(val file: File, val mime: String?)
+
+/** Тянет вложение с Bearer'ом в тот же кэш, куда его кладёт «Файлы» задачи. */
+private fun fetchAttachmentFile(ctx: Context, url: String): SavedAttachment? {
+    val builder = Request.Builder().url(url).get()
+    val token = RetrofitClient.authToken
+    if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
+    richHttp.get().newCall(builder.build()).execute().use { resp ->
+        if (!resp.isSuccessful) return null
+        val fallback = attachmentIdFromHref(url) ?: "file"
+        val name = safeDownloadName(filenameFromContentDisposition(resp.header("Content-Disposition")), fallback)
+        // Тот же каталог, что у TaskRepository.downloadAttachment: FileProvider
+        // раздаёт наружу ровно его (res/xml/file_paths.xml).
+        val dir = File(ctx.cacheDir, "attachments").apply { mkdirs() }
+        val out = File(dir, name)
+        resp.body.byteStream().use { input -> out.outputStream().use { input.copyTo(it) } }
+        val mime = resp.header("Content-Type")?.substringBefore(";")?.trim()
+        return SavedAttachment(out, mime?.takeIf { it.isNotBlank() })
+    }
+}
+
 private val richHttp = TlsTrust.Holder()
 
 /** Fetches a backend resource (inline image) with the Bearer token, as a
@@ -252,6 +357,57 @@ private fun fetchResource(url: String): WebResourceResponse? {
     val reason = resp.message.ifBlank { "OK" }
     return WebResourceResponse(mime, null, resp.code, reason, emptyMap(), body.byteStream())
 }
+
+/**
+ * Единственный удалённый скрипт документа — mermaid. Версия прибита точно (не
+ * `@11`), а [MERMAID_SRI] — sha384 ровно того файла, который лежит в npm-пакете
+ * `mermaid@11.17.2`, то есть в бандле web-клиента: одна и та же диаграмма
+ * рисуется одним и тем же кодом на обоих клиентах.
+ */
+internal const val MERMAID_VERSION = "11.17.2"
+internal const val MERMAID_URL = "https://cdn.jsdelivr.net/npm/mermaid@$MERMAID_VERSION/dist/mermaid.min.js"
+internal const val MERMAID_SRI = "sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2"
+
+/** Разовый nonce для единственного инлайнового скрипта документа. */
+private fun scriptNonce(): String {
+    val bytes = ByteArray(16)
+    SecureRandom().nextBytes(bytes)
+    return bytes.joinToString("") { String.format(Locale.US, "%02x", it) }
+}
+
+/**
+ * Политика документа (#2932).
+ *
+ * DOMPurify стоит перед `innerHTML`, но он — единственный рубеж, а за ним
+ * включённый JS, мост `AndroidRich` и `shouldInterceptRequest`, подставляющий
+ * Bearer. CSP — второй рубеж: и обход санитайзера, и дыра в самом mermaid
+ * (его SVG кладётся в `innerHTML` уже без DOMPurify) упираются в то, что
+ * выполнить получится только код из APK и один прибитый файл с CDN.
+ *
+ * Что где:
+ * - `script-src` — ассеты APK (`file:`), инлайновый скрипт по nonce и mermaid;
+ *   без `'unsafe-inline'`, поэтому `onerror=` и `javascript:` мертвы;
+ * - `style-src` — с `'unsafe-inline'`: стили документа инлайновые, и mermaid
+ *   кладёт свои внутрь SVG. Nonce тут не ставим намеренно — он бы отменил
+ *   `'unsafe-inline'` и диаграммы поехали бы;
+ * - `img-src` — широкий: картинку в задачу можно вставить с любого адреса;
+ * - `connect-src 'none'` — странице незачем самой ходить в сеть (UMD-сборка
+ *   mermaid самодостаточна, чанков не подгружает);
+ * - `base-uri`/`form-action`/`frame-src`/`object-src` закрыты: это пути,
+ *   которые обходят `script-src`.
+ */
+private fun contentSecurityPolicy(nonce: String): String = listOf(
+    "default-src 'none'",
+    "script-src 'nonce-$nonce' file: $MERMAID_URL",
+    "style-src 'unsafe-inline' file:",
+    "img-src file: data: blob: http: https:",
+    "font-src file: data:",
+    "connect-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-src 'none'",
+    "object-src 'none'",
+).joinToString("; ")
 
 private fun hex(c: Color): String =
     String.format(Locale.US, "#%02X%02X%02X", (c.red * 255).roundToInt(), (c.green * 255).roundToInt(), (c.blue * 255).roundToInt())
@@ -269,67 +425,22 @@ internal fun buildRichHtml(
     helpSlugs: List<String> = emptyList(),
 ): String {
     val hljsTheme = if (c.isDark) "github-dark" else "github"
+    val nonce = scriptNonce()
     val src = JSONObject.quote(source)
     val root = JSONObject.quote(serverRoot)
     val mentionsJson = org.json.JSONArray(mentions).toString()
     val helpSlugsJson = org.json.JSONArray(helpSlugs).toString()
-    // Accent gradient colours for links and mentions (mirrors AccentGradient.kt)
-    val strength = 0.14f
-    val accentDarker = lerp(c.primary, Color.Black, strength)
-    val accentLighter = lerp(c.primary, Color.White, strength)
-    val accentBoxGrad = "linear-gradient(135deg,${hex(accentDarker)},${hex(c.primary)},${hex(accentLighter)})"
-    val accentGradCss = "background:$accentBoxGrad;" +
-        "-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;"
-    val checkCursor = if (interactive) "pointer" else "default"
-    // Muted box border (not the bright text3) so checkboxes read softly on dark.
-    val checkBorder = hex(lerp(c.text3, c.border, 0.55f))
     return """
 <!DOCTYPE html><html><head>
+<meta http-equiv="Content-Security-Policy" content="${contentSecurityPolicy(nonce)}">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <link rel="stylesheet" href="file:///android_asset/richcontent/hljs-$hljsTheme.min.css">
-<style>
-  html,body{margin:0;padding:0;background:transparent;}
-  body{color:${hex(c.text1)};font-family:-apple-system,Roboto,sans-serif;font-size:14px;line-height:1.55;
-       word-wrap:break-word;overflow-wrap:anywhere;}
-  /* flow-root so child margins stay inside the box we measure for the height. */
-  #content{padding:0;display:flow-root;}
-  a{text-decoration:none;$accentGradCss}
-  p{margin:0 0 8px;} p:last-child{margin-bottom:0;}
-  h1,h2,h3,h4{margin:12px 0 6px;line-height:1.3;font-weight:600;}
-  h1{font-size:20px;} h2{font-size:18px;} h3{font-size:16px;} h4{font-size:14px;}
-  ul,ol{margin:0 0 8px;padding-left:20px;} li{margin:2px 0;}
-  li:has(> input[type=checkbox]){list-style:none;}
-  input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 7px 0 0;
-       vertical-align:-2px;border:1.5px solid $checkBorder;border-radius:4px;background:${hex(c.surface)};
-       position:relative;flex:none;cursor:$checkCursor;
-       transition:border-color .15s ease,background-color .15s ease;}
-  input[type=checkbox]:checked{border-color:transparent;background-color:transparent;
-       background-image:$accentBoxGrad;background-origin:border-box;}
-  /* Checkmark always present; pops in/out (scale+fade) — the light tick animation. */
-  input[type=checkbox]::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:8px;
-       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;
-       transform:translate(-50%,-60%) rotate(45deg) scale(.4);opacity:0;
-       transition:opacity .12s ease,transform .18s cubic-bezier(.2,.7,.3,1.55);}
-  input[type=checkbox]:checked::after{opacity:1;transform:translate(-50%,-60%) rotate(45deg) scale(1);}
-  @media (prefers-reduced-motion:reduce){input[type=checkbox],input[type=checkbox]::after{transition:none;}}
-  img{max-width:100%;height:auto;border-radius:8px;}
-  blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid ${hex(c.border)};color:${hex(c.text2)};}
-  hr{border:none;border-top:1px solid ${hex(c.border)};margin:12px 0;}
-  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:${hex(c.surfaceAlt)};
-       padding:1px 5px;border-radius:5px;}
-  pre{margin:8px 0;padding:10px 12px;background:${hex(c.surfaceAlt)};border:1px solid ${hex(c.border)};
-      border-radius:8px;overflow-x:auto;}
-  pre code{background:transparent;padding:0;font-size:12.5px;}
-  table{border-collapse:collapse;margin:8px 0;} th,td{border:1px solid ${hex(c.border)};padding:4px 8px;}
-  .mention{font-weight:600;$accentGradCss}
-  .task-ref{font-weight:600;cursor:pointer;$accentGradCss}
-  .mermaid-diagram{display:flex;justify-content:center;margin:10px 0;}
-  .mermaid-diagram svg{max-width:100%;height:auto;}
-</style>
+${richStyles(c, interactive)}
 </head><body>
 <div id="content"></div>
 <script src="file:///android_asset/richcontent/marked.umd.js"></script>
-<script>
+<script src="file:///android_asset/richcontent/purify.min.js"></script>
+<script nonce="$nonce">
   var SRC = $src, ROOT = $root, MENTIONS = $mentionsJson, INTERACTIVE = $interactive;
   var MENTION_CARDS = $mentionCards, TASK_REFS = $taskRefs, HELP_LINKS = $helpLinks;
   var HELP_SLUGS = $helpSlugsJson;
@@ -339,11 +450,28 @@ internal fun buildRichHtml(
   // data-handle carries who was written, so a tap can be resolved to the person.
   function escapeRe(s){ return s.replace(/[-.*+?^()|[\]\\{}$]/g, '\\$&'); }
   function attr(s){ return s.replace(/"/g, '&quot;'); }
+  // A handle needs a right-hand boundary too, or the longest-first scan chips a
+  // member found inside someone else's handle: "@ivanov" would draw "@ivan"
+  // stamped as that member (web utils/markdown.js handleEndsAt). '\w' is ASCII
+  // here while the names are usually not, so the letter test is written as
+  // "changes under case folding". A dot ends a handle only when no word follows,
+  // keeping a mention that closes a sentence a chip.
+  function wordChar(c){
+    if (!c) return false;
+    if ((c >= '0' && c <= '9') || c === '_' || c === '-') return true;
+    return c.toLowerCase() !== c.toUpperCase();
+  }
+  function handleEndsAt(s, i){
+    var c = s.charAt(i);
+    if (wordChar(c)) return false;
+    return !(c === '.' && wordChar(s.charAt(i + 1)));
+  }
   function highlightMentions(html){
     var labels = MENTIONS.filter(Boolean).sort(function(a,b){ return b.length - a.length; }).map(escapeRe);
     if (!labels.length) return html;
-    var re = new RegExp('(^|[\\s>(])@(' + labels.join('|') + ')', 'g');
-    return html.replace(re, function(_, lead, handle){
+    var re = new RegExp('(^|[\\s>(])@(' + labels.join('|') + ')(?![\\w-])(?!\\.[\\w-])', 'g');
+    return html.replace(re, function(whole, lead, handle, offset){
+      if (!handleEndsAt(html, offset + whole.length)) return whole;
       return lead + '<span class="mention" data-handle="' + attr(handle) + '">@' + handle + '</span>';
     });
   }
@@ -354,22 +482,39 @@ internal fun buildRichHtml(
       return lead + '<a class="task-ref" data-task-ref="' + n + '" href="#">#' + n + '</a>';
     });
   }
-  // Both decorations rewrite already-rendered HTML and neither may touch a code
-  // sample: "#2550" in a diff is not a task link and "@root" in a shell snippet
-  // is not a mention (port of the web replaceOutsideCode).
-  function replaceOutsideCode(html, fn){
-    var re = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>/gi, out = '', last = 0, m;
+  // Both decorations rewrite already-rendered HTML, so `fn` must only ever see
+  // the DISPLAYED TEXT — everything that is neither a code sample nor markup
+  // (port of the web replaceOutsideMarkup).
+  //
+  //   • <code>/<pre> blocks, because their contents are a sample and not prose:
+  //     "#2550" in a diff is not a task link and "@root" in a shell snippet is
+  //     not a mention.
+  //   • tags themselves, because an attribute is not text. marked writes an
+  //     image's alt and a link's title into one, and a decoration splices an
+  //     element in place of what it matched - so an image captioned "#123" put an
+  //     <a ...> inside its own alt="...", which ends at the chip's first quote:
+  //     the image lost its caption, grew junk attributes, and the tail of the
+  //     chip was drawn as visible text. A link title took the anchor's own text
+  //     down with it (#2932).
+  function replaceOutsideMarkup(html, fn){
+    var re = /<(code|pre)\b[^>]*>[\s\S]*?<\/\1>|<[^>]*>/gi, out = '', last = 0, m;
     while ((m = re.exec(html)) !== null) {
       out += fn(html.slice(last, m.index)) + m[0];
       last = m.index + m[0].length;
     }
     return out + fn(html.slice(last));
   }
+  // Order mirrors the web utils/markdown.js: decorate first, sanitise the whole
+  // thing afterwards, so the chips we inject are inspected by the same pass.
+  // ADD_ATTR lists what the decorations and marked emit themselves and DOMPurify
+  // would otherwise drop along with the markup: without target/rel links lose
+  // their safe opening, without class the mention and task-ref chips lose theirs.
+  var SANITIZE_OPTS = {ADD_ATTR: ['target', 'rel', 'class', 'data-handle', 'data-task-ref']};
   var el = document.getElementById('content');
-  el.innerHTML = replaceOutsideCode(marked.parse(SRC || ''), function(part){
+  el.innerHTML = DOMPurify.sanitize(replaceOutsideMarkup(marked.parse(SRC || ''), function(part){
     var withMentions = highlightMentions(part);
     return TASK_REFS ? linkTaskRefs(withMentions) : withMentions;
-  });
+  }), SANITIZE_OPTS);
   // Expand root-relative upload/asset URLs to the active server (inline images
   // are intercepted + fetched with auth; links open in the browser).
   el.querySelectorAll('img').forEach(function(im){
@@ -493,7 +638,15 @@ internal fun buildRichHtml(
   }
   if (mer.length) {
     var m = document.createElement('script');
-    m.src = 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js';
+    m.src = '$MERMAID_URL';
+    // Pinned version + SRI: this is the only code in the document that does not
+    // come from the APK, and it is untrusted task text that asks for it (a
+    // ```mermaid block). A floating `@11` meant "run whatever the CDN serves
+    // today"; `integrity` checks the bytes instead, so a swapped mermaid — at
+    // the CDN or on the way — simply does not execute. The hash is the one of
+    // the npm package the web client bundles.
+    m.integrity = '$MERMAID_SRI';
+    m.crossOrigin = 'anonymous';
     m.onload = function(){
       mermaid.initialize({startOnLoad:false, securityLevel:'strict', theme: ${if (c.isDark) "'dark'" else "'default'"}});
       var i = 0, jobs = [];
@@ -514,5 +667,63 @@ internal fun buildRichHtml(
   report();
 </script>
 </body></html>
+"""
+}
+
+/**
+ * Стили документа вынесены отдельно, чтобы buildRichHtml оставался в пределах
+ * detekt-лимита на длину функции: CSS занимал в нём больше трети строк.
+ */
+private fun richStyles(c: TesseraColors, interactive: Boolean): String {
+    // Accent gradient colours for links and mentions (mirrors AccentGradient.kt)
+    val strength = 0.14f
+    val accentDarker = lerp(c.primary, Color.Black, strength)
+    val accentLighter = lerp(c.primary, Color.White, strength)
+    val accentBoxGrad = "linear-gradient(135deg,${hex(accentDarker)},${hex(c.primary)},${hex(accentLighter)})"
+    val accentGradCss = "background:$accentBoxGrad;" +
+        "-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;"
+    val checkCursor = if (interactive) "pointer" else "default"
+    // Muted box border (not the bright text3) so checkboxes read softly on dark.
+    val checkBorder = hex(lerp(c.text3, c.border, 0.55f))
+    return """
+<style>
+  html,body{margin:0;padding:0;background:transparent;}
+  body{color:${hex(c.text1)};font-family:-apple-system,Roboto,sans-serif;font-size:14px;line-height:1.55;
+       word-wrap:break-word;overflow-wrap:anywhere;}
+  /* flow-root so child margins stay inside the box we measure for the height. */
+  #content{padding:0;display:flow-root;}
+  a{text-decoration:none;$accentGradCss}
+  p{margin:0 0 8px;} p:last-child{margin-bottom:0;}
+  h1,h2,h3,h4{margin:12px 0 6px;line-height:1.3;font-weight:600;}
+  h1{font-size:20px;} h2{font-size:18px;} h3{font-size:16px;} h4{font-size:14px;}
+  ul,ol{margin:0 0 8px;padding-left:20px;} li{margin:2px 0;}
+  li:has(> input[type=checkbox]){list-style:none;}
+  input[type=checkbox]{appearance:none;-webkit-appearance:none;width:15px;height:15px;margin:0 7px 0 0;
+       vertical-align:-2px;border:1.5px solid $checkBorder;border-radius:4px;background:${hex(c.surface)};
+       position:relative;flex:none;cursor:$checkCursor;
+       transition:border-color .15s ease,background-color .15s ease;}
+  input[type=checkbox]:checked{border-color:transparent;background-color:transparent;
+       background-image:$accentBoxGrad;background-origin:border-box;}
+  /* Checkmark always present; pops in/out (scale+fade) — the light tick animation. */
+  input[type=checkbox]::after{content:'';position:absolute;left:50%;top:50%;width:4px;height:8px;
+       border:solid ${hex(c.onPrimary)};border-width:0 2px 2px 0;
+       transform:translate(-50%,-60%) rotate(45deg) scale(.4);opacity:0;
+       transition:opacity .12s ease,transform .18s cubic-bezier(.2,.7,.3,1.55);}
+  input[type=checkbox]:checked::after{opacity:1;transform:translate(-50%,-60%) rotate(45deg) scale(1);}
+  @media (prefers-reduced-motion:reduce){input[type=checkbox],input[type=checkbox]::after{transition:none;}}
+  img{max-width:100%;height:auto;border-radius:8px;}
+  blockquote{margin:8px 0;padding:2px 12px;border-left:3px solid ${hex(c.border)};color:${hex(c.text2)};}
+  hr{border:none;border-top:1px solid ${hex(c.border)};margin:12px 0;}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:${hex(c.surfaceAlt)};
+       padding:1px 5px;border-radius:5px;}
+  pre{margin:8px 0;padding:10px 12px;background:${hex(c.surfaceAlt)};border:1px solid ${hex(c.border)};
+      border-radius:8px;overflow-x:auto;}
+  pre code{background:transparent;padding:0;font-size:12.5px;}
+  table{border-collapse:collapse;margin:8px 0;} th,td{border:1px solid ${hex(c.border)};padding:4px 8px;}
+  .mention{font-weight:600;$accentGradCss}
+  .task-ref{font-weight:600;cursor:pointer;$accentGradCss}
+  .mermaid-diagram{display:flex;justify-content:center;margin:10px 0;}
+  .mermaid-diagram svg{max-width:100%;height:auto;}
+</style>
 """
 }

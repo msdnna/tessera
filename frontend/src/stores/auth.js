@@ -3,6 +3,11 @@ import { ref, computed } from 'vue'
 import { auth, setAccessToken, restoreSession } from '@/api'
 import { sGet, sSet, sRemove } from '@/utils/serverStorage'
 import { useThemeStore } from './theme'
+import { useNotificationsStore } from './notifications'
+import { useWorkspacesStore } from './workspaces'
+import { useGitlabStore } from './gitlab'
+import { useConflictsStore } from './conflicts'
+import { useConferenceSession } from './conference'
 
 export const useAuthStore = defineStore('auth', () => {
   // #2684: the access token is deliberately NOT read back from localStorage —
@@ -41,12 +46,34 @@ export const useAuthStore = defineStore('auth', () => {
   // clearSession drops every local trace of the session. Kept separate from
   // logout() because expiry paths need it without a server round-trip.
   function clearSession() {
+    // Before the token goes: a live call is the one piece of session state that
+    // keeps *publishing* after the store forgets who we are. The SFU token was
+    // already issued and LiveKit only checks its signature, so signing out —
+    // which in an SPA is a route change, not a reload — left the camera and the
+    // microphone in the room, streaming to everyone still in it, with the sign-in
+    // screen on top. Nothing else tore it down either: the session deliberately
+    // outlives the views (#2888), so unmounting the shell is not the end of it.
+    // Run first so the seat is released while the access token is still good
+    // (#2932).
+    const conference = useConferenceSession()
+    if (conference.active) conference.hangup()
+    // Open GitLab write-back conflicts: badge count on the header, orange marks
+    // on cards. The store's own `clear()` was written for this and never wired
+    // to anything (#2932).
+    useConflictsStore().clear()
     setToken('')
     refreshToken.value = ''
     user.value = null
     sRemove('tessera_refresh_token')
     sRemove('tessera_user')
     useThemeStore().reset()
+    // The bell holds the departing reader's own rows, and nothing else clears
+    // them: sign-out is a route change, not a reload (#2932).
+    useNotificationsStore().reset()
+    // Same rule for the two other caches that describe a person rather than a
+    // server: the sidebar tree (with `my_role` on it) and the GitLab connection.
+    useWorkspacesStore().reset()
+    useGitlabStore().reset()
   }
 
   // logout revokes the session server-side — the refresh token outlives the tab
@@ -73,12 +100,22 @@ export const useAuthStore = defineStore('auth', () => {
   // the auth screen (#2818). Login is the opposite case — the language is a
   // property of the existing account — so only register carries the choice over,
   // writing it back once as the new account's preference.
-  async function register(email, name, password) {
+  // inviteToken, when the invite page sent an unregistered invitee here, is the
+  // proof they own the invited address: the backend joins them to the workspace
+  // only against that token, never on the email alone.
+  async function register(email, name, password, inviteToken = '') {
     const theme = useThemeStore()
     const chosen = theme.language
-    const res = await auth.register({ email, name, password })
+    const payload = { email, name, password }
+    if (inviteToken) payload.invite_token = inviteToken
+    const res = await auth.register(payload)
     setAuth(res.data)
     if (theme.language !== chosen) theme.setLocale({ language: chosen })
+    // What became of that token, for the form to act on: the account is created
+    // whatever happened to it, so nothing else in the session tells an invitee
+    // who joined the workspace apart from one whose invitation was addressed to
+    // another mailbox. "" on a plain sign-up.
+    return res.data?.invite || ''
   }
 
   // setUser refreshes the cached user after a profile edit.

@@ -61,6 +61,11 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.NotificationSettingsViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.notifDigestOptions
+import website.msdnna.tessera.util.notifKindOptions
+import website.msdnna.tessera.util.notifKindsCaption
+import website.msdnna.tessera.util.notifLeadOptions
+import website.msdnna.tessera.util.notifRepeatOptions
 import website.msdnna.tessera.util.workspaceCaption
 
 // The option lists below carry UI text, so they are functions and not module-level
@@ -78,45 +83,21 @@ private fun addableTypes(): List<Pair<String, String>> = listOf(
     "shoutrrr" to stringResource(R.string.notif_type_shoutrrr_any),
 )
 
+// Виды событий и минутные пресеты живут в `util/NotificationOptions.kt`: каталог —
+// контракт с сервером и общий с вебом, и приватная таблица здесь успела от них
+// отстать (`integration_sync` печатался в сводке правила сырым ключом, подводка
+// «за 2 дня» — прочерком). Там же они покрыты тестами.
 @Composable
-private fun kindOptions(): List<Pair<String, String>> = listOf(
-    "assigned" to stringResource(R.string.notif_kind_assigned),
-    "comment" to stringResource(R.string.notif_kind_comment),
-    "mention" to stringResource(R.string.notif_kind_mention),
-    "updated" to stringResource(R.string.notif_kind_updated),
-    "moved" to stringResource(R.string.notif_kind_moved),
-    "archived" to stringResource(R.string.notif_kind_archived),
-    "due_soon" to stringResource(R.string.notif_kind_due_soon),
-    "reminder" to stringResource(R.string.notif_kind_reminder),
-)
+private fun kindOptions(): List<Pair<String, String>> = notifKindOptions(LocalResources.current)
 
 @Composable
-private fun leadOptions(): List<Pair<Int, String>> = listOf(
-    0 to stringResource(R.string.notif_lead_on_time),
-    15 to stringResource(R.string.notif_lead_15m),
-    30 to stringResource(R.string.notif_lead_30m),
-    60 to stringResource(R.string.notif_lead_1h),
-    180 to stringResource(R.string.notif_lead_3h),
-    1440 to stringResource(R.string.notif_lead_1d),
-)
+private fun leadOptions(): List<Pair<Int, String>> = notifLeadOptions(LocalResources.current)
 
 @Composable
-private fun repeatOptions(): List<Pair<Int, String>> = listOf(
-    0 to stringResource(R.string.notif_repeat_once),
-    60 to stringResource(R.string.notif_repeat_1h),
-    180 to stringResource(R.string.notif_repeat_3h),
-    360 to stringResource(R.string.notif_repeat_6h),
-    1440 to stringResource(R.string.notif_repeat_1d),
-)
+private fun repeatOptions(): List<Pair<Int, String>> = notifRepeatOptions(LocalResources.current)
 
 @Composable
-private fun digestOptions(): List<Pair<Int, String>> = listOf(
-    0 to stringResource(R.string.notif_digest_off),
-    5 to stringResource(R.string.notif_digest_5m),
-    15 to stringResource(R.string.notif_digest_15m),
-    30 to stringResource(R.string.notif_digest_30m),
-    60 to stringResource(R.string.notif_digest_1h),
-)
+private fun digestOptions(): List<Pair<Int, String>> = notifDigestOptions(LocalResources.current)
 
 // Clock labels only — no text to translate, so this one stays a value.
 private val TIME_OPTIONS = (0 until 48).map { i ->
@@ -419,13 +400,7 @@ private fun RouteRow(
 ) {
     val c = Tessera.colors
     val types = typeLabels()
-    val kindLabels = kindOptions()
-    val kinds = r.matcher.kinds
-    val kindsLabel = if (kinds.isNullOrEmpty()) {
-        stringResource(R.string.notif_route_any_kinds)
-    } else {
-        kinds.joinToString(", ") { k -> kindLabels.find { it.first == k }?.second ?: k }
-    }
+    val kindsLabel = notifKindsCaption(LocalResources.current, r.matcher.kinds)
     val noChannels = stringResource(R.string.notif_route_no_channels)
     val target = if (r.options.mute) stringResource(R.string.notif_route_muted) else
         r.channelIds.mapNotNull { id -> channels.find { it.id == id }?.let { it.label.ifBlank { types[it.type] ?: it.type } } }

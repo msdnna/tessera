@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,6 +68,10 @@ type glMember struct {
 	ID       int64
 	Username string
 	Name     string
+	// Avatar is the absolute avatar URL GitLab reports for the member. Empty in
+	// most fixtures (the roster is usually checked by name); a test that cares
+	// where a pinned assignee's face comes from sets it.
+	Avatar string
 }
 
 // graphqlLinkType translates a REST link_type (how fixtures are written) into the
@@ -126,6 +132,72 @@ type fakeGitlab struct {
 	// Child items of a grouped parent, keyed by parent iid — what the Hierarchy
 	// widget reports and the sync mirrors as Tessera subtasks.
 	children map[int64][]int64
+
+	// Parent iids whose Hierarchy widget answers with an error instead of a list.
+	// The sync treats that as "the parent of these subtasks is unknown this run"
+	// (see distrustChildren) rather than as a detach, and that branch has rules of
+	// its own — a test that never fails the query cannot reach them.
+	childrenErr map[int64]bool
+
+	// Every path the backend asked for, as it arrived on the wire. The asset
+	// proxy test reads it to see where a signed link actually pointed.
+	seen []string
+
+	// Attachment bytes the instance serves under "/uploads/…", keyed by that
+	// suffix. A real GitLab exposes the same file on three routes (the uploads
+	// API, the project web route, the avatar URL), and the proxy tries them in
+	// that order, so the fake answers on any path ending in a registered key.
+	uploads map[string]fakeUpload
+
+	// Called just before the fake answers POST /milestones, while the backend is
+	// still blocked on that round trip. The push handler writes its link row only
+	// after this returns, so a test can race the native milestone out from under
+	// it — the one window in which the remote milestone exists and the link does
+	// not. Like `delay`, a knob for catching the handler mid-flight.
+	onCreateMilestone func()
+}
+
+// fakeUpload is one attachment the fake instance hands back, declared type and
+// all — the content type is the whole point for the proxy tests.
+type fakeUpload struct {
+	contentType string
+	body        string
+}
+
+// addUpload registers an attachment under "/uploads/<secret>/<name>".
+func (f *fakeGitlab) addUpload(relPath, contentType, body string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.uploads[relPath] = fakeUpload{contentType: contentType, body: body}
+}
+
+// serveUpload answers a request for a registered attachment, on whichever of
+// the three routes it arrived. Reports whether it handled the request.
+func (f *fakeGitlab) serveUpload(w http.ResponseWriter, r *http.Request) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for rel, up := range f.uploads {
+		if !strings.HasSuffix(r.URL.Path, rel) {
+			continue
+		}
+		w.Header().Set("Content-Type", up.contentType)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(up.body))
+		return true
+	}
+	return false
+}
+
+// sawPath reports whether the backend ever requested exactly this path.
+func (f *fakeGitlab) sawPath(p string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, s := range f.seen {
+		if s == p {
+			return true
+		}
+	}
+	return false
 }
 
 func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
@@ -136,6 +208,8 @@ func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
 		templates: map[string]string{}, nextIID: 100, nextMsID: 9000,
 		linkedItemsWidget: true,
 		children:          map[int64][]int64{},
+		childrenErr:       map[int64]bool{},
+		uploads:           map[string]fakeUpload{},
 	}
 	f.srv = httptest.NewServer(f)
 	t.Cleanup(f.srv.Close)
@@ -195,7 +269,25 @@ func (f *fakeGitlab) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if d > 0 {
 		time.Sleep(d)
 	}
+	// A real GitLab sits behind nginx/Workhorse, which resolve "." and ".."
+	// segments before the app ever sees the path. Go's net/http does not, so the
+	// fake normalises the same way — otherwise a traversal would 404 here and
+	// read as safe when production would serve it. Inert for every other test:
+	// their paths are already clean, and Clean leaves those untouched.
+	if cleaned := path.Clean(r.URL.EscapedPath()); cleaned != r.URL.EscapedPath() {
+		if u, err := url.Parse(cleaned); err == nil {
+			r.URL.Path, r.URL.RawPath = u.Path, ""
+		}
+	}
+	// Recorded after normalisation: what matters is the endpoint the instance
+	// ends up serving, not the shape the request took to get there.
+	f.mu.Lock()
+	f.seen = append(f.seen, r.URL.EscapedPath())
+	f.mu.Unlock()
 	switch {
+	// Attachments first: they answer on the uploads API, on the project web
+	// route and on an avatar URL alike, and none of those is a JSON endpoint.
+	case f.serveUpload(w, r):
 	case r.URL.Path == "/api/graphql":
 		f.graphql(w, r)
 	case strings.HasPrefix(r.URL.Path, "/api/v4/"):
@@ -299,7 +391,12 @@ func (f *fakeGitlab) childItemsQuery(w http.ResponseWriter, vars map[string]any)
 	iid, _ := strconv.ParseInt(fmt.Sprint(vars["iid"]), 10, 64)
 	f.mu.Lock()
 	kids := append([]int64(nil), f.children[iid]...)
+	boom := f.childrenErr[iid]
 	f.mu.Unlock()
+	if boom {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{"message": "hierarchy widget unavailable"})
+		return
+	}
 	nodes := make([]any, 0, len(kids))
 	for _, k := range kids {
 		nodes = append(nodes, map[string]any{"iid": strconv.FormatInt(k, 10)})
@@ -462,6 +559,13 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "401 Unauthorized"})
 		return
 	}
+	// An instance-wide endpoint, outside every project's scope: reaching it at
+	// all means a request escaped the project path it was built for, and the
+	// body is the kind of thing only the PAT's owner may read.
+	if r.URL.Path == "/api/v4/personal_access_tokens" {
+		writeJSON(w, http.StatusOK, []any{map[string]any{"id": 1, "name": "owner-pat", "token": f.token}})
+		return
+	}
 	prefix := "/api/v4/projects/" + f.projectPath + "/"
 	if !strings.HasPrefix(r.URL.Path, prefix) {
 		http.NotFound(w, r)
@@ -496,7 +600,7 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		out := make([]any, 0, len(f.members))
 		for _, m := range f.members {
 			out = append(out, map[string]any{
-				"id": m.ID, "username": m.Username, "name": m.Name, "avatar_url": "", "access_level": 30,
+				"id": m.ID, "username": m.Username, "name": m.Name, "avatar_url": m.Avatar, "access_level": 30,
 			})
 		}
 		f.mu.Unlock()
@@ -543,7 +647,13 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		f.nextMsID++
 		id := f.nextMsID
+		hook := f.onCreateMilestone
 		f.mu.Unlock()
+		// Outside the lock: the hook talks to the backend over HTTP, and the
+		// handler it reaches may well come back to this fake.
+		if hook != nil {
+			hook()
+		}
 		writeJSON(w, http.StatusCreated, map[string]any{
 			"id": id, "iid": id - 9000, "state": "active",
 			"web_url": f.srv.URL + "/" + f.projectPath + "/-/milestones/" + strconv.FormatInt(id-9000, 10),

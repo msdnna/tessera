@@ -73,6 +73,60 @@ class EstimationTest {
         assertThat(Estimation.parse("abc", time)).isNull()
     }
 
+    /**
+     * Число без суффикса берёт единицу на шаг ниже предыдущей: «1ч 30» — полтора
+     * часа, «1д 4» — день и четыре часа. Раньше часами читалось каждое такое
+     * число, и «1ч 30» сохранялось как 1860 минут — молча, во всех трёх разборах
+     * (web `utils/estimation.js`, backend `internal/quickact`).
+     */
+    @Test
+    fun `parse bare number after a unit steps one unit down`() {
+        assertThat(Estimation.parse("1ч 30", time)).isEqualTo(90.0)
+        assertThat(Estimation.parse("1h 30", time)).isEqualTo(90.0)
+        assertThat(Estimation.parse("2ч30", time)).isEqualTo(150.0)
+        assertThat(Estimation.parse("1d 4", time)).isEqualTo(720.0)
+        assertThat(Estimation.parse("1н 2", time)).isEqualTo(2400.0 + 960)
+        assertThat(Estimation.parse("30м 15", time)).isEqualTo(45.0)
+    }
+
+    /** Гадать не о чем: второе безъединичное число подряд и незнакомый суффикс — отказ. */
+    @Test
+    fun `parse refuses a second bare number and an unknown suffix`() {
+        assertThat(Estimation.parse("2 3", time)).isNull()
+        assertThat(Estimation.parse("1:30", time)).isNull()
+        assertThat(Estimation.parse("5 попугаев", time)).isNull()
+        assertThat(Estimation.parse("2s", time)).isNull()
+    }
+
+    /**
+     * Потолок оценки — тот же 1e9, что у веба (`utils/estimation.js MAX_ESTIMATE`)
+     * и у бэкенда (`quickact.MaxEstimate`). Без него длинный прогон цифр —
+     * вставленный id, зажатая клавиша — доезжал до `roundToInt`, а тот зажимает
+     * по Int.MAX_VALUE: поле молча принимало 2147483647 минут (около 4085 лет)
+     * там, где два других разбора отказываются.
+     */
+    @Test
+    fun `parse refuses an estimate past the ceiling`() {
+        assertThat(Estimation.parse("999999999999", time)).isNull() // часы → 6e13 минут
+        assertThat(Estimation.parse("1000000000м", time)).isEqualTo(1.0e9) // ровно потолок — ещё можно
+        assertThat(Estimation.parse("1000000001м", time)).isNull()
+        assertThat(Estimation.parse("2000000000", fib)).isNull()
+        assertThat(Estimation.parse("2000000000", custom)).isNull()
+    }
+
+    /**
+     * Переполнение double молчаливо: достаточно длинная строка цифр даёт +Inf, и
+     * проверка `n > 0` его пропускала. Дальше значение уходило в PATCH числом,
+     * которого в JSON не существует.
+     */
+    @Test
+    fun `parse refuses an overflowing run of digits`() {
+        val huge = "9".repeat(400)
+        assertThat(Estimation.parse(huge, time)).isNull()
+        assertThat(Estimation.parse(huge, fib)).isNull()
+        assertThat(Estimation.parse("${huge}ч", time)).isNull()
+    }
+
     @Test
     fun `parse honours custom hours per day`() {
         val cfg = EstimationConfig(unit = "time", hoursPerDay = 6.0, daysPerWeek = 5.0)
@@ -98,6 +152,23 @@ class EstimationTest {
     @Test
     fun `parse custom takes number`() {
         assertThat(Estimation.parse("8", custom)).isEqualTo(8.0)
+    }
+
+    /**
+     * Диалог оценки предзаполняется тем, что вернул [Estimation.format], и её же
+     * отдаёт обратно в [Estimation.parse], когда человек ничего не поменял. У
+     * `custom` подпись — «3 тикетов», у точек — «5 SP»: строгий разбор возвращал
+     * здесь null и стирал оценку. Веб (`parseFloat`) читает число в начале.
+     */
+    @Test
+    fun `parse ignores the unit name after the number`() {
+        assertThat(Estimation.parse(Estimation.format(ru, 3.0, custom), custom)).isEqualTo(3.0)
+        assertThat(Estimation.parse("12 тикетов", custom)).isEqualTo(12.0)
+        assertThat(Estimation.parse("2,5 тикетов", custom)).isEqualTo(2.5)
+        assertThat(Estimation.parse(Estimation.format(ru, 5.0, fib), fib)).isEqualTo(5.0)
+        // Хвост без числа впереди — по-прежнему не оценка.
+        assertThat(Estimation.parse("тикетов", custom)).isNull()
+        assertThat(Estimation.parse("-3 тикета", custom)).isNull()
     }
 
     // ── format ───────────────────────────────────────────────────────────────

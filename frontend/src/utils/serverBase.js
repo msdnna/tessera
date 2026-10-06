@@ -9,7 +9,7 @@
 //    login screen), defaulting to production. Mirrors the Android configurable
 //    server-URL setting. Since #2930 that origin is the *active* entry of a
 //    list of server profiles — see utils/servers.js.
-import { isTauri, activeServer, setActiveServerUrl, DEFAULT_BASE } from './servers'
+import { isTauri, activeServer, setActiveServerUrl, serverUrlError, DEFAULT_BASE } from './servers'
 
 // Re-exported so the many `import { isTauri } from '@/utils/serverBase'` call
 // sites keep working; the definition moved to servers.js, which needs it and
@@ -25,9 +25,15 @@ export function serverBase() {
 
 // setServerBase re-points the active server profile (called from the
 // login-screen popover and the settings screen). Empty restores the default.
+// Answers false when the address was refused — the caller must show the error
+// and NOT reload, or the app reloads against an address that was never stored.
 export function setServerBase(url) {
-  setActiveServerUrl(url)
+  return setActiveServerUrl(url)
 }
+
+// Re-exported so the two address fields can name the refusal before saving,
+// the way the rail's edit modal already does.
+export { serverUrlError }
 
 // apiBaseURL is the axios baseURL: '/api' on web, '<base>/api' on desktop.
 export function apiBaseURL() {

@@ -46,12 +46,18 @@ function storedRefreshToken() {
   return cookieAuth() ? null : sGet('tessera_refresh_token')
 }
 
+// Bumped by every non-GET request. An in-flight GET issued before the bump was
+// answered by a server that had not seen the write yet, so it may no longer be
+// joinable — see sharedGet below.
+let writeGeneration = 0
+
 // Attach the access token on every request + track liveness for the connection
 // overlay (start now, paired end in the response/error handlers below). Requests
 // flagged `skipLoader` (e.g. GitLab sync, which is intentionally long and shows
 // its own in-modal loader) are excluded from the global slow/offline overlay.
 api.interceptors.request.use((config) => {
   if (!config.skipLoader) reqStart()
+  if ((config.method || 'get').toLowerCase() !== 'get') writeGeneration++
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }
@@ -145,6 +151,30 @@ export function restoreSession() {
   return refreshAccessToken()
 }
 
+// refusalText digs the server's `{"error": …}` sentence out of an error body.
+//
+// Usually that is a plain object and this is a field read. The exception is a
+// file route: `responseType: 'blob'` applies to the error response too, so a
+// refused download hands back a Blob holding the JSON rather than the parsed
+// object (document export, task attachments, call attachments, call recordings
+// are all on that path). Reading `.error` off a Blob yields undefined, and the
+// caller then showed the axios line — "Request failed with status code 404",
+// protocol English in whatever language the UI is in (#2932).
+//
+// A body that is not JSON at all (a proxy's HTML error page, a truncated file)
+// resolves to '' so the axios message stays the fallback.
+async function refusalText(data) {
+  if (!data) return ''
+  if (typeof data === 'object' && typeof data.text === 'function') {
+    try {
+      return JSON.parse(await data.text())?.error || ''
+    } catch {
+      return ''
+    }
+  }
+  return data.error || ''
+}
+
 api.interceptors.response.use(
   (res) => {
     if (!res.config?.skipLoader) reqEnd(true)
@@ -187,12 +217,19 @@ api.interceptors.response.use(
     if (refreshOffline) setOffline(true)
     // No message at all → humanizeError answers with its own generic line from
     // the catalogue; a literal here would be one more untranslated string.
-    const raw = err.response?.data?.error || err.message || ''
+    const raw = (await refusalText(err.response?.data)) || err.message || ''
     const wrapped = new Error(humanizeError(raw))
     // Keep the HTTP status reachable: most callers just show `e.message`, but a
     // few need to tell one failure from another (e.g. 409 "address taken" is
     // fixable inline, everything else is a toast).
     wrapped.status = err.response?.status
+    // …and the server's own words, untouched. Status alone doesn't always
+    // separate two outcomes of one call, so a caller that branches has to
+    // compare against the English sentinel — never against `message`, which is
+    // written in whatever language the UI is in and gets rewritten outright the
+    // day that sentinel joins the catalogue (#2932). Mirrors the phone's
+    // `rawErrorText` (android util/Errors.kt).
+    wrapped.raw = raw
     // Distinguish "server unreachable" (network/DNS/timeout — no response at all)
     // from an HTTP error the server answered with. Callers that retry (e.g. the
     // comment composer) only retry when offline; a 4xx/5xx is not a connectivity
@@ -212,7 +249,17 @@ api.interceptors.response.use(
 // once. Sharing one in-flight request collapses those duplicate round-trips.
 // Each caller still gets its OWN deep clone of the data, so no consumer can
 // mutate another's copy. Only genuinely concurrent calls share; once the request
-// settles the key is dropped, so this never serves stale data on a later fetch.
+// settles the key is dropped, so a later fetch always goes to the server.
+//
+// "Concurrent" is not enough on its own, though. The list refetch that follows a
+// write (create a tag, invite a member, add a milestone) is the one read that
+// must not be coalesced: a slow GET started before the write — the board loads
+// tags, members and milestones on open and on every resync — is still in flight
+// when the write lands, and joining it hands the caller a list without the row
+// it just created. The picker then looks like the write did nothing, and stays
+// that way until something else happens to refetch. So an entry is joinable only
+// while no write has been issued since it started; after one, the next caller
+// opens a fresh request and the two coexist under the same key.
 const inflightGets = new Map()
 function cloneData(d) {
   if (d == null) return d
@@ -224,12 +271,18 @@ function cloneData(d) {
 }
 function sharedGet(url, config) {
   const key = url + '::' + JSON.stringify(config?.params ?? null)
-  let p = inflightGets.get(key)
-  if (!p) {
-    p = api.get(url, config).finally(() => inflightGets.delete(key))
-    inflightGets.set(key, p)
+  let entry = inflightGets.get(key)
+  if (!entry || entry.gen !== writeGeneration) {
+    // Two entries can now share a key, so the cleanup has to check it is still
+    // the current one — otherwise a superseded request settling would drop the
+    // fresh entry and the next caller would open a third request.
+    entry = { gen: writeGeneration, p: null }
+    entry.p = api.get(url, config).finally(() => {
+      if (inflightGets.get(key) === entry) inflightGets.delete(key)
+    })
+    inflightGets.set(key, entry)
   }
-  return p.then((res) => ({ ...res, data: cloneData(res.data) }))
+  return entry.p.then((res) => ({ ...res, data: cloneData(res.data) }))
 }
 
 export const auth = {
@@ -253,6 +306,10 @@ export const auth = {
   // back on the tessera:// deep link instead of the web SPA route (#2696).
   gitlabAuthorizeUrl: (platform) =>
     `${apiBaseURL()}/auth/gitlab/authorize${platform ? `?platform=${platform}` : ''}`,
+  // Desktop only: trade the one-time code from the tessera:// deep link for the session
+  // (#2932). The link itself carries no tokens — the OS hands it to the app as a
+  // command-line argument, which every local process can read.
+  oauthHandoff: (code) => api.post('/auth/oauth/handoff', { code }),
 }
 
 export const accountFlows = {
@@ -266,7 +323,9 @@ export const accountFlows = {
 
 export const users = {
   updateProfile: (data) => api.patch('/users/me', data),
-  changePassword: (data) => api.put('/users/me/password', data),
+  // Hands back a replacement session (the change revokes every existing one),
+  // so it needs the delivery-mode header like login/register do.
+  changePassword: (data) => api.put('/users/me/password', data, { headers: authModeHeaders() }),
   updatePreferences: (data) => api.put('/users/me/preferences', data),
   uploadAvatar: (file) => {
     const form = new FormData()
@@ -337,7 +396,10 @@ export const workspaces = {
   tasks: (id, params) => api.get(`/workspaces/${id}/tasks`, { params }),
   // Resolve a per-workspace task number (#252) to its task — for /board/<slug>?task=<number> links.
   taskByNumber: (id, number) => api.get(`/workspaces/${id}/tasks/by-number/${number}`),
-  summary: (id) => api.get(`/workspaces/${id}/summary`),
+  // `tz` is the caller's resolved IANA zone: the day buckets (overdue / today /
+  // this week) are calendar days, and they have to be the same days the list
+  // under the tiles is filtered by. Omitting it falls back to the profile zone.
+  summary: (id, tz) => api.get(`/workspaces/${id}/summary`, { params: { tz } }),
   // Every tag across the workspace's projects — read-only, for cross-project
   // views (Home). Tags are created/listed per-project (see `projects` below).
   tags: (id) => sharedGet(`/workspaces/${id}/tags`),
@@ -395,7 +457,10 @@ export const groups = {
 }
 
 export const boards = {
-  get: (id) => api.get(`/boards/${id}`),
+  // `id` may be a UUID or a bare board slug (legacy /board/<slug> links). A slug
+  // is unique only within its project, so wsId tells the backend which of the
+  // caller's workspaces the link is meant for.
+  get: (id, wsId) => api.get(`/boards/${id}`, wsId ? { params: { workspace: wsId } } : undefined),
   // Resolve a /project/<slug>/board/<slug> pair to the board.
   resolve: (projectSlug, boardSlug) =>
     api.get('/board-by-slug', { params: { project: projectSlug, board: boardSlug } }),
@@ -628,13 +693,26 @@ export const tasks = {
   events: (id) => api.get(`/tasks/${id}/events`),
   comments: (id) => api.get(`/tasks/${id}/comments`),
   // parentId is optional and last so existing three-argument calls are unchanged.
-  addComment: (id, body, mentions, parentId) =>
-    api.post(`/tasks/${id}/comments`, { body, mentions, parent_id: parentId || null }),
+  // `tz` rides along for the same reason the home summary takes one: a «/due
+  // сегодня» in the body is resolved server-side, and the day it means is the
+  // writer's, not the server's.
+  addComment: (id, body, mentions, parentId, tz) =>
+    api.post(
+      `/tasks/${id}/comments`,
+      { body, mentions, parent_id: parentId || null },
+      { params: { tz } },
+    ),
   // Dry-run the quick actions in a draft comment — same parser as the real
-  // POST, changes nothing. Powers the «Будет применено: …» hint.
-  previewCommands: (id, body) =>
-    api.post(`/tasks/${id}/commands/preview`, { body }, { skipLoader: true }),
-  updateComment: (commentId, body) => api.patch(`/comments/${commentId}`, { body }),
+  // POST, changes nothing. Powers the «Будет применено: …» hint. Same zone as
+  // the real POST, or the hint would name a different day than the command sets.
+  previewCommands: (id, body, tz) =>
+    api.post(`/tasks/${id}/commands/preview`, { body }, { skipLoader: true, params: { tz } }),
+  // `mentions` are the people this edit ADDED, not everyone the new text
+  // mentions — the server cannot tell them apart (it holds the old body as plain
+  // text, without the roster a handle becomes a chip against), and re-sending
+  // the whole set would notify the same people on every typo fix.
+  updateComment: (commentId, body, mentions) =>
+    api.patch(`/comments/${commentId}`, { body, mentions }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),
   addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),
@@ -749,7 +827,14 @@ export const gitlab = {
     api.post(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions/${actionId}/retry`),
   // Create a GitLab issue from a task (returns the new link view) + the project's
   // issue templates for prefilling the description.
-  createIssue: (taskId, data) => api.post(`/tasks/${taskId}/gitlab-issue`, data),
+  //
+  // `tz` for the same reason the home summary takes one: the task's due date is
+  // written into the issue as a bare `YYYY-MM-DD` (backend taskDateStr), a day
+  // read out of an instant. Without the zone the server reads it in its own, and
+  // east of that the stored midnight belongs to the previous server day — the
+  // issue is born due a day before the task says it is.
+  createIssue: (taskId, data, tz) =>
+    api.post(`/tasks/${taskId}/gitlab-issue`, data, { params: { tz } }),
   issueTemplates: (wsId, integId) =>
     api.get(`/workspaces/${wsId}/gitlab/issue-templates`, {
       params: integId ? { integration_id: integId } : undefined,

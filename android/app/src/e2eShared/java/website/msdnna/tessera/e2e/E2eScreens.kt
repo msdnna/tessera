@@ -86,6 +86,8 @@ fun ComposeContentTestRule.setShellContent(fixture: E2eBackend.Fixture) {
                     accentKey = "default",
                     openTaskId = null,
                     onOpenTaskHandled = {},
+                    openConferenceId = null,
+                    onOpenConferenceHandled = {},
                     onAccentChange = {},
                     onToggleDark = {},
                     onLogout = {},

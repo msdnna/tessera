@@ -21,9 +21,9 @@
     "urgent": "Urgent"
   },
   "duration": {
-    "hm": "{h} h {m} m",
-    "ms": "{m} m {s} s",
-    "s": "{s} s"
+    "hm": "{h}h {m}m",
+    "ms": "{m}m {s}s",
+    "s": "{s}s"
   },
   "state": {
     "loading": "Loading…",
@@ -92,7 +92,10 @@
       "title": "Invitation",
       "pending": "Accepting the invitation…",
       "ok": "Done! You have joined the workspace.",
-      "fail": "The invitation is invalid, has expired or was meant for another address."
+      "fail": "This invitation is no longer valid — it has expired or was already used.",
+      "wrongAccount": "This invitation was sent to a different address. Sign in with the account it was mailed to.",
+      "error": "The invitation could not be applied. Open the link again or ask for a new invitation.",
+      "switchAccount": "Sign in with another account"
     },
     "oauth": {
       "title": "Sign in with GitLab",
@@ -104,15 +107,18 @@
       "emailInvalid": "Enter a valid email",
       "passwordRequired": "Enter your password",
       "nameRequired": "Enter your name",
-      "passwordTooShort": "At least 8 characters"
+      "passwordTooShort": "At least 8 characters",
+      "passwordTooLong": "Password is too long: at most {bytes} bytes (a Cyrillic letter takes 2)"
     },
     "oauthError": {
       "generic": "Could not sign in with GitLab.",
       "state_mismatch": "The sign-in session has expired. Please try again.",
       "not_configured": "Sign-in with GitLab is not configured.",
       "account_disabled": "This account is deactivated.",
+      "email_taken": "A password account already holds this address and has not verified it. Sign in with the password and verify the address — GitLab sign-in will work after that.",
       "exchange_failed": "Could not authorize with GitLab.",
       "userinfo_failed": "Could not fetch the GitLab profile.",
+      "handoff_failed": "Could not complete the sign-in: the link has expired or was already used. Please try again.",
       "browserOpen": "Could not open the browser to sign in with GitLab.",
       "noReturn": "Could not return to the app. Check that tessera:// links open in Tessera."
     }

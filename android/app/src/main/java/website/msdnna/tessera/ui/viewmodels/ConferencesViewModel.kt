@@ -50,15 +50,61 @@ class ConferencesViewModel(
     private var realtime: RealtimeClient? = null
     private var reloadJob: Job? = null
 
+    /**
+     * Which read the screen is waiting for. Bumped by everything that fetches the
+     * list, and checked again once the answer is back — see [outdated].
+     */
+    private var loadSeq = 0
+
+    /**
+     * Loads the list for [workspaceId] under the current filter tab.
+     *
+     * The view model outlives the workspace (it is `viewModel()` in the shell's
+     * host, and switching workspaces only re-runs the screen's `LaunchedEffect`),
+     * so everything the previous workspace put on screen has to go here. The
+     * filter is the exception: it is the reader's choice of tab, not a property of
+     * the workspace, and the tab strip is drawn from it — resetting it would move
+     * the highlight under the reader's hand.
+     */
     fun load(workspaceId: String) {
+        val switched = workspaceId != this.workspaceId
         this.workspaceId = workspaceId
-        _state.update { it.copy(loading = true, error = null) }
+        _state.update {
+            if (switched) ConferencesUiState(loading = true, filter = it.filter)
+            else it.copy(loading = true, error = null)
+        }
         ensureRealtime()
-        launchCatching {
-            val list = repo.list(workspaceId, _state.value.filter)
-            _state.update { it.copy(loading = false, list = list) }
+        val mine = ++loadSeq
+        val filter = _state.value.filter
+        viewModelScope.launch {
+            val result = runCatching { repo.list(workspaceId, filter) }
+            if (outdated(mine)) return@launch
+            result.fold(
+                onSuccess = { list -> _state.update { it.copy(loading = false, error = null, list = list) } },
+                // The rows go with the failure. Both loads happen because the
+                // screen is changing what it shows — a new workspace, a new filter
+                // tab — so leaving the previous answer standing under a one-line
+                // error presents it as the answer to the question just asked. The
+                // reader never saw those rows during the load anyway (`loading`
+                // draws the spinner over them), so nothing is taken away.
+                onFailure = { e ->
+                    _state.update { it.copy(loading = false, error = errorMessage(e), list = emptyList()) }
+                },
+            )
         }
     }
+
+    /**
+     * The answer is no longer the one the screen is waiting for.
+     *
+     * Two reads are in flight together whenever the reader taps a second filter
+     * tab (or switches workspace) while the first is still on the wire: the
+     * earlier request lives in [viewModelScope], which neither the tap nor the
+     * composition restarting cancels, so without this check the slower of the two
+     * lands last and the list stops matching the tab that is highlighted — with
+     * nothing left to fetch it again.
+     */
+    private fun outdated(mine: Int): Boolean = mine != loadSeq
 
     /** [status] is null for «Все». The server does the filtering, as on the web —
      *  the counters a row shows are computed by the list query, not derivable here. */
@@ -103,17 +149,21 @@ class ConferencesViewModel(
      */
     fun create(title: String, description: String, scheduledAtIso: String?, ttlDays: Int) {
         if (workspaceId.isBlank() || _state.value.saving) return
+        val ws = workspaceId
         _state.update { it.copy(saving = true, createError = null) }
         viewModelScope.launch {
             val result = runCatching {
                 repo.create(
-                    workspaceId = workspaceId,
+                    workspaceId = ws,
                     title = title,
                     description = description,
                     scheduledAt = scheduledAtIso,
                     recordingTtlDays = ttlDays,
                 )
             }
+            // A call scheduled in the workspace that was open a moment ago must not
+            // drag its lobby over the one that replaced it.
+            if (workspaceId != ws) return@launch
             result.fold(
                 onSuccess = { created ->
                     // Straight into the new call's lobby, as on the web: scheduling
@@ -155,7 +205,14 @@ class ConferencesViewModel(
      */
     private suspend fun refetch() {
         if (workspaceId.isBlank()) return
-        val list = repo.list(workspaceId, _state.value.filter)
+        // Reads the sequence without bumping it: a refresh is not a question the
+        // screen is waiting on, so it must not invalidate a load that is — that
+        // load's answer is the one that clears the spinner. It still steps aside
+        // for anything started after it.
+        val mine = loadSeq
+        val ws = workspaceId
+        val list = repo.list(ws, _state.value.filter)
+        if (outdated(mine)) return
         _state.update { it.copy(list = list) }
     }
 

@@ -18,6 +18,7 @@ import { useTourStore } from '@/stores/tour'
 import { useHelpStore } from '@/stores/help'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useApiImage } from '@/composables/useApiImage'
+import { initials as initialsOf } from '@/utils/initials'
 
 const props = defineProps({
   mobile: { type: Boolean, default: false },
@@ -114,12 +115,13 @@ function onHelpSelect(key) {
   else openHelp()
 }
 
-const initials = computed(() => {
-  const n = (authStore.user?.name || authStore.user?.email || '?').trim()
-  const parts = n.split(/\s+/)
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
-  return n.slice(0, 2).toUpperCase()
-})
+// The one initials rule (utils/initials), not a local re-derivation of it: this
+// disc sits on every screen next to the very cards whose avatars use the shared
+// helper, and the copy that used to live here knew only the two-word case. A
+// dot-separated handle — «a.fokin», the shape a GitLab roster hands us — came out
+// as «A.», a letter and a punctuation mark, while the same person was «AF» on
+// their card. The e-mail fallback below made it the common case, not the exotic one.
+const initials = computed(() => initialsOf(authStore.user?.name || authStore.user?.email || '?'))
 
 // Only the collapsed desktop rail uses the avatar-popover; the mobile drawer is
 // wide enough for the inline name + icon buttons (settings / admin / logout).

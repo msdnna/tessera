@@ -3,7 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
-	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"path"
@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"tessera/internal/confroom"
 	"tessera/internal/db"
@@ -129,6 +128,20 @@ type recordingResult struct {
 	Err      string
 }
 
+// durationSec narrows a recording length to the int32 seconds the DB column
+// holds. The value comes from the SFU, so a garbage length is clamped instead
+// of wrapping into a negative duration.
+func durationSec(d time.Duration) int32 {
+	secs := int64(d / time.Second)
+	switch {
+	case secs < 0:
+		return 0
+	case secs > math.MaxInt32:
+		return math.MaxInt32
+	}
+	return int32(secs)
+}
+
 func resultOf(info livekit.EgressInfo) recordingResult {
 	return recordingResult{
 		Size: int64(info.File().Size), Duration: info.File().Length(), Err: info.Error,
@@ -240,7 +253,13 @@ func (h *API) StartConferenceRecording(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "recording could not be started: " + err.Error()})
 		return
 	}
-	rec, err = h.q.SetConferenceRecordingEgress(c, db.SetConferenceRecordingEgressParams{
+	// Into its own variable, not back into rec: a failed sqlc call returns a
+	// zero-valued row, and the rollback below is the one thing on this path that
+	// still needs the claimed row's id. Assigning through it would hand
+	// releaseRecordingClaim a nil uuid — deleting nothing, leaving the row active,
+	// and refusing every future recording of this conference on the unique index
+	// until the background worker times the claim out minutes later.
+	claimed, err := h.q.SetConferenceRecordingEgress(c, db.SetConferenceRecordingEgressParams{
 		ID: rec.ID, EgressID: info.EgressID,
 	})
 	if err != nil {
@@ -254,6 +273,7 @@ func (h *API) StartConferenceRecording(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	rec = claimed
 
 	view := viewRecording(rec)
 	if name := h.userName(c, uid); name != "" {
@@ -389,7 +409,7 @@ func (h *API) finishRecording(ctx context.Context, recID uuid.UUID, owner record
 		ID:          recID,
 		Status:      status,
 		SizeBytes:   res.Size,
-		DurationSec: int32(res.Duration / time.Second),
+		DurationSec: durationSec(res.Duration),
 		Error:       res.Err,
 		TtlDays:     owner.TTLDays,
 	})
@@ -411,6 +431,55 @@ func (h *API) finishRecording(ctx context.Context, recID uuid.UUID, owner record
 	}
 	h.clearConfRecording(owner.ConferenceID, recID.String())
 	h.broadcast(owner.WorkspaceID, "conference.recording.finished", viewRecording(rec))
+}
+
+// purgeRecordingDir clears the recording directory of a conference that has just
+// been deleted, stopping the egress still writing into it first.
+//
+// The directory, not a list of paths: after the cascade there is no row left to
+// say which files inside it were ever named by one, and every file under
+// rec/<conference> belonged to the conference that is now gone.
+//
+// The wait is what makes it work. Removing the directory while the worker is
+// still winding down would only race it — egress creates what it needs on the way
+// to its output path — so the job is stopped, waited out, and *then* the directory
+// goes. Detached from the request for the same reason pollRecordingDone is: the
+// moderator's delete has already succeeded, and nothing about clearing the disk
+// needs their connection. Bounded by the same deadline, after which the directory
+// is removed anyway — a straggler file beyond that point is what the sweep cannot
+// see either, so it is better gone than kept.
+func (h *API) purgeRecordingDir(confID uuid.UUID, egressID string) {
+	dir := filepath.Join(h.uploadDir, recordingSubdir, confID.String())
+	// Nothing is being written: no recording was in flight, or the row never got
+	// its job id attached (in which case dropping the room is what ends the job,
+	// and a missing directory is what stops its file from landing).
+	if egressID == "" || h.livekit == nil || !h.livekit.Enabled() {
+		_ = os.RemoveAll(dir)
+		return
+	}
+	go func() {
+		defer observability.Recover("conf-recording.purge")
+		ctx, cancel := context.WithTimeout(context.Background(), recordingOpTimeout)
+		if _, err := h.livekit.StopEgress(ctx, egressID); err != nil && !errors.Is(err, livekit.ErrEgressGone) {
+			soft(ctx, "conference.recording.purge-stop", err)
+		}
+		cancel()
+		deadline := time.Now().Add(recordingPollFor)
+		for time.Now().Before(deadline) {
+			time.Sleep(recordingPollEvery)
+			ctx, cancel := context.WithTimeout(context.Background(), recordingOpTimeout)
+			info, err := h.livekit.GetEgress(ctx, egressID)
+			cancel()
+			if err != nil && !errors.Is(err, livekit.ErrEgressGone) {
+				continue // transient; the deadline is what ends this loop
+			}
+			if err == nil && !info.Done() {
+				continue
+			}
+			break
+		}
+		_ = os.RemoveAll(dir)
+	}()
 }
 
 // ListConferenceRecordings returns a conference's recordings, newest first.
@@ -455,7 +524,7 @@ func (h *API) DownloadConferenceRecording(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "файл недоступен"})
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", rec.FileName))
+	c.Header("Content-Disposition", contentDisposition(rec.FileName))
 	c.Header("X-Content-Type-Options", "nosniff")
 	c.Header("Content-Type", "video/mp4")
 	c.File(rec.FilePath)
@@ -543,12 +612,4 @@ func (h *API) egressUploadDir() string {
 		return h.egressDir
 	}
 	return h.uploadDir
-}
-
-// isUniqueViolation reports Postgres's 23505. Used where a unique index is doing
-// real work rather than guarding against a bug — here, the one-active-recording
-// index that turns a race between two hosts into a refusal for one of them.
-func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

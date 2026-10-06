@@ -28,17 +28,11 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel, priorityOptions as priorityOptionList } from '@/utils/priority'
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
-import { buildTagGroups } from '@/utils/tagGroups'
+import { buildTagGroups, matchTagByName } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
+import { resolvedTimezone } from '@/utils/format'
 import { useFormat } from '@/composables/useFormat'
-import {
-  sortedColumns,
-  columnById,
-  nextColumn,
-  doneTarget,
-  siblingNeighbors,
-  columnTail,
-} from '@/utils/status'
+import { sortedColumns, columnById, nextColumn, doneTarget, moveNeighbors } from '@/utils/status'
 import { planComplete } from '@/utils/cardNav'
 import { columnStatusName } from '@/utils/columnStatus'
 import { useShortcuts } from '@/composables/useShortcuts'
@@ -47,6 +41,7 @@ import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
 import { copyText } from '@/utils/clipboard'
 import { normalizeTitle } from '@/utils/title'
+import { glPickerMembers } from '@/utils/assignees'
 import {
   dismissesSidebar,
   effectiveTaskLayout,
@@ -58,7 +53,7 @@ import {
   formatEstimate,
   formatEstimateFull,
   estimateRangeShort,
-  parseEstimate,
+  parseEstimateInput,
   scaleOptions,
   estimatePlaceholder,
   sumEstimates,
@@ -66,6 +61,7 @@ import {
 import { useThemeStore } from '@/stores/theme'
 import { useTagFit } from '@/composables/useTagFit'
 import DueEditor from './DueEditor.vue'
+import PopMenu from './PopMenu.vue'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
@@ -139,6 +135,16 @@ const router = useRouter()
 const message = useMessage()
 const loading = ref(false)
 const task = ref(null)
+// Read-only is a property of the TASK, not of the screen it was opened from.
+// The `readonly` prop carries the board's archive SCOPE (?archived=1); `archived_at`
+// carries the task's own state — and half the doors into this modal walk past the
+// scope entirely: a relation (openRelated pushes ?task= with no archived=1), a
+// notification (ListNotifications doesn't filter the archive), a document link, a
+// `#N` chip, a copied link. The backend has no archive guard at all — archive is a
+// client convention — so an archived task reached that way took edits for real: its
+// pills were live, its status picker moved it back onto the board, comments posted.
+// Hence the OR: the scope alone was only ever half the answer (#2932).
+const ro = computed(() => props.readonly || !!task.value?.archived_at)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
@@ -310,8 +316,17 @@ function setEstimate(val) {
   estimate.value = val && val > 0 ? val : null
   applyMeta()
 }
+// Apply what was typed in the estimate box. An unreadable entry is reported and
+// left alone: the field is free text ("1ч 30", "3д 4ч", "полдня"), and the old
+// `setEstimate(parse(...))` turned every misread into a silent clear — the number
+// a person had planned with vanished on a typo, with nothing on screen to say so.
 function applyEstInput() {
-  setEstimate(parseEstimate(estInput.value, estCfg.value))
+  const { value, ok } = parseEstimateInput(estInput.value, estCfg.value)
+  if (!ok) {
+    message.error(t('task.estimate.unreadable', { value: estInput.value.trim() }))
+    return
+  }
+  setEstimate(value)
 }
 function clearEstimate() {
   estInput.value = ''
@@ -332,6 +347,10 @@ const tagPickerGroups = computed(() =>
   buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
 )
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
+// Flat picker set — what a typed name is matched against, so the answer covers
+// exactly the tags the reader could have clicked instead (GitLab meta-prefixed
+// tags are hidden here on purpose: attaching one desyncs from the field it drives).
+const tagPickerFlat = computed(() => tagPickerGroups.value.flatMap((g) => g.tags))
 
 // The tags trigger shows as many WHOLE tag chips as fit on one line, then "+N"
 // (shared with the stacked card row via useTagFit — which also re-observes the
@@ -344,6 +363,11 @@ const assigneeObjs = computed(() =>
 )
 // External GitLab assignees (display-only) from the task detail.
 const glAssignees = computed(() => task.value?.gitlab_assignees || [])
+// GitLab half of the assignee picker: the project roster plus whoever this task
+// already carries that the roster has since dropped (a hand-pinned assignee who
+// left the GitLab project outlives it) — without them the modal drew the face and
+// offered no row to un-assign it. Same rule as the card's picker; see utils/assignees.
+const glPickerList = computed(() => glPickerMembers(gitlabMembers.value, glAssignees.value))
 // Author = who created the card (read-only): the GitLab issue author for synced
 // tasks, otherwise the Tessera user resolved from created_by.
 const author = computed(() => {
@@ -387,11 +411,25 @@ const project = computed(
   () => store.projects.find((p) => p.id === boardInfo.value?.projectId) || null,
 )
 
+// The board keeps ONE TaskModal mounted and swaps `taskId` underneath it (a subtask
+// row, a relation, the «Родитель» link, an activity toast, ?task= in the URL), so two
+// detail loads can be in flight at once and the slower one answers last. Without a
+// token saying which task an answer was asked for, the load the reader has LEFT fills
+// the form — title/description/priority/dates/completed — of the task they are now
+// looking at, and the next Save sends that payload to `props.taskId`: the first task's
+// content written silently over the second one's (#2932).
+//
+// Same idiom as SearchBar, and taken before the first early return for the same
+// reason: a call that goes on to do nothing (the modal closed, taskId cleared) still
+// has to invalidate whatever is in flight, or its answer repopulates what we cleared.
+let loadSeq = 0
 async function loadDetail() {
+  const mine = ++loadSeq
   if (!props.taskId) return
   loading.value = true
   try {
     const res = await tasksApi.get(props.taskId)
+    if (mine !== loadSeq) return
     const t = res.data
     task.value = t
     title.value = t.title
@@ -431,6 +469,8 @@ async function loadDetail() {
         const cols = await boardsApi.columns(t.board_id)
         // parentCandidates powers the "make subtask of…" picker (top-level tasks).
         const bt = await boardsApi.tasks(t.board_id)
+        // Three more round-trips, three more chances for the task to change under us.
+        if (mine !== loadSeq) return
         parentCandidates.value = (bt.data || []).filter((x) => x.id !== t.id)
         // color/position feed the status chip and the "shift right" button; the
         // recurrence selects only ever needed id/name.
@@ -443,19 +483,23 @@ async function loadDetail() {
         }))
         doneColumnId.value = b.data.done_column_id || null
       } catch {
+        if (mine !== loadSeq) return
         boardInfo.value = null
         parentCandidates.value = []
         columns.value = []
         doneColumnId.value = null
       }
     }
-    loadSiblings(t)
-    loadExtras()
-    if (!t.gitlab) loadGlTemplates()
+    loadSiblings(t, mine)
+    loadExtras(mine)
+    if (!t.gitlab) loadGlTemplates(mine)
   } catch (e) {
+    if (mine !== loadSeq) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    // Only the live load owns the spinner: a stale one clearing it would uncover a
+    // half-populated form while the task on screen is still loading.
+    if (mine === loadSeq) loading.value = false
   }
 }
 
@@ -463,15 +507,17 @@ async function loadDetail() {
 // subtask and only to pin its position on a move — best-effort, one extra GET.
 // The same response also carries the parent's own title, which the «Родитель»
 // row shows (#2861) — so that stays one request, not two.
-async function loadSiblings(t) {
+async function loadSiblings(t, mine) {
   siblings.value = []
   parentTask.value = null
   if (!t?.parent_id) return
   try {
     const res = await tasksApi.get(t.parent_id)
+    if (mine !== loadSeq) return
     siblings.value = res.data?.subtasks || []
     parentTask.value = res.data || null
   } catch {
+    if (mine !== loadSeq) return
     siblings.value = []
     parentTask.value = null
   }
@@ -486,15 +532,19 @@ let scrollOnOpen = false
 // The editor can add a file to the task (a non-image drop into the description),
 // and the «Файлы» tab plus its badge count are owned here — so it has to be told.
 async function reloadAttachments() {
+  // Called from the editor (a file dropped into the description), not from a load —
+  // so it takes the current token rather than being handed one.
+  const mine = loadSeq
   try {
     const a = await tasksApi.attachments(props.taskId)
+    if (mine !== loadSeq) return
     attachments.value = a.data || []
     emit('changed')
   } catch {
     /* the file is uploaded either way; the list refreshes on reopen */
   }
 }
-async function loadExtras() {
+async function loadExtras(mine) {
   const id = props.taskId
   // Populate the thread without the enter fade (only later, user-posted comments fade).
   commentsHydrated.value = false
@@ -505,6 +555,9 @@ async function loadExtras() {
     tasksApi.events(id),
     tasksApi.documents(id),
   ])
+  // `id` was captured before the requests, but capturing it never protected the
+  // assignments below — this is the check that does.
+  if (mine !== loadSeq) return
   comments.value = c.status === 'fulfilled' ? c.value.data || [] : []
   relations.value = r.status === 'fulfilled' ? r.value.data || [] : []
   attachments.value = a.status === 'fulfilled' ? a.value.data || [] : []
@@ -526,6 +579,11 @@ watch(
       scrollOnOpen = true
       loadDetail()
     } else {
+      // Invalidate the load in flight: closing is not a new load, so nothing else
+      // bumps the token, and the answer would otherwise repopulate the form of
+      // whatever task is opened next.
+      loadSeq++
+      loading.value = false
       // Closing the panel drops any open reply/edit composer (the subtree stays
       // mounted, so it wouldn't clear itself).
       commentsTab.value?.resetComposers?.()
@@ -550,7 +608,7 @@ function buildPayload() {
 }
 // Tappable fields persist immediately; Save commits the text fields.
 async function applyMeta() {
-  if (props.readonly) return
+  if (ro.value) return
   try {
     const res = await tasksApi.update(props.taskId, buildPayload())
     task.value = res.data
@@ -664,22 +722,16 @@ const parentTask = ref(null)
 // an ellipsis placeholder rather than a chip with no text.
 const parentLabel = computed(() => parentTask.value?.title || '…')
 
-// Neighbours for PATCH move: a subtask holds its place in the parent's list, a
-// top-level task appends to the end of the target column. Either way we send
-// something — bare nulls mean positionBetween(nil, nil) = 65536, which drops the
-// card near the top of the column and quietly reshuffles it.
-function moveNeighbors(columnId) {
-  if (task.value?.parent_id) return siblingNeighbors(siblings.value, task.value.id)
-  return { before_id: columnTail(parentCandidates.value, columnId, task.value?.id), after_id: null }
-}
-
 async function moveToColumn(columnId) {
-  if (props.readonly || !task.value || !columnId || columnId === task.value.column_id) return
+  if (ro.value || !task.value || !columnId || columnId === task.value.column_id) return
   moving.value = true
   try {
+    // Neighbours for the PATCH: a subtask pins its row in the parent's list, a
+    // top-level card names none and is appended by the server — see moveNeighbors
+    // for why this client must not compute the column's end itself.
     await tasksApi.move(task.value.id, {
       column_id: columnId,
-      ...moveNeighbors(columnId),
+      ...moveNeighbors(task.value, siblings.value),
     })
     // A recurring task completed by entering the done column bounces straight
     // back out with an advanced due date — re-read instead of trusting the click.
@@ -695,7 +747,7 @@ async function moveToColumn(columnId) {
 // The checkmark closes the task through the board's done column (so the backend
 // stamps completed_at and logs it); boards without one fall back to the flag.
 async function closeTask() {
-  if (props.readonly || !task.value) return
+  if (ro.value || !task.value) return
   const plan = planComplete({
     completed: completed.value,
     columnId: task.value.column_id,
@@ -717,14 +769,16 @@ const glTemplate = ref(null)
 const glTemplateOptions = computed(() =>
   glTemplates.value.map((t) => ({ label: t.name, value: t.name })),
 )
-async function loadGlTemplates() {
+async function loadGlTemplates(mine) {
   glTemplates.value = []
   glTemplate.value = null
   if (!gitlabFetchTemplates.value || !wsId.value) return
   try {
     const res = await glApi.issueTemplates(wsId.value, gitlabIntegrationId.value)
+    if (mine !== loadSeq) return
     glTemplates.value = res.data || []
   } catch {
+    if (mine !== loadSeq) return
     glTemplates.value = []
   }
 }
@@ -751,7 +805,9 @@ async function createGlIssue() {
     // Persist the current title/description/properties first so the issue mirrors
     // the on-screen state, then create (the backend reads the saved task).
     await applyMeta()
-    const created = await glApi.createIssue(props.taskId, {})
+    // The due date crosses over as a day, not an instant — send the calendar it
+    // was written in (the profile zone, else the browser's).
+    const created = await glApi.createIssue(props.taskId, {}, resolvedTimezone(theme.timezone))
     // Re-fetch so the task picks up its GitLab provenance and renders as synced.
     const res = await tasksApi.get(props.taskId)
     task.value = res.data
@@ -763,7 +819,7 @@ async function createGlIssue() {
     )
     emit('changed')
   } catch (e) {
-    message.error(e?.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     glCreating.value = false
   }
@@ -790,7 +846,7 @@ async function toggleGlGroup() {
     message.success(grouped ? t('task.gitlab.groupCleared') : t('task.gitlab.groupSet'))
     emit('changed')
   } catch (e) {
-    message.error(e?.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     glGrouping.value = false
   }
@@ -865,10 +921,26 @@ async function toggleTag(id) {
     message.error(e.message)
   }
 }
+const creatingTag = ref(false)
 async function createTag() {
   const n = newTagName.value.trim()
-  if (!n) return
+  // The guard is what makes a second Enter harmless: the field is cleared only once
+  // the tag is on the task, so an impatient repeat used to send a second create —
+  // and the second one came back «имя занято» about the tag the first had just made.
+  if (!n || creatingTag.value) return
+  // A name the project already carries is a request for THAT tag, not for a twin:
+  // the grid above is not filtered by what's typed, so on a long tag list typing the
+  // name is the way to reach it. Creating was a dead end — the server refuses the
+  // duplicate (409) and the task stays untagged.
+  const existing = matchTagByName(tagPickerFlat.value, n)
+  if (existing) {
+    newTagName.value = ''
+    if (selectedTags.value.includes(existing.id)) message.info(t('task.tags.alreadyOn'))
+    else await toggleTag(existing.id)
+    return
+  }
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
+  creatingTag.value = true
   try {
     const res = await projApi.createTag(projectId.value, {
       name: n,
@@ -880,6 +952,8 @@ async function createTag() {
     emit('changed')
   } catch (e) {
     message.error(e.message)
+  } finally {
+    creatingTag.value = false
   }
 }
 async function toggleAssignee(uid) {
@@ -955,7 +1029,7 @@ async function onSubtaskChanged() {
 // The title commits on blur / Enter; the description already persists on blur.
 // Closing flushes whatever is still dirty, so nothing typed is lost.
 async function saveTitle() {
-  if (props.readonly || !task.value) return
+  if (ro.value || !task.value) return
   const next = normalizeTitle(title.value)
   if (!next) {
     title.value = task.value.title
@@ -994,7 +1068,7 @@ onBeforeUnmount(() => titleRO?.disconnect())
 watch(
   () => props.show,
   (show) => {
-    if (show || props.readonly || !task.value) return
+    if (show || ro.value || !task.value) return
     if (normalizeTitle(title.value) !== task.value.title) saveTitle()
     else if (description.value !== descSaved.value) saveDesc()
   },
@@ -1070,7 +1144,7 @@ function setField(name, open) {
   else if (fieldOpen.value === name) fieldOpen.value = ''
 }
 function openField(name) {
-  if (props.readonly) return
+  if (ro.value) return
   // The keys reach the panel's fields; a hidden panel comes back first.
   if (name !== 'status' && wide.value && rightHidden.value) toggleRightPane()
   nextTick(() => (fieldOpen.value = name))
@@ -1097,7 +1171,7 @@ function keysLive() {
   if (document.querySelector('.n-dropdown-menu')) return false
   return !fieldOpen.value
 }
-const canEdit = () => !props.readonly
+const canEdit = () => !ro.value
 
 // Esc (v2, #2958): closes what is open inside the modal first — a field's
 // popover, a header menu — and the modal only when nothing is. Naive's own
@@ -1175,7 +1249,7 @@ useShortcuts(
         :layout="layout"
         :narrow="narrow"
         :shared="shared"
-        :readonly="readonly"
+        :readonly="ro"
         @navigate="emit('navigate', $event)"
         @update:layout="setLayout"
         @share="shareTask"
@@ -1201,7 +1275,7 @@ useShortcuts(
             />
             <span>{{ rightHidden ? t('task.head.showPane') : t('task.head.hidePane') }}</span>
           </div>
-          <template v-if="readonly">
+          <template v-if="ro">
             <div class="menu-item" @click="emit('restore', taskId)">
               <n-icon :component="ArrowUndoOutline" :size="15" />
               <span>{{ t('task.action.restore') }}</span>
@@ -1248,7 +1322,7 @@ useShortcuts(
         <div class="tm-body">
           <div class="tm-main">
             <div class="tm-scroll">
-              <div v-if="readonly" class="tm-ro-banner">
+              <div v-if="ro" class="tm-ro-banner">
                 <span>{{ t('task.footer.readonly') }}</span>
                 <n-button size="small" type="primary" @click="emit('restore', taskId)">
                   <template #icon><n-icon :component="ArrowUndoOutline" /></template>
@@ -1259,7 +1333,7 @@ useShortcuts(
               <!-- status · shift right · complete · when it last changed -->
               <div class="tm-actions">
                 <n-popover
-                  v-if="!readonly && sortedCols.length"
+                  v-if="!ro && sortedCols.length"
                   :show="fieldOpen === 'status'"
                   trigger="click"
                   placement="bottom-start"
@@ -1282,7 +1356,7 @@ useShortcuts(
                       <ShortcutKeys id="task.status" />
                     </button>
                   </template>
-                  <div class="menu pmenu">
+                  <PopMenu class="pmenu">
                     <div
                       v-for="c in sortedCols"
                       :key="c.id"
@@ -1297,13 +1371,13 @@ useShortcuts(
                       />
                       <span>{{ columnName(c) }}</span>
                     </div>
-                  </div>
+                  </PopMenu>
                 </n-popover>
                 <span v-else class="tm-status col-chip static" :style="statusTone">
                   <TesseraIcon :name="statusIcon(currentColumn)" :size="15" class="tm-status-ico" />
                   <span>{{ columnName(currentColumn) || '—' }}</span>
                 </span>
-                <template v-if="!readonly">
+                <template v-if="!ro">
                   <button
                     class="st-btn tm-next"
                     :disabled="!nextCol || moving"
@@ -1342,7 +1416,7 @@ useShortcuts(
                   rows="1"
                   class="tm-title"
                   :placeholder="t('task.head.titlePlaceholder')"
-                  :readonly="readonly"
+                  :readonly="ro"
                   data-testid="task-title"
                   @input="fitTitle"
                   @blur="saveTitle"
@@ -1360,12 +1434,12 @@ useShortcuts(
               <Teleport :to="sideEl" :disabled="!wide || !sideEl">
                 <aside v-if="!wide || !rightHidden" class="tm-panel">
                   <div class="tp-sec">{{ t('task.panel.props') }}</div>
-                  <div class="props" :class="{ 'tm-ro': readonly }">
+                  <div class="props" :class="{ 'tm-ro': ro }">
                     <!-- status -->
                     <div class="prow">
                       <span class="plabel">{{ t('task.field.status') }}</span>
                       <n-popover
-                        v-if="!readonly && sortedCols.length"
+                        v-if="!ro && sortedCols.length"
                         :show="fieldOpen === 'statusPanel'"
                         trigger="click"
                         placement="bottom-start"
@@ -1383,7 +1457,7 @@ useShortcuts(
                             }}</span>
                           </button>
                         </template>
-                        <div class="menu pmenu">
+                        <PopMenu class="pmenu">
                           <div
                             v-for="c in sortedCols"
                             :key="c.id"
@@ -1398,7 +1472,7 @@ useShortcuts(
                             />
                             <span>{{ columnName(c) }}</span>
                           </div>
-                        </div>
+                        </PopMenu>
                       </n-popover>
                       <span v-else class="val static">
                         <TesseraIcon
@@ -1433,7 +1507,7 @@ useShortcuts(
                             <span v-else class="muted">{{ priorityLabel(0) }}</span>
                           </button>
                         </template>
-                        <div class="menu">
+                        <PopMenu>
                           <div
                             v-for="o in priorityOptions"
                             :key="o.value"
@@ -1447,7 +1521,7 @@ useShortcuts(
                             <span class="grow">{{ o.label }}</span>
                             <span class="muted">{{ o.value }}</span>
                           </div>
-                        </div>
+                        </PopMenu>
                       </n-popover>
                       <ShortcutKeys id="task.priorityPick" class="pkey" />
                     </div>
@@ -1491,7 +1565,7 @@ useShortcuts(
                             <span v-else class="muted">{{ t('task.value.assigneesNone') }}</span>
                           </button>
                         </template>
-                        <div class="menu pmenu">
+                        <PopMenu class="pmenu">
                           <div
                             v-for="m in members"
                             :key="m.user_id"
@@ -1506,10 +1580,10 @@ useShortcuts(
                               class="chk"
                             />
                           </div>
-                          <template v-if="gitlabMembers.length">
+                          <template v-if="glPickerList.length">
                             <div class="menu-sep">GitLab</div>
                             <div
-                              v-for="m in gitlabMembers"
+                              v-for="m in glPickerList"
                               :key="m.gl_user_id"
                               class="menu-item"
                               @click="toggleGlAssignee(m)"
@@ -1527,7 +1601,7 @@ useShortcuts(
                               />
                             </div>
                           </template>
-                        </div>
+                        </PopMenu>
                       </n-popover>
                       <ShortcutKeys id="task.assignees" class="pkey" />
                     </div>
@@ -1612,7 +1686,7 @@ useShortcuts(
                           </button>
                         </template>
                         <div class="est-pop">
-                          <div v-if="estOptions.length" class="menu est-menu">
+                          <PopMenu v-if="estOptions.length" class="est-menu">
                             <div class="menu-item" @click="clearEstimate">
                               <span class="grow muted">{{ t('task.value.estimateUnset') }}</span>
                               <n-icon
@@ -1634,7 +1708,7 @@ useShortcuts(
                                 class="chk"
                               />
                             </div>
-                          </div>
+                          </PopMenu>
                           <div v-else class="est-edit">
                             <n-input
                               v-model:value="estInput"
@@ -1679,7 +1753,7 @@ useShortcuts(
                           </button>
                         </template>
                         <div class="ms-pop">
-                          <div class="menu ms-menu">
+                          <PopMenu class="ms-menu">
                             <div class="menu-item" @click="setMilestone(null)">
                               <span class="grow muted">{{ t('task.value.milestoneUnset') }}</span>
                               <n-icon
@@ -1709,7 +1783,7 @@ useShortcuts(
                                 class="chk"
                               />
                             </div>
-                          </div>
+                          </PopMenu>
                           <div class="ms-new">
                             <n-input
                               v-model:value="newMilestoneTitle"
@@ -1781,7 +1855,7 @@ useShortcuts(
                             <span v-else class="muted">{{ t('task.value.tagsNone') }}</span>
                           </button>
                         </template>
-                        <div class="menu">
+                        <PopMenu>
                           <div class="chip-groups">
                             <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
                               <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
@@ -1823,7 +1897,7 @@ useShortcuts(
                             @keydown.esc.stop="fieldOpen = ''"
                             @keyup.enter="createTag"
                           />
-                        </div>
+                        </PopMenu>
                       </n-popover>
                       <ShortcutKeys id="task.tags" class="pkey" />
                     </div>
@@ -1839,7 +1913,7 @@ useShortcuts(
                         >
                           <span class="parent-title">{{ parentLabel }}</span>
                         </button>
-                        <button v-if="!readonly" class="val detach" @click="detachFromParent">
+                        <button v-if="!ro" class="val detach" @click="detachFromParent">
                           {{ t('task.parent.detach') }}
                         </button>
                       </div>
@@ -1855,7 +1929,7 @@ useShortcuts(
                             <span class="muted">{{ t('task.parent.makeSubtask') }}</span>
                           </button>
                         </template>
-                        <div class="menu pmenu">
+                        <PopMenu class="pmenu">
                           <div
                             v-for="cand in parentCandidates"
                             :key="cand.id"
@@ -1867,13 +1941,13 @@ useShortcuts(
                           <span v-if="!parentCandidates.length" class="muted small">{{
                             t('task.parent.noCandidates')
                           }}</span>
-                        </div>
+                        </PopMenu>
                       </n-popover>
                     </div>
                   </div>
 
                   <!-- Разработка: the GitLab issue this task mirrors, or the way to make one. -->
-                  <template v-if="task?.gitlab || (task && gitlabCanCreate && !readonly)">
+                  <template v-if="task?.gitlab || (task && gitlabCanCreate && !ro)">
                     <div class="tp-sec">{{ t('task.panel.dev') }}</div>
                     <div v-if="task.gitlab" class="dev-card">
                       <a
@@ -1900,7 +1974,7 @@ useShortcuts(
                           t('task.gitlab.grouped')
                         }}</span>
                         <button
-                          v-if="!readonly"
+                          v-if="!ro"
                           class="val"
                           :disabled="glGrouping"
                           @click="toggleGlGroup"
@@ -1941,7 +2015,7 @@ useShortcuts(
                 class="tm-desc"
                 data-tour="tm-description"
                 :data-tour-set="descSaved ? '' : null"
-                :readonly="readonly"
+                :readonly="ro"
                 :members="mentionItems"
                 :task-id="taskId"
                 :initial-mode="descInitialMode"
@@ -1961,7 +2035,7 @@ useShortcuts(
                 data-tour="tm-subtasks"
                 :task="task"
                 :columns="columns"
-                :readonly="readonly"
+                :readonly="ro"
                 :gitlab-can-group="gitlabCanGroup"
                 :done-column-id="doneCol?.id || null"
                 @open="emit('open', $event)"
@@ -2011,7 +2085,7 @@ useShortcuts(
                   ref="commentsTab"
                   v-model:comments="comments"
                   :task-id="taskId"
-                  :readonly="readonly"
+                  :readonly="ro"
                   :hydrated="commentsHydrated"
                   :mode="activityMode === 'all' ? 'all' : 'comments'"
                   :events="events"
@@ -2030,7 +2104,7 @@ useShortcuts(
             </div>
             <!-- The comments composer is teleported here: pinned under the column,
                  outside its scroll (TaskCommentsTab, composer-to). -->
-            <div v-show="!readonly" ref="composerEl" class="tm-composer" />
+            <div v-show="!ro" ref="composerEl" class="tm-composer" />
           </div>
           <div v-show="wide && !rightHidden" ref="sideEl" class="tm-side" />
         </div>

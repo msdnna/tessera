@@ -85,8 +85,11 @@ func (h *AuthHandler) clearRefreshCookie(c *gin.Context) {
 // would blank those out. Nothing under /api/uploads changes state — the upload
 // route on the same path is POST and still demands a bearer token — so the
 // laxer tier buys the working case without opening a CSRF surface.
-func (h *AuthHandler) setMediaCookie(c *gin.Context, userID uuid.UUID) {
-	tok, err := auth.NewMediaToken(h.secret, userID)
+// sessionID is the refresh-token row the cookie is issued beside: the credential
+// is scoped to that session, so ending it (logout, password change, rotation)
+// ends the cookie too — see auth.NewMediaToken and middleware.mediaSessionLive.
+func (h *AuthHandler) setMediaCookie(c *gin.Context, userID, sessionID uuid.UUID) {
+	tok, err := auth.NewMediaToken(h.secret, userID, sessionID)
 	if err != nil {
 		return
 	}

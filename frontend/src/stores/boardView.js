@@ -90,9 +90,6 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // Its tooltip («показано 5 из 12…») — the count sits next to the board in the
   // sidebar (v2), not in the sub-toolbar.
   const shownTitle = ref('')
-  // The open board's task rows, as a getter (not a copy): the ⌘K palette needs
-  // a column's tail to move a task to its end without refetching the board.
-  const taskSource = ref(null)
   // «Filter by this person» from the palette (#2957): a request the board
   // applies to its own filters; `n` makes a repeat of the same person fire.
   const assigneeFilter = ref(null)
@@ -104,9 +101,43 @@ export const useBoardViewStore = defineStore('boardView', () => {
   function requestAssigneeFilter(userId) {
     assigneeFilter.value = { userId, n: (assigneeFilter.value?.n || 0) + 1 }
   }
+  // The customize drawer is owned by KanbanBoard, but its only trigger used to be
+  // the gear in the composer's right-hand tools — and those slide away (and turn
+  // `pointer-events: none`) as soon as the chips fill the bar, which on a phone is
+  // two or three facets. The phone's menu lives in the header, outside the board,
+  // so it asks for the drawer through a nonce the way the header actions ask for a
+  // reload above.
+  const customizeNonce = ref(0)
+  // Saved views (per-board, server-side) belong to KanbanBoard too, and both their
+  // triggers — the folder and the disk — stand in that same strip of tools. Unlike
+  // the customize drawer they have NO other entry anywhere in the app (the
+  // /milestones-style route doesn't exist for them, and the sidebar knows nothing
+  // about views), so a view saved on a desktop simply could not be loaded on a
+  // phone. KanbanBoard publishes the list for the CURRENT layout here — views are
+  // per-visualization, board views and timeline views are separate sets — and
+  // answers the request below.
+  const savedViews = ref([]) // [{ id, name }] for the open layout
+  const currentViewName = ref('') // the loaded view, '' when none
+  // { nonce, op: 'apply' | 'save', id?, name? }. A nonce and not a bare payload:
+  // loading the same view twice in a row is a legitimate ask (it re-applies a
+  // toolbar the reader has since changed), and an unchanged object wouldn't wake
+  // the watcher.
+  const viewRequest = ref(null)
+  let viewNonce = 0
 
   function bumpReload() {
     reloadNonce.value++
+  }
+  function openCustomize() {
+    customizeNonce.value++
+  }
+  function requestApplyView(id) {
+    viewRequest.value = { nonce: ++viewNonce, op: 'apply', id }
+  }
+  // An empty name means "save over the loaded view" — the same fallback the disk
+  // button's empty input has (KanbanBoard's saveView reads currentViewName then).
+  function requestSaveView(name) {
+    viewRequest.value = { nonce: ++viewNonce, op: 'save', name: name || '' }
   }
   function setContext(b, w, p) {
     boardId.value = b
@@ -145,8 +176,10 @@ export const useBoardViewStore = defineStore('boardView', () => {
     searchQ.value = ''
     shownTasks.value = null
     shownTitle.value = ''
-    taskSource.value = null
     assigneeFilter.value = null
+    savedViews.value = []
+    currentViewName.value = ''
+    viewRequest.value = null
   }
 
   return {
@@ -154,7 +187,6 @@ export const useBoardViewStore = defineStore('boardView', () => {
     searchQ,
     shownTasks,
     shownTitle,
-    taskSource,
     assigneeFilter,
     requestAssigneeFilter,
     quickAdd,
@@ -185,7 +217,14 @@ export const useBoardViewStore = defineStore('boardView', () => {
     layout,
     archiveOpen,
     reloadNonce,
+    customizeNonce,
+    savedViews,
+    currentViewName,
+    viewRequest,
     bumpReload,
+    openCustomize,
+    requestApplyView,
+    requestSaveView,
     setContext,
     refill,
     reset,

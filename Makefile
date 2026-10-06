@@ -152,6 +152,14 @@ lint-frontend: ## Lint + format-check frontend
 test-frontend: ## Run frontend tests
 	cd frontend && corepack yarn test
 
+# The conversion sidecar is not a versioned component and has no dependencies of
+# its own, so its tests are plain stdlib unittest and run without a toolchain.
+# Not part of the `test` aggregate for the same reason android and desktop are
+# not: it is a deploy-time service, tested when it is touched.
+.PHONY: test-converter
+test-converter: ## Run conversion sidecar tests (soffice stubbed; no LibreOffice needed)
+	cd converter && python3 -m unittest server_test -v
+
 .PHONY: test-frontend-cover
 test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.html,lcov.info})
 	cd frontend && corepack yarn test:coverage
@@ -372,6 +380,56 @@ lint: lint-backend lint-frontend lint-mcp ## Lint everything
 .PHONY: test
 test: test-backend test-frontend test-mcp ## Test everything
 
+# ── Security scanning (SAST/SCA, #2936) ────────────────────
+# Separate from `lint`: these reach the network (vulnerability databases) and
+# take far longer than a linter, so they must not sit in the pre-commit gate.
+# Reports land in reports/security/ as SARIF — gitignored like reports/coverage.
+# Scanners come from pinned GitHub releases verified against their published
+# checksums, into tools/bin/ — see tools/install-scanners.sh for why that beats
+# `go install @latest` here (sum.golang.org is unreachable on this host, and
+# @latest drifts between a developer's machine and CI). Bump a version with:
+#   make scan-tools-force GOSEC_VERSION=2.30.0
+.PHONY: scan-tools
+scan-tools: ## Install the SAST/SCA scanners into tools/bin (TOOLS=osv-scanner for a subset)
+	./tools/install-scanners.sh $(TOOLS)
+
+.PHONY: scan-tools-force
+scan-tools-force: ## Reinstall the scanners even if already present
+	./tools/install-scanners.sh --force
+
+.PHONY: scan-backend
+scan-backend: ## SAST/SCA for the backend (govulncheck + gosec)
+	./tools/security-scan.sh backend
+
+.PHONY: scan-frontend
+scan-frontend: ## SCA for the frontend (osv-scanner over yarn.lock)
+	./tools/security-scan.sh frontend
+
+.PHONY: scan-secrets
+scan-secrets: ## Secret scan of the working tree (gitleaks)
+	./tools/security-scan.sh secrets
+
+.PHONY: scan-android
+scan-android: ## SAST/SCA for Android (detekt SARIF + osv-scanner over Gradle deps)
+	./tools/security-scan.sh android
+
+.PHONY: scan-desktop
+scan-desktop: ## SCA for the desktop app (osv-scanner over Cargo.lock)
+	./tools/security-scan.sh desktop
+
+.PHONY: scan
+scan: ## Run every security scan (backend + frontend + secrets + android + desktop)
+	./tools/security-scan.sh all
+
+# Every scan above ends by comparing itself against tools/security-baseline.json
+# (#2939): the frozen list of findings may shrink, never grow. After fixing
+# something — or after accepting a new finding with your eyes open — rerun the
+# same scan through this target to rewrite the baseline, and commit the diff.
+# SCAN_TARGET picks which scan regenerates its own entries; the others keep theirs.
+.PHONY: scan-baseline-update
+scan-baseline-update: ## Rewrite the scan baseline from a fresh run (SCAN_TARGET=backend|frontend|secrets|android|desktop|all)
+	SCAN_RATCHET_UPDATE=1 ./tools/security-scan.sh $(or $(SCAN_TARGET),all)
+
 # ── Versioning ─────────────────────────────────────────────
 .PHONY: version
 version: ## Show service versions
@@ -437,9 +495,16 @@ lint-android: ## Run ktlint + detekt on the Android app
 format-android: ## Auto-format Kotlin sources via ktlint
 	@$(ANDROID_GRADLE) :app:ktlintFormat
 
+# Narrows the unit tier the same way E2E_ANDROID_TESTS narrows the e2e one, e.g.
+#   make test-android ANDROID_TESTS='*RecurrenceTest,*DuePickerCustomDatesTest'
+# Same comma rule: Gradle takes one pattern per `--tests`, and a comma inside a
+# single pattern matches nothing and fails with «No tests found». Empty = all.
+ANDROID_TESTS ?=
+android_test_filters = $(foreach t,$(subst $(comma),$(space),$(ANDROID_TESTS)),--tests '$(t)')
+
 .PHONY: test-android
-test-android: ## Run Android unit tests
-	@$(ANDROID_GRADLE) :app:testDebugUnitTest
+test-android: ## Run Android unit tests (ANDROID_TESTS='<pattern>[,<pattern>]' narrows)
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest $(android_test_filters)
 
 # Narrows the e2e tier to one class or method, e.g.
 #   make test-e2e-android E2E_ANDROID_TESTS='website.msdnna.tessera.e2e.TaskModalE2eTest'

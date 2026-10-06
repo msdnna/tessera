@@ -22,6 +22,11 @@ vi.mock('@/utils/device', () => ({
   notificationsSupported: () => false,
 }))
 
+// The component reads only `timezone` off the theme store; the real one drags in
+// the API client and the whole preference hydration for nothing.
+const themeState = { timezone: '' }
+vi.mock('@/stores/theme', () => ({ useThemeStore: () => themeState }))
+
 // The real popconfirm teleports its body out and only mounts it once the popover
 // opens — neither the prompt text nor the confirm button is reachable from the
 // wrapper. `global.stubs` can't reach it either: the component is an import
@@ -53,9 +58,9 @@ const ROUTES = [
   { id: 'rt1', matcher: {}, channel_ids: ['ch1'], options: {}, enabled: true, position: 1 },
 ]
 
-async function mountSettings() {
+async function mountSettings(routes = ROUTES) {
   chApi.list.mockResolvedValue({ data: CHANNELS })
-  rtApi.list.mockResolvedValue({ data: ROUTES })
+  rtApi.list.mockResolvedValue({ data: routes })
   prefsApi.get.mockResolvedValue({ data: {} })
   const NotificationSettings = (await import('@/components/NotificationSettings.vue')).default
   const w = mount(NotificationSettings)
@@ -109,5 +114,78 @@ describe('NotificationSettings.vue — удаление через попове�
     await routePc.find('.pc-ok').trigger('click')
     await flushPromises()
     expect(rtApi.remove).toHaveBeenCalledWith('rt1')
+  })
+})
+
+// The rule editor's event list is a mirror of what the server actually routes
+// (backend internal/notify/locale.go `kinds`), and it had fallen one kind behind:
+// a conference invitation is delivered like any other notification
+// (handlers/conferences.go → notify(…, kindConferenceInvite, …)) and even has its
+// own subject line in both languages, but it could not be picked here. So it was
+// impossible to send invitations to a channel on their own — or to keep them out
+// of one — and a rule that carried the kind anyway (API, another client) printed
+// the bare `conference_invite` in Latin in the middle of the Russian summary.
+describe('NotificationSettings.vue — виды событий в правиле', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  // The picker's options and the summary's labels are both derived from
+  // EVENT_KINDS, so the summary is the cheap end to observe: a kind the list does
+  // not know is one the picker cannot offer either, and here it also shows up as
+  // the untranslated key.
+  it('называет приглашение в конференцию в сводке правила, а не сырым ключом', async () => {
+    const w = await mountSettings([
+      {
+        id: 'rt2',
+        matcher: { kinds: ['conference_invite'] },
+        channel_ids: ['ch1'],
+        options: {},
+        enabled: true,
+        position: 1,
+      },
+    ])
+    const title = w.findAll('.item-title').at(-1).text()
+    expect(title).toBe('Приглашение в конференцию')
+    expect(title).not.toContain('conference_invite')
+  })
+})
+
+// Quiet hours are the one preference the *server* evaluates against a clock, so
+// the zone that clock runs in has to travel with them. Everywhere else an empty
+// profile timezone means "render in the browser's zone" (zonedParts falls back to
+// undefined → local), and that is the zone the hint under the window promises:
+// «Время — по вашему часовому поясу». The scanner reads an empty quiet_tz as UTC,
+// so sending one through puts a Moscow user's 22:00–08:00 window at 01:00–11:00
+// their time — pushes for the first three hours of the night, silence all morning.
+describe('NotificationSettings.vue — часовой пояс тихих часов', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    themeState.timezone = ''
+  })
+
+  it('подставляет зону браузера, когда профильная не задана', async () => {
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone
+    const w = await mountSettings()
+    prefsApi.update.mockResolvedValue({ data: {} })
+
+    await w.find('.row-end button').trigger('click')
+    await flushPromises()
+
+    expect(prefsApi.update).toHaveBeenCalledTimes(1)
+    expect(prefsApi.update.mock.calls[0][0].quiet_tz).toBe(browserTz)
+  })
+
+  it('не трогает явно выбранную профильную зону', async () => {
+    themeState.timezone = 'Asia/Yekaterinburg'
+    const w = await mountSettings()
+    prefsApi.update.mockResolvedValue({ data: {} })
+
+    await w.find('.row-end button').trigger('click')
+    await flushPromises()
+
+    expect(prefsApi.update.mock.calls[0][0].quiet_tz).toBe('Asia/Yekaterinburg')
   })
 })

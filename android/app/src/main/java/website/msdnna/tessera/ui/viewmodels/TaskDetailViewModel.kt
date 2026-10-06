@@ -14,7 +14,7 @@ import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.CommandOutcome
 import website.msdnna.tessera.data.model.CommandSummary
 import website.msdnna.tessera.data.model.Comment
-import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.Patch
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.Relation
 import website.msdnna.tessera.data.model.TaskDetail
@@ -24,9 +24,12 @@ import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.data.repository.DocumentRepository
 import website.msdnna.tessera.data.repository.TaskRepository
 import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.util.MentionItem
 import website.msdnna.tessera.util.MoveNeighbors
+import website.msdnna.tessera.util.addedMentionIds
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.hasCommandLine
+import website.msdnna.tessera.util.mentionIdsIn
 
 private val TagPalette = listOf(
     "#7c5cff", "#2f80ed", "#0eb0a9", "#18a058", "#f0a020", "#e0533d", "#eb2f96",
@@ -74,6 +77,11 @@ data class TaskDetailUiState(
     val glCreatedNotice: UiText? = null,
     /** True once any mutation happened, so the host can refresh the board on close. */
     val changed: Boolean = false,
+    /** The task is being *looked at*, not worked on — the archive scope OR the task's
+     *  own [TaskDetail.isArchived] (web parity, #2932). Every write refuses (see
+     *  [TaskDetailViewModel.mutate]); reading, and the one on-demand read that looks
+     *  like a write (downloading a file), stay. */
+    val readOnly: Boolean = false,
 )
 
 /**
@@ -97,14 +105,20 @@ class TaskDetailViewModel(
     private var workspaceId: String = ""
     private var projectId: String = "" // the task's project — scopes new tags
 
-    fun load(taskId: String, workspaceId: String, projectId: String) {
+    fun load(taskId: String, workspaceId: String, projectId: String, readOnly: Boolean = false) {
         this.taskId = taskId
         this.workspaceId = workspaceId
         this.projectId = projectId
-        _state.update { TaskDetailUiState(loading = true) }
+        _state.update { TaskDetailUiState(loading = true, readOnly = readOnly) }
         launchCatching {
             val detail = taskRepo.detail(taskId)
-            _state.update { it.copy(loading = false, detail = detail) }
+            // OR, not assignment: the flag passed in is the SCOPE the modal was
+            // opened from (the board's archive area), while `archivedAt` is the
+            // task's own state. Both make it read-only, and neither implies the
+            // other — a relation, a notification, a `#N` chip or a reminder
+            // deep-link all open a task on the LIVE board, where the scope says
+            // "editable" about a task that is in the archive (#2932).
+            _state.update { it.copy(loading = false, detail = detail, readOnly = it.readOnly || detail.isArchived) }
             // Board columns for the status row / recurrence selects, and the board
             // itself for its done column (both best-effort). Read from the task's
             // own board id, so a task opened from the relations tab (possibly on
@@ -149,33 +163,42 @@ class TaskDetailViewModel(
 
     fun saveCore(title: String, description: String) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), title = title.trim().ifBlank { d.title }, description = description)
+        boardRepo.updateTask(
+            d.id,
+            title = Patch.Set(title.trim().ifBlank { d.title }),
+            description = Patch.Set(description),
+        )
         reloadDetail()
     }
 
     fun saveDescription(description: String) = mutate {
         val d = state.value.detail ?: return@mutate
         if (description == d.description) return@mutate
-        boardRepo.updateTask(d.asTask(), description = description)
+        boardRepo.updateTask(d.id, description = Patch.Set(description))
         reloadDetail()
     }
 
     fun setPriority(priority: Int) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), priority = priority)
+        boardRepo.updateTask(d.id, priority = Patch.Set(priority))
         reloadDetail()
     }
 
     fun setDue(dueIso: String?) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), dueDate = dueIso)
+        boardRepo.updateTask(d.id, dueDate = Patch.Set(dueIso))
         reloadDetail()
     }
 
     /** Sets the due date and recurrence rule together (the due popover commits both). */
     fun setDueAndRecurrence(dueIso: String?, startIso: String?, recurrence: Recurrence?) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), dueDate = dueIso, startDate = startIso, recurrence = recurrence)
+        boardRepo.updateTask(
+            d.id,
+            dueDate = Patch.Set(dueIso),
+            startDate = Patch.Set(startIso),
+            recurrence = Patch.Set(recurrence),
+        )
         reloadDetail()
     }
 
@@ -187,7 +210,7 @@ class TaskDetailViewModel(
 
     fun setCompleted(completed: Boolean) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), completed = completed)
+        boardRepo.updateTask(d.id, completed = Patch.Set(completed))
         reloadDetail()
     }
 
@@ -223,7 +246,7 @@ class TaskDetailViewModel(
     /** Sets the task's estimate (canonical value), or null to clear it. */
     fun setEstimate(value: Double?) = mutate {
         val d = state.value.detail ?: return@mutate
-        boardRepo.updateTask(d.asTask(), estimate = value)
+        boardRepo.updateTask(d.id, estimate = Patch.Set(value))
         reloadDetail()
     }
 
@@ -293,16 +316,18 @@ class TaskDetailViewModel(
 
     fun toggleSubtaskDone(subId: String, completed: Boolean) = mutate {
         val sub = state.value.detail?.subtasks?.find { it.id == subId } ?: return@mutate
-        boardRepo.updateTask(sub, completed = completed)
+        boardRepo.updateTask(sub.id, completed = Patch.Set(completed))
         reloadDetail()
     }
 
     // ── comments ─────────────────────────────────────────────────────────────
 
-    /** Posts a comment; [parentId] set makes it a reply into that thread. */
-    fun postComment(body: String, members: List<Member>, parentId: String? = null) = mutate {
+    /** Posts a comment; [parentId] set makes it a reply into that thread.
+     *  [mentions] is the same roster the composer and the renderer use, so the
+     *  people notified are exactly those whose chip the comment draws. */
+    fun postComment(body: String, mentions: List<MentionItem>, parentId: String? = null) = mutate {
         if (body.isBlank()) return@mutate
-        val res = taskRepo.addComment(taskId, body, detectMentions(body, members), parentId)
+        val res = taskRepo.addComment(taskId, body, mentionIdsIn(body, mentions), parentId)
         _state.update {
             it.copy(comments = taskRepo.comments(taskId), changed = true, commandPreview = emptyList(), commandCustom = emptyList())
         }
@@ -339,9 +364,22 @@ class TaskDetailViewModel(
     /** Marks the posted-commands report as shown (it is a one-shot toast). */
     fun consumeCommandNotice() = _state.update { it.copy(commandNotice = null) }
 
-    fun editComment(commentId: String, body: String) = mutate {
+    /**
+     * Edits one's own comment. [oldBody] is what it said before, [mentions] the
+     * roster it is rendered against — together they say who this edit newly
+     * mentions, and only those people are notified: the edit composer offers the
+     * same @-popup the main one does, so a «@Иван, посмотри» added by an edit
+     * draws a resolved chip, and that chip is the promise Иван was told. Sending
+     * everyone the text mentions instead would ping them all again on a typo fix.
+     */
+    fun editComment(
+        commentId: String,
+        body: String,
+        oldBody: String = body,
+        mentions: List<MentionItem> = emptyList(),
+    ) = mutate {
         if (body.isBlank()) return@mutate
-        taskRepo.editComment(commentId, body)
+        taskRepo.editComment(commentId, body, addedMentionIds(oldBody, body, mentions))
         _state.update { it.copy(comments = taskRepo.comments(taskId), changed = true) }
     }
 
@@ -391,7 +429,7 @@ class TaskDetailViewModel(
         try {
             val newTitle = title.trim().ifBlank { d.title }
             if (newTitle != d.title || description != d.description) {
-                boardRepo.updateTask(d.asTask(), title = newTitle, description = description)
+                boardRepo.updateTask(d.id, title = Patch.Set(newTitle), description = Patch.Set(description))
             }
             val created = boardRepo.createGitlabIssue(d.id)
             reloadDetail()
@@ -461,15 +499,22 @@ class TaskDetailViewModel(
     }
 
     /** Downloads an attachment (auth'd) to a cache file and hands it back for
-     *  opening/sharing via the host's FileProvider. */
-    fun downloadAttachment(cacheDir: File, attachmentId: String, filename: String, onReady: (File) -> Unit) = mutate {
+     *  opening/sharing via the host's FileProvider. Goes through [sideEffect], not
+     *  [mutate]: it changes nothing on the server, and an archived task is opened
+     *  mostly to get its files back. */
+    fun downloadAttachment(cacheDir: File, attachmentId: String, filename: String, onReady: (File) -> Unit) = sideEffect {
         val file = taskRepo.downloadAttachment(cacheDir, attachmentId, filename)
         onReady(file)
     }
 
-    /** Uploads an inline editor image and returns its public URL (null on failure). */
-    suspend fun uploadMediaUrl(bytes: ByteArray, filename: String, mime: String?): String? =
-        runCatching { taskRepo.uploadMedia(bytes, filename, mime) }.getOrNull()
+    /** Uploads an inline editor image and returns its public URL (null on failure).
+     *  Suspends into the caller instead of going through [mutate], so it carries the
+     *  read-only gate itself — an archived task has no editor to paste into, and a
+     *  file left on disk with no text pointing at it is a leak nobody can find. */
+    suspend fun uploadMediaUrl(bytes: ByteArray, filename: String, mime: String?): String? {
+        if (_state.value.readOnly) return null
+        return runCatching { taskRepo.uploadMedia(bytes, filename, mime) }.getOrNull()
+    }
 
     // ── lifecycle actions ────────────────────────────────────────────────────
 
@@ -504,16 +549,20 @@ class TaskDetailViewModel(
 
     private val numberCache = mutableMapOf<Int, String>()
 
-    /** Matches `@Name` substrings against known members. A member linked to GitLab
-     *  is written by their login (that is what the picker inserts, so GitLab
-     *  resolves the mention on write-back) — both spellings notify them. */
-    private fun detectMentions(body: String, members: List<Member>): List<String> =
-        members.filter { m ->
-            (m.name.isNotBlank() && body.contains("@${m.name}")) ||
-                (m.glUsername.isNotBlank() && body.contains("@${m.glUsername}"))
-        }.map { it.userId }
-
+    /**
+     * The funnel every write goes through — and the second layer of the read-only
+     * (archive) mode: the UI hides the buttons, this refuses to go to the API even
+     * if one is reached anyway. Silent on purpose, like the web guards: nothing was
+     * offered, so there is nothing to explain.
+     */
     private fun mutate(block: suspend () -> Unit) {
+        if (_state.value.readOnly) return
+        sideEffect(block)
+    }
+
+    /** [mutate] without the read-only gate: for an on-demand *read* that runs like
+     *  a write (downloading a file), which the archive still hands out. */
+    private fun sideEffect(block: suspend () -> Unit) {
         viewModelScope.launch {
             runCatching { block() }.exceptionOrNull()?.let { e ->
                 _state.update { it.copy(error = errorMessage(e)) }

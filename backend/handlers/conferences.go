@@ -252,13 +252,31 @@ func (h *API) UpdateConference(c *gin.Context) {
 		}
 		ttl = *req.RecordingTTLDays
 	}
-	updated, err := h.q.UpdateConference(c, db.UpdateConferenceParams{
-		ID:               conf.ID,
-		Title:            req.Title,
-		Description:      req.Description,
-		ScheduledAt:      req.ScheduledAt,
-		TaskID:           req.TaskID,
-		RecordingTtlDays: ttl,
+	// Одной транзакцией, потому что срок хранения — это политика конференции, а
+	// не пометка на будущих записях: вместе с полем переезжают даты удаления уже
+	// снятых (#2932). Порознь правка могла бы оставить конференцию с новым
+	// сроком и записями, живущими по старому, — ровно то расхождение, которое
+	// здесь и чинится.
+	var updated db.Conference
+	err := h.inTx(c, func(q *db.Queries) error {
+		var uerr error
+		updated, uerr = q.UpdateConference(c, db.UpdateConferenceParams{
+			ID:               conf.ID,
+			Title:            req.Title,
+			Description:      req.Description,
+			ScheduledAt:      req.ScheduledAt,
+			TaskID:           req.TaskID,
+			RecordingTtlDays: ttl,
+		})
+		if uerr != nil {
+			return uerr
+		}
+		if ttl == conf.RecordingTtlDays {
+			return nil
+		}
+		return q.RestampConferenceRecordings(c, db.RestampConferenceRecordingsParams{
+			ConferenceID: conf.ID, TtlDays: ttl,
+		})
 	})
 	if err != nil {
 		fail(c, err)
@@ -278,8 +296,59 @@ func (h *API) requireConferenceManager(c *gin.Context, conf db.Conference) bool 
 	return false
 }
 
+// doomedConference is everything a conference's files need after its rows are
+// gone: the id (the rec/ and conf/ directories are named by it), the recording
+// paths, and the job id of a recording still in flight.
+type doomedConference struct {
+	id           uuid.UUID
+	recordings   []string
+	activeEgress string
+}
+
+// doomedConferences describes every conference of a workspace that is about to
+// be deleted, read through the caller's transaction so the snapshot matches the
+// delete. DeleteConference does this reading for one conference; a workspace
+// delete takes all of them at once, by a cascade that never touches the disk.
+func (h *API) doomedConferences(c *gin.Context, q *db.Queries, wsID uuid.UUID) ([]doomedConference, error) {
+	ids, err := q.ConferenceIDsInWorkspace(c, wsID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]doomedConference, 0, len(ids))
+	for _, id := range ids {
+		d := doomedConference{id: id}
+		if d.recordings, err = q.ListConferenceRecordingPaths(c, id); err != nil {
+			return nil, err
+		}
+		active, aerr := q.ActiveConferenceRecording(c, id)
+		switch {
+		case aerr == nil:
+			d.activeEgress = active.EgressID
+		case errIsNoRows(aerr):
+		default:
+			return nil, aerr
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// purgeConferences unlinks the files of conferences whose rows have just left by
+// cascade — the same three steps DeleteConference takes, for each of them.
+func (h *API) purgeConferences(calls []doomedConference) {
+	for _, d := range calls {
+		for _, p := range d.recordings {
+			_ = os.Remove(p) // best-effort; the rows are already gone
+		}
+		h.purgeRecordingDir(d.id, d.activeEgress)
+		h.purgeChatDir(d.id)
+		h.dropConfRoom(d.id, "workspace deleted")
+	}
+}
+
 // DeleteConference removes a conference along with its participants, chat and
-// recording rows (ON DELETE CASCADE).
+// recording rows (ON DELETE CASCADE) — and the files those rows named, which the
+// cascade knows nothing about.
 func (h *API) DeleteConference(c *gin.Context) {
 	conf, ok := h.conferenceScope(c)
 	if !ok {
@@ -297,6 +366,25 @@ func (h *API) DeleteConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A recording still in flight is the one file that list cannot reach. Its row
+	// says where the mp4 *will* be — the egress writes it as it winds down, which
+	// is why an explicit stop has to poll for it — so the unlink below runs against
+	// a path that is still empty and the bytes land a second or two later, into a
+	// directory whose rows have all just left by cascade. Both sweeps walk rows, so
+	// from then on nothing can find that file: the disk grows with every deleted
+	// meeting, and the moderator who deleted a recorded call is left believing the
+	// video went with it. Its egress id is read here and dealt with after the
+	// delete.
+	var activeEgress string
+	active, err := h.q.ActiveConferenceRecording(c, conf.ID)
+	switch {
+	case err == nil:
+		activeEgress = active.EgressID
+	case errIsNoRows(err):
+	default:
+		fail(c, err)
+		return
+	}
 	if err := h.q.DeleteConference(c, conf.ID); err != nil {
 		fail(c, err)
 		return
@@ -304,6 +392,13 @@ func (h *API) DeleteConference(c *gin.Context) {
 	for _, p := range recordings {
 		_ = os.Remove(p) // best-effort; the rows are already gone
 	}
+	h.purgeRecordingDir(conf.ID, activeEgress)
+	// The chat's files are in the same position the recordings were: the cascade
+	// has just taken the attachment rows that were the only record of where they
+	// live, and no sweep walks that directory. DeleteConferenceMessage unlinks
+	// them one message at a time; this is the same obligation for the whole
+	// conversation at once.
+	h.purgeChatDir(conf.ID)
 	h.dropConfRoom(conf.ID, "deleted")
 	h.broadcastAs(c, conf.WorkspaceID, "conference.deleted", gin.H{"id": conf.ID})
 	c.Status(http.StatusNoContent)

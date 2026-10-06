@@ -34,6 +34,10 @@ watchEffect(() => {
     if (!(g.key in labelEdits)) labelEdits[g.key] = props.prefixNames[g.key] || ''
   }
 })
+const sameLabels = (a, b) => {
+  const ka = Object.keys(a)
+  return ka.length === Object.keys(b).length && ka.every((k) => a[k] === b[k])
+}
 // Save the whole merged set (preserves prefixes not currently among the tags,
 // blank label clears the mapping) — mirrors GitLabModal's merge-save.
 async function savePrefixes() {
@@ -44,6 +48,10 @@ async function savePrefixes() {
     if (label) merged[g.key] = label
     else delete merged[g.key]
   }
+  // The save hangs off @blur, so it fires on plain focus loss too, and the endpoint
+  // is DELETE-then-UPSERT: an unchanged set is at best a pointless write + workspace
+  // broadcast. Bail out before touching the server.
+  if (sameLabels(merged, props.prefixNames)) return
   try {
     await projectsApi.setTagPrefixes(
       props.projectId,
@@ -102,15 +110,22 @@ async function remove(tag) {
     message.error(e.message)
   }
 }
+const adding = ref(false)
 async function add() {
   const n = newName.value.trim()
-  if (!n) return
+  // Enter and the button share this, and the field keeps its text until the tag is
+  // in — so without the guard a second Enter sent a second create, which the server
+  // refuses as a duplicate («имя занято») of the tag the first one had just made.
+  if (!n || adding.value) return
+  adding.value = true
   try {
     await projectsApi.createTag(props.projectId, { name: n, color: swatches[0] })
     newName.value = ''
     emit('changed')
   } catch (e) {
     message.error(e.message)
+  } finally {
+    adding.value = false
   }
 }
 </script>

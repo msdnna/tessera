@@ -21,6 +21,35 @@ data class SearchUiState(
     val results: SearchResults? = null,
 )
 
+/** Which face the overlay shows for a given state. */
+enum class SearchPane { HINT, LOADING, FAILED, EMPTY, RESULTS }
+
+/**
+ * Picks the overlay's face.
+ *
+ * Pulled out of the composable and given a name so it can be tested: the branch
+ * that matters is [SearchPane.FAILED], and it was missing. The view model has
+ * always recorded the failure, but nothing rendered `error` — a search that
+ * could not reach the server fell through every branch into the results list and
+ * drew it with no rows at all, so a 500, an expired session and a dead network
+ * were a blank panel with no message and no spinner (#2932).
+ *
+ * Help hits come from the bundled index and are already on screen, so they still
+ * outrank a pending or failed server answer; the list then carries the failure
+ * as a row of its own rather than losing it.
+ */
+fun searchPane(state: SearchUiState, hasHelpHits: Boolean): SearchPane {
+    val serverEmpty = state.results?.isEmpty != false
+    return when {
+        state.query.isBlank() -> SearchPane.HINT
+        hasHelpHits -> SearchPane.RESULTS
+        state.loading && serverEmpty -> SearchPane.LOADING
+        state.error != null && state.results == null -> SearchPane.FAILED
+        state.results?.isEmpty == true -> SearchPane.EMPTY
+        else -> SearchPane.RESULTS
+    }
+}
+
 /**
  * Debounced workspace search (web `SearchBar`): 220 ms debounce + a sequence
  * guard so only the latest in-flight query's results land. Blank queries clear
@@ -59,7 +88,14 @@ class SearchViewModel(
             if (mine != seq) return@launch // a newer query superseded this one
             result
                 .onSuccess { res -> _state.update { it.copy(loading = false, results = res, error = null) } }
-                .onFailure { e -> _state.update { it.copy(loading = false, error = errorMessage(e)) } }
+                // Results are dropped along with the failure, and that is the point:
+                // both places that announce a failed search ([searchPane] and the
+                // overlay's own footnote row) are guarded by `results == null`, so a
+                // search that failed while an earlier one's hits were still on screen
+                // said nothing at all — the previous query's rows stayed up as the
+                // answer to the new one. Web clears them the same way (`SearchBar`,
+                // `results.value = EMPTY()` in the catch) (#2932).
+                .onFailure { e -> _state.update { it.copy(loading = false, results = null, error = errorMessage(e)) } }
         }
     }
 

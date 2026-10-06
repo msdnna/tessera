@@ -38,8 +38,11 @@ import {
   handleEnter,
 } from '@/utils/mdEdit'
 import { detectSlashQuery, matchCommands, commandInsertText } from '@/utils/commands'
+import { mentionIdsIn } from '@/utils/mentions'
 import { isTauri } from '@/utils/serverBase'
 import { scrollParent } from '@/utils/dom'
+import { ATTACHMENT_MAX_BYTES, attachmentPickError, mediaPickMessage } from '@/utils/upload'
+import { formatFileSize } from '@/utils/docPdf'
 import RichContent from './RichContent.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import UserAvatar from './UserAvatar.vue'
@@ -122,9 +125,6 @@ watch(
 const ta = ref(null)
 const rootEl = ref(null)
 const previewSide = ref(null)
-
-// Members the user picked from the dropdown, so getMentions can resolve ids.
-const picked = ref([])
 
 // ── narrow (boxed) composer: fold the formatting/insert buttons into a popover ──
 // A comment composer in the sidebar-panel layout is only ~470–500px wide, where the
@@ -310,6 +310,14 @@ const imgInput = ref(null)
 const uploading = ref(false)
 async function uploadImage(file) {
   if (!file || !file.type.startsWith('image/')) return
+  // `image/*` is wider than the media route's allowlist and says nothing about
+  // size, so both refusals used to arrive from the server — as its hardcoded
+  // Russian sentence, and only after a 12 MB paste had finished uploading.
+  const bad = mediaPickMessage(file)
+  if (bad) {
+    message.error(bad)
+    return
+  }
   uploading.value = true
   try {
     const fd = new FormData()
@@ -379,6 +387,12 @@ const attachOpen = ref(false)
 const canAttach = computed(() => !!props.attachTaskId)
 
 async function uploadAttachment(file) {
+  if (attachmentPickError(file)) {
+    message.error(
+      t('documents.editor.error.fileTooLarge', { limit: formatFileSize(ATTACHMENT_MAX_BYTES) }),
+    )
+    return
+  }
   attaching.value = true
   try {
     const fd = new FormData()
@@ -677,6 +691,34 @@ function detectSuggest() {
   }
   mq.value = null
 }
+// Does the open popup still describe the text the caret actually sits in?
+//
+// `detectSuggest` runs from `onInput` alone, but the caret moves without any
+// input at all — ArrowLeft/Right, Home/End, PageUp/Down. Nothing re-ran the
+// detector then, so `mq.start` went on pointing at a trigger the caret had left,
+// and `pickSuggest` spliced the chosen mention over that stale range: with the
+// caret sent to the line start, `replaceRange(start, selectionStart, …)` gets an
+// end BEFORE its start and pastes `value.slice(0, start) + text + value.slice(end)`
+// — the stretch between them is emitted twice, i.e. "привет @an" became
+// "привет @anna привет @an". On the native `execCommand` path the damage is
+// quieter but no smaller: the mention lands wherever the caret went and the
+// half-typed handle stays behind.
+//
+// Re-deriving from the live DOM rather than tracking every way a caret can move
+// (clicks, drag-selection, browser shortcuts, a webview's own gestures) is what
+// makes this hold for the paths we don't enumerate below.
+function suggestLive() {
+  const el = ta.value
+  if (!el || !mq.value) return false
+  const end = el.selectionStart
+  if (end !== el.selectionEnd || end < mq.value.start) return false
+  const trigger = mq.value.kind === 'command' ? '/' : '@'
+  return el.value.slice(mq.value.start, end) === trigger + mq.value.query
+}
+// Keys that only move the caret: the popup is never their target, and leaving it
+// on screen would keep offering matches for text the caret is no longer in.
+// `suggestLive` is the backstop for everything this list cannot name.
+const CARET_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageUp', 'PageDown'])
 // Place the popup below the trigger char's line, aligned under the trigger.
 // Coords are viewport-relative (the popup is `position: fixed`). After it renders
 // we measure its real size and clamp it into the viewport / flip it above the
@@ -705,20 +747,23 @@ function clampSugPos() {
   if (top + r.height > vh - 8 && sugAnchorY - 6 - r.height > 8) top = sugAnchorY - 6 - r.height
   sugPos.value = { top: `${top}px`, left: `${left}px` }
 }
+// Accepting a row swaps the half-typed query for the full mention/command, and
+// goes through replaceRange like every other insertion here: writing the whole
+// value back instead would drop the textarea's native undo stack, so one picked
+// mention would cost the user the undo history of a whole comment.
 function pickSuggest(item) {
   if (!item || !mq.value) return
+  // The row may have been clicked long after the caret wandered off the query —
+  // a mouse click on the popup moves nothing. Dropping the pick beats writing the
+  // mention into a range that no longer spells it.
+  if (!suggestLive()) return (mq.value = null)
   const el = ta.value
   const cmd = isCmd.value
   const insert = cmd ? commandInsertText(item) : `@${item.label} `
-  const next = el.value.slice(0, mq.value.start) + insert + el.value.slice(el.selectionStart)
-  if (!cmd && !picked.value.some((p) => p.id === item.id)) picked.value.push({ ...item })
-  setValue(next)
-  const caret = mq.value.start + insert.length
+  const start = mq.value.start
+  const caret = start + insert.length
   mq.value = null
-  nextTick(() => {
-    el.focus()
-    el.selectionStart = el.selectionEnd = caret
-  })
+  replaceRange(start, el.selectionStart, insert, caret, caret)
 }
 
 // Tab indents rather than moving focus — but that turns the field into a keyboard
@@ -737,6 +782,10 @@ function onSelect() {
   if (!mq.value) refreshBubble()
 }
 function onKeydown(e) {
+  // A keystroke is the first thing that happens after a caret move, so this is
+  // where a popup left behind by one is noticed and dropped — before any branch
+  // below can act on it.
+  if (mq.value && !suggestLive()) mq.value = null
   if (mq.value && sugMatches.value.length) {
     if (e.key === 'ArrowDown') {
       e.preventDefault()
@@ -748,17 +797,30 @@ function onKeydown(e) {
       mqIndex.value = (mqIndex.value - 1 + sugMatches.value.length) % sugMatches.value.length
       return
     }
-    if (e.key === 'Enter' || e.key === 'Tab') {
+    // Only the BARE Enter/Tab belongs to the popup. The modified ones are
+    // separate gestures of this editor and were being eaten by it: Ctrl/⌘+Enter
+    // is «send» (it reached `emit('submit')` only with the popup shut, so a
+    // comment ending in «@an» refused to send and typed a mention instead),
+    // Shift+Enter is the plain line break, Shift+Tab the outdent.
+    if ((e.key === 'Enter' || e.key === 'Tab') && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
       e.preventDefault()
       pickSuggest(sugMatches.value[mqIndex.value])
       return
     }
     if (e.key === 'Escape') {
       e.preventDefault()
+      // The popup is a layer of its own: this Esc is spent on it and must not
+      // reach the modal underneath (naive-ui closes n-modal from a document
+      // keydown), or dismissing an @-suggestion would throw away the draft
+      // together with the whole task modal.
+      e.stopPropagation()
       mq.value = null
       return
     }
   }
+  // Caret-only keys: close the popup as the caret leaves, rather than waiting for
+  // the next keystroke to find it stale.
+  if (mq.value && CARET_KEYS.has(e.key)) mq.value = null
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault()
     if (props.sending) return
@@ -849,15 +911,14 @@ function onFsAfterLeave() {
   fsOpen.value = false
 }
 
+// Who this text notifies: read off the mentions it renders, not off the popup.
+// The popup is one way to write a handle — typing it, pasting it or having the
+// reply composer seed it are the others, and all four draw the same chip.
 function getMentions() {
-  const text = props.modelValue
-  // GitLab-only mentions have no Tessera id — they live in the text as `@username`
-  // (GitLab resolves them on writeback) and don't produce a Tessera notification.
-  return picked.value.filter((p) => p.id && text.includes(`@${p.label}`)).map((p) => p.id)
+  return mentionIdsIn(props.modelValue, props.mentionItems)
 }
 function clear() {
   setValue('')
-  picked.value = []
   hideBubble()
 }
 function focus() {

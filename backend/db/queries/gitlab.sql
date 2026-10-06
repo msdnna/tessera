@@ -227,9 +227,12 @@ SELECT task_id, gl_global_id FROM gitlab_links WHERE integration_id = $1;
 SELECT gl_global_id, gl_updated_at, title_hash, labels_hash FROM gitlab_links WHERE integration_id = $1;
 
 -- ── sync reconciliation: mixed tags / assignees ────────────
--- Resolve a GitLab username to a Tessera user (via their linked credential).
--- name: GetUserIDByGitlabUsername :one
-SELECT user_id FROM gitlab_credentials WHERE gl_username = $1;
+-- Resolve a GitLab username to the Tessera users who connected it (via their
+-- linked credential). :many for the same reason as GetUserIDsByOAuthUsername:
+-- the PK here is user_id, so nothing stops two credentials from carrying one
+-- gl_username — a renamed account keeps its old name until its owner reconnects.
+-- name: GetUserIDsByGitlabUsername :many
+SELECT DISTINCT user_id FROM gitlab_credentials WHERE gl_username = $1;
 
 -- AddTaskTagSourced returns the number of rows inserted (1 = newly attached, 0 =
 -- the tag was already on the task) so the sync journal can record actual additions.
@@ -304,6 +307,24 @@ ORDER BY m.gl_user_id, m.gl_name;
 
 -- name: GetGitlabMemberIDByUsername :one
 SELECT gl_user_id FROM gitlab_project_members WHERE integration_id = $1 AND gl_username = $2;
+
+-- GetGitlabMemberByUsername resolves a GitLab username to the roster entry the
+-- sync wrote for it, anywhere in the workspace — the display name and the avatar
+-- URL the sync already ran through avatarProxyURL. PinTaskGitlabAssignee reads
+-- the face from here instead of believing the caller (#2932).
+--
+-- A workspace may hold several integrations, so the username can match more than
+-- one row and the order has to be spelled out: an entry that actually has an
+-- avatar wins, and gl_user_id breaks the remaining tie. Without it the winner
+-- would be whatever the heap happened to return and could change after any
+-- unrelated write to the table.
+-- name: GetGitlabMemberByUsername :one
+SELECT m.gl_name, m.gl_avatar_url
+FROM gitlab_project_members m
+JOIN gitlab_integrations i ON i.id = m.integration_id
+WHERE i.workspace_id = $1 AND m.gl_username = $2
+ORDER BY (m.gl_avatar_url <> '') DESC, m.gl_user_id
+LIMIT 1;
 
 -- ── synced comments (idempotent by GitLab note id) ─────────
 -- ClaimPushedUserComment links a GitLab note back to the user's own comment that

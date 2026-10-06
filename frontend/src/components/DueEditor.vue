@@ -11,7 +11,17 @@ import {
 } from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { useFormat } from '@/composables/useFormat'
-import { freqOptions, triggerOptions, unitLabel, occurrenceKeys } from '@/utils/recurrence'
+import {
+  freqOptions,
+  triggerOptions,
+  everyLabel,
+  unitLabel,
+  occurrenceKeys,
+  withStoredAnchor,
+  triggerColumnMissing,
+  dueDateMissing,
+} from '@/utils/recurrence'
+import { resolvedTimezone } from '@/utils/format'
 
 const props = defineProps({
   due: { type: Number, default: null }, // ms
@@ -24,18 +34,56 @@ const props = defineProps({
 // `notify` is separate (different endpoint).
 const emit = defineEmits(['apply', 'notify'])
 
+// A pure UTC midnight is how this whole app spells "date-only" — no time of day,
+// read in UTC everywhere (utils/format `isDateOnly`, timeAxis, and
+// `normalizeDueIn` right below). That reading exists for dates that arrive
+// without a clock (GitLab issues/milestones, legacy dues), but nothing stopped
+// this editor from minting one by accident: it builds instants out of LOCAL
+// calendar fields, so in every zone with a whole-hour (or :30/:45) offset exactly
+// one time of day lands on 00:00Z — 20:00 in New York in summer, 19:00 in winter,
+// 03:00 in Moscow, 05:30 in Kolkata. The picked time was then thrown away by the
+// very next read: the card, the calendar layout and the Today/Tomorrow facets all
+// showed the *next* day with no clock, and re-opening the editor snapped the due
+// to that day's local midnight — which the following commit saved, moving the
+// task again (#2932).
+//
+// A second is the smallest thing that says "this one does have a time of day", and
+// it is invisible everywhere: no label this app renders shows seconds, and the
+// recurrence carries the clock forward whole so every occurrence stays consistent.
+// Deliberate local midnight is left exactly as it is — an all-day due picked in a
+// zone off UTC is not UTC midnight anyway, and in UTC itself it is the date-only
+// value the user asked for.
+function toWire(ms) {
+  if (ms == null) return null
+  const d = new Date(ms)
+  const meansTimeOfDay = d.getHours() !== 0 || d.getMinutes() !== 0
+  if (
+    meansTimeOfDay &&
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0
+  ) {
+    return new Date(ms + 1000).toISOString()
+  }
+  return d.toISOString()
+}
+
 // commit sends the current start/due dates + recurrence rule as one patch.
 function commit() {
   emit('apply', {
-    due_date: localDue.value != null ? new Date(localDue.value).toISOString() : null,
-    start_date: localStart.value != null ? new Date(localStart.value).toISOString() : null,
+    due_date: toWire(localDue.value),
+    start_date: toWire(localStart.value),
     recurrence: buildRule(),
   })
 }
 
 const theme = useThemeStore()
 const { t } = useI18n()
-const { formatDate, formatDateTime } = useFormat()
+// `timePattern` is the date-fns pattern Naive's time picker formats and parses
+// by: the 12/24h preference reaches it only through this prop, so a hard-coded
+// "HH:mm" left the clock below the calendar at 24h while every due label the
+// same popover renders was already "3:00 PM" (#2932).
+const { formatDate, formatDateTime, timePattern } = useFormat()
 // Both option lists are computed, not constants: a plain array would keep the
 // language of the first render (pitfall 1 of #2799).
 const freqOpts = computed(() => freqOptions())
@@ -182,7 +230,56 @@ const gridDays = computed(() => {
 })
 
 // Highlighted occurrences (the rule's upcoming dates), excluding the selected one.
-const occKeys = computed(() => occurrenceKeys(rule.value, localDue.value, 24))
+//
+// Previewed from the rule *plus* the anchor the server keeps on our behalf: the
+// panel below rebuilds the rule out of its own controls, and those never held the
+// monthly/yearly day-of-month anchor, so a task that February has parked on the
+// 28th would otherwise be shown a March 28th it is never going to fire on.
+//
+// "Moved" is a change of *day*, not of instant — the month grid and the time
+// picker are separate controls here, and the server drops the anchor on the same
+// terms (`sameRuleDay`, handlers/tasks.go). Reading a 09:00 → 10:00 nudge as a
+// reschedule made this preview promise a March 28th while the server, correctly,
+// kept the 31st (#2932).
+const dueDayMoved = computed(() => {
+  const a = localDue.value
+  const b = normalizeDueIn(props.due)
+  if (a == null || b == null) return a !== b
+  return startOfDayMs(a) !== startOfDayMs(b)
+})
+const previewRule = computed(() =>
+  withStoredAnchor(rule.value, props.recurrence, dueDayMoved.value),
+)
+// A column-triggered rule with no reachable trigger column never advances — the
+// server matches the column id verbatim and an unset (or deleted) one matches
+// nothing. Highlighting "upcoming occurrences" for it is the same promise the
+// skip-weekends and anchor fixes took back, only here not one of those days is
+// ever going to come, so the grid says nothing and the panel says why instead.
+const deadTriggerColumn = computed(() =>
+  triggerColumnMissing(
+    previewRule.value,
+    props.columns.map((c) => c.id),
+  ),
+)
+// The other way a rule ends up unable to fire, and the one the panel gives no
+// sign of: the task has no due date. Every trigger advances *from* that date —
+// the server refuses the rule a starting point (`recurAdvance`), the schedule
+// worker never selects the row — while this editor takes the frequency, commits
+// it and draws the repeat on the card. The grid is empty here anyway (there is
+// no date to count from), which is exactly what made it look like an ordinary
+// "nothing to show yet" (#2932).
+const deadNoDue = computed(() => dueDateMissing(previewRule.value, localDue.value))
+const occKeys = computed(() =>
+  deadTriggerColumn.value || deadNoDue.value
+    ? new Set()
+    : occurrenceKeys(previewRule.value, localDue.value, 24),
+)
+// The custom date list is picked in this very grid, so the picked days have to
+// stay visible — but being on the list is not the same claim as `occ`, which says
+// the task will fire that day. They part company for the dates the series has
+// already walked past, and for everything beyond the single occurrence a one-off
+// rule («Повторять всегда» off) has left (#2932).
+const pickedKeys = computed(() => (freq.value === 'custom' ? new Set(dates.value) : new Set()))
 
 function onDayClick(d) {
   // Custom-recurrence date-picking only applies to the due date.
@@ -228,6 +325,11 @@ const targetColumn = ref(null)
 const createNew = ref(false)
 const recurForever = ref(true)
 const skipWeekends = ref(false)
+// Picking the weekdays by hand answers the skip's only question, so the server
+// drops the flag for such a rule (recur.normalized) — it used to rewrite the very
+// days the chips below show, and cost the rule its interval doing it. Leaving the
+// box on screen would leave a checkbox that unchecks itself on reopen (#2932).
+const skipWeekendsMoot = computed(() => freq.value === 'weekly' && weekdays.value.length > 0)
 
 watch(
   () => props.recurrence,
@@ -258,8 +360,27 @@ function buildRule() {
   if (targetColumn.value) r.target_column = targetColumn.value
   if (createNew.value) r.create_new = true
   if (!recurForever.value) r.once = true
-  if (skipWeekends.value && (freq.value === 'daily' || freq.value === 'weekly'))
+  if (
+    skipWeekends.value &&
+    !skipWeekendsMoot.value &&
+    (freq.value === 'daily' || freq.value === 'weekly')
+  )
     r.skip_weekends = true
+  // Every field above names a *calendar* day — a weekday, a day of the month, a
+  // date off this calendar, "not on a weekend" — and the calendar they name is the
+  // one drawn right here. The due date leaves as an instant (local midnight by
+  // default), so without the zone the server re-reads those days in UTC and a user
+  // east of UTC gets the whole series a day off the days highlighted above.
+  //
+  // The zone is the *browser's*, not the profile preference: this grid is
+  // browser-local by construction (see the `timeZone: null` note above) — every day
+  // in it comes out of `new Date(y, m, d)`, and so does the due instant. Passing the
+  // profile zone when the two differ only moved the mismatch one layer down: for a
+  // profile zone west of the browser's, browser midnight is still the previous day
+  // there, so the server read a monthly rule picked on the 6th as the 5th and custom
+  // dates re-fired the occurrence the task was already on.
+  const tz = resolvedTimezone('')
+  if (tz) r.tz = tz
   return r
 }
 function setFreq(v) {
@@ -328,8 +449,10 @@ const dueRepeatOpts = computed(() => [
         <n-select size="small" :value="freq" :options="freqOpts" @update:value="setFreq" />
 
         <template v-if="freq">
+          <div v-if="deadNoDue" class="de-warn">{{ t('task.recur.dueUnset') }}</div>
+
           <div v-if="freq !== 'custom'" class="de-row">
-            <span class="muted">{{ t('task.recur.every') }}</span>
+            <span class="muted">{{ everyLabel(freq, interval) }}</span>
             <n-input-number
               size="small"
               class="de-num"
@@ -393,6 +516,13 @@ const dueRepeatOpts = computed(() => [
               "
             />
           </label>
+          <div v-if="deadTriggerColumn" class="de-warn">
+            {{
+              previewRule && previewRule.trigger_column
+                ? t('task.recur.columnGone')
+                : t('task.recur.columnUnset')
+            }}
+          </div>
 
           <label class="de-field">
             <span class="muted">{{ t('task.recur.moveTo') }}</span>
@@ -434,7 +564,7 @@ const dueRepeatOpts = computed(() => [
             {{ t('task.recur.forever') }}
           </n-checkbox>
           <n-checkbox
-            v-if="freq === 'daily' || freq === 'weekly'"
+            v-if="(freq === 'daily' || freq === 'weekly') && !skipWeekendsMoot"
             size="small"
             :checked="skipWeekends"
             @update:checked="
@@ -503,6 +633,11 @@ const dueRepeatOpts = computed(() => [
               endpt: dayKey(d) === altKey && dayKey(d) !== selectedKey,
               range: inRange(d) && dayKey(d) !== selectedKey && dayKey(d) !== altKey,
               occ: dayKey(d) !== selectedKey && dayKey(d) !== altKey && occKeys.has(dayKey(d)),
+              pick:
+                dayKey(d) !== selectedKey &&
+                dayKey(d) !== altKey &&
+                !occKeys.has(dayKey(d)) &&
+                pickedKeys.has(dayKey(d)),
               today: dayKey(d) === todayKey,
             }"
             @click="onDayClick(d)"
@@ -513,7 +648,7 @@ const dueRepeatOpts = computed(() => [
         <div class="de-cal-foot">
           <n-time-picker
             size="small"
-            format="HH:mm"
+            :format="timePattern"
             :value="activeMs"
             :placeholder="t('task.due.timePlaceholder')"
             @update:value="setTime"
@@ -628,6 +763,19 @@ const dueRepeatOpts = computed(() => [
 .de-hint {
   font-size: 12px;
   line-height: 1.35;
+}
+/* "this rule cannot fire" — the same soft red every other inline warning in the
+   app wears (.auth-error, the overdue pill), not an error state of the select:
+   the rule is saved, it just will not do anything until a column is named. */
+.de-warn {
+  margin-top: -2px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #e0533d;
+  background: color-mix(in srgb, #e0533d 12%, transparent);
+  border: 1px solid color-mix(in srgb, #e0533d 32%, transparent);
 }
 .muted {
   color: var(--t-text3);
@@ -753,6 +901,13 @@ const dueRepeatOpts = computed(() => [
   background: color-mix(in srgb, var(--t-primary) 16%, transparent);
   color: var(--t-primary);
   font-weight: 500;
+}
+/* a day on the custom list that isn't an upcoming occurrence: already past, or
+   past the end of a one-off rule — picked, but nothing will fire there, so it gets
+   an outline instead of the filled tint `occ` uses to promise a firing */
+.de-day.pick {
+  color: var(--t-text2);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--t-primary) 35%, transparent);
 }
 /* the span between start and due */
 .de-day.range {

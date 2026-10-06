@@ -15,7 +15,9 @@
     "avatar": {
       "upload": "Upload",
       "remove": "Remove",
-      "hint": "PNG/JPEG/GIF/WebP, up to 2 MB"
+      "hint": "PNG/JPEG/GIF/WebP, up to 2 MB",
+      "tooLarge": "The file is larger than {limit}",
+      "badType": "Only PNG, JPEG, GIF or WebP are supported"
     },
     "verify": {
       "done": "Email verified",
@@ -31,7 +33,10 @@
     "confirm": "Repeat new password",
     "change": "Change password",
     "changed": "Password changed",
-    "invalid": "Check the fields: the new password must be at least 8 characters and match the confirmation"
+    "invalid": "Check the fields: the new password must be at least 8 characters and match the confirmation",
+    "noPassword": "This account has no password — it signs in through an external provider. To set one, we'll send a link to {email}.",
+    "setLink": "Send a link",
+    "linkSent": "If the account exists, a link has been sent to {email}"
   },
   "appearance": {
     "title": "Appearance",
@@ -173,7 +178,8 @@
       "archived": "Archiving",
       "due_soon": "Due soon",
       "reminder": "Reminders (scheduled)",
-      "integration_sync": "Integration sync"
+      "integration_sync": "Integration sync",
+      "conference_invite": "Conference invitation"
     },
     "lead": {
       "0": "At the deadline",

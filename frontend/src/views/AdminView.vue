@@ -163,7 +163,7 @@ async function saveOAuth() {
     oauth.value.sudo_writeback = data.sudo_writeback === true
     message.success(t('settings.admin.msg.oauthSaved'))
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     oauthSaving.value = false
   }

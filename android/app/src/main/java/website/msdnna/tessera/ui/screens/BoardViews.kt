@@ -120,7 +120,6 @@ import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
-import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.BoardDragOverlay
@@ -149,6 +148,7 @@ import website.msdnna.tessera.ui.components.fadeInOnAppear
 import website.msdnna.tessera.ui.components.leftAccentFrame
 import website.msdnna.tessera.ui.components.rememberBoardDragState
 import website.msdnna.tessera.ui.components.topAccentFrame
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
@@ -158,18 +158,26 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
+import website.msdnna.tessera.util.ColumnPalette
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.TimeAxis
 import website.msdnna.tessera.util.TourKeys
+import website.msdnna.tessera.util.WeekGrid
 import website.msdnna.tessera.util.columnCaption
+import website.msdnna.tessera.util.columnSwatchSelected
 import website.msdnna.tessera.util.countWithSubtasks
+import website.msdnna.tessera.util.dueDayKey
 import website.msdnna.tessera.util.dueShort
 import website.msdnna.tessera.util.isOverdue
 import website.msdnna.tessera.util.isReviewColumn
-import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.parseInstantMillis
+import website.msdnna.tessera.util.quadrantOf
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.tagInPrefix
+import website.msdnna.tessera.util.tagLaneTitle
+import website.msdnna.tessera.util.topoByDeps
 
 /**
  * A kanban lane: title, swatch, count, cards, and (status lanes) a + button.
@@ -290,23 +298,29 @@ fun KanbanView(
     // Ресурсы — тоже ключ memo: подписи засеянных колонок собираются из них, а при
     // смене языка AppLocale подставляет другой объект Resources (см. columnCaption).
     val res = LocalResources.current
+    // Дружественные имена префиксов и режим «короткие префиксы» — тоже ключи memo:
+    // из них собирается подпись тег-дорожки (tagLaneTitle), и без них переключение
+    // тумблера в настройках оставило бы кэш с подписями прежнего вида.
+    val rawPrefix = Tessera.rawTagPrefix
     val lanes = remember(
+        // Колонки, карточки, фильтр и сортировка входят сюда одним ключом
+        // (BoardUiState.filterSortKey) — вместе с подзадачами, календарём и
+        // GitLab-участниками, которых фильтр читает не напрямую.
+        state.filterSortKey,
         state.groupByTag,
         state.groupByMilestone,
         state.tagPrefix,
-        state.columns,
-        state.tasks,
         state.tags,
         state.milestones,
-        state.filter,
-        state.sortLevels,
+        state.prefixNames,
+        rawPrefix,
         noTagLabel,
         noMilestoneLabel,
         res,
     ) {
         when {
             state.groupByMilestone -> milestoneLanes(state, noMilestoneLabel)
-            state.groupByTag -> tagLanes(state, noTagLabel)
+            state.groupByTag -> tagLanes(state, noTagLabel, rawPrefix)
             else -> columnLanes(state, res)
         }
     }
@@ -407,6 +421,16 @@ fun KanbanView(
                     val laneColor = parseHexColor(lane.color, Tessera.colors.text3)
                     val laneHasColor = !lane.color.isNullOrBlank()
                     val column = state.columns.firstOrNull { it.id == lane.id }
+                    // `canAdd` only says the lane is a real status column. Editing it
+                    // also needs the board not to be in the read-only archive: a column
+                    // delete cascades through tasks.column_id and takes every card
+                    // standing in it, archived or not (TaskIDsInColumn filters on
+                    // column_id alone), while the archive shows — and counts — only the
+                    // archived ones. Confirming «delete the column and its tasks» over a
+                    // header reading «3» would destroy the column's live cards and their
+                    // uploads, with no undo. Card DnD and «add» are already closed in the
+                    // archive below; the column header catches up here.
+                    val columnEditable = lane.canAdd && !state.archivedMode
                     var renamingCol by remember { mutableStateOf(false) }
                     val collapsed = state.isLaneCollapsed(lane.id, lane.tasks.size)
                     // Column body tint: a barely-there wash of the column colour over
@@ -466,7 +490,7 @@ fun KanbanView(
                                     Modifier.fillMaxWidth()
                                         // Long-press the header to drag the whole column.
                                         .then(
-                                            if (lane.canAdd && column != null) {
+                                            if (columnEditable && column != null) {
                                                 Modifier.draggableColumn(drag, column) { onDropColumn(lane.id) }
                                             } else {
                                                 Modifier
@@ -516,15 +540,15 @@ fun KanbanView(
                                             maxLines = 1,
                                             // Tap the title to rename inline (status lanes only).
                                             modifier = Modifier.weight(1f)
-                                                .then(if (lane.canAdd) Modifier.clickableNoRipple { renamingCol = true } else Modifier),
+                                                .then(if (columnEditable) Modifier.clickableNoRipple { renamingCol = true } else Modifier),
                                         )
                                     }
                                     // Σ estimate of the milestone's cards (web parity: shown
                                     // only when grouped «По этапам», in the board's unit).
                                     if (state.groupByMilestone) {
                                         val res = LocalResources.current
-                                        val eff = remember(lane.tasks, state.estimation, res) {
-                                            Estimation.sum(lane.tasks.map { it.estimate })
+                                        val eff = remember(lane.tasks, state.subtasks, state.filter, state.estimation, res) {
+                                            state.laneEffort(lane.tasks)
                                                 ?.let { Estimation.format(res, it, state.estimation).ifBlank { null } }
                                         }
                                         if (eff != null) {
@@ -556,7 +580,7 @@ fun KanbanView(
                                         },
                                         modifier = Modifier.testTag(TestTags.columnCount(lane.id)),
                                     )
-                                    if (lane.canAdd) {
+                                    if (columnEditable) {
                                         Spacer(Modifier.width(6.dp))
                                         ColumnMenu(lane, state, vm, onRename = { renamingCol = true })
                                     }
@@ -720,10 +744,15 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 ColumnPalette.forEach { hex ->
-                    val col = parseHexColor(hex, c.text3)
-                    val selected = column?.color.equals(hex, ignoreCase = true)
+                    // The «no colour» swatch is drawn flat in the border grey, exactly as
+                    // the web draws its own (ColumnHeader.vue swatchBg: `var(--t-border)`):
+                    // an accent gradient on it would promise a colour it is there to remove.
+                    val fill =
+                        if (hex.isBlank()) SolidColor(c.border)
+                        else accentGradient(parseHexColor(hex, c.text3))
+                    val selected = columnSwatchSelected(column?.color, hex)
                     Box(
-                        Modifier.size(22.dp).clip(CircleShape).background(accentGradient(col))
+                        Modifier.size(22.dp).clip(CircleShape).background(fill)
                             .then(if (selected) Modifier.border(2.dp, c.text1, CircleShape) else Modifier)
                             .clickableNoRipple {
                                 column?.let { vm.setColumnColor(it, hex) }
@@ -758,11 +787,6 @@ private fun ColumnMenu(lane: Lane, state: BoardUiState, vm: BoardViewModel, onRe
         )
     }
 }
-
-/** Column colour swatches (the Naive accent set). */
-private val ColumnPalette = listOf(
-    "#7c5cff", "#2f80ed", "#0eb0a9", "#18a058", "#f0a020", "#e0533d", "#eb2f96", "#9aa0aa",
-)
 
 @Composable
 private fun CreateText(label: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
@@ -811,14 +835,13 @@ private class CalCell(val key: String, val day: Int, val inMonth: Boolean)
 private fun dayKey(cal: Calendar): String =
     "%04d-%02d-%02d".format(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH))
 
-/** 42 cells (6 weeks, Monday-first) covering [month0] of [year]. */
-private fun monthCells(year: Int, month0: Int): List<CalCell> {
+/** 42 cells (6 weeks) covering [month0] of [year], opening on the [weekStart] day. */
+private fun monthCells(year: Int, month0: Int, weekStart: Int): List<CalCell> {
     val cal = Calendar.getInstance().apply {
         clear()
         set(year, month0, 1)
     }
-    // Calendar weekday: SUNDAY=1..SATURDAY=7 → Monday-first index 0..6.
-    val lead = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val lead = WeekGrid.lead(cal.get(Calendar.DAY_OF_WEEK), weekStart)
     cal.add(Calendar.DAY_OF_MONTH, -lead)
     return (0 until 42).map {
         val cell = CalCell(dayKey(cal), cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.MONTH) == month0)
@@ -828,9 +851,12 @@ private fun monthCells(year: Int, month0: Int): List<CalCell> {
 }
 
 /**
- * A month-grid calendar (mirrors the web `BoardCalendarView`): a Пн-first 6×7
- * grid with task chips (priority-coloured left bar, strike-through when done) in
- * each day cell, a today highlight, prev/next/today nav, and an undated strip.
+ * A month-grid calendar (mirrors the web `BoardCalendarView`): a 6×7 grid with task
+ * chips (priority-coloured left bar, strike-through when done) in each day cell, a
+ * today highlight, prev/next/today nav, and an undated strip.
+ *
+ * Неделя рвётся на префе `week_start`, а не на понедельнике: тот же преф уже двигает
+ * пикер срока, который открывается с карточки этого же календаря (#2932).
  */
 @Composable
 fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -> Unit) {
@@ -839,17 +865,23 @@ fun BoardCalendarView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     // `val` вычислился бы один раз при загрузке класса и застыл бы на языке первого
     // рендера — переключение языка календарь бы уже не тронуло.
     val calMonths = stringArrayResource(R.array.calendar_months)
-    val calWeekdays = stringArrayResource(R.array.calendar_weekdays_short)
-    val today = remember { Calendar.getInstance() }
-    val todayKey = remember { dayKey(today) }
+    val fmt = LocalDateFormat.current
+    val weekStart = fmt.weekStart
+    // Ресурс идёт с понедельника; при воскресной неделе подписи едут вместе с сеткой.
+    val calWeekdays = WeekGrid.labels(stringArrayResource(R.array.calendar_weekdays_short).toList(), weekStart)
+    val today = remember(fmt.zoneId) { Calendar.getInstance(fmt.zone) }
+    val todayKey = remember(fmt.zoneId) { dayKey(today) }
     var cursor by remember { mutableStateOf(today.get(Calendar.YEAR) to today.get(Calendar.MONTH)) }
     val (year, month) = cursor
 
     // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
-    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
-    val byDay = tasks.filter { !it.dueDate.isNullOrBlank() }.groupBy { isoDateKey(it.dueDate) }
+    val tasks = remember(state.filterSortKey) { state.applyFilterSort(state.tasks) }
+    // Ячейки месяца строятся из Calendar в календаре пользователя, поэтому и
+    // раскладывать задачи по ним надо тем же днём (dueDayKey с тем же [fmt]), а не
+    // срезом сырой ISO-строки.
+    val byDay = tasks.filter { !it.dueDate.isNullOrBlank() }.groupBy { dueDayKey(it.dueDate, fmt) }
     val undated = tasks.filter { it.dueDate.isNullOrBlank() }
-    val cells = remember(year, month) { monthCells(year, month) }
+    val cells = remember(year, month, weekStart) { monthCells(year, month, weekStart) }
 
     fun shift(delta: Int) {
         var m = month + delta
@@ -1003,17 +1035,13 @@ private val EisenhowerQuads = listOf(
     EisenQuad(3, R.string.board_matrix_q3_title, R.string.board_matrix_q3_hint, Color(0xFF9AA0AA)),
 )
 
-private const val EISEN_URGENT_DAYS = 7
-
-/** Derived quadrant (no override): importance from priority, urgency from due-date.
- *  Encoding matches the backend (0 urgent+important … 3 not-urgent+not-important). */
-private fun deriveQuadrant(task: Task): Int {
-    val important = task.priority >= 3
-    val due = parseInstantMillis(task.dueDate)
-    val urgent = due != null && due <= System.currentTimeMillis() + EISEN_URGENT_DAYS * 86_400_000L
-    return if (important) (if (urgent) 0 else 1) else (if (urgent) 2 else 3)
-}
-private fun quadrantOf(task: Task): Int = task.eisenhowerQuadrant ?: deriveQuadrant(task)
+/*
+ * Вывод квадранта живёт в `util/Eisenhower.kt`: ось «Срочно» — окно по календарным
+ * дням зоны пользователя, тем же [dueDayKey], которым подписана карточка, и мерить
+ * его миллисекундами нельзя (см. комментарий там). Отсюда [BoardUiState.dateFormat]
+ * приходится дотаскивать до каждого вызова — это та же дисциплина, что у фасета
+ * «Срок» в BoardViewModel.
+ */
 
 /**
  * The Eisenhower matrix (mirrors the web `BoardMatrixView`): a 2×2 Важно×Срочно
@@ -1028,7 +1056,7 @@ fun BoardMatrixView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) 
     val focusManager = LocalFocusManager.current
     // Open tasks only — completed cards belong to «done», not the triage matrix.
     val tasks = state.applyFilterSort(state.tasks).filter { !it.isCompleted }
-    val byQuad = tasks.groupBy { quadrantOf(it) }
+    val byQuad = tasks.groupBy { quadrantOf(it, state.dateFormat) }
     var expanded by remember { mutableStateOf<Int?>(null) }
     BackHandler(enabled = expanded != null) { expanded = null }
 
@@ -1171,7 +1199,14 @@ private fun QuadrantCell(
                     // animateItem fades the card out of its old quadrant and into the
                     // new one when its quadrant changes (the menu move) — the closest
                     // thing to an animated move without cross-list DnD.
-                    MatrixCard(task, quadrantOf(task), state, vm, onOpenTask, Modifier.animateItem())
+                    MatrixCard(
+                        task,
+                        quadrantOf(task, state.dateFormat),
+                        state,
+                        vm,
+                        onOpenTask,
+                        Modifier.animateItem(),
+                    )
                 }
             }
             // When the quick-add is open below, fade the list's bottom cards into it
@@ -1324,38 +1359,53 @@ private fun MatrixCard(
     }
 }
 
-private fun columnLanes(state: BoardUiState, res: Resources): List<Lane> =
-    state.sortedColumns.map { col ->
+// Карточки дорожек все три сборщика берут из BoardUiState.laneBuckets — там же, где
+// их считает emptyLaneIds для «сворачивать пустые». Раньше состав дорожки жил здесь,
+// а набор пустых — в BoardCustomizePanel по НЕфильтрованному tasksIn, и они
+// разошлись: колонка, опустошённая фильтром, рисовалась пустой, но в «пустые» не
+// попадала (#2932). Здесь остаются только подписи и цвета — то, для чего нужна
+// композиция.
+
+private fun columnLanes(state: BoardUiState, res: Resources): List<Lane> {
+    val buckets = state.laneBuckets.toMap()
+    return state.sortedColumns.map { col ->
         Lane(
-            col.id, columnCaption(res, col), col.color, state.visibleTasksIn(col.id),
+            col.id, columnCaption(res, col), col.color, buckets[col.id].orEmpty(),
             canAdd = true, nameKey = col.nameKey, rawTitle = col.name,
         )
     }
+}
 
-private fun tagLanes(state: BoardUiState, noTagLabel: String): List<Lane> {
+private fun tagLanes(state: BoardUiState, noTagLabel: String, rawPrefix: Boolean): List<Lane> {
     // In namespace mode only tags carrying the prefix become columns; "Без тега"
     // then collects tasks with no tag *in that namespace* (web `rebuildLists`).
-    val tags: List<Tag> = state.tags.values
-        .filter { state.tagPrefix.isEmpty() || it.name.startsWith(state.tagPrefix) }
-        .sortedBy { it.name }
-    val byTag = tags.map { tag ->
-        Lane(tag.id, tag.name, tag.color, state.applyFilterSort(state.tasks.filter { tag.id in it.tagIds }), canAdd = false)
+    val buckets = state.laneBuckets.toMap()
+    val prefixSelected = state.tagPrefix.isNotEmpty()
+    val byTag = state.groupTags.map { tag ->
+        Lane(
+            tag.id,
+            // Подпись разбирается ровно как пилюля тега на карточке ([tagLaneTitle]);
+            // сырое имя остаётся в rawTitle — гид по доске ищет колонку по нему.
+            tagLaneTitle(tag.name, state.prefixNames, prefixSelected, rawPrefix),
+            tag.color,
+            buckets[tag.id].orEmpty(),
+            canAdd = false,
+            rawTitle = tag.name,
+        )
     }
-    val tagIds = tags.map { it.id }.toSet()
-    val untagged = state.applyFilterSort(state.tasks.filter { task -> task.tagIds.none { it in tagIds } })
-    return byTag + Lane("none", noTagLabel, null, untagged, canAdd = false)
+    val untagged = buckets[BoardUiState.NONE_LANE_ID].orEmpty()
+    return byTag + Lane(BoardUiState.NONE_LANE_ID, noTagLabel, null, untagged, canAdd = false)
 }
 
 /** Milestone columns («По этапам»): one read-only lane per milestone (by position)
  *  plus a trailing «Без этапа» for the unassigned (web `rebuildLists` milestone mode). */
 private fun milestoneLanes(state: BoardUiState, noMilestoneLabel: String): List<Lane> {
-    val milestones = state.milestones.sortedBy { it.position }
-    val byMs = milestones.map { m ->
-        Lane(m.id, m.title, null, state.applyFilterSort(state.tasks.filter { it.milestoneId == m.id }), canAdd = false)
+    val buckets = state.laneBuckets.toMap()
+    val byMs = state.sortedMilestones.map { m ->
+        Lane(m.id, m.title, null, buckets[m.id].orEmpty(), canAdd = false)
     }
-    val msIds = milestones.map { it.id }.toSet()
-    val none = state.applyFilterSort(state.tasks.filter { it.milestoneId == null || it.milestoneId !in msIds })
-    return byMs + Lane("none", noMilestoneLabel, null, none, canAdd = false)
+    val none = buckets[BoardUiState.NONE_LANE_ID].orEmpty()
+    return byMs + Lane(BoardUiState.NONE_LANE_ID, noMilestoneLabel, null, none, canAdd = false)
 }
 
 /** Pixel x-positions (track-relative) of milestone due-dates inside the timeline window. */
@@ -1549,7 +1599,11 @@ private fun ColumnGhost(lane: Lane, state: BoardUiState, vm: BoardViewModel) {
 // deliberately skipped (same call as the matrix: the board drag system is 1D-lane
 // tuned, and a horizontally-scrolling track fights a horizontal drag gesture).
 
-private const val TL_DAY_MS = 86_400_000L
+// Только для дробной геометрии пикселей (x внутри суток, ширина полосы). Шаги по
+// самой оси — календарные, через util/TimeAxis: в неделю перевода часов сутки не
+// равны 24 часам, и миллисекундный шаг уводил подписи шапки на день в сторону от
+// полос. Ровно тот же разбор — в веб-`utils/timeAxis.js`.
+private const val TL_DAY_MS = TimeAxis.DAY_MS
 private val TL_DAY_W = 30.dp
 private val TL_ROW_H = 38.dp
 private val TL_LEFT_W = 168.dp
@@ -1586,14 +1640,10 @@ private val TL_LANE_H = 30.dp
 private const val TL_MAX_AXIS_PX = 200_000f
 private const val TL_MIN_DAYS = 30
 
-private fun tlDayFloor(ms: Long): Long =
-    Calendar.getInstance().apply {
-        timeInMillis = ms
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }.timeInMillis
+private fun tlDayFloor(ms: Long): Long = TimeAxis.dayFloor(ms)
+
+/** Полночь суток, отстоящих от начала окна на [i] календарных дней (шапка оси). */
+private fun tlDayAt(rangeStart: Long, i: Int): Long = TimeAxis.msAtDayOffset(rangeStart, i)
 
 private data class TLane(val key: String, val label: String, val color: Color?, val tasks: List<Task>)
 
@@ -1603,9 +1653,11 @@ private sealed interface TlBodyRow
 private data class TlLaneHeaderRow(val lane: TLane) : TlBodyRow
 private data class TlTaskRow(val task: Task) : TlBodyRow
 
-/** Summed estimate of a lane's tasks, formatted in the board's unit, or null when none set. */
+/** Трудозатраты дорожки в единице доски, или null — если не оценена ни одна строка.
+ *  Через [BoardUiState.laneEffort], а не сложением своих `estimate`: строка без своей
+ *  оценки рисует свёртку подзадач, и шапка обязана считать её так же. */
 private fun laneEffort(res: Resources, lane: TLane, state: BoardUiState): String? {
-    val total = website.msdnna.tessera.util.Estimation.sum(lane.tasks.map { it.estimate }) ?: return null
+    val total = state.laneEffort(lane.tasks) ?: return null
     return website.msdnna.tessera.util.Estimation.format(res, total, state.estimation).ifBlank { null }
 }
 
@@ -1629,7 +1681,7 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
 
     // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
-    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
+    val tasks = remember(state.filterSortKey) { state.applyFilterSort(state.tasks) }
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
     val unscheduled = tasks.filter { it.startDate == null && it.dueDate == null }
 
@@ -1664,17 +1716,16 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
     // Cap the window so the track can't exceed Compose's Constraints limit; keep the
     // recent/future end (anchored at hi) and drop the far past.
     val maxDays = (TL_MAX_AXIS_PX / dayWpx).toInt().coerceAtLeast(TL_MIN_DAYS)
-    var rawCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
+    var rawCount = TimeAxis.dayCount(lo, hi)
     if (rawCount > maxDays) {
-        lo = hi - (maxDays - 1).toLong() * TL_DAY_MS
+        lo = TimeAxis.msAtDayOffset(hi, -(maxDays - 1))
         rawCount = maxDays
     }
     val rangeStart = lo
     val dayCount = rawCount
 
     // Bars starting before the capped window pin to the left edge (still visible, no overflow).
-    fun dayIndex(ms: Long): Int =
-        (((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()).coerceIn(0, dayCount - 1)
+    fun dayIndex(ms: Long): Int = TimeAxis.dayIndex(ms, rangeStart).coerceIn(0, dayCount - 1)
     val axisW = dayW * dayCount
     val tier = tierFor(dayW)
     val headH = if (tier == TimelineTier.HOURS) TL_HEAD_H + TL_HOURS_H else TL_HEAD_H
@@ -1717,8 +1768,10 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         buildDayCells(rangeStart, dayCount, todayMs, axisWeekdays)
     }
     val monthBands = remember(rangeStart, dayCount, axisMonths) { buildMonthBands(rangeStart, dayCount, axisMonths) }
-    val weekBands = remember(rangeStart, dayCount, tier) {
-        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
+    val fmt = LocalDateFormat.current
+    val weekStart = fmt.weekStart
+    val weekBands = remember(rangeStart, dayCount, tier, weekStart) {
+        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount, weekStart) else emptyList()
     }
 
     // Swimlanes follow the shared composer-bar grouping (status / tag[+prefix]) —
@@ -1745,9 +1798,12 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         for (t in scheduled) {
             when (mode) {
                 "tag" -> {
+                    // Принадлежность пространству имён — через `tagInPrefix`, как на
+                    // канбане (BoardViewModel.groupTags) и на вебе: иначе одна и та же
+                    // группировка даёт на дорожках и на колонках разные наборы тегов.
                     val id = t.tagIds.firstOrNull { tid ->
                         val tag = state.tags[tid]
-                        tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+                        tag != null && tagInPrefix(tag.name, state.tagPrefix)
                     }
                     val tag = id?.let { state.tags[it] }
                     bucket(id ?: "∅", tag?.name ?: noTagLabel, tagColor(tag?.color)).add(t)
@@ -1788,7 +1844,9 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
         }
     }
 
-    val overdue = remember(scheduled) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) } }
+    // [fmt] — ключ memo и аргумент разом: счётчик считает просрочку в календаре
+    // пользователя, том же, в котором подписана каждая полоса.
+    val overdue = remember(scheduled, fmt) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate, fmt) } }
     val hScroll = rememberScrollState()
 
     // Apply a new day-width while keeping the date at [focalTrackX] (a track-relative x)
@@ -1958,38 +2016,6 @@ fun BoardTimelineView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task
 private data class GanttArrow(val x1: Dp, val y1: Dp, val x2: Dp, val y2: Dp)
 
 /**
- * "Авто" ordering for the Gantt: a DFS pre-order over the blocking edges
- * (`blocker → blocked`). Roots (no blocker) and a node's children are visited in
- * the incoming order, so each task prints before its dependents; any cycle
- * remainder is appended in incoming order. Mirrors web `utils/dependencyOrder`.
- * [edges] are normalised (blocker, blocked) pairs; edges touching an absent task
- * are ignored.
- */
-private fun topoByDeps(tasks: List<Task>, edges: List<Pair<String, String>>): List<Task> {
-    if (tasks.isEmpty() || edges.isEmpty()) return tasks
-    val order = tasks.withIndex().associate { (i, t) -> t.id to i }
-    val byId = tasks.associateBy { it.id }
-    val adj = HashMap<String, MutableList<String>>().apply { tasks.forEach { put(it.id, mutableListOf()) } }
-    val indeg = HashMap<String, Int>().apply { tasks.forEach { put(it.id, 0) } }
-    for ((blocker, blocked) in edges) {
-        if (!byId.containsKey(blocker) || !byId.containsKey(blocked)) continue
-        adj[blocker]!!.add(blocked)
-        indeg[blocked] = indeg[blocked]!! + 1
-    }
-    adj.values.forEach { children -> children.sortBy { order[it] ?: 0 } }
-    val visited = HashSet<String>()
-    val out = ArrayList<Task>(tasks.size)
-    fun visit(id: String) {
-        if (!visited.add(id)) return
-        byId[id]?.let { out.add(it) }
-        adj[id]?.forEach { visit(it) }
-    }
-    for (t in tasks) if (indeg[t.id] == 0) visit(t.id)
-    for (t in tasks) visit(t.id) // remaining cycle members, in incoming order
-    return out
-}
-
-/**
  * Gantt view = the Timeline (time axis / bars / zoom / today-line / swimlanes)
  * plus task **dependencies** drawn as finish-to-start arrows over the track.
  * Unlike web there is no in-bar drag-to-link (board drag is 1D-lane-tuned, the
@@ -2019,7 +2045,7 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     val leftW by animateDpAsState(if (leftCollapsed) 0.dp else TL_LEFT_W, label = "tlLeftW")
 
     // Memoised so zoom/scroll recompositions don't re-filter+sort 200 tasks each frame.
-    val tasks = remember(state.tasks, state.filter, state.sortLevels) { state.applyFilterSort(state.tasks) }
+    val tasks = remember(state.filterSortKey) { state.applyFilterSort(state.tasks) }
     val scheduled = tasks.filter { it.startDate != null || it.dueDate != null }
     val unscheduled = tasks.filter { it.startDate == null && it.dueDate == null }
 
@@ -2053,17 +2079,16 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     // Cap the window so the track (a single axisW×bodyH box + arrow Canvas) can't
     // exceed Compose's Constraints limit; keep the recent/future end (anchored at hi).
     val maxDays = (TL_MAX_AXIS_PX / dayWpx).toInt().coerceAtLeast(TL_MIN_DAYS)
-    var rawCount = ((hi - lo) / TL_DAY_MS).toInt() + 1
+    var rawCount = TimeAxis.dayCount(lo, hi)
     if (rawCount > maxDays) {
-        lo = hi - (maxDays - 1).toLong() * TL_DAY_MS
+        lo = TimeAxis.msAtDayOffset(hi, -(maxDays - 1))
         rawCount = maxDays
     }
     val rangeStart = lo
     val dayCount = rawCount
 
     // Bars starting before the capped window pin to the left edge (still visible, no overflow).
-    fun dayIndex(ms: Long): Int =
-        (((tlDayFloor(ms) - rangeStart) / TL_DAY_MS).toInt()).coerceIn(0, dayCount - 1)
+    fun dayIndex(ms: Long): Int = TimeAxis.dayIndex(ms, rangeStart).coerceIn(0, dayCount - 1)
     val axisW = dayW * dayCount
     val tier = tierFor(dayW)
     val headH = if (tier == TimelineTier.HOURS) TL_HEAD_H + TL_HOURS_H else TL_HEAD_H
@@ -2100,8 +2125,10 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         buildDayCells(rangeStart, dayCount, todayMs, axisWeekdays)
     }
     val monthBands = remember(rangeStart, dayCount, axisMonths) { buildMonthBands(rangeStart, dayCount, axisMonths) }
-    val weekBands = remember(rangeStart, dayCount, tier) {
-        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount) else emptyList()
+    val fmt = LocalDateFormat.current
+    val weekStart = fmt.weekStart
+    val weekBands = remember(rangeStart, dayCount, tier, weekStart) {
+        if (tier == TimelineTier.WEEKS) buildWeekBands(rangeStart, dayCount, weekStart) else emptyList()
     }
 
     // Normalised blocking edges (blocker, blocked), deduped — drive both the "Авто"
@@ -2138,9 +2165,10 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
         for (t in orderedScheduled) {
             when (mode) {
                 "tag" -> {
+                    // Тот же канонический ключ, что у таймлайна выше и у канбана.
                     val id = t.tagIds.firstOrNull { tid ->
                         val tag = state.tags[tid]
-                        tag != null && (state.tagPrefix.isEmpty() || tag.name.startsWith(state.tagPrefix))
+                        tag != null && tagInPrefix(tag.name, state.tagPrefix)
                     }
                     val tag = id?.let { state.tags[it] }
                     bucket(id ?: "∅", tag?.name ?: noTagLabel, tagColor(tag?.color)).add(t)
@@ -2245,7 +2273,9 @@ fun BoardGanttView(state: BoardUiState, vm: BoardViewModel, onOpenTask: (Task) -
     }
     val arrowColor = c.primary
 
-    val overdue = remember(scheduled) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate) } }
+    // [fmt] — ключ memo и аргумент разом: счётчик считает просрочку в календаре
+    // пользователя, том же, в котором подписана каждая полоса.
+    val overdue = remember(scheduled, fmt) { scheduled.count { it.dueDate != null && !it.isCompleted && isOverdue(it.dueDate, fmt) } }
     val hScroll = rememberScrollState()
 
     // Apply a new day-width while keeping the date at [focalTrackX] (a track-relative x)
@@ -2468,13 +2498,13 @@ private fun TimelineCounter(text: String, fg: Color, bg: Color) {
 }
 
 /** A month label spanning [span] consecutive day-cells starting at [startIdx]. */
-private data class TlMonthBand(val label: String, val startIdx: Int, val span: Int)
+internal data class TlMonthBand(val label: String, val startIdx: Int, val span: Int)
 
-private fun buildMonthBands(rangeStart: Long, dayCount: Int, months: List<String>): List<TlMonthBand> {
+internal fun buildMonthBands(rangeStart: Long, dayCount: Int, months: List<String>): List<TlMonthBand> {
     val out = ArrayList<TlMonthBand>()
     val cal = Calendar.getInstance()
     for (i in 0 until dayCount) {
-        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        cal.timeInMillis = tlDayAt(rangeStart, i)
         val label = "${months[cal.get(Calendar.MONTH)]} ${cal.get(Calendar.YEAR)}"
         val last = out.lastOrNull()
         if (last != null && last.label == label) out[out.lastIndex] = last.copy(span = last.span + 1)
@@ -2768,13 +2798,13 @@ private fun LazyListScope.timelineBodyItems(
 }
 
 /** Precomputed per-day header metadata, built once per window (cheap zoom frames). */
-private data class TlDayCell(val dom: Int, val weekday: String, val weekend: Boolean, val isToday: Boolean)
+internal data class TlDayCell(val dom: Int, val weekday: String, val weekend: Boolean, val isToday: Boolean)
 
-private fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long, weekdays: List<String>): List<TlDayCell> {
+internal fun buildDayCells(rangeStart: Long, dayCount: Int, todayMs: Long, weekdays: List<String>): List<TlDayCell> {
     val out = ArrayList<TlDayCell>(dayCount)
     val cal = Calendar.getInstance()
     for (i in 0 until dayCount) {
-        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        cal.timeInMillis = tlDayAt(rangeStart, i)
         val dow = cal.get(Calendar.DAY_OF_WEEK)
         out.add(
             TlDayCell(
@@ -2873,9 +2903,15 @@ private fun hourStepFor(dayW: androidx.compose.ui.unit.Dp): Int {
 }
 
 /** A week label spanning [span] day-cells from [startIdx]; label = day-of-month range. */
-private data class TlWeekBand(val label: String, val startIdx: Int, val span: Int)
+internal data class TlWeekBand(val label: String, val startIdx: Int, val span: Int)
 
-private fun buildWeekBands(rangeStart: Long, dayCount: Int): List<TlWeekBand> {
+/*
+ * Полосы недель рвутся на префе `week_start` (веб — `utils/timeAxis.js` buildWeekBands),
+ * а не на понедельнике: первая полоса окна и так бывает неполной, но разрыв посреди
+ * недели читателя делает шапку единственным местом, которое преф игнорирует.
+ */
+
+internal fun buildWeekBands(rangeStart: Long, dayCount: Int, weekStart: Int): List<TlWeekBand> {
     val out = ArrayList<TlWeekBand>()
     val cal = Calendar.getInstance()
     var startIdx = 0
@@ -2883,9 +2919,9 @@ private fun buildWeekBands(rangeStart: Long, dayCount: Int): List<TlWeekBand> {
     var endDom = 1
     var span = 0
     for (i in 0 until dayCount) {
-        cal.timeInMillis = rangeStart + i * TL_DAY_MS
+        cal.timeInMillis = tlDayAt(rangeStart, i)
         val dom = cal.get(Calendar.DAY_OF_MONTH)
-        if (span > 0 && cal.get(Calendar.DAY_OF_WEEK) == Calendar.MONDAY) {
+        if (span > 0 && WeekGrid.opensWeek(cal.get(Calendar.DAY_OF_WEEK), weekStart)) {
             out.add(TlWeekBand(if (startDom == endDom) "$startDom" else "$startDom–$endDom", startIdx, span))
             startIdx = i
             startDom = dom

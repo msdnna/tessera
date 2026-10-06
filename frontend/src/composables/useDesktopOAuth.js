@@ -1,4 +1,6 @@
+import { auth } from '@/api'
 import { isTauri } from '@/utils/serverBase'
+import { skey } from '@/utils/serverStorage'
 
 // Desktop GitLab login (#2696). The webview must never navigate to the OAuth provider
 // itself — that takes the app off its own frontend with no way back, which was the bug.
@@ -22,19 +24,85 @@ export const OAUTH_DONE_EVENT = 'oauth:desktop-done'
 // no longer resolves tessera://.
 export const OAUTH_WAIT_MS = 120_000
 
+// Where the pending flow's nonce waits for the handoff. localStorage, not memory: the
+// deep link may arrive through a *second* process launch (the app was closed while the
+// user was signing in), and an in-memory value would be gone by then.
+//
+// Per server profile on desktop (#2930), which is what `skey()` adds — on web it is the
+// identity function and this is the same plain key it always was. The nonce says "this app
+// is waiting for a handoff", and since #2930 that is only half an answer: the shell can be
+// pointed at several servers, and the rail that switches between them sits at the app root
+// *precisely* so it works on the login screen too. Start a GitLab login on A, switch to B
+// while the system browser is still open, and the deep link from A's callback lands in an
+// app whose axios baseURL is now B — a flat key would call that the pending login, and
+// exchangeOAuthCode() would post A's one-time code to B. That code is a bearer credential
+// for a full session, exactly like a refresh token (see handlers/oauth_handoff.go), server
+// profiles are addresses the user typed, and B would have the rest of the code's 60 seconds
+// to spend it at A. Namespacing means B simply has nothing pending, so the handoff is
+// dropped the way any unsolicited one is — and A's own nonce is left where it was.
+const OAUTH_STATE_KEY = 'tessera_oauth_state'
+
+// newOAuthState mints the nonce that ties a handoff to a login *this app* started
+// (#2932). tessera:// is an OS-wide scheme: any web page can open
+// `tessera://oauth/callback#access_token=…` and, without this check, the app would
+// swallow it and sign the user into whatever account the attacker minted — over a live
+// session, silently. Alphanumeric to match what the backend accepts inside the state.
+function newOAuthState() {
+  const buf = new Uint8Array(16)
+  globalThis.crypto.getRandomValues(buf)
+  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
+// consumeOAuthState checks a handoff against the pending login and, on a match, burns the
+// nonce so a replay of the same deep link can't be used twice. Returns false when nothing
+// is pending — an unsolicited handoff. A *mismatch* deliberately leaves the pending nonce
+// alone: otherwise a page that fires a junk deep link mid-login would cancel the real one.
+export function consumeOAuthState(received) {
+  let pending = null
+  // skey() reads the registry, so it goes inside the guard with the read it keys: a
+  // storage failure has to come out as "nothing pending", not as a throw the OS-level
+  // deep-link handler would have to catch.
+  try {
+    pending = localStorage.getItem(skey(OAUTH_STATE_KEY))
+  } catch {
+    /* storage unavailable — treat as nothing pending */
+  }
+  if (!pending || !received || received !== pending) return false
+  try {
+    localStorage.removeItem(skey(OAUTH_STATE_KEY))
+  } catch {
+    /* nothing to clean up */
+  }
+  return true
+}
+
 // parseOAuthDeepLink pulls the handoff out of a tessera://oauth/callback URL. Returns
 // null for anything that isn't one, so a deep link added later for some other purpose
 // doesn't get mistaken for a login. Kept pure and exported for tests.
+//
+// The desktop handoff carries a one-time `code`, never the tokens (#2932): on Linux and
+// Windows the OS delivers this URL by launching the app with it as a command-line
+// argument, and argv is readable by other processes (`ps`, /proc/<pid>/cmdline). The code
+// is traded for the session over HTTPS in exchangeOAuthCode below. Android keeps the old
+// token fragment — a different client, and an Intent is not argv.
 export function parseOAuthDeepLink(url) {
   if (typeof url !== 'string' || !url.startsWith(OAUTH_DEEP_LINK)) return null
   const hash = url.slice(OAUTH_DEEP_LINK.length)
   if (hash && !hash.startsWith('#')) return null // e.g. tessera://oauth/callback-other
   const frag = new URLSearchParams(hash.replace(/^#/, ''))
+  const state = frag.get('state')
   const error = frag.get('oauth_error')
-  if (error) return { access: null, refresh: null, error }
-  const access = frag.get('access_token')
-  if (!access) return { access: null, refresh: null, error: 'no_token' }
-  return { access, refresh: frag.get('refresh_token') || null, error: null }
+  if (error) return { code: null, state, error }
+  const code = frag.get('code')
+  if (!code) return { code: null, state, error: 'no_token' }
+  return { code, state, error: null }
+}
+
+// exchangeOAuthCode redeems the code and returns the session tokens. Separated from the
+// store so App.vue keeps one straight line: parse → check the nonce → exchange → sign in.
+export async function exchangeOAuthCode(code) {
+  const { data } = await auth.oauthHandoff(code)
+  return { access: data.access_token, refresh: data.refresh_token || null }
 }
 
 // startDesktopGitlabLogin opens the system browser at the authorize endpoint. Returns
@@ -43,7 +111,16 @@ export function parseOAuthDeepLink(url) {
 export async function startDesktopGitlabLogin(authorizeUrl) {
   try {
     const { openUrl } = await import('@tauri-apps/plugin-opener')
-    await openUrl(authorizeUrl)
+    // Remember the nonce before the browser opens: once the OS takes over, the handoff
+    // can come back at any moment, including into a freshly launched process.
+    const state = newOAuthState()
+    try {
+      localStorage.setItem(skey(OAUTH_STATE_KEY), state)
+    } catch {
+      /* storage unavailable — the handoff will be rejected, which beats accepting it */
+    }
+    const sep = authorizeUrl.includes('?') ? '&' : '?'
+    await openUrl(`${authorizeUrl}${sep}app_state=${state}`)
     return true
   } catch (e) {
     // Surface the real reason (ACL/scope, missing plugin, no browser) — the caller only

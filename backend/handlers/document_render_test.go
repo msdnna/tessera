@@ -317,7 +317,7 @@ func TestInlineDocAssetEmbedsOwnFileAndLeavesOthersAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	resolve := h.inlineDocAsset(wsID)
+	resolve := h.inlineDocAsset()
 	got := resolve(h.docAssetURL(wsID, docID, name))
 	want := "data:image/png;base64," + base64.StdEncoding.EncodeToString(payload)
 	if got != want {
@@ -329,8 +329,8 @@ func TestInlineDocAssetEmbedsOwnFileAndLeavesOthersAlone(t *testing.T) {
 	}
 
 	// A member can type any URL into their document. Without the signature check
-	// the export would read a file belonging to another workspace on their
-	// behalf — the exact leak the signed route exists to prevent.
+	// the export would read whatever file they named on their behalf — the exact
+	// leak the signed route exists to prevent.
 	forged := "/api/documents/asset?doc=" + docID.String() + "&ws=" + wsID.String() + "&n=" + name + "&sig=deadbeef"
 	if got := resolve(forged); got != forged {
 		t.Fatalf("forged signature was honoured and the file inlined: %q", got)

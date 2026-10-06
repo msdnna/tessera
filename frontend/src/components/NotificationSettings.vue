@@ -31,7 +31,10 @@ import {
   notificationPrefs as prefsApi,
 } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
+import { resolvedTimezone } from '@/utils/format'
+import { useFormat } from '@/composables/useFormat'
 import { workspaceName } from '@/utils/defaultNames'
+import { humanizeError } from '@/utils/errors'
 import { useAuthStore } from '@/stores/auth'
 import EmptyState from '@/components/EmptyState.vue'
 import SecretInput from '@/components/SecretInput.vue'
@@ -42,14 +45,28 @@ const { t } = useI18n()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const theme = useThemeStore()
+const { formatTime } = useFormat()
 
 // Half-hour time-of-day options (minutes since midnight) for the quiet window.
-const TIME_OPTIONS = Array.from({ length: 48 }, (_, i) => {
-  const m = i * 30
-  const hh = String(Math.floor(m / 60)).padStart(2, '0')
-  const mm = String(m % 60).padStart(2, '0')
-  return { label: `${hh}:${mm}`, value: m }
-})
+//
+// The labels go through the user's clock preference like every other time this
+// app prints: hand-built "23:00" left the two quiet-window selects on a 24-hour
+// clock for a user who had asked for a 12-hour one everywhere else. Computed for
+// the same reason the option lists below are (#2799) — a constant array would
+// freeze the labels in the language and preference of the first render.
+//
+// The value stays minutes-since-midnight (the wire format); only the label moves.
+// `timeZone: null` because these are wall-clock times of day, not instants: the
+// zone they are evaluated in is `quiet_tz`, sent separately.
+const TIME_OPTIONS = computed(() =>
+  Array.from({ length: 48 }, (_, i) => {
+    const m = i * 30
+    return {
+      label: formatTime(new Date(2026, 0, 1, Math.floor(m / 60), m % 60), { timeZone: null }),
+      value: m,
+    }
+  }),
+)
 
 const channels = ref([])
 const routes = ref([])
@@ -86,6 +103,14 @@ async function requestNotifPermission() {
   notifPermission.value = await Notification.requestPermission()
 }
 
+// Every kind the server actually routes (backend internal/notify/locale.go
+// `kinds`), in that file's order. A kind missing here is not merely absent from
+// the picker: kindLabel falls through to the raw key, so a rule that carries it
+// prints `conference_invite` in Latin in the middle of a Russian summary — and
+// the kind can neither be routed to a channel on its own nor excluded from one,
+// because the only rule that catches it is the catch-all «пусто = любые».
+// `test` is deliberately not here: it is the subject of the probe a user sends
+// to check a channel, never a stored notification to route.
 const EVENT_KINDS = [
   'assigned',
   'comment',
@@ -96,6 +121,7 @@ const EVENT_KINDS = [
   'due_soon',
   'reminder',
   'integration_sync',
+  'conference_invite',
 ]
 function kindLabel(kind) {
   return EVENT_KINDS.includes(kind) ? t(`settings.notifications.kind.${kind}`) : kind
@@ -149,7 +175,7 @@ async function load() {
     routes.value = r.data || []
     Object.assign(prefs, p.data || {})
   } catch (e) {
-    loadError.value = e.response?.data?.error || e.message
+    loadError.value = e.message
   } finally {
     loading.value = false
   }
@@ -157,14 +183,18 @@ async function load() {
 async function savePrefs() {
   prefsSaving.value = true
   try {
-    // Track the user's timezone so the quiet window is evaluated in their local time.
-    prefs.quiet_tz = theme.timezone || prefs.quiet_tz
+    // Track the user's timezone so the quiet window is evaluated in their local
+    // time. The profile setting is empty by default, and an empty zone is UTC to
+    // the scanner — not «по вашему часовому поясу», as the hint under the window
+    // promises — so resolve the blank to the browser's own zone, which is the one
+    // every time on this screen is already rendered in.
+    prefs.quiet_tz = resolvedTimezone(theme.timezone) || prefs.quiet_tz
     const res = await prefsApi.update({ ...prefs })
     Object.assign(prefs, res.data || {})
     prefsSaved.value = true
     setTimeout(() => (prefsSaved.value = false), 2000)
   } catch (e) {
-    loadError.value = e.response?.data?.error || e.message
+    loadError.value = e.message
   } finally {
     prefsSaving.value = false
   }
@@ -181,9 +211,9 @@ function channelName(id) {
   const c = channels.value.find((x) => x.id === id)
   return c ? channelTitle(c) : '—'
 }
-// `notification_routes.channel_ids` is a plain uuid[] with no FK, and the backend
-// doesn't scrub it on channel delete — so warn up front instead of silently
-// leaving routes pointing at a dead channel (they'd render as «—»).
+// The backend scrubs the deleted channel out of `channel_ids`, so the rules stay
+// editable — but a rule that named only this channel is left delivering nowhere.
+// Worth saying up front rather than letting it go quiet.
 function usedInRoutesHint(c) {
   const n = routes.value.filter((r) => (r.channel_ids || []).includes(c.id)).length
   if (!n) return ''
@@ -258,7 +288,7 @@ async function saveChannel() {
     chModal.value = false
     await load()
   } catch (e) {
-    chErr.value = e.response?.data?.error || e.message
+    chErr.value = e.message
   } finally {
     chSaving.value = false
   }
@@ -284,10 +314,17 @@ async function testChannel(c) {
   testState[c.id] = { pending: true }
   try {
     const res = await chApi.test(c.id)
-    testState[c.id] = { ok: true, msg: res.data?.warning || t('settings.notifications.testSent') }
+    // A probe that went through can still carry a warning (no SMTP on the
+    // server). It arrives as a sentinel, like every refusal — the interceptor
+    // never sees it, since the call succeeded, so translate it here.
+    const warning = res.data?.warning
+    testState[c.id] = {
+      ok: true,
+      msg: warning ? humanizeError(warning) : t('settings.notifications.testSent'),
+    }
     await load()
   } catch (e) {
-    testState[c.id] = { ok: false, msg: e.response?.data?.error || e.message }
+    testState[c.id] = { ok: false, msg: e.message }
   }
 }
 
@@ -360,7 +397,7 @@ async function runPreview() {
       tplError.value = res.data.error
     }
   } catch (e) {
-    tplError.value = e.response?.data?.error || e.message
+    tplError.value = e.message
   }
 }
 
@@ -450,7 +487,7 @@ async function saveRoute() {
     rtModal.value = false
     await load()
   } catch (e) {
-    rtErr.value = e.response?.data?.error || e.message
+    rtErr.value = e.message
   } finally {
     rtSaving.value = false
   }

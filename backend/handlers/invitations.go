@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"tessera/internal/auth"
 	"tessera/internal/db"
@@ -98,6 +100,13 @@ func (h *API) ListInvitations(c *gin.Context) {
 }
 
 // DeleteInvitation revokes a pending invitation (owner/admin of its workspace).
+//
+// The delete is scoped by the workspace from the URL, which is the one the
+// caller's role was checked against. Unscoped, managing any workspace — one's
+// own is enough — let a caller burn a pending invitation anywhere on the
+// install; the door that needs no guessing is a demoted admin, who read the ids
+// out of ListInvitations while the role lasted and can spend them for the whole
+// week the invitations stay live.
 func (h *API) DeleteInvitation(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -110,11 +119,37 @@ func (h *API) DeleteInvitation(c *gin.Context) {
 	if !ok {
 		return
 	}
-	if err := h.q.DeleteInvitation(c, invID); err != nil {
+	n, err := h.q.DeleteInvitation(c, db.DeleteInvitationParams{ID: invID, WorkspaceID: id})
+	if err != nil {
 		fail(c, err)
 		return
 	}
+	if n == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found in this workspace"})
+		return
+	}
 	c.Status(http.StatusNoContent)
+}
+
+// invitationRaisesRole reports whether an invitation still has something to
+// grant — i.e. whether its role is above the one the user already holds here.
+//
+// The role in an invitation is a snapshot of an intention up to a week old,
+// while CreateMembership is an upsert: applied as-is it overwrites whatever the
+// members screen says today, so a stale "member" invitation silently takes back
+// an admin granted after it was written (#2932). The statement already refuses
+// to move an owner; this is the same rule for every role below it, and the same
+// one org_map follows — an outside grant may raise a role, never lower it.
+// Deliberate demotion keeps its own door: UpdateMemberRole.
+//
+// A user with no membership (and an unreadable one) counts as raising: there the
+// invitation is the whole grant.
+func invitationRaisesRole(ctx context.Context, q *db.Queries, wsID, userID uuid.UUID, role string) bool {
+	existing, err := q.GetMembershipRole(ctx, db.GetMembershipRoleParams{WorkspaceID: wsID, UserID: userID})
+	if err != nil {
+		return true
+	}
+	return membershipRank(role) > membershipRank(existing)
 }
 
 // AcceptInvitation joins the current user to the invited workspace via a token.
@@ -144,10 +179,14 @@ func (h *API) AcceptInvitation(c *gin.Context) {
 	// a crash leaves either a membership with a still-live invite, or a burned
 	// invite with no access granted.
 	if err := h.inTx(c, func(q *db.Queries) error {
-		if _, err := q.CreateMembership(c, db.CreateMembershipParams{
-			WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
-		}); err != nil {
-			return err
+		// Burned either way: the invitation was spent, it just had nothing left to
+		// grant. Leaving it pending would keep the demotion waiting another week.
+		if invitationRaisesRole(c, q, inv.WorkspaceID, user.ID, inv.Role) {
+			if _, err := q.CreateMembership(c, db.CreateMembershipParams{
+				WorkspaceID: inv.WorkspaceID, UserID: user.ID, Role: inv.Role,
+			}); err != nil {
+				return err
+			}
 		}
 		return q.MarkInvitationAccepted(c, inv.ID)
 	}); err != nil {

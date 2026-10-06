@@ -437,14 +437,34 @@ func New() *Rooms {
 }
 
 // Join puts a participant into a document's room, creating it if needed.
+//
+// The registry lock is held across room.join, so that a participant is in
+// r.members by the time anyone else can look the room up. Released first — as it
+// was — the join had a window in which the room was reachable but still empty,
+// and a Leave landing there ran its own "did someone join?" re-check against
+// members the joiner had not been added to yet: the room is dropped from the
+// registry, and join then files the newcomer into an entry nothing can find
+// (#2932). That window is not theoretical — a page reload tears the old socket
+// down while the new one connects, which is exactly this pair of calls racing on
+// one document.
+//
+// Being unreachable is worse than the missing presence badge suggests. Notify,
+// Send, Drop, Close and EvictUser all walk rs.rooms, so an orphaned participant
+// stops being told the body was saved, survives the document being deleted,
+// survives shutdown — and, the reason this matters here, survives having their
+// membership revoked, which EvictUser exists to prevent.
+//
+// The cost is a snapshot broadcast to one room under the registry lock. deliver
+// never blocks (a participant that cannot keep up is closed, not waited for), so
+// this is bounded by the room's size, and joins are rare next to lock traffic.
 func (rs *Rooms) Join(docID uuid.UUID, p *Participant) *Room {
 	rs.mu.Lock()
+	defer rs.mu.Unlock()
 	room, ok := rs.rooms[docID]
 	if !ok {
 		room = newRoom(docID)
 		rs.rooms[docID] = room
 	}
-	rs.mu.Unlock()
 	room.join(p, time.Now())
 	return room
 }
@@ -486,6 +506,47 @@ func (rs *Rooms) Drop(docID uuid.UUID) {
 		p.Close()
 	}
 	room.mu.Unlock()
+}
+
+// EvictUser disconnects every connection a user holds, in every document room
+// (#2932). Called when their access is revoked: a room socket authorises once,
+// at the upgrade, and nothing re-reads the membership afterwards — so without
+// this an ex-member keeps their presence badge, keeps being told when the
+// document is saved, and keeps holding block locks nobody in the workspace can
+// lift, for as long as the tab stays open.
+//
+// Every room, not only the workspace's: the registry is keyed by document and
+// has no idea which workspace a document belongs to. Evicting wider is safe
+// because the client reconnects, and ConnectDocument re-checks membership on the
+// way back in — rooms they may still enter re-admit them, the rest answer 403.
+func (rs *Rooms) EvictUser(userID uuid.UUID) {
+	rs.mu.Lock()
+	snapshot := make(map[uuid.UUID]*Room, len(rs.rooms))
+	for id, room := range rs.rooms {
+		snapshot[id] = room
+	}
+	rs.mu.Unlock()
+	for docID, room := range snapshot {
+		// Leave (rather than a bare Close) is what releases the locks and tells
+		// the rest of the room, and what forgets a room left empty.
+		for _, p := range room.connectionsOf(userID) {
+			rs.Leave(docID, p)
+		}
+	}
+}
+
+// connectionsOf lists a user's participants in this room — a user may have the
+// same document open in several tabs.
+func (r *Room) connectionsOf(userID uuid.UUID) []*Participant {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*Participant, 0, 1)
+	for p := range r.members {
+		if p.UserID == userID {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // Notify tells everyone currently in a document's room that something they are

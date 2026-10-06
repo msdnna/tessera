@@ -148,6 +148,27 @@ describe('CommandPalette', () => {
     await flushPromises()
   }
 
+  // The status pick names no neighbour: the server appends the task to the end of
+  // the WHOLE column. A tail picked from the board's loaded cards lands
+  // mid-column on a sprint-scoped board (#2932, moveNeighbors in utils/status).
+  it('moves to another status without naming a neighbour', async () => {
+    const api = await import('@/api')
+    api.tasks.move.mockClear()
+    api.tasks.move.mockResolvedValue({ data: {} })
+    const palette = await openWith('ре')
+    await key('Tab') // narrow to the task
+    await key('Tab') // the first action is «Статус»
+    expect(palette.scope.field).toBe('status')
+    // TASK sits in c2 («В процессе»); pick «К работе».
+    document.querySelector('[data-row="col:c1"]').click()
+    await flushPromises()
+    expect(api.tasks.move).toHaveBeenCalledWith('t1', {
+      column_id: 'c1',
+      before_id: null,
+      after_id: null,
+    })
+  })
+
   it('lists the task hit and walks Tab → priority → apply', async () => {
     const palette = await openWith('ре')
     expect(search).toHaveBeenCalledWith('w1', 'ре')

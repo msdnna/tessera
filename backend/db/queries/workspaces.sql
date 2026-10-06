@@ -13,6 +13,14 @@ SELECT * FROM workspaces WHERE id = $1;
 -- name: NextWorkspaceTaskNumber :one
 UPDATE workspaces SET task_counter = task_counter + 1 WHERE id = $1 RETURNING task_counter;
 
+-- ReserveWorkspaceTaskNumbers claims a whole block of numbers at once and returns
+-- the last one in it, so a project arriving from another workspace can be
+-- renumbered without racing the ordinary one-at-a-time allocation above. The
+-- claim is the same single UPDATE … RETURNING, so a concurrent task creation
+-- either sees the counter before the block or after it — never inside.
+-- name: ReserveWorkspaceTaskNumbers :one
+UPDATE workspaces SET task_counter = task_counter + @count::bigint WHERE id = @id RETURNING task_counter;
+
 -- name: ListWorkspacesForUser :many
 SELECT w.*, m.role AS my_role
 FROM workspaces w
@@ -54,9 +62,16 @@ RETURNING *;
 DELETE FROM workspaces WHERE id = $1;
 
 -- name: CreateMembership :one
+-- Upsert, so re-adding a member is how a manager changes their role — except for
+-- the owner, whose role the handlers treat as immutable (UpdateMemberRole and
+-- RemoveMember both answer 403 on it). That rule has to hold at the write too:
+-- the other callers here are the invitation-accept paths, where the role comes
+-- from an invitation a mere admin composed, and nothing upstream asks whether the
+-- address belongs to the workspace owner.
 INSERT INTO memberships (workspace_id, user_id, role)
 VALUES ($1, $2, $3)
-ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role
+ON CONFLICT (workspace_id, user_id) DO UPDATE
+SET role = CASE WHEN memberships.role = 'owner' THEN memberships.role ELSE EXCLUDED.role END
 RETURNING *;
 
 -- name: GetMembershipRole :one

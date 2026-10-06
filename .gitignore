@@ -27,6 +27,10 @@ mcp/coverage.out
 mcp/cover.html
 reports/
 _badges/
+
+# SAST/SCA scanner binaries (#2936) — pinned by tools/install-scanners.sh,
+# fetched on demand rather than vendored.
+tools/bin/
 .yarn/*
 !.yarn/patches
 .pnp.*
@@ -94,3 +98,6 @@ frontend/.design-sync/node_modules
 frontend/design-system/dist/
 # symlink → ../.ds-sync/node_modules (git sees a link, not a dir, so node_modules/ misses it)
 frontend/design-system/node_modules
+# Bytecode cache of the conversion sidecar's tests (converter/server_test.py)
+__pycache__/
+*.pyc

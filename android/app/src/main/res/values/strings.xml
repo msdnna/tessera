@@ -18,6 +18,10 @@
     <string name="auth_name_placeholder">Как вас зовут</string>
     <string name="auth_password_label">Пароль</string>
     <string name="auth_password_placeholder">••••••••</string>
+    <string name="auth_password_too_short">Минимум %1$d символов</string>
+    <!-- Байты, а не символы: предел принадлежит bcrypt, и для кириллицы он вдвое ближе,
+         чем кажется по числу букв (веб говорит это теми же словами). -->
+    <string name="auth_password_too_long">Слишком длинный пароль: не больше %1$d байт (кириллическая буква — 2 байта)</string>
     <string name="auth_submit_login">Войти</string>
     <string name="auth_submit_register">Зарегистрироваться</string>
     <string name="auth_gitlab">Войти через GitLab</string>
@@ -61,6 +65,8 @@
     <string name="settings_avatar_upload">Загрузить</string>
     <string name="settings_avatar_remove">Убрать</string>
     <string name="settings_avatar_hint">PNG/JPEG/GIF/WebP, до 2 МБ</string>
+    <string name="settings_avatar_too_large">Файл больше 2 МБ</string>
+    <string name="settings_avatar_bad_type">Поддерживаются только PNG, JPEG, GIF или WebP</string>
     <string name="settings_email_label">Email (логин)</string>
     <string name="settings_email_verified">Почта подтверждена</string>
     <string name="settings_email_unverified">Почта не подтверждена</string>
@@ -83,6 +89,9 @@
     <string name="settings_password_repeat">Повторите новый</string>
     <string name="settings_password_changed">Пароль изменён</string>
     <string name="settings_password_submit">Сменить пароль</string>
+    <string name="settings_password_none">У этого аккаунта нет пароля — вход идёт через внешнего провайдера. Чтобы задать пароль, пришлём ссылку на %1$s.</string>
+    <string name="settings_password_link_send">Прислать ссылку</string>
+    <string name="settings_password_link_sent">Если аккаунт существует, ссылка отправлена на %1$s</string>
 
     <!-- Настройки: оформление -->
     <string name="settings_appearance_title">Оформление</string>
@@ -240,6 +249,7 @@
     <string name="task_status_active">Не выполнено</string>
     <string name="task_due_unset">Не задан</string>
     <string name="task_estimate_unset">Не задана</string>
+    <string name="task_estimate_unreadable">Не понимаю оценку «%1$s» — например: 3д 4ч, 1ч 30, 90м</string>
     <string name="task_assignees_none">Никто</string>
     <string name="task_tags_none">Нет</string>
     <string name="task_tag_new_hint">Новый тег, Enter</string>
@@ -268,11 +278,16 @@
 
     <!-- Модалка задачи: описание и комментарии -->
     <string name="task_description_placeholder">Добавьте описание…</string>
+    <!-- Архивная задача открывается только на просмотр: подпись в подвале модалки и
+         текст пустого описания там, где редактора с плейсхолдером уже нет. -->
+    <string name="task_readonly_note">Архивная задача — только просмотр</string>
+    <string name="task_description_empty">_Нет описания_</string>
     <string name="task_someone">Кто-то</string>
     <string name="task_comments_empty">Комментариев пока нет</string>
     <string name="task_comment_edit_placeholder">Комментарий…</string>
     <string name="task_comment_reply">Ответить</string>
     <string name="task_comment_collapse">Свернуть ответы</string>
+    <string name="task_comment_delete_confirm">Удалить комментарий?</string>
     <string name="task_reply_placeholder">Ответить… (@ — упоминание)</string>
     <string name="task_comment_placeholder">Написать комментарий… (@ — упоминание)</string>
     <string name="task_comment_placeholder_commands">Написать комментарий… (@ — упоминание, / — команда)</string>
@@ -304,28 +319,67 @@
     <!-- Модалка задачи: файлы -->
     <string name="task_files_empty">Файлов пока нет</string>
     <string name="task_file_attach">Прикрепить файл</string>
+    <!-- Отказ до отправки: сервер режет вложение на 25 МиБ (maxAttachmentBytes),
+         и его собственный отказ приходит зашитой русской строкой уже после того,
+         как файл целиком уехал по мобильной сети (#2932). -->
+    <string name="task_file_too_large">Файл больше %1$d МБ — сервер такой не примет</string>
     <string name="task_file_open_chooser">Открыть «%1$s»</string>
+    <string name="task_file_download_failed">Не удалось скачать файл</string>
     <string name="task_attachment_delete_confirm">Удалить вложение?</string>
     <string name="task_file_size_mb">%1$s МБ</string>
     <string name="task_file_size_kb">%1$s КБ</string>
-    <string name="task_file_size_b">%1$d Б</string>
+    <string name="task_file_size_b">%1$s Б</string>
 
     <!-- Модалка задачи: история -->
     <string name="task_history_empty">История пуста</string>
+    <!-- Фраза события собирается из kind + data (util/TaskJournal.kt). У события,
+         которое несёт цель, две строки: «с целью» и «без цели» — для записи, цели
+         не несущей. Даты и оценка различают установку и снятие; нейтральная
+         формулировка остаётся для записи без флага. -->
     <string name="task_event_created">создал(а) задачу</string>
     <string name="task_event_renamed">переименовал(а) задачу</string>
+    <string name="task_event_renamed_to">переименовал(а) → «%1$s»</string>
     <string name="task_event_description">изменил(а) описание</string>
     <string name="task_event_priority">сменил(а) приоритет</string>
+    <string name="task_event_priority_to">изменил(а) приоритет → %1$s</string>
     <string name="task_event_due">изменил(а) срок</string>
+    <string name="task_event_due_set">установил(а) срок</string>
+    <string name="task_event_due_cleared">убрал(а) срок</string>
+    <string name="task_event_start">изменил(а) дату начала</string>
+    <string name="task_event_start_set">установил(а) дату начала</string>
+    <string name="task_event_start_cleared">убрал(а) дату начала</string>
+    <string name="task_event_estimate">изменил(а) оценку</string>
+    <string name="task_event_estimate_set">установил(а) оценку</string>
+    <string name="task_event_estimate_cleared">убрал(а) оценку</string>
     <string name="task_event_completed">завершил(а) задачу</string>
     <string name="task_event_reopened">вернул(а) в работу</string>
     <string name="task_event_recurred">перенёс(ла) повтор задачи</string>
     <string name="task_event_moved">переместил(а) задачу</string>
+    <string name="task_event_moved_to">переместил(а) → «%1$s»</string>
     <string name="task_event_assigned">назначил(а) исполнителя</string>
     <string name="task_event_unassigned">снял(а) исполнителя</string>
+    <string name="task_event_tagged">навесил(а) тег</string>
+    <string name="task_event_tagged_with">навесил(а) тег «%1$s»</string>
+    <string name="task_event_untagged">снял(а) тег</string>
+    <string name="task_event_untagged_with">снял(а) тег «%1$s»</string>
     <string name="task_event_comment">оставил(а) комментарий</string>
     <string name="task_event_relation">добавил(а) связь</string>
+    <string name="task_event_relation_to">добавил(а) связь с #%1$s</string>
+    <string name="task_event_relation_removed">удалил(а) связь</string>
+    <string name="task_event_relation_removed_to">удалил(а) связь с #%1$s</string>
+    <string name="task_event_commands">выполнил(а) быстрые команды</string>
+    <string name="task_event_commands_applied">выполнил(а) команды: %1$s</string>
+    <string name="task_event_commands_failed">не смог(ла) выполнить команды: %1$s</string>
+    <string name="task_event_commands_mixed">выполнил(а) команды: %1$s (не удалось: %2$s)</string>
+    <string name="task_event_synced">синхронизировал(а) с %1$s</string>
     <string name="task_event_attachment">прикрепил(а) файл</string>
+    <string name="task_event_attachment_named">прикрепил(а) файл «%1$s»</string>
+    <string name="task_event_attachment_removed">удалил(а) файл</string>
+    <string name="task_event_attachment_removed_named">удалил(а) файл «%1$s»</string>
+    <string name="task_event_milestone">привязал(а) к этапу</string>
+    <string name="task_event_milestone_named">привязал(а) к этапу «%1$s»</string>
+    <string name="task_event_milestone_removed">отвязал(а) от этапа</string>
+    <string name="task_event_milestone_removed_named">отвязал(а) от этапа «%1$s»</string>
     <string name="task_event_archived">архивировал(а) задачу</string>
     <string name="task_event_restored">восстановил(а) задачу</string>
 
@@ -686,6 +740,8 @@
     <string name="notif_kind_archived">Архивирование</string>
     <string name="notif_kind_due_soon">Дедлайны</string>
     <string name="notif_kind_reminder">Напоминания</string>
+    <string name="notif_kind_integration_sync">Синхронизация интеграций</string>
+    <string name="notif_kind_conference_invite">Приглашения в конференцию</string>
 
     <!-- Уведомления: расписание дедлайнов и тихих часов -->
     <string name="notif_due_enabled">Уведомлять о дедлайнах</string>
@@ -702,6 +758,7 @@
     <string name="notif_lead_1h">За час</string>
     <string name="notif_lead_3h">За 3 часа</string>
     <string name="notif_lead_1d">За день</string>
+    <string name="notif_lead_2d">За 2 дня</string>
     <string name="notif_repeat_once">Однократно</string>
     <string name="notif_repeat_1h">Каждый час</string>
     <string name="notif_repeat_3h">Каждые 3 часа</string>
@@ -1049,6 +1106,7 @@
     <string name="conf_chat_load_older">Показать более ранние</string>
     <string name="conf_chat_unknown_author">Неизвестный автор</string>
     <string name="conf_chat_file_too_big">«%1$s» больше 25 МБ</string>
+    <string name="conf_chat_files_too_big">Вложения весят больше 25 МБ — отправьте их несколькими сообщениями</string>
     <string name="conf_chat_too_many_files">К одному сообщению можно приложить не больше %1$d файлов</string>
     <string name="conf_chat_too_long">Сообщение длиннее %1$d символов</string>
     <string name="conf_chat_size_b">%1$s Б</string>
@@ -1096,6 +1154,8 @@
     <!-- Участники пространства -->
     <string name="members_title">Участники</string>
     <string name="members_invitations">Приглашения</string>
+    <string name="members_invite_expired">Истекло</string>
+    <string name="members_invite_until">до %1$s</string>
     <string name="members_invite_title">Пригласить по email</string>
     <string name="members_invite_action">Пригласить</string>
     <string name="members_invite_hint">Зарегистрированного добавим сразу; нового — приглашение по ссылке.</string>
@@ -1105,11 +1165,12 @@
     <string name="members_role_owner">Владелец</string>
     <string name="members_role_admin">Админ</string>
     <string name="members_role_member">Участник</string>
+    <string name="members_you">Это вы</string>
+    <string name="members_read_only">Список только для чтения: менять состав может владелец или админ пространства.</string>
 
     <!-- Администрирование: список аккаунтов -->
     <string name="admin_users_count">Пользователи экземпляра — %1$d</string>
     <string name="admin_search_placeholder">Поиск по имени или почте</string>
-    <string name="admin_load_failed">Не удалось загрузить пользователей</string>
     <string name="admin_nobody_found">Никого не найдено</string>
     <string name="admin_reset_link_copied">Ссылка для сброса пароля скопирована</string>
     <string name="admin_badge_you">вы</string>
@@ -1129,12 +1190,12 @@
     <!-- Администрирование: карточка OAuth -->
     <string name="admin_oauth_title">Вход через GitLab (OAuth)</string>
     <string name="admin_oauth_badge_on">включён</string>
-    <string name="admin_oauth_load_failed">Не удалось загрузить настройки OAuth</string>
-    <string name="admin_oauth_save_failed">Не удалось сохранить настройки</string>
     <string name="admin_oauth_orgmap_invalid">org_map: ожидается JSON-объект</string>
     <string name="admin_oauth_saved">Настройки OAuth сохранены</string>
     <string name="admin_oauth_secret_stored">(сохранён — введите, чтобы заменить)</string>
     <string name="admin_oauth_service_token">Сервис-токен (PAT, инстанс-широкий)</string>
+    <string name="admin_oauth_sudo">Запись от имени пользователя (Sudo)</string>
+    <string name="admin_oauth_sudo_sub">issue и обратная запись — от действующего пользователя; сервисный токен должен быть админским PAT (scope api + sudo). Держите ВЫКЛ, если GitLab или Tessera доступны из внешней сети</string>
     <string name="admin_oauth_enabled">Включён</string>
     <string name="admin_oauth_org_map">org_map (JSON: путь-группы → {workspace_id, admins, users})</string>
     <string name="admin_oauth_callback_hint">Callback URL (укажите в OAuth-приложении GitLab):</string>
@@ -1221,11 +1282,13 @@
 
     <!-- Выбор срока: повтор задачи -->
     <string name="due_picker_repeat">Повтор задачи</string>
-    <string name="due_picker_every">каждые</string>
     <string name="due_picker_custom_hint">Отметьте даты повтора в календаре выше.</string>
+    <string name="due_picker_no_due">Пока не задан срок, повторение не сработает ни разу: следующая дата считается от него. Выберите дату в календаре выше.</string>
     <string name="due_picker_trigger">Событие</string>
     <string name="due_picker_trigger_column">Колонка-триггер</string>
     <string name="due_picker_trigger_column_hint">Выберите колонку</string>
+    <string name="due_picker_trigger_column_unset">Пока колонка не выбрана, повторение не сработает ни разу.</string>
+    <string name="due_picker_trigger_column_gone">Этой колонки больше нет на доске — повторение не сработает. Выберите другую.</string>
     <string name="due_picker_move_to">Переносить в</string>
     <string name="due_picker_first_column">Первая колонка</string>
     <string name="due_picker_duplicate">Создавать дубликат</string>
@@ -1240,6 +1303,32 @@
     <string name="recur_trigger_complete">При завершении</string>
     <string name="recur_trigger_column">При переходе в колонку</string>
     <string name="recur_trigger_schedule">По расписанию</string>
+    <!-- Слово перед числом склоняется вместе с единицей: «каждый 1 день», но
+         «каждую 1 неделю» — род у единиц разный, поэтому форма своя на частоту -->
+    <plurals name="recur_every_daily">
+        <item quantity="one">каждый</item>
+        <item quantity="few">каждые</item>
+        <item quantity="many">каждые</item>
+        <item quantity="other">каждые</item>
+    </plurals>
+    <plurals name="recur_every_weekly">
+        <item quantity="one">каждую</item>
+        <item quantity="few">каждые</item>
+        <item quantity="many">каждые</item>
+        <item quantity="other">каждые</item>
+    </plurals>
+    <plurals name="recur_every_monthly">
+        <item quantity="one">каждый</item>
+        <item quantity="few">каждые</item>
+        <item quantity="many">каждые</item>
+        <item quantity="other">каждые</item>
+    </plurals>
+    <plurals name="recur_every_yearly">
+        <item quantity="one">каждый</item>
+        <item quantity="few">каждые</item>
+        <item quantity="many">каждые</item>
+        <item quantity="other">каждые</item>
+    </plurals>
     <!-- Единица интервала стоит после числа («каждые 2 недели») — винительный падеж -->
     <plurals name="recur_unit_daily">
         <item quantity="one">день</item>
@@ -1382,6 +1471,8 @@
     <string name="err_no_connection">Нет соединения с сервером</string>
     <string name="err_unknown">Неизвестная ошибка</string>
     <string name="err_invalid_credentials">Неверный email или пароль</string>
+    <string name="err_password_too_short">Пароль слишком короткий — минимум 8 символов</string>
+    <string name="err_password_too_long">Пароль слишком длинный — не больше 72 байт</string>
     <string name="err_email_registered">Этот email уже зарегистрирован</string>
     <string name="err_email_in_use">Этот email уже используется</string>
     <string name="err_user_exists">Пользователь с таким email уже существует</string>
@@ -1389,6 +1480,28 @@
     <string name="err_link_invalid">Ссылка недействительна или устарела</string>
     <string name="err_link_expired">Срок действия ссылки истёк</string>
     <string name="err_account_deactivated">Аккаунт деактивирован</string>
+    <string name="err_current_password_wrong">Текущий пароль неверен</string>
+    <string name="err_no_user_with_email">Пользователя с таким email нет — можно отправить приглашение</string>
+    <string name="err_job_already_running">Задача уже выполняется — дождитесь её завершения</string>
+    <string name="err_too_many_approvers">В маршруте согласования слишком много участников</string>
+    <string name="err_cannot_change_owner_role">Роль владельца пространства менять нельзя</string>
+    <string name="err_cannot_remove_owner">Владельца пространства нельзя удалить</string>
+    <string name="err_cannot_change_own_role">Свою роль изменить нельзя — попросите другого администратора</string>
+    <string name="err_cannot_remove_self">Себя нельзя удалить из пространства — попросите другого администратора</string>
+    <string name="err_requires_manager">Нужны права администратора или владельца пространства</string>
+    <string name="err_requires_admin">Нужны права администратора</string>
+    <string name="err_channel_type_unknown">Сервер не умеет каналы типа «%1$s»</string>
+    <string name="err_channel_requires_field">Каналу «%1$s» нужно поле %2$s</string>
+    <string name="err_template_too_long">Шаблон длиннее %1$s символов — сократите его</string>
+    <string name="err_template_error">Ошибка в шаблоне: %1$s</string>
+    <string name="err_smtp_not_configured">SMTP на сервере не настроен — письмо записано в лог, но не отправлено</string>
+    <string name="err_too_many_requests">Слишком много попыток — подождите минуту и попробуйте снова</string>
+    <string name="err_board_view_limit_reached">Сохранённых видов доски слишком много — удалите ненужный, чтобы добавить новый</string>
+    <string name="err_board_view_config_too_large">Настройки вида не помещаются в сохранение</string>
+    <string name="err_doc_link_limit_reached">К документу привязано слишком много задач — отвяжите ненужные</string>
+    <string name="err_body_too_large">Слишком большой запрос — сократите текст или вложение</string>
+    <string name="err_doc_content_too_large">Документ больше %1$s МБ — разделите его на несколько страниц</string>
+    <string name="err_chat_attachments_too_large">Вложения весят больше %1$s МБ — отправьте их несколькими сообщениями</string>
     <string name="err_forbidden">Недостаточно прав</string>
     <string name="err_unauthorized">Нужно войти заново</string>
     <string name="err_not_found">Не найдено</string>
@@ -1503,6 +1616,10 @@
     <string name="md_link_placeholder">текст</string>
     <string name="md_mermaid_start">Старт</string>
     <string name="md_mermaid_done">Готово</string>
+    <!-- Отказ до отправки для инлайн-картинки: 8 МиБ (maxMediaBytes) и белый список
+         mediaExts. Раньше отказ проглатывался целиком — картинка просто не появлялась. -->
+    <string name="md_image_too_large">Изображение больше %1$d МБ — сервер такое не примет</string>
+    <string name="md_image_type">Поддерживаются только PNG, JPEG, GIF, WebP и BMP</string>
 
     <!-- Подписи под лоадером (появляются, только если загрузка затянулась) и
          состояние ошибки экрана. -->
@@ -1549,12 +1666,14 @@
     <string name="help_desktop_note">Статья описывает веб-версию — в приложении часть действий выглядит иначе.</string>
     <string name="help_not_translated">Эта статья ещё не переведена — показан оригинал.</string>
 
-    <string name="search_placeholder">Поиск задач, заметок и справки</string>
-    <string name="search_hint">Введите запрос — поиск по названию и описанию задач, заголовку и тексту заметок, статьям справки</string>
+    <string name="search_placeholder">Поиск задач, заметок, документов и справки</string>
+    <string name="search_hint">Введите запрос — поиск по номеру, названию и описанию задач, заголовку и тексту заметок, заголовку документов, статьям справки</string>
     <string name="search_empty">Ничего не найдено</string>
+    <string name="search_more">Показаны первые %1$d — уточните запрос</string>
     <string name="search_section_help">СПРАВКА</string>
     <string name="search_section_tasks">ЗАДАЧИ</string>
     <string name="search_section_notes">ЗАМЕТКИ</string>
+    <string name="search_section_documents">ДОКУМЕНТЫ</string>
 
     <!-- Разрешение конфликтов обратной записи GitLab. Подписи полей берутся из
          task_prop_*, а сторона «GitLab» остаётся именем сервиса и ключа не имеет. -->
@@ -1631,7 +1750,7 @@
     <string name="tour_board_open_title">Откройте доску</string>
     <string name="tour_board_open_body">Нажмите на доску — откроется канбан.</string>
     <string name="tour_task_create_title">Создайте задачу</string>
-    <string name="tour_task_create_body">Нажмите «Создать задачу» в колонке «К работе», введите название и подтвердите.</string>
+    <string name="tour_task_create_body">Нажмите «Создать задачу» в колонке «%1$s», введите название и подтвердите.</string>
     <string name="tour_card_fields_title">Прямо на карточке</string>
     <string name="tour_card_fields_body">Приоритет, срок, теги и исполнители правятся не открывая задачу — тапом по значку карточки.</string>
     <string name="tour_card_open_title">Откройте задачу</string>
@@ -1655,7 +1774,7 @@
     <string name="tour_board_composer_title">Группировка, сортировка, фильтры</string>
     <string name="tour_board_composer_body">Через «+» на этой панели добавляются группировка (в том числе по тегам), сортировка и фильтры, а рядом — настройка вида карточек.</string>
     <string name="tour_dnd_card_title">Перетащите карточку</string>
-    <string name="tour_dnd_card_body">Задача переносится между колонками перетаскиванием — так на доске меняется её статус. Перетащите карточку в «В процессе».</string>
+    <string name="tour_dnd_card_body">Задача переносится между колонками перетаскиванием — так на доске меняется её статус. Перетащите карточку в «%1$s».</string>
     <string name="tour_group_add_title">Проекты тоже группируются</string>
     <string name="tour_group_add_body">Когда проектов становится много, их складывают в группы. Нажмите «+» над деревом ещё раз.</string>
     <string name="tour_menu_group_title">Выберите «Группа»</string>
@@ -1670,4 +1789,73 @@
     <string name="tour_nav_footer_body">Внизу — ваш профиль и настройки, рядом — уведомления.</string>
     <string name="tour_done_title">Готово</string>
     <string name="tour_done_body">Это всё, что нужно для старта. Обучение можно перезапустить отсюда же, из нижней части бокового меню.</string>
+
+    <!-- Описания встроенных быстрых действий: реестр живёт на бэкенде
+         (internal/quickact/registry.go) и отдаёт свой русский текст всем
+         клиентам, поэтому витрину переводим у себя (#2932). -->
+    <string name="cmd_assign_desc">Назначить исполнителя</string>
+    <string name="cmd_unassign_desc">Снять исполнителя (без аргумента — всех)</string>
+    <string name="cmd_due_desc">Установить срок</string>
+    <string name="cmd_remove_due_desc">Убрать срок</string>
+    <string name="cmd_start_desc">Установить дату начала</string>
+    <string name="cmd_remove_start_desc">Убрать дату начала</string>
+    <string name="cmd_estimate_desc">Установить оценку</string>
+    <string name="cmd_remove_estimate_desc">Убрать оценку</string>
+    <string name="cmd_priority_desc">Установить приоритет</string>
+    <string name="cmd_title_desc">Изменить заголовок</string>
+    <string name="cmd_tag_desc">Добавить тег (через запятую)</string>
+    <string name="cmd_untag_desc">Убрать тег</string>
+    <string name="cmd_milestone_desc">Назначить майлстоун</string>
+    <string name="cmd_remove_milestone_desc">Убрать майлстоун</string>
+    <string name="cmd_move_desc">Перенести в колонку</string>
+    <string name="cmd_close_desc">Закрыть задачу</string>
+    <string name="cmd_reopen_desc">Переоткрыть задачу</string>
+    <string name="cmd_archive_desc">Архивировать задачу</string>
+    <string name="cmd_relate_desc">Связать с задачей</string>
+    <string name="cmd_blocks_desc">Блокирует задачу</string>
+    <string name="cmd_blocked_by_desc">Заблокирована задачей</string>
+    <string name="cmd_duplicates_desc">Дублирует задачу</string>
+    <string name="cmd_unlink_desc">Снять связь с задачей</string>
+    <string name="cmd_subtask_desc">Создать подзадачу</string>
+    <string name="cmd_parent_desc">Сделать подзадачей задачи</string>
+    <string name="cmd_unparent_desc">Открепить от родителя</string>
+
+    <!-- Фразы уведомлений: близнец frontend/src/locales/ru/notifications.json и
+         каталога backend/internal/notify/locale.go — те же ключи, те же подстановки,
+         та же формулировка. Меняется одна сторона — меняются все три. -->
+    <string name="notif_ev_ctx">" «%1$s»"</string>
+    <string name="notif_ev_no_ref">?</string>
+    <string name="notif_ev_list_sep">", "</string>
+    <!-- Соединитель перед ПОСЛЕДНИМ элементом: список слов, а не перечисление через
+         запятую. Веб склеивает тот же список через Intl.ListFormat (conjunction) —
+         «название, срок и приоритет», — и одно уведомление доходит до читателя тремя
+         разными рендерами (колокольчик веба, этот, notify.Sentence для доставок вне
+         приложения), так что голая запятая читалась по-разному. -->
+    <string name="notif_ev_list_last">" и "</string>
+    <string name="notif_ev_reason_unknown">неизвестная ошибка</string>
+    <string name="notif_ev_task_assigned">%1$s назначил вам задачу #%2$s%3$s</string>
+    <string name="notif_ev_task_updated">%1$s изменил(а) задачу #%2$s: %3$s</string>
+    <string name="notif_ev_task_moved">%1$s переместил(а) задачу #%2$s → «%3$s»</string>
+    <string name="notif_ev_task_archived">%1$s архивировал(а) задачу #%2$s%3$s</string>
+    <string name="notif_ev_task_comment">%1$s прокомментировал #%2$s%3$s</string>
+    <string name="notif_ev_task_thread_reply">%1$s ответил(а) в обсуждении #%2$s%3$s</string>
+    <string name="notif_ev_task_mention">%1$s упомянул(а) вас в #%2$s%3$s</string>
+    <string name="notif_ev_task_due_soon">Приближается срок задачи #%1$s «%2$s»</string>
+    <string name="notif_ev_reminder">Напоминание</string>
+    <string name="notif_ev_sync_ok">%1$s: +%2$s новых, ~%3$s обновлено, за %4$s</string>
+    <string name="notif_ev_sync_partial">%1$s: +%2$s новых, ~%3$s обновлено, за %4$s (часть действий с ошибками)</string>
+    <string name="notif_ev_sync_failed">%1$s: синхронизация не удалась — %2$s (за %3$s)</string>
+    <string name="notif_ev_conference_invited">%1$s приглашает вас в конференцию%2$s</string>
+    <string name="notif_ev_field_title">название</string>
+    <string name="notif_ev_field_description">описание</string>
+    <string name="notif_ev_field_priority">приоритет</string>
+    <string name="notif_ev_field_due">срок</string>
+    <string name="notif_ev_field_start">начало</string>
+    <string name="notif_ev_field_estimate">оценка</string>
+    <string name="notif_ev_field_completed">выполнена</string>
+    <string name="notif_ev_field_reopened">возвращена в работу</string>
+    <string name="notif_ev_duration_instant">меньше секунды</string>
+    <string name="notif_ev_duration_hm">%1$d ч %2$d м</string>
+    <string name="notif_ev_duration_ms">%1$d м %2$d с</string>
+    <string name="notif_ev_duration_s">%1$d с</string>
 </resources>

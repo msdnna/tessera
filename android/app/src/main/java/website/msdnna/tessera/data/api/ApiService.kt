@@ -1,6 +1,7 @@
 package website.msdnna.tessera.data.api
 
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -69,7 +70,6 @@ import website.msdnna.tessera.data.model.TokenRequest
 import website.msdnna.tessera.data.model.UpdateCommentRequest
 import website.msdnna.tessera.data.model.UpdateGroupRequest
 import website.msdnna.tessera.data.model.UpdateProjectRequest
-import website.msdnna.tessera.data.model.UpdateTaskRequest
 import website.msdnna.tessera.data.model.UploadResponse
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
@@ -89,6 +89,11 @@ interface ApiService {
     @POST("auth/refresh")
     suspend fun refresh(@Body body: RefreshRequest): AuthResponse
 
+    /** Revokes the presented refresh token. Public and idempotent: an unknown or
+     *  already-dead token is still a successful logout (backend Logout). */
+    @POST("auth/logout")
+    suspend fun logout(@Body body: RefreshRequest)
+
     @GET("auth/me")
     suspend fun me(): MeResponse
 
@@ -99,8 +104,10 @@ interface ApiService {
     @PATCH("users/me")
     suspend fun updateProfile(@Body body: ProfileUpdate): User
 
+    // Returns a session: the change revokes every refresh token the account has,
+    // this device's included, and hands back a replacement pair.
     @PUT("users/me/password")
-    suspend fun changePassword(@Body body: PasswordChange)
+    suspend fun changePassword(@Body body: PasswordChange): AuthResponse
 
     @PUT("users/me/preferences")
     suspend fun updatePreferences(@Body body: Preferences): Preferences
@@ -280,8 +287,11 @@ interface ApiService {
     @PATCH("tasks/{id}/move")
     suspend fun moveTask(@Path("id") taskId: String, @Body body: MoveTaskRequest): Task
 
+    // Тело — уже сериализованный JSON (см. `taskPatch`/`toWireJson`), а не дата-класс:
+    // ручка tri-state, и «очистить поле» — это ключ со значением null, который
+    // общий Gson конвертера выбросил бы вместе с ключом.
     @PATCH("tasks/{id}")
-    suspend fun updateTask(@Path("id") taskId: String, @Body body: UpdateTaskRequest): Task
+    suspend fun updateTask(@Path("id") taskId: String, @Body body: RequestBody): Task
 
     @PATCH("tasks/{id}/parent")
     suspend fun setTaskParent(@Path("id") taskId: String, @Body body: SetParentRequest): Task
@@ -319,11 +329,18 @@ interface ApiService {
     @GET("workspaces/{id}/gitlab/members")
     suspend fun gitlabMembers(@Path("id") workspaceId: String): List<GitlabMember>?
 
-    /** Creates a GitLab issue from this task (write-back `push_create`). */
+    /** Creates a GitLab issue from this task (write-back `push_create`).
+     *
+     *  `tz` — календарь автора: срок задачи уезжает в issue голым `YYYY-MM-DD`
+     *  (backend `taskDateStr`), то есть ДНЁМ, а хранится он мгновением полуночи.
+     *  Без зоны сервер читает его своей, и восточнее неё полночь принадлежит
+     *  предыдущему серверному дню — issue рождается со сроком на день раньше,
+     *  чем показывает сама задача (#2932). */
     @POST("tasks/{id}/gitlab-issue")
     suspend fun createGitlabIssue(
         @Path("id") taskId: String,
         @Body body: website.msdnna.tessera.data.model.CreateGitlabIssueRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.GitlabIssueCreated
 
     /** Issue templates of the bound GL project (soft-fails to `[]` on the backend). */
@@ -387,13 +404,15 @@ interface ApiService {
     @PUT("projects/{id}/tag-prefixes")
     suspend fun setTagPrefixes(@Path("id") projectId: String, @Body body: SetTagPrefixesRequest): List<TagPrefix>?
 
-    // Two-level estimation config; body is the config object directly, or null to
-    // clear (workspace → built-in default, project → inherit workspace).
+    // Two-level estimation config; the body is the config object directly. To clear
+    // it (workspace → built-in default, project → inherit workspace) send the
+    // unit-less EstimationConfig.INHERIT: Retrofit rejects a null @Body before the
+    // request leaves the device, so "no body" — the web's way — is not available here.
     @PUT("workspaces/{id}/estimation")
-    suspend fun setWorkspaceEstimation(@Path("id") workspaceId: String, @Body body: EstimationConfig?): Workspace
+    suspend fun setWorkspaceEstimation(@Path("id") workspaceId: String, @Body body: EstimationConfig): Workspace
 
     @PUT("projects/{id}/estimation")
-    suspend fun setProjectEstimation(@Path("id") projectId: String, @Body body: EstimationConfig?): Project
+    suspend fun setProjectEstimation(@Path("id") projectId: String, @Body body: EstimationConfig): Project
 
     // ── Quick actions: command registry (workspace) + comment dry-run ────────
     // The built-in list comes from the backend's own registry, so a command added
@@ -409,10 +428,13 @@ interface ApiService {
         @Body body: website.msdnna.tessera.data.model.SetWorkspaceCommandsRequest,
     ): List<website.msdnna.tessera.data.model.WorkspaceCommand>?
 
+    // Та же зона, что у настоящего POST: иначе подсказка «Будет применено» назовёт
+    // не тот день, в который команда потом попадёт (#2932).
     @POST("tasks/{id}/commands/preview")
     suspend fun previewCommands(
         @Path("id") taskId: String,
         @Body body: website.msdnna.tessera.data.model.PreviewCommandsRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.CommandPreview
 
     @GET("workspaces/{id}/members")
@@ -488,10 +510,15 @@ interface ApiService {
 
     // The reply carries the comment inline plus a `command_summary` when the body
     // held quick actions; a command-only comment stores no row (id null).
+    //
+    // `tz` — календарь автора: «/due сегодня» в теле резолвит СЕРВЕР, и без зоны
+    // он берёт свою, так что команда, набранная поздним вечером, ставит чужой день
+    // (#2932).
     @POST("tasks/{id}/comments")
     suspend fun createComment(
         @Path("id") taskId: String,
         @Body body: CreateCommentRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.CommentResult
 
     @PATCH("comments/{id}")
@@ -640,9 +667,14 @@ interface ApiService {
         @Path("number") number: Int,
     ): website.msdnna.tessera.data.model.Task
 
+    /** Плитки «Просрочено / Сегодня / На неделе». `tz` — календарь читателя: сервер
+     *  раскладывает счётчики по ДНЯМ (`due_date < @day_start`), и без зоны он взял бы
+     *  свою собственную, а список под плиткой фильтруется в днях устройства — число
+     *  в плитке и её же список тогда расходятся (#2932). */
     @GET("workspaces/{id}/summary")
     suspend fun workspaceSummary(
         @Path("id") workspaceId: String,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.WorkspaceSummary
 
     // ── Notes (#5) ────────────────────────────────────────────────────────────

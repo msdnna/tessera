@@ -84,6 +84,22 @@ describe('initSentry', () => {
     expect(opts.ignoreErrors).toContain('ResizeObserver loop limit exceeded')
   })
 
+  // Wiring, not redaction (that is ut-scrub-secrets): all three hooks must be
+  // set, because errors, transactions and breadcrumbs each take a different one
+  // and the recovery-token URL rides on all three.
+  it('scrubs secret URL parameters out of everything it sends', async () => {
+    respondWith({ sentry: { dsn: 'http://key@sentry.lan/3', tunnel: '/api/sentry-tunnel' } })
+    await initSentry(app, router)
+    const opts = init.mock.calls[0][0]
+
+    const event = opts.beforeSend({ request: { url: '/recover?token=secret-token' } })
+    expect(event.request.url).toBe('/recover?token=***')
+    expect(opts.beforeSendTransaction).toBe(opts.beforeSend)
+
+    const crumb = opts.beforeBreadcrumb({ data: { to: '/invite?token=secret-token' } })
+    expect(crumb.data.to).toBe('/invite?token=***')
+  })
+
   it('defaults the trace sample rate when the backend omits it', async () => {
     respondWith({ sentry: { dsn: 'http://key@sentry.lan/3', tunnel: '/api/sentry-tunnel' } })
     await initSentry(app, router)

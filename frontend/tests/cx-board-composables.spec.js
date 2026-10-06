@@ -1,10 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { ref, computed, defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 
 import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
 import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
 import { useBoardViewConfig, VIEW_PERSIST_MS } from '@/composables/useBoardViewConfig'
+import { useBoardAutosave, AUTOSAVE_MS } from '@/composables/useBoardAutosave'
+import { useBoardViewStore } from '@/stores/boardView'
 
 // jsdom ships neither observer, and both composables build them in onMounted —
 // these fakes let a test drive the callbacks by hand.
@@ -98,18 +101,52 @@ describe('useCardViewport', () => {
     expect(api.vis['col::t1']).toBe(false)
   })
 
-  it('freezes visibility swaps while a drag is in flight', () => {
+  it('freezes visibility swaps while a drag is in flight, then replays them', async () => {
     // SortableJS needs a stable DOM for the duration of a drag: collapsing a card
-    // mid-drag would pull the drop target out from under it.
+    // mid-drag would pull the drop target out from under it. But an observer
+    // reports CHANGES, and the entry muted here is never re-delivered — note that
+    // the drag ends without a second callback, exactly as the browser behaves.
+    // Without the replay the card stayed a blank placeholder in plain view.
     const frozen = ref(false)
     const { api } = host(() => useCardViewport({ frozen }))
     const el = wrapperEl()
     api.regCard(el, 'col::t1')
     frozen.value = true
+    await nextTick()
     FakeIO.instances[0].cb([{ target: el, isIntersecting: true }])
     expect(api.vis['col::t1']).toBeUndefined()
     frozen.value = false
+    await nextTick()
+    expect(api.vis['col::t1']).toBe(true)
+  })
+
+  it('replays only the last state a card reached during the drag', async () => {
+    // A card that came into view and left again is back where it started: the
+    // backlog is keyed per card, so the drop applies one value, not a history.
+    const frozen = ref(false)
+    const { api } = host(() => useCardViewport({ frozen }))
+    const el = wrapperEl()
+    api.regCard(el, 'col::t1')
+    FakeIO.instances[0].cb([{ target: el, isIntersecting: false }])
+    frozen.value = true
+    await nextTick()
     FakeIO.instances[0].cb([{ target: el, isIntersecting: true }])
+    FakeIO.instances[0].cb([{ target: el, isIntersecting: false }])
+    frozen.value = false
+    await nextTick()
+    expect(api.vis['col::t1']).toBe(false)
+  })
+
+  it('a drag that changed nothing leaves visibility alone', async () => {
+    const frozen = ref(false)
+    const { api } = host(() => useCardViewport({ frozen }))
+    const el = wrapperEl()
+    api.regCard(el, 'col::t1')
+    FakeIO.instances[0].cb([{ target: el, isIntersecting: true }])
+    frozen.value = true
+    await nextTick()
+    frozen.value = false
+    await nextTick()
     expect(api.vis['col::t1']).toBe(true)
   })
 
@@ -352,5 +389,84 @@ describe('useBoardViewConfig', () => {
     state.value = 'status'
     vi.advanceTimersByTime(VIEW_PERSIST_MS)
     expect(stored().toolbars.board).toEqual({ groupMode: 'tag' })
+  })
+})
+
+describe('useBoardAutosave', () => {
+  // The card-display half of a view config lives in the boardView store, so the
+  // config getter reads it the way KanbanBoard's currentViewConfig does.
+  function mountAutosave() {
+    setActivePinia(createPinia())
+    const store = useBoardViewStore()
+    const enabled = ref(true)
+    const viewName = ref('Мой вид')
+    const groupMode = ref('status')
+    const guardedFlag = ref(false)
+    const save = vi.fn()
+    const config = () => ({
+      layout: store.layout,
+      groupMode: groupMode.value,
+      cardSize: store.cardSize,
+      showEmpty: store.showEmpty,
+      fieldVis: { ...store.fieldVis },
+    })
+    const { wrapper } = host(() =>
+      useBoardAutosave({
+        enabled,
+        viewName,
+        config,
+        save,
+        guarded: () => guardedFlag.value,
+      }),
+    )
+    return { wrapper, store, enabled, viewName, groupMode, guardedFlag, save }
+  }
+
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('debounces a burst of toolbar changes into one save', async () => {
+    const { groupMode, save } = mountAutosave()
+    groupMode.value = 'tag'
+    await nextTick()
+    groupMode.value = 'assignee'
+    await nextTick()
+    expect(save).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(AUTOSAVE_MS)
+    expect(save).toHaveBeenCalledTimes(1)
+    expect(save.mock.calls[0][0]).toBe('Мой вид')
+    expect(save.mock.calls[0][1].groupMode).toBe('assignee')
+  })
+
+  it('stands down while a view load is in flight', async () => {
+    const { groupMode, guardedFlag, save } = mountAutosave()
+    guardedFlag.value = true
+    groupMode.value = 'tag'
+    await nextTick()
+    vi.advanceTimersByTime(AUTOSAVE_MS)
+    expect(save).not.toHaveBeenCalled()
+  })
+
+  // The bug: leaving the board within the debounce window used to let the timer
+  // fire after KanbanBoard's own onBeforeUnmount had already called store.reset(),
+  // so the user's named view was silently overwritten with the store defaults —
+  // and with whatever `layout` the next board had restored into the shared ref,
+  // which drops the view out of its own board's (layout-filtered) list.
+  it('cancels a pending save when the board unmounts', async () => {
+    const { wrapper, store, groupMode, save } = mountAutosave()
+    store.cardSize = 'compact'
+    store.showEmpty = false
+    store.fieldVis.tags = false
+    groupMode.value = 'tag'
+    await nextTick()
+
+    wrapper.unmount()
+    // What the board does on teardown, in this order: reset the store, then the
+    // next board mounts and restores its own layout into the same shared ref.
+    store.reset()
+    store.layout = 'timeline'
+    vi.advanceTimersByTime(AUTOSAVE_MS)
+
+    expect(save).not.toHaveBeenCalled()
   })
 })

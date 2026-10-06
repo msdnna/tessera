@@ -10,7 +10,6 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/jobs"
-	"tessera/internal/observability"
 )
 
 // ── Admin: background jobs panel ───────────────────────────
@@ -135,21 +134,43 @@ func (h *API) GetJob(c *gin.Context) {
 // action) instead of waiting for its next tick. Runs detached; returns 202. Only
 // the fixed worker keys are runnable — a per-integration sync is started through
 // its own /gitlab/.../sync endpoint.
+//
+// The run takes the worker's advisory lock, exactly as its tick loop does, and
+// answers 409 when it can't get it: these sweeps don't claim the rows they work
+// on, so a manual run beside a tick (or beside a second instance mid-deploy, or
+// beside a second press of the button) double-sends a notification and
+// double-advances a recurrence. The lock is taken here, before the response,
+// rather than inside the goroutine, so a skipped run isn't reported as started.
+//
+// It runs through runDetached, on the process's background context rather than a
+// fresh one, because it is the same sweep a tick loop runs and shutdown has to
+// treat it the same way. On its own context the run is invisible to shutdown:
+// the pool closes under it mid-sweep (drain's whole ordering rests on nothing
+// being left to write), and settleDelivery — which reads ctx.Err() to tell a
+// deploy stopping mid-send from a verdict on the delivery — is told the process
+// is fine, so a notification that never went out is either marked failed for
+// good or left claimed for RequeueStaleDeliveries to send a second time (#2932).
 func (h *API) RunJob(c *gin.Context) {
 	if _, ok := h.requireGlobalAdmin(c); !ok {
 		return
 	}
 	key := c.Param("key")
-	run, ok := h.workerRunners()[key]
+	runner, ok := h.workerRunners()[key]
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "job is not runnable on demand"})
 		return
 	}
-	go func() {
-		// Detached one-shot run: guard the process against a panic in the job.
-		defer observability.Recover("job:" + key)
-		run(context.Background())
-	}()
+	release, locked := h.tryAdvisoryLock(c.Request.Context(), runner.lock)
+	if !locked {
+		c.JSON(http.StatusConflict, gin.H{"error": "job is already running"})
+		return
+	}
+	// Free the lock however the run ends, including when it never starts.
+	if !h.runDetached("job:"+key, func(ctx context.Context) { defer release(); runner.run(ctx) }) {
+		release()
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "server is shutting down"})
+		return
+	}
 	c.JSON(http.StatusAccepted, gin.H{"started": true})
 }
 
@@ -166,19 +187,29 @@ func (h *API) CancelJob(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"cancelled": true})
 }
 
-// workerRunners maps a worker key to a function that runs its work once. Used by
-// the "run now" action so an operator doesn't have to wait for the next tick.
-func (h *API) workerRunners() map[string]func(context.Context) {
-	return map[string]func(context.Context){
-		jobGitlabSyncCron:    h.autoSyncDue,
-		jobGitlabWebhookCron: h.drainWebhookDirty,
-		jobGitlabWriteback:   h.drainWritebacks,
-		jobNotifyDelivery:    h.drainDeliveries,
-		jobNotifyScanner: func(ctx context.Context) {
+// workerRunner is one on-demand entry: the work a tick does, plus the advisory
+// lock that tick holds while doing it. The lock belongs here and not inside run,
+// because "run now" has to know whether it got the lock before it answers.
+type workerRunner struct {
+	lock string
+	run  func(context.Context)
+}
+
+// workerRunners maps a worker key to a single run of its work. Used by the "run
+// now" action so an operator doesn't have to wait for the next tick. Each entry
+// must name the same lock its tick loop uses — this is a second path into the very
+// work those locks exist to keep from overlapping.
+func (h *API) workerRunners() map[string]workerRunner {
+	return map[string]workerRunner{
+		jobGitlabSyncCron:    {gitlabSyncLock, h.autoSyncDue},
+		jobGitlabWebhookCron: {gitlabSyncLock, h.drainWebhookDirty},
+		jobGitlabWriteback:   {gitlabWritebackLock, h.drainWritebacks},
+		jobNotifyDelivery:    {NotifyDeliveryLock, h.drainDeliveries},
+		jobNotifyScanner: {NotifyScanLock, func(ctx context.Context) {
 			h.scanDueTasks(ctx)
 			h.scanReminders(ctx)
-		},
-		jobRecurrence:     h.advanceScheduleDue,
-		jobConfRecordings: h.SweepConferenceRecordings,
+		}},
+		jobRecurrence:     {recurrenceLock, h.advanceScheduleDue},
+		jobConfRecordings: {confRecordingsLock, h.SweepConferenceRecordings},
 	}
 }

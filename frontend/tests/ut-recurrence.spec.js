@@ -1,9 +1,11 @@
 import { describe, it, expect } from 'vitest'
+import { setI18nLocale } from '@/i18n'
 import {
   FREQ_VALUES,
   TRIGGER_VALUES,
   freqOptions,
   triggerOptions,
+  everyLabel,
   unitLabel,
   nextOccurrence,
   occurrenceKeys,
@@ -42,6 +44,59 @@ describe('unitLabel', () => {
     expect(unitLabel('weekly', 1)).toBe('неделю')
     expect(unitLabel('monthly', 3)).toBe('месяца')
     expect(unitLabel('bogus', 1)).toBe('')
+  })
+})
+
+// The interval row reads [everyLabel] [number box] [unitLabel]. Only the unit
+// used to decline, so the half in front of the number stayed frozen at «каждые»
+// — and the interval box starts at 1 the moment a frequency is picked, which
+// makes «каждые 1 день» the first form every Russian user sees.
+describe('everyLabel', () => {
+  const phrase = (freq, n) => `${everyLabel(freq, n)} ${n} ${unitLabel(freq, n)}`
+
+  it('agrees with the count', () => {
+    expect(everyLabel('daily', 1)).toBe('каждый')
+    expect(everyLabel('daily', 2)).toBe('каждые')
+    expect(everyLabel('daily', 5)).toBe('каждые')
+    expect(everyLabel('daily', 11)).toBe('каждые') // teens → many
+    expect(everyLabel('daily', 21)).toBe('каждый')
+  })
+
+  // Gender too: неделя is feminine, so the singular is «каждУЮ», not «каждЫЙ».
+  it('agrees with the gender of the unit', () => {
+    expect(everyLabel('weekly', 1)).toBe('каждую')
+    expect(everyLabel('weekly', 2)).toBe('каждые')
+    expect(everyLabel('monthly', 1)).toBe('каждый')
+    expect(everyLabel('yearly', 1)).toBe('каждый')
+  })
+
+  it('spells the whole row', () => {
+    expect(phrase('daily', 1)).toBe('каждый 1 день')
+    expect(phrase('weekly', 1)).toBe('каждую 1 неделю')
+    expect(phrase('weekly', 3)).toBe('каждые 3 недели')
+    expect(phrase('monthly', 5)).toBe('каждые 5 месяцев')
+    expect(phrase('yearly', 21)).toBe('каждый 21 год')
+  })
+
+  it('is empty where the interval row is not rendered', () => {
+    expect(everyLabel('', 1)).toBe('')
+    expect(everyLabel('custom', 1)).toBe('')
+    expect(everyLabel('bogus', 1)).toBe('')
+  })
+
+  // Negative control: English has one form, so the prefix must not start moving
+  // there just because the Russian one learned to.
+  it('stays invariant in english', async () => {
+    await setI18nLocale('en')
+    try {
+      for (const n of [1, 2, 5, 21]) {
+        expect(everyLabel('weekly', n)).toBe('every')
+        expect(everyLabel('daily', n)).toBe('every')
+      }
+      expect(`${everyLabel('daily', 1)} ${1} ${unitLabel('daily', 1)}`).toBe('every 1 day')
+    } finally {
+      await setI18nLocale('ru')
+    }
   })
 })
 
@@ -103,8 +158,27 @@ describe('occurrenceKeys', () => {
     expect(occurrenceKeys({ freq: 'daily' }, null).size).toBe(0)
   })
 
-  it('custom returns exactly the listed dates', () => {
-    const keys = occurrenceKeys({ freq: 'custom', dates: ['2026-01-01', '2026-02-02'] }, Date.now())
+  it('custom returns the listed dates still ahead of the due one', () => {
+    const from = new Date(2026, 0, 1, 9).getTime()
+    const keys = occurrenceKeys({ freq: 'custom', dates: ['2026-01-01', '2026-02-02'] }, from)
+    expect([...keys].sort()).toEqual(['2026-01-01', '2026-02-02'])
+  })
+
+  it('custom drops the dates the series has already walked past', () => {
+    // This used to hand the whole picked list back whatever the due date was —
+    // "upcoming occurrences" that had already happened (#2932). The editor shows
+    // the picked list under its own mark.
+    const from = new Date(2026, 1, 2, 9).getTime()
+    const keys = occurrenceKeys({ freq: 'custom', dates: ['2026-01-01', '2026-02-02'] }, from)
+    expect([...keys].sort()).toEqual(['2026-02-02'])
+  })
+
+  it('a "once" custom rule stops after the single date the server will fire', () => {
+    const from = new Date(2026, 0, 1, 9).getTime()
+    const keys = occurrenceKeys(
+      { freq: 'custom', once: true, dates: ['2026-01-01', '2026-02-02', '2026-03-03'] },
+      from,
+    )
     expect([...keys].sort()).toEqual(['2026-01-01', '2026-02-02'])
   })
 

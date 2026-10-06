@@ -40,6 +40,7 @@ import {
   EXPORT_LABELS,
   downloadBlob,
   exportFileName,
+  exportRefusalKey,
   importAccept,
   importOfficeFile,
   needsConverter,
@@ -360,22 +361,48 @@ function fmtDate(v) {
   return v ? formatDate(v, { day: 'numeric', month: 'short' }) : ''
 }
 
+// Which document the section is waiting for (#2932). The grid and the editor are
+// one route record (#2727), so opening a document is not a remount but a set of
+// assignments made after an await — and the reader may click the next tile, press
+// Back or leave for the grid while the first one is still loading. Answers then
+// come back in network order, and the late one wins by arriving last.
+//
+// Nothing it does is a harmless stale render: it takes over `selected` and the
+// editor body, JOINS THE ABANDONED DOCUMENT'S ROOM (a subscription that holds
+// block locks), and canonicalizes the URL — so a reader who clicked B ends up in A
+// with the address bar agreeing. `resolveSlug` adds one more: it walks the user's
+// workspaces and switches the app's scope to whichever answers.
+//
+// So every step after an await asks whether it is still the answer being waited
+// for. Leaving counts as a new question too: `backToGrid` and the workspace switch
+// bump the counter, and an answer that lands afterwards belongs to nobody.
+// Same comparison as BoardView / HomeView / NotesView / TaskModal.
+let openSeq = 0
+
 async function loadList() {
-  if (!wsStore.currentId) return
+  const ws = wsStore.currentId
+  if (!ws) return
   try {
-    const res = await docsApi.list(wsStore.currentId)
+    const res = await docsApi.list(ws)
+    // The grid is scoped as well: a listing asked for the space the reader left
+    // must not fill the tiles of the one they are in now.
+    if (ws !== wsStore.currentId) return
     list.value = res.data || []
   } catch (e) {
+    if (ws !== wsStore.currentId) return
     message.error(e.message)
   }
 }
 
 async function open(doc) {
   if (!doc?.id) return
+  const mine = ++openSeq
   await flushSave()
+  if (mine !== openSeq) return
   loading.value = true
   try {
     const res = await docsApi.get(doc.id)
+    if (mine !== openSeq) return
     selected.value = res.data
     title.value = res.data.title || ''
     content.value = toDocJSON(res.data.content)
@@ -383,11 +410,13 @@ async function open(doc) {
     resolveConflict(res.data.updated_at)
     openRoom(res.data.id)
     await comments.open(res.data.id, content.value)
+    if (mine !== openSeq) return
     // The journal is loaded only while the panel is open: it is a side question
     // about the document, and every opened document paying for it would make the
     // section slower for the readers who never ask it.
     if (historyOpen.value) await versions.open(res.data.id)
     if (linksOpen.value) await links.open(res.data.id)
+    if (mine !== openSeq) return
     const param = res.data.slug || res.data.id
     if (param && route.params.slug !== param) {
       // Opening a document from the list is a step forward and gets a history
@@ -400,13 +429,20 @@ async function open(doc) {
       else router.push(`/documents/${param}`)
     }
   } catch (e) {
+    // A document that failed to load reports it — but only while it is still the
+    // one being opened. An abandoned 404 must not shout over the document that
+    // answered in the meantime, nor take down its spinner.
+    if (mine !== openSeq) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    if (mine === openSeq) loading.value = false
   }
 }
 
 async function backToGrid() {
+  // Leaving is a question of its own: a load still in flight is now the answer to
+  // nothing, and must not put the reader back inside the document they closed.
+  openSeq++
   await flushSave()
   // Leaving the document frees whatever block we held right away, instead of
   // making everyone else wait out the lock TTL.
@@ -589,13 +625,20 @@ async function reload() {
 // resolver's workspace_id then switches the app's scope. Without that switch the
 // document opens while the rest of the UI stays pointed elsewhere (#2721).
 async function resolveSlug(slug) {
+  const mine = ++openSeq
   const ids = [wsStore.currentId, ...wsStore.list.map((w) => w.id)].filter(Boolean)
   for (const wsId of new Set(ids)) {
     try {
       const res = await docsApi.bySlug(wsId, slug)
+      // The walk is the expensive part of this resolver and the loudest when it
+      // is stale: it would move the whole app into another space behind a
+      // document nobody is asking for any more.
+      if (mine !== openSeq) return true
       if (res.data?.workspace_id && res.data.workspace_id !== wsStore.currentId) {
         await wsStore.selectWorkspace(res.data.workspace_id)
+        if (mine !== openSeq) return true
         await loadList()
+        if (mine !== openSeq) return true
       }
       selected.value = res.data
       title.value = res.data.title || ''
@@ -605,10 +648,14 @@ async function resolveSlug(slug) {
       await comments.open(res.data.id, content.value)
       return true
     } catch {
-      // 404 in this workspace — try the next one.
+      // 404 in this workspace — try the next one, unless the slug being resolved
+      // is no longer the one on screen.
+      if (mine !== openSeq) return true
     }
   }
-  return false
+  // Reported as resolved when the question changed under us: the "not found"
+  // toast belongs to the slug the reader is on, and this one no longer is.
+  return mine !== openSeq
 }
 
 async function create() {
@@ -743,7 +790,10 @@ async function exportAs(format) {
     // would export the document as it was a second ago.
     await flushSave()
     const res = await docsApi.exportFile(selected.value.id, format)
-    downloadBlob(res.data, exportFileName(selected.value.title, format))
+    // Awaited: on the desktop this is a Save-as dialog and a write to disk, and
+    // a failed write has to reach the catch below rather than an unhandled
+    // rejection nobody sees.
+    await downloadBlob(res.data, exportFileName(selected.value.title, format))
   } catch (err) {
     message.error(exportError(err))
   } finally {
@@ -752,12 +802,17 @@ async function exportAs(format) {
 }
 
 // An export failure arrives as a Blob, not as JSON, because responseType is
-// blob for the whole request — so the interceptor's message is not usable and
-// the reason has to be read back out of the body.
+// blob for the whole request; the interceptor reads the sentence back out of
+// the body (api/index.js), and the two refusals the sidecar owns are named off
+// the status instead — the server phrases those two in Russian of its own.
+//
+// `err.status`, not `err.response.status`: the interceptor rejects with an
+// error of its own making and puts the status there. Reading `.response` gave
+// undefined every time, so both branches below were dead and the locale lines
+// they point at had never been shown (#2932).
 function exportError(err) {
-  const status = err?.response?.status
-  if (status === 503) return t('documents.view.error.exportUnavailable')
-  if (status === 422) return t('documents.view.error.exportFailed')
+  const key = exportRefusalKey(err?.status)
+  if (key) return t(key)
   return err?.message || t('documents.view.error.exportGeneric')
 }
 
@@ -1234,6 +1289,8 @@ watch(
 watch(
   () => wsStore.currentId,
   () => {
+    // A document being opened belongs to the space being left (#2932).
+    openSeq++
     cancelSave()
     closeRoom()
     versions.close()
@@ -1533,6 +1590,7 @@ watch(
               :approvals="links.approvals.value"
               :user-id="myUserId"
               :ws-id="wsStore.currentId"
+              :can-manage="wsStore.canManage"
               :can-raise="links.canRaise.value"
               :loading="links.loading.value"
               :error="links.error.value"

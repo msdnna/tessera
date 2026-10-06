@@ -60,6 +60,7 @@
     "rollupHint": "Sum of subtask estimates",
     "clear": "Clear",
     "apply": "OK",
+    "unreadable": "Cannot read the estimate “{value}” — e.g. 3d 4h, 1h 30, 90m",
     "short": {
       "week": "{n}w",
       "day": "{n}d",
@@ -113,7 +114,8 @@
     "newPlaceholder": "New milestone…"
   },
   "tags": {
-    "newPlaceholder": "New tag, Enter"
+    "newPlaceholder": "New tag, Enter",
+    "alreadyOn": "That tag is already on the task"
   },
   "people": {
     "author": "Author: {name}",
@@ -182,6 +184,7 @@
     "unlink": "Remove the relation",
     "searchPlaceholder": "№ or title",
     "noMatches": "Nothing found",
+    "already": "#{number} is already linked",
     "deleteConfirm": "Remove the relation?",
     "deleteExternalConfirm": "This relation will come back on the next {source} sync. Delete it?",
     "kind": {
@@ -202,7 +205,8 @@
       "kb": "{n} KB",
       "mb": "{n} MB"
     },
-    "downloadFailed": "Could not download the file"
+    "downloadFailed": "Could not download the file",
+    "tooLarge": "The file is larger than {limit} — the server will not take it"
   },
   "docs": {
     "empty": "No linked documents",
@@ -251,11 +255,19 @@
   },
   "recur": {
     "title": "Repeat the task",
-    "every": "every",
+    "every": {
+      "daily": "every | every",
+      "weekly": "every | every",
+      "monthly": "every | every",
+      "yearly": "every | every"
+    },
     "customHint": "Mark the repeat dates in the calendar →",
     "event": "Event",
     "triggerColumn": "Trigger column",
     "columnPlaceholder": "Pick a column",
+    "dueUnset": "Until a due date is set, this repeat will never fire: the next occurrence is counted from it. Pick a date in the calendar on the right.",
+    "columnUnset": "Until a column is picked, this repeat will never fire.",
+    "columnGone": "That column is no longer on the board — this repeat will never fire. Pick another one.",
     "moveTo": "Move to",
     "targetDefault": "First column (default)",
     "createDuplicate": "Create a duplicate",
@@ -344,6 +356,10 @@
     "priority": "changed the priority to {to}",
     "dueSet": "set the due date",
     "dueCleared": "cleared the due date",
+    "startSet": "set the start date",
+    "startCleared": "cleared the start date",
+    "estimateSet": "set the estimate",
+    "estimateCleared": "cleared the estimate",
     "completed": "marked it done",
     "reopened": "reopened it",
     "recurred": "rescheduled the repeat",
@@ -351,15 +367,31 @@
     "movedTo": "moved it to “{to}”",
     "assigned": "assigned an owner",
     "unassigned": "removed the owner",
+    "tagged": "added a tag",
+    "taggedWith": "added the tag “{tag}”",
+    "untagged": "removed a tag",
+    "untaggedWith": "removed the tag “{tag}”",
     "archived": "archived it",
     "restored": "restored it from the archive",
     "comment": "left a comment",
     "relation": "linked it to #{ref}",
+    "relationRemoved": "removed the link to #{ref}",
+    "commands": "ran quick actions",
+    "commandsApplied": "ran {applied}",
+    "commandsFailed": "could not run {failed}",
+    "commandsMixed": "ran {applied} (failed: {failed})",
+    "synced": "synced it with {source}",
     "attachment": "attached a file",
     "attachmentNamed": "attached the file “{name}”",
     "movedVerb": "moved",
     "priorityVerb": "changed the priority to",
-    "renamedVerb": "renamed it to"
+    "renamedVerb": "renamed it to",
+    "attachmentRemoved": "removed a file",
+    "attachmentRemovedNamed": "removed the file “{name}”",
+    "milestone": "linked it to a milestone",
+    "milestoneNamed": "linked it to the milestone “{name}”",
+    "milestoneRemoved": "unlinked it from a milestone",
+    "milestoneRemovedNamed": "unlinked it from the milestone “{name}”"
   },
   "ref": {
     "notFound": "Task #{number} not found"

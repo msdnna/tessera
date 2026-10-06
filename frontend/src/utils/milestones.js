@@ -1,5 +1,5 @@
 // Shared milestone helpers (used by the card chip, the task picker and the manager).
-import { defaultFormatters } from '@/utils/format'
+import { defaultFormatters, isDateOnly } from '@/utils/format'
 import { i18n } from '@/i18n'
 
 // Resolved per call, never cached at module level: this module is imported
@@ -24,6 +24,72 @@ export function matchesScope(m, scope) {
   if (!scope) return false
   if (!m) return scope === BACKLOG_SCOPE
   return scope === m.slug || scope === m.id
+}
+
+/**
+ * Which milestone a card typed on the board should be born with (#2932).
+ *
+ * `?milestone=` narrows the board SERVER-side (backend handlers/tasks.go →
+ * ListBoardTasksWithMeta: `t.milestone_id = @milestone_id`), so on a sprint-scoped
+ * board a card created without that milestone is not in the list the reload right
+ * after it returns: the card the reader just typed into the column disappears, with
+ * no error and no clue that it exists at all — it is sitting in the backlog. The
+ * milestone GROUPING has always stamped a new card with its lane's milestone; the
+ * sprint scope is the same promise made by the address bar instead of by a lane, and
+ * it was the only one not kept.
+ *
+ * @param {Object} o
+ * @param {string} [o.groupMode] board grouping. `'milestone'` means the lane the
+ *        reader typed into decides — including its «Без этапа» lane, where saying
+ *        "no milestone" out loud must beat the scope. Pass it only where lanes
+ *        exist: the matrix quick-add has none, so there the scope alone decides.
+ * @param {Object} [o.lane] that lane (`dcol`), carrying `milestone`
+ * @param {string|null|undefined} [o.scopeId] the resolved sprint scope: an id, `null`
+ *        for the backlog scope (a card with no milestone is exactly what it lists),
+ *        `''` for a scope that cannot be resolved yet, `undefined` when unscoped
+ * @returns {string|null} milestone id to stamp on the new card, or null for none
+ */
+export function newTaskMilestoneId({ groupMode, lane, scopeId } = {}) {
+  if (groupMode === 'milestone') return lane?.milestone?.id || null
+  return scopeId || null
+}
+
+// toDateOnlyISO turns an n-date-picker value into the date-only instant the rest
+// of the stack expects: pure UTC midnight of the chosen calendar day.
+//
+// The picker hands back an epoch-ms at LOCAL midnight, so the day has to be
+// re-read from the local calendar fields — `new Date(ms).toISOString()` keeps the
+// instant and drops the day, which is a different value everywhere but UTC.
+// Storing that moment breaks the date-only contract twice over: format.js
+// (isDateOnly/zoneOf) then reads the milestone in the viewer's timezone, so two
+// people see two different days; and the GitLab push formats it with
+// `t.UTC().Format("2006-01-02")` (backend dateStr), so a milestone set to 15.07
+// east of UTC arrives in GitLab as the 14th — after which the next pull writes
+// that shifted day back over the native row for everyone.
+//
+// Milestones that come FROM GitLab are already date-only (parseDate of
+// "2006-01-02"); this is what puts native ones on the same footing.
+export function toDateOnlyISO(value) {
+  if (value === null || value === undefined || value === '') return null
+  const d = value instanceof Date ? value : new Date(value)
+  if (Number.isNaN(d.getTime())) return null
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())).toISOString()
+}
+
+// pickerValue is the inverse: a stored milestone date as the local-midnight
+// epoch-ms n-date-picker works in.
+//
+// A date-only value is read in UTC — that is the whole point of it, and west of
+// UTC its instant lands on the previous local day, which would show the wrong
+// date in the picker and then save it back shifted. Anything else is a milestone
+// written before this became date-only; it keeps its plain reading so the picker
+// agrees with the label the list is already showing next to it.
+export function pickerValue(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  if (!isDateOnly(d)) return d.getTime()
+  return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()).getTime()
 }
 
 // Milestone dates are date-only, so formatDate reads them in UTC and they stay on

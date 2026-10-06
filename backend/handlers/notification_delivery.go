@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 	"tessera/internal/mail"
@@ -51,7 +52,7 @@ func buildSenders(mailer mail.Mailer, fcmCredentialsFile string) map[string]noti
 	return s
 }
 
-// emailSender delivers via the server mailer (no-op-logs when SMTP is unset).
+// emailSender delivers via the server mailer.
 type emailSender struct{ mailer mail.Mailer }
 
 func (s emailSender) Send(_ context.Context, ch notify.Channel, msg notify.Message) error {
@@ -59,6 +60,18 @@ func (s emailSender) Send(_ context.Context, ch notify.Channel, msg notify.Messa
 	addr = strings.TrimSpace(addr)
 	if addr == "" {
 		return notify.Permanent(errors.New("email channel needs an address"))
+	}
+	// A mailer with no SMTP behind it logs the body and reports success — which is
+	// what keeps a verification or reset link reachable on a self-host that never
+	// configured one (mail.noop). Transactional mail has a reader for that log;
+	// an outbox row does not. Settling on that nil closes the row as 'sent', so
+	// the channel's delivery history reads "доставлено" on every notification
+	// while not one e-mail ever left the server — the channel is silently a
+	// blackhole and nothing anywhere says so. Permanent: SMTP does not appear
+	// between two retries, and a failed row carries the reason where the user
+	// looks for it.
+	if !s.mailer.Enabled() {
+		return notify.Permanent(errors.New(smtpNotConfigured))
 	}
 	// msg.Body is the fully rendered message (link included by the template).
 	return s.mailer.Send(addr, msg.Title, msg.Body)
@@ -69,9 +82,20 @@ func (s emailSender) Send(_ context.Context, ch notify.Channel, msg notify.Messa
 // system-generated notifications (the due/reminder scanner). msg carries both the
 // structured payload the client renders from and the legacy Russian text (#2801).
 // Best-effort — used both on the request path (via notify) and off it (the scanner).
+//
+// Every notification is gated on the recipient still being a member of wsID.
+// The check lives here rather than in each caller because the callers are the
+// problem: notifyMentions and notifyThread do check, while the paths that walk
+// a task's assignees and creator (notifyTaskParticipants, the due scanner) walk
+// rows that outlive a membership — task_assignees references users, and
+// RemoveMember deliberately leaves those rows standing. One gate on the single
+// seam every notification passes through cannot be forgotten by the next caller.
 func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, taskID, actorID *uuid.UUID, kind string, msg notifyMsg) {
+	if !h.notifiableInWorkspace(ctx, userID, wsID) {
+		return
+	}
 	n, err := h.q.CreateNotification(ctx, db.CreateNotificationParams{
-		UserID: userID, WorkspaceID: wsID, TaskID: taskID, ActorID: actorID,
+		UserID: userID, WorkspaceID: optionalWorkspace(wsID), TaskID: taskID, ActorID: actorID,
 		Kind: kind, Text: msg.text, Payload: msg.json(),
 	})
 	if err != nil {
@@ -93,13 +117,282 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 			obj["task_number"] = t.Number
 		}
 	}
-	h.broadcast(wsID, "notification", gin.H{
+	// Addressed to the recipient alone: the text is theirs (for a reminder it is
+	// literally their own private message), so it must not travel to every
+	// colleague's socket with a user_id for the client to compare against.
+	h.broadcastToUser(wsID, userID, "notification", gin.H{
 		"user_id": userID, "notification": obj, "device_targets": deviceTargets,
 	})
 }
 
+// notifiableInWorkspace reports whether userID may still be told about events in
+// wsID.
+//
+// uuid.Nil passes: reminderScope falls back to it for a reminder that is tied
+// to no task and no workspace, and that notification carries the user's own text
+// about their own reminder — nothing of anyone else's to leak. A read error is
+// treated as "not notifiable": the alternative is leaking on exactly the
+// transient failure an attacker cannot arrange, for the sake of a notification
+// the next comment re-sends.
+// optionalWorkspace turns the caller's workspace into the stored one: uuid.Nil
+// means the notification belongs to no workspace and the column is left NULL.
+//
+// The column used to be NOT NULL REFERENCES workspaces(id), so the Nil that
+// reminderScope hands over for a reminder tied to no task and no workspace did
+// not survive the INSERT — the foreign key rejected it, deliverNotification
+// returned on the error, and scanReminders marked the reminder fired anyway.
+// The alarm a user set for themselves never rang and never came back: reachable
+// for anyone who deleted the personal workspace their account was created with
+// and is in no other one (#2932).
+func optionalWorkspace(wsID uuid.UUID) *uuid.UUID {
+	if wsID == uuid.Nil {
+		return nil
+	}
+	return &wsID
+}
+
+func (h *API) notifiableInWorkspace(ctx context.Context, userID, wsID uuid.UUID) bool {
+	if wsID == uuid.Nil {
+		return true
+	}
+	_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: wsID, UserID: userID})
+	return err == nil
+}
+
+// membershipEnded is what an outbox row's history shows when the recipient left
+// the workspace between the enqueue and the send.
+const membershipEnded = "адресат больше не участник пространства"
+
+// notifyTurnedOff is what an outbox row's history shows when the recipient
+// switched this kind of notification off between the enqueue and the send.
+const notifyTurnedOff = "адресат отключил уведомления этого типа"
+
+// dueTaskClosed / dueTaskArchived are what an outbox row's history shows when the
+// task a due-date warning is about stopped being one worth warning about between
+// the enqueue and the send. Two reasons rather than one: the gesture is different
+// and the history is where the user looks for which of them silenced the message.
 const (
-	notifyWorkerTick    = 10 * time.Second
+	dueTaskClosed   = "задача закрыта"
+	dueTaskArchived = "задача убрана в архив"
+	dueDateCleared  = "у задачи больше нет срока"
+	dueDateMoved    = "срок отодвинули, до него ещё далеко"
+)
+
+// taskMovedAway is what an outbox row's history shows when the task a held
+// notification names left the recipient's reach between the enqueue and the
+// send — the project it lives in was transferred to another workspace.
+const taskMovedAway = "задача переехала в другое пространство"
+
+// deliveryStillAllowed re-asks, at send time, the questions that were answered
+// when the row was written, and reports a refusal as the error the outbox row
+// settles on: is the recipient still in the workspace, and do they still want
+// this kind of notification at all.
+//
+// deliverNotification already gated on membership — but it gated hours earlier.
+// An outbox row is not sent when it is written: quiet hours hold it until the
+// window ends (a whole night), and a digest holds it to the end of its slot. The
+// membership can end inside that gap, and nothing between here and the transport
+// looks again: the worker renders the row and sends it to a former colleague's
+// inbox. Worse than the send itself is what it carries — templateData reads the
+// task's *current* title, so the message states a title the team gave it after
+// the reader was removed. That is the same leak reminderScope refuses to carry
+// (#2932); this is the other door to it, the one that opens with time rather
+// than with a stale reference.
+//
+// A refusal is permanent: a membership does not come back between two retries,
+// and the row's last_error is where the channel's history explains the gap. A
+// read error is not a refusal — it is transient, and returning it plain (not
+// notify.Permanent) lets the row retry instead of being dropped on a database
+// hiccup.
+func (h *API) deliveryStillAllowed(ctx context.Context, n db.Notification) error {
+	if err := h.deliveryStillWanted(ctx, n); err != nil {
+		return err
+	}
+	if n.WorkspaceID != nil {
+		_, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: *n.WorkspaceID, UserID: n.UserID})
+		switch {
+		case err == nil:
+		case errors.Is(err, pgx.ErrNoRows):
+			return notify.Permanent(errors.New(membershipEnded))
+		default:
+			return fmt.Errorf("membership check: %w", err)
+		}
+	}
+	return h.deliveryStillInReach(ctx, n)
+}
+
+// deliveryStillInReach asks the membership question the check above cannot: not
+// "is the recipient still in the workspace the row was written for", but "is the
+// task this message names still in a workspace they belong to".
+//
+// The two stopped being the same question the moment a project could be
+// transferred. TransferProject re-stamps the denormalized workspace_id across a
+// project's tags, notes, documents and GitLab bindings, and severs the six kinds
+// of link whose two ends the move would put in different workspaces — relations,
+// milestones, document links, document parents, task tags, conferences — each
+// because the read on the other side never re-checks the boundary. A notification
+// is in neither list: its workspace_id keeps pointing at the source, and the
+// recipient never left the source, so the gate above sees a membership and waves
+// the row through. What travels with it is the part templateData reads live —
+// the task's *current* title, written by the team the task now belongs to, and
+// its number, re-stamped out of that workspace's counter.
+//
+// So this is the third door into the leak deliveryStillAllowed exists to close,
+// after the recipient walking out (RemoveMember) and the message waiting too
+// long (quiet hours): here it is the task that walks out, under a row that was
+// correct when it was written.
+//
+// A reminder is the exception, for the reason reminderScope already gives: its
+// text is the user's own, about their own alarm, and refusing it would silence
+// a private message over someone else's reorganisation. It is delivered — minus
+// the task fields, which templateData drops for exactly this case.
+//
+// A refusal is permanent (a project does not transfer back between two retries),
+// and a read error is not a refusal: taskStillInReach answers "yes" on one, so a
+// database hiccup cannot drop a delivery the recipient never lost.
+func (h *API) deliveryStillInReach(ctx context.Context, n db.Notification) error {
+	if n.TaskID == nil || n.Kind == kindReminder {
+		return nil
+	}
+	if h.taskStillInReach(ctx, n.UserID, *n.TaskID) {
+		return nil
+	}
+	return notify.Permanent(errors.New(taskMovedAway))
+}
+
+// taskStillInReach reports whether userID may still be shown taskID, asked about
+// the workspace the task is in *now* rather than the one a stored row remembers.
+// An unreadable task or board answers yes: the caller's job is to refuse a
+// delivery that would leak, not one whose lookup failed.
+func (h *API) taskStillInReach(ctx context.Context, userID, taskID uuid.UUID) bool {
+	t, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return true
+	}
+	ws, werr := h.q.WorkspaceIDForBoard(ctx, t.BoardID)
+	if werr != nil {
+		return true
+	}
+	return h.notifiableInWorkspace(ctx, userID, ws)
+}
+
+// deliveryStillWanted re-asks the recipient's own switch for the kinds that have
+// one: "уведомления о сроке" (the user default, or the per-task override the card
+// carries) and "напоминания".
+//
+// The switch is read once, in scanDueTasks / scanReminders, when the notification
+// is created. The outbox row it leads to is not sent then: quiet hours hold it to
+// the end of the window — a whole night — and a digest to the end of its slot.
+// Inside that gap the user gets to change their mind, and the gesture that says
+// so is exactly this switch: turning the type off at 23:30, or clearing the
+// due-date checkbox on the very card the held message is about. Nothing between
+// there and the transport looked again, so the morning delivered a warning about
+// a deadline the user had already told the server to stop warning about, from a
+// screen still showing the switch turned off.
+//
+// Only kinds that name a switch are asked: everything else (a mention, a comment,
+// an assignment) has no such knob, and answering "no" for them would turn one
+// checkbox into a global blackhole. The per-task override wins over the user
+// default exactly as it does in scanDueTasks — same precedence, or the two places
+// would disagree about the same card. A due warning is asked one more question on
+// the way: whether its task is still one the scanner would warn about at all (see
+// dueStillWorthWarningAbout).
+//
+// A refusal is permanent: a switch left off does not come back between two
+// retries, and last_error is where the channel's history explains the gap. Unread
+// prefs fall back to the defaults (both on), and an unreadable task leaves the
+// user default in place: a database hiccup must not drop a message the user never
+// refused.
+func (h *API) deliveryStillWanted(ctx context.Context, n db.Notification) error {
+	// The kind first, the prefs after: every other notification has no switch to
+	// ask about, and the drain already reads four rows per delivery.
+	if n.Kind != kindDueSoon && n.Kind != kindReminder {
+		return nil
+	}
+	p, perr := h.q.GetNotificationPrefs(ctx, n.UserID)
+	if perr != nil {
+		p = defaultPrefs(n.UserID)
+	}
+	wanted := p.ReminderEnabled
+	if n.Kind == kindDueSoon {
+		wanted = p.DueEnabled
+		if n.TaskID != nil {
+			if t, terr := h.q.GetTask(ctx, *n.TaskID); terr == nil {
+				lead := p.DueLeadMinutes
+				if t.DueLeadMinutes != nil {
+					lead = *t.DueLeadMinutes
+				}
+				if err := dueStillWorthWarningAbout(t, lead, time.Now()); err != nil {
+					return err
+				}
+				if t.DueNotifyEnabled != nil {
+					wanted = *t.DueNotifyEnabled
+				}
+			}
+		}
+	}
+	if !wanted {
+		return notify.Permanent(errors.New(notifyTurnedOff))
+	}
+	return nil
+}
+
+// dueStillWorthWarningAbout re-applies the scanner's own gates to the task a held
+// due-date warning is about. There are three, and scanDueTasks asks all three:
+// ListDueTasksForScan selects `completed_at IS NULL AND archived_at IS NULL`, the
+// loop skips a task with no due date at all, and dueShouldFire refuses anything
+// still outside the lead window `now >= due − lead`. A card failing any of them is
+// one the scanner would not warn about.
+//
+// It asked once, when the notification was created, and the outbox row it led to
+// is not sent then — quiet hours hold it to the end of the window, a whole night.
+// What the user does inside that gap is exactly what the warning was sent to
+// provoke: they finish the task, or sweep the card into the archive. Nothing
+// between there and the transport looked again, so the morning delivered "срок
+// задачи подходит" about a task closed the evening before, from a board where it
+// is no longer even visible.
+//
+// The deadline itself is the third gate and the one the user is likeliest to
+// move: "срок подходит" is not a record of an event, it is a claim about the
+// present, and it stops being true the moment the deadline does. Dropped
+// overnight, it arrives about a task that has no deadline at all; pushed out a
+// week, about one nobody needs reminding of yet — and because a moved due date
+// re-arms the per-(task,user) state, the correct warning still comes later, in
+// its own time. The stale message does not replace the right one, it is added to
+// it. Only "further away than the warning reaches" refuses: a deadline pulled in,
+// or merely nudged while still inside the lead window, is approaching, which is
+// all the message ever claimed.
+//
+// Only the state at send time counts — a card closed and reopened overnight is
+// open, and its warning still goes out. The check is scoped to the due kind
+// (deliveryStillWanted's own guard): a closed task still has a discussion, and
+// answering "no" for a comment or a mention on it would turn a checkbox into a
+// blackhole for the whole card.
+func dueStillWorthWarningAbout(t db.Task, lead int32, now time.Time) error {
+	if t.CompletedAt != nil {
+		return notify.Permanent(errors.New(dueTaskClosed))
+	}
+	if t.ArchivedAt != nil {
+		return notify.Permanent(errors.New(dueTaskArchived))
+	}
+	if t.DueDate == nil {
+		return notify.Permanent(errors.New(dueDateCleared))
+	}
+	// Same arithmetic as dueShouldFire, clamp included: the stored lead may hold a
+	// value no client offers, and `time.Duration(x) * time.Minute` overflows to a
+	// NEGATIVE window from 153722868 minutes up (see maxDueMinutes).
+	if now.Before(t.DueDate.Add(-time.Duration(clampDueMinutes(lead)) * time.Minute)) {
+		return notify.Permanent(errors.New(dueDateMoved))
+	}
+	return nil
+}
+
+const (
+	notifyWorkerTick = 10 * time.Second
+	// notifyBatchSize is how many delivery *batches* one drain claims, not rows:
+	// a digest group is claimed whole, because only rows returned by the same
+	// claim are ever combined into one message (see ClaimPendingDeliveries). An
+	// ungrouped delivery is a batch of one.
 	notifyBatchSize     = 20
 	maxDeliveryAttempts = 5
 )
@@ -112,19 +405,27 @@ func (h *API) RunNotificationWorker(ctx context.Context) {
 	ticker := time.NewTicker(notifyWorkerTick)
 	defer ticker.Stop()
 	h.tick(jobNotifyDelivery, opDelivery)
-	h.withAdvisoryLock(ctx, "notify_delivery", func() { h.drainDeliveries(ctx) }) // drain backlog at startup
+	h.withAdvisoryLock(ctx, NotifyDeliveryLock, func() { h.drainDeliveries(ctx) }) // drain backlog at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobNotifyDelivery, opDelivery)
-			h.withAdvisoryLock(ctx, "notify_delivery", func() { h.drainDeliveries(ctx) })
+			h.withAdvisoryLock(ctx, NotifyDeliveryLock, func() { h.drainDeliveries(ctx) })
 		}
 	}
 }
 
 func (h *API) drainDeliveries(ctx context.Context) {
+	// Recover rows a previous drain claimed but never settled (see
+	// RequeueStaleDeliveries). Holding the worker lock is what makes this safe:
+	// no other instance is draining, so nothing in 'sending' is in flight.
+	if n, err := h.q.RequeueStaleDeliveries(ctx); err != nil {
+		soft(ctx, "RequeueStaleDeliveries", err)
+	} else if n > 0 {
+		log.Printf("notify: requeued %d delivery row(s) left mid-send by a previous run", n)
+	}
 	rows, err := h.q.ClaimPendingDeliveries(ctx, notifyBatchSize)
 	if err != nil || len(rows) == 0 {
 		return
@@ -144,9 +445,12 @@ func (h *API) drainDeliveries(ctx context.Context) {
 			h.settleDelivery(ctx, ds[0], h.deliverOne(ctx, ds[0]))
 			continue
 		}
-		err := h.deliverGroup(ctx, ds)
+		// Per row, not one verdict for the whole group: a row the digest could not
+		// render never travelled with it, and settling it on the send's outcome
+		// would close it as sent.
+		outcomes := h.deliverGroup(ctx, ds)
 		for _, d := range ds {
-			h.settleDelivery(ctx, d, err)
+			h.settleDelivery(ctx, d, outcomes[d.ID])
 		}
 	}
 }
@@ -154,9 +458,31 @@ func (h *API) drainDeliveries(ctx context.Context) {
 // settleDelivery marks a delivery sent, retried (quadratic backoff) or failed
 // based on the send error. Claim already bumped attempts, so d.Attempts is this
 // attempt's number.
+//
+// The settle writes outlive a cancelled ctx (WithoutCancel, as flushJournal does
+// on the write-back side). On SIGTERM mid-drain the send fails with the ctx, and
+// settling on that same ctx would fail too — leaving the row 'sending' for
+// RequeueStaleDeliveries to pick up, which is recovery for a delivery that may
+// already have gone out. Recording the outcome is what keeps the requeue from
+// re-sending it.
 func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err error) {
+	shuttingDown := ctx.Err() != nil
+	ctx = context.WithoutCancel(ctx)
 	if err == nil {
 		soft(ctx, "MarkDeliverySent", h.q.MarkDeliverySent(ctx, d.ID))
+		return
+	}
+	// A send that died with the worker's context is a deploy stopping mid-drain,
+	// not a verdict on the delivery: re-arm it for the next drain. Without this
+	// the cancellation arrives wrapped as a permanent error ("channel gone:
+	// context canceled") and a restart would mark live deliveries failed for
+	// good. Deliberately not keyed on DeadlineExceeded too: a webhook that
+	// times out on its own client deadline must keep its backoff, or a slow
+	// endpoint becomes a hot retry loop that never exhausts its attempts.
+	if shuttingDown && errors.Is(err, context.Canceled) {
+		soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{
+			ID: d.ID, LastError: truncErr(err), NextAttemptAt: h.outsideQuietHours(ctx, d, time.Now()),
+		}))
 		return
 	}
 	if notify.IsPermanent(err) || int(d.Attempts) >= maxDeliveryAttempts {
@@ -165,47 +491,115 @@ func (h *API) settleDelivery(ctx context.Context, d db.NotificationDelivery, err
 		return
 	}
 	next := time.Now().Add(time.Duration(d.Attempts*d.Attempts) * time.Minute) // 1, 4, 9, 16 min
-	soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{ID: d.ID, LastError: truncErr(err), NextAttemptAt: next}))
+	soft(ctx, "MarkDeliveryRetry", h.q.MarkDeliveryRetry(ctx, db.MarkDeliveryRetryParams{
+		ID: d.ID, LastError: truncErr(err), NextAttemptAt: h.outsideQuietHours(ctx, d, next),
+	}))
+}
+
+// outsideQuietHours moves a retry that would land inside the recipient's quiet
+// window to the moment the window ends, and leaves every other retry alone.
+//
+// Quiet hours were asked once, at enqueue time: routeNotification defers the row
+// to the end of the window and the device path does not even write a row. Nothing
+// asked again after a failed send, and the backoff is free to pick any minute —
+// a delivery enqueued at 21:59 against an endpoint that is down retries at 22:00,
+// 22:04, 22:13, 22:29 and 22:54, so the message arrives the moment the endpoint
+// recovers, in the middle of the silence the user declared. A push is the loudest
+// case: during quiet hours its row is never written at all, and the backoff was
+// the one way one got in.
+//
+// The window is read off the recipient's prefs, so the answer is the same one
+// routeNotification would give; an unreadable notification or prefs row leaves
+// the backoff untouched rather than holding a delivery on a database hiccup.
+func (h *API) outsideQuietHours(ctx context.Context, d db.NotificationDelivery, next time.Time) time.Time {
+	n, err := h.q.GetNotification(ctx, d.NotificationID)
+	if err != nil {
+		return next
+	}
+	p, perr := h.q.GetNotificationPrefs(ctx, n.UserID)
+	if perr != nil {
+		p = defaultPrefs(n.UserID)
+	}
+	if end, quiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, next); quiet {
+		return end
+	}
+	return next
 }
 
 // deliverGroup renders each notification in a digest group and sends one combined
 // message through the shared channel. All rows in a group share a channel.
-func (h *API) deliverGroup(ctx context.Context, ds []db.NotificationDelivery) error {
+//
+// Returns the outcome per delivery id, because the rows of a group do not share
+// one. A channel template is validated once, against notify.SampleData, where
+// every field is filled — a real notification is poorer than the sample (a
+// reminder carries no task), so a template can pass the form and still fail on
+// the row in front of it. deliverOne reports that as a permanent failure with the
+// error on the row, which is what the channel's delivery history shows. A digest
+// that settled every row on the send's outcome would instead close the dropped
+// ones as sent: the items are missing from the message, the outbox says
+// delivered, and nothing anywhere names the broken template. So a row that never
+// made it into the message carries its own verdict, exactly the one deliverOne
+// would have given it.
+func (h *API) deliverGroup(ctx context.Context, ds []db.NotificationDelivery) map[uuid.UUID]error {
+	out := make(map[uuid.UUID]error, len(ds))
+	groupErr := func(err error) map[uuid.UUID]error {
+		for _, d := range ds {
+			out[d.ID] = err
+		}
+		return out
+	}
 	row, err := h.q.GetNotificationChannelByID(ctx, ds[0].ChannelID)
 	if err != nil {
-		return notify.Permanent(fmt.Errorf("channel gone: %w", err))
+		return groupErr(notify.Permanent(fmt.Errorf("channel gone: %w", err)))
 	}
 	if !row.Enabled {
-		return notify.Permanent(errors.New("channel disabled"))
+		return groupErr(notify.Permanent(errors.New("channel disabled")))
 	}
 	sender, ok := h.senders[row.Type]
 	if !ok {
-		return notify.Permanent(fmt.Errorf("no sender for channel type %q", row.Type))
+		return groupErr(notify.Permanent(fmt.Errorf("no sender for channel type %q", row.Type)))
 	}
 	ch, err := h.channelFromRow(row)
 	if err != nil {
-		return notify.Permanent(err)
+		return groupErr(notify.Permanent(err))
 	}
 	// One channel means one owner, so the whole digest is written in that user's
 	// language — looked up once, not per row.
 	lang := h.userLang(ctx, row.UserID)
 	parts := make([]string, 0, len(ds))
+	carried := make([]uuid.UUID, 0, len(ds))
 	for _, d := range ds {
 		n, nerr := h.q.GetNotification(ctx, d.NotificationID)
 		if nerr != nil {
+			out[d.ID] = notify.Permanent(fmt.Errorf("notification gone: %w", nerr))
 			continue
 		}
-		if body, rerr := renderChannel(row.Template, h.templateData(ctx, n, lang)); rerr == nil {
-			parts = append(parts, "• "+body)
+		// Per row, though the channel's owner is one user: the rows of a digest
+		// come from different workspaces, and leaving one behind must not cost the
+		// reader the rest of their summary.
+		if merr := h.deliveryStillAllowed(ctx, n); merr != nil {
+			out[d.ID] = merr
+			continue
 		}
+		body, rerr := renderChannel(row.Template, h.templateData(ctx, n, lang))
+		if rerr != nil {
+			out[d.ID] = notify.Permanent(fmt.Errorf("template render: %w", rerr))
+			continue
+		}
+		parts = append(parts, "• "+body)
+		carried = append(carried, d.ID)
 	}
 	if len(parts) == 0 {
-		return nil
+		return out // nothing to send; every row already carries why it is not in it
 	}
 	combined := fmt.Sprintf("%s\n\n%s", notify.DigestHeader(len(parts), lang), strings.Join(parts, "\n\n"))
-	return sender.Send(ctx, ch, notify.Message{
+	sendErr := sender.Send(ctx, ch, notify.Message{
 		Kind: "digest", Title: notify.DigestTitle(lang), Body: combined, Link: h.publicURL,
 	})
+	for _, id := range carried {
+		out[id] = sendErr
+	}
+	return out
 }
 
 // deliverOne sends a single outbox row. A missing notification/channel or a
@@ -215,6 +609,9 @@ func (h *API) deliverOne(ctx context.Context, d db.NotificationDelivery) error {
 	n, err := h.q.GetNotification(ctx, d.NotificationID)
 	if err != nil {
 		return notify.Permanent(fmt.Errorf("notification gone: %w", err))
+	}
+	if err := h.deliveryStillAllowed(ctx, n); err != nil {
+		return err
 	}
 	row, err := h.q.GetNotificationChannelByID(ctx, d.ChannelID)
 	if err != nil {
@@ -291,7 +688,7 @@ func (h *API) templateData(ctx context.Context, n db.Notification, lang string) 
 		Text:  notifySentence(n, lang),
 		Link:  h.notifyLink(n),
 	}
-	if n.TaskID != nil {
+	if n.TaskID != nil && h.taskRenderable(ctx, n) {
 		if t, err := h.q.GetTask(ctx, *n.TaskID); err == nil {
 			d.TaskTitle = t.Title
 			d.TaskNumber = t.Number
@@ -302,18 +699,40 @@ func (h *API) templateData(ctx context.Context, n db.Notification, lang string) 
 			d.Actor = u.Name
 		}
 	}
-	if w, err := h.q.GetWorkspace(ctx, n.WorkspaceID); err == nil {
-		// The personal workspace is stored under its Russian seed name (#2800) and
-		// captioned from name_key by whoever displays it. This delivery leaves the
-		// app, so the caption is picked here, in the recipient's language; a name
-		// the user chose has no key and is carried as typed.
-		key := ""
-		if w.NameKey != nil {
-			key = *w.NameKey
+	// A notification outside every workspace (a personal reminder) leaves the
+	// caption empty, which the templates already render as an absent field.
+	if n.WorkspaceID != nil {
+		if w, err := h.q.GetWorkspace(ctx, *n.WorkspaceID); err == nil {
+			// The personal workspace is stored under its Russian seed name (#2800) and
+			// captioned from name_key by whoever displays it. This delivery leaves the
+			// app, so the caption is picked here, in the recipient's language; a name
+			// the user chose has no key and is carried as typed.
+			key := ""
+			if w.NameKey != nil {
+				key = *w.NameKey
+			}
+			d.Workspace = notify.DefaultName(key, w.Name, lang)
 		}
-		d.Workspace = notify.DefaultName(key, w.Name, lang)
 	}
 	return d
+}
+
+// taskRenderable reports whether a delivery may render the task it names into
+// its message — the second half of deliveryStillInReach, and the half a reminder
+// needs.
+//
+// Only a reminder is asked. Every other kind that names an out-of-reach task was
+// already refused upstream and never reaches a template, so repeating the two
+// reads for it would buy nothing; a reminder is deliberately let through, and it
+// is here that it drops the one part of the message that is not its owner's —
+// the current title and number of a task that walked into another workspace.
+// This mirrors reminderScope's split on the scanning side: the alarm still
+// rings, the stranger's edits stay behind.
+func (h *API) taskRenderable(ctx context.Context, n db.Notification) bool {
+	if n.Kind != kindReminder {
+		return true
+	}
+	return h.taskStillInReach(ctx, n.UserID, *n.TaskID)
 }
 
 // channelFromRow decodes a stored channel into the transport-facing form,

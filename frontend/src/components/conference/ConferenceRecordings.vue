@@ -14,6 +14,8 @@ import { computed, ref, watch } from 'vue'
 import { NButton, NIcon, NPopconfirm, NSpin } from 'naive-ui'
 import { DownloadOutline, TrashOutline, WarningOutline } from '@vicons/ionicons5'
 import { conferences as confApi } from '@/api'
+import { handOffBlob } from '@/utils/blobHandoff'
+import { formatFileSize } from '@/utils/docPdf'
 import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
@@ -47,7 +49,7 @@ async function load() {
     rows.value = data || []
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   } finally {
     loading.value = false
   }
@@ -66,18 +68,15 @@ async function download(rec) {
   busyId.value = rec.id
   try {
     const { data } = await confApi.recording(rec.id)
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = rec.file_name || 'recording.mp4'
-    a.click()
-    // Revoked late, not immediately: revoking before the browser has started the
-    // download cancels it — and these files are large enough for that gap to be
-    // real rather than theoretical.
-    setTimeout(() => URL.revokeObjectURL(url), 60000)
+    // Revoked late, not immediately (handOffBlob): revoking before the browser
+    // has started the download cancels it — and these files are large enough
+    // for that gap to be real rather than theoretical.
+    // Awaited: on the desktop handOffBlob opens a Save-as and writes the file
+    // itself, and a failure there belongs in the catch below.
+    await handOffBlob(data, rec.file_name || 'recording.mp4')
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   } finally {
     busyId.value = ''
   }
@@ -89,15 +88,8 @@ async function remove(rec) {
     rows.value = rows.value.filter((r) => r.id !== rec.id)
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   }
-}
-
-function humanSize(bytes) {
-  if (!bytes) return ''
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${Math.round(bytes / 1024 / 1024)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
 /** h:mm:ss, dropping the hour when there is none — meetings run both lengths. */
@@ -151,7 +143,7 @@ defineExpose({ load })
               </span>
               <template v-else>
                 <span v-if="r.duration_sec">{{ humanDuration(r.duration_sec) }}</span>
-                <span v-if="r.size_bytes">{{ humanSize(r.size_bytes) }}</span>
+                <span v-if="r.size_bytes">{{ formatFileSize(r.size_bytes) }}</span>
               </template>
               <span v-if="r.started_by_name">
                 {{ $t('conferences.rec.by', { name: r.started_by_name }) }}

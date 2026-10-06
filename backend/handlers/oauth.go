@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,8 +25,9 @@ const oauthStateCookie = "gl_oauth_state"
 // the session (or error) back through this URI instead of the web SPA route — the Chrome
 // Custom Tab / system browser redirects to it, and the app picks up the fragment. The
 // confidential-app secret never leaves the server, so native clients stay pure public
-// consumers of tokens. Android and the desktop shell share one scheme: they never run on
-// the same OS, and a single handoff format keeps the callback branch-free.
+// consumers of tokens. Android and the desktop shell share the scheme (they never run on
+// the same OS) but not the payload: Android receives the tokens in the fragment, desktop a
+// one-time code it redeems over HTTPS — see oauth_handoff.go for why they differ.
 const oauthNativeScheme = "tessera://oauth/callback"
 
 // oauthMobileState / oauthDesktopState mark a `state` value as originating from a native
@@ -55,6 +57,58 @@ func oauthHandoff(platform, state string) (native bool, prefix string) {
 		}
 	}
 	return false, ""
+}
+
+// oauthAppStateMax bounds the client nonce echoed back in the handoff. Long enough for
+// 32 hex chars with room to spare, short enough that nobody can stuff a payload into the
+// deep link through it.
+const oauthAppStateMax = 64
+
+// oauthAppState sanitizes the native client's own CSRF nonce (`?app_state=`). The state
+// GitLab echoes back proves the *browser* leg wasn't forged — it is mirrored in an
+// httpOnly cookie — but the last hop is a plain OS-wide URL: any web page can fire a
+// tessera:// link at the installed app. Without a value only the app knows, an
+// unsolicited `tessera://oauth/callback#access_token=…` silently signs the user into the
+// attacker's account (session fixation, #2932). So the app generates a nonce, sends it
+// here, and accepts the handoff only when it comes back.
+//
+// Alphanumeric only: the nonce is stored inside the state as its own dot-separated field,
+// and it must not be able to forge that structure or smuggle URL syntax into the
+// redirect. Anything else is dropped rather than mangled — a client that sent garbage
+// gets a handoff it will reject, which is the safe direction.
+func oauthAppState(raw string) string {
+	if raw == "" || len(raw) > oauthAppStateMax {
+		return ""
+	}
+	for _, r := range raw {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') {
+			return ""
+		}
+	}
+	return raw
+}
+
+// oauthState builds the value that travels to GitLab and back. Paired with
+// oauthStateNonce below — the two have to agree on the layout or every real login is
+// rejected, so they are kept next to each other and round-tripped in the tests.
+func oauthState(prefix, nonce, random string) string {
+	if nonce == "" {
+		return prefix + random
+	}
+	return prefix + nonce + "." + random
+}
+
+// oauthStateNonce pulls the client nonce back out of the state GitLab echoed. Layout is
+// `<marker><nonce>.<random>` when the client sent one and `<marker><random>` when it
+// didn't (Android, and desktop builds older than #2932) — the random half is hex, so the
+// separator is unambiguous.
+func oauthStateNonce(prefix, state string) string {
+	rest := strings.TrimPrefix(state, prefix)
+	i := strings.Index(rest, ".")
+	if i <= 0 {
+		return ""
+	}
+	return oauthAppState(rest[:i])
 }
 
 // oauthBaseURL is the externally-reachable origin used to build redirect URIs and
@@ -116,7 +170,14 @@ func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return
 	}
-	state := statePrefix + hex.EncodeToString(buf)
+	// The client nonce rides *inside* the CSRF state, so it inherits the cookie check and
+	// can't be swapped for another flow's value on the way back. Only native flows have a
+	// deep link to protect; the web handoff is a same-origin redirect.
+	nonce := ""
+	if native {
+		nonce = oauthAppState(c.Query("app_state"))
+	}
+	state := oauthState(statePrefix, nonce, hex.EncodeToString(buf))
 	secure := strings.HasPrefix(h.oauthBaseURL(c), "https")
 	// SameSite=Lax so the cookie survives GitLab's top-level GET redirect back.
 	c.SetSameSite(http.SameSiteLaxMode)
@@ -140,10 +201,18 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	// The native marker lives inside the state value, which is echoed back untouched by
 	// GitLab — safe to read here for choosing the handoff target even before the CSRF
 	// check (a forged prefix only changes where an *error* is delivered).
-	native, _ := oauthHandoff("", c.Query("state"))
+	native, statePrefix := oauthHandoff("", c.Query("state"))
+	// Echoed back to the app so it can tell *its* handoff from one a web page fired at
+	// the tessera:// scheme. Read before the CSRF check for the same reason the marker is:
+	// a forged value only changes where an error lands, and the app rejects it anyway.
+	nonce := oauthStateNonce(statePrefix, c.Query("state"))
 	redirectErr := func(reason string) {
 		if native {
-			c.Redirect(http.StatusFound, oauthNativeScheme+"#"+url.Values{"oauth_error": {reason}}.Encode())
+			v := url.Values{"oauth_error": {reason}}
+			if nonce != "" {
+				v.Set("state", nonce)
+			}
+			c.Redirect(http.StatusFound, oauthNativeScheme+"#"+v.Encode())
 			return
 		}
 		c.Redirect(http.StatusFound, base+"/login?oauth_error="+url.QueryEscape(reason))
@@ -194,16 +263,35 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	// Group-membership → workspace access, refreshed on every login.
 	h.applyOrgMap(c, p, token, glUser, user)
 
-	access, refresh, ok := h.mintTokens(c, user)
+	// Desktop: hand back a one-time code, never the tokens. The OS delivers this deep
+	// link as a command-line argument, where any local process can read it — see
+	// oauth_handoff.go. Android keeps the token fragment (Intent, not argv).
+	if native && statePrefix == oauthDesktopState {
+		code, cerr := h.handoff.issue(user.ID, time.Now())
+		if cerr != nil {
+			redirectErr("server_error")
+			return
+		}
+		frag := url.Values{"code": {code}}
+		if nonce != "" {
+			frag.Set("state", nonce)
+		}
+		c.Redirect(http.StatusFound, oauthNativeScheme+"#"+frag.Encode())
+		return
+	}
+
+	access, refresh, sessionID, ok := h.mintTokens(c, user)
 	if !ok {
 		return // mintTokens already wrote a 500
 	}
 	if native {
-		// No cookie to set on a custom-scheme handoff — the native client stores
-		// the refresh token itself. Desktop is cross-origin against the API
-		// (frontend/src/utils/serverBase.js), so a host-only cookie would never
-		// reach it either way.
+		// Android. No cookie to set on a custom-scheme handoff — the native client
+		// stores the refresh token itself, and a host-only cookie would never reach a
+		// cross-origin client either way.
 		frag := url.Values{"access_token": {access}, "refresh_token": {refresh}}
+		if nonce != "" {
+			frag.Set("state", nonce)
+		}
 		c.Redirect(http.StatusFound, oauthNativeScheme+"#"+frag.Encode())
 		return
 	}
@@ -212,7 +300,7 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 	// history and in window.location, where injected script can read it — which
 	// would defeat the whole point of hiding the token from JavaScript.
 	h.setRefreshCookie(c, refresh)
-	h.setMediaCookie(c, user.ID)
+	h.setMediaCookie(c, user.ID, sessionID)
 	frag := url.Values{"access_token": {access}}
 	c.Redirect(http.StatusFound, base+"/oauth/callback#"+frag.Encode())
 }
@@ -224,7 +312,26 @@ func (h *AuthHandler) GitlabCallback(c *gin.Context) {
 func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glUser gitlab.OAuthUserInfo) (db.User, error) {
 	providerUserID := strconv.FormatInt(glUser.ID, 10)
 
-	if id, err := h.q.GetOAuthIdentity(c, db.GetOAuthIdentityParams{Provider: "gitlab", ProviderUserID: providerUserID}); err == nil {
+	// A recorded identity names a person only together with the instance that
+	// issued it: provider_user_id is GitLab's numeric id, and every GitLab counts
+	// from 1 in its own sequence, so id 7 on one is unrelated to id 7 on another.
+	// oauth_identities carries gl_base_url for exactly that reason — it was being
+	// written on every login and never read, so the stored ids went on matching
+	// after the provider row was pointed elsewhere (a move to self-hosted, a
+	// restore whose ids restarted, a staging instance configured by mistake) and
+	// whoever held the matching number on the new instance signed straight into
+	// the account it used to mean, ahead of the email check below (#2932).
+	//
+	// A mismatch is not an error, it is simply not a match: the login falls
+	// through to the email leg, which is the stronger claim anyway (GitLab
+	// vouches for the address, and the local side must have proven it). That
+	// keeps the same instance under a new name — https://, a DNS rename —
+	// working, because CreateOAuthUser pre-verifies the address it provisioned;
+	// the upsert at the end then re-stamps gl_base_url and the next login matches
+	// by id again. An empty stored value predates the recording rather than
+	// naming another instance, so it is backfilled, not rejected.
+	if id, err := h.q.GetOAuthIdentity(c, db.GetOAuthIdentityParams{Provider: "gitlab", ProviderUserID: providerUserID}); err == nil &&
+		sameGitlabInstance(id.GlBaseUrl, p.GlBaseUrl) {
 		user, uerr := h.q.GetUserByID(c, id.UserID)
 		if uerr != nil {
 			return db.User{}, errors.New("account_missing")
@@ -242,6 +349,17 @@ func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glU
 			if !user.Active {
 				return db.User{}, errors.New("account_disabled")
 			}
+			// GitLab vouches for its side of the address; the local side is
+			// whatever was typed at registration, which nobody checks. Linking on
+			// that alone hands the GitLab login — and, through applyOrgMap, the
+			// workspaces it grants — to whoever registered with a colleague's
+			// address first (#2932). So the local account must have proven the
+			// mailbox too: same rule as acceptPendingInvitations. An account that
+			// hasn't can still verify it (sign in with the password, resend the
+			// link) and then link on the next try.
+			if !user.EmailVerified {
+				return db.User{}, errors.New("email_taken")
+			}
 			h.upsertIdentity(c, user.ID, providerUserID, glUser, p.GlBaseUrl)
 			return user, nil
 		}
@@ -249,7 +367,21 @@ func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glU
 
 	// Auto-register. GitLab may hide the email (scope/privacy) — synthesise a stable
 	// placeholder so the NOT NULL/unique email holds; the user can set a real one later.
-	count, _ := h.q.CountUsers(c)
+	// The admin bit is decided by "is this the very first account on the
+	// instance", so the count has to be known rather than assumed. Discarding
+	// the error made that decision fail *open*: the zero value is 0, which reads
+	// as "first user", so one transient failure on this single query — a pool
+	// acquire timeout under load, a connection reaped by a proxy, a failover —
+	// handed the freshly auto-registered GitLab user the global admin bit. That
+	// bit is the top of the instance: every account's address (GET /admin/users),
+	// promotion of anyone else (PATCH /admin/users/:id/admin) and a password
+	// reset link for any account (POST /admin/users/:id/reset-link).
+	// Register, the sibling path that makes the same count == 0 decision, already
+	// answers a failed CountUsers by refusing (auth.go).
+	count, err := h.q.CountUsers(c)
+	if err != nil {
+		return db.User{}, errors.New("create_failed")
+	}
 	name := glUser.Name
 	if name == "" {
 		name = glUser.Username
@@ -273,6 +405,18 @@ func (h *AuthHandler) provisionOAuthUser(c *gin.Context, p db.OauthProvider, glU
 	h.acceptPendingInvitations(c, user)
 	h.upsertIdentity(c, user.ID, providerUserID, glUser, p.GlBaseUrl)
 	return user, nil
+}
+
+// sameGitlabInstance reports whether a stored identity was issued by the GitLab
+// the provider row now points at. Both sides are normalised the way
+// upsertIdentity stores them (trailing slash trimmed); "" is a row written
+// before the base URL was recorded and matches anything, since refusing it would
+// fork a second account for someone who never changed instances.
+func sameGitlabInstance(stored, configured string) bool {
+	if stored == "" {
+		return true
+	}
+	return strings.EqualFold(strings.TrimRight(stored, "/"), strings.TrimRight(configured, "/"))
 }
 
 func (h *AuthHandler) upsertIdentity(c *gin.Context, userID uuid.UUID, providerUserID string, glUser gitlab.OAuthUserInfo, baseURL string) {
@@ -310,6 +454,7 @@ func (h *AuthHandler) applyOrgMap(c *gin.Context, p db.OauthProvider, token stri
 	if err != nil {
 		return
 	}
+	granted := false
 	for groupPath, cfg := range m {
 		if !groups[groupPath] {
 			continue
@@ -331,9 +476,39 @@ func (h *AuthHandler) applyOrgMap(c *gin.Context, p db.OauthProvider, token stri
 		if role == "" {
 			continue
 		}
-		if existing, gerr := h.q.GetMembershipRole(c, db.GetMembershipRoleParams{WorkspaceID: wsID, UserID: user.ID}); gerr == nil && existing == "owner" {
-			continue // never downgrade an owner
+		// CreateMembership is an upsert, so writing the mapped role over an
+		// existing one would take away what the mapping never gave: a workspace
+		// admin who also sits in a group with `users: true` would be demoted to
+		// member by their own sign-in, again after every re-grant (#2932). The
+		// mapping is additive — it may raise a role, never lower it.
+		if existing, gerr := h.q.GetMembershipRole(c, db.GetMembershipRoleParams{WorkspaceID: wsID, UserID: user.ID}); gerr == nil &&
+			membershipRank(existing) >= membershipRank(role) {
+			continue
 		}
-		_, _ = h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: wsID, UserID: user.ID, Role: role})
+		if _, err := h.q.CreateMembership(c, db.CreateMembershipParams{WorkspaceID: wsID, UserID: user.ID, Role: role}); err == nil {
+			granted = true
+		}
+	}
+	// Signing in with GitLab in one tab must not leave the session already open
+	// in another holding the workspace list from before the mapping ran (see
+	// AuthHandler.rescope).
+	if granted {
+		h.rescope(user.ID)
+	}
+}
+
+// membershipRank orders the workspace roles so org_map can tell a promotion from
+// a demotion. Anything unknown ranks lowest — a role we don't understand must not
+// stop a documented grant.
+func membershipRank(role string) int {
+	switch role {
+	case "owner":
+		return 3
+	case "admin":
+		return 2
+	case "member":
+		return 1
+	default:
+		return 0
 	}
 }

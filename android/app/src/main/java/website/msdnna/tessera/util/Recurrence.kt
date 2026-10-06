@@ -31,15 +31,34 @@ private fun dateOn(base: Calendar, year: Int, month: Int, day: Int): Long {
     }.timeInMillis
 }
 
+/**
+ * Толкает субботу/воскресенье вперёд на понедельник.
+ *
+ * Шаг — календарный (`add(DAY_OF_MONTH, …)`, как `AddDate` у бэкендового оригинала),
+ * а не `+ n * 86_400_000`: в неделю перевода часов сутки не равны 24 часам. Осенью
+ * воскресенье длится 25 часов, поэтому +48 ч от субботы попадали на ВОСКРЕСЕНЬЕ 23:00,
+ * а +24 ч от воскресенья — на то же воскресенье: календарь подсвечивал ровно тот
+ * выходной, который правило запрещает, и день, на который сервер не сработает.
+ * Весной те же +48 ч уводили время суток на час вперёд.
+ */
 private fun applySkip(millis: Long, skip: Boolean): Long {
     if (!skip) return millis
     val c = cal(millis)
-    return when (c.get(Calendar.DAY_OF_WEEK)) {
-        Calendar.SATURDAY -> millis + 2 * 86_400_000L
-        Calendar.SUNDAY -> millis + 86_400_000L
-        else -> millis
+    val days = when (c.get(Calendar.DAY_OF_WEEK)) {
+        Calendar.SATURDAY -> 2
+        Calendar.SUNDAY -> 1
+        else -> return millis
     }
+    return c.apply { add(Calendar.DAY_OF_MONTH, days) }.timeInMillis
 }
+
+/** Anchored day-of-month (1..31), falling back to the due date's own day. */
+private fun anchorDay(rule: Recurrence, from: Calendar): Int =
+    if (rule.day in 1..31) rule.day else from.get(Calendar.DAY_OF_MONTH)
+
+/** Anchored month as a 0-based Calendar month, falling back to the due date's. */
+private fun anchorMonth(rule: Recurrence, from: Calendar): Int =
+    if (rule.month in 1..12) rule.month - 1 else from.get(Calendar.MONTH)
 
 /** weekday 0=Sun..6=Sat (matches the rule's encoding). */
 private fun weekday0(c: Calendar): Int = c.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
@@ -67,6 +86,75 @@ private fun nextWeekly(from: Calendar, rule: Recurrence): Long {
     return (from.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, 7 * iv) }.timeInMillis
 }
 
+/**
+ * Lends a rule rebuilt from the editor's controls the anchor the server keeps on
+ * our behalf — mirrors web `withStoredAnchor` and the backend's `recurrenceToStore`
+ * (handlers/tasks.go).
+ *
+ * A monthly/yearly rule carries a server-managed day-of-month anchor ([Recurrence.day],
+ * plus [Recurrence.month] for yearly). The picker's controls never hold it, so without
+ * this a task that February has parked on the 28th would be previewed a March 28th it
+ * is never going to fire on. Borrowed on the same terms the server uses: same
+ * frequency, due date untouched. Otherwise the server re-derives the anchor from the
+ * due date, which is what [nextOccurrence] falls back to on its own.
+ */
+fun withStoredAnchor(rule: Recurrence?, stored: Recurrence?, dueChanged: Boolean): Recurrence? {
+    if (rule == null || (rule.freq != "monthly" && rule.freq != "yearly")) return rule
+    if (dueChanged || stored == null || stored.freq != rule.freq) return rule
+    return rule.copy(
+        day = if (stored.day > 0) stored.day else rule.day,
+        month = if (rule.freq == "yearly" && stored.month > 0) stored.month else rule.month,
+    )
+}
+
+/**
+ * True for a rule that can never fire because the task has no due date.
+ *
+ * Every one of the three triggers reads the due date and only the due date:
+ * `recurAdvance` (backend/handlers/recurrence.go) returns a no-op while
+ * `t.DueDate == nil` before it even looks at the trigger, so neither ticking the
+ * task nor dragging it into the trigger column advances anything, and the
+ * schedule worker's own query filters `due_date IS NOT NULL` besides.
+ *
+ * The rule is still accepted and stored, and the card draws its repeat badge, so
+ * «каждый понедельник» on a task nobody dated looks live and is not (#2932). On
+ * this form the door is wide open: picking a frequency chip sets the frequency
+ * and nothing else, so a task without a due date commits the rule as it stands
+ * (web's own editor dates the task for you, then lets «очистить срок» take it
+ * back). Same shape as the dead trigger column — the panel has to say so.
+ *
+ * [dueMillis] is the picker's selected due instant, null when unset.
+ */
+fun dueDateMissing(rule: Recurrence?, dueMillis: Long?): Boolean {
+    if (rule == null || rule.freq.isBlank()) return false
+    return dueMillis == null
+}
+
+/**
+ * True for a column-triggered rule whose trigger column can never be reached —
+ * the sibling of [dueDateMissing], and mirrors web `triggerColumnMissing`.
+ *
+ * The server advances such a rule in exactly one place: a move whose target column
+ * id equals `trigger_column` verbatim (`rule.TriggerColumn == columnID.String()`,
+ * backend handlers/task_ops.go). An unset column is the empty string there and
+ * matches no uuid; one deleted from the board (or left behind when the task moved
+ * to another board) matches nothing either. Both states are reachable without a
+ * single error on this form: the column select opens on its placeholder and
+ * «Готово» commits `trigger = "column"` with `triggerColumn = null` as it stands,
+ * after which the card draws its repeat badge like any live rule (#2932).
+ *
+ * [columnIds] is the board's current column ids, as handed to the picker. An empty
+ * list means the caller cannot see the board, and "I don't know the columns" is not
+ * "the column is gone" — only an unset column is knowable then.
+ */
+fun triggerColumnMissing(rule: Recurrence?, columnIds: List<String>): Boolean {
+    if (rule == null || rule.freq.isBlank() || rule.trigger != "column") return false
+    val picked = rule.triggerColumn
+    if (picked.isNullOrBlank()) return true
+    if (columnIds.isEmpty()) return false
+    return !columnIds.contains(picked)
+}
+
 /** Next occurrence after [fromMillis], or null when the recurrence has ended. */
 fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
     if (rule == null || rule.freq.isBlank()) return null
@@ -75,16 +163,23 @@ fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
     return when (rule.freq) {
         "daily" -> applySkip((from.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, iv) }.timeInMillis, rule.skipWeekends)
 
-        "weekly" -> applySkip(nextWeekly(from, rule), rule.skipWeekends)
+        // Явный набор дней недели уже сказал, в какие дни повторять, поэтому сервер
+        // снимает с такого правила skip_weekends (`recur.normalized`) вместо того,
+        // чтобы дать толчку переписать выбранные дни и отнять у правила интервал —
+        // разбор там. Зеркалим, чтобы сетка подсвечивала ту серию, которую сервер и
+        // отыграет: правила, сохранённые до этого, лежат в базе с обоими полями и
+        // приезжают на клиент как есть (#2932).
+        "weekly" -> applySkip(nextWeekly(from, rule), rule.skipWeekends && rule.weekdays.isNullOrEmpty())
 
         "monthly" -> {
             val total = from.get(Calendar.MONTH) + iv
             val y = from.get(Calendar.YEAR) + Math.floorDiv(total, 12)
             val m = Math.floorMod(total, 12)
-            dateOn(from, y, m, from.get(Calendar.DAY_OF_MONTH))
+            // The anchor, not the (possibly clamped) due date: see Recurrence.day.
+            dateOn(from, y, m, anchorDay(rule, from))
         }
 
-        "yearly" -> dateOn(from, from.get(Calendar.YEAR) + iv, from.get(Calendar.MONTH), from.get(Calendar.DAY_OF_MONTH))
+        "yearly" -> dateOn(from, from.get(Calendar.YEAR) + iv, anchorMonth(rule, from), anchorDay(rule, from))
 
         "custom" -> {
             val key = dayKeyOf(from)
@@ -104,14 +199,17 @@ fun nextOccurrence(rule: Recurrence?, fromMillis: Long): Long? {
 /**
  * Up to [n] upcoming occurrence day-keys (yyyy-MM-dd) starting at [fromMillis].
  * A one-off rule (`once`) shows just the current due + the single next occurrence.
+ *
+ * Правило по списку дат идёт через тот же цикл, что и остальные частоты, и по той
+ * же причине: сервер берёт первую дату СТРОГО ПОЗЖЕ срока и на `once` роняет
+ * правило после одного срабатывания. Отдача всего выбранного списка обещала
+ * срабатывания, которых не будет, и вдобавок подсвечивала даты, мимо которых серия
+ * уже прошла (#2932). Сам выбранный список — дело редактора, здесь ответ только на
+ * вопрос «в какие дни задача сработает».
  */
 fun occurrenceKeys(rule: Recurrence?, fromMillis: Long?, n: Int = 24): Set<String> {
     val keys = mutableSetOf<String>()
     if (fromMillis == null || rule == null || rule.freq.isBlank()) return keys
-    if (rule.freq == "custom") {
-        rule.dates?.forEach { keys.add(it) }
-        return keys
-    }
     val limit = if (rule.once) 1 else n
     var cur: Long = fromMillis
     keys.add(millisDayKey(cur))

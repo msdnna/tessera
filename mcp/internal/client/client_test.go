@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"tessera-mcp/internal/model"
 )
@@ -105,6 +106,56 @@ func TestSelfIDBestEffortOnError(t *testing.T) {
 	if id := c.SelfID(context.Background()); id != "" {
 		t.Fatalf("SelfID on error = %q, want empty", id)
 	}
+}
+
+// Location comes off the same /auth/me the id does — the profile zone is what
+// every day-granular answer has to be bucketed in, and reading it here is what
+// keeps the MCP from deciding "today" in whatever zone its subprocess started in.
+func TestLocationFromProfileZone(t *testing.T) {
+	calls := 0
+	c, _ := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = io.WriteString(w, `{"user":{"id":"me-123"},"preferences":{"timezone":"Europe/Moscow"}}`)
+	})
+	loc := c.Location(context.Background())
+	if loc.String() != "Europe/Moscow" {
+		t.Fatalf("Location = %q, want Europe/Moscow", loc)
+	}
+	// Shares the memo with SelfID: one lookup answers both.
+	if id := c.SelfID(context.Background()); id != "me-123" {
+		t.Fatalf("SelfID = %q", id)
+	}
+	if calls != 1 {
+		t.Fatalf("/auth/me hit %d times, want 1", calls)
+	}
+}
+
+// Three ways to have no answer, all of which mean "the process's own zone"
+// rather than a guess: a blank profile zone (on the web that blank is "whatever
+// the browser is"), a zone name the host has no data for, and a failed lookup.
+func TestLocationFallsBackToTheProcessZone(t *testing.T) {
+	bodies := map[string]string{
+		"blank":   `{"user":{"id":"u"},"preferences":{"timezone":""}}`,
+		"unknown": `{"user":{"id":"u"},"preferences":{"timezone":"Mars/Olympus"}}`,
+	}
+	for name, body := range bodies {
+		t.Run(name, func(t *testing.T) {
+			c, _ := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+				_, _ = io.WriteString(w, body)
+			})
+			if loc := c.Location(context.Background()); loc != time.Local {
+				t.Fatalf("Location = %q, want the process zone", loc)
+			}
+		})
+	}
+	t.Run("lookup failed", func(t *testing.T) {
+		c, _ := newServer(t, func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusInternalServerError)
+		})
+		if loc := c.Location(context.Background()); loc != time.Local {
+			t.Fatalf("Location = %q, want the process zone", loc)
+		}
+	})
 }
 
 func TestCreateCommentPostsBody(t *testing.T) {

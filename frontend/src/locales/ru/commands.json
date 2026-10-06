@@ -1,0 +1,33 @@
+{
+  "builtin": {
+    "assign": { "description": "Назначить исполнителя", "example": "/assign {'@'}msdnna" },
+    "unassign": {
+      "description": "Снять исполнителя (без аргумента — всех)",
+      "example": "/unassign {'@'}msdnna"
+    },
+    "due": { "description": "Установить срок", "example": "/due 2026-08-14" },
+    "remove_due": { "description": "Убрать срок", "example": "/remove_due" },
+    "start": { "description": "Установить дату начала", "example": "/start завтра" },
+    "remove_start": { "description": "Убрать дату начала", "example": "/remove_start" },
+    "estimate": { "description": "Установить оценку", "example": "/estimate 2h30m" },
+    "remove_estimate": { "description": "Убрать оценку", "example": "/remove_estimate" },
+    "priority": { "description": "Установить приоритет", "example": "/priority высокий" },
+    "title": { "description": "Изменить заголовок", "example": "/title Новый заголовок" },
+    "tag": { "description": "Добавить тег (через запятую)", "example": "/tag backend, срочно" },
+    "untag": { "description": "Убрать тег", "example": "/untag backend" },
+    "milestone": { "description": "Назначить майлстоун", "example": "/milestone Релиз 1.0" },
+    "remove_milestone": { "description": "Убрать майлстоун", "example": "/remove_milestone" },
+    "move": { "description": "Перенести в колонку", "example": "/move В процессе" },
+    "close": { "description": "Закрыть задачу", "example": "/close" },
+    "reopen": { "description": "Переоткрыть задачу", "example": "/reopen" },
+    "archive": { "description": "Архивировать задачу", "example": "/archive" },
+    "relate": { "description": "Связать с задачей", "example": "/relate #2591" },
+    "blocks": { "description": "Блокирует задачу", "example": "/blocks #2591" },
+    "blocked_by": { "description": "Заблокирована задачей", "example": "/blocked_by #2591" },
+    "duplicates": { "description": "Дублирует задачу", "example": "/duplicates #2591" },
+    "unlink": { "description": "Снять связь с задачей", "example": "/unlink #2591" },
+    "subtask": { "description": "Создать подзадачу", "example": "/subtask Написать тесты" },
+    "parent": { "description": "Сделать подзадачей задачи", "example": "/parent #2591" },
+    "unparent": { "description": "Открепить от родителя", "example": "/unparent" }
+  }
+}

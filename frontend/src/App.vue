@@ -12,8 +12,15 @@ import UpdateToast from '@/components/UpdateToast.vue'
 import AppRail from '@/components/rail/AppRail.vue'
 import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
 import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
-import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
+import {
+  consumeOAuthState,
+  exchangeOAuthCode,
+  listenDesktopOAuth,
+  OAUTH_DONE_EVENT,
+} from '@/composables/useDesktopOAuth'
 import { isTauri } from '@/utils/serverBase'
+import { invitePath } from '@/utils/inviteRoute'
+import { takePendingInvite } from '@/utils/pendingInvite'
 import { useResponsive } from '@/composables/useResponsive'
 
 const theme = useThemeStore()
@@ -60,16 +67,35 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
 // loader before the router settles. LoginView only needs to know the wait is over,
 // which it learns from OAUTH_DONE_EVENT.
 let unlistenOAuth = null
-async function onDesktopOAuth({ access, refresh, error }) {
+async function onDesktopOAuth({ code, state, error }) {
+  // tessera:// is an OS-wide scheme, so this handler hears from any web page that cares
+  // to open one. Only a handoff carrying the nonce of the login this app started is a
+  // login; anything else is dropped without a trace — no routing, no OAUTH_DONE_EVENT,
+  // so a forged link can neither sign the user in (#2932) nor cancel a real sign-in.
+  if (!consumeOAuthState(state)) return
+  // Same detour as on web, same rule: taken on every return, spent only on a
+  // sign-in that worked (#2932).
+  const invite = takePendingInvite()
   let reason = error
   if (!reason) {
+    // The deep link carries a one-time code, not the session (#2932) — redeem it. Its own
+    // try/catch: a code that expired or was already spent is a different failure from a
+    // profile fetch that fell over, and the login screen names them differently.
+    let tokens = null
     try {
-      await useAuthStore().loginWithTokens(access, refresh)
-      window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: null } }))
-      router.replace('/')
-      return
+      tokens = await exchangeOAuthCode(code)
     } catch {
-      reason = 'userinfo_failed'
+      reason = 'handoff_failed'
+    }
+    if (tokens) {
+      try {
+        await useAuthStore().loginWithTokens(tokens.access, tokens.refresh)
+        window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: null } }))
+        router.replace(invite ? invitePath(invite) : '/')
+        return
+      } catch {
+        reason = 'userinfo_failed'
+      }
     }
   }
   window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: reason } }))

@@ -10,8 +10,9 @@ import { hueGrad, readableHue } from '@/utils/gradient'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { formatEstimateFull, estimateRangeShort } from '@/utils/estimation'
 import { useFormat } from '@/composables/useFormat'
-import { startOfDay, parseDate as parse } from '@/utils/timeAxis'
+import { isTaskOverdue } from '@/utils/taskFilter'
 import { useChartTimeline } from '@/composables/useChartTimeline'
+import { parseDate as parse } from '@/utils/timeAxis'
 import { useChartLanes } from '@/composables/useChartLanes'
 import { useChartRows } from '@/composables/useChartRows'
 import { useChartBars } from '@/composables/useChartBars'
@@ -28,6 +29,10 @@ import ChartCursorPill from './chart/ChartCursorPill.vue'
 import UserAvatar from './UserAvatar.vue'
 
 const { t } = useI18n()
+// Declared up here rather than next to the hover card that renders with it: the
+// overdue counter below needs the same formatter set, and a counter that bucketed
+// due dates in the browser's calendar would contradict the red pills it counts.
+const { formatDue, formatters } = useFormat()
 
 const wsStore = useWorkspacesStore()
 
@@ -43,11 +48,17 @@ const props = defineProps({
   // Real board status columns [{ id, name }] for the context menu + grouping.
   statusColumns: { type: Array, default: () => [] },
   membersMap: { type: Object, default: () => ({}) },
+  // Workspace GitLab roster [{ gl_username, gl_name, … }] — names the assignee lane
+  // of a person who has no Tessera account (their cards carry only a login).
+  gitlabMembers: { type: Array, default: () => [] },
   tagsMap: { type: Object, default: () => ({}) },
   // Swimlane grouping comes from the shared composer-bar (no duplicate control):
   // 'status' | 'tag' (+ tagPrefix) | 'assignee' | 'none'.
   groupMode: { type: String, default: 'assignee' },
   tagPrefix: { type: String, default: '' },
+  // canonical tag prefix → friendly label, so a tag lane reads the way the board's
+  // tag column does (utils/tagGroups `tagLaneLabel`).
+  tagPrefixNames: { type: Object, default: () => ({}) },
   projectId: { type: String, default: null },
   // { parentId: [subtask, …] } — scheduled subtasks render as thin sub-bars
   // stacked inside their parent's row (no graph linking; see subBars/rowHeight).
@@ -56,8 +67,11 @@ const props = defineProps({
   milestones: { type: Array, default: () => [] },
   // boards.done_column_id — picks the «done» status glyph on the rows.
   doneColumnId: { type: String, default: null },
+  // Archive view (?archived=1): look, don't touch — no context menu, no
+  // drag-to-reschedule. Both write to the live task the archived row stands for.
+  readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed'])
+const emit = defineEmits(['open', 'changed', 'restore'])
 
 // Estimation unit/config of the project — drives every estimate the chart renders
 // (lane totals, the ghost bar, the hover card).
@@ -66,7 +80,11 @@ const estCfg = computed(() => wsStore.estimationFor(props.projectId))
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
+  // The archive's own action: this layout has no card, so the menu is the only
+  // place «Вернуть из архива» can live (see useTaskMenu).
+  onRestore: (id) => emit('restore', id),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
 // px of the fixed task/lane column (expanded; v2, #2959) — a phone keeps a slim one
@@ -107,7 +125,6 @@ const {
   bodyEl,
   dayW,
   zooming,
-  todayMs,
   tier,
   range,
   axisW,
@@ -144,18 +161,20 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   source: scheduled,
   statusColumns: toRef(props, 'statusColumns'),
   membersMap: toRef(props, 'membersMap'),
+  glMembers: toRef(props, 'gitlabMembers'),
   tagsMap: toRef(props, 'tagsMap'),
   groupMode: toRef(props, 'groupMode'),
   tagPrefix: toRef(props, 'tagPrefix'),
+  prefixNames: toRef(props, 'tagPrefixNames'),
   estCfg,
   milestones: toRef(props, 'milestones'),
+  // The lane's effort total reads a card's subtasks when the card itself carries no
+  // estimate — the same child map the sub-bars are drawn from.
+  subtasksByParent: toRef(props, 'subtasksByParent'),
 })
 
 const overdueCount = computed(
-  () =>
-    scheduled.value.filter(
-      (t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs,
-    ).length,
+  () => scheduled.value.filter((x) => isTaskOverdue(x, new Date(), formatters.value)).length,
 )
 const counters = computed(() => {
   const out = []
@@ -199,6 +218,7 @@ const barsApi = useChartBars({
   rowHeight,
   findTask,
   onChanged: () => emit('changed'),
+  readonly: () => props.readonly,
 })
 const { drag, onBarDown } = barsApi
 
@@ -230,7 +250,6 @@ onBeforeUnmount(() => {
 })
 
 // ── hover preview card ──
-const { formatDue, formatters } = useFormat()
 const hover = ref(null) // { task, x, y, above }
 let hoverTimer = null
 function onBarEnter(e, t) {

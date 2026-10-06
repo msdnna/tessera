@@ -2,11 +2,14 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/i18n"
+	"tessera/middleware"
 )
 
 // ── Boards ─────────────────────────────────────────────────
@@ -127,6 +130,42 @@ func defaultColumnKey(name string) string {
 	return ""
 }
 
+// seededColumnCaptions is what each client writes on a seeded column, per
+// language: the twin of frontend/src/locales/<lang>/board.json
+// (column.defaultName) and android/…/res/values*/strings.xml (default_column_*).
+// Adding a language to i18n.Supported means adding its arm here —
+// TestSeededColumnCaptionsCoverSupportedLanguages iterates that list.
+//
+// This is not the server localising its own output (i18n's package doc is clear
+// that clients do that): it is the reverse direction. A user typing `/move Done`
+// is echoing the caption their own screen shows them, and only the server can
+// resolve a quick action, so the server has to recognise the words the client
+// put on the card. The Russian arm duplicates defaultColumns on purpose — the
+// two are edited in different places, and the test above pins them together.
+var seededColumnCaptions = map[string]map[string]string{
+	"ru": {"todo": "К работе", "in_progress": "В процессе", "review": "На рассмотрении", "done": doneColumnName},
+	"en": {"todo": "To do", "in_progress": "In progress", "review": "In review", "done": "Done"},
+}
+
+// seededColumnKey maps a caption a client may have shown the user back to the
+// seeded column's key, in any supported language, or "" for a caption that is
+// not one of the four. Case- and space-insensitive: it matches text a human
+// retyped, not a stored value.
+func seededColumnKey(caption string) string {
+	caption = strings.TrimSpace(caption)
+	if caption == "" {
+		return ""
+	}
+	for _, lang := range i18n.Supported {
+		for key, want := range seededColumnCaptions[lang] {
+			if strings.EqualFold(want, caption) {
+				return key
+			}
+		}
+	}
+	return ""
+}
+
 // doneColumnID is the board's task-completing column, or nil when the board has
 // none. There is deliberately no rightmost-column fallback: it made clearing the
 // done column a no-op whenever that column was also the rightmost one (#2588).
@@ -183,30 +222,54 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID})
 }
 
-// GetBoard returns a single board by UUID or human-readable slug.
-func (h *API) GetBoard(c *gin.Context) {
-	// Accept either a UUID or a human-readable slug (/board/<slug> links).
+// resolveBoardParam resolves a board route's :id segment — a UUID or a
+// human-readable slug (/board/<slug> deep links) — and authorizes the caller.
+// Writes the error response itself; ok=false means the caller must return.
+//
+// The slug branch searches only workspaces the caller belongs to: board slugs
+// are unique per project, not globally (0025), so a bare slug matches several
+// boards at once and an unscoped lookup regularly answered with a stranger's
+// board — a 403 on the caller's own link, or the wrong board of a workspace they
+// happen to share. `?workspace=` is the client's hint about which one it means.
+func (h *API) resolveBoardParam(c *gin.Context) (db.Board, uuid.UUID, bool) {
 	param := c.Param("id")
 	var b db.Board
 	var err error
 	if id, perr := uuid.Parse(param); perr == nil {
 		b, err = h.q.GetBoard(c, id)
 	} else {
-		b, err = h.q.GetBoardBySlug(c, param)
+		var preferred *uuid.UUID
+		if hint, perr := uuid.Parse(c.Query("workspace")); perr == nil {
+			preferred = &hint
+		}
+		b, err = h.q.GetBoardBySlugForUser(c, db.GetBoardBySlugForUserParams{
+			UserID: middleware.CurrentUser(c), Slug: param, PreferredWorkspace: preferred,
+		})
 	}
 	if notFound(c, err) {
-		return
+		return db.Board{}, uuid.Nil, false
 	}
 	if err != nil {
 		fail(c, err)
-		return
+		return db.Board{}, uuid.Nil, false
 	}
 	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
 	if err != nil {
 		fail(c, err)
-		return
+		return db.Board{}, uuid.Nil, false
 	}
+	// Redundant for the slug branch (the query joins the membership) but not for
+	// a UUID, and it is the one place that turns a lost membership into a 403.
 	if !h.requireMember(c, wsID) {
+		return db.Board{}, uuid.Nil, false
+	}
+	return b, wsID, true
+}
+
+// GetBoard returns a single board by UUID or human-readable slug.
+func (h *API) GetBoard(c *gin.Context) {
+	b, wsID, ok := h.resolveBoardParam(c)
+	if !ok {
 		return
 	}
 	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID})
@@ -284,16 +347,28 @@ func (h *API) DeleteBoard(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	if err := h.q.DeleteBoard(c, id); err != nil {
+	// Retiring a board takes every card on it through tasks.board_id's cascade —
+	// the same deletion DeleteTask sweeps after, reached by a different gesture.
+	// Read the ids and delete in one transaction so the sweep list is exactly what
+	// the delete took, then sweep once it is committed.
+	var gone []uuid.UUID
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		if gone, err = q.TaskIDsOnBoard(c, id); err != nil {
+			return err
+		}
+		return q.DeleteBoard(c, id)
+	}); err != nil {
 		fail(c, err)
 		return
 	}
+	h.purgeTaskUploads(gone)
 	h.broadcast(wsID, "board.deleted", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
 
-// SetDoneColumn configures which column auto-completes tasks (or clears it,
-// reverting to the rightmost-column fallback, when column_id is null).
+// SetDoneColumn configures which column auto-completes tasks (or, when column_id
+// is null, leaves the board without one at all — see doneColumnID, #2588).
 func (h *API) SetDoneColumn(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -474,12 +549,27 @@ func (h *API) MoveColumn(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	prev, next, ok := h.neighborColumnPositions(c, req.BeforeID, req.AfterID)
+	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
+		return
+	}
+	prev, next, ok := h.neighborColumnPositions(c, col.BoardID, req.BeforeID, req.AfterID)
+	if !ok {
+		return
+	}
+	pos, ok := h.positionForReorder(c, prev, next,
+		func() error {
+			return h.q.RebalanceColumnPositions(c, db.RebalanceColumnPositionsParams{
+				BoardID: col.BoardID, Gap: positionGap,
+			})
+		},
+		func() (*float64, *float64, bool) {
+			return h.neighborColumnPositions(c, col.BoardID, req.BeforeID, req.AfterID)
+		})
 	if !ok {
 		return
 	}
 	updated, err := h.q.UpdateColumn(c, db.UpdateColumnParams{
-		ID: id, Name: col.Name, Color: col.Color, Position: positionBetween(prev, next),
+		ID: id, Name: col.Name, Color: col.Color, Position: pos,
 	})
 	if err != nil {
 		fail(c, err)
@@ -506,21 +596,91 @@ func (h *API) DeleteColumn(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	if err := h.q.DeleteColumn(c, id); err != nil {
+	// Read the row before the delete purely for its board: the event below is
+	// workspace-scoped, so without a board every open board in the workspace has to
+	// treat the deletion as possibly its own and re-read its columns, its cards and
+	// its board record (frontend classifyEvent → `column-purge`).
+	col, err := h.q.GetColumn(c, id)
+	if err != nil {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "column.deleted", gin.H{"id": id})
+	// Same cascade as DeleteBoard, one level down: tasks.column_id is the FK, so
+	// dropping a column deletes every card standing in it — and tasks.parent_id then
+	// takes their subtasks out of whatever columns those were dragged to.
+	// TaskIDsInColumn walks that tree, because the sweep needs the whole of it.
+	//
+	// Deleting the board's completing column also clears boards.done_column_id —
+	// that FK is ON DELETE SET NULL (migration 0007, back when NULL meant "fall
+	// back to the rightmost column"). Since #2588 NULL means the opposite: the
+	// board has NO completing column and stops closing anything (doneColumnID has
+	// no fallback, so applyMove never sets completed_at). Nothing announces that:
+	// the reader deletes «Готово», makes a new last column, drags cards into it
+	// and they just never complete. Migration 0046 repaired exactly this state for
+	// legacy NULL boards by pinning them to their rightmost column; do the same
+	// repair here, in the transaction that opens it.
+	var gone []uuid.UUID
+	var repointed *db.Board
+	if err := h.inTx(c, func(q *db.Queries) error {
+		board, err := q.GetBoard(c, col.BoardID)
+		if err != nil {
+			return err
+		}
+		// Read the pointer BEFORE the delete: afterwards NULL no longer tells a
+		// board that just lost its done column from one deliberately left without.
+		wasDone := board.DoneColumnID != nil && *board.DoneColumnID == id
+		if gone, err = q.TaskIDsInColumn(c, id); err != nil {
+			return err
+		}
+		if err = q.DeleteColumn(c, id); err != nil {
+			return err
+		}
+		if !wasDone {
+			return nil
+		}
+		// Rightmost of what is left, read through ListColumns so "rightmost" means
+		// the same column the board shows last. An empty board keeps the NULL —
+		// there is nothing to point at.
+		cols, err := q.ListColumns(c, col.BoardID)
+		if err != nil || len(cols) == 0 {
+			return err
+		}
+		last := cols[len(cols)-1].ID
+		updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: col.BoardID, DoneColumnID: &last})
+		if err != nil {
+			return err
+		}
+		repointed = &updated
+		return nil
+	}); err != nil {
+		fail(c, err)
+		return
+	}
+	h.purgeTaskUploads(gone)
+	h.broadcast(wsID, "column.deleted", gin.H{"id": id, "board_id": col.BoardID})
+	if repointed != nil {
+		h.broadcast(wsID, "board.updated", *repointed)
+	}
 	c.Status(http.StatusNoContent)
 }
 
 // neighborColumnPositions resolves the positions of the before/after columns.
 // Returns (nil, nil) bounds when an id is absent; writes 400 and returns ok=false
-// if a referenced column can't be loaded.
-func (h *API) neighborColumnPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
+// if a referenced column can't be loaded or doesn't stand on [boardID].
+//
+// The board check is the point, not a formality: every board numbers its columns
+// on its OWN float8 ladder, so a neighbour from another board contributes a
+// position that means nothing here — the moved column would land at an arbitrary
+// end of its own row. A neighbour id is client-supplied and can go stale (a drag
+// deliberately freezes the board, so a colleague's edits arrive only after the
+// drop), and `GetColumn` takes a bare id: without this, the id also answers
+// "does this column exist?" for workspaces the caller isn't a member of. Same
+// 400 either way, so the reply tells the two cases apart no better than the
+// honest one did (#2932).
+func (h *API) neighborColumnPositions(c *gin.Context, boardID uuid.UUID, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
 	if beforeID != nil {
 		col, err := h.q.GetColumn(c, *beforeID)
-		if err != nil {
+		if err != nil || col.BoardID != boardID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid before_id"})
 			return nil, nil, false
 		}
@@ -528,7 +688,7 @@ func (h *API) neighborColumnPositions(c *gin.Context, beforeID, afterID *uuid.UU
 	}
 	if afterID != nil {
 		col, err := h.q.GetColumn(c, *afterID)
-		if err != nil {
+		if err != nil || col.BoardID != boardID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid after_id"})
 			return nil, nil, false
 		}

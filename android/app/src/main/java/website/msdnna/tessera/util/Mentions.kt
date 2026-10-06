@@ -51,9 +51,19 @@ data class MentionItem(
  * roster row pointing back at them; a member with no GitLab account keeps
  * inserting their name. A GitLab user already mapped to a member is folded into
  * that member rather than listed twice.
+ *
+ * "Pointing back at them" means *either* link the server reports: a GitLab row
+ * carries the Tessera user in `tessera_user_id` when that person signed in
+ * through GitLab, and in `tessera_user_id_pat` when they connected a personal
+ * access token instead. Reading only the first one left PAT-linked people
+ * inserting their own name — which notifies them in Tessera but resolves to
+ * nobody once the comment is pushed to GitLab — while their roster row was
+ * listed a second time as an outsider, whose handle notifies nobody at all.
  */
 fun buildMentionItems(members: List<Member>, gitlabMembers: List<GitlabMember>): List<MentionItem> {
-    val glByUser = gitlabMembers.filter { !it.tesseraUserId.isNullOrBlank() }.associateBy { it.tesseraUserId!! }
+    fun GitlabMember.linkedUserId(): String? =
+        tesseraUserId?.takeIf { it.isNotBlank() } ?: tesseraUserIdPat?.takeIf { it.isNotBlank() }
+    val glByUser = gitlabMembers.mapNotNull { g -> g.linkedUserId()?.let { it to g } }.toMap()
     val memberIds = members.map { it.userId }.toSet()
     val tessera = members.map { m ->
         val login = m.glUsername.ifBlank { glByUser[m.userId]?.glUsername.orEmpty() }
@@ -68,7 +78,7 @@ fun buildMentionItems(members: List<Member>, gitlabMembers: List<GitlabMember>):
         )
     }
     val gitlabOnly = gitlabMembers
-        .filter { it.tesseraUserId == null || it.tesseraUserId !in memberIds }
+        .filter { it.linkedUserId().let { uid -> uid == null || uid !in memberIds } }
         .map {
             MentionItem(
                 insert = it.glUsername,
@@ -79,6 +89,143 @@ fun buildMentionItems(members: List<Member>, gitlabMembers: List<GitlabMember>):
             )
         }
     return tessera + gitlabOnly
+}
+
+/**
+ * Markup that disappears into a tag, leaving the '@' at the start of a text node:
+ * emphasis/strike delimiters, a link label's bracket, an escape. The renderer sees
+ * `<em>@Иван`, i.e. the '>' its own boundary class allows.
+ */
+private const val MARKUP_LEAD = "*_~[\\"
+
+/** The closing half of [MARKUP_LEAD]: what the same markup leaves on the right. */
+private const val MARKUP_TAIL = "*_~]"
+
+/**
+ * The workspace members a piece of content mentions, in the order they are written
+ * and without repeats — the list handed to the server so those people are notified.
+ *
+ * The promise being kept is that **the chip the reader sees is the person told**.
+ * Scanning the source for `"@" + name` broke it in both directions: «@Иван» inside
+ * a fenced block or `mail@root` in a sentence drew no chip yet notified, while a
+ * member mentioned by the GitLab login the picker inserts on their behalf (the
+ * login can come from the GitLab roster rather than their own member row) drew a
+ * resolved chip yet notified nobody.
+ *
+ * So this reproduces what `highlightMentions` in `RichContent.kt` draws: code is
+ * masked out ([codeMasked]), the '@' has to open a token (start of text,
+ * whitespace, '(' — or markup that becomes a tag), and the longest handle wins.
+ * There is no Kotlin markdown parser here (the app's copy is JS inside the
+ * WebView) and a comment is posted without one, so the rules are walked instead,
+ * pinned by a table measured off the renderer in `MentionsTest`.
+ *
+ * Rows with no [MentionItem.avatarUserId] — GitLab-only users — drop out on their
+ * own: the handle stays in the text for GitLab to resolve on write-back, and
+ * Tessera has nobody to notify.
+ */
+fun mentionIdsIn(src: String, items: List<MentionItem>): List<String> {
+    if (src.isBlank() || items.isEmpty()) return emptyList()
+    val text = codeMasked(src)
+    val handles = items.flatMap { listOf(it.insert, it.display) }
+        .filter { it.isNotBlank() }
+        .distinct()
+        .sortedByDescending { it.length }
+    val out = LinkedHashSet<String>()
+    var i = 0
+    while (i < text.length) {
+        val at = text.indexOf('@', i)
+        if (at < 0) break
+        // Markup that opened the token closes it again on the other side, and the
+        // renderer sees a tag there rather than text — `_@Иван_` is `<em>@Иван</em>`.
+        val afterMarkup = at > 0 && text[at - 1] in MARKUP_LEAD
+        val handle = if (opensMention(text, at)) {
+            handles.firstOrNull {
+                text.startsWith(it, at + 1) && handleEndsAt(text, at + 1 + it.length, afterMarkup)
+            }
+        } else {
+            null
+        }
+        handle?.let { resolveMention(items, it)?.avatarUserId?.let(out::add) }
+        i = at + 1 + (handle?.length ?: 0)
+    }
+    return out.toList()
+}
+
+/**
+ * Whom an edit ADDED: the members [after] mentions, minus those [before] already
+ * did — the list `PATCH /comments/:id` is handed.
+ *
+ * Only the difference travels, and it has to be computed here. The server keeps
+ * the previous body as plain text, without the roster a handle becomes a chip
+ * against, so it can tell neither who was mentioned before nor who is now;
+ * sending the whole set instead would ping everyone named in the comment again
+ * every time its author fixed a typo. Sending nothing — what the edit path did
+ * until #2932 — breaks the promise the chip makes: the edit composer offers the
+ * same @-popup the main one does, so «@Иван, посмотри» added by an edit looks
+ * exactly like a mention Иван was told about.
+ */
+fun addedMentionIds(before: String, after: String, items: List<MentionItem>): List<String> {
+    val was = mentionIdsIn(before, items).toSet()
+    return mentionIdsIn(after, items).filterNot(was::contains)
+}
+
+/**
+ * True when the handle that stops at [i] really ends there rather than running on
+ * into the word — the right-hand boundary the prefix match above lacks.
+ *
+ * Without it the longest-first scan chips a member found in the middle of someone
+ * else's handle: «@Ивановна» resolves to the member «Иван» and notifies them, for
+ * a mention the reader never wrote. A dot ends a handle only when nothing word-like
+ * follows, so «@ivan.petrov» is not «@ivan» while «@Иван.» closing a sentence still
+ * counts (#2932).
+ */
+private fun handleEndsAt(text: String, i: Int, afterMarkup: Boolean): Boolean {
+    // A delimiter run only closes markup when the markup was opened on the other
+    // side ([MARKUP_LEAD]): `_@Иван_` ends in a tag, while a lone trailing '_' in
+    // `@Иван_` is part of the word, exactly as the renderer's regex reads them.
+    if (afterMarkup) {
+        var j = i
+        while (j < text.length && text[j] in MARKUP_TAIL) j++
+        if (j > i && !isHandleChar(text.getOrNull(j))) return true
+    }
+    val c = text.getOrNull(i) ?: return true
+    if (isHandleChar(c)) return false
+    return !(c == '.' && isHandleChar(text.getOrNull(i + 1)))
+}
+
+private fun isHandleChar(c: Char?): Boolean = c != null && (c.isLetterOrDigit() || c == '_' || c == '-')
+
+/** True when the '@' at [at] starts a token the renderer would chip. */
+private fun opensMention(text: String, at: Int): Boolean {
+    var i = at - 1
+    // A delimiter run only opens markup when itself preceded by a boundary:
+    // `_@Иван_` is emphasis, `mail_@root` is one plain word.
+    while (i >= 0 && text[i] in MARKUP_LEAD) i--
+    if (i < 0) return true
+    val c = text[i]
+    // '>' and '|' close a block or table cell — the '@' again opens its text.
+    return c.isWhitespace() || c == '(' || c == '>' || c == '|'
+}
+
+/** An open `@`-query in the composer: [start] is the index of the '@', [query] what follows it. */
+data class MentionQuery(val start: Int, val query: String)
+
+// Unlike the `/`-trigger a mention may open anywhere after whitespace, so this
+// one is not anchored to the start of a line — see [detectSlashQuery].
+//
+// `\z`, not `$`: java's `$` also matches *before* a trailing newline, so a handle
+// the user has already finished with Enter would keep the popup open — and
+// [MentionQuery.start], measured back from the caret, would land on the newline
+// instead of the '@'. JS has no such rule, which is why the web regex in
+// `MarkdownEditor.vue` can end in `$`.
+private val MENTION_RE = Regex("(^|\\s)@([^\\s@]*)\\z")
+
+/** Finds an open `@`-query in the text up to the caret, or null. */
+fun detectMentionQuery(upto: String?): MentionQuery? {
+    val text = upto ?: return null
+    val m = MENTION_RE.find(text) ?: return null
+    val query = m.groupValues[2]
+    return MentionQuery(start = text.length - query.length - 1, query = query)
 }
 
 /**

@@ -70,4 +70,27 @@ describe('homeSections', () => {
     expect(w.days[2].today).toBe(true)
     expect([w.done, w.total]).toEqual([1, 3])
   })
+
+  // The reader's calendar, not the browser's (#2932): with useFormat's formatters
+  // the day edges follow the profile timezone, the way isTaskOverdue reads them.
+  it('takes the day edges from the formatters when given', () => {
+    // A synthetic zone where it is already Thursday 8 Oct while the browser says Wed 7.
+    const fmt = {
+      today: () => ({ year: 2026, month: 9, day: 8 }),
+      parts: (iso) => {
+        const d = new Date(iso)
+        return { year: d.getUTCFullYear(), month: d.getUTCMonth(), day: d.getUTCDate() }
+      },
+    }
+    const s = buildSections(
+      [task('wed', { due_date: allDay(7) }), task('thu', { due_date: allDay(8) })],
+      {
+        now,
+        firstDayOfWeek: 1,
+        fmt,
+      },
+    )
+    expect(s.overdue.map((t) => t.id)).toEqual(['wed'])
+    expect(s.today.map((t) => t.id)).toEqual(['thu'])
+  })
 })

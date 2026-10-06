@@ -3,8 +3,10 @@ INSERT INTO projects (workspace_id, group_id, name, color, icon, slug, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
+-- ListProjects: created_at/id break position ties — see ListColumns
+-- (boards.sql); the sidebar orders itself by the same midpoint scheme.
 -- name: ListProjects :many
-SELECT * FROM projects WHERE workspace_id = $1 ORDER BY position;
+SELECT * FROM projects WHERE workspace_id = $1 ORDER BY position, created_at, id;
 
 -- name: GetProject :one
 SELECT * FROM projects WHERE id = $1;
@@ -44,6 +46,21 @@ SET group_id = $2, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- RebalanceProjectPositions respaces a workspace's projects onto a fresh
+-- gap * 1,2,3… ladder, keeping the order they already had. Workspace-scoped for
+-- the same reason as the group one: ListProjects orders every project of the
+-- workspace by position and the client groups them, so respacing all of them
+-- preserves each group's sibling order. MoveProject calls it when the midpoint
+-- collapses onto a neighbour.
+-- name: RebalanceProjectPositions :exec
+UPDATE projects t
+SET position = ordered.rn * sqlc.arg(gap)::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM projects WHERE workspace_id = sqlc.arg(workspace_id)::uuid
+) ordered
+WHERE t.id = ordered.id;
+
 -- TransferProject moves a project to another workspace, dropping it at the root
 -- (ungrouped) since groups belong to the source workspace. Denormalized
 -- workspace_id on tags/tag_prefixes/notes is re-stamped separately in the same tx.
@@ -52,6 +69,27 @@ UPDATE projects
 SET workspace_id = $2, group_id = NULL, position = $3, updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- CountProjectTasks counts every task on the project's boards — subtasks and
+-- archived rows included, since both carry a number and an archived task can be
+-- restored into a workspace that has since reused it.
+-- name: CountProjectTasks :one
+SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1;
+
+-- RenumberProjectTasks re-stamps the project's tasks with a block of numbers
+-- reserved from the target workspace (base is the number *before* the block).
+-- Ordering by the old number keeps the re-stamp a translation rather than a
+-- shuffle: a task that was #7 where it came from still sorts before the one that
+-- was #9. created_at/id only break ties for rows predating the number column.
+-- name: RenumberProjectTasks :exec
+UPDATE tasks SET number = sqlc.arg(base)::bigint + ordered.rn
+FROM (
+    SELECT t.id, row_number() OVER (ORDER BY t.number NULLS LAST, t.created_at, t.id) AS rn
+    FROM tasks t
+    JOIN boards b ON b.id = t.board_id
+    WHERE b.project_id = $1
+) AS ordered
+WHERE tasks.id = ordered.id;
 
 -- name: DeleteProject :exec
 DELETE FROM projects WHERE id = $1;

@@ -6,8 +6,8 @@
 import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { NSpin, useMessage } from 'naive-ui'
-import { CheckmarkDoneOutline } from '@vicons/ionicons5'
+import { NSpin, NButton, useMessage } from 'naive-ui'
+import { CheckmarkDoneOutline, CloudOfflineOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi, reminders as remApi, tasks as tasksApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
@@ -32,14 +32,17 @@ import HomeTaskList from '@/components/home/HomeTaskList.vue'
 import HomeSideCards from '@/components/home/HomeSideCards.vue'
 
 const { t } = useI18n()
-const router = useRouter()
 const message = useMessage()
+const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
 const palette = usePaletteStore()
-const { formatDate, formatTime, firstDayOfWeek } = useFormat()
+const { formatDate, formatTime, firstDayOfWeek, formatters } = useFormat()
 
 const loading = ref(false)
+// Non-empty = the last load was refused (#2932). Kept apart from the toast: the
+// toast is gone in seconds, while the list's place has to say why it is empty.
+const loadError = ref('')
 const tasks = ref([])
 const tags = ref([])
 const members = ref([])
@@ -48,10 +51,31 @@ const reminders = ref([])
 const meId = computed(() => auth.user?.id)
 const now = ref(new Date())
 
+// Only the newest request may write to the page. A workspace switch abandons the
+// one before it, and that one is still on its way: without the comparison below
+// the space the reader left decides the screen by finishing last — its tasks
+// under the new space's name, and clicking a row routes to a board outside the
+// current scope. Nothing refetches them, because the switch has already happened.
+let loadSeq = 0
+// The workspace the rows on screen were read for, so a failure can tell «this
+// list is stale» from «this list is fine, only its refresh went missing».
+let loadedWs = ''
+
+// Разобрать экран: показывать нечего, и ни одна плитка больше ни за что не отвечает.
+function clearPage() {
+  tasks.value = []
+  tags.value = []
+  members.value = []
+  reminders.value = []
+  loadedWs = ''
+}
+
 async function load() {
   const wsId = wsStore.currentId
+  const mine = ++loadSeq
   if (!wsId) return
   loading.value = true
+  loadError.value = ''
   try {
     const [tk, tg, mem, rem] = await Promise.allSettled([
       wsApi.tasks(wsId, { include_subtasks: 1 }),
@@ -59,14 +83,28 @@ async function load() {
       wsApi.members(wsId),
       remApi.list(),
     ])
+    // A workspace switch abandoned this request: the space the reader left must
+    // not decide the screen by finishing last (#2932).
+    if (mine !== loadSeq) return
     const ok = (r) => (r.status === 'fulfilled' ? r.value.data || [] : [])
+    if (tk.status === 'rejected') {
+      // A refused task list is not «all clear»: say why in the list's place, and
+      // keep this space's rows only if they are this space's (#2932).
+      // The api layer hands over an Error whose message is already humanized.
+      loadError.value = tk.reason?.message || humanizeError('')
+      message.error(loadError.value)
+      if (loadedWs !== wsId) clearPage()
+      return
+    }
     tasks.value = ok(tk)
     tags.value = ok(tg)
     members.value = ok(mem)
     reminders.value = ok(rem)
     now.value = new Date()
+    loadedWs = wsId
   } finally {
-    loading.value = false
+    // Only the request that lit the spinner puts it out.
+    if (mine === loadSeq) loading.value = false
   }
 }
 
@@ -89,7 +127,11 @@ const dateLine = computed(() =>
 const fdow = computed(() => ((firstDayOfWeek.value ?? 0) + 1) % 7)
 const mine = computed(() => mineOf(tasks.value, meId.value))
 const sectionMap = computed(() =>
-  buildSections(mine.value, { now: now.value, firstDayOfWeek: fdow.value }),
+  buildSections(mine.value, {
+    now: now.value,
+    firstDayOfWeek: fdow.value,
+    fmt: formatters.value,
+  }),
 )
 const sections = computed(() =>
   SECTION_KEYS.map((key) => ({ key, tasks: sectionMap.value[key] })).filter((s) => s.tasks.length),
@@ -215,8 +257,15 @@ watch(() => wsStore.currentId, load)
 
         <div class="home-grid">
           <div class="home-main">
+            <!-- A refusal is not «empty»: the list's place explains it and offers
+                 a re-read (#2932). -->
+            <EmptyState v-if="loadError && !loading" :icon="CloudOfflineOutline" :text="loadError">
+              <n-button size="small" secondary @click="load">
+                {{ t('common.action.retry') }}
+              </n-button>
+            </EmptyState>
             <HomeTaskList
-              v-if="sections.length"
+              v-else-if="sections.length"
               :sections="sections"
               :folded="folded"
               :selected-id="selectedId"

@@ -25,6 +25,7 @@ import TesseraIcon from '../TesseraIcon.vue'
 import TaskLayoutSwitch from '../TaskLayoutSwitch.vue'
 import HelpHint from '../help/HelpHint.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
+import PopMenu from '../PopMenu.vue'
 
 const props = defineProps({
   task: { type: Object, default: null },
@@ -112,7 +113,8 @@ defineExpose({ closeMenus })
           <span v-if="boardName" class="tmh-crumb">{{ boardName }}</span>
         </button>
       </template>
-      <div class="menu move-menu">
+      <!-- PopMenu drives the rows from the keyboard (#2932). -->
+      <PopMenu class="move-menu">
         <div class="move-hint">{{ t('task.head.moveHint') }}</div>
         <div v-for="p in store.projects" :key="p.id">
           <div class="menu-item" @click="toggleProj(p.id)">
@@ -138,7 +140,7 @@ defineExpose({ closeMenus })
             }}</span>
           </div>
         </div>
-      </div>
+      </PopMenu>
     </n-popover>
     <n-icon
       v-if="(project || boardName) && task?.number"

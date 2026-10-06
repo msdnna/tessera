@@ -12,6 +12,35 @@ import (
 	"github.com/google/uuid"
 )
 
+const countDocumentAssetRefs = `-- name: CountDocumentAssetRefs :one
+SELECT (
+    (SELECT count(*) FROM documents WHERE content::text LIKE $1::text)
+  + (SELECT count(*) FROM document_templates WHERE content::text LIKE $1::text)
+  + (SELECT count(*) FROM document_versions WHERE content::text LIKE $1::text)
+)::bigint
+`
+
+// CountDocumentAssetRefs counts the bodies that still embed images belonging to
+// one document — the guard in front of deleting its directory.
+//
+// A document's images are stored under its own id and referenced only by the src
+// attributes inside a body, with no row of their own. Usually that owner is the
+// only body pointing there, but not always: saving a document as a template
+// copies its content verbatim (signed URLs included), and so does creating a
+// document from that template, so one directory can back a whole family. The
+// needle is therefore matched against all three places a body can live, with no
+// workspace filter — a transferred project carries its documents across the
+// boundary while the URLs keep naming the original document.
+//
+// Called after the delete, so the document's own row and its versions (cascade)
+// are already gone and need no exclusion.
+func (q *Queries) CountDocumentAssetRefs(ctx context.Context, needle string) (int64, error) {
+	row := q.db.QueryRow(ctx, countDocumentAssetRefs, needle)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countDocumentChildren = `-- name: CountDocumentChildren :one
 SELECT count(*) FROM documents WHERE parent_id = $1
 `
@@ -80,27 +109,86 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 	return i, err
 }
 
-const deleteDocumentSubtree = `-- name: DeleteDocumentSubtree :exec
+const deleteDocumentSubtree = `-- name: DeleteDocumentSubtree :many
 WITH RECURSIVE down AS (
     SELECT a.id FROM documents a WHERE a.id = $1
-    UNION ALL
+    UNION
     SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id
 )
-DELETE FROM documents WHERE documents.id IN (SELECT id FROM down)
+DELETE FROM documents WHERE documents.id IN (SELECT id FROM down) RETURNING documents.id
 `
 
 // DeleteDocumentSubtree removes a document together with everything nested
 // below it. One statement, so the parent_id RESTRICT never sees an intermediate
-// state with a dangling child.
-func (q *Queries) DeleteDocumentSubtree(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteDocumentSubtree, id)
-	return err
+// state with a dangling child. UNION for the cycle safety described above — a
+// delete that never returns is the worst place to meet a ring.
+// Returns the ids it actually removed, which is what the image sweep needs: the
+// files under documents/<id>/ are named by nothing but the bodies this statement
+// just erased, and the Go-side walk cannot stand in for the list (it is filtered
+// by workspace, while this recursion is not — see
+// DetachDocumentParentsAcrossWorkspaces below).
+func (q *Queries) DeleteDocumentSubtree(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteDocumentSubtree, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const detachDocumentParentsAcrossWorkspaces = `-- name: DetachDocumentParentsAcrossWorkspaces :execrows
+UPDATE documents d
+SET parent_id = NULL
+WHERE d.parent_id IS NOT NULL
+  AND (
+        d.project_id = $1
+     OR (SELECT p.project_id FROM documents p WHERE p.id = d.parent_id) = $1
+      )
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT p.workspace_id FROM documents p WHERE p.id = d.parent_id)
+`
+
+// DetachDocumentParentsAcrossWorkspaces clears parent_id on every nesting
+// touching the given project whose two ends now sit in different workspaces —
+// the state a project transfer leaves behind, since a document's nesting and
+// its project are independent columns and only one of the pair travels.
+// parentInWorkspace refuses such a pair outright ("parent belongs to another
+// workspace"), so it can only appear when the boundary moves under an existing
+// nesting, and nothing downstream expects it: CountDocumentChildren and
+// DeleteDocumentSubtree walk parent_id with no workspace filter (an undeletable
+// parent with an invisible child, and a ?recursive=true that deletes another
+// workspace's documents), while ListDocuments is per workspace and the tree is
+// assembled from parent_id client-side, so a child whose parent is not in the
+// list renders nowhere at all. Detaching surfaces it at the root of the
+// workspace that now owns it, which is where a document with no parent belongs.
+//
+// updated_at is deliberately left alone: it is the optimistic-concurrency token
+// UpdateDocumentContent checks, and bumping it for a change that never touched
+// the body would answer 409 to the next save of whoever has the document open.
+// Returns the number of nestings detached.
+func (q *Queries) DetachDocumentParentsAcrossWorkspaces(ctx context.Context, projectID *uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, detachDocumentParentsAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const documentAncestorIDs = `-- name: DocumentAncestorIDs :many
 WITH RECURSIVE up AS (
     SELECT a.id, a.parent_id FROM documents a WHERE a.id = $1
-    UNION ALL
+    UNION
     SELECT d.id, d.parent_id FROM documents d JOIN up ON d.id = up.parent_id
 )
 SELECT id FROM up
@@ -112,8 +200,76 @@ SELECT id FROM up
 // table. The membership test is done in Go: sqlc's analyzer cannot resolve a
 // recursive CTE referenced from inside a subquery, so EXISTS(...) here does not
 // generate.
+//
+// UNION, not UNION ALL, and for the same reason as the task and project-group
+// walks: the guard keeps the tree acyclic, but a ring that slips in anyway (two
+// concurrent re-parents racing the check, an import, a manual fix) makes UNION ALL
+// recurse forever, while UNION drops the repeat and stops (#2932).
 func (q *Queries) DocumentAncestorIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, documentAncestorIDs, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const documentIDsInProject = `-- name: DocumentIDsInProject :many
+SELECT id FROM documents WHERE project_id = $1
+`
+
+// DocumentIDsInProject names the documents a project transfer is about to carry
+// into another workspace, so their live rooms can be dropped the way a workspace
+// delete drops the ones its cascade takes (DocumentIDsInWorkspace).
+//
+// Read inside the transfer's transaction: project_id does not move, so the list
+// is the same before and after the re-stamp, but reading it there is what makes
+// it the list the transfer actually took.
+func (q *Queries) DocumentIDsInProject(ctx context.Context, projectID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, documentIDsInProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const documentIDsInWorkspace = `-- name: DocumentIDsInWorkspace :many
+SELECT id FROM documents WHERE workspace_id = $1
+`
+
+// DocumentIDsInWorkspace names the documents a workspace delete is about to take
+// by cascade (documents.workspace_id is ON DELETE CASCADE), so their image
+// directories can be swept the way DeleteDocument sweeps its own (purgeDocAssets).
+//
+// Read before the delete and in the same transaction, for the reason
+// TaskIDsInWorkspace is: DELETE ... RETURNING answers for the rows of the table it
+// names, never for the ones the foreign keys take afterwards — and a document's
+// images are named by nothing but the body that is leaving with it.
+func (q *Queries) DocumentIDsInWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, documentIDsInWorkspace, workspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -343,6 +499,38 @@ func (q *Queries) ListDocumentsByProject(ctx context.Context, arg ListDocumentsB
 			&i.CreatedAt,
 			&i.UpdatedAt,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const projectDocumentSlugs = `-- name: ProjectDocumentSlugs :many
+SELECT id, slug FROM documents WHERE project_id = $1 ORDER BY created_at
+`
+
+type ProjectDocumentSlugsRow struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+}
+
+// ProjectDocumentSlugs lists the addresses a project's documents occupy. A
+// document's slug is unique per workspace, so a transfer has to know them to
+// free the ones the target workspace already uses.
+func (q *Queries) ProjectDocumentSlugs(ctx context.Context, projectID *uuid.UUID) ([]ProjectDocumentSlugsRow, error) {
+	rows, err := q.db.Query(ctx, projectDocumentSlugs, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectDocumentSlugsRow
+	for rows.Next() {
+		var i ProjectDocumentSlugsRow
+		if err := rows.Scan(&i.ID, &i.Slug); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

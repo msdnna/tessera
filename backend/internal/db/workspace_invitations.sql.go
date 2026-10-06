@@ -51,13 +51,23 @@ func (q *Queries) CreateInvitation(ctx context.Context, arg CreateInvitationPara
 	return i, err
 }
 
-const deleteInvitation = `-- name: DeleteInvitation :exec
-DELETE FROM workspace_invitations WHERE id = $1
+const deleteInvitation = `-- name: DeleteInvitation :execrows
+DELETE FROM workspace_invitations WHERE id = $1 AND workspace_id = $2
 `
 
-func (q *Queries) DeleteInvitation(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteInvitation, id)
-	return err
+type DeleteInvitationParams struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// Scoped by workspace: the caller's right to revoke was checked against the
+// workspace in the URL, so the invitation has to belong to that same one.
+func (q *Queries) DeleteInvitation(ctx context.Context, arg DeleteInvitationParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteInvitation, arg.ID, arg.WorkspaceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const getInvitationByHash = `-- name: GetInvitationByHash :one

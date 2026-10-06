@@ -72,32 +72,15 @@ class StatusTest {
     }
 
     @Test
-    fun `columnTail finds the highest position in the target column, self excluded`() {
-        val tasks = listOf(
-            task("t1", "a", position = 10.0),
-            task("t2", "a", position = 30.0),
-            task("t3", "a", position = 20.0),
-            task("t4", "b", position = 99.0),
-        )
-        assertEquals("t2", columnTail(tasks, "a", selfId = null))
-        // The moved task never becomes its own neighbour.
-        assertEquals("t3", columnTail(tasks, "a", selfId = "t2"))
-        assertEquals("t4", columnTail(tasks, "b", selfId = null))
-        // Empty target column / unknown column → no anchor.
-        assertNull(columnTail(tasks, "c", selfId = null))
-        assertNull(columnTail(tasks, null, selfId = null))
-        assertNull(columnTail(emptyList(), "a", selfId = null))
-    }
-
-    @Test
-    fun `moveNeighbors appends a top-level task to the column tail`() {
+    fun `moveNeighbors names no neighbour for a top-level card`() {
+        // The regression: the tail was picked from the board's loaded cards, which
+        // under a sprint scope are a slice of the column. Anything named here is one
+        // card out of that slice, and beforeId alone lands the card at prev + 65536 —
+        // the next card's slot on an untouched ladder. Only the server sees the whole
+        // column, so the modal names nothing and lets it append.
         val board = listOf(task("t1", "a", position = 10.0), task("t2", "b", position = 20.0))
-        // Never bare nulls on a populated board: positionBetween(nil, nil) = 65536
-        // would drop the card near the top of the target column.
-        assertEquals(
-            MoveNeighbors(beforeId = "t2"),
-            moveNeighbors("t1", parentId = null, targetColumnId = "b", siblings = emptyList(), topLevelTasks = board),
-        )
+        assertEquals(MoveNeighbors(), moveNeighbors("t1", parentId = null, siblings = emptyList()))
+        assertEquals(MoveNeighbors(), moveNeighbors("t1", parentId = null, siblings = board))
     }
 
     @Test
@@ -105,7 +88,7 @@ class StatusTest {
         val subs = listOf(task("s1", "a", parentId = "p"), task("s2", "a", parentId = "p"))
         assertEquals(
             MoveNeighbors(beforeId = "s1"),
-            moveNeighbors("s2", parentId = "p", targetColumnId = "b", siblings = subs, topLevelTasks = emptyList()),
+            moveNeighbors("s2", parentId = "p", siblings = subs),
         )
     }
 }

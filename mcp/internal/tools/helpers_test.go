@@ -31,18 +31,26 @@ func TestDueString(t *testing.T) {
 	}
 }
 
+// TestIsOverdue checks that the listing's flag is the queue's rule and not a
+// second opinion (rank.IsOverdue owns the day-granular semantics, and its own
+// tests pin the boundaries). The offsets here are whole days on purpose: an hour
+// either side of noon is the *same* day, which is not late.
 func TestIsOverdue(t *testing.T) {
 	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
-	past := now.Add(-time.Hour)
-	future := now.Add(time.Hour)
+	yesterday := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
+	today := time.Date(2026, 7, 30, 0, 0, 0, 0, time.UTC)
+	tomorrow := time.Date(2026, 7, 31, 0, 0, 0, 0, time.UTC)
 
-	if !isOverdue(model.Task{DueDate: &past}, now) {
+	if !isOverdue(model.Task{DueDate: &yesterday}, now) {
 		t.Error("past due incomplete task should be overdue")
 	}
-	if isOverdue(model.Task{DueDate: &future}, now) {
+	if isOverdue(model.Task{DueDate: &today}, now) {
+		t.Error("a task due today is due, not late")
+	}
+	if isOverdue(model.Task{DueDate: &tomorrow}, now) {
 		t.Error("future due task is not overdue")
 	}
-	if isOverdue(model.Task{DueDate: &past, CompletedAt: &past}, now) {
+	if isOverdue(model.Task{DueDate: &yesterday, CompletedAt: &yesterday}, now) {
 		t.Error("completed task is never overdue")
 	}
 	if isOverdue(model.Task{}, now) {
@@ -52,7 +60,8 @@ func TestIsOverdue(t *testing.T) {
 
 func TestSummarize(t *testing.T) {
 	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
-	past := now.Add(-time.Hour)
+	// A day behind, not an hour: overdue is counted by day (rank.IsOverdue).
+	past := time.Date(2026, 7, 29, 0, 0, 0, 0, time.UTC)
 	num := int64(42)
 	est := 3.5
 	glURL := "https://gitlab.example/issues/1"
@@ -68,7 +77,7 @@ func TestSummarize(t *testing.T) {
 	if s.PriorityLabel != "high" || s.Column != "В процессе" || !s.Overdue {
 		t.Fatalf("summary basics: %+v", s)
 	}
-	if s.EstimateHours == nil || *s.EstimateHours != 3.5 || s.AssigneeCount != 2 {
+	if s.Estimate == nil || *s.Estimate != 3.5 || s.AssigneeCount != 2 {
 		t.Fatalf("summary numerics: %+v", s)
 	}
 	// Only the resolvable tag id makes it into the names list.
@@ -160,6 +169,7 @@ func TestBlockedTaskIDs(t *testing.T) {
 			{Kind: "blocks", TaskID: "t3", RelatedTaskID: "t4"},
 			{Kind: "relates", TaskID: "t5", RelatedTaskID: "t6"},
 		},
+		"/api/boards/b1/subtasks": []model.Task{},
 	}
 	c := fakeAPI(t, routes)
 	tasks := []model.Task{{ID: "t1"}, {ID: "t2"}, {ID: "t3", CompletedAt: &done}, {ID: "t4"}}
@@ -175,5 +185,45 @@ func TestBlockedTaskIDs(t *testing.T) {
 	}
 	if blocked["t5"] || blocked["t6"] {
 		t.Error("relates edges must not gate work")
+	}
+}
+
+// TestBlockedTaskIDsOffBoardBlockers pins the two kinds of blocker the card list
+// does not contain. GET /boards/:id/tasks is top-level and active only, while the
+// dependency graph returns every edge whose endpoints sit on the board — so a
+// subtask blocker and an archived blocker both arrive as ids nobody can look up.
+// Reading a missing id off the completion map answers "open", which is the one
+// answer that must not be guessed: it gates the dependent task forever.
+func TestBlockedTaskIDsOffBoardBlockers(t *testing.T) {
+	done := time.Now()
+	routes := map[string]any{
+		"/api/boards/b1/dependencies": []model.Dependency{
+			{Kind: "blocked_by", TaskID: "t1", RelatedTaskID: "s1"},   // done subtask
+			{Kind: "blocked_by", TaskID: "t2", RelatedTaskID: "s2"},   // open subtask
+			{Kind: "blocked_by", TaskID: "t3", RelatedTaskID: "gone"}, // archived away
+		},
+		// The board's subtasks, the same shape the kanban loads them in.
+		"/api/boards/b1/subtasks": []model.Task{
+			{ID: "s1", CompletedAt: &done},
+			{ID: "s2"},
+		},
+	}
+	c := fakeAPI(t, routes)
+	tasks := []model.Task{{ID: "t1"}, {ID: "t2"}, {ID: "t3"}}
+	blocked, err := blockedTaskIDs(context.Background(), c, "b1", tasks)
+	if err != nil {
+		t.Fatalf("blockedTaskIDs: %v", err)
+	}
+	if blocked["t1"] {
+		t.Error("t1 should be free — its blocker is a subtask that is done")
+	}
+	if !blocked["t2"] {
+		t.Error("t2 should be blocked — its blocker is a subtask that is still open")
+	}
+	// An archived blocker is off the board by the user's own hand; the Gantt drops
+	// such an edge too (web dependencyOrder.topoByDeps ignores edges touching a
+	// task it was not given), so it must not gate work here either.
+	if blocked["t3"] {
+		t.Error("t3 should be free — its blocker was archived off the board")
 	}
 }

@@ -24,7 +24,18 @@ data class GitlabRule(
     @SerializedName("action") val action: String = "tag",
     @SerializedName("value_map") val valueMap: Map<String, String>? = null,
     @SerializedName("keep_prefix") val keepPrefix: Boolean = false,
-)
+) {
+    /**
+     * Is this a prefix rule? Пустой [matchType] — это prefix, а не «ни то ни сё»:
+     * так его читает сам движок правил на сервере (`gitlab.Rule.matches`: всё, что
+     * не `"regex"`, разбирается как префикс), так же его читает веб
+     * (`utils/tagGroups.js`: `(r.match_type || 'prefix')`). Поле приходит без
+     * omitempty, поэтому правило, записанное в JSONB без типа, доезжает сюда
+     * пустой строкой, а не отсутствующим ключом — дефолт конструктора его не
+     * закрывает.
+     */
+    val isPrefixMatch: Boolean get() = matchType.isBlank() || matchType == "prefix"
+}
 
 /** The generic label rule engine config (mirrors backend `gitlab.Rules`). */
 data class GitlabRules(

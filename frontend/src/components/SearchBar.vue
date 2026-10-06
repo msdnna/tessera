@@ -9,6 +9,7 @@ import {
   DocumentTextOutline,
   DocumentsOutline,
   HelpCircleOutline,
+  AlertCircleOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
@@ -28,8 +29,22 @@ const board = useBoardViewStore()
 const q = ref('')
 const open = ref(false)
 const loading = ref(false)
-const results = ref({ tasks: [], notes: [] })
+const results = ref({ tasks: [], notes: [], documents: [] })
+// Which kinds the server had to cut short. Sent per kind because a term can fill
+// the task page while matching two notes, and a blanket "there is more" would
+// then point at the wrong list.
+const more = ref({ tasks: false, notes: false, documents: false })
+// Why the last search produced nothing, when the reason was not "nothing
+// matched". Held separately from `results` so the panel can tell the two apart:
+// see the template, where an empty result set with an error is a failure notice
+// and without one is "нашлось ничего".
+const error = ref('')
 const inputRef = ref(null)
+
+const EMPTY = () => ({ tasks: [], notes: [], documents: [] })
+const NO_MORE = () => ({ tasks: false, notes: false, documents: false })
+
+const DEBOUNCE_MS = 220
 
 let debounce = null
 let seq = 0
@@ -60,19 +75,71 @@ watch(q, (val) => {
   clearTimeout(debounce)
   const term = val.trim()
   if (!term) {
-    results.value = { tasks: [], notes: [], documents: [] }
+    results.value = EMPTY()
+    more.value = NO_MORE()
+    error.value = ''
     loading.value = false
     return
   }
   loading.value = true
   open.value = true
-  debounce = setTimeout(() => runSearch(term), 220)
+  debounce = setTimeout(() => runSearch(term), DEBOUNCE_MS)
 })
 
+// The search box outlives a workspace switch: it sits in the topbar and the shell
+// swaps `ws.currentId` without remounting it, so hits fetched for the workspace
+// the reader has left had nothing to invalidate them. Clicking the switcher blurs
+// the input and closes the panel, but the typed term stays in the box — and
+// focusing it again re-opens the panel over those hits (`@focus` only needs a
+// non-empty term) without asking anything of the server, since the watcher above
+// fires on keystrokes alone. The rows then point into the other workspace: opening
+// one navigates to a board this workspace does not contain, and the board resolves
+// `?task=<number>` against the *current* workspace, fails, and leaves the reader
+// on a stranger's board with no explanation.
+//
+// Android has never had this — SearchViewModel.bind() drops the whole state when
+// the workspace id changes — so the divergence was web's alone (#2932).
+watch(
+  () => ws.currentId,
+  () => {
+    // Invalidate the request in flight before anything else: it was asked of the
+    // previous workspace, and without this its answer lands afterwards and
+    // repopulates the panel we are clearing.
+    seq++
+    clearTimeout(debounce)
+    results.value = EMPTY()
+    more.value = NO_MORE()
+    error.value = ''
+    const term = q.value.trim()
+    if (!term) {
+      // Nothing typed: the bumped `seq` above also means the in-flight request's
+      // `finally` will not clear the spinner, so clear it here.
+      loading.value = false
+      return
+    }
+    // Re-ask, rather than clearing the box: the term is still on screen, and an
+    // empty panel under it would read as "nothing matched" — a statement about
+    // the new workspace that nobody has checked.
+    loading.value = true
+    debounce = setTimeout(() => runSearch(term), DEBOUNCE_MS)
+  },
+)
+
 async function runSearch(term) {
-  const wsId = ws.currentId
-  if (!wsId) return
+  // The sequence number is taken before the first early return, not after: a
+  // request already in flight has to be invalidated even by a call that goes on
+  // to do nothing, or its answer lands later and repopulates the panel.
   const mine = ++seq
+  const wsId = ws.currentId
+  // Typed before the workspace list arrived — the search box is in the topbar
+  // and is mountable well before the shell knows where to look. Nothing to ask,
+  // but the spinner the watcher just turned on is ours to turn off; leaving it
+  // spinning is a panel that never resolves, since nothing retries until the
+  // next keystroke.
+  if (!wsId) {
+    loading.value = false
+    return
+  }
   try {
     const res = await wsApi.search(wsId, term)
     if (mine !== seq) return // a newer query landed first
@@ -81,8 +148,16 @@ async function runSearch(term) {
       notes: res.data.notes || [],
       documents: res.data.documents || [],
     }
-  } catch {
-    results.value = { tasks: [], notes: [], documents: [] }
+    more.value = { ...NO_MORE(), ...(res.data.has_more || {}) }
+    error.value = ''
+  } catch (e) {
+    if (mine !== seq) return
+    results.value = EMPTY()
+    more.value = NO_MORE()
+    // The message is already in the reader's language: the api interceptor runs
+    // every failure through humanizeError before rejecting. The fallback covers
+    // a throw from somewhere else that carries no message at all.
+    error.value = e?.message || t('shell.search.failed')
   } finally {
     if (mine === seq) loading.value = false
   }
@@ -196,7 +271,14 @@ function gotoHelp(h) {
         <n-spin size="small" />
       </div>
       <template v-else>
-        <template v-if="hasResults()">
+        <!-- A failed request is not an empty result, and it goes first: before
+             this branch existed the panel drew "Ничего не найдено" over a 500,
+             an expired session and a dropped connection alike, so the reader
+             concluded the thing they were looking for did not exist (#2932). -->
+        <div v-if="error" class="failed">
+          <empty-state :icon="AlertCircleOutline" :text="error" size="small" />
+        </div>
+        <template v-else-if="hasResults()">
           <div v-if="results.tasks.length" class="grp">
             <div class="grp-h">{{ t('shell.search.tasks') }}</div>
             <!-- `task`, not `t`: the loop variable would shadow the translation
@@ -215,6 +297,13 @@ function gotoHelp(h) {
               <span class="num">#{{ task.number }}</span>
               <span class="ttl">{{ task.title }}</span>
             </button>
+            <!-- The count comes from the rendered list rather than from a
+                 constant: when the server says it truncated, what it handed back
+                 *is* the page size, and a hard-coded 25 here would quietly start
+                 lying the day the backend's changes. -->
+            <div v-if="more.tasks" class="more">
+              {{ t('shell.search.more', { n: results.tasks.length }) }}
+            </div>
           </div>
           <div v-if="results.notes.length" class="grp">
             <div class="grp-h">{{ t('shell.search.notes') }}</div>
@@ -227,6 +316,9 @@ function gotoHelp(h) {
               <n-icon class="ico" :component="DocumentTextOutline" />
               <span class="ttl">{{ n.title || t('shell.search.untitled') }}</span>
             </button>
+            <div v-if="more.notes" class="more">
+              {{ t('shell.search.more', { n: results.notes.length }) }}
+            </div>
           </div>
           <div v-if="results.documents.length" class="grp">
             <div class="grp-h">{{ t('shell.search.documents') }}</div>
@@ -239,6 +331,9 @@ function gotoHelp(h) {
               <n-icon class="ico" :component="DocumentsOutline" />
               <span class="ttl">{{ d.title || t('shell.search.untitled') }}</span>
             </button>
+            <div v-if="more.documents" class="more">
+              {{ t('shell.search.more', { n: results.documents.length }) }}
+            </div>
           </div>
         </template>
         <div v-else-if="!helpHits.length" class="empty">
@@ -343,9 +438,19 @@ function gotoHelp(h) {
   color: var(--t-text3);
   font-size: 11px;
 }
-.empty {
+.empty,
+.failed {
   padding: 12px;
 }
+/* The truncation note sits under its own group, indented to the rows' text so it
+   reads as a footer of that list rather than as another result. */
+.more {
+  padding: 4px 8px 2px 32px;
+  color: var(--t-text3);
+  font-size: 11px;
+}
+/* v2: no divider over the hint — the gap and the dimmer text set it apart. */
+.hint,
 .row.everywhere {
   margin-top: 4px;
   color: var(--t-text2);

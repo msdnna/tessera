@@ -67,6 +67,31 @@ describe('notificationText', () => {
     }
   })
 
+  // A seeded column is a server-born name with a name_key (#2800), so the bell
+  // has to caption it the way the board does — otherwise the same column reads
+  // "Done" on the card and «Готово» one panel over.
+  it('captions a seeded column in the reader s language', async () => {
+    const seeded = {
+      event: 'task_moved',
+      actor: 'Иван',
+      task_number: 42,
+      column: 'Готово',
+      column_key: 'done',
+    }
+    expect(notificationText(N(seeded), ru())).toBe('Иван переместил(а) задачу #42 → «Готово»')
+    await setI18nLocale('en')
+    expect(notificationText(N(seeded), en())).toBe('Иван moved task #42 → “Done”')
+  })
+
+  it('shows a user-named column verbatim, and falls back for an unknown key', async () => {
+    // No key — the server drops it on rename, so this name is the user's own.
+    const mine = { event: 'task_moved', actor: 'Иван', task_number: 42, column: 'Протестировано' }
+    const unknown = { ...mine, column: 'Приёмка', column_key: 'acceptance' }
+    await setI18nLocale('en')
+    expect(notificationText(N(mine), en())).toBe('Иван moved task #42 → “Протестировано”')
+    expect(notificationText(N(unknown), en())).toBe('Иван moved task #42 → “Приёмка”')
+  })
+
   // The changed fields arrive as machine names and are joined by Intl.ListFormat,
   // so the enumeration reads naturally in both languages instead of being a
   // comma-spliced list built on the server.
@@ -113,6 +138,30 @@ describe('notificationText', () => {
         en(),
       ),
     ).toBe('GitLab · a/b: sync failed — 401 (after 1h 1m)')
+  })
+
+  // A failure reason is the integration's own error text, so it is spliced in
+  // verbatim — but the "we don't know why" default is a UI string and belongs
+  // here, in the reader's language. A payload that carried it would read
+  // "sync failed — неизвестная ошибка" on an English screen, and an empty one
+  // would leave the dash dangling.
+  it('words an unknown sync failure reason in the reader s language', async () => {
+    const failed = (payload, opts) =>
+      notificationText(
+        N({ event: 'integration_sync_failed', label: 'GitLab · a/b', ...payload }),
+        opts,
+      )
+
+    expect(failed({ reason: '401', seconds: 5 }, ru())).toBe(
+      'GitLab · a/b: синхронизация не удалась — 401 (за 5 с)',
+    )
+    expect(failed({ seconds: 5 }, ru())).toBe(
+      'GitLab · a/b: синхронизация не удалась — неизвестная ошибка (за 5 с)',
+    )
+    await setI18nLocale('en')
+    expect(failed({ seconds: 5 }, en())).toBe(
+      'GitLab · a/b: sync failed — unknown error (after 5s)',
+    )
   })
 
   // A reminder's body is the user's own text: content, never translated. Only

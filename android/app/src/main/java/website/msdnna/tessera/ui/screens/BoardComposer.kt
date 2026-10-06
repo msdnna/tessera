@@ -91,10 +91,13 @@ import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.ui.viewmodels.SortField
 import website.msdnna.tessera.util.BoardFilter
 import website.msdnna.tessera.util.DueFilter
-import website.msdnna.tessera.util.GitlabAuthor
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.UserTextOrder
+import website.msdnna.tessera.util.assigneeFacetGitlabOptions
+import website.msdnna.tessera.util.authorFacetGitlabOptions
 import website.msdnna.tessera.util.boardGitlabAuthors
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.canonPrefix
 import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.countWithSubtasks
 import website.msdnna.tessera.util.prefixLabel
@@ -362,11 +365,23 @@ private fun authorLabel(id: String, state: BoardUiState): String {
 private fun GroupChip(state: BoardUiState, vm: BoardViewModel) {
     // Distinct namespaces present in the tags, labelled by their friendly name and
     // sorted by that label (web `tagPrefixOptions`).
+    //
+    // Различаются по КАНОНИЧЕСКОМУ ключу, как и всякий другой ответ про пространство
+    // имён (`buildTagGroups`, подписи префиксов, реестр на бэкенде): `distinct()` по
+    // сырым пространствам предлагал «Сложность::» и «сложность::» двумя пунктами — с
+    // одинаковой подписью, потому что она-то ищется канонически, — так что меню читалось
+    // как одна и та же группировка дважды, и каждый пункт сужал доску до половины тегов
+    // (#2932, ровно то же на вебе). Побеждает первое встреченное написание.
     val res = LocalResources.current
     val namespaces = remember(state.tagList, state.prefixNames, res) {
-        state.tagList.mapNotNull { tagNamespace(it.name).ifEmpty { null } }.distinct()
+        val seen = LinkedHashMap<String, String>()
+        for (tag in state.tagList) {
+            val ns = tagNamespace(tag.name)
+            if (ns.isNotEmpty()) seen.putIfAbsent(canonPrefix(ns), ns)
+        }
+        seen.values
             .map { it to prefixLabel(res, it, state.prefixNames) }
-            .sortedBy { it.second.lowercase() }
+            .sortedWith(compareBy(UserTextOrder) { it.second })
     }
     // Assignee / no-grouping are only meaningful on the swimlane (timeline/Gantt) views.
     val timelineLike = state.viewMode == BoardViewMode.Timeline || state.viewMode == BoardViewMode.Gantt
@@ -506,22 +521,28 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                             leading = { MemberAvatar(22.dp, nm, userId = m.userId) },
                         )
                     }
-                    // GitLab-only assignees (no Tessera account) filter by "gl:<username>",
-                    // matched against a card's gitlab_assignees (web parity).
-                    val glUnlinked = state.gitlabMembers.filter {
-                        it.tesseraUserId == null && "gl:${it.glUsername}" !in f.assigneeIds
-                    }
-                    if (glUnlinked.isNotEmpty()) {
+                    // GitLab assignees filter by "gl:<username>", matched against a card's
+                    // gitlab_assignee_logins. The roster is only half the list: it is a
+                    // cache the backend refreshes hourly at best, so a login the cards
+                    // already draw need not be in it (web parity — see
+                    // `assigneeFacetGitlabOptions`).
+                    val glAssignees = assigneeFacetGitlabOptions(
+                        state.members,
+                        state.gitlabMembers,
+                        state.tasks,
+                        state.glLoginByUserId,
+                        f.assigneeIds,
+                    )
+                    if (glAssignees.isNotEmpty()) {
                         MenuSectionHeader("GitLab")
-                        glUnlinked.forEach { m ->
-                            val nm = m.glName.ifBlank { m.glUsername }
+                        glAssignees.forEach { m ->
                             TMenuItem(
-                                nm,
+                                m.name,
                                 onClick = {
-                                    vm.setFilter(f.copy(assigneeIds = f.assigneeIds + "gl:${m.glUsername}"))
+                                    vm.setFilter(f.copy(assigneeIds = f.assigneeIds + "gl:${m.username}"))
                                     close()
                                 },
-                                leading = { MemberAvatar(22.dp, nm, avatarUrl = m.glAvatarUrl, muted = true) },
+                                leading = { MemberAvatar(22.dp, m.name, avatarUrl = m.avatarUrl, muted = true) },
                             )
                         }
                     }
@@ -543,14 +564,16 @@ private fun AddFacetButton(state: BoardUiState, vm: BoardViewModel) {
                     // GitLab logins: the project's GitLab members plus the authors actually
                     // seen on the board (an issue can be opened by someone outside the
                     // roster). A login already covered by a linked Tessera row is skipped
-                    // so one person never shows up twice (web parity).
-                    val seen = state.glLoginByUserId.values.toMutableSet()
-                    val glAuthors = buildList {
-                        state.gitlabMembers.forEach { add(GitlabAuthor(it.glUsername, it.glName.ifBlank { it.glUsername }, it.glAvatarUrl)) }
-                        addAll(boardGitlabAuthors(state.tasks))
-                    }.filter { a ->
-                        a.username.isNotBlank() && "gl:${a.username}" !in f.authorIds && seen.add(a.username)
-                    }
+                    // so one person never shows up twice — by the member rule of
+                    // `authorFacetGitlabOptions`, not the whole roster map, which also
+                    // covers accounts with no membership here and so hid them entirely.
+                    val glAuthors = authorFacetGitlabOptions(
+                        state.members,
+                        state.gitlabMembers,
+                        state.tasks,
+                        state.glLoginByUserId,
+                        f.authorIds,
+                    )
                     if (glAuthors.isNotEmpty()) {
                         MenuSectionHeader("GitLab")
                         glAuthors.forEach { a ->

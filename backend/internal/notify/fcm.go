@@ -11,6 +11,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/jwt"
@@ -82,6 +83,7 @@ func NewFCMSender(keyJSON []byte) (*FCMSender, error) {
 	}
 	tokenURI := k.TokenURI
 	if tokenURI == "" {
+		// #nosec G101 -- Google's public OAuth token endpoint, not a credential
 		tokenURI = "https://oauth2.googleapis.com/token"
 	}
 	cfg := &jwt.Config{
@@ -91,12 +93,18 @@ func NewFCMSender(keyJSON []byte) (*FCMSender, error) {
 		Scopes:       []string{fcmScope},
 		TokenURL:     tokenURI,
 	}
-	return &FCMSender{ProjectID: k.ProjectID, Tokens: cfg.TokenSource(context.Background())}, nil
+	// Mint the token through fcmClient explicitly. x/oauth2 falls back to
+	// http.DefaultClient, and HardenDefaultClient replaces that one with a
+	// guarded, proxy-less transport meant for member-supplied targets — Google's
+	// token endpoint is neither, and in a proxied install it is only reachable
+	// through HTTP_PROXY.
+	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, fcmClient)
+	return &FCMSender{ProjectID: k.ProjectID, Tokens: cfg.TokenSource(ctx)}, nil
 }
 
 // LoadFCMSender reads a service-account key from disk.
 func LoadFCMSender(path string) (*FCMSender, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- operator-supplied path (FCM_CREDENTIALS_FILE), never a request value
 	if err != nil {
 		return nil, fmt.Errorf("read FCM credentials: %w", err)
 	}
@@ -160,6 +168,7 @@ func fcmRequest(token string, msg Message) map[string]any {
 	if msg.ConferenceID != "" {
 		data["conference_id"] = msg.ConferenceID
 	}
+	fitFCMData(data)
 	return map[string]any{
 		"message": map[string]any{
 			"token": token,
@@ -169,6 +178,62 @@ func fcmRequest(token string, msg Message) map[string]any {
 			"data":    data,
 		},
 	}
+}
+
+// maxFCMDataBytes is FCM's ceiling on a message's data payload, measured the way
+// FCM measures it: the sum of every key and every value in `data`.
+//
+// It has to be enforced here because nothing upstream bounds the body. A channel
+// template may be maxTemplateLen (8192) long; a reminder's body is the user's own
+// text, carried verbatim by Sentence; and a digest glues up to notifyBatchSize
+// entries into one message. Cyrillic costs two bytes a character, so none of
+// those needs to look long to pass 4096.
+//
+// What makes it worth a trim rather than a failure: FCM answers an oversized
+// message with 400 INVALID_ARGUMENT, which fcmError classifies as permanent — so
+// the delivery is marked failed on its first attempt and the push simply never
+// arrives. The in-app notification is there, the phone stays silent, and nothing
+// the reader can see says why. A body cut short still says who did what.
+const maxFCMDataBytes = 4096
+
+// fcmEllipsis marks a body the ceiling cut short.
+const fcmEllipsis = "…"
+
+// dataBytes is the size FCM charges a data payload: keys and values, no framing.
+func dataBytes(data map[string]string) int {
+	n := 0
+	for k, v := range data {
+		n += len(k) + len(v)
+	}
+	return n
+}
+
+// fitFCMData trims a payload to maxFCMDataBytes by shortening the one field with
+// no bound of its own. The others are the app's: the title comes from the
+// notification catalog, and the link and the ids are fixed-width.
+func fitFCMData(data map[string]string) {
+	over := dataBytes(data) - maxFCMDataBytes
+	if over <= 0 {
+		return
+	}
+	data["body"] = truncateBytes(data["body"], len(data["body"])-over)
+}
+
+// truncateBytes cuts s to at most maxBytes bytes, on a rune boundary and with an
+// ellipsis in place of what it took — a body chopped mid-rune would reach the
+// device as a replacement character.
+func truncateBytes(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	if maxBytes < len(fcmEllipsis) {
+		return ""
+	}
+	cut := maxBytes - len(fcmEllipsis)
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + fcmEllipsis
 }
 
 // endpoint is the FCM send URL for this sender's project.

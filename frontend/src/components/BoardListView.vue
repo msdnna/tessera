@@ -6,6 +6,8 @@ import { priorityLabel } from '@/utils/priority'
 import { hueGrad } from '@/utils/gradient'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useDateLocale } from '@/composables/useDateLocale'
+import { isTaskOverdue } from '@/utils/taskFilter'
+import { glAssigneesOf } from '@/utils/assignees'
 import UserAvatar from './UserAvatar.vue'
 import TagPill from './TagPill.vue'
 
@@ -18,26 +20,39 @@ const props = defineProps({
   lists: { type: Object, default: () => ({}) },
   tagsMap: { type: Object, default: () => ({}) },
   membersMap: { type: Object, default: () => ({}) },
+  // Workspace GitLab roster (`boardView.gitlabMembersList`), for the assignees who
+  // have no Tessera account — same prop the timeline and the Gantt take.
+  gitlabMembers: { type: Array, default: () => [] },
   tagPrefixNames: { type: Object, default: () => ({}) },
+  // Archive view (?archived=1): look, don't touch — the right-click menu is the
+  // only thing here that writes, and every item on it edits the live task.
+  readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed'])
+const emit = defineEmits(['open', 'changed', 'restore'])
 
 const { t } = useI18n()
 
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
+  // The archive's own action: this layout has no card, so the menu is the only
+  // place «Вернуть из архива» can live (see useTaskMenu).
+  onRestore: (id) => emit('restore', id),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
-const { formatDue: fmtDue } = useDateLocale()
-function isOverdue(task) {
-  return (
-    task.due_date &&
-    !task.completed_at &&
-    new Date(task.due_date) < new Date(new Date().toDateString())
-  )
-}
+const { formatDue: fmtDue, formatters } = useDateLocale()
+// Shared predicate rather than a local one: this view and the board show the same
+// rows, and they used to disagree about which of them were late. The formatter set
+// goes in so the red row is bucketed in the same calendar fmtDue prints.
+const isOverdue = (task) => isTaskOverdue(task, new Date(), formatters.value)
+// An assignee without a Tessera account is not «не назначено»: they arrive in a
+// field of their own (`gitlab_assignee_logins`), and this is the layout where the
+// people column is the only thing saying who holds the card. The card, the chart
+// lanes and the «Исполнитель» facet all draw them — the list rows did not, so on a
+// GitLab-synced board every row looked unassigned.
+const glAssignees = (task) => glAssigneesOf(task, props.gitlabMembers)
 </script>
 
 <template>
@@ -92,6 +107,14 @@ function isOverdue(task) {
             :user-id="uid"
             :name="membersMap[uid]?.name"
             :title="membersMap[uid]?.name"
+          />
+          <UserAvatar
+            v-for="(g, i) in glAssignees(task)"
+            :key="`g${i}`"
+            class="lv-ava ext"
+            :src="g.avatar_url"
+            :name="g.name"
+            :title="`${g.name} (GitLab)`"
           />
         </span>
       </div>
@@ -245,6 +268,12 @@ function isOverdue(task) {
   justify-content: center;
   margin-left: -4px;
   border: 2px solid var(--t-surface);
+}
+/* External (GitLab) assignee: neutral fill, not the accent gradient — same
+   distinction the card's own avatar row makes. */
+.lv-ava.ext {
+  background: var(--t-text3);
+  opacity: 0.9;
 }
 .lv-empty {
   padding: 6px 8px;

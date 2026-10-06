@@ -8,7 +8,7 @@
 // field survives the size preset and the customize toggles it renders nothing.
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover, NTooltip, NInput } from 'naive-ui'
+import { NIcon, NPopover, NTooltip, NInput, useMessage } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
@@ -26,7 +26,7 @@ import { tasks as tasksApi, projects as projectsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel, priorityOptions as buildPriorityOptions } from '@/utils/priority'
 import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
-import { buildTagGroups } from '@/utils/tagGroups'
+import { buildTagGroups, matchTagByName } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { useFormat } from '@/composables/useFormat'
 import {
@@ -36,8 +36,11 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { cardFieldVisible } from '@/utils/cardFields'
+import { glAssigneesOf, glPickerMembers } from '@/utils/assignees'
+import { isTaskOverdue } from '@/utils/taskFilter'
 import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
+import PopMenu from '../PopMenu.vue'
 import UserAvatar from '../UserAvatar.vue'
 import DueEditor from '../DueEditor.vue'
 import RichContent from '../RichContent.vue'
@@ -64,6 +67,7 @@ const conflictsStore = useConflictsStore()
 const hasConflict = computed(() => conflictsStore.has(props.task.id))
 const { formatDue, formatters } = useFormat()
 const { t } = useI18n()
+const message = useMessage()
 // Tag/label colour clamped for legibility on the active theme (used for text).
 const tagText = (c) => readableHue(c, theme.isDark)
 
@@ -88,18 +92,30 @@ const projectId = computed(() => bv.projectId)
 // Size preset × customize toggle — the single predicate, shared with the card
 // (which asks it about the meta row's number / GitLab chip).
 const show = (k) => cardFieldVisible(cardSize.value, fieldVis, k)
-// Whether the row has any content at all (drives whether it renders).
+// Whether the row has any content at all (drives whether it renders). Every term
+// mirrors the matching pill's own `v-if` below — including its `stackFields` leg:
+// in stack mode a visible field draws its row even unset, and that row is the
+// field's ONLY trigger on the card. Without that leg here a card with nothing set
+// at all (and «показывать пустые» off) lost the whole block — priority, due, tags
+// and assignees became unreachable from the board on exactly the cards that need
+// them, while a neighbour differing by a single value showed all six rows.
+// Description is the mirror image: its pill is suppressed in stack mode, so its
+// term carries the same `!stackFields`.
 const hasAnyPill = computed(
   () =>
     hasConflict.value ||
-    (show('priority') && (showEmpty.value || props.task.priority)) ||
-    (show('due') && (showEmpty.value || due.value)) ||
-    (show('estimate') && estText.value) ||
-    (show('milestone') && taskMilestone.value) ||
-    (show('description') && hasDescription.value) ||
-    (show('tags') && (showEmpty.value || taskTags.value.length)) ||
+    (show('priority') && (showEmpty.value || stackFields.value || props.task.priority)) ||
+    (show('due') && (showEmpty.value || stackFields.value || due.value)) ||
+    (show('estimate') && (stackFields.value || estText.value)) ||
+    (show('milestone') && (stackFields.value || taskMilestone.value)) ||
+    (show('description') && !stackFields.value && hasDescription.value) ||
+    (show('tags') && (showEmpty.value || stackFields.value || taskTags.value.length)) ||
     (show('assignee') &&
-      (showEmpty.value || author.value || assignees.value.length || glAssignees.value.length)),
+      (showEmpty.value ||
+        stackFields.value ||
+        author.value ||
+        assignees.value.length ||
+        glAssignees.value.length)),
 )
 
 // Picker tags grouped by prefix (friendly name); a single prefix-less bucket
@@ -108,7 +124,12 @@ const tagPickerGroups = computed(() =>
   buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
 )
 const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
+// Flat picker set — what a typed name is matched against, so the answer covers
+// exactly the tags the reader could have clicked instead (GitLab meta-prefixed
+// tags are hidden here on purpose: attaching one desyncs from the field it drives).
+const tagPickerFlat = computed(() => tagPickerGroups.value.flatMap((g) => g.tags))
 const newTagName = ref('')
+const creatingTag = ref(false)
 
 const taskTags = computed(() => (props.task.tag_ids || []).map((id) => tagsMap[id]).filter(Boolean))
 // Stacked tags row: fit as many chips as the row width allows, rest → +N.
@@ -122,17 +143,9 @@ const assignees = computed(() =>
   (props.task.assignee_ids || []).map((id) => membersMap[id]).filter(Boolean),
 )
 // External GitLab assignees (no Tessera account). The board query carries only
-// their names/logins (no avatar), so resolve the avatar from the workspace
-// GitLab-members list by username — same source the picker/filter already use.
-const glAssignees = computed(() => {
-  const logins = props.task.gitlab_assignee_logins || []
-  const names = props.task.gitlab_assignees || []
-  if (!logins.length) return names.map((n) => ({ name: n }))
-  return logins.map((login) => {
-    const m = gitlabMembers.value.find((x) => x.gl_username === login)
-    return { login, name: m?.gl_name || login, avatar_url: m?.gl_avatar_url || null }
-  })
-})
+// their names/logins (no avatar), so the shared resolver looks the face up in the
+// workspace GitLab-members list — same source the picker/filter/list rows use.
+const glAssignees = computed(() => glAssigneesOf(props.task, gitlabMembers.value))
 // Author (read-only): GitLab issue author for synced cards, else the Tessera
 // creator resolved from created_by.
 const author = computed(() => {
@@ -236,11 +249,10 @@ const due = computed(() => formatDue(props.task.due_date))
 // Long form (capitalised, full weekday) for the stacked row, where the terse
 // lowercase pill form would clash with capitalised siblings like the priority.
 const dueLong = computed(() => formatDue(props.task.due_date, { long: true }))
-const done = computed(() => !!props.task.completed_at)
-// Overdue: due date in the past on a not-yet-done task.
-const overdue = computed(
-  () => !!props.task.due_date && !done.value && Date.parse(props.task.due_date) < Date.now(),
-)
+// Overdue: the due date's calendar day is already past. Shared with the «Срок»
+// facet — a card painted red has to be one the «Просрочено» filter still lists
+// (it also owns the "a closed task is never late" half, which used to live here).
+const overdue = computed(() => isTaskOverdue(props.task, new Date(), formatters.value))
 const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
 const startTs = computed(() => (props.task.start_date ? Date.parse(props.task.start_date) : null))
 // Estimate chip: the task's own estimate, or — if unset — the rollup sum of its
@@ -308,12 +320,29 @@ async function loadDescriptionPreview() {
   }
 }
 
+// Every write below goes through here: a refusal is reported and the board
+// re-read either way. The pills draw straight off `props.task`, so a rejected
+// promise on its own is indistinguishable from a click that missed — no toast,
+// no change, and the board still holding whatever it held (including a change a
+// racing second client DID make). Same contract the right-click menu over this
+// card already follows (composables/useTaskMenu.js).
+//
+// @returns {boolean} whether the write went through
+async function run(fn) {
+  try {
+    await fn()
+  } catch (e) {
+    message.error(e.message)
+    emit('changed')
+    return false
+  }
+  emit('changed')
+  return true
+}
 // Inline edits send the full-replace body minus the description — see
 // utils/taskPatch.js for why omitting it matters.
-async function apply(patch) {
-  await tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch })
-  emit('changed')
-}
+const apply = (patch) =>
+  run(() => tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch }))
 const setPriority = (p) => apply({ priority: p })
 
 // Per-task due-notification override sentinels (-1 / 'inherit' = user default).
@@ -323,66 +352,95 @@ const dueEnabledSel = computed(() => {
 })
 const dueLeadSel = computed(() => props.task.due_lead_minutes ?? -1)
 const dueRepeatSel = computed(() => props.task.due_repeat_minutes ?? -1)
-async function saveDueNotify(patch) {
+function saveDueNotify(patch) {
   const lead = patch.lead ?? dueLeadSel.value
   const repeat = patch.repeat ?? dueRepeatSel.value
   const enabled = patch.enabled ?? dueEnabledSel.value
-  try {
-    await tasksApi.dueNotify(props.task.id, {
+  return run(() =>
+    tasksApi.dueNotify(props.task.id, {
       lead_minutes: lead === -1 ? null : lead,
       repeat_minutes: repeat === -1 ? null : repeat,
       enabled: enabled === 'inherit' ? null : enabled === 'on',
-    })
-    emit('changed')
-  } catch (e) {
-    void e
-  }
+    }),
+  )
 }
 
-async function toggleTag(id) {
-  if (hasTag(id)) await tasksApi.removeTag(props.task.id, id)
-  else await tasksApi.addTag(props.task.id, id)
-  emit('changed')
-}
+const toggleTag = (id) =>
+  run(() =>
+    hasTag(id) ? tasksApi.removeTag(props.task.id, id) : tasksApi.addTag(props.task.id, id),
+  )
 async function createTag() {
   const n = newTagName.value.trim()
-  if (!n) return
+  // The guard is what makes a second Enter harmless: the field is cleared only once
+  // the tag is on the task, so an impatient repeat used to send a second create —
+  // and the second one came back «имя занято» about the tag the first had just made.
+  if (!n || creatingTag.value) return
+  // A name the project already carries is a request for THAT tag, not for a twin:
+  // the grid above is not filtered by what's typed, so on a long tag list typing the
+  // name is the way to reach it. Creating was a dead end — the server refuses the
+  // duplicate (409) and the task stays untagged.
+  const existing = matchTagByName(tagPickerFlat.value, n)
+  if (existing) {
+    newTagName.value = ''
+    if (hasTag(existing.id)) message.info(t('task.tags.alreadyOn'))
+    else await run(() => tasksApi.addTag(props.task.id, existing.id))
+    return
+  }
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
-  const res = await projectsApi.createTag(projectId.value, {
-    name: n,
-    color: palette[Math.floor(Math.random() * palette.length)],
-  })
-  await tasksApi.addTag(props.task.id, res.data.id)
-  newTagName.value = ''
-  emit('changed')
+  // The name is cleared only once both calls are through: a create that landed
+  // but failed to attach leaves the tag on the project, and the row it is about
+  // to appear in is the one to retry from.
+  creatingTag.value = true
+  let ok
+  try {
+    ok = await run(async () => {
+      const res = await projectsApi.createTag(projectId.value, {
+        name: n,
+        color: palette[Math.floor(Math.random() * palette.length)],
+      })
+      await tasksApi.addTag(props.task.id, res.data.id)
+    })
+  } finally {
+    creatingTag.value = false
+  }
+  if (ok) newTagName.value = ''
 }
 async function toggleAssignee(uid) {
   const adding = !isAssigned(uid)
-  if (adding) await tasksApi.addAssignee(props.task.id, uid)
-  else await tasksApi.removeAssignee(props.task.id, uid)
-  if (adding) {
+  const ok = await run(() =>
+    adding ? tasksApi.addAssignee(props.task.id, uid) : tasksApi.removeAssignee(props.task.id, uid),
+  )
+  // The MRU is «people you actually assign», so a refused pick must not enter it
+  // — it would push a name nobody was assigned to the top of every other picker.
+  if (ok && adding) {
     // Bump to the front of the MRU list (cap the stored history).
     const next = [uid, ...recentAssignees.value.filter((x) => x !== uid)].slice(0, 30)
     recentAssignees.value = next
     localStorage.setItem(RECENT_ASSIGNEES_KEY, JSON.stringify(next))
   }
-  emit('changed')
 }
+// GitLab half of the picker: the project roster plus whoever this task already
+// carries that the roster has since dropped — otherwise a person who left the
+// GitLab project stays assigned with no row to un-assign them from (see
+// utils/assignees). Shares the search box with the Tessera half above.
+const glPickerList = computed(() =>
+  glPickerMembers(gitlabMembers.value, glAssignees.value, assigneeQuery.value),
+)
 // GitLab-member assignees: board tasks carry their logins in gitlab_assignee_logins.
 const glAssigneeLogins = computed(() => props.task.gitlab_assignee_logins || [])
 function isGlAssigned(username) {
   return glAssigneeLogins.value.includes(username)
 }
-async function toggleGlAssignee(m) {
-  if (isGlAssigned(m.gl_username)) await tasksApi.removeGitlabAssignee(props.task.id, m.gl_username)
-  else
-    await tasksApi.pinGitlabAssignee(props.task.id, {
-      gl_username: m.gl_username,
-      gl_name: m.gl_name,
-      gl_avatar_url: m.gl_avatar_url,
-    })
-  emit('changed')
-}
+const toggleGlAssignee = (m) =>
+  run(() =>
+    isGlAssigned(m.gl_username)
+      ? tasksApi.removeGitlabAssignee(props.task.id, m.gl_username)
+      : tasksApi.pinGitlabAssignee(props.task.id, {
+          gl_username: m.gl_username,
+          gl_name: m.gl_name,
+          gl_avatar_url: m.gl_avatar_url,
+        }),
+  )
 </script>
 
 <template>
@@ -433,7 +491,7 @@ async function toggleGlAssignee(m) {
           }}</span>
         </button>
       </template>
-      <div class="menu">
+      <PopMenu>
         <div
           v-for="o in priorityOptions"
           :key="o.value"
@@ -443,7 +501,7 @@ async function toggleGlAssignee(m) {
           <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
           {{ o.label }}
         </div>
-      </div>
+      </PopMenu>
     </n-popover>
 
     <!-- due date: opens the calendar directly -->
@@ -646,7 +704,7 @@ async function toggleGlAssignee(m) {
           </div>
         </n-popover>
       </template>
-      <div class="menu tagmenu">
+      <PopMenu class="tagmenu">
         <div class="chip-groups">
           <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
             <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
@@ -688,7 +746,7 @@ async function toggleGlAssignee(m) {
           @keyup.enter="createTag"
           @click.stop
         />
-      </div>
+      </PopMenu>
     </n-popover>
 
     <!-- author + assignees merged into one overlapping avatar group: the
@@ -761,7 +819,7 @@ async function toggleGlAssignee(m) {
             </div>
           </n-popover>
         </template>
-        <div class="menu assignee-menu">
+        <PopMenu class="assignee-menu">
           <n-input
             v-model:value="assigneeQuery"
             size="tiny"
@@ -780,11 +838,11 @@ async function toggleGlAssignee(m) {
               <span class="aname">{{ m.name }}</span>
               <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
             </div>
-            <template v-if="gitlabMembers.length">
+            <template v-if="glPickerList.length">
               <div class="assignee-sep">GitLab</div>
               <div
-                v-for="m in gitlabMembers"
-                :key="m.gl_user_id"
+                v-for="m in glPickerList"
+                :key="m.gl_username"
                 class="menu-item assignee-item"
                 @click="toggleGlAssignee(m)"
               >
@@ -801,11 +859,11 @@ async function toggleGlAssignee(m) {
                 />
               </div>
             </template>
-            <div v-if="!pickerMembers.length && !gitlabMembers.length" class="assignee-empty">
+            <div v-if="!pickerMembers.length && !glPickerList.length" class="assignee-empty">
               {{ t('task.people.noMatches') }}
             </div>
           </div>
-        </div>
+        </PopMenu>
       </n-popover>
     </div>
   </div>

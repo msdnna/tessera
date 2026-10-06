@@ -95,7 +95,15 @@ function startBoardRename(b) {
   boardNameEdit.value = b.name
   nextTick(() => boardEditInput.value?.focus?.())
 }
+function cancelBoardRename() {
+  editingBoardId.value = null
+  boardNameEdit.value = ''
+}
 async function commitBoardRename(b) {
+  // Guarded on the row still being the one under edit: Esc (and a committing
+  // Enter) close the field, and anything arriving after that — the blur of a
+  // removed node, a second commit — must not write.
+  if (editingBoardId.value !== b.id) return
   editingBoardId.value = null
   const n = boardNameEdit.value.trim()
   if (!n || n === b.name) return
@@ -194,7 +202,18 @@ function startRename() {
   renaming.value = true
   nextTick(() => renameInput.value?.focus())
 }
+// Esc abandons the rename, and `commitRename` refuses to fire once the field is
+// closed. Without both, Esc did nothing at all here: the input stayed open with
+// the edited text, and the click that followed went through `@blur` and PUT the
+// rename the reader had just cancelled. Same shape in the board rename and the
+// column header below/next door — every other inline field in the app answers
+// Esc, these commit to shared data and did not.
+function cancelRename() {
+  renaming.value = false
+  nameEdit.value = ''
+}
 async function commitRename() {
+  if (!renaming.value) return
   renaming.value = false
   const n = nameEdit.value.trim()
   if (!n || n === props.project.name) return
@@ -453,13 +472,23 @@ function onBoardCtx(e, b) {
   bcY.value = e.clientY
   nextTick(() => (bcShow.value = true))
 }
+// Deleting a board takes its columns and every card standing on them, with no
+// undo, so the menu never calls the API straight off: it arms the same confirm
+// the board's «…» popover shows, anchored where the menu stood (the task card's
+// right-click delete has the same shape). It matters most on touch — this menu
+// also opens on a long press in the mobile drawer.
+const bcDeleteConfirm = ref(false)
 function onBoardCtxSelect(key) {
   const b = bcTarget.value
   bcShow.value = false
   if (!b) return
   if (key === 'open') router.push(`/project/${props.project.slug}/board/${b.slug}`)
   else if (key === 'rename') startBoardRename(b)
-  else if (key === 'delete') removeBoard(b)
+  else if (key === 'delete') bcDeleteConfirm.value = true
+}
+function confirmBoardDelete() {
+  const b = bcTarget.value
+  if (b) removeBoard(b)
 }
 
 // Touch long-press → context menus (the native contextmenu is unreliable on the
@@ -497,6 +526,16 @@ watch(
 watch(showMilestones, (v) => {
   if (v && expanded.value) loadMilestones()
 })
+// …and when a sprint changed anywhere — somebody else's edit, or the reader's own
+// from the board / MilestoneManager. The layout owns the socket and bumps this
+// revision (stores/workspaces.js onMilestoneEvent); a collapsed project has no
+// list to refresh, and loadMilestones() no-ops when sprints aren't shown.
+watch(
+  () => store.milestoneRevFor(props.project.id),
+  () => {
+    if (expanded.value) loadMilestones()
+  },
+)
 
 // inline board creation via the "+" button
 function startAddBoard() {
@@ -504,6 +543,13 @@ function startAddBoard() {
   addingBoard.value = true
   newBoardName.value = ''
   nextTick(() => boardInput.value?.focus())
+}
+// Esc drops the typed name as well as closing the field: `addBoard` also fires on
+// blur, and a name left behind would be created by the next stray focus+blur of a
+// reopened input.
+function cancelAddBoard() {
+  addingBoard.value = false
+  newBoardName.value = ''
 }
 async function addBoard() {
   const n = newBoardName.value.trim()
@@ -548,6 +594,7 @@ async function addBoard() {
         v-model:value="nameEdit"
         size="tiny"
         @keyup.enter="commitRename"
+        @keyup.esc="cancelRename"
         @blur="commitRename"
       />
       <span v-else class="name" @click="toggle" @dblclick="startRename">{{ project.name }}</span>
@@ -676,6 +723,7 @@ async function addBoard() {
             size="tiny"
             @click.stop
             @keyup.enter="commitBoardRename(b)"
+            @keyup.esc="cancelBoardRename"
             @blur="commitBoardRename(b)"
           />
           <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
@@ -723,6 +771,7 @@ async function addBoard() {
             :placeholder="t('project.board.namePlaceholder')"
             data-tour="board-name"
             @keyup.enter="addBoard"
+            @keyup.esc="cancelAddBoard"
             @blur="addBoard"
           />
         </div>
@@ -752,6 +801,18 @@ async function addBoard() {
       @select="onBoardCtxSelect"
       @clickoutside="bcShow = false"
     />
+    <n-popconfirm
+      v-model:show="bcDeleteConfirm"
+      :x="bcX"
+      :y="bcY"
+      :positive-button-props="{ type: 'error', 'data-testid': 'board-ctx-delete-confirm' }"
+      :positive-text="t('common.action.delete')"
+      @positive-click="confirmBoardDelete"
+      @clickoutside="bcDeleteConfirm = false"
+    >
+      <template #trigger><span /></template>
+      {{ t('project.board.deleteConfirm', { name: bcTarget?.name || '' }) }}
+    </n-popconfirm>
 
     <ConfirmByName
       v-model:show="confirmDelete"

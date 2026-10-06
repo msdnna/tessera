@@ -575,7 +575,7 @@ export function useConfTransport() {
     } catch (e) {
       // A refusal from our own API is the interesting case and already carries a
       // sentence a human wrote (503 not configured, 409 ended, 403 kicked).
-      error.value = e.response?.data?.error || e.message || String(e)
+      error.value = e.message || String(e)
       status.value = ERROR
       try {
         await room?.disconnect()

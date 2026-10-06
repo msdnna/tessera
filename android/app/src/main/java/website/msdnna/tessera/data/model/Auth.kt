@@ -17,6 +17,12 @@ data class User(
     @SerializedName("company") val company: String = "",
     @SerializedName("job_title") val jobTitle: String = "",
     @SerializedName("avatar_url") val avatarUrl: String = "",
+    // Есть ли у аккаунта пароль вообще. У аккаунта, заведённого через GitLab,
+    // хеша нет, и смена пароля для него может ответить только «текущий пароль
+    // неверен» — форма непроходима, а отказ читается как опечатка. По умолчанию
+    // true: профиль, закешированный сборкой без этого поля, не должен отобрать
+    // форму у аккаунта с паролем (#2932).
+    @SerializedName("has_password") val hasPassword: Boolean = true,
     // When the account was created. Drives the "What's New" gate: an account
     // younger than the running build never updated *into* it, so it gets the
     // changelog baselined silently instead of shown (#2766, web parity).

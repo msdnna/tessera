@@ -155,17 +155,39 @@ func (q *Queries) GetOAuthProvider(ctx context.Context, provider string) (OauthP
 	return i, err
 }
 
-const getUserIDByOAuthUsername = `-- name: GetUserIDByOAuthUsername :one
-SELECT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_username = $1
+const getUserIDsByOAuthUsername = `-- name: GetUserIDsByOAuthUsername :many
+SELECT DISTINCT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_username = $1
 `
 
-// GetUserIDByOAuthUsername resolves a GitLab username to a Tessera user via a
-// recorded OAuth identity (login-grade link, complements gitlab_credentials).
-func (q *Queries) GetUserIDByOAuthUsername(ctx context.Context, providerUsername string) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getUserIDByOAuthUsername, providerUsername)
-	var user_id uuid.UUID
-	err := row.Scan(&user_id)
-	return user_id, err
+// GetUserIDsByOAuthUsername resolves a GitLab username to the Tessera users that
+// recorded it (login-grade link, complements gitlab_credentials).
+//
+// :many, not :one, because a username names at most one person *at a moment* and
+// this table spans time: UNIQUE is on (provider, provider_user_id), the numeric
+// id, while provider_username is only indexed. A row's name is refreshed by its
+// owner's next login, so a rename in GitLab leaves the old name recorded until
+// then — and if someone else takes the freed login and signs in, two live rows
+// carry it. The caller must see both and decline to guess; as :one it silently
+// got whichever row the plan returned first (in practice the stale one, which is
+// physically older).
+func (q *Queries) GetUserIDsByOAuthUsername(ctx context.Context, providerUsername string) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, getUserIDsByOAuthUsername, providerUsername)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const upsertOAuthIdentity = `-- name: UpsertOAuthIdentity :one

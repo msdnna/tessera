@@ -18,16 +18,36 @@ SET status = 'sending', attempts = attempts + 1, updated_at = now()
 WHERE id IN (
     SELECT id FROM notification_deliveries
     WHERE status = 'pending' AND next_attempt_at <= now()
+      AND COALESCE(NULLIF(digest_group, ''), id::text) IN (
+          SELECT COALESCE(NULLIF(digest_group, ''), id::text) AS batch_key
+          FROM notification_deliveries
+          WHERE status = 'pending' AND next_attempt_at <= now()
+          GROUP BY batch_key
+          ORDER BY min(next_attempt_at), batch_key
+          LIMIT $1
+      )
     ORDER BY next_attempt_at
-    LIMIT $1
     FOR UPDATE SKIP LOCKED
 )
 RETURNING id, notification_id, channel_id, status, attempts, last_error, next_attempt_at, created_at, updated_at, digest_group
 `
 
-// ClaimPendingDeliveries atomically grabs up to $1 due pending rows, marking them
+// ClaimPendingDeliveries atomically grabs up to $1 due batches, marking their rows
 // 'sending' and bumping the attempt counter, so concurrent/queued workers never
 // pick the same row (FOR UPDATE SKIP LOCKED).
+//
+// A batch, not a row: drainDeliveries can only combine what one claim returned,
+// so a digest group cut by the limit leaves the app twice — the stream of
+// separate messages the window exists to replace. And the cut is not an edge
+// case: digestSlot rounds every user's slot onto the same wall-clock grid, so the
+// groups of many users come due at the very same instant and a plain row limit
+// slices whichever ones it reaches. A row outside a digest is its own batch (the
+// key falls back to its id), so ungrouped deliveries still go one by one.
+//
+// The limit therefore bounds batches rather than rows: a single group is claimed
+// whole however big it grew. It is bounded by one user's traffic through one
+// channel within one digest window, and a burst that large is better read as one
+// long digest than as ceil(n/20) of them.
 func (q *Queries) ClaimPendingDeliveries(ctx context.Context, limit int32) ([]NotificationDelivery, error) {
 	rows, err := q.db.Query(ctx, claimPendingDeliveries, limit)
 	if err != nil {
@@ -397,6 +417,67 @@ func (q *Queries) ListNotificationRoutes(ctx context.Context, userID uuid.UUID) 
 	return items, nil
 }
 
+const listReschedulableDeliveries = `-- name: ListReschedulableDeliveries :many
+SELECT d.id, d.channel_id, d.created_at, n.kind
+FROM notification_deliveries d
+JOIN notifications n ON n.id = d.notification_id
+JOIN notification_channels ch ON ch.id = d.channel_id
+WHERE n.user_id = $1 AND d.status = 'pending' AND d.attempts = 0
+  AND ch.type <> 'device'
+`
+
+type ListReschedulableDeliveriesRow struct {
+	ID        uuid.UUID `json:"id"`
+	ChannelID uuid.UUID `json:"channel_id"`
+	CreatedAt time.Time `json:"created_at"`
+	Kind      string    `json:"kind"`
+}
+
+// ListReschedulableDeliveries returns the user's outbox rows whose send time is
+// still nothing but a scheduling decision: pending and never attempted, so
+// next_attempt_at is exactly what digestSlot put there at enqueue time and can be
+// recomputed from created_at (the arrival) without losing anything.
+//
+// attempts > 0 is excluded on purpose: there next_attempt_at is a quadratic
+// backoff after a failed send, and re-deriving it from the arrival would drag a
+// row an hour old straight back into the queue — a dead endpoint turned into a
+// hot retry loop. Those rows ask about quiet hours again on their own, in
+// outsideQuietHours.
+//
+// A device channel is excluded for the same reason routeNotification never gives
+// one a slot to begin with: a push is not scheduled, it is sent or it is not.
+// Its row is written with next_attempt_at = now and no digest group — "a push
+// that arrives batched half an hour late is worse than no push at all" — and
+// inside quiet hours it is not written at all, so a row that exists is one
+// already cleared to go. Recomputed here it would be taken back: digestSlot
+// moves it up to a whole day forward and hands it a group, and a group is what
+// makes drainDeliveries combine pushes into one "Сводка" message that carries
+// neither the task nor the conference it was about (#2932).
+func (q *Queries) ListReschedulableDeliveries(ctx context.Context, userID uuid.UUID) ([]ListReschedulableDeliveriesRow, error) {
+	rows, err := q.db.Query(ctx, listReschedulableDeliveries, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListReschedulableDeliveriesRow
+	for rows.Next() {
+		var i ListReschedulableDeliveriesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ChannelID,
+			&i.CreatedAt,
+			&i.Kind,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markDeliveryFailed = `-- name: MarkDeliveryFailed :exec
 UPDATE notification_deliveries SET status = 'failed', last_error = $2, updated_at = now() WHERE id = $1
 `
@@ -439,6 +520,51 @@ func (q *Queries) MarkDeliverySent(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const requeueStaleDeliveries = `-- name: RequeueStaleDeliveries :execrows
+UPDATE notification_deliveries
+SET status = 'pending', last_error = 'прервано перезапуском сервиса', updated_at = now()
+WHERE status = 'sending'
+`
+
+// RequeueStaleDeliveries puts rows left in 'sending' by a process that died
+// between the claim and the settle back into the queue. Nothing else ever moves a
+// row out of 'sending', and ClaimPendingDeliveries only looks at 'pending', so
+// without this a restart mid-drain loses those deliveries for good.
+//
+// Called at the top of a drain, which runs under the 'notify_delivery' worker
+// lock: holding it means no other instance is draining this outbox, so every
+// 'sending' row is provably orphaned rather than in flight. attempts is left
+// as-is, so a row whose send keeps killing the process still reaches
+// maxDeliveryAttempts and fails instead of looping forever.
+func (q *Queries) RequeueStaleDeliveries(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, requeueStaleDeliveries)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rescheduleDelivery = `-- name: RescheduleDelivery :exec
+UPDATE notification_deliveries
+SET next_attempt_at = $2, digest_group = $3, updated_at = now()
+WHERE id = $1 AND status = 'pending' AND attempts = 0
+`
+
+type RescheduleDeliveryParams struct {
+	ID            uuid.UUID `json:"id"`
+	NextAttemptAt time.Time `json:"next_attempt_at"`
+	DigestGroup   string    `json:"digest_group"`
+}
+
+// RescheduleDelivery moves an untouched pending row to a freshly computed slot.
+// The status/attempts guard is repeated here, not just in the SELECT above: the
+// worker may have claimed the row in between, and a claimed row must keep the
+// time its own send decided.
+func (q *Queries) RescheduleDelivery(ctx context.Context, arg RescheduleDeliveryParams) error {
+	_, err := q.db.Exec(ctx, rescheduleDelivery, arg.ID, arg.NextAttemptAt, arg.DigestGroup)
+	return err
+}
+
 const setNotificationChannelVerified = `-- name: SetNotificationChannelVerified :exec
 UPDATE notification_channels SET verified = $3, updated_at = now() WHERE id = $1 AND user_id = $2
 `
@@ -452,6 +578,71 @@ type SetNotificationChannelVerifiedParams struct {
 func (q *Queries) SetNotificationChannelVerified(ctx context.Context, arg SetNotificationChannelVerifiedParams) error {
 	_, err := q.db.Exec(ctx, setNotificationChannelVerified, arg.ID, arg.UserID, arg.Verified)
 	return err
+}
+
+const stripChannelFromRoutes = `-- name: StripChannelFromRoutes :exec
+UPDATE notification_routes
+SET channel_ids = array_remove(channel_ids, $1::uuid), updated_at = now()
+WHERE user_id = $2 AND $1::uuid = ANY(channel_ids)
+`
+
+type StripChannelFromRoutesParams struct {
+	ChannelID uuid.UUID `json:"channel_id"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
+// StripChannelFromRoutes drops a channel's id out of every routing rule of its
+// owner. notification_routes.channel_ids is a plain uuid[] with no FK, so the
+// channel delete leaves the id behind on its own; the dispatcher then skips the
+// unresolvable id silently, and — worse — the rule's next save fails the
+// ownership check, so the settings screen cannot even toggle it off again.
+// Scoped to the owner, so it can never touch someone else's rules.
+func (q *Queries) StripChannelFromRoutes(ctx context.Context, arg StripChannelFromRoutesParams) error {
+	_, err := q.db.Exec(ctx, stripChannelFromRoutes, arg.ChannelID, arg.UserID)
+	return err
+}
+
+const stripPushTokenFromOtherOwners = `-- name: StripPushTokenFromOtherOwners :execrows
+UPDATE notification_channels
+SET config = config - 'fcm_token', updated_at = now()
+WHERE type = 'device'
+  AND user_id <> $1
+  AND config->>'fcm_token' IS NOT NULL
+  AND (config->>'device_id' = $2::text
+       OR config->>'fcm_token' = $3::text)
+`
+
+type StripPushTokenFromOtherOwnersParams struct {
+	UserID   uuid.UUID `json:"user_id"`
+	DeviceID string    `json:"device_id"`
+	FcmToken string    `json:"fcm_token"`
+}
+
+// StripPushTokenFromOtherOwners takes the FCM token away from every OTHER user's
+// device channel that names the same physical install: same device_id (anchored
+// to the hardware on Android, so it survives logout and reinstall) or the same
+// token (issued per app install, never per account).
+//
+// A phone only ever holds one signed-in account, and FCM delivers to the install
+// rather than to the account: whoever has the phone in their hands sees the
+// notification. So a device channel left over from the previous owner kept
+// pushing their private text — a mention, or a reminder that is literally their
+// own sentence — onto a screen that now belongs to someone else. The client half
+// of this is already closed (logout cancels the locally scheduled reminder
+// alarms, #2932); this is the server half, and it has to live on registration
+// rather than on logout, because a handover need not pass through one at all
+// (no network, or the account changed after a reinstall).
+//
+// Only the token goes. The channel row is its owner's own setting, with their
+// label, routing rules and enabled flag hanging off it; if they sign back in on
+// this phone, the next registration puts the token back. Same policy
+// dropPushToken applies to a token FCM has declared dead.
+func (q *Queries) StripPushTokenFromOtherOwners(ctx context.Context, arg StripPushTokenFromOtherOwnersParams) (int64, error) {
+	result, err := q.db.Exec(ctx, stripPushTokenFromOtherOwners, arg.UserID, arg.DeviceID, arg.FcmToken)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateNotificationChannel = `-- name: UpdateNotificationChannel :one

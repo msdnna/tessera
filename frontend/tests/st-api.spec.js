@@ -4,6 +4,7 @@ import api, {
   auth,
   gitlab,
   boards,
+  tasks,
   setAccessToken,
   getAccessToken,
   restoreSession,
@@ -11,6 +12,7 @@ import api, {
 } from '@/api'
 import { connection } from '@/composables/useConnection'
 import { sGet } from '@/utils/serverStorage'
+import { i18n } from '@/i18n'
 
 // The api module builds an axios instance with real interceptors (token header,
 // refresh-on-401 coalescing, error humanizing). We drive it by swapping the
@@ -123,6 +125,39 @@ describe('boards.setDoneColumn', () => {
   })
 })
 
+// A «/due сегодня» in a comment is resolved by the backend, so the request has to
+// carry the calendar it belongs to — the same zone the home summary sends. The
+// dry-run behind the «Будет применено: …» hint carries it too: a hint computed in
+// one zone and a command applied in another would name two different days.
+describe('quick-action comments carry the caller zone', () => {
+  it('sends tz on the comment POST and on the preview', async () => {
+    instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
+    await tasks.addComment('t1', '/due сегодня', [], null, 'Europe/Moscow')
+    await tasks.previewCommands('t1', '/due сегодня', 'Europe/Moscow')
+    const [post, preview] = instanceAdapter.mock.calls.map((c) => c[0])
+    expect(post.url).toContain('/tasks/t1/comments')
+    expect(post.params).toEqual({ tz: 'Europe/Moscow' })
+    expect(preview.url).toContain('/tasks/t1/commands/preview')
+    expect(preview.params).toEqual({ tz: 'Europe/Moscow' })
+  })
+})
+
+// Creating the GitLab issue reads the task's own due date and writes it into the
+// issue as a bare `YYYY-MM-DD` (backend taskDateStr) — a day, so it needs the
+// calendar that day was written in. Without the zone the server falls back to the
+// profile's, and a profile that names none leaves the *server's*: east of UTC the
+// stored midnight belongs to the previous UTC day, so the issue is born due a day
+// before the task says.
+describe('creating a GitLab issue carries the caller zone', () => {
+  it('sends tz on the create POST', async () => {
+    instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, {})))
+    await gitlab.createIssue('t1', {}, 'Europe/Moscow')
+    const [post] = instanceAdapter.mock.calls.map((c) => c[0])
+    expect(post.url).toContain('/tasks/t1/gitlab-issue')
+    expect(post.params).toEqual({ tz: 'Europe/Moscow' })
+  })
+})
+
 describe('api error handling', () => {
   it('humanizes a backend error string and rejects with an Error', async () => {
     instanceAdapter.mockImplementation((config) =>
@@ -160,6 +195,83 @@ describe('api error handling', () => {
   it('an HTTP error carries offline=false (not a connectivity failure)', async () => {
     instanceAdapter.mockImplementation((config) => fail(config, 500, { error: 'boom' }))
     await expect(auth.me()).rejects.toMatchObject({ offline: false })
+  })
+
+  // `message` is the humanized, localized line — the wrong thing to branch on:
+  // it changes with the UI language, and a sentinel added to the catalogue
+  // rewrites it outright. Callers that tell one refusal from another compare
+  // against `raw`, the server's own English (Android's `rawErrorText`, #2932).
+  it('keeps the backend sentinel reachable as `raw`', async () => {
+    instanceAdapter.mockImplementation((config) =>
+      fail(config, 404, { error: 'no user with that email' }),
+    )
+    await expect(auth.me()).rejects.toMatchObject({ raw: 'no user with that email' })
+  })
+
+  it('falls back to the axios message when the body carries no sentinel', async () => {
+    instanceAdapter.mockImplementation((config) => fail(config, 500, {}))
+    await expect(auth.me()).rejects.toMatchObject({ raw: 'Request failed with status code 500' })
+  })
+
+  // The rejection is an error of our own making: `message`, `status`, `raw`,
+  // `offline` — and no `response`. Pinned because three component specs had
+  // grown axios-shaped fixtures and the code they covered read
+  // `e.response.status`, which is undefined against the real client: the check
+  // never matched in the app, and the spec never noticed (#2932).
+  it('carries no axios response — status and raw are the whole contract', async () => {
+    instanceAdapter.mockImplementation((config) => fail(config, 403, { error: 'forbidden' }))
+    const err = await auth.me().catch((e) => e)
+    expect(err.response).toBeUndefined()
+    expect(err.status).toBe(403)
+    expect(err.raw).toBe('forbidden')
+  })
+
+  // A file route asks axios for `responseType: 'blob'`, and axios honours that
+  // for the error response too: the refusal arrives as a Blob holding
+  // `{"error": …}`, not as a parsed object. Reading `.error` off it yields
+  // undefined, so every failed download used to surface the axios line
+  // ("Request failed with status code 404") — protocol English, in whatever
+  // language the UI is in (#2932). Four routes are on this path: document
+  // export, task attachments, call attachments and call recordings.
+  describe('a refusal that arrives as a blob', () => {
+    function blobFail(config, status, body) {
+      const blob = new Blob([JSON.stringify(body)], { type: 'application/json' })
+      return fail(config, status, blob)
+    }
+
+    it('reads the sentinel back out of the body', async () => {
+      instanceAdapter.mockImplementation((config) => blobFail(config, 404, { error: 'not found' }))
+      await expect(tasks.downloadAttachment('a1')).rejects.toMatchObject({
+        raw: 'not found',
+        status: 404,
+      })
+    })
+
+    it('humanizes it like any other refusal', async () => {
+      instanceAdapter.mockImplementation((config) =>
+        blobFail(config, 403, { error: 'requires admin' }),
+      )
+      // Not the axios line: the catalogue answers, in the UI's language.
+      await expect(tasks.downloadAttachment('a1')).rejects.toThrow(
+        i18n.global.t('errors.sentinel.requiresAdmin'),
+      )
+    })
+
+    it('survives a body that is not JSON at all', async () => {
+      // A proxy answering with an HTML error page, or a truncated file — the
+      // rejection still has to carry the status, not throw inside the handler.
+      instanceAdapter.mockImplementation((config) =>
+        fail(config, 502, new Blob(['<html>502</html>'], { type: 'text/html' })),
+      )
+      await expect(tasks.downloadAttachment('a1')).rejects.toMatchObject({ status: 502 })
+    })
+
+    it('leaves the blob of a successful download untouched', async () => {
+      const body = new Blob(['%PDF-1.7'], { type: 'application/pdf' })
+      instanceAdapter.mockImplementation((config) => Promise.resolve(ok(config, body)))
+      const res = await tasks.downloadAttachment('a1')
+      expect(res.data).toBe(body)
+    })
   })
 })
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import { NIcon, NInput, useMessage } from 'naive-ui'
@@ -7,6 +7,8 @@ import { CloseCircleOutline } from '@vicons/ionicons5'
 import TaskCard from './TaskCard.vue'
 import { tasks as tasksApi } from '@/api'
 import { normalizeTitle } from '@/utils/title'
+import { isDueWithinDays } from '@/utils/taskFilter'
+import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
   // Filtered top-level board tasks (same array the kanban groups).
@@ -18,10 +20,20 @@ const props = defineProps({
   // A task is "urgent" when its due date falls within this many days (or is
   // overdue). Default = roughly the current week.
   urgentWindowDays: { type: Number, default: 7 },
+  // The archive view (?archived=1) shows archived cards and promises to be
+  // read-only. The kanban keeps that promise everywhere (column/card draggables,
+  // «+ задача», TaskCard, TaskModal); the matrix is the same board in another
+  // layout, so it has to keep it too — otherwise the archive still offers the
+  // quadrant «＋» (which creates a LIVE task in the board's first column, gone
+  // from view the moment it lands), the quadrant drag and the live card menu.
+  readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed', 'create'])
+const emit = defineEmits(['open', 'changed', 'create', 'restore', 'drag-state'])
 const message = useMessage()
 const { t } = useI18n()
+// The urgency axis is a calendar-day window in the user's timezone, so it needs
+// the same formatter set the due pill on the card is printed with.
+const { formatters } = useFormat()
 
 // ── quadrant model ────────────────────────────────────────────
 // Index encoding mirrors the backend (migration 0028):
@@ -46,13 +58,14 @@ const quadrants = computed(() =>
 
 // Derived quadrant when there's no manual override: importance from priority
 // (high/urgent), urgency from due-date proximity.
+//
+// Proximity is counted in whole calendar days of the user's timezone, not in
+// milliseconds — see isDueWithinDays(). The window is the one the «Срок: неделя»
+// facet above this very grid uses, so a card cannot be urgent here and outside
+// the week there.
 function derive(t) {
   const important = (t.priority || 0) >= 3
-  let urgent = false
-  if (t.due_date) {
-    const due = new Date(t.due_date).getTime()
-    urgent = due <= Date.now() + props.urgentWindowDays * 86400000
-  }
+  const urgent = isDueWithinDays(t, props.urgentWindowDays, new Date(), formatters.value)
   if (important) return urgent ? 0 : 1
   return urgent ? 2 : 3
 }
@@ -75,9 +88,34 @@ function rebuild() {
   }
   buckets.value = b
 }
-watch(() => props.tasks, rebuild, { immediate: true })
+// Also on the formatter set: the urgency window is read in the user's timezone,
+// so changing that preference re-sorts the grid instead of leaving it on the
+// calendar it was first built in.
+watch([() => props.tasks, formatters], rebuild, { immediate: true })
 
 const dragging = ref(false)
+
+// A drag has to hold the whole BOARD still, not just this grid (#2932).
+//
+// SortableJS owns the DOM of the list a card is being dragged through, so the
+// board mutes realtime-driven reloads for the duration of a gesture — that is
+// what `dragging` in useBoardDragScroll is for. Only the kanban's own draggables
+// raise it, though, and the flag above is local: a colleague's event arriving
+// mid-gesture took the ordinary route, the board re-fetched its tasks, and
+// `rebuild()` replaced all four buckets with fresh arrays underneath Sortable.
+// The card flickers back, and worse, the drop then reads its index off a list Vue
+// has just rewritten — `onQuadChange` can pin someone else's task to the
+// quadrant. So the grid reports its gesture upwards, where the board's existing
+// drag guard (and its missed-event backlog) already know what to do with it.
+function setDragging(active) {
+  dragging.value = active
+  emit('drag-state', active)
+}
+// Switching layout mid-gesture unmounts the grid, and Sortable's `end` never
+// arrives — without this the board would stay muted for the rest of the session.
+onBeforeUnmount(() => {
+  if (dragging.value) setDragging(false)
+})
 
 // A card dropped into a quadrant pins it there (manual override). Same-quadrant
 // reorders (evt.moved) aren't persisted — the matrix has no meaningful order.
@@ -112,6 +150,7 @@ const setAddInput = (el) => {
   addInput.value = el
 }
 function startAdd(qi) {
+  if (props.readonly) return
   addingIn.value = qi
   newTitle.value = ''
   // Focus once the input mounts (n-input `autofocus` doesn't fire on a v-if mount).
@@ -148,6 +187,7 @@ function submitAdd(qi) {
         </div>
         <span class="m-count">{{ buckets[q.i].length }}</span>
         <button
+          v-if="!readonly"
           type="button"
           class="m-add"
           :title="t('board.matrix.addTask')"
@@ -163,18 +203,19 @@ function submitAdd(qi) {
         item-key="id"
         class="m-list"
         :class="{ 'fade-bottom': addingIn === q.i }"
+        :disabled="readonly"
         :animation="150"
         :delay="120"
         :delay-on-touch-only="true"
         :touch-start-threshold="6"
-        @start="dragging = true"
-        @end="dragging = false"
+        @start="setDragging(true)"
+        @end="setDragging(false)"
         @change="onQuadChange($event, q.i)"
       >
         <template #item="{ element }">
           <div class="m-card-wrap">
             <button
-              v-if="isPinned(element)"
+              v-if="isPinned(element) && !readonly"
               type="button"
               class="m-pin"
               :title="t('board.matrix.pinned')"
@@ -189,8 +230,10 @@ function submitAdd(qi) {
               :subtasks-total="(subtasksTotalByParent[element.id] || []).length"
               :subtasks-expanded="subtasksExpanded"
               :dragging="dragging"
+              :readonly="readonly"
               @open="$emit('open', $event)"
               @changed="$emit('changed')"
+              @restore="$emit('restore', $event)"
             />
           </div>
         </template>

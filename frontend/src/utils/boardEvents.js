@@ -15,6 +15,7 @@
 //   columns — re-fetch the column list only
 //   board   — re-fetch the board record only
 //   meta    — re-fetch the workspace meta only (tags, members, milestones, …)
+//   column-purge — re-fetch columns AND tasks AND the board (see partialKinds)
 const IGNORED = new Set([
   // Not about this board's contents.
   'note.created',
@@ -22,6 +23,9 @@ const IGNORED = new Set([
   'note.deleted',
   'notification',
   'workspace.updated',
+  // The two estimation events do concern the board — they decide what its
+  // estimate chips mean — but not by way of a re-fetch: AppLayout patches the
+  // workspaces store and every consumer re-resolves through it (#2932).
   'workspace.estimation',
   'group.created',
   'group.updated',
@@ -31,13 +35,33 @@ const IGNORED = new Set([
   'project.updated',
   'project.deleted',
   'project.moved',
-  'project.estimation',
+  'project.estimation', // see workspace.estimation above
   'board.created',
-  'board.deleted',
   // Handled by their own branch in the board's event handler, and neither needs
   // the board itself re-fetched.
   'workspace_commands.updated',
   'gitlab.conflict',
+  // This board being deleted is not something a re-fetch can answer — there is
+  // nothing left to fetch. The board's own branch compares the id and leaves for
+  // Home; every other board's deletion really is none of our business (#2932).
+  'board.deleted',
+  // A link between two tasks changed. No card carries a relation (the board rows
+  // have no such field), so a task-list re-fetch would buy nothing; the only
+  // consumer is the Gantt's edge list, which the board pokes by its own branch
+  // (#2932).
+  'task.relation',
+  // Somebody commented. The only `task.*` event that changes nothing drawn here:
+  // a board row carries no comment count and no "has comments" flag (backend
+  // handlers/task_list_dto.go ships only has_description) and no card renders
+  // one. Its payload is a bare `{task_id}` — no board_id — so it reached EVERY
+  // open board in the workspace, and every ping the bot writes cost each of them
+  // a full task-list re-fetch.
+  //
+  // Quick actions inside a comment ("/close", "/assign @msdnna") do change the
+  // board, but they broadcast their own events through the shared apply* layer
+  // (task.updated / task.moved / task.tagged / task.assigned …), each classified
+  // on its own — so dropping this one loses nothing (#2932).
+  'task.commented',
 ])
 
 const META = new Set(['tag.created', 'tag.updated', 'tag.deleted', 'tag_prefixes.updated'])
@@ -46,19 +70,56 @@ const META = new Set(['tag.created', 'tag.updated', 'tag.deleted', 'tag_prefixes
 // recomputes from that list via its watcher.
 const MILESTONE_PREFIX = 'milestone.'
 
-export function classifyEvent(ev, { boardId } = {}) {
+export function classifyEvent(ev, { boardId, hasTask } = {}) {
   const type = ev?.type
   if (typeof type !== 'string') return 'ignore'
   if (IGNORED.has(type) || type.startsWith(MILESTONE_PREFIX)) return 'ignore'
   if (META.has(type)) return 'meta'
   if (type === 'integration.sync') return 'meta'
-  if (type.startsWith('column.')) return 'columns'
-  if (type === 'board.updated') return 'board'
+
+  // Column CRUD and `board.updated` are workspace-scoped like everything else, so
+  // they reach every open board in the workspace — a colleague renaming a column
+  // three boards over used to cost this board a column re-fetch, and a delete over
+  // there cost it three (see `column-purge`). Both kinds name their board, so
+  // scope them before classifying. `board.updated` carries the board row itself
+  // (`id` — a board has no `board_id`), the column payloads carry `board_id`.
+  //
+  // A payload naming no board falls through to the old behaviour: an unnecessary
+  // reload is the safe way to be wrong here (#2932).
+  if (type.startsWith('column.') || type === 'board.updated') {
+    const owner = type === 'board.updated' ? ev?.data?.id : ev?.data?.board_id
+    if (owner && boardId && owner !== boardId) return 'ignore'
+    if (type === 'board.updated') return 'board'
+    if (type !== 'column.deleted') return 'columns'
+  }
+  // Deleting a column takes every card standing in it with it (the server
+  // cascades through tasks.column_id), yet it broadcasts a single
+  // `column.deleted` — no task events at all. Re-reading just the column list
+  // would leave those cards in `allTasks`: invisible when grouped by status
+  // (their column_id no longer matches any rendered column), but fully alive in
+  // the tag/milestone groupings and in the list/calendar/gantt views, which
+  // bucket every task regardless of its column. Hence its own kind (#2932).
+  if (type === 'column.deleted') return 'column-purge'
 
   // Events that name a board tell us straight away whether they concern us.
   // (Only some do: the id-only payloads carry no board at all.)
+  //
+  // One exception, and it is the whole reason `hasTask` exists: a card LEAVING
+  // this board is announced with the task as it is AFTER the move, so the event
+  // names the board it went to — indistinguishable here from a stranger's. Both
+  // doors onto another board (TransferTask from the modal's breadcrumb, and
+  // setParent onto a card that lives elsewhere — backend task_ops.go applyParent)
+  // broadcast exactly that `task.moved`. Ignoring it leaves the card, and its
+  // whole subtree, drawn on a board it no longer belongs to for everyone but the
+  // person who moved it: dragging it answers 400 ("column does not belong to this
+  // board"), and opening it shows another board's task. So when the event names a
+  // task we are still holding, re-read the lists — that is the card going away (#2932).
   const evBoard = ev?.data?.board_id
-  if (evBoard && boardId && evBoard !== boardId) return 'ignore'
+  if (evBoard && boardId && evBoard !== boardId) {
+    const id = ev?.data?.id
+    if (type.startsWith('task.') && typeof id === 'string' && hasTask?.(id)) return 'tasks'
+    return 'ignore'
+  }
 
   if (type.startsWith('task.')) {
     return isFullTask(ev?.data) ? 'patch' : 'tasks'
@@ -66,6 +127,62 @@ export function classifyEvent(ev, { boardId } = {}) {
   // Unknown type: re-fetch the tasks. A new event type added on the backend must
   // not silently stop updating the board — that failure would be invisible.
   return 'tasks'
+}
+
+// The partial re-fetches a classification asks for, in the order they should be
+// scheduled. Every kind but `column-purge` maps to the one fetch it names; a
+// purge needs the columns (the deleted one must go), the tasks (its cards died
+// with it) and the board record — `boards.done_column_id` is an ON DELETE SET
+// NULL reference, so deleting the completing column silently leaves the board
+// without one, and a stale copy would keep pointing at a column that is gone.
+const PARTIAL_KINDS = { 'column-purge': ['columns', 'tasks', 'board'] }
+
+export function partialKinds(kind) {
+  return PARTIAL_KINDS[kind] || [kind]
+}
+
+// What has to be re-fetched to catch up on an event the board DROPPED instead of
+// routing it.
+//
+// The board mutes realtime for the whole of a drag (`dragging` — SortableJS has to
+// see a stable DOM, see useBoardDragScroll) and simply returns, so the event is
+// gone. A drag that ends in a drop is covered by the drop's own reload; a drag that
+// changes nothing — a card picked up and put back, dropped outside every column, or
+// abandoned with Esc — emits no `change` at all and schedules no reload, so whatever
+// a colleague did during those seconds (a card created, moved or renamed, a column
+// added, a column deleted with its cards) stayed off the board until some unrelated
+// event happened to touch it.
+//
+// A dropped `patch` cannot be merged after the fact: its payload is the task as it
+// was at that moment, and of a burst only the last one is worth applying. So it
+// degrades to the same task re-fetch its own fallback would have done (#2932).
+export function missedRefetchKinds(kind) {
+  if (!kind || kind === 'ignore') return []
+  if (kind === 'patch') return ['tasks']
+  return partialKinds(kind)
+}
+
+// Does a `task.relation` event change the arrows drawn on this board?
+//
+// The backend returns an edge only when BOTH its endpoints sit on the queried
+// board, so a pair with one end here is still worth a re-read: that is exactly
+// the event that takes an arrow away (a task re-parented onto another board) or
+// brings one back. A pair with neither end here cannot move anything.
+export function relationTouchesBoard(ev, boardId) {
+  if (ev?.type !== 'task.relation' || !boardId) return false
+  return ev?.data?.board_id === boardId || ev?.data?.related_board_id === boardId
+}
+
+// Is this event the open board's own retirement?
+//
+// `board.deleted` carries a bare `{id}`, and the board it names is usually not
+// ours — the event is workspace-scoped, so every board in the workspace hears
+// about every other. Only the match matters, and when it matches there is
+// nothing to re-fetch: the server took the columns, the cards and their uploads
+// with it (#2932).
+export function boardGone(ev, boardId) {
+  if (ev?.type !== 'board.deleted' || !boardId) return false
+  return ev?.data?.id === boardId
 }
 
 // A full task payload (as opposed to `{id}` / `{task_id}`) is recognised by the
@@ -110,7 +227,45 @@ export function mergeTaskRow(row, payload) {
 //     board, or was previously filtered out server-side by ?milestone=);
 //   * its column or position changed, i.e. the card has to move. Card order
 //     inside a column comes from the array order, not from `position`, so a
-//     silent in-place merge would leave the card sitting in its old slot.
+//     silent in-place merge would leave the card sitting in its old slot;
+//   * its parent changed, i.e. the card stops (or starts) being a card at all.
+//     `ListBoardTasksWithMeta` returns a task only while no parent of it is drawn
+//     in the same view, and nesting is announced by the same full `task.moved` as
+//     a move: backend `applyParent` writes parent_id/board_id/column_id and leaves
+//     `position` alone. Nesting a top-level card under a parent standing in ANOTHER
+//     column therefore fails the column check and re-fetches, but under one in the
+//     SAME column nothing but `parent_id` moved — the merge went through and the
+//     card stayed drawn as a top-level card for every member but the one who nested
+//     it, while never appearing under its new parent either. Compared, not tested
+//     for truthiness: a card whose parent is archived is legitimately listed with a
+//     non-null `parent_id` (see the query's NOT EXISTS), and its ordinary updates
+//     must still merge.
+//   * it left the board's server-side sprint scope — see `inBoardScope` below.
+// Does a scoped board still list this task after the patch?
+//
+// `?milestone=` narrows the board SERVER-side (backend handlers/tasks.go →
+// ListBoardTasksWithMeta: `t.milestone_id = @milestone_id`, or `IS NULL` for the
+// backlog scope), so on a sprint-scoped board a task leaving the sprint is not a
+// card that changed — it is a card that is gone. The event that takes it away is
+// an ordinary full `task.updated`: backend `applyMilestone` writes milestone_id
+// and leaves the column, the position and the parent alone, so every other check
+// below passes and the merge would keep drawing the card on a sprint it no longer
+// belongs to, for everyone but the person who moved it (#2932).
+//
+// `scope.milestone` is the scope the caller is showing, already resolved to an id:
+//   * absent   — the board is unscoped, everything stays
+//   * null     — the backlog scope (`?milestone=backlog`): only task with no milestone
+//   * a string — that milestone's id
+// An unresolvable scope is passed as `''`, which no task's milestone_id equals, so
+// every patch falls back to a re-fetch — the safe way to be wrong here.
+//
+// Subtasks need no such check: `ListBoardSubtasksWithMeta` carries no milestone
+// filter, so the sprint scope never decides whether a child is listed.
+export function inBoardScope(payload, scope = {}) {
+  if (!scope || scope.milestone === undefined) return true
+  return (payload?.milestone_id ?? null) === scope.milestone
+}
+
 // Same idea for a subtask: patch it inside its parent's child list. Returns a new
 // map, or null when the caller must re-fetch (unknown parent, the child isn't
 // listed yet, or it moved — parent, column or position changed).
@@ -129,13 +284,38 @@ export function applySubtaskPatch(byParent, payload) {
   return { ...byParent, [pid]: next }
 }
 
-export function applyTaskPatch(rows, payload) {
+export function applyTaskPatch(rows, payload, scope = {}) {
   const i = rows.findIndex((t) => t.id === payload.id)
   if (i === -1) return null
   const row = rows[i]
   if (payload.column_id !== row.column_id) return null
   if (payload.position !== row.position) return null
+  if ((payload.parent_id ?? null) !== (row.parent_id ?? null)) return null
+  if (!inBoardScope(payload, scope)) return null
   const next = rows.slice()
   next[i] = mergeTaskRow(row, payload)
   return next
+}
+
+// Who to credit for a live event in the board-activity toast.
+//
+// `ev.actor` is set only for user-initiated actions; it is deliberately EMPTY for
+// system/worker ones (recurrence on schedule, GitLab sync — see the Event doc in
+// backend/internal/realtime/hub.go). The task's `created_by` is NOT a stand-in for
+// it: a recurring task's clone inherits the author of the FIRST occurrence, so the
+// night's worker run showed up as "you created task #N" over your own avatar — or
+// blamed a sleeping colleague for a move nobody made. No actor → no name and no
+// face, and the toast falls back to "someone", which is exactly true.
+//
+// A known actor who isn't in the board's member map (left the workspace, or the map
+// hasn't loaded yet) gets the same treatment: an avatar for an id with no member
+// behind it renders as a blank circle.
+export function toastActor(ev, { selfId = null, members = {} } = {}) {
+  const actorId = ev?.actor || null
+  const member = actorId ? members[actorId] : null
+  return {
+    actorId: member ? actorId : null,
+    actorName: member?.name || '',
+    self: !!actorId && actorId === selfId,
+  }
 }

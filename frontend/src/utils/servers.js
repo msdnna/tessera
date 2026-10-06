@@ -29,6 +29,11 @@ export const SESSION_KEYS = [
   'tessera_dark',
   'tessera_ws',
   'tessera_device_id',
+  // The pending GitLab-handoff nonce (useDesktopOAuth). It belongs to one server for a
+  // sharper reason than the rest: a handoff accepted under it hands that server's
+  // one-time code to whichever server is active, so the list has to cover it or the
+  // namespacing there has a hole on exactly one install — the one being migrated.
+  'tessera_oauth_state',
 ]
 
 // isTauri reports whether we're running inside the Tauri webview. It lives here
@@ -37,8 +42,11 @@ export const SESSION_KEYS = [
 // `import { isTauri } from '@/utils/serverBase'` keeps working.
 //
 // Detection is deliberately NOT limited to the injected IPC globals. Tauri v2
-// injects __TAURI_INTERNALS__ (and, with withGlobalTauri, __TAURI__) via an init
-// script — but that can lag the very first synchronous reads of the bundle. If
+// injects __TAURI_INTERNALS__ via an init script (and __TAURI__ too, but only
+// under withGlobalTauri — which the shell keeps OFF, so that one is a probe for a
+// setting we do not use rather than a signal we get; see the ratchet test in
+// desktop/src-tauri/src/lib.rs) — and the init script can lag the very first
+// synchronous reads of the bundle. If
 // isTauri() answered "no" for even one such read at boot, the session helpers
 // would look at the *un-namespaced* keys, find nothing, and start the app signed
 // out — logging desktop users out on every reload/switch (#2930 rework). So we
@@ -56,6 +64,44 @@ export function isTauri() {
 // concatenation, so a stray slash would produce '//api'.
 export function normalizeUrl(url) {
   return (url || '').trim().replace(/\/+$/, '')
+}
+
+// serverUrlError validates a typed server address. It answers '' when the
+// address is usable, or a reason code the caller renders as a message:
+// 'empty', 'parse' (not a URL at all — a host with no scheme is the common
+// typo) or 'scheme' (parses, but not something the app can talk to).
+//
+// This is the single guard for every door into the registry, and it has to be
+// one: an address that is not an absolute http(s) origin does more than fail to
+// connect. `${base}/api` turns into a *relative* axios baseURL that resolves
+// against tauri://localhost, wsURL() throws outright on `new URL(base)` — and,
+// worst of it, updateServer() below purges the profile's namespace whenever the
+// host changes, with an unparseable address reading as "different host". So
+// committing the typo silently signs the user out of the very server they were
+// aiming at.
+export function serverUrlError(url) {
+  const clean = normalizeUrl(url)
+  if (!clean) return 'empty'
+  let parsed
+  try {
+    parsed = new URL(clean)
+  } catch {
+    return 'parse'
+  }
+  return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? '' : 'scheme'
+}
+
+// serverUrlMessage renders serverUrlError()'s code as a sentence. `t` is passed
+// in rather than imported: this module is loaded by the api layer and by the
+// storage wrapper, neither of which has (or should have) an i18n instance.
+// 'empty' maps to no message on purpose — an empty address is not a mistake,
+// it means "restore the built-in default" on the two address fields and is
+// already covered by the required-field state in the rail's edit modal.
+export function serverUrlMessage(url, t) {
+  const code = serverUrlError(url)
+  if (code === 'scheme') return t('shell.servers.errUrlScheme')
+  if (code === 'parse') return t('shell.servers.errUrl')
+  return ''
 }
 
 // serverLabel is the fallback display name: the host of the address.
@@ -155,8 +201,22 @@ export function addServer({ name, url, color, icon, insecure } = {}) {
   return profile
 }
 
+// sameHost reports whether two addresses name the same install. The scheme is
+// deliberately not part of it: putting TLS in front of a server one already has
+// a session on must not sign the user out of it. An unparseable address (the
+// field is free text) falls back to a literal comparison.
+function sameHost(a, b) {
+  if (a === b) return true
+  try {
+    return new URL(a).host === new URL(b).host
+  } catch {
+    return false
+  }
+}
+
 export function updateServer(id, patch = {}) {
   const list = readList()
+  const before = list.find((s) => s.id === id)
   const next = list.map((s) => {
     if (s.id !== id) return s
     const merged = { ...s, ...patch, id: s.id }
@@ -165,23 +225,63 @@ export function updateServer(id, patch = {}) {
     return merged
   })
   writeList(next)
-  return next.find((s) => s.id === id) || null
+  const after = next.find((s) => s.id === id) || null
+  // Re-pointing a profile at a different host is a *server* change wearing the
+  // old profile id, so the namespace would hand the new machine a session that
+  // belongs to the previous one: its refresh token posted to a host that never
+  // issued it (the very thing SESSION_KEYS exists to prevent), and a cached user
+  // and remembered workspace drawn over a server that has never heard of them.
+  // Removal purges the namespace for this reason; so does an address edit.
+  if (before && after && !sameHost(before.url, after.url)) purgeNamespace(id)
+  return after
 }
 
-// removeServer drops the profile AND every key in its namespace. Leaving the
-// session behind would be a refresh token for a server the user believes they
-// removed, kept indefinitely.
-export function removeServer(id) {
-  const list = readList().filter((s) => s.id !== id)
-  writeList(list)
+// purgeNamespace drops every `<key>::<id>` entry of one profile.
+function purgeNamespace(id) {
   const suffix = `::${id}`
   for (let i = localStorage.length - 1; i >= 0; i--) {
     const key = localStorage.key(i)
     if (key && key.endsWith(suffix)) localStorage.removeItem(key)
   }
+}
+
+// removeServer drops the profile AND every key in its namespace. Leaving the
+// session behind would be a refresh token for a server the user believes they
+// removed, kept indefinitely.
+//
+// Removing the *last* profile resets it instead of emptying the registry: the
+// session is purged as always, but a fresh default profile takes its place. The
+// desktop build assumes throughout that exactly one server is active, and an
+// empty list makes activeServerId() '' — which is not "no server" to the rest of
+// the code, it is the *web* answer. skey() would drop back to the un-namespaced
+// keys and write the next session where nothing looks for it again; serverBase()
+// would fall through to DEFAULT_BASE, aiming a self-hosted desktop at the public
+// instance; and setActiveServerUrl() would write the legacy key serverBase() no
+// longer reads, so the address field on the login screen would stop doing
+// anything. Nor is the state recoverable on its own: ensureRegistry() sees a
+// non-null "[]" and does not re-seed.
+export function removeServer(id) {
+  const list = readList().filter((s) => s.id !== id)
+  writeList(list)
+  purgeNamespace(id)
+  if (list.length === 0) {
+    // A new id, not the removed one: the namespace has just been purged, and
+    // reusing the id would hand the replacement whatever the sweep above missed.
+    const fresh = {
+      id: newId(),
+      name: serverLabel(DEFAULT_BASE),
+      url: DEFAULT_BASE,
+      color: DEFAULT_COLOR,
+      icon: '',
+      insecure: false,
+    }
+    list.push(fresh)
+    writeList(list)
+    localStorage.setItem(ACTIVE_KEY, fresh.id)
+    return list
+  }
   if (localStorage.getItem(ACTIVE_KEY) === id) {
-    if (list[0]) localStorage.setItem(ACTIVE_KEY, list[0].id)
-    else localStorage.removeItem(ACTIVE_KEY)
+    localStorage.setItem(ACTIVE_KEY, list[0].id)
   }
   return list
 }
@@ -190,13 +290,22 @@ export function removeServer(id) {
 // popover and the settings screen): it re-points the active profile instead of
 // writing the legacy key. On web — where there is no profile — it keeps writing
 // the legacy key, so nothing about the browser build changes.
+//
+// Returns whether the address was accepted. An empty one still means "restore
+// the built-in default" (that is what the field's placeholder promises), but
+// anything else serverUrlError() rejects is refused outright rather than
+// stored — see the note there for why a bad address is not merely a dead link.
+// The rail's edit modal validates before it ever gets here; these two older
+// fields did not, which is what this guard is for.
 export function setActiveServerUrl(url) {
   const clean = normalizeUrl(url)
+  if (clean && serverUrlError(clean)) return false
   const id = activeServerId()
   if (!id) {
     if (clean) localStorage.setItem(LEGACY_BASE_KEY, clean)
     else localStorage.removeItem(LEGACY_BASE_KEY)
-    return
+    return true
   }
   updateServer(id, { url: clean || DEFAULT_BASE })
+  return true
 }

@@ -100,7 +100,46 @@ export function documentApprovalState(approvals) {
   return open || list[0]
 }
 
+/**
+ * How many people one route may ask — `maxDocApprovalSteps` in
+ * handlers/document_approvals.go. Past it the server answers 400, and the panel
+ * composes the route in a picker that has no idea the limit exists.
+ */
+export const MAX_APPROVERS = 25
+
+/**
+ * Why the composed route would be refused, as a reason key ('' when it would be
+ * taken). The server's order is reproduced exactly — dedupe, then empty, then
+ * the cap — because the two ends have to agree on the *same* list: counting raw
+ * entries would disable a submit a deduping server would have accepted.
+ */
+export function routeApproversRefusal(approvers) {
+  const named = new Set((approvers || []).filter(Boolean))
+  if (named.size === 0) return 'empty'
+  if (named.size > MAX_APPROVERS) return 'tooMany'
+  return ''
+}
+
 /** Whether a new route may be raised — one open route per document. */
 export function canRaiseApproval(approvals) {
   return !(approvals || []).some((a) => a.status === APPROVAL_PENDING)
+}
+
+/**
+ * Whether the caller may withdraw a route.
+ *
+ * `CancelDocumentApproval` opens this to whoever raised the route and to
+ * workspace managers only — a route someone else is halfway through signing is
+ * not something a passer-by should be able to void. Offering the button to every
+ * member made the commonest case (an approver reading the route they were asked
+ * to sign) a 403: a hidden control is an inconvenience, one that refuses is a bug
+ * report.
+ *
+ * `canManage` is the store's owner/admin flag, which is exactly the pair
+ * `requireManager` accepts.
+ */
+export function canCancelApproval(approval, userId, canManage) {
+  if (!approval || approval.status !== APPROVAL_PENDING) return false
+  if (canManage) return true
+  return !!userId && approval.created_by === userId
 }

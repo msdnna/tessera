@@ -140,6 +140,14 @@ object TestTags {
     /** The description editor's text area (absent while it shows the preview tab). */
     const val TASK_DESCRIPTION = "task-description"
 
+    /** The description as rendered text, with no editor behind it — the archive
+     *  scope's read-only modal (#2932). */
+    const val TASK_DESCRIPTION_READONLY = "task-description-readonly"
+
+    /** The footer line that says the open task is archived and takes no edits. Its
+     *  presence is what a spec asks about: the modal is one composable either way. */
+    const val TASK_READONLY_NOTE = "task-readonly-note"
+
     /** A tab in the modal's strip, keyed by role rather than by its localised
      *  label. «Описание» is the first tab and the one open on load (#2754). */
     fun taskTab(key: String) = "task-tab:$key"
@@ -185,6 +193,19 @@ object TestTags {
     /** Composer at the foot of the Комментарии tab, and its send button. */
     const val TASK_COMMENT_INPUT = "task-comment-input"
     const val TASK_COMMENT_SUBMIT = "task-comment-submit"
+
+    /** «✕» комментария — только на своих, потому на него и стоит опираться. */
+    fun taskCommentDelete(id: String) = "task-comment-delete:$id"
+
+    /** Кнопки строки вложения. Разведены по ролям, потому что в архиве они
+     *  расходятся: скачать можно, удалить — нет (#2932). */
+    fun taskAttachmentDownload(id: String) = "task-attachment-download:$id"
+
+    fun taskAttachmentDelete(id: String) = "task-attachment-delete:$id"
+
+    /** «Да» в подтверждении удаления комментария — единственный нажим, доходящий
+     *  до сервера, и единственный, который спек может сделать. */
+    const val TASK_COMMENT_DELETE_CONFIRM = "task-comment-delete-confirm"
 
     /** The in-thread reply composer — at most one is open at a time. */
     const val TASK_REPLY_INPUT = "task-reply-input"

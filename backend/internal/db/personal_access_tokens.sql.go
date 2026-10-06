@@ -50,9 +50,15 @@ func (q *Queries) CreatePAT(ctx context.Context, arg CreatePATParams) (PersonalA
 }
 
 const getPATByHash = `-- name: GetPATByHash :one
-SELECT id, user_id, name, token_hash, last_four, expires_at, revoked_at, last_used_at, created_at FROM personal_access_tokens WHERE token_hash = $1
+SELECT p.id, p.user_id, p.name, p.token_hash, p.last_four, p.expires_at, p.revoked_at, p.last_used_at, p.created_at FROM personal_access_tokens p
+JOIN users u ON u.id = p.user_id
+WHERE p.token_hash = $1 AND u.active
 `
 
+// The owner's `active` flag is part of the lookup, not an afterthought: a PAT
+// outlives the session that created it by months and sits in CI configs, so a
+// deactivated account whose token still resolved would keep full API access
+// while the login form told it no.
 func (q *Queries) GetPATByHash(ctx context.Context, tokenHash string) (PersonalAccessToken, error) {
 	row := q.db.QueryRow(ctx, getPATByHash, tokenHash)
 	var i PersonalAccessToken

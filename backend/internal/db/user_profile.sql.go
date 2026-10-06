@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -34,6 +35,20 @@ func (q *Queries) GetUserAvatar(ctx context.Context, userID uuid.UUID) (GetUserA
 	var i GetUserAvatarRow
 	err := row.Scan(&i.ContentType, &i.Bytes)
 	return i, err
+}
+
+const getUserAvatarVersion = `-- name: GetUserAvatarVersion :one
+SELECT updated_at FROM user_avatars WHERE user_id = $1
+`
+
+// GetUserAvatarVersion is the cheap half of GetUserAvatar: the avatar URL never
+// changes, so a client asks "still the one I have?" far more often than it needs
+// the picture, and answering that must not read a 2 MiB blob out of the table.
+func (q *Queries) GetUserAvatarVersion(ctx context.Context, userID uuid.UUID) (time.Time, error) {
+	row := q.db.QueryRow(ctx, getUserAvatarVersion, userID)
+	var updated_at time.Time
+	err := row.Scan(&updated_at)
+	return updated_at, err
 }
 
 const getUserPreferences = `-- name: GetUserPreferences :one

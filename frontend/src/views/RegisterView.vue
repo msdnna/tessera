@@ -3,10 +3,13 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
 import { LogoGitlab } from '@vicons/ionicons5'
-import { useRouter, RouterLink } from 'vue-router'
+import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
+import { passwordError } from '@/utils/password'
+import { loginRouteForInvite, inviteOutcomeRoute } from '@/utils/inviteRoute'
+import { stashPendingInvite } from '@/utils/pendingInvite'
 
 const { t } = useI18n()
 
@@ -18,6 +21,9 @@ const formError = ref('')
 const errors = ref({})
 const authStore = useAuthStore()
 const router = useRouter()
+// ?invite=<token> — set by the invite page when the invitee has no account yet.
+// Carried into register so the backend can apply that one invitation.
+const inviteToken = useRoute().query.invite || ''
 
 const gitlabEnabled = ref(false)
 onMounted(async () => {
@@ -29,6 +35,10 @@ onMounted(async () => {
   }
 })
 function registerWithGitlab() {
+  // The token cannot ride in the URL across the provider's redirect, so it waits
+  // in the tab: the callback picks it up and finishes the acceptance. Without
+  // this the SSO invitee signs up into a workspace they were never joined to.
+  stashPendingInvite(inviteToken)
   window.location.href = auth.gitlabAuthorizeUrl()
 }
 
@@ -42,7 +52,10 @@ function validate() {
   if (!email.value.trim()) e.email = t('common.auth.validation.emailRequired')
   else if (!EMAIL_RE.test(email.value.trim())) e.email = t('common.auth.validation.emailInvalid')
   if (!password.value) e.password = t('common.auth.validation.passwordRequired')
-  else if (password.value.length < 8) e.password = t('common.auth.validation.passwordTooShort')
+  // Both bounds, from the shared rule: the ceiling is bcrypt's and is counted in
+  // bytes, so a long Russian passphrase used to reach the server and come back
+  // as "internal error" (#2932).
+  else if (passwordError(password.value)) e.password = passwordError(password.value)
   errors.value = e
   return Object.keys(e).length === 0
 }
@@ -52,7 +65,21 @@ async function submit() {
   if (!validate()) return
   loading.value = true
   try {
-    await authStore.register(email.value.trim(), name.value.trim(), password.value)
+    const outcome = await authStore.register(
+      email.value.trim(),
+      name.value.trim(),
+      password.value,
+      inviteToken,
+    )
+    // The account is created either way, so a token that granted nothing has to
+    // be said out loud here — the invited address is exactly what the invitee
+    // cannot check (the link is as often pasted into a chat as mailed), and on
+    // the board there is no sign of a workspace they never joined. The accept
+    // page owns those words, and for a mismatch also the way out of it.
+    if (inviteToken && outcome && outcome !== 'applied') {
+      router.replace(inviteOutcomeRoute(inviteToken, outcome))
+      return
+    }
     router.push('/')
   } catch (e) {
     formError.value = e.message
@@ -126,7 +153,13 @@ async function submit() {
     </template>
     <div class="auth-foot">
       {{ $t('common.auth.register.haveAccount') }}
-      <router-link to="/login">{{ $t('common.auth.register.login') }}</router-link>
+      <!-- An invitee who already has an account lands here anyway (the accept
+           page sends every signed-out visitor to register) and takes this link.
+           It carries the token on, or the invitation is left unaccepted with its
+           only link back in the mailbox. -->
+      <router-link :to="loginRouteForInvite(inviteToken)">{{
+        $t('common.auth.register.login')
+      }}</router-link>
     </div>
   </auth-layout>
 </template>

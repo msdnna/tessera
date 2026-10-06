@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -201,6 +202,8 @@ func (h *API) flushJournal(ctx context.Context, j *syncJournal) {
 			log.Printf("gitlab journal: create action failed: %v", cerr)
 		}
 	}
+	// #nosec G115 -- per-run counters over one sync of one GitLab project; they
+	// count rows we just wrote in this process, so int32 cannot overflow.
 	if ferr := h.q.FinishGitlabSyncRun(ctx, db.FinishGitlabSyncRunParams{
 		ID: runID, Status: j.status, CreatedCount: int32(j.created), UpdatedCount: int32(j.updated),
 		DeletedCount: int32(j.deleted), ActionCount: int32(len(j.actions)), Error: j.errText,
@@ -239,7 +242,7 @@ func (h *API) ListGitlabSyncRuns(c *gin.Context) {
 	limit := int32(50)
 	if v := c.Query("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= journalRetention {
-			limit = int32(n)
+			limit = int32(n) // #nosec G109 G115 -- guarded above: 0 < n <= journalRetention
 		}
 	}
 	runs, err := h.q.ListGitlabSyncRunsByWorkspace(c, db.ListGitlabSyncRunsByWorkspaceParams{WorkspaceID: wsID, Limit: limit})
@@ -285,14 +288,16 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 	limit := int32(journalPageSize)
 	if v := c.Query("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= journalPageMax {
-			limit = int32(n)
+			limit = int32(n) // #nosec G109 G115 -- guarded above: 0 < n <= journalPageMax
 		}
 	}
 	// seq is 0-based, so -1 is "before the first row" (includes seq 0).
 	afterSeq := int32(-1)
 	if v := c.Query("after_seq"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			afterSeq = int32(n)
+		// seq is a DB int32; anything outside that range can only be a bogus
+		// cursor, so keep the default rather than wrapping around.
+		if n, err := strconv.Atoi(v); err == nil && n >= -1 && n <= math.MaxInt32 {
+			afterSeq = int32(n) // #nosec G109 -- guarded above: -1 <= n <= MaxInt32
 		}
 	}
 	rows, err := h.q.ListGitlabSyncActionsPage(c, db.ListGitlabSyncActionsPageParams{
@@ -305,7 +310,7 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 	if rows == nil {
 		rows = []db.ListGitlabSyncActionsPageRow{}
 	}
-	hasMore := int32(len(rows)) == limit
+	hasMore := int32(len(rows)) == limit // #nosec G115 -- len(rows) <= limit, itself an int32
 	var nextAfterSeq *int32
 	if hasMore {
 		s := rows[len(rows)-1].Seq

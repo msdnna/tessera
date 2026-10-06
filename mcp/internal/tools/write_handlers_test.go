@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,8 +40,8 @@ func newMux(t *testing.T, get map[string]any) (*client.Client, *muxAPI) {
 		m.writes[r.Method+" "+r.URL.Path] = buf
 		w.WriteHeader(http.StatusOK)
 		// One canned body serves every write: comment tools read the id, task
-		// creation also reads the title.
-		_, _ = w.Write([]byte(`{"id":"cm-new","title":"New"}`))
+		// creation also reads the title, an upload reads the url it landed on.
+		_, _ = w.Write([]byte(`{"id":"cm-new","title":"New","url":"/api/uploads/up.png"}`))
 	}))
 	t.Cleanup(m.Close)
 	return client.New(m.URL+"/api", "tok"), m
@@ -113,6 +115,70 @@ func TestAddCommentHandler(t *testing.T) {
 	}
 	if _, ok := mux.writes["POST /api/tasks/t1/comments"]; !ok {
 		t.Fatalf("comment not posted: %v", mux.writes)
+	}
+}
+
+// A caller that both writes the picture into its own sentence and passes the
+// file gets one working image, not a broken local path plus a duplicate below.
+func TestAddCommentSplicesImageWhereTheBodyAlreadyPointsAtIt(t *testing.T) {
+	c, mux := newMux(t, map[string]any{"/api/tasks/t1": detail("t1", "b1")})
+	shot := filepath.Join(t.TempDir(), "dark.png")
+	if err := os.WriteFile(shot, []byte("png-bytes"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, out, err := addComment(c)(context.Background(), nil, addCommentInput{
+		TaskID: "t1", Body: "тёмная тема после правки:\n\n![после](" + shot + ")\n", ImagePaths: []string{shot},
+	})
+	if err != nil || out.EmbeddedImages != 1 {
+		t.Fatalf("addComment: %+v %v", out, err)
+	}
+	var posted struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal(mux.writes["POST /api/tasks/t1/comments"], &posted); err != nil {
+		t.Fatalf("comment body: %v", err)
+	}
+	if strings.Contains(posted.Body, shot) {
+		t.Fatalf("the local path survived into the comment — readers get a broken image: %q", posted.Body)
+	}
+	if n := strings.Count(posted.Body, "/api/uploads/up.png"); n != 1 {
+		t.Fatalf("want the picture once, got %d: %q", n, posted.Body)
+	}
+	if !strings.Contains(posted.Body, "![после](/api/uploads/up.png)") {
+		t.Fatalf("spliced in the wrong place or lost the caption: %q", posted.Body)
+	}
+}
+
+func TestEmbedUploadedImage(t *testing.T) {
+	const url = "/api/uploads/up.png"
+	path := "/home/agent/shots/dark.png"
+	cases := []struct {
+		name, body, want string
+		found            bool
+	}{
+		{"exact path", "a ![alt](" + path + ") b", "a ![alt](" + url + ") b", true},
+		{"uncleaned path", "![alt](/home/agent/./shots/dark.png)", "![alt](" + url + ")", true},
+		{"file url", "![alt](file://" + path + ")", "![alt](" + url + ")", true},
+		{"bare basename", "![](dark.png)", "![dark.png](" + url + ")", true},
+		{"another file of the same shape", "![alt](/home/agent/shots/light.png)", "", false},
+		{"already uploaded", "![alt](/api/uploads/other.png)", "", false},
+		{"plain link, not an image", "[dark.png](" + path + ")", "", false},
+		{"empty body", "", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, found := embedUploadedImage(tc.body, path, url)
+			if found != tc.found {
+				t.Fatalf("found=%v want %v (%q)", found, tc.found, got)
+			}
+			if found && got != tc.want {
+				t.Fatalf("got %q want %q", got, tc.want)
+			}
+			if !found && got != tc.body {
+				t.Fatalf("body changed without a match: %q", got)
+			}
+		})
 	}
 }
 

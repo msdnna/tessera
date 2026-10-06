@@ -48,6 +48,13 @@ func (h *API) CreateDocument(c *gin.Context) {
 	if req.ParentID != nil && !h.parentInWorkspace(c, *req.ParentID, wsID) {
 		return
 	}
+	// The project gets the same check as the parent above, and for a sharper
+	// reason than symmetry: TransferProject re-stamps workspace_id on a
+	// project's documents by project_id alone, so one pinned across the boundary
+	// leaves this workspace the next time that project moves.
+	if req.ProjectID != nil && !h.projectInWorkspace(c, *req.ProjectID, wsID) {
+		return
+	}
 	seed, ok := h.seedFromTemplate(c, wsID, req.TemplateID)
 	if !ok {
 		return
@@ -216,6 +223,9 @@ func (h *API) UpdateDocument(c *gin.Context) {
 		next.Icon = *req.Icon
 	}
 	if req.ProjectID != nil {
+		if !h.projectInWorkspace(c, *req.ProjectID, doc.WorkspaceID) {
+			return
+		}
 		next.ProjectID = req.ProjectID
 	}
 	if req.Position != nil {
@@ -263,15 +273,17 @@ func (h *API) DeleteDocument(c *gin.Context) {
 	// there is nothing left to walk, while a nested document's participants would
 	// go on typing into a row that no longer exists (#2729).
 	doomed := h.documentSubtreeIDs(c, doc)
-	if err := h.q.DeleteDocumentSubtree(c, doc.ID); err != nil {
+	removed, err := h.q.DeleteDocumentSubtree(c, doc.ID)
+	if err != nil {
 		fail(c, err)
 		return
 	}
-	if h.docRooms != nil {
-		for _, id := range doomed {
-			h.docRooms.Drop(id)
-		}
-	}
+	h.dropDocRooms(doomed)
+	// The rows are gone, and with them the only pointer to the images they
+	// embedded (#2932). Swept off the delete's own RETURNING rather than off
+	// `doomed`: that list exists to name live rooms and is filtered by workspace,
+	// while the recursion above is not.
+	h.purgeDocAssets(c, removed)
 	h.broadcast(doc.WorkspaceID, "document.deleted", gin.H{"id": doc.ID})
 	c.Status(http.StatusNoContent)
 }
@@ -289,16 +301,20 @@ func (h *API) documentSubtreeIDs(c *gin.Context, doc db.Document) []uuid.UUID {
 	if err != nil {
 		return ids
 	}
-	// Breadth-first over the parent links; the tree is a tree (reparentAllowed
-	// rejects cycles), so this terminates.
+	// Breadth-first over the parent links, skipping rows already collected. The
+	// guard keeps the tree acyclic, but this loop must not be the thing that
+	// depends on it: an in-process walk over a ring neither returns nor answers to
+	// a cancelled request, it just grows the slice until the backend dies (#2932).
+	seen := map[uuid.UUID]bool{doc.ID: true}
 	for frontier := ids; len(frontier) > 0; {
 		var next []uuid.UUID
 		for i := range docs {
-			if docs[i].ParentID == nil {
+			if docs[i].ParentID == nil || seen[docs[i].ID] {
 				continue
 			}
 			for _, parent := range frontier {
 				if *docs[i].ParentID == parent {
+					seen[docs[i].ID] = true
 					next = append(next, docs[i].ID)
 					break
 				}

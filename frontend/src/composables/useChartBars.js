@@ -1,7 +1,8 @@
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, unref, onBeforeUnmount } from 'vue'
 import { tasks as tasksApi } from '@/api'
 import { formatEstimate, estimateToDays, estimateTooltip } from '@/utils/estimation'
 import { useFormat } from '@/composables/useFormat'
+import { useToast } from '@/composables/useToast'
 import {
   DAY_MS,
   HOUR_MS,
@@ -24,6 +25,10 @@ import { SUB_STEP, SUB_TOP0 } from './useChartRows'
  *     persists it;
  *   - `renderRows` — the windowed rows with all of the above precomputed once per
  *     render (the templates used to call geom() six times per row).
+ *
+ * `readonly` (ref/getter/boolean) is the archive view: a bar still renders, but no
+ * drag starts, so no PATCH goes out. The archive is a read-only look at cards that
+ * are already out of the way — rescheduling one from there edits a live task.
  */
 export function useChartBars({
   tier,
@@ -35,8 +40,13 @@ export function useChartBars({
   rowHeight,
   findTask,
   onChanged,
+  readonly,
 }) {
   const { formatters } = useFormat()
+  // A refused reschedule is invisible without this: `onChanged()` re-reads the
+  // board, the bar slides back to the dates it had, and the gesture looks like one
+  // that simply did not catch. Same rule the card and its context menu follow.
+  const toast = useToast()
   // During a drag we hold a transient preview so only the dragged bar re-renders.
   const drag = ref(null) // { id, mode, startX, baseStart, baseDue, hasStart, hasDue }
   const preview = ref(null) // { id, start, due }
@@ -90,6 +100,7 @@ export function useChartBars({
   // ── drag-to-reschedule (move whole bar / resize an edge) ──
   function onBarDown(e, t, mode) {
     if (e.button != null && e.button !== 0) return
+    if (typeof readonly === 'function' ? readonly() : unref(readonly)) return
     e.preventDefault()
     e.stopPropagation()
     const s = parse(t.start_date)
@@ -167,7 +178,8 @@ export function useChartBars({
         completed: !!t.completed_at,
       })
       onChanged()
-    } catch {
+    } catch (e) {
+      toast?.error(e?.message || String(e))
       onChanged()
     }
   }

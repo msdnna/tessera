@@ -11,6 +11,7 @@
   "composer": {
     "subtasksOn": "Subtasks expanded",
     "subtasksOff": "Expand subtasks",
+    "groupNext": "Group by: {next}",
     "sortHint": "Click — direction · drag to reorder",
     "remove": "Remove",
     "add": "Add grouping / sorting / filter",
@@ -35,11 +36,14 @@
     "overwrite": "Overwrite:",
     "empty": "No saved views",
     "deleteConfirm": "Delete the view “{name}”?",
-    "saved": "View “{name}” saved"
+    "saved": "View “{name}” saved",
+    "nameTaken": "The name “{name}” is taken by a “{layout}” view — pick another",
+    "group": "Saved views",
+    "saveAs": "Save the view…"
   },
   "column": {
-    "expand": "Expand the column",
     "addTask": "New task",
+    "expandTitle": "{name} — expand the column",
     "taskPlaceholder": "Task title, Enter — create",
     "add": "New column",
     "namePlaceholder": "Column name",
@@ -74,7 +78,8 @@
   },
   "toast": {
     "gitlabConflict": "GitLab write-back conflict — open the GitLab settings to resolve it",
-    "restored": "Task restored from the archive"
+    "restored": "Task restored from the archive",
+    "boardGone": "The board was deleted — opened “Home”"
   },
   "activity": {
     "you": "You",

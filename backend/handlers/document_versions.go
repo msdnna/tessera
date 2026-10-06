@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -28,8 +29,20 @@ const (
 	docVersionWindow = 10 * time.Minute
 
 	// docVersionKeep caps a document's automatic history. Manual snapshots do not
-	// count against it and are never pruned — see the query.
+	// count against it — they have their own, deliberately larger cap below.
 	docVersionKeep = 50
+
+	// docManualVersionKeep caps the manual half of the journal. "Manual" started
+	// as "a milestone somebody asked to keep" and grew into "unprunable": the
+	// rollback writes two of them per click and raising an approval route writes a
+	// third, none of which anybody asked to keep forever. With no prune, no cap and
+	// no delete endpoint, the only way a document's history stopped growing was for
+	// people to stop using the feature — and every row is a full copy of a body the
+	// query itself describes as up to a megabyte (#2932).
+	//
+	// Larger than the automatic keep because these entries are rare and deliberate:
+	// the bound is there to stop unbounded growth, not to ration snapshots.
+	docManualVersionKeep = 200
 
 	// maxDocVersionLabel bounds the free-text name of a manual snapshot. The
 	// journal renders it on one line; a pasted page there is a broken panel.
@@ -99,7 +112,23 @@ func (h *API) CreateDocumentVersion(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	h.pruneManualVersions(c, doc.ID)
 	c.JSON(http.StatusCreated, viewDocumentVersion(v))
+}
+
+// pruneManualVersions trims the manual half of a document's journal back to
+// docManualVersionKeep.
+//
+// Best-effort for the same reason snapshotDocument is: the row the caller asked
+// for is already written, and answering 500 because retention could not run would
+// break the button to protect the table.
+func (h *API) pruneManualVersions(c *gin.Context, docID uuid.UUID) {
+	if err := h.q.PruneManualDocumentVersions(c, db.PruneManualDocumentVersionsParams{
+		DocumentID: docID,
+		Keep:       docManualVersionKeep,
+	}); err != nil {
+		log.Printf("documents: manual version prune for %s failed: %v", docID, err)
+	}
 }
 
 // GetDocumentVersion returns one version with its content — what the journal
@@ -154,6 +183,9 @@ func (h *API) RestoreDocumentVersion(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A rollback is the heaviest writer into the manual half — two full copies of
+	// the body per click, neither of which anybody asked to keep.
+	h.pruneManualVersions(c, doc.ID)
 	h.broadcast(doc.WorkspaceID, "document.updated", documentMeta(updated))
 	// Everyone with the document open is holding the pre-rollback tree; nudging
 	// the room is what turns a rollback into something they see rather than

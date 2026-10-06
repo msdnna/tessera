@@ -51,6 +51,50 @@ class StringResourcesTest {
         }
     }
 
+    /**
+     * Кириллица в `values-en` — русский текст, забытый под английским ключом. Паритет
+     * ключей такое не ловит: строка на месте, просто не переведена. Самый вредный случай
+     * не опечатка, а имя сущности, вписанное в подсказку «как на сервере»: подписи
+     * засеянных колонок и личного пространства клиент с #2800 собирает по `name_key` из
+     * своих ресурсов, так что вписанное «К работе» на английском интерфейсе называет
+     * колонку, которой на экране нет (тур #2860).
+     */
+    @Test
+    fun `no russian text is left in the english locale`() {
+        val leftovers = mutableListOf<String>()
+        elements("values-en", "string").forEach {
+            if (it.getAttribute("name") !in SELF_NAMED && CYRILLIC.containsMatchIn(it.textContent)) {
+                leftovers += it.getAttribute("name")
+            }
+        }
+        listOf("plurals", "string-array").forEach { tag ->
+            elements("values-en", tag).forEach {
+                if (CYRILLIC.containsMatchIn(it.textContent)) leftovers += "$tag/${it.getAttribute("name")}"
+            }
+        }
+        assertWithMessage("непереведённые строки в values-en").that(leftovers).isEmpty()
+    }
+
+    /**
+     * Шаг тура и его подстановки. `bodyArgs` разрешаются в [TourOverlay] через
+     * `getString(bodyRes, *args)`: лишний аргумент молча пропадёт, а недостающий покажет
+     * пользователю сырое «%1$s» вместо названия колонки. Сценарий читается из исходника,
+     * как реестр команд в [CommandLabelsTest], — сверять нужно именно объявленную пару.
+     */
+    @Test
+    fun `every tour step supplies exactly the arguments its text takes`() {
+        val steps = TOUR_STEP.findAll(tourFile().readText()).toList()
+        assertWithMessage("шаги тура не распознаны в Tour.kt").that(steps.size).isGreaterThan(10)
+        val ru = formatArgs("values")
+        steps.forEach { m ->
+            val key = m.groupValues[1]
+            val declared = m.groupValues[2].let { if (it.isBlank()) 0 else it.split(",").size }
+            assertWithMessage("подстановки шага с текстом $key")
+                .that(declared)
+                .isEqualTo(ru.getValue(key).size)
+        }
+    }
+
     /** Массивы (названия месяцев, дни недели) паритетом ключей не покрыты: недостающий
      *  `string-array` в `values-en` так же молча отдаёт русский, а разъехавшаяся длина
      *  роняет обращение по индексу уже в рантайме. */
@@ -62,6 +106,33 @@ class StringResourcesTest {
         assertWithMessage("массивы без английского перевода").that(ru.keys - en.keys).isEmpty()
         ru.forEach { (name, size) ->
             assertWithMessage("длина массива $name").that(en[name]).isEqualTo(size)
+        }
+    }
+
+    /**
+     * Порядок полей в английских подписях даты. Все они собираются как `(день,
+     * месяц[, год])`, и локаль вольна их переставить — но английский в проекте это
+     * en-GB, а не en-US: веб рисует его через `localeTag('en') = 'en-GB'` ровно
+     * затем, чтобы день стоял перед месяцем во всех локалях, которые мы отдаём
+     * (frontend/src/utils/format.js).
+     *
+     * Гвард ресурсный, а не по подписи: строк с этим порядком несколько, они
+     * добавлялись разными волнами (#2803 — сборка, #2857 — пресеты), и разъехались
+     * они именно так — `medium` (он берёт `dates_long`) печатал «Jun 4, 2026»
+     * посреди экрана, где `short` и `long` уже стояли днём вперёд.
+     */
+    @Test
+    fun `english date labels keep the day before the month`() {
+        val strings = elements("values-en", "string").associate {
+            it.getAttribute("name") to it.textContent
+        }
+        DAY_FIRST_DATES.forEach { key ->
+            val value = strings[key] ?: error("нет строки $key в values-en")
+            val day = value.indexOf("%1\$")
+            val month = value.indexOf("%2\$")
+            assertWithMessage("в $key = \"$value\" день должен стоять перед месяцем")
+                .that(day in 0 until month)
+                .isTrue()
         }
     }
 
@@ -97,6 +168,15 @@ class StringResourcesTest {
         return out
     }
 
+    /** Сценарий тура; пути — как у [resDir], рабочим каталогом может быть и модуль,
+     *  и корень проекта. */
+    private fun tourFile(): File {
+        val tour = "java/website/msdnna/tessera/util/Tour.kt"
+        return listOf(File("src/main/$tour"), File("app/src/main/$tour"), File("android/app/src/main/$tour"))
+            .firstOrNull { it.isFile }
+            ?: error("Tour.kt не найден от ${File(".").absolutePath}")
+    }
+
     private fun elements(dir: String, tag: String): List<Element> {
         val file = File(res, "$dir/strings.xml")
         assertWithMessage("не найден $file").that(file.isFile).isTrue()
@@ -108,9 +188,29 @@ class StringResourcesTest {
     companion object {
         /** Имя бренда одинаково во всех локалях и намеренно живёт только в базовой. */
         private val UNTRANSLATABLE = setOf("app_name")
+
+        /** Язык называет себя на себе же — «Русский» в английском списке языков
+         *  правильный, это не забытый перевод. */
+        private val SELF_NAMED = setOf("language_ru")
+
+        /** Подписи даты, которые склеиваются из `(день, месяц[, год])`. */
+        private val DAY_FIRST_DATES = listOf(
+            "dates_short",
+            "dates_short_year",
+            "dates_long",
+            "dates_preset_short",
+            "dates_preset_long",
+        )
+        private val CYRILLIC = Regex("""[Ѐ-ӿ]""")
         private val RU_QUANTITIES = setOf("one", "few", "many", "other")
         private val EN_QUANTITIES = setOf("one", "other")
         private val ARG = Regex("""%\d+\$[a-zA-Z]""")
+
+        /** `bodyRes = R.string.<ключ>` и следующая за ним необязательная строка
+         *  `bodyArgs = listOf(…)` одного и того же [website.msdnna.tessera.util.TourStep]. */
+        private val TOUR_STEP = Regex(
+            """bodyRes = R\.string\.(\w+),\s*(?:bodyArgs = listOf\(([^)]*)\),)?""",
+        )
     }
 }
 

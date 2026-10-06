@@ -65,11 +65,24 @@ func (q *Queries) DeleteGitlabRelation(ctx context.Context, id uuid.UUID) (int64
 }
 
 const deleteStaleGitlabIssueLinks = `-- name: DeleteStaleGitlabIssueLinks :many
-WITH deleted AS (
+WITH stale AS (
+    SELECT l.id, l.src_project_path, l.src_iid, l.dst_project_path, l.dst_iid
+    FROM gitlab_issue_links l
+    WHERE l.integration_id = $1
+      AND l.src_iid = ANY($2::bigint[])
+      AND l.last_seen_at < $3
+), mirrors AS (
+    SELECT m.id
+    FROM gitlab_issue_links m
+    JOIN stale s
+      ON m.src_project_path = s.dst_project_path AND m.src_iid = s.dst_iid
+     AND m.dst_project_path = s.src_project_path AND m.dst_iid = s.src_iid
+    WHERE m.integration_id = $1
+      AND m.src_project_path = m.dst_project_path
+      AND m.last_seen_at < $3
+), deleted AS (
     DELETE FROM gitlab_issue_links
-    WHERE integration_id = $1
-      AND src_iid = ANY($2::bigint[])
-      AND last_seen_at < $3
+    WHERE id IN (SELECT id FROM stale UNION SELECT id FROM mirrors)
     RETURNING resolved_relation_id
 )
 SELECT resolved_relation_id::uuid AS relation_id FROM deleted WHERE resolved_relation_id IS NOT NULL
@@ -85,6 +98,21 @@ type DeleteStaleGitlabIssueLinksParams struct {
 // relations they had projected so the caller can unproject them. Scoped to the
 // source iids actually inspected this run — an issue outside the run's scope must
 // keep its links rather than lose them to a "not seen" verdict.
+//
+// …and to the mirrors of those rows, which the scope alone would never reach
+// (#2932). syncRelations files the reverse edge of a same-project link under the
+// OTHER issue's iid, and an incremental pull asks GitLab only for the issues that
+// changed: deleting a link upstream then usually delivers one of its two ends, so
+// the forward row went while the mirror stayed, and ListTaskRelations — which
+// reads a relation from either direction — kept the deleted link standing on both
+// cards until some later run happened to touch the other issue.
+//
+// A mirror is dropped only when it too was missed this run: an end that IS in
+// scope and still reports the link refreshes its own row, and refusing to touch a
+// refreshed row is what keeps this from erasing links GitLab still has. Confined
+// to src_project_path = dst_project_path because that is exactly the case
+// syncRelations mirrors; a cross-project reverse belongs to the other binding's
+// own pruning and must not be pulled into this one's verdict.
 func (q *Queries) DeleteStaleGitlabIssueLinks(ctx context.Context, arg DeleteStaleGitlabIssueLinksParams) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, deleteStaleGitlabIssueLinks, arg.IntegrationID, arg.SrcIids, arg.SeenBefore)
 	if err != nil {

@@ -12,8 +12,8 @@ import {
 } from '@vicons/ionicons5'
 import { i18n, uiCollator } from '@/i18n'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
-import { tagNamespace, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
-import { boardGitlabAuthors } from '@/utils/boardFilters'
+import { tagNamespace, canonPrefix, prefixLabel, tagParts, buildTagGroups } from '@/utils/tagGroups'
+import { boardGitlabAssignees, boardGitlabAuthors, linkedMemberLogins } from '@/utils/boardFilters'
 import { columnName } from '@/utils/defaultNames'
 import {
   emptyFilters,
@@ -127,31 +127,62 @@ export function useBoardFacets({
   // Detected namespaces from the project tags, for the prefix picker. Labels use
   // the configured friendly name (else the raw prefix), sorted alphabetically.
   const tagPrefixOptions = computed(() => {
-    const set = new Set()
+    // Keyed by the CANONICAL prefix, the way every other answer about a namespace
+    // is (buildTagGroups, the prefix labels, the backend's registry): a Set of raw
+    // namespaces offered «Сложность::» and «сложность::» as two entries — carrying
+    // the same friendly label, since that is looked up canonically, so the menu
+    // read as the same grouping twice, each narrowing to half the tags (#2932).
+    const seen = new Map()
     // `tag`, not `t`: the module-level `t` is the translator now, and shadowing
     // it inside a loop is exactly how a stray Russian label sneaks back in.
     for (const tag of tagsList.value) {
       const ns = tagNamespace(tag.name)
-      if (ns) set.add(ns)
+      if (ns && !seen.has(canonPrefix(ns))) seen.set(canonPrefix(ns), ns)
     }
     return [
       { label: t('board.facet.allTags'), value: '' },
-      ...[...set]
+      ...[...seen.values()]
         .map((p) => ({ label: prefixLabel(p, tagPrefixNames), value: p }))
         .sort((a, b) => uiCollator().compare(a.label, b.label)),
     ]
   })
-  // Friendly label for the current grouping (status / tag[·prefix] / assignee / none).
-  const groupModeLabel = computed(() => {
-    if (groupMode.value === 'assignee') return t('board.facet.group.assignee')
-    if (groupMode.value === 'none') return t('board.facet.group.none')
-    if (groupMode.value === 'milestone') return t('board.facet.group.milestone')
-    if (groupMode.value === 'tag')
+  // Friendly label for a grouping mode (status / tag[·prefix] / milestone / assignee / none).
+  function groupModeLabelFor(mode) {
+    if (mode === 'assignee') return t('board.facet.group.assignee')
+    if (mode === 'none') return t('board.facet.group.none')
+    if (mode === 'milestone') return t('board.facet.group.milestone')
+    if (mode === 'tag')
       return tagPrefix.value
         ? t('board.facet.group.tagPrefix', { prefix: prefixLabel(tagPrefix.value, tagPrefixNames) })
         : t('board.facet.group.tag')
     return t('board.facet.group.status')
+  }
+  const groupModeLabel = computed(() => groupModeLabelFor(groupMode.value))
+
+  // The grouping chip is a quick switch, and it has to cycle rather than flip: the
+  // board grew from two groupings to five, and the chip kept a status⇄tag toggle.
+  // Milestone grouping is a first-class column mode of the ordinary board (lanes are
+  // the project's milestones, and a task typed into one is stamped with it — see
+  // KanbanBoard's addTask), while `assignee`/`none` are the time-axis swimlanes —
+  // and `assignee` is the DEFAULT grouping there (defaultToolbar). A flip threw any
+  // of those three away on the first click and offered no click back: the timeline
+  // could not be returned to its own default from the chip at all. The cycle walks
+  // the same modes the «+» menu offers for this layout, so whatever the chip reads,
+  // clicking it comes back round. `tagPrefix` is deliberately left alone — it is the
+  // tag lane's own narrowing, and keeping it is what makes leaving and re-entering
+  // «Тег · сложность» land back on the same lanes.
+  const groupModeCycle = computed(() =>
+    timelineLike.value
+      ? ['status', 'tag', 'milestone', 'assignee', 'none']
+      : ['status', 'tag', 'milestone'],
+  )
+  // A mode outside this layout's cycle (a timeline view's `assignee` carried into a
+  // board layout, say) has index -1 and steps to the head of the cycle.
+  const nextGroupMode = computed(() => {
+    const cycle = groupModeCycle.value
+    return cycle[(cycle.indexOf(groupMode.value) + 1) % cycle.length]
   })
+  const nextGroupModeLabel = computed(() => groupModeLabelFor(nextGroupMode.value))
 
   // ── sorting ──
 
@@ -216,11 +247,28 @@ export function useBoardFacets({
       key: encodeFacet('assignee', m.user_id),
       avatarUserId: m.user_id,
     }))
-    const gl = gitlabMembersList.value.map((g) => ({
-      label: g.gl_name || g.gl_username,
-      key: encodeFacet('assignee', `gl:${g.gl_username}`),
-      avatarSrc: g.gl_avatar_url,
-    }))
+    // Plus the GitLab assignees actually seen on the board, the way the author menu
+    // below takes in the board's GitLab authors: the roster is a cache the backend
+    // refreshes at most hourly, so a person the cards already draw need not be in it
+    // (boardGitlabAssignees). Skipped are the logins of workspace members who have
+    // linked their GitLab account — the roster drops those rows so one person is
+    // never listed twice, and their Tessera entry above already matches the login
+    // (matchesAssignee via glLoginByUserId).
+    const seen = linkedMemberLogins(membersList.value, glLoginByUserId.value)
+    const gl = []
+    const pushGl = (username, name, avatar) => {
+      if (!username || seen.has(username)) return
+      seen.add(username)
+      gl.push({
+        label: name || username,
+        key: encodeFacet('assignee', `gl:${username}`),
+        avatarSrc: avatar,
+      })
+    }
+    gitlabMembersList.value.forEach((g) => pushGl(g.gl_username, g.gl_name, g.gl_avatar_url))
+    boardGitlabAssignees(allTasks.value).forEach((a) =>
+      pushGl(a.gl_username, a.gl_name, a.gl_avatar_url),
+    )
     if (!gl.length) return tessera
     return [...tessera, { type: 'group', label: 'GitLab', key: 'fag', children: gl }]
   })
@@ -228,14 +276,15 @@ export function useBoardFacets({
   // GitLab values, `fc.` = creator keys), plus the GitLab authors actually seen on the
   // board: an issue can be opened by someone outside the project's member roster.
   // Logins already represented by a Tessera row (linked accounts) are skipped so one
-  // person never shows up twice.
+  // person never shows up twice — by the same rule as the assignee menu above, over
+  // this workspace's members and not the whole roster map (see linkedMemberLogins).
   const authorFilterMenu = computed(() => {
     const tessera = membersList.value.map((m) => ({
       label: m.name,
       key: encodeFacet('author', m.user_id),
       avatarUserId: m.user_id,
     }))
-    const seen = new Set(Object.values(glLoginByUserId.value))
+    const seen = linkedMemberLogins(membersList.value, glLoginByUserId.value)
     const gl = []
     const pushGl = (username, name, avatar) => {
       if (!username || seen.has(username)) return
@@ -477,7 +526,7 @@ export function useBoardFacets({
   }
   function onChipClick(c) {
     if (c.kind === 'group') {
-      groupMode.value = groupMode.value === 'status' ? 'tag' : 'status'
+      groupMode.value = nextGroupMode.value
     } else if (c.kind === 'sort') {
       const l = sortLevels.value[c.i]
       l.dir = l.dir === 'desc' ? 'asc' : 'desc'
@@ -504,6 +553,8 @@ export function useBoardFacets({
     sortLevels,
     tagPrefixOptions,
     groupModeLabel,
+    nextGroupMode,
+    nextGroupModeLabel,
     sortFieldsForMenu,
     sortFieldLabel,
     cmpLevel,

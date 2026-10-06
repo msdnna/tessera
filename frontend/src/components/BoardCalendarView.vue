@@ -11,61 +11,109 @@ const props = defineProps({
   tasks: { type: Array, default: () => [] },
   // Real board status columns [{ id, name }] for the "move to column" menu.
   statusColumns: { type: Array, default: () => [] },
+  // Archive view (?archived=1): look, don't touch — the right-click menu is the
+  // only thing here that writes, and every item on it edits the live task.
+  readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed'])
+const emit = defineEmits(['open', 'changed', 'restore'])
 
 const { t } = useI18n()
 
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
+  // The archive's own action: this layout has no card, so the menu is the only
+  // place «Вернуть из архива» can live (see useTaskMenu).
+  onRestore: (id) => emit('restore', id),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
 // Month and weekday names are dates, not interface text: they come from Intl in
 // the user's language (#2798's formatting layer) rather than from the locale
 // files — twelve more hand-written names per language is exactly the duplication
-// that layer exists to avoid. The grid is built in the browser's timezone, so
-// every lookup passes `timeZone: null` to keep the label on the same day.
-const { formatDate } = useFormat()
-// 1 Jan 2024 was a Monday, and the grid below is Monday-first — any week would
-// do, only the weekday names are read off this one.
+// that layer exists to avoid. The grid cells are calendar coordinates rather
+// than instants, so their own labels pass `timeZone: null` — a cell built on
+// 1 March must read "March" whatever zone the reader is in. What goes INTO a
+// cell is a different matter; see `dueKey`.
+const { formatDate, formatters } = useFormat()
+
+// Where the week starts, as a JS getDay() value. Settings → Локализация offers
+// the choice, and the calendar in the due editor, the Naive pickers and the
+// Gantt week bands all follow it — a month grid that didn't would be a week out
+// of step with the picker the user opens from the same card.
+const firstDow = computed(() => (formatters.value.prefs.weekStart === 0 ? 0 : 1))
+
+// 1 Jan 2024 was a Monday — any week would do, only the weekday names are read
+// off this one, rotated to start on the user's first day.
 const weekdays = computed(() =>
   Array.from({ length: 7 }, (_, i) =>
-    capitalizeFirst(formatDate(new Date(2024, 0, 1 + i), { weekday: 'short', timeZone: null })),
+    capitalizeFirst(
+      formatDate(new Date(2024, 0, 1 + ((i + firstDow.value + 6) % 7)), {
+        weekday: 'short',
+        timeZone: null,
+      }),
+    ),
   ),
 )
 
-const today = new Date()
-today.setHours(0, 0, 0, 0)
+// The user's today — the calendar day in their timezone preference, not the
+// browser's. `new Date()` was both the highlighted cell and the month the view
+// opens on, so a profile zone a day ahead of the device (or behind it) lit the
+// neighbouring cell at the edges of the day.
+const todayParts = computed(() => formatters.value.today())
 // Cursor points at the first day of the displayed month.
-const cursor = ref(new Date(today.getFullYear(), today.getMonth(), 1))
+const cursor = ref(new Date(todayParts.value.year, todayParts.value.month, 1))
 
 const monthLabel = computed(() =>
   capitalizeFirst(formatDate(cursor.value, { month: 'long', year: 'numeric', timeZone: null })),
 )
 
-function dayKey(d) {
+// The grid cells are calendar coordinates, built from local fields — so their
+// key is read off the same fields. Month is 0-based here to match the `parts()`
+// shape below, which is what a due date's key is built from.
+function cellKey(d) {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-// Index tasks that have a due date by local day key.
+// Which day a DUE DATE belongs to is not the same question, and it was answered
+// here with the browser's calendar (#2932). It has two rules, both of which the
+// rest of the app already follows through the formatter set (utils/taskFilter
+// `dueDayOf`, the due pill on the card, the «Сегодня»/«Просрочено» facets):
+//
+//   • a due carrying a time of day is read in the user's TIMEZONE preference;
+//   • a pure UTC midnight is a date-only value (a GitLab issue due, an all-day
+//     due) and is read in UTC in every zone, or it slides to the previous day
+//     for every reader west of it.
+//
+// Reading them off `new Date(...)` instead put the very same task on one day in
+// the calendar layout and on another in the due pill of its own chip.
+function dueKey(value) {
+  const p = formatters.value.parts(value)
+  return p ? `${p.year}-${p.month}-${p.day}` : ''
+}
+
+// Index tasks that have a due date by the day the user sees it on.
 const tasksByDay = computed(() => {
   const map = {}
   for (const task of props.tasks) {
     if (!task.due_date) continue
-    const d = new Date(task.due_date)
-    ;(map[dayKey(d)] ||= []).push(task)
+    ;(map[dueKey(task.due_date)] ||= []).push(task)
   }
   return map
 })
 
+const todayKey = computed(
+  () => `${todayParts.value.year}-${todayParts.value.month}-${todayParts.value.day}`,
+)
+
 const noDate = computed(() => props.tasks.filter((task) => !task.due_date))
 
-// 6 weeks × 7 days, Monday-first, covering the displayed month.
+// 6 weeks × 7 days covering the displayed month, starting on the user's first
+// day of the week (same source as the header row above).
 const weeks = computed(() => {
   const first = cursor.value
-  const offset = (first.getDay() + 6) % 7 // Monday = 0
+  const offset = (first.getDay() - firstDow.value + 7) % 7
   const start = new Date(first.getFullYear(), first.getMonth(), 1 - offset)
   const cells = []
   for (let i = 0; i < 42; i++) {
@@ -73,8 +121,8 @@ const weeks = computed(() => {
     cells.push({
       date: d,
       inMonth: d.getMonth() === first.getMonth(),
-      isToday: d.getTime() === today.getTime(),
-      tasks: tasksByDay.value[dayKey(d)] || [],
+      isToday: cellKey(d) === todayKey.value,
+      tasks: tasksByDay.value[cellKey(d)] || [],
     })
   }
   const rows = []
@@ -86,7 +134,7 @@ function shift(months) {
   cursor.value = new Date(cursor.value.getFullYear(), cursor.value.getMonth() + months, 1)
 }
 function goToday() {
-  cursor.value = new Date(today.getFullYear(), today.getMonth(), 1)
+  cursor.value = new Date(todayParts.value.year, todayParts.value.month, 1)
 }
 </script>
 

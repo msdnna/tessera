@@ -4,7 +4,7 @@
 // workspace (opening an item may switch to another one), so it belongs to the
 // shell rather than to the current workspace.
 import { ref, watch } from 'vue'
-import { NButton, NIcon, NBadge, NPopover } from 'naive-ui'
+import { NButton, NIcon, NBadge, NPopover, useMessage } from 'naive-ui'
 import { NotificationsOutline } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -20,6 +20,7 @@ defineProps({ placement: { type: String, default: 'bottom-end' } })
 const ws = useWorkspacesStore()
 const notes = useNotificationsStore()
 const router = useRouter()
+const message = useMessage()
 const { formatTime, formatters } = useFormat()
 const { t, te } = useI18n()
 
@@ -33,7 +34,10 @@ watch(
 )
 
 function openNotification(n) {
-  notes.markRead(n.id)
+  // The toast travels as an argument because the store cannot reach useMessage()
+  // (see stores/notifications.js): a refused mark rolls the row back to unread,
+  // and the reader is told why instead of watching the dot reappear (#2932).
+  notes.markRead(n.id, message)
   // Switch the active workspace if the task lives in another one, so the sidebar
   // tree reflects where the opened task actually is.
   if (n.workspace_id && n.workspace_id !== ws.currentId) {
@@ -76,7 +80,7 @@ function noteText(n) {
           size="tiny"
           type="primary"
           class="ngrad"
-          @click="notes.markAllRead()"
+          @click="notes.markAllRead(message)"
         >
           {{ t('shell.tools.markAllRead') }}
         </n-button>

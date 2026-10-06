@@ -25,8 +25,12 @@ class ProfileRepository {
         return u
     }
 
-    suspend fun changePassword(current: String, next: String) =
-        api.changePassword(PasswordChange(current, next))
+    /** The server ends every session the old password was behind — this device's
+     *  among them — and returns a replacement pair. Storing it is what keeps the
+     *  app from logging itself out once the current access token expires. */
+    suspend fun changePassword(current: String, next: String) {
+        AuthRepository().persist(api.changePassword(PasswordChange(current, next)))
+    }
 
     /** Cache preferences optimistically (instant theme change), then sync to the
      *  server; re-cache the server-normalised result if the PUT succeeds. */

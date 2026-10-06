@@ -91,6 +91,18 @@ make coverage-report          # сводный HTML-отчёт покрытия 
   ошибки смотрим по логам; при поднятом Sentry — через него (см. skill
   `tessera-sentry`).
 
+## Безопасность кода
+
+Перед сдачей изменения гоняем скан затронутого компонента: `make scan-backend` /
+`scan-frontend` / `scan-android` / `scan-desktop` / `scan-secrets` (тулы ставятся
+`make scan-tools`). Сканы намеренно **не входят** в `make lint`/`make test` — они
+ходят в сеть и идут минутами.
+
+Гейт работает **храповиком**: текущие находки заморожены в
+`tools/security-baseline.json`, список может сокращаться, но не расти. Починил
+находку — перегенерируй базовую линию (`make scan-baseline-update`) и закоммить
+диff вместе с правкой. Подробности — [`docs/security-scanning.md`](docs/security-scanning.md).
+
 ## Pull requests
 
 1. Форкни репозиторий и создай ветку от `develop`.

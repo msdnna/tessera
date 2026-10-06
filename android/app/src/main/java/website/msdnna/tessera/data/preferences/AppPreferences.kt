@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import website.msdnna.tessera.BuildConfig
 import website.msdnna.tessera.data.model.Preferences as UserPrefs
+import website.msdnna.tessera.data.model.Reminder
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.util.normalizeLanguage
 import website.msdnna.tessera.util.resolveLanguage
@@ -70,6 +71,23 @@ class AppPreferences(private val context: Context) {
         // Empty on a build without Firebase config or a phone without Play
         // Services — the device then lives on the live-socket path only.
         val FCM_TOKEN = stringPreferencesKey("fcm_token")
+        val OAUTH_NONCE = stringPreferencesKey("oauth_nonce")
+
+        // Напоминания, под которые на устройстве заведены будильники (#2932).
+        // Набор обязан пережить процесс: будильник живёт в системе, а не в
+        // приложении, и снять его можно только зная id. Пока этот список был
+        // полем ViewModel, всё, что не попало в текущую загрузку, оставалось
+        // висеть — в том числе после выхода из аккаунта.
+        val SCHEDULED_REMINDERS = stringSetPreferencesKey("scheduled_reminders")
+
+        // Те же напоминания целиком, а не одними id (#2932). Исключение из
+        // «online-first, домен тут не живёт» ровно на ширину доставки: будильник
+        // перезагрузку не переживает, а BootReceiver поднимается раньше сети —
+        // без сохранённых времени и текста перевзводить после ребута нечего.
+        // Текст напоминания и так лежит на устройстве, в extras будильника, так
+        // что новой поверхности эта запись не открывает: чистится она тем же
+        // выходом из аккаунта, что и набор id.
+        val SCHEDULED_REMINDERS_JSON = stringPreferencesKey("scheduled_reminders_json")
     }
 
     /** Stable id for the notification "device" channel so this device is routable and
@@ -106,6 +124,25 @@ class AppPreferences(private val context: Context) {
 
     suspend fun setFcmToken(token: String) {
         context.dataStore.edit { it[Keys.FCM_TOKEN] = token }
+    }
+
+    /**
+     * Remembers the nonce of an OAuth login started from this app, so the deep link that
+     * comes back can be told apart from one any web page could fire (#2932).
+     *
+     * On disk rather than in memory: the browser hands control back through a *new*
+     * Intent, and the app may well have been killed behind the Custom Tab while the user
+     * was typing their password.
+     */
+    suspend fun setOAuthNonce(nonce: String) {
+        context.dataStore.edit { it[Keys.OAUTH_NONCE] = nonce }
+    }
+
+    /** Reads the pending nonce and burns it, so one handoff can't be replayed twice. */
+    suspend fun consumeOAuthNonce(): String {
+        val pending = context.dataStore.data.first()[Keys.OAUTH_NONCE] ?: ""
+        if (pending.isNotEmpty()) context.dataStore.edit { it.remove(Keys.OAUTH_NONCE) }
+        return pending
     }
 
     /** User-set server override; falls back to the build's default base URL. */
@@ -231,6 +268,34 @@ class AppPreferences(private val context: Context) {
             prefs.remove(Keys.IS_ADMIN)
             prefs.remove(Keys.USER_JSON)
             prefs.remove(Keys.PREFS_JSON)
+        }
+    }
+
+    /** Id напоминаний, под которые сейчас заведены локальные будильники.
+     *  Читается разово (не потоком): к нему обращаются планировщик и выход из
+     *  аккаунта — оба вне композиции. */
+    suspend fun scheduledReminderIds(): Set<String> =
+        context.dataStore.data.first()[Keys.SCHEDULED_REMINDERS] ?: emptySet()
+
+    /** Последний известный список напоминаний — то, по чему перезагрузка
+     *  перевзводит будильники, не дожидаясь сети. Битый или отсутствующий JSON
+     *  читается как пустой список: перевзвод best-effort, падать тут нечему. */
+    suspend fun scheduledReminders(): List<Reminder> {
+        val raw = context.dataStore.data.first()[Keys.SCHEDULED_REMINDERS_JSON] ?: return emptyList()
+        return runCatching { gson.fromJson(raw, Array<Reminder>::class.java)?.toList() }
+            .getOrNull()
+            .orEmpty()
+    }
+
+    /** Пишет обе записи одной транзакцией: id (по ним снимают будильники) и
+     *  полезную нагрузку (по ней их заводят заново). Разъехаться им нельзя —
+     *  иначе после ребута окажется, что снимать есть что, а взводить нечего. */
+    suspend fun setScheduledReminders(items: List<Reminder>) {
+        val ids = items.map { it.id }.toSet()
+        val json = gson.toJson(items)
+        context.dataStore.edit {
+            it[Keys.SCHEDULED_REMINDERS] = ids
+            it[Keys.SCHEDULED_REMINDERS_JSON] = json
         }
     }
 

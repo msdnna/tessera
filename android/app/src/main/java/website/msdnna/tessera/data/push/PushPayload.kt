@@ -24,6 +24,9 @@ object PushPayload {
             body = body,
             taskId = data["task_id"]?.trim()?.ifEmpty { null },
             id = data["notification_id"]?.trim()?.ifEmpty { null },
+            // Приглашение в звонок не указывает ни на какую задачу — сервер шлёт
+            // id конференции отдельным ключом (`notify/fcm.go`).
+            conferenceId = data["conference_id"]?.trim()?.ifEmpty { null },
         )
     }
 }

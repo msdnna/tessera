@@ -7,14 +7,13 @@ import {
   projects as projectsApi,
   workspaces as wsApi,
 } from '@/api'
-import { useBoardViewStore } from '@/stores/boardView'
 import { usePaletteStore } from '@/stores/palette'
 import { useFormat } from '@/composables/useFormat'
 import { rank } from '@/utils/fuzzy'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
 import { columnName } from '@/utils/defaultNames'
 import { columnStatusName } from '@/utils/columnStatus'
-import { sortedColumns, columnTail } from '@/utils/status'
+import { sortedColumns } from '@/utils/status'
 import { taskBasePatch } from '@/utils/taskPatch'
 import { taskLink } from '@/utils/taskLink'
 import { copyText } from '@/utils/clipboard'
@@ -63,7 +62,6 @@ export function usePaletteTask() {
   const { t } = useI18n()
   const message = useMessage()
   const palette = usePaletteStore()
-  const boardView = useBoardViewStore()
   const { formatDate } = useFormat()
 
   const task = ref(null)
@@ -152,11 +150,6 @@ export function usePaletteTask() {
     const i = columns.value.findIndex((c) => c.id === task.value?.column_id)
     return i >= 0 ? statusOf(columns.value[i], i) : null
   })
-
-  async function boardTasks(boardId) {
-    if (boardView.boardId === boardId && boardView.taskSource) return boardView.taskSource()
-    return (await boardsApi.tasks(boardId)).data || []
-  }
 
   const actionRows = computed(() => {
     const tk = task.value
@@ -267,8 +260,10 @@ export function usePaletteTask() {
       run: () =>
         apply(async () => {
           if (c.id === tk.column_id) return
-          const tail = columnTail(await boardTasks(tk.board_id), c.id, tk.id)
-          await tasksApi.move(tk.id, { column_id: c.id, before_id: tail, after_id: null })
+          // No neighbour: the server appends to the end of the whole column — a
+          // tail picked from loaded cards lands mid-column on a sprint-scoped
+          // board (#2932, see moveNeighbors in utils/status).
+          await tasksApi.move(tk.id, { column_id: c.id, before_id: null, after_id: null })
         }, afterSingle()),
     }))
   }

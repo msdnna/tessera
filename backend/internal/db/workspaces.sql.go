@@ -16,7 +16,8 @@ import (
 const createMembership = `-- name: CreateMembership :one
 INSERT INTO memberships (workspace_id, user_id, role)
 VALUES ($1, $2, $3)
-ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role
+ON CONFLICT (workspace_id, user_id) DO UPDATE
+SET role = CASE WHEN memberships.role = 'owner' THEN memberships.role ELSE EXCLUDED.role END
 RETURNING id, workspace_id, user_id, role, created_at
 `
 
@@ -26,6 +27,12 @@ type CreateMembershipParams struct {
 	Role        string    `json:"role"`
 }
 
+// Upsert, so re-adding a member is how a manager changes their role — except for
+// the owner, whose role the handlers treat as immutable (UpdateMemberRole and
+// RemoveMember both answer 403 on it). That rule has to hold at the write too:
+// the other callers here are the invitation-accept paths, where the role comes
+// from an invitation a mere admin composed, and nothing upstream asks whether the
+// address belongs to the workspace owner.
 func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipParams) (Membership, error) {
 	row := q.db.QueryRow(ctx, createMembership, arg.WorkspaceID, arg.UserID, arg.Role)
 	var i Membership
@@ -272,6 +279,27 @@ UPDATE workspaces SET task_counter = task_counter + 1 WHERE id = $1 RETURNING ta
 
 func (q *Queries) NextWorkspaceTaskNumber(ctx context.Context, id uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, nextWorkspaceTaskNumber, id)
+	var task_counter int64
+	err := row.Scan(&task_counter)
+	return task_counter, err
+}
+
+const reserveWorkspaceTaskNumbers = `-- name: ReserveWorkspaceTaskNumbers :one
+UPDATE workspaces SET task_counter = task_counter + $1::bigint WHERE id = $2 RETURNING task_counter
+`
+
+type ReserveWorkspaceTaskNumbersParams struct {
+	Count int64     `json:"count"`
+	ID    uuid.UUID `json:"id"`
+}
+
+// ReserveWorkspaceTaskNumbers claims a whole block of numbers at once and returns
+// the last one in it, so a project arriving from another workspace can be
+// renumbered without racing the ordinary one-at-a-time allocation above. The
+// claim is the same single UPDATE … RETURNING, so a concurrent task creation
+// either sees the counter before the block or after it — never inside.
+func (q *Queries) ReserveWorkspaceTaskNumbers(ctx context.Context, arg ReserveWorkspaceTaskNumbersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, reserveWorkspaceTaskNumbers, arg.Count, arg.ID)
 	var task_counter int64
 	err := row.Scan(&task_counter)
 	return task_counter, err

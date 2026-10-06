@@ -6,6 +6,7 @@
 // no due date. The summary pills are counted here too, per user — the
 // workspace summary endpoint counts the whole workspace.
 import { isReviewColumn } from '@/utils/columnStatus'
+import { epochDay } from '@/utils/format'
 
 const DAY_MS = 86400000
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
@@ -35,12 +36,26 @@ export function mineOf(tasks, meId) {
   return (tasks || []).filter((t) => !t.completed_at && (t.assignee_ids || []).includes(meId))
 }
 
-export function buildSections(mine, { now = new Date(), firstDayOfWeek = 1 } = {}) {
-  const today = startOfDay(now)
-  const end = weekEnd(today, firstDayOfWeek)
+// `fmt` (useFormat's formatters) puts the day edges in the reader's calendar —
+// the profile timezone over the browser's, a date-only due read in UTC — exactly
+// as isTaskOverdue does, so a row filed under «Просрочено» is the row whose due
+// pill is red (#2932). Without it the browser's local day is used.
+export function buildSections(mine, { now = new Date(), firstDayOfWeek = 1, fmt = null } = {}) {
+  let today, end, dayOf
+  if (fmt) {
+    today = epochDay(fmt.today(now))
+    // Epoch day 0 (1 Jan 1970) was a Thursday: getDay() 4.
+    const dow = (today + 4) % 7
+    end = today + ((((firstDayOfWeek + 6) % 7) - dow + 7) % 7)
+    dayOf = (iso) => (iso ? epochDay(fmt.parts(iso)) : null)
+  } else {
+    today = startOfDay(now)
+    end = weekEnd(today, firstDayOfWeek)
+    dayOf = dueDay
+  }
   const out = Object.fromEntries(SECTION_KEYS.map((k) => [k, []]))
   for (const t of mine) {
-    const d = dueDay(t.due_date)
+    const d = dayOf(t.due_date)
     if (d == null) out.nodate.push(t)
     else if (d < today) out.overdue.push(t)
     else if (d === today) out.today.push(t)

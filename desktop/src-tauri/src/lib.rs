@@ -8,6 +8,7 @@
 // Phase 4: media permissions for conferences — camera/mic/screen share (#2929).
 
 mod media;
+mod tray;
 
 use tauri::{
     menu::{Menu, MenuItem},
@@ -53,6 +54,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![tray::set_tray_language])
         .setup(|app| {
             // Installers (.deb/.rpm/NSIS) register tessera:// system-wide, but an
             // AppImage installs nothing and `tauri dev` never runs an installer — so
@@ -69,9 +71,18 @@ pub fn run() {
             media::setup(app.handle());
 
             // System tray: menu (open / quit) + left-click to show the window.
-            let show = MenuItem::with_id(app, "show", "Открыть Tessera", true, None::<&str>)?;
-            let quit = MenuItem::with_id(app, "quit", "Выход", true, None::<&str>)?;
+            //
+            // The wording starts on the OS locale — the only language hint available
+            // before the webview has logged in and read the user's own choice — and is
+            // re-labelled over `set_tray_language` the moment it has (see tray.rs).
+            let labels = tray::labels(tray::os_language());
+            let show = MenuItem::with_id(app, "show", labels.show, true, None::<&str>)?;
+            let quit = MenuItem::with_id(app, "quit", labels.quit, true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
+            app.manage(tray::Tray {
+                show: show.clone(),
+                quit: quit.clone(),
+            });
             TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .tooltip("Tessera")
@@ -112,4 +123,231 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running the Tessera desktop app");
+}
+
+// The shell's security posture lives in two JSON files that nothing else checks:
+// `capabilities/default.json` (what the webview may ask the Rust side to do) and the
+// `app.security.csp` of `tauri.conf.json` (what the page may load/run). Both are easy to
+// loosen "just for a moment" while debugging, and the app boots fine either way — so the
+// regression is silent. These tests are the ratchet (#2932).
+#[cfg(test)]
+mod hardening {
+    use serde_json::Value;
+
+    const CAPABILITIES: &str = include_str!("../capabilities/default.json");
+    const CONFIG: &str = include_str!("../tauri.conf.json");
+
+    // csp_directive pulls one directive's source list out of the configured policy.
+    fn csp_directive(csp: &str, name: &str) -> Option<Vec<String>> {
+        csp.split(';')
+            .map(str::trim)
+            .find(|d| d == &name || d.starts_with(&format!("{name} ")))
+            .map(|d| {
+                d[name.len()..]
+                    .split_whitespace()
+                    .map(str::to_string)
+                    .collect()
+            })
+    }
+
+    fn csp() -> String {
+        let cfg: Value = serde_json::from_str(CONFIG).expect("tauri.conf.json must be valid JSON");
+        cfg["app"]["security"]["csp"]
+            .as_str()
+            .expect("app.security.csp must be a policy string, not null")
+            .to_string()
+    }
+
+    // A blanket fs scope turns any script that reaches the page (a malicious task
+    // description, a compromised dependency) into write-anywhere on the user's disk.
+    // The Save-as dialog grants the single path the user picked, so nothing static is needed.
+    #[test]
+    fn the_filesystem_scope_is_not_blanket() {
+        let caps: Value =
+            serde_json::from_str(CAPABILITIES).expect("capabilities must be valid JSON");
+        let perms = caps["permissions"]
+            .as_array()
+            .expect("capabilities must list permissions");
+        for perm in perms {
+            let Some(obj) = perm.as_object() else {
+                continue;
+            };
+            if obj.get("identifier").and_then(Value::as_str) != Some("fs:scope") {
+                continue;
+            }
+            for entry in obj
+                .get("allow")
+                .and_then(Value::as_array)
+                .map(Vec::as_slice)
+                .unwrap_or_default()
+            {
+                let path = entry
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .trim_start_matches('/');
+                assert!(
+                    !matches!(path, "**" | "*" | "**/*"),
+                    "fs:scope allows the whole filesystem ({path:?})"
+                );
+            }
+        }
+    }
+
+    // Content injected into task text is the realistic attack: it runs as inline script or
+    // pulls one in from a remote host. 'self' (plus the build-time hashes Tauri adds for the
+    // inline script in index.html) stops both; 'unsafe-inline'/'unsafe-eval' would hand it back.
+    #[test]
+    fn scripts_may_only_come_from_the_bundle() {
+        let csp = csp();
+        let sources = csp_directive(&csp, "script-src")
+            .expect("script-src must be set explicitly — default-src alone is too permissive");
+        assert!(
+            sources.contains(&"'self'".to_string()),
+            "script-src: {sources:?}"
+        );
+        for banned in ["'unsafe-inline'", "'unsafe-eval'", "http:", "https:", "*"] {
+            assert!(
+                !sources.iter().any(|s| s == banned),
+                "script-src must not contain {banned}: {sources:?}"
+            );
+        }
+    }
+
+    // withGlobalTauri publishes the whole plugin JS API on `window.__TAURI__`. Nothing in
+    // the frontend reads it — the plugins are imported as npm modules
+    // (`await import('@tauri-apps/plugin-dialog')` in utils/download.js), and isTauri()
+    // only ever *probes* the global as a secondary signal next to __TAURI_INTERNALS__ and
+    // the tauri:// protocol (frontend/src/utils/servers.js). So it buys nothing and hands
+    // any script that reaches the page a ready-made `__TAURI__.fs.writeFile` /
+    // `.dialog.save` / `.opener.openUrl` / `.process.relaunch` / `.clipboardManager`.
+    //
+    // Not a complete seal: __TAURI_INTERNALS__.invoke is injected regardless, so a
+    // determined payload can still call a command by name. What goes away is the
+    // documented, ready-to-hand surface — and a bundle the app does not use.
+    #[test]
+    fn the_global_tauri_api_is_not_published() {
+        let cfg: Value = serde_json::from_str(CONFIG).expect("tauri.conf.json must be valid JSON");
+        let global = &cfg["app"]["withGlobalTauri"];
+        assert!(
+            global.is_null() || global == &Value::Bool(false),
+            "app.withGlobalTauri must stay off: {global}"
+        );
+    }
+
+    // The tray is the one piece of interface this crate draws itself, so it is also the
+    // one piece vue-i18n cannot reach: a literal here ships in whatever language it was
+    // typed in, next to a webview the user has already switched to the other one. Keeping
+    // the shell free of display text is what forces every label through tray::labels(),
+    // where both languages sit side by side and the unit tests can see them.
+    #[test]
+    fn the_shell_holds_no_display_text_of_its_own() {
+        const SHELL: &str = include_str!("lib.rs");
+        let lines: Vec<String> = SHELL
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| {
+                !l.trim_start().starts_with("//")
+                    && l.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c))
+            })
+            .map(|(i, l)| format!("{}: {}", i + 1, l.trim()))
+            .collect();
+        assert!(
+            lines.is_empty(),
+            "hard-coded interface text in the shell — move it to tray::labels():\n{}",
+            lines.join("\n")
+        );
+    }
+
+    // The clipboard plugin ships an *empty* default permission set on purpose — its own
+    // wording is that the clipboard is "inherently dangerous", so read and write are each
+    // opt-in. That makes the grant below easy to get wrong in the one direction nothing
+    // reports: a call the capability file never allowed does not fail loudly, it is
+    // rejected by the ACL inside a `try` and falls through to the browser path the Tauri
+    // branch exists to avoid (WebKitGTK's navigator.clipboard / execCommand — see
+    // frontend/src/utils/clipboard.js). So the two sides are pinned to each other here.
+    const CLIPBOARD_PLUGIN: &str = "'@tauri-apps/plugin-clipboard-manager'";
+
+    // clipboard_calls collects the plugin functions a source file pulls in, reading the
+    // one form both call sites use: `const { writeText } = await import('…')`.
+    fn clipboard_calls(src: &str) -> Vec<String> {
+        let mut names = Vec::new();
+        for line in src.lines().filter(|l| l.contains(CLIPBOARD_PLUGIN)) {
+            let (Some(open), Some(close)) = (line.find('{'), line.find('}')) else {
+                continue;
+            };
+            if close < open {
+                continue;
+            }
+            names.extend(
+                line[open + 1..close]
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|n| !n.is_empty())
+                    .map(str::to_string),
+            );
+        }
+        names
+    }
+
+    // permission_of names the ACL entry one call needs: writeText → allow-write-text.
+    fn permission_of(js_name: &str) -> String {
+        let mut kebab = String::new();
+        for c in js_name.chars() {
+            if c.is_ascii_uppercase() {
+                kebab.push('-');
+                kebab.push(c.to_ascii_lowercase());
+            } else {
+                kebab.push(c);
+            }
+        }
+        format!("clipboard-manager:allow-{kebab}")
+    }
+
+    #[test]
+    fn the_clipboard_grant_is_exactly_what_the_webview_calls() {
+        const COPY: &str = include_str!("../../../frontend/src/utils/clipboard.js");
+        const EDITOR: &str = include_str!("../../../frontend/src/components/MarkdownEditor.vue");
+
+        let mut needed: Vec<String> = [COPY, EDITOR]
+            .iter()
+            .flat_map(|src| clipboard_calls(src))
+            .map(|name| permission_of(&name))
+            .collect();
+        needed.sort();
+        needed.dedup();
+
+        let caps: Value =
+            serde_json::from_str(CAPABILITIES).expect("capabilities must be valid JSON");
+        let mut granted: Vec<String> = caps["permissions"]
+            .as_array()
+            .expect("capabilities must list permissions")
+            .iter()
+            .filter_map(Value::as_str)
+            .filter(|p| p.starts_with("clipboard-manager:"))
+            .map(str::to_string)
+            .collect();
+        granted.sort();
+
+        assert_eq!(
+            granted, needed,
+            "the clipboard grant and the webview's calls disagree — a missing entry makes \
+             that call fail silently at runtime, an extra one is a permission nothing asks for"
+        );
+    }
+
+    // Plugins are another script-execution path, and a rewritten <base> relocates every
+    // relative asset URL — both sit outside script-src.
+    #[test]
+    fn plugins_and_base_uri_are_pinned() {
+        let csp = csp();
+        assert_eq!(
+            csp_directive(&csp, "object-src"),
+            Some(vec!["'none'".to_string()])
+        );
+        assert_eq!(
+            csp_directive(&csp, "base-uri"),
+            Some(vec!["'self'".to_string()])
+        );
+    }
 }

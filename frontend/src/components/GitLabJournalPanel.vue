@@ -34,7 +34,16 @@ const expandedRunId = ref(null)
 // keyset-paginated (a run can hold thousands) and carry no before/after diff —
 // that's fetched per row on select (see selectAction).
 const actionsByRun = ref({})
-const loadingActions = ref(false)
+// runId → номер поколения его страниц. Ответ, снятый до bump'а, отбрасывается:
+// кэш выше служит ещё и признаком «этот прогон уже загружен» (см. toggleRun), так
+// что страница, легшая в него не вовремя, залипает навсегда — свернуть/раскрыть
+// её уже не обновит. Не reactive: на отрисовку не влияет.
+const actionsEpoch = {}
+// Какой прогон грузится прямо сейчас — вместо общего булева. С булевом ответ
+// покинутого прогона гасил спиннер раскрытого, и тот на мгновение объявлял
+// «Действий нет» у прогона, чья страница ещё в полёте.
+const loadingRunId = ref(null)
+const isLoadingActions = (runId) => loadingRunId.value === runId
 const selectedAction = ref(null) // { ...action, runId, detail? }
 const retrying = ref(false)
 // True while the phone shows the detail screen; the run list is kept mounted
@@ -48,7 +57,11 @@ async function loadRuns(reset = true) {
   if (!props.wsId) return
   if (reset) {
     runs.value = []
+    // Не только кэш, но и всё в полёте: иначе страница, заказанная до смены
+    // пространства (или до resync'а), легла бы в свежеочищенный кэш.
+    for (const id of Object.keys(actionsEpoch)) bumpActionsEpoch(id)
     actionsByRun.value = {}
+    loadingRunId.value = null
     expandedRunId.value = null
     selectedAction.value = null
     loading.value = true
@@ -79,9 +92,13 @@ async function toggleRun(run) {
 async function loadActions(run, reset) {
   const existing = actionsByRun.value[run.id]
   const afterSeq = reset ? undefined : (existing?.nextSeq ?? undefined)
-  loadingActions.value = true
+  const epoch = bumpActionsEpoch(run.id)
+  loadingRunId.value = run.id
   try {
     const { data } = await glApi.syncRunActions(props.wsId, run.id, { afterSeq })
+    // Пока страница летела, прогон мог быть перезапрошен или обесценен событием
+    // о его финише — тогда она описывает состояние, которого уже нет.
+    if (actionsEpoch[run.id] !== epoch) return
     const page = data?.items || []
     const prev = reset ? [] : existing?.items || []
     actionsByRun.value = {
@@ -93,10 +110,29 @@ async function loadActions(run, reset) {
       },
     }
   } catch (e) {
-    message.error(e.message)
+    if (actionsEpoch[run.id] === epoch) message.error(e.message)
   } finally {
-    loadingActions.value = false
+    // Спиннер снимает только тот запрос, который его и зажёг.
+    if (loadingRunId.value === run.id && actionsEpoch[run.id] === epoch) {
+      loadingRunId.value = null
+    }
   }
+}
+
+// Отмечает всё, что сейчас в полёте по этому прогону, как протухшее.
+function bumpActionsEpoch(runId) {
+  actionsEpoch[runId] = (actionsEpoch[runId] ?? 0) + 1
+  return actionsEpoch[runId]
+}
+
+// Выбрасывает кэшированные страницы прогона, чтобы следующее раскрытие сходило
+// за ними заново.
+function invalidateActions(runId) {
+  bumpActionsEpoch(runId)
+  if (!actionsByRun.value[runId]) return
+  const next = { ...actionsByRun.value }
+  delete next[runId]
+  actionsByRun.value = next
 }
 
 // selectAction shows a row's detail, lazily fetching the before/after diff the
@@ -229,11 +265,16 @@ useRealtime(
   (ev) => {
     if (ev.type !== 'integration.sync' || ev.scope !== props.wsId) return
     // Its actions were only written at the end, so drop the (empty) cached list.
+    // Обесценить надо и то, что ещё в полёте: пользователь мог раскрыть прогон,
+    // пока тот шёл, и пустая страница «ещё ничего не сделано» приедет уже ПОСЛЕ
+    // этой чистки — чистить в тот момент было нечего.
     const id = ev.data?.run_id
-    if (id && actionsByRun.value[id]) {
-      const next = { ...actionsByRun.value }
-      delete next[id]
-      actionsByRun.value = next
+    if (id) {
+      invalidateActions(id)
+      // Раскрытый прогон никто не перезапросит за пользователя: toggleRun сюда
+      // больше не зайдёт, а на экране останется «Действий нет» у прогона, только
+      // что записавшего их десятками.
+      if (expandedRunId.value === id) loadActions({ id }, true)
     }
     loadRuns(false)
   },
@@ -307,7 +348,7 @@ defineExpose({ reload: () => loadRuns() })
           </button>
           <div v-if="expandedRunId === run.id" class="j-actions">
             <empty-state
-              v-if="!loadingActions && !(actionsByRun[run.id]?.items || []).length"
+              v-if="!isLoadingActions(run.id) && !(actionsByRun[run.id]?.items || []).length"
               size="small"
               :text="$t('gitlab.journal.noActions')"
             />
@@ -324,7 +365,9 @@ defineExpose({ reload: () => loadRuns() })
               <span class="j-op" :class="a.op">{{ a.op }}</span>
               <span class="j-action-sum">{{ a.summary }}</span>
             </button>
-            <div v-if="loadingActions" class="j-muted">{{ $t('common.state.loading') }}</div>
+            <div v-if="isLoadingActions(run.id)" class="j-muted">
+              {{ $t('common.state.loading') }}
+            </div>
             <button
               v-else-if="actionsByRun[run.id]?.hasMore"
               class="j-more"

@@ -59,15 +59,22 @@ data class HelpArticle(
      * category follow the same language. A language with no translation yet
      * falls back to Russian with [HelpContent.translated] false, so the screen
      * can say the article is not translated instead of hiding it.
+     *
+     * [captions] names the category in [lang] even for an article that has no
+     * translation of its own — see [localized], which builds it. The caption
+     * belongs to the category, not to the article: without it an untranslated
+     * article drops the Russian caption into the middle of a translated group.
      */
-    fun content(lang: String): HelpContent {
+    fun content(lang: String, captions: Map<String, String> = emptyMap()): HelpContent {
+        val caption = captions[category].orEmpty()
         val loc = if (lang != DEFAULT_LANG) locales[lang] else null
         if (loc != null) {
             val v = loc.android
             return HelpContent(
                 slug = slug,
                 title = loc.title.ifBlank { title },
-                category = loc.category.ifBlank { category },
+                category = caption.ifBlank { loc.category.ifBlank { category } },
+                categoryKey = category,
                 path = v?.path ?: loc.path,
                 text = v?.text ?: loc.text,
                 keywords = v?.keywords ?: loc.keywords,
@@ -80,7 +87,8 @@ data class HelpArticle(
         return HelpContent(
             slug = slug,
             title = title,
-            category = category,
+            category = caption.ifBlank { category },
+            categoryKey = category,
             path = android?.path ?: path,
             text = android?.text ?: text,
             keywords = android?.keywords ?: keywords,
@@ -97,6 +105,28 @@ data class HelpArticle(
         /** The language the manual is authored in; every other one is a translation. */
         const val DEFAULT_LANG = "ru"
     }
+}
+
+/**
+ * Collapses a whole index to [lang] (#2932), resolving each category's caption
+ * from the articles that do have a translation before collapsing any of them.
+ *
+ * A caption is a property of the category, not of the article: an article with
+ * no translation yet is a supported state (it shows the Russian text with a
+ * note), but taking its Russian caption as the group's name split «Boards» into
+ * `Boards / Доски / Boards` for an English reader — three groups where the index
+ * has one, two of them named the same. The navigation keys its headers by
+ * category, so that also handed a `LazyColumn` the same key twice.
+ */
+fun List<HelpArticle>.localized(lang: String): List<HelpContent> {
+    val captions = HashMap<String, String>()
+    if (lang != HelpArticle.DEFAULT_LANG) {
+        for (a in this) {
+            val caption = a.locales[lang]?.category.orEmpty()
+            if (caption.isNotBlank()) captions.putIfAbsent(a.category, caption)
+        }
+    }
+    return map { it.content(lang, captions) }
 }
 
 /**
@@ -139,7 +169,13 @@ data class HelpLocale(
 data class HelpContent(
     val slug: String,
     val title: String,
+    /** The category caption to print — already in the reader's language. */
     val category: String,
+    /** The category's identity, the same string on every language (the Russian
+     *  caption the manual is authored with). Group the navigation by this, never
+     *  by [category]: the index is sorted by it, and the builder's contract is
+     *  «one shape on every language, only the captions differ». */
+    val categoryKey: String,
     /** Markdown path relative to `docs/help`, unique per language and platform —
      *  so it doubles as the body cache key, and one language cannot serve the
      *  body cached for another. */

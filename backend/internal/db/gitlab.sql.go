@@ -638,6 +638,42 @@ func (q *Queries) GetGitlabLinkByTask(ctx context.Context, taskID uuid.UUID) (Gi
 	return i, err
 }
 
+const getGitlabMemberByUsername = `-- name: GetGitlabMemberByUsername :one
+SELECT m.gl_name, m.gl_avatar_url
+FROM gitlab_project_members m
+JOIN gitlab_integrations i ON i.id = m.integration_id
+WHERE i.workspace_id = $1 AND m.gl_username = $2
+ORDER BY (m.gl_avatar_url <> '') DESC, m.gl_user_id
+LIMIT 1
+`
+
+type GetGitlabMemberByUsernameParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	GlUsername  string    `json:"gl_username"`
+}
+
+type GetGitlabMemberByUsernameRow struct {
+	GlName      string `json:"gl_name"`
+	GlAvatarUrl string `json:"gl_avatar_url"`
+}
+
+// GetGitlabMemberByUsername resolves a GitLab username to the roster entry the
+// sync wrote for it, anywhere in the workspace — the display name and the avatar
+// URL the sync already ran through avatarProxyURL. PinTaskGitlabAssignee reads
+// the face from here instead of believing the caller (#2932).
+//
+// A workspace may hold several integrations, so the username can match more than
+// one row and the order has to be spelled out: an entry that actually has an
+// avatar wins, and gl_user_id breaks the remaining tie. Without it the winner
+// would be whatever the heap happened to return and could change after any
+// unrelated write to the table.
+func (q *Queries) GetGitlabMemberByUsername(ctx context.Context, arg GetGitlabMemberByUsernameParams) (GetGitlabMemberByUsernameRow, error) {
+	row := q.db.QueryRow(ctx, getGitlabMemberByUsername, arg.WorkspaceID, arg.GlUsername)
+	var i GetGitlabMemberByUsernameRow
+	err := row.Scan(&i.GlName, &i.GlAvatarUrl)
+	return i, err
+}
+
 const getGitlabMemberIDByUsername = `-- name: GetGitlabMemberIDByUsername :one
 SELECT gl_user_id FROM gitlab_project_members WHERE integration_id = $1 AND gl_username = $2
 `
@@ -705,17 +741,33 @@ func (q *Queries) GetGitlabUploadSourceByURL(ctx context.Context, arg GetGitlabU
 	return source_key, err
 }
 
-const getUserIDByGitlabUsername = `-- name: GetUserIDByGitlabUsername :one
-SELECT user_id FROM gitlab_credentials WHERE gl_username = $1
+const getUserIDsByGitlabUsername = `-- name: GetUserIDsByGitlabUsername :many
+SELECT DISTINCT user_id FROM gitlab_credentials WHERE gl_username = $1
 `
 
 // ── sync reconciliation: mixed tags / assignees ────────────
-// Resolve a GitLab username to a Tessera user (via their linked credential).
-func (q *Queries) GetUserIDByGitlabUsername(ctx context.Context, glUsername string) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getUserIDByGitlabUsername, glUsername)
-	var user_id uuid.UUID
-	err := row.Scan(&user_id)
-	return user_id, err
+// Resolve a GitLab username to the Tessera users who connected it (via their
+// linked credential). :many for the same reason as GetUserIDsByOAuthUsername:
+// the PK here is user_id, so nothing stops two credentials from carrying one
+// gl_username — a renamed account keeps its old name until its owner reconnects.
+func (q *Queries) GetUserIDsByGitlabUsername(ctx context.Context, glUsername string) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, getUserIDsByGitlabUsername, glUsername)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const linkedIidsForIntegration = `-- name: LinkedIidsForIntegration :many

@@ -47,6 +47,9 @@ class AuthViewModel(
     /** Экран отдаёт id ресурса, а не текст: строку резолвит сама композиция. */
     fun setError(@StringRes message: Int) = _state.update { it.copy(error = UiText.Res(message)) }
 
+    /** То же для сообщения с подстановкой — например предела пароля в байтах (#2932). */
+    fun setError(message: UiText) = _state.update { it.copy(error = message) }
+
     fun clearError() = _state.update { it.copy(error = null) }
 
     private fun submit(block: suspend () -> Unit) {

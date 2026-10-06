@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -135,17 +136,23 @@ func triggerFromKind(kind string, payload map[string]any) gitlab.BindTrigger {
 		t.ColumnName, _ = payload["column_name"].(string)
 	case gitlab.TrigPriority:
 		// The payload is an in-memory map, not decoded JSON, so priority may
-		// arrive as any integer type (handlers enqueue int32).
+		// arrive as any integer type (handlers enqueue int32). Rows replayed
+		// from the JSONB column come back as float64, so range-check before
+		// narrowing to the int32 the DB column holds.
 		switch v := payload["priority"].(type) {
 		case float64:
-			p := int32(v)
-			t.Priority = &p
+			if v >= math.MinInt32 && v <= math.MaxInt32 {
+				p := int32(v)
+				t.Priority = &p
+			}
 		case int32:
 			p := v
 			t.Priority = &p
 		case int:
-			p := int32(v)
-			t.Priority = &p
+			if v >= math.MinInt32 && v <= math.MaxInt32 {
+				p := int32(v)
+				t.Priority = &p
+			}
 		}
 	case gitlab.TrigCompletion:
 		if b, ok := payload["completed"].(bool); ok {
@@ -172,19 +179,27 @@ func (h *API) RunGitlabWriteBackWorker(ctx context.Context) {
 	ticker := time.NewTicker(writebackWorkerTick)
 	defer ticker.Stop()
 	h.tick(jobGitlabWriteback, opWriteback)
-	h.withAdvisoryLock(ctx, "gitlab_writeback", func() { h.drainWritebacks(ctx) }) // drain backlog at startup
+	h.withAdvisoryLock(ctx, gitlabWritebackLock, func() { h.drainWritebacks(ctx) }) // drain backlog at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobGitlabWriteback, opWriteback)
-			h.withAdvisoryLock(ctx, "gitlab_writeback", func() { h.drainWritebacks(ctx) })
+			h.withAdvisoryLock(ctx, gitlabWritebackLock, func() { h.drainWritebacks(ctx) })
 		}
 	}
 }
 
 func (h *API) drainWritebacks(ctx context.Context) {
+	// Recover rows a previous drain claimed but never settled (see
+	// RequeueStaleWritebacks). Safe because we hold the write-back worker lock: no
+	// other instance is draining, so nothing in 'sending' is in flight.
+	if n, err := h.q.RequeueStaleWritebacks(ctx); err != nil {
+		soft(ctx, "RequeueStaleWritebacks", err)
+	} else if n > 0 {
+		log.Printf("gitlab writeback: requeued %d row(s) left mid-push by a previous run", n)
+	}
 	rows, err := h.q.ClaimPendingWritebacks(ctx, writebackBatchSize)
 	if err != nil || len(rows) == 0 {
 		return
@@ -305,9 +320,26 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 
 // settleWriteback marks a row sent, retried (quadratic backoff) or failed. Claim
 // already bumped attempts, so w.Attempts is this attempt's number.
+//
+// Settles on a ctx that outlives cancellation, for the reason flushJournal below
+// already does: on SIGTERM mid-drain the push fails with the ctx, and settling on
+// that same ctx would fail too, leaving the row 'sending' to be requeued and
+// pushed a second time.
 func (h *API) settleWriteback(ctx context.Context, w db.GitlabWriteback, err error) {
+	shuttingDown := ctx.Err() != nil
+	ctx = context.WithoutCancel(ctx)
 	if err == nil {
 		soft(ctx, "MarkWritebackSent", h.q.MarkWritebackSent(ctx, w.ID))
+		return
+	}
+	// The push died with the worker's context (a deploy mid-drain), not on
+	// anything GitLab said — re-arm it. isPermanentWriteback would otherwise
+	// read the wrapped "integration gone: context canceled" as permanent and
+	// bury the change for good. Timeouts keep their backoff (see settleDelivery).
+	if shuttingDown && errors.Is(err, context.Canceled) {
+		soft(ctx, "MarkWritebackRetry", h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{
+			ID: w.ID, LastError: truncErr(err), NextAttemptAt: time.Now(),
+		}))
 		return
 	}
 	if isPermanentWriteback(err) || int(w.Attempts) >= maxWritebackAttempts {
@@ -488,7 +520,7 @@ func (h *API) performAction(ctx context.Context, client *gitlab.Client, integ db
 	case gitlab.ActReconcileLabels:
 		return h.performReconcileLabels(ctx, client, integ, w.TaskID, path, iid, rules)
 	case gitlab.ActSetDue:
-		return h.performSetDue(ctx, client, integ, w.TaskID, path, iid)
+		return h.performSetDue(ctx, client, integ, w.TaskID, w.ActorUserID, path, iid)
 	case gitlab.ActSetAssignees:
 		return h.performSetAssignees(ctx, client, integ, w.TaskID, path, iid)
 	case gitlab.ActSetEstimate:
@@ -671,16 +703,16 @@ func (h *API) performSetEstimate(ctx context.Context, client *gitlab.Client, int
 	return fmt.Sprintf("оценка → %dм", minutes), nil
 }
 
-// performSetDue pushes the task's due date (empty clears it).
-func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) (string, error) {
+// performSetDue pushes the task's due date (empty clears it). actor names the
+// user whose edit is being pushed: the due date is an instant and GitLab wants a
+// calendar day, and the only honest answer to "which day is this" is the one the
+// person who picked it sees (taskDateStr).
+func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, actor *uuid.UUID, path string, iid int64) (string, error) {
 	task, err := h.q.GetTask(ctx, taskID)
 	if err != nil {
 		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
 	}
-	date := ""
-	if task.DueDate != nil {
-		date = task.DueDate.UTC().Format("2006-01-02")
-	}
+	date := taskDateStr(task.DueDate, h.actorLocation(ctx, actor))
 	if err := client.UpdateIssueDueDate(ctx, path, iid, date); err != nil {
 		return "", err
 	}

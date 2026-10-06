@@ -5,14 +5,17 @@ import android.content.res.Resources
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import java.util.Calendar
+import java.util.TimeZone
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 /**
  * Подписи дат собираются из ресурсов (#2803, волна 11), поэтому тест идёт под
- * Robolectric и проверяет обе локали: у английской другой порядок «месяц день,
- * год», и склейка строкой сломала бы именно его.
+ * Robolectric и проверяет обе локали: порядок полей задаёт строка, и склейка в
+ * коде сломала бы именно его. Английский — день перед месяцем (en-GB, как на
+ * вебе: см. `localeTag` в frontend/src/utils/format.js), отличается только сам
+ * разделитель и отсутствие «г.».
  */
 @RunWith(RobolectricTestRunner::class)
 class DatesTest {
@@ -41,6 +44,28 @@ class DatesTest {
         return millisToUtcIso(cal.timeInMillis)
     }
 
+    /** Местная полночь сегодняшнего дня — та же точка отсчёта, что и у подписи. */
+    private fun midnightToday(): Calendar = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }
+
+    /** Календарь конкретной даты ([month] с единицы), время не участвует. */
+    private fun date(year: Int, month: Int, day: Int): Calendar = Calendar.getInstance().apply {
+        clear()
+        set(year, month - 1, day)
+    }
+
+    /** ISO чистой UTC-полуночи дня `base + offset` — форма срока без времени. */
+    private fun isoUtcMidnight(base: Calendar, offset: Int): String {
+        val day = (base.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, offset) }
+        return "%04d-%02d-%02dT00:00:00Z".format(
+            day.get(Calendar.YEAR), day.get(Calendar.MONTH) + 1, day.get(Calendar.DAY_OF_MONTH),
+        )
+    }
+
     // ── shortDate ────────────────────────────────────────────────────────────
     @Test
     fun `shortDate blank or too-short is empty`() {
@@ -58,10 +83,10 @@ class DatesTest {
     }
 
     @Test
-    fun `shortDate in English puts the month first`() {
+    fun `shortDate in English keeps the day first`() {
         val yr = currentYear()
-        assertThat(shortDate(en, "$yr-06-05T00:00:00Z")).isEqualTo("Jun 5")
-        assertThat(shortDate(en, "2020-03-10")).isEqualTo("Mar 10, 2020")
+        assertThat(shortDate(en, "$yr-06-05T00:00:00Z")).isEqualTo("5 Jun")
+        assertThat(shortDate(en, "2020-03-10")).isEqualTo("10 Mar 2020")
     }
 
     @Test
@@ -83,7 +108,7 @@ class DatesTest {
 
     @Test
     fun `longDate in English drops the year suffix`() {
-        assertThat(longDate(en, "2026-06-04T00:00:00Z", medium)).isEqualTo("Jun 4, 2026")
+        assertThat(longDate(en, "2026-06-04T00:00:00Z", medium)).isEqualTo("4 Jun 2026")
     }
 
     @Test
@@ -108,13 +133,68 @@ class DatesTest {
         assertThat(isOverdue("")).isFalse()
     }
 
+    // ── dueDayKey ────────────────────────────────────────────────────────────
+    // Какому дню принадлежит срок, решают «просрочено» и фильтры «Сегодня/На
+    // неделе» — и решать это надо тем же днём, который стоит в подписи карточки.
+    // Зона фиксируется в самом тесте: срез сырой ISO совпадает с локальным днём
+    // ровно до тех пор, пока хост сидит в UTC, и на хосте в UTC любая проверка
+    // этого расхождения выродилась бы в тавтологию.
+
+    /** Выполняет [body] с подменённой зоной устройства, возвращая прежнюю. */
+    private fun inZone(id: String, body: () -> Unit) {
+        val prev = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone(id))
+        try {
+            body()
+        } finally {
+            TimeZone.setDefault(prev)
+        }
+    }
+
+    @Test
+    fun `dueDayKey reads a timed due in the device zone`() = inZone("Asia/Tokyo") {
+        // Срок «15 сентября, локальная полночь» в Токио (+09) уезжает на сутки
+        // назад, когда сервер сериализует его в UTC. Подпись покажет 15-е —
+        // ключ дня обязан согласиться, иначе задача краснеет за день до срока.
+        assertThat(dueDayKey("2026-09-14T15:00:00Z")).isEqualTo("2026-09-15")
+        assertThat(dueDayKey("2026-09-15T00:00:00+09:00")).isEqualTo("2026-09-15")
+    }
+
+    @Test
+    fun `dueDayKey keeps a date-only due on its UTC day`() = inZone("America/New_York") {
+        // Дата без времени (GitLab/legacy) — это чистая UTC-полночь, и читать её
+        // в локальной зоне нельзя: в Нью-Йорке (-04) она сползла бы на 13-е.
+        // Ровно эту ветку рисует dueLabel/dueShort.
+        assertThat(dueDayKey("2026-09-14T00:00:00Z")).isEqualTo("2026-09-14")
+        assertThat(dueDayKey("2026-09-14T03:00:00+03:00")).isEqualTo("2026-09-14")
+    }
+
+    @Test
+    fun `dueDayKey falls back to the raw date portion`() {
+        // Голая дата без времени не разбирается как инстант — берём срез, как и
+        // делали раньше: это уже календарный день, конвертировать нечего.
+        assertThat(dueDayKey("2026-06-15")).isEqualTo("2026-06-15")
+        assertThat(dueDayKey(null)).isEmpty()
+        assertThat(dueDayKey("")).isEmpty()
+        assertThat(dueDayKey("2026")).isEmpty()
+    }
+
+    @Test
+    fun `dueDayKey agrees with the label the card shows`() = inZone("Asia/Tokyo") {
+        // Тот же момент, что в первом тесте: подпись рисует 15 сентября, значит
+        // и ключ дня — 15-е. Раньше подпись и ключ расходились на сутки.
+        assertThat(dueLabel(ru, "2026-09-14T15:00:00Z", fmt = medium))
+            .isEqualTo("15 сен. 2026 г.")
+        assertThat(dueDayKey("2026-09-14T15:00:00Z")).isEqualTo("2026-09-15")
+    }
+
     // ── whenLabel ────────────────────────────────────────────────────────────
     @Test
     fun `whenLabel appends time when present`() {
         val yr = currentYear()
         assertThat(whenLabel(ru, "$yr-06-04T14:30:00Z")).isEqualTo("4 июн, 14:30")
         assertThat(whenLabel(ru, "$yr-06-04")).isEqualTo("4 июн")
-        assertThat(whenLabel(en, "$yr-06-04T14:30:00Z")).isEqualTo("Jun 4, 14:30")
+        assertThat(whenLabel(en, "$yr-06-04T14:30:00Z")).isEqualTo("4 Jun, 14:30")
     }
 
     @Test
@@ -155,7 +235,7 @@ class DatesTest {
         assertThat(dueLabel(ru, "2026-06-04T00:00:00Z", fmt = medium)).isEqualTo("4 июн. 2026 г.")
         // even with +03:00 offset representing the same UTC-midnight instant
         assertThat(dueLabel(ru, "2026-06-04T03:00:00+03:00", fmt = medium)).isEqualTo("4 июн. 2026 г.")
-        assertThat(dueLabel(en, "2026-06-04T00:00:00Z", fmt = medium)).isEqualTo("Jun 4, 2026")
+        assertThat(dueLabel(en, "2026-06-04T00:00:00Z", fmt = medium)).isEqualTo("4 Jun 2026")
     }
 
     @Test
@@ -170,7 +250,7 @@ class DatesTest {
     fun `dueShort date-only far year appends year`() {
         // Far past year, UTC-midnight → not relative, shows day+month+year
         assertThat(dueShort(ru, "2020-03-10T00:00:00Z")).isEqualTo("10 мар 2020")
-        assertThat(dueShort(en, "2020-03-10T00:00:00Z")).isEqualTo("Mar 10, 2020")
+        assertThat(dueShort(en, "2020-03-10T00:00:00Z")).isEqualTo("10 Mar 2020")
     }
 
     @Test
@@ -222,6 +302,72 @@ class DatesTest {
         assertThat(checked).isAtLeast(4)
     }
 
+    /**
+     * Неделя рвётся там, где её рвёт преф `week_start`, а не всегда в понедельник.
+     * Расхождение двух календарей — ровно два воскресенья вокруг сегодняшнего дня:
+     * то, которым понедельничная неделя закрывается, и то, которым воскресная
+     * открывается. Проверяем оба (кроме дней, у которых своя подпись «вчера/
+     * сегодня/завтра»): под «своим» префом это «вс», под чужим — обычная дата.
+     */
+    @Test
+    fun `dueShort takes the week boundary from the week_start preference`() {
+        val today = midnightToday()
+        val names = ru.getStringArray(website.msdnna.tessera.R.array.dates_weekdays_short)
+        // Пн = 0 … Вс = 6 (порядок массива подписей), и отдельно номер дня от воскресенья.
+        val fromMonday = (today.get(Calendar.DAY_OF_WEEK) + 5) % 7
+        val fromSunday = today.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
+        // Воскресенье — единственный день, у которого обе границы сходятся на нём
+        // самом: тогда проверять нечего, у «сегодня» своя подпись.
+        val candidates = listOf(6 - fromMonday to WEEK_START_MONDAY, -fromSunday to WEEK_START_SUNDAY)
+        var checked = 0
+        for ((offset, ownWeekStart) in candidates) {
+            if (Math.abs(offset) <= 1) continue
+            val iso = isoUtcMidnight(today, offset)
+            val alien = if (ownWeekStart == WEEK_START_MONDAY) WEEK_START_SUNDAY else WEEK_START_MONDAY
+            assertThat(dueShort(ru, iso, DateFormatPrefs(weekStart = ownWeekStart))).isEqualTo(names[6])
+            assertThat(dueShort(ru, iso, DateFormatPrefs(weekStart = alien))).isNotEqualTo(names[6])
+            checked++
+        }
+        if (checked == 0) assertThat(fromSunday).isEqualTo(0)
+    }
+
+    @Test
+    fun `dueShort keeps Monday as the default and for an unknown preference value`() {
+        // Преф правится через API, и незнакомое число не должно уводить неделю в
+        // день, которого нет ни в одном календаре (веб сужает так же).
+        val today = midnightToday()
+        val sundayOffset = 6 - (today.get(Calendar.DAY_OF_WEEK) + 5) % 7
+        if (Math.abs(sundayOffset) <= 1) return
+        val iso = isoUtcMidnight(today, sundayOffset)
+        val sunday = ru.getStringArray(website.msdnna.tessera.R.array.dates_weekdays_short)[6]
+        assertThat(dueShort(ru, iso)).isEqualTo(sunday)
+        assertThat(dueShort(ru, iso, DateFormatPrefs(weekStart = 42))).isEqualTo(sunday)
+    }
+
+    // ── sameWeek ─────────────────────────────────────────────────────────────
+    @Test
+    fun `sameWeek breaks the week at the chosen first day`() {
+        val friday = date(2026, 9, 18)
+        val sunday = date(2026, 9, 20)
+        val tuesday = date(2026, 9, 22)
+        // Понедельничная неделя 14–20.09: пятница и воскресенье вместе, вторник уже нет.
+        assertThat(sameWeek(friday, sunday, WEEK_START_MONDAY)).isTrue()
+        assertThat(sameWeek(sunday, tuesday, WEEK_START_MONDAY)).isFalse()
+        // Воскресная неделя 20–26.09: ровно наоборот.
+        assertThat(sameWeek(friday, sunday, WEEK_START_SUNDAY)).isFalse()
+        assertThat(sameWeek(sunday, tuesday, WEEK_START_SUNDAY)).isTrue()
+    }
+
+    @Test
+    fun `sameWeek holds across the turn of the year`() {
+        // Номер недели тут не работает: у 31.12 и 01.01 разный YEAR, и неделя
+        // распадалась надвое — подпись «пт» пропадала ровно в новогоднюю неделю.
+        val thursday = date(2026, 12, 31)
+        val friday = date(2027, 1, 1)
+        assertThat(sameWeek(thursday, friday, WEEK_START_MONDAY)).isTrue()
+        assertThat(sameWeek(thursday, friday, WEEK_START_SUNDAY)).isTrue()
+    }
+
     @Test
     fun `dueShort blank empty`() {
         assertThat(dueShort(ru, null)).isEmpty()
@@ -240,9 +386,34 @@ class DatesTest {
         // Format is "<day> <mon> <year>, HH:mm" in local zone; assert shape.
         val out = localDateTimeLabel(ru, "2026-06-15T14:30:00Z", medium)
         assertThat(out).matches("""\d+ \S+ 2026 г\., \d{2}:\d{2}""")
-        // English reorders to "<mon> <day>, <year>, HH:mm".
+        // English keeps the same order, only без «г.»: "<day> <mon> <year>, HH:mm".
         assertThat(localDateTimeLabel(en, "2026-06-15T14:30:00Z", medium))
-            .matches("""\S+ \d+, 2026, \d{2}:\d{2}""")
+            .matches("""\d+ \S+ 2026, \d{2}:\d{2}""")
+    }
+
+    // ── localDateLabel (#2932) ───────────────────────────────────────────────
+    @Test
+    fun `localDateLabel — день инстанта в зоне профиля, без часов`() {
+        // Тот же момент, прочитанный двумя зонами, даёт РАЗНЫЕ дни: срок
+        // приглашения, истекающий 15 июня в 23:30 UTC, у владивостокского
+        // профиля наступает уже 16-го. Ради этого функция и парсит инстант,
+        // вместо того чтобы, как longDate, резать сырую строку.
+        val iso = "2026-06-15T23:30:00Z"
+        val utc = DateFormatPrefs(datePreset = DatePresets.SHORT, zoneId = "UTC")
+        val vlad = DateFormatPrefs(datePreset = DatePresets.SHORT, zoneId = "Asia/Vladivostok")
+        assertThat(localDateLabel(ru, iso, utc)).isEqualTo("15.06.2026")
+        assertThat(localDateLabel(ru, iso, vlad)).isEqualTo("16.06.2026")
+        // Часов в подписи нет ни в одной локали — этим она и отличается от соседа.
+        assertThat(localDateLabel(en, iso, DateFormatPrefs(datePreset = DatePresets.MEDIUM, zoneId = "UTC")))
+            .isEqualTo("15 Jun 2026")
+    }
+
+    @Test
+    fun `localDateLabel пуст для нечитаемого`() {
+        assertThat(localDateLabel(ru, null)).isEmpty()
+        assertThat(localDateLabel(ru, "bad")).isEmpty()
+        // Голая дата — не инстант: подписывать её этой функцией не просят.
+        assertThat(localDateLabel(ru, "2026-06-15")).isEmpty()
     }
 
     // ── пресеты даты и 12-часовое время (#2857) ───────────────────────────────
@@ -260,7 +431,7 @@ class DatesTest {
     fun `longDate presets keep the English field order`() {
         val iso = "2026-12-31"
         assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.SHORT))).isEqualTo("31/12/2026")
-        assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.MEDIUM))).isEqualTo("Dec 31, 2026")
+        assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.MEDIUM))).isEqualTo("31 Dec 2026")
         assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.LONG))).isEqualTo("31 December 2026")
         assertThat(longDate(en, iso, DateFormatPrefs(datePreset = DatePresets.ISO))).isEqualTo("2026-12-31")
     }
@@ -306,5 +477,113 @@ class DatesTest {
     fun `localDateTimeLabel follows the date preset`() {
         assertThat(localDateTimeLabel(ru, "2026-06-15T14:30:00Z", DateFormatPrefs(datePreset = DatePresets.ISO)))
             .matches("""2026-06-1\d, \d{2}:\d{2}""")
+    }
+
+    // ── Зона профиля (#2932) ────────────────────────────────────────────────
+    //
+    // Преф `timezone` раньше знал только сервер: клиент слал его как `?tz=` на
+    // ручках, считающих по дням, а сам раскладывал даты зоной устройства. Ниже —
+    // момент, который в UTC ещё вчерашний, а в Москве уже завтрашний: на нём
+    // видно, что и бакет, и подпись читают один календарь.
+
+    private val utc = DateFormatPrefs(zoneId = "UTC")
+    private val msk = DateFormatPrefs(zoneId = "Europe/Moscow", datePreset = DatePresets.MEDIUM)
+
+    /** `22:00Z` — это 15-е в Москве и всё ещё 14-е в UTC. */
+    private val lateEvening = "2026-09-14T22:00:00Z"
+
+    @Test
+    fun `dueDayKey buckets by the profile zone, not the device one`() {
+        assertThat(dueDayKey(lateEvening, utc)).isEqualTo("2026-09-14")
+        assertThat(dueDayKey(lateEvening, DateFormatPrefs(zoneId = "Europe/Moscow"))).isEqualTo("2026-09-15")
+    }
+
+    /**
+     * Подпись карточки идёт тем же календарём, что и бакет: иначе пилюля читалась
+     * бы «14 сент.», а задача стояла бы в дне 15-го — расхождение, ради которого
+     * [dueDayKey] и заведён.
+     */
+    @Test
+    fun `the due label reads the same day as its bucket`() {
+        assertThat(dueLabel(ru, lateEvening, withTime = false, fmt = msk)).isEqualTo("15 сен. 2026 г.")
+        assertThat(dueLabel(ru, lateEvening, withTime = false, fmt = DateFormatPrefs(zoneId = "UTC", datePreset = DatePresets.MEDIUM)))
+            .isEqualTo("14 сен. 2026 г.")
+    }
+
+    /**
+     * Часы строки чата в звонке — тот же календарь, что и у полной подписи.
+     *
+     * [localTimeLabel] читал момент безаргументным `Calendar.getInstance()`, то
+     * есть зоной устройства, хотя `fmt` ему передавали (ради 12/24 часов), а его
+     * сосед [localDateTimeLabel] — и лобби, и список тех же конференций — идёт
+     * зоной профиля. У человека с разошедшимся префом одно событие было подписано
+     * двумя разными часами на соседних экранах.
+     */
+    @Test
+    fun `localTimeLabel reads the clock in the profile zone`() {
+        val saved = TimeZone.getDefault()
+        try {
+            // Зона устройства заведомо не равна ни одной из проверяемых.
+            TimeZone.setDefault(TimeZone.getTimeZone("Asia/Tokyo"))
+            assertThat(localTimeLabel(ru, lateEvening, utc)).isEqualTo("22:00")
+            assertThat(localTimeLabel(ru, lateEvening, DateFormatPrefs(zoneId = "Europe/Moscow")))
+                .isEqualTo("01:00")
+            // И тот же час, что показывает полная подпись: разъехаться им нечем.
+            assertThat(localDateTimeLabel(ru, lateEvening, msk)).endsWith("01:00")
+        } finally {
+            TimeZone.setDefault(saved)
+        }
+    }
+
+    /** Дата-только значение (UTC-полночь) зоне профиля не подчиняется — это день, а не момент. */
+    @Test
+    fun `a date-only due keeps its UTC day in every zone`() {
+        val dateOnly = "2026-09-15T00:00:00Z"
+        assertThat(dueDayKey(dateOnly, utc)).isEqualTo("2026-09-15")
+        assertThat(dueDayKey(dateOnly, DateFormatPrefs(zoneId = "Pacific/Kiritimati"))).isEqualTo("2026-09-15")
+        assertThat(dueDayKey(dateOnly, DateFormatPrefs(zoneId = "Pacific/Midway"))).isEqualTo("2026-09-15")
+    }
+
+    /**
+     * Просрочка ломается о полночь ПОЛЬЗОВАТЕЛЯ, а не устройства.
+     *
+     * Зона устройства на время теста прибита к UTC, а преф — токийский (UTC+9).
+     * Токийская полночь приходится на 15:00 UTC, поэтому оба момента ниже — час до
+     * неё и час после — лежат в ОДНОМ дне UTC: пока «сегодня» считалось часами
+     * устройства, вердикт у них был один на двоих.
+     */
+    @Test
+    fun `isOverdue breaks at the profile zone's midnight`() {
+        val saved = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+            val tokyo = TimeZone.getTimeZone("Asia/Tokyo")
+            val midnight = Calendar.getInstance(tokyo).apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+            val fmt = DateFormatPrefs(zoneId = "Asia/Tokyo")
+
+            val hourBefore = millisToUtcIso(midnight - 3_600_000L)
+            val hourAfter = millisToUtcIso(midnight + 3_600_000L)
+            // Оба — один день по UTC: разводит их только календарь префа.
+            assertThat(dueDayKey(hourBefore, utc)).isEqualTo(dueDayKey(hourAfter, utc))
+
+            assertThat(isOverdue(hourBefore, fmt)).isTrue()
+            assertThat(isOverdue(hourAfter, fmt)).isFalse()
+        } finally {
+            TimeZone.setDefault(saved)
+        }
+    }
+
+    /** Граница недели у фильтра — из того же календаря, что и «сегодня». */
+    @Test
+    fun `dayKeyIn walks whole days inside one zone`() {
+        val zone = TimeZone.getTimeZone("Europe/Moscow")
+        val today = dayKeyIn(zone, 0)
+        assertThat(todayKey(DateFormatPrefs(zoneId = "Europe/Moscow"))).isEqualTo(today)
+        assertThat(dayKeyIn(zone, 7)).isGreaterThan(today)
     }
 }

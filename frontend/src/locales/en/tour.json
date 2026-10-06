@@ -33,7 +33,7 @@
     },
     "task-create": {
       "title": "Create a task",
-      "body": "Press “Create task” in the «К работе» column, type a name and press Enter."
+      "body": "Press “Create task” in the “{todo}” column, type a name and press Enter."
     },
     "card-fields": {
       "title": "Right on the card",
@@ -81,7 +81,7 @@
     },
     "dnd-card": {
       "title": "Drag the card",
-      "body": "A task moves between columns by dragging — that is how its status changes on the board. Drag the card into «В процессе»."
+      "body": "A task moves between columns by dragging — that is how its status changes on the board. Drag the card into “{inProgress}”."
     },
     "group-add": {
       "title": "Projects group up too",

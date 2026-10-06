@@ -28,6 +28,36 @@ describe('diffSegments', () => {
     expect(changed(segs)).toEqual(['new body'])
   })
 
+  // Emoji are surrogate pairs, and neighbours in one block share a half — the
+  // shared half must not end up on the other side of the boundary, or the view
+  // renders replacement glyphs instead of the character.
+  it('keeps a swapped emoji whole when the prefix shares its high half', () => {
+    const segs = diffSegments('Готово 😀', 'Готово 😃')
+    expect(changed(segs)).toEqual(['😃'])
+    expect(joined(segs)).toBe('Готово 😃')
+  })
+
+  it('keeps a swapped emoji whole when the suffix shares its low half', () => {
+    const segs = diffSegments('𝄞 такт', '𝔞 такт')
+    expect(changed(segs)).toEqual(['𝔞'])
+    expect(joined(segs)).toBe('𝔞 такт')
+  })
+
+  it('never splits a segment mid-pair', () => {
+    for (const [base, cur] of [
+      ['👍 ок', '👎 ок'],
+      ['😀', '😃'],
+      ['a😀b', 'a😃b'],
+    ]) {
+      const segs = diffSegments(base, cur)
+      expect(joined(segs)).toBe(cur)
+      for (const seg of segs)
+        expect(seg.text).not.toMatch(
+          /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/,
+        )
+    }
+  })
+
   it('preserves newlines in segment text (no per-line split)', () => {
     const segs = diffSegments('a\n\nb.', 'a\n\nb.2')
     expect(changed(segs)).toEqual(['2'])

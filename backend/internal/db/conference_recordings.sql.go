@@ -483,6 +483,40 @@ func (q *Queries) ListExpiredRecordings(ctx context.Context, limit int32) ([]Lis
 	return items, nil
 }
 
+const restampConferenceRecordings = `-- name: RestampConferenceRecordings :exec
+UPDATE conference_recordings
+SET expires_at = CASE WHEN $1::int > 0
+                      THEN ended_at + make_interval(days => $1::int)
+                      ELSE NULL END
+WHERE conference_id = $2 AND ended_at IS NOT NULL
+`
+
+type RestampConferenceRecordingsParams struct {
+	TtlDays      int32     `json:"ttl_days"`
+	ConferenceID uuid.UUID `json:"conference_id"`
+}
+
+// RestampConferenceRecordings re-applies a conference's retention to the
+// recordings it already has, when recording_ttl_days is changed (#2932).
+//
+// expires_at is otherwise written exactly once, at the end of a recording, so a
+// changed TTL reached only recordings that did not exist yet — while the field
+// is presented as the conference's policy ("recordings of this conference are
+// deleted after this many days"). Shortened, the footage somebody wanted gone
+// stayed; extended, the recording somebody wanted kept still died tomorrow.
+//
+// Counted from ended_at, not from now(): "keep for a day" is a statement about
+// the recording's age, so yesterday's is already due — re-dating it to the
+// moment of the edit would grant an extension nobody asked for. 0 means "keep
+// indefinitely", the same NULL the sweeper's index skips.
+//
+// Unfinished rows are left alone: they have no ended_at to count from, and they
+// get their stamp from the current TTL when they close.
+func (q *Queries) RestampConferenceRecordings(ctx context.Context, arg RestampConferenceRecordingsParams) error {
+	_, err := q.db.Exec(ctx, restampConferenceRecordings, arg.TtlDays, arg.ConferenceID)
+	return err
+}
+
 const setConferenceRecordingEgress = `-- name: SetConferenceRecordingEgress :one
 UPDATE conference_recordings
 SET egress_id = $2

@@ -22,6 +22,12 @@ RETURNING *;
 -- name: GetUserAvatar :one
 SELECT content_type, bytes FROM user_avatars WHERE user_id = $1;
 
+-- GetUserAvatarVersion is the cheap half of GetUserAvatar: the avatar URL never
+-- changes, so a client asks "still the one I have?" far more often than it needs
+-- the picture, and answering that must not read a 2 MiB blob out of the table.
+-- name: GetUserAvatarVersion :one
+SELECT updated_at FROM user_avatars WHERE user_id = $1;
+
 -- name: UserHasAvatar :one
 SELECT EXISTS(SELECT 1 FROM user_avatars WHERE user_id = $1);
 

@@ -45,10 +45,42 @@ function minutesPerWeek(cfg) {
   return minutesPerDay(cfg) * (cfg?.days_per_week || 5)
 }
 
+// The same two lengths as whole minutes, for the week/day/hour/minute ladder the
+// two formatters below walk.
+//
+// The working day is a free decimal — the settings field is an `n-input-number`
+// with no precision, and the backend only clamps it to [1, 24] — and a day like
+// 8.2h is not exactly representable, so `8.2 * 60` is 491.99999999999994 rather
+// than 492. Dividing the (integer) estimate by that float is off by one in both
+// directions: one working day came out as "1д 5.684341886080802e-14м", because
+// the residue is not zero and the minute branch prints whatever it holds; and at
+// 8.3h/day the same one day (498 min) lost the day unit entirely and read "8ч 18м",
+// because 498 / 498.00000000000006 floors to 0. Android rounds these two lengths
+// the same way (util/Estimation.kt `minutesPerDay(cfg).roundToInt()`), so the phone
+// printed the plain "1д" the web could not.
+function ladderMinutes(cfg) {
+  return { mpd: Math.round(minutesPerDay(cfg)), mpw: Math.round(minutesPerWeek(cfg)) }
+}
+
 // Drop a trailing ".0" so 5 shows as "5" and 2.5 as "2.5".
 function trimNum(v) {
   return Number.isInteger(v) ? String(v) : String(+Number(v).toFixed(2))
 }
+
+// The ceiling on a parsed estimate — minutes for time, a plain count for
+// points/custom. Mirrors quickact.MaxEstimate on the backend, which explains
+// the number; here it does one more job.
+//
+// Without it the time branch below could return Infinity. `total` is a sum of
+// products, and JS overflows to Infinity silently, so a long enough run of
+// digits (a pasted id, a key held down) came out of the field as Infinity —
+// which Math.round leaves alone and `mins > 0` accepts. parseEstimateInput then
+// reported `{ ok: true }`, the popover applied it, and JSON.stringify turned
+// Infinity into `null` on the way out: a PATCH that reads as "clear the
+// estimate". That is the exact outcome the comment on parseEstimateInput calls
+// the worst of the three, reached through arithmetic rather than through a
+// typo (#2932).
+const MAX_ESTIMATE = 1e9
 
 // Parse free-text input into the canonical number, or null when unparseable.
 // Time accepts mixed tokens ("1w 2d 3h 30m"), English (w/d/h/m) or Russian
@@ -56,7 +88,10 @@ function trimNum(v) {
 // take a plain number; a T-shirt size label is accepted too.
 export function parseEstimate(input, cfg) {
   if (input == null) return null
-  const s = String(input).trim().toLowerCase().replace(',', '.')
+  // replaceAll, not replace: the comma is the decimal separator of *every*
+  // token, and a single-occurrence swap left "2,5ч 30,5м" as "2.5ч 30,5м" —
+  // the second number split at the comma and its tail was read as bare hours.
+  const s = String(input).trim().toLowerCase().replaceAll(',', '.')
   if (!s) return null
   const unit = cfg?.unit || 'time'
 
@@ -66,33 +101,75 @@ export function parseEstimate(input, cfg) {
       if (hit) return hit.value
     }
     const n = parseFloat(s)
-    return Number.isFinite(n) && n > 0 ? n : null
+    return Number.isFinite(n) && n > 0 && n <= MAX_ESTIMATE ? n : null
   }
 
   const mpd = minutesPerDay(cfg)
   const unitMin = { w: mpd * (cfg?.days_per_week || 5), d: mpd, h: 60, m: 1 }
   let total = 0
   let matched = false
+  // The unit a bare number takes: hours when it stands alone, otherwise a step
+  // down from the unit in front of it (see SMALLER). Anything else is a refusal.
+  let prev = null
   const re = /(\d+(?:\.\d+)?)\s*([a-zа-яё]*)/gi
   let m
   while ((m = re.exec(s))) {
     const num = parseFloat(m[1])
     if (!Number.isFinite(num)) continue
     const u = m[2] || ''
-    let key = 'h' // a bare number is hours
+    let key
     if (u) {
-      const c = u[0]
-      if (c === 'w' || c === 'н') key = 'w'
-      else if (c === 'd' || c === 'д') key = 'd'
-      else if (c === 'h' || c === 'ч') key = 'h'
-      else if (c === 'm' || c === 'м') key = 'm'
+      key = unitKey(u)
+      // An unrecognised suffix is not hours. "5 попугаев" storing five hours is
+      // the mistake the backend parser already refuses to make (quickact
+      // `estimateUnit`), and a field that guesses is worse than one that asks.
+      if (!key) return null
+    } else if (prev == null && !matched) {
+      key = 'h' // the lone bare number: hours
+    } else if (prev) {
+      key = SMALLER[prev] // "1ч 30" = an hour and a half, not thirty-one hours
+    } else {
+      return null // a second bare number in a row means nothing in particular
     }
     total += num * unitMin[key]
     matched = true
+    prev = u ? key : null
   }
   if (!matched) return null
   const mins = Math.round(total)
-  return mins > 0 ? mins : null
+  return Number.isFinite(mins) && mins > 0 && mins <= MAX_ESTIMATE ? mins : null
+}
+
+// The unit letter a written-out suffix reduces to — the first letter decides, so
+// "день"/"дня"/"d" are one unit. null for anything that is not a unit at all.
+function unitKey(word) {
+  const c = word[0]
+  if (c === 'w' || c === 'н') return 'w'
+  if (c === 'd' || c === 'д') return 'd'
+  if (c === 'h' || c === 'ч') return 'h'
+  if (c === 'm' || c === 'м') return 'm'
+  return null
+}
+
+// What a number with no suffix means when it follows one that had a suffix: the
+// next unit down, the way a person writing "1ч 30" or "1д 4" means it. Minutes
+// are the floor, so "30м 15" is 45 minutes rather than a new ladder.
+//
+// Reading EVERY bare number as hours (what this used to do) made "1ч 30" 1860
+// minutes — thirty-one hours — and said nothing about it. The backend's own
+// `1d 4 → 720` case was always this rule; for days it happens to coincide.
+const SMALLER = { w: 'd', d: 'h', h: 'm', m: 'm' }
+
+// Read what the user typed in the estimate field: `ok` separates "the box is
+// empty, drop the estimate" from "I could not read this" — both of which the
+// parser reports as a null value, and the popover used to apply as a clear. An
+// unreadable estimate silently erasing the one already on the task is the worst
+// of the three outcomes: the number came from a person's own plan, and nothing
+// on screen said it had gone.
+export function parseEstimateInput(raw, cfg) {
+  if (raw == null || String(raw).trim() === '') return { value: null, ok: true }
+  const value = parseEstimate(raw, cfg)
+  return value == null ? { value: null, ok: false } : { value, ok: true }
 }
 
 // Format a canonical value for display. Time compresses minutes to working
@@ -114,8 +191,7 @@ export function formatEstimate(value, cfg) {
     return label ? `${trimNum(value)} ${label}` : trimNum(value)
   }
 
-  const mpd = minutesPerDay(cfg)
-  const mpw = minutesPerWeek(cfg)
+  const { mpd, mpw } = ladderMinutes(cfg)
   let rem = Math.round(value)
   const w = Math.floor(rem / mpw)
   rem -= w * mpw
@@ -165,8 +241,7 @@ export function estimatePlaceholder(cfg) {
 export function formatEstimateFull(value, cfg) {
   if (value == null || !(value > 0)) return ''
   if ((cfg?.unit || 'time') !== 'time') return formatEstimate(value, cfg)
-  const mpd = minutesPerDay(cfg)
-  const mpw = minutesPerWeek(cfg)
+  const { mpd, mpw } = ladderMinutes(cfg)
   let rem = Math.round(value)
   const w = Math.floor(rem / mpw)
   rem -= w * mpw
@@ -193,15 +268,24 @@ export function estimateRangeShort(startISO, value, cfg, fmt = defaultFormatters
   if (days == null || !startISO) return ''
   const start = new Date(startISO)
   if (Number.isNaN(start.getTime())) return ''
-  const end = new Date(start.getTime() + Math.round(days) * 86400000)
+  // The window is a span of calendar days, so its end is the start's *date* —
+  // as the user sees it — stepped by N days, never the instant plus N×86400000.
+  // A day with a clock change is not 24 hours long: a window crossing the autumn
+  // change landed at 23:00 the evening before and printed the previous date, so
+  // seven days from "20 окт." read "26 окт.". Same rule as utils/recurrence.js
+  // and utils/timeAxis.js. Date.UTC normalises the day overflow, and the UTC
+  // midnight it returns is read back in UTC so no offset can move it again.
+  const sp = fmt.parts(start)
+  if (!sp) return ''
+  const end = new Date(Date.UTC(sp.year, sp.month, sp.day + Math.round(days)))
   // "This year" is the user's year, in their timezone — not the browser's.
   const nowY = fmt.today().year
-  const label = (dt) => {
-    const o = { day: '2-digit', month: 'short' }
-    if (fmt.parts(dt).year !== nowY) o.year = 'numeric'
+  const label = (dt, timeZone) => {
+    const o = { day: '2-digit', month: 'short', timeZone }
+    if (fmt.parts(dt, { timeZone }).year !== nowY) o.year = 'numeric'
     return fmt.formatDate(dt, o)
   }
-  return `${label(start)} → ${label(end)}`
+  return `${label(start)} → ${label(end, 'UTC')}`
 }
 
 // One-line tooltip body: spelled-out estimate + free-form projected window in
@@ -233,6 +317,44 @@ export function sumEstimates(tasks) {
   let any = false
   for (const t of tasks || []) {
     const e = t?.estimate
+    if (e != null && e > 0) {
+      sum += e
+      any = true
+    }
+  }
+  return any ? sum : null
+}
+
+// What ONE card is worth: its own estimate, or — when it has none — the rollup of
+// its subtasks. This is the number the card itself prints (TaskCardPills: `own ??
+// rollup`, with the «Σ …» rollup tooltip), so anything totalling a set of cards has
+// to read them the same way.
+//
+// Only the direct children, matching the card: the rollup chip sums the child list
+// handed to it, not the whole tree.
+export function effectiveEstimate(task, subtasks) {
+  return task?.estimate ?? sumEstimates(subtasks)
+}
+
+// Total effort a lane holds — a kanban column's «Σ» header, a Timeline/Gantt
+// swimlane's effort chip (#2932).
+//
+// It used to be `sumEstimates(lane)`, i.e. the OWN estimates of the lane's rows, and
+// a lane holds top-level cards only (buildLists buckets filteredTasks; the charts'
+// `source` is the scheduled top-level tasks, their children drawn as sub-bars inside
+// the parent's row). So a task whose work was planned entirely in its subtasks — no
+// own estimate, every child estimated — showed «Σ 5д» on its own card and contributed
+// exactly nothing to the total above it. The header is what a sprint's load is read
+// off, and the tasks it silently dropped were the decomposed ones: the big ones.
+//
+// `subtasksByParent` must be the same child map the cards are drawn from (the
+// FILTERED one on the board), or the header stops agreeing with the cards under it
+// for the opposite reason.
+export function sumLaneEffort(tasks, subtasksByParent = {}) {
+  let sum = 0
+  let any = false
+  for (const t of tasks || []) {
+    const e = effectiveEstimate(t, subtasksByParent[t?.id])
     if (e != null && e > 0) {
       sum += e
       any = true

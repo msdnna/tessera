@@ -49,7 +49,7 @@ func Tasks(tasks []model.Task, opts Options) []model.Task {
 		if ca, cb := a.CompletedAt != nil, b.CompletedAt != nil; ca != cb {
 			return !ca // incomplete first
 		}
-		if oa, ob := isOverdue(a, now), isOverdue(b, now); oa != ob {
+		if oa, ob := IsOverdue(a, now), IsOverdue(b, now); oa != ob {
 			return oa // overdue first
 		}
 		if a.Priority != b.Priority {
@@ -65,7 +65,32 @@ func Tasks(tasks []model.Task, opts Options) []model.Task {
 	return out
 }
 
-// isOverdue reports whether an incomplete task's due date is in the past.
-func isOverdue(t model.Task, now time.Time) bool {
-	return t.CompletedAt == nil && t.DueDate != nil && t.DueDate.Before(now)
+// IsOverdue reports whether an incomplete task's due date has already passed.
+//
+// "Passed" means a whole day, not an instant, and that is the whole point of
+// this function. A due date is stored as midnight in the writer's own calendar
+// (resolvedTimezone in frontend/src/utils/format.js) and comes back over the API
+// carrying that offset — `"due":"2026-09-18T00:00:00+03:00"` — so a task due
+// *today* sits at an instant that is already behind `now` by one minute past
+// midnight. Comparing the two directly therefore files every task due today as
+// late, for the whole of the day it is actually due on.
+//
+// The rest of the product counts by day and this mirrors it: the backend asks
+// for `due_date < @day_start` against the caller's local midnight
+// (db/queries/workspace_tasks.sql) and the web for `dueDay < today`
+// (frontend/src/utils/taskFilter.js). The backend already had this exact bug
+// once — see commandNow in handlers/quick_actions.go, "«/due сегодня» used to
+// file a task as already overdue".
+//
+// The day is the one `now` is in, in `now`'s own location: the caller passes the
+// clock of whoever is reading the queue, which is the same calendar the due
+// dates were written in.
+func IsOverdue(t model.Task, now time.Time) bool {
+	return t.CompletedAt == nil && t.DueDate != nil && t.DueDate.Before(startOfDay(now))
+}
+
+// startOfDay is midnight opening the day `now` falls in, in `now`'s location.
+func startOfDay(now time.Time) time.Time {
+	y, m, d := now.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, now.Location())
 }

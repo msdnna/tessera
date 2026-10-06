@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import {
   classifyEvent,
+  partialKinds,
   isFullTask,
   mergeTaskRow,
   applyTaskPatch,
   applySubtaskPatch,
+  boardGone,
 } from '@/utils/boardEvents'
 
 const BOARD = 'b1'
@@ -77,7 +79,6 @@ describe('classifyEvent — таблица маршрутизации', () => {
   it('колонки, доска и мета — каждая своим запросом', () => {
     expect(ev('column.created', {})).toBe('columns')
     expect(ev('column.updated', {})).toBe('columns')
-    expect(ev('column.deleted', {})).toBe('columns')
     expect(ev('column.moved', {})).toBe('columns')
     expect(ev('board.updated', {})).toBe('board')
     expect(ev('tag.created', {})).toBe('meta')
@@ -85,6 +86,63 @@ describe('classifyEvent — таблица маршрутизации', () => {
     expect(ev('tag.deleted', {})).toBe('meta')
     expect(ev('tag_prefixes.updated', {})).toBe('meta')
     expect(ev('integration.sync', {})).toBe('meta')
+  })
+
+  // Удаление колонки уносит с собой все карточки в ней (сервер каскадит через
+  // tasks.column_id), а в WS летит ОДНО событие column.deleted — ни одного
+  // task.deleted. Перечитать только список колонок мало: осиротевшие задачи
+  // остаются в allTasks и в группировке по тегам/вехам (и в list/gantt/calendar)
+  // раскладываются как живые — видимые и кликабельные. Плюс done_column_id
+  // доски мог обнулиться (FK ON DELETE SET NULL). #2932
+  it('удаление колонки перечитывает и задачи, и доску, не только колонки', () => {
+    expect(ev('column.deleted', {})).toBe('column-purge')
+    const kinds = partialKinds('column-purge')
+    expect(kinds).toContain('columns')
+    expect(kinds).toContain('tasks')
+    expect(kinds).toContain('board')
+  })
+
+  // Колонки и board.updated летят в ВЕСЬ воркспейс, а не только на свою доску:
+  // коллега переименовал колонку на соседней доске — и у всех открытых досок был
+  // лишний GET /columns, а его удаление колонки стоило каждой трёх запросов
+  // (column-purge). Оба вида событий называют свою доску — board.updated самим
+  // board-рядом (поле id), колоночные — board_id, — так что чужое отсеивается. #2932
+  it('колоночные события и board.updated с ЧУЖОЙ доски не трогают эту', () => {
+    expect(ev('column.created', { board_id: 'b2' })).toBe('ignore')
+    expect(ev('column.updated', { board_id: 'b2' })).toBe('ignore')
+    expect(ev('column.moved', { board_id: 'b2' })).toBe('ignore')
+    expect(ev('column.deleted', { id: 'c9', board_id: 'b2' })).toBe('ignore')
+    expect(ev('board.updated', { id: 'b2' })).toBe('ignore')
+  })
+
+  it('те же события со СВОЕЙ доски обрабатываются как раньше', () => {
+    expect(ev('column.created', { board_id: BOARD })).toBe('columns')
+    expect(ev('column.updated', { board_id: BOARD })).toBe('columns')
+    expect(ev('column.moved', { board_id: BOARD })).toBe('columns')
+    expect(ev('column.deleted', { id: 'c9', board_id: BOARD })).toBe('column-purge')
+    expect(ev('board.updated', { id: BOARD })).toBe('board')
+  })
+
+  // Удаление ОТКРЫТОЙ доски: сервер уносит её колонки, карточки и вложения и
+  // шлёт голое board.deleted {id}. Перечитывать нечего — доски больше нет, — так
+  // что событие остаётся 'ignore', а распознаёт его отдельный предикат: без него
+  // читатель (и сам удаливший — сайдбар после удаления никуда не уводит)
+  // продолжает таскать карточки, которых уже нет, и каждый вызов идёт в 404. #2932
+  it('удаление доски не перечитывается, а распознаётся предикатом', () => {
+    expect(ev('board.deleted', { id: BOARD })).toBe('ignore')
+    expect(boardGone({ type: 'board.deleted', data: { id: BOARD } }, BOARD)).toBe(true)
+    // Чужая доска того же пространства — не наше дело.
+    expect(boardGone({ type: 'board.deleted', data: { id: 'b2' } }, BOARD)).toBe(false)
+    // Ни другое событие про ту же доску, ни пустой id не считаются уходом.
+    expect(boardGone({ type: 'board.updated', data: { id: BOARD } }, BOARD)).toBe(false)
+    expect(boardGone({ type: 'board.deleted', data: {} }, BOARD)).toBe(false)
+    expect(boardGone({ type: 'board.deleted', data: { id: BOARD } }, null)).toBe(false)
+  })
+
+  it('обычные классификации остаются одним запросом', () => {
+    for (const k of ['tasks', 'columns', 'board', 'meta']) {
+      expect(partialKinds(k), k).toEqual([k])
+    }
   })
 
   it('task-события с полным объектом патчатся, id-only идут в ре-фетч', () => {
@@ -97,7 +155,8 @@ describe('classifyEvent — таблица маршрутизации', () => {
     expect(ev('task.deleted', { id: 't1' })).toBe('tasks')
     expect(ev('task.restored', { id: 't1' })).toBe('tasks')
     expect(ev('task.archived', { id: 't1' })).toBe('tasks')
-    expect(ev('task.commented', { task_id: 't1' })).toBe('tasks')
+    // task.commented сюда не входит: единственное событие семейства, которое на
+    // доске ничего не меняет — см. cx-comment-events-dont-reload-board.spec.js.
     expect(ev('task.assigned', { task_id: 't1', user_id: 'u1' })).toBe('tasks')
     expect(ev('task.unassigned', { task_id: 't1', user_id: 'u1' })).toBe('tasks')
     expect(ev('task.tagged', { task_id: 't1', tag_id: 'g1' })).toBe('tasks')
@@ -108,6 +167,36 @@ describe('classifyEvent — таблица маршрутизации', () => {
     expect(ev('task.updated', full({ board_id: 'other' }))).toBe('ignore')
     expect(ev('task.synced', { board_id: 'other', created: 1, updated: 2 })).toBe('ignore')
     expect(ev('task.synced', { board_id: BOARD, created: 1, updated: 2 })).toBe('tasks')
+  })
+
+  // Уход карточки на другую доску объявляется задачей ПОСЛЕ перенода: board_id в
+  // событии — уже целевой, от чужого его отличает только то, что карточку мы всё
+  // ещё держим. Обе двери на другую доску (перенос из хлебной крошки модалки и
+  // setParent на карточку соседней доски) шлют именно такой task.moved (#2932).
+  describe('карточка уехала с этой доски', () => {
+    const mine = (type, data) =>
+      classifyEvent({ type, data }, { boardId: BOARD, hasTask: (id) => id === 't1' })
+
+    it('task.moved с чужим board_id про НАШУ карточку перечитывает списки', () => {
+      expect(mine('task.moved', full({ id: 't1', board_id: 'other' }))).toBe('tasks')
+    })
+
+    it('та же карточка на своей доске по-прежнему патчится без запросов', () => {
+      expect(mine('task.moved', full({ id: 't1' }))).toBe('patch')
+    })
+
+    it('чужая карточка на чужой доске остаётся чужой', () => {
+      expect(mine('task.moved', full({ id: 't9', board_id: 'other' }))).toBe('ignore')
+      expect(mine('task.updated', full({ id: 't9', board_id: 'other' }))).toBe('ignore')
+    })
+
+    it('не-task событие чужой доски молчит, даже совпав по id', () => {
+      expect(mine('gitlab.something', { id: 't1', board_id: 'other' })).toBe('ignore')
+    })
+
+    it('без hasTask поведение прежнее — чужая доска молчит', () => {
+      expect(ev('task.moved', full({ id: 't1', board_id: 'other' }))).toBe('ignore')
+    })
   })
 
   it('неизвестный тип перезагружает задачи, а не молча теряется', () => {

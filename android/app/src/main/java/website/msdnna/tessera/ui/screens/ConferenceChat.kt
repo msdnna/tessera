@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
@@ -480,7 +481,13 @@ private fun Composer(
 @Composable
 private fun refusalText(refusal: ConfPickRefusal, name: String): String = when (refusal) {
     ConfPickRefusal.TOO_BIG -> stringResource(R.string.conf_chat_file_too_big, name)
+
+    // The batch refusal names no file on purpose: nothing in particular is at
+    // fault, the message as a whole is, and the way out is to send it in two.
+    ConfPickRefusal.TOO_BIG_TOTAL -> stringResource(R.string.conf_chat_files_too_big)
+
     ConfPickRefusal.TOO_MANY -> stringResource(R.string.conf_chat_too_many_files, CONF_CHAT_MAX_FILES)
+
     ConfPickRefusal.NONE -> ""
 }
 
@@ -488,7 +495,10 @@ private fun refusalText(refusal: ConfPickRefusal, name: String): String = when (
  *  «КБ» is a translation, `1,4` is not. */
 @Composable
 private fun fileSizeLabel(bytes: Long): String {
-    val size = confFileSize(bytes)
+    // The locale is the profile's (`AppLocale` substitutes the resources the unit
+    // comes from), not the device's — otherwise a Russian profile on an English
+    // phone gets «1.4 МБ» again, which is the split this pair fixed (#2932).
+    val size = confFileSize(bytes, LocalConfiguration.current.locales[0])
     return stringResource(
         when (size.unit) {
             ConfSizeUnit.MB -> R.string.conf_chat_size_mb

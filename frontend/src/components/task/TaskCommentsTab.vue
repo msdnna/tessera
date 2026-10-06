@@ -19,11 +19,13 @@ import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useThemeStore } from '@/stores/theme'
+import { resolvedTimezone } from '@/utils/format'
 import { fmtWhen, groupThreads, eventText } from '@/utils/taskFeed'
 import { useFormat } from '@/composables/useFormat'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
-import { buildMentionItems } from '@/utils/mentions'
+import { buildMentionItems, mentionIdsIn } from '@/utils/mentions'
 import { scrollParent } from '@/utils/dom'
 import { sortedColumns } from '@/utils/status'
 import { columnName } from '@/utils/defaultNames'
@@ -59,6 +61,7 @@ const { formatters } = useFormat()
 const auth = useAuthStore()
 const bv = useBoardViewStore()
 const store = useWorkspacesStore()
+const theme = useThemeStore()
 
 const meId = computed(() => auth.user?.id)
 const commentsPane = ref(null) // the .comments container (narrow-layout scroll fallback)
@@ -67,6 +70,9 @@ const newComment = ref('')
 const commentEditor = ref(null)
 const editingCommentId = ref(null)
 const editingCommentBody = ref('')
+// The body as it stood when editing started — the baseline the mention delta is
+// measured against (see addedMentions).
+const editingCommentOriginal = ref('')
 // True while a comment POST is in flight (spinner on the send button, guards
 // double-submit); retryInfo holds { attempt, max } while waiting to retry an
 // offline send, else null.
@@ -255,6 +261,30 @@ const commandItems = computed(() => store.commands || [])
 const cmdPreview = ref([]) // [{ key, summary, error }] from the dry-run
 const cmdCustom = ref([]) // custom keys seen in the draft — kept as plain text
 let cmdTimer = null
+// «/due сегодня» is resolved on the server, so the request has to say which
+// calendar «сегодня» belongs to — the blank the profile may hold reads as UTC
+// there (see resolvedTimezone). Sent on the dry-run too: the hint and the command
+// must name the same day.
+function commandTz() {
+  return resolvedTimezone(theme.timezone)
+}
+// ── the task can change under this subtree ──
+// The modal is never remounted: it swaps `taskId` in place (a subtask row, a
+// relation, the «Родитель» link, an activity toast, ?task= in the URL), and this
+// tab stays mounted across the swap — resetComposers below exists for exactly
+// that. So every request here has to name the task it was started for and stop
+// short of the screen if the reader has moved on. Two different mistakes were
+// possible, and both were live:
+//   • the request ADDRESS read after an await — the offline retry keeps a draft
+//     for up to 17s, and resending it took `props.taskId`, i.e. posted the text
+//     into whatever task was open by then. Silent: no error, the comment simply
+//     lands in someone else's thread.
+//   • the ANSWER applied after an await — the left task's thread published
+//     through `update:comments` (the modal owns the list) or its command summary
+//     reloading the task now on screen.
+// `tid` is captured before the first await, used for every call, and re-checked
+// before anything reaches the UI (same idiom as SearchBar/TaskModal/BoardView).
+const isCurrent = (tid) => tid === props.taskId
 // Dry-run the draft against the backend's parser (debounced) instead of
 // re-implementing it here: the hint can never disagree with what will happen.
 watch(newComment, (body) => {
@@ -264,12 +294,15 @@ watch(newComment, (body) => {
     cmdCustom.value = []
     return
   }
+  const tid = props.taskId
   cmdTimer = setTimeout(async () => {
     try {
-      const res = await tasksApi.previewCommands(props.taskId, body)
+      const res = await tasksApi.previewCommands(tid, body, commandTz())
+      if (!isCurrent(tid)) return
       cmdPreview.value = res.data?.commands || []
       cmdCustom.value = res.data?.custom || []
     } catch {
+      if (!isCurrent(tid)) return
       cmdPreview.value = []
       cmdCustom.value = []
     }
@@ -358,27 +391,36 @@ async function postComment() {
   const body = newComment.value.trim()
   if (!body || posting.value) return
   const mentions = commentEditor.value?.getMentions?.() || []
+  const tid = props.taskId
   posting.value = true
   try {
     // attempt 0 is the initial send; 1..N are retries, each preceded by its backoff.
     for (let attempt = 0; attempt <= RETRY_BACKOFFS.length; attempt++) {
       try {
-        const res = await tasksApi.addComment(props.taskId, body, mentions)
+        const res = await tasksApi.addComment(tid, body, mentions, null, commandTz())
         retryInfo.value = null
+        // The text went out, so the composer is cleared even if another task is on
+        // screen by now — leaving the draft would invite sending it a second time,
+        // into that other task.
         newComment.value = ''
         commentEditor.value?.clear?.()
         cmdPreview.value = []
-        const c = await tasksApi.comments(props.taskId)
+        const c = await tasksApi.comments(tid)
+        // What happened is reported either way — the toast names the task's own
+        // result, and the board still has to hear that that task changed. Only the
+        // two screen-level effects are skipped once the reader has moved on: the
+        // thread would replace the open task's list, and reload-detail would
+        // re-fetch a task no command touched.
+        const summary = res.data?.command_summary
+        const ranCommands = summary?.applied?.length || summary?.errors?.length
+        if (ranCommands) reportCommands(summary)
+        emit('changed')
+        if (!isCurrent(tid)) return
         emit('update:comments', c.data || [])
         // Quick actions changed the task itself (assignees, column, dates…), and a
         // command-only comment produces no comment row at all — reload the detail so
         // the modal shows the result rather than the pre-command state.
-        const summary = res.data?.command_summary
-        if (summary?.applied?.length || summary?.errors?.length) {
-          emit('reload-detail')
-          reportCommands(summary)
-        }
-        emit('changed')
+        if (ranCommands) emit('reload-detail')
         scrollToBottom()
         return
       } catch (e) {
@@ -409,18 +451,19 @@ async function postReply(rootId) {
   if (!body || replyingPost.value) return
   const mentions = replyEditor.value?.getMentions?.() || []
   const known = new Set((props.comments || []).map((c) => c.id))
+  const tid = props.taskId
   replyingPost.value = true
   try {
-    const res = await tasksApi.addComment(props.taskId, body, mentions, rootId)
+    const res = await tasksApi.addComment(tid, body, mentions, rootId, commandTz())
     cancelReply()
-    const c = await tasksApi.comments(props.taskId)
-    emit('update:comments', c.data || [])
+    const c = await tasksApi.comments(tid)
     const summary = res.data?.command_summary
-    if (summary?.applied?.length || summary?.errors?.length) {
-      emit('reload-detail')
-      reportCommands(summary)
-    }
+    const ranCommands = summary?.applied?.length || summary?.errors?.length
+    if (ranCommands) reportCommands(summary)
     emit('changed')
+    if (!isCurrent(tid)) return
+    emit('update:comments', c.data || [])
+    if (ranCommands) emit('reload-detail')
     // Scroll to the reply itself, not to the end of the list.
     const fresh = (c.data || []).find((x) => !known.has(x.id))
     if (fresh) await scrollToComment(fresh.id)
@@ -446,37 +489,80 @@ function reportCommands(summary) {
     message.warning(`/${err.key}: ${err.error}`)
   }
 }
+// Whether this comment's own controls (✎ / ✕ / its checkboxes) are live. Author
+// alone is not enough: the modal opened from the archive is read-only, and the
+// archived task's thread is there to be read. Without the readonly half, "✕"
+// deleted for real out of the archive and "✎" opened an editor whose Save is
+// already guarded — so the typed text vanished without a word (#2932).
+function ownLive(c) {
+  return !props.readonly && !!c.author_id && c.author_id === meId.value
+}
 function startEditComment(c) {
   editingCommentId.value = c.id
   editingCommentBody.value = c.body
+  editingCommentOriginal.value = c.body
+}
+// Who this edit newly mentions: the people the saved text chips, minus the ones
+// the text already chipped before it was opened for editing. Computed here
+// rather than server-side because only this side holds the roster a handle is
+// rendered against — and only the difference is sent, or fixing a typo would
+// notify everyone named in the comment all over again.
+function addedMentions(body) {
+  const before = new Set(mentionIdsIn(editingCommentOriginal.value, mentionItems.value))
+  return mentionIdsIn(body, mentionItems.value).filter((id) => !before.has(id))
 }
 async function saveComment() {
   if (props.readonly) return
   const body = editingCommentBody.value.trim()
   if (!body) return
+  const tid = props.taskId
   try {
-    await tasksApi.updateComment(editingCommentId.value, body)
+    await tasksApi.updateComment(editingCommentId.value, body, addedMentions(body))
     editingCommentId.value = null
-    const c = await tasksApi.comments(props.taskId)
+    const c = await tasksApi.comments(tid)
+    if (!isCurrent(tid)) return
     emit('update:comments', c.data || [])
   } catch (e) {
     message.error(e.message)
   }
 }
+// Deleting a comment re-reads the thread instead of filtering the row out
+// locally, because removing a *root* is not a removal of one row server-side:
+// the oldest reply is promoted to root and the rest are re-hung under it
+// (promoteThreadSuccessor), precisely so one "✕" never takes someone else's text
+// with it. A local filter keeps those replies pointing at the row that is gone,
+// and groupThreads then draws each of them as a standalone top-level comment —
+// the thread shatters on screen, which is the outcome the promotion exists to
+// avoid. Android already re-reads here (TaskDetailViewModel.deleteComment).
 async function deleteComment(id) {
+  if (props.readonly) return
+  const tid = props.taskId
   try {
     await tasksApi.removeComment(id)
+  } catch (e) {
+    message.error(e.message)
+    return
+  }
+  try {
+    const c = await tasksApi.comments(tid)
+    if (!isCurrent(tid)) return
+    emit('update:comments', c.data || [])
+  } catch {
+    // The delete went through and only the re-read failed: drop the row locally
+    // so the list at least stops showing what is no longer there. Only while that
+    // list is still the one on screen — `props.comments` is the OPEN task's thread,
+    // and filtering it once the reader has moved on would cut a row out of it.
+    if (!isCurrent(tid)) return
     emit(
       'update:comments',
       props.comments.filter((x) => x.id !== id),
     )
-  } catch (e) {
-    message.error(e.message)
   }
 }
 // Toggle a task checkbox inside a rendered (own) comment → rewrite its markdown
 // and persist. Optimistic; reverts on failure.
 async function onCommentCheck(c, i) {
+  if (props.readonly) return
   const prev = c.body
   const next = toggleTaskMarker(prev, i)
   if (next === prev) return
@@ -560,7 +646,7 @@ async function onCommentCheck(c, i) {
                     · GitLab
                   </span>
                   <span class="c-when">{{ fmtWhen(it.th.root.created_at, formatters) }}</span>
-                  <span v-if="it.th.root.author_id === meId" class="c-acts">
+                  <span v-if="ownLive(it.th.root)" class="c-acts">
                     <button
                       class="c-act"
                       :title="t('common.action.edit')"
@@ -607,7 +693,7 @@ async function onCommentCheck(c, i) {
                   :members="mentionItems"
                   mention-cards
                   task-refs
-                  :interactive="it.th.root.author_id === meId"
+                  :interactive="ownLive(it.th.root)"
                   @toggle="onCommentCheck(it.th.root, $event)"
                 />
                 <div class="c-thread-acts">
@@ -658,7 +744,7 @@ async function onCommentCheck(c, i) {
                         }}</span>
                         <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
                         <span class="c-when">{{ fmtWhen(r.created_at, formatters) }}</span>
-                        <span v-if="r.author_id === meId" class="c-acts">
+                        <span v-if="ownLive(r)" class="c-acts">
                           <button
                             class="c-act"
                             :title="t('common.action.edit')"
@@ -705,7 +791,7 @@ async function onCommentCheck(c, i) {
                         :members="mentionItems"
                         mention-cards
                         task-refs
-                        :interactive="r.author_id === meId"
+                        :interactive="ownLive(r)"
                         @toggle="onCommentCheck(r, $event)"
                       />
                       <div v-if="!readonly" class="c-thread-acts">

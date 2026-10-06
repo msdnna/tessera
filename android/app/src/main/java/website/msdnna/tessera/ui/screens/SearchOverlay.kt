@@ -34,8 +34,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.SearchDocument
 import website.msdnna.tessera.data.model.SearchNote
 import website.msdnna.tessera.data.model.SearchTask
+import website.msdnna.tessera.data.model.localized
 import website.msdnna.tessera.data.repository.HelpRepository
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -43,8 +45,11 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.TesseraLoader
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
+import website.msdnna.tessera.ui.resolve
 import website.msdnna.tessera.ui.theme.Tessera
+import website.msdnna.tessera.ui.viewmodels.SearchPane
 import website.msdnna.tessera.ui.viewmodels.SearchViewModel
+import website.msdnna.tessera.ui.viewmodels.searchPane
 import website.msdnna.tessera.util.HelpHit
 import website.msdnna.tessera.util.HelpSearcher
 import website.msdnna.tessera.util.Ion
@@ -55,8 +60,9 @@ import website.msdnna.tessera.util.normalizeLanguage
 private const val HELP_HITS_LIMIT = 4
 
 /**
- * Full-screen search (web `SearchBar`, mobile-native): an autofocused field
- * over grouped help + task + note results. Picking a result navigates and closes.
+ * Full-screen search (web `SearchBar`, mobile-native): an autofocused field over
+ * grouped help + task + note + document results. Picking a result navigates and
+ * closes.
  */
 @Composable
 fun SearchOverlay(
@@ -64,6 +70,7 @@ fun SearchOverlay(
     onClose: () -> Unit,
     onOpenTask: (boardId: String, taskId: String) -> Unit,
     onOpenNote: (noteId: String) -> Unit,
+    onOpenDocument: (documentId: String) -> Unit = {},
     onOpenHelp: (slug: String) -> Unit = {},
 ) {
     val c = Tessera.colors
@@ -77,7 +84,7 @@ fun SearchOverlay(
     val assets = LocalContext.current.assets
     val helpLang = normalizeLanguage(LocalConfiguration.current.locales[0].language)
     val searcher = remember(assets, helpLang) {
-        HelpSearcher(HelpRepository(assets).articles().map { it.content(helpLang) }, helpLang)
+        HelpSearcher(HelpRepository(assets).articles().localized(helpLang), helpLang)
     }
     val helpHits = remember(state.query, searcher) { searcher.search(state.query, HELP_HITS_LIMIT) }
 
@@ -106,21 +113,28 @@ fun SearchOverlay(
         }
 
         val results = state.results
-        val serverEmpty = results?.isEmpty != false
-        when {
-            state.query.isBlank() -> Hint(stringResource(R.string.search_hint))
+        when (searchPane(state, helpHits.isNotEmpty())) {
+            SearchPane.HINT -> Hint(stringResource(R.string.search_hint))
 
-            helpHits.isEmpty() && serverEmpty && state.loading ->
+            SearchPane.LOADING ->
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
 
-            helpHits.isEmpty() && results?.isEmpty == true -> Hint(stringResource(R.string.search_empty))
+            SearchPane.FAILED -> Hint(state.error?.resolve().orEmpty())
 
-            else -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+            SearchPane.EMPTY -> Hint(stringResource(R.string.search_empty))
+
+            SearchPane.RESULTS -> LazyColumn(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
                 if (helpHits.isNotEmpty()) {
                     item { SectionHeader(stringResource(R.string.search_section_help)) }
                     items(helpHits, key = { "h-${it.slug}" }) { hit ->
                         HelpResult(hit, onClick = { onOpenHelp(hit.slug) })
                     }
+                }
+                // The help hits got us here; the server's failure still has to be
+                // said out loud rather than left as an absence under them.
+                val failure = state.error
+                if (failure != null && results == null) {
+                    item { SectionNote(failure.resolve()) }
                 }
                 if (results != null) {
                     if (results.tasks.isNotEmpty()) {
@@ -128,11 +142,31 @@ fun SearchOverlay(
                         items(results.tasks, key = { "t-${it.id}" }) { task ->
                             TaskResult(task, onClick = { onOpenTask(task.boardId, task.id) })
                         }
+                        // The count is the rendered list's own length: when the
+                        // server says it truncated, what it sent back is the page.
+                        if (results.hasMore.tasks) {
+                            item { SectionNote(stringResource(R.string.search_more, results.tasks.size)) }
+                        }
                     }
                     if (results.notes.isNotEmpty()) {
                         item { SectionHeader(stringResource(R.string.search_section_notes)) }
                         items(results.notes, key = { "n-${it.id}" }) { note ->
                             NoteResult(note, onClick = { onOpenNote(note.id) })
+                        }
+                        if (results.hasMore.notes) {
+                            item { SectionNote(stringResource(R.string.search_more, results.notes.size)) }
+                        }
+                    }
+                    // Третий вид ответа сервера (`SearchDocuments`): на телефоне его
+                    // не рисовали вовсе, хотя экран документов есть и открывается
+                    // по id — документ нельзя было найти поиском.
+                    if (results.documents.isNotEmpty()) {
+                        item { SectionHeader(stringResource(R.string.search_section_documents)) }
+                        items(results.documents, key = { "d-${it.id}" }) { doc ->
+                            DocumentResult(doc, onClick = { onOpenDocument(doc.id) })
+                        }
+                        if (results.hasMore.documents) {
+                            item { SectionNote(stringResource(R.string.search_more, results.documents.size)) }
                         }
                     }
                 }
@@ -155,6 +189,18 @@ private fun Hint(text: String) {
     Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
         Text(text, color = Tessera.colors.text3, fontSize = 14.sp)
     }
+}
+
+/** A footnote under a section: the truncation notice, or a failure the list has
+ *  to carry because help hits are already drawn above it. */
+@Composable
+private fun SectionNote(text: String) {
+    Text(
+        text,
+        color = Tessera.colors.text3,
+        fontSize = 12.sp,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+    )
 }
 
 @Composable
@@ -214,6 +260,26 @@ private fun NoteResult(note: SearchNote, onClick: () -> Unit) {
         Spacer(Modifier.width(10.dp))
         Text(
             note.title.ifBlank { stringResource(R.string.notes_untitled) },
+            color = c.text1,
+            fontSize = 14.sp,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun DocumentResult(doc: SearchDocument, onClick: () -> Unit) {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth().clickableNoRipple(onClick = onClick).padding(horizontal = 8.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // Ion.BOOK — тот же знак, которым документы подписаны в сайдбаре и в списке,
+        // чтобы строка поиска и пункт навигации читались как одно и то же место.
+        IonIcon(Ion.BOOK, size = 18.dp, tint = c.text3)
+        Spacer(Modifier.width(10.dp))
+        Text(
+            doc.title.ifBlank { stringResource(R.string.docs_untitled) },
             color = c.text1,
             fontSize = 14.sp,
             maxLines = 1,

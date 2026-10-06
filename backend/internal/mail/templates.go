@@ -119,22 +119,7 @@ func ttlPhrase(hours int, lang string) string {
 		return fmt.Sprintf("%d %ss", n, unit)
 	}
 	if unit == "day" {
-		return fmt.Sprintf("%d %s", n, pluralRU(n, "день", "дня", "дней"))
+		return fmt.Sprintf("%d %s", n, i18n.Plural(lang, n, "день", "дня", "дней"))
 	}
-	return fmt.Sprintf("%d %s", n, pluralRU(n, "час", "часа", "часов"))
-}
-
-// pluralRU picks the Russian plural form for n (1 час / 2 часа / 5 часов).
-func pluralRU(n int, one, few, many string) string {
-	if n%100 >= 11 && n%100 <= 14 {
-		return many
-	}
-	switch n % 10 {
-	case 1:
-		return one
-	case 2, 3, 4:
-		return few
-	default:
-		return many
-	}
+	return fmt.Sprintf("%d %s", n, i18n.Plural(lang, n, "час", "часа", "часов"))
 }

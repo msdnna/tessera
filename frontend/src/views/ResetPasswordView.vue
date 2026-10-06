@@ -4,6 +4,7 @@ import { NForm, NFormItem, NInput, NButton, useMessage } from 'naive-ui'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { accountFlows } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
+import { passwordError } from '@/utils/password'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,7 +14,11 @@ const pw = ref('')
 const confirm = ref('')
 const loading = ref(false)
 const done = ref(false)
-const valid = computed(() => pw.value.length >= 8 && pw.value === confirm.value)
+// Said, not merely enforced: the button being dead with no reason next to it is
+// how the too-long half of the rule would still be invisible. Empty while the
+// field is untouched — a form does not scold before it is filled in.
+const pwError = computed(() => (pw.value ? passwordError(pw.value) : ''))
+const valid = computed(() => !pwError.value && pw.value === confirm.value)
 
 async function submit() {
   if (!valid.value || !token) return
@@ -36,7 +41,11 @@ async function submit() {
     <p v-else-if="done" class="note">{{ $t('common.auth.reset.done') }}</p>
     <template v-else>
       <n-form @submit.prevent="submit">
-        <n-form-item :label="$t('common.auth.reset.password')">
+        <n-form-item
+          :label="$t('common.auth.reset.password')"
+          :validation-status="pwError ? 'error' : undefined"
+          :feedback="pwError"
+        >
           <n-input v-model:value="pw" type="password" show-password-on="click" />
         </n-form-item>
         <n-form-item :label="$t('common.auth.reset.confirm')">

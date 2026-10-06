@@ -20,11 +20,17 @@ import (
 // not a member of that workspace. Actor, when set, carries the id of the user
 // who triggered the event so clients can attribute board-activity ("X created
 // …"); it is absent for system/worker actions (GitLab sync, recurrence).
+//
+// User narrows delivery further to a single addressee inside that workspace, for
+// events that are one person's business (a notification carries its text, and a
+// reminder's text is the user's own private message). It is server-side only —
+// the wire format is unchanged — and unset means "everyone in scope".
 type Event struct {
 	Scope string          `json:"scope"`
 	Type  string          `json:"type"`
 	Actor string          `json:"actor,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
+	User  uuid.UUID       `json:"-"`
 }
 
 // Hub fans out Events to the clients authorised to receive them.
@@ -99,7 +105,7 @@ func (h *Hub) Run() {
 		case ev := <-h.broadcast:
 			h.mu.RLock()
 			for c := range h.clients {
-				if !c.canSee(ev.Scope) {
+				if !c.shouldReceive(ev) {
 					continue
 				}
 				select {

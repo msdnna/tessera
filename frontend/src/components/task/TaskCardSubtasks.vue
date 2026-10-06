@@ -10,13 +10,13 @@
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import { NIcon, NPopover } from 'naive-ui'
+import { NIcon, NPopover, useMessage } from 'naive-ui'
 import { CheckmarkCircle, EllipseOutline } from '@vicons/ionicons5'
 import { storeToRefs } from 'pinia'
 import { tasks as tasksApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGradVert } from '@/utils/gradient'
-import { divergedColumn } from '@/utils/status'
+import { divergedColumn, siblingNeighbors } from '@/utils/status'
 import { columnName } from '@/utils/defaultNames'
 import { taskBasePatch } from '@/utils/taskPatch'
 import TaskMiniCard from '../TaskMiniCard.vue'
@@ -36,6 +36,17 @@ const props = defineProps({
   // The composer filter hid part of the children: reordering a partial list
   // would write meaningless float8 positions, so child DnD is locked.
   narrowed: { type: Boolean, default: false },
+  // A composer sort re-ordered the children on the way here, so the rows are drawn
+  // in the SORT's order while `position` still orders them the stored way. Same
+  // meaningless float8 as `narrowed`, arrived at differently — a drop would name
+  // the siblings it landed between on SCREEN, and the midpoint of two positions
+  // handed over in arbitrary relative order puts the child at a random slot of the
+  // parent's ladder. Invisible on the spot (the reload re-sorts) and permanent.
+  //
+  // Unlike `narrowed` this only takes RE-ORDERING off (`:sort`), not the list
+  // itself: a card dragged in from the board still nests, which is a `setParent`
+  // and carries no position at all.
+  sorted: { type: Boolean, default: false },
   // Archive view: rows are display-only (no completion toggle).
   readonly: { type: Boolean, default: false },
 })
@@ -48,6 +59,7 @@ const membersMap = bv.membersMap
 const tagPrefixNames = bv.prefixNames
 const { formatDue } = useDateLocale()
 const { t } = useI18n()
+const message = useMessage()
 // The hover preview is a pointer affordance and on a phone it is actively
 // harmful (#2893): a touch fires `mouseover` but never `mouseleave`, so the card
 // opens on the FIRST tap and stays up. It is placed to the right of a row that
@@ -73,24 +85,46 @@ async function onSubChange(evt) {
     try {
       await tasksApi.setParent(evt.added.element.id, props.task.id)
     } catch (e) {
-      void e
+      // A card dropped in here and refused goes back where it came from on the
+      // resync below — which is exactly what a drop that missed the list looks
+      // like. The reader has to be told the server said no (#2932).
+      message.error(e.message)
     }
     emit('changed')
     return
   }
   if (!evt.moved) return
-  const arr = subModel.value
-  const before = arr[evt.moved.newIndex - 1]
-  const after = arr[evt.moved.newIndex + 1]
+  // `:sort` already keeps Sortable from emitting this under a composer sort; the
+  // guard is repeated here because the neighbours below are read off `subModel`,
+  // which IS the sorted list — anything that reaches this line with `sorted` set
+  // would write the wrong siblings' midpoint into the parent's ladder.
+  if (props.sorted) return
+  // Re-ordering a child says nothing about which COLUMN it stands in, and the
+  // two are not the same field by accident: a subtask legitimately lives in
+  // another column than its parent — `subColumn` below draws a chip for exactly
+  // that, and the right-click menu on this very row is how it gets there
+  // (useTaskMenu's `col:` item). Sending the parent's column with a pure reorder
+  // dragged the child back into it: the divergence chip vanished, its journal
+  // gained a «перемещена» entry, its participants were notified of a move nobody
+  // made — and where the parent stands in the board's done column, backend
+  // applyMove's auto-toggle TICKED THE CHILD COMPLETE on the way (or reopened one
+  // dragged under a parent outside it). Its own column is the only answer that
+  // leaves the row where the reader put it (#2932).
+  //
+  // The neighbours are its siblings whatever column each of them is in: a
+  // subtask's float8 ladder is per PARENT, not per column (backend `sameList`
+  // checks only parent_id, and positionForDrop respaces by parent). Same
+  // arithmetic the task modal's own subtask move uses — `siblingNeighbors` reads
+  // it off the list as rendered, which after the drop is the new order.
+  const moved = evt.moved.element
   try {
-    await tasksApi.move(evt.moved.element.id, {
-      column_id: props.task.column_id,
-      before_id: before ? before.id : null,
-      after_id: after ? after.id : null,
+    await tasksApi.move(moved.id, {
+      column_id: moved.column_id || props.task.column_id,
+      ...siblingNeighbors(subModel.value, moved.id),
     })
     emit('changed')
   } catch (e) {
-    void e
+    message.error(e.message)
     emit('changed')
   }
 }
@@ -102,9 +136,17 @@ function subDue(s) {
 function subColumn(s) {
   return divergedColumn(s, props.task.column_id, columns.value)
 }
+// The row's tick draws off `s.completed_at`, so a refused write looked exactly
+// like a click that missed: no toast, no change, and the parent never asked to
+// re-read. Reported and resynced either way, like the drag above and like the
+// right-click menu over the same row (composables/useTaskMenu.js).
 async function toggleSubDone(s) {
   if (props.readonly) return
-  await tasksApi.update(s.id, { ...taskBasePatch(s), completed: !s.completed_at })
+  try {
+    await tasksApi.update(s.id, { ...taskBasePatch(s), completed: !s.completed_at })
+  } catch (e) {
+    message.error(e.message)
+  }
   emit('changed')
 }
 </script>
@@ -131,6 +173,7 @@ async function toggleSubDone(s) {
       :force-fallback="true"
       :fallback-on-body="true"
       :disabled="narrowed"
+      :sort="!sorted"
       @click.stop
       @change="onSubChange"
     >

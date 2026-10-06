@@ -42,9 +42,9 @@ val CONF_MANAGER_WS_ROLES = setOf("owner", "admin")
  * a workspace admin who is neither creator nor host, which is the safe way round:
  * a hidden control is an inconvenience, one that 403s is a bug report.
  *
- * The web client tests the *global* admin flag here instead. That is a wider
- * gate than the server's, so its «Завершить» can answer 403 to a global admin
- * who is not in this workspace; we ask about the workspace role we already have.
+ * The web client used to test the *global* admin flag here — a wider gate than
+ * the server's in one direction and a narrower one in the other. It now asks the
+ * same question we do, in `utils/confLobby.js` (#2932).
  */
 fun canModerateConference(
     conference: Conference,
@@ -71,10 +71,17 @@ fun canInviteToConference(conference: Conference): Boolean = !conference.isEnded
  * The order is the panel's own, not the server's: participants arrive in
  * invitation order, which puts whoever was invited first at the top forever,
  * even after they leave and rejoin.
+ *
+ * Names go through [UserTextOrder] like every other list of people in the app:
+ * sorting by `lowercase()` is a code-unit sort, and «Ёлкина» then lands under the
+ * last letter of the alphabet instead of the first.
  */
 fun confRoster(participants: List<ConferenceParticipant>): List<ConferenceParticipant> =
     participants.filter { it.isPresent }
-        .sortedWith(compareByDescending<ConferenceParticipant> { it.isHost }.thenBy { it.label().lowercase() })
+        .sortedWith(
+            compareByDescending<ConferenceParticipant> { it.isHost }
+                .thenBy(UserTextOrder) { it.label() },
+        )
 
 /**
  * Invited, not in the room, and not somebody who came and left.
@@ -85,7 +92,7 @@ fun confRoster(participants: List<ConferenceParticipant>): List<ConferencePartic
  */
 fun confInvited(participants: List<ConferenceParticipant>): List<ConferenceParticipant> =
     participants.filter { it.joinedAt == null && it.leftAt == null }
-        .sortedBy { it.label().lowercase() }
+        .sortedWith(compareBy(UserTextOrder) { it.label() })
 
 /**
  * Workspace members there is any point in inviting.
@@ -101,7 +108,8 @@ fun confInvitable(
     participants: List<ConferenceParticipant>,
 ): List<Member> {
     val held = participants.filter { it.leftAt == null }.map { it.userId }.toSet()
-    return members.filter { it.userId !in held }.sortedBy { it.name.ifBlank { it.email }.lowercase() }
+    return members.filter { it.userId !in held }
+        .sortedWith(compareBy(UserTextOrder) { it.name.ifBlank { it.email } })
 }
 
 /**

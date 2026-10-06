@@ -4,10 +4,14 @@ import {
   OFFICE_EXTENSIONS,
   downloadBlob,
   exportFileName,
+  exportRefusalKey,
   importAccept,
   importOfficeFile,
   isOfficeFile,
 } from '@/utils/docOffice'
+import { BLOB_REVOKE_DELAY_MS } from '@/utils/blobHandoff'
+import { ensureBlockIds } from '@/utils/docExtensions/blockId'
+import { blockIdsInOrder, splitThreads } from '@/utils/docComments'
 
 function fakeFile(name, size = 10) {
   return { name, size }
@@ -156,6 +160,61 @@ describe('importOfficeFile', () => {
     expect(sectionsDiffer).toBe(false)
   })
 
+  it('gives an imported PDF the block id every other import path writes', async () => {
+    // A PDF comes back as a stored file rather than as HTML, so its body is
+    // assembled by hand instead of being parsed — and that is the path that
+    // skipped ensureBlockIds. The id matters here for the same reason it does
+    // everywhere else: comments, task links and locks address a block by it.
+    const api = stubApi({
+      importFile: vi.fn(async () => ({
+        data: {
+          document: { id: 'doc-1', updated_at: 'v1' },
+          pdf: {
+            src: '/api/documents/asset?doc=doc-1&n=scan.pdf&sig=x',
+            name: 'Скан.pdf',
+            size: 9,
+          },
+        },
+      })),
+    })
+    await importOfficeFile(api, 'ws-1', fakeFile('Скан.pdf'))
+    const content = api.updateContent.mock.calls[0][1]
+
+    expect(content.content[0].type).toBe('pdfEmbed')
+    expect(content.content[0].attrs.id).toBeTruthy()
+  })
+
+  it('keeps a comment on an imported PDF anchored across reloads', async () => {
+    // The failure the missing id produces, end to end. The editor stamps ids on
+    // open, but that transaction is marked BLOCK_ID_META and deliberately does
+    // not count as an edit, so nothing saves it — and a PDF document is rarely
+    // typed into. Without an id in the stored body every open invents a new one
+    // and the discussion about the file detaches from it.
+    const api = stubApi({
+      importFile: vi.fn(async () => ({
+        data: {
+          document: { id: 'doc-1', updated_at: 'v1' },
+          pdf: {
+            src: '/api/documents/asset?doc=doc-1&n=scan.pdf&sig=x',
+            name: 'Скан.pdf',
+            size: 9,
+          },
+        },
+      })),
+    })
+    await importOfficeFile(api, 'ws-1', fakeFile('Скан.pdf'))
+    const stored = api.updateContent.mock.calls[0][1]
+
+    // Two opens of the same stored body, as DocEditor does it.
+    const firstOpen = ensureBlockIds(stored)
+    const secondOpen = ensureBlockIds(stored)
+    const anchored = firstOpen.content[0].attrs.id
+    expect(secondOpen.content[0].attrs.id).toBe(anchored)
+
+    const thread = { block_id: anchored }
+    expect(splitThreads([thread], blockIdsInOrder(secondOpen)).detached).toEqual([])
+  })
+
   it('passes the folder the user is looking at', async () => {
     const api = stubApi()
     await importOfficeFile(api, 'ws-1', fakeFile('a.docx'), { parentId: 'parent-9' })
@@ -236,7 +295,8 @@ describe('exportFileName', () => {
 })
 
 describe('downloadBlob', () => {
-  it('revokes the object URL it created', () => {
+  it('revokes the object URL it created, once the download has started', () => {
+    vi.useFakeTimers()
     const createObjectURL = vi.fn(() => 'blob:x')
     const revokeObjectURL = vi.fn()
     vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL })
@@ -249,11 +309,42 @@ describe('downloadBlob', () => {
 
     expect(anchor.download).toBe('Отчёт.pdf')
     expect(click).toHaveBeenCalled()
-    // Without this every export leaks the whole file for the lifetime of the
-    // tab, and nobody attributes that to the download button.
+    // Not on the next line: an early revoke races the transfer and can cancel a
+    // multi-megabyte export. The timing itself is pinned in ut-blob-handoff.
+    vi.advanceTimersByTime(BLOB_REVOKE_DELAY_MS)
+    // Deferred, not dropped — without the revoke every export leaks the whole
+    // file for the lifetime of the tab, and nobody attributes that to the
+    // download button.
     expect(revokeObjectURL).toHaveBeenCalledWith('blob:x')
 
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
+    vi.useRealTimers()
+  })
+})
+
+// Which sentence an export failure gets.
+//
+// The two refusals worth naming come off the status, not the body: the export
+// is fetched as a blob, and the backend phrases both of these in Russian of its
+// own ("сервис конвертации документов недоступен"), which is the wrong language
+// half the time. The view used to read `err.response.status` — a field the api
+// interceptor does not put on the error it rejects with (#2932) — so neither
+// branch was ever taken and both locale lines sat unused.
+describe('exportRefusalKey', () => {
+  it('names the sidecar being unreachable', () => {
+    expect(exportRefusalKey(503)).toBe('documents.view.error.exportUnavailable')
+  })
+
+  it('names a document the sidecar would not convert', () => {
+    expect(exportRefusalKey(422)).toBe('documents.view.error.exportFailed')
+  })
+
+  it('leaves anything else to the caller', () => {
+    // 403/404/500 already have a humanized line from the catalogue; overriding
+    // it with "could not export" would say less than the server did.
+    expect(exportRefusalKey(403)).toBe(null)
+    expect(exportRefusalKey(500)).toBe(null)
+    expect(exportRefusalKey(undefined)).toBe(null)
   })
 })

@@ -25,9 +25,10 @@ import website.msdnna.tessera.util.WhatsNewSpotlight
  * (the bump step is the place to remember — see the tessera-ship skill).
  *
  * `spotlight` queues a one-shot arrow at a sidebar item after the card is
- * dismissed; `navKey` must match a sidebar nav key (`activeNav`) — "documents",
- * "conferences", "milestones", "notes", "reminders", "home", "admin" — or the hint
- * is skipped.
+ * dismissed; `navKey` must match a sidebar nav key (`activeNav`) — "home",
+ * "milestones", "reminders", "notes", "documents", "conferences", "help",
+ * "admin" — or the hint is skipped. The list is the one `Sidebar` passes to
+ * `spotSink`, in the order the rows are drawn.
  */
 val WhatsNewEntries: List<WhatsNewEntry> = listOf(
     WhatsNewEntry(

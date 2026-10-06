@@ -33,6 +33,19 @@ WHERE id IN (
 )
 RETURNING *;
 
+-- RequeueStaleWritebacks puts rows left in 'sending' by a process that died
+-- between the claim and the settle back into the queue — the write-back twin of
+-- RequeueStaleDeliveries, and for the same reason: ClaimPendingWritebacks only
+-- looks at 'pending', so a restart mid-drain drops those pushes silently.
+--
+-- Runs at the top of a drain, under the 'gitlab_writeback' worker lock, so a
+-- 'sending' row cannot belong to a live drain. 'conflict' rows are parked
+-- deliberately and are not touched. attempts is left as-is.
+-- name: RequeueStaleWritebacks :execrows
+UPDATE gitlab_writebacks
+SET status = 'pending', last_error = 'прервано перезапуском сервиса', updated_at = now()
+WHERE status = 'sending';
+
 -- name: MarkWritebackSent :exec
 UPDATE gitlab_writebacks SET status = 'sent', last_error = '', updated_at = now() WHERE id = $1;
 

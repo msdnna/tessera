@@ -25,6 +25,7 @@ import website.msdnna.tessera.util.DocAnnotateTarget
 import website.msdnna.tessera.util.DocEditorReady
 import website.msdnna.tessera.util.DocEditorSignal
 import website.msdnna.tessera.util.DocSaveStatus
+import website.msdnna.tessera.util.isOwnServerUrl
 import website.msdnna.tessera.util.parseDocAnnotate
 import website.msdnna.tessera.util.parseDocEditorReady
 import website.msdnna.tessera.util.parseDocEditorSignal
@@ -180,8 +181,13 @@ fun DocEditorWebView(
                         // redirect through the login guard would) stays inside;
                         // a link in the text opens in the browser, as it does in
                         // the reader.
+                        //
+                        // "Ours" is an origin, not a text prefix: whatever loads
+                        // here gets the `AndroidDoc` bridge, and `requestToken`
+                        // on it hands out a fresh access token — so a link to
+                        // `https://<root>.attacker.example` must go outside.
                         val link = request.url.toString()
-                        if (link.startsWith(RetrofitClient.serverRoot)) return false
+                        if (isOwnServerUrl(link, RetrofitClient.serverRoot)) return false
                         runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link))) }
                         return true
                     }

@@ -3,6 +3,7 @@ import { setActivePinia, createPinia } from 'pinia'
 import { ref, computed, defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 
+import { useThemeStore } from '@/stores/theme'
 import { useChartLanes, MILESTONE_COLORS } from '@/composables/useChartLanes'
 import { useChartRows, ROW_H, SUB_STEP } from '@/composables/useChartRows'
 import { useChartTimeline, ZOOM, DEFAULT_ZOOM_IDX } from '@/composables/useChartTimeline'
@@ -95,7 +96,9 @@ describe('useChartLanes', () => {
     })
     // t2 is filtered out by the prefix, so the lane is the area:: tag, not the first id.
     expect(lanes.value.map((l) => l.key)).toEqual(['t1'])
-    expect(lanes.value[0].label).toBe('area::be')
+    // Captioned like the board's tag column: the namespace the grouping is already
+    // narrowed to is not repeated in every lane (see cx-tag-lane-caption).
+    expect(lanes.value[0].label).toBe('be')
   })
 
   // v2 (#2959): milestone lanes in the project's milestone order, coloured by
@@ -293,6 +296,34 @@ describe('useChartTimeline', () => {
     expect(scale.value).toBe('months') // 6px/day still groups by months
     setScale('days')
     expect(scale.value).toBe('days')
+  })
+
+  it('breaks the week bands on the preferred first day of the week', () => {
+    // The weeks tier is the only zoom level that draws them; band `key` is the
+    // band's first day, so its weekday is what the preference has to move.
+    const firstDays = () => {
+      const { weekBands, setScale } = timelineFor([
+        task('a', { start_date: day(5), due_date: day(40) }),
+      ])
+      setScale('weeks') // the weeks tier (v2 preset; zoom 0 is months now)
+      return weekBands.value.slice(1).map((b) => new Date(b.key).getDay())
+    }
+    expect(new Set(firstDays())).toEqual(new Set([1])) // default: Monday
+    useThemeStore().weekStart = 0
+    expect(new Set(firstDays())).toEqual(new Set([0])) // Sunday
+  })
+
+  it('breaks the days tier’s week ranges on the same preferred day (v2)', () => {
+    const firstDays = () => {
+      const { weekRangeBands, setScale } = timelineFor([
+        task('a', { start_date: day(5), due_date: day(40) }),
+      ])
+      setScale('days')
+      return weekRangeBands.value.slice(1).map((b) => new Date(b.key).getDay())
+    }
+    expect(new Set(firstDays())).toEqual(new Set([1]))
+    useThemeStore().weekStart = 0
+    expect(new Set(firstDays())).toEqual(new Set([0]))
   })
 
   it('keeps only milestones whose due date lands inside the axis range', () => {

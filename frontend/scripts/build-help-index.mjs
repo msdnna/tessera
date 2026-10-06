@@ -156,8 +156,15 @@ function stripInline(s) {
     .trim()
 }
 
-// flatten turns the article into one lowercase line of prose for the search
-// index — no headings markup, no lists, no tables, collapsed whitespace.
+// flatten turns the article into one line of prose — no headings markup, no
+// lists, no tables, collapsed whitespace.
+//
+// Case is preserved on purpose. This field feeds two things, and only one of
+// them is a search: the tokenizers on both clients lower-case what they read
+// (`tokenize` / `tokenizeHelp`), so folding it here bought nothing, while the
+// result rows quote it verbatim as the snippet — which meant every hit in the
+// help centre read back as "tessera — таск-трекер: доски…", sentences opening
+// lower-case and Tessera/GitLab/Markdown stripped of their capitals.
 function flatten(body) {
   return body
     .replace(FENCE_RE, ' ')
@@ -175,7 +182,6 @@ function flatten(body) {
     .join(' ')
     .replace(/\s+/g, ' ')
     .trim()
-    .toLowerCase()
 }
 
 // bodySection is the part of an article that forks per platform and per locale:

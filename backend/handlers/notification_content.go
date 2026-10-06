@@ -43,6 +43,16 @@ const (
 // and its id travels in the payload (see msgConferenceInvited).
 const kindConferenceInvite = "conference_invite"
 
+// The routing kinds of the two notifications the user has a switch for:
+// "уведомления о сроке" (also a per-task override) and "напоминания". Stored on
+// the notification row and read by timedKinds and deliveryStillWanted. Note these
+// are the stored kinds, not the payload event names above — evDueSoon is
+// "task_due_soon" while the row says "due_soon".
+const (
+	kindDueSoon  = "due_soon"
+	kindReminder = "reminder"
+)
+
 // notifyMsg is one notification's content: the legacy pre-rendered sentence and
 // the structured payload. Build one with the msg* helpers below — never write a
 // payload inline at a call site, or the event names drift out of this file.
@@ -135,12 +145,18 @@ var fieldWords = map[string]string{
 	"reopened":    "возвращена в работу",
 }
 
-func msgMoved(actor string, number *int64, column string) notifyMsg {
+func msgMoved(actor string, number *int64, column string, columnKey *string) notifyMsg {
 	p := event(evMoved, number)
 	p["actor"] = actor
-	// Column names are user data (and the GitLab mapping keys off them), so this
-	// one is carried verbatim, not translated.
+	// A column the user named is user data (and the GitLab mapping keys off that
+	// name), so it is carried verbatim. The four columns seeded with a board are
+	// not: they carry a name_key (#2800) and every client captions them from it,
+	// so the key rides along or the bell would say «Готово» about the column the
+	// same screen labels "Done".
 	p["column"] = column
+	if columnKey != nil && *columnKey != "" {
+		p["column_key"] = *columnKey
+	}
 	return notifyMsg{
 		text:    fmt.Sprintf("%s переместил(а) задачу #%s → «%s»", actor, taskRef(number), column),
 		payload: p,
@@ -238,17 +254,26 @@ type syncCounts struct {
 	reason  string // failure reason; only set for the failed outcome
 }
 
+// msgSyncFailed reports a failed sync. The reason is the integration's own error
+// text, which is content and travels verbatim; the "we don't know why" default is
+// a UI string, so — like msgReminder's empty-message default — it stays in the
+// legacy text and is left out of the payload. The client splices `reason` into a
+// sentence of its own language, and a Russian default in there would read
+// "sync failed — неизвестная ошибка" on an English screen.
 func msgSyncFailed(s syncCounts) notifyMsg {
-	reason := s.reason
-	if reason == "" {
-		reason = "неизвестная ошибка"
-	}
+	reason := strings.TrimSpace(s.reason)
 	p := event(evSyncFailed, nil)
 	p["label"] = s.label
 	p["seconds"] = s.seconds
-	p["reason"] = reason
+	if reason != "" {
+		p["reason"] = reason
+	}
+	text := reason
+	if text == "" {
+		text = "неизвестная ошибка"
+	}
 	return notifyMsg{
-		text:    fmt.Sprintf("%s: синхронизация не удалась — %s (за %s)", s.label, reason, s.took),
+		text:    fmt.Sprintf("%s: синхронизация не удалась — %s (за %s)", s.label, text, s.took),
 		payload: p,
 	}
 }

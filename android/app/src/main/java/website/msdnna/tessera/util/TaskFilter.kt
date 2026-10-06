@@ -1,8 +1,5 @@
 package website.msdnna.tessera.util
 
-import java.text.Collator
-import java.util.Calendar
-import java.util.Locale
 import website.msdnna.tessera.data.model.Task
 
 /*
@@ -17,6 +14,15 @@ import website.msdnna.tessera.data.model.Task
  * under an "assignee = me" filter. When only a subtask matched, the parent's on-card
  * subtask list is narrowed to the matching children. The task modal is untouched and
  * always lists every subtask.
+ *
+ * That rule holds at EVERY depth (#2932). Subtasks are a tree and the board loads all of
+ * it into one flat parent id → children map (`BoardViewModel.subtasks` is every task with
+ * a parent_id, not just the first level — [countWithSubtasks] walks the same map through
+ * all of them), but the pass here used to read direct children only. A grandchild
+ * assigned to you therefore took its whole branch off the board — no card for its
+ * parent, so no way to reach it at all, which is the very thing #2602 was about, one
+ * level further down. Web had the same hole and was fixed first
+ * (`frontend/src/utils/taskFilter.js`); this is the port.
  *
  * Pure functions: no Compose, no network, no clock reads (the caller passes a
  * [FilterClock]) — so the whole module is unit-testable.
@@ -71,19 +77,22 @@ val SUBTASK_FACETS: Set<TaskFacet> = setOf(
  * The `yyyy-MM-dd` boundaries the «Срок» facet compares against, injected so filtering
  * never reads the clock itself (web passes a `now` Date for the same reason).
  */
-data class FilterClock(val today: String, val weekEnd: String) {
+data class FilterClock(
+    val today: String,
+    val weekEnd: String,
+    /**
+     * The calendar the boundaries were read in — carried, not re-derived, so the due
+     * dates compared against them ([matchesDue]) are bucketed by the same zone. A
+     * clock built for Europe/Moscow and due keys read off the device would be two
+     * calendars in one comparison.
+     */
+    val fmt: DateFormatPrefs = DateFormatPrefs.Default,
+) {
     companion object {
-        /** Boundaries from the device clock: today and today + 7 days. */
-        fun now(): FilterClock = FilterClock(dateKey(0), dateKey(DAYS_IN_WEEK))
-
-        /** A local `yyyy-MM-dd` key for today + [days], matching due-date keys. */
-        private fun dateKey(days: Int): String {
-            val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, days) }
-            val y = cal.get(Calendar.YEAR)
-            val m = (cal.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
-            val d = cal.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
-            return "$y-$m-$d"
-        }
+        /** Boundaries from the clock in the user's zone: today, and today + 7 days —
+         *  the *exclusive* end of the week window (see [matchesDue]). */
+        fun now(fmt: DateFormatPrefs = DateFormatPrefs.Default): FilterClock =
+            FilterClock(dayKeyIn(fmt.zone, 0), dayKeyIn(fmt.zone, DAYS_IN_WEEK), fmt)
     }
 }
 
@@ -96,14 +105,34 @@ fun gitlabLogin(v: String): String = if (isGitlabValue(v)) v.removePrefix(GL_PRE
 /**
  * Assignee facet: a task matches when any selected person is among its Tessera assignees
  * or its GitLab assignee logins. An empty selection filters nothing.
+ *
+ * A Tessera person also matches through their linked GitLab login ([glLoginByUserId]:
+ * tessera user id → gl_username), exactly as [matchesAuthor] does — the task can carry
+ * that login instead of their user id. The sync resolves a GitLab assignee to a Tessera
+ * account when it can, so the two never coexist on one row, but a login lands in
+ * `gitlab_assignee_logins` whenever the account was not resolvable AT THAT MOMENT: a
+ * member pinned by hand before they had an account (`source='user'` rows survive every
+ * sync rebuild), or an issue synced before the person linked theirs and not touched in
+ * GitLab since.
+ *
+ * Their login is then no longer offered as a `gl:` option either — the menu drops a
+ * GitLab member who maps to a workspace member ([assigneeFacetGitlabOptions]), so one
+ * person is never listed twice. Without this lookup that card answered to NO value of
+ * the facet at all: not to the person's own entry, and not to a `gl:` entry the menu no
+ * longer has. Web fixed it first (`frontend/src/utils/boardFilters.js`); this is the port.
  */
-fun matchesAssignee(task: Task, selected: Set<String>): Boolean {
+fun matchesAssignee(task: Task, selected: Set<String>, glLoginByUserId: Map<String, String> = emptyMap()): Boolean {
     if (selected.isEmpty()) return true
     return selected.any { a ->
         // `gl:` values carry the LOGIN, so they match gitlabAssigneeLogins — matching the
         // parallel `gitlabAssignees` (display names) silently found nothing whenever a
         // GitLab member's name differed from their username.
-        if (isGitlabValue(a)) gitlabLogin(a) in task.gitlabAssigneeLogins else a in task.assigneeIds
+        if (isGitlabValue(a)) {
+            gitlabLogin(a) in task.gitlabAssigneeLogins
+        } else {
+            val login = glLoginByUserId[a]
+            a in task.assigneeIds || (login != null && login in task.gitlabAssigneeLogins)
+        }
     }
 }
 
@@ -129,7 +158,9 @@ fun matchesAuthor(task: Task, selected: Set<String>, glLoginByUserId: Map<String
 
 /** Due-date predicate for the «Срок» filter, against [clock]'s boundaries. */
 fun matchesDue(task: Task, mode: DueFilter, clock: FilterClock): Boolean {
-    val due = isoDateKey(task.dueDate)
+    // dueDayKey, не isoDateKey: границы [clock] — дни календаря пользователя, и
+    // сравнивать их надо с тем же днём, который стоит в подписи карточки.
+    val due = dueDayKey(task.dueDate, clock.fmt)
     return when (mode) {
         DueFilter.All -> true
 
@@ -141,8 +172,15 @@ fun matchesDue(task: Task, mode: DueFilter, clock: FilterClock): Boolean {
 
         DueFilter.Today -> due == clock.today
 
-        // Inclusive of the seventh day, like web (`dueDay - today <= 7 days`).
-        DueFilter.Week -> due.isNotEmpty() && due >= clock.today && due <= clock.weekEnd
+        // Half-open [today, today+7) — seven days counting today, not eight. The same
+        // window the server counts the home «На неделе» tile in (`due_date < @week_end`
+        // in WorkspaceTaskSummary), the home screen filters on (HomeViewModel) and web's
+        // «Срок» facet uses (`dueDay < weekEnd` in utils/taskFilter.js). It has to be the
+        // same one twice over: the tile's number is the caption of the list this filter
+        // draws, and a saved board view carries the facet as the bare string "week"
+        // between web and the phone — an eighth day here is a card the other side never
+        // shows.
+        DueFilter.Week -> due.isNotEmpty() && due >= clock.today && due < clock.weekEnd
     }
 }
 
@@ -170,7 +208,7 @@ private fun passesFacet(
 ): Boolean = when (facet) {
     TaskFacet.Priorities -> filter.priorities.isEmpty() || task.priority in filter.priorities
 
-    TaskFacet.Assignees -> matchesAssignee(task, filter.assigneeIds)
+    TaskFacet.Assignees -> matchesAssignee(task, filter.assigneeIds, glLoginByUserId)
 
     TaskFacet.Authors -> matchesAuthor(task, filter.authorIds, glLoginByUserId)
 
@@ -230,42 +268,94 @@ fun filterBoardTasks(
     glLoginByUserId: Map<String, String> = emptyMap(),
 ): FilteredBoard {
     val subFacets = hasSubtaskFacets(filter)
+    val walk = SubtaskWalk(subtasksByParent, filter, clock, glLoginByUserId)
     val visible = LinkedHashSet<String>()
-    val outSubs = mutableMapOf<String, List<Task>>()
-    val narrowed = mutableSetOf<String>()
-
     for (t in tasks) {
-        val subs = subtasksByParent[t.id].orEmpty()
-        if (matchesTask(t, filter, clock, glLoginByUserId = glLoginByUserId)) {
-            visible += t.id
-            if (subs.isNotEmpty()) outSubs[t.id] = subs
-        } else {
-            val hits = if (subFacets) liftingChildren(t, subs, filter, clock, glLoginByUserId) else emptyList()
-            if (hits.isNotEmpty()) {
-                visible += t.id
-                outSubs[t.id] = hits
-                if (hits.size < subs.size) narrowed += t.id
-            }
-        }
+        if (walk.keepCard(t, subFacets)) visible += t.id
     }
-    return FilteredBoard(visible, outSubs, narrowed)
+    return FilteredBoard(visible, walk.out, walk.narrowed)
 }
 
 /**
- * The children that keep a non-matching [parent] on the board, or empty when none do.
- * The parent must still pass the facets a subtask cannot stand in for (its board column),
- * otherwise the card would appear in a column it isn't in.
+ * Does this top-level card stay on the board? Same two branches as a subtask
+ * ([keepSubtree]) — matched by itself → its whole tree stays as it is; matched only
+ * through something below → the child list is narrowed to the surviving branches.
  */
-private fun liftingChildren(
-    parent: Task,
-    subs: List<Task>,
-    filter: BoardFilter,
-    clock: FilterClock,
-    glLoginByUserId: Map<String, String>,
-): List<Task> {
-    if (subs.isEmpty()) return emptyList()
-    if (!matchesTask(parent, filter, clock, setOf(TaskFacet.Statuses), glLoginByUserId)) return emptyList()
-    return subs.filter { matchesTask(it, filter, clock, SUBTASK_FACETS, glLoginByUserId) }
+private fun SubtaskWalk.keepCard(t: Task, subFacets: Boolean): Boolean {
+    if (matchesTask(t, filter, clock, glLoginByUserId = glLoginByUserId)) {
+        emitSubtree(t.id, mutableSetOf(t.id))
+        return true
+    }
+    val subs = byParent[t.id].orEmpty()
+    if (!subFacets || subs.isEmpty()) return false
+    // The card itself failed. It may still be lifted by something below it — but only if
+    // it passes the facets a subtask cannot stand in for (its board column), otherwise
+    // the card would appear in a column it isn't in.
+    if (!matchesTask(t, filter, clock, setOf(TaskFacet.Statuses), glLoginByUserId)) return false
+    val seen = mutableSetOf(t.id)
+    val hits = subs.filter { keepSubtree(it, seen) }
+    if (hits.isEmpty()) return false
+    out[t.id] = hits
+    if (hits.size < subs.size) narrowed += t.id
+    return true
+}
+
+/**
+ * One filtering pass over the subtask tree: everything [keepSubtree] reads besides the
+ * node it is looking at, plus what it writes. Bundled so the recursion carries two
+ * arguments instead of eight.
+ */
+private class SubtaskWalk(
+    val byParent: Map<String, List<Task>>,
+    val filter: BoardFilter,
+    val clock: FilterClock,
+    val glLoginByUserId: Map<String, String>,
+    val out: MutableMap<String, List<Task>> = mutableMapOf(),
+    val narrowed: MutableSet<String> = mutableSetOf(),
+)
+
+/**
+ * Copy the branch under [id] into [SubtaskWalk.out] untouched, at every depth — what a
+ * task that matched by itself takes with it: its children are not the reason it is
+ * visible, so none of them is hidden.
+ *
+ * [seen] is every id already placed on this walk. The child map is flat and comes from
+ * the server, so a parent chain that looped back on itself would otherwise recurse
+ * forever — [countWithSubtasks] guards the same map for the same reason.
+ */
+private fun SubtaskWalk.emitSubtree(id: String, seen: MutableSet<String>) {
+    val subs = byParent[id].orEmpty()
+    if (subs.isEmpty()) return
+    out[id] = subs
+    for (s in subs) {
+        if (s.id.isEmpty() || !seen.add(s.id)) continue
+        emitSubtree(s.id, seen)
+    }
+}
+
+/**
+ * Does this subtask — or anything under it — survive the filter? Writes the child lists
+ * it keeps into [SubtaskWalk.out] and records every level it had to narrow in
+ * [SubtaskWalk.narrowed], then answers whether its parent may count it as a hit.
+ *
+ * Same two branches as a top-level card: matched by itself → the whole branch below
+ * stays; matched only through a descendant → the child list is narrowed to the surviving
+ * ones, so what is drawn is the path down to the match and nothing else. Nothing is
+ * written when the answer is false, so a dead branch leaves no trace in the result.
+ */
+private fun SubtaskWalk.keepSubtree(node: Task, seen: MutableSet<String>): Boolean {
+    if (node.id.isEmpty() || !seen.add(node.id)) return false
+    if (matchesTask(node, filter, clock, SUBTASK_FACETS, glLoginByUserId)) {
+        emitSubtree(node.id, seen)
+        return true
+    }
+    val subs = byParent[node.id].orEmpty()
+    if (subs.isEmpty()) return false
+    val hits = subs.filter { keepSubtree(it, seen) }
+    if (hits.isEmpty()) return false
+    out[node.id] = hits
+    if (hits.size < subs.size) narrowed += node.id
+    return true
 }
 
 /** A GitLab author seen on the board, for the author-filter menu. */
@@ -283,8 +373,95 @@ fun boardGitlabAuthors(tasks: List<Task>): List<GitlabAuthor> {
         if (login.isNullOrBlank() || login in byLogin) continue
         byLogin[login] = GitlabAuthor(login, t.gitlabAuthorName?.ifBlank { login } ?: login, t.gitlabAuthorAvatarUrl.orEmpty())
     }
-    // Collator, not a raw String compare: web sorts with localeCompare(…, 'ru'), where
-    // Latin precedes Cyrillic and case/ё are folded — a code-unit sort disagrees.
-    val collator = Collator.getInstance(Locale("ru"))
-    return byLogin.values.sortedWith { a, b -> collator.compare(a.name, b.name) }
+    // Collator, not a raw String compare: the web sorts with its own collator, where
+    // Latin precedes Cyrillic, case/ё are folded and digits compare by value — a
+    // code-unit sort disagrees on all three ([UserTextOrder]).
+    return byLogin.values.sortedWith { a, b -> UserTextOrder.compare(a.name, b.name) }
 }
+
+/**
+ * Distinct GitLab assignee logins present on the board — the same hole [boardGitlabAuthors]
+ * plugs, one facet over (#2932).
+ *
+ * The roster behind the «Исполнитель» menu is a CACHE: an incremental sync refreshes it at
+ * most once an hour (backend `memberRosterTTL`) and best-effort at that, while the issues
+ * themselves arrive on every pull. So a person newly added to the GitLab project — or one
+ * since removed from it, whose old issues still name them — is drawn on the cards (the
+ * assignee row reads `gitlabAssigneeLogins`) and answers [matchesAssignee] perfectly well,
+ * yet the facet has no entry to select them with.
+ *
+ * Only a login can be offered: unlike an author, a GitLab assignee reaches the client as a
+ * bare login with no display name on the task, so there is nothing to call them but that
+ * (which is exactly what the card shows too). The legacy name-only `gitlabAssignees` field
+ * is therefore skipped — [matchesAssignee] matches logins, so an entry built from a name
+ * would select nothing.
+ */
+fun boardGitlabAssignees(tasks: List<Task>): List<GitlabAuthor> {
+    val seen = LinkedHashSet<String>()
+    for (t in tasks) {
+        for (login in t.gitlabAssigneeLogins) {
+            if (login.isNotBlank()) seen += login
+        }
+    }
+    return seen.sortedWith { a, b -> UserTextOrder.compare(a, b) }
+        .map { GitlabAuthor(it, it, "") }
+}
+
+/**
+ * The GitLab bucket of a person filter menu: the project's GitLab members plus the logins
+ * [onBoard] found on the cards themselves, minus everyone already reachable another way.
+ *
+ * Skipped are [selected] values (an active chip is not offered again) and the logins of
+ * workspace [members] who have linked their GitLab account — the person's own Tessera entry
+ * sits above in the menu and matches the login through the person predicates' lookup, so a
+ * `gl:` entry would list one person twice.
+ *
+ * The skip set is built from the [members] of THIS workspace, not from [glLoginByUserId]
+ * wholesale: that map is the GitLab *project* roster keyed by Tessera user id, and the
+ * backend resolves those ids by joining `oauth_identities` / `gitlab_credentials` on the
+ * login alone (`ListGitlabProjectMembersByWorkspace`) — with no membership check. So it
+ * also covers people who have a Tessera account but are not members here (linked GitLab in
+ * another workspace, or since left this one), and those have no Tessera entry on this board
+ * to fall back to: skipping their login left them with no way into the facet at all.
+ */
+private fun facetGitlabOptions(
+    members: List<website.msdnna.tessera.data.model.Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    glLoginByUserId: Map<String, String>,
+    selected: Set<String>,
+    onBoard: List<GitlabAuthor>,
+): List<GitlabAuthor> {
+    val seen = members.mapNotNullTo(mutableSetOf()) { glLoginByUserId[it.userId] }
+    val all = buildList {
+        gitlabMembers.forEach {
+            add(GitlabAuthor(it.glUsername, it.glName.ifBlank { it.glUsername }, it.glAvatarUrl))
+        }
+        addAll(onBoard)
+    }
+    return all.filter { a ->
+        a.username.isNotBlank() && "$GL_PREFIX${a.username}" !in selected && seen.add(a.username)
+    }
+}
+
+/** The GitLab bucket of the «Исполнитель» menu — see [facetGitlabOptions]. The board's own
+ *  logins come from [boardGitlabAssignees]: the roster is a cache the backend refreshes
+ *  hourly at best, so a login the cards already draw need not be in it. */
+fun assigneeFacetGitlabOptions(
+    members: List<website.msdnna.tessera.data.model.Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    tasks: List<Task>,
+    glLoginByUserId: Map<String, String>,
+    selected: Set<String>,
+): List<GitlabAuthor> =
+    facetGitlabOptions(members, gitlabMembers, glLoginByUserId, selected, boardGitlabAssignees(tasks))
+
+/** The GitLab bucket of the «Автор» menu — see [facetGitlabOptions]. The board's own logins
+ *  come from [boardGitlabAuthors]: an issue can be opened by someone outside the roster. */
+fun authorFacetGitlabOptions(
+    members: List<website.msdnna.tessera.data.model.Member>,
+    gitlabMembers: List<website.msdnna.tessera.data.model.GitlabMember>,
+    tasks: List<Task>,
+    glLoginByUserId: Map<String, String>,
+    selected: Set<String>,
+): List<GitlabAuthor> =
+    facetGitlabOptions(members, gitlabMembers, glLoginByUserId, selected, boardGitlabAuthors(tasks))

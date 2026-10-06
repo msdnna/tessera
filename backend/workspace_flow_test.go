@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -9,28 +8,8 @@ import (
 	"time"
 )
 
-// registerAs registers a user with a specific email (for invitation flows where
-// the email must match) and returns an authenticated client.
-func registerAs(t *testing.T, email string) *client {
-	t.Helper()
-	r := doReq(t, "", http.MethodPost, "/auth/register", map[string]any{
-		"email": email, "name": "Invited User", "password": "password-123",
-	})
-	if r.Status != http.StatusOK && r.Status != http.StatusCreated {
-		t.Fatalf("register %s: status %d\n%s", email, r.Status, r.Body)
-	}
-	var out struct {
-		AccessToken  string `json:"access_token"`
-		RefreshToken string `json:"refresh_token"`
-		User         struct {
-			ID string `json:"id"`
-		} `json:"user"`
-	}
-	if err := json.Unmarshal(r.Body, &out); err != nil {
-		t.Fatalf("register decode: %v\n%s", err, r.Body)
-	}
-	return &client{t: t, token: out.AccessToken, Refresh: out.RefreshToken, UserID: out.User.ID, Email: email}
-}
+// Registering with a specific email is registerWith (invite_hijack_test.go) —
+// the invitation flows need the token alongside the address now.
 
 // listHasID reports whether a JSON array of objects contains an "id" equal to id.
 func listHasID(list []map[string]any, id string) bool {
@@ -192,10 +171,11 @@ func TestWorkspaceInvitations(t *testing.T) {
 		t.Fatalf("reuse token: status %d", r.Status)
 	}
 
-	// Registering with the invited email auto-accepts the pending invitation.
-	newcomer := registerAs(t, freshEmail)
+	// Registering while presenting the invitation token joins the workspace.
+	// The email alone does not — see TestRegisterDoesNotStealPendingInvitation.
+	newcomer := registerWith(t, freshEmail, invitationToken(t, inv1))
 	if !listHasID(newcomer.get("/workspaces").listBody(t), wsID) {
-		t.Fatalf("auto-accept on register: workspace not joined")
+		t.Fatalf("register with invite token: workspace not joined")
 	}
 }
 
@@ -257,8 +237,13 @@ func TestWorkspaceSummaryBuckets(t *testing.T) {
 	due("ровно через неделю", today.AddDate(0, 0, 7)) // week_end is exclusive
 	due("через десять дней", today.AddDate(0, 0, 10))
 
-	// Completed tasks drop out of the due buckets even when the date has passed.
+	// Completed tasks drop out of the due buckets even when the date has passed —
+	// and out of "assigned" too, though they are assigned: every client's "Мои"
+	// list is open tasks only (HomeView.vue, HomeUiState.visibleTasks), and the
+	// tile is the count of that list, not of the rows behind it.
 	pastDone := due("готовая просроченная", today.AddDate(0, 0, -2))
+	c.expect(t, c.post("/tasks/"+pastDone["id"].(string)+"/assignees",
+		map[string]any{"user_id": c.UserID}), http.StatusNoContent)
 	c.expect(t, c.patch("/tasks/"+pastDone["id"].(string), map[string]any{
 		"title": "готовая просроченная", "completed": true,
 	}), http.StatusOK)
@@ -283,7 +268,7 @@ func TestWorkspaceSummaryBuckets(t *testing.T) {
 		n   float64
 	}{
 		{"total", 8}, {"completed", 1}, {"active", 7}, {"assigned", 1},
-		{"overdue", 1}, {"due_today", 1}, {"due_week", 2}, {"unassigned", 6},
+		{"overdue", 1}, {"due_today", 1}, {"due_week", 2}, {"unassigned", 5},
 	} {
 		if sum[want.key] != want.n {
 			t.Errorf("summary[%s] = %v, want %v\nfull: %v", want.key, sum[want.key], want.n, sum)

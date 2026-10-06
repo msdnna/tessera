@@ -23,9 +23,30 @@ func (q *Queries) ArchiveTask(ctx context.Context, id uuid.UUID) error {
 }
 
 const archiveTaskCascade = `-- name: ArchiveTaskCascade :exec
-UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1 OR parent_id = $1
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+UPDATE tasks SET archived_at = now(), updated_at = now()
+WHERE id IN (SELECT id FROM down) AND archived_at IS NULL
 `
 
+// ArchiveTaskCascade/RestoreTask walk the whole subtree, not `parent_id = $1`:
+// nesting is not depth-limited (same reason MoveSubtreeToBoard above is
+// recursive), so a one-level archive left grandchildren active under an
+// archived parent — and such a row is drawn by neither screen. The board draws a
+// subtask only under a parent card in the same payload, and that parent is
+// archived; the archive list filters on archived_at IS NOT NULL, which the
+// grandchild's is not. Restore has to match, or the tree comes back partial.
+//
+// UNION rather than UNION ALL for the same reason as TaskAncestorIDs: an install
+// that already grew a ring must get an answer instead of spinning.
+// Only the rows this archive actually takes. A subtask already in the archive
+// keeps the stamp it went in with: that is the date the archive list sorts on
+// (archived_at DESC), so re-stamping reshuffled entries nobody touched — and it
+// erased the one thing that tells "went in with this root" from "was already
+// there", which is what RestoreTask below reads to know what to give back.
 func (q *Queries) ArchiveTaskCascade(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, archiveTaskCascade, id)
 	return err
@@ -110,22 +131,100 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 	return i, err
 }
 
-const deleteTask = `-- name: DeleteTask :exec
-DELETE FROM tasks WHERE id = $1
+const deleteTask = `-- name: DeleteTask :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+DELETE FROM tasks WHERE tasks.id IN (SELECT id FROM down) RETURNING tasks.id
 `
 
-func (q *Queries) DeleteTask(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTask, id)
-	return err
+// DeleteTask removes a task; its subtasks follow by the parent_id cascade.
+//
+// Returns the ids it actually removed, which is what the attachment sweep needs:
+// the files under <uploadDir>/<task id>/ are named by nothing but the
+// task_attachments rows this statement has just erased, and a subtask is a task
+// with an id and a directory of its own. Spelling the recursion out rather than
+// leaning on the cascade is what makes those ids observable — the cascade
+// deletes the descendants without ever naming them.
+//
+// UNION rather than UNION ALL for the same reason as ArchiveTaskCascade: an
+// install that already grew a ring must get an answer instead of spinning.
+func (q *Queries) DeleteTask(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteTask, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-const detachChildren = `-- name: DetachChildren :exec
-UPDATE tasks SET parent_id = NULL, updated_at = now() WHERE parent_id = $1
+const detachChildren = `-- name: DetachChildren :many
+UPDATE tasks t
+SET parent_id = NULL,
+    position = (
+        SELECT coalesce(max(p.position), 0) FROM tasks p
+        WHERE p.column_id = t.column_id AND p.parent_id IS NULL
+    ) + 65536 * ord.rn,
+    updated_at = now()
+FROM (
+    SELECT s.id, row_number() OVER (ORDER BY s.position, s.created_at, s.id) AS rn
+    FROM tasks s WHERE s.parent_id = $1
+) ord
+WHERE t.id = ord.id
+RETURNING t.id
 `
 
-func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) error {
-	_, err := q.db.Exec(ctx, detachChildren, parentID)
-	return err
+// DetachChildren empties a parent's subtask list onto the board, and appends the
+// orphans to the end of the top-level ladder of whatever column each of them
+// stands in — for the same reason SetTaskParent writes a position. Keeping their
+// old numbers dropped the whole brood into the middle of the column, the first
+// child landing exactly on the first card.
+//
+// The `max` subquery is correlated to the row's own column (a subtask may stand
+// in another column than its parent) and reads the pre-UPDATE snapshot, where
+// the children being detached still hang off the parent — so it sees the cards
+// that are staying and nothing else. `rn` spaces the brood out by one gap each,
+// keeping the order the subtask list had.
+//
+// Written as UPDATE … FROM (subquery) rather than a CTE: sqlc mis-parses
+// UPDATE … FROM with a leading WITH.
+//
+// RETURNING the ids because the caller owes GitLab a child_detach per child it
+// just dropped to top-level (#2932) — the same push PATCH /tasks/:id/parent
+// sends for the same gesture. They have to be named: nothing else does, the
+// parent is archived or gone by then, and a walk after the fact finds no
+// children at all.
+func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, detachChildren, parentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getTask = `-- name: GetTask :one
@@ -161,6 +260,31 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.MilestoneID,
 	)
 	return i, err
+}
+
+const liftSubtasksFromColumn = `-- name: LiftSubtasksFromColumn :exec
+UPDATE tasks SET column_id = $1::uuid, updated_at = now()
+WHERE parent_id = $2::uuid
+  AND column_id = $3::uuid
+  AND archived_at IS NULL
+`
+
+type LiftSubtasksFromColumnParams struct {
+	TargetColumn uuid.UUID `json:"target_column"`
+	ParentID     uuid.UUID `json:"parent_id"`
+	FromColumn   uuid.UUID `json:"from_column"`
+}
+
+// LiftSubtasksFromColumn takes a recurring parent's direct subtasks out of the
+// board's done column when the parent recurs. On this board "in the done column"
+// and "completed" are one fact, kept in step by MoveTask's auto-toggle: clearing
+// completed_at alone leaves an item the board still draws under «Готово» with an
+// empty checkbox, and the next move out of that column then finds nothing to
+// reopen. Position is deliberately untouched — it is what orders the checklist
+// among its siblings, and the recurrence is not a reordering.
+func (q *Queries) LiftSubtasksFromColumn(ctx context.Context, arg LiftSubtasksFromColumnParams) error {
+	_, err := q.db.Exec(ctx, liftSubtasksFromColumn, arg.TargetColumn, arg.ParentID, arg.FromColumn)
+	return err
 }
 
 const listBoardArchivedWithMeta = `-- name: ListBoardArchivedWithMeta :many
@@ -277,8 +401,13 @@ LEFT JOIN LATERAL (
     SELECT COALESCE(array_agg(DISTINCT tga.gl_username), '{}')::text[] AS gitlab_assignee_logins
     FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
 ) ga ON true
-WHERE t.board_id = $1 AND t.parent_id IS NOT NULL AND t.archived_at IS NULL
-ORDER BY t.position
+WHERE t.board_id = $1 AND t.archived_at IS NULL
+  -- Only rows the board can actually place under a card: the parent has to be
+  -- active too, or the subtask is drawn nowhere. The mirror of the predicate in
+  -- ListBoardTasksWithMeta, and the reason the two never overlap — an active
+  -- child of an archived parent is served there as a card, exactly once.
+  AND EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NULL)
+ORDER BY t.position, t.created_at, t.id
 `
 
 type ListBoardSubtasksWithMetaRow struct {
@@ -392,15 +521,31 @@ LEFT JOIN LATERAL (
     FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
 ) ga ON true
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
-WHERE t.board_id = $1 AND t.parent_id IS NULL
+WHERE t.board_id = $1
   -- Active board (archived_at IS NULL) or the read-only archive view (IS NOT NULL).
   AND (($2::boolean AND t.archived_at IS NOT NULL) OR (NOT $2::boolean AND t.archived_at IS NULL))
+  -- Top-level *for this view*: no parent that the same view would also draw.
+  -- ` + "`" + `parent_id IS NULL` + "`" + ` alone was right only while parent and child always shared
+  -- an archived state, which the manual archive guarantees (ArchiveTaskCascade
+  -- takes the subtree, ?subtasks=detach re-parents it to the root) and the GitLab
+  -- pull does not: applyClosedPolicy archives per issue, so a parent issue closed
+  -- inside a closed milestone goes to the archive while a child issue that is
+  -- still open stays active. Such a child was fetched by neither screen — the
+  -- board hangs subtasks off a parent card in the same payload and the parent is
+  -- archived, the archive filters on archived_at IS NOT NULL and the child's is
+  -- NULL. It is a card here instead, which is also what the archive view has
+  -- always done with a child buried under an archived root (ListBoardArchivedWithMeta).
+  AND NOT EXISTS (
+    SELECT 1 FROM tasks p
+    WHERE p.id = t.parent_id
+      AND (($2::boolean AND p.archived_at IS NOT NULL) OR (NOT $2::boolean AND p.archived_at IS NULL))
+  )
   AND (
     (NOT $3::boolean AND $4::uuid IS NULL)             -- all (no scope)
     OR ($3::boolean AND t.milestone_id IS NULL)                               -- backlog (no milestone)
     OR ($4::uuid IS NOT NULL AND t.milestone_id = $4) -- one milestone
   )
-ORDER BY CASE WHEN $2::boolean THEN t.archived_at END DESC NULLS LAST, t.position
+ORDER BY CASE WHEN $2::boolean THEN t.archived_at END DESC NULLS LAST, t.position, t.created_at, t.id
 `
 
 type ListBoardTasksWithMetaParams struct {
@@ -457,7 +602,10 @@ type ListBoardTasksWithMetaRow struct {
 // plain LEFT JOIN: task_id is its primary key, so it is 1:1 and never multiplied rows.
 // DISTINCT is kept inside the aggregates so the arrays are ordered and deduplicated
 // exactly as before (gl_name and gl_username are each sorted on their own value).
-// Newest-archived first in the archive; board position otherwise.
+// Newest-archived first in the archive; board position otherwise. created_at/id
+// break position ties: two cards can share a position (legacy rows from before
+// the midpoint rebalance), and ORDER BY position alone leaves their order to the
+// planner, so the board reshuffles them between reads.
 func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasksWithMetaParams) ([]ListBoardTasksWithMetaRow, error) {
 	rows, err := q.db.Query(ctx, listBoardTasksWithMeta,
 		arg.BoardID,
@@ -519,15 +667,30 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasks
 const listScheduleRecurDue = `-- name: ListScheduleRecurDue :many
 SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks
 WHERE archived_at IS NULL
-  AND completed_at IS NULL
   AND due_date IS NOT NULL
   AND due_date <= now()
   AND recurrence->>'trigger' = 'schedule'
 ORDER BY due_date
 `
 
-// ListScheduleRecurDue returns active tasks whose recurrence fires on a schedule
-// and whose due date has passed — the schedule worker advances each one.
+// ListScheduleRecurDue returns tasks whose recurrence fires on a schedule and
+// whose due date has passed — the schedule worker advances each one.
+//
+// A completed task is deliberately still in: this trigger is the clock-driven one
+// ("due date passes, no close needed"), so closing an occurrence has to be an
+// ordinary act — the occurrence is done, the series is not. Filtering on
+// completed_at IS NULL, the way every other sweep here does, made one tick of the
+// checkbox (or one drag into the done column, which completes the card the same
+// way) end the recurrence for good: nothing else picks the task up, because
+// recurAdvance runs on completion with the "complete" trigger and a schedule rule
+// doesn't match it. The card stayed closed with its rule still on it, and the
+// editor kept promising a repeat that was never coming. applyRecur's reschedule
+// branch already clears completed_at and moves the task to the rule's target
+// column, which is exactly the next occurrence arriving.
+//
+// Archived tasks stay out: the archive is the one place where a card is meant to
+// stop moving, and a series resurrecting itself out of it would be a card nobody
+// can see arriving.
 func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 	rows, err := q.db.Query(ctx, listScheduleRecurDue)
 	if err != nil {
@@ -573,7 +736,7 @@ func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 }
 
 const listSubtasks = `-- name: ListSubtasks :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE parent_id = $1 ORDER BY position
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE parent_id = $1 ORDER BY position, created_at, id
 `
 
 func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task, error) {
@@ -634,7 +797,7 @@ LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.parent_id = $1
 GROUP BY t.id, gl.task_id
-ORDER BY t.position
+ORDER BY t.position, t.created_at, t.id
 `
 
 type ListSubtasksWithMetaRow struct {
@@ -727,7 +890,7 @@ func (q *Queries) ListSubtasksWithMeta(ctx context.Context, parentID *uuid.UUID)
 }
 
 const listTasksByBoard = `-- name: ListTasksByBoard :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position, created_at, id
 `
 
 func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Task, error) {
@@ -786,18 +949,41 @@ func (q *Queries) MaxTaskPositionInColumn(ctx context.Context, columnID uuid.UUI
 	return column_1, err
 }
 
-const moveSubtasksToBoard = `-- name: MoveSubtasksToBoard :exec
-UPDATE tasks SET board_id = $2, column_id = $3, updated_at = now() WHERE parent_id = $1
+const moveSubtreeToBoard = `-- name: MoveSubtreeToBoard :exec
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.parent_id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+UPDATE tasks SET board_id = $2, column_id = $3,
+    milestone_id = CASE
+        WHEN (SELECT m.project_id FROM milestones m WHERE m.id = tasks.milestone_id)
+             IS NOT DISTINCT FROM
+             (SELECT b.project_id FROM boards b WHERE b.id = $2)
+        THEN tasks.milestone_id ELSE NULL END,
+    updated_at = now()
+WHERE tasks.id IN (SELECT down.id FROM down)
 `
 
-type MoveSubtasksToBoardParams struct {
+type MoveSubtreeToBoardParams struct {
 	ParentID *uuid.UUID `json:"parent_id"`
 	BoardID  uuid.UUID  `json:"board_id"`
 	ColumnID uuid.UUID  `json:"column_id"`
 }
 
-func (q *Queries) MoveSubtasksToBoard(ctx context.Context, arg MoveSubtasksToBoardParams) error {
-	_, err := q.db.Exec(ctx, moveSubtasksToBoard, arg.ParentID, arg.BoardID, arg.ColumnID)
+// MoveSubtreeToBoard puts every descendant of a task on the given board and
+// column. The whole tree, not `parent_id = $1`: nesting is not depth-limited
+// (CreateTask hangs a subtask off a subtask, and TaskAncestorIDs below exists
+// because chains run deeper than one), so a one-level move left grandchildren
+// on the board their parent had just left. A subtask is drawn only under a
+// parent card on the same board, so such a row is drawn on neither board — and
+// board_id/column_id are ON DELETE CASCADE, so deleting that stale column takes
+// the task with it.
+//
+// UNION rather than UNION ALL for the same reason as TaskAncestorIDs: an install
+// that already grew a ring must get an answer instead of spinning.
+func (q *Queries) MoveSubtreeToBoard(ctx context.Context, arg MoveSubtreeToBoardParams) error {
+	_, err := q.db.Exec(ctx, moveSubtreeToBoard, arg.ParentID, arg.BoardID, arg.ColumnID)
 	return err
 }
 
@@ -845,22 +1031,203 @@ func (q *Queries) MoveTask(ctx context.Context, arg MoveTaskParams) (Task, error
 	return i, err
 }
 
+const rebalanceColumnTaskPositions = `-- name: RebalanceColumnTaskPositions :exec
+UPDATE tasks t
+SET position = ordered.rn * $1::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM tasks WHERE column_id = $2::uuid AND parent_id IS NULL
+) ordered
+WHERE t.id = ordered.id
+`
+
+type RebalanceColumnTaskPositionsParams struct {
+	Gap      float64   `json:"gap"`
+	ColumnID uuid.UUID `json:"column_id"`
+}
+
+// Rebalance* respace a sibling list onto a fresh gap * 1,2,3… ladder, keeping the
+// order the list already had. Card order is a float8 midpoint, and the gap halves
+// on every drop into the same slot, so after ~52 drops the average of two
+// neighbours *is* one of them; the reorder handler calls these when it sees that
+// and then recomputes, which is the only way the slot ever opens up again.
+// (Written as UPDATE … FROM (subquery) rather than a CTE: sqlc mis-parses
+// UPDATE … FROM with a leading WITH.)
+func (q *Queries) RebalanceColumnTaskPositions(ctx context.Context, arg RebalanceColumnTaskPositionsParams) error {
+	_, err := q.db.Exec(ctx, rebalanceColumnTaskPositions, arg.Gap, arg.ColumnID)
+	return err
+}
+
+const rebalanceSubtaskPositions = `-- name: RebalanceSubtaskPositions :exec
+UPDATE tasks t
+SET position = ordered.rn * $1::double precision, updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM tasks WHERE parent_id = $2::uuid
+) ordered
+WHERE t.id = ordered.id
+`
+
+type RebalanceSubtaskPositionsParams struct {
+	Gap      float64   `json:"gap"`
+	ParentID uuid.UUID `json:"parent_id"`
+}
+
+func (q *Queries) RebalanceSubtaskPositions(ctx context.Context, arg RebalanceSubtaskPositionsParams) error {
+	_, err := q.db.Exec(ctx, rebalanceSubtaskPositions, arg.Gap, arg.ParentID)
+	return err
+}
+
 const reopenSubtasks = `-- name: ReopenSubtasks :exec
 UPDATE tasks SET completed_at = NULL, updated_at = now()
-WHERE parent_id = $1 AND completed_at IS NOT NULL
+WHERE parent_id = $1 AND completed_at IS NOT NULL AND archived_at IS NULL
 `
 
 // ReopenSubtasks clears the completion of a recurring task's direct subtasks when
 // the parent recurs, so a checklist starts fresh for the next occurrence.
+//
+// An archived item is not part of the routine any more, so all three statements
+// here spare it (the reason cloneChecklist gives for skipping it in the duplicate:
+// archiving one item while keeping the rest is a deliberate gesture with its own
+// undo). archived_at itself was never touched, so the board showed nothing — but
+// the archive entry lost its tick, left «Готово» for the rule's target column and
+// took a period onto its dates, every occurrence, and handed that back on restore.
 func (q *Queries) ReopenSubtasks(ctx context.Context, parentID *uuid.UUID) error {
 	_, err := q.db.Exec(ctx, reopenSubtasks, parentID)
 	return err
 }
 
-const restoreTask = `-- name: RestoreTask :exec
-UPDATE tasks SET archived_at = NULL, updated_at = now() WHERE id = $1 OR parent_id = $1
+const reopenSubtreeLeavingDone = `-- name: ReopenSubtreeLeavingDone :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+), stuck AS (
+    -- The walk carries ids only and the condition is read back off ` + "`" + `tasks` + "`" + `: sqlc
+    -- resolves a recursive CTE's own columns nowhere but its select list (same
+    -- corner TaskAncestorIDs notes), and ` + "`" + `down.column_id` + "`" + ` in a WHERE fails
+    -- generation with «table alias "down" does not exist».
+    SELECT t.id FROM tasks t
+    WHERE t.id IN (SELECT down.id FROM down)
+      AND t.column_id = $2
+      AND t.completed_at IS NOT NULL
+)
+UPDATE tasks SET completed_at = NULL, updated_at = now()
+WHERE tasks.id IN (SELECT stuck.id FROM stuck)
+RETURNING tasks.id
 `
 
+type ReopenSubtreeLeavingDoneParams struct {
+	RootID       uuid.UUID `json:"root_id"`
+	DoneColumnID uuid.UUID `json:"done_column_id"`
+}
+
+// ReopenSubtreeLeavingDone reopens the tasks of a subtree (the root included)
+// that stand in @done_column_id and are marked completed. Run BEFORE the two
+// statements above, inside their transaction: it reads the column a task is
+// leaving, which TransferTask/MoveSubtreeToBoard are about to overwrite.
+//
+// Completion follows the column — that is the board's rule (applyMove: into the
+// done column completes, out of it reopens). A transfer changes the column too,
+// but it goes nowhere near applyMove, so a finished card carried to another
+// board landed in that board's first column still marked done: struck through in
+// «К работе», counted as completed, and out of reach of the reopen rule, which
+// only ever fires for a task standing in a done column. The condition is the
+// source column, not the flag alone: a task completed anywhere else keeps its
+// flag, exactly as an in-board move would leave it — a board without a done
+// column does not tie completion to columns at all, and transferring must not
+// invent that tie.
+func (q *Queries) ReopenSubtreeLeavingDone(ctx context.Context, arg ReopenSubtreeLeavingDoneParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, reopenSubtreeLeavingDone, arg.RootID, arg.DoneColumnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const reopenTaskLeavingDone = `-- name: ReopenTaskLeavingDone :many
+UPDATE tasks SET completed_at = NULL, updated_at = now()
+WHERE tasks.id = $1
+  AND tasks.column_id = $2
+  AND tasks.completed_at IS NOT NULL
+RETURNING tasks.id
+`
+
+type ReopenTaskLeavingDoneParams struct {
+	RootID       uuid.UUID `json:"root_id"`
+	DoneColumnID uuid.UUID `json:"done_column_id"`
+}
+
+// ReopenTaskLeavingDone is the statement above for ONE card — the same
+// condition (standing in @done_column_id and marked completed), without the
+// walk. A re-parent inside one board moves only the task itself: its
+// descendants keep the column each of them sits in (applyParent re-boards a
+// subtree only when the board changes), so reopening the whole subtree there
+// would clear the flag of a finished child that never left «Готово».
+func (q *Queries) ReopenTaskLeavingDone(ctx context.Context, arg ReopenTaskLeavingDoneParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, reopenTaskLeavingDone, arg.RootID, arg.DoneColumnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const restoreTask = `-- name: RestoreTask :exec
+WITH RECURSIVE down AS (
+    SELECT t.id, t.archived_at, t.archived_at AS root_archived_at
+    FROM tasks t WHERE t.id = $1
+    UNION
+    SELECT t.id, t.archived_at, down.root_archived_at
+    FROM tasks t JOIN down ON t.parent_id = down.id
+), taken AS (
+    SELECT down.id FROM down WHERE down.archived_at = down.root_archived_at
+)
+UPDATE tasks SET archived_at = NULL, updated_at = now()
+WHERE id IN (SELECT id FROM taken)
+`
+
+// RestoreTask gives back what THIS archive took, which is not the same as the
+// whole subtree: a subtask can go to the archive on its own, long before its
+// parent does. The archive view lists such a row as an entry of its own
+// (ListBoardArchivedWithMeta below, the `parent_id IS NULL OR parent is active`
+// branch), so it is a deliberate gesture with its own undo. Restoring the whole
+// subtree undid it too — the subtask came back onto the board together with the
+// ones the cascade had taken, with nothing said anywhere, and the archive the
+// user would go looking in no longer held it.
+//
+// "Archived with this root" is readable from the data: ArchiveTaskCascade stamps
+// the subtree in a single UPDATE, so every row it took carries the root's exact
+// archived_at (now() is the transaction timestamp). A subtask archived in an
+// earlier request carries an older one and stays put. The root's stamp rides
+// down the walk rather than being re-read in a second subquery — sqlc cannot
+// resolve a CTE alias next to a second `tasks` reference in an UPDATE's WHERE.
+// The root matches its own stamp, so it is always in; a root that is not
+// archived at all matches nothing (NULL = NULL is unknown), which is the no-op
+// restoring an active task already was.
 func (q *Queries) RestoreTask(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, restoreTask, id)
 	return err
@@ -1005,8 +1372,14 @@ func (q *Queries) SetTaskEisenhower(ctx context.Context, arg SetTaskEisenhowerPa
 
 const setTaskParent = `-- name: SetTaskParent :one
 UPDATE tasks
-SET parent_id = $2, board_id = $3, column_id = $4, updated_at = now()
-WHERE id = $1
+SET parent_id = $2, board_id = $3, column_id = $4, position = $5,
+    milestone_id = CASE
+        WHEN (SELECT m.project_id FROM milestones m WHERE m.id = tasks.milestone_id)
+             IS NOT DISTINCT FROM
+             (SELECT b.project_id FROM boards b WHERE b.id = $3)
+        THEN tasks.milestone_id ELSE NULL END,
+    updated_at = now()
+WHERE tasks.id = $1
 RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
 `
 
@@ -1015,14 +1388,29 @@ type SetTaskParentParams struct {
 	ParentID *uuid.UUID `json:"parent_id"`
 	BoardID  uuid.UUID  `json:"board_id"`
 	ColumnID uuid.UUID  `json:"column_id"`
+	Position float64    `json:"position"`
 }
 
+// SetTaskParent is the other door onto board_id (a task adopts its new parent's
+// board), so it unpins a milestone left behind in another project for the same
+// reason TransferTask does.
+//
+// It also writes `position`, because changing the parent changes which LIST the
+// task is ordered in: a subtask's float8 ladder runs per PARENT, a card's per
+// COLUMN, and both start at the same positionGap. Leaving the old number in
+// place put the first subtask of a parent (65536) on the exact position of the
+// column's first card — the dead slot positionExhausted describes — and a later
+// sibling (196608) somewhere in the middle of the column. The caller computes
+// the end of the destination list; the board's drag already sent a move right
+// after this call, and now the other doors (the modal's «Открепить», a card
+// dropped into a card's subtask list) land somewhere predictable too.
 func (q *Queries) SetTaskParent(ctx context.Context, arg SetTaskParentParams) (Task, error) {
 	row := q.db.QueryRow(ctx, setTaskParent,
 		arg.ID,
 		arg.ParentID,
 		arg.BoardID,
 		arg.ColumnID,
+		arg.Position,
 	)
 	var i Task
 	err := row.Scan(
@@ -1083,10 +1471,219 @@ func (q *Queries) SetTaskTitle(ctx context.Context, arg SetTaskTitleParams) erro
 	return err
 }
 
+const shiftSubtaskWindow = `-- name: ShiftSubtaskWindow :exec
+UPDATE tasks
+SET due_date   = (due_date   AT TIME ZONE $1::text
+                    + make_interval(secs => $2::double precision))
+                 AT TIME ZONE $1::text,
+    start_date = (start_date AT TIME ZONE $1::text
+                    + make_interval(secs => $2::double precision))
+                 AT TIME ZONE $1::text,
+    updated_at = now()
+WHERE parent_id = $3::uuid
+  AND (due_date IS NOT NULL OR start_date IS NOT NULL)
+  AND archived_at IS NULL
+`
+
+type ShiftSubtaskWindowParams struct {
+	Zone         string    `json:"zone"`
+	ShiftSeconds float64   `json:"shift_seconds"`
+	ParentID     uuid.UUID `json:"parent_id"`
+}
+
+// ShiftSubtaskWindow moves a recurring parent's direct subtasks by the same step
+// its due date just took, so the whole checklist travels to the next occurrence
+// instead of staying pinned — and overdue — at the first one. What has to survive
+// is the length of each item's window (the reason shiftStart gives), so the step
+// is applied to the *clock*, not to the instant: the shift is read on the rule's
+// calendar (recur.Rule.WallStep) and added inside the rule's zone, which is the
+// calendar recur.Next stepped the parent's due date on. Added to the instant
+// instead, the 23-hour day a zone loses to a spring-forward moved every item that
+// did not itself straddle the transition an hour off its parent — and one
+// scheduled just after midnight onto the previous date (#2932). NULL + interval
+// is NULL, so an item nobody scheduled keeps no dates.
+func (q *Queries) ShiftSubtaskWindow(ctx context.Context, arg ShiftSubtaskWindowParams) error {
+	_, err := q.db.Exec(ctx, shiftSubtaskWindow, arg.Zone, arg.ShiftSeconds, arg.ParentID)
+	return err
+}
+
+const taskAncestorIDs = `-- name: TaskAncestorIDs :many
+WITH RECURSIVE up AS (
+    SELECT a.id, a.parent_id FROM tasks a WHERE a.id = $1
+    UNION
+    SELECT t.id, t.parent_id FROM tasks t JOIN up ON t.id = up.parent_id
+)
+SELECT id FROM up
+`
+
+// TaskAncestorIDs returns the task itself followed by its parents, up to the
+// root. Used to reject attaching a task below one of its own descendants, which
+// would leave the branch ringed with no root — and a subtask nobody can reach
+// from a root is drawn nowhere, so the whole ring drops off the board. Nesting
+// is not depth-limited, so the one-level check this replaced was not enough.
+// Mirrors ProjectGroupAncestorIDs and DocumentAncestorIDs, membership test in Go
+// included (sqlc cannot resolve a recursive CTE inside a subquery).
+//
+// UNION rather than UNION ALL: an install that already grew a ring through the
+// unguarded handler must still get an answer here instead of spinning, and
+// dedup on the row is what stops the walk when it comes back around.
+func (q *Queries) TaskAncestorIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskAncestorIDs, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taskIDsInColumn = `-- name: TaskIDsInColumn :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.column_id = $1
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+SELECT id FROM down
+`
+
+// TaskIDsInColumn / TaskIDsOnBoard / TaskIDsInProject / TaskIDsInWorkspace name the
+// tasks a container delete is about to take by cascade, so their upload directories
+// can be swept the way DeleteTask sweeps its own (purgeTaskUploads).
+//
+// DELETE ... RETURNING cannot answer this: it returns the rows of the table named in
+// the statement, never the ones the foreign keys took afterwards. So the ids are read
+// first, inside the same transaction as the delete — a snapshot no concurrent insert
+// can slip a task past.
+//
+// Subtasks need no recursion in the three below: every task carries its own
+// board_id/column_id (MoveSubtreeToBoard exists to keep it that way), so a subtree is
+// already wholly inside whichever board, project or workspace holds its root.
+//
+// A COLUMN is the exception, and TaskIDsInColumn recurses for it: a subtask is a card
+// of its own — the board draws it, a drag moves it — so it stands in whatever column
+// it was dragged to while its parent stands in another. tasks.parent_id is ON DELETE
+// CASCADE, so deleting the parent's column takes that subtask as well, at any depth
+// and out of a column nobody deleted; without the descent its directory is never
+// swept and the bytes outlive every row that knew where they were.
+//
+// UNION rather than UNION ALL for the same reason as TaskAncestorIDs: an install that
+// already grew a ring must get an answer instead of spinning. It also collapses the
+// duplicate ids a subtask standing in the doomed column alongside its parent produces.
+func (q *Queries) TaskIDsInColumn(ctx context.Context, columnID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskIDsInColumn, columnID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taskIDsInProject = `-- name: TaskIDsInProject :many
+SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1
+`
+
+func (q *Queries) TaskIDsInProject(ctx context.Context, projectID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskIDsInProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taskIDsInWorkspace = `-- name: TaskIDsInWorkspace :many
+SELECT t.id FROM tasks t
+JOIN boards b ON b.id = t.board_id
+JOIN projects p ON p.id = b.project_id
+WHERE p.workspace_id = $1
+`
+
+func (q *Queries) TaskIDsInWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskIDsInWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const taskIDsOnBoard = `-- name: TaskIDsOnBoard :many
+SELECT id FROM tasks WHERE board_id = $1
+`
+
+func (q *Queries) TaskIDsOnBoard(ctx context.Context, boardID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, taskIDsOnBoard, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transferTask = `-- name: TransferTask :one
 UPDATE tasks
-SET board_id = $2, column_id = $3, parent_id = NULL, position = $4, updated_at = now()
-WHERE id = $1
+SET board_id = $2, column_id = $3, parent_id = NULL, position = $4,
+    milestone_id = CASE
+        WHEN (SELECT m.project_id FROM milestones m WHERE m.id = tasks.milestone_id)
+             IS NOT DISTINCT FROM
+             (SELECT b.project_id FROM boards b WHERE b.id = $2)
+        THEN tasks.milestone_id ELSE NULL END,
+    updated_at = now()
+WHERE tasks.id = $1
 RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
 `
 
@@ -1097,6 +1694,15 @@ type TransferTaskParams struct {
 	Position float64   `json:"position"`
 }
 
+// TransferTask drops the milestone when the target board belongs to another
+// project. A milestone hangs off a project — it is created under one, and the
+// task modal offers only the ones its own project owns — but ListWorkspaceMilestones
+// rolls tasks up over `t.milestone_id = m.id` with no project filter of its own.
+// So a task that left for another project kept inflating the total / done / Σ
+// estimate of a milestone whose board no longer holds it, while the modal showed
+// «Не задан» (the id isn't in the picker's list) — a number nobody could explain
+// pinned to a link nobody could see. Same resolution as
+// ClearMilestonesAcrossWorkspaces uses for the cross-workspace case: unpin.
 func (q *Queries) TransferTask(ctx context.Context, arg TransferTaskParams) (Task, error) {
 	row := q.db.QueryRow(ctx, transferTask,
 		arg.ID,

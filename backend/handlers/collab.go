@@ -366,6 +366,17 @@ func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uu
 }
 
 // UpdateComment edits a comment's body.
+//
+// `mentions` carries the people this edit ADDED — not everyone the new text
+// mentions. Both are needed and only the client can tell them apart: an
+// @-handle becomes a chip by being rendered against the roster, which is where
+// `mentionIdsIn` lives on either client, while the server holds the old body as
+// plain text and has no way to say which of its handles already drew one. Left
+// to the whole set, every typo fix would notify the same people again.
+//
+// Sending them at all is the point: the edit composer offers the same @-popup
+// the main one does, so "@Иван, посмотри" added by an edit draws a resolved chip
+// — and the chip the reader sees IS the promise that the person was told.
 func (h *API) UpdateComment(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -379,7 +390,8 @@ func (h *API) UpdateComment(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if _, _, ok := h.loadTask(c, cm.TaskID); !ok {
+	t, wsID, ok := h.loadTask(c, cm.TaskID)
+	if !ok {
 		return
 	}
 	if cm.AuthorID == nil || *cm.AuthorID != middleware.CurrentUser(c) {
@@ -387,7 +399,8 @@ func (h *API) UpdateComment(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Body string `json:"body" binding:"required"`
+		Body     string      `json:"body" binding:"required"`
+		Mentions []uuid.UUID `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -405,6 +418,10 @@ func (h *API) UpdateComment(c *gin.Context) {
 		h.enqueueWriteback(c, cm.TaskID, middleware.CurrentUser(c), gitlab.TrigComment,
 			map[string]any{"op": "edit", "comment_id": id.String(), "gl_note_id": *cm.GlNoteID, "body": req.Body})
 	}
+	// Only the mention notice goes out, never the generic "commented" one: an edit
+	// is not a new comment, and the task's participants were already told about
+	// this one when it was written.
+	h.notifyMentions(c, t, wsID, req.Mentions, req.Body)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -495,8 +512,7 @@ func (h *API) AddRelation(c *gin.Context) {
 	}
 	num := req.Number
 	target, err := h.q.GetTaskByNumber(c, db.GetTaskByNumberParams{WorkspaceID: wsID, Number: &num})
-	if notFound(c, err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("задача #%d не найдена", req.Number)})
+	if notFoundMsg(c, err, "задача #%d не найдена", req.Number) {
 		return
 	}
 	if err != nil {
@@ -514,27 +530,8 @@ func (h *API) AddRelation(c *gin.Context) {
 // Gantt view fetches the whole graph at once (the per-task /relations endpoint
 // would need one round-trip per bar). Accepts a board UUID or slug like GetBoard.
 func (h *API) BoardDependencies(c *gin.Context) {
-	param := c.Param("id")
-	var b db.Board
-	var err error
-	if id, perr := uuid.Parse(param); perr == nil {
-		b, err = h.q.GetBoard(c, id)
-	} else {
-		b, err = h.q.GetBoardBySlug(c, param)
-	}
-	if notFound(c, err) {
-		return
-	}
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	if !h.requireMember(c, wsID) {
+	b, _, ok := h.resolveBoardParam(c)
+	if !ok {
 		return
 	}
 	rows, err := h.q.ListBoardDependencies(c, b.ID)
@@ -543,6 +540,30 @@ func (h *API) BoardDependencies(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(rows))
+}
+
+// relationKinds is the closed set of relation kinds the product speaks. The
+// schema comment (0006_collab), both clients' label maps (`task.relations.kind.*`
+// on web, relKindLabel on Android) and the GitLab mapping (gitlab.RelationKind)
+// all name these four and nothing else — and both clients print an unknown kind
+// verbatim, so a fifth one reaches the «Связи» tab as a bare English token.
+// Worse, the uniqueness key and the ListTaskRelations dedup are both
+// (pair, kind): a near-miss kind sits alongside the real one as a second row
+// for the same pair, which the ✕ (DeleteRelationBothWays, also per kind) does
+// not take with it.
+var relationKinds = map[string]bool{
+	"relates": true, "blocks": true, "blocked_by": true, "duplicates": true,
+}
+
+// relationKindForCmd maps a quick-action key to the relation kind it means. Only
+// «/relate» differs from its kind — the command reads as a verb, the kind as a
+// state — and passing the key straight through is exactly how 'relate' got
+// written where 'relates' was meant.
+func relationKindForCmd(key string) string {
+	if key == "relate" {
+		return "relates"
+	}
+	return key
 }
 
 // inverseRelationKind flips a directed relation kind for the referenced task's
@@ -572,12 +593,37 @@ func (h *API) DeleteRelation(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if _, _, ok := h.loadTask(c, rel.TaskID); !ok {
+	t, wsID, ok := h.loadTask(c, rel.TaskID)
+	if !ok {
 		return
 	}
-	if err := h.q.DeleteTaskRelation(c, id); err != nil {
+	// Read the other end before the row goes: the relation id is all the caller
+	// sends, and the event has to name both endpoints.
+	target, terr := h.q.GetTask(c, rel.RelatedTaskID)
+	// Drop this link from both ends, not just the clicked row. Both tasks show it
+	// (ListTaskRelations reads either direction), so leaving the mirrored row —
+	// written by the GitLab projection, or by whoever linked the same pair from
+	// their end — would put the relation straight back on both tabs. Only this
+	// kind goes: another relation between the same two tasks is its own row.
+	if _, err := h.q.DeleteRelationBothWays(c, db.DeleteRelationBothWaysParams{
+		TaskID: rel.TaskID, RelatedTaskID: rel.RelatedTaskID,
+		Kind: rel.Kind, InverseKind: inverseRelationKind(rel.Kind),
+	}); err != nil {
 		fail(c, err)
 		return
+	}
+	// This used to broadcast nothing at all, so an edge deleted here stayed drawn
+	// on every other client's Gantt until a full reload — the delete is the one
+	// relation change that leaves no trace on either task row.
+	//
+	// The journal entries are the same omission read from the other end: linking
+	// writes one on each task, and this route — the ✕ in the «Связи» tab, on both
+	// clients — wrote none, so a link added and then dropped stayed in both
+	// histories as an arrival with no departure. Both need the other task's
+	// number, so both wait on the read above succeeding.
+	if terr == nil {
+		h.logRelationRemoved(c, t, target)
+		h.broadcastRelation(wsID, t, target, rel.Kind)
 	}
 	c.Status(http.StatusNoContent)
 }

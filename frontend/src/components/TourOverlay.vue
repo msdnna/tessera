@@ -33,7 +33,21 @@ const step = computed(() => tour.current)
 // Step wording is looked up by id on every render rather than carried on the
 // step: the store snapshots the scenario when the guide starts, so text stored
 // there would stay in the language it started in for the whole run (#2799).
-const stepText = (part) => (step.value ? t(`tour.steps.${step.value.id}.${part}`) : '')
+// The guide runs on a board that was seeded moments ago, so the columns it
+// points at are the four default ones — and their captions come from the
+// reader's own catalogue (#2800, utils/defaultNames), not from the Russian names
+// the server stores. Wording that quoted a column literally sent an English
+// reader looking for «К работе» on a board captioned "To do" (#2932), so the
+// captions are handed to every step as params instead.
+const columnCaptions = computed(() => ({
+  todo: t('board.column.defaultName.todo'),
+  inProgress: t('board.column.defaultName.in_progress'),
+  review: t('board.column.defaultName.review'),
+  done: t('board.column.defaultName.done'),
+}))
+
+const stepText = (part) =>
+  step.value ? t(`tour.steps.${step.value.id}.${part}`, columnCaptions.value) : ''
 
 const pop = ref(null)
 const layer = ref(null)

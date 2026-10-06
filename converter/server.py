@@ -78,6 +78,50 @@ _SAFE_EXT = re.compile(r"^[a-z0-9]{1,8}$")
 # backend turns those into document assets.
 _IMG_SRC = re.compile(r'(<img\b[^>]*?\bsrc=")([^"]+)(")', re.IGNORECASE)
 
+# LibreOffice fetches what a document points at. A <draw:image xlink:href="http://…"
+# xlink:actuate="onLoad"> in an uploaded .fodt (or its .docx equivalent) makes soffice
+# issue a real GET while converting — server-side request forgery driven by whoever
+# uploaded the file. Measured here: the request reaches an arbitrary host as
+# "LibreOffice 7.4.7.2 … GnuTLS/3.7.9", and this container's egress is not restricted,
+# so that is the whole internal network plus the public internet.
+#
+# Blocking it belongs in the profile, not in a document filter: the obvious knob
+# (Security/Scripting/LinkUpdateMode = 0, "never update links") was tried and does NOT
+# stop a linked graphic — the fetch still happened. Pointing LibreOffice's own HTTP
+# client at a dead proxy does: with this in place the same payload produces no outbound
+# request at all, and conversion still succeeds. Nothing here needs the network —
+# the service is handed bytes and returns bytes — so the whole of it is off.
+_PROFILE_REGISTRY = """<?xml version="1.0" encoding="UTF-8"?>
+<oor:items xmlns:oor="http://openoffice.org/2001/registry" \
+xmlns:xs="http://www.w3.org/2001/XMLSchema" \
+xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+<item oor:path="/org.openoffice.Inet/Settings">\
+<prop oor:name="ooInetProxyType" oor:op="fuse"><value>1</value></prop>\
+<prop oor:name="ooInetHTTPProxyName" oor:op="fuse"><value>127.0.0.1</value></prop>\
+<prop oor:name="ooInetHTTPProxyPort" oor:op="fuse"><value>9</value></prop>\
+<prop oor:name="ooInetHTTPSProxyName" oor:op="fuse"><value>127.0.0.1</value></prop>\
+<prop oor:name="ooInetHTTPSProxyPort" oor:op="fuse"><value>9</value></prop>\
+<prop oor:name="ooInetFTPProxyName" oor:op="fuse"><value>127.0.0.1</value></prop>\
+<prop oor:name="ooInetFTPProxyPort" oor:op="fuse"><value>9</value></prop>\
+<prop oor:name="ooInetNoProxy" oor:op="fuse"><value></value></prop>\
+</item>
+<item oor:path="/org.openoffice.Office.Common/Security/Scripting">\
+<prop oor:name="LinkUpdateMode" oor:op="fuse"><value>0</value></prop>\
+<prop oor:name="MacroSecurityLevel" oor:op="fuse"><value>3</value></prop>\
+<prop oor:name="DisableMacrosExecution" oor:op="fuse"><value>true</value></prop>\
+</item>
+</oor:items>
+"""
+
+
+def _write_profile(path: str) -> str:
+    """Creates a soffice UserInstallation directory and returns its file:// URL."""
+    user = os.path.join(path, "user")
+    os.makedirs(user, exist_ok=True)
+    with open(os.path.join(user, "registrymodifications.xcu"), "w") as fh:
+        fh.write(_PROFILE_REGISTRY)
+    return "file://" + path
+
 
 def _inline_images(html: str, outdir: str) -> str:
     """Replaces relative <img src> with data: URIs read from outdir."""
@@ -118,14 +162,28 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
 
     convert_to, out_ext, _ = TARGETS[target]
     with tempfile.TemporaryDirectory(prefix="conv-") as tmp:
-        src = os.path.join(tmp, "input." + src_ext)
+        # Source and output live in separate directories, and that is load-bearing
+        # rather than tidy. With one directory the output path is built from the
+        # same stem as the input ("input." + ext), so a request whose source
+        # extension equals its target — from=html&to=html, which is what EVERY
+        # .html import is — pointed both at the same file. The "produced no
+        # output" check below then read the *input* and passed, so a soffice run
+        # that wrote nothing at all was answered 200 with the raw uploaded bytes
+        # instead of 422. Measured: with soffice stubbed to exit 0 writing
+        # nothing, docx/odt/rtf/txt were refused and html alone came back "converted".
+        indir = os.path.join(tmp, "in")
+        outdir = os.path.join(tmp, "out")
+        os.makedirs(indir)
+        os.makedirs(outdir)
+        src = os.path.join(indir, "input." + src_ext)
         with open(src, "wb") as fh:
             fh.write(data)
 
         # A private UserInstallation per request. Without it concurrent soffice
         # invocations share one profile directory, and the second one exits
         # immediately with "another instance is running" instead of converting.
-        profile = "file://" + os.path.join(tmp, "profile-" + uuid.uuid4().hex)
+        # It is also where the network is turned off (see _PROFILE_REGISTRY).
+        profile = _write_profile(os.path.join(tmp, "profile-" + uuid.uuid4().hex))
         cmd = [
             "soffice",
             "--headless",
@@ -135,7 +193,7 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
             "--convert-to",
             convert_to,
             "--outdir",
-            tmp,
+            outdir,
             src,
         ]
         try:
@@ -143,7 +201,7 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
         except subprocess.TimeoutExpired:
             raise ConvertError(504, "conversion timed out after %ds" % CONVERT_TIMEOUT)
 
-        out = os.path.join(tmp, "input." + out_ext)
+        out = os.path.join(outdir, "input." + out_ext)
         if not os.path.exists(out):
             # soffice exits 0 on inputs it cannot parse and simply writes
             # nothing, so the exit code is not the signal — the missing file is.
@@ -155,7 +213,7 @@ def convert(data: bytes, src_ext: str, target: str) -> bytes:
 
         if target == "html":
             text = raw.decode("utf-8", "replace")
-            return _inline_images(text, tmp).encode("utf-8")
+            return _inline_images(text, outdir).encode("utf-8")
         return raw
 
 

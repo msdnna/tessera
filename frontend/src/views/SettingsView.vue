@@ -10,7 +10,12 @@ import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { timezoneOptions, countryOptions } from '@/utils/localeOptions'
 import { useFormat } from '@/composables/useFormat'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
+import { serverUrlMessage } from '@/utils/servers'
 import { useApiImage } from '@/composables/useApiImage'
+import { AVATAR_MAX_BYTES, AVATAR_TYPES, avatarPickError } from '@/utils/avatar'
+import { initials as initialsOf } from '@/utils/initials'
+import { isPasswordValid, passwordError } from '@/utils/password'
+import { formatFileSize } from '@/utils/docPdf'
 import { useDesktopUpdate } from '@/composables/useDesktopUpdate'
 
 const { t } = useI18n()
@@ -18,8 +23,12 @@ const { t } = useI18n()
 // Desktop-only settings: configurable server address + self-update.
 const isDesktop = isTauri()
 const serverAddr = ref(serverBase())
+// Same rule as the rail's edit modal and the login-screen popover: an address
+// that is not an absolute http(s) origin is refused, not stored — see
+// utils/servers.js serverUrlError() for what committing one costs.
+const serverAddrError = computed(() => serverUrlMessage(serverAddr.value, t))
 function saveServerAddr() {
-  setServerBase(serverAddr.value)
+  if (!setServerBase(serverAddr.value)) return
   location.reload()
 }
 const {
@@ -108,17 +117,29 @@ const avatarUrl = useApiImage(() => {
   if (!u) return ''
   return `${u}${u.includes('?') ? '&' : '?'}t=${avatarBust.value}`
 })
-const initials = computed(() => {
-  const n = (auth.user?.name || auth.user?.email || '?').trim()
-  const p = n.split(/\s+/)
-  return (p.length >= 2 ? p[0][0] + p[1][0] : n.slice(0, 2)).toUpperCase()
-})
+// Shared rule (utils/initials) — this is the same disc the sidebar footer and
+// every card draw, and a local copy of the two-word case turned «a.fokin» into
+// «A.» here while the cards read «AF».
+const initials = computed(() => initialsOf(auth.user?.name || auth.user?.email || '?'))
 const avatarError = ref('')
 
 async function onAvatarPicked(e) {
   const file = e.target.files?.[0]
   if (!file) return
   avatarError.value = ''
+  // Say what the server would say, before spending the upload on it — and say it
+  // in the reader's language and units. Its own refusal is a bare English
+  // sentence ("avatar exceeds 2 MiB") that errors.js passes through untouched,
+  // landing beside a hint that reads "до 2 МБ".
+  const bad = avatarPickError(file)
+  if (bad) {
+    avatarError.value =
+      bad === 'tooLarge'
+        ? t('settings.profile.avatar.tooLarge', { limit: formatFileSize(AVATAR_MAX_BYTES) })
+        : t('settings.profile.avatar.badType')
+    if (fileInput.value) fileInput.value.value = ''
+    return
+  }
   try {
     const res = await users.uploadAvatar(file)
     auth.setUser({ ...auth.user, avatar_url: res.data.avatar_url })
@@ -143,17 +164,50 @@ const pw = reactive({ current: '', next: '', confirm: '' })
 const pwSaving = ref(false)
 const pwSaved = ref(false)
 const pwError = ref('')
-const pwValid = computed(() => pw.current && pw.next.length >= 8 && pw.next === pw.confirm)
+const pwValid = computed(() => !!pw.current && isPasswordValid(pw.next) && pw.next === pw.confirm)
+// The reason, live, rather than only on a submit the disabled button prevents.
+// The ceiling is bcrypt's and counted in bytes, so the case this catches is an
+// ordinary Russian passphrase — which used to reach the server and come back as
+// "internal error" (#2932). A dead button would say none of that.
+const pwFieldError = computed(() => (pw.next ? passwordError(pw.next) : ''))
+// A GitLab-provisioned account is created without a password hash, so the
+// server can only ever answer this form "current password is incorrect" — an
+// unwinnable form whose refusal reads like a typo. `provider` would be the
+// wrong flag to hide it on: a recovery link sets a password without changing
+// it, and afterwards the form works like anyone else's (#2932).
+const hasPassword = computed(() => auth.user?.has_password !== false)
+const pwLinkSending = ref(false)
+const pwLinkSent = ref(false)
+
+// Sets the first password the same way the login screen recovers a forgotten
+// one — the account's own address, the server's own single-use link.
+async function sendPasswordLink() {
+  pwError.value = ''
+  pwLinkSending.value = true
+  try {
+    await accountFlows.forgotPassword(auth.user?.email)
+    pwLinkSent.value = true
+  } catch (e) {
+    pwError.value = e.message
+  } finally {
+    pwLinkSending.value = false
+  }
+}
 
 async function changePassword() {
   pwError.value = ''
   if (!pwValid.value) {
-    pwError.value = t('settings.security.invalid')
+    pwError.value = passwordError(pw.next) || t('settings.security.invalid')
     return
   }
   pwSaving.value = true
   try {
-    await users.changePassword({ current_password: pw.current, new_password: pw.next })
+    // The change logs out every session the old password was behind, this one
+    // included, and hands back a replacement in the same {access_token, …}
+    // shape login uses. Storing it is what keeps the tab the user is looking at
+    // from quietly dropping to the login screen a few minutes later.
+    const res = await users.changePassword({ current_password: pw.current, new_password: pw.next })
+    auth.setAuth(res.data)
     pw.current = pw.next = pw.confirm = ''
     flash(pwSaved)
   } catch (e) {
@@ -221,11 +275,13 @@ async function resendVerify() {
         <img v-if="avatarUrl" :src="avatarUrl" class="ava ava-img" alt="" />
         <n-avatar v-else round :size="72" class="ava">{{ initials }}</n-avatar>
         <div class="avatar-actions">
-          <!-- Matches what the server accepts for avatars (no SVG). -->
+          <!-- Same allowlist the picked file is then checked against (no SVG), so
+               the dialog's filter cannot drift from the rule behind it. It is only
+               a filter: "All files" gets past it, which is why the check exists. -->
           <input
             ref="fileInput"
             type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
+            :accept="AVATAR_TYPES.join(',')"
             hidden
             @change="onAvatarPicked"
           />
@@ -322,31 +378,54 @@ async function resendVerify() {
     <!-- Security -->
     <section class="card">
       <h2>{{ t('settings.security.title') }}</h2>
-      <div class="grid3">
-        <label class="field"
-          ><span>{{ t('settings.security.current') }}</span
-          ><n-input v-model:value="pw.current" type="password" show-password-on="click"
-        /></label>
-        <label class="field"
-          ><span>{{ t('settings.security.next') }}</span
-          ><n-input v-model:value="pw.next" type="password" show-password-on="click"
-        /></label>
-        <label class="field"
-          ><span>{{ t('settings.security.confirm') }}</span
-          ><n-input v-model:value="pw.confirm" type="password" show-password-on="click"
-        /></label>
-      </div>
-      <div class="row-end">
-        <span v-if="pwError" class="err">{{ pwError }}</span>
-        <transition name="fade">
-          <span v-if="pwSaved" class="saved"
-            ><n-icon :component="CheckmarkCircle" /> {{ t('settings.security.changed') }}</span
+
+      <!-- No password to change: offer to set one instead of a form that can
+           only be refused. -->
+      <template v-if="!hasPassword">
+        <p class="hint">{{ t('settings.security.noPassword', { email: auth.user?.email }) }}</p>
+        <div class="row-end">
+          <span v-if="pwError" class="err">{{ pwError }}</span>
+          <span v-if="pwLinkSent" class="saved">
+            <n-icon :component="CheckmarkCircle" />
+            {{ t('settings.security.linkSent', { email: auth.user?.email }) }}
+          </span>
+          <n-button v-else type="primary" :loading="pwLinkSending" @click="sendPasswordLink">
+            {{ t('settings.security.setLink') }}
+          </n-button>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="grid3">
+          <label class="field"
+            ><span>{{ t('settings.security.current') }}</span
+            ><n-input v-model:value="pw.current" type="password" show-password-on="click"
+          /></label>
+          <label class="field"
+            ><span>{{ t('settings.security.next') }}</span
+            ><n-input v-model:value="pw.next" type="password" show-password-on="click"
+          /></label>
+          <label class="field"
+            ><span>{{ t('settings.security.confirm') }}</span
+            ><n-input v-model:value="pw.confirm" type="password" show-password-on="click"
+          /></label>
+        </div>
+        <div class="row-end">
+          <span v-if="pwError || pwFieldError" class="err">{{ pwError || pwFieldError }}</span>
+          <transition name="fade">
+            <span v-if="pwSaved" class="saved"
+              ><n-icon :component="CheckmarkCircle" /> {{ t('settings.security.changed') }}</span
+            >
+          </transition>
+          <n-button
+            type="primary"
+            :disabled="!pwValid"
+            :loading="pwSaving"
+            @click="changePassword"
+            >{{ t('settings.security.change') }}</n-button
           >
-        </transition>
-        <n-button type="primary" :disabled="!pwValid" :loading="pwSaving" @click="changePassword">{{
-          t('settings.security.change')
-        }}</n-button>
-      </div>
+        </div>
+      </template>
     </section>
 
     <!-- Notifications (channels + routing) -->
@@ -460,8 +539,9 @@ async function resendVerify() {
           :placeholder="t('settings.app.serverAddrPlaceholder')"
         />
       </label>
+      <div v-if="serverAddrError" class="settings-server-error">{{ serverAddrError }}</div>
       <div class="row-end">
-        <n-button type="primary" @click="saveServerAddr">{{
+        <n-button type="primary" :disabled="!!serverAddrError" @click="saveServerAddr">{{
           t('settings.app.saveAndRestart')
         }}</n-button>
       </div>
@@ -605,6 +685,12 @@ async function resendVerify() {
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+}
+/* Same error red as the rail's edit modal (.se-error) — one refusal, one look. */
+.settings-server-error {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #d03050;
 }
 .swatches {
   display: flex;

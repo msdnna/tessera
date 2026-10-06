@@ -23,6 +23,7 @@ import { columnStatusName } from '@/utils/columnStatus'
 import { hueGradVert } from '@/utils/gradient'
 import { normalizeTitle } from '@/utils/title'
 import { useResponsive } from '@/composables/useResponsive'
+import PopMenu from '../PopMenu.vue'
 import TaskMiniCard from '../TaskMiniCard.vue'
 import TesseraIcon from '../TesseraIcon.vue'
 import UserAvatar from '../UserAvatar.vue'
@@ -153,7 +154,7 @@ async function pushChild(sub) {
     // the row updates when the write-back lands and the parent is re-fetched.
     message.success(t('task.subtasks.pushQueued'))
   } catch (e) {
-    message.error(e?.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     const next = new Set(pushing.value)
     next.delete(sub.id)
@@ -253,16 +254,18 @@ async function moveSubtask(sub, columnId) {
             <!-- status of the subtask, changeable without opening it -->
             <n-popover v-if="!readonly && sortedCols.length" trigger="click" placement="bottom-end">
               <template #trigger>
-                <span class="col-chip mini" @click.stop>
+                <!-- A button, not a span: it opens a menu, so it has to be
+                     reachable by Tab and openable by Enter (#2932). -->
+                <button type="button" class="col-chip mini" @click.stop>
                   <TesseraIcon
                     :name="statusIcon(columnOf(sub))"
                     :size="13"
                     :style="{ color: columnOf(sub)?.color || 'var(--t-text3)' }"
                   />
                   <span>{{ columnName(columnOf(sub)) || '—' }}</span>
-                </span>
+                </button>
               </template>
-              <div class="menu pmenu" @click.stop>
+              <PopMenu class="pmenu" @click.stop>
                 <div
                   v-for="c in sortedCols"
                   :key="c.id"
@@ -277,7 +280,7 @@ async function moveSubtask(sub, columnId) {
                   />
                   <span>{{ columnName(c) }}</span>
                 </div>
-              </div>
+              </PopMenu>
             </n-popover>
             <span v-else class="col-chip mini static">
               <TesseraIcon
@@ -472,6 +475,9 @@ async function moveSubtask(sub, columnId) {
 /* Status: the column glyph in its colour + the name, flat — no chip box. */
 .col-chip.mini {
   flex: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
   max-width: 140px;
   gap: 5px;
   border: none;

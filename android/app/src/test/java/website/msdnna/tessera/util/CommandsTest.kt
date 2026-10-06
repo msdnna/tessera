@@ -50,6 +50,21 @@ class CommandsTest {
     }
 
     @Test
+    fun `a finished line closes the query`() {
+        // A newline ends the command, so the popup must shut — java's `$` also
+        // matches before a trailing terminator, which would both keep it open and
+        // measure `start` from the newline instead of the slash.
+        assertNull(detectSlashQuery("/close\n"))
+        assertNull(detectSlashQuery("текст\n/clo\n"))
+        assertNull(detectSlashQuery("/close\n\n"))
+        // Picking an argument-less command types exactly that trailing newline, so
+        // its own insert text may not re-open the popup on the row just chosen.
+        assertNull(detectSlashQuery(commandInsertText(items.first { it.key == "close" })))
+        // The query is still open while the line is unfinished.
+        assertEquals(SlashQuery(start = 0, query = "close"), detectSlashQuery("/close"))
+    }
+
+    @Test
     fun `built-ins come first, custom entries after`() {
         assertEquals(listOf("assign", "due", "close", "approve"), items.map { it.key })
         assertTrue(items.first { it.key == "close" }.builtin)
@@ -57,6 +72,24 @@ class CommandsTest {
         // A custom entry never takes an argument, and its example is its own key.
         assertEquals("none", items.last().arg)
         assertEquals("/approve", items.last().example)
+    }
+
+    @Test
+    fun `the taken-keys set covers aliases, not just registry keys`() {
+        // The backend maps aliases into the same byKey table IsBuiltin reads, so a
+        // custom "/done" (alias of /close) is rejected there just like "/close".
+        // Missing it here makes Save look available and the PUT fail as a whole.
+        val taken = builtinCommandKeys(builtin)
+        assertTrue("close" in taken)
+        assertTrue("done" in taken)
+        assertTrue("assignee" in taken)
+        assertTrue("due_date" in taken)
+        assertFalse("approve" in taken)
+        // Keys arrive canonicalised, and a blank one is not a taken name.
+        assertEquals(setOf("assign", "assignee", "due", "due_date", "close", "done"), taken)
+        assertTrue(builtinCommandKeys(listOf(CommandDef(key = " /Done "))).contains("done"))
+        assertTrue(builtinCommandKeys(listOf(CommandDef(key = ""))).isEmpty())
+        assertTrue(builtinCommandKeys(emptyList()).isEmpty())
     }
 
     @Test

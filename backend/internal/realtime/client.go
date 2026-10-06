@@ -67,6 +67,18 @@ func (c *Client) canSee(scope string) bool {
 	return ok
 }
 
+// shouldReceive is the full delivery test: the workspace scope, plus the
+// addressee when the event names one. Events that carry one person's private
+// text (a notification and its reminder message) set Event.User, and then only
+// that person's sockets get the frame — clients filtering a broadcast by a
+// user_id field in the payload would be authorising at the wrong end of the wire.
+func (c *Client) shouldReceive(ev Event) bool {
+	if !c.canSee(ev.Scope) {
+		return false
+	}
+	return ev.User == uuid.Nil || ev.User == c.userID
+}
+
 // Start registers the client and launches its read/write pumps. A connection
 // that arrives after the hub has been closed is dropped instead of blocking
 // forever on a channel nobody reads.

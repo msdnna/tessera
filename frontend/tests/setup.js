@@ -16,6 +16,30 @@ import { i18n } from '@/i18n'
 
 config.global.plugins = [i18n]
 
+// The same story one wave later, for naive's `useMessage()`: it throws outright
+// when no `<n-message-provider>` stands above the component. App.vue has one
+// around the whole app; a bare `mount()` has none. Board cards report a refused
+// edit with a toast (#2932), so without this every spec that mounts a card would
+// fail in `setup()` rather than on anything it actually asserts.
+//
+// Handed over as an injection rather than by mocking the module: naive's
+// `createInjectionKey` is the identity function, so the provider's key is the
+// plain string below — and the specs that build their stub list from
+// `import * as naive` need the real module left alone. A spec that asserts on a
+// toast provides its own spy bus in `mount()`, which wins over this one.
+config.global.provide = {
+  ...config.global.provide,
+  'n-message-api': {
+    error() {},
+    success() {},
+    info() {},
+    warning() {},
+    loading() {},
+    create() {},
+    destroyAll() {},
+  },
+}
+
 // Specs that switch the language (cx-i18n) must not leak `en` into whatever
 // runs next — vitest reuses the module registry across files in a worker.
 beforeEach(() => {

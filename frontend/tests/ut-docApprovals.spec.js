@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
   approvalProgress,
+  canCancelApproval,
   canDecideNow,
   canRaiseApproval,
   documentApprovalState,
+  MAX_APPROVERS,
   orderedSteps,
+  routeApproversRefusal,
   stepForApprover,
   stepState,
 } from '@/utils/docApprovals'
@@ -202,5 +205,98 @@ describe('canRaiseApproval', () => {
 
   it('refuses a second open route', () => {
     expect(canRaiseApproval([{ status: 'pending' }])).toBe(false)
+  })
+})
+
+// ── the route's size, before the press ──────────────────────────────────────
+// handlers/document_approvals.go walks one list in one order: dedupe, then
+// refuse an empty route, then refuse one longer than maxDocApprovalSteps. The
+// panel has to reach the same verdict for the same list, because the only other
+// way the user learns it is a 400 that also costs them the names they picked.
+
+describe('routeApproversRefusal', () => {
+  const ids = (n) => Array.from({ length: n }, (_, i) => `u${i}`)
+
+  it('refuses an empty route', () => {
+    expect(routeApproversRefusal([])).toBe('empty')
+    expect(routeApproversRefusal(null)).toBe('empty')
+  })
+
+  it('refuses a route of blanks — they are not approvers', () => {
+    expect(routeApproversRefusal(['', null, undefined])).toBe('empty')
+  })
+
+  it('accepts a route filled exactly to the cap', () => {
+    expect(routeApproversRefusal(ids(MAX_APPROVERS))).toBe('')
+  })
+
+  it('refuses one name past the cap', () => {
+    expect(routeApproversRefusal(ids(MAX_APPROVERS + 1))).toBe('tooMany')
+  })
+
+  it('refuses a long route regardless of blanks padding it', () => {
+    expect(routeApproversRefusal([...ids(MAX_APPROVERS + 1), '', null])).toBe('tooMany')
+  })
+
+  it('counts what the server counts — duplicates collapse before the cap', () => {
+    // The server dedupes first, so a list that *looks* over the cap but names
+    // only 25 people is accepted. Counting raw entries would disable a submit
+    // the server would have taken.
+    expect(routeApproversRefusal([...ids(MAX_APPROVERS), 'u0'])).toBe('')
+    expect(routeApproversRefusal(Array.from({ length: 40 }, () => 'u1'))).toBe('')
+  })
+
+  it('caps at the number the server caps at', () => {
+    expect(MAX_APPROVERS).toBe(25)
+  })
+})
+
+// CancelDocumentApproval takes the route's author and workspace managers and
+// answers 403 to everyone else. The panel puts «Отозвать маршрут» under every
+// open route, so the rule decides who is shown a button that works and who is
+// shown one that refuses — and the commonest reader of an open route is the
+// approver it is waiting on, who is neither.
+
+describe('canCancelApproval', () => {
+  const mine = route([step()], { created_by: 'u1' })
+
+  it('lets the author withdraw their own route', () => {
+    expect(canCancelApproval(mine, 'u1', false)).toBe(true)
+  })
+
+  it('refuses a plain member — the server answers 403', () => {
+    expect(canCancelApproval(mine, 'u2', false)).toBe(false)
+  })
+
+  it('refuses the approver the route is waiting on', () => {
+    // The one person most likely to have the route open: asked to sign it, not
+    // to void it.
+    const waiting = route([step({ approver_id: 'u2' })], { created_by: 'u1' })
+    expect(canCancelApproval(waiting, 'u2', false)).toBe(false)
+  })
+
+  it('lets a workspace manager withdraw somebody elses route', () => {
+    expect(canCancelApproval(mine, 'u2', true)).toBe(true)
+  })
+
+  it('refuses a closed route whoever asks', () => {
+    // The server refuses with 409 rather than 403, but the button is equally
+    // pointless: nothing is left to withdraw.
+    for (const status of ['approved', 'rejected', 'cancelled']) {
+      const closed = route([step()], { created_by: 'u1', status })
+      expect(canCancelApproval(closed, 'u1', true)).toBe(false)
+    }
+  })
+
+  it('does not hand an anonymous reader a route with no author', () => {
+    // created_by is NULL once the account is deleted; a client comparing two
+    // empties would offer the button to a signed-out-looking session.
+    const orphan = route([step()], { created_by: null })
+    expect(canCancelApproval(orphan, '', false)).toBe(false)
+    expect(canCancelApproval(orphan, undefined, false)).toBe(false)
+  })
+
+  it('survives no route at all', () => {
+    expect(canCancelApproval(null, 'u1', true)).toBe(false)
   })
 })

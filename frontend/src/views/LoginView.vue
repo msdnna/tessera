@@ -8,6 +8,8 @@ import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
 import { isTauri } from '@/utils/serverBase'
+import { inviteTokenFromNext, registerRouteForInvite } from '@/utils/inviteRoute'
+import { stashPendingInvite } from '@/utils/pendingInvite'
 import {
   startDesktopGitlabLogin,
   OAUTH_DONE_EVENT,
@@ -73,6 +75,9 @@ onUnmounted(() => {
 
 async function loginWithGitlab() {
   formError.value = ''
+  // `?next=` is replayed by the password form below, but it cannot survive the
+  // provider's redirect — park the invitation so the callback replays it instead.
+  stashPendingInvite(inviteTokenFromNext(route.query.next))
   // Web: a top-level navigation, which is what the SameSite=Lax state cookie needs.
   if (!isTauri()) {
     window.location.href = auth.gitlabAuthorizeUrl()
@@ -170,7 +175,12 @@ async function submit() {
     </div>
     <div class="auth-foot">
       {{ t('common.auth.login.noAccount') }}
-      <router-link to="/register">{{ t('common.auth.login.register') }}</router-link>
+      <!-- Mirror of the register form's link back here: when this visit is a
+           detour from an invitation (?next=/invite?token=…), the token rides
+           along rather than being dropped at the fork. -->
+      <router-link :to="registerRouteForInvite(inviteTokenFromNext(route.query.next))">{{
+        t('common.auth.login.register')
+      }}</router-link>
     </div>
   </auth-layout>
 </template>

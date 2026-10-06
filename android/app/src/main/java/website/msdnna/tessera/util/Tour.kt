@@ -194,6 +194,17 @@ data class TourStep(
     val anchor: String,
     @StringRes val titleRes: Int,
     @StringRes val bodyRes: Int,
+    /**
+     * Строки, подставляемые в [bodyRes] на месте `%n$s`, — сами ресурсами, а не
+     * готовым текстом: шаг переживает смену языка (см. шапку файла), поэтому и
+     * аргумент должен читаться на языке читателя в момент отрисовки.
+     *
+     * Нужны там, где подсказка называет что-то, чью подпись собирает клиент:
+     * засеянную колонку доски [columnCaption] подписывает по `name_key`, так что
+     * вписанное в текст имя с сервера на английском интерфейсе не совпало бы ни с
+     * одной колонкой на экране.
+     */
+    val bodyArgs: List<Int> = emptyList(),
     val mode: TourMode,
     val surface: TourSurface = TourSurface.SCREEN,
     val extra: List<String> = emptyList(),
@@ -232,9 +243,16 @@ private const val GROUP_TOKEN = "{group}"
 /*
  * The columns a new board is seeded with, by name: the scenario points the first
  * «Создайте задачу» at the first one and asks for the card to be dragged into the
- * second. Column names come from the server and are not localised (`defaultColumns`
- * in handlers/boards.go), so the constants that match them stay Russian — hence the
- * `i18n-data` marker, the same one the column-matching patterns elsewhere carry.
+ * second. These are ANCHOR keys, and an anchor is registered under the column's
+ * stored name (`lane.rawTitle` in BoardViews) — which the server seeds in Russian
+ * (`defaultColumns` in handlers/boards.go) whatever the reader's language is. Hence
+ * the `i18n-data` marker, the same one the column-matching patterns elsewhere carry.
+ *
+ * The *caption* is a different string: since #2800 a seeded column is captioned from
+ * the reader's resources by `name_key` ([columnCaption]), so an English board shows
+ * "To do"/"In progress". The wording of the two steps therefore must NOT spell these
+ * constants — it takes the caption as a `bodyArgs` resource, or it would point at a
+ * column name that appears nowhere on screen.
  */
 const val TOUR_TODO_COLUMN = "К работе" // i18n-data
 const val TOUR_DOING_COLUMN = "В процессе" // i18n-data
@@ -338,6 +356,7 @@ val GET_STARTED: List<TourStep> = listOf(
         anchor = TourKeys.columnAdd(TOUR_TODO_COLUMN),
         titleRes = R.string.tour_task_create_title,
         bodyRes = R.string.tour_task_create_body,
+        bodyArgs = listOf(R.string.default_column_todo),
         mode = TourMode.ACTION,
         advanceOn = AdvanceOn.Count(TourKeys.TASK_CARD),
     ),
@@ -445,6 +464,7 @@ val GET_STARTED: List<TourStep> = listOf(
         anchor = TourKeys.taskCard(""),
         titleRes = R.string.tour_dnd_card_title,
         bodyRes = R.string.tour_dnd_card_body,
+        bodyArgs = listOf(R.string.default_column_in_progress),
         mode = TourMode.ACTION,
         // Don't dim the column we ask the card to be dropped into.
         cut = listOf(TourKeys.column(TOUR_DOING_COLUMN)),

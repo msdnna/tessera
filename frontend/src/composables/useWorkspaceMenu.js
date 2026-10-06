@@ -67,7 +67,11 @@ export function useWorkspaceMenu(workspace = null) {
         icon: icon(ExtensionPuzzleOutline),
         children: [
           { label: withCount('GitLab', conflicts.count), key: 'gitlab', icon: icon(LogoGitlab) },
-          { label: t('shell.tools.estimation'), key: 'estimation', icon: icon(TimerOutline) },
+          // The unit is a workspace setting whose PUT is gated by requireManager
+          // server-side (#2932): offer it only to those the endpoint will accept.
+          ...(manage
+            ? [{ label: t('shell.tools.estimation'), key: 'estimation', icon: icon(TimerOutline) }]
+            : []),
           // The dictionary is workspace settings: owner/admin only (the PUT is
           // gated by requireManager server-side, this only hides a door that
           // would 403).

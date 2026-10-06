@@ -25,6 +25,12 @@ func (h *API) CreateNote(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	// The project arrives in the body, so the route's requireMember vouches for
+	// the workspace and nothing vouches for the project. Unchecked, the note is
+	// one DELETE away from being gone: notes.project_id is ON DELETE CASCADE.
+	if req.ProjectID != nil && !h.projectInWorkspace(c, *req.ProjectID, wsID) {
+		return
+	}
 	uid := middleware.CurrentUser(c)
 	note, err := h.q.CreateNote(c, db.CreateNoteParams{
 		WorkspaceID: wsID,

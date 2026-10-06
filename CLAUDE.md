@@ -119,7 +119,14 @@ make test-e2e-backend       # чёрный ящик: настоящие бина
 make test-e2e-backend-docker # то же + сборка и старт образа (минуты)
 make version         # версии всех компонентов
 make bump-api  BUMP=minor   # + bump-web / bump-android
+make scan-backend    # SAST/SCA компонента (есть scan-frontend/-android/-desktop/-secrets)
 ```
+
+- **Сканы безопасности — не часть `lint`/`test`** (ходят в сеть, идут минутами), гонять
+  перед сдачей по затронутому компоненту. Гейт — **храповик**: находки заморожены в
+  `tools/security-baseline.json`, список может сокращаться, но не расти; после починки —
+  `make scan-baseline-update` и диff в тот же коммит. Подробности —
+  `docs/security-scanning.md`.
 
 - **Go:** только `go1.25.9` (Makefile зовёт его через `GO ?= go1.25.9`), НЕ системный `go`.
   sqlc-бинарь: `~/go/bin/sqlc`.

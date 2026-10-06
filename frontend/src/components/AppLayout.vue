@@ -49,6 +49,8 @@ import { install as installShortcuts } from '@/shortcuts/dispatcher'
 import { useThemeStore } from '@/stores/theme'
 import { usePaletteStore } from '@/stores/palette'
 import { sGet } from '@/utils/serverStorage'
+import { treeEventNeedsRefresh } from '@/utils/treeEvents'
+import { resyncShell } from '@/utils/shellResync'
 
 const { t } = useI18n()
 const ws = useWorkspacesStore()
@@ -116,10 +118,32 @@ useRealtime(
     onProjectSlugChanged(ev)
     // A renamed or recoloured workspace repaints its rail tile everywhere.
     if (ev.type === 'workspace.updated') ws.patchWorkspace(ev.data)
+    // Somebody else's project/group CRUD → re-read the tree. Strictly after the
+    // two handlers above: both answer a question about the tree as it was BEFORE
+    // the event (which project the current route points at, what address it used
+    // to have), and a refresh in front of them would erase that answer.
+    if (treeEventNeedsRefresh(ev, ws.currentId)) ws.refresh()
+    // Boards created/renamed/deleted elsewhere in this workspace → keep the
+    // sidebar tree honest. Here at the layout rather than in the sidebar: the
+    // tree is a store, and ProjectRow only mounts for an expanded project.
+    if (ev.scope === ws.currentId) ws.onBoardEvent(ev)
+    // The estimation config is resolved from the store by the board, the task
+    // modal, the charts and the «Этапы» screen alike, so it is patched here at
+    // the layout rather than in any one of them.
+    ws.onEstimationEvent(ev)
+    // Sprints created/renamed/closed/deleted elsewhere → invalidate the sidebar's
+    // milestone rows. Same reason as onBoardEvent above: those rows are drawn by
+    // ProjectRow, which only mounts for an expanded project, so the socket can't
+    // reach them — the store carries a per-project revision they watch. It scopes
+    // the event itself (milestoneTreeTarget).
+    ws.onMilestoneEvent(ev)
   },
-  // Reconnect / resync: rebuild the sidebar tree, which is the layout-level state
-  // that can drift while the socket is down (projects added/removed elsewhere).
-  () => ws.refresh(),
+  // Reconnect / resync: re-read every piece of layout-level state the socket is
+  // the only live source for — the sidebar (tree + the workspace set above it),
+  // the notification feed and the GitLab conflicts. See utils/shellResync.js for
+  // why each one belongs there; all three are loaded once in onMounted below and
+  // would otherwise stay at their pre-outage frame until a page reload (#2932).
+  () => resyncShell({ workspaces: ws, notifications: notes, conflicts }),
 )
 
 // An admin changing a project's address rewrites the URL of every board under
@@ -131,22 +155,22 @@ function onProjectSlugChanged(ev) {
   const known = ws.projects.find((p) => p.id === ev.data?.id)
   if (!known || !ev.data?.slug || known.slug === ev.data.slug) return
   const viewing = route.params.projectSlug === known.slug
-  ws.refresh()
   if (viewing) {
     router.replace({ ...route, params: { ...route.params, projectSlug: ev.data.slug } })
   }
 }
 
 // A project leaving the current workspace (deleted, or transferred elsewhere) fires
-// `project.deleted` in that workspace. Keep every connected client's tree in sync,
-// and — for anyone viewing a board of that project — bail to Home before the board
-// starts 404-ing (the "Не найдено" toast the user reported). The deleter/transferrer
-// already navigates locally; this no-ops for them (they're no longer on that route).
+// `project.deleted` in that workspace. For anyone viewing a board of that project,
+// bail to Home before the board starts 404-ing (the "Не найдено" toast the user
+// reported). The deleter/transferrer already navigates locally; this no-ops for
+// them (they're no longer on that route). Dropping the project from the sidebar
+// tree is treeEventNeedsRefresh's job, one event table over — the id → slug
+// lookup below has to run while the tree still holds the departing project.
 function onProjectGone(ev) {
   if (ev.type !== 'project.deleted' || ev.scope !== ws.currentId) return
   const slug = route.params.projectSlug
   const viewing = slug && ws.projects.find((p) => p.slug === slug)?.id === ev.data?.id
-  ws.refresh() // drop it from the sidebar tree for everyone in this workspace
   if (viewing) {
     message.info(t('shell.layout.projectGone'))
     router.push('/')

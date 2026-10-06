@@ -58,7 +58,9 @@ func Register(s *mcp.Server, c *client.Client) {
 		Name: "tessera_get_task",
 		Description: "Fetch a task's full detail (description markdown, tags, assignees, subtasks, " +
 			"comments, image refs, GitLab link). Identify it by task_id, or by workspace_id + number (#252). " +
-			"Comments carry the author and an is_agent flag so you can tell your own posts from the user's replies.",
+			"Comments carry the author and an is_agent flag so you can tell your own posts from the user's replies. " +
+			"An archived task — and each archived subtask — is flagged archived:true: it is off the board, so it " +
+			"doesn't count as an existing subtask when you re-check a decomposition.",
 	}, getTask(c))
 
 	registerWrite(s, c)
@@ -136,9 +138,12 @@ type taskSummary struct {
 	Completed     bool     `json:"completed,omitempty"`
 	Tags          []string `json:"tags,omitempty"`
 	AssigneeCount int      `json:"assignee_count,omitempty"`
-	EstimateHours *float64 `json:"estimate_hours,omitempty"`
-	GitlabURL     string   `json:"gitlab_url,omitempty"`
-	URL           string   `json:"url,omitempty"`
+	// Estimate is the backend's canonical number, not hours — see the note on
+	// taskFieldsInput.Estimate for what decides its unit and why nothing here
+	// converts it.
+	Estimate  *float64 `json:"estimate,omitempty"`
+	GitlabURL string   `json:"gitlab_url,omitempty"`
+	URL       string   `json:"url,omitempty"`
 }
 type taskListOut struct {
 	Count int           `json:"count"`
@@ -155,10 +160,19 @@ type assigneeOut struct {
 	Email string `json:"email"`
 }
 type subtaskOut struct {
-	ID        string `json:"id"`
-	Number    *int64 `json:"number,omitempty"`
-	Title     string `json:"title"`
-	Completed bool   `json:"completed"`
+	ID     string `json:"id"`
+	Number *int64 `json:"number,omitempty"`
+	Title  string `json:"title"`
+	// Archived is the flag a re-run of a decomposition has to read. The task
+	// detail endpoint returns every child of the parent (db ListSubtasks has no
+	// archived filter), while the create side deliberately ignores archived ones
+	// — liveChildTitles, "so re-creating a title that was deliberately archived
+	// still works". Without the flag the two halves of the same anti-duplicate
+	// guard disagree: a caller re-reading the parent sees the archived title and
+	// calls the decomposition done, while create_subtasks would have made that
+	// child again. Completed is not the same state and does not imply it.
+	Archived  bool `json:"archived,omitempty"`
+	Completed bool `json:"completed"`
 }
 type commentOut struct {
 	Body      string `json:"body"`
@@ -188,8 +202,14 @@ type taskDetailOut struct {
 	Column        string        `json:"column,omitempty"`
 	Due           string        `json:"due,omitempty"`
 	Overdue       bool          `json:"overdue,omitempty"`
-	Completed     bool          `json:"completed"`
-	EstimateHours *float64      `json:"estimate_hours,omitempty"`
+	// Archived: this task is off the board (soft-deleted, restorable). Every
+	// listing tool drops archived tasks before ranking, so the only way to reach
+	// one is to ask for it directly — by id or by #number — and without the flag
+	// it reads as an ordinary open task worth picking up.
+	Archived  bool     `json:"archived,omitempty"`
+	Completed bool     `json:"completed"`
+	Estimate  *float64 `json:"estimate,omitempty"`
+
 	Tags          []string      `json:"tags,omitempty"`
 	Assignees     []assigneeOut `json:"assignees,omitempty"`
 	Subtasks      []subtaskOut  `json:"subtasks,omitempty"`
@@ -277,7 +297,8 @@ func listTasks(c *client.Client) mcp.ToolHandlerFor[listTasksInput, taskListOut]
 		if err != nil {
 			return nil, taskListOut{}, err
 		}
-		now := time.Now()
+		// The reader's calendar, not the process's — see client.Location.
+		now := time.Now().In(c.Location(ctx))
 		ranked := rank.Tasks(tasks, rank.Options{IncludeCompleted: in.IncludeCompleted, Now: now})
 		out := taskListOut{Count: len(ranked)}
 		for _, t := range ranked {
@@ -300,7 +321,7 @@ func myTasks(c *client.Client) mcp.ToolHandlerFor[workspaceInput, taskListOut] {
 		if err != nil {
 			return nil, taskListOut{}, err
 		}
-		now := time.Now()
+		now := time.Now().In(c.Location(ctx))
 		ranked := rank.Tasks(tasks, rank.Options{Now: now})
 		out := taskListOut{Count: len(ranked)}
 		for _, t := range ranked {
@@ -312,7 +333,7 @@ func myTasks(c *client.Client) mcp.ToolHandlerFor[workspaceInput, taskListOut] {
 
 func nextTask(c *client.Client) mcp.ToolHandlerFor[nextTaskInput, nextTaskOut] {
 	return func(ctx context.Context, _ *mcp.CallToolRequest, in nextTaskInput) (*mcp.CallToolResult, nextTaskOut, error) {
-		now := time.Now()
+		now := time.Now().In(c.Location(ctx))
 		switch {
 		case in.BoardID != "":
 			enr, err := boardEnrichment(ctx, c, in.BoardID)
@@ -367,12 +388,13 @@ func getTask(c *client.Client) mcp.ToolHandlerFor[getTaskInput, taskDetailOut] {
 			return nil, taskDetailOut{}, err
 		}
 
-		now := time.Now()
+		now := time.Now().In(c.Location(ctx))
 		out := taskDetailOut{
 			ID: d.ID, Number: d.Number, Title: d.Title, Description: d.Description,
 			Priority: d.Priority, PriorityLabel: priorityLabel(d.Priority),
 			Due: dueString(d.DueDate), Overdue: isOverdue(d.Task, now),
-			Completed: d.CompletedAt != nil, EstimateHours: d.Estimate,
+			Archived:  d.ArchivedAt != nil,
+			Completed: d.CompletedAt != nil, Estimate: d.Estimate,
 			Column: columnName(ctx, c, d.BoardID, d.ColumnID),
 		}
 		for _, t := range d.Tags {
@@ -383,7 +405,8 @@ func getTask(c *client.Client) mcp.ToolHandlerFor[getTaskInput, taskDetailOut] {
 		}
 		for _, st := range d.Subtasks {
 			out.Subtasks = append(out.Subtasks, subtaskOut{
-				ID: st.ID, Number: st.Number, Title: st.Title, Completed: st.CompletedAt != nil,
+				ID: st.ID, Number: st.Number, Title: st.Title,
+				Archived: st.ArchivedAt != nil, Completed: st.CompletedAt != nil,
 			})
 		}
 		if d.GitLab != nil {

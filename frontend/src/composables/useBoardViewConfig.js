@@ -24,6 +24,12 @@ export const VIEW_PERSIST_MS = 300 // idle time after the last toolbar change be
 export function useBoardViewConfig({ boardId, layout, defaults, snapshot, load, migrate }) {
   const storageKey = computed(() => `tessera_view_${boardId.value}`)
   const byLayout = {}
+  // The key `byLayout` currently describes. KanbanBoard does NOT remount when you
+  // switch boards — it re-calls `restoreView` on the same composable — so both the
+  // slot map and a debounced write outlive the board they were made for unless
+  // `restoreView` re-points them. Writes go to `activeKey`, not to the live
+  // `storageKey`, so a pending one lands on the board it was scheduled for.
+  let activeKey = null
   let restoring = false
   let swapping = false
 
@@ -38,7 +44,7 @@ export function useBoardViewConfig({ boardId, layout, defaults, snapshot, load, 
     try {
       byLayout[layout.value] = snapshot()
       localStorage.setItem(
-        storageKey.value,
+        activeKey || storageKey.value,
         JSON.stringify({ layout: layout.value, toolbars: byLayout }),
       )
     } catch {
@@ -59,7 +65,24 @@ export function useBoardViewConfig({ boardId, layout, defaults, snapshot, load, 
     }, VIEW_PERSIST_MS)
   }
 
+  // Land a debounced write right now, under the key it was scheduled for.
+  function flushPending() {
+    if (!persistTimer) return
+    clearTimeout(persistTimer)
+    persistTimer = null
+    writeView()
+  }
+
   function restoreView() {
+    // Bank a write still in flight on the board it was made for, then start from an
+    // empty slot map: a board that has no stored slot for some layout must fall back
+    // to the defaults, not to the previous board's slot — and `writeView` stores the
+    // whole map, so a stale slot would also be copied into this board's key.
+    flushPending()
+    if (activeKey !== storageKey.value) {
+      for (const k of Object.keys(byLayout)) delete byLayout[k]
+      activeKey = storageKey.value
+    }
     restoring = true
     try {
       const raw = localStorage.getItem(storageKey.value)
@@ -108,13 +131,7 @@ export function useBoardViewConfig({ boardId, layout, defaults, snapshot, load, 
     })
   })
 
-  onBeforeUnmount(() => {
-    if (persistTimer) {
-      clearTimeout(persistTimer)
-      persistTimer = null
-      writeView()
-    }
-  })
+  onBeforeUnmount(flushPending)
 
   return { restoreView, persistView, isGuarded, guard }
 }

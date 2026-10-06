@@ -23,17 +23,28 @@ export const useConflictsStore = defineStore('conflicts', () => {
     resolverOpen.value = true
   }
 
+  // Only the newest request may write to the list. Both callers can supersede one
+  // another — a workspace switch and a `gitlab.conflict` event — and the request
+  // being abandoned is still out: without the comparison the badges would end up
+  // counting the conflicts of the workspace the user has left, and `has()` would
+  // put warning marks on cards that have none. `clear()` bumps it too: logout
+  // empties the list, and a reply still in flight must not refill it.
+  let loadSeq = 0
+
   async function load(id) {
     if (id) wsId.value = id
+    const mine = ++loadSeq
     if (!wsId.value) {
       list.value = []
       return
     }
     try {
       const { data } = await glApi.conflicts(wsId.value)
+      if (mine !== loadSeq) return
       list.value = data || []
     } catch {
       // No integration / offline — treat as no conflicts (endpoint returns [] now).
+      if (mine !== loadSeq) return
       list.value = []
     }
   }
@@ -44,6 +55,7 @@ export const useConflictsStore = defineStore('conflicts', () => {
   }
 
   function clear() {
+    loadSeq++
     list.value = []
     wsId.value = null
   }

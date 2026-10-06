@@ -136,6 +136,14 @@ func RateLimit(rules map[string]RateRule) gin.HandlerFunc {
 // peekEmail pulls the "email" field out of a JSON body and puts the body back
 // for the handler. Returns "" when there is nothing usable — a missing or
 // malformed body is the handler's problem to report, not the limiter's.
+//
+// Decoded with a json.Decoder rather than json.Unmarshal, to match how gin's
+// ShouldBindJSON reads the very same bytes. Decode stops at the end of the first
+// value and ignores any trailing bytes; Unmarshal rejects them outright. That
+// gap was a way out of the per-account budget: one junk byte after the closing
+// brace made this return "" — so no email bucket was keyed at all — while the
+// handler bound the body and processed the login as usual, leaving a caller with
+// a pool of addresses free to spray a single account.
 func peekEmail(c *gin.Context) string {
 	if c.Request == nil || c.Request.Body == nil {
 		return ""
@@ -150,7 +158,7 @@ func peekEmail(c *gin.Context) string {
 	var body struct {
 		Email string `json:"email"`
 	}
-	if json.Unmarshal(buf, &body) != nil {
+	if json.NewDecoder(bytes.NewReader(buf)).Decode(&body) != nil {
 		return ""
 	}
 	return strings.ToLower(strings.TrimSpace(body.Email))

@@ -16,7 +16,25 @@ import {
 } from 'naive-ui'
 import { TrashOutline, CopyOutline, MailOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
+import { useAuthStore } from '@/stores/auth'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { useFormat } from '@/composables/useFormat'
 import { copyText } from '@/utils/clipboard'
+import {
+  LOCK_VIEWER,
+  LOCK_OWNER,
+  LOCK_SELF,
+  memberRowLock,
+  memberRowBadge,
+  addMemberRefusal,
+} from '@/utils/members'
+
+/** Which sentence explains each refusal the add field can hit. */
+const REFUSAL_KEY = {
+  [LOCK_VIEWER]: 'cannotManage',
+  [LOCK_OWNER]: 'cannotOwner',
+  [LOCK_SELF]: 'cannotSelf',
+}
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -25,12 +43,40 @@ const props = defineProps({
 const emit = defineEmits(['update:show'])
 
 const { t } = useI18n()
+const { formatDate } = useFormat()
 const message = useMessage()
+const auth = useAuthStore()
+const wsStore = useWorkspacesStore()
 const members = ref([])
 const invitations = ref([])
 const email = ref('')
+const inviteError = ref('')
 const role = ref('member')
+
+// Whether the viewer may manage anyone here at all. AddMember, UpdateMemberRole,
+// RemoveMember, ListInvitations and DeleteInvitation are all `requireManager`,
+// while the dialog itself is open to every member (ListMembers is
+// `requireMember`, and the tools bar shows the button to everyone). Read off the
+// row for *this* workspace rather than the store's `canManage`, which follows
+// the globally-selected one — the id arrives here as a prop.
+const canManage = computed(() =>
+  ['owner', 'admin'].includes(wsStore.list.find((w) => w.id === props.wsId)?.my_role),
+)
+
+// Who is looking. The dialog knew the owner (the list carries the role) but not
+// the viewer, so an admin's own row offered the same role select and the same
+// trash icon as anybody else's — see utils/members.js. `ownerId` is left to the
+// row's own `role` field; there is no workspace record in scope here.
+const who = computed(() => ({
+  selfId: auth.user?.id || '',
+  selfEmail: auth.user?.email || '',
+  canManage: canManage.value,
+}))
+const rowLock = (m) => memberRowLock(m, who.value)
+const rowBadge = (m) => t(`shell.members.${memberRowBadge(m, who.value)}`)
 const lastLink = ref('') // link from the most recent invitation, for copying
+// Which workspace the three lists above currently describe — see load().
+const loadedWsId = ref('')
 // Computed: the role labels sit inside a select, and a frozen table would keep
 // showing the language of the first render — including inside the open dropdown.
 const roleOptions = computed(() => [
@@ -38,15 +84,61 @@ const roleOptions = computed(() => [
   { label: t('shell.members.admin'), value: 'admin' },
 ])
 
+// An invitation lives a week (backend invitationTTL), but the list endpoint only
+// drops the accepted ones — an expired invitation stays in the response forever.
+// Every path that redeems one refuses it past `expires_at`, so an unmarked row
+// tells the admin "invited, hasn't accepted yet" about a link that answers
+// "invalid or expired invitation"; there is no unique key on (workspace, email)
+// either, so re-invites pile up and only the newest of the identical-looking
+// rows works. The date is what tells them apart.
+const invitationRows = computed(() =>
+  invitations.value.map((inv) => {
+    const until = inv.expires_at ? new Date(inv.expires_at) : null
+    const expired = !!until && until.getTime() <= Date.now()
+    return { ...inv, expired, until: until && !expired ? formatDate(until) : '' }
+  }),
+)
+
+// The two lists are fetched behind different gates — ListMembers is
+// `requireMember`, ListInvitations is `requireManager` — so under `Promise.all`
+// a plain member's 403 on the second threw away the roster the server had
+// already returned with the first: an empty dialog behind a red toast, on the
+// one screen that answers "who else is in this workspace". They are independent
+// now, and the manager-only one is not asked for by someone it would refuse.
 async function load() {
   if (!props.wsId) return
-  try {
-    const [m, inv] = await Promise.all([wsApi.members(props.wsId), wsApi.invitations(props.wsId)])
-    members.value = m.data || []
-    invitations.value = inv.data || []
-  } catch (e) {
-    message.error(e.message)
+  // Everything held here belongs to one workspace, and this component outlives
+  // all of them: it sits in WorkspaceTools' tree for good, closed only by
+  // `show`, while `wsId` follows the sidebar. Reopening it elsewhere therefore
+  // found the previous workspace's roster, its pending invitations and its
+  // invite link still in place — and a load that fails leaves them there for
+  // good, passing another workspace's list off as this one's (#2932). The link
+  // is the worst of the three: it carries the token of an invitation into that
+  // other workspace.
+  //
+  // Only on an actual change of workspace: `load()` is also the refresh after
+  // every write, and the invitation link is written by one of them — blanking it
+  // on every call would have the re-read eat the link it was just handed, which
+  // with SMTP off is the only copy of that token anywhere.
+  const wsId = props.wsId
+  if (loadedWsId.value !== wsId) {
+    loadedWsId.value = wsId
+    members.value = []
+    invitations.value = []
+    lastLink.value = ''
+    inviteError.value = ''
   }
+  const [m, inv] = await Promise.allSettled([
+    wsApi.members(wsId),
+    canManage.value ? wsApi.invitations(wsId) : Promise.resolve({ data: [] }),
+  ])
+  // Switched away while these were in flight (close, pick another workspace,
+  // reopen): the answers are about the workspace that is no longer on screen.
+  if (wsId !== props.wsId) return
+  if (m.status === 'fulfilled') members.value = m.value.data || []
+  else message.error(m.reason.message)
+  if (inv.status === 'fulfilled') invitations.value = inv.value.data || []
+  else message.error(inv.reason.message)
 }
 
 // One input: add an already-registered user instantly; otherwise fall back to an
@@ -54,6 +146,17 @@ async function load() {
 async function invite() {
   const e = email.value.trim()
   if (!e) return
+  // The same operation by the other door: CreateMembership is an upsert, so an
+  // address already on the list is a role change, and the caller's own address
+  // with the select on its "member" default was a self-demotion answered with a
+  // green "Участник добавлен". The server refuses it now; this only spares the
+  // round trip and says which rule was hit.
+  const refused = addMemberRefusal(e, members.value, who.value)
+  if (refused) {
+    inviteError.value = t(`shell.members.${REFUSAL_KEY[refused]}`)
+    return
+  }
+  inviteError.value = ''
   try {
     await wsApi.addMember(props.wsId, { email: e, role: role.value })
     email.value = ''
@@ -61,7 +164,10 @@ async function invite() {
     await load()
     message.success(t('shell.members.added'))
   } catch (err) {
-    if (err.message === 'no user with that email') {
+    // `raw`, not `message`: the branch is on the server's English sentinel. The
+    // humanized line is localized and would stop matching the moment that
+    // sentinel got a catalogue entry — which it now has (#2932).
+    if (err.raw === 'no user with that email') {
       try {
         const res = await wsApi.createInvitation(props.wsId, { email: e, role: role.value })
         lastLink.value = res.data.link || ''
@@ -126,8 +232,11 @@ watch(
             <span class="name">{{ m.name }}</span>
             <span class="mail">{{ m.email }}</span>
           </div>
-          <n-tag v-if="m.role === 'owner'" size="small" :bordered="false">
-            {{ t('shell.members.owner') }}
+          <!-- A control that vanishes with no word reads as a broken dialog, so
+               a locked row keeps naming itself: owner, you, or the plain role a
+               reader with no say in it came here to look up. -->
+          <n-tag v-if="rowLock(m)" size="small" :bordered="false">
+            {{ rowBadge(m) }}
           </n-tag>
           <n-select
             v-else
@@ -138,7 +247,7 @@ watch(
             @update:value="(v) => changeRole(m.user_id, v)"
           />
           <n-popconfirm
-            v-if="m.role !== 'owner'"
+            v-if="!rowLock(m)"
             :positive-button-props="{ type: 'error' }"
             :positive-text="t('common.action.delete')"
             @positive-click="remove(m.user_id)"
@@ -156,25 +265,44 @@ watch(
       <!-- Pending invitations -->
       <div v-if="invitations.length" class="invites">
         <n-text depth="3" class="lbl">{{ t('shell.members.invitations') }}</n-text>
-        <div v-for="inv in invitations" :key="inv.id" class="invite-row">
+        <div
+          v-for="inv in invitationRows"
+          :key="inv.id"
+          class="invite-row"
+          :class="{ 'is-expired': inv.expired }"
+        >
           <n-icon :component="MailOutline" class="inv-icon" />
           <span class="inv-mail">{{ inv.email }}</span>
           <n-tag size="small" :bordered="false">{{
             inv.role === 'admin' ? t('shell.members.admin') : t('shell.members.member')
           }}</n-tag>
+          <!-- Revoke stays on an expired row: clearing it out of the list is the
+               only thing left to do with it. -->
+          <n-tag v-if="inv.expired" class="inv-expired" size="small" type="error" :bordered="false">
+            {{ t('shell.members.inviteExpired') }}
+          </n-tag>
+          <n-text v-else-if="inv.until" depth="3" class="inv-until">
+            {{ t('shell.members.inviteUntil', { date: inv.until }) }}
+          </n-text>
           <n-button text size="tiny" type="error" @click="revokeInvite(inv.id)">
             <n-icon :component="TrashOutline" />
           </n-button>
         </div>
       </div>
 
-      <div class="invite">
+      <!-- Every door below this line is requireManager. Saying so once beats
+           four controls that answer 403, and beats silence — the roster above is
+           still worth the trip. -->
+      <n-text v-if="!canManage" depth="3" class="hint">{{ t('shell.members.readOnly') }}</n-text>
+
+      <div v-else class="invite">
         <n-text depth="3" class="lbl">{{ t('shell.members.inviteLabel') }}</n-text>
         <n-space>
           <n-input
             v-model:value="email"
             size="small"
             :placeholder="t('shell.members.emailPlaceholder')"
+            @update:value="inviteError = ''"
             @keyup.enter="invite"
           />
           <n-select v-model:value="role" :options="roleOptions" size="small" style="width: 130px" />
@@ -182,6 +310,7 @@ watch(
             {{ t('shell.members.invite') }}
           </n-button>
         </n-space>
+        <n-text v-if="inviteError" type="error" class="invite-err">{{ inviteError }}</n-text>
         <n-text depth="3" class="hint">{{ t('shell.members.inviteHint') }}</n-text>
         <div v-if="lastLink" class="link-box">
           <n-input :value="lastLink" size="small" readonly />
@@ -239,6 +368,21 @@ watch(
   color: var(--t-text2);
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.inv-until {
+  font-size: 11px;
+  white-space: nowrap;
+}
+/* A dead row still belongs in the list (it is the only place to revoke it), it
+   just must not read as one that is still waiting for an answer. */
+.invite-row.is-expired .inv-mail,
+.invite-row.is-expired .inv-icon {
+  opacity: 0.6;
+}
+.invite-err {
+  display: block;
+  font-size: 11px;
+  margin-top: 6px;
 }
 .lbl {
   display: block;

@@ -11,10 +11,11 @@ import (
 // recorder is a stand-in Enforcer. Mutex-guarded because the room calls it from
 // whichever goroutine issued the command, and the assertions run on the test's.
 type recorder struct {
-	mu     sync.Mutex
-	kicks  []uuid.UUID
-	mutes  []muteCall
-	inLock func() // called while the enforcer runs, to probe the room's lock
+	mu      sync.Mutex
+	kicks   []uuid.UUID
+	evicts  []uuid.UUID
+	mutes   []muteCall
+	inLock  func() // called while the enforcer runs, to probe the room's lock
 }
 
 type muteCall struct {
@@ -31,6 +32,15 @@ func (r *recorder) Kicked(_, userID uuid.UUID) {
 	r.kicks = append(r.kicks, userID)
 }
 
+func (r *recorder) Evicted(_, userID uuid.UUID) {
+	if r.inLock != nil {
+		r.inLock()
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.evicts = append(r.evicts, userID)
+}
+
 func (r *recorder) Muted(_, userID uuid.UUID, muted bool) {
 	if r.inLock != nil {
 		r.inLock()
@@ -44,6 +54,12 @@ func (r *recorder) snapshot() ([]uuid.UUID, []muteCall) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return append([]uuid.UUID(nil), r.kicks...), append([]muteCall(nil), r.mutes...)
+}
+
+func (r *recorder) evicted() []uuid.UUID {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]uuid.UUID(nil), r.evicts...)
 }
 
 // TestModerationReachesTheEnforcer is the contract #2872 rests on: a decision
@@ -73,6 +89,53 @@ func TestModerationReachesTheEnforcer(t *testing.T) {
 	}
 	if len(mutes) != 1 || mutes[0] != (muteCall{member.UserID, true}) {
 		t.Errorf("mutes = %v, want one force-mute of the member", mutes)
+	}
+}
+
+// TestEvictionReachesTheEnforcer is the media half of a revoked access (#2932).
+// EvictUser closes the presence socket, which is only the roster; the call
+// itself lives in the SFU, and nothing there re-reads a membership after the
+// join. Without this the person who just lost the workspace keeps hearing and
+// seeing the meeting — and keeps publishing into it — while the roster says they
+// left, which is worse than staying visible.
+func TestEvictionReachesTheEnforcer(t *testing.T) {
+	t.Parallel()
+	rec := &recorder{}
+	rs, confID := New(), uuid.New()
+	rs.SetEnforcer(rec)
+	join(rs, confID, "Хост", RoleHost)
+	member := join(rs, confID, "Ира", RoleMember)
+
+	rs.EvictUser(member.UserID, "access revoked")
+
+	if got := rec.evicted(); len(got) != 1 || got[0] != member.UserID {
+		t.Errorf("evictions = %v, want one entry for the removed member — their media session survives the eviction", got)
+	}
+	// Not a kick: eviction is not punishment, and a membership restored a minute
+	// later must not run into a cooldown the room invented.
+	if kicks, _ := rec.snapshot(); len(kicks) != 0 {
+		t.Errorf("kicks = %v, want none — an eviction was enforced as a kick", kicks)
+	}
+}
+
+// TestEvictionOfSomeoneElsewhereIsNotEnforced: EvictUser walks every room in the
+// registry, so it must tell the SFU only about the calls the user was actually
+// in. A stray RemoveParticipant is a wasted round trip per live conference on
+// the install, on a path that runs whenever anyone's access is revoked.
+func TestEvictionOfSomeoneElsewhereIsNotEnforced(t *testing.T) {
+	t.Parallel()
+	rec := &recorder{}
+	rs := New()
+	rs.SetEnforcer(rec)
+	confA, confB := uuid.New(), uuid.New()
+	member := join(rs, confA, "Ира", RoleMember)
+	join(rs, confB, "Пётр", RoleHost)
+
+	rs.EvictUser(member.UserID, "access revoked")
+
+	got := rec.evicted()
+	if len(got) != 1 || got[0] != member.UserID {
+		t.Fatalf("evictions = %v, want exactly one — for the room the member was in", got)
 	}
 }
 

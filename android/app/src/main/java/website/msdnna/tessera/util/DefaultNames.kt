@@ -49,6 +49,11 @@ fun workspaceCaption(res: Resources, ws: Workspace?): String =
 fun columnCaption(res: Resources, col: BoardColumn?): String =
     if (col == null) "" else caption(res, COLUMN_NAMES, col.nameKey, col.name)
 
+/** То же по паре «ключ + имя»: колонка, названная в payload уведомления, строкой
+ *  доски не приезжает. */
+fun columnCaption(res: Resources, nameKey: String?, name: String): String =
+    caption(res, COLUMN_NAMES, nameKey?.ifEmpty { null }, name)
+
 /**
  * Значок статуса колонки: ключ говорит, какая это из четырёх засеянных, не
  * заглядывая в имя. Колонка без ключа (её завёл или переименовал пользователь)

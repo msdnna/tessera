@@ -83,9 +83,18 @@ export const useServersStore = defineStore('servers', () => {
     return created
   }
 
+  // Editing a profile's *address* moves the running app exactly as far as
+  // switchTo() does, so it reloads for the same reason: axios' baseURL is
+  // snapshotted at import. Without the reload the app splits in two — ordinary
+  // requests keep going to the old host while the token refresh, the OAuth
+  // redirect and the avatar URLs (which call apiBaseURL() afresh) already go to
+  // the new one. The name, colour and icon touch nothing the app talks to; an
+  // inactive profile isn't what this window is pointed at.
   function update(id, patch) {
+    const before = list.value.find((s) => s.id === id)?.url || ''
     const saved = updateServer(id, patch)
     reload()
+    if (saved && id === activeId.value && saved.url !== before) location.reload()
     return saved
   }
 

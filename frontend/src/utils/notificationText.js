@@ -10,6 +10,7 @@
 // own bundle must still show something. Both cases land on the same branch.
 import { i18n } from '@/i18n'
 import { defaultFormatters } from '@/utils/format'
+import { columnName } from '@/utils/defaultNames'
 
 // Changed-task fields the server may list in a task_updated payload. An unknown
 // field name (server ahead of client) is dropped rather than shown raw.
@@ -49,10 +50,17 @@ export function notificationText(n, { t = i18n.global.t, te = i18n.global.te, fo
     actor: p.actor || '',
     ref: p.task_number ?? '?',
     ctx: p.title || p.excerpt ? t('notifications.ctx', { text: p.title || p.excerpt }) : '',
-    column: p.column || '',
+    // A seeded column arrives with its name_key (#2800), so it is captioned the
+    // same way the board captions it — a name the user chose has no key and is
+    // shown verbatim.
+    column: columnName({ name: p.column, name_key: p.column_key }, { t, te }),
     title: p.title || '',
     label: p.label || '',
-    reason: p.reason || '',
+    // A failure reason is the integration's own error text, shown verbatim. A
+    // failure with nothing to blame carries no reason at all (the server keeps
+    // its default in the legacy text), so the word for "we don't know why" is
+    // ours to supply — otherwise the sentence keeps its dash and loses its end.
+    reason: p.reason || t('notifications.reason.unknown'),
     created: p.created ?? 0,
     updated: p.updated ?? 0,
     took: formatDuration(p.seconds ?? 0, t),

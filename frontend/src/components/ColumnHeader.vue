@@ -25,6 +25,7 @@ const props = defineProps({
   total: { type: Number, default: 0 }, // same, with every subtask folded in (#2850)
   estimate: { type: String, default: '' }, // Σ estimate (milestone grouping); '' = hide
   editable: { type: Boolean, default: false }, // status columns only
+  readonly: { type: Boolean, default: false }, // archive view: look, don't touch
   isDone: { type: Boolean, default: false }, // task-completing column
   first: { type: Boolean, default: false }, // leftmost column (To-Do icon)
   collapsed: { type: Boolean, default: false }, // rendered as a narrow strip
@@ -33,6 +34,18 @@ const props = defineProps({
   prefixNames: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['changed', 'set-done', 'toggle-collapse'])
+
+// `editable` says the lane is a real status column (tag/milestone lanes are not);
+// `readonly` says the board is being *looked at*, not worked on — the archive view.
+// Only the two together open the menu, the rename and the drag handle: a column's
+// delete cascades through tasks.column_id and takes every card standing in it,
+// archived or not (TaskIDsInColumn filters on column_id alone), while the archive
+// shows — and counts — only the archived ones. Confirming «delete the column and
+// its tasks» over a header reading «3» would silently destroy the column's live
+// cards and their uploads, with no undo. Card DnD, column DnD and the card menus
+// are already closed in the archive (KanbanBoard `archivedMode`); this is the
+// header catching up.
+const canEdit = computed(() => props.editable && !props.readonly)
 
 // Status glyph from the Tessera icon pack: done = check circle,
 // first = empty circle, review = ⅔-pie, other middle = in-progress (half). Filled
@@ -92,18 +105,23 @@ const ctxOptions = computed(() => [
   },
 ])
 function onCtx(e) {
-  if (!props.editable) return
+  if (!canEdit.value) return
   e.preventDefault()
   ctxShow.value = false
   ctxX.value = e.clientX
   ctxY.value = e.clientY
   nextTick(() => (ctxShow.value = true))
 }
+// Deleting a column takes every card standing in it (the server cascades through
+// tasks.column_id and purges their uploads), so the menu never calls the API
+// straight off: it opens the same confirm the «…» popover shows, anchored where
+// the menu stood. Same shape as the task card's right-click delete.
+const ctxDeleteConfirm = ref(false)
 function onCtxSelect(key) {
   ctxShow.value = false
   if (key === 'rename') startRename()
   else if (key === 'done') toggleDone()
-  else if (key === 'delete') removeCol()
+  else if (key === 'delete') ctxDeleteConfirm.value = true
 }
 
 const message = useMessage()
@@ -129,11 +147,27 @@ function swatchBg(s) {
 }
 
 function startRename() {
-  if (!props.editable) return
+  if (!canEdit.value) return
   nameEdit.value = props.dcol.name
   renaming.value = true
 }
+// Esc abandons the rename. Every other inline field on the board already answers
+// it (the column's «＋ задача», the board's «＋ колонка», a card's «＋ подзадача»,
+// the matrix quick-add), and this one had no handler at all — so Esc did nothing
+// visible, the field stayed open with the edited text, and the next click away
+// went through `@blur` and PUT the rename the reader had just cancelled. A column
+// name is workspace-shared data, not local view state.
+function cancelRename() {
+  renaming.value = false
+  nameEdit.value = ''
+}
 async function commitRename() {
+  // Closing the field is what marks the gesture finished: Esc unmounts the input
+  // and a browser fires no blur for a node that is simply removed, but the guard
+  // is on the commit rather than on that behaviour — it also makes the blur that
+  // follows an Enter (or a second commit from any other path) a no-op instead of
+  // a duplicate PUT.
+  if (!renaming.value) return
   renaming.value = false
   const n = nameEdit.value.trim()
   if (!n || n === props.dcol.name) return
@@ -167,28 +201,37 @@ async function removeCol() {
 </script>
 
 <template>
-  <div class="col-head" @contextmenu="onCtx">
+  <div class="col-head" :class="{ ro: readonly }" @contextmenu="onCtx">
+    <!-- The status glyph stays in the archive (it is what the column *is*), but
+         `col-drag` — the Sortable handle and its grab cursor — comes off with the
+         rest of the editing: the column draggable is disabled there anyway. -->
     <TesseraIcon
       v-if="editable"
       :name="statusName"
       :variant="statusVariant"
-      class="col-stat col-drag"
+      class="col-stat"
+      :class="{ 'col-drag': canEdit }"
       :style="{ color: statusColor }"
-      :title="isDone ? t('board.column.doneTitle') : t('board.column.dragTitle')"
+      :title="isDone ? t('board.column.doneTitle') : readonly ? '' : t('board.column.dragTitle')"
     />
     <n-input
       v-if="renaming"
       v-model:value="nameEdit"
       size="tiny"
       autofocus
+      data-testid="column-rename-input"
       @keyup.enter="commitRename"
+      @keyup.esc="cancelRename"
       @blur="commitRename"
     />
     <TagPill v-else-if="dcol.tag" :tag="dcol.tag" :prefix-names="prefixNames" class="col-tag" />
+    <!-- `title` is not decoration here: the caption is clipped to one line below,
+         and a tag lane's caption is whatever the reader named the tag. -->
     <span
       v-else
-      class="col-title col-drag"
-      :class="{ neutral: !editable && !dcol.color }"
+      class="col-title"
+      :class="{ 'col-drag': canEdit, neutral: !editable && !dcol.color }"
+      :title="dcol.name"
       @dblclick="startRename"
       >{{ dcol.name }}</span
     >
@@ -208,7 +251,7 @@ async function removeCol() {
     >
       <n-icon :component="ChevronBackOutline" />
     </n-button>
-    <n-popover v-if="editable" v-model:show="settingsOpen" trigger="click" placement="bottom-end">
+    <n-popover v-if="canEdit" v-model:show="settingsOpen" trigger="click" placement="bottom-end">
       <template #trigger>
         <n-button text size="tiny" class="col-menu">
           <n-icon :component="EllipsisHorizontalOutline" />
@@ -262,6 +305,18 @@ async function removeCol() {
       @select="onCtxSelect"
       @clickoutside="ctxShow = false"
     />
+    <n-popconfirm
+      v-model:show="ctxDeleteConfirm"
+      :x="ctxX"
+      :y="ctxY"
+      :positive-button-props="{ type: 'error', 'data-testid': 'column-ctx-delete-confirm' }"
+      :positive-text="t('common.action.delete')"
+      @positive-click="removeCol"
+      @clickoutside="ctxDeleteConfirm = false"
+    >
+      <template #trigger><span /></template>
+      {{ t('board.column.deleteConfirm') }}
+    </n-popconfirm>
   </div>
 </template>
 
@@ -278,11 +333,18 @@ async function removeCol() {
 }
 .col-stat {
   font-size: 16px;
-  cursor: grab;
   flex: none;
+}
+/* The grab hand marks the Sortable handle only — the caption and the glyph carry
+   it just while the column can be reordered (canEdit), never as decoration (#2932). */
+.col-drag {
+  cursor: grab;
 }
 .col-title {
   flex: 0 1 auto;
+  /* min-width: 0 lets a long caption shrink (a tag name often has no break
+     opportunity) instead of pushing the count, chevron and «…» over the next
+     column (#2932); clipped to one line like the collapsed strip. */
   min-width: 0;
   font-size: 13px;
   font-weight: 600;
@@ -290,7 +352,6 @@ async function removeCol() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  cursor: grab;
 }
 /* «Без тегов» / «Без этапа»: the neutral catch-all column reads a step quieter. */
 .col-title.neutral {

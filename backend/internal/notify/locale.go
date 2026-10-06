@@ -32,12 +32,35 @@ type bundle struct {
 	defaultNames map[string]string // captions for server-seeded names, by name_key (#2800)
 	fallbackKind string            // subject for a kind this bundle doesn't know
 	listSep      string            // how a list of changed fields is joined
+	listLast     string            // the conjunction before its last item — see joinList
 	digestTitle  string
-	digestHeader string // holds {count}
+	digestHeader string // holds {count} and {noun}
+	// digestNoun is the noun {noun} stands for, in the three CLDR forms
+	// i18n.Plural chooses between (one · few · many). The header carries a count,
+	// so the noun has to agree with it: a digest combines two rows or more, which
+	// in Russian is the "few" form far more often than not.
+	digestNoun [3]string
 	instant      string // duration under a second
 	durationHM   string // {h} {m}
 	durationMS   string // {m} {s}
 	durationS    string // {s}
+	// deviceLabel names a client's auto-registered device channel when the client
+	// didn't send a name of its own.
+	deviceLabel string
+	// unknownReason stands in for a sync failure that names no cause. The reason
+	// itself is the integration's own error text — content, carried verbatim — so
+	// the producer leaves the key out rather than defaulting it in the sender's
+	// language (handlers.msgSyncFailed, the same rule as an empty reminder). That
+	// makes the default this side's business, and without it the sentence breaks
+	// off at the dash.
+	unknownReason string
+	// sampleActor/sampleTaskTitle furnish the stand-in notification the channel
+	// editor previews and the "send a test" probe delivers (SampleData). They live
+	// here, not at the call site, for the same reason everything else in this file
+	// does: those two are rehearsals of a message that leaves the app, so they have
+	// to be written in the reader's language or they rehearse the wrong thing.
+	sampleActor     string
+	sampleTaskTitle string
 }
 
 var bundles = map[string]bundle{
@@ -69,7 +92,11 @@ var bundles = map[string]bundle{
 			"reopened":    "возвращена в работу",
 		},
 		defaultNames: map[string]string{
-			"personal": "Личное пространство",
+			"personal":    "Личное пространство",
+			"todo":        "К работе",
+			"in_progress": "В процессе",
+			"review":      "На рассмотрении",
+			"done":        "Готово",
 		},
 		kinds: map[string]string{
 			"assigned":          "Назначена задача",
@@ -82,15 +109,24 @@ var bundles = map[string]bundle{
 			"reminder":          "Напоминание",
 			"integration_sync":  "Синхронизация завершена",
 			"conference_invite": "Приглашение в конференцию",
+			// Not a stored notification: the subject of the probe a user sends to
+			// check a channel they just set up.
+			"test": "Проверка канала",
 		},
-		fallbackKind: "Уведомление",
-		listSep:      ", ",
-		digestTitle:  "Сводка уведомлений",
-		digestHeader: "Сводка — {count} уведомлений:",
-		instant:      "меньше секунды",
-		durationHM:   "{h} ч {m} м",
-		durationMS:   "{m} м {s} с",
-		durationS:    "{s} с",
+		fallbackKind:    "Уведомление",
+		listSep:         ", ",
+		listLast:        " и ",
+		digestTitle:     "Сводка уведомлений",
+		digestHeader:    "Сводка — {count} {noun}:",
+		digestNoun:      [3]string{"уведомление", "уведомления", "уведомлений"},
+		instant:         "меньше секунды",
+		durationHM:      "{h} ч {m} м",
+		durationMS:      "{m} м {s} с",
+		durationS:       "{s} с",
+		deviceLabel:     "Устройство",
+		unknownReason:   "неизвестная ошибка",
+		sampleActor:     "Алиса",
+		sampleTaskTitle: "Починить чайник",
 	},
 	"en": {
 		ctx: " “{text}”",
@@ -120,7 +156,11 @@ var bundles = map[string]bundle{
 			"reopened":    "reopened",
 		},
 		defaultNames: map[string]string{
-			"personal": "Personal space",
+			"personal":    "Personal space",
+			"todo":        "To do",
+			"in_progress": "In progress",
+			"review":      "In review",
+			"done":        "Done",
 		},
 		kinds: map[string]string{
 			"assigned":          "Task assigned",
@@ -133,15 +173,24 @@ var bundles = map[string]bundle{
 			"reminder":          "Reminder",
 			"integration_sync":  "Sync finished",
 			"conference_invite": "Conference invitation",
+			"test":              "Channel test",
 		},
-		fallbackKind: "Notification",
-		listSep:      ", ",
-		digestTitle:  "Notification digest",
-		digestHeader: "Digest — {count} notifications:",
-		instant:      "less than a second",
-		durationHM:   "{h}h {m}m",
-		durationMS:   "{m}m {s}s",
-		durationS:    "{s}s",
+		fallbackKind:    "Notification",
+		listSep:         ", ",
+		// No Oxford comma: the web client's locale for English is en-GB (see
+		// utils/format.js localeTag), and that is what Intl.ListFormat words there.
+		listLast:        " and ",
+		digestTitle:     "Notification digest",
+		digestHeader:    "Digest — {count} {noun}:",
+		digestNoun:      [3]string{"notification", "notifications", "notifications"},
+		instant:         "less than a second",
+		durationHM:      "{h}h {m}m",
+		durationMS:      "{m}m {s}s",
+		durationS:       "{s}s",
+		deviceLabel:     "Device",
+		unknownReason:   "unknown error",
+		sampleActor:     "Alice",
+		sampleTaskTitle: "Fix the kettle",
 	},
 }
 
@@ -161,10 +210,11 @@ func Title(kind, lang string) string {
 	return b.fallbackKind
 }
 
-// DefaultName captions a name the server seeded and stored in Russian — today
-// the personal workspace (#2800). In a client the caption is drawn from name_key
-// by the client itself; a delivery that leaves the app has no client, so it is
-// drawn here, in the recipient's language.
+// DefaultName captions a name the server seeded and stored in Russian — the
+// personal workspace and the four columns every board is seeded with (#2800). In
+// a client the caption is drawn from name_key by the client itself; a delivery
+// that leaves the app has no client, so it is drawn here, in the recipient's
+// language.
 //
 // key is the row's name_key: empty for a name the user chose, and that name is
 // carried verbatim in every language. A key this build doesn't know falls back to
@@ -179,12 +229,21 @@ func DefaultName(key, stored, lang string) string {
 	return stored
 }
 
+// DeviceLabel names a device channel a client registered without a name of its
+// own. It is stored, and the user may rename it afterwards — so this is the name
+// they first see, written in their language rather than the server's.
+func DeviceLabel(lang string) string { return bundleFor(lang).deviceLabel }
+
 // DigestTitle is the subject of a combined digest delivery.
 func DigestTitle(lang string) string { return bundleFor(lang).digestTitle }
 
-// DigestHeader is the line that opens a digest, above the bulleted items.
+// DigestHeader is the line that opens a digest, above the bulleted items. The
+// noun agrees with count in the reader's language — a digest is by definition a
+// plural delivery, and the count it opens with is the first thing read.
 func DigestHeader(count int, lang string) string {
-	return strings.ReplaceAll(bundleFor(lang).digestHeader, "{count}", strconv.Itoa(count))
+	b := bundleFor(lang)
+	noun := i18n.Plural(lang, count, b.digestNoun[0], b.digestNoun[1], b.digestNoun[2])
+	return strings.NewReplacer("{count}", strconv.Itoa(count), "{noun}", noun).Replace(b.digestHeader)
 }
 
 // Sentence renders a notification's payload into one line in lang. fallback is
@@ -206,6 +265,12 @@ func Sentence(payload map[string]any, lang, fallback string) string {
 		}
 		return tmpl
 	}
+	// A failure that names no cause carries no `reason` key at all, so the stand-in
+	// is worded here rather than travelling in the payload — see bundle.unknownReason.
+	reason := strings.TrimSpace(str(payload["reason"]))
+	if reason == "" {
+		reason = b.unknownReason
+	}
 	inline := str(payload["title"])
 	if inline == "" {
 		inline = str(payload["excerpt"])
@@ -218,10 +283,13 @@ func Sentence(payload map[string]any, lang, fallback string) string {
 		"{actor}", str(payload["actor"]),
 		"{ref}", taskRef(payload["task_number"]),
 		"{ctx}", ctx,
-		"{column}", str(payload["column"]),
+		// A column seeded with the board carries its name_key, so it reads in the
+		// recipient's language like every other server-born name; a column the
+		// user named has no key and is carried verbatim.
+		"{column}", DefaultName(str(payload["column_key"]), str(payload["column"]), lang),
 		"{title}", str(payload["title"]),
 		"{label}", str(payload["label"]),
-		"{reason}", str(payload["reason"]),
+		"{reason}", reason,
 		"{created}", strconv.Itoa(num(payload["created"])),
 		"{updated}", strconv.Itoa(num(payload["updated"])),
 		"{took}", duration(num(payload["seconds"]), b),
@@ -246,7 +314,29 @@ func fieldList(v any, b bundle) string {
 			words = append(words, b.fields[f])
 		}
 	}
-	return strings.Join(words, b.listSep)
+	return joinList(words, b)
+}
+
+// joinList words a list the way the reader's language does — commas between all
+// but the last pair, a conjunction before the last item: «название, срок и
+// приоритет», "title, due date and start date".
+//
+// A worded list, not a punctuated one, because the same notification reaches one
+// reader through three renderers — the web bell feed, the phone's, and this
+// catalogue for everything that leaves the app — and the web one has always joined
+// it with Intl.ListFormat (utils/format.js formatList, conjunction/long). The two
+// that used a bare comma made a single edit read two different ways depending on
+// where it was delivered. English gets no Oxford comma: the web client's locale
+// for it is en-GB (utils/format.js localeTag), which is what Intl words there.
+func joinList(words []string, b bundle) string {
+	switch len(words) {
+	case 0:
+		return ""
+	case 1:
+		return words[0]
+	default:
+		return strings.Join(words[:len(words)-1], b.listSep) + b.listLast + words[len(words)-1]
+	}
 }
 
 // duration words a sync duration from the number of seconds the server measured.

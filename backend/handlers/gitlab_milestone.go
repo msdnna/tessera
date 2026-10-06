@@ -171,12 +171,20 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		v := created.IID
 		iid = &v
 	}
+	// The milestone now exists in GitLab and this row is the only record Tessera
+	// keeps of it: if the insert loses, the user is told "internal error" and their
+	// next press of the button creates a SECOND remote milestone, because the
+	// already-linked check above still finds nothing. Log cerr — the insert's own
+	// error, not the create call's (nil by now) — the way the sibling
+	// create-issue-from-task path does, so the one moment worth diagnosing is not
+	// the one moment with no cause recorded.
 	if cerr := h.q.CreateGitlabMilestoneLink(c, db.CreateGitlabMilestoneLinkParams{
 		MilestoneID: id, IntegrationID: integ.ID, GlGlobalID: created.GlobalID(),
 		GlIid: iid, GlNumericID: created.ID, GlWebUrl: created.WebURL, GlState: state,
 		TitleHash: gitlab.HashStr(m.Title),
 	}); cerr != nil {
-		fail(c, err)
+		log.Printf("gitlab push milestone: link milestone %s to %s failed: %v", id, created.WebURL, cerr)
+		fail(c, cerr)
 		return
 	}
 	h.broadcast(wsID, "milestone.updated", gin.H{"id": id})

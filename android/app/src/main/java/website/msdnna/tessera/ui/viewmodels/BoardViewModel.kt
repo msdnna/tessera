@@ -2,6 +2,7 @@ package website.msdnna.tessera.ui.viewmodels
 
 import android.os.SystemClock
 import androidx.annotation.StringRes
+import androidx.annotation.VisibleForTesting
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
@@ -14,26 +15,33 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.BoardView
 import website.msdnna.tessera.data.model.BoardViewConfig
 import website.msdnna.tessera.data.model.BoardViewFilters
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.Patch
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.SortLevel
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
+import website.msdnna.tessera.data.realtime.boardGone
+import website.msdnna.tessera.data.realtime.projectGone
+import website.msdnna.tessera.data.realtime.touchesBoard
 import website.msdnna.tessera.data.repository.BoardRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.BoardFilter
+import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.DueFilter
 import website.msdnna.tessera.util.FilterClock
 import website.msdnna.tessera.util.errorMessage
 import website.msdnna.tessera.util.filterBoardTasks
 import website.msdnna.tessera.util.isoDateKey
 import website.msdnna.tessera.util.moveItem
+import website.msdnna.tessera.util.tagInPrefix
 
 enum class BoardViewMode { Kanban, List, Calendar, Matrix, Timeline, Gantt }
 
@@ -136,6 +144,16 @@ data class BoardUiState(
     /** Auto-persist the current named view on every change (web autosaveView). */
     val autosaveView: Boolean = false,
     val doneColumnId: String? = null,
+    /**
+     * Календарь пользователя (преф `timezone` + форматы), пришедший из композиции
+     * через [setDateFormat].
+     *
+     * Держится в состоянии, а не читается здесь из DataStore: фильтр «Срок» считает
+     * дни тем же [DateFormatPrefs], которым подписана карточка, — иначе пилюля
+     * читалась бы «Сегодня», а карточка стояла в «Просрочено». Дефолт — зона
+     * устройства, то есть поведение до того, как экран успел пробросить преф.
+     */
+    val dateFormat: DateFormatPrefs = DateFormatPrefs.Default,
     val filter: BoardFilter = BoardFilter(),
     /** Ordered multi-level sort. Empty = manual (position) order. */
     val sortLevels: List<SortLevel> = emptyList(),
@@ -175,6 +193,63 @@ data class BoardUiState(
      *  [colCollapse] override wins, otherwise auto-collapse applies to empty lanes. */
     fun isLaneCollapsed(laneId: String, count: Int): Boolean =
         colCollapse[laneId] ?: (autoCollapseEmpty && count == 0)
+
+    /** Теги, становящиеся дорожками при группировке по тегам: в режиме
+     *  пространства имён — только несущие [tagPrefix] (web `groupTags`).
+     *  Принадлежность спрашивается у [tagInPrefix], т.е. по каноническому ключу —
+     *  тому же, по которому разложено меню префиксов. */
+    val groupTags: List<Tag>
+        get() = tags.values
+            .filter { tagInPrefix(it.name, tagPrefix) }
+            .sortedBy { it.name }
+
+    /** Этапы в порядке дорожек «По этапам». */
+    val sortedMilestones: List<website.msdnna.tessera.data.model.Milestone>
+        get() = milestones.sortedBy { it.position }
+
+    /**
+     * Дорожки активной группировки как (id → карточки), без подписей: тот же
+     * разбор, из которого Канбан собирает свои `Lane`, но доступный и вне
+     * композиции.
+     *
+     * Живёт здесь ради [emptyLaneIds]: «пусто» для свёртки — это то, что ВИДНО,
+     * то есть счёт ПОСЛЕ фильтра и по тем дорожкам, которые нарисованы, а не по
+     * одному [columns]. Дорожки экрана берут карточки отсюда же, чтобы состав
+     * дорожки и набор пустых не могли разойтись.
+     */
+    val laneBuckets: List<Pair<String, List<Task>>>
+        get() = when {
+            groupByMilestone -> {
+                val ids = sortedMilestones.map { it.id }.toSet()
+                sortedMilestones.map { m -> m.id to applyFilterSort(tasks.filter { it.milestoneId == m.id }) } +
+                    (
+                        NONE_LANE_ID to
+                            applyFilterSort(tasks.filter { it.milestoneId == null || it.milestoneId !in ids })
+                        )
+            }
+
+            groupByTag -> {
+                val ids = groupTags.map { it.id }.toSet()
+                groupTags.map { tag -> tag.id to applyFilterSort(tasks.filter { tag.id in it.tagIds }) } +
+                    (NONE_LANE_ID to applyFilterSort(tasks.filter { t -> t.tagIds.none { it in ids } }))
+            }
+
+            else -> sortedColumns.map { it.id to visibleTasksIn(it.id) }
+        }
+
+    /**
+     * Ids дорожек, НАРИСОВАННЫХ пустыми, — набор, чьи явные overrides сбрасывает
+     * включение «сворачивать пустые» ([setAutoCollapseEmpty]).
+     *
+     * Считается по [laneBuckets], а не по `columns` + `tasksIn`: `tasksIn`
+     * намеренно не фильтрован (его читает перетаскивание), поэтому колонка,
+     * которую фильтр опустошил на экране, в «пустые» не попадала — протухший
+     * `false` выживал и тумблер на ней ничего не делал. По той же причине набор
+     * обходит дорожки АКТИВНОЙ группировки: при «колонках = тегах» и «по этапам»
+     * чистить нужно их, а не статусные колонки (#2932).
+     */
+    val emptyLaneIds: Set<String>
+        get() = laneBuckets.filter { it.second.isEmpty() }.map { it.first }.toSet()
 
     /** Card density: compact renders the title only (no pills). */
     val isCompactCard: Boolean get() = cardSize == "compact"
@@ -220,7 +295,7 @@ data class BoardUiState(
                 tasks = tasks,
                 subtasksByParent = subtasks.groupBy { it.parentId.orEmpty() },
                 filter = filter,
-                clock = FilterClock.now(),
+                clock = FilterClock.now(dateFormat),
                 glLoginByUserId = glLoginByUserId,
             )
         }
@@ -232,6 +307,28 @@ data class BoardUiState(
 
     /** Display list for a column: the active filter + sort applied. */
     fun visibleTasksIn(columnId: String): List<Task> = applyFilterSort(tasksIn(columnId))
+
+    /**
+     * Всё, что [applyFilterSort] читает ПОМИМО переданного ей списка, — ключ для
+     * любого `remember`, который кэширует её результат.
+     *
+     * Кэш нужен: дорожки Канбана и строки таймлайна пересобираются на каждом кадре
+     * перетаскивания, а фильтрация с сортировкой — O(n log n) на колонку. Но ключи
+     * легко недобрать, потому что функция читает не только [tasks] и [filter].
+     * Через [filteredBoard] в неё входят [subtasks] (родитель остаётся на доске
+     * из-за подходящего РЕБЁНКА — см. `filterBoardTasks`), [dateFormat] (календарь
+     * `FilterClock` для «Сегодня»/«Просрочено») и [gitlabMembers] (сопоставление
+     * автора GitLab-карточки с человеком), а через сортировку — [columns]
+     * (позиции колонок для уровня «по статусу»).
+     *
+     * Списки сравниваются структурно, поэтому «изменились только подзадачи» — не
+     * теоретический случай: перезагрузка кладёт равный по содержимому [tasks], и
+     * ключ из (tasks, filter, sortLevels) остаётся прежним. Карточка, которую
+     * подняла подзадача, не уходила с доски после снятия тега с подзадачи и не
+     * появлялась после навешивания — до первого чужого события (#2932).
+     */
+    val filterSortKey: List<Any?>
+        get() = listOf(tasks, subtasks, filter, sortLevels, columns, dateFormat, gitlabMembers)
 
     /** Applies the active [filter] then the multi-level [sortLevels]. Used by every view. */
     fun applyFilterSort(list: List<Task>): List<Task> {
@@ -295,6 +392,17 @@ data class BoardUiState(
 
     fun subtaskCount(parentId: String): Int = subtasks.count { it.parentId == parentId }
 
+    /** «Σ» дорожки: суммарные трудозатраты её карточек, прочитанные так же, как их
+     *  печатает сама карточка — своя оценка, а без неё свёртка подзадач (util
+     *  [Estimation.laneEffort]). Дети берутся из [visibleSubtasksOf], то есть ровно
+     *  те, из которых карточка нарисована. */
+    fun laneEffort(rows: List<Task>): Double? =
+        website.msdnna.tessera.util.Estimation.laneEffort(
+            rows,
+            { it.estimate },
+            { t -> visibleSubtasksOf(t.id).map { it.estimate } },
+        )
+
     /** Parent id → children for the lane/composer counters (web `countSubtaskMap`).
      *
      *  Neither map alone is enough. The filtered one only carries the parents that
@@ -314,6 +422,12 @@ data class BoardUiState(
     val visibleTasks: List<Task> get() = applyFilterSort(tasks)
 
     val sortedColumns: List<BoardColumn> get() = columns.sortedBy { it.position }
+
+    companion object {
+        /** Id сборной дорожки «Без тега» / «Без этапа» — она не строка в БД, но
+         *  сворачивается и запоминается наравне с остальными. */
+        const val NONE_LANE_ID = "none"
+    }
 }
 
 /** Loads a board (columns + cards + subtasks + tags + members) and performs all
@@ -359,7 +473,36 @@ class BoardViewModel(
     private var activityWindowStart = 0L
     private var activityWindowCount = 0
 
-    @Volatile var dragging = false
+    @Volatile private var draggingNow = false
+
+    // Событие, выброшенное guard'ом перетаскивания. Пока карточка в воздухе, доска
+    // обязана стоять на месте, поэтому realtime глушится целиком — но drag, который
+    // ничего не сдвинул (карточку подняли и вернули, бросили мимо колонки, отпустили
+    // на месте), не шлёт на сервер ничего и своей перезагрузки не планирует. Без
+    // этого флага чужие изменения за те секунды просто пропадали — до следующего
+    // события или pull-to-refresh. Веб ведёт такой же список (`utils/boardEvents`
+    // missedRefetchKinds + KanbanBoard flushMissed), только там догон частичный, а
+    // здесь доска перечитывается целиком — значит хватает одного «было» (#2932).
+    //
+    // Окну подавления своих эхо (`suppressUntil`) такая бухгалтерия не нужна: его
+    // взводят НАШИ же мутации, и каждая заканчивается reload()/silentReload().
+    @Volatile private var missedWhileDragging = false
+
+    /**
+     * Идёт ли прямо сейчас перетаскивание карточки или колонки (экран ставит флаг
+     * из `BoardViews`). Снятие флага догоняет то, что realtime потерял за время
+     * жеста, — см. [missedWhileDragging].
+     */
+    var dragging: Boolean
+        get() = draggingNow
+        set(value) {
+            if (draggingNow == value) return
+            draggingNow = value
+            if (!value && missedWhileDragging) {
+                missedWhileDragging = false
+                viewModelScope.launch { runCatching { silentReload() } }
+            }
+        }
 
     fun load(boardId: String, workspaceId: String) {
         this.boardId = boardId
@@ -414,6 +557,17 @@ class BoardViewModel(
         }
     }
 
+    /**
+     * The calendar the board counts days in, handed down from composition
+     * (`LocalDateFormat`) — see [BoardUiState.dateFormat]. A no-op when unchanged:
+     * the state object carries a lazily filtered board, and replacing it discards
+     * that work.
+     */
+    fun setDateFormat(fmt: DateFormatPrefs) {
+        if (_state.value.dateFormat == fmt) return
+        _state.update { it.copy(dateFormat = fmt) }
+    }
+
     /** Loads this board's saved server-side views (tolerant of failure). */
     private suspend fun loadViews() {
         val views = runCatching { repo.views(boardId) }.getOrDefault(emptyList())
@@ -443,38 +597,84 @@ class BoardViewModel(
 
     // ── realtime ─────────────────────────────────────────────────────────────
 
+    /**
+     * Адрес доски без [load] — вход для юнит-теста.
+     *
+     * [load] читает конфиг вида из DataStore, то есть уходит на настоящий
+     * Dispatchers.IO, которого виртуальное время `runTest` не ждёт (подробнее —
+     * `BoardColumnScopeTest`), а событиям сокета нужна именно заполненная пара
+     * id: без неё `silentReload()` выходит на первой же строке.
+     */
+    @VisibleForTesting
+    internal fun bindTargetForTest(boardId: String, workspaceId: String) {
+        this.boardId = boardId
+        this.workspaceId = workspaceId
+    }
+
     private fun ensureRealtime() {
         if (realtime != null) return
         realtime = RealtimeClient(::onRealtimeEvent).also { it.connect() }
     }
 
     /** Workspace-scoped board events reload the board; our own echoes and
-     *  in-progress drags are filtered out. Debounced to coalesce bursts. */
-    private fun onRealtimeEvent(ev: RealtimeEvent) {
+     *  in-progress drags are filtered out. Debounced to coalesce bursts.
+     *
+     *  `internal` (а не private) ради теста: события приходят из сокета, а
+     *  проверяется здесь чистое правило «что делать с событием». */
+    @VisibleForTesting
+    internal fun onRealtimeEvent(ev: RealtimeEvent) {
         if (ev.scope != workspaceId) return
         // This board's project was deleted or transferred away elsewhere → its board
         // is gone; signal the host to leave for Home (web project.deleted handler).
-        if (ev.type == "project.deleted" &&
-            projectId.isNotBlank() &&
-            ev.data?.get("id")?.asString == projectId
-        ) {
+        // Same one level down: the board itself retired, and nothing is left to
+        // reload — the server took its columns, cards and uploads with it, so leave
+        // before the reload below starts 404-ing (#2932).
+        if (projectGone(ev, projectId) || boardGone(ev, boardId)) {
             _gone.value = true
             return
         }
-        if (!ev.type.startsWith("task") && !ev.type.startsWith("column") &&
-            !ev.type.startsWith("board") && !ev.type.startsWith("milestone")
-        ) {
-            return
-        }
+        // Из чего доска состоит — то её и перезагружает (см. touchesBoard: карточки,
+        // колонки, доска и дорожки обеих группировок — этапы и теги), и только ЭТА
+        // доска: события воркспейс-скоупные, а перезагрузка — восемь запросов.
+        // Перечитывать ничего дополнительно не нужно: silentReload() и так тянет
+        // tags и prefixNames.
+        if (!touchesBoard(ev, boardId, ::holdsTask)) return
         // Board-activity toast for create/move on THIS board (any actor) — shown
         // regardless of the reload suppression below so own actions confirm too.
         if (ev.type == "task.created" || ev.type == "task.moved") pushActivity(ev)
-        if (dragging || SystemClock.elapsedRealtime() < suppressUntil) return
+        // Жест держит доску неподвижной, поэтому событие выбрасывается — но
+        // запоминается: на отпускании его догонит перезагрузка (см. [dragging]).
+        if (dragging) {
+            missedWhileDragging = true
+            return
+        }
+        if (SystemClock.elapsedRealtime() < suppressUntil) return
         reloadJob?.cancel()
         reloadJob = viewModelScope.launch {
             delay(REALTIME_DEBOUNCE_MS)
-            if (!dragging) silentReload()
+            // Guarded: silentReload() goes to the network on somebody else's action,
+            // and its list calls are bare (no runCatching of their own). An
+            // unguarded throw here — a board or project pulled out from under us, a
+            // blinked connection, a 5xx — escapes viewModelScope and kills the app,
+            // on an event the reader never asked for. Staying silent is the point of
+            // this path: the screen keeps the copy it has, and the next event (or a
+            // pull-to-refresh) brings it up to date.
+            // Жест мог начаться уже после того, как событие приняли: тогда эта
+            // перезагрузка так же теряется, и догонять её тоже на отпускании.
+            if (dragging) missedWhileDragging = true else runCatching { silentReload() }
         }
+    }
+
+    /**
+     * Держит ли экран сейчас эту карточку?
+     *
+     * Ответ на вопрос «эта задача с чужой доски — не наша ли, которая только что
+     * УШЛА?» (см. touchesBoard). Подзадачи наравне с карточками: вместе с
+     * родителем уезжает и всё поддерево, и нарисовано оно тем же списком.
+     */
+    private fun holdsTask(id: String): Boolean {
+        val s = _state.value
+        return s.tasks.any { it.id == id } || s.subtasks.any { it.id == id }
     }
 
     /** Builds an activity toast from a create/move event on the current board. The
@@ -527,6 +727,29 @@ class BoardViewModel(
         _activity.update { list -> list.filterNot { it.key == key } }
     }
 
+    /**
+     * Какая колонка доски завершает задачи после перечитывания.
+     *
+     * [fetched] — строка доски, которую только что прочитал перезагрузчик, или
+     * null, если его best-effort чтение сорвалось. **Сорванное чтение — не
+     * ответ:** записать его null прямо в состояние значит молча снять с доски
+     * завершающую колонку из-за моргнувшей сети или 5xx, и сказать об этом
+     * некому — путь нарочно тихий. Экран после этого рисует завершающую колонку
+     * обычной, её же меню предлагает «сделать завершающей» (BoardViews: `isDone`),
+     * а «Готово» в модалке задачи перестаёт ПЕРЕНОСИТЬ карточку туда и просто
+     * штампует `completed` на месте (TaskModal: `doneTarget` == null →
+     * `setCompleted(true)`). Поэтому держим [current], пока чтение не удастся.
+     * Ровно так же строкой рядом ведёт себя `projectId` (`?: projectId`).
+     *
+     * Id всё равно отбрасывается, когда такой колонки нет в свежем [columns]:
+     * её удалили, а `boards.done_column_id` объявлен ON DELETE SET NULL — значит
+     * завершающей у доски действительно больше нет, удалось перечитать её или нет.
+     */
+    private fun resolveDoneColumn(fetched: Board?, current: String?, columns: List<BoardColumn>): String? {
+        val id = if (fetched != null) fetched.doneColumnId else current
+        return id?.takeIf { wanted -> columns.any { it.id == wanted } }
+    }
+
     /** Refreshes board data without the loading spinner (for live updates). */
     private suspend fun silentReload() {
         if (boardId.isBlank()) return
@@ -543,7 +766,7 @@ class BoardViewModel(
         // would cost two extra list calls on every realtime echo here.
         _state.update {
             it.copy(
-                doneColumnId = board?.doneColumnId,
+                doneColumnId = resolveDoneColumn(board, it.doneColumnId, columns),
                 columns = columns,
                 tasks = tasks,
                 subtasks = subtasks,
@@ -618,11 +841,16 @@ class BoardViewModel(
         reloadColumns()
     }
 
-    /** Toggles which column auto-completes tasks (passing the current done id clears it). */
+    /** Toggles which column auto-completes tasks (passing the current done id clears it).
+     *
+     *  Состояние берётся из ответа самого PATCH'а — он и есть обновлённая строка
+     *  доски. Отдельное перечитывание было лишним походом в сеть, а его
+     *  best-effort null попадал в состояние как «завершающей нет»: сорвись оно
+     *  сразу после успешной записи, экран показал бы ровно обратное тому, что
+     *  человек только что сделал. */
     fun setDoneColumn(columnId: String?) = launchCatching {
-        repo.setDoneColumn(boardId, columnId)
-        val board = runCatching { repo.board(boardId) }.getOrNull()
-        _state.update { it.copy(doneColumnId = board?.doneColumnId) }
+        val board = repo.setDoneColumn(boardId, columnId)
+        _state.update { it.copy(doneColumnId = board.doneColumnId) }
         markLocalChange()
     }
 
@@ -633,7 +861,12 @@ class BoardViewModel(
 
     fun deleteColumn(columnId: String) = launchCatching {
         repo.deleteColumn(columnId)
-        reloadColumns()
+        // boards.done_column_id is an ON DELETE SET NULL reference, so dropping the
+        // completing column leaves the board without one. Nothing else would tell us:
+        // markLocalChange() below swallows our own `column.deleted` echo, and the
+        // stored id would go on naming a column that no longer exists (the web does
+        // the same re-read on its column-purge — utils/boardEvents.js).
+        reloadColumns(withBoard = true)
     }
 
     fun moveColumn(columnId: String, beforeId: String?, afterId: String?) = launchCatching {
@@ -641,8 +874,29 @@ class BoardViewModel(
         reloadColumns()
     }
 
-    private suspend fun reloadColumns() {
-        _state.update { it.copy(columns = repo.columns(boardId), tasks = repo.tasks(boardId), subtasks = repo.subtasks(boardId)) }
+    /** Re-reads the columns and the cards standing in them after a column mutation.
+     *
+     *  The cards come from [scopedTasks]/[scopedSubtasks], never from a bare
+     *  `repo.tasks(boardId)`: a column edit must not quietly widen the board past the
+     *  scope the user is looking at. Under a sprint scope that alone was enough to
+     *  repopulate the board with every card while the «Этап» chip still claimed the
+     *  narrowing. In the archive it was worse — the archive chip stayed up and the
+     *  lanes filled with LIVE cards, while the card menu is chosen by the scope flag
+     *  (TaskCard: `state.archivedMode`), so a live task offered «Удалить навсегда».
+     */
+    private suspend fun reloadColumns(withBoard: Boolean = false) {
+        val board = if (withBoard) runCatching { repo.board(boardId) }.getOrNull() else null
+        val columns = repo.columns(boardId)
+        val tasks = scopedTasks()
+        val subtasks = scopedSubtasks()
+        _state.update {
+            it.copy(
+                doneColumnId = resolveDoneColumn(if (withBoard) board else null, it.doneColumnId, columns),
+                columns = columns,
+                tasks = tasks,
+                subtasks = subtasks,
+            )
+        }
         markLocalChange()
     }
 
@@ -770,7 +1024,9 @@ class BoardViewModel(
     }
 
     /** Toggles the auto-collapse-empty rule. Turning it ON drops explicit overrides
-     *  on the now-empty lanes so the rule visibly takes effect (web watch parity). */
+     *  on the now-empty lanes so the rule visibly takes effect (web watch parity).
+     *  [emptyLaneIds] приходит из [BoardUiState.emptyLaneIds] — дорожки активной
+     *  группировки, пустые ПОСЛЕ фильтра. */
     fun setAutoCollapseEmpty(on: Boolean, emptyLaneIds: Set<String>) {
         _state.update { st ->
             val cleaned = if (on) st.colCollapse.filterKeys { it !in emptyLaneIds } else st.colCollapse
@@ -1005,22 +1261,27 @@ class BoardViewModel(
     }
 
     fun toggleDone(task: Task) = launchCatching {
-        repo.updateTask(task, completed = !task.isCompleted)
+        repo.updateTask(task.id, completed = Patch.Set(!task.isCompleted))
         refreshTasks()
     }
 
     fun setPriority(task: Task, priority: Int) = launchCatching {
-        repo.updateTask(task, priority = priority)
+        repo.updateTask(task.id, priority = Patch.Set(priority))
         refreshTasks()
     }
 
     fun setDue(task: Task, dueIso: String?) = launchCatching {
-        repo.updateTask(task, dueDate = dueIso)
+        repo.updateTask(task.id, dueDate = Patch.Set(dueIso))
         refreshTasks()
     }
 
     fun setDueAndRecurrence(task: Task, dueIso: String?, startIso: String?, recurrence: Recurrence?) = launchCatching {
-        repo.updateTask(task, dueDate = dueIso, startDate = startIso, recurrence = recurrence)
+        repo.updateTask(
+            task.id,
+            dueDate = Patch.Set(dueIso),
+            startDate = Patch.Set(startIso),
+            recurrence = Patch.Set(recurrence),
+        )
         refreshTasks()
     }
 
@@ -1030,7 +1291,7 @@ class BoardViewModel(
     }
 
     fun renameTask(task: Task, title: String) = launchCatching {
-        repo.updateTask(task, title = title)
+        repo.updateTask(task.id, title = Patch.Set(title))
         refreshTasks()
     }
 

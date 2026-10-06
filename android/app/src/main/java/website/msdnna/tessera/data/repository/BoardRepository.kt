@@ -1,5 +1,7 @@
 package website.msdnna.tessera.data.repository
 
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.AddAssigneeRequest
 import website.msdnna.tessera.data.model.AddTagRequest
@@ -10,13 +12,18 @@ import website.msdnna.tessera.data.model.DueNotifyRequest
 import website.msdnna.tessera.data.model.GitlabMember
 import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.MoveTaskRequest
+import website.msdnna.tessera.data.model.Patch
 import website.msdnna.tessera.data.model.PinGitlabAssigneeRequest
 import website.msdnna.tessera.data.model.Recurrence
 import website.msdnna.tessera.data.model.SetEisenhowerRequest
 import website.msdnna.tessera.data.model.SetParentRequest
 import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
-import website.msdnna.tessera.data.model.UpdateTaskRequest
+import website.msdnna.tessera.data.model.orInherit
+import website.msdnna.tessera.data.model.taskPatch
+import website.msdnna.tessera.data.model.toWireJson
+
+private val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
 
 /** Reads a board's columns + cards and performs all card mutations. */
 class BoardRepository {
@@ -86,16 +93,17 @@ class BoardRepository {
     ): List<website.msdnna.tessera.data.model.TagPrefix> =
         api.setTagPrefixes(projectId, website.msdnna.tessera.data.model.SetTagPrefixesRequest(prefixes)).orEmpty()
 
-    /** Two-level estimation config; pass null to clear (inherit). */
+    /** Two-level estimation config; pass null to clear (inherit) — see [website.msdnna.tessera.data.model.orInherit]. */
     suspend fun setWorkspaceEstimation(
         workspaceId: String,
         config: website.msdnna.tessera.data.model.EstimationConfig?,
-    ): website.msdnna.tessera.data.model.Workspace = api.setWorkspaceEstimation(workspaceId, config)
+    ): website.msdnna.tessera.data.model.Workspace =
+        api.setWorkspaceEstimation(workspaceId, config.orInherit())
 
     suspend fun setProjectEstimation(
         projectId: String,
         config: website.msdnna.tessera.data.model.EstimationConfig?,
-    ): website.msdnna.tessera.data.model.Project = api.setProjectEstimation(projectId, config)
+    ): website.msdnna.tessera.data.model.Project = api.setProjectEstimation(projectId, config.orInherit())
 
     suspend fun createTask(boardId: String, columnId: String, title: String, parentId: String? = null): Task =
         api.createTask(boardId, CreateTaskRequest(columnId = columnId, title = title, parentId = parentId))
@@ -114,22 +122,33 @@ class BoardRepository {
     suspend fun setDueNotify(taskId: String, lead: Int?, repeat: Int?, enabled: Boolean?): Task =
         api.setDueNotify(taskId, DueNotifyRequest(lead, repeat, enabled))
 
-    /** Full update — pass the task plus the fields you're changing. Recurrence and
-     *  start_date default to the task's current values so unrelated edits don't
-     *  wipe them (the backend update is full-replace, like web). */
+    /**
+     * Частичное изменение задачи: в тело попадают только поля, переданные как
+     * [Patch.Set], остальные сервер оставит как есть.
+     *
+     * Полей задачи тут намеренно нет — ни как источника значений по умолчанию, ни
+     * в аргументах. Объект задачи на руках у вызывающего часто списочный, а в
+     * списочном payload нет описания (backend/handlers/task_list_dto.go), и
+     * «дополнить патч текущими значениями» означало стереть описание при любом
+     * действии с карточки. Подробности и вторая половина истории (`null` как
+     * «очистить») — в [taskPatch].
+     */
+    @Suppress("LongParameterList")
     suspend fun updateTask(
-        task: Task,
-        title: String = task.title,
-        description: String = task.description,
-        priority: Int = task.priority,
-        dueDate: String? = task.dueDate,
-        startDate: String? = task.startDate,
-        estimate: Double? = task.estimate,
-        completed: Boolean = task.isCompleted,
-        recurrence: Recurrence? = task.recurrence,
+        taskId: String,
+        title: Patch<String> = Patch.Keep,
+        description: Patch<String> = Patch.Keep,
+        priority: Patch<Int> = Patch.Keep,
+        dueDate: Patch<String> = Patch.Keep,
+        startDate: Patch<String> = Patch.Keep,
+        estimate: Patch<Double> = Patch.Keep,
+        completed: Patch<Boolean> = Patch.Keep,
+        recurrence: Patch<Recurrence> = Patch.Keep,
     ): Task = api.updateTask(
-        task.id,
-        UpdateTaskRequest(title, description, priority, dueDate, startDate, estimate, completed, recurrence),
+        taskId,
+        taskPatch(title, description, priority, dueDate, startDate, estimate, completed, recurrence)
+            .toWireJson()
+            .toRequestBody(JSON_MEDIA),
     )
 
     suspend fun archiveTask(taskId: String) = api.archiveTask(taskId)
@@ -154,7 +173,12 @@ class BoardRepository {
      *  («disabled», «already linked», a GitLab error) is the user's answer, so it
      *  travels up to the modal's error toast. */
     suspend fun createGitlabIssue(taskId: String): website.msdnna.tessera.data.model.GitlabIssueCreated =
-        api.createGitlabIssue(taskId, website.msdnna.tessera.data.model.CreateGitlabIssueRequest())
+        // Зона автора: срок уезжает в issue днём, а не мгновением (#2932).
+        api.createGitlabIssue(
+            taskId,
+            website.msdnna.tessera.data.model.CreateGitlabIssueRequest(),
+            AppContainer.callerZone(),
+        )
 
     /** Repo issue templates for the create-issue picker (best-effort — no templates
      *  simply means no picker). */

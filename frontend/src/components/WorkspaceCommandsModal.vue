@@ -5,7 +5,7 @@ import { NModal, NCard, NInput, NButton, NIcon, NTooltip, useMessage } from 'nai
 import { AddOutline, TrashOutline, ArrowUpOutline, ArrowDownOutline } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { canonCommandKey, isValidCommandKey } from '@/utils/commands'
+import { builtinCommandKeys, canonCommandKey, isValidCommandKey } from '@/utils/commands'
 
 // Editor for a workspace's custom command dictionary — the `/`-popup entries
 // that are only text (they never execute; the built-in list below is what the
@@ -37,7 +37,9 @@ watch(
 )
 
 const builtin = computed(() => store.commands.filter((c) => c.builtin))
-const builtinKeys = computed(() => new Set(builtin.value.map((c) => c.key)))
+// Aliases count too — the backend's IsBuiltin resolves them, so "/done" is as
+// taken as "/close".
+const builtinKeys = computed(() => builtinCommandKeys(builtin.value))
 
 // Per-row validation, shown inline — the backend rejects the whole PUT on the
 // first bad key, so catching it here keeps the user from losing the other rows.

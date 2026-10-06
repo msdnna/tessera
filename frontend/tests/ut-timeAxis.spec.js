@@ -166,6 +166,17 @@ describe('buildWeekBands', () => {
     const bands = buildWeekBands(days)
     expect(bands[0].label).toBe('8')
   })
+
+  it('breaks on Sunday when the week starts on Sunday', () => {
+    const rangeStart = startOfDay(new Date(2026, 5, 3).getTime()) // Jun 3 2026 = Wed
+    const sun = createFormatters({ weekStart: 0 })
+    const days = buildDays(rangeStart, 8, 0, sun) // Wed..next Wed
+    const bands = buildWeekBands(days, sun)
+    // Wed-Sat, then Sun 7th onwards — not Wed-Sun + Mon 8th.
+    expect(bands).toHaveLength(2)
+    expect(bands[0].label).toBe('3–6')
+    expect(bands[1].startDay).toBe(7)
+  })
 })
 
 describe('hourStepFor', () => {

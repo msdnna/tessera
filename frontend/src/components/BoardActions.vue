@@ -6,6 +6,7 @@ import { NButton, NPopover, NIcon } from 'naive-ui'
 import { PricetagsOutline, ArchiveOutline, RibbonOutline } from '@vicons/ionicons5'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { archiveQuery, withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import TagManager from './TagManager.vue'
 import MilestoneManager from './MilestoneManager.vue'
 
@@ -16,14 +17,16 @@ const route = useRoute()
 const router = useRouter()
 const msShow = ref(false)
 // Highlight «Архив» while the board is in the read-only archive scope.
-const isArchive = computed(() => route.query.archived === '1')
+const isArchive = computed(() => isArchiveQuery(route.query))
 
 // Archive is a read-only scope of the board itself (?archived=1) — reuses all
-// filters/grouping. Drop any sprint scope when entering it.
-function openArchive() {
-  const q = { ...route.query, archived: '1' }
-  delete q.milestone
-  router.push({ query: q })
+// filters/grouping — so the button is a toggle: the pressed look above is the
+// scope being on, and pressing it again has to turn it off (utils/boardScope).
+// Leaving replaces rather than pushes, same as the board's own scope chip: the
+// archive should not become a step in the back history of the board it overlays.
+function toggleArchive() {
+  if (isArchive.value) router.replace({ query: withoutArchiveQuery(route.query) })
+  else router.push({ query: archiveQuery(route.query) })
 }
 const projectName = computed(
   () => wsStore.projects.find((p) => p.id === store.projectId)?.name || '',
@@ -62,8 +65,9 @@ function onChanged() {
       :quaternary="!isArchive"
       :secondary="isArchive"
       :type="isArchive ? 'primary' : undefined"
-      :title="t('board.actions.archive')"
-      @click="isArchive ? null : openArchive()"
+      :title="isArchive ? t('board.scope.archiveExit') : t('board.actions.archive')"
+      data-testid="board-archive"
+      @click="toggleArchive"
     >
       <template #icon><n-icon :component="ArchiveOutline" /></template>
       <span class="ba-lbl">{{ t('board.actions.archive') }}</span>

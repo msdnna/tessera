@@ -1,14 +1,17 @@
 <script setup>
 import { ref, computed, toRef, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { NPopconfirm } from 'naive-ui'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { topoByDeps } from '@/utils/dependencyOrder'
 import { sCurvePath } from '@/utils/curvePath'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { startOfDay, parseDate as parse } from '@/utils/timeAxis'
+import { isTaskOverdue } from '@/utils/taskFilter'
+import { useFormat } from '@/composables/useFormat'
 import { useChartTimeline } from '@/composables/useChartTimeline'
+import { parseDate as parse } from '@/utils/timeAxis'
 import { useChartLanes } from '@/composables/useChartLanes'
 import { useChartRows, SUB_STEP, SUB_TOP0 } from '@/composables/useChartRows'
 import { useChartBars } from '@/composables/useChartBars'
@@ -24,6 +27,9 @@ import ChartTaskMenu from './chart/ChartTaskMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
 
 const { t } = useI18n()
+// Only for the overdue counter: the tally has to agree with the red pills on the
+// cards, so it buckets due dates in the user's calendar, not the browser's.
+const { formatters } = useFormat()
 
 const wsStore = useWorkspacesStore()
 
@@ -38,11 +44,17 @@ const props = defineProps({
   tasks: { type: Array, default: () => [] },
   statusColumns: { type: Array, default: () => [] },
   membersMap: { type: Object, default: () => ({}) },
+  // Workspace GitLab roster [{ gl_username, gl_name, … }] — names the assignee lane
+  // of a person who has no Tessera account (their cards carry only a login).
+  gitlabMembers: { type: Array, default: () => [] },
   tagsMap: { type: Object, default: () => ({}) },
   // Swimlane grouping from the shared composer-bar: 'status' | 'tag' (+ prefix) |
   // 'assignee' | 'none'.
   groupMode: { type: String, default: 'assignee' },
   tagPrefix: { type: String, default: '' },
+  // canonical tag prefix → friendly label, so a tag lane reads the way the board's
+  // tag column does (utils/tagGroups `tagLaneLabel`).
+  tagPrefixNames: { type: Object, default: () => ({}) },
   projectId: { type: String, default: null },
   // { parentId: [subtask, …] } — scheduled subtasks render as thin sub-bars
   // stacked inside their parent's row (no dependency arrows on subtasks).
@@ -55,8 +67,19 @@ const props = defineProps({
   milestones: { type: Array, default: () => [] },
   // boards.done_column_id — picks the «done» status glyph on the rows.
   doneColumnId: { type: String, default: null },
+  // Bumped by the board on every `task.relation` socket event that touches this
+  // board. The edge list is a fetch of its own, and a link added or dropped
+  // elsewhere (the task modal, a second browser, a quick action) changes neither
+  // the task set nor any task field — so without this the arrows only caught up
+  // on a full reload (#2932).
+  depsToken: { type: Number, default: 0 },
+  // Archive view (?archived=1): look, don't touch — no context menu, no
+  // drag-to-reschedule, and no drawing or cutting dependency edges. Every one of
+  // those writes to the live task the archived row stands for; the arrows
+  // themselves still render, because reading the graph is the point of the view.
+  readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'changed'])
+const emit = defineEmits(['open', 'changed', 'restore'])
 
 // Estimation unit/config of the project — drives every estimate the chart renders
 // (lane totals, the ghost bar, the bar tooltip).
@@ -65,7 +88,11 @@ const estCfg = computed(() => wsStore.estimationFor(props.projectId))
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
+  // The archive's own action: this layout has no card, so the menu is the only
+  // place «Вернуть из архива» can live (see useTaskMenu).
+  onRestore: (id) => emit('restore', id),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
 // px of the fixed task column (expanded; v2, #2959) — a phone keeps a slim one
@@ -118,7 +145,6 @@ const {
   bodyEl,
   dayW,
   zooming,
-  todayMs,
   tier,
   range,
   axisW,
@@ -153,18 +179,19 @@ const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   source: orderedScheduled,
   statusColumns: toRef(props, 'statusColumns'),
   membersMap: toRef(props, 'membersMap'),
+  glMembers: toRef(props, 'gitlabMembers'),
   tagsMap: toRef(props, 'tagsMap'),
   groupMode: toRef(props, 'groupMode'),
   tagPrefix: toRef(props, 'tagPrefix'),
+  prefixNames: toRef(props, 'tagPrefixNames'),
   estCfg,
   milestones: toRef(props, 'milestones'),
+  // See the Timeline: a decomposed card's effort lives in its children.
+  subtasksByParent: toRef(props, 'subtasksByParent'),
 })
 
 const overdueCount = computed(
-  () =>
-    scheduled.value.filter(
-      (t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs,
-    ).length,
+  () => scheduled.value.filter((x) => isTaskOverdue(x, new Date(), formatters.value)).length,
 )
 const counters = computed(() => {
   const out = []
@@ -232,10 +259,21 @@ const anchorY = computed(() => {
 })
 // ── dependencies (blocking edges) ──
 const deps = ref([]) // normalised [{ id, blocker, blocked }]
+// Номер поколения запроса рёбер. Несколько запросов в полёте — здесь норма, а не
+// редкость: список переспрашивается на КАЖДОЕ изменение состава задач (а состав
+// двигает любой фильтр доски — набор в поиске, чип исполнителя, «только мои») и
+// на каждое событие о связи. Без сверки снимок покинутого фильтра перерисовывал
+// стрелки поверх свежих, а ответ, снятый ДО удаления связи, возвращал удалённую
+// стрелку — и она залипала до следующего события (#2932).
+let depsSeq = 0
 async function loadDeps() {
+  // Номер берём до early return: запрос, уже летящий к прежней доске, надо
+  // обесценить даже вызовом, который сам ничего не спросит.
+  const mine = ++depsSeq
   if (!props.boardId) return
   try {
     const rows = (await boardsApi.dependencies(props.boardId)).data || []
+    if (mine !== depsSeq) return
     // Normalise raw relation rows to blocker→blocked. Dedupe so a pair linked from
     // both sides ('blocks' + 'blocked_by') draws a single arrow.
     const seen = new Set()
@@ -250,13 +288,24 @@ async function loadDeps() {
     }
     deps.value = out
   } catch {
+    // Гасить стрелки имеет право только тот запрос, ответа которого ждут. Иначе
+    // флап сети на устаревшем запросе убирал с экрана рёбра, только что
+    // приехавшие по свежему.
+    if (mine !== depsSeq) return
     deps.value = []
   }
 }
 onMounted(loadDeps)
-// Refetch when the task set changes (a link added elsewhere, a task removed).
+// Refetch when the task set changes — a task arriving or leaving can add or
+// orphan an edge (ListBoardDependencies returns only pairs with both ends here).
 watch(
   () => props.tasks.map((t) => t.id).join(','),
+  () => loadDeps(),
+)
+// …and when a relation itself changed somewhere else. That leaves the task set
+// untouched, so the watcher above never sees it — see the depsToken prop.
+watch(
+  () => props.depsToken,
   () => loadDeps(),
 )
 
@@ -271,6 +320,7 @@ const barsApi = useChartBars({
   rowHeight,
   findTask,
   onChanged: () => emit('changed'),
+  readonly: () => props.readonly,
 })
 const { drag, geom, onBarDown } = barsApi
 
@@ -331,6 +381,7 @@ function bodyCoords(e) {
 }
 function onLinkDown(e, t) {
   if (e.button != null && e.button !== 0) return
+  if (props.readonly) return
   e.preventDefault()
   e.stopPropagation()
   const g = geom(t)
@@ -387,9 +438,31 @@ const linkPath = computed(() => {
 })
 
 // ── delete an edge ──
-async function removeEdge(id) {
+// Behind a confirmation, like every other door onto the same relation: the ✕ in
+// the task modal's «Связи» tab is a popconfirm on web and on Android, and the
+// unlink is not undoable anywhere. Here the target is worse than a list row — an
+// 8px circle that appears on hover at the *midpoint* of an S-curve, in the one
+// place where several arrows cross and each one's ✕ lands on a neighbour's path.
+//
+// The confirm is anchored to the pointer, not to an element: `.g-del` is an SVG
+// <g>, which Naive's trigger slot cannot host. That's the same manual `:show` +
+// `:x`/`:y` popconfirm with an empty trigger that ChartTaskMenu already uses for
+// the chart's delete/archive.
+const edgeConfirm = ref(null) // { id, x, y } — the edge awaiting confirmation
+function askRemoveEdge(e, a) {
+  if (props.readonly) return
+  edgeConfirm.value = { id: a.id, x: e.clientX, y: e.clientY }
+}
+function onEdgeConfirmShow(v) {
+  if (!v) edgeConfirm.value = null
+}
+async function removeEdge() {
+  const c = edgeConfirm.value
+  edgeConfirm.value = null
+  if (props.readonly) return
+  if (!c) return
   try {
-    await tasksApi.removeRelation(id)
+    await tasksApi.removeRelation(c.id)
     await loadDeps()
     emit('changed')
   } catch {
@@ -499,7 +572,7 @@ onBeforeUnmount(() => {
               :animate="animate"
               :selected="selectedId === r.task.id"
               :sel-label="selectedId === r.task.id ? selectedLabel : null"
-              linkable
+              :linkable="!readonly"
               :link-from-id="link ? link.fromId : null"
               @open="$emit('open', $event)"
               @select="select"
@@ -533,7 +606,12 @@ onBeforeUnmount(() => {
             <g v-for="a in arrows" :key="a.id" class="g-arrow">
               <path class="g-hit" :d="a.d" />
               <path class="g-line" :d="a.d" marker-end="url(#g-arrowhead)" />
-              <g class="g-del" :transform="`translate(${a.mx},${a.my})`" @click="removeEdge(a.id)">
+              <g
+                v-if="!readonly"
+                class="g-del"
+                :transform="`translate(${a.mx},${a.my})`"
+                @click="askRemoveEdge($event, a)"
+              >
                 <circle r="8" />
                 <path d="M-3 -3 L3 3 M3 -3 L-3 3" />
               </g>
@@ -545,6 +623,21 @@ onBeforeUnmount(() => {
               marker-end="url(#g-arrowhead)"
             />
           </svg>
+
+          <!-- unlink confirmation for the arrow ✕ (anchored to the click, see above) -->
+          <n-popconfirm
+            :show="!!edgeConfirm"
+            :x="edgeConfirm ? edgeConfirm.x : 0"
+            :y="edgeConfirm ? edgeConfirm.y : 0"
+            :positive-button-props="{ type: 'error' }"
+            :positive-text="t('common.action.delete')"
+            @update:show="onEdgeConfirmShow"
+            @positive-click="removeEdge"
+            @clickoutside="edgeConfirm = null"
+          >
+            <template #trigger><span /></template>
+            {{ t('task.relations.deleteConfirm') }}
+          </n-popconfirm>
         </div>
 
         <div v-if="!lanes.length" class="tl-empty">{{ t('board.chart.empty') }}</div>

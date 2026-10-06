@@ -51,6 +51,7 @@ import website.msdnna.tessera.data.model.AdminUser
 import website.msdnna.tessera.data.model.OAuthConfigRequest
 import website.msdnna.tessera.data.model.SetActiveRequest
 import website.msdnna.tessera.data.model.SetAdminRequest
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
 import website.msdnna.tessera.ui.components.TButtonKind
@@ -64,6 +65,8 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.avatarInitials
+import website.msdnna.tessera.util.errorMessage
 
 /**
  * Global admin panel (U3): list every account on the instance and manage it —
@@ -84,7 +87,11 @@ fun AdminScreen() {
     val me by AppContainer.prefs.user.collectAsStateWithLifecycle(initialValue = null)
 
     var loading by remember { mutableStateOf(true) }
-    var error by remember { mutableStateOf<String?>(null) }
+    // Отказ живёт [UiText], а не готовой строкой: причину называет сервер, и
+    // прогнать её через errorMessage — единственный способ показать её вместо
+    // строки retrofit («HTTP 403 Forbidden»). Ровно так же устроен веб: его
+    // перехватчик кладёт в `err.message` уже причёсанную причину.
+    var error by remember { mutableStateOf<UiText?>(null) }
     var query by remember { mutableStateOf("") }
     var busyId by remember { mutableStateOf("") }
     val users = remember { mutableStateListOf<AdminUser>() }
@@ -100,7 +107,7 @@ fun AdminScreen() {
                 users.clear()
                 users.addAll(it)
             }
-            .onFailure { error = it.message ?: res.getString(R.string.admin_load_failed) }
+            .onFailure { error = errorMessage(it) }
         loading = false
     }
 
@@ -116,7 +123,7 @@ fun AdminScreen() {
         scope.launch {
             runCatching { api.adminSetActive(u.id, SetActiveRequest(active)) }
                 .onSuccess { replace(u.copy(active = active)) }
-                .onFailure { error = it.message }
+                .onFailure { error = errorMessage(it) }
             busyId = ""
         }
     }
@@ -126,7 +133,7 @@ fun AdminScreen() {
         scope.launch {
             runCatching { api.adminSetAdmin(u.id, SetAdminRequest(admin)) }
                 .onSuccess { replace(u.copy(isAdmin = admin)) }
-                .onFailure { error = it.message }
+                .onFailure { error = errorMessage(it) }
             busyId = ""
         }
     }
@@ -144,7 +151,7 @@ fun AdminScreen() {
                         .makeText(ctx, res.getString(R.string.admin_reset_link_copied), android.widget.Toast.LENGTH_SHORT)
                         .show()
                 }
-                .onFailure { error = it.message }
+                .onFailure { error = errorMessage(it) }
             busyId = ""
         }
     }
@@ -237,13 +244,18 @@ private fun OAuthConfigCard() {
     var loaded by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    // Тот же [UiText], что и в списке аккаунтов выше: собственная проверка формы
+    // говорит ресурсом, сервер — своей причиной. Здесь она доходит обычным путём:
+    // проверка ниже сверяет только «это JSON-объект», а форму записи
+    // (`{workspace_id, admins, users}`) знает лишь сервер.
+    var error by remember { mutableStateOf<UiText?>(null) }
 
     var glBaseUrl by remember { mutableStateOf("") }
     var clientId by remember { mutableStateOf("") }
     var clientSecret by remember { mutableStateOf("") }
     var serviceToken by remember { mutableStateOf("") }
     var enabled by remember { mutableStateOf(false) }
+    var sudoWriteback by remember { mutableStateOf(false) }
     var orgMapText by remember { mutableStateOf("{}") }
     var hasSecret by remember { mutableStateOf(false) }
     var hasServiceToken by remember { mutableStateOf(false) }
@@ -256,6 +268,7 @@ private fun OAuthConfigCard() {
                 glBaseUrl = cfg.glBaseUrl
                 clientId = cfg.clientId
                 enabled = cfg.enabled
+                sudoWriteback = cfg.sudoWriteback
                 hasSecret = cfg.hasSecret
                 hasServiceToken = cfg.hasServiceToken
                 orgMapText = pretty.toJson(cfg.orgMap ?: JsonParser.parseString("{}"))
@@ -263,7 +276,7 @@ private fun OAuthConfigCard() {
                 serviceToken = ""
                 loaded = true
             }
-            .onFailure { error = it.message ?: res.getString(R.string.admin_oauth_load_failed) }
+            .onFailure { error = errorMessage(it) }
         loading = false
     }
 
@@ -272,7 +285,7 @@ private fun OAuthConfigCard() {
     fun save() {
         val orgMapEl = runCatching { JsonParser.parseString(orgMapText.ifBlank { "{}" }) }.getOrNull()
         if (orgMapEl == null || !orgMapEl.isJsonObject) {
-            error = res.getString(R.string.admin_oauth_orgmap_invalid)
+            error = UiText.Res(R.string.admin_oauth_orgmap_invalid)
             return
         }
         saving = true
@@ -287,12 +300,14 @@ private fun OAuthConfigCard() {
                         enabled = enabled,
                         orgMap = orgMapEl,
                         serviceToken = serviceToken,
+                        sudoWriteback = sudoWriteback,
                     ),
                 )
             }
                 .onSuccess { cfg ->
                     hasSecret = cfg.hasSecret
                     hasServiceToken = cfg.hasServiceToken
+                    sudoWriteback = cfg.sudoWriteback
                     clientSecret = ""
                     serviceToken = ""
                     orgMapText = pretty.toJson(cfg.orgMap ?: JsonParser.parseString("{}"))
@@ -300,7 +315,7 @@ private fun OAuthConfigCard() {
                         .makeText(ctx, res.getString(R.string.admin_oauth_saved), android.widget.Toast.LENGTH_SHORT)
                         .show()
                 }
-                .onFailure { error = it.message ?: res.getString(R.string.admin_oauth_save_failed) }
+                .onFailure { error = errorMessage(it) }
             saving = false
         }
     }
@@ -350,6 +365,14 @@ private fun OAuthConfigCard() {
                             placeholder = if (hasServiceToken) stored else "glpat-…",
                             isPassword = true,
                         )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text(stringResource(R.string.admin_oauth_sudo), color = c.text2, fontSize = 14.sp)
+                                Text(stringResource(R.string.admin_oauth_sudo_sub), color = c.text3, fontSize = 12.sp)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            TSwitch(checked = sudoWriteback, onCheckedChange = { sudoWriteback = it })
+                        }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(stringResource(R.string.admin_oauth_enabled), color = c.text2, fontSize = 14.sp, modifier = Modifier.weight(1f))
                             TSwitch(checked = enabled, onCheckedChange = { enabled = it })
@@ -438,7 +461,7 @@ private fun AdminAvatar(u: AdminUser) {
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(38.dp).clip(CircleShape))
         } else {
-            Text(initialsOf(u.name), color = c.onPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Text(avatarInitials(u.name), color = c.onPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
@@ -453,11 +476,4 @@ private fun Badge(text: String, color: Color) {
     ) {
         Text(text, color = color, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
-}
-
-private fun initialsOf(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    val parts = s.split(Regex("\\s+")).filter { it.isNotBlank() }
-    return if (parts.size >= 2) "${parts[0].first()}${parts[1].first()}".uppercase() else s.take(2).uppercase()
 }
