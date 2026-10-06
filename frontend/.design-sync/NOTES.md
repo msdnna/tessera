@@ -138,3 +138,6 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   The driver's verdict then reads `validate: false`; re-run `package-validate.mjs`
   standalone on the same build until it exits 0 (1–3 tries), then capture/upload.
   Keep the bundle small (mermaid stub, minify) for this reason too.
+- The same link slows the upload: `write_files` of the 3.2 MB `_ds_bundle.js` can
+  hit the tool's 60 s client timeout (2026-10-06). Upload it alone in its own call
+  and simply retry — writes are idempotent; the retry went through.
