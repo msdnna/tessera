@@ -267,3 +267,50 @@
   - `TokensF.dc.html` — таблица токенов.
 - `DirectionA/B/C`, `TokensA/B/C` — отклонённые направления, только для справки.
 - `handoff/tokens-v2.css` — токены, готовые к переносу.
+
+## Пакет A · Модель взаимодействия
+Сводный файл — `PackageA.dc.html` (кадры + спецификации под каждым). Новых токенов нет.
+- `CatalogA.dc.html` — листы состояний примитивов: InlineEdit (строка дерева, шапка колонки), PopoverForm, двухшаговый пункт меню, UndoToast, kbd-футер, BottomSheet 390px.
+- `PopForm.dc.html` — поповер-форма (`kind`: board / project / slug / move / space / spaceStyle / deleteSpace; `state`: normal / hover / empty / kfocus / kfocusBtn / error / loading). Адрес собирается из названия транслитом.
+- `MenuA.dc.html` — меню проекта и колонки, двухшаговое удаление (`state`: normal / hover / kfocus / armed / disabled / loading / error).
+- `UndoToast.dc.html` — тост с отменой, 7 с, пауза при наведении (`live` — живой таймер).
+- `PaletteForm.dc.html` — палитра в шаговом режиме «>Создать проект» и поиск команды.
+- `SidebarA.dc.html`, `ShellA.dc.html` — оболочка приложения со сценами пакетов A и B; `FrameA.dc.html` — обёртка темы и ленивая загрузка кадров; `FragA.dc.html` — фрагмент для проверки акцентов.
+
+## Пакет B · «Входящие»
+Сводный файл — `PackageB.dc.html`. Новых токенов нет.
+- `CapturePop.dc.html` — поповер захвата с разбором строки (`parse()`: дата, время, #тег, @человек, /задача; `state`: empty / parsed / body / kfocus / manual / error / loading; `touch` — нижний лист).
+- `DockPanel.dc.html` — панель справа под топбаром, общий примитив с панелью кастомизации (пакет D); `state`: full / empty / loading / error; `touch` — полноэкранный лист.
+- `InboxItem.dc.html` — элемент ленты (`st`: note / up / fired / done / snoozed; `view`: normal / hover / sel / open / loading / error).
+- `SnoozeMenu.dc.html` — меню «Отложить» (H, цифры 1–5, D).
+- `HomeB.dc.html`, `TaskModalB.dc.html` — «Мои задачи» и модалка задачи с блоками «Входящие» / «Напоминания и заметки».
+- `MobileB.dc.html`, `CatalogB.dc.html` — мобильные листы и лист состояний.
+- `Card.dc.html` — добавлен пилл напоминания после срока (`t.rem`, `t.remFired`).
+
+## Пакет C · Теги и этапы
+Сводный файл — `PackageC.dc.html`. Новых токенов нет.
+- `ProjectWin.dc.html` — окно «Проект» 1080×760 (`tab`: general / tags / stages / est): таблица тегов по префиксам с inline-именем префикса, GitLab-теги с замком, массовые действия; список этапов.
+- `StagePage.dc.html` — страница этапа: цели (просмотр / `edit`), burn-up с прогнозом (SVG), кольца прогресса, сигналы, статусы, объём, исполнители, темп, задачи этапа. Прокрутка в кадре — переменная `--sp-off` на контейнере.
+- `StageStrip.dc.html` — полоса этапа над доской (`open`, `state`: normal / hover / kfocus / empty / loading / error, `compact` — мобильный).
+- `StageMenu.dc.html` — меню селектора этапа; `TagPicker.dc.html` — пикер тегов с «Управлять тегами…».
+- `MobileStage.dc.html`, `CatalogC.dc.html` — мобильная страница этапа и лист состояний. В `Mobile.dc.html` добавлен слот полосы этапа (`strip`).
+- `FrameA.dc.html` теперь подгружает кадры по мере прокрутки через проверку положения (IntersectionObserver в превью не срабатывал).
+
+## Пакет D · Кастомизация и виды
+Сводный файл — `PackageD.dc.html`. Новых токенов нет.
+- `CustomPanel.dc.html` — панель «Вид доски» 340px (вариант DockPanel на --v-pop): аккордеон «Представления / Карточки / Шкала / Группировка и фильтры / Колонки / Доска» (`section`: views / cards; `view`: board / gantt; `touch` — нижний лист).
+- `ViewMenu.dc.html` — меню чипа представления в подбаре.
+- `ListView.dc.html`, `CalendarView.dc.html`, `MatrixView.dc.html` — виды Список, Календарь (месяц), Матрица Эйзенхауэра.
+- `MobileD.dc.html`, `CatalogD.dc.html` — мобильные кадры и лист состояний.
+- `ShellA.dc.html` — переключатель на 5 видов, чип представления, ползунки с точкой «изменено», сцены `d*`.
+
+## Пакет E · Экраны приложения
+Сводный файл — `PackageE.dc.html`. Новых токенов нет.
+- `DocsPage.dc.html` (дерево, документ с блоками и меню «/», оглавление, комментарии на полях, согласование, история), `TemplatesWin.dc.html` — галерея шаблонов.
+- `SettingsPage.dc.html` — профиль → «Уведомления»: каналы, маршруты «событие → канал», тихие часы.
+- `AdminPage.dc.html` — пользователи строками-поверхностями, баннер версии.
+- `MeetPage.dc.html` (список + поповер «Запланировать»), `CallScreen.dc.html`, `MiniCall.dc.html`.
+- `AuthPage.dc.html`, `AuthSheet.dc.html` — вход и остальные экраны аккаунта на одном каркасе с авророй.
+- `CatalogE.dc.html` — 404, нет доступа, переподключение, пустая доска / проект / поиск.
+- `HelpWin.dc.html`, `WhatsNew.dc.html`, `NotifPop.dc.html`.
+- `ShellA` — сцены `e*`: страницы в контенте под топбаром (`isPage`) и оверлеи; в сайдбаре добавлены «Документы» и «Встречи».

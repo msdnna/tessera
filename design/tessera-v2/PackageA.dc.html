@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script><style>html,body{background:#ececf0 !important;color-scheme:light}</style></helmet>
+<div style="display:flex;flex-direction:column;gap:64px;width:1440px;padding:48px 48px 96px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#26262e">
+<div style="display:flex;flex-direction:column;gap:20px;max-width:1100px">
+<div style="font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#7c5cff">Tessera v2 · Пакет A</div>
+<div style="font-size:34px;font-weight:700;letter-spacing:-.015em;line-height:1.15">Меньше модалок, больше клавиатуры</div>
+<div style="font-size:15px;line-height:1.55;color:#4a4a55;text-wrap:pretty">Модальными остаются только крупные окна: задача, GitLab, фоновые задания, участники, команды, конфликты, справка, шпаргалка и окно «Проект». Всё остальное — правка на месте, поповер-форма у якоря или та же форма в палитре ⌘K. Обратимые действия выполняются сразу и предлагают отмену в тосте, необратимые подтверждаются вторым нажатием.</div>
+<div style="display:grid;grid-template-columns:150px 230px minmax(0,1fr);gap:1px;background:#e4e4ea;border-radius:12px;overflow:hidden;font-size:13.5px;line-height:1.45">
+<div style="padding:10px 14px;background:#f1f1f4;font-weight:600">Ярус</div><div style="padding:10px 14px;background:#f1f1f4;font-weight:600">Когда</div><div style="padding:10px 14px;background:#f1f1f4;font-weight:600">Как выглядит</div>
+<div style="padding:10px 14px;background:#fff;font-weight:600">0 · Inline</div><div style="padding:10px 14px;background:#fff">Переименовать, добавить строку</div><div style="padding:10px 14px;background:#fff;color:#4a4a55">Поле на месте строки или заголовка. F2 / R, двойной клик, пункт меню. ↵ сохраняет, Esc отменяет, клик мимо сохраняет.</div>
+<div style="padding:10px 14px;background:#fff;font-weight:600">1 · Поповер-форма</div><div style="padding:10px 14px;background:#fff">Создать или изменить, 1–3 поля</div><div style="padding:10px 14px;background:#fff;color:#4a4a55">320–380px у якоря, --v-pop, радиус 16, тень 3, без затемнения. Заголовок-вопрос, поля, футер с kbd.</div>
+<div style="padding:10px 14px;background:#fff;font-weight:600">1′ · Палитра-форма</div><div style="padding:10px 14px;background:#fff">Тот же сценарий без мыши</div><div style="padding:10px 14px;background:#fff;color:#4a4a55">⌘K → «&gt;Создать проект» → шаговый режим: чип команды в поле, ниже поля с текущими значениями. ⇧Tab — назад.</div>
+<div style="padding:10px 14px;background:#fff;font-weight:600">2 · Крупное окно</div><div style="padding:10px 14px;background:#fff">Большие сущности</div><div style="padding:10px 14px;background:#fff;color:#4a4a55">Как модалка задачи: радиус 18, --v-pop, тень 4, --v-scrim.</div>
+</div>
+<div style="font-size:12.5px;color:#767682">Кадры 1440×900. Основной — тёмная тема, акцент purple; ключевые кадры повторены в светлой. Кадры подгружаются при прокрутке.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">1 · Каталог примитивов</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Шесть новых элементов, каждый в листе состояний: обычное · ховер · фокус с клавиатуры · активное · disabled · пустое · загрузка · ошибка. Состояние, которое у элемента не встречается, не рисуется.</div>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Тёмная</div>
+<dc-import name="FrameA" what="catalog" mode="dark" accent="{{ accent }}" style="width:1440px" hint-size="1440px,3800px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:18px">Светлая</div>
+<dc-import name="FrameA" what="catalog" mode="light" accent="{{ accent }}" style="width:1440px" hint-size="1440px,3800px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:18px">Проверка акцентов · teal и orange</div>
+<div style="display:flex;gap:40px">
+<dc-import name="FrameA" what="frag" mode="dark" accent="teal" style="width:700px;height:600px" hint-size="700px,600px"></dc-import>
+<dc-import name="FrameA" what="frag" mode="dark" accent="orange" style="width:700px;height:600px" hint-size="700px,600px"></dc-import>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">InlineEdit</div><div>Поле занимает место текста: строка дерева 28px внутри строки 32px, шапка колонки 26px внутри 30px. Фон --v-input, радиус 7, фокус-кольцо 2px primary. Текст выделен целиком. Справа kbd ↵ 18px, под полем тултип-подсказка (--v-pop, радиус 10, тень 3).</div><div>Ошибка — кольцо #e0533d и тултип с причиной; ↵ не сохраняет, фокус остаётся. Сохранение — спиннер вместо ↵, строка не блокирует навигацию.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">PopoverForm</div><div>Ширина 320–380, радиус 16, --v-pop, тень 3, без затемнения. Шапка 14/16: вопрос 14.5/650, подзаголовок 12.5 text3. Поля: подпись 12/600 text3, поле 36px, радиус 9, --v-input. Футер 48px, фон color-mix(--v-pop 55%, --v-backdrop): слева Tab, справа «Отмена Esc» и основная кнопка 30px с ↵.</div><div>Ошибка — под полем текст с иконкой и чип свободного варианта (⌥↵ подставить). Загрузка — поля disabled, кнопка «Создаём…».</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">UndoToast · меню · лист</div><div>Тост 50px, радиус 14, --v-pop, тень 4, по центру рабочей области, 24px от низа. Таймер 7 с, полоса 3px accent-gradient; при наведении — пауза и серая полоса. ⌘Z отменяет последний тост; до кнопки — F6.</div><div>Меню: радиус 14, паддинг 6, строки 32px радиус 7, зазор групп 6px. Двухшаговый пункт: 1-е нажатие — красный hueGrad, 46px, текст «Точно удалить?» и цена ошибки; сброс через 4 с или при уходе фокуса.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">2 · Сайдбар: создание проекта</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">«+» появляется у группы при наведении или выборе строки. Поповер открывается справа от кнопки, верх выровнен по строке группы. Адрес собирается из названия, пока его не тронули руками; превью пути — под полем. Название в кадре можно редактировать.</div>
+<dc-import name="FrameA" scene="create" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="create" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">То же без мыши · палитра в шаговом режиме</div>
+<dc-import name="FrameA" scene="palette" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:flex;gap:24px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Шаг 0 · «&gt;созд» в палитре</div><dc-import name="FrameA" scene="paletteCmd" mode="dark" accent="{{ accent }}" crop="palette" style="width:708px;height:470px" hint-size="708px,470px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Ошибка · «Адрес занят»</div><dc-import name="FrameA" scene="create" pstate="error" mode="dark" accent="{{ accent }}" crop="pop" style="width:708px;height:470px" hint-size="708px,470px"></dc-import></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Размеры</div><div>Поповер 348px, левый край на 4px правее «+», верх = верх строки группы − 6px. Пикер: 7 цветов 20px с зазором 10, иконки 30×30 радиус 8, первая — инициалы из названия.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>⇧N на выбранной группе — открыть поповер. Tab / ⇧Tab — поля. В пикере ←→ цвет, ↑↓ иконка. ↵ — создать, ⌘↵ — создать и открыть, Esc — закрыть.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Фокус</div><div>При открытии — в «Название». Фокус заперт внутри поповера. После создания — на новую строку проекта в дереве; после Esc — обратно на «+».</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Палитра-форма</div><div>Те же поля списком, как Tab-режим задачи. В строке ввода — чип команды и чип текущего поля. Значения по умолчанию видны сразу, ↵ создаёт с любого шага.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">3 · Сайдбар: правка на месте</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Переименование доски в строке дерева, новая доска и новая группа — пустой строкой с фокусом в поле. Никаких окон: строка просто становится полем.</div>
+<dc-import name="FrameA" scene="rename" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:flex;gap:20px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Переименование · F2</div><dc-import name="FrameA" scene="rename" mode="dark" accent="{{ accent }}" style="width:345px;height:640px" hint-size="345px,640px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Новая доска · ⇧N на проекте</div><dc-import name="FrameA" scene="newBoard" mode="dark" accent="{{ accent }}" style="width:345px;height:640px" hint-size="345px,640px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Новая группа · ⇧N на «Проекты»</div><dc-import name="FrameA" scene="newGroup" mode="dark" accent="{{ accent }}" style="width:345px;height:640px" hint-size="345px,640px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Переименование · светлая</div><dc-import name="FrameA" scene="rename" mode="light" accent="{{ accent }}" style="width:345px;height:640px" hint-size="345px,640px"></dc-import></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Вход</div><div>F2 или R на выбранной строке, двойной клик по названию, пункт «Переименовать» в меню. Текст выделяется целиком.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Выход</div><div>↵ — сохранить, Esc — отменить, клик мимо — сохранить, Tab — сохранить и перейти к следующей строке. Пустое имя: ↵ ничего не делает, Esc и клик мимо убирают новую строку.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Новая строка</div><div>Появляется в конце детей выбранного узла. ↵ создаёт и открывает доску, ⇧↵ создаёт и добавляет ещё одну пустую строку. Tab в новой доске переключает вид: Канбан / Список.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Токены</div><div>Поле --v-input, радиус 7, кольцо 2px primary; выделение текста — primary 38%. Подсказка — тултип --v-pop / радиус 10 / тень 3 под полем, с отступом 6px.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">4 · Меню проекта</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Правый клик или «⋯» по строке. У каждого пункта своя клавиша, они же работают на выбранной строке без меню. «Удалить» показан на втором шаге: пункт стал красным и просит ↵ ещё раз.</div>
+<dc-import name="FrameA" scene="menu" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="menu" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:flex;gap:24px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">«Сменить адрес…» · U</div><dc-import name="FrameA" scene="slug" mode="dark" accent="{{ accent }}" crop="pop" style="width:708px;height:440px" hint-size="708px,440px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">«Перенести в пространство…» · M</div><dc-import name="FrameA" scene="move" mode="dark" accent="{{ accent }}" crop="pop" style="width:708px;height:440px" hint-size="708px,440px"></dc-import></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Размеры</div><div>Меню 300px, справа от строки, верх по строке. Шапка-подпись 11.5/600 капсом. Строки 32px, kbd справа. Выбранная строка в дереве — --v-hover + тень 1, «⋯» на --v-active.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>. или ⇧F10 — меню строки. ↵ открыть, ⇧N доска, F2 имя, I иконка, U адрес, M перенос, ⌘⇧C ссылка, ⌘, настройки (окно «Проект»), E архив, ⌘⌫ удалить.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Двухшаговое удаление</div><div>1-е ⌘⌫ или клик — пункт краснеет, фокус остаётся на нём. 2-е ↵ или клик — удаление. Сброс: 4 с бездействия, ↑↓, уход мыши. Архив обратим — сразу и тост.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Поповеры из меню</div><div>Открываются на месте меню, у той же строки; меню закрывается. Esc возвращает к меню, повторный Esc — к строке. Перенос показывает, кто потеряет доступ.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">5 · Пространство</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">«+» на рейле открывает поповер «Новое пространство»: имя, цвет, значок. «Оформление» — тот же поповер у плитки рейла, с текущими значениями и кнопкой «Сохранить». Удаление пространства — шаг с вводом имени, он есть в каталоге.</div>
+<dc-import name="FrameA" scene="spaceNew" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:flex;gap:24px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">«Оформление» у плитки рейла</div><dc-import name="FrameA" scene="spaceStyle" mode="dark" accent="{{ accent }}" style="width:708px;height:440px" hint-size="708px,440px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Новое пространство · светлая</div><dc-import name="FrameA" scene="spaceNew" mode="light" accent="{{ accent }}" crop="railLow" style="width:708px;height:440px" hint-size="708px,440px"></dc-import></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Размеры</div><div>Поповер 340px, на 8px правее рейла, верх по плитке − 8px. Выбранная плитка — кольцо 2px primary. «+» в открытом состоянии — --v-active и градиентная иконка.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>G затем W — фокус на рейл, ↑↓ — пространства, ⇧N — новое, I — оформление выбранного. ↵ сохранить, Esc закрыть. Инициалы в первом значке пересчитываются по названию.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Мобильный</div><div>Поповеры яруса 1 становятся нижним листом с ручкой (см. каталог, BottomSheet 390px). Kbd и футер с клавишами на таче не показываются.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">6 · Колонка</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Меню колонки: имя, цвет прямо в строке меню, переключатель «Колонка „Готово“», свернуть, сдвинуть, удалить. Удаление выполняется сразу; задачи уходят в первую колонку, тост предлагает отмену. Переименование — в шапке.</div>
+<dc-import name="FrameA" scene="colMenu" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:flex;gap:24px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Переименование в шапке · F2 или двойной клик</div><dc-import name="FrameA" scene="colRename" mode="dark" accent="{{ accent }}" crop="colHead" style="width:708px;height:440px" hint-size="708px,440px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Удаление колонки → тост</div><dc-import name="FrameA" scene="colToast" mode="dark" accent="{{ accent }}" crop="colToast" style="width:708px;height:440px" hint-size="708px,440px"></dc-import></div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Меню</div><div>284px, правый край по правому краю колонки, 6px под «⋯». Цвет — 7 точек 14px в строке 36px, выбранная с кольцом. «Колонка „Готово“» — переключатель; включение снимает флаг с прежней.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>На колонке под курсором или с выбранной карточкой: F2 имя, H свернуть, ⌘⇧←/→ сдвинуть, ⌫ удалить, ⌘Z отменить. У колонки-тега меню нет, имя меняется в тегах проекта.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Шапка при правке</div><div>Счётчик и Σ прячутся, поле растягивается до шеврона. ↵ / клик мимо — сохранить, Esc — отменить, Tab — следующая колонка. Пустое имя не сохраняется.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">7 · Удаление доски → тост</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Доска сразу исчезает из дерева, внизу рабочей области — тост с отменой и обратным отсчётом. Тост в кадре живой: наведите, чтобы поставить на паузу.</div>
+<dc-import name="FrameA" scene="toast" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="toast" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Таймер</div><div>7 с (диапазон брифа 5–8). Пауза при наведении и при фокусе внутри тоста. Полоса 3px по нижнему краю, accent-gradient, убывает линейно.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Отмена</div><div>⌘Z — последний живой тост, даже если фокус в другом месте (кроме полей ввода). После отмены — «восстановлена» на 2 с, строка возвращается на место и выбирается.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Стопка</div><div>До 3 тостов, новый снизу, старые сжимаются до 96%. Esc на тосте или × — закрыть без отмены. Фокус тостом не перехватывается; F6 — перейти к нему.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Доступность</div><div>Регион aria-live="polite". Кнопка «Отменить» доступна с клавиатуры, kbd ⌘Z дублирует подпись. При prefers-reduced-motion полоса заменяется текстом «7 с».</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:18px">
+<div style="font-size:22px;font-weight:650">Сводка для разработки</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:36px;font-size:13.5px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:650;color:#26262e">Новые клавиши (контекст «сайдбар» и «рейл»)</div>
+<div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:6px 16px">
+<span style="font-weight:600">G затем S</span><span>Фокус в дерево сайдбара; ↑↓ строки, ←→ свернуть/раскрыть</span>
+<span style="font-weight:600">G затем W</span><span>Фокус на рейл пространств</span>
+<span style="font-weight:600">F2 · R</span><span>Переименовать выбранную строку или колонку</span>
+<span style="font-weight:600">⇧N</span><span>Новое внутри выбранного: проект в группе, доска в проекте, группа в «Проекты», пространство на рейле</span>
+<span style="font-weight:600">. · ⇧F10</span><span>Меню выбранной строки</span>
+<span style="font-weight:600">I · U · M</span><span>Иконка и цвет · адрес · перенос в пространство</span>
+<span style="font-weight:600">E</span><span>Архивировать (обратимо, тост)</span>
+<span style="font-weight:600">⌘⌫</span><span>Удалить: обратимое — сразу и тост, необратимое — два шага</span>
+<span style="font-weight:600">⌘Z</span><span>Отменить последнее действие из тоста</span>
+<span style="font-weight:600">⌥↵</span><span>В форме с ошибкой — подставить свободный вариант</span>
+</div>
+<div style="font-size:12.5px;color:#767682">В шпаргалку «?» добавить группу «Сайдбар и пространства». Подсказки строятся из того же реестра, что и обработчики.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:650;color:#26262e">Токены</div>
+<div>Новые токены не понадобились. Футеры форм используют тот же фон, что футер палитры ⌘K: color-mix(--v-pop 55%, --v-backdrop). Красный опасных действий — hueGrad(#e0533d), мягкий — softFill(#e0533d) поверх --v-pop.</div>
+<div style="font-weight:650;color:#26262e;margin-top:8px">Где макет отступает от handoff</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<span>· Меню — радиус 14, как меню FAB в handoff; поповер-формы — 16. Меню визуально легче формы и стоит ближе к курсору.</span>
+<span>· Тост — радиус 14 (как карточка), в handoff тостов не было. Тень уровня 4: тост лежит поверх FAB и колонок.</span>
+<span>· Выбранная по правому клику строка дерева — --v-hover + тень карточки, а не --v-active: активной остаётся открытая доска, иначе в дереве две «активные» строки.</span>
+<span>· Подсказка kbd под полем inline-правки показывается и после работы мышью — это единственный способ узнать про Tab и ⇧↵. Рамка выбора с клавиатуры после мыши скрывается, как в брифе.</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;purple&quot;,&quot;blue&quot;,&quot;teal&quot;,&quot;green&quot;,&quot;orange&quot;,&quot;red&quot;,&quot;pink&quot;],&quot;default&quot;:&quot;purple&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent || 'purple' };
+  }
+}
+</script>
+</body>
+</html>

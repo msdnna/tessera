@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="width:100%;box-sizing:border-box;padding:6px;border-radius:14px;background:var(--v-pop);box-shadow:var(--v-sh-pop);display:flex;flex-direction:column;gap:2px;font-family:var(--v-font);color:var(--t-text1);--t-surface:var(--v-pop)">
+<sc-for list="{{ items }}" as="it" hint-placeholder-count="6">
+<sc-if value="{{ it.vHead }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;padding:6px 10px 4px;font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--t-text3)"><span style="flex:1">{{ it.label }}</span><sc-if value="{{ it.aside }}" hint-placeholder-val="{{ false }}"><span style="text-transform:none;letter-spacing:0;font-weight:500">{{ it.aside }}</span></sc-if></div></sc-if>
+<sc-if value="{{ it.vGap }}" hint-placeholder-val="{{ false }}"><div style="height:6px"></div></sc-if>
+<sc-if value="{{ it.vNormal }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;cursor:pointer" style-hover="background:var(--v-hover)"><span style="display:flex;color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="{{ it.icon }}" size="16" hint-size="16px,16px"></x-import></span><span style="flex:1;white-space:nowrap">{{ it.label }}</span><span style="display:flex;gap:3px"><sc-for list="{{ it.keys }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k }}</span></sc-for></span></div></sc-if>
+<sc-if value="{{ it.vCheck }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;cursor:pointer" style-hover="background:var(--v-hover)"><span style="display:flex;color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="{{ it.icon }}" size="16" hint-size="16px,16px"></x-import></span><span style="flex:1;white-space:nowrap">{{ it.label }}</span><span style="width:30px;height:18px;border-radius:9px;background:var(--v-pill);box-shadow:inset 0 1px 2px rgba(0,0,0,.2);display:flex;align-items:center;padding:0 2px;box-sizing:border-box"><span style="width:14px;height:14px;border-radius:50%;background:var(--t-text3)"></span></span></div></sc-if>
+<sc-if value="{{ it.vSwatch }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;height:36px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px"><span style="display:flex;color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="ColorPaletteOutline" size="16" hint-size="16px,16px"></x-import></span><span style="flex:1;white-space:nowrap">Цвет</span><span style="display:flex;align-items:center;gap:7px;padding-right:4px"><span style="width:14px;height:14px;border-radius:50%;cursor:pointer;background:linear-gradient(to top right, color-mix(in srgb, #7c5cff 86%, #000), #7c5cff 50%, color-mix(in srgb, #7c5cff 86%, #fff))" style-hover="transform:scale(1.18)"></span><span style="width:14px;height:14px;border-radius:50%;cursor:pointer;background:linear-gradient(to top right, color-mix(in srgb, #2f80ed 86%, #000), #2f80ed 50%, color-mix(in srgb, #2f80ed 86%, #fff))" style-hover="transform:scale(1.18)"></span><span style="width:14px;height:14px;border-radius:50%;cursor:pointer;background:linear-gradient(to top right, color-mix(in srgb, #0eb0a9 86%, #000), #0eb0a9 50%, color-mix(in srgb, #0eb0a9 86%, #fff))" style-hover="transform:scale(1.18)"></span><span style="width:14px;height:14px;border-radius:50%;cursor:pointer;background:linear-gradient(to top right, color-mix(in srgb, #18a058 86%, #000), #18a058 50%, color-mix(in srgb, #18a058 86%, #fff))" style-hover="transform:scale(1.18)"></span><span style="width:14px;height:14px;border-radius:50%;background:linear-gradient(to top right, color-mix(in srgb, #f0a020 86%, #000), #f0a020 50%, color-mix(in srgb, #f0a020 86%, #fff));box-shadow:0 0 0 2px var(--v-pop), 0 0 0 4px #f0a020"></span><span style="width:14px;height:14px;border-radius:50%;cursor:pointer;background:linear-gradient(to top right, color-mix(in srgb, #e0533d 86%, #000), #e0533d 50%, color-mix(in srgb, #e0533d 86%, #fff))" style-hover="transform:scale(1.18)"></span><span style="width:14px;height:14px;border-radius:50%;cursor:pointer;background:linear-gradient(to top right, color-mix(in srgb, #eb2f96 86%, #000), #eb2f96 50%, color-mix(in srgb, #eb2f96 86%, #fff))" style-hover="transform:scale(1.18)"></span></span></div></sc-if>
+<sc-if value="{{ it.vDanger }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;cursor:pointer" style-hover="background:linear-gradient(to top right, color-mix(in srgb, #e0533d 14%, var(--v-pop)), color-mix(in srgb, #e0533d 24%, var(--v-pop)))"><span style="display:flex;color:#e0533d"><x-import component-from-global-scope="Tessera.Icon" name="TrashOutline" size="16" hint-size="16px,16px"></x-import></span><span style="flex:1;white-space:nowrap">{{ it.label }}</span><span style="display:flex;gap:3px"><sc-for list="{{ it.keys }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k }}</span></sc-for></span></div></sc-if>
+<sc-if value="{{ it.vHover }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;background:linear-gradient(to top right, color-mix(in srgb, #e0533d 14%, var(--v-pop)), color-mix(in srgb, #e0533d 24%, var(--v-pop)))"><span style="display:flex;color:#e0533d"><x-import component-from-global-scope="Tessera.Icon" name="TrashOutline" size="16" hint-size="16px,16px"></x-import></span><span style="flex:1;white-space:nowrap">{{ it.label }}</span><span style="display:flex;gap:3px"><sc-for list="{{ it.keys }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k }}</span></sc-for></span></div></sc-if>
+<sc-if value="{{ it.vFocus }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;background:var(--v-hover);outline:2px solid var(--t-primary);outline-offset:-2px"><span style="display:flex;color:#e0533d"><x-import component-from-global-scope="Tessera.Icon" name="TrashOutline" size="16" hint-size="16px,16px"></x-import></span><span style="flex:1;white-space:nowrap">{{ it.label }}</span><span style="display:flex;gap:3px"><sc-for list="{{ it.keys }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k }}</span></sc-for></span></div></sc-if>
+<sc-if value="{{ it.vArmed }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;min-height:46px;padding:6px 6px 6px 10px;box-sizing:border-box;border-radius:7px;background:linear-gradient(to top right, color-mix(in srgb, #e0533d 86%, #000), #e0533d 50%, color-mix(in srgb, #e0533d 86%, #fff));color:#fff;box-shadow:0 4px 14px rgba(224,83,61,.32);cursor:pointer"><span style="display:flex"><x-import component-from-global-scope="Tessera.Icon" name="TrashOutline" size="16" color="#fff" hint-size="16px,16px"></x-import></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px"><span style="font-size:13.5px;font-weight:650;white-space:nowrap">{{ it.armed }}</span><span style="font-size:11.5px;line-height:15px;color:rgba(255,255,255,.86)">{{ it.armedSub }}</span></span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:rgba(255,255,255,.24);color:#fff;font-size:11px;font-weight:600">↵</span></div></sc-if>
+<sc-if value="{{ it.vDis }}" hint-placeholder-val="{{ false }}"><div title="Удалять проект может только владелец" style="display:flex;align-items:center;gap:10px;height:32px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;color:var(--t-placeholder);cursor:not-allowed"><x-import component-from-global-scope="Tessera.Icon" name="TrashOutline" size="16" color="var(--t-placeholder)" hint-size="16px,16px"></x-import><span style="flex:1;white-space:nowrap">{{ it.label }}</span><x-import component-from-global-scope="Tessera.Icon" name="LockClosedOutline" size="14" color="var(--t-placeholder)" hint-size="14px,14px"></x-import></div></sc-if>
+<sc-if value="{{ it.vLoad }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;height:32px;padding:0 10px;border-radius:7px;font-size:13.5px;background:linear-gradient(to top right, color-mix(in srgb, #e0533d 14%, var(--v-pop)), color-mix(in srgb, #e0533d 24%, var(--v-pop)));color:var(--t-text2)"><span style="width:14px;height:14px;border-radius:50%;background:conic-gradient(#e0533d 0 28%, color-mix(in srgb, #e0533d 25%, transparent) 28%);-webkit-mask:radial-gradient(circle, transparent 5px, #000 5.5px);mask:radial-gradient(circle, transparent 5px, #000 5.5px)"></span><span style="flex:1">Удаляем…</span></div></sc-if>
+<sc-if value="{{ it.vErr }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;min-height:46px;padding:6px 6px 6px 10px;box-sizing:border-box;border-radius:7px;background:linear-gradient(to top right, color-mix(in srgb, #e0533d 14%, var(--v-pop)), color-mix(in srgb, #e0533d 24%, var(--v-pop)))"><span style="display:flex;color:#e0533d"><x-import component-from-global-scope="Tessera.Icon" name="AlertCircleOutline" size="16" hint-size="16px,16px"></x-import></span><span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px"><span style="font-size:13.5px;font-weight:600">Не удалось удалить</span><span style="font-size:11.5px;color:var(--t-text2)">Нет связи с сервером</span></span><span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--t-text2)">повторить<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">↵</span></span></div></sc-if>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:280,&quot;height&quot;:460},&quot;kind&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;project&quot;,&quot;column&quot;,&quot;mini&quot;],&quot;default&quot;:&quot;project&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;normal&quot;,&quot;hover&quot;,&quot;kfocus&quot;,&quot;armed&quot;,&quot;disabled&quot;,&quot;loading&quot;,&quot;error&quot;],&quot;default&quot;:&quot;normal&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const COLORS = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96'];
+class Component extends DCLogic {
+  renderVals() {
+    const kind = this.props.kind || 'project';
+    const st = this.props.state || 'normal';
+    const row = (icon, label, keys) => ({ icon, label, keys: keys || [], vNormal: true });
+    const gap = { vGap: true };
+    const del = (label, armed, armedSub, keys) => {
+      const m = { normal: 'vDanger', hover: 'vHover', kfocus: 'vFocus', armed: 'vArmed', disabled: 'vDis', loading: 'vLoad', error: 'vErr' };
+      return { label, armed, armedSub, keys, [m[st] || 'vDanger']: true };
+    };
+    let items;
+    if (kind === 'project') {
+      items = [
+        { vHead: true, label: 'Tessera Web', aside: 'Продукт' },
+        row('OpenOutline', 'Открыть', ['↵']),
+        row('AddOutline', 'Новая доска', ['⇧', 'N']),
+        gap,
+        row('CreateOutline', 'Переименовать', ['F2']),
+        row('ColorPaletteOutline', 'Иконка и цвет…', ['I']),
+        row('LinkOutline', 'Сменить адрес…', ['U']),
+        row('SwapHorizontalOutline', 'Перенести в пространство…', ['M']),
+        gap,
+        row('CopyOutline', 'Копировать ссылку', ['⌘', '⇧', 'C']),
+        row('SettingsOutline', 'Настройки проекта', ['⌘', ',']),
+        gap,
+        row('ArchiveOutline', 'Архивировать', ['E']),
+        del('Удалить проект', 'Точно удалить «Tessera Web»?', '3 доски и 148 задач · без возврата', ['⌘', '⌫']),
+      ];
+    } else if (kind === 'column') {
+      items = [
+        { vHead: true, label: 'На рассмотрении', aside: '3 задачи' },
+        row('CreateOutline', 'Переименовать', ['F2']),
+        { vSwatch: true, colors: COLORS.map((c) => ({ c, on: c === '#f0a020', off: c !== '#f0a020' })) },
+        { vCheck: true, icon: 'CheckmarkDoneOutline', label: 'Колонка «Готово»' },
+        gap,
+        row('ChevronBackOutline', 'Свернуть', ['H']),
+        row('ArrowForwardOutline', 'Сдвинуть вправо', ['⌘', '⇧', '→']),
+        row('AddOutline', 'Новая колонка справа', []),
+        gap,
+        { label: 'Удалить колонку', keys: ['⌫'], vDanger: true },
+      ];
+    } else {
+      items = [
+        row('ArchiveOutline', 'Архивировать', ['E']),
+        row('CopyOutline', 'Копировать ссылку', ['⌘', '⇧', 'C']),
+        gap,
+        del('Удалить проект', 'Точно удалить?', '148 задач · без возврата', ['⌘', '⌫']),
+      ];
+    }
+    return { items };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="width:700px;height:600px;box-sizing:border-box;padding:28px;display:flex;flex-wrap:wrap;align-content:flex-start;gap:20px 24px;background:var(--v-board);font-family:var(--v-font);color:var(--t-text1)">
+<div style="width:348px;flex:0 0 348px"><dc-import name="PopForm" kind="project" state="normal" style="width:348px" hint-size="348px,440px"></dc-import></div>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:18px">
+<div style="display:flex;flex-direction:column;gap:2px;padding:8px;border-radius:14px;background:var(--v-sidebar)">
+<div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 8px 0 14px;border-radius:8px;font-size:13.5px;font-weight:600;background:var(--v-active)"><span class="grad-icon" style="display:flex"><x-import component-from-global-scope="Tessera.TesseraIcon" name="layout-kanban" size="15" hint-size="15px,15px"></x-import></span><span style="flex:1">Спринт 0.150</span><span style="font-size:12px;font-weight:500;color:var(--t-text3)">18</span></div>
+<div style="display:flex;align-items:center;gap:8px;height:32px;padding:0 4px 0 14px;font-size:13.5px"><span style="display:flex;color:var(--t-text3)"><x-import component-from-global-scope="Tessera.TesseraIcon" name="layout-list" size="15" hint-size="15px,15px"></x-import></span><div style="flex:1;height:28px;box-sizing:border-box;display:flex;align-items:center;padding:0 4px 0 7px;margin-left:-3px;border-radius:7px;background:var(--v-input);box-shadow:0 0 0 2px var(--t-primary)"><span style="background:color-mix(in srgb, var(--t-primary) 38%, transparent);border-radius:2px">Бэклог продукта</span><span style="width:1.5px;height:16px;background:var(--t-text1);margin-left:1px"></span><span style="flex:1"></span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:10.5px;font-weight:600">↵</span></div></div>
+</div>
+<dc-import name="MenuA" kind="mini" state="kfocus" style="width:280px" hint-size="280px,150px"></dc-import>
+</div>
+<div style="flex:0 0 100%;display:flex;justify-content:center"><dc-import name="UndoToast" state="progress" p="{{ p }}" text="Доска «Ретро» удалена" hint-size="360px,50px"></dc-import></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() { return { p: 62 }; }
+}
+</script>
+</body>
+</html>

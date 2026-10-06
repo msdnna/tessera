@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;border-radius:18px;background:var(--v-sidebar);overflow:hidden;font-family:var(--v-font);color:var(--t-text1);--t-surface:var(--v-sidebar)">
+<sc-if value="{{ touch }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:center;padding-top:8px"><span style="width:36px;height:5px;border-radius:3px;background:var(--v-kbd)"></span></div></sc-if>
+<div style="display:flex;align-items:center;gap:8px;height:52px;flex:0 0 52px;padding:0 8px 0 16px">
+<span style="font-size:15px;font-weight:650">Входящие</span><span style="font-size:13px;color:var(--t-text3)">{{ total }}</span>
+<span style="flex:1"></span>
+<sc-if value="{{ desk }}" hint-placeholder-val="{{ true }}"><div title="Новая запись" style="height:30px;display:flex;align-items:center;gap:6px;padding:0 5px 0 8px;border-radius:8px;font-size:13px;color:var(--t-text2);cursor:pointer" style-hover="background:var(--v-hover-side);color:var(--t-text1)"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="15" hint-size="15px,15px"></x-import>Запись<span style="display:flex;gap:3px"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">N</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">M</span></span></div>
+<div title="Закрыть · G I" style="width:30px;height:30px;display:flex;align-items:center;justify-content:center;border-radius:8px;color:var(--t-text3);cursor:pointer" style-hover="background:var(--v-hover-side);color:var(--t-text1)"><x-import component-from-global-scope="Tessera.Icon" name="CloseOutline" size="17" hint-size="17px,17px"></x-import></div></sc-if>
+<sc-if value="{{ touch }}" hint-placeholder-val="{{ false }}"><div style="width:40px;height:40px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--v-pill);color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="CloseOutline" size="20" hint-size="20px,20px"></x-import></div></sc-if>
+</div>
+<div style="padding:0 12px 8px;flex:0 0 auto"><div style="display:flex;gap:2px;padding:3px;border-radius:9px;background:var(--v-ctl)">
+<span style="flex:1;height:28px;display:flex;align-items:center;justify-content:center;gap:5px;border-radius:7px;background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600;white-space:nowrap">Всё</span>
+<span style="flex:1.6;height:28px;display:flex;align-items:center;justify-content:center;gap:5px;border-radius:7px;font-size:12.5px;color:var(--t-text2);white-space:nowrap" style-hover="background:var(--v-hover)">Напоминания</span>
+<span style="flex:1.2;height:28px;display:flex;align-items:center;justify-content:center;gap:5px;border-radius:7px;font-size:12.5px;color:var(--t-text2);white-space:nowrap" style-hover="background:var(--v-hover)">Заметки</span>
+<span style="flex:1.6;height:28px;display:flex;align-items:center;justify-content:center;gap:5px;border-radius:7px;font-size:12.5px;color:var(--t-text2);white-space:nowrap" style-hover="background:var(--v-hover)">К этой доске</span>
+</div></div>
+<sc-if value="{{ isFull }}" hint-placeholder-val="{{ true }}"><div style="flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;gap:6px;padding:0 6px 8px">
+<sc-for list="{{ groups }}" as="g" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:1px">
+<div style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--t-text3)"><span>{{ g.title }}</span><span style="font-weight:500;letter-spacing:0">{{ g.count }}</span><span style="flex:1"></span><sc-if value="{{ g.action }}" hint-placeholder-val="{{ false }}"><span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--t-text2)">{{ g.action }}</span></sc-if></div>
+<sc-for list="{{ g.items }}" as="i" hint-placeholder-count="2"><dc-import name="InboxItem" it="{{ i }}" touch="{{ touch }}" hint-size="100%,56px"></dc-import></sc-for>
+</div>
+</sc-for>
+</div></sc-if>
+<sc-if value="{{ isLoading }}" hint-placeholder-val="{{ false }}"><div style="flex:1;min-height:0;display:flex;flex-direction:column;gap:2px;padding:6px 6px 8px">
+<div style="height:28px;display:flex;align-items:center;padding:0 10px"><span style="width:84px;height:8px;border-radius:4px;background:var(--v-pill)"></span></div>
+<sc-for list="{{ skel }}" as="i" hint-placeholder-count="5"><dc-import name="InboxItem" it="{{ i }}" hint-size="100%,52px"></dc-import></sc-for>
+</div></sc-if>
+<sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}"><div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 36px 40px;text-align:center">
+<span style="width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 16%, var(--v-sidebar)), color-mix(in srgb, var(--t-primary) 28%, var(--v-sidebar)))"><x-import component-from-global-scope="Tessera.Icon" name="CheckmarkDoneOutline" size="26" color="var(--t-primary)" hint-size="26px,26px"></x-import></span>
+<span style="font-size:15.5px;font-weight:650;margin-top:4px">Всё разобрано</span>
+<span style="font-size:13px;line-height:1.5;color:var(--t-text3);text-wrap:pretty">Сработавшие напоминания и новые заметки появятся здесь.</span>
+<div style="display:flex;gap:8px;margin-top:6px">
+<span style="height:32px;display:flex;align-items:center;gap:7px;padding:0 6px 0 10px;border-radius:9px;background:var(--v-ctl);font-size:13px;color:var(--t-text1)"><x-import component-from-global-scope="Tessera.Icon" name="DocumentTextOutline" size="15" color="var(--t-text2)" hint-size="15px,15px"></x-import>Заметка<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">N M</span></span>
+<span style="height:32px;display:flex;align-items:center;gap:7px;padding:0 6px 0 10px;border-radius:9px;background:var(--v-ctl);font-size:13px;color:var(--t-text1)"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="15" color="var(--t-text2)" hint-size="15px,15px"></x-import>Напоминание<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">N R</span></span>
+</div>
+<span style="font-size:12px;color:var(--t-text3);margin-top:8px">Выполнено сегодня — 6</span>
+</div></sc-if>
+<sc-if value="{{ isError }}" hint-placeholder-val="{{ false }}"><div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:0 36px 40px;text-align:center">
+<span style="width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;background:linear-gradient(to top right, color-mix(in srgb, #e0533d 14%, var(--v-sidebar)), color-mix(in srgb, #e0533d 24%, var(--v-sidebar)))"><x-import component-from-global-scope="Tessera.Icon" name="CloudOfflineOutline" size="26" color="#e0533d" hint-size="26px,26px"></x-import></span>
+<span style="font-size:15.5px;font-weight:650;margin-top:4px">Не удалось загрузить</span>
+<span style="font-size:13px;line-height:1.5;color:var(--t-text3);text-wrap:pretty">Новые записи сохраняются на устройстве и отправятся, когда появится связь.</span>
+<span style="height:32px;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;margin-top:6px;border-radius:9px;background:var(--t-accent-grad);color:#fff;font-size:13px;font-weight:600">Повторить<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:rgba(255,255,255,.22);font-size:11px">↵</span></span>
+</div></sc-if>
+<sc-if value="{{ footer }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:12px;height:40px;flex:0 0 40px;padding:0 14px;background:var(--v-foot);font-size:11.5px;color:var(--t-text3);white-space:nowrap">
+<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">↑↓</span>выбрать</span>
+<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">1–4</span>фильтр</span>
+<span style="flex:1"></span>
+<span style="display:flex;align-items:center;gap:5px"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">G I</span>скрыть</span>
+</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:400,&quot;height&quot;:800},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;full&quot;,&quot;empty&quot;,&quot;loading&quot;,&quot;error&quot;],&quot;default&quot;:&quot;full&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;touch&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const TK = {
+  2950: { n: 2950, title: 'Редизайн доски: убрать разделители', st: 'doing' },
+  2951: { n: 2951, title: 'Онбординг: пустые доски', st: 'todo' },
+  2936: { n: 2936, title: 'Контраст тегов в тёмной теме', st: 'review' },
+  2941: { n: 2941, title: 'Падение синхронизации GitLab', st: 'doing' },
+};
+function inboxGroups(sel, touch) {
+  const g = [
+    { title: 'Сработало', count: '2', action: 'всё выполнить', items: [
+      { kind: 'remind', st: 'fired', title: 'Позвонить в банк по счёту за сервер', time: '09:00', rel: '40 мин назад' },
+      { kind: 'remind', st: 'fired', title: 'Проверить пайплайн после мержа !418', time: '09:30', rel: '10 мин назад', task: TK[2950] },
+    ] },
+    { title: 'Сегодня', count: '3', items: [
+      { kind: 'remind', st: 'up', title: 'Созвон по релизу 0.150', time: '11:00', rel: 'через 1 ч 20 м', task: TK[2951] },
+      { kind: 'remind', st: 'snoozed', title: 'Ответить Анне про контраст тегов', time: '18:00', snoozedFrom: '12:00', task: TK[2936] },
+      { kind: 'remind', st: 'done', title: 'Стендап команды', time: '09:15' },
+    ] },
+    { title: 'Позже', count: '2', items: [
+      { kind: 'remind', st: 'up', title: 'Ревью дизайн-токенов с Ильёй', time: 'ср, 14:00' },
+      { kind: 'remind', st: 'up', title: 'Продлить сертификат staging', time: '12 окт.' },
+    ] },
+    { title: 'Заметки', count: '3', items: [
+      { kind: 'note', st: 'note', title: 'Идеи для онбординга', body: 'Пустая доска → предложить шаблоны: спринт, баг-трекер', time: 'вчера' },
+      { kind: 'note', st: 'note', title: 'Вопросы к ретро', body: 'Кто владелец webhook этапов? Почему синк падает на пустом…', time: 'пн', task: TK[2941] },
+      { kind: 'note', st: 'note', title: 'Жалобы на ⌘K из поддержки', body: '3 обращения: в Firefox палитра не ловит фокус', time: '2 окт.' },
+    ] },
+  ];
+  if (sel && !touch) g[0].items[1] = { ...g[0].items[1], view: 'sel' };
+  return g;
+}
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.props.state || 'full';
+    const touch = !!this.props.touch;
+    return {
+      touch, desk: !touch, footer: !touch && st === 'full', total: st === 'empty' ? '' : '10',
+      isFull: st === 'full', isEmpty: st === 'empty', isLoading: st === 'loading', isError: st === 'error',
+      groups: inboxGroups(this.props.sel !== false, touch),
+      skel: [1, 2, 3, 4, 5].map((k) => ({ view: 'loading', key: k })),
+    };
+  }
+}
+</script>
+</body>
+</html>

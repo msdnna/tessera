@@ -23,6 +23,7 @@
 <span style="flex:0 0 auto;height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:var(--v-r-ctl);background:var(--v-ctl);font-size:13px;white-space:nowrap"><x-import component-from-global-scope="Tessera.Icon" name="LayersOutline" size="14" color="var(--t-text3)" hint-size="14px,14px"></x-import><span style="font-weight:600">Статус</span></span>
 <span style="flex:0 0 auto;height:32px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:var(--v-r-ctl);background:var(--v-ctl);font-size:13px;color:var(--t-text2);white-space:nowrap"><x-import component-from-global-scope="Tessera.Icon" name="OptionsOutline" size="14" color="var(--t-text3)" hint-size="14px,14px"></x-import>Вид</span>
 </div>
+<sc-if value="{{ strip }}" hint-placeholder-val="{{ false }}"><div style="padding:0 12px 6px;flex:0 0 auto"><dc-import name="StageStrip" compact="{{ strip }}" hint-size="366px,40px"></dc-import></div></sc-if>
 <div style="flex:1;min-height:0;display:flex;align-items:flex-start;gap:8px;padding:4px 12px 16px;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-padding:0 12px;scrollbar-width:none;--cw:350px">
 <sc-for list="{{ cols }}" as="c" hint-placeholder-count="2"><div style="flex:0 0 auto;scroll-snap-align:start"><dc-import name="Column" c="{{ c }}" dir="{{ dir }}" hint-size="350px,500px"></dc-import></div></sc-for>
 </div>
@@ -34,7 +35,7 @@
 <script type="text/x-dc" data-dc-script>
 class Component extends DCLogic {
   renderVals() {
-    return { dir: this.props.dir || 'A', cols: this.props.cols || [], final: !!this.props.final };
+    return { dir: this.props.dir || 'A', cols: this.props.cols || [], final: !!this.props.final, strip: !!this.props.strip };
   }
 }
 </script>

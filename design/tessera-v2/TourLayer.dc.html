@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="position:absolute;inset:0;pointer-events:none;font-family:var(--v-font);color:var(--t-text1)">
+{{ svg }}
+<sc-if value="{{ s_b03 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:724px;top:286px;width:320px;pointer-events:auto"><dc-import name="TourPop" kind="action" title="Назовите проект" chap="Основы" n="3" of="10" text="Название решает и адрес: /project/название. Адрес задаётся один раз — если он важен, впишите его сами." wait="Введите название и нажмите ↵ — шаг засчитается, когда проект появится в дереве" hint-size="320px,220px"></dc-import></div></sc-if>
+<sc-if value="{{ s_b05 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:369px;top:842px;width:238px;height:36px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 6px 0 10px;border-radius:10px;background:var(--v-hover);font-size:13.5px;font-weight:600"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="16" color="var(--t-primary)" hint-size="16px,16px"></x-import><span style="flex:1">Создать задачу</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">N</span></div><div style="position:absolute;left:646px;top:636px;width:320px;pointer-events:auto"><dc-import name="TourPop" kind="action" title="Создайте задачу" chap="Основы" n="5" of="10" text="Строка «Создать задачу» внизу колонки на время шага видна всегда. Введите название и нажмите Enter." wait="Нажмите строку или N — засчитается, когда карточка появится" hint-size="320px,220px"></dc-import></div></sc-if>
+<sc-if value="{{ s_x01 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:369px;top:842px;width:238px;height:36px;box-sizing:border-box;display:flex;align-items:center;gap:8px;padding:0 6px 0 10px;border-radius:10px;background:var(--v-hover);font-size:13.5px;font-weight:600"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="16" color="var(--t-primary)" hint-size="16px,16px"></x-import><span style="flex:1">Создать задачу</span></div><div style="position:absolute;left:646px;top:660px;width:340px;pointer-events:auto"><dc-import name="TourPop" kind="confirm" title="Прервать обучение?" chap="Основы · 5 из 10" text="Прогресс сохранится в чек-листе на «Моих задачах». Продолжить можно оттуда или из «Помощь → Обучение»." hint-size="340px,180px"></dc-import></div></sc-if>
+<sc-if value="{{ s_b06 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:369px;top:320px;width:320px;pointer-events:auto"><dc-import name="TourPop" kind="info" back="1" title="Прямо на карточке" chap="Основы" n="6" of="10" text="Приоритет, срок, теги и исполнители правятся не открывая задачу — по клику на значок карточки." hint-size="320px,200px"></dc-import></div></sc-if>
+<sc-if value="{{ s_i01 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:692px;top:92px;width:320px;pointer-events:auto"><dc-import name="TourPop" kind="info" title="Одна лента для заметок и напоминаний" chap="Входящие" n="1" of="5" text="Сработавшие напоминания — сверху, ниже — сегодня, позже и заметки. Лента открывается кнопкой в топбаре или клавишами G I и не перекрывает доску." hint-size="320px,200px"></dc-import></div></sc-if>
+<sc-if value="{{ s_s02 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:470px;top:332px;width:330px;pointer-events:auto"><dc-import name="TourPop" kind="info" back="1" title="Полоса этапа" chap="Этапы" n="2" of="5" text="Когда доска показывает этап, над колонками — его цели из GitLab и прогресс. ⇧H сворачивает полосу до одной строки, доска это запомнит." hint-size="330px,200px"></dc-import></div></sc-if>
+<sc-if value="{{ s_g01 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:352px;top:262px;width:340px;pointer-events:auto"><dc-import name="TourPop" kind="info" title="Вы в пространстве «Tessera Dev»" chap="Знакомство" n="1" of="5" text="Дмитрий Орлов пригласил вас в команду. Проекты и доски уже есть — создавать ничего не нужно. Начнём с «Моих задач»: здесь всё, что назначено на вас, со всех досок." hint-size="340px,220px"></dc-import></div></sc-if>
+<sc-if value="{{ s_m01 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:880px;top:86px;width:320px;pointer-events:auto"><dc-import name="TourPop" kind="info" title="Входящие" chap="Что изменилось" n="1" of="6" text="Заметки и напоминания переехали сюда из отдельных разделов — всё на месте. Открыть ленту — G I, записать мысль — N M." hint-size="320px,200px"></dc-import></div></sc-if>
+<sc-if value="{{ s_wn }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:var(--v-scrim);display:flex;align-items:center;justify-content:center;pointer-events:auto"><dc-import name="WhatsNewV2" hint-size="580px,600px"></dc-import></div></sc-if>
+<sc-if value="{{ s_sp1 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:1000px;top:76px;width:270px;pointer-events:auto"><dc-import name="SpotCard" kind="new" title="Входящие" text="Заметки и напоминания теперь в одной ленте — открывается отсюда или G I." meta="ещё 1 в очереди" hint-size="270px,160px"></dc-import></div></sc-if>
+<sc-if value="{{ s_sp1h }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:1000px;top:76px;width:270px;pointer-events:auto"><dc-import name="SpotCard" kind="new" st="hover" title="Входящие" text="Заметки и напоминания теперь в одной ленте — открывается отсюда или G I." meta="ещё 1 в очереди" hint-size="270px,160px"></dc-import></div></sc-if>
+<sc-if value="{{ s_sp2 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:960px;top:176px;width:270px;pointer-events:auto"><dc-import name="SpotCard" kind="new" title="Этап — прямо на доске" text="Выберите спринт, бэклог или все задачи здесь или клавишей ⇧E." meta="1 из 2 за сессию" hint-size="270px,160px"></dc-import></div></sc-if>
+<sc-if value="{{ s_sp3 }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:420px;top:190px;width:290px;pointer-events:auto"><dc-import name="SpotCard" kind="ctx" title="Цели и прогресс этапа" text="Разверните полосу, чтобы увидеть описание и метрики. ⇧H — свернуть или развернуть." meta="первая доска с этапом" hint-size="290px,160px"></dc-import></div></sc-if>
+<sc-if value="{{ s_mt }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0;right:0;bottom:0;box-sizing:border-box;display:flex;flex-direction:column;gap:12px;padding:8px 18px 34px;border-radius:24px 24px 0 0;background:var(--v-pop);box-shadow:var(--v-sh-drag), 0 -8px 36px color-mix(in srgb, var(--t-primary) 22%, transparent);pointer-events:auto;--t-surface:var(--v-pop)"><span style="align-self:center;width:36px;height:5px;border-radius:3px;background:var(--v-pill)"></span><div style="display:flex;align-items:center;gap:12px;margin-top:4px"><span style="width:32px;height:32px;flex:0 0 32px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--t-accent-grad)"><x-import component-from-global-scope="Tessera.Icon" name="SparklesOutline" size="17" color="#fff" hint-size="17px,17px"></x-import></span><div style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:17px;font-weight:650">Прямо на карточке</span><span style="font-size:13px;color:var(--t-text3)">Основы · 4 из 6</span></div></div><span style="font-size:15px;line-height:1.5;color:var(--t-text2);text-wrap:pretty">Срок, теги и исполнители видны на карточке. Коснитесь её, чтобы открыть задачу, долгое нажатие — перетащить.</span><div style="display:flex;gap:4px"><span style="flex:1;height:4px;border-radius:2px;background:var(--t-accent-grad)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--t-accent-grad)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--t-accent-grad)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--t-accent-grad)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--v-pill)"></span><span style="flex:1;height:4px;border-radius:2px;background:var(--v-pill)"></span></div><div style="display:flex;gap:8px"><span style="height:48px;display:flex;align-items:center;padding:0 14px;border-radius:14px;font-size:15px;color:var(--t-text3)">Прервать</span><span style="flex:1"></span><span style="height:48px;display:flex;align-items:center;padding:0 18px;border-radius:14px;background:var(--v-ctl);font-size:15px">Назад</span><span style="height:48px;display:flex;align-items:center;padding:0 22px;border-radius:14px;background:var(--t-accent-grad);color:#fff;font-size:15px;font-weight:600">Понятно</span></div><span style="position:absolute;left:50%;bottom:8px;width:134px;height:5px;margin-left:-67px;border-radius:3px;background:var(--t-text1);opacity:.85"></span></div></sc-if>
+<sc-if value="{{ s_ms }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:12px;bottom:94px;width:296px;pointer-events:auto"><span style="position:absolute;left:176px;bottom:-6px;width:14px;height:14px;border-radius:3px;transform:rotate(45deg);background:var(--v-pop)"></span><dc-import name="SpotCard" kind="new" mob="1" title="Входящие" text="Заметки и напоминания теперь в одной ленте. Записать мысль — кнопка + над навигацией." hint-size="296px,170px"></dc-import></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;step&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;b03&quot;,&quot;b05&quot;,&quot;x01&quot;,&quot;b06&quot;,&quot;i01&quot;,&quot;s02&quot;,&quot;g01&quot;,&quot;m01&quot;,&quot;wn&quot;,&quot;sp1&quot;,&quot;sp1h&quot;,&quot;sp2&quot;,&quot;sp3&quot;,&quot;mt&quot;,&quot;ms&quot;],&quot;default&quot;:&quot;b03&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const TD = {
+  b03: { c: [[282, 242, 348, 413]], a: [[[724, 330], [622, 353]], [[724, 400], [622, 428]]] },
+  b05: { c: [[361, 104, 254, 790]], a: [[[646, 700], [614, 858]]] },
+  x01: { c: [[361, 104, 254, 790]], a: [] },
+  b06: { c: [[367, 147, 246, 146]], a: [[[384, 318], [381, 246], [336, 290]], [[452, 318], [450, 258], [476, 292]], [[414, 318], [404, 286], [426, 304]], [[640, 318], [594, 286], [640, 292]]] },
+  i01: { c: [[1220, 9, 57, 34], [1040, 54, 394, 836]], a: [[[1012, 116], [1214, 30], [1120, 34]], [[1012, 196], [1050, 160]]] },
+  s02: { c: [[304, 102, 1120, 194]], a: [[[560, 332], [520, 304]]] },
+  g01: { c: [[64, 92, 216, 32]], a: [[[400, 262], [288, 112], [330, 150]]] },
+  m01: { c: [[1220, 9, 57, 34]], a: [[[1176, 86], [1244, 50]]] },
+  wn: { c: [], a: [] },
+  sp1: { ns: 1, h: [[1220, 9, 57, 34]], a: [[[1206, 76], [1248, 50]]] },
+  sp1h: { ns: 1, h: [[1220, 9, 57, 34]], a: [[[1206, 76], [1248, 50]]] },
+  sp2: { ns: 1, h: [[1017, 58, 216, 34]], a: [[[1110, 176], [1128, 98], [1080, 140]]] },
+  sp3: { ns: 1, h: [[304, 102, 1120, 40]], a: [[[520, 190], [480, 148]]] },
+  mt: { w: 390, h0: 844, c: [[20, 188, 318, 112]], a: [] },
+  ms: { w: 390, h0: 844, ns: 1, h: [[157, 760, 76, 64]], a: [] },
+};
+class Component extends DCLogic {
+  uid = 't' + Math.random().toString(36).slice(2, 8);
+  renderVals() {
+    const st = this.props.step || 'b03';
+    const d = TD[st] || { c: [], a: [] };
+    const W = d.w || 1440, H = d.h0 || 900;
+    const h = React.createElement; const u = this.uid;
+    const pad = (r, p, rx) => ({ x: r[0] - p, y: r[1] - p, width: r[2] + 2 * p, height: r[3] + 2 * p, rx });
+    const arrows = (d.a || []).map((a, i) => {
+      const [p, q, c0] = a; const mx = (p[0] + q[0]) / 2, my = (p[1] + q[1]) / 2; const dx = q[0] - p[0], dy = q[1] - p[1];
+      const len = Math.hypot(dx, dy) || 1; const bend = Math.min(60, len * 0.35) * (i % 2 ? -1 : 1);
+      const cx = c0 ? c0[0] : mx - dy / len * bend, cy = c0 ? c0[1] : my + dx / len * bend;
+      const ang = Math.atan2(q[1] - cy, q[0] - cx); const L = 9, Wd = 5.5;
+      const hx = q[0] - Math.cos(ang) * L, hy = q[1] - Math.sin(ang) * L;
+      const head = [q[0] + ',' + q[1], (hx - Math.sin(ang) * Wd) + ',' + (hy + Math.cos(ang) * Wd), (hx + Math.sin(ang) * Wd) + ',' + (hy - Math.cos(ang) * Wd)].join(' ');
+      return h('g', { key: 'a' + i },
+        h('linearGradient', { id: u + 'g' + i, gradientUnits: 'userSpaceOnUse', x1: p[0], y1: p[1], x2: q[0], y2: q[1] },
+          h('stop', { offset: 0, style: { stopColor: 'color-mix(in srgb, var(--t-primary) 80%, #000)' } }),
+          h('stop', { offset: 1, style: { stopColor: 'color-mix(in srgb, var(--t-primary) 72%, #fff)' } })),
+        h('path', { d: 'M' + p[0] + ' ' + p[1] + ' Q' + cx + ' ' + cy + ' ' + hx + ' ' + hy, style: { fill: 'none', stroke: 'url(#' + u + 'g' + i + ')', strokeWidth: 2.25, strokeLinecap: 'round' } }),
+        h('polygon', { points: head, style: { fill: 'color-mix(in srgb, var(--t-primary) 72%, #fff)' } }));
+    });
+    const cuts = d.c || [];
+    const halos = (d.h || []).map((r, i) => h('g', { key: 'h' + i },
+      h('rect', Object.assign(pad(r, 6, 12), { style: { fill: 'none', stroke: 'color-mix(in srgb, var(--t-primary) 16%, transparent)', strokeWidth: 8 } })),
+      h('rect', Object.assign(pad(r, 3, 10), { style: { fill: 'color-mix(in srgb, var(--t-primary) 8%, transparent)', stroke: 'color-mix(in srgb, var(--t-primary) 62%, transparent)', strokeWidth: 2 } }))));
+    const scrim = d.ns ? null : [
+      h('defs', { key: 'd' }, h('mask', { id: u + 'm' }, h('rect', { x: 0, y: 0, width: W, height: H, style: { fill: '#fff' } }), cuts.map((r, i) => h('rect', Object.assign({ key: i }, pad(r, 6, 10), { style: { fill: '#000' } }))))),
+      h('rect', { key: 's', x: 0, y: 0, width: W, height: H, mask: 'url(#' + u + 'm)', style: { fill: 'var(--v-scrim)' } }),
+      cuts.map((r, i) => h('rect', Object.assign({ key: 'r' + i }, pad(r, 6, 10), { style: { fill: 'none', stroke: 'color-mix(in srgb, var(--t-primary) 55%, transparent)', strokeWidth: 1.5 } }))),
+    ];
+    const svg = st === 'wn' ? null : h('svg', { width: W, height: H, style: { position: 'absolute', left: 0, top: 0 } }, scrim, halos, arrows);
+    const out = { svg };
+    Object.keys(TD).forEach((k) => { out['s_' + k] = st === k; });
+    return out;
+  }
+}
+</script>
+</body>
+</html>

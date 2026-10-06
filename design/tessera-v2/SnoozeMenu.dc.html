@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="width:100%;box-sizing:border-box;padding:6px;border-radius:14px;background:var(--v-pop);box-shadow:var(--v-sh-pop);display:flex;flex-direction:column;gap:2px;font-family:var(--v-font);color:var(--t-text1);--t-surface:var(--v-pop)">
+<div style="display:flex;align-items:center;gap:8px;padding:6px 10px 4px;font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--t-text3)"><span style="flex:1">Отложить</span><span style="text-transform:none;letter-spacing:0;font-weight:500">сейчас 09:40</span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="5">
+<sc-if value="{{ r.vN }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;cursor:pointer" style-hover="background:var(--v-hover)"><x-import component-from-global-scope="Tessera.Icon" name="{{ r.icon }}" size="16" color="var(--t-text2)" hint-size="16px,16px"></x-import><span style="flex:1;white-space:nowrap">{{ r.label }}</span><span style="font-size:12.5px;color:var(--t-text3);white-space:nowrap;font-variant-numeric:tabular-nums">{{ r.when }}</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ r.k }}</span></div></sc-if>
+<sc-if value="{{ r.vH }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;background:var(--v-hover);cursor:pointer"><x-import component-from-global-scope="Tessera.Icon" name="{{ r.icon }}" size="16" color="var(--t-text2)" hint-size="16px,16px"></x-import><span style="flex:1;white-space:nowrap">{{ r.label }}</span><span style="font-size:12.5px;color:var(--t-text3);white-space:nowrap;font-variant-numeric:tabular-nums">{{ r.when }}</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ r.k }}</span></div></sc-if>
+<sc-if value="{{ r.vF }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;height:34px;padding:0 6px 0 10px;border-radius:7px;font-size:13.5px;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 16%, var(--v-pop)), color-mix(in srgb, var(--t-primary) 26%, var(--v-pop)))"><x-import component-from-global-scope="Tessera.Icon" name="{{ r.icon }}" size="16" color="var(--t-primary)" hint-size="16px,16px"></x-import><span style="flex:1;white-space:nowrap;font-weight:600">{{ r.label }}</span><span style="font-size:12.5px;color:var(--t-text2);white-space:nowrap;font-variant-numeric:tabular-nums">{{ r.when }}</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ r.k }}</span></div></sc-if>
+<sc-if value="{{ r.vGap }}" hint-placeholder-val="{{ false }}"><div style="height:6px"></div></sc-if>
+</sc-for>
+<sc-if value="{{ custom }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px;padding:8px 8px 6px;margin-top:2px;border-radius:10px;background:var(--v-input)">
+<div style="display:flex;gap:6px"><span style="flex:1.4;height:32px;display:flex;align-items:center;gap:6px;padding:0 9px;border-radius:8px;background:var(--v-pop);box-shadow:0 0 0 2px var(--t-primary);font-size:13px"><x-import component-from-global-scope="Tessera.Icon" name="CalendarClearOutline" size="14" color="var(--t-text3)" hint-size="14px,14px"></x-import>чт, 8 окт.<span style="width:1.5px;height:15px;background:var(--t-text1)"></span></span><span style="flex:1;height:32px;display:flex;align-items:center;gap:6px;padding:0 9px;border-radius:8px;background:var(--v-pop);font-size:13px;font-variant-numeric:tabular-nums"><x-import component-from-global-scope="Tessera.Icon" name="TimeOutline" size="14" color="var(--t-text3)" hint-size="14px,14px"></x-import>15:30</span></div>
+<div style="font-size:12px;color:var(--t-text3)">Можно писать словами: «чт 15:30», «через 3 дня»</div>
+</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:300,&quot;height&quot;:340},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;normal&quot;,&quot;hover&quot;,&quot;kfocus&quot;,&quot;custom&quot;],&quot;default&quot;:&quot;normal&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const st = this.props.state || 'normal';
+    const base = [
+      { icon: 'HourglassOutline', label: 'Через час', when: '10:40', k: '1' },
+      { icon: 'SunnyOutline', label: 'Сегодня вечером', when: '18:00', k: '2' },
+      { icon: 'CafeOutline', label: 'Завтра утром', when: 'ср, 09:00', k: '3' },
+      { icon: 'CalendarOutline', label: 'В понедельник', when: '12 окт., 09:00', k: '4' },
+      { icon: 'FlagOutline', label: 'К сроку задачи', when: '6 окт., 18:00', k: '5' },
+      { vGap: true },
+      { icon: 'CalendarClearOutline', label: 'Дата и время…', when: '', k: 'D' },
+    ];
+    const rows = base.map((r, i) => {
+      if (r.vGap) return r;
+      const hov = st === 'hover' && i === 1;
+      const kf = (st === 'kfocus' && i === 0) || (st === 'custom' && i === 6);
+      return { ...r, vH: hov, vF: kf, vN: !hov && !kf };
+    });
+    return { rows, custom: st === 'custom' };
+  }
+}
+</script>
+</body>
+</html>

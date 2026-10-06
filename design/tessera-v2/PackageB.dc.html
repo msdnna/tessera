@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script><style>html,body{background:#ececf0 !important;color-scheme:light}</style></helmet>
+<div style="display:flex;flex-direction:column;gap:64px;width:1440px;padding:48px 48px 96px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#26262e">
+<div style="display:flex;flex-direction:column;gap:18px;max-width:1100px">
+<div style="font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#7c5cff">Tessera v2 · Пакет B</div>
+<div style="font-size:34px;font-weight:700;letter-spacing:-.015em;line-height:1.15">«Входящие»: заметки и напоминания там, где ты есть</div>
+<div style="font-size:15px;line-height:1.55;color:#4a4a55;text-wrap:pretty">Заметки и напоминания живут в одной ленте «Входящие». Записать можно откуда угодно — поповер у FAB разбирает строку на лету и сам решает, заметка это или напоминание. Лента открывается панелью справа и не уводит с доски. Связи с задачами видны в трёх местах: на карточке, в модалке задачи и на «Мои задачи».</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1px;background:#e4e4ea;border-radius:12px;overflow:hidden;font-size:13.5px;line-height:1.45">
+<div style="padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">Сайдбар</span><span style="color:#4a4a55">Пункты «Напоминания» и «Заметки» убраны. «Входящие» открывает панель; счётчик — сработавшие напоминания.</span></div>
+<div style="padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">Уведомления</span><span style="color:#4a4a55">Упоминания, назначения и события GitLab остаются под колокольчиком — во «Входящие» попадают только ваши записи.</span></div>
+<div style="padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">Захват</span><span style="color:#4a4a55">FAB → «Запись», N M — заметка, N R — напоминание. Тип уточняется разбором, его можно переключить Tab.</span></div>
+</div>
+<div style="font-size:12.5px;color:#767682">Кадры 1440×900, тёмная тема, акцент purple; ключевые повторены в светлой. Поля захвата в кадрах живые — попробуйте поменять строку.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">1 · Поповер захвата у FAB</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Набрано «завтра 10:00 созвон по релизу #frontend /2951»: дата и время сделали запись напоминанием, тег и задача ушли в чипы, в заголовке остался только текст. FAB на время захвата превращается в кнопку закрытия.</div>
+<dc-import name="FrameA" scene="capParsed" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:flex;gap:24px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Пустой · N M</div><dc-import name="FrameA" scene="capEmpty" crop="fabCorner" mode="dark" accent="{{ accent }}" style="width:708px;height:520px" hint-size="708px,520px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Раскрыто тело заметки · ⇧↵</div><dc-import name="FrameA" scene="capBody" crop="fabCorner" mode="dark" accent="{{ accent }}" style="width:708px;height:520px" hint-size="708px,520px"></dc-import></div>
+</div>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="capParsed" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Размеры</div><div>Поповер 460px, ярус 1 из пакета A: --v-pop, радиус 16, тень 3, без затемнения. Правый край по FAB, низ — 12px над FAB. Поле 46px, радиус 12, шрифт 15. Чипы 26px, пиллы 999.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Разбор</div><div>Дата: сегодня, завтра, послезавтра, пн–вс. Время HH:MM; без времени — 09:00. #тег, @человек, /123 или /слово из названия задачи. Есть дата или время — напоминание, иначе заметка.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>↵ — сохранить, ⇧↵ — раскрыть текст (Markdown), ⌘↵ — сохранить из текста, Tab — переключить тип, Esc — закрыть. ↑ в пустом поле — вернуть последнюю запись.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Фокус и тип</div><div>Открытие — фокус в поле. Ручной выбор типа фиксирует его («вручную ×»), дата при заметке зачёркивается и не применяется. После сохранения — тост «Записано во „Входящие“ · Открыть G I».</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">2 · Панель «Входящие»</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Панель встроена справа под топбаром: сайдбар и топбар на месте, доска сжимается. Выбран сработавший элемент, привязанный к #2950, — под ним клавиши действий.</div>
+<dc-import name="FrameA" scene="inbox" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:flex;gap:24px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Пустое · «Всё разобрано»</div><dc-import name="FrameA" scene="inboxEmpty" crop="panel" mode="dark" accent="{{ accent }}" style="width:708px;height:620px" hint-size="708px,620px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Пустое · светлая</div><dc-import name="FrameA" scene="inboxEmpty" crop="panel" mode="light" accent="{{ accent }}" style="width:708px;height:620px" hint-size="708px,620px"></dc-import></div>
+</div>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="inbox" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">DockPanel</div><div>Общий примитив с панелью кастомизации доски (пакет D). 388px + отступ 12 справа и снизу, радиус 18, фон --v-sidebar — на шаг ниже доски, без тени. Шапка 52px, фильтр-сегменты 34px, футер 40px на --v-foot.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Поведение</div><div>Открытие сдвигает контент, а не перекрывает его; колонки скроллятся. Ширина тянется за левый край 320–520px и запоминается. На ≤1024px панель становится поверх контента, на ≤768px — полноэкранный лист.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>G I — открыть/скрыть (фокус в ленту и обратно). ↑↓ — элементы, 1–4 — фильтры. На выбранном: ↵ открыть, E выполнить, H отложить, T в задачу, ⇧D в документ, L привязать, ⌫ удалить с undo-тостом.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Группы</div><div>«Сработало» (с «всё выполнить»), «Сегодня», «Позже», «Заметки». Выполненное за сегодня остаётся до полуночи зачёркнутым. «К этой доске» — записи, привязанные к задачам открытой доски.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">3–4 · Элемент ленты и «Отложить»</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">H на выбранном элементе открывает меню прямо под ним. Цифры выбирают вариант без стрелок, D — своя дата. Все состояния элемента — в листе ниже.</div>
+<dc-import name="FrameA" scene="inboxSnooze" crop="panel" mode="dark" accent="{{ accent }}" style="width:708px;height:620px" hint-size="708px,620px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Элемент</div><div>Паддинг 9/10, радиус 12, зазор 10. Иконка типа 28px радиус 9: заметка — --v-pill; предстоит — мягкий accent; сработало — hueGrad(#f0a020); выполнено — мягкий зелёный; отложено — --v-pill и луна. Заголовок 13.5/500, первая строка тела 12.5 text3, чип задачи 22px.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Время</div><div>Предстоит — accent-градиент на тексте; сработало — #f0a020 650 и «N мин назад»; выполнено и отложено — text3. Отложенное показывает исходное время чипом «с 12:00».</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Отложить</div><div>Меню 290px, радиус 14, под элементом с правым краем по панели. Варианты считаются от текущего времени; «К сроку задачи» — только у привязанных. После выбора элемент переезжает в свою группу, тост «Отложено до 18:00 · ⌘Z».</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">5 · «Мои задачи» с блоком «Входящие»</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Справа вместо «Напоминаний» и ленты уведомлений — один блок: сегодняшние напоминания и последние заметки. «Все 10» и G I открывают панель.</div>
+<dc-import name="FrameA" scene="home" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="home" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">6 · Модалка задачи: «Напоминания и заметки»</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Раздел между подзадачами и активностью. «Напомнить» (⇧R) раскрывает быстрые варианты прямо в разделе; записи личные, их видит только автор.</div>
+<dc-import name="FrameA" scene="task" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Раздел</div><div>Трей как у подзадач: color-mix(--v-sub 65%, --v-pop), радиус 12, строки 38px. Быстрые варианты — плашки 30px на --v-pop с тенью 1 и цифрой.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>⇧R — напомнить, затем 1 через час, 2 завтра утром, 3 к сроку задачи, D дата. ⇧M — заметка к задаче, открывает поповер захвата с уже подставленным /2950.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Приватность</div><div>Замок справа — запись видна только вам. Другие участники видят на карточке только своё напоминание.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">7 · Карточка с пиллом напоминания</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Колокольчик со временем стоит сразу после срока. #2950 — напоминание в 15:00, #2938 — уже сработало и подсвечено оранжевым.</div>
+<dc-import name="FrameA" scene="boardB" crop="colHead" mode="dark" accent="{{ accent }}" style="width:708px;height:520px" hint-size="708px,520px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:900px">Пилл 22px (large 24): предстоит — --v-pill, text2; сработало — мягкий #f0a020 и текст 600. У выполненной задачи пилла нет. В compact пиллы скрыты, как и остальные. Клик — меню «Отложить» у пилла.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">8 · Мобильный · 390×844</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Захват — нижний лист с тем же разбором; kbd-подсказки на таче не показываются. «Входящие» — полноэкранный лист с ручкой, кнопка в шапке рядом с поиском.</div>
+<div style="display:flex;gap:40px;align-items:flex-start">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Захват · нижний лист</div><dc-import name="FrameA" what="mobile" mmode="capture" mode="dark" accent="{{ accent }}" style="width:390px;height:844px" hint-size="390px,844px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">«Входящие» · полноэкранный лист</div><dc-import name="FrameA" what="mobile" mmode="inbox" mode="dark" accent="{{ accent }}" style="width:390px;height:844px" hint-size="390px,844px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">«Входящие» · светлая</div><dc-import name="FrameA" what="mobile" mmode="inbox" mode="light" accent="{{ accent }}" style="width:390px;height:844px" hint-size="390px,844px"></dc-import></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">Проверка акцентов · teal и orange</div>
+<div style="display:flex;gap:24px">
+<dc-import name="FrameA" scene="capParsed" crop="fabCorner" mode="dark" accent="teal" style="width:708px;height:520px" hint-size="708px,520px"></dc-import>
+<dc-import name="FrameA" scene="capParsed" crop="fabCorner" mode="dark" accent="orange" style="width:708px;height:520px" hint-size="708px,520px"></dc-import>
+</div>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:900px">При оранжевом акценте сработавшие напоминания совпадают по тону с акцентом. Их всё равно отличает форма: плотный hueGrad-значок и подпись «N мин назад», а предстоящие — мягкий значок.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">Лист состояний</div>
+<div style="font-size:13px;font-weight:600;color:#767682">Тёмная</div>
+<dc-import name="FrameA" what="catalogB" mode="dark" accent="{{ accent }}" style="width:1440px" hint-size="1440px,3000px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:18px">Светлая</div>
+<dc-import name="FrameA" what="catalogB" mode="light" accent="{{ accent }}" style="width:1440px" hint-size="1440px,3000px"></dc-import>
+</div>
+<div style="display:flex;flex-direction:column;gap:18px">
+<div style="font-size:22px;font-weight:650">Сводка для разработки</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:36px;font-size:13.5px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:650;color:#26262e">Клавиши</div>
+<div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:6px 16px">
+<span style="font-weight:600">N затем M</span><span>Захват: заметка</span>
+<span style="font-weight:600">N затем R</span><span>Захват: напоминание (тип зафиксирован)</span>
+<span style="font-weight:600">G затем I</span><span>Панель «Входящие» — открыть, скрыть, вернуть фокус</span>
+<span style="font-weight:600">1–4</span><span>Фильтры в панели: всё · напоминания · заметки · к этой доске</span>
+<span style="font-weight:600">↵ · E · H</span><span>Открыть · выполнить · отложить</span>
+<span style="font-weight:600">T · ⇧D · L</span><span>В задачу · в документ · привязать к задаче</span>
+<span style="font-weight:600">⌫</span><span>Удалить, undo-тост ⌘Z</span>
+<span style="font-weight:600">⇧R · ⇧M</span><span>В модалке задачи: напомнить · заметка к задаче</span>
+</div>
+<div style="font-size:12.5px;color:#767682">В шпаргалке «?» группа «Быстро создать» меняется: N T задача, N M заметка, N R напоминание; добавляется группа «Входящие». Пункт FAB «Заметка» переименован в «Запись».</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:650;color:#26262e">Модель и токены</div>
+<div>Одна сущность «запись»: kind (note / reminder), title, body (Markdown), remind_at, snoozed_from, done_at, task_id, tags, mentions. Превращение типа не теряет текст. Новых токенов нет: сработавшее — hueGrad(#f0a020), панель — --v-sidebar и --v-foot.</div>
+<div style="font-weight:650;color:#26262e;margin-top:8px">Где макет отступает от handoff</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<span>· «Входящие» в сайдбаре — это теперь лента записей; уведомления переехали под колокольчик. В handoff «Входящие» были уведомлениями.</span>
+<span>· На «Мои задачи» блоки «Напоминания» и «Входящие» (уведомления) объединены в один «Входящие».</span>
+<span>· Сработавшее напоминание оранжевое, а не красное: красный в v2 — просрочка задачи и опасные действия, напоминание — внимание, не ошибка.</span>
+<span>· DockPanel без тени и на --v-sidebar: это часть раскладки, а не всплывающий слой, поэтому он утоплен, как сайдбар.</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;purple&quot;,&quot;blue&quot;,&quot;teal&quot;,&quot;green&quot;,&quot;orange&quot;,&quot;red&quot;,&quot;pink&quot;],&quot;default&quot;:&quot;purple&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent || 'purple' };
+  }
+}
+</script>
+</body>
+</html>
