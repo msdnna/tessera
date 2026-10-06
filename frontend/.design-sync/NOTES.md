@@ -84,7 +84,12 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   colour token (`var(--t-error)`, `var(--t-primary)`) and don't add helper colour
   properties on global selectors — spell the value out. A `/* @kind color */`
   annotation would not help: the DS build minifies CSS and strips comments.
-- Scoped helpers inside SFCs (`--card-fill`, `--sub-bg`, `--ghost`…) were not flagged.
+- Scoped helpers inside SFCs (`--card-fill`, `--sub-bg`, `--ghost`…) pass on a
+  plain class rule, but a colour property re-declared under a state selector is
+  flagged as a theme token: `.card[data-v-…]:hover { --card-fill: … }` (2026-10-06,
+  #2966). Under `:hover`/`:focus`… declare only a numeric flag and resolve the
+  colour in the base rule — TaskCard: `--_hov: 0|1` +
+  `color-mix(in srgb, <hover> calc(var(--_hov) * 100%), <base>)`.
 
 ## Known render warns
 

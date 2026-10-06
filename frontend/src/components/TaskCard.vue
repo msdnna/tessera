@@ -427,7 +427,15 @@ async function submitAddSub() {
 /* v2 card (#2954): one step above the lane with a soft shadow — no border. The
    padding follows the card size, plus 5px on the left for the priority bar. */
 .card {
-  --card-fill: var(--t-card);
+  /* The fill is resolved here and :hover only flips the numeric --_hov: Claude
+     Design's token check reads a colour property declared under :hover as a
+     theme token (#2966). Pills and the avatar ring read --card-fill. */
+  --_hov: 0;
+  --card-fill: color-mix(
+    in srgb,
+    var(--t-card-hover) calc(var(--_hov) * 100%),
+    var(--t-card)
+  );
   --cpx: 12px;
   position: relative;
   background: var(--card-fill);
@@ -450,7 +458,7 @@ async function submitAddSub() {
   padding-bottom: 13px;
 }
 .card:hover {
-  --card-fill: var(--t-card-hover);
+  --_hov: 1;
   box-shadow: var(--t-sh-hover);
 }
 /* Keyboard selection (v2, #2956): an accent wash and a ring 2px off the edge. */
