@@ -25,8 +25,8 @@ import { storeToRefs } from 'pinia'
 import { tasks as tasksApi, projects as projectsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel, priorityOptions as buildPriorityOptions } from '@/utils/priority'
-import { hueGrad, tagPillBg, softFill, readableHue, onColor } from '@/utils/gradient'
-import { buildTagGroups, tagParts } from '@/utils/tagGroups'
+import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
+import { buildTagGroups } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { useFormat } from '@/composables/useFormat'
 import {
@@ -111,12 +111,6 @@ const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
 const newTagName = ref('')
 
 const taskTags = computed(() => (props.task.tag_ids || []).map((id) => tagsMap[id]).filter(Boolean))
-// The single-tag pill hands its box over to TagPill when the tag is scoped, so
-// the GitLab-EE two-tone pill isn't boxed-in by the button's own soft fill.
-const firstTagScoped = computed(() => {
-  const t = taskTags.value[0]
-  return t ? tagParts(t.name, tagPrefixNames).hasScope : false
-})
 // Stacked tags row: fit as many chips as the row width allows, rest → +N.
 const stagValEl = ref(null)
 const stagMeasureEl = ref(null)
@@ -171,13 +165,34 @@ const authorIsAssignee = computed(() => {
   })
 })
 
-// Combined assignee names (Tessera + GitLab) for the merged people tooltip.
-const assigneeNames = computed(() =>
-  [
-    ...assignees.value.map((u) => u.name),
-    ...glAssignees.value.map((g) => `${g.name || g} (GitLab)`),
-  ].join(', '),
-)
+// v2 avatar cascade (#2954): assignees, then GitLab assignees, then the author —
+// at most three avatars on the card, the rest folded into «+N». Hovering the
+// cascade lists everyone with their role. An author who is also an assignee
+// shows once, as the assignee.
+const PEOPLE_SHOWN = 3
+const people = computed(() => {
+  const out = [
+    ...assignees.value.map((u) => ({
+      key: `u${u.user_id}`,
+      userId: u.user_id,
+      name: u.name,
+      role: 'assignee',
+    })),
+    ...glAssignees.value.map((g, i) => ({
+      key: `g${i}`,
+      src: g.avatar_url,
+      name: g.name || g,
+      role: 'gitlab',
+      ext: true,
+    })),
+  ]
+  const a = author.value
+  if (a && !authorIsAssignee.value)
+    out.push({ key: 'author', userId: a.id, src: a.avatar, name: a.name, role: 'author' })
+  return out
+})
+const shownPeople = computed(() => people.value.slice(0, PEOPLE_SHOWN))
+const extraPeople = computed(() => Math.max(0, people.value.length - PEOPLE_SHOWN))
 
 // Assignee picker: a search box + a list capped at 10, ordered assigned →
 // recently-picked → alphabetical. "Recent" is a small cross-board localStorage
@@ -251,22 +266,6 @@ const estTooltip = computed(() => {
 })
 // Computed, not a plain array: the labels have to re-resolve on a language switch.
 const priorityOptions = computed(() => buildPriorityOptions())
-// Stacked-cards effect: offset colored shadows behind the top tag pill.
-// Each deeper layer peeks 5px further right and is a little shorter (larger
-// negative spread) so it reads as a stack behind the top pill.
-const stackLayers = computed(() => Math.min(taskTags.value.length - 1, 2))
-const stackShadow = computed(() => {
-  if (taskTags.value.length < 2) return ''
-  // Colours are mixed to an *opaque* soft tint of the tag's hue so the layers
-  // don't show through one another (the old translucent `55` alpha did).
-  return taskTags.value
-    .slice(1, 3)
-    .map(
-      (tag, i) =>
-        `${(i + 1) * 5}px 0 0 ${-(i + 1)}px color-mix(in srgb, ${tag.color || '#888'} 45%, var(--t-surface))`,
-    )
-    .join(', ')
-})
 // Shared flag gradient defs live in App.vue (one per priority level), so a board
 // with 100s of cards references 4 defs instead of inlining an <svg> per card.
 const flagGradId = computed(() => (props.task.priority ? `t-prio-grad-${props.task.priority}` : ''))
@@ -410,8 +409,9 @@ async function toggleGlAssignee(m) {
     >
       <template #trigger>
         <button
-          class="pill"
+          class="pill prio-pill"
           :class="{ set: task.priority }"
+          :style="task.priority ? { '--pc': PRIORITY_COLORS[task.priority] } : null"
           :title="stackFields ? t('task.field.priority') : ''"
           data-tour="card-priority"
           @click.stop
@@ -579,37 +579,12 @@ async function toggleGlAssignee(m) {
               v-else-if="!stackFields"
               class="pill tag-pill"
               data-tour="card-tags"
-              :style="
-                firstTagScoped
-                  ? { border: 'none', background: 'none', padding: 0 }
-                  : {
-                      border: '1px solid transparent',
-                      background: tagPillBg(taskTags[0].color),
-                      boxShadow: stackShadow,
-                      marginRight: stackLayers ? stackLayers * 4 + 'px' : undefined,
-                    }
-              "
               @click.stop
             >
-              <!-- Scoped pill: the cascade shadow sits on the pill itself and the
-                   +N moves right past it, so the stack peeks BEHIND the tag (not
-                   shoved out past the +N). Unscoped keeps +N inside the soft box. -->
-              <TagPill
-                class="tname"
-                :tag="taskTags[0]"
-                :prefix-names="tagPrefixNames"
-                variant="grad-text"
-                :style="firstTagScoped ? { boxShadow: stackShadow } : null"
-              />
-              <span
-                v-if="taskTags.length > 1"
-                class="more"
-                :style="{
-                  color: tagText(taskTags[0].color),
-                  marginLeft: firstTagScoped && stackLayers ? stackLayers * 5 + 'px' : undefined,
-                }"
-                >+{{ taskTags.length - 1 }}</span
-              >
+              <!-- v2 (#2954): the first tag in its own outline pill, the rest
+                   counted as plain «+N» text beside it. -->
+              <TagPill class="tname" :tag="taskTags[0]" :prefix-names="tagPrefixNames" />
+              <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
             </button>
             <!-- stacked: leading tag icon + outlined-oval chips that fit on the
                  row, rest → +N (same behaviour as the task modal). -->
@@ -734,7 +709,14 @@ async function toggleGlAssignee(m) {
         @update:show="(v) => !v && (assigneeQuery = '')"
       >
         <template #trigger>
-          <n-tooltip placement="top">
+          <n-popover
+            trigger="hover"
+            placement="bottom-end"
+            :delay="400"
+            :show-arrow="false"
+            raw
+            class="people-pop"
+          >
             <template #trigger>
               <button
                 class="pill assignee-pill"
@@ -749,52 +731,35 @@ async function toggleGlAssignee(m) {
                   class="sf-people-ic"
                 />
                 <UserAvatar
-                  v-if="author && !authorIsAssignee"
-                  class="avatar author-ava"
-                  :user-id="author.id"
-                  :src="author.avatar"
-                  :name="author.name"
-                />
-                <UserAvatar
-                  v-for="u in assignees"
-                  :key="u.user_id"
+                  v-for="p in shownPeople"
+                  :key="p.key"
                   class="avatar"
-                  :user-id="u.user_id"
-                  :name="u.name"
+                  :class="{ 'author-ava': p.role === 'author', 'ext-ava': p.ext }"
+                  :user-id="p.userId"
+                  :src="p.src"
+                  :name="p.name"
                 />
-                <UserAvatar
-                  v-for="(g, i) in glAssignees"
-                  :key="`g${i}`"
-                  class="avatar ext-ava"
-                  :src="g.avatar_url"
-                  :name="g.name || g"
-                />
+                <span v-if="extraPeople" class="avatar more-ava">+{{ extraPeople }}</span>
                 <n-icon
-                  v-if="!stackFields && !author && !assignees.length && !glAssignees.length"
+                  v-if="!stackFields && !people.length"
                   :component="PersonAddOutline"
-                  :size="13"
+                  :size="14"
+                  class="no-people"
                 />
-                <span
-                  v-else-if="stackFields && !author && !assignees.length && !glAssignees.length"
-                  class="pill-text sf-empty"
-                  >—</span
-                >
+                <span v-else-if="stackFields && !people.length" class="pill-text sf-empty">—</span>
               </button>
             </template>
-            <div class="people-tip">
-              <div v-if="author">
-                {{
-                  t('task.people.author', {
-                    name: author.gl ? `@${author.login} (GitLab)` : author.name,
-                  })
-                }}
+            <div class="people-list">
+              <div v-for="p in people" :key="p.key" class="people-row">
+                <UserAvatar class="avatar sm" :user-id="p.userId" :src="p.src" :name="p.name" />
+                <span class="people-name">{{ p.name }}</span>
+                <span class="people-role">{{ t(`task.people.role.${p.role}`) }}</span>
               </div>
-              <div v-if="assigneeNames">
-                {{ t('task.people.assignee', { names: assigneeNames }) }}
+              <div v-if="!people.length" class="people-row people-none">
+                {{ t('task.people.none') }}
               </div>
-              <div v-if="!author && !assigneeNames">{{ t('task.people.none') }}</div>
             </div>
-          </n-tooltip>
+          </n-popover>
         </template>
         <div class="menu assignee-menu">
           <n-input
@@ -851,7 +816,7 @@ async function toggleGlAssignee(m) {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   margin-top: 8px;
 }
 /* Archive (read-only) view: the pills become display-only so a click passes
@@ -885,12 +850,13 @@ async function toggleGlAssignee(m) {
   max-width: 100%;
   justify-content: flex-start;
   gap: 8px;
+  height: auto;
   min-height: 26px;
   padding: 3px 6px;
-  border: 1px solid transparent;
   background: transparent;
-  border-radius: 6px;
+  border-radius: 7px;
   overflow: hidden;
+  opacity: 1;
 }
 .pills.stacked .pill:hover,
 .pills.stacked .assignee-pill:hover {
@@ -922,7 +888,7 @@ async function toggleGlAssignee(m) {
   margin-left: 0;
 }
 .pills.stacked .assignee-pill:hover .avatar {
-  border-color: var(--t-hover);
+  box-shadow: 0 0 0 2px var(--t-hover);
 }
 /* Stacked tags row: chips that fit, rest → +N (mirrors the task modal). */
 .stag-val {
@@ -960,34 +926,64 @@ async function toggleGlAssignee(m) {
   pointer-events: none;
   white-space: nowrap;
 }
+/* v2 pills (#2954): capsules with no outline. An empty field is a bare muted
+   icon; a set one sits on the neutral pill level; priority, overdue and
+   conflict carry a soft same-hue gradient of their own colour. */
 .pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  min-height: 22px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  border: 1px dashed var(--t-border);
+  box-sizing: border-box;
+  height: 22px;
+  min-width: 22px;
+  padding: 0 4px;
+  border: none;
+  border-radius: var(--t-r-pill);
   background: transparent;
   color: var(--t-text3);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
-/* The estimate pill is a <div>, not a <button>: form controls get UA
-   `line-height: normal`, but a bare div inherits the card's taller line-height,
-   making it ~5px higher than the sibling pills. Pin its box model so it matches. */
-.est-pill {
-  box-sizing: border-box;
-  height: 22px;
-  line-height: 1;
+.pill:not(.set) {
+  opacity: 0.7;
 }
-/* milestone chip: same neutral look as the other set pills (no fill) */
-.ms-pill {
-  box-sizing: border-box;
-  height: 22px;
-  line-height: 1;
-  max-width: 140px;
-  border-style: solid;
+.pill:not(.set):hover {
+  opacity: 1;
+}
+.pill.set {
+  padding: 0 7px;
+  background: var(--t-pill);
   color: var(--t-text2);
+}
+/* Soft same-hue fill: base colour mixed over the card at 11% → 19%. */
+.prio-pill.set,
+.pill.overdue,
+.conf-pill {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--pc) 11%, var(--card-fill, var(--t-card))),
+    color-mix(in srgb, var(--pc) 19%, var(--card-fill, var(--t-card)))
+  );
+  color: var(--pc);
+}
+.prio-pill.set {
+  padding: 0 5px;
+}
+.pill.overdue {
+  --pc: #e0533d;
+  font-weight: 600;
+}
+.conf-pill {
+  --pc: #f0a020;
+}
+.est-pill,
+.ms-pill {
+  max-width: 140px;
 }
 .ms-pill .pill-text {
   overflow: hidden;
@@ -997,31 +993,10 @@ async function toggleGlAssignee(m) {
 .ms-pill.closed {
   opacity: 0.6;
 }
-/* conflict warning pill: orange, draws the eye to an unresolved write-back conflict */
-.conf-pill {
-  box-sizing: border-box;
-  height: 22px;
-  line-height: 1;
-  border-style: solid;
-  border-color: color-mix(in srgb, #e0922f 55%, transparent);
-  background: color-mix(in srgb, #e0922f 14%, transparent);
-  color: #b96a08;
-}
-.pill.set {
-  border-style: solid;
-  color: var(--t-text2);
-}
 /* repeat glyph on a recurring task's due pill — inherits the pill's text
    colour (purple accent clashed inside the neutral pill, worse on dark) */
 .pill-recur {
   color: inherit;
-}
-/* overdue due-date pill: soft red tint (like a warning tag) */
-.pill.overdue {
-  color: #e0533d;
-  border-color: #e0533d;
-  border-style: solid;
-  background: color-mix(in srgb, #e0533d 12%, transparent);
 }
 /* Flag (priority) icon carries the active priority's gradient (set --icon-grad
    inline on the flag only; the date pill is also .pill.set but has no
@@ -1032,16 +1007,9 @@ async function toggleGlAssignee(m) {
 .pill.set :deep(svg [fill='currentColor']) {
   fill: var(--icon-grad, currentColor);
 }
-.pill-text {
-  font-size: 11px;
-}
-/* description indicator: icon-only pill; hover opens the rendered-markdown card.
-   It's a <div>, so pin the box model like .est-pill to match the sibling pills. */
-.desc-pill {
-  box-sizing: border-box;
-  height: 22px;
-  line-height: 1;
-  padding: 2px 5px;
+/* description indicator: icon-only pill; hover opens the rendered-markdown card. */
+.pill.desc-pill {
+  padding: 0 5px;
 }
 .desc-pop {
   max-width: 340px;
@@ -1060,20 +1028,33 @@ async function toggleGlAssignee(m) {
   padding: 1px 8px;
   border-radius: 10px;
 }
-.tag-pill {
-  border-style: solid;
-  gap: 5px;
+.pill.tag-pill {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  gap: 4px;
+  padding: 0;
+  background: none;
+  opacity: 1;
 }
+/* The first tag's own box: TagPill leaves padding/radius/size to the call site
+   (a two-tone scoped tag overrides the padding with its segments). It may
+   shrink so a long scoped tag truncates instead of overflowing the card. */
 .tname {
-  font-size: 11px;
-  max-width: 120px;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: var(--t-r-pill);
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .more {
-  font-size: 10px;
-  opacity: 0.8;
+  padding: 0 2px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-text3);
 }
 .preview {
   display: flex;
@@ -1081,9 +1062,12 @@ async function toggleGlAssignee(m) {
   gap: 5px;
   max-width: 220px;
 }
+/* v2 cascade: 22px avatars overlapping by 6px, each ringed in the card colour so
+   the overlap reads as a stack. */
 .avatar {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
+  flex: none;
   border-radius: 50%;
   background: var(--t-accent-grad);
   color: var(--t-on-primary);
@@ -1092,20 +1076,73 @@ async function toggleGlAssignee(m) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* cascade: overlap the previous avatar with a ring in the card colour */
-  margin-left: -9px;
-  border: 2px solid var(--t-surface);
+  margin-left: -6px;
+  box-shadow: 0 0 0 2px var(--card-fill, var(--t-card));
 }
 .avatar:first-child {
   margin-left: 0;
 }
+.more-ava {
+  width: auto;
+  min-width: 22px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 11px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 11px;
+}
 .avatar.sm {
+  width: 20px;
+  height: 20px;
   margin-left: 0;
-  border: none;
+  box-shadow: none;
 }
 .assignee-pill {
-  border: none;
-  padding: 2px;
+  padding: 0 2px 0 6px;
+  background: none;
+  opacity: 1;
+}
+.assignee-pill.pill:not(.set) {
+  opacity: 1;
+}
+.no-people {
+  color: var(--t-text3);
+  opacity: 0.75;
+}
+/* Hover list of everyone on the card, rendered into body (raw popover). */
+.people-list {
+  min-width: 220px;
+  padding: 6px;
+  border-radius: var(--t-r-tip);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.people-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 6px;
+  border-radius: 7px;
+}
+.people-name {
+  flex: 1;
+  font-size: 13px;
+  color: var(--t-text1);
+  white-space: nowrap;
+}
+.people-role {
+  font-size: 11.5px;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
+.people-none {
+  font-size: 12.5px;
+  color: var(--t-text3);
 }
 /* author + assignee group — pushed to the right edge of the row; margin-left
    auto keeps it right-aligned even when it wraps onto its own line. */
@@ -1119,14 +1156,6 @@ async function toggleGlAssignee(m) {
 .author-ava {
   background: var(--t-text3);
   opacity: 0.85;
-}
-/* Multiline people tooltip (Автор / Исполнитель breakdown). */
-.people-tip {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 12px;
-  line-height: 1.35;
 }
 /* Assignee picker: a pinned search box above a scrollable, capped list. */
 .assignee-menu {
@@ -1201,7 +1230,7 @@ async function toggleGlAssignee(m) {
   align-items: center;
   gap: 8px;
   padding: 5px 6px;
-  border-radius: 6px;
+  border-radius: 7px;
   cursor: pointer;
   font-size: 13px;
 }

@@ -34,8 +34,10 @@ import {
   TrashOutline,
   AddOutline,
   ChevronForwardOutline,
+  ChevronDownOutline,
+  FunnelOutline,
   ChevronBackOutline,
-  SettingsOutline,
+  OptionsOutline,
   RibbonOutline,
   ArchiveOutline,
   GitBranchOutline,
@@ -68,6 +70,12 @@ import { planColumnReorder, planColDrop } from '@/utils/boardDnd'
 import { BACKLOG_SCOPE, matchesScope } from '@/utils/milestones'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
+import { moveFocus, neighbourColumn, planShift, planComplete } from '@/utils/cardNav'
+import { doneTarget, columnTail } from '@/utils/status'
+import { todoColumn } from '@/utils/columnStatus'
+import { taskBasePatch } from '@/utils/taskPatch'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { usePaletteStore } from '@/stores/palette'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -75,6 +83,10 @@ import BoardActivityToasts from './BoardActivityToasts.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardCustomizePanel from './BoardCustomizePanel.vue'
+import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
+import ChartControls from './chart/ChartControls.vue'
+import BoardMembers from './BoardMembers.vue'
+import ShortcutKeys from './ShortcutKeys.vue'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
@@ -230,24 +242,92 @@ watch(autoCollapseEmpty, (on) => {
     if (colCount(dcol) === 0 && dcol.key in colCollapse) delete colCollapse[dcol.key]
   }
 })
-// Composer bar: always a single row. The right-side tools slide away (yielding
-// their width to the chips) only once the chips + a reserved slice for search
-// text fill ≥75% of the bar's full width — measured, not hover-driven. Each chip
-// is pale on its own and turns vivid only under the cursor (search: on focus).
-const composerExpanded = ref(false)
+// ── sub-toolbar fit (v2, #2954) ──
+// One row, never scrolled. Fitting starts from the full bar and gives ground in
+// a fixed order until the row fits: first the view switch takes only what the
+// rest leaves (it shows as many views as fit, the active one always), then the
+// grouping control drops its «Группировка» caption, then the composer folds
+// filter chips from the end into «+N», then the sort chips (taking back what
+// filter chips fit in the room they free), and last the shown-count. Every step
+// is a DOM update + measure inside one frame (the observer and nextTick both run
+// before paint), so nothing flickers.
 const subbarEl = ref(null)
 const composerEl = ref(null)
-const searchEl = ref(null)
-let composerRO = null
-function recomputeComposerFit() {
+const chipsClip = ref(null)
+const switchAvail = ref(Infinity) // px the view switch may take
+const foldFilters = ref(0) // how many filter chips (from the end) sit in «+N»
+const foldSorts = ref(false) // sort chips folded into «+N» too
+const compactGroup = ref(false) // grouping control without its caption
+const hideChartHints = ref(false) // Gantt/timeline: its text key hints go first
+// The open Gantt / timeline view: its exposed controller drives ChartControls.
+const chartView = ref(null)
+// Its controls join the sub-toolbar once it mounts — fit the row again then.
+watch(chartView, () => nextTick(fitSubbar))
+const hiddenChips = computed(() => {
+  const n = filterChips.value.length
+  const k = Math.min(foldFilters.value, n)
+  return Array.from({ length: k }, (_, i) => n - k + i)
+})
+const foldedCount = computed(
+  () => hiddenChips.value.length + (foldSorts.value ? sortLevels.value.length : 0),
+)
+let subbarRO = null
+let fitting = false
+let refit = false // a fit was asked for while one was running
+const overflowing = (bar) => bar.scrollWidth > bar.clientWidth + 1
+async function fitSubbar() {
   const bar = subbarEl.value
-  const search = searchEl.value
-  if (!bar || !search) return
-  // Chips are nowrap and precede the search input, so the input's offset within
-  // the composer equals the chips' total width. Reserve room for typed search.
-  const chipsW = search.offsetLeft
-  const RESERVED_SEARCH = 170
-  composerExpanded.value = chipsW + RESERVED_SEARCH >= bar.clientWidth * 0.75
+  if (!bar) return
+  if (fitting) {
+    refit = true
+    return
+  }
+  fitting = true
+  refit = false
+  try {
+    foldFilters.value = 0
+    foldSorts.value = false
+    compactGroup.value = false
+    hideChartHints.value = false
+    switchAvail.value = Infinity
+    await nextTick()
+    // Whatever the rest of the row needs at full size, the switch may not take.
+    const sw = [...bar.children].find((el) => el.classList.contains('layout-switch'))
+    const rest = bar.scrollWidth - (sw ? sw.offsetWidth : 0)
+    switchAvail.value = Math.max(0, bar.clientWidth - rest)
+    await nextTick()
+    // The chart's key hints are only text: they give their room up first.
+    if (overflowing(bar) && timelineLike.value) {
+      hideChartHints.value = true
+      await nextTick()
+    }
+    // The composer outranks the grouping caption: drop the caption first.
+    if (overflowing(bar)) {
+      compactGroup.value = true
+      await nextTick()
+    }
+    for (let i = 0; i < filterChips.value.length && overflowing(bar); i++) {
+      foldFilters.value = i + 1
+      await nextTick()
+    }
+    if (overflowing(bar) && sortLevels.value.length) {
+      foldSorts.value = true
+      await nextTick()
+      // The sorts' room may take some filter chips back out of «+N».
+      while (foldFilters.value > 0) {
+        foldFilters.value--
+        await nextTick()
+        if (overflowing(bar)) {
+          foldFilters.value++
+          await nextTick()
+          break
+        }
+      }
+    }
+  } finally {
+    fitting = false
+  }
+  if (refit) fitSubbar()
 }
 const groupMode = ref('status') // 'status' | 'tag'
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
@@ -551,10 +631,18 @@ watch(
   persistView,
   { deep: true },
 )
-// Re-measure the composer fit when the chip set changes (add/remove a filter,
-// sort, group, scope, or the subtasks toggle); resize is handled by the observer.
-watch([facetChips, archivedMode, milestoneScope, subtasksExpanded], () =>
-  nextTick(recomputeComposerFit),
+// Re-fit the sub-toolbar when the chip set changes (add/remove a filter, sort,
+// group, scope) or the view does; resizes are handled by the observer.
+watch(
+  [
+    facetChips,
+    archivedMode,
+    milestoneScope,
+    layout,
+    isMobile,
+    () => boardViewStore.membersList.length,
+  ],
+  () => nextTick(fitSubbar),
 )
 
 // ── saved views (per-user, server-side; cross-device) ──
@@ -728,6 +816,11 @@ const colWidth = computed(() => {
   return cardMin.value
 })
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
+// The grouping control lists the same choices as the add menu's «Группировка».
+const groupOptions = computed(() => addOptions.value.find((o) => o.key === 'group')?.children || [])
+// A column with no colour of its own (status column left on default, «Без тегов»)
+// is tinted with the neutral grey of the v2 lanes (#2954).
+const NEUTRAL_COLUMN = '#9aa0aa'
 
 // User-chosen board background (preference): a CSS colour or an image URL.
 const themeStore = useThemeStore()
@@ -1100,18 +1193,48 @@ function colCountTitle(dcol) {
 // summing the column headers — with tag grouping a task carrying two column tags
 // sits in both lists, and the arithmetic sum would count it twice.
 const shownCounts = computed(() => countWithSubtasks(filteredTasks.value, countSubtaskMap.value))
-const shownCountLabel = computed(() => {
-  const c = shownCounts.value
-  return c.total > c.tasks
-    ? t('board.composer.shown', { tasks: c.tasks, total: c.total })
-    : t('board.composer.shownFlat', { tasks: c.tasks })
-})
+// The header search is this board's title filter (v2, #2954): mirror it both
+// ways (a saved view can bring its own query), and publish how many tasks the
+// filter leaves so the header can fall back to a workspace search on zero.
+watch(
+  () => boardViewStore.searchQ,
+  (v) => {
+    if ((filters.q || '') !== v) filters.q = v
+  },
+)
+watch(
+  () => filters.q,
+  (v) => {
+    if (boardViewStore.searchQ !== (v || '')) boardViewStore.searchQ = v || ''
+  },
+)
+watch(
+  () => shownCounts.value.tasks,
+  (n) => (boardViewStore.shownTasks = n),
+  { immediate: true },
+)
+// The ⌘K palette (#2957) reads this board's rows to move a task to a column's
+// end, and asks it to filter by a person picked under «Люди».
+boardViewStore.taskSource = () => allTasks.value
+watch(
+  () => boardViewStore.assigneeFilter,
+  (req) => {
+    if (req?.userId) filters.assignees = [req.userId]
+  },
+)
+// The count itself is drawn next to the board in the sidebar (v2, as in the
+// mockup); the board publishes it with its tooltip.
 const shownCountTitle = computed(() => {
   const c = shownCounts.value
   return c.total > c.tasks
     ? t('board.composer.shownTitle', { tasks: c.tasks, total: c.total })
     : t('board.composer.shownTitleFlat', { tasks: c.tasks })
 })
+watch(
+  () => shownCountTitle.value,
+  (v) => (boardViewStore.shownTitle = v),
+  { immediate: true },
+)
 
 function columnEstimate(dcol) {
   if (groupMode.value !== 'milestone') return ''
@@ -1166,6 +1289,23 @@ async function onColumnReorder(evt) {
   }
 }
 
+// Sends drop/shift intents (utils/boardDnd, utils/cardNav) to the API, in order.
+async function runIntents(intents) {
+  for (const it of intents) {
+    if (it.op === 'setParent') await tasksApi.setParent(it.id, it.parentId)
+    else if (it.op === 'move')
+      await tasksApi.move(it.id, {
+        column_id: it.columnId,
+        before_id: it.beforeId,
+        after_id: it.afterId,
+      })
+    else if (it.op === 'setMilestone') await tasksApi.setMilestone(it.id, it.milestoneId)
+    else if (it.op === 'clearMilestone') await tasksApi.clearMilestone(it.id)
+    else if (it.op === 'addTag') await tasksApi.addTag(it.id, it.tagId)
+    else if (it.op === 'removeTag') await tasksApi.removeTag(it.id, it.tagId)
+  }
+}
+
 // Drag persistence: the rules (neighbour math, collapsed pin, subtask promotion,
 // single-value milestone, tag add/remove) live in utils/boardDnd; here we only
 // dispatch the resulting intents to the API, in order.
@@ -1180,19 +1320,7 @@ async function onColChange(evt, dcol) {
       list: lists.value[dcol.key],
       collapsed,
     })
-    for (const it of intents) {
-      if (it.op === 'setParent') await tasksApi.setParent(it.id, it.parentId)
-      else if (it.op === 'move')
-        await tasksApi.move(it.id, {
-          column_id: it.columnId,
-          before_id: it.beforeId,
-          after_id: it.afterId,
-        })
-      else if (it.op === 'setMilestone') await tasksApi.setMilestone(it.id, it.milestoneId)
-      else if (it.op === 'clearMilestone') await tasksApi.clearMilestone(it.id)
-      else if (it.op === 'addTag') await tasksApi.addTag(it.id, it.tagId)
-      else if (it.op === 'removeTag') await tasksApi.removeTag(it.id, it.tagId)
-    }
+    await runIntents(intents)
     scheduleReload()
   } catch (e) {
     message.error(e.message)
@@ -1245,6 +1373,256 @@ async function submitAddTask(dcol) {
     message.error(e.message)
   }
 }
+
+// ── keyboard (v2, #2956) ──
+// A selected card (arrows), actions on it (↵ E S A P D L ⇧N ⌘←/→) and the
+// board's own keys (C F ⇧G V H ⇧C). `focusedCard` is not `selectedTaskId` —
+// that one is the task open in the modal — and it carries the column too:
+// with tag grouping one task sits in several columns.
+const focusedCard = ref(null)
+// The column under the mouse, for «C — task in the hovered column» and «H».
+const hoveredColKey = ref(null)
+const groupCtlEl = ref(null)
+
+const kanbanOn = () => !!board.value && layout.value === 'board' && !isMobile.value
+const editable = () => !!board.value && !archivedMode.value
+
+function navCols() {
+  return colModel.value.map((d) => ({
+    key: d.key,
+    ids: (lists.value[d.key] || []).map((x) => x.id),
+    collapsed: isColCollapsed(d),
+  }))
+}
+// The selection is kept for the arrows to carry on from (a click on a card
+// sets it), but it is only drawn once the keyboard is in use: a pointer — and a
+// phone, where there is no keyboard at all — never shows the ring.
+const kbdFocus = ref(false)
+function onAnyPointer() {
+  kbdFocus.value = false
+}
+function isFocused(dcol, id) {
+  const f = focusedCard.value
+  return kbdFocus.value && !isMobile.value && !!f && f.colKey === dcol.key && f.taskId === id
+}
+function focusedTask() {
+  const f = focusedCard.value
+  return f ? (lists.value[f.colKey] || []).find((x) => x.id === f.taskId) || null : null
+}
+function focusedCol() {
+  const key = focusedCard.value?.colKey || hoveredColKey.value
+  return colModel.value.find((d) => d.key === key) || null
+}
+function revealFocused() {
+  nextTick(() => {
+    const f = focusedCard.value
+    if (!f) return
+    boardScroll.value
+      ?.querySelector(`.card-wrap[data-card="${CSS.escape(cardKey(f.colKey, f.taskId))}"]`)
+      ?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  })
+}
+function stepFocus(dir) {
+  // The first arrow after the mouse shows where the selection is, without
+  // moving it off the card that was clicked.
+  if (!kbdFocus.value && focusedTask()) {
+    kbdFocus.value = true
+    revealFocused()
+    return
+  }
+  kbdFocus.value = true
+  focusedCard.value = moveFocus(navCols(), focusedCard.value, dir)
+  revealFocused()
+}
+// A card the filter, a move or a delete took away drops the selection.
+watch(lists, () => {
+  if (focusedCard.value && !focusedTask()) focusedCard.value = null
+})
+// Clicking a card also selects it, so the arrows carry on from there after
+// the modal closes.
+function onCardOpen(dcol, id) {
+  focusedCard.value = { colKey: dcol.key, taskId: id }
+  openTask(id)
+}
+
+// ── J/K in the open task (v2, #2958): the neighbours in the order on screen —
+// the kanban read column by column (collapsed ones skipped, a task in several
+// tag columns counted once), any other view in its own list order. ──
+const navOrder = computed(() => {
+  if (!showTaskModal.value) return []
+  if (layout.value !== 'board') return filteredTasks.value.map((x) => x.id)
+  const seen = new Set()
+  const out = []
+  for (const c of navCols()) {
+    if (c.collapsed) continue
+    for (const id of c.ids) if (!seen.has(id)) seen.add(id) && out.push(id)
+  }
+  return out
+})
+const taskNav = computed(() => {
+  const i = navOrder.value.indexOf(selectedTaskId.value)
+  return i < 0 ? null : { index: i, total: navOrder.value.length }
+})
+function navigateTask(dir) {
+  const order = navOrder.value
+  const id = order[order.indexOf(selectedTaskId.value) + dir]
+  if (!id) return
+  selectedTaskId.value = id
+  // The selection follows, so closing the modal leaves the arrows on this card.
+  if (layout.value === 'board') {
+    const col = navCols().find((c) => c.ids.includes(id))
+    if (col) focusedCard.value = { colKey: col.key, taskId: id }
+  }
+  // Replace, not push: walking through twenty tasks shouldn't take twenty Backs.
+  router.replace({ query: { ...route.query, task: numberOf(id) ?? id } })
+}
+
+async function completeFocused() {
+  const task = focusedTask()
+  if (!task) return
+  const plan = planComplete({
+    completed: !!task.completed_at,
+    columnId: task.column_id,
+    doneColumnId: doneTarget(columns.value, doneColumnId.value)?.id,
+  })
+  suppress()
+  try {
+    if (plan.op === 'move') {
+      await tasksApi.move(task.id, {
+        column_id: plan.columnId,
+        before_id: columnTail(allTasks.value, plan.columnId, task.id),
+        after_id: null,
+      })
+    } else {
+      await tasksApi.update(task.id, { ...taskBasePatch(task), completed: plan.op === 'complete' })
+    }
+    scheduleReload()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function setFocusedPriority(value) {
+  const task = focusedTask()
+  if (!task || value > 4) return
+  suppress()
+  try {
+    await tasksApi.update(task.id, { ...taskBasePatch(task), priority: value })
+    scheduleReload()
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
+async function shiftFocused(dir) {
+  const task = focusedTask()
+  const from = focusedCol()
+  const to = from && neighbourColumn(colModel.value, from.key, dir)
+  if (!task || !to) return
+  const intents = planShift({
+    groupMode: groupMode.value,
+    from,
+    to,
+    taskId: task.id,
+    tailId: columnTail(allTasks.value, to.key, task.id),
+  })
+  if (!intents.length) return
+  suppress()
+  try {
+    await runIntents(intents)
+    kbdFocus.value = true
+    focusedCard.value = { colKey: to.key, taskId: task.id }
+    await load(props.boardId, { silent: true })
+    revealFocused()
+  } catch (e) {
+    message.error(e.message)
+    load(props.boardId)
+  }
+}
+
+// V, then 1–3: the three main views, in the order of the view switch.
+const LAYOUT_KEYS = ['board', 'list', 'timeline']
+const paletteStore = usePaletteStore()
+const openField = (field) => () => {
+  const task = focusedTask()
+  if (task) paletteStore.openTask(task.id, field)
+}
+
+useShortcuts(
+  {
+    'card.up': () => stepFocus('up'),
+    'card.down': () => stepFocus('down'),
+    'card.left': () => stepFocus('left'),
+    'card.right': () => stepFocus('right'),
+  },
+  { when: kanbanOn },
+)
+useShortcuts(
+  {
+    'card.clear': () => (focusedCard.value = null),
+    'card.open': () => openTask(focusedCard.value.taskId),
+  },
+  { when: () => kanbanOn() && kbdFocus.value && !!focusedTask() },
+)
+useShortcuts(
+  {
+    'card.complete': completeFocused,
+    'card.status': openField('status'),
+    'card.assignees': openField('assignees'),
+    'card.priorityPick': openField('priority'),
+    'card.priority': setFocusedPriority,
+    'card.due': openField('due'),
+    'card.tags': openField('tags'),
+    'card.subtask': openField('subtask'),
+    'card.moveLeft': () => shiftFocused('left'),
+    'card.moveRight': () => shiftFocused('right'),
+  },
+  { when: () => kanbanOn() && editable() && kbdFocus.value && !!focusedTask() },
+)
+useShortcuts(
+  {
+    'board.addTask': () => {
+      const dcol = focusedCol() || colModel.value.find((d) => !isColCollapsed(d))
+      if (dcol) startAddTask(dcol)
+    },
+    'view.collapse': () => {
+      const dcol = focusedCol()
+      if (dcol) toggleCollapse(dcol)
+    },
+  },
+  { when: () => kanbanOn() && editable() },
+)
+useShortcuts(
+  {
+    'board.filter': () => onAddShow(true),
+    'board.group': () => groupCtlEl.value?.click(),
+    'board.layout': (n) => {
+      const next = LAYOUT_KEYS[n - 1]
+      if (next) layout.value = next
+    },
+    'view.cardSize': () => {
+      const sizes = ['compact', 'medium', 'large']
+      cardSize.value = sizes[(sizes.indexOf(cardSize.value) + 1) % sizes.length]
+    },
+  },
+  { when: () => !!board.value && !isMobile.value },
+)
+
+// «N, then T» on a board: the inline quick-add of the «К работе» column — the
+// seeded todo column, else one so named, else the first. Other groupings have
+// no status columns; their first column takes it (submitAddTask files it).
+watch(
+  () => boardViewStore.quickAdd,
+  () => {
+    if (!editable() || layout.value !== 'board') return
+    const cols = colModel.value
+    const todo = groupMode.value === 'status' ? todoColumn(cols) : cols[0]
+    if (todo) {
+      if (isColCollapsed(todo)) toggleCollapse(todo)
+      startAddTask(todo)
+    }
+  },
+)
 
 // ── inline column creation ("+ New column" to the right) ──
 const addingColumn = ref(false)
@@ -1422,27 +1800,29 @@ async function applyTaskQuery() {
 }
 
 onMounted(async () => {
+  window.addEventListener('pointerdown', onAnyPointer, true)
   ro = new ResizeObserver(() => measure())
   if (boardScroll.value) {
     ro.observe(boardScroll.value)
     measure()
   }
-  // Re-measure the composer fit on bar resize (window / sidebar toggle).
-  composerRO = new ResizeObserver(recomputeComposerFit)
-  if (subbarEl.value) composerRO.observe(subbarEl.value)
-  nextTick(recomputeComposerFit)
+  // Re-fit the sub-toolbar on resize (window / sidebar toggle / chip set).
+  subbarRO = new ResizeObserver(() => fitSubbar())
+  if (subbarEl.value) subbarRO.observe(subbarEl.value)
+  nextTick(fitSubbar)
   restoreView()
   await load(props.boardId)
   loadViews()
   applyTaskQuery()
 })
 onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', onAnyPointer, true)
   ro?.disconnect()
   // Drop any pending debounced reload so it can't fire against a board we've just
   // navigated away from (e.g. its project was deleted) and 404 with a stray toast.
   clearTimeout(reloadTimer)
   for (const t of Object.values(partialTimers)) clearTimeout(t)
-  composerRO?.disconnect()
+  subbarRO?.disconnect()
   onDragEnd()
   boardViewStore.reset()
 })
@@ -1494,108 +1874,145 @@ async function restoreFromArchive(taskId) {
       :class="{ 'has-bg': !!themeStore.boardBackground }"
       :style="boardBgStyle"
     >
-      <!-- Sub-toolbar under the header: grouping / sort / filters / subtasks +
-           a task-name search on the right. (Layout + Теги/Архив live in the
-           global header now.) -->
+      <!-- Sub-toolbar under the header (v2, #2954): the view switch, the composer
+           (sort + filter chips only — the title search is the header's field),
+           the grouping control, the board's people and its tools. The view switch
+           and the composer share the free width: the switch shows as many views
+           as fit beside the chips, and only when it is down to the active one do
+           extra filter chips fold into «+N». Nothing else shrinks or truncates. -->
       <div ref="subbarEl" class="subbar">
-        <!-- Composer bar: scope (archive/sprint) + grouping / sort / filters as
-             chips + an add menu + the name search, all in one single-row bar.
-             Each chip is pale until hovered; the right-side tools slide away only
-             once the chips fill ≥75% of the bar. Sort chips are drag-reorderable. -->
+        <!-- On a phone the view switch is part of the header's board menu. -->
+        <BoardLayoutSwitch v-if="!isMobile" :available="switchAvail" @measured="fitSubbar" />
         <div
           ref="composerEl"
           class="composer"
           :class="{ 'has-clear': hasClearableFacets }"
           data-tour="board-composer"
         >
-          <!-- Scope chips: archive = amber tint, sprint = accent tint (no border). -->
-          <span
-            v-if="archivedMode"
-            class="facet facet-archive"
-            :title="t('board.scope.archiveTitle')"
-          >
-            <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
-            {{ t('board.scope.archiveChip') }}
-            <button class="facet-x" :title="t('board.scope.archiveExit')" @click.stop="exitArchive">
-              ×
-            </button>
-          </span>
-          <span
-            v-if="milestoneScope"
-            class="facet facet-accent"
-            :title="t('board.scope.milestoneTitle')"
-          >
-            <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
-            {{ milestoneScopeLabel }}
-            <button
-              class="facet-x"
-              :title="t('board.scope.milestoneClear')"
-              @click.stop="clearMilestoneScope"
+          <n-icon class="composer-funnel" :component="FunnelOutline" :size="14" />
+          <div ref="chipsClip" class="chips-clip">
+            <!-- Scope chips: archive = amber tint, sprint = accent tint. -->
+            <span
+              v-if="archivedMode"
+              class="facet facet-archive"
+              :title="t('board.scope.archiveTitle')"
             >
-              ×
-            </button>
-          </span>
-
-          <!-- Subtask-expansion toggle (icon-only): accent when on, grey when off. -->
-          <button
-            class="facet subtasks-chip"
-            :class="{ active: subtasksExpanded }"
-            :title="
-              t(subtasksExpanded ? 'board.composer.subtasksOn' : 'board.composer.subtasksOff')
-            "
-            @click.stop="toggleSubtasksExpanded"
-          >
-            <n-icon class="facet-ic" :component="GitBranchOutline" :size="14" />
-          </button>
-
-          <!-- Grouping chip (toggles status/tag grouping). -->
-          <span
-            v-if="groupChip"
-            class="facet group"
-            :title="t('board.composer.groupToggle')"
-            @click="onChipClick(groupChip)"
-          >
-            <n-icon class="facet-ic" :component="groupChip.icon" :size="13" />
-            {{ groupChip.text }}
-          </span>
-
-          <!-- Sort chips: click toggles direction, drag reorders primary/secondary. -->
-          <draggable
-            v-if="sortLevels.length"
-            :list="sortLevels"
-            item-key="field"
-            handle=".facet"
-            :animation="150"
-            class="sort-chips"
-            ghost-class="facet-ghost"
-          >
-            <template #item="{ element: l }">
-              <span
-                class="facet sortable"
-                :title="t('board.composer.sortHint')"
-                @click="toggleSortDir(l)"
+              <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
+              {{ t('board.scope.archiveChip') }}
+              <button
+                class="facet-x"
+                :title="t('board.scope.archiveExit')"
+                @click.stop="exitArchive"
               >
-                <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
-                {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
+                ×
+              </button>
+            </span>
+            <span
+              v-if="milestoneScope"
+              class="facet facet-accent"
+              :title="t('board.scope.milestoneTitle')"
+            >
+              <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
+              {{ milestoneScopeLabel }}
+              <button
+                class="facet-x"
+                :title="t('board.scope.milestoneClear')"
+                @click.stop="clearMilestoneScope"
+              >
+                ×
+              </button>
+            </span>
+
+            <!-- Sort chips: click toggles direction, drag reorders primary/secondary. -->
+            <draggable
+              v-if="sortLevels.length && !foldSorts"
+              :list="sortLevels"
+              item-key="field"
+              handle=".facet"
+              :animation="150"
+              class="sort-chips"
+              ghost-class="facet-ghost"
+            >
+              <template #item="{ element: l }">
+                <span
+                  class="facet sortable"
+                  :title="t('board.composer.sortHint')"
+                  @click="toggleSortDir(l)"
+                >
+                  <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
+                  {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
+                  <button
+                    class="facet-x"
+                    :title="t('board.composer.remove')"
+                    @click.stop="removeSort(l)"
+                  >
+                    ×
+                  </button>
+                </span>
+              </template>
+            </draggable>
+
+            <!-- Filter chips (priority / assignee / tag / status / milestone / due).
+                 The ones that no longer fit stay laid out but invisible; «+N»
+                 below lists them. -->
+            <template v-for="(c, ci) in filterChips" :key="ci">
+              <span v-if="!hiddenChips.includes(ci)" class="facet">
+                <n-icon class="facet-ic" :component="c.icon" :size="13" />
+                {{ c.text }}
                 <button
                   class="facet-x"
                   :title="t('board.composer.remove')"
-                  @click.stop="removeSort(l)"
+                  @click.stop="removeChip(c)"
                 >
                   ×
                 </button>
               </span>
             </template>
-          </draggable>
+          </div>
 
-          <!-- Filter chips (priority / assignee / tag / status / milestone / due). -->
-          <span v-for="(c, ci) in filterChips" :key="ci" class="facet">
-            <n-icon class="facet-ic" :component="c.icon" :size="13" />
-            {{ c.text }}
-            <button class="facet-x" :title="t('board.composer.remove')" @click.stop="removeChip(c)">
-              ×
-            </button>
-          </span>
+          <n-popover v-if="foldedCount" trigger="click" placement="bottom-start">
+            <template #trigger>
+              <button
+                type="button"
+                class="facet facet-more"
+                data-testid="composer-more"
+                :title="t('board.composer.more', { count: foldedCount })"
+              >
+                +{{ foldedCount }}
+              </button>
+            </template>
+            <div class="more-chips">
+              <template v-if="foldSorts">
+                <span
+                  v-for="l in sortLevels"
+                  :key="l.field"
+                  class="facet sortable"
+                  @click="toggleSortDir(l)"
+                >
+                  <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
+                  {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
+                  <button
+                    class="facet-x"
+                    :title="t('board.composer.remove')"
+                    @click.stop="removeSort(l)"
+                  >
+                    ×
+                  </button>
+                </span>
+              </template>
+              <span v-for="ci in hiddenChips" :key="ci" class="facet">
+                <n-icon class="facet-ic" :component="filterChips[ci].icon" :size="13" />
+                {{ filterChips[ci].text }}
+                <button
+                  class="facet-x"
+                  :title="t('board.composer.remove')"
+                  @click.stop="removeChip(filterChips[ci])"
+                >
+                  ×
+                </button>
+              </span>
+            </div>
+          </n-popover>
 
           <n-dropdown
             :show="addShow"
@@ -1612,16 +2029,6 @@ async function restoreFromArchive(taskId) {
             </button>
           </n-dropdown>
 
-          <input
-            ref="searchEl"
-            v-model="filters.q"
-            class="composer-search"
-            data-testid="board-search"
-            :placeholder="t('board.composer.search')"
-          />
-          <span class="composer-count" data-testid="composer-count" :title="shownCountTitle">
-            {{ shownCountLabel }}
-          </span>
           <button
             v-if="hasClearableFacets"
             class="facet-clear"
@@ -1632,9 +2039,63 @@ async function restoreFromArchive(taskId) {
           </button>
         </div>
 
+        <!-- Grouping: its own control next to the composer (v2, #2954) — a
+             setting of the board, not one more filter. Opens the same grouping
+             options as the composer's add menu. -->
+        <n-dropdown
+          v-if="groupChip"
+          trigger="click"
+          placement="bottom-start"
+          :options="groupOptions"
+          @select="onAddFacet"
+        >
+          <button
+            ref="groupCtlEl"
+            type="button"
+            class="group-ctl"
+            data-testid="group-control"
+            data-tour="board-grouping"
+          >
+            <n-icon class="gc-ic" :component="groupChip.icon" :size="14" />
+            <span v-if="!isMobile && !compactGroup" class="gc-lbl">{{
+              t('board.facet.menu.group')
+            }}</span>
+            <span class="gc-val">{{ groupChip.text }}</span>
+            <n-icon class="gc-ic" :component="ChevronDownOutline" :size="12" />
+          </button>
+        </n-dropdown>
+
+        <!-- Gantt / timeline: scale, today, key hints, view settings (v2, #2959) -->
+        <ChartControls
+          v-if="timelineLike"
+          :ctl="chartView?.ctl"
+          :hints="!hideChartHints && !isMobile"
+          :compact="isMobile"
+        />
+
+        <BoardMembers v-if="!isMobile" class="subbar-people" />
+
         <!-- Right-side tools — slide off to the right while the composer is
              expanded so the full chip set has room. -->
-        <div class="bar-tools" :class="{ hidden: composerExpanded }">
+        <div class="bar-tools">
+          <!-- Subtasks: compact rows on the card ⇄ full child cards (v2: a tool of
+               its own, out of the composer). -->
+          <n-tooltip>
+            <template #trigger>
+              <n-button
+                size="small"
+                quaternary
+                class="ngrad bar-btn"
+                :type="subtasksExpanded ? 'primary' : 'default'"
+                data-testid="subtasks-toggle"
+                @click="toggleSubtasksExpanded"
+              >
+                <template #icon><n-icon :component="GitBranchOutline" /></template>
+              </n-button>
+            </template>
+            {{ t(subtasksExpanded ? 'board.composer.subtasksOn' : 'board.composer.subtasksOff') }}
+          </n-tooltip>
+
           <!-- "Авто": dependency-graph ordering (Gantt only). Resets the composer to
              no-group/no-sort and orders rows by the blocking graph. -->
           <n-tooltip v-if="layout === 'gantt'">
@@ -1662,7 +2123,7 @@ async function restoreFromArchive(taskId) {
                 data-tour="board-customize"
                 @click="customizeOpen = true"
               >
-                <template #icon><n-icon :component="SettingsOutline" /></template>
+                <template #icon><n-icon :component="OptionsOutline" /></template>
               </n-button>
             </template>
             {{ t('board.tools.customize') }}
@@ -1776,6 +2237,8 @@ async function restoreFromArchive(taskId) {
 
       <BoardTimelineView
         v-else-if="layout === 'timeline'"
+        ref="chartView"
+        :done-column-id="board?.done_column_id || null"
         :tasks="filteredTasks"
         :status-columns="columns"
         :members-map="membersMap"
@@ -1791,6 +2254,8 @@ async function restoreFromArchive(taskId) {
 
       <BoardGanttView
         v-else-if="layout === 'gantt'"
+        ref="chartView"
+        :done-column-id="board?.done_column_id || null"
         :board-id="boardId"
         :tasks="filteredTasks"
         :status-columns="columns"
@@ -1841,15 +2306,8 @@ async function restoreFromArchive(taskId) {
               :data-column-key="dcol.key"
               :data-column-name="dcol.rawName"
               :class="{ collapsed: colCollapsedNow(dcol) }"
-              :style="{
-                '--col-accent': dcol.color || 'var(--t-primary)',
-                '--col-tint': dcol.color
-                  ? `color-mix(in srgb, ${dcol.color} 6%, var(--t-surface-alt))`
-                  : 'var(--t-surface-alt)',
-                '--col-border': dcol.color
-                  ? `color-mix(in srgb, ${dcol.color} 12%, var(--t-border))`
-                  : 'var(--t-border)',
-              }"
+              :style="{ '--col-c': dcol.color || NEUTRAL_COLUMN }"
+              @mouseenter="hoveredColKey = dcol.key"
             >
               <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
@@ -1875,6 +2333,7 @@ async function restoreFromArchive(taskId) {
                 :is-done="groupMode === 'status' && dcol.key === doneColumnId"
                 :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
                 :collapsed="isColCollapsed(dcol)"
+                :prefix-names="tagPrefixNames"
                 @changed="onChanged"
                 @set-done="onSetDone"
                 @toggle-collapse="toggleCollapse(dcol)"
@@ -1885,6 +2344,8 @@ async function restoreFromArchive(taskId) {
                 item-key="id"
                 class="drop t-hoverscroll"
                 ghost-class="ghost"
+                :force-fallback="true"
+                :fallback-on-body="true"
                 filter=".add-sub, .sub-add-input"
                 :prevent-on-filter="false"
                 :disabled="archivedMode"
@@ -1897,7 +2358,11 @@ async function restoreFromArchive(taskId) {
                 @change="onColChange($event, dcol)"
               >
                 <template #item="{ element, index }">
-                  <div :ref="(el) => regCard(el, cardKey(dcol.key, element.id))" class="card-wrap">
+                  <div
+                    :ref="(el) => regCard(el, cardKey(dcol.key, element.id))"
+                    class="card-wrap"
+                    :data-card="cardKey(dcol.key, element.id)"
+                  >
                     <div
                       v-if="
                         colCollapsedNow(dcol) || !(vis[cardKey(dcol.key, element.id)] ?? index < 12)
@@ -1915,7 +2380,8 @@ async function restoreFromArchive(taskId) {
                       :subtasks-expanded="subtasksExpanded"
                       :dragging="draggingCard"
                       :readonly="archivedMode"
-                      @open="openTask"
+                      :selected="isFocused(dcol, element.id)"
+                      @open="(id) => onCardOpen(dcol, id)"
                       @changed="onChanged"
                       @restore="restoreFromArchive"
                     />
@@ -1941,16 +2407,17 @@ async function restoreFromArchive(taskId) {
                     @blur="submitAddTask(dcol)"
                   />
                 </div>
-                <n-button
+                <button
                   v-else
-                  text
-                  size="tiny"
-                  class="add-btn"
+                  type="button"
+                  class="add-task"
                   data-testid="add-task-button"
                   @click="startAddTask(dcol)"
                 >
-                  {{ t('board.column.addTask') }}
-                </n-button>
+                  <n-icon :component="AddOutline" :size="15" />
+                  <span class="add-task-label">{{ t('board.column.addTask') }}</span>
+                  <ShortcutKeys v-if="!isMobile" id="board.addTask" class="add-task-key" />
+                </button>
               </template>
             </div>
           </template>
@@ -1968,16 +2435,16 @@ async function restoreFromArchive(taskId) {
             @keyup.esc="addingColumn = false"
             @blur="submitAddColumn"
           />
-          <n-button
+          <button
             v-else
-            dashed
-            block
-            class="add-btn"
+            type="button"
+            class="add-col-btn"
             data-testid="add-column"
             @click="startAddColumn"
           >
-            {{ t('board.column.add') }}
-          </n-button>
+            <n-icon :component="AddOutline" :size="16" />
+            <span>{{ t('board.column.add') }}</span>
+          </button>
         </div>
       </div>
 
@@ -1997,8 +2464,10 @@ async function restoreFromArchive(taskId) {
     :task-id="selectedTaskId"
     :board-top-tasks="allTasks"
     :readonly="archivedMode"
+    :nav="taskNav"
     @update:show="(v) => v || closeTask()"
     @changed="onChanged"
+    @navigate="navigateTask"
     @open="openTask"
     @restore="restoreFromArchive"
   />
@@ -2030,16 +2499,28 @@ async function restoreFromArchive(taskId) {
 </template>
 
 <style scoped>
+/* v2 (#2954): the sub-toolbar sits on the canvas with no rule under it — the
+   tinted lanes below are what set the board apart. */
 .subbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--t-border);
+  gap: 8px;
+  margin-bottom: 10px;
+  /* The fit keeps everything inside; this only guards a frame mid-resize. */
+  overflow: hidden;
 }
 .subbar-spacer {
   flex: 1;
+}
+.subbar-people {
+  flex: none;
+  margin-left: auto;
+}
+.bar-tools {
+  margin-left: auto;
+}
+.subbar-people + .bar-tools {
+  margin-left: 0;
 }
 /* Sprint scope chip: a persistent, accent-tinted badge showing the active sprint. */
 /* Keep the loader vertically centred during the initial board load (the spin
@@ -2053,98 +2534,127 @@ async function restoreFromArchive(taskId) {
 .board-wrap.has-bg {
   margin: -16px;
   padding: 16px;
-  min-height: calc(100vh - 53px);
+  min-height: calc(100vh - 52px);
   box-sizing: border-box;
 }
 /* Right-side toolbar buttons match the composer bar's height. */
 .bar-btn {
-  height: 40px;
-  width: 40px;
+  height: 34px;
+  width: 34px;
 }
-/* The tool cluster slides off to the right (and yields its width) while the
-   composer is expanded, giving the chips the full bar width. */
 .bar-tools {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: none;
-  overflow: hidden;
-  transition:
-    max-width 0.28s ease,
-    opacity 0.2s ease,
-    transform 0.28s ease,
-    margin 0.28s ease;
-  max-width: 200px;
 }
-.bar-tools.hidden {
-  max-width: 0;
-  margin-left: -6px;
-  opacity: 0;
-  transform: translateX(16px);
-  pointer-events: none;
-}
-/* composer bar */
+/* composer bar — v2 (#2954): a filled control well holding only the sort and
+   filter chips (+ the add button). It takes its content's width; when the row
+   is short it shrinks and the chips clip, the overflow folding into «+N». */
 .composer {
   position: relative;
-  flex: 1;
-  min-width: 0;
+  flex: none;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   box-sizing: border-box;
-  min-height: 40px;
-  padding: 8px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
-  /* Single row; when the chips exceed the bar width (rare — the tools slide away
-     to yield space) the bar scrolls horizontally rather than wrapping. */
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
-  /* Tame the inherited (Naive) line-height so a chip stays 22px tall. */
+  min-height: 34px;
+  padding: 0 6px 0 10px;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
+  /* Tame the inherited (Naive) line-height so a chip stays 24px tall. */
   line-height: 1.25;
+}
+.chips-clip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.chips-clip:empty {
+  display: none;
+}
+.facet.facet-more {
+  flex: none;
+  border: none;
+  padding: 0 9px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.more-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 320px;
 }
 .facet {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  height: 22px; /* match the adjacent "add filter" (＋) button */
+  gap: 5px;
+  font-size: 12.5px;
+  height: 24px;
   box-sizing: border-box;
   padding: 0 4px 0 9px;
-  border-radius: 6px;
-  background: var(--t-hover);
-  color: var(--t-text2);
+  border-radius: var(--t-r-pill);
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 14%, var(--t-ctl)),
+    color-mix(in srgb, var(--t-primary) 24%, var(--t-ctl))
+  );
+  color: var(--t-text1);
   white-space: nowrap;
-  /* Each chip is pale until hovered, so an idle bar reads calmly (no whole-bar
-     dim/expand). */
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
 }
-.facet:hover {
-  opacity: 1;
+.composer-funnel {
+  flex: none;
+  color: var(--t-text3);
 }
-.facet.group {
-  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
-  /* Accent chip text matches its icon (accent, not near-black). */
-  color: var(--t-primary);
+/* Grouping control beside the composer: «Группировка <value> ⌄» on the control
+   well — a board setting, so neutral, not an accent chip. */
+.group-ctl {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
   cursor: pointer;
-  padding-right: 9px;
 }
-/* Sprint scope chip: accent tint, no border. */
-.facet-accent {
-  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
-  color: var(--t-primary);
+.group-ctl:hover {
+  background: var(--t-hover);
 }
+.gc-ic {
+  color: var(--t-text3);
+}
+.gc-lbl {
+  color: var(--t-text3);
+}
+.gc-val {
+  font-weight: 600;
+  color: var(--t-text1);
+}
+/* Sprint scope chip: the accent capsule like any filter. */
 .facet-accent .facet-ic {
   color: var(--t-primary);
   opacity: 1;
 }
-/* Archive scope chip: amber tint, no border. */
+/* Archive scope chip: amber capsule. */
 .facet-archive {
-  background: color-mix(in srgb, #e0922f 15%, transparent);
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e0922f 14%, var(--t-ctl)),
+    color-mix(in srgb, #e0922f 24%, var(--t-ctl))
+  );
   color: #b5792a;
 }
 .facet-archive .facet-ic {
@@ -2166,12 +2676,7 @@ async function restoreFromArchive(taskId) {
 }
 .facet-x:hover {
   color: var(--t-text1);
-  background: var(--t-border);
-}
-/* On accent chips the remove-× carries the chip's accent too (matches text/icon). */
-.facet.group .facet-x,
-.facet-accent .facet-x {
-  color: var(--t-primary);
+  background: var(--t-hover);
 }
 .facet-archive .facet-x {
   color: #b5792a;
@@ -2182,44 +2687,17 @@ async function restoreFromArchive(taskId) {
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 6px;
-  border: 1px dashed var(--t-border);
-  background: none;
-  color: var(--t-primary);
+  border-radius: 50%;
+  border: none;
+  background: var(--t-pill);
+  color: var(--t-text2);
   cursor: pointer;
   flex: none;
 }
 .facet-add:hover {
-  border-color: var(--t-primary);
-}
-.composer-search {
-  flex: 1;
-  min-width: 120px;
-  border: none;
-  background: none;
-  outline: none;
   color: var(--t-text1);
-  font-size: 13px;
-  padding: 2px 4px;
-  /* Pale until the caret is in it (matches the chips' hover behaviour). */
-  opacity: 0.6;
-  transition: opacity 0.15s ease;
-}
-.composer-search:focus {
-  opacity: 1;
-}
-.composer-search::placeholder {
-  color: var(--t-text3);
 }
 /* Reference figure, not a control — flat neutral grey, no accent gradient. */
-.composer-count {
-  flex: none;
-  color: var(--t-text3);
-  font-size: 12px;
-  line-height: 1;
-  white-space: nowrap;
-  padding-left: 6px;
-}
 .facet-clear {
   flex: none;
   border: none;
@@ -2238,10 +2716,6 @@ async function restoreFromArchive(taskId) {
   flex: none;
   opacity: 0.8;
 }
-.facet.group .facet-ic {
-  color: var(--t-primary);
-  opacity: 1;
-}
 /* Sort chips share the composer gap so a run of them reads as one group. */
 .sort-chips {
   display: inline-flex;
@@ -2252,23 +2726,6 @@ async function restoreFromArchive(taskId) {
 /* Drag placeholder while reordering sort chips. */
 .facet-ghost {
   opacity: 0.4;
-}
-/* Subtask-expansion toggle chip: plain grey when off, accent tint when on. */
-/* Subtask-expansion toggle: icon-only, square-ish; grey off / accent on. */
-.subtasks-chip {
-  flex: none;
-  border: none;
-  cursor: pointer;
-  font: inherit;
-  padding: 0 6px;
-}
-.subtasks-chip.active {
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-  color: var(--t-text1);
-}
-.subtasks-chip.active .facet-ic {
-  color: var(--t-primary);
-  opacity: 1;
 }
 .sb-prefix {
   width: 170px;
@@ -2317,7 +2774,7 @@ async function restoreFromArchive(taskId) {
   background: none;
   cursor: pointer;
   padding: 6px 8px;
-  border-radius: 6px;
+  border-radius: 7px;
   color: var(--t-text1);
   font-size: 13px;
 }
@@ -2342,8 +2799,8 @@ async function restoreFromArchive(taskId) {
   width: 100%;
 }
 .view-chip {
-  border: 1px solid var(--t-border);
-  background: var(--t-hover);
+  border: none;
+  background: var(--t-pill);
   border-radius: 999px;
   padding: 2px 8px;
   font-size: 11px;
@@ -2351,8 +2808,7 @@ async function restoreFromArchive(taskId) {
   color: var(--t-text2);
 }
 .view-chip:hover {
-  border-color: var(--t-primary);
-  color: var(--t-primary);
+  color: var(--t-text1);
 }
 .task-search {
   width: 220px;
@@ -2365,7 +2821,7 @@ async function restoreFromArchive(taskId) {
   .board-wrap.has-bg {
     margin: -12px;
     padding: 12px;
-    min-height: calc(100dvh - 53px);
+    min-height: calc(100dvh - 52px);
   }
   .sb-label {
     display: none;
@@ -2379,14 +2835,7 @@ async function restoreFromArchive(taskId) {
     max-width: none;
     margin-left: 4px;
   }
-  /* On mobile the search is shrinkable so it never forces horizontal overflow. */
-  .composer-search {
-    min-width: 0;
-  }
   /* The bar is already squeezed there; the counter is the first thing to drop. */
-  .composer-count {
-    display: none;
-  }
 }
 .vp {
   width: 240px;
@@ -2433,7 +2882,7 @@ async function restoreFromArchive(taskId) {
 }
 .add-col {
   box-sizing: border-box;
-  flex: 0 0 220px;
+  flex: 0 0 200px;
 }
 .add-col-mobile {
   flex: 0 0 var(--col-w, 220px);
@@ -2463,39 +2912,23 @@ async function restoreFromArchive(taskId) {
   }
 }
 .add-task-input {
-  margin-top: 4px;
+  flex: none;
 }
 .col {
   box-sizing: border-box;
-  width: var(--col-w, 280px);
-  flex: 0 0 var(--col-w, 280px);
-  border-radius: 14px;
-  padding: 10px;
+  width: var(--col-w, 256px);
+  flex: 0 0 var(--col-w, 256px);
+  border-radius: var(--t-r-col);
+  padding: 8px;
   align-self: flex-start;
   max-height: calc(100vh - 180px);
   display: flex;
   flex-direction: column;
-  /* Same-hue diagonal of the column's accent for its top bar. */
-  --col-grad: linear-gradient(
-    to top right,
-    color-mix(in srgb, var(--col-accent) 86%, #000),
-    var(--col-accent) 50%,
-    color-mix(in srgb, var(--col-accent) 86%, #fff)
-  );
-  /* Light 1px border on the sides/bottom (like the cards), plus a 3px gradient
-     TOP accent: the top border is transparent and reveals the gradient painted
-     on the border-box (wrapping the rounded top corners); the other borders stay
-     the opaque neutral colour, and padding-box carries a soft same-hue wash of the
-     column colour (~6%; neutral columns fall back to flat surface).
-     The side/bottom border carries a muted tint of the column colour (~12%, a touch
-     stronger than the wash so it doesn't melt into the fill); neutral columns keep
-     the flat neutral border. */
-  border: 1px solid var(--col-border, var(--t-border));
-  border-top: 3px solid transparent;
-  background:
-    linear-gradient(var(--col-tint, var(--t-surface-alt)), var(--col-tint, var(--t-surface-alt)))
-      padding-box,
-    var(--col-grad) border-box;
+  gap: 8px;
+  /* v2 «coloured lanes» (#2954): the column is a wash of its own colour over the
+     column level — no border, no top bar. The share is a theme token (15% dark,
+     11% light). */
+  background: color-mix(in srgb, var(--col-c) var(--t-col-tone), var(--t-col));
 }
 /* Collapsed column → a narrow strip. The header, card list and add-task button
    stay mounted (the SortableJS drop target must survive) but are hidden; the
@@ -2506,13 +2939,13 @@ async function restoreFromArchive(taskId) {
   position: relative;
   width: 44px;
   flex: 0 0 44px;
-  padding: 8px 2px;
+  padding: 8px 0 14px;
   cursor: pointer;
   overflow: hidden;
 }
 .col.collapsed :deep(.col-head),
 .col.collapsed .drop,
-.col.collapsed .add-btn,
+.col.collapsed .add-task,
 .col.collapsed .add-task-input {
   display: none;
 }
@@ -2534,17 +2967,26 @@ async function restoreFromArchive(taskId) {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 4px 0;
+  gap: 10px;
 }
 .strip-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--t-r-ctl);
   font-size: 15px;
   color: var(--t-text3);
   flex: none;
 }
+.col-strip:hover .strip-chevron {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
 .strip-title {
   writing-mode: vertical-rl;
-  transform: rotate(180deg);
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--t-text1);
   white-space: nowrap;
@@ -2555,9 +2997,7 @@ async function restoreFromArchive(taskId) {
 .strip-count {
   font-size: 12px;
   color: var(--t-text3);
-  background: var(--t-hover);
-  border-radius: 10px;
-  padding: 0 7px;
+  font-variant-numeric: tabular-nums;
   flex: none;
 }
 /* Mobile keeps the same 44px strip as the desktop (#2893), with NO override of
@@ -2573,12 +3013,10 @@ async function restoreFromArchive(taskId) {
    with no snap point of its own is not merely skipped by a swipe, it cannot be
    rested on at all. Collapsing the leftmost column scrolled it off the screen on
    the spot and there was no way back to it. Strips keep their snap point. */
+/* The header's own metrics live in ColumnHeader; the lane's 8px gap spaces it. */
 .col-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  padding: 0 2px;
 }
 .col-grip {
   cursor: grab;
@@ -2630,8 +3068,32 @@ async function restoreFromArchive(taskId) {
      input's left border ring isn't cut off. */
   padding: 0 3px;
 }
-.ghost {
-  opacity: 0.5;
+/* The card under the pointer (v2, #2954). Sortable runs in fallback mode so the
+   moving copy is a real DOM clone (the browser's native drag image cannot be
+   styled): lifted on the drag shadow and tilted. Sortable drives the clone's own
+   transform and opacity inline, so the tilt goes on the card inside it. The
+   class is Sortable's own: useBoardDragScroll follows that clone to auto-scroll
+   the board at its edges. */
+.sortable-fallback {
+  opacity: 1 !important;
+}
+.sortable-fallback :deep(.card) {
+  --card-fill: var(--t-card-hover);
+  box-shadow: var(--t-sh-drag);
+  transform: translateX(10px) rotate(2.5deg);
+}
+.sortable-fallback :deep(.card-actions) {
+  display: none;
+}
+/* Where the dragged card will land: a recessed slot in the drop colour (v2,
+   #2954) rather than a faded copy of the card. */
+.ghost :deep(.card),
+.ghost :deep(.card:hover) {
+  background: var(--t-drop);
+  box-shadow: var(--t-sh-drop);
+}
+.ghost :deep(.card > *) {
+  visibility: hidden;
 }
 /* Off-screen card stand-in: occupies the card's last-measured height so the
    scrollbar and drop positions stay correct while the heavy TaskCard is unmounted
@@ -2639,14 +3101,79 @@ async function restoreFromArchive(taskId) {
 .card-ph {
   pointer-events: none;
 }
-.add-btn {
-  margin-top: 6px;
-  width: 100%;
+/* «Создать задачу» at the foot of the lane: a 34px row in the column's own hue
+   that unfolds while the pointer is over the lane (the lane grows by it, as in
+   the v2 design); touch screens have no hover, so there it is always open.
+   Folded, it also cancels the lane's 8px gap so no stray space is left. */
+.add-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  height: 0;
+  margin-top: -8px;
+  overflow: hidden;
+  padding: 0 7px 0 10px;
+  border: none;
+  border-radius: var(--t-r-card);
+  background: color-mix(in srgb, var(--col-c) 12%, transparent);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    height 0.15s ease,
+    margin 0.15s ease,
+    opacity 0.15s ease,
+    background 0.15s ease;
+}
+.add-task-label {
+  flex: 1;
+}
+.col:hover .add-task,
+.add-task:focus-visible {
+  height: 34px;
+  margin-top: 0;
+  opacity: 1;
+}
+.add-task:hover {
+  background: color-mix(in srgb, var(--col-c) 20%, transparent);
+  color: var(--t-text1);
+}
+@media (hover: none) {
+  .add-task-key {
+    display: none;
+  }
+  .add-task {
+    height: 34px;
+    margin-top: 0;
+    opacity: 1;
+  }
+}
+.add-col-btn {
+  display: flex;
+  align-items: center;
   justify-content: center;
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.4px;
+  gap: 6px;
+  width: 200px;
+  height: 44px;
+  border: none;
+  border-radius: var(--t-r-col);
+  background: var(--t-col);
   color: var(--t-text3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.add-col-btn:hover {
+  color: var(--t-text1);
+}
+.add-col-mobile .add-col-btn {
+  width: 100%;
 }
 .empty-board {
   padding: 24px;

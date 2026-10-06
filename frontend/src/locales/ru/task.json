@@ -17,7 +17,11 @@
     "archiveYes": "В архив"
   },
   "action": {
-    "restore": "Вернуть из архива"
+    "restore": "Вернуть из архива",
+    "complete": "Выполнить",
+    "completed": "Выполнено",
+    "archive": "В архив",
+    "delete": "Удалить"
   },
   "field": {
     "priority": "Приоритет",
@@ -115,7 +119,12 @@
     "author": "Автор: {name}",
     "assignee": "Исполнитель: {names}",
     "none": "Нет исполнителя",
-    "noMatches": "Никого не найдено"
+    "noMatches": "Никого не найдено",
+    "role": {
+      "author": "Автор",
+      "assignee": "Исполнитель",
+      "gitlab": "Исполнитель · GitLab"
+    }
   },
   "tab": {
     "description": "Описание",
@@ -161,7 +170,11 @@
     "glAbsent": "не в GitLab",
     "glAbsentHint": "Подзадача ещё не выгружена в GitLab — выгрузить",
     "parentNotGrouped": "Родитель не помечен как сгруппированная задача — подзадачи не уедут в GitLab.",
-    "markGrouped": "Пометить"
+    "markGrouped": "Пометить",
+    "title": "Подзадачи",
+    "progress": "{done} из {total}",
+    "add": "Подзадача",
+    "unassigned": "Без исполнителя"
   },
   "relations": {
     "empty": "Связей пока нет",
@@ -215,7 +228,17 @@
     "hidePane": "Скрыть панель",
     "dividerHidden": "Двойной клик — показать панель",
     "dividerDrag": "Потяните / двойной клик",
-    "openInGitlab": "Открыть issue !{iid} в GitLab"
+    "openInGitlab": "Открыть issue !{iid} в GitLab",
+    "copyLink": "Копировать ссылку",
+    "navCount": "{n} из {total}",
+    "prev": "Предыдущая задача",
+    "next": "Следующая задача",
+    "close": "Закрыть",
+    "more": "Ещё",
+    "modified": "Изменено {when}",
+    "createdBy": "создал(а) {name} {when}",
+    "created": "создана {when}",
+    "openGitlab": "Открыть в GitLab"
   },
   "value": {
     "dueUnset": "Не задан",
@@ -333,9 +356,25 @@
     "comment": "оставил(а) комментарий",
     "relation": "добавил(а) связь с #{ref}",
     "attachment": "прикрепил(а) файл",
-    "attachmentNamed": "прикрепил(а) файл «{name}»"
+    "attachmentNamed": "прикрепил(а) файл «{name}»",
+    "movedVerb": "перевёл(а)",
+    "priorityVerb": "изменил(а) приоритет",
+    "renamedVerb": "переименовал(а) в"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"
+  },
+  "panel": {
+    "props": "Свойства",
+    "dev": "Разработка",
+    "links": "Связи",
+    "documents": "Документы",
+    "gitlabIssue": "Issue в GitLab"
+  },
+  "activity": {
+    "title": "Активность",
+    "all": "Всё",
+    "comments": "Комментарии",
+    "files": "Файлы"
   }
 }

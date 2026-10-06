@@ -3,6 +3,7 @@ import { ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { boards as boardsApi, projects as projectsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { sSet } from '@/utils/serverStorage'
 import KanbanBoard from '@/components/KanbanBoard.vue'
 
 const route = useRoute()
@@ -36,6 +37,9 @@ async function resolve() {
     const pslug = projectSlug || (await projectsApi.get(board.project_id)).data.slug
     const target = `/project/${pslug}/board/${board.slug}`
     if (route.path !== target) router.replace({ path: target, query: route.query })
+    // «G, then B» (#2956) comes back here from anywhere.
+    sSet('tessera_last_board', target)
+    sSet('tessera_last_board_id', board.id)
   } catch {
     boardId.value = null
   }

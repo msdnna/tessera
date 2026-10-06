@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script><style>html,body{background:#ececf0 !important;color-scheme:light}</style></helmet>
+<div style="display:flex;flex-direction:column;gap:64px;width:1440px;padding:48px 48px 96px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#26262e">
+<div style="display:flex;flex-direction:column;gap:18px;max-width:1100px">
+<div style="font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#7c5cff">Tessera v2 · Пакет C</div>
+<div style="font-size:34px;font-weight:700;letter-spacing:-.015em;line-height:1.15">Теги и этапы: окно «Проект», страница этапа, полоса над доской</div>
+<div style="font-size:15px;line-height:1.55;color:#4a4a55;text-wrap:pretty">Настройки проекта собраны в одном окне: общее, теги, этапы и оценка. Теги лежат таблицей по префиксам, понятное имя префикса правится прямо в заголовке группы. У этапа появилась своя страница с целями из GitLab и метриками. На доске этап выбирается в подбаре, а его цели видны в полосе между подбаром и колонками.</div>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:#e4e4ea;border-radius:12px;overflow:hidden;font-size:13.5px;line-height:1.45">
+<div style="padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">Окно «Проект»</span><span style="color:#4a4a55">Ярус 2. Меню проекта, ⋯ подбара, ⌘, или «&gt;Настройки проекта».</span></div>
+<div style="padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">Страница этапа</span><span style="color:#4a4a55">Экран в контенте. «Этапы» в сайдбаре, клик по чипу этапа, G E.</span></div>
+<div style="padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">Полоса этапа</span><span style="color:#4a4a55">Появляется, когда доска отфильтрована по этапу. Свёрнута по умолчанию, ⇧H.</span></div>
+<div style="padding:12px 14px;background:#fff;display:flex;flex-direction:column;gap:4px"><span style="font-weight:600">Селектор этапа</span><span style="color:#4a4a55">В подбаре рядом с группировкой вместо чипа с ×. ⇧E.</span></div>
+</div>
+<div style="font-size:12.5px;color:#767682">Кадры 1440×900, тёмная тема, акцент purple; ключевые повторены в светлой. Данные этапа — на 21 октября, 10-й день из 15.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">1 · Окно «Проект» → Теги</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Три группы. У «app::» понятное имя «Приложение» в режиме правки — его видно и в пиллах тегов. Группа «type::» управляется правилом GitLab: строки с замком, подсказка на наведении. Внизу выбраны три дубля дизайна — панель предлагает слить их в один тег.</div>
+<dc-import name="FrameA" scene="projTags" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="projTags" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Окно</div><div>1080×760, радиус 18, --v-pop, тень 4, --v-scrim — как модалка задачи. Вкладки слева в утопленной колонке 220px на --v-sub, радиус 14; активная — --v-active. Внешние окна («Участники», «GitLab») отмечены стрелкой.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Таблица</div><div>Строка 40px, радиус 9: выбор 16 · пилл · цвет 16px (клик — поповер-палитра) · задачи · источник · ⋯. Заголовок группы 38px: понятное имя 14/650, сырой префикс в моно-плашке, число тегов.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>↑↓ строки, Space выбрать, ⇧↑↓ диапазон. ↵ / F2 / клик по имени — переименовать, без двойного клика. N — новый тег, / — фильтр. На выбранных: M слить, C перекрасить, ⌫ удалить с тостом, Esc снять.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Правила</div><div>«префикс::имя» в поле «Новый тег» создаёт тег в группе или новую группу. Теги из правила GitLab нельзя выбрать, переименовать или перекрасить: имя и цвет приходят из GitLab.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">2 · Окно «Проект» → Этапы и Общее</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Этапы — список с датами, состоянием, прогрессом и номером в GitLab. Клик по строке открывает страницу этапа, новый этап создаётся пустой строкой. «Общее» — поля из поповеров пакета A, собранные в одном месте.</div>
+<dc-import name="FrameA" scene="projStages" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<dc-import name="FrameA" scene="projGeneral" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Этапы</div><div>Строка 48px: имя 14/600 · даты · состояние (пилл с точкой hueGrad) · прогресс 70px · GitLab. Закрытые — отдельной сворачиваемой группой, opacity .66. Новый — поле имени и поле дат, Tab между ними.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Общее</div><div>Подпись 180px слева, поле справа. Изменения сохраняются сразу, как в inline-правке пакета A. Опасная зона: архив — сразу и тост, удаление — двухшаговый пункт.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Фокус</div><div>При открытии — на первую строку вкладки. 1–4 переключают вкладки, Tab ходит по полям, Esc закрывает окно и возвращает фокус туда, откуда открыли.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">3 · Страница этапа</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Слева — цели из GitLab, burn-up и задачи этапа. Справа — прогресс по числу и по оценке, сигналы, распределение по статусам, изменение объёма, исполнители и темп против трёх прошлых спринтов.</div>
+<dc-import name="FrameA" scene="stage" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Та же страница после прокрутки</div>
+<dc-import name="FrameA" scene="stageLow" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="stage" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Раскладка</div><div>Паддинг 22/32. Сетка minmax(0,1fr) + 352px, зазор 20. Карточки метрик — --v-col, радиус 16, паддинг 16, без тени; вложенные плитки — --v-card с тенью 1.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Burn-up</div><div>Линия объёма text2, сделано — primary 2.5px с заливкой primary 32% → 0. Прогноз пунктиром по темпу последних 5 рабочих дней. Выходные — подложка --v-pill 45%, сегодня — градиентная отметка 2px, как в Ганте. Переключатели: задачи / оценка, burn-up / burn-down.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Метрики</div><div>Кольца 76px, толщина 8, один оттенок accent. Статусы — stacked-полоса 12px цветами колонок v2. Сигналы — пиллы 30px: просрочено (красный), без оценки (оранжевый), без исполнителя (нейтральный); клик фильтрует список задач.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>E — изменить цели, B — доска этапа, ⇧X — закрыть этап (двухшаговое подтверждение), G E — сюда с любой доски этапа. Esc на странице — назад.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">4 · Цели этапа в режиме правки</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Свой Markdown-редактор: «Написать / Просмотр», тулбар, # для задач, @ для людей. Сохранение уходит в описание этапа в GitLab.</div>
+<dc-import name="FrameA" scene="stageEdit" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:900px">Вход — «Изменить» или E. Карточка получает кольцо primary 55%, остальное не блокируется. ⌘↵ сохраняет, Esc отменяет с подтверждением, если текст менялся. Если описание в GitLab поменяли параллельно — открывается окно разрешения конфликтов (ярус 2).</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">5 · Полоса этапа над доской</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Свёрнута — одна строка 40px: имя, даты, прогресс «18 из 31», первая строка целей, остаток дней. Развёрнута — цели целиком и три мини-метрики.</div>
+<dc-import name="FrameA" scene="stripC" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<dc-import name="FrameA" scene="stripO" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Развёрнута · светлая</div>
+<dc-import name="FrameA" scene="stripO" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Размеры</div><div>Отступ 0 16 10 под подбаром, радиус 12, фон --v-col — на шаг выше холста, на уровне подложки колонок. Свёрнута 40px. Развёрнута: цели до 240px со скроллом + колонка метрик 340px.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Поведение</div><div>⇧H или шеврон — свернуть / развернуть; состояние хранится на доску и пользователя. При прокрутке колонок полоса остаётся. Без целей — «Добавить цели →», ведёт на правку на странице этапа.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Когда видна</div><div>Только при фильтре по одному этапу. «Все задачи» и «Бэклог» полосы не показывают. ⋯ — закрыть этап, открыть в GitLab, скрыть полосу на этой доске.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">6–7 · Селектор этапа и пикер тегов</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">«Этап: Спринт 42» стоит после группировки. Меню: активные этапы с прогрессом, запланированные, «Бэклог», «Все задачи», закрытые под «Показать закрытые». В пикере тегов (L) появился пункт «Управлять тегами…» — он открывает окно «Проект» на вкладке «Теги».</div>
+<div style="display:flex;gap:24px">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Селектор · меню открыто · ⇧E</div><dc-import name="FrameA" scene="stageMenu" crop="panel" mode="dark" accent="{{ accent }}" style="width:708px;height:620px" hint-size="708px,620px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Пикер тегов · L на выбранной карточке</div><dc-import name="FrameA" scene="tagPicker" crop="colHead" mode="dark" accent="{{ accent }}" style="width:708px;height:620px" hint-size="708px,620px"></dc-import></div>
+</div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Селектор · светлая</div><dc-import name="FrameA" scene="stageMenu" crop="panel" mode="light" accent="{{ accent }}" style="width:708px;height:620px" hint-size="708px,620px"></dc-import></div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Селектор</div><div>Контрол 34px, --v-ctl; при выбранном этапе — мягкий accent и мини-прогресс. Меню 340px, радиус 14, правый край по контролу. Строки этапов 44px, выбранный — мягкий accent и галочка.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Клавиши</div><div>⇧E — открыть, сразу фокус в поиск. ↑↓ и ↵ — выбрать, B — «Бэклог», A — «Все задачи». Выбор запоминается на доску.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Пикер тегов</div><div>Поповер 300px у карточки. Сверху теги задачи, ниже найденные, «Создать тег» по ⌘↵. «Управлять тегами…» закрывает пикер и открывает окно с фильтром по введённому тексту.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">8 · Мобильный · 390×844</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Страница этапа — метрики в одну колонку: кольца, сигналы, burn-up, цели, статусы. На доске полоса этапа ужата до имени, прогресса и остатка дней.</div>
+<div style="display:flex;gap:40px;align-items:flex-start">
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Страница этапа</div><dc-import name="FrameA" what="mstage" mode="dark" accent="{{ accent }}" style="width:390px;height:844px" hint-size="390px,844px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Доска с полосой этапа</div><dc-import name="FrameA" what="mobile" mmode="strip" mode="dark" accent="{{ accent }}" style="width:390px;height:844px" hint-size="390px,844px"></dc-import></div>
+<div style="display:flex;flex-direction:column;gap:8px"><div style="font-size:13px;font-weight:600;color:#767682">Страница этапа · светлая</div><dc-import name="FrameA" what="mstage" mode="light" accent="{{ accent }}" style="width:390px;height:844px" hint-size="390px,844px"></dc-import></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">Проверка акцентов · teal и orange</div>
+<div style="display:flex;gap:24px">
+<dc-import name="FrameA" scene="stripO" crop="colHead" mode="dark" accent="teal" style="width:708px;height:520px" hint-size="708px,520px"></dc-import>
+<dc-import name="FrameA" scene="stripO" crop="colHead" mode="dark" accent="orange" style="width:708px;height:520px" hint-size="708px,520px"></dc-import>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">Лист состояний</div>
+<div style="font-size:13px;font-weight:600;color:#767682">Тёмная</div>
+<dc-import name="FrameA" what="catalogC" mode="dark" accent="{{ accent }}" style="width:1440px" hint-size="1440px,2400px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:18px">Светлая</div>
+<dc-import name="FrameA" what="catalogC" mode="light" accent="{{ accent }}" style="width:1440px" hint-size="1440px,2400px"></dc-import>
+</div>
+<div style="display:flex;flex-direction:column;gap:18px">
+<div style="font-size:22px;font-weight:650">Сводка для разработки</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:36px;font-size:13.5px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:650;color:#26262e">Новые клавиши</div>
+<div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:6px 16px">
+<span style="font-weight:600">⌘,</span><span>Окно «Проект» текущего проекта</span>
+<span style="font-weight:600">1–4</span><span>Вкладки окна: Общее · Теги · Этапы · Оценка</span>
+<span style="font-weight:600">Space · ⇧↑↓</span><span>Выбрать строку тега · диапазон</span>
+<span style="font-weight:600">M · C · ⌫</span><span>Слить · перекрасить · удалить выбранные теги</span>
+<span style="font-weight:600">N · /</span><span>Новый тег или этап · фильтр</span>
+<span style="font-weight:600">⇧E</span><span>Селектор этапа в подбаре</span>
+<span style="font-weight:600">⇧H</span><span>Свернуть / развернуть полосу этапа</span>
+<span style="font-weight:600">G затем E</span><span>Страница текущего этапа</span>
+<span style="font-weight:600">E · ⇧X</span><span>На странице этапа: изменить цели · закрыть этап</span>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:650;color:#26262e">Токены</div>
+<div>Новых токенов нет. Полоса этапа и карточки метрик — --v-col; вкладки окна — --v-sub; графики — --t-primary, --t-text2/3 и --v-pill. Цвета статусов в stacked-полосе — палитра колонок v2.</div>
+<div style="font-weight:650;color:#26262e;margin-top:8px">Где макет отступает от handoff</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<span>· «Этапы» в сайдбаре — подраздел проекта, а не отдельный раздел верхнего уровня: этапы принадлежат проекту, как доски.</span>
+<span>· Чип этапа с × на доске заменён селектором в подбаре. Фильтр по этапу больше не живёт среди остальных фильтров композера.</span>
+<span>· Цвет тегов из правила GitLab тоже заблокирован: он приходит из лейбла, иначе после синхронизации цвет «прыгает».</span>
+<span>· Прогноз на burn-up — дополнение к брифу: без него линия «сделано» не отвечает на вопрос «успеем ли».</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;purple&quot;,&quot;blue&quot;,&quot;teal&quot;,&quot;green&quot;,&quot;orange&quot;,&quot;red&quot;,&quot;pink&quot;],&quot;default&quot;:&quot;purple&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { accent: this.props.accent || 'purple' };
+  }
+}
+</script>
+</body>
+</html>

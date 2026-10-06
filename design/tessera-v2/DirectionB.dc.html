@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="display:flex;flex-direction:column;gap:56px;width:1440px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:18px;font-weight:600;color:#26262e">1 · Доска целиком · тёмная · purple</div>
+<div data-k="b1" ref="{{ rf.b1 }}" style="width:1440px;height:900px;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.18)">
+<sc-if value="{{ v.b1 }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TesseraProvider" mode="dark" accent="purple" hint-size="1440px,900px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#ececf1;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#0b0b0e;--v-rail:#0b0b0e;--v-sidebar:#16161b;--v-topbar:transparent;--v-board:#16161b;--v-col:transparent;--v-card:#202027;--v-card-hover:#25252d;--v-pop:#29292f;--v-hover:#1f1f25;--v-hover-side:#1f1f25;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 15%, #16161b), color-mix(in srgb, var(--t-primary) 24%, #16161b));--v-input:#16161b;--v-ctl:#1f1f25;--v-pill:#2b2b33;--v-sub:#1a1a20;--v-foot:#1c1c22;--v-drop:color-mix(in srgb, var(--t-primary) 15%, #16161b);--v-wash:11%;--v-tint:14%;--v-cap-a:12%;--v-cap-b:20%;--v-sh-card:0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16);--v-sh-hover:0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24);--v-sh-drag:0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);--v-sh-pop:0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);--v-sh-drop:inset 0 1px 3px rgba(0,0,0,.35);--v-sh-panel:none;--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#16161b;--t-surface:#202027;--t-surface-alt:#16161b;--t-hover:#1f1f25;--t-input-bg:#16161b;--t-border:#2b2b33;--t-text1:#ececf1;--t-text2:#b5b5c0;--t-text3:#8b8b97;--t-placeholder:#63636e;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px"><div style="width:1440px;height:900px"><dc-import name="Board" dir="{{ d.key }}" cols="{{ d.status }}" grouping="status" hint-size="1440px,900px"></dc-import></div></div></x-import></sc-if>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:18px;font-weight:600;color:#26262e">2 · То же · светлая</div>
+<div data-k="b2" ref="{{ rf.b2 }}" style="width:1440px;height:900px;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12)">
+<sc-if value="{{ v.b2 }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" accent="purple" hint-size="1440px,900px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#1c1c22;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#e6e7ec;--v-rail:#e6e7ec;--v-sidebar:#fafafb;--v-topbar:transparent;--v-board:#fafafb;--v-col:transparent;--v-card:#ffffff;--v-card-hover:#ffffff;--v-pop:#ffffff;--v-hover:#efeff3;--v-hover-side:#f0f0f4;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 10%, #fafafb), color-mix(in srgb, var(--t-primary) 17%, #fafafb));--v-input:#fafafb;--v-ctl:#f0f0f4;--v-pill:#f1f1f5;--v-sub:#f5f5f8;--v-foot:#f2f2f5;--v-drop:color-mix(in srgb, var(--t-primary) 11%, #fafafb);--v-wash:8%;--v-tint:10%;--v-cap-a:9%;--v-cap-b:15%;--v-sh-card:0 1px 2px rgba(20,20,40,.08), 0 2px 8px rgba(20,20,40,.05);--v-sh-hover:0 2px 6px rgba(20,20,40,.08), 0 8px 20px rgba(20,20,40,.07);--v-sh-drag:0 18px 40px rgba(20,20,40,.18), 0 4px 12px rgba(20,20,40,.08);--v-sh-pop:0 12px 32px rgba(20,20,40,.14), 0 2px 6px rgba(20,20,40,.06);--v-sh-drop:inset 0 1px 3px rgba(20,20,40,.08);--v-sh-panel:0 1px 2px rgba(20,20,40,.05), 0 4px 14px rgba(20,20,40,.05);--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#fafafb;--t-surface:#ffffff;--t-surface-alt:#fafafb;--t-hover:#efeff3;--t-input-bg:#fafafb;--t-border:#f1f1f5;--t-text1:#1c1c22;--t-text2:#4a4a55;--t-text3:#767682;--t-placeholder:#a9a9b3;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px"><div style="width:1440px;height:900px"><dc-import name="Board" dir="{{ d.key }}" cols="{{ d.status }}" grouping="status" hint-size="1440px,900px"></dc-import></div></div></x-import></sc-if>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:18px;font-weight:600;color:#26262e">3 · Группировка по тегам · тёмная · сайдбар свёрнут</div>
+<div data-k="b3" ref="{{ rf.b3 }}" style="width:1440px;height:900px;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.18)">
+<sc-if value="{{ v.b3 }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TesseraProvider" mode="dark" accent="purple" hint-size="1440px,900px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#ececf1;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#0b0b0e;--v-rail:#0b0b0e;--v-sidebar:#16161b;--v-topbar:transparent;--v-board:#16161b;--v-col:transparent;--v-card:#202027;--v-card-hover:#25252d;--v-pop:#29292f;--v-hover:#1f1f25;--v-hover-side:#1f1f25;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 15%, #16161b), color-mix(in srgb, var(--t-primary) 24%, #16161b));--v-input:#16161b;--v-ctl:#1f1f25;--v-pill:#2b2b33;--v-sub:#1a1a20;--v-foot:#1c1c22;--v-drop:color-mix(in srgb, var(--t-primary) 15%, #16161b);--v-wash:11%;--v-tint:14%;--v-cap-a:12%;--v-cap-b:20%;--v-sh-card:0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16);--v-sh-hover:0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24);--v-sh-drag:0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);--v-sh-pop:0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);--v-sh-drop:inset 0 1px 3px rgba(0,0,0,.35);--v-sh-panel:none;--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#16161b;--t-surface:#202027;--t-surface-alt:#16161b;--t-hover:#1f1f25;--t-input-bg:#16161b;--t-border:#2b2b33;--t-text1:#ececf1;--t-text2:#b5b5c0;--t-text3:#8b8b97;--t-placeholder:#63636e;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px"><div style="width:1440px;height:900px"><dc-import name="Board" dir="{{ d.key }}" cols="{{ d.tags }}" grouping="tags" collapsed="{{ true }}" hint-size="1440px,900px"></dc-import></div></div></x-import></sc-if>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:18px;font-weight:600;color:#26262e">4 · Состояния карточки и колонки · тёмная</div>
+<div data-k="s1" ref="{{ rf.s1 }}" style="min-height:880px;width:1440px;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.18)">
+<sc-if value="{{ v.s1 }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TesseraProvider" mode="dark" accent="purple" hint-size="1440px,900px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#ececf1;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#0b0b0e;--v-rail:#0b0b0e;--v-sidebar:#16161b;--v-topbar:transparent;--v-board:#16161b;--v-col:transparent;--v-card:#202027;--v-card-hover:#25252d;--v-pop:#29292f;--v-hover:#1f1f25;--v-hover-side:#1f1f25;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 15%, #16161b), color-mix(in srgb, var(--t-primary) 24%, #16161b));--v-input:#16161b;--v-ctl:#1f1f25;--v-pill:#2b2b33;--v-sub:#1a1a20;--v-foot:#1c1c22;--v-drop:color-mix(in srgb, var(--t-primary) 15%, #16161b);--v-wash:11%;--v-tint:14%;--v-cap-a:12%;--v-cap-b:20%;--v-sh-card:0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16);--v-sh-hover:0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24);--v-sh-drag:0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);--v-sh-pop:0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);--v-sh-drop:inset 0 1px 3px rgba(0,0,0,.35);--v-sh-panel:none;--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#16161b;--t-surface:#202027;--t-surface-alt:#16161b;--t-hover:#1f1f25;--t-input-bg:#16161b;--t-border:#2b2b33;--t-text1:#ececf1;--t-text2:#b5b5c0;--t-text3:#8b8b97;--t-placeholder:#63636e;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px"><dc-import name="Sheet" dir="{{ d.key }}" rows="{{ d.sheet }}" hint-size="1440px,900px"></dc-import></div></x-import></sc-if>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:18px;font-weight:600;color:#26262e">4 · Состояния карточки и колонки · светлая</div>
+<div data-k="s2" ref="{{ rf.s2 }}" style="min-height:880px;width:1440px;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12)">
+<sc-if value="{{ v.s2 }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" accent="purple" hint-size="1440px,900px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#1c1c22;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#e6e7ec;--v-rail:#e6e7ec;--v-sidebar:#fafafb;--v-topbar:transparent;--v-board:#fafafb;--v-col:transparent;--v-card:#ffffff;--v-card-hover:#ffffff;--v-pop:#ffffff;--v-hover:#efeff3;--v-hover-side:#f0f0f4;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 10%, #fafafb), color-mix(in srgb, var(--t-primary) 17%, #fafafb));--v-input:#fafafb;--v-ctl:#f0f0f4;--v-pill:#f1f1f5;--v-sub:#f5f5f8;--v-foot:#f2f2f5;--v-drop:color-mix(in srgb, var(--t-primary) 11%, #fafafb);--v-wash:8%;--v-tint:10%;--v-cap-a:9%;--v-cap-b:15%;--v-sh-card:0 1px 2px rgba(20,20,40,.08), 0 2px 8px rgba(20,20,40,.05);--v-sh-hover:0 2px 6px rgba(20,20,40,.08), 0 8px 20px rgba(20,20,40,.07);--v-sh-drag:0 18px 40px rgba(20,20,40,.18), 0 4px 12px rgba(20,20,40,.08);--v-sh-pop:0 12px 32px rgba(20,20,40,.14), 0 2px 6px rgba(20,20,40,.06);--v-sh-drop:inset 0 1px 3px rgba(20,20,40,.08);--v-sh-panel:0 1px 2px rgba(20,20,40,.05), 0 4px 14px rgba(20,20,40,.05);--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#fafafb;--t-surface:#ffffff;--t-surface-alt:#fafafb;--t-hover:#efeff3;--t-input-bg:#fafafb;--t-border:#f1f1f5;--t-text1:#1c1c22;--t-text2:#4a4a55;--t-text3:#767682;--t-placeholder:#a9a9b3;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px"><dc-import name="Sheet" dir="{{ d.key }}" rows="{{ d.sheet }}" hint-size="1440px,900px"></dc-import></div></x-import></sc-if>
+</div>
+</div>
+<div style="display:flex;gap:32px;align-items:flex-start">
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:18px;font-weight:600;color:#26262e">5 · Мобильный 390×844 · тёмная</div>
+<div data-k="m" ref="{{ rf.m }}" style="width:390px;height:844px;border-radius:28px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.18)">
+<sc-if value="{{ v.m }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TesseraProvider" mode="dark" accent="purple" hint-size="390px,844px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#ececf1;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#0b0b0e;--v-rail:#0b0b0e;--v-sidebar:#16161b;--v-topbar:transparent;--v-board:#16161b;--v-col:transparent;--v-card:#202027;--v-card-hover:#25252d;--v-pop:#29292f;--v-hover:#1f1f25;--v-hover-side:#1f1f25;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 15%, #16161b), color-mix(in srgb, var(--t-primary) 24%, #16161b));--v-input:#16161b;--v-ctl:#1f1f25;--v-pill:#2b2b33;--v-sub:#1a1a20;--v-foot:#1c1c22;--v-drop:color-mix(in srgb, var(--t-primary) 15%, #16161b);--v-wash:11%;--v-tint:14%;--v-cap-a:12%;--v-cap-b:20%;--v-sh-card:0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16);--v-sh-hover:0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24);--v-sh-drag:0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);--v-sh-pop:0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);--v-sh-drop:inset 0 1px 3px rgba(0,0,0,.35);--v-sh-panel:none;--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#16161b;--t-surface:#202027;--t-surface-alt:#16161b;--t-hover:#1f1f25;--t-input-bg:#16161b;--t-border:#2b2b33;--t-text1:#ececf1;--t-text2:#b5b5c0;--t-text3:#8b8b97;--t-placeholder:#63636e;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px"><div style="width:390px;height:844px"><dc-import name="Mobile" dir="{{ d.key }}" cols="{{ d.mobile }}" hint-size="390px,844px"></dc-import></div></div></x-import></sc-if>
+</div>
+</div>
+<div style="flex:1;display:flex;flex-direction:column;gap:12px">
+<div style="font-size:18px;font-weight:600;color:#26262e">6 · Проверка акцентов · teal и orange</div>
+<div data-k="acc" ref="{{ rf.acc }}" style="display:grid;grid-template-columns:repeat(2, 500px);gap:18px;min-height:800px">
+<sc-if value="{{ v.acc }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:13px;font-weight:500;color:#5a5a66">teal · тёмная</div>
+<div style="width:500px;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.14)">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="dark" accent="teal" hint-size="500px,380px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#ececf1;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#0b0b0e;--v-rail:#0b0b0e;--v-sidebar:#16161b;--v-topbar:transparent;--v-board:#16161b;--v-col:transparent;--v-card:#202027;--v-card-hover:#25252d;--v-pop:#29292f;--v-hover:#1f1f25;--v-hover-side:#1f1f25;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 15%, #16161b), color-mix(in srgb, var(--t-primary) 24%, #16161b));--v-input:#16161b;--v-ctl:#1f1f25;--v-pill:#2b2b33;--v-sub:#1a1a20;--v-foot:#1c1c22;--v-drop:color-mix(in srgb, var(--t-primary) 15%, #16161b);--v-wash:11%;--v-tint:14%;--v-cap-a:12%;--v-cap-b:20%;--v-sh-card:0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16);--v-sh-hover:0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24);--v-sh-drag:0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);--v-sh-pop:0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);--v-sh-drop:inset 0 1px 3px rgba(0,0,0,.35);--v-sh-panel:none;--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#16161b;--t-surface:#202027;--t-surface-alt:#16161b;--t-hover:#1f1f25;--t-input-bg:#16161b;--t-border:#2b2b33;--t-text1:#ececf1;--t-text2:#b5b5c0;--t-text3:#8b8b97;--t-placeholder:#63636e;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px">
+<div style="box-sizing:border-box;width:500px;height:372px;padding:10px 8px;background:var(--v-board);display:flex;flex-direction:column;gap:10px;font-family:var(--v-font);color:var(--t-text1);overflow:hidden">
+<div style="display:flex;align-items:center;gap:6px">
+<div style="display:flex;gap:2px;padding:3px;border-radius:var(--v-r-ctl);background:var(--v-ctl)">
+<span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 9px;border-radius:calc(var(--v-r-ctl) - 2px);background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600"><span style="display:flex;color:var(--t-primary)"><x-import component-from-global-scope="Tessera.TesseraIcon" name="layout-kanban" size="14" hint-size="14px,14px"></x-import></span><span class="accent-grad-text">Канбан</span></span>
+<span style="height:26px;display:flex;align-items:center;padding:0 9px;font-size:12.5px;color:var(--t-text2)">Список</span>
+</div>
+<span style="height:26px;display:flex;align-items:center;gap:5px;padding:0 8px;border-radius:calc(var(--v-r-ctl) - 2px);background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 14%, var(--v-board)), color-mix(in srgb, var(--t-primary) 24%, var(--v-board)));font-size:12.5px"><span style="color:var(--t-text2)">Исполнитель</span><span style="font-weight:600">Анна К.</span></span>
+<span style="flex:1"></span>
+<span style="height:28px;display:flex;align-items:center;gap:5px;padding:0 10px 0 8px;border-radius:var(--v-r-ctl);background:var(--t-accent-grad);color:#fff;font-size:12.5px;font-weight:600"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="15" color="#fff" hint-size="15px,15px"></x-import>Задача</span>
+</div>
+<div style="display:flex;gap:12px;align-items:flex-start;--cw:236px">
+<sc-for list="{{ d.fcols }}" as="c" hint-placeholder-count="2"><dc-import name="Column" c="{{ c }}" dir="{{ d.key }}" hint-size="236px,300px"></dc-import></sc-for>
+</div>
+</div>
+</div></x-import>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:13px;font-weight:500;color:#5a5a66">teal · светлая</div>
+<div style="width:500px;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.14)">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" accent="teal" hint-size="500px,380px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#1c1c22;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#e6e7ec;--v-rail:#e6e7ec;--v-sidebar:#fafafb;--v-topbar:transparent;--v-board:#fafafb;--v-col:transparent;--v-card:#ffffff;--v-card-hover:#ffffff;--v-pop:#ffffff;--v-hover:#efeff3;--v-hover-side:#f0f0f4;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 10%, #fafafb), color-mix(in srgb, var(--t-primary) 17%, #fafafb));--v-input:#fafafb;--v-ctl:#f0f0f4;--v-pill:#f1f1f5;--v-sub:#f5f5f8;--v-foot:#f2f2f5;--v-drop:color-mix(in srgb, var(--t-primary) 11%, #fafafb);--v-wash:8%;--v-tint:10%;--v-cap-a:9%;--v-cap-b:15%;--v-sh-card:0 1px 2px rgba(20,20,40,.08), 0 2px 8px rgba(20,20,40,.05);--v-sh-hover:0 2px 6px rgba(20,20,40,.08), 0 8px 20px rgba(20,20,40,.07);--v-sh-drag:0 18px 40px rgba(20,20,40,.18), 0 4px 12px rgba(20,20,40,.08);--v-sh-pop:0 12px 32px rgba(20,20,40,.14), 0 2px 6px rgba(20,20,40,.06);--v-sh-drop:inset 0 1px 3px rgba(20,20,40,.08);--v-sh-panel:0 1px 2px rgba(20,20,40,.05), 0 4px 14px rgba(20,20,40,.05);--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#fafafb;--t-surface:#ffffff;--t-surface-alt:#fafafb;--t-hover:#efeff3;--t-input-bg:#fafafb;--t-border:#f1f1f5;--t-text1:#1c1c22;--t-text2:#4a4a55;--t-text3:#767682;--t-placeholder:#a9a9b3;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px">
+<div style="box-sizing:border-box;width:500px;height:372px;padding:10px 8px;background:var(--v-board);display:flex;flex-direction:column;gap:10px;font-family:var(--v-font);color:var(--t-text1);overflow:hidden">
+<div style="display:flex;align-items:center;gap:6px">
+<div style="display:flex;gap:2px;padding:3px;border-radius:var(--v-r-ctl);background:var(--v-ctl)">
+<span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 9px;border-radius:calc(var(--v-r-ctl) - 2px);background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600"><span style="display:flex;color:var(--t-primary)"><x-import component-from-global-scope="Tessera.TesseraIcon" name="layout-kanban" size="14" hint-size="14px,14px"></x-import></span><span class="accent-grad-text">Канбан</span></span>
+<span style="height:26px;display:flex;align-items:center;padding:0 9px;font-size:12.5px;color:var(--t-text2)">Список</span>
+</div>
+<span style="height:26px;display:flex;align-items:center;gap:5px;padding:0 8px;border-radius:calc(var(--v-r-ctl) - 2px);background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 14%, var(--v-board)), color-mix(in srgb, var(--t-primary) 24%, var(--v-board)));font-size:12.5px"><span style="color:var(--t-text2)">Исполнитель</span><span style="font-weight:600">Анна К.</span></span>
+<span style="flex:1"></span>
+<span style="height:28px;display:flex;align-items:center;gap:5px;padding:0 10px 0 8px;border-radius:var(--v-r-ctl);background:var(--t-accent-grad);color:#fff;font-size:12.5px;font-weight:600"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="15" color="#fff" hint-size="15px,15px"></x-import>Задача</span>
+</div>
+<div style="display:flex;gap:12px;align-items:flex-start;--cw:236px">
+<sc-for list="{{ d.fcols }}" as="c" hint-placeholder-count="2"><dc-import name="Column" c="{{ c }}" dir="{{ d.key }}" hint-size="236px,300px"></dc-import></sc-for>
+</div>
+</div>
+</div></x-import>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:13px;font-weight:500;color:#5a5a66">orange · тёмная</div>
+<div style="width:500px;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.14)">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="dark" accent="orange" hint-size="500px,380px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#ececf1;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#0b0b0e;--v-rail:#0b0b0e;--v-sidebar:#16161b;--v-topbar:transparent;--v-board:#16161b;--v-col:transparent;--v-card:#202027;--v-card-hover:#25252d;--v-pop:#29292f;--v-hover:#1f1f25;--v-hover-side:#1f1f25;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 15%, #16161b), color-mix(in srgb, var(--t-primary) 24%, #16161b));--v-input:#16161b;--v-ctl:#1f1f25;--v-pill:#2b2b33;--v-sub:#1a1a20;--v-foot:#1c1c22;--v-drop:color-mix(in srgb, var(--t-primary) 15%, #16161b);--v-wash:11%;--v-tint:14%;--v-cap-a:12%;--v-cap-b:20%;--v-sh-card:0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16);--v-sh-hover:0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24);--v-sh-drag:0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);--v-sh-pop:0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);--v-sh-drop:inset 0 1px 3px rgba(0,0,0,.35);--v-sh-panel:none;--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#16161b;--t-surface:#202027;--t-surface-alt:#16161b;--t-hover:#1f1f25;--t-input-bg:#16161b;--t-border:#2b2b33;--t-text1:#ececf1;--t-text2:#b5b5c0;--t-text3:#8b8b97;--t-placeholder:#63636e;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px">
+<div style="box-sizing:border-box;width:500px;height:372px;padding:10px 8px;background:var(--v-board);display:flex;flex-direction:column;gap:10px;font-family:var(--v-font);color:var(--t-text1);overflow:hidden">
+<div style="display:flex;align-items:center;gap:6px">
+<div style="display:flex;gap:2px;padding:3px;border-radius:var(--v-r-ctl);background:var(--v-ctl)">
+<span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 9px;border-radius:calc(var(--v-r-ctl) - 2px);background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600"><span style="display:flex;color:var(--t-primary)"><x-import component-from-global-scope="Tessera.TesseraIcon" name="layout-kanban" size="14" hint-size="14px,14px"></x-import></span><span class="accent-grad-text">Канбан</span></span>
+<span style="height:26px;display:flex;align-items:center;padding:0 9px;font-size:12.5px;color:var(--t-text2)">Список</span>
+</div>
+<span style="height:26px;display:flex;align-items:center;gap:5px;padding:0 8px;border-radius:calc(var(--v-r-ctl) - 2px);background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 14%, var(--v-board)), color-mix(in srgb, var(--t-primary) 24%, var(--v-board)));font-size:12.5px"><span style="color:var(--t-text2)">Исполнитель</span><span style="font-weight:600">Анна К.</span></span>
+<span style="flex:1"></span>
+<span style="height:28px;display:flex;align-items:center;gap:5px;padding:0 10px 0 8px;border-radius:var(--v-r-ctl);background:var(--t-accent-grad);color:#fff;font-size:12.5px;font-weight:600"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="15" color="#fff" hint-size="15px,15px"></x-import>Задача</span>
+</div>
+<div style="display:flex;gap:12px;align-items:flex-start;--cw:236px">
+<sc-for list="{{ d.fcols }}" as="c" hint-placeholder-count="2"><dc-import name="Column" c="{{ c }}" dir="{{ d.key }}" hint-size="236px,300px"></dc-import></sc-for>
+</div>
+</div>
+</div></x-import>
+</div>
+</div>
+
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="font-size:13px;font-weight:500;color:#5a5a66">orange · светлая</div>
+<div style="width:500px;border-radius:14px;overflow:hidden;box-shadow:0 4px 18px rgba(0,0,0,.14)">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" accent="orange" hint-size="500px,380px"><div style="font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#1c1c22;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#e6e7ec;--v-rail:#e6e7ec;--v-sidebar:#fafafb;--v-topbar:transparent;--v-board:#fafafb;--v-col:transparent;--v-card:#ffffff;--v-card-hover:#ffffff;--v-pop:#ffffff;--v-hover:#efeff3;--v-hover-side:#f0f0f4;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 10%, #fafafb), color-mix(in srgb, var(--t-primary) 17%, #fafafb));--v-input:#fafafb;--v-ctl:#f0f0f4;--v-pill:#f1f1f5;--v-sub:#f5f5f8;--v-foot:#f2f2f5;--v-drop:color-mix(in srgb, var(--t-primary) 11%, #fafafb);--v-wash:8%;--v-tint:10%;--v-cap-a:9%;--v-cap-b:15%;--v-sh-card:0 1px 2px rgba(20,20,40,.08), 0 2px 8px rgba(20,20,40,.05);--v-sh-hover:0 2px 6px rgba(20,20,40,.08), 0 8px 20px rgba(20,20,40,.07);--v-sh-drag:0 18px 40px rgba(20,20,40,.18), 0 4px 12px rgba(20,20,40,.08);--v-sh-pop:0 12px 32px rgba(20,20,40,.14), 0 2px 6px rgba(20,20,40,.06);--v-sh-drop:inset 0 1px 3px rgba(20,20,40,.08);--v-sh-panel:0 1px 2px rgba(20,20,40,.05), 0 4px 14px rgba(20,20,40,.05);--v-shell-pad:8px 8px 8px 0;--v-shell-gap:8px;--v-panel-r:18px;--v-sidebar-w:224px;--v-top-h:44px;--v-top-pad:0 4px 0 8px;--v-sub-pad:10px 10px 8px;--v-cols-pad:4px 10px 12px;--v-m-inset:0 6px 0;--v-m-r:20px;--v-r-ctl:10px;--v-r-pill:8px;--v-r-card:12px;--v-r-col:10px;--t-bg:#fafafb;--t-surface:#ffffff;--t-surface-alt:#fafafb;--t-hover:#efeff3;--t-input-bg:#fafafb;--t-border:#f1f1f5;--t-text1:#1c1c22;--t-text2:#4a4a55;--t-text3:#767682;--t-placeholder:#a9a9b3;--v-bar-d:none;--v-glow-d:block;--v-lead-c:none;--v-colA-d:none;--v-colC-d:none;--v-capB-d:block;--v-col-pad:0px;--v-head-h:36px;--v-head-pad:0 4px 0 10px;--v-head-mb:2px;--v-add-bg:var(--v-ctl);--v-card-pl-add:0px">
+<div style="box-sizing:border-box;width:500px;height:372px;padding:10px 8px;background:var(--v-board);display:flex;flex-direction:column;gap:10px;font-family:var(--v-font);color:var(--t-text1);overflow:hidden">
+<div style="display:flex;align-items:center;gap:6px">
+<div style="display:flex;gap:2px;padding:3px;border-radius:var(--v-r-ctl);background:var(--v-ctl)">
+<span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 9px;border-radius:calc(var(--v-r-ctl) - 2px);background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600"><span style="display:flex;color:var(--t-primary)"><x-import component-from-global-scope="Tessera.TesseraIcon" name="layout-kanban" size="14" hint-size="14px,14px"></x-import></span><span class="accent-grad-text">Канбан</span></span>
+<span style="height:26px;display:flex;align-items:center;padding:0 9px;font-size:12.5px;color:var(--t-text2)">Список</span>
+</div>
+<span style="height:26px;display:flex;align-items:center;gap:5px;padding:0 8px;border-radius:calc(var(--v-r-ctl) - 2px);background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 14%, var(--v-board)), color-mix(in srgb, var(--t-primary) 24%, var(--v-board)));font-size:12.5px"><span style="color:var(--t-text2)">Исполнитель</span><span style="font-weight:600">Анна К.</span></span>
+<span style="flex:1"></span>
+<span style="height:28px;display:flex;align-items:center;gap:5px;padding:0 10px 0 8px;border-radius:var(--v-r-ctl);background:var(--t-accent-grad);color:#fff;font-size:12.5px;font-weight:600"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="15" color="#fff" hint-size="15px,15px"></x-import>Задача</span>
+</div>
+<div style="display:flex;gap:12px;align-items:flex-start;--cw:236px">
+<sc-for list="{{ d.fcols }}" as="c" hint-placeholder-count="2"><dc-import name="Column" c="{{ c }}" dir="{{ d.key }}" hint-size="236px,300px"></dc-import></sc-for>
+</div>
+</div>
+</div></x-import>
+</div>
+</div>
+</sc-if>
+</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<div style="font-size:18px;font-weight:600;color:#26262e">7 · Токены для переноса в код</div>
+<div data-k="tok" ref="{{ rf.tok }}" style="width:1440px;min-height:1200px;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.1)"><sc-if value="{{ v.tok }}" hint-placeholder-val="{{ false }}"><dc-import name="TokensB" hint-size="1440px,1400px"></dc-import></sc-if></div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { v: {} };
+  els = {}; q = []; rf = {};
+  ref(k) {
+    if (!this.rf[k]) this.rf[k] = (el) => { if (el && this.els[k] !== el) { this.els[k] = el; if (this.io) this.io.observe(el); } };
+    return this.rf[k];
+  }
+  componentDidMount() {
+    this.io = new IntersectionObserver((es) => {
+      es.forEach((e) => {
+        if (!e.isIntersecting) return;
+        const k = e.target.getAttribute('data-k');
+        this.io.unobserve(e.target);
+        if (k && !this.q.includes(k) && !this.state.v[k]) this.q.push(k);
+      });
+      this.pump();
+    }, { rootMargin: '300px' });
+    Object.values(this.els).forEach((el) => this.io.observe(el));
+  }
+  pump() {
+    if (this.t || !this.q.length) return;
+    this.t = setTimeout(() => {
+      this.t = null;
+      const k = this.q.shift();
+      this.setState((s) => ({ v: { ...s.v, [k]: true } }), () => this.pump());
+    }, 80);
+  }
+  componentWillUnmount() { if (this.io) this.io.disconnect(); clearTimeout(this.t); }
+  renderVals() {
+    const rf = {};
+    ['b1', 'b2', 'b3', 's1', 's2', 'm', 'acc', 'tok'].forEach((k) => { rf[k] = this.ref(k); });
+    return { d: this.props.d || { key: 'A', status: [], tags: [], sheet: [], mobile: [], frags: [], tok: {} }, v: this.state.v, rf };
+  }
+}
+</script>
+</body>
+</html>

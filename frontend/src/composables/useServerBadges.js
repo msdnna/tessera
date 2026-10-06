@@ -125,6 +125,13 @@ export async function pollServer(store, server) {
     }
     store.setBadge(server.id, count)
     store.setSignedOut(server.id, false)
+    // The same token lists that server's workspaces for its group on the rail
+    // (#2955). Best-effort: a failure keeps the cached tiles.
+    try {
+      store.setWorkspaces(server.id, await fetchWorkspaces(server, access))
+    } catch {
+      /* keep the cached list */
+    }
   } catch (e) {
     // Only an answered "no" ends the session. A transient failure keeps the last
     // known badge and is retried next tick — clearing the token there would sign
@@ -149,6 +156,14 @@ async function fetchCount(server, access) {
     timeout: TIMEOUT_MS,
   })
   return Number(res.data?.count) || 0
+}
+
+async function fetchWorkspaces(server, access) {
+  const res = await axios.get(`${server.url}/api/workspaces`, {
+    headers: { Authorization: `Bearer ${access}` },
+    timeout: TIMEOUT_MS,
+  })
+  return Array.isArray(res.data) ? res.data : []
 }
 
 export function useServerBadges() {

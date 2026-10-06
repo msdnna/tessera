@@ -11,11 +11,10 @@
   "composer": {
     "subtasksOn": "Subtasks expanded",
     "subtasksOff": "Expand subtasks",
-    "groupToggle": "Switch statuses/tags",
     "sortHint": "Click — direction · drag to reorder",
     "remove": "Remove",
     "add": "Add grouping / sorting / filter",
-    "search": "Search by title…",
+    "more": "{count} more",
     "clear": "Clear all",
     "back": "Back",
     "shown": "showing: {tasks} ({total})",
@@ -40,9 +39,9 @@
   },
   "column": {
     "expand": "Expand the column",
-    "addTask": "＋ New task",
+    "addTask": "New task",
     "taskPlaceholder": "Task title, Enter — create",
-    "add": "＋ New column",
+    "add": "New column",
     "namePlaceholder": "Column name",
     "needStatus": "Create at least one status column first",
     "emptyStatus": "No columns — create the first one with “＋ Column”.",
@@ -98,7 +97,8 @@
     "calendar": "Calendar",
     "timeline": "Timeline",
     "gantt": "Gantt",
-    "matrix": "Matrix"
+    "matrix": "Matrix",
+    "more": "More views"
   },
   "actions": {
     "view": "View",
@@ -243,7 +243,24 @@
     "lane": {
       "unassigned": "Unassigned",
       "noTag": "No tag",
-      "all": "All tasks"
-    }
+      "all": "All tasks",
+      "noMilestone": "No milestone"
+    },
+    "people": "People",
+    "scale": {
+      "days": "Days",
+      "weeks": "Weeks",
+      "months": "Months"
+    },
+    "hintScroll": "scroll",
+    "hintZoom": "zoom",
+    "settings": "Customize the view",
+    "workDays": "{n} working day | {n} working days",
+    "overdueBy": "{n} day overdue | {n} days overdue",
+    "lanes": "Collapse / expand the group",
+    "shiftHint": "shift dates"
+  },
+  "members": {
+    "title": "Members · {count}"
   }
 }

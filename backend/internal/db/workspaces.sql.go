@@ -42,7 +42,7 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 const createWorkspace = `-- name: CreateWorkspace :one
 INSERT INTO workspaces (name, name_key, owner_id)
 VALUES ($1, $2, $3)
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode
 `
 
 type CreateWorkspaceParams struct {
@@ -67,6 +67,9 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 		&i.TaskCounter,
 		&i.Estimation,
 		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
 	)
 	return i, err
 }
@@ -133,7 +136,7 @@ func (q *Queries) GetMembershipRole(ctx context.Context, arg GetMembershipRolePa
 }
 
 const getWorkspace = `-- name: GetWorkspace :one
-SELECT id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key FROM workspaces WHERE id = $1
+SELECT id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode FROM workspaces WHERE id = $1
 `
 
 func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, error) {
@@ -148,6 +151,9 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 		&i.TaskCounter,
 		&i.Estimation,
 		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
 	)
 	return i, err
 }
@@ -205,7 +211,7 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 }
 
 const listWorkspacesForUser = `-- name: ListWorkspacesForUser :many
-SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation, w.name_key, m.role AS my_role
+SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation, w.name_key, w.color, w.icon, w.icon_mode, m.role AS my_role
 FROM workspaces w
 JOIN memberships m ON m.workspace_id = w.id
 WHERE m.user_id = $1
@@ -221,6 +227,9 @@ type ListWorkspacesForUserRow struct {
 	TaskCounter int64            `json:"task_counter"`
 	Estimation  *json.RawMessage `json:"estimation"`
 	NameKey     *string          `json:"name_key"`
+	Color       string           `json:"color"`
+	Icon        string           `json:"icon"`
+	IconMode    string           `json:"icon_mode"`
 	MyRole      string           `json:"my_role"`
 }
 
@@ -242,6 +251,9 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 			&i.TaskCounter,
 			&i.Estimation,
 			&i.NameKey,
+			&i.Color,
+			&i.Icon,
+			&i.IconMode,
 			&i.MyRole,
 		); err != nil {
 			return nil, err
@@ -265,11 +277,51 @@ func (q *Queries) NextWorkspaceTaskNumber(ctx context.Context, id uuid.UUID) (in
 	return task_counter, err
 }
 
+const setWorkspaceAppearance = `-- name: SetWorkspaceAppearance :one
+UPDATE workspaces
+SET color = $2, icon = $3, icon_mode = $4, updated_at = now()
+WHERE id = $1
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode
+`
+
+type SetWorkspaceAppearanceParams struct {
+	ID       uuid.UUID `json:"id"`
+	Color    string    `json:"color"`
+	Icon     string    `json:"icon"`
+	IconMode string    `json:"icon_mode"`
+}
+
+// SetWorkspaceAppearance stores the rail tile's colour and icon (#2955). Its
+// own endpoint, like the estimation config, so a rename never clobbers them.
+func (q *Queries) SetWorkspaceAppearance(ctx context.Context, arg SetWorkspaceAppearanceParams) (Workspace, error) {
+	row := q.db.QueryRow(ctx, setWorkspaceAppearance,
+		arg.ID,
+		arg.Color,
+		arg.Icon,
+		arg.IconMode,
+	)
+	var i Workspace
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TaskCounter,
+		&i.Estimation,
+		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
+	)
+	return i, err
+}
+
 const setWorkspaceEstimation = `-- name: SetWorkspaceEstimation :one
 UPDATE workspaces
 SET estimation = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode
 `
 
 type SetWorkspaceEstimationParams struct {
@@ -292,6 +344,9 @@ func (q *Queries) SetWorkspaceEstimation(ctx context.Context, arg SetWorkspaceEs
 		&i.TaskCounter,
 		&i.Estimation,
 		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
 	)
 	return i, err
 }
@@ -327,7 +382,7 @@ SET name = $2,
     name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode
 `
 
 type UpdateWorkspaceParams struct {
@@ -352,6 +407,9 @@ func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams
 		&i.TaskCounter,
 		&i.Estimation,
 		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
 	)
 	return i, err
 }

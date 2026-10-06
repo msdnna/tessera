@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="position:relative;width:390px;height:844px;overflow:hidden">
+<dc-import name="Mobile" cols="{{ cols }}" dir="F" final="{{ yes }}" strip="{{ isStrip }}" hint-size="390px,844px"></dc-import>
+<sc-if value="{{ notStrip }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;left:256px;top:48px;z-index:5;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--v-topbar);color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="FileTrayOutline" size="20" hint-size="20px,20px"></x-import><span style="position:absolute;top:5px;right:2px;min-width:16px;height:16px;padding:0 4px;box-sizing:border-box;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;background:linear-gradient(to top right, color-mix(in srgb, #f0a020 86%, #000), #f0a020 50%, color-mix(in srgb, #f0a020 86%, #fff))">2</span></div></sc-if>
+<sc-if value="{{ isCap }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;z-index:30;background:var(--v-scrim)"></div><div style="position:absolute;left:0;right:0;bottom:0;z-index:31"><dc-import name="CapturePop" state="parsed" touch="{{ yes }}" hint-size="390px,330px"></dc-import></div></sc-if>
+<sc-if value="{{ isInbox }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:30;background:var(--v-scrim)"></div><div style="position:absolute;left:0;right:0;top:52px;bottom:-18px;z-index:31"><dc-import name="DockPanel" state="full" touch="{{ yes }}" style="position:absolute;top:0;left:0;right:0;bottom:0" hint-size="390px,810px"></dc-import></div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:390,&quot;height&quot;:844},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;capture&quot;,&quot;inbox&quot;],&quot;default&quot;:&quot;capture&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const TG = { fe: { id: 'fe', name: 'app::frontend', color: '#7c5cff' }, be: { id: 'be', name: 'app::backend', color: '#2f80ed' }, bug: { id: 'bug', name: 'bug', color: '#e0533d' }, des: { id: 'des', name: 'design', color: '#eb2f96' } };
+const PP = { u1: 'Мария Соколова', u2: 'Илья Петров', u3: 'Анна Ким', u4: 'Дмитрий Орлов' };
+const T = [
+  { n: 2961, title: 'Фильтр по исполнителю сбрасывается после перезагрузки', prio: 3, due: '05 окт.', tags: ['bug', 'fe'], who: ['u2'] },
+  { n: 2955, title: 'Пустое состояние для доски без колонок', prio: 1, due: '12 окт.', rem: 'чт 10:00', tags: ['des'], who: ['u3'] },
+  { n: 2958, title: 'Экспорт доски в CSV вместе с подзадачами', prio: 2, est: '5 ч', tags: ['be'], who: ['u4'] },
+];
+const spec = (t) => ({ key: String(t.n), t: { ...t, tags: t.tags.map((k) => TG[k]), people: t.who.map((k) => ({ name: PP[k], role: 'Исполнитель' })) }, state: 'normal', size: 'medium' });
+const COLS = [{ col: { id: 'todo', name: 'К работе', color: '#0eb0a9', icon: 'status-todo', variant: 'outline', kind: 'status', countLabel: '4', est: '8 ч', showAdd: true }, cards: T.map(spec) }, { col: { id: 'doing', name: 'В процессе', color: '#2f80ed', icon: 'status-progress', variant: 'outline', kind: 'status', countLabel: '4', est: '16 ч' }, cards: [] }];
+class Component extends DCLogic {
+  renderVals() {
+    const m = this.props.mode || 'capture';
+    return { cols: COLS, yes: true, isCap: m === 'capture', isInbox: m === 'inbox', isStrip: m === 'strip', notStrip: m !== 'strip' };
+  }
+}
+</script>
+</body>
+</html>

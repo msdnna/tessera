@@ -1,15 +1,24 @@
 :root {
-  /* Light defaults; the theme store overrides these on init and on change. */
-  --t-bg: #f6f7f9;
+  /* Light defaults for the first paint; the theme store (styles/tokens.js
+     themeVars) overrides these and the v2 levels on init and on change. */
+  --t-bg: #f8f8fa;
   --t-surface: #ffffff;
-  --t-surface-alt: #f3f4f6;
-  --t-input-bg: #ffffff;
-  --t-hover: #eef0f3;
-  --t-border: #e6e8ec;
-  --t-text1: #1f2329;
-  --t-text2: #4a5059;
-  --t-text3: #868d96;
-  --t-placeholder: #b8bdc4;
+  --t-surface-alt: #f1f1f4;
+  --t-input-bg: #ededf1;
+  --t-hover: #ebebef;
+  --t-border: #e4e4ea;
+  --t-text1: #1c1c22;
+  --t-text2: #4a4a55;
+  --t-text3: #767682;
+  --t-placeholder: #a9a9b3;
+  /* v2 radii (#2951) — theme-independent, so they live here, not in tokens.js. */
+  --t-r-ctl: 10px;
+  --t-r-pill: 999px;
+  --t-r-card: 14px;
+  --t-r-col: 18px;
+  --t-r-pop: 16px;
+  --t-r-tip: 10px;
+  --t-r-kbd: 5px;
   --t-primary: #7c5cff;
   --t-on-primary: #ffffff;
   /* Accent gradient (ported from the Android client): a soft same-hue diagonal —
@@ -38,12 +47,16 @@
     var(--t-primary) 50%,
     color-mix(in srgb, var(--t-primary) 86%, #fff) 100%
   );
-  /* Error gradient — same soft diagonal formula as accent, but red (#e5484d). */
+  /* Error hue + its gradient — same soft diagonal formula as accent. Built on
+     var(--t-error) like the accent ones are on --t-primary: a gradient of bare
+     literals minifies to plain hex stops that Claude Design's token check can't
+     classify (#2951). */
+  --t-error: #e5484d;
   --t-error-grad: linear-gradient(
     to top right,
-    color-mix(in srgb, #e5484d 86%, #000) 0%,
-    #e5484d 50%,
-    color-mix(in srgb, #e5484d 86%, #fff) 100%
+    color-mix(in srgb, var(--t-error) 86%, #000) 0%,
+    var(--t-error) 50%,
+    color-mix(in srgb, var(--t-error) 86%, #fff) 100%
   );
 }
 
@@ -95,15 +108,10 @@
      analogue of Android's accentGradientTint). The hue is derived from the
      button's own --n-text-color, so primary/success/error ghosts each gradient
      in their own colour. Border drawn as a 1px gradient ring via mask so the
-     interior stays transparent and the corner radius is preserved. */
-.n-button--ghost:not(.ngrad) {
-  --bgrad: linear-gradient(
-    to top right,
-    color-mix(in srgb, var(--n-text-color) 86%, #000),
-    var(--n-text-color) 50%,
-    color-mix(in srgb, var(--n-text-color) 86%, #fff)
-  );
-}
+     interior stays transparent and the corner radius is preserved. The gradient
+     is spelled out in both rules rather than shared through a helper custom
+     property: Claude Design's token check reported that helper (a global colour
+     value outside :root) as a stray theme token (#2951). */
 .n-button--ghost:not(.ngrad) .n-button__border,
 .n-button--ghost:not(.ngrad) .n-button__state-border {
   display: none;
@@ -114,7 +122,12 @@
   inset: 0;
   border-radius: inherit;
   padding: 1px;
-  background: var(--bgrad);
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--n-text-color) 86%, #000),
+    var(--n-text-color) 50%,
+    color-mix(in srgb, var(--n-text-color) 86%, #fff)
+  );
   -webkit-mask:
     linear-gradient(#fff 0 0) content-box,
     linear-gradient(#fff 0 0);
@@ -123,7 +136,12 @@
   pointer-events: none;
 }
 .n-button--ghost:not(.ngrad) .n-button__content {
-  background-image: var(--bgrad);
+  background-image: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--n-text-color) 86%, #000),
+    var(--n-text-color) 50%,
+    color-mix(in srgb, var(--n-text-color) 86%, #fff)
+  );
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;

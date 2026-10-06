@@ -63,9 +63,10 @@ test('документ: связь с задачей и протокол сог�
     // endpoints over one table, and only this crosses both.
     await page.goto(`/board/${seed.boardId}?task=${task.id}`)
     const modal = page.locator('.n-modal')
-    // Naive's tabs are divs, not role="tab" — locate the label itself, scoped to
-    // the modal so the sidebar's «Документы» nav link cannot match instead.
-    await modal.getByTestId('tab-documents').click()
+    // The «Документы» section of the properties panel (v2, #2958) — scoped to the
+    // modal so the sidebar's «Документы» nav link cannot match instead. It shows
+    // only once the task has a linked document, which is exactly the claim here.
+    await expect(modal.getByTestId('tab-documents')).toBeVisible()
     await expect(modal.getByTestId('task-doc-link').first()).toBeVisible()
 
     // ── the approval route ──

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NInput, NIcon, NSpin, NText } from 'naive-ui'
+import { NInput, NIcon, NSpin } from 'naive-ui'
 import {
   SearchOutline,
   CheckmarkCircle,
@@ -11,15 +11,19 @@ import {
   HelpCircleOutline,
 } from '@vicons/ionicons5'
 import EmptyState from '@/components/EmptyState.vue'
+import ShortcutKeys from '@/components/ShortcutKeys.vue'
+import { usePaletteStore } from '@/stores/palette'
 import { useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useHelpStore } from '@/stores/help'
+import { useBoardViewStore } from '@/stores/boardView'
 
 const { t } = useI18n()
 const router = useRouter()
 const ws = useWorkspacesStore()
 const help = useHelpStore()
+const board = useBoardViewStore()
 
 const q = ref('')
 const open = ref(false)
@@ -30,7 +34,29 @@ const inputRef = ref(null)
 let debounce = null
 let seq = 0
 
+// On a board (v2, #2954) this field is also the board's title filter: typing
+// narrows the cards right away, and the workspace-wide results only drop down
+// when nothing on the board matches. Off a board it is the global search alone.
+const onBoard = computed(() => board.active)
+const boardHasMatches = computed(() => onBoard.value && board.shownTasks > 0)
+const showPanel = computed(() => open.value && !!q.value.trim() && !boardHasMatches.value)
+// The board can change the filter itself (a saved view brings its own), and
+// moving to another board starts clean.
+watch(
+  () => board.searchQ,
+  (v) => {
+    if (onBoard.value && v !== q.value) q.value = v
+  },
+)
+watch(
+  () => board.boardId,
+  () => {
+    q.value = ''
+  },
+)
+
 watch(q, (val) => {
+  if (onBoard.value) board.searchQ = val
   clearTimeout(debounce)
   const term = val.trim()
   if (!term) {
@@ -97,6 +123,25 @@ function gotoDocument(d) {
   router.push(`/documents/${d.slug || d.id}`)
 }
 
+// The ⌘K palette (#2957) is the search everywhere; this field stays the board's
+// title filter. Off a board there is nothing to filter, so the field is just the
+// palette's doorway: focusing it opens the palette.
+const palette = usePaletteStore()
+function openPalette() {
+  const term = q.value.trim()
+  open.value = false
+  if (onBoard.value) q.value = ''
+  palette.show(term)
+}
+function onFocus() {
+  if (!onBoard.value) {
+    inputRef.value?.blur()
+    openPalette()
+    return
+  }
+  if (q.value.trim()) open.value = true
+}
+
 // A help hit opens the drawer, not the help page: the reader asked a question
 // from wherever they were, and the answer should not cost them that screen.
 function gotoHelp(h) {
@@ -111,18 +156,25 @@ function gotoHelp(h) {
     <n-input
       ref="inputRef"
       v-model:value="q"
-      :placeholder="t('shell.search.placeholder')"
+      :placeholder="t(onBoard ? 'shell.search.placeholderBoard' : 'shell.search.placeholder')"
+      :input-props="{ 'data-testid': 'header-search' }"
       clearable
-      round
-      @focus="q.trim() && (open = true)"
+      @focus="onFocus"
       @blur="close"
+      @keydown.esc="q = ''"
     >
       <template #prefix>
         <n-icon :component="SearchOutline" />
       </template>
+      <template #suffix>
+        <ShortcutKeys v-if="!q" id="nav.palette" joined soft class="search-kbd" />
+      </template>
     </n-input>
 
-    <div v-if="open && q.trim()" class="panel">
+    <div v-if="showPanel" class="panel">
+      <!-- On a board the cards are filtered first; this panel only opens when
+           nothing on the board matched, so say where the results come from. -->
+      <div v-if="onBoard" class="board-none">{{ t('shell.search.boardNone') }}</div>
       <!-- Help sits above the server-backed groups and outside the loading
            branch: it is resolved from the bundled index, so it is already there
            while the request is still in flight (#2794). -->
@@ -193,9 +245,16 @@ function gotoHelp(h) {
           <empty-state :icon="SearchOutline" :text="t('shell.search.nothing')" size="small" />
         </div>
       </template>
-      <div class="hint">
-        <n-text depth="3">{{ t('shell.search.hint') }}</n-text>
-      </div>
+      <!-- Everything else (boards, people, commands) lives in the palette. -->
+      <button
+        class="row everywhere"
+        data-testid="search-everywhere"
+        @mousedown.prevent="openPalette"
+      >
+        <n-icon class="ico" :component="SearchOutline" />
+        <span class="ttl">{{ t('shell.search.everywhere') }}</span>
+        <ShortcutKeys id="nav.palette" />
+      </button>
     </div>
   </div>
 </template>
@@ -210,10 +269,9 @@ function gotoHelp(h) {
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  background: var(--t-pop);
+  border-radius: var(--t-r-tip);
+  box-shadow: var(--t-sh-pop);
   padding: 6px;
   max-height: 60vh;
   overflow-y: auto;
@@ -221,6 +279,11 @@ function gotoHelp(h) {
      would otherwise overlap this dropdown (a plain card stays in the auto layer
      and renders behind it). */
   z-index: 60;
+}
+.board-none {
+  padding: 6px 8px 4px;
+  font-size: 12px;
+  color: var(--t-text3);
 }
 .loading {
   display: flex;
@@ -283,10 +346,24 @@ function gotoHelp(h) {
 .empty {
   padding: 12px;
 }
-.hint {
-  border-top: 1px solid var(--t-border);
+.row.everywhere {
   margin-top: 4px;
-  padding: 6px 8px 2px;
-  font-size: 11px;
+  color: var(--t-text2);
+}
+.row.everywhere .ttl {
+  flex: 1;
+}
+/* The search field sits right on the canvas: a filled 34px well (v2, #2953). */
+.search :deep(.n-input) {
+  --n-height: 34px !important;
+}
+.search-kbd {
+  margin-right: -2px;
+}
+/* No keyboard to press it on: drop the hint on phones/touch screens. */
+@media (max-width: 768px), (hover: none) {
+  .search-kbd {
+    display: none;
+  }
 }
 </style>

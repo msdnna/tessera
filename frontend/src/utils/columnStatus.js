@@ -12,6 +12,29 @@ export function isReviewColumn(name) {
   return REVIEW_RE.test(name || '')
 }
 
+const TODO_RE = /^(к работе|to ?do)$/i
+
+// Is this the «К работе» column, by its seeded key or its name — for rows that
+// carry their column but not the board's column order (the start screen, #2960).
+export function isTodoColumn(nameKey, name) {
+  return nameKey === 'todo' || TODO_RE.test((name || '').trim())
+}
+
+// The «К работе» column of a board, where quick-created tasks go (#2956): the
+// seeded todo column by its name_key, else one so named, else the first.
+// `cols` must be in board order; works on board columns and on display columns
+// (which carry the board column as `status` and its name as `rawName`).
+export function todoColumn(cols) {
+  const list = cols || []
+  const col = (c) => c.status || c
+  return (
+    list.find((c) => col(c).name_key === 'todo') ||
+    list.find((c) => TODO_RE.test((col(c).name || c.rawName || '').trim())) ||
+    list[0] ||
+    null
+  )
+}
+
 // done → check circle · first → empty circle · review → ⅔-pie · other → half.
 //
 // A seeded column also carries a name_key (#2800), which says which of the four

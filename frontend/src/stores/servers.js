@@ -9,6 +9,32 @@ import {
   updateServer,
   removeServer,
 } from '@/utils/servers'
+import { sGetFor, sSetFor } from '@/utils/serverStorage'
+
+// Workspaces of each server for the rail (#2955), cached per server so the
+// groups of servers we are not on still show their tiles after a restart.
+const RAIL_WS_KEY = 'tessera_rail_ws'
+
+function readRailWorkspaces(id) {
+  try {
+    const v = JSON.parse(sGetFor(RAIL_WS_KEY, id) || '[]')
+    return Array.isArray(v) ? v : []
+  } catch {
+    return []
+  }
+}
+
+// Just what a tile needs — the cache must not grow with the workspace row.
+export function slimWorkspace(w) {
+  return {
+    id: w.id,
+    name: w.name,
+    name_key: w.name_key || null,
+    color: w.color || '',
+    icon: w.icon || '',
+    icon_mode: w.icon_mode || 'badge',
+  }
+}
 
 // Desktop multi-server switcher (#2930). The registry itself is plain
 // localStorage (utils/servers.js) so non-Vue code — the api layer, the session
@@ -23,6 +49,12 @@ export const useServersStore = defineStore('servers', () => {
   // serverId → true when that server answered "session over": the tile is drawn
   // muted and the poller stops asking until the user signs in there again.
   const signedOut = ref({})
+  // serverId → [{ id, name, name_key, color, icon, icon_mode }] for the rail:
+  // the active server's from the live workspace list, the others' from the
+  // badge poller — both persisted, so a cold start draws every group at once.
+  const workspaces = ref(
+    Object.fromEntries(listServers().map((s) => [s.id, readRailWorkspaces(s.id)])),
+  )
 
   // The whole feature only exists in the desktop shell. On web the rail never
   // renders and this store stays empty.
@@ -72,6 +104,12 @@ export const useServersStore = defineStore('servers', () => {
     badges.value = { ...badges.value, [id]: count }
   }
 
+  function setWorkspaces(id, list) {
+    const slim = (list || []).map(slimWorkspace)
+    workspaces.value = { ...workspaces.value, [id]: slim }
+    sSetFor(RAIL_WS_KEY, id, JSON.stringify(slim))
+  }
+
   function setSignedOut(id, value) {
     signedOut.value = { ...signedOut.value, [id]: !!value }
   }
@@ -81,6 +119,7 @@ export const useServersStore = defineStore('servers', () => {
     activeId,
     badges,
     signedOut,
+    workspaces,
     enabled,
     active,
     others,
@@ -91,5 +130,6 @@ export const useServersStore = defineStore('servers', () => {
     remove,
     setBadge,
     setSignedOut,
+    setWorkspaces,
   }
 })

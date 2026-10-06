@@ -727,6 +727,9 @@ type Workspace struct {
 	TaskCounter int64            `json:"task_counter"`
 	Estimation  *json.RawMessage `json:"estimation"`
 	NameKey     *string          `json:"name_key"`
+	Color       string           `json:"color"`
+	Icon        string           `json:"icon"`
+	IconMode    string           `json:"icon_mode"`
 }
 
 type WorkspaceCommand struct {

@@ -108,9 +108,10 @@ const doneColumnName = "Готово"
 // clients, GitLab rules, DB lookups). Renaming a column clears its key — see
 // UpdateColumn.
 var defaultColumns = []struct{ name, nameKey, color string }{
-	{"К работе", "todo", "#9aa0aa"},
+	// v2 lane palette (#2951): teal · blue · orange · green.
+	{"К работе", "todo", "#0eb0a9"},
 	{"В процессе", "in_progress", "#2f80ed"},
-	{"На рассмотрении", "review", "#7c5cff"},
+	{"На рассмотрении", "review", "#f0a020"},
 	{doneColumnName, "done", "#18a058"},
 }
 

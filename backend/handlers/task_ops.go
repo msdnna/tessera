@@ -322,7 +322,13 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 	}
 
 	if t.ColumnID != columnID {
-		h.logEvent(c, t.ID, "moved", map[string]any{"to": col.Name})
+		// The source column rides along so the activity feed can draw «from → to»
+		// (v2, #2958); older entries carry only `to` and keep their bare wording.
+		data := map[string]any{"to": col.Name}
+		if from, ferr := h.q.GetColumn(c, t.ColumnID); ferr == nil {
+			data["from"] = from.Name
+		}
+		h.logEvent(c, t.ID, "moved", data)
 		h.notifyTaskParticipants(c, updated, wsID, "moved",
 			msgMoved(h.actorName(c), updated.Number, col.Name))
 	}

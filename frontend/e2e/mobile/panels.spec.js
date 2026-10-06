@@ -94,10 +94,11 @@ test('фоновые задачи на телефоне: список и дет�
 
   await page.goto('/')
   await settle(page)
-  // On a phone the tools row lives in the sidebar drawer, not in the header
-  // (Sidebar.vue renders WorkspaceTools when `mobile`), so the burger comes
-  // first — otherwise the button simply is not in the DOM.
+  // The jobs live in the footer's «⋯» menu (v2), and on a phone the footer is in
+  // the sidebar drawer — so the burger comes first, otherwise the menu simply is
+  // not in the DOM.
   await page.locator('.topbar .menu-btn').tap()
+  await page.getByTestId('user-menu').tap()
   await page.getByTestId('jobs-button').tap()
 
   const list = page.getByTestId('jobs-list')

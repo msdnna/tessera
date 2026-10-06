@@ -36,6 +36,7 @@ func protectedRoutes() []struct{ method, path string } {
 		{"GET", "/workspaces"},
 		{"GET", "/workspaces/" + u},
 		{"PATCH", "/workspaces/" + u},
+		{"PUT", "/workspaces/" + u + "/appearance"},
 		{"DELETE", "/workspaces/" + u},
 		{"GET", "/workspaces/" + u + "/search"},
 		{"GET", "/workspaces/" + u + "/tasks"},
@@ -222,6 +223,7 @@ func TestAuthzForeignResources(t *testing.T) {
 		// loads the row first (owner check) → 404 for unknown.
 		{"get workspace", "GET", "/workspaces/", s.WS, "", nil, 403, 403, 400},
 		{"patch workspace", "PATCH", "/workspaces/", s.WS, "", map[string]any{"name": "x"}, 403, 403, 400},
+		{"workspace appearance", "PUT", "/workspaces/", s.WS, "/appearance", map[string]any{"color": "#fff"}, 403, 403, 400},
 		{"delete workspace", "DELETE", "/workspaces/", s.WS, "", nil, 403, 404, 400},
 		{"list members", "GET", "/workspaces/", s.WS, "/members", nil, 403, 403, 400},
 		{"list ws tags", "GET", "/workspaces/", s.WS, "/tags", nil, 403, 403, 400},

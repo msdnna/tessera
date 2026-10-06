@@ -1,0 +1,728 @@
+<script setup>
+// The ⌘K palette (v2, #2957): search across the workspace, commands, and —
+// after Tab on a task — that task's actions. One instance in AppLayout, driven
+// by the palette store. A hand-rolled overlay rather than NModal: the spec
+// wants it pinned 72px from the top over the v2 scrim, which NModal's own
+// centring and mask fight.
+import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { NIcon, NSpin } from 'naive-ui'
+import { SearchOutline, CloseOutline, Checkmark } from '@vicons/ionicons5'
+import Kbd from '@/components/Kbd.vue'
+import ShortcutKeys from '@/components/ShortcutKeys.vue'
+import TesseraIcon from '@/components/TesseraIcon.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
+import { usePaletteStore } from '@/stores/palette'
+import { useOverlayBack } from '@/composables/useOverlayBack'
+import { pushBlocker } from '@/shortcuts/dispatcher'
+import { hasModKey } from '@/utils/keys'
+import { highlight } from '@/utils/fuzzy'
+import { usePaletteResults } from './usePaletteResults'
+import { usePaletteTask } from './usePaletteTask'
+
+const { t } = useI18n()
+const palette = usePaletteStore()
+const results = usePaletteResults()
+const taskScope = usePaletteTask()
+
+const inputEl = ref(null)
+const listEl = ref(null)
+const active = ref(0)
+
+const scoped = computed(() => !!palette.scope)
+const field = computed(() => palette.scope?.field || null)
+
+const groups = computed(() =>
+  scoped.value ? taskScope.groupsFor(palette.query) : results.groups.value,
+)
+const flat = computed(() => groups.value.flatMap((g) => g.rows))
+const loading = computed(() =>
+  scoped.value ? taskScope.loading.value : results.loading.value && !flat.value.length,
+)
+
+// Section pills (results mode). A pill with a prefix writes it into the query
+// so what the list shows is always spelled out in the field.
+const SECTIONS = [
+  { id: 'all' },
+  { id: 'tasks', prefix: '#' },
+  { id: 'boards' },
+  { id: 'people', prefix: '@' },
+  { id: 'commands', prefix: '>' },
+]
+const currentSection = computed(() => results.parsed.value.section)
+function pickSection(s) {
+  const bare = palette.query.replace(/^[#@>]\s*/, '')
+  palette.section = s.prefix || s.id === 'all' ? 'all' : s.id
+  palette.query = s.prefix ? `${s.prefix}${bare}` : bare
+  inputEl.value?.focus()
+}
+
+const placeholder = computed(() => {
+  if (!scoped.value) return t('shell.palette.placeholder')
+  if (!field.value) return t('shell.palette.placeholderTask')
+  return t(`shell.palette.placeholderField.${field.value}`)
+})
+
+// Keep the highlighted row where the user put it while a toggle re-renders the
+// list (assignees, tags); start over when the query or the scope changes.
+watch(
+  () => [palette.query, palette.scope?.taskId, field.value, palette.section],
+  () => (active.value = 0),
+)
+// Opening a single-value field (status, priority) puts the cursor on the value
+// the task has now, so ↑/↓ move relative to it.
+watch(
+  () => [field.value, taskScope.task.value?.id],
+  async () => {
+    if (!['status', 'priority'].includes(field.value)) return
+    await nextTick()
+    const i = flat.value.findIndex((r) => r.checked)
+    if (i >= 0) active.value = i
+  },
+)
+watch(flat, (rows) => {
+  if (active.value >= rows.length) active.value = Math.max(0, rows.length - 1)
+})
+
+// ── open / close ──
+let releaseBlocker = null
+let returnFocus = null
+watch(
+  () => palette.open,
+  async (open) => {
+    if (open) {
+      returnFocus = document.activeElement
+      releaseBlocker = pushBlocker()
+      await nextTick()
+      inputEl.value?.focus()
+      inputEl.value?.select()
+    } else {
+      releaseBlocker?.()
+      releaseBlocker = null
+      if (returnFocus?.isConnected) returnFocus.focus?.()
+      returnFocus = null
+    }
+  },
+)
+onBeforeUnmount(() => releaseBlocker?.())
+const openRef = computed(() => palette.open)
+useOverlayBack(openRef, () => palette.hide())
+
+// ── navigation ──
+function move(delta) {
+  const n = flat.value.length
+  if (!n) return
+  active.value = (active.value + delta + n) % n
+  nextTick(() => {
+    listEl.value?.querySelector('.cp-row.active')?.scrollIntoView({ block: 'nearest' })
+  })
+}
+
+async function runRow(row, e) {
+  if (!row || row.disabled) return
+  const next = (await row.run({ newTab: !!e && hasModKey(e) })) || 'close'
+  if (next === 'close') palette.hide()
+  else if (next === 'back') back()
+  inputEl.value?.focus()
+}
+
+// Tab: narrow to the highlighted task (results), open the highlighted field
+// (task actions). The query typed before narrowing comes back on the way out.
+let savedQuery = ''
+function forward() {
+  const row = flat.value[active.value]
+  if (!row) return
+  if (!scoped.value && row.task) {
+    savedQuery = palette.query
+    palette.scope = { taskId: row.task.id, field: null, direct: false }
+    palette.query = ''
+  } else if (scoped.value && !field.value && row.field) {
+    palette.scope = { ...palette.scope, field: row.field }
+    palette.query = ''
+  }
+}
+
+function back() {
+  if (!scoped.value) return
+  if (field.value) {
+    palette.scope = { ...palette.scope, field: null, direct: false }
+    palette.query = ''
+  } else {
+    palette.scope = null
+    palette.query = savedQuery
+    savedQuery = ''
+  }
+}
+
+function onKeydown(e) {
+  if (e.isComposing) return
+  const mod = hasModKey(e)
+  switch (e.key) {
+    case 'ArrowDown':
+      e.preventDefault()
+      move(1)
+      return
+    case 'ArrowUp':
+      e.preventDefault()
+      move(-1)
+      return
+    case 'Enter':
+      e.preventDefault()
+      runRow(flat.value[active.value], e)
+      return
+    case 'Tab':
+      e.preventDefault()
+      if (e.shiftKey) back()
+      else forward()
+      return
+    case 'Escape':
+      e.preventDefault()
+      e.stopPropagation()
+      palette.hide()
+      return
+    case 'Backspace':
+      if (scoped.value && !palette.query) {
+        e.preventDefault()
+        back()
+      }
+      return
+  }
+  if (scoped.value && taskScope.task.value && mod && e.shiftKey && e.code === 'KeyC') {
+    e.preventDefault()
+    taskScope.copyLink().then((next) => next === 'close' && palette.hide())
+  }
+}
+
+// ── presentation ──
+const chipStatus = computed(() => taskScope.status.value)
+
+function rowIndex(row) {
+  return flat.value.indexOf(row)
+}
+
+const foot = computed(() => {
+  if (!scoped.value) {
+    return [
+      { caps: ['↑', '↓'], label: t('shell.palette.foot.select') },
+      { caps: ['↵'], label: t('shell.palette.foot.open') },
+      { caps: ['Tab'], label: t('shell.palette.foot.actions') },
+      { id: 'palette.newTab', label: t('shell.palette.foot.newTab') },
+    ]
+  }
+  return [
+    { caps: ['↑', '↓'], label: t('shell.palette.foot.select') },
+    { caps: ['↵'], label: t('shell.palette.foot.apply') },
+    ...(field.value ? [] : [{ caps: ['Tab'], label: t('shell.palette.foot.options') }]),
+    {
+      id: 'palette.back',
+      label: t(field.value ? 'shell.palette.foot.toActions' : 'shell.palette.foot.toResults'),
+    },
+  ]
+})
+const footRight = computed(() => {
+  if (!scoped.value) return t('shell.palette.foot.prefixes')
+  if (field.value) return t(`shell.palette.task.${field.value}`)
+  return t('shell.palette.foot.taskActions', { n: flat.value.length })
+})
+
+// A row the keyboard can do more with: Tab narrows to a task (results) or
+// opens a field (task actions).
+const tabLabel = (row) => {
+  if (!scoped.value && row.task) return t('shell.palette.hint.actions')
+  if (scoped.value && !field.value && row.field) return t('shell.palette.hint.choose')
+  return null
+}
+const enterLabel = (row) => {
+  if (!scoped.value) return row.task ? t('shell.palette.hint.open') : null
+  return field.value ? t('shell.palette.hint.apply') : null
+}
+</script>
+
+<template>
+  <Teleport to="body">
+    <transition name="cp">
+      <div v-if="palette.open" class="cp-scrim" @mousedown.self="palette.hide()">
+        <div class="cp" role="dialog" aria-modal="true" data-testid="command-palette">
+          <div class="cp-input">
+            <n-icon :component="SearchOutline" :size="19" class="cp-search-ico" />
+            <span v-if="scoped && taskScope.task.value" class="cp-chip">
+              <TesseraIcon
+                v-if="chipStatus"
+                :name="chipStatus.name"
+                :size="13"
+                :style="{ color: chipStatus.color }"
+              />
+              <span class="cp-chip-num">#{{ taskScope.task.value.number }}</span>
+              <span class="cp-chip-title">{{ taskScope.task.value.title }}</span>
+              <button
+                type="button"
+                class="cp-chip-x"
+                :aria-label="t('shell.palette.foot.toResults')"
+                @mousedown.prevent
+                @click="palette.scope = null"
+              >
+                <n-icon :component="CloseOutline" :size="13" />
+              </button>
+            </span>
+            <input
+              ref="inputEl"
+              v-model="palette.query"
+              class="cp-field"
+              data-testid="palette-input"
+              :placeholder="placeholder"
+              spellcheck="false"
+              autocomplete="off"
+              @keydown="onKeydown"
+            />
+            <span v-if="scoped" class="cp-back">
+              <ShortcutKeys id="palette.back" joined />
+              {{ t('shell.palette.back') }}
+            </span>
+            <ShortcutKeys id="palette.close" />
+          </div>
+
+          <div v-if="!scoped" class="cp-tabs">
+            <button
+              v-for="s in SECTIONS"
+              :key="s.id"
+              type="button"
+              class="cp-tab"
+              :class="{ on: currentSection === s.id }"
+              :data-section="s.id"
+              @mousedown.prevent
+              @click="pickSection(s)"
+            >
+              {{ t(`shell.palette.sections.${s.id}`) }}
+              <span v-if="s.prefix" class="cp-tab-prefix">{{ s.prefix }}</span>
+            </button>
+          </div>
+
+          <div ref="listEl" class="cp-list">
+            <div v-if="loading" class="cp-empty"><n-spin size="small" /></div>
+            <div v-else-if="!flat.length" class="cp-empty">
+              {{
+                palette.query.trim() ? t('shell.palette.nothing') : t('shell.palette.typeToSearch')
+              }}
+            </div>
+            <template v-for="g in groups" v-else :key="g.id">
+              <div class="cp-group">
+                <span>{{ g.title }}</span>
+                <span v-if="g.count" class="cp-group-n">{{ g.count }}</span>
+              </div>
+              <div
+                v-for="row in g.rows"
+                :key="row.key"
+                class="cp-row"
+                :class="{
+                  active: rowIndex(row) === active,
+                  disabled: row.disabled,
+                  muted: row.muted,
+                }"
+                :data-row="row.key"
+                @mousemove="active = rowIndex(row)"
+                @mousedown.prevent
+                @click="runRow(row, $event)"
+              >
+                <span class="cp-lead">
+                  <TesseraIcon
+                    v-if="row.status"
+                    :name="row.status.name"
+                    :variant="row.status.name === 'status-done' ? 'filled' : 'outline'"
+                    :size="16"
+                    :style="{ color: row.status.color }"
+                  />
+                  <UserAvatar
+                    v-else-if="row.avatar"
+                    :user-id="row.avatar"
+                    :name="row.title"
+                    class="cp-avatar"
+                  />
+                  <span v-else-if="row.dot" class="cp-dot" :style="{ background: row.dot }" />
+                  <n-icon v-else-if="row.icon" :component="row.icon" :size="16" />
+                </span>
+                <span class="cp-text">
+                  <span class="cp-title">
+                    <template v-for="(seg, i) in highlight(row.title, row.hl)" :key="i">
+                      <mark v-if="seg.hit" class="cp-hit">{{ seg.text }}</mark>
+                      <template v-else>{{ seg.text }}</template>
+                    </template>
+                  </span>
+                  <span v-if="row.hint || row.sub" class="cp-sub">{{ row.hint || row.sub }}</span>
+                </span>
+                <span v-if="row.value" class="cp-value">{{ row.value }}</span>
+                <n-icon v-if="row.checked" :component="Checkmark" :size="16" class="cp-check" />
+                <span
+                  v-if="rowIndex(row) === active && (tabLabel(row) || enterLabel(row))"
+                  class="cp-hints"
+                >
+                  <template v-if="tabLabel(row)">
+                    <ShortcutKeys id="palette.actions" /><span class="cp-hint-l">{{
+                      tabLabel(row)
+                    }}</span>
+                  </template>
+                  <template v-if="enterLabel(row)">
+                    <ShortcutKeys id="palette.open" /><span>{{ enterLabel(row) }}</span>
+                  </template>
+                </span>
+                <ShortcutKeys v-else-if="row.keys" :id="row.keys" />
+                <span v-else-if="row.keysCaps" class="cp-caps">
+                  <Kbd v-for="c in row.keysCaps" :key="c">{{ c }}</Kbd>
+                </span>
+              </div>
+            </template>
+          </div>
+
+          <div class="cp-foot">
+            <span v-for="(f, i) in foot" :key="i" class="cp-foot-item">
+              <ShortcutKeys v-if="f.id" :id="f.id" />
+              <template v-else>
+                <Kbd v-for="c in f.caps" :key="c">{{ c }}</Kbd>
+              </template>
+              {{ f.label }}
+            </span>
+            <span class="cp-foot-sp" />
+            <span class="cp-foot-right">{{ footRight }}</span>
+          </div>
+        </div>
+      </div>
+    </transition>
+  </Teleport>
+</template>
+
+<style scoped>
+.cp-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 72px 16px 16px;
+  background: var(--t-scrim);
+}
+.cp {
+  width: 680px;
+  max-width: 100%;
+  max-height: calc(100vh - 104px);
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--t-r-pop);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-drag);
+  overflow: hidden;
+  color: var(--t-text1);
+}
+
+/* ── input row ── */
+.cp-input {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 58px;
+  padding: 0 16px 0 18px;
+}
+.cp-search-ico {
+  color: var(--t-text3);
+  flex: none;
+}
+.cp-field {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 16px;
+  caret-color: var(--t-primary);
+}
+.cp-field::placeholder {
+  color: var(--t-text3);
+}
+.cp-chip {
+  flex: 0 1 auto;
+  max-width: 40%;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px 0 8px;
+  border-radius: 8px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 16%, var(--t-pop)),
+    color-mix(in srgb, var(--t-primary) 26%, var(--t-pop))
+  );
+  font-size: 13px;
+  white-space: nowrap;
+}
+.cp-chip-num {
+  color: var(--t-text3);
+}
+.cp-chip-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cp-chip-x {
+  display: flex;
+  padding: 3px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.cp-chip-x:hover {
+  color: var(--t-text1);
+}
+.cp-back {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
+
+/* ── section pills ── */
+.cp-tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 14px 8px;
+  flex-wrap: wrap;
+}
+.cp-tab {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 11px;
+  border: none;
+  border-radius: 13px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.cp-tab:hover {
+  color: var(--t-text1);
+}
+.cp-tab.on {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 16%, var(--t-pop)),
+    color-mix(in srgb, var(--t-primary) 26%, var(--t-pop))
+  );
+  color: var(--t-text1);
+  font-weight: 600;
+}
+.cp-tab-prefix {
+  color: var(--t-text3);
+  font-weight: 600;
+}
+
+/* ── list ── */
+.cp-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 8px 8px;
+  scrollbar-width: thin;
+}
+.cp-empty {
+  display: flex;
+  justify-content: center;
+  padding: 28px 0 24px;
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.cp-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 10px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t-text3);
+}
+.cp-group-n {
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.cp-row {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 48px;
+  padding: 0 10px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.cp-row.active::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 18%, var(--t-pop)),
+    color-mix(in srgb, var(--t-primary) 27%, var(--t-pop))
+  );
+}
+.cp-row.disabled {
+  cursor: default;
+}
+.cp-row.disabled .cp-title,
+.cp-row.muted .cp-title {
+  color: var(--t-text3);
+}
+.cp-lead {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+}
+.cp-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--t-kbd);
+}
+.cp-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.cp-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cp-title,
+.cp-sub {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cp-title {
+  font-size: 14px;
+  line-height: 19px;
+}
+.cp-sub {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--t-text3);
+}
+.cp-hit {
+  background: color-mix(in srgb, var(--t-primary) 32%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+  font-weight: 600;
+}
+.cp-value {
+  font-size: 12.5px;
+  color: var(--t-text2);
+  white-space: nowrap;
+}
+.cp-check {
+  color: var(--t-primary);
+  flex: none;
+}
+.cp-hints,
+.cp-caps {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text2);
+  white-space: nowrap;
+}
+.cp-caps {
+  gap: 3px;
+}
+.cp-hint-l {
+  margin-right: 8px;
+}
+
+/* ── footer ── */
+.cp-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 40px;
+  padding: 0 16px;
+  background: color-mix(in srgb, var(--t-pop) 55%, var(--t-bg));
+  font-size: 12px;
+  color: var(--t-text3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.cp-foot-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cp-foot-sp {
+  flex: 1;
+}
+.cp-foot-right {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-enter-active,
+.cp-leave-active {
+  transition: opacity 0.14s ease;
+}
+.cp-enter-active .cp,
+.cp-leave-active .cp {
+  transition: transform 0.14s ease;
+}
+.cp-enter-from,
+.cp-leave-to {
+  opacity: 0;
+}
+.cp-enter-from .cp,
+.cp-leave-to .cp {
+  transform: translateY(-6px) scale(0.99);
+}
+
+@media (max-width: 768px) {
+  .cp-scrim {
+    padding: 12px 8px;
+  }
+  .cp-foot {
+    display: none;
+  }
+  .cp-back,
+  .cp-hints,
+  .cp-caps,
+  .cp :deep(.sk) {
+    display: none;
+  }
+}
+</style>

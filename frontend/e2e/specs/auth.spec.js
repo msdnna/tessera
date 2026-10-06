@@ -32,7 +32,15 @@ test('неверный пароль оставляет на странице в�
   await page.getByTestId('register-password').locator('input').fill(creds.password)
   await page.getByTestId('register-submit').click()
   await expect(page.getByTestId('sidebar')).toBeVisible()
+  // A fresh account gets the Get Started guide, and its mask takes every click
+  // outside the step's anchor — the «⋯» menu below included. It starts after the
+  // first screen settles, so a test that clicks first races it: wait and skip.
+  await expect(page.getByTestId('tour-pop')).toBeVisible({ timeout: 15000 })
+  await page.getByTestId('tour-skip').click()
+  await expect(page.getByTestId('tour-pop')).toHaveCount(0)
 
+  // «Выйти» sits in the footer's «⋯» menu (v2, #2953).
+  await page.getByTestId('user-menu').click()
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
 
@@ -73,7 +81,15 @@ test('логаут разлогинивает и защищает приватн
   await page.getByTestId('register-password').locator('input').fill(creds.password)
   await page.getByTestId('register-submit').click()
   await expect(page.getByTestId('sidebar')).toBeVisible()
+  // A fresh account gets the Get Started guide, and its mask takes every click
+  // outside the step's anchor — the «⋯» menu below included. It starts after the
+  // first screen settles, so a test that clicks first races it: wait and skip.
+  await expect(page.getByTestId('tour-pop')).toBeVisible({ timeout: 15000 })
+  await page.getByTestId('tour-skip').click()
+  await expect(page.getByTestId('tour-pop')).toHaveCount(0)
 
+  // «Выйти» sits in the footer's «⋯» menu (v2, #2953).
+  await page.getByTestId('user-menu').click()
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
 

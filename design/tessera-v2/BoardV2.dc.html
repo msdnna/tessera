@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<!-- @template name="Доска v2 — направления" description="Редизайн канбан-доски Tessera v2: три направления поверхностей без линий, состояния, мобильный, акценты и токены" -->
+<helmet><script src="./ds-base.js"></script><meta name="design_doc_mode" content="canvas"><style>body{margin:0}</style></helmet>
+<section style="padding:80px 80px 0;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" accent="purple" hint-size="1440px,6400px">
+<div id="3a" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+<div style="display:flex;align-items:center;gap:12px"><span style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:8px;background:#7c5cff;color:#fff;font-size:14px;font-weight:700">3a</span><span style="font-size:30px;font-weight:700;color:#1c1c22">Новые экраны · старт, модалка задачи, Гант</span></div>
+<div style="font-size:15px;line-height:1.5;color:#4a4a55;max-width:1100px;text-wrap:pretty">На языке итогового варианта 2a. Мультицветный градиент — осознанное исключение из правила «один оттенок в градиенте»: только на стартовом экране, как фон, без влияния на контролы.</div>
+<div style="height:30px"></div>
+<dc-import name="Screens3" d="{{ dF }}" hint-size="1440px,6000px"></dc-import>
+</div>
+</x-import>
+</section>
+<section style="padding:80px 80px 0;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" accent="purple" hint-size="1440px,9000px">
+<div id="2a" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+<div style="display:flex;align-items:center;gap:12px"><span style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:8px;background:#7c5cff;color:#fff;font-size:14px;font-weight:700">2a</span><span style="font-size:30px;font-weight:700;color:#1c1c22">Итог · C «Цветные дорожки» с доработками</span></div>
+<div style="display:flex;flex-direction:column;gap:6px;font-size:15px;line-height:1.5;color:#4a4a55;max-width:1100px;text-wrap:pretty">
+<span>1. Приоритет — цветная полоса по левому краю карточки, как в A; флажок в пиллах — мягкий.</span>
+<span>2. Исполнители, автор и участники доски — каскадом с перекрытием; при наведении — тултип со списком и ролями.</span>
+<span>3. «Создать задачу» (C) — внизу колонки при наведении; «+ Задача» в топбаре убрана. Быстрые действия — плавающая кнопка справа внизу (N).</span>
+<span>4. Клавиши подсказываются в тултипах, меню и шпаргалке (?).</span>
+<span>5. Поиск ⌘K переработан: разделы и префиксы, Tab — действия с результатом, Enter — открыть.</span>
+</div>
+<div style="height:30px"></div>
+<dc-import name="DirectionF" d="{{ dF }}" hint-size="1440px,9800px"></dc-import>
+</div>
+</x-import>
+</section>
+<section style="padding:80px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" accent="purple" hint-size="6000px,8000px">
+<div style="display:flex;gap:140px;align-items:flex-start">
+<sc-if value="{{ showV1 }}" hint-placeholder-val="{{ true }}">
+<div id="v1" style="display:flex;flex-direction:column;gap:20px;width:960px">
+<div style="display:flex;align-items:center;gap:12px"><span style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:8px;background:#8a8a96;color:#fff;font-size:14px;font-weight:700">v1</span><span style="font-size:30px;font-weight:700;color:#1c1c22">Было</span></div>
+<div style="font-size:15px;line-height:1.5;color:#4a4a55;max-width:900px;text-wrap:pretty">Текущие компоненты ДС (TaskCard, ColumnHeader) в раскладке KanbanBoard: 1px-бордеры колонок и карточек, 3px полоса сверху, пунктир у пустых пиллов.</div>
+<div style="height:30px"></div>
+<div style="font-size:18px;font-weight:600;color:#26262e">v1 · тёмная</div>
+<div style="width:960px;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.18)">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="dark" hint-size="960px,700px">
+<div style="display:flex;gap:12px;align-items:flex-start;padding:16px;min-height:620px;background:var(--t-bg)">
+
+<div style="width:280px;flex:0 0 280px;box-sizing:border-box;border-radius:14px;padding:10px;border:1px solid color-mix(in srgb, #9aa0aa 12%, var(--t-border));border-top:3px solid transparent;background:linear-gradient(color-mix(in srgb, #9aa0aa 6%, var(--t-surface-alt)), color-mix(in srgb, #9aa0aa 6%, var(--t-surface-alt))) padding-box, linear-gradient(to top right, color-mix(in srgb, #9aa0aa 86%, #000), #9aa0aa 50%, color-mix(in srgb, #9aa0aa 86%, #fff)) border-box;display:flex;flex-direction:column">
+<x-import component-from-global-scope="Tessera.ColumnHeader" column="{{ v1c0.col }}" count="{{ v1c0.count }}" first="{{ v1c0.first }}" is-done="{{ v1c0.isDone }}" editable="{{ true }}" style="margin-bottom:8px;padding:0 2px" hint-size="100%,28px"></x-import>
+<sc-for list="{{ v1c0.tasks }}" as="t" hint-placeholder-count="2"><x-import component-from-global-scope="Tessera.TaskCard" task="{{ t.task }}" subtasks="{{ t.subtasks }}" tags="{{ v1.tags }}" members="{{ v1.members }}" columns="{{ v1.columns }}" milestones="{{ v1.milestones }}" prefix-names="{{ v1.prefixNames }}" hint-size="100%,100px"></x-import></sc-for>
+</div>
+
+<div style="width:280px;flex:0 0 280px;box-sizing:border-box;border-radius:14px;padding:10px;border:1px solid color-mix(in srgb, #2f80ed 12%, var(--t-border));border-top:3px solid transparent;background:linear-gradient(color-mix(in srgb, #2f80ed 6%, var(--t-surface-alt)), color-mix(in srgb, #2f80ed 6%, var(--t-surface-alt))) padding-box, linear-gradient(to top right, color-mix(in srgb, #2f80ed 86%, #000), #2f80ed 50%, color-mix(in srgb, #2f80ed 86%, #fff)) border-box;display:flex;flex-direction:column">
+<x-import component-from-global-scope="Tessera.ColumnHeader" column="{{ v1c1.col }}" count="{{ v1c1.count }}" first="{{ v1c1.first }}" is-done="{{ v1c1.isDone }}" editable="{{ true }}" style="margin-bottom:8px;padding:0 2px" hint-size="100%,28px"></x-import>
+<sc-for list="{{ v1c1.tasks }}" as="t" hint-placeholder-count="2"><x-import component-from-global-scope="Tessera.TaskCard" task="{{ t.task }}" subtasks="{{ t.subtasks }}" tags="{{ v1.tags }}" members="{{ v1.members }}" columns="{{ v1.columns }}" milestones="{{ v1.milestones }}" prefix-names="{{ v1.prefixNames }}" hint-size="100%,100px"></x-import></sc-for>
+</div>
+
+<div style="width:280px;flex:0 0 280px;box-sizing:border-box;border-radius:14px;padding:10px;border:1px solid color-mix(in srgb, #18a058 12%, var(--t-border));border-top:3px solid transparent;background:linear-gradient(color-mix(in srgb, #18a058 6%, var(--t-surface-alt)), color-mix(in srgb, #18a058 6%, var(--t-surface-alt))) padding-box, linear-gradient(to top right, color-mix(in srgb, #18a058 86%, #000), #18a058 50%, color-mix(in srgb, #18a058 86%, #fff)) border-box;display:flex;flex-direction:column">
+<x-import component-from-global-scope="Tessera.ColumnHeader" column="{{ v1c2.col }}" count="{{ v1c2.count }}" first="{{ v1c2.first }}" is-done="{{ v1c2.isDone }}" editable="{{ true }}" style="margin-bottom:8px;padding:0 2px" hint-size="100%,28px"></x-import>
+<sc-for list="{{ v1c2.tasks }}" as="t" hint-placeholder-count="2"><x-import component-from-global-scope="Tessera.TaskCard" task="{{ t.task }}" subtasks="{{ t.subtasks }}" tags="{{ v1.tags }}" members="{{ v1.members }}" columns="{{ v1.columns }}" milestones="{{ v1.milestones }}" prefix-names="{{ v1.prefixNames }}" hint-size="100%,100px"></x-import></sc-for>
+</div>
+
+</div>
+</x-import>
+</div>
+<div style="font-size:18px;font-weight:600;color:#26262e;margin-top:36px">v1 · светлая</div>
+<div style="width:960px;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.12)">
+<x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" hint-size="960px,700px">
+<div style="display:flex;gap:12px;align-items:flex-start;padding:16px;min-height:620px;background:var(--t-bg)">
+
+<div style="width:280px;flex:0 0 280px;box-sizing:border-box;border-radius:14px;padding:10px;border:1px solid color-mix(in srgb, #9aa0aa 12%, var(--t-border));border-top:3px solid transparent;background:linear-gradient(color-mix(in srgb, #9aa0aa 6%, var(--t-surface-alt)), color-mix(in srgb, #9aa0aa 6%, var(--t-surface-alt))) padding-box, linear-gradient(to top right, color-mix(in srgb, #9aa0aa 86%, #000), #9aa0aa 50%, color-mix(in srgb, #9aa0aa 86%, #fff)) border-box;display:flex;flex-direction:column">
+<x-import component-from-global-scope="Tessera.ColumnHeader" column="{{ v1c0.col }}" count="{{ v1c0.count }}" first="{{ v1c0.first }}" is-done="{{ v1c0.isDone }}" editable="{{ true }}" style="margin-bottom:8px;padding:0 2px" hint-size="100%,28px"></x-import>
+<sc-for list="{{ v1c0.tasks }}" as="t" hint-placeholder-count="2"><x-import component-from-global-scope="Tessera.TaskCard" task="{{ t.task }}" subtasks="{{ t.subtasks }}" tags="{{ v1.tags }}" members="{{ v1.members }}" columns="{{ v1.columns }}" milestones="{{ v1.milestones }}" prefix-names="{{ v1.prefixNames }}" hint-size="100%,100px"></x-import></sc-for>
+</div>
+
+<div style="width:280px;flex:0 0 280px;box-sizing:border-box;border-radius:14px;padding:10px;border:1px solid color-mix(in srgb, #2f80ed 12%, var(--t-border));border-top:3px solid transparent;background:linear-gradient(color-mix(in srgb, #2f80ed 6%, var(--t-surface-alt)), color-mix(in srgb, #2f80ed 6%, var(--t-surface-alt))) padding-box, linear-gradient(to top right, color-mix(in srgb, #2f80ed 86%, #000), #2f80ed 50%, color-mix(in srgb, #2f80ed 86%, #fff)) border-box;display:flex;flex-direction:column">
+<x-import component-from-global-scope="Tessera.ColumnHeader" column="{{ v1c1.col }}" count="{{ v1c1.count }}" first="{{ v1c1.first }}" is-done="{{ v1c1.isDone }}" editable="{{ true }}" style="margin-bottom:8px;padding:0 2px" hint-size="100%,28px"></x-import>
+<sc-for list="{{ v1c1.tasks }}" as="t" hint-placeholder-count="2"><x-import component-from-global-scope="Tessera.TaskCard" task="{{ t.task }}" subtasks="{{ t.subtasks }}" tags="{{ v1.tags }}" members="{{ v1.members }}" columns="{{ v1.columns }}" milestones="{{ v1.milestones }}" prefix-names="{{ v1.prefixNames }}" hint-size="100%,100px"></x-import></sc-for>
+</div>
+
+<div style="width:280px;flex:0 0 280px;box-sizing:border-box;border-radius:14px;padding:10px;border:1px solid color-mix(in srgb, #18a058 12%, var(--t-border));border-top:3px solid transparent;background:linear-gradient(color-mix(in srgb, #18a058 6%, var(--t-surface-alt)), color-mix(in srgb, #18a058 6%, var(--t-surface-alt))) padding-box, linear-gradient(to top right, color-mix(in srgb, #18a058 86%, #000), #18a058 50%, color-mix(in srgb, #18a058 86%, #fff)) border-box;display:flex;flex-direction:column">
+<x-import component-from-global-scope="Tessera.ColumnHeader" column="{{ v1c2.col }}" count="{{ v1c2.count }}" first="{{ v1c2.first }}" is-done="{{ v1c2.isDone }}" editable="{{ true }}" style="margin-bottom:8px;padding:0 2px" hint-size="100%,28px"></x-import>
+<sc-for list="{{ v1c2.tasks }}" as="t" hint-placeholder-count="2"><x-import component-from-global-scope="Tessera.TaskCard" task="{{ t.task }}" subtasks="{{ t.subtasks }}" tags="{{ v1.tags }}" members="{{ v1.members }}" columns="{{ v1.columns }}" milestones="{{ v1.milestones }}" prefix-names="{{ v1.prefixNames }}" hint-size="100%,100px"></x-import></sc-for>
+</div>
+
+</div>
+</x-import>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ showA }}" hint-placeholder-val="{{ true }}">
+<div id="1a" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+<div style="display:flex;align-items:center;gap:12px"><span style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:8px;background:#7c5cff;color:#fff;font-size:14px;font-weight:700">1a</span><span style="font-size:30px;font-weight:700;color:#1c1c22">A · Тихие поверхности</span></div>
+<div style="font-size:15px;line-height:1.5;color:#4a4a55;max-width:980px;text-wrap:pretty">Сайдбар, топбар и холст — одна плоскость; рейл на шаг темнее. Колонки — едва заметные подложки с вуалью цвета колонки сверху, карточки — приподнятые плитки с мягкой тенью. Выделение — фоном. Приоритет — короткая градиентная пилюля внутри карточки слева.</div>
+<div style="height:30px"></div>
+<dc-import name="DirectionA" d="{{ dA }}" hint-size="1440px,7200px"></dc-import>
+</div>
+</sc-if>
+<sc-if value="{{ showB }}" hint-placeholder-val="{{ true }}">
+<div id="1b" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+<div style="display:flex;align-items:center;gap:12px"><span style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:8px;background:#7c5cff;color:#fff;font-size:14px;font-weight:700">1b</span><span style="font-size:30px;font-weight:700;color:#1c1c22">B · Острова</span></div>
+<div style="font-size:15px;line-height:1.5;color:#4a4a55;max-width:980px;text-wrap:pretty">Сайдбар и доска — отдельные скруглённые панели на самом тёмном фоне окна, рейл и топбар лежат прямо на фоне. Колонки без подложки, карточки — на панели; цвет колонки живёт в шапке-капсуле. Приоритет — мягкая вуаль своего цвета от левого края карточки.</div>
+<div style="height:30px"></div>
+<dc-import name="DirectionB" d="{{ dB }}" hint-size="1440px,7200px"></dc-import>
+</div>
+</sc-if>
+<sc-if value="{{ showC }}" hint-placeholder-val="{{ true }}">
+<div id="1c" style="display:flex;flex-direction:column;gap:20px;width:1440px">
+<div style="display:flex;align-items:center;gap:12px"><span style="height:28px;padding:0 10px;display:flex;align-items:center;border-radius:8px;background:#7c5cff;color:#fff;font-size:14px;font-weight:700">1c</span><span style="font-size:30px;font-weight:700;color:#1c1c22">C · Цветные дорожки</span></div>
+<div style="font-size:15px;line-height:1.5;color:#4a4a55;max-width:980px;text-wrap:pretty">Сайдбар утоплен на шаг ниже холста, рейл — ещё ниже. Колонки заметно тонированы своим цветом, карточки нейтральные, пиллы полностью скруглены. Приоритет вынесен в пиллу-флажок: высокий и срочный залиты градиентом с подписью, в compact — цветная точка перед заголовком.</div>
+<div style="height:30px"></div>
+<dc-import name="DirectionC" d="{{ dC }}" hint-size="1440px,7200px"></dc-import>
+</div>
+</sc-if>
+</div>
+</x-import>
+</section>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;directions&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Все&quot;,&quot;A&quot;,&quot;B&quot;,&quot;C&quot;],&quot;default&quot;:&quot;Все&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Показ&quot;},&quot;showV1&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Показ&quot;},&quot;cardSize&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;compact&quot;,&quot;medium&quot;,&quot;large&quot;],&quot;default&quot;:&quot;medium&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Доска&quot;}}">
+const FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
+const TXT = {
+  dark: { t1: '#ececf1', t2: '#b5b5c0', t3: '#8b8b97', ph: '#63636e' },
+  light: { t1: '#1c1c22', t2: '#4a4a55', t3: '#767682', ph: '#a9a9b3' },
+};
+const SH = {
+  dark: { card: '0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16)', hover: '0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24)', drag: '0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35)', pop: '0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3)', drop: 'inset 0 1px 3px rgba(0,0,0,.35)', panel: 'none' },
+  light: { card: '0 1px 2px rgba(20,20,40,.06), 0 1px 4px rgba(20,20,40,.04)', hover: '0 2px 6px rgba(20,20,40,.08), 0 8px 20px rgba(20,20,40,.07)', drag: '0 18px 40px rgba(20,20,40,.18), 0 4px 12px rgba(20,20,40,.08)', pop: '0 12px 32px rgba(20,20,40,.14), 0 2px 6px rgba(20,20,40,.06)', drop: 'inset 0 1px 3px rgba(20,20,40,.08)', panel: 'none' },
+};
+const act = (base, a, b) => ({ v: `linear-gradient(to top right, color-mix(in srgb, var(--t-primary) ${a}%, ${base}), color-mix(in srgb, var(--t-primary) ${b}%, ${base}))`, d: `↗ primary ${a}% → ${b}% поверх ${base}` });
+const mixp = (base, a) => ({ v: `color-mix(in srgb, var(--t-primary) ${a}%, ${base})`, d: `primary ${a}% поверх ${base}` });
+
+const DIRS = {
+  A: {
+    dark: { backdrop: '#131317', rail: '#0e0e11', sidebar: '#131317', topbar: '#131317', board: '#131317', col: '#19191e', card: '#23232a', cardHover: '#292930', pop: '#2c2c34', hover: '#1e1e24', hoverSide: '#1e1e24', active: act('#131317', 14, 22), input: '#1c1c21', ctl: '#1c1c21', pill: '#2e2e36', sub: '#1c1c22', foot: '#1a1a1f', drop: mixp('#19191e', 14), wash: '11%', tint: '14%', capA: '12%', capB: '20%' },
+    light: { backdrop: '#f5f5f8', rail: '#eaeaef', sidebar: '#f5f5f8', topbar: '#f5f5f8', board: '#f5f5f8', col: '#ebebf0', card: '#ffffff', cardHover: '#ffffff', pop: '#ffffff', hover: '#e8e8ed', hoverSide: '#e8e8ed', active: act('#f5f5f8', 10, 17), input: '#e9e9ee', ctl: '#e9e9ee', pill: '#f1f1f5', sub: '#f4f4f7', foot: '#ececf0', drop: mixp('#ebebf0', 12), wash: '8%', tint: '10%', capA: '9%', capB: '15%' },
+    geo: { shellPad: '0', shellGap: '0px', panelR: '0px', sidebarW: '232px', topH: '52px', topPad: '0 16px 0 12px', subPad: '6px 16px 10px', colsPad: '2px 16px 16px', mInset: '0', mR: '0px', rCtl: '8px', rPill: '6px', rCard: '12px', rCol: '16px' },
+    colTone: { dark: 'linear-gradient(180deg, color-mix(<цвет> 11%, --v-col) 0, --v-col 150px)', light: 'то же, 8%' },
+    sizes: { colPad: '8px', panel: '— (нет панелей, всё на холсте)', colR: '16px', card: 'compact 8/12 · medium 10/12 · large 13/14; слева 17px под полосу приоритета', prio: 'пилюля 3px × (h − 22px), отступ 6px слева, hueGradVert(приоритет)' },
+    lines: [
+      'Одна плоскость: сайдбар и холст одного тона, граница читается по отступу и по активному пункту с заливкой.',
+      'Нет: топбар и подбар лежат на холсте, доска начинается подложками колонок.',
+      'Футер — капсула с фоном --v-foot, радиус 12.',
+      'Отступ 14px на уровень + бейдж проекта / иконка доски; активная доска — заливка --v-active.',
+      'Рейл на шаг темнее холста (--v-rail).',
+      'Зазор 12px между группами иконок.',
+      'Отступ 6px сверху и подложки колонок — граница не нужна.',
+      'Поле — заливка --v-ctl; «+» — круглая кнопка с заливкой --v-pill.',
+      'Подложка --v-col + вертикальная вуаль цвета колонки 11% → 0 за 150px.',
+      'Карточка — шаг фона (+10 L) и тень уровня 1; приоритет — пилюля внутри. Ховер-бар — поверхность --v-pop с тенью pop.',
+      'Пустые — только иконка text3 без фона; заполненные — заливка --v-pill, цветные — мягкий градиент тона.',
+      'Трей --v-sub внутри карточки, строки с зазором 2px и ховером.',
+    ],
+  },
+  B: {
+    dark: { backdrop: '#0b0b0e', rail: '#0b0b0e', sidebar: '#16161b', topbar: 'transparent', board: '#16161b', col: 'transparent', card: '#202027', cardHover: '#25252d', pop: '#29292f', hover: '#1f1f25', hoverSide: '#1f1f25', active: act('#16161b', 15, 24), input: '#16161b', ctl: '#1f1f25', pill: '#2b2b33', sub: '#1a1a20', foot: '#1c1c22', drop: mixp('#16161b', 15), wash: '11%', tint: '14%', capA: '12%', capB: '20%' },
+    light: { backdrop: '#e6e7ec', rail: '#e6e7ec', sidebar: '#fafafb', topbar: 'transparent', board: '#fafafb', col: 'transparent', card: '#ffffff', cardHover: '#ffffff', pop: '#ffffff', hover: '#efeff3', hoverSide: '#f0f0f4', active: act('#fafafb', 10, 17), input: '#fafafb', ctl: '#f0f0f4', pill: '#f1f1f5', sub: '#f5f5f8', foot: '#f2f2f5', drop: mixp('#fafafb', 11), wash: '8%', tint: '10%', capA: '9%', capB: '15%' },
+    sh: { light: { card: '0 1px 2px rgba(20,20,40,.08), 0 2px 8px rgba(20,20,40,.05)', panel: '0 1px 2px rgba(20,20,40,.05), 0 4px 14px rgba(20,20,40,.05)' } },
+    geo: { shellPad: '8px 8px 8px 0', shellGap: '8px', panelR: '18px', sidebarW: '224px', topH: '44px', topPad: '0 4px 0 8px', subPad: '10px 10px 8px', colsPad: '4px 10px 12px', mInset: '0 6px 0', mR: '20px', rCtl: '10px', rPill: '8px', rCard: '12px', rCol: '10px' },
+    colTone: { dark: 'нет подложки; шапка: ↗ color-mix(<цвет> 12% → 20%, --v-board)', light: 'то же, 9% → 15%' },
+    sizes: { colPad: '0; шапка-капсула 36px, паддинг 0 4 0 10', panel: '18px; зазор 8px, отступ от краёв окна 8px', colR: 'шапка 10px', card: 'compact 8/12 · medium 10/12 · large 13/14', prio: 'вуаль 90°: color-mix(приоритет 18%, --v-card) → --v-card на 44%' },
+    lines: [
+      'Сайдбар и доска — отдельные острова (радиус 18) на --v-backdrop, зазор 8px.',
+      'Топбар лежит на фоне окна, доска — остров ниже с зазором 8px.',
+      'Футер — нижняя капсула острова с фоном --v-foot.',
+      'Отступ 14px на уровень + бейдж/иконка; активная доска — заливка --v-active.',
+      'Рейл лежит прямо на фоне окна, остров сайдбара отделён зазором 8px.',
+      'Зазор 12px между группами.',
+      'Подбар — верх острова доски, колонки начинаются после отступа 4px.',
+      'Поле — заливка --v-ctl; «+» — круглая кнопка с заливкой --v-pill.',
+      'Подложки нет: колонки разделены зазором 12px, цвет — шапка-капсула с мягким градиентом цвета колонки.',
+      'Карточка — шаг фона (+9 L) на острове, тень уровня 1; приоритет — вуаль от левого края. Ховер-бар — --v-pop с тенью.',
+      'Пустые — только иконка text3; заполненные — заливка --v-pill, цветные — мягкий градиент тона.',
+      'Трей --v-sub внутри карточки, строки с зазором 2px.',
+    ],
+  },
+  C: {
+    dark: { backdrop: '#18181d', rail: '#0b0b0e', sidebar: '#101014', topbar: '#18181d', board: '#18181d', col: '#1d1d23', card: '#27272e', cardHover: '#2c2c34', pop: '#2e2e36', hover: '#222228', hoverSide: '#1a1a1f', active: act('#101014', 16, 26), input: '#212127', ctl: '#212127', pill: '#33333b', sub: '#202026', foot: '#17171c', drop: mixp('#1d1d23', 16), wash: '11%', tint: '15%', capA: '12%', capB: '20%' },
+    light: { backdrop: '#f8f8fa', rail: '#e2e2e8', sidebar: '#ededf1', topbar: '#f8f8fa', board: '#f8f8fa', col: '#f1f1f4', card: '#ffffff', cardHover: '#ffffff', pop: '#ffffff', hover: '#ebebef', hoverSide: '#e3e3e8', active: act('#ededf1', 11, 18), input: '#ededf1', ctl: '#ededf1', pill: '#f1f1f5', sub: '#f5f5f8', foot: '#e5e5ea', drop: mixp('#f1f1f4', 12), wash: '8%', tint: '11%', capA: '9%', capB: '15%' },
+    geo: { shellPad: '0', shellGap: '0px', panelR: '0px', sidebarW: '232px', topH: '52px', topPad: '0 16px', subPad: '6px 16px 10px', colsPad: '2px 16px 16px', mInset: '0', mR: '0px', rCtl: '8px', rPill: '999px', rCard: '14px', rCol: '18px' },
+    colTone: { dark: 'color-mix(<цвет> 15%, --v-col)', light: 'color-mix(<цвет> 11%, --v-col)' },
+    sizes: { colPad: '8px', panel: '— (сайдбар утоплен, без скругления)', colR: '18px', card: 'compact 8/12 · medium 10/12 · large 13/14', prio: 'пилла-флажок: 3–4 — hueGrad(приоритет) + белая подпись, 1–2 — мягкая; compact — точка 8px' },
+    lines: [
+      'Сайдбар утоплен: на шаг темнее холста (--v-sidebar).',
+      'Топбар на холсте; доска отделена тонированными колонками.',
+      'Футер — капсула --v-foot внутри утопленного сайдбара.',
+      'Отступ 14px на уровень + бейдж/иконка; активная доска — заливка --v-active.',
+      'Рейл ещё на шаг темнее сайдбара (--v-rail).',
+      'Зазор 12px между группами.',
+      'Отступ 6px и тонированные колонки.',
+      'Поле — заливка --v-ctl; «+» — круглая кнопка с заливкой --v-pill.',
+      'Колонка залита цветом колонки: 15% (тёмная) / 11% (светлая) поверх --v-col.',
+      'Нейтральная карточка на тонированной колонке, шаг фона + тень; приоритет — залитая пилла. Ховер-бар — --v-pop с тенью.',
+      'Пиллы полностью скруглены: пустые — иконка text3, заполненные — --v-pill или мягкий градиент тона.',
+      'Трей --v-sub внутри карточки, строки с зазором 2px.',
+    ],
+  },
+};
+DIRS.F = {
+  ...DIRS.C,
+  dark: { ...DIRS.C.dark, kbd: '#3a3a43', scrim: 'rgba(6,6,9,.62)' },
+  light: { ...DIRS.C.light, kbd: '#e4e4ea', scrim: 'rgba(24,24,40,.26)' },
+  sizes: { ...DIRS.C.sizes, prio: 'пилюля 3px × (h − 20px), отступ 6px слева, hueGradVert(приоритет) — как в A; карточка +5px слева' },
+  extraSizes: [
+    ['Каскад аватаров', '22px · перекрытие 6px · кольцо 2px цвета карточки · до 3 + «+N»'],
+    ['Тултип', '--v-pop · радиус 10 · тень ур. 3 · задержка 400 мс'],
+    ['Клавиша (kbd)', '20px · радиус 5 · тень 0 1px 1px'],
+    ['«Создать задачу» в колонке', '34px · при наведении на колонку · клавиша C'],
+    ['FAB', '52px · радиус 16 · отступ 20px · меню 280px'],
+    ['Палитра ⌘K', '680px · сверху 72px · строка 48px · радиус 16'],
+  ],
+  lines: DIRS.C.lines.map((l, i) => (i === 9 ? 'Нейтральная карточка на тонированной колонке, шаг фона + тень; приоритет — пилюля 3px слева, как в A. Ховер-бар — --v-pop с тенью.' : i === 10 ? 'Пиллы полностью скруглены: пустые — иконка text3, заполненные — --v-pill или мягкий градиент тона.' : l)),
+};
+const LINE_NAMES = ['Сайдбар | контент', 'Топбар | контент', 'Футер сайдбара — линия сверху', 'Направляющие дерева проектов', 'Серверный рейл — линия справа', 'Свёрнутый сайдбар — разделители групп', 'Подбар | колонки', 'Композер-фильтр 1px, «+» пунктиром', 'Колонка 1px + 3px полоса сверху', 'Карточка 1px (тон приоритета), ховер-бар 1px', 'Пустые пиллы пунктиром, заполненные 1px', 'Список подзадач 1px'];
+
+const TG = {
+  fe: { id: 'fe', name: 'app::frontend', color: '#7c5cff' },
+  be: { id: 'be', name: 'app::backend', color: '#2f80ed' },
+  bug: { id: 'bug', name: 'bug', color: '#e0533d' },
+  des: { id: 'des', name: 'design', color: '#eb2f96' },
+  perf: { id: 'perf', name: 'perf', color: '#0eb0a9' },
+};
+const PP = { u1: 'Мария Соколова', u2: 'Илья Петров', u3: 'Анна Ким', u4: 'Дмитрий Орлов' };
+const ST = {
+  backlog: { id: 'backlog', name: 'Бэклог', color: '#9aa0aa', icon: 'status-todo', variant: 'outline' },
+  todo: { id: 'todo', name: 'К работе', color: '#0eb0a9', icon: 'status-todo', variant: 'outline' },
+  doing: { id: 'doing', name: 'В процессе', color: '#2f80ed', icon: 'status-progress', variant: 'outline' },
+  review: { id: 'review', name: 'На рассмотрении', color: '#f0a020', icon: 'status-review', variant: 'outline' },
+  done: { id: 'done', name: 'Готово', color: '#18a058', icon: 'status-done', variant: 'filled' },
+};
+const TASKS = [
+  { n: 2961, col: 'todo', title: 'Фильтр по исполнителю сбрасывается после перезагрузки', prio: 3, due: '05 окт.', est: '3 ч', desc: true, tags: ['bug', 'fe'], who: ['u2'] },
+  { n: 2958, col: 'todo', title: 'Экспорт доски в CSV вместе с подзадачами', prio: 2, est: '5 ч', ms: true, tags: ['be'], who: ['u4'] },
+  { n: 2955, col: 'todo', title: 'Пустое состояние для доски без колонок', prio: 1, due: '12 окт.', tags: ['des'], who: ['u3'] },
+  { n: 2949, col: 'todo', title: 'Обновить зависимости фронтенда', prio: 0, tags: [], who: [] },
+  { n: 2950, col: 'doing', title: 'Редизайн доски: убрать разделители, поверхности вместо линий', prio: 3, due: '06 окт.', est: '6 ч', ms: true, desc: true, gl: '!418', tags: ['des', 'fe'], who: ['u1', 'u3', 'u2'], author: 'u4',
+    subs: [{ title: 'Токены поверхностей', done: true, prio: 2, col: '#18a058' }, { title: 'Колонки без бордеров', prio: 3, col: '#2f80ed' }, { title: 'Проверка в тёмной теме', prio: 2, col: '#9aa0aa' }] },
+  { n: 2941, col: 'doing', title: 'Падение синхронизации GitLab при пустом этапе', prio: 4, due: '30 сент.', overdue: true, gl: '!412', conflict: true, desc: true, tags: ['bug', 'be'], who: ['u2'], author: 'u1' },
+  { n: 2944, col: 'doing', title: 'Виртуализация списка задач на мобильном', prio: 2, due: '11 окт.', est: '8 ч', tags: ['fe', 'perf'], who: ['u3'] },
+  { n: 2947, col: 'doing', title: 'Горячие клавиши для перемещения карточек', prio: 1, est: '2 ч', tags: ['fe'], who: ['u1'] },
+  { n: 2938, col: 'review', title: 'Напоминания: повтор по будням', prio: 2, due: 'сегодня', est: '4 ч', gl: '!409', tags: ['be'], who: ['u4'] },
+  { n: 2936, col: 'review', title: 'Контраст тегов в тёмной теме', prio: 3, due: '03 окт.', gl: '!407', ms: true, tags: ['des'], who: ['u3', 'u1'], author: 'u2' },
+  { n: 2933, col: 'review', title: 'Webhook на закрытие этапа', prio: 1, desc: true, tags: ['be'], who: ['u2'] },
+  { n: 2929, col: 'done', title: 'Тёмная тема для экрана входа', done: true, prio: 2, tags: ['fe'], who: ['u1'] },
+  { n: 2925, col: 'done', title: 'Счётчик подзадач в шапке колонки', done: true, prio: 1, gl: '!401', tags: [], who: ['u2'] },
+  { n: 2920, col: 'done', title: 'Миграция заметок на новый редактор', done: true, prio: 2, est: '12 ч', tags: ['be'], who: ['u4'] },
+];
+const T = (n) => TASKS.find((t) => t.n === n);
+const resolve = (t) => ({ ...t, tags: t.tags.map((id) => TG[id]), people: t.who.map((id) => ({ name: PP[id], role: 'Исполнитель' })).concat(t.author && !t.who.includes(t.author) ? [{ name: PP[t.author], role: 'Автор' }] : []), ms: t.ms ? 'Релиз 0.150' : null, msShort: t.ms ? '0.150' : null });
+const spec = (t, o = {}) => ({ key: t.n + (o.state || '') + (o.size || ''), t: resolve(t), state: o.state || 'normal', size: o.size || 'medium', chip: o.chip ? ST[t.col] : null, subsOpen: !!o.subsOpen, tip: !!o.tip, barTip: !!o.barTip });
+const COUNTS = { backlog: ['14', ''], todo: ['4', '8 ч'], doing: ['4 (7)', '16 ч'], review: ['3', '4 ч'], done: ['3', ''] };
+const statusCol = (id, cards, extra = {}) => ({ col: { ...ST[id], kind: 'status', countLabel: COUNTS[id][0], est: COUNTS[id][1], collapsed: !!extra.collapsed, showAdd: !!extra.showAdd }, cards, w: extra.w, hideHeader: extra.hideHeader });
+
+const FLAGS = {
+  A: { '--v-bar-d': 'block', '--v-glow-d': 'none', '--v-lead-c': 'none', '--v-colA-d': 'block', '--v-colC-d': 'none', '--v-capB-d': 'none', '--v-col-pad': '8px', '--v-head-h': '30px', '--v-head-pad': '0 0 0 6px', '--v-head-mb': '0px', '--v-add-bg': 'var(--v-col)', '--v-card-pl-add': '5px' },
+  B: { '--v-bar-d': 'none', '--v-glow-d': 'block', '--v-lead-c': 'none', '--v-colA-d': 'none', '--v-colC-d': 'none', '--v-capB-d': 'block', '--v-col-pad': '0px', '--v-head-h': '36px', '--v-head-pad': '0 4px 0 10px', '--v-head-mb': '2px', '--v-add-bg': 'var(--v-ctl)', '--v-card-pl-add': '0px' },
+  C: { '--v-bar-d': 'none', '--v-glow-d': 'none', '--v-lead-c': 'block', '--v-colA-d': 'none', '--v-colC-d': 'block', '--v-capB-d': 'none', '--v-col-pad': '8px', '--v-head-h': '30px', '--v-head-pad': '0 0 0 6px', '--v-head-mb': '0px', '--v-add-bg': 'var(--v-col)', '--v-card-pl-add': '0px',
+    '--v-pp3-bg': 'linear-gradient(to top right, color-mix(in srgb, #e0a418 86%, #000), #e0a418 50%, color-mix(in srgb, #e0a418 86%, #fff))', '--v-pp3-fg': '#fff', '--v-pp3-lbl': 'inline',
+    '--v-pp4-bg': 'linear-gradient(to top right, color-mix(in srgb, #e0533d 86%, #000), #e0533d 50%, color-mix(in srgb, #e0533d 86%, #fff))', '--v-pp4-fg': '#fff', '--v-pp4-lbl': 'inline' },
+};
+FLAGS.F = { ...FLAGS.C, '--v-bar-d': 'block', '--v-lead-c': 'none', '--v-card-pl-add': '5px' };
+['--v-pp3-bg', '--v-pp3-fg', '--v-pp3-lbl', '--v-pp4-bg', '--v-pp4-fg', '--v-pp4-lbl'].forEach((x) => delete FLAGS.F[x]);
+function vars(k, mode) {
+  const D = DIRS[k], t = D[mode], g = D.geo, tx = TXT[mode];
+  const sh = { ...SH[mode], ...((D.sh && D.sh[mode]) || {}) };
+  return {
+    fontFamily: FONT, color: tx.t1, '--v-font': FONT,
+    '--v-backdrop': t.backdrop, '--v-rail': t.rail, '--v-sidebar': t.sidebar, '--v-topbar': t.topbar, '--v-board': t.board,
+    '--v-col': t.col, '--v-card': t.card, '--v-card-hover': t.cardHover, '--v-pop': t.pop, '--v-hover': t.hover, '--v-hover-side': t.hoverSide,
+    '--v-active': t.active.v, '--v-input': t.input, '--v-ctl': t.ctl, '--v-pill': t.pill, '--v-sub': t.sub, '--v-foot': t.foot, '--v-drop': t.drop.v,
+    '--v-wash': t.wash, '--v-tint': t.tint, '--v-cap-a': t.capA, '--v-cap-b': t.capB,
+    '--v-sh-card': sh.card, '--v-sh-hover': sh.hover, '--v-sh-drag': sh.drag, '--v-sh-pop': sh.pop, '--v-sh-drop': sh.drop, '--v-sh-panel': sh.panel,
+    '--v-shell-pad': g.shellPad, '--v-shell-gap': g.shellGap, '--v-panel-r': g.panelR, '--v-sidebar-w': g.sidebarW, '--v-top-h': g.topH, '--v-top-pad': g.topPad,
+    '--v-sub-pad': g.subPad, '--v-cols-pad': g.colsPad, '--v-m-inset': g.mInset, '--v-m-r': g.mR,
+    '--v-r-ctl': g.rCtl, '--v-r-pill': g.rPill, '--v-r-card': g.rCard, '--v-r-col': g.rCol,
+    '--t-bg': t.board, '--t-surface': t.card, '--t-surface-alt': t.col === 'transparent' ? t.board : t.col, '--t-hover': t.hover, '--t-input-bg': t.input, '--t-border': t.pill,
+    '--t-text1': tx.t1, '--t-text2': tx.t2, '--t-text3': tx.t3, '--t-placeholder': tx.ph,
+    '--v-kbd': t.kbd || (mode === 'dark' ? '#3a3a43' : '#e4e4ea'), '--v-scrim': t.scrim || (mode === 'dark' ? 'rgba(6,6,9,.62)' : 'rgba(24,24,40,.26)'),
+    '--v-aurora': mode === 'dark' ? '.5' : '.34', '--v-aurora-blend': mode === 'dark' ? 'screen' : 'normal',
+    ...FLAGS[k],
+  };
+}
+
+function tokens(k) {
+  const D = DIRS[k];
+  const sw = (v) => ({ flex: '0 0 26px', width: 26, height: 26, borderRadius: 7, background: v === 'transparent' ? 'repeating-linear-gradient(45deg,#e4e4ea 0 4px,#f6f6f9 4px 8px)' : v, boxShadow: 'inset 0 0 0 1px rgba(0,0,0,.08)' });
+  const surf = [
+    ['Фон окна', '--v-backdrop', 'backdrop'], ['Серверный рейл', '--v-rail', 'rail'], ['Сайдбар', '--v-sidebar', 'sidebar'], ['Топбар', '--v-topbar', 'topbar'],
+    ['Панель доски / холст', '--v-board', 'board'], ['Колонка (подложка)', '--v-col', 'col'], ['Карточка', '--v-card', 'card'], ['Карточка · ховер', '--v-card-hover', 'cardHover'],
+    ['Поповер / модалка', '--v-pop', 'pop'], ['Ховер', '--v-hover', 'hover'], ['Ховер в сайдбаре', '--v-hover-side', 'hoverSide'], ['Активный / выбранный', '--v-active', 'active'],
+    ['Поле ввода', '--v-input', 'input'], ['Контрол (сегменты, чипы)', '--v-ctl', 'ctl'], ['Нейтральная пилла', '--v-pill', 'pill'], ['Трей подзадач', '--v-sub', 'sub'],
+    ['Футер сайдбара', '--v-foot', 'foot'], ['Место сброса', '--v-drop', 'drop'], ['Клавиша (kbd)', '--v-kbd', 'kbd'], ['Затемнение под модалкой', '--v-scrim', 'scrim'],
+  ].filter((r) => D.dark[r[2]] !== undefined).map(([name, v, key]) => {
+    const a = D.dark[key], b = D.light[key];
+    const av = a.v || a, bv = b.v || b;
+    return { name, v, isColor: true, dark: a.d || a, light: b.d || b, swD: sw(av), swL: sw(bv) };
+  });
+  surf.splice(6, 0, { name: 'Тон колонки', v: 'цвет колонки', isColor: false, dark: D.colTone.dark, light: D.colTone.light });
+  const text = [['Текст 1', '--t-text1', 't1'], ['Текст 2', '--t-text2', 't2'], ['Текст 3', '--t-text3', 't3'], ['Плейсхолдер', '--t-placeholder', 'ph']]
+    .map(([name, v, key]) => ({ name, v, isColor: true, dark: TXT.dark[key], light: TXT.light[key], swD: sw(TXT.dark[key]), swL: sw(TXT.light[key]) }));
+  const shD = { ...SH.dark, ...((D.sh && D.sh.dark) || {}) }, shL = { ...SH.light, ...((D.sh && D.sh.light) || {}) };
+  const shadows = [['Ур. 1 · карточка', '--v-sh-card', 'card'], ['Ур. 2 · ховер', '--v-sh-hover', 'hover'], ['Ур. 3 · поповер, ховер-бар', '--v-sh-pop', 'pop'], ['Ур. 4 · перетаскивание', '--v-sh-drag', 'drag'], ['Место сброса (вдавлено)', '--v-sh-drop', 'drop'], ['Панель', '--v-sh-panel', 'panel']]
+    .map(([name, v, key]) => ({ name, v, isColor: false, dark: shD[key], light: shL[key] }));
+  const g = D.geo;
+  const sizes = [
+    ['Шаг отступов', '4px · ряд 4/8/12/16/24'], ['Радиус: контролы', g.rCtl], ['Радиус: пиллы', g.rPill], ['Радиус: карточки', g.rCard], ['Радиус: колонки', D.sizes.colR], ['Радиус / отступ панелей', D.sizes.panel],
+    ['Серверный рейл', '56px'], ['Сайдбар', g.sidebarW + ' · свёрнутый 60px'], ['Топбар', g.topH + ' · поиск 420×34'], ['Подбар', 'контролы 34px · паддинг ' + g.subPad],
+    ['Колонка', '256px · по тегам 244px · свёрнутая 44px · зазор 12px'], ['Паддинг колонки', D.sizes.colPad], ['Паддинг карточки', D.sizes.card], ['Зазор между карточками', '8px'],
+    ['Сигнал приоритета', D.sizes.prio], ['Фокус-кольцо', 'outline 2px var(--t-primary), offset 2px'], ['Мобильный', 'колонка 350px (390 − 12 − 28), зазор 8px, snap start'], ['Шрифт', 'системный UI-стек, вебфонт не нужен'],
+    ...(D.extraSizes || []),
+  ].map(([name, value]) => ({ name, value }));
+  const lines = D.lines.map((fix, i) => ({ line: LINE_NAMES[i], fix }));
+  return { groups: [{ title: 'Поверхности', rows: surf }, { title: 'Текст', rows: text }, { title: 'Тени', rows: shadows }], sizes, lines };
+}
+
+function build(k, size) {
+  const by = (id) => TASKS.filter((t) => t.col === id);
+  const status = [
+    statusCol('backlog', [], { collapsed: true }),
+    statusCol('todo', by('todo').map((t) => spec(t, { size }))),
+    statusCol('doing', by('doing').map((t) => spec(t, { size, subsOpen: t.n === 2950 }))),
+    statusCol('review', by('review').map((t) => spec(t, { size }))),
+    statusCol('done', by('done').map((t) => spec(t, { size }))),
+  ];
+  const TAGMAP = { fe: [2944, 2947, 2929], be: [2958, 2938, 2933, 2920], des: [2955, 2950, 2936], bug: [2961, 2941] };
+  const EST = { fe: '10 ч', be: '21 ч', des: '6 ч', bug: '3 ч' };
+  const tags = ['fe', 'be', 'des', 'bug'].map((id) => ({
+    col: { id, name: TG[id].name, color: TG[id].color, kind: 'tag', tag: TG[id], countLabel: String(TAGMAP[id].length), est: EST[id] },
+    w: 244, cards: TAGMAP[id].map((n) => spec(T(n), { size, chip: true })),
+  }));
+  tags.push({ col: { id: 'none', name: 'Без тегов', color: '#9aa0aa', kind: 'none', countLabel: '2' }, w: 244, cards: [2949, 2925].map((n) => spec(T(n), { size, chip: true })) });
+  const lane = (id, cards) => statusCol(id, cards, { hideHeader: true });
+  const sheet = [
+    { title: 'Карточка', cells: [
+      { label: 'Обычная', items: [lane('doing', [spec(T(2944))])] },
+      { label: 'Ховер — ховер-бар', items: [lane('doing', [spec(T(2938), { state: 'hover' })])] },
+      { label: 'Выбрана / фокус', items: [lane('doing', [spec(T(2947), { state: 'selected' })])] },
+      { label: 'Перетаскивание + место сброса', items: [lane('doing', [spec(T(2933)), { isDrop: true, key: 'drop' }, spec(T(2936), { state: 'drag' })])] },
+      { label: 'Выполнена — в «Готово»', items: [lane('done', [spec(T(2929)), spec(T(2925))])] },
+    ] },
+    { title: 'Варианты и размеры', cells: [
+      { label: 'Просрочена (+ конфликт, GitLab)', items: [lane('doing', [spec(T(2941))])] },
+      { label: 'С раскрытыми подзадачами', items: [lane('doing', [spec(T(2950), { subsOpen: true })])] },
+      { label: 'Размер compact', items: [lane('todo', [2961, 2958, 2955, 2949].map((n) => spec(T(n), { size: 'compact' })))] },
+      { label: 'Размер medium', items: [lane('todo', [spec(T(2961))])] },
+      { label: 'Размер large', items: [lane('todo', [spec(T(2961), { size: 'large' })])] },
+    ] },
+    { title: 'Колонка', cells: [
+      { label: 'Статус · «5 (12)» с подзадачами · Σ', items: [{ col: { ...ST.doing, kind: 'status', countLabel: '5 (12)', est: '16 ч' }, cards: [] }] },
+      { label: 'Тег — без статус-иконки и меню', items: [{ col: { id: 'fe', name: TG.fe.name, color: TG.fe.color, kind: 'tag', tag: TG.fe, countLabel: '3', est: '10 ч' }, cards: [] }] },
+      { label: '«Без тегов» — нейтральная', items: [{ col: { id: 'none', name: 'Без тегов', color: '#9aa0aa', kind: 'none', countLabel: '2' }, cards: [] }] },
+      { label: 'Done-колонка «Готово»', items: [{ col: { ...ST.done, kind: 'status', countLabel: '23' }, cards: [] }] },
+      { label: 'Свёрнутая · добавить колонку', items: [{ col: { ...ST.review, kind: 'status', collapsed: true, countLabel: '3' }, cards: [] }, { col: { kind: 'add' }, cards: [], w: 200 }] },
+    ] },
+  ];
+  const mobile = ['todo', 'doing', 'review'].map((id) => statusCol(id, by(id).map((t) => spec(t, { subsOpen: false })), { w: 350 }));
+  const fragCols = [statusCol('doing', [spec(T(2947), { state: 'selected' }), spec(T(2944))], { w: 236 }), statusCol('review', [spec(T(2936)), spec(T(2933))], { w: 236 })];
+  const out = { key: k, status, tags, sheet, mobile, fcols: fragCols };
+  if (k === 'F') {
+    out.demo = [
+      statusCol('backlog', [], { collapsed: true }),
+      statusCol('todo', by('todo').map((t) => spec(t, { size }))),
+      statusCol('doing', by('doing').map((t) => spec(t, { size, subsOpen: t.n === 2950 })), { showAdd: true }),
+      statusCol('review', by('review').map((t) => spec(t, { size, tip: t.n === 2936 }))),
+      statusCol('done', by('done').map((t) => spec(t, { size }))),
+    ];
+    out.sheet = sheet.concat([{ title: 'Люди, создание, подсказки', cells: [
+      { label: 'Каскад исполнителей + автор · тултип', items: [lane('review', [spec(T(2936), { tip: true }), spec(T(2933)), spec(T(2938))])] },
+      { label: 'Каскад «+N» · 4 человека', items: [lane('doing', [spec(T(2950))])] },
+      { label: 'Ховер-бар · подсказка с клавишей', items: [lane('doing', [spec(T(2944), { state: 'hover', barTip: true })])] },
+      { label: 'Колонка при наведении · «Создать задачу» C', items: [statusCol('todo', [spec(T(2955)), spec(T(2949))], { showAdd: true })] },
+      { label: 'Пустая колонка', items: [statusCol('review', [], { showAdd: true })] },
+    ] }]);
+    out.mobile = ['todo', 'doing', 'review'].map((id) => statusCol(id, by(id).map((t) => spec(t)), { showAdd: true }));
+  }
+  return out;
+}
+
+function v1Data() {
+  const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  const columns = [{ id: 'todo', name: 'К работе', color: '#9aa0aa' }, { id: 'doing', name: 'В процессе', color: '#2f80ed' }, { id: 'done', name: 'Готово', color: '#18a058' }];
+  const tags = [{ id: 't1', name: 'app::frontend', color: '#7c5cff' }, { id: 't2', name: 'app::backend', color: '#2f80ed' }, { id: 't3', name: 'bug', color: '#e0533d' }, { id: 't4', name: 'design', color: '#eb2f96' }, { id: 't5', name: 'perf', color: '#0eb0a9' }];
+  const members = [{ user_id: 'u1', name: 'Мария Соколова' }, { user_id: 'u2', name: 'Илья Петров' }, { user_id: 'u3', name: 'Анна Ким' }];
+  const milestones = [{ id: 'm1', title: 'Релиз 0.150', due_date: day(12) }];
+  const tk = [
+    { id: 'a2', number: 2941, title: 'Падение синхронизации GitLab при пустом этапе', priority: 4, due_date: day(-2), column_id: 'todo', tag_ids: ['t2', 't3'], assignee_ids: ['u2'], created_by: 'u1', has_description: true },
+    { id: 'a4', number: 2928, title: 'Обновить зависимости фронтенда', priority: 1, column_id: 'todo', tag_ids: [], assignee_ids: [] },
+    { id: 'a1', number: 2950, title: 'Редизайн доски: убрать разделители, поверхности вместо линий', priority: 3, due_date: day(4), column_id: 'doing', tag_ids: ['t1', 't4'], assignee_ids: ['u1', 'u3'], created_by: 'u2', milestone_id: 'm1', estimate: 6, has_description: true },
+    { id: 'a3', number: 2932, title: 'Виртуализация списка задач на мобильном', priority: 2, due_date: day(9), column_id: 'doing', tag_ids: ['t1', 't5'], assignee_ids: ['u3'], created_by: 'u3', estimate: 3 },
+    { id: 'a5', number: 2915, title: 'Тёмная тема для экрана входа', priority: 2, column_id: 'done', completed_at: day(-1), tag_ids: ['t1'], assignee_ids: ['u1'] },
+  ];
+  const subs = [
+    { id: 's1', title: 'Токены поверхностей', priority: 2, column_id: 'done', completed_at: day(-1), assignee_ids: ['u1'] },
+    { id: 's2', title: 'Колонки без бордеров', priority: 3, column_id: 'doing', assignee_ids: ['u3'] },
+    { id: 's3', title: 'Проверка в тёмной теме', priority: 2, column_id: 'todo', assignee_ids: [] },
+  ];
+  const hg = (c) => (window.Tessera && window.Tessera.hueGrad ? window.Tessera.hueGrad(c) : `linear-gradient(to top right, color-mix(in srgb, ${c} 86%, #000), ${c} 50%, color-mix(in srgb, ${c} 86%, #fff))`);
+  const v1cols = columns.map((c, i) => ({
+    col: c, first: i === 0, isDone: c.id === 'done',
+    count: tk.filter((t) => t.column_id === c.id).length,
+    headStyle: { marginBottom: 8, padding: '0 2px' },
+    style: {
+      width: 280, flex: '0 0 280px', boxSizing: 'border-box', borderRadius: 14, padding: 10,
+      border: `1px solid color-mix(in srgb, ${c.color} 12%, var(--t-border))`, borderTop: '3px solid transparent',
+      background: `linear-gradient(color-mix(in srgb, ${c.color} 6%, var(--t-surface-alt)), color-mix(in srgb, ${c.color} 6%, var(--t-surface-alt))) padding-box, ${hg(c.color)} border-box`,
+      display: 'flex', flexDirection: 'column',
+    },
+    tasks: tk.filter((t) => t.column_id === c.id).map((t) => ({ task: t, subtasks: t.id === 'a1' ? subs : [] })),
+  }));
+  return { v1cols, v1: { tags, members, columns, milestones, prefixNames: { 'app::': 'App' } } };
+}
+
+class Component extends DCLogic {
+  renderVals() {
+    const size = this.props.cardSize ?? 'medium';
+    const only = this.props.directions ?? 'Все';
+    if (!this._cache || this._cache.size !== size) {
+      this._cache = { size, A: build('A', size), B: build('B', size), C: build('C', size), F: build('F', size), v1: v1Data() };
+    }
+    const c = this._cache;
+    return {
+      showV1: this.props.showV1 ?? true,
+      showA: only === 'Все' || only === 'A', showB: only === 'Все' || only === 'B', showC: only === 'Все' || only === 'C',
+      dA: c.A, dB: c.B, dC: c.C, dF: c.F,
+      v1c0: c.v1.v1cols[0], v1c1: c.v1.v1cols[1], v1c2: c.v1.v1cols[2], v1: c.v1.v1,
+    };
+  }
+}
+</script>
+</body>
+</html>

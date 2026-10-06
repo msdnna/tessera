@@ -50,14 +50,41 @@ export function spanOf(t) {
 }
 
 // Zoom tier from the current px-per-day. Thresholds tuned by feel:
+//  - below ~8px/day even a week range doesn't fit a cell → group by months (v2);
 //  - below ~20px/day a 2-digit day number doesn't fit a cell → group by weeks;
 //  - at/above ~140px/day a day is wide enough to show ≥3 hour ticks → hours.
+export const MONTHS_MAX_DAYW = 8
 export const WEEKS_MAX_DAYW = 20
 export const HOURS_MIN_DAYW = 140
 export function tierFor(dayW) {
+  if (dayW < MONTHS_MAX_DAYW) return 'months'
   if (dayW < WEEKS_MAX_DAYW) return 'weeks'
   if (dayW >= HOURS_MIN_DAYW) return 'hours'
   return 'days'
+}
+
+// The scale presets of the chart toolbar (v2, #2959): «Дни / Недели / Месяцы».
+// Each is a px-per-day landing inside its tier; the hours tier counts as «Дни».
+export const SCALE_DAYW = { days: 24, weeks: 10, months: 4 }
+export function scaleOfTier(tier) {
+  if (tier === 'months') return 'months'
+  if (tier === 'weeks') return 'weeks'
+  return 'days'
+}
+
+// Working days (Mon–Fri) in an inclusive day span — the selected bar's tooltip
+// («9 раб. дн.»). Holidays are not known here, only weekends.
+export function workingDays(startMs, endMs) {
+  if (startMs == null || endMs == null) return 0
+  let a = startOfDay(Math.min(startMs, endMs))
+  const b = startOfDay(Math.max(startMs, endMs))
+  let n = 0
+  while (a <= b) {
+    const dow = new Date(a).getDay()
+    if (dow !== 0 && dow !== 6) n++
+    a = startOfDay(a + DAY_MS + HOUR_MS * 2) // +2h rides over a DST shift
+  }
+  return n
 }
 
 // Continuous time→x mapping (px from the axis origin). At a day boundary this equals
@@ -112,15 +139,57 @@ export function buildDays(rangeStart, count, todayMs, fmt = defaultFormatters())
   return out
 }
 
-// Month header bands: runs of consecutive same-month days.
-export function buildMonthBands(days, fmt = defaultFormatters()) {
+// Month header bands: runs of consecutive same-month days. `short` drops the
+// year — the months tier puts the years in a band of their own above.
+export function buildMonthBands(days, fmt = defaultFormatters(), { short = false } = {}) {
   const out = []
   for (const d of days) {
     const dt = new Date(d.ms)
     const key = `${dt.getFullYear()}-${dt.getMonth()}`
     const last = out[out.length - 1]
     if (last && last.key === key) last.span++
-    else out.push({ key, label: monthYear(d.ms, fmt), span: 1 })
+    else
+      out.push({
+        key,
+        label: short
+          ? fmt.formatDate(d.ms, { month: 'short', timeZone: null })
+          : monthYear(d.ms, fmt),
+        span: 1,
+      })
+  }
+  return out
+}
+
+// Year bands (months tier, v2): runs of consecutive same-year days.
+export function buildYearBands(days) {
+  const out = []
+  for (const d of days) {
+    const y = new Date(d.ms).getFullYear()
+    const last = out[out.length - 1]
+    if (last && last.key === y) last.span++
+    else out.push({ key: y, label: String(y), span: 1 })
+  }
+  return out
+}
+
+// Week bands labelled with their date range — «28 сент. – 4 окт.» — the top band
+// of the days tier (v2, #2959). Break on Monday; the edge bands may be partial.
+export function buildWeekRangeBands(days, fmt = defaultFormatters()) {
+  const out = []
+  for (const d of days) {
+    const last = out[out.length - 1]
+    if (last && new Date(d.ms).getDay() !== 1) {
+      last.span++
+      last.endMs = d.ms
+    } else out.push({ key: d.ms, startMs: d.ms, endMs: d.ms, span: 1 })
+  }
+  const dm = (ms) => fmt.formatDate(ms, { day: 'numeric', month: 'short', timeZone: null })
+  for (const b of out) {
+    const sameMonth = new Date(b.startMs).getMonth() === new Date(b.endMs).getMonth()
+    b.label =
+      b.startMs === b.endMs
+        ? dm(b.startMs)
+        : `${sameMonth ? new Date(b.startMs).getDate() : dm(b.startMs)} – ${dm(b.endMs)}`
   }
   return out
 }

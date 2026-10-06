@@ -45,11 +45,11 @@ describe('readableInk', () => {
   })
 
   it('nudges a colour that only just misses, rather than jumping', () => {
-    // The urgent-priority red sits at 4.4:1 on the dark sheet. Lifting it to
-    // the 4.5 bar has to stay a nudge — a colour that lands far from the one
-    // the author picked is the failure this whole path is trying to avoid.
-    const ink = parseCssColor(readableInk('#e0533d', DARK.surface))
-    const before = parseCssColor('#e0533d')
+    // This red sits at 4.4:1 on the dark sheet. Lifting it to the 4.5 bar has
+    // to stay a nudge — a colour that lands far from the one the author picked
+    // is the failure this whole path is trying to avoid.
+    const ink = parseCssColor(readableInk('#e8613f', DARK.surface))
+    const before = parseCssColor('#e8613f')
     expect(ink).not.toEqual(before)
     for (let i = 0; i < 3; i += 1) expect(Math.abs(ink[i] - before[i])).toBeLessThan(20)
   })

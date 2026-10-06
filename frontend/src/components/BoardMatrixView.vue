@@ -404,8 +404,8 @@ function submitAdd(qi) {
   }
 }
 .m-pin:hover {
-  color: var(--t-error, #e5484d);
-  border-color: var(--t-error, #e5484d);
+  color: var(--t-error);
+  border-color: var(--t-error);
 }
 .m-add-input {
   padding: 0 8px 10px;

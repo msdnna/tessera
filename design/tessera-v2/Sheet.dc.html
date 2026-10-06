@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:30px;padding:30px 32px;background:var(--v-board);color:var(--t-text1);font-family:var(--v-font)">
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="3">
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--t-text3)">{{ r.title }}</div>
+<div style="display:grid;grid-template-columns:repeat(5, 256px);gap:24px;align-items:start">
+<sc-for list="{{ r.cells }}" as="cell" hint-placeholder-count="5">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-size:12.5px;font-weight:500;color:var(--t-text2)">{{ cell.label }}</div>
+<div style="display:flex;gap:12px;align-items:flex-start;--cw:256px">
+<sc-for list="{{ cell.items }}" as="c" hint-placeholder-count="1"><dc-import name="Column" c="{{ c }}" dir="{{ dir }}" hint-size="256px,120px"></dc-import></sc-for>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { dir: this.props.dir || 'A', rows: this.props.rows || [] };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+/* Tessera v2 — итоговый вариант (2a «Цветные дорожки» + приоритет полосой).
+   Имена 1:1 с дизайн-файлами (--v-*). При переносе можно переименовать в --t-*.
+   --t-primary и градиенты акцента — из TesseraProvider (accent), не дублируются здесь. */
+:root{--v-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+--v-space:4px;--v-r-ctl:8px;--v-r-pill:999px;--v-r-card:14px;--v-r-col:18px;--v-r-pop:16px;--v-r-tip:10px;--v-r-kbd:5px;
+--v-rail-w:56px;--v-sidebar-w:232px;--v-sidebar-w-collapsed:60px;--v-top-h:52px;--v-top-pad:0 16px;--v-sub-pad:6px 16px 10px;--v-cols-pad:2px 16px 16px;
+--v-col-w:256px;--v-col-w-tag:244px;--v-col-w-collapsed:44px;--v-col-gap:12px;--v-col-pad:8px;--v-card-gap:8px;
+--v-card-pad-compact:8px 12px;--v-card-pad-medium:10px 12px;--v-card-pad-large:13px 14px;--v-card-pl-add:5px;
+--v-av:22px;--v-av-overlap:-6px;--v-av-ring:2px;--v-kbd-h:20px;--v-fab:52px;--v-fab-r:16px;--v-palette-w:680px;--v-palette-top:72px;--v-palette-row:48px;
+--v-col-tone-dark:15%;--v-col-tone-light:11%}
+[data-theme="dark"]{--v-backdrop:#18181d;--v-rail:#0b0b0e;--v-sidebar:#101014;--v-topbar:#18181d;--v-board:#18181d;--v-col:#1d1d23;--v-card:#27272e;--v-card-hover:#2c2c34;--v-pop:#2e2e36;--v-hover:#222228;--v-hover-side:#1a1a1f;
+--v-active:linear-gradient(to top right,color-mix(in srgb,var(--t-primary) 16%,#101014),color-mix(in srgb,var(--t-primary) 26%,#101014));
+--v-input:#212127;--v-ctl:#212127;--v-pill:#33333b;--v-sub:#202026;--v-foot:#17171c;--v-drop:color-mix(in srgb,var(--t-primary) 16%,#1d1d23);--v-kbd:#3a3a43;--v-scrim:rgba(6,6,9,.62);
+--t-text1:#ececf1;--t-text2:#b5b5c0;--t-text3:#8b8b97;--t-placeholder:#63636e;
+--v-sh-card:0 1px 2px rgba(0,0,0,.32),0 2px 8px rgba(0,0,0,.16);--v-sh-hover:0 2px 4px rgba(0,0,0,.36),0 8px 20px rgba(0,0,0,.24);--v-sh-pop:0 12px 36px rgba(0,0,0,.5),0 2px 8px rgba(0,0,0,.3);--v-sh-drag:0 18px 44px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.35);--v-sh-drop:inset 0 1px 3px rgba(0,0,0,.35);
+--v-aurora:.5;--v-aurora-blend:screen;--v-top-bg-glass:color-mix(in srgb,var(--v-board) 52%,transparent);--v-top-input-glass:color-mix(in srgb,var(--v-input) 62%,transparent)}
+[data-theme="light"]{--v-backdrop:#f8f8fa;--v-rail:#e2e2e8;--v-sidebar:#ededf1;--v-topbar:#f8f8fa;--v-board:#f8f8fa;--v-col:#f1f1f4;--v-card:#ffffff;--v-card-hover:#ffffff;--v-pop:#ffffff;--v-hover:#ebebef;--v-hover-side:#e3e3e8;
+--v-active:linear-gradient(to top right,color-mix(in srgb,var(--t-primary) 11%,#ededf1),color-mix(in srgb,var(--t-primary) 18%,#ededf1));
+--v-input:#ededf1;--v-ctl:#ededf1;--v-pill:#f1f1f5;--v-sub:#f5f5f8;--v-foot:#e5e5ea;--v-drop:color-mix(in srgb,var(--t-primary) 12%,#f1f1f4);--v-kbd:#e4e4ea;--v-scrim:rgba(24,24,40,.26);
+--t-text1:#1c1c22;--t-text2:#4a4a55;--t-text3:#767682;--t-placeholder:#a9a9b3;
+--v-sh-card:0 1px 2px rgba(20,20,40,.06),0 1px 4px rgba(20,20,40,.04);--v-sh-hover:0 2px 6px rgba(20,20,40,.08),0 8px 20px rgba(20,20,40,.07);--v-sh-pop:0 12px 32px rgba(20,20,40,.14),0 2px 6px rgba(20,20,40,.06);--v-sh-drag:0 18px 40px rgba(20,20,40,.18),0 4px 12px rgba(20,20,40,.08);--v-sh-drop:inset 0 1px 3px rgba(20,20,40,.08);
+--v-aurora:.34;--v-aurora-blend:normal;--v-top-bg-glass:color-mix(in srgb,var(--v-board) 58%,transparent);--v-top-input-glass:color-mix(in srgb,var(--v-input) 70%,transparent)}
+/* Колонка: background = color-mix(in srgb, <цвет колонки> var(--v-col-tone-dark|light), var(--v-col)) */
+/* Приоритет: полоса 3px, left 6px, top/bottom 10px, radius 3px, linear-gradient(to top, mix(c 86%,#000), c 50%, mix(c 86%,#fff)) */
+/* Хедер стартового экрана: position:absolute; background:var(--v-top-bg-glass); backdrop-filter:saturate(1.4) blur(18px) */
+@keyframes tsAur1{0%{transform:translate(0,0) scale(1)}50%{transform:translate(140px,40px) scale(1.18)}100%{transform:translate(-80px,10px) scale(.92)}}
+@keyframes tsAur2{0%{transform:translate(0,0) scale(1.05)}50%{transform:translate(-120px,50px) scale(.9)}100%{transform:translate(90px,-10px) scale(1.15)}}
+@keyframes tsAur3{0%{transform:translate(0,0) scale(.95)}50%{transform:translate(60px,-30px) scale(1.2)}100%{transform:translate(-110px,30px) scale(1)}}

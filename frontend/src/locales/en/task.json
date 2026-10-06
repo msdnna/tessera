@@ -17,7 +17,11 @@
     "archiveYes": "Archive"
   },
   "action": {
-    "restore": "Restore from the archive"
+    "restore": "Restore from the archive",
+    "complete": "Complete",
+    "completed": "Done",
+    "archive": "Archive",
+    "delete": "Delete"
   },
   "field": {
     "priority": "Priority",
@@ -115,7 +119,12 @@
     "author": "Author: {name}",
     "assignee": "Assignee: {names}",
     "none": "No assignee",
-    "noMatches": "Nobody found"
+    "noMatches": "Nobody found",
+    "role": {
+      "author": "Author",
+      "assignee": "Assignee",
+      "gitlab": "Assignee · GitLab"
+    }
   },
   "tab": {
     "description": "Description",
@@ -161,7 +170,11 @@
     "glAbsent": "not in GitLab",
     "glAbsentHint": "The subtask has not been exported to GitLab yet — export it",
     "parentNotGrouped": "The parent is not marked as a grouped task — subtasks will not reach GitLab.",
-    "markGrouped": "Mark it"
+    "markGrouped": "Mark it",
+    "title": "Subtasks",
+    "progress": "{done} of {total}",
+    "add": "Subtask",
+    "unassigned": "Unassigned"
   },
   "relations": {
     "empty": "No relations yet",
@@ -215,7 +228,17 @@
     "hidePane": "Hide the panel",
     "dividerHidden": "Double-click to show the panel",
     "dividerDrag": "Drag / double-click",
-    "openInGitlab": "Open issue !{iid} in GitLab"
+    "openInGitlab": "Open issue !{iid} in GitLab",
+    "copyLink": "Copy link",
+    "navCount": "{n} of {total}",
+    "prev": "Previous task",
+    "next": "Next task",
+    "close": "Close",
+    "more": "More",
+    "modified": "Edited {when}",
+    "createdBy": "created by {name} {when}",
+    "created": "created {when}",
+    "openGitlab": "Open in GitLab"
   },
   "value": {
     "dueUnset": "Not set",
@@ -333,9 +356,25 @@
     "comment": "left a comment",
     "relation": "linked it to #{ref}",
     "attachment": "attached a file",
-    "attachmentNamed": "attached the file “{name}”"
+    "attachmentNamed": "attached the file “{name}”",
+    "movedVerb": "moved",
+    "priorityVerb": "changed the priority to",
+    "renamedVerb": "renamed it to"
   },
   "ref": {
     "notFound": "Task #{number} not found"
+  },
+  "panel": {
+    "props": "Properties",
+    "dev": "Development",
+    "links": "Links",
+    "documents": "Documents",
+    "gitlabIssue": "GitLab issue"
+  },
+  "activity": {
+    "title": "Activity",
+    "all": "All",
+    "comments": "Comments",
+    "files": "Files"
   }
 }

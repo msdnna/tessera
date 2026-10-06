@@ -128,6 +128,8 @@ async function toggleSubDone(s) {
       :animation="150"
       :delay="300"
       :touch-start-threshold="6"
+      :force-fallback="true"
+      :fallback-on-body="true"
       :disabled="narrowed"
       @click.stop
       @change="onSubChange"
@@ -193,7 +195,8 @@ async function toggleSubDone(s) {
    Empty + idle → fully hidden (overrides the list/stack block styling). Empty
    while a board drag is in progress → keep the block (a small drop area) so a
    dropped task attaches under the card, same as a card that already has subs. */
-.subs.collapsed {
+.subs.collapsed,
+.subs.list.collapsed {
   /* Fully hidden when idle: `display:none` beats the `.subs.list` padding/border
      that (being later in source) would otherwise leak a ~20px empty ghost box
      under childless cards. The drop zone still appears via `.subs.pending`
@@ -203,31 +206,36 @@ async function toggleSubDone(s) {
 .subs.pending {
   min-height: 26px;
 }
-/* Collapsed: a single card emerging from under the parent, holding the list.
-   `--sub-bg` is defined once on the card wrapper (TaskCard `.tw`) and shared
-   with the expanded stack's layers. */
+/* v2 (#2954): the compact list is a tray inside the card — one level below it
+   (`--sub-bg`, defined once on the card wrapper), rows 2px apart, no outline. */
 .subs.list {
-  position: relative;
-  z-index: 1;
-  margin-top: -8px;
-  padding: 14px 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 4px;
   background: var(--sub-bg);
-  border: 1px solid var(--t-border);
-  border-radius: 0 0 12px 12px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  border-radius: 9px;
 }
-/* A CHILDLESS card's drop-to-nest target during a drag: don't paint the solid
-   emerging-list card (it read as stray empty space under every card) — just a
-   slim dashed accent slot that clearly says "drop here to nest". Higher
-   specificity so it wins over the .subs.list block above regardless of order. */
+/* A CHILDLESS card's drop-to-nest target during a drag: a slim recessed slot in
+   the drop colour that says "drop here to nest". Higher specificity so it wins
+   over the .subs.list block above regardless of order. */
 .subs.list.pending {
   min-height: 14px;
-  margin-top: 4px;
   padding: 0;
-  background: transparent;
-  border: 1px dashed color-mix(in srgb, var(--t-primary) 45%, transparent);
-  border-radius: 8px;
-  box-shadow: none;
+  background: var(--t-drop);
+  box-shadow: var(--t-sh-drop);
+}
+/* A dragged subtask (Sortable's fallback clone, see KanbanBoard): lifted onto
+   the popover level with the drag shadow and a slight tilt. */
+.sortable-fallback {
+  opacity: 1 !important;
+}
+.sortable-fallback > * {
+  background: var(--t-pop);
+  border-radius: 7px;
+  box-shadow: var(--t-sh-drag);
+  transform: rotate(1.5deg);
 }
 /* First-level subtasks cascade directly below the parent card (no indent).
    Expanded cards attach with no gap; collapsed text rows get a little spacing. */
@@ -238,9 +246,11 @@ async function toggleSubDone(s) {
 .subrow {
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 6px;
-  border-radius: 6px;
+  gap: 8px;
+  min-height: 30px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-radius: 7px;
   font-size: 13px;
   color: var(--t-text2);
   cursor: pointer;
@@ -250,7 +260,7 @@ async function toggleSubDone(s) {
 }
 .subrow.done .sub-title {
   text-decoration: line-through;
-  opacity: 0.6;
+  color: var(--t-text3);
 }
 .check.sm {
   display: inline-flex;

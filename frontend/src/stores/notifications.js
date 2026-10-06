@@ -99,5 +99,23 @@ export const useNotificationsStore = defineStore('notifications', () => {
     loaded.value = false
   }
 
-  return { items, unread, loaded, load, onEvent, markRead, markAllRead, reset }
+  // «G, then I» (#2956) asks whichever bell is on screen to open its feed — the
+  // feed is a popover owned by NotificationsBell, not a page with a route.
+  const feedRequest = ref(0)
+  function requestFeed() {
+    feedRequest.value++
+  }
+
+  return {
+    items,
+    unread,
+    loaded,
+    load,
+    onEvent,
+    markRead,
+    markAllRead,
+    reset,
+    feedRequest,
+    requestFeed,
+  }
 })

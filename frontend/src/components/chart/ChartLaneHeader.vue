@@ -1,35 +1,49 @@
 <script setup>
 import { useI18n } from 'vue-i18n'
 import { NIcon, NTooltip } from 'naive-ui'
-import { TimerOutline } from '@vicons/ionicons5'
+import { ChevronDownOutline, TimerOutline } from '@vicons/ionicons5'
 import { hueGrad } from '@/utils/gradient'
 
 const { t } = useI18n()
 
-// Swimlane header row: the lane's colour dot, name, task count and summed estimate
-// on the left, an empty band across the axis on the right. Identical in the
-// Timeline and Gantt views.
+// Group header row (v2, #2959): a chevron that folds the group, its colour
+// square, name and «X из N» on the left; across the axis, the group's summary bar
+// — from its earliest start to its latest end, filled by the share of done tasks.
+// Identical in the Timeline and Gantt views.
 defineProps({
   lane: { type: Object, required: true },
   leftW: { type: Number, required: true },
   axisW: { type: Number, required: true },
   tier: { type: String, required: true },
   collapsed: { type: Boolean, default: false },
+  // The group is folded to this header.
+  folded: { type: Boolean, default: false },
+  // { left, width, pct } of the summary bar, or null when nothing has dates.
+  summary: { type: Object, default: null },
   // Short and full renderings of the lane's summed estimate ('' hides the chip).
   effort: { type: String, default: '' },
   effortFull: { type: String, default: '' },
 })
+defineEmits(['toggle'])
 </script>
 
 <template>
   <div class="tl-lanehead chart-part" :class="[tier, { collapsed }]">
-    <div class="tl-left lane" :style="{ width: `${leftW}px` }">
+    <div
+      class="tl-left lane"
+      :style="{ width: `${leftW}px` }"
+      :title="t('board.chart.lanes')"
+      @click="$emit('toggle', lane.key)"
+    >
+      <n-icon :component="ChevronDownOutline" :size="13" class="lane-chev" :class="{ folded }" />
       <span
         class="lane-dot"
         :style="{ background: lane.color ? hueGrad(lane.color) : 'var(--t-accent-grad)' }"
       />
       <span class="lane-name">{{ lane.label }}</span>
-      <span class="lane-count">{{ lane.tasks.length }}</span>
+      <span class="lane-count">{{
+        t('task.subtasks.progress', { done: lane.done || 0, total: lane.tasks.length })
+      }}</span>
       <n-tooltip v-if="effort">
         <template #trigger>
           <span class="lane-effort"
@@ -39,7 +53,22 @@ defineProps({
         {{ t('board.chart.effortTotal', { value: effortFull }) }}
       </n-tooltip>
     </div>
-    <div class="tl-track laneband" :style="{ width: `${axisW}px` }" />
+    <div class="tl-track laneband" :style="{ width: `${axisW}px` }">
+      <div
+        v-if="summary"
+        class="lane-sum"
+        :style="{
+          left: `${summary.left}px`,
+          width: `${summary.width}px`,
+          '--lc': lane.color || 'var(--t-primary)',
+        }"
+      >
+        <span
+          class="lane-sum-fill"
+          :style="{ width: `${summary.pct * 100}%`, background: hueGrad(lane.color || '#7c5cff') }"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -48,60 +77,69 @@ defineProps({
 
 .tl-lanehead {
   display: flex;
+  /* the gap above a group is padding, not margin: the row layout measures the
+     header's offsetHeight, which a margin would slip past */
+  padding-top: 6px;
 }
 .tl-left.lane {
-  position: sticky;
-  left: 0;
   z-index: 5;
-  align-items: center;
-  gap: 7px;
-  background: var(--t-surface-alt, var(--t-hover));
-  border-bottom: 1px solid var(--t-border);
-  padding: 5px 12px;
+  gap: 8px;
+  height: 36px;
+  padding-left: 10px;
+  border-radius: 9px 0 0 9px;
 }
-/* the base .tl-left:hover is imported above this rule, so spell the lane's own
-   hover out — otherwise the lane band would stop lighting up under the pointer */
-.tl-left.lane:hover {
-  background: var(--t-hover);
+.lane-chev {
+  flex: none;
+  color: var(--t-text3);
+  transition: transform 0.15s ease;
+}
+.lane-chev.folded {
+  transform: rotate(-90deg);
 }
 .lane-dot {
-  width: 9px;
-  height: 9px;
+  width: 10px;
+  height: 10px;
   border-radius: 3px;
   flex: 0 0 auto;
 }
 .lane-name {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--t-text2);
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--t-text1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .lane-count {
-  font-size: 11px;
+  flex: none;
+  font-size: 12px;
   color: var(--t-text3);
-  background: var(--t-surface);
-  border-radius: 20px;
-  padding: 0 7px;
-  margin-left: auto;
+  white-space: nowrap;
 }
 .lane-effort {
   display: inline-flex;
   align-items: center;
   gap: 3px;
+  margin-left: auto;
   font-size: 11px;
-  color: var(--t-text2);
+  color: var(--t-text3);
   white-space: nowrap;
 }
-/* the lane's band across the axis: a flat header strip, not a task track (kept
-   after the imported .tl-track so it wins the day tier on source order — the
-   higher-specificity weeks/hours rules still paint their gridlines through it,
-   exactly as before the extraction) */
 .laneband {
-  position: relative;
-  background: var(--t-surface-alt, var(--t-hover));
-  border-bottom: 1px solid var(--t-border);
-  flex: 0 0 auto;
+  height: 36px;
+}
+/* summary bar: the group's span, its done share filled */
+.lane-sum {
+  position: absolute;
+  top: 14px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--lc) 26%, transparent);
+}
+.lane-sum-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
 }
 </style>

@@ -81,6 +81,29 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const layout = ref('board') // 'board' | 'list' | 'calendar' | 'timeline' | 'gantt' | 'matrix'
   const archiveOpen = ref(false)
   const reloadNonce = ref(0) // header-driven changes ask the board to reload
+  // Header search on a board (v2, #2954): the header field is the board's
+  // title filter (KanbanBoard mirrors it into its own filters.q), and the board
+  // publishes how many tasks the current filter leaves so the header knows when
+  // to fall back to a workspace-wide search (null = no board count yet).
+  const searchQ = ref('')
+  const shownTasks = ref(null)
+  // Its tooltip («показано 5 из 12…») — the count sits next to the board in the
+  // sidebar (v2), not in the sub-toolbar.
+  const shownTitle = ref('')
+  // The open board's task rows, as a getter (not a copy): the ⌘K palette needs
+  // a column's tail to move a task to its end without refetching the board.
+  const taskSource = ref(null)
+  // «Filter by this person» from the palette (#2957): a request the board
+  // applies to its own filters; `n` makes a repeat of the same person fire.
+  const assigneeFilter = ref(null)
+  // «N, then T» (#2956) asks the open board to start its «К работе» quick-add.
+  const quickAdd = ref(0)
+  function requestQuickAdd() {
+    quickAdd.value++
+  }
+  function requestAssigneeFilter(userId) {
+    assigneeFilter.value = { userId, n: (assigneeFilter.value?.n || 0) + 1 }
+  }
 
   function bumpReload() {
     reloadNonce.value++
@@ -119,10 +142,23 @@ export const useBoardViewStore = defineStore('boardView', () => {
     showEmpty.value = true
     refill(fieldVis, defaultFieldVis())
     archiveOpen.value = false
+    searchQ.value = ''
+    shownTasks.value = null
+    shownTitle.value = ''
+    taskSource.value = null
+    assigneeFilter.value = null
   }
 
   return {
     active,
+    searchQ,
+    shownTasks,
+    shownTitle,
+    taskSource,
+    assigneeFilter,
+    requestAssigneeFilter,
+    quickAdd,
+    requestQuickAdd,
     boardId,
     wsId,
     projectId,

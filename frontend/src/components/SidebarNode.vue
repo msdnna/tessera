@@ -382,13 +382,15 @@ async function commitRename() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
-  border-radius: 6px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-radius: var(--t-r-ctl);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .row:hover {
-  background: var(--t-hover);
+  background: var(--t-hover-side);
 }
 .hover-btn {
   opacity: 0;
@@ -422,21 +424,24 @@ async function commitRename() {
 .gicon-bare {
   color: var(--t-text2);
 }
+/* v2 (#2953): a group reads as a section label over its projects. */
+.group-row {
+  min-height: 28px;
+}
 .name {
   flex: 1;
+  font-size: 12.5px;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--t-text1);
+  color: var(--t-text3);
 }
 /* Nesting is shown by indenting the whole subtree, so the drag placeholder
    (.sb-ghost) inside a group is visually indented too — making it clear the
-   item will land inside the group. */
+   item will land inside the group. v2 (#2953): indent only, no guide line. */
 .children {
-  margin-left: 15px;
-  padding-left: 6px;
-  border-left: 1px solid var(--t-border);
+  margin-left: 14px;
 }
 .gsettings {
   width: 200px;

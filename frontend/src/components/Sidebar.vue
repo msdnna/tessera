@@ -2,21 +2,9 @@
 import { ref, computed, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
+import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip, useMessage } from 'naive-ui'
 import {
-  NSelect,
-  NButton,
-  NInput,
-  NModal,
-  NCard,
-  NScrollbar,
-  NText,
-  NIcon,
-  NDropdown,
-  NTooltip,
-  useMessage,
-} from 'naive-ui'
-import {
-  HomeOutline,
+  CheckmarkDoneOutline,
   DocumentTextOutline,
   DocumentsOutline,
   VideocamOutline,
@@ -24,19 +12,18 @@ import {
   RibbonOutline,
   AddOutline,
   FolderOutline,
-  EllipsisHorizontalOutline,
-  TrashOutline,
+  ChevronDownOutline,
+  ChevronForwardOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
-const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useAuthStore } from '@/stores/auth'
 import { useTourStore } from '@/stores/tour'
+import { useConflictsStore } from '@/stores/conflicts'
+import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
 import { workspaceName } from '@/utils/defaultNames'
-import ConfirmByName from './ConfirmByName.vue'
 import ProjectCreateModal from './ProjectCreateModal.vue'
 import {
   moveSidebarGroup,
@@ -49,26 +36,22 @@ import SidebarNode from './SidebarNode.vue'
 import ProjectRow from './ProjectRow.vue'
 import EmptyState from './EmptyState.vue'
 import SidebarFooter from './SidebarFooter.vue'
-import WorkspaceTools from './WorkspaceTools.vue'
 import SidebarRailNode from './SidebarRailNode.vue'
-import BrandLogo from './BrandLogo.vue'
+import { useSidebarSize } from '@/composables/useSidebarSize'
 
 defineProps({
   mobile: { type: Boolean, default: false },
   collapsed: { type: Boolean, default: false },
-  // Expanded but too narrow for the brand tools / add-workspace button.
-  narrow: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()
 const store = useWorkspacesStore()
-const auth = useAuthStore()
 const tour = useTourStore()
+const conflicts = useConflictsStore()
 const message = useMessage()
 const route = useRoute()
-const router = useRouter()
 
-const wsOptions = computed(() => store.list.map((w) => ({ label: workspaceName(w), value: w.id })))
+const { toggle: toggleSidebar } = useSidebarSize()
 const rootGroups = computed(() => store.childGroups(null))
 const ungrouped = computed(() => store.projectsInGroup(null))
 
@@ -106,10 +89,6 @@ const addOptions = computed(() => [
   { label: t('shell.tree.addGroup'), key: 'group', icon: menuIcon(FolderOutline) },
 ])
 
-async function onWorkspaceChange(id) {
-  await store.selectWorkspace(id)
-}
-
 // Projects are named in a modal (the name decides the URL address, which is
 // assigned once); groups keep the create-then-rename flow.
 const projModalShow = ref(false)
@@ -141,114 +120,50 @@ async function addAtRoot(key) {
   }
 }
 
-// new-workspace modal
-const wsModal = ref({ show: false, value: '' })
-async function createWorkspace() {
-  const n = wsModal.value.value.trim()
-  if (!n) return
-  try {
-    const res = await wsApi.create({ name: n })
-    wsModal.value.show = false
-    wsModal.value.value = ''
-    await store.loadWorkspaces()
-    await store.selectWorkspace(res.data.id)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-
-// Workspace settings menu — deletion is owner-only (server enforces it too).
-const isOwner = computed(() => !!store.current && store.current.owner_id === auth.user?.id)
-const wsMenuOptions = computed(() =>
-  isOwner.value
-    ? [
-        {
-          label: t('shell.workspace.delete'),
-          key: 'delete',
-          icon: dangerIcon(TrashOutline),
-          props: { style: 'color:#e0533d' },
-        },
-      ]
-    : [],
-)
-const wsDeleteShow = ref(false)
-function onWsMenuSelect(key) {
-  if (key === 'delete') {
-    if (store.list.length <= 1) {
-      message.warning(t('shell.workspace.deleteLast'))
-      return
-    }
-    wsDeleteShow.value = true
-  }
-}
-async function deleteWorkspace() {
-  try {
-    await store.removeWorkspace(store.currentId)
-    message.success(t('shell.workspace.deleted'))
-    router.push('/') // the tree fully changed — land on Home
-  } catch (e) {
-    message.error(e.message)
-  }
-}
+// The workspace menu under its name (v2): members, integrations, appearance,
+// create, delete — the doors of the former tool row live here now.
+const wsMenu = useWorkspaceMenu()
 </script>
 
 <template>
   <div class="sidebar" data-testid="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
     <div class="brand">
-      <!-- Expanded: wordmark sized so its text stays no taller than the tool icons
-           to its right. Collapsed rail: the mark, a touch larger. -->
-      <BrandLogo
-        class="brand-logo"
-        :height="collapsed ? 26 : 19"
-        :mark="collapsed"
-        :wordmark="!collapsed"
-      />
-      <!-- Tools live here (right of the logo) when expanded; when the rail is
-           collapsed (desktop) they move to the header instead. -->
-      <WorkspaceTools
-        v-if="mobile || (!collapsed && !narrow)"
-        class="brand-tools"
-        placement="bottom-start"
-      />
-    </div>
-
-    <div v-if="collapsed" class="rail-sep" />
-
-    <div v-if="!collapsed" class="ws-switch" data-tour="ws-switch">
-      <n-select
-        :value="store.currentId"
-        :options="wsOptions"
-        size="small"
-        @update:value="onWorkspaceChange"
-      />
-      <n-button
-        v-if="!narrow"
-        quaternary
-        circle
-        size="small"
-        :title="t('shell.workspace.create')"
-        @click="wsModal.show = true"
-      >
-        <n-icon :component="AddOutline" />
-      </n-button>
+      <!-- The logo and the workspace tiles live on the rail now (v2, #2955);
+           the header names the current workspace and holds its menu. -->
       <n-dropdown
-        v-if="!narrow && wsMenuOptions.length"
+        v-if="!collapsed"
         trigger="click"
-        placement="bottom-end"
-        :options="wsMenuOptions"
-        @select="onWsMenuSelect"
+        placement="bottom-start"
+        :options="wsMenu.options.value"
+        @select="wsMenu.select"
       >
-        <n-button quaternary circle size="small" :title="t('shell.workspace.settings')">
-          <n-icon :component="EllipsisHorizontalOutline" />
-        </n-button>
+        <button type="button" class="ws-head" data-testid="ws-head">
+          <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
+          <span
+            v-if="conflicts.count"
+            class="ws-head-dot"
+            :title="t('shell.tools.integrationsConflicts', { count: conflicts.count })"
+          />
+          <n-icon :component="ChevronDownOutline" :size="13" class="ws-head-chev" />
+        </button>
       </n-dropdown>
+      <button
+        v-else
+        type="button"
+        class="ws-expand"
+        :title="t('shell.layout.expand')"
+        @click="toggleSidebar"
+      >
+        <n-icon :component="ChevronForwardOutline" :size="16" />
+      </button>
     </div>
+    <div v-if="collapsed" class="rail-sep" />
 
     <nav class="nav">
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
-            <n-icon :component="HomeOutline" :size="18" />
+            <n-icon :component="CheckmarkDoneOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.home') }}</span>
           </router-link>
         </template>
@@ -257,7 +172,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/notes" class="nav-link" data-nav="notes">
-            <n-icon :component="DocumentTextOutline" :size="18" />
+            <n-icon :component="DocumentTextOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.notes') }}</span>
           </router-link>
         </template>
@@ -266,11 +181,8 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/documents" class="nav-link" data-nav="documents">
-            <n-icon :component="DocumentsOutline" :size="18" />
-            <span v-if="!collapsed" class="nav-label">
-              {{ t('shell.nav.documents')
-              }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
-            </span>
+            <n-icon :component="DocumentsOutline" :size="16" />
+            <span v-if="!collapsed">{{ t('shell.nav.documents') }}</span>
           </router-link>
         </template>
         {{ t('shell.nav.documents') }}
@@ -278,11 +190,8 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/conferences" class="nav-link" data-nav="conferences">
-            <n-icon :component="VideocamOutline" :size="18" />
-            <span v-if="!collapsed" class="nav-label">
-              {{ t('shell.nav.conferences')
-              }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
-            </span>
+            <n-icon :component="VideocamOutline" :size="16" />
+            <span v-if="!collapsed">{{ t('shell.nav.conferences') }}</span>
           </router-link>
         </template>
         {{ t('shell.nav.conferences') }}
@@ -290,7 +199,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/reminders" class="nav-link" data-nav="reminders">
-            <n-icon :component="AlarmOutline" :size="18" />
+            <n-icon :component="AlarmOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.reminders') }}</span>
           </router-link>
         </template>
@@ -299,7 +208,7 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/milestones" class="nav-link" data-nav="milestones">
-            <n-icon :component="RibbonOutline" :size="18" />
+            <n-icon :component="RibbonOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.milestones') }}</span>
           </router-link>
         </template>
@@ -329,7 +238,10 @@ async function deleteWorkspace() {
       </n-dropdown>
     </div>
 
-    <n-scrollbar v-if="!collapsed" class="tree">
+    <!-- content-style, not CSS: Naive styles the content box itself, so a
+         padding rule from here doesn't win — and without one the rows ran flush
+         to the sidebar's right edge. The same 8px gutter as the links above. -->
+    <n-scrollbar v-if="!collapsed" class="tree" content-style="padding: 0 8px">
       <draggable
         :list="rootGrpModel"
         group="sidebar-grp"
@@ -395,29 +307,6 @@ async function deleteWorkspace() {
     <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
 
     <ProjectCreateModal v-model:show="projModalShow" @created="onProjectCreated" />
-
-    <n-modal v-model:show="wsModal.show">
-      <n-card :title="t('shell.workspace.create')" style="max-width: 360px" role="dialog">
-        <n-input
-          v-model:value="wsModal.value"
-          :placeholder="t('shell.workspace.namePlaceholder')"
-          @keyup.enter="createWorkspace"
-        />
-        <template #footer>
-          <n-button type="primary" @click="createWorkspace">{{
-            t('common.action.create')
-          }}</n-button>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <ConfirmByName
-      v-model:show="wsDeleteShow"
-      :name="workspaceName(store.current)"
-      :title="t('shell.workspace.delete')"
-      :message="t('shell.workspace.deleteMessage')"
-      @confirm="deleteWorkspace"
-    />
   </div>
 </template>
 
@@ -426,7 +315,7 @@ async function deleteWorkspace() {
   display: flex;
   flex-direction: column;
   height: 100%;
-  /* Clip rather than scroll when the sidebar is dragged narrow. */
+  /* Clip rather than scroll while the sidebar animates between widths. */
   overflow-x: hidden;
 }
 .brand {
@@ -437,23 +326,66 @@ async function deleteWorkspace() {
   min-width: 0;
   box-sizing: border-box;
 }
-/* Pin the expanded header height to the tool row's height. Otherwise the row
-   collapses to the (shorter) logo height whenever the tools hide at the `narrow`
-   breakpoint or the notification badge changes — and align-items:center then
-   nudges the wordmark vertically (visible jitter while dragging the sidebar).
-   flex-shrink:0 is essential: the sidebar is a flex column that can overflow, and
-   without it the flex layout squeezes .brand down to its (tool-less) min-content,
-   defeating the fixed height. */
+/* A fixed header height. flex-shrink:0 is essential: the sidebar is a flex
+   column that can overflow, and without it the flex layout squeezes .brand down
+   to its min-content, defeating the fixed height. */
 .sidebar:not(.collapsed) .brand {
   height: 46px;
   flex-shrink: 0;
 }
-.ws-switch > :first-child {
-  flex: 1;
+/* Current workspace, v2 header (#2955): its name and the menu chevron. */
+.ws-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  margin-left: -4px;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
+  cursor: pointer;
 }
-.brand-tools {
-  margin-left: auto;
+.ws-head:hover {
+  background: var(--t-hover-side);
+}
+.ws-head-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-head-chev {
+  flex: none;
+  color: var(--t-text3);
+}
+.ws-expand {
+  width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.ws-expand:hover {
+  background: var(--t-hover-side);
+  color: var(--t-text1);
+}
+/* Unresolved GitLab conflicts — the count is in the menu's Integrations row. */
+.ws-head-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e0922f;
 }
 .sidebar.collapsed .brand {
   justify-content: center;
@@ -468,12 +400,10 @@ async function deleteWorkspace() {
   width: 40px;
   padding: 8px 0;
 }
-/* Thin separators between functional groups (logo / nav / projects) in the
-   collapsed rail. */
+/* Gap between functional groups (logo / nav / projects) in the collapsed rail —
+   v2 separates them with space, not a line (#2953). */
 .rail-sep {
-  height: 1px;
-  background: var(--t-border);
-  margin: 6px 12px;
+  height: 12px;
 }
 .rail-scroll {
   flex: 1;
@@ -486,15 +416,6 @@ async function deleteWorkspace() {
   padding: 2px 0;
 }
 /* Brand lockup (mark + wordmark) in the header; collapses to the mark on the rail. */
-.brand-logo {
-  flex: none;
-}
-.ws-switch {
-  display: flex;
-  gap: 6px;
-  padding: 12px;
-  align-items: center;
-}
 .nav {
   display: flex;
   flex-direction: column;
@@ -503,52 +424,57 @@ async function deleteWorkspace() {
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 14px;
+  gap: 10px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--t-r-ctl);
+  font-size: 13.5px;
   color: var(--t-text2);
   text-decoration: none;
 }
+.nav-link :deep(.n-icon) {
+  color: var(--t-text3);
+}
 .nav-link:hover {
-  background: var(--t-hover);
+  background: var(--t-hover-side);
 }
-.nav-label {
-  display: inline-flex;
-  align-items: flex-start;
-}
-.nav-badge {
-  margin-left: 3px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  font-size: 9px;
-  line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: lowercase;
-  color: var(--t-primary);
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-}
+/* Active item: the v2 active level (accent mixed over the sidebar) and the
+   icon painted with the accent gradient. */
 .nav-link.router-link-active,
 .nav-link.router-link-exact-active {
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-  color: var(--t-primary);
+  background: var(--t-active);
+  color: var(--t-text1);
   font-weight: 600;
+}
+.nav-link.router-link-active :deep([fill='currentColor']),
+.nav-link.router-link-exact-active :deep([fill='currentColor']) {
+  fill: url(#t-accent-grad-svg);
+}
+.nav-link.router-link-active :deep([stroke='currentColor']),
+.nav-link.router-link-exact-active :deep([stroke='currentColor']) {
+  stroke: url(#t-accent-grad-svg);
 }
 .proj-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
-  margin-top: 8px;
+  height: 28px;
+  padding: 0 16px;
+  margin-top: 14px;
+}
+.proj-head :deep(.n-text) {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .nav {
   margin-top: 2px;
 }
 .tree {
   flex: 1;
-  padding: 0 6px;
 }
+
 .empty {
   display: block;
   font-size: 12px;

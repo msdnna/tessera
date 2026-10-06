@@ -1,16 +1,20 @@
-/* The chart shell itself — the scroll viewport, the axis-wide overlays (today-line,
-   cursor guide) and the empty state. Shared by BoardTimelineView and BoardGanttView,
-   imported into each one's *scoped* style block (see chart-parts.css for the same
-   pattern applied to the row components). */
+/* The chart shell itself — the scroll viewport, the axis backdrop (weekends,
+   today), the axis-wide overlays (today-line, cursor guide) and the empty state.
+   Shared by BoardTimelineView and BoardGanttView, imported into each one's
+   *scoped* style block (see chart-parts.css for the same pattern applied to the
+   row components).
+
+   v2 (#2959): no frame and no gridlines. The axis side lies on a --t-col
+   backdrop with a rounded top-left corner; weekends are a soft column tint, today
+   a highlighted column with a 2px gradient line. */
 
 .tl {
-  padding: 2px 0 40px;
+  padding: 0 0 24px;
 }
 .tl-scroll {
   overflow: auto;
-  border: 1px solid var(--t-border);
-  border-radius: 10px;
-  max-height: calc(100vh - 220px);
+  max-height: calc(100vh - 170px);
+  scrollbar-width: thin;
 }
 .tl-scroll.panning {
   cursor: grabbing;
@@ -19,8 +23,35 @@
 .tl-inner {
   position: relative;
 }
-/* one continuous today-line spanning every lane + row (a child of .tl-body so it
-   scrolls horizontally with the content; hidden behind the sticky left column) */
+/* the backdrop under the axis: starts after the task column (+8px of canvas),
+   reaches the bottom of the content */
+.tl-backdrop {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  border-top-left-radius: 14px;
+  background-color: var(--t-col);
+  pointer-events: none;
+}
+/* weekends: the last two of every seven day columns, offset to the range start */
+.tl-backdrop.weekends {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent calc(var(--tl-day-w) * 5),
+    color-mix(in srgb, var(--t-text1) 3.5%, transparent) calc(var(--tl-day-w) * 5),
+    color-mix(in srgb, var(--t-text1) 3.5%, transparent) calc(var(--tl-day-w) * 7)
+  );
+}
+/* today's column, full height */
+.tl-todaycol {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: color-mix(in srgb, var(--t-primary) 9%, transparent);
+  pointer-events: none;
+}
 .tl-body {
   position: relative;
 }
@@ -29,29 +60,35 @@
 .tl-vspacer {
   flex: 0 0 auto;
 }
+/* one continuous today-line spanning every lane + row (a child of .tl-body so it
+   scrolls horizontally with the content; hidden behind the sticky left column) */
 .tl-today {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 2px;
-  background: color-mix(in srgb, var(--t-primary) 70%, transparent);
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--t-accent-grad-vert);
   z-index: 1;
   pointer-events: none;
 }
-/* neutral pointer cursor-line: a faint grey dashed guide under the bars (z1, like
-   today) so it never obscures them — purely an auxiliary "read the date" aid */
+/* neutral pointer cursor-line: a faint dashed guide under the bars */
 .tl-cursor {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 0;
-  border-left: 1px dashed color-mix(in srgb, var(--t-text3) 60%, transparent);
+  border-left: 1px dashed color-mix(in srgb, var(--t-text3) 50%, transparent);
   z-index: 1;
   pointer-events: none;
 }
-/* glide the today-line on zoom; never while dragging/zooming (would lag) */
-.tl-inner.animate .tl-today {
-  transition: left 0.18s ease;
+/* glide the today marks on zoom; never while dragging/zooming (would lag) */
+.tl-inner.animate .tl-today,
+.tl-inner.animate .tl-todaycol {
+  transition:
+    left 0.18s ease,
+    width 0.18s ease;
 }
 .tl-empty {
   padding: 40px;

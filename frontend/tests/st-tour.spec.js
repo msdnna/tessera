@@ -281,7 +281,7 @@ describe('tour store', () => {
           mode: 'action',
           advanceOn: { set: '[data-tour="tm-due"][data-tour-set]' },
         },
-        { id: 'after', anchor: 'tm-save', mode: 'info' },
+        { id: 'after', anchor: 'tm-close', mode: 'info' },
       ]
 
       it('advances as soon as the field carries a value', () => {

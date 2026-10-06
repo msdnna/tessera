@@ -7,3 +7,7 @@ test-results/
 playwright-report/
 blob-report/
 e2e/.auth/
+# Claude Design sync (#2950): converter staging + build output (generated)
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/

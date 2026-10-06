@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script><style>html,body{background:#ececf0 !important;color-scheme:light}</style></helmet>
+<div style="display:flex;flex-direction:column;gap:64px;width:1440px;padding:48px 48px 96px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#26262e">
+<div style="display:flex;flex-direction:column;gap:18px;max-width:1100px">
+<div style="font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#7c5cff">Tessera v2 · Пакет E</div>
+<div style="font-size:34px;font-weight:700;letter-spacing:-.015em;line-height:1.15">Экраны приложения</div>
+<div style="font-size:15px;line-height:1.55;color:#4a4a55;text-wrap:pretty">Девять экранов, переведённых на язык v2: документы, настройки, админка, встречи, вход, пустые состояния, справка, «Что нового» и уведомления. Логика экранов прежняя. Разделы с навигацией собраны одинаково — утопленная колонка --v-sub слева и контент справа, как в окне «Проект».</div>
+<div style="font-size:12.5px;color:#767682">Кадры 1440×900, тёмная тема, акцент purple. Для документов, настроек и входа — также светлая.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">1 · Документы</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Дерево документов — панель --v-col слева, как дерево проектов. Документ привязан к задаче #2950 и Спринту 42. В тексте выделен фрагмент с комментарием на полях; на пустом блоке открыто меню «/». Справа — оглавление, комментарии, согласование 2 из 3 и история версий.</div>
+<dc-import name="FrameA" scene="eDocs" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="eDocs" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Галерея шаблонов · ⌘N в дереве документов</div>
+<dc-import name="FrameA" scene="eTpl" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Раскладка</div><div>Дерево 240px, радиус 18, строки 30, отступ 14 на уровень. Колонка текста до 640px, заголовок 30/700, текст 15/1.65. Правая колонка 272px из карточек --v-col радиус 16.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Блоки</div><div>«+» и ручка ⋮⋮ слева от блока при наведении. «/» — меню блоков с фильтром по вводу; выноска — мягкий accent, радиус 14. Задача встраивается блоком /t.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Комментарии</div><div>Фрагмент — #f0a020 24% и подчёркивание 2px; карточка комментария на полях с полоской 3px того же тона. ⌘⌥M — комментарий к выделению.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Согласование</div><div>Статус в шапке — пилл «На согласовании». Прогресс зелёным hueGrad, ⇧A — согласовать. История — список версий со сравнением, как ярус 2.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">2 · Настройки профиля</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Открыт раздел «Уведомления»: каналы карточками с переключателями, маршруты «событие → канал» матрицей, тихие часы и шаблоны. «Приложение» помечен «десктоп» — он есть только в клиенте.</div>
+<dc-import name="FrameA" scene="eSet" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="eSet" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:1000px">Навигация 232px на --v-sub, радиус 18; G затем «,» — открыть, ↑↓ — разделы. Канал — карточка --v-col радиус 16, значок 34px в тоне канала; выключенный — нейтральный. Маршрут — строка 48px, ячейка канала 30px: включено — мягкий accent, выключено — иконка 45%. Space на ячейке переключает. Изменения сохраняются сразу, тост «Сохранено» не показываем.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">3 · Администрирование</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Таблица пользователей без линий: каждая строка — поверхность --v-col с радиусом 12 и зазором 4. Роль — выпадающий контрол, статус — точка. Сверху баннер о новой версии сервера.</div>
+<dc-import name="FrameA" scene="eAdmin" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:1000px">Строка 52px; владелец — роль в accent, админ — в синем, остальные — нейтральный --v-ctl. Заблокированные — opacity .6. I — пригласить (поповер-форма из пакета A), / — поиск, ↑↓ и ↵ — карточка пользователя справа. Сервер, интеграции, фоновые задания и версии — разделы той же навигации.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">4 · Встречи</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Список: идущая встреча сверху, ниже запланированные по дням и записи. «Запланировать» открывает поповер-форму у кнопки вместо модалки. Экран звонка — плитки участников, чат справа, панель управления снизу. Свёрнутый звонок — мини-окно поверх доски.</div>
+<dc-import name="FrameA" scene="eMeet" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<dc-import name="FrameA" scene="eCall" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<dc-import name="FrameA" scene="eMini" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Список</div><div>Строка 58px на --v-col; ближайшая встреча — время в accent и «Войти ⇧J». Идущая — карточка мягкого accent с меткой «идёт» (#e0533d). N V — запланировать, N J — мгновенная встреча.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Звонок</div><div>Плитки радиус 18 в тоне участника; говорящий — кольцо 3px primary и свечение. Кнопки 46px радиус 15; запись — мягкий красный. ⌘D микрофон, ⌘E камера, ⌘⇧H выйти. В чате / создаёт задачу прямо из встречи.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Мини-окно</div><div>340px, --v-pop радиус 16, тень 4. Перетаскивается за шапку, прилипает к углам. ⌘⇧M — свернуть / развернуть. Остаётся поверх при переходах внутри приложения.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">5 · Вход и аккаунт</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Один каркас для всех экранов аккаунта: «аврора» из «Моих задач» сверху и стеклянная карточка по центру. В десктоп-клиенте в карточке есть переключатель сервера.</div>
+<dc-import name="FrameA" what="auth" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" what="auth" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Остальные экраны каркаса</div>
+<dc-import name="FrameA" what="authSheet" mode="dark" accent="{{ accent }}" style="width:1440px;height:1180px" hint-size="1440px,1180px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:1000px">Карточка 400–420px, радиус 18, --v-pop 92% + blur 20, тень 4. Поля 40px радиус 10, основная кнопка 42px на всю ширину. Аврора — те же семь пятен, без анимации на экранах ввода. Фокус — в первое пустое поле; ↵ отправляет; код подтверждения вставляется целиком и переходит к следующей ячейке.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">6 · Пустые состояния и ошибки</div>
+<dc-import name="FrameA" what="catalogE" mode="dark" accent="{{ accent }}" style="width:1440px;height:860px" hint-size="1440px,860px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:1000px">Значок 56px радиус 18 в мягком тоне, заголовок 17/700, текст 13 text2, до двух действий с клавишами. Пустая доска и проект показывают призраки колонок — понятно, куда упадёт задача. Переподключение — оверлей --v-scrim поверх текущего экрана, работа не теряется.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">7–9 · Справка, «Что нового», уведомления</div>
+<dc-import name="FrameA" scene="eHelp" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<dc-import name="FrameA" scene="eNew" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<dc-import name="FrameA" scene="eNotif" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Справка</div><div>Ярус 2, 1000×680. Поиск в шапке (/), навигация --v-sub, статья до 560px, «На странице» справа. Ссылки на клавиши показывают kbd. F1 или «?» → «Открыть справку».</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">«Что нового»</div><div>560px, шапка в мягком accent с бейджем версии. Пункт — значок 38px в своём тоне, заголовок 14.5/650, одна строка описания. Показывается один раз после обновления; ↵ закрывает.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Уведомления</div><div>Поповер 420px у колокольчика. Непрочитанные — мягкий accent и точка. Действия прямо в строке: «Принять», «Разрешить конфликт». ⇧E — прочитать все, E — одно.</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">Проверка акцентов · teal и orange</div>
+<div style="display:flex;gap:24px">
+<dc-import name="FrameA" scene="eNotif" crop="subbarR" mode="dark" accent="teal" style="width:708px;height:600px" hint-size="708px,600px"></dc-import>
+<dc-import name="FrameA" scene="eNotif" crop="subbarR" mode="dark" accent="orange" style="width:708px;height:600px" hint-size="708px,600px"></dc-import>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:18px">
+<div style="font-size:22px;font-weight:650">Сводка для разработки</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:36px;font-size:13.5px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:650;color:#26262e">Новые клавиши</div>
+<div style="display:grid;grid-template-columns:120px minmax(0,1fr);gap:6px 16px">
+<span style="font-weight:600">G затем D</span><span>Документы</span>
+<span style="font-weight:600">G затем ,</span><span>Настройки профиля</span>
+<span style="font-weight:600">N затем V · J</span><span>Запланировать встречу · мгновенная встреча</span>
+<span style="font-weight:600">⇧J</span><span>Войти в ближайшую или идущую встречу</span>
+<span style="font-weight:600">⌘D · ⌘E</span><span>В звонке: микрофон · камера</span>
+<span style="font-weight:600">⌘⇧M · ⌘⇧H</span><span>Мини-окно звонка · выйти</span>
+<span style="font-weight:600">⇧E · E</span><span>Уведомления: прочитать все · одно</span>
+<span style="font-weight:600">F1</span><span>Справка</span>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:10px">
+<div style="font-weight:650;color:#26262e">Токены и отступления</div>
+<div>Новых токенов нет. В сайдбаре появились пункты «Документы» и «Встречи» (бейдж — идущая встреча).</div>
+<div style="display:flex;flex-direction:column;gap:6px">
+<span>· Комментарий на полях отмечен полоской 3px у карточки — это тон выделенного фрагмента, а не разделитель.</span>
+<span>· Карточка входа полупрозрачная с blur — по аналогии с хедером «Моих задач», чтобы аврора читалась под ней.</span>
+<span>· Видео в макете заменено плитками с аватарами в тоне участника: картинок для звонка у нас нет.</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;purple&quot;,&quot;blue&quot;,&quot;teal&quot;,&quot;green&quot;,&quot;orange&quot;,&quot;red&quot;,&quot;pink&quot;],&quot;default&quot;:&quot;purple&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent || 'purple' }; }
+}
+</script>
+</body>
+</html>

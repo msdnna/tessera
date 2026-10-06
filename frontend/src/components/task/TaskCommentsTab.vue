@@ -14,17 +14,23 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NSpace, NPopconfirm, useMessage } from 'naive-ui'
-import { ChatbubbleEllipsesOutline } from '@vicons/ionicons5'
+import { ChatbubbleEllipsesOutline, FlagOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { fmtWhen, groupThreads } from '@/utils/taskFeed'
+import { fmtWhen, groupThreads, eventText } from '@/utils/taskFeed'
 import { useFormat } from '@/composables/useFormat'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
 import { buildMentionItems } from '@/utils/mentions'
 import { scrollParent } from '@/utils/dom'
+import { sortedColumns } from '@/utils/status'
+import { columnName } from '@/utils/defaultNames'
+import { columnStatusName } from '@/utils/columnStatus'
+import { PRIORITY_COLORS } from '@/styles/tokens'
+import { PRIORITY_KEYS, priorityLabel } from '@/utils/priority'
+import TesseraIcon from '../TesseraIcon.vue'
 import MarkdownEditor from '../MarkdownEditor.vue'
 import RichContent from '../RichContent.vue'
 import UserAvatar from '../UserAvatar.vue'
@@ -36,6 +42,14 @@ const props = defineProps({
   comments: { type: Array, default: () => [] },
   readonly: { type: Boolean, default: false },
   hydrated: { type: Boolean, default: false },
+  // v2 activity (#2958): 'all' interleaves the journal (`events`) with the
+  // threads by time; 'comments' is the thread alone.
+  mode: { type: String, default: 'comments' },
+  events: { type: Array, default: () => [] },
+  // The element the composer is teleported to — the modal pins it under the
+  // scrolling column; null keeps it here, sticky at the bottom of the pane.
+  composerTo: { type: null, default: null },
+  composerRows: { type: Number, default: 3 },
 })
 const emit = defineEmits(['update:comments', 'changed', 'reload-detail'])
 
@@ -58,9 +72,68 @@ const editingCommentBody = ref('')
 // offline send, else null.
 const posting = ref(false)
 const retryInfo = ref(null)
+// Docked under the modal (v2), an empty composer at rest is a one-line bar; its
+// toolbar shows while it has focus or text.
+const composerFocus = ref(false)
+function onComposerBlur(e) {
+  if (!e.currentTarget?.contains(e.relatedTarget)) composerFocus.value = false
+}
 
 // The flat list from the API, assembled into "root + its replies" threads.
 const threads = computed(() => groupThreads(props.comments))
+// What the pane lists: the threads, or — in the «Всё» view — the threads and the
+// journal in one timeline. A comment is in the journal too (kind 'comment'); the
+// thread already shows it, so that entry is dropped.
+const feed = computed(() => {
+  const th = threads.value.map((x) => ({
+    kind: 'thread',
+    key: x.root.id,
+    at: x.root.created_at,
+    th: x,
+  }))
+  if (props.mode !== 'all') return th
+  const ev = (props.events || [])
+    .filter((e) => e.kind !== 'comment')
+    .map((e) => ({ kind: 'event', key: `e${e.id}`, at: e.created_at, e }))
+  return [...ev, ...th].sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0))
+})
+// A move is drawn as column chips — «from → to», or just «→ to» for entries
+// written before the journal kept the source — in the board's column colours
+// with the column's status glyph (matched by name: the journal stores names).
+const boardCols = computed(() => sortedColumns(bv.columns || []))
+function colOf(name) {
+  return boardCols.value.find((c) => c.name === name || columnName(c) === name) || null
+}
+function chipStyle(name) {
+  const c = colOf(name)?.color
+  return c
+    ? { background: `color-mix(in srgb, ${c} 22%, var(--t-pop))`, color: 'var(--t-text1)' }
+    : {}
+}
+function chipIcon(name) {
+  const c = colOf(name)
+  if (!c) return null
+  const cols = boardCols.value
+  const doneId = bv.board?.done_column_id || cols[cols.length - 1]?.id
+  return columnStatusName({
+    isDone: c.id === doneId,
+    first: c.id === cols[0]?.id,
+    name: c.name,
+    nameKey: c.name_key,
+  })
+}
+// A priority change gets the priority's own pill, as on the card.
+const prioOf = (e) => {
+  const p = Number(e.data?.to)
+  return e.kind === 'priority' && PRIORITY_KEYS[p] !== undefined ? p : null
+}
+function prioStyle(p) {
+  const c = PRIORITY_COLORS[p]
+  return {
+    color: c,
+    background: `color-mix(in srgb, ${c} 18%, var(--t-pop))`,
+  }
+}
 // id of the thread root whose reply composer is open, and its draft.
 const replyingTo = ref(null)
 const replyBody = ref('')
@@ -424,253 +497,316 @@ async function onCommentCheck(c, i) {
            direct flex children of .c-list; only newly-posted comments
            fade in (no `appear`, so the initial list doesn't animate). -->
       <TransitionGroup :name="hydrated ? 'c-fade' : ''" tag="div" class="c-items">
-        <div v-for="th in threads" :key="th.root.id" class="c-thread">
-          <div class="comment" :data-comment-id="th.root.id">
-            <UserAvatar
-              class="c-ava"
-              :user-id="th.root.author_id || ''"
-              :src="th.root.gl_author_avatar_url"
-              :name="th.root.author_name || th.root.gl_author_name || '?'"
-            />
-            <div class="c-body">
-              <div class="c-head">
-                <span class="c-author">{{
-                  th.root.author_name || th.root.gl_author_name || t('task.comments.someone')
-                }}</span>
-                <span v-if="!th.root.author_name && th.root.gl_author_name" class="c-gl">
-                  · GitLab
+        <div v-for="it in feed" :key="it.key" :class="it.kind === 'event' ? 'c-event' : 'c-thread'">
+          <template v-if="it.kind === 'event'">
+            <UserAvatar class="e-ava" :user-id="it.e.actor_id" :name="it.e.actor_name" />
+            <span class="e-text">
+              <b>{{ it.e.actor_name || t('task.history.someone') }}</b>
+              <template v-if="it.e.kind === 'moved' && it.e.data?.to">
+                {{ t('task.journal.movedVerb') }}
+                <template v-if="it.e.data.from">
+                  <span class="e-chip" :style="chipStyle(it.e.data.from)">
+                    <TesseraIcon
+                      v-if="chipIcon(it.e.data.from)"
+                      :name="chipIcon(it.e.data.from)"
+                      :size="13"
+                      :style="{ color: colOf(it.e.data.from)?.color }"
+                    />
+                    {{ it.e.data.from }}
+                  </span>
+                </template>
+                <span class="e-arrow">→</span>
+                <span class="e-chip" :style="chipStyle(it.e.data.to)">
+                  <TesseraIcon
+                    v-if="chipIcon(it.e.data.to)"
+                    :name="chipIcon(it.e.data.to)"
+                    :size="13"
+                    :style="{ color: colOf(it.e.data.to)?.color }"
+                  />
+                  {{ it.e.data.to }}
                 </span>
-                <span class="c-when">{{ fmtWhen(th.root.created_at, formatters) }}</span>
-                <span v-if="th.root.author_id === meId" class="c-acts">
-                  <button
-                    class="c-act"
-                    :title="t('common.action.edit')"
-                    @click="startEditComment(th.root)"
-                  >
-                    ✎
-                  </button>
-                  <n-popconfirm
-                    :positive-button-props="{ type: 'error' }"
-                    :positive-text="t('common.action.delete')"
-                    @positive-click="deleteComment(th.root.id)"
-                  >
-                    <template #trigger>
-                      <button class="c-act" :title="t('common.action.delete')">✕</button>
-                    </template>
-                    {{ t('task.comments.deleteConfirm') }}
-                  </n-popconfirm>
-                </span>
-              </div>
-              <template v-if="editingCommentId === th.root.id">
-                <MarkdownEditor
-                  v-model="editingCommentBody"
-                  variant="boxed"
-                  :mention-items="mentionItems"
-                  :attach-task-id="taskId"
-                  :min-rows="2"
-                  :placeholder="t('task.comments.placeholder')"
-                  @attachments-changed="emit('changed')"
-                  @submit="saveComment"
-                />
-                <n-space :size="6" style="margin-top: 6px">
-                  <n-button size="tiny" type="primary" @click="saveComment">{{
-                    t('common.action.save')
-                  }}</n-button>
-                  <n-button size="tiny" @click="editingCommentId = null">{{
-                    t('common.action.cancel')
-                  }}</n-button>
-                </n-space>
               </template>
-              <RichContent
-                v-else
-                class="c-text"
-                :source="th.root.body"
-                :members="mentionItems"
-                mention-cards
-                task-refs
-                :interactive="th.root.author_id === meId"
-                @toggle="onCommentCheck(th.root, $event)"
+              <template v-else-if="prioOf(it.e) != null">
+                {{ t('task.journal.priorityVerb') }}
+                <span class="e-chip e-prio" :style="prioStyle(prioOf(it.e))">
+                  <FlagOutline class="e-flag" />
+                  {{ priorityLabel(prioOf(it.e)) }}
+                </span>
+              </template>
+              <template v-else-if="it.e.kind === 'renamed' && it.e.data?.to">
+                {{ t('task.journal.renamedVerb') }}
+                <span class="e-name">{{ it.e.data.to }}</span>
+              </template>
+              <template v-else>{{ eventText(it.e) }}</template>
+            </span>
+            <span class="e-when">{{ fmtWhen(it.e.created_at, formatters) }}</span>
+          </template>
+          <template v-else>
+            <div class="comment" :data-comment-id="it.th.root.id">
+              <UserAvatar
+                class="c-ava"
+                :user-id="it.th.root.author_id || ''"
+                :src="it.th.root.gl_author_avatar_url"
+                :name="it.th.root.author_name || it.th.root.gl_author_name || '?'"
               />
-              <div class="c-thread-acts">
-                <button
-                  v-if="!readonly"
-                  class="c-link"
-                  data-testid="comment-reply"
-                  @click="startReply(th.root.id, th.root)"
-                >
-                  {{ t('task.comments.reply') }}
-                </button>
-                <button
-                  v-if="th.replies.length"
-                  class="c-link"
-                  @click="toggleCollapsed(th.root.id)"
-                >
-                  {{ collapsed.has(th.root.id) ? replyCount(th) : t('task.comments.collapse') }}
-                </button>
+              <div class="c-body">
+                <div class="c-head">
+                  <span class="c-author">{{
+                    it.th.root.author_name ||
+                    it.th.root.gl_author_name ||
+                    t('task.comments.someone')
+                  }}</span>
+                  <span v-if="!it.th.root.author_name && it.th.root.gl_author_name" class="c-gl">
+                    · GitLab
+                  </span>
+                  <span class="c-when">{{ fmtWhen(it.th.root.created_at, formatters) }}</span>
+                  <span v-if="it.th.root.author_id === meId" class="c-acts">
+                    <button
+                      class="c-act"
+                      :title="t('common.action.edit')"
+                      @click="startEditComment(it.th.root)"
+                    >
+                      ✎
+                    </button>
+                    <n-popconfirm
+                      :positive-button-props="{ type: 'error' }"
+                      :positive-text="t('common.action.delete')"
+                      @positive-click="deleteComment(it.th.root.id)"
+                    >
+                      <template #trigger>
+                        <button class="c-act" :title="t('common.action.delete')">✕</button>
+                      </template>
+                      {{ t('task.comments.deleteConfirm') }}
+                    </n-popconfirm>
+                  </span>
+                </div>
+                <template v-if="editingCommentId === it.th.root.id">
+                  <MarkdownEditor
+                    v-model="editingCommentBody"
+                    variant="boxed"
+                    :mention-items="mentionItems"
+                    :attach-task-id="taskId"
+                    :min-rows="2"
+                    :placeholder="t('task.comments.placeholder')"
+                    @attachments-changed="emit('changed')"
+                    @submit="saveComment"
+                  />
+                  <n-space :size="6" style="margin-top: 6px">
+                    <n-button size="tiny" type="primary" @click="saveComment">{{
+                      t('common.action.save')
+                    }}</n-button>
+                    <n-button size="tiny" @click="editingCommentId = null">{{
+                      t('common.action.cancel')
+                    }}</n-button>
+                  </n-space>
+                </template>
+                <RichContent
+                  v-else
+                  class="c-text"
+                  :source="it.th.root.body"
+                  :members="mentionItems"
+                  mention-cards
+                  task-refs
+                  :interactive="it.th.root.author_id === meId"
+                  @toggle="onCommentCheck(it.th.root, $event)"
+                />
+                <div class="c-thread-acts">
+                  <button
+                    v-if="!readonly"
+                    class="c-link"
+                    data-testid="comment-reply"
+                    @click="startReply(it.th.root.id, it.th.root)"
+                  >
+                    {{ t('task.comments.reply') }}
+                  </button>
+                  <button
+                    v-if="it.th.replies.length"
+                    class="c-link"
+                    @click="toggleCollapsed(it.th.root.id)"
+                  >
+                    {{
+                      collapsed.has(it.th.root.id) ? replyCount(it.th) : t('task.comments.collapse')
+                    }}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
 
-          <!-- Replies: indented under the root and tied to it by the rail. The
+            <!-- Replies: indented under the root and tied to it by the rail. The
                rail is a flat neutral grey — the accent gradient is for
                non-neutral elements only. The grid-rows wrapper animates the
                collapse/expand smoothly (0fr ↔ 1fr). -->
-          <Transition name="c-collapse">
-            <div v-if="th.replies.length && !collapsed.has(th.root.id)" class="c-collapse">
-              <div class="c-replies">
-                <div
-                  v-for="r in th.replies"
-                  :key="r.id"
-                  class="comment c-reply"
-                  :data-comment-id="r.id"
-                >
-                  <UserAvatar
-                    class="c-ava"
-                    :user-id="r.author_id || ''"
-                    :src="r.gl_author_avatar_url"
-                    :name="r.author_name || r.gl_author_name || '?'"
-                  />
-                  <div class="c-body">
-                    <div class="c-head">
-                      <span class="c-author">{{
-                        r.author_name || r.gl_author_name || t('task.comments.someone')
-                      }}</span>
-                      <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
-                      <span class="c-when">{{ fmtWhen(r.created_at, formatters) }}</span>
-                      <span v-if="r.author_id === meId" class="c-acts">
-                        <button
-                          class="c-act"
-                          :title="t('common.action.edit')"
-                          @click="startEditComment(r)"
-                        >
-                          ✎
-                        </button>
-                        <n-popconfirm
-                          :positive-button-props="{ type: 'error' }"
-                          :positive-text="t('common.action.delete')"
-                          @positive-click="deleteComment(r.id)"
-                        >
-                          <template #trigger>
-                            <button class="c-act" :title="t('common.action.delete')">✕</button>
-                          </template>
-                          {{ t('task.comments.deleteConfirm') }}
-                        </n-popconfirm>
-                      </span>
-                    </div>
-                    <template v-if="editingCommentId === r.id">
-                      <MarkdownEditor
-                        v-model="editingCommentBody"
-                        variant="boxed"
-                        :mention-items="mentionItems"
-                        :attach-task-id="taskId"
-                        :min-rows="2"
-                        :placeholder="t('task.comments.placeholder')"
-                        @attachments-changed="emit('changed')"
-                        @submit="saveComment"
-                      />
-                      <n-space :size="6" style="margin-top: 6px">
-                        <n-button size="tiny" type="primary" @click="saveComment">{{
-                          t('common.action.save')
-                        }}</n-button>
-                        <n-button size="tiny" @click="editingCommentId = null">{{
-                          t('common.action.cancel')
-                        }}</n-button>
-                      </n-space>
-                    </template>
-                    <RichContent
-                      v-else
-                      class="c-text"
-                      :source="r.body"
-                      :members="mentionItems"
-                      mention-cards
-                      task-refs
-                      :interactive="r.author_id === meId"
-                      @toggle="onCommentCheck(r, $event)"
+            <Transition name="c-collapse">
+              <div v-if="it.th.replies.length && !collapsed.has(it.th.root.id)" class="c-collapse">
+                <div class="c-replies">
+                  <div
+                    v-for="r in it.th.replies"
+                    :key="r.id"
+                    class="comment c-reply"
+                    :data-comment-id="r.id"
+                  >
+                    <UserAvatar
+                      class="c-ava"
+                      :user-id="r.author_id || ''"
+                      :src="r.gl_author_avatar_url"
+                      :name="r.author_name || r.gl_author_name || '?'"
                     />
-                    <div v-if="!readonly" class="c-thread-acts">
-                      <!-- Replying to a reply targets the same root: threads are two
+                    <div class="c-body">
+                      <div class="c-head">
+                        <span class="c-author">{{
+                          r.author_name || r.gl_author_name || t('task.comments.someone')
+                        }}</span>
+                        <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
+                        <span class="c-when">{{ fmtWhen(r.created_at, formatters) }}</span>
+                        <span v-if="r.author_id === meId" class="c-acts">
+                          <button
+                            class="c-act"
+                            :title="t('common.action.edit')"
+                            @click="startEditComment(r)"
+                          >
+                            ✎
+                          </button>
+                          <n-popconfirm
+                            :positive-button-props="{ type: 'error' }"
+                            :positive-text="t('common.action.delete')"
+                            @positive-click="deleteComment(r.id)"
+                          >
+                            <template #trigger>
+                              <button class="c-act" :title="t('common.action.delete')">✕</button>
+                            </template>
+                            {{ t('task.comments.deleteConfirm') }}
+                          </n-popconfirm>
+                        </span>
+                      </div>
+                      <template v-if="editingCommentId === r.id">
+                        <MarkdownEditor
+                          v-model="editingCommentBody"
+                          variant="boxed"
+                          :mention-items="mentionItems"
+                          :attach-task-id="taskId"
+                          :min-rows="2"
+                          :placeholder="t('task.comments.placeholder')"
+                          @attachments-changed="emit('changed')"
+                          @submit="saveComment"
+                        />
+                        <n-space :size="6" style="margin-top: 6px">
+                          <n-button size="tiny" type="primary" @click="saveComment">{{
+                            t('common.action.save')
+                          }}</n-button>
+                          <n-button size="tiny" @click="editingCommentId = null">{{
+                            t('common.action.cancel')
+                          }}</n-button>
+                        </n-space>
+                      </template>
+                      <RichContent
+                        v-else
+                        class="c-text"
+                        :source="r.body"
+                        :members="mentionItems"
+                        mention-cards
+                        task-refs
+                        :interactive="r.author_id === meId"
+                        @toggle="onCommentCheck(r, $event)"
+                      />
+                      <div v-if="!readonly" class="c-thread-acts">
+                        <!-- Replying to a reply targets the same root: threads are two
                        levels deep, and the backend collapses it anyway. The reply's
                        own author is the one pre-mentioned, though. -->
-                      <button class="c-link" @click="startReply(th.root.id, r)">
-                        {{ t('task.comments.reply') }}
-                      </button>
+                        <button class="c-link" @click="startReply(it.th.root.id, r)">
+                          {{ t('task.comments.reply') }}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </Transition>
+            </Transition>
 
-          <div v-if="replyingTo === th.root.id && !readonly" class="c-reply-add">
-            <!-- Function ref, not a string one: a string ref inside v-for
+            <div v-if="replyingTo === it.th.root.id && !readonly" class="c-reply-add">
+              <!-- Function ref, not a string one: a string ref inside v-for
                  collects into an array, and getMentions() would be undefined.
                  Only one composer is open at a time, so a single slot is right. -->
-            <MarkdownEditor
-              :ref="(el) => (replyEditor = el)"
-              v-model="replyBody"
-              variant="boxed"
-              send
-              :sending="replyingPost"
-              :mention-items="mentionItems"
-              :command-items="commandItems"
-              :attach-task-id="taskId"
-              :min-rows="2"
-              :placeholder="t('task.comments.replyPlaceholder')"
-              @attachments-changed="emit('changed')"
-              @submit="postReply(th.root.id)"
-              @cancel="cancelReply"
-            />
-          </div>
+              <MarkdownEditor
+                :ref="(el) => (replyEditor = el)"
+                v-model="replyBody"
+                variant="boxed"
+                send
+                :sending="replyingPost"
+                :mention-items="mentionItems"
+                :command-items="commandItems"
+                :attach-task-id="taskId"
+                :min-rows="2"
+                :placeholder="t('task.comments.replyPlaceholder')"
+                @attachments-changed="emit('changed')"
+                @submit="postReply(it.th.root.id)"
+                @cancel="cancelReply"
+              />
+            </div>
+          </template>
         </div>
       </TransitionGroup>
       <EmptyState
-        v-if="!comments.length"
+        v-if="!feed.length"
         class="c-empty"
         size="small"
         :icon="ChatbubbleEllipsesOutline"
         :text="t('task.comments.empty')"
       />
     </div>
-    <div v-if="!readonly" class="comment-add">
-      <MarkdownEditor
-        ref="commentEditor"
-        v-model="newComment"
-        variant="boxed"
-        send
-        :sending="posting"
-        :mention-items="mentionItems"
-        :command-items="commandItems"
-        :attach-task-id="taskId"
-        :min-rows="3"
-        :placeholder="t('task.comments.composerPlaceholder')"
-        @attachments-changed="emit('changed')"
-        @submit="postComment"
-      />
-      <!-- Offline-retry banner: shown while waiting to resend after a
+    <!-- The composer: pinned under the modal's scrolling column when it gives a
+         target (v2), else sticky at the bottom of this pane. -->
+    <Teleport v-if="!readonly" :to="composerTo" :disabled="!composerTo">
+      <div
+        class="comment-add"
+        :class="{
+          docked: !!composerTo,
+          idle: !!composerTo && !composerFocus && !newComment.trim(),
+        }"
+        @focusin="composerFocus = true"
+        @focusout="onComposerBlur"
+      >
+        <MarkdownEditor
+          ref="commentEditor"
+          v-model="newComment"
+          variant="boxed"
+          send
+          :sending="posting"
+          :mention-items="mentionItems"
+          :command-items="commandItems"
+          :attach-task-id="taskId"
+          :min-rows="composerRows"
+          :placeholder="t('task.comments.composerPlaceholder')"
+          @attachments-changed="emit('changed')"
+          @submit="postComment"
+        />
+        <!-- Offline-retry banner: shown while waiting to resend after a
            network failure; the draft stays put, Cancel aborts. -->
-      <Transition name="retry-pop">
-        <div v-if="retryInfo" class="retry-bar">
-          <TesseraSpinner :size="14" />
-          <span>{{
-            t('task.comments.retrying', { attempt: retryInfo.attempt, max: retryInfo.max })
-          }}</span>
-          <button class="retry-cancel" @click="cancelRetry">{{ t('common.action.cancel') }}</button>
-        </div>
-      </Transition>
-      <!-- Dry-run hint: what the built-in commands in the draft will
+        <Transition name="retry-pop">
+          <div v-if="retryInfo" class="retry-bar">
+            <TesseraSpinner :size="14" />
+            <span>{{
+              t('task.comments.retrying', { attempt: retryInfo.attempt, max: retryInfo.max })
+            }}</span>
+            <button class="retry-cancel" @click="cancelRetry">
+              {{ t('common.action.cancel') }}
+            </button>
+          </div>
+        </Transition>
+        <!-- Dry-run hint: what the built-in commands in the draft will
            do. Custom keys are listed apart — they stay in the text. -->
-      <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
-        <span v-for="(c, i) in cmdPreview" :key="`${c.key}-${i}`" class="cmd-chip">
-          <code>/{{ c.key }}</code>
-          <span :class="{ err: c.error }">{{ c.error || c.summary }}</span>
-        </span>
-        <span v-if="cmdCustom.length" class="cmd-note">
-          {{
-            t('task.comments.customCommands', { list: cmdCustom.map((k) => `/${k}`).join(', ') })
-          }}
-        </span>
+        <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
+          <span v-for="(c, i) in cmdPreview" :key="`${c.key}-${i}`" class="cmd-chip">
+            <code>/{{ c.key }}</code>
+            <span :class="{ err: c.error }">{{ c.error || c.summary }}</span>
+          </span>
+          <span v-if="cmdCustom.length" class="cmd-note">
+            {{
+              t('task.comments.customCommands', { list: cmdCustom.map((k) => `/${k}`).join(', ') })
+            }}
+          </span>
+        </div>
       </div>
-    </div>
+    </Teleport>
   </div>
 </template>
 
@@ -866,10 +1002,9 @@ async function onCommentCheck(c, i) {
      the offline-retry bar — puts comment text straight through the footer.
      Paint it with --n-color-modal, NOT --t-surface: a card *inside a modal*
      is painted by Naive with `background: var(--n-color-modal)` (card cssr,
-     asModal), and our theme overrides only Card.color / Modal.color — the
-     common `modalColor` var stays Naive's default (dark: rgb(44,44,50) vs our
-     --t-surface #1e1e24). That mismatch is exactly the dark-mode seam that got
-     an earlier background attempt reverted. --n-color-modal is set as a custom
+     asModal), and that colour (common `modalColor`, the v2 `pop` level) is not
+     --t-surface. That mismatch is exactly the dark-mode seam that got an
+     earlier background attempt reverted. --n-color-modal is set as a custom
      property on the .n-card root, so it inherits down here and matches the card
      by construction, in both themes. */
   background: var(--n-color-modal, var(--t-surface));
@@ -893,6 +1028,86 @@ async function onCommentCheck(c, i) {
 }
 .comment-add > :first-child {
   width: 100%;
+}
+/* Docked under the modal's column (v2): the column scrolls above it, so it is
+   neither sticky nor separated by a line — the modal pads it. */
+.comment-add.docked {
+  position: static;
+  margin: 0;
+  padding: 0;
+  border-top: none;
+  background: transparent;
+}
+.comment-add.docked::before {
+  display: none;
+}
+.comment-add.docked.idle :deep(.md2-toolbar) {
+  display: none;
+}
+/* ── «Всё»: journal rows between the threads (v2, #2958) ── */
+.c-event {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.e-ava {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  font-size: 9px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.e-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+}
+.e-text b {
+  color: var(--t-text2);
+  font-weight: 500;
+}
+.e-chip {
+  gap: 5px;
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 10px;
+  border-radius: 12px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.e-flag {
+  width: 13px;
+  height: 13px;
+}
+.e-prio {
+  font-weight: 600;
+}
+.e-name {
+  color: var(--t-text1);
+  font-weight: 500;
+}
+.e-arrow {
+  color: var(--t-text3);
+}
+.e-when {
+  flex: none;
+  font-size: 12px;
+  color: var(--t-text3);
 }
 /* Offline-retry banner under the composer — neutral, informational. Same pop as the
    header's share-icon morph; renamed because the transition classes have to resolve
@@ -958,7 +1173,7 @@ async function onCommentCheck(c, i) {
   color: var(--t-text2);
 }
 .cmd-chip .err {
-  color: var(--t-error, #e5484d);
+  color: var(--t-error);
 }
 .cmd-note {
   font-style: italic;

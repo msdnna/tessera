@@ -167,19 +167,20 @@ const gradStyle = computed(() => ({ '--grad': hueGrad(textHue.value) }))
   padding-left: 0.42em;
 }
 /* GitLab-EE two-tone scoped pill: two bordered segments (filled scope + soft
-   value) that each round their own outer corners, so it matches the card's
-   other pills (small 6px radius, full row height) with no overflow clipping.
+   value) that each round their own outer corners into one capsule, so it
+   matches the card's other pills (v2: capsules, full row height) with no
+   overflow clipping.
    The call site's padding yields to the segments; the pill stretches to the row
    height — e.g. the 22px single-tag button — via align-self. */
 .tt {
   padding: 0;
   align-self: stretch;
   align-items: stretch;
-  /* Matches the segments' 6px outer corners so a box-shadow set on the pill (the
+  /* Matches the segments' capsule corners so a box-shadow set on the pill (the
      single-tag cascade) is rounded, not a square poking past the corners. The
      root stays transparent with overflow visible — this only shapes the shadow,
      it doesn't clip the segments. */
-  border-radius: 6px;
+  border-radius: var(--t-r-pill);
 }
 .tt .tp-scope,
 .tt .tp-name {
@@ -191,15 +192,15 @@ const gradStyle = computed(() => ({ '--grad': hueGrad(textHue.value) }))
   background: var(--tp-scope-bg);
   color: var(--tp-scope-fg);
   font-weight: 600;
-  padding: 1px 7px;
+  padding: 1px 7px 1px 8px;
   border-right: none;
-  border-radius: 6px 0 0 6px;
+  border-radius: var(--t-r-pill) 0 0 var(--t-r-pill);
 }
 .tt .tp-name {
   background: var(--tp-name-bg);
-  padding: 1px 8px;
+  padding: 1px 9px 1px 8px;
   border-left: none;
-  border-radius: 0 6px 6px 0;
+  border-radius: 0 var(--t-r-pill) var(--t-r-pill) 0;
 }
 .tt .tp-name-txt {
   display: inline;

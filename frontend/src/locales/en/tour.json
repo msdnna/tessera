@@ -64,12 +64,12 @@
       "body": "Describe the task: Markdown, attachments and {'@'} mentions are supported."
     },
     "tm-tabs": {
-      "title": "Comments, subtasks, relations",
-      "body": "The same place holds the discussion, the subtask tree, relations to other tasks and the full change history."
+      "title": "Subtasks, activity, links",
+      "body": "Below the description — subtasks and the activity feed: comments mixed with the history of changes. Links to other tasks are in the properties panel."
     },
-    "tm-save": {
-      "title": "Save the task",
-      "body": "Press “Save” — the modal closes and the changes show up on the card."
+    "tm-close": {
+      "title": "Everything is saved",
+      "body": "Fields save as you change them — there is no separate «Save» button. Close the task: the card already shows your changes."
     },
     "board-tools": {
       "title": "Board views and tools",
@@ -105,7 +105,7 @@
     },
     "nav-footer": {
       "title": "Settings and notifications",
-      "body": "At the bottom — your profile and settings, next to them the bell with notifications."
+      "body": "At the bottom — your profile and settings; the bell with notifications is in the top right corner."
     },
     "done": {
       "title": "All set",

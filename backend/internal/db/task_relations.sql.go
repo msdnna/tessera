@@ -163,25 +163,36 @@ SELECT
     t.title  AS related_title,
     t.board_id AS related_board_id,
     t.completed_at AS related_completed_at,
-    t.archived_at  AS related_archived_at
+    t.archived_at  AS related_archived_at,
+    -- The related task's column, so a link row can show its status glyph (v2,
+    -- #2958): the name/name_key pick review vs in-progress, ` + "`" + `first` + "`" + ` the todo shape.
+    COALESCE(bc.name, '')  AS related_column_name,
+    COALESCE(bc.color, '') AS related_column_color,
+    bc.name_key            AS related_column_name_key,
+    COALESCE(bc.position = (SELECT MIN(fc.position) FROM board_columns fc WHERE fc.board_id = t.board_id), false)::boolean AS related_column_first
 FROM task_relations r
 JOIN tasks t ON t.id = r.related_task_id
+LEFT JOIN board_columns bc ON bc.id = t.column_id
 WHERE r.task_id = $1
 ORDER BY r.created_at
 `
 
 type ListTaskRelationsRow struct {
-	ID                 uuid.UUID  `json:"id"`
-	TaskID             uuid.UUID  `json:"task_id"`
-	RelatedTaskID      uuid.UUID  `json:"related_task_id"`
-	Kind               string     `json:"kind"`
-	Source             string     `json:"source"`
-	CreatedAt          time.Time  `json:"created_at"`
-	RelatedNumber      *int64     `json:"related_number"`
-	RelatedTitle       string     `json:"related_title"`
-	RelatedBoardID     uuid.UUID  `json:"related_board_id"`
-	RelatedCompletedAt *time.Time `json:"related_completed_at"`
-	RelatedArchivedAt  *time.Time `json:"related_archived_at"`
+	ID                   uuid.UUID  `json:"id"`
+	TaskID               uuid.UUID  `json:"task_id"`
+	RelatedTaskID        uuid.UUID  `json:"related_task_id"`
+	Kind                 string     `json:"kind"`
+	Source               string     `json:"source"`
+	CreatedAt            time.Time  `json:"created_at"`
+	RelatedNumber        *int64     `json:"related_number"`
+	RelatedTitle         string     `json:"related_title"`
+	RelatedBoardID       uuid.UUID  `json:"related_board_id"`
+	RelatedCompletedAt   *time.Time `json:"related_completed_at"`
+	RelatedArchivedAt    *time.Time `json:"related_archived_at"`
+	RelatedColumnName    string     `json:"related_column_name"`
+	RelatedColumnColor   string     `json:"related_column_color"`
+	RelatedColumnNameKey *string    `json:"related_column_name_key"`
+	RelatedColumnFirst   bool       `json:"related_column_first"`
 }
 
 // `source` is provider-neutral (user|gitlab): the client shows where a relation came
@@ -207,6 +218,10 @@ func (q *Queries) ListTaskRelations(ctx context.Context, taskID uuid.UUID) ([]Li
 			&i.RelatedBoardID,
 			&i.RelatedCompletedAt,
 			&i.RelatedArchivedAt,
+			&i.RelatedColumnName,
+			&i.RelatedColumnColor,
+			&i.RelatedColumnNameKey,
+			&i.RelatedColumnFirst,
 		); err != nil {
 			return nil, err
 		}

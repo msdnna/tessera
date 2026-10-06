@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<sc-if value="{{ k_grey }}" hint-placeholder-val="{{ true }}"><div style="--k:#9aa0aa;display:contents"><dc-import name="ColumnBody" c="{{ c }}" dir="{{ dir }}" hint-size="256px,420px"></dc-import></div></sc-if>
+<sc-if value="{{ k_teal }}" hint-placeholder-val="{{ false }}"><div style="--k:#0eb0a9;display:contents"><dc-import name="ColumnBody" c="{{ c }}" dir="{{ dir }}" hint-size="256px,420px"></dc-import></div></sc-if>
+<sc-if value="{{ k_blue }}" hint-placeholder-val="{{ false }}"><div style="--k:#2f80ed;display:contents"><dc-import name="ColumnBody" c="{{ c }}" dir="{{ dir }}" hint-size="256px,420px"></dc-import></div></sc-if>
+<sc-if value="{{ k_orange }}" hint-placeholder-val="{{ false }}"><div style="--k:#f0a020;display:contents"><dc-import name="ColumnBody" c="{{ c }}" dir="{{ dir }}" hint-size="256px,420px"></dc-import></div></sc-if>
+<sc-if value="{{ k_green }}" hint-placeholder-val="{{ false }}"><div style="--k:#18a058;display:contents"><dc-import name="ColumnBody" c="{{ c }}" dir="{{ dir }}" hint-size="256px,420px"></dc-import></div></sc-if>
+<sc-if value="{{ k_purple }}" hint-placeholder-val="{{ false }}"><div style="--k:#7c5cff;display:contents"><dc-import name="ColumnBody" c="{{ c }}" dir="{{ dir }}" hint-size="256px,420px"></dc-import></div></sc-if>
+<sc-if value="{{ k_pink }}" hint-placeholder-val="{{ false }}"><div style="--k:#eb2f96;display:contents"><dc-import name="ColumnBody" c="{{ c }}" dir="{{ dir }}" hint-size="256px,420px"></dc-import></div></sc-if>
+<sc-if value="{{ k_red }}" hint-placeholder-val="{{ false }}"><div style="--k:#e0533d;display:contents"><dc-import name="ColumnBody" c="{{ c }}" dir="{{ dir }}" hint-size="256px,420px"></dc-import></div></sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    const c = this.props.c || { col: {}, cards: [] };
+    const k = ((c.col && c.col.color) || '#9aa0aa').toLowerCase();
+    const M = { '#9aa0aa': 'grey', '#0eb0a9': 'teal', '#2f80ed': 'blue', '#f0a020': 'orange', '#18a058': 'green', '#7c5cff': 'purple', '#eb2f96': 'pink', '#e0533d': 'red' };
+    const key = M[k] || 'grey';
+    const out = { c, dir: this.props.dir || 'A' };
+    Object.values(M).forEach((n) => { out['k_' + n] = n === key; });
+    return out;
+  }
+}
+</script>
+</body>
+</html>

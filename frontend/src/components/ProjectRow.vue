@@ -46,6 +46,7 @@ import { makeSlug } from '@/utils/slug'
 import { workspaceName } from '@/utils/defaultNames'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
+import { useBoardViewStore } from '@/stores/boardView'
 import ProjectIcon from './ProjectIcon.vue'
 import TesseraIcon from './TesseraIcon.vue'
 import IconColorPicker from './IconColorPicker.vue'
@@ -65,6 +66,7 @@ const props = defineProps({
 
 const store = useWorkspacesStore()
 const tour = useTourStore()
+const boardView = useBoardViewStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
@@ -677,6 +679,15 @@ async function addBoard() {
             @blur="commitBoardRename(b)"
           />
           <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
+          <!-- The open board's task count — what its filter leaves (v2, as in the
+               mockup). It gives its place to «⋯» under the pointer. -->
+          <span
+            v-if="boardView.boardId === b.id && boardView.shownTasks != null"
+            class="bcount"
+            data-testid="board-count"
+            :title="boardView.shownTitle"
+            >{{ boardView.shownTasks }}</span
+          >
           <n-popover trigger="click" placement="right-start">
             <template #trigger>
               <n-button class="hover-btn" text size="tiny" @click.stop>
@@ -869,13 +880,15 @@ async function addBoard() {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 8px;
-  border-radius: 6px;
+  min-height: 32px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border-radius: var(--t-r-ctl);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13.5px;
 }
 .row:hover {
-  background: var(--t-hover);
+  background: var(--t-hover-side);
 }
 .hover-btn {
   opacity: 0;
@@ -907,9 +920,9 @@ async function addBoard() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 5px;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
   color: #fff;
   font-size: 10px;
   line-height: 1;
@@ -941,20 +954,42 @@ async function addBoard() {
   color: var(--t-text1);
 }
 /* Match the group→child gutter (SidebarNode .children) so the whole tree shares
-   one indentation style. */
+   one indentation style — indent only, no guide line (v2, #2953). */
 .boards {
-  margin-left: 15px;
-  padding-left: 6px;
-  border-left: 1px solid var(--t-border);
+  margin-left: 14px;
 }
 .board-row {
   font-size: 13px;
   color: var(--t-text2);
 }
+.bcount {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
+}
+.board-row:hover .bcount {
+  display: none;
+}
+/* the hidden «⋯» keeps no width, so the count sits flush right */
+.board-row .hover-btn {
+  flex: none;
+}
+.board-row:not(:hover) .hover-btn {
+  width: 0;
+  overflow: hidden;
+}
 .board-row.active {
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-  color: var(--t-primary);
+  background: var(--t-active);
+  color: var(--t-text1);
   font-weight: 600;
+}
+.board-row.active .bicon :deep([fill='currentColor']) {
+  fill: url(#t-accent-grad-svg);
+}
+.board-row.active .bicon :deep([stroke='currentColor']) {
+  stroke: url(#t-accent-grad-svg);
 }
 .ms-row .bicon {
   color: var(--t-primary);

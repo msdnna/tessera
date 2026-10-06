@@ -22,18 +22,32 @@ import MilestoneManager from '@/components/MilestoneManager.vue'
 //  2. Helpers called from outside a setup context (milestones, tagGroups) — they
 //     have to reach the catalogue on every call, not once on import.
 
+// The home screen's tasks: one of mine due today, one overdue — enough for two
+// section headers to re-label.
+const day = (offset) => {
+  const d = new Date()
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate() + offset)).toISOString()
+}
+const HOME_TASKS = [
+  { id: 'a', title: 'Сегодняшняя', due_date: day(0), assignee_ids: ['u1'], board_id: 'b1' },
+  { id: 'b', title: 'Вчерашняя', due_date: day(-1), assignee_ids: ['u1'], board_id: 'b1' },
+]
+
 vi.mock('@/api', () => {
   const ok = (data) => Promise.resolve({ data })
   return {
+    reminders: { list: () => ok([]) },
+    boards: { columns: () => ok([]), createTask: vi.fn() },
+    tasks: { update: vi.fn(), addTag: vi.fn(), addAssignee: vi.fn() },
     workspaces: {
       summary: () => ok({ assigned: 1, active: 2, overdue: 0, due_today: 0, due_week: 0 }),
-      tasks: () => ok([]),
+      tasks: () => ok(HOME_TASKS),
       tags: () => ok([]),
       tagPrefixes: () => ok([]),
       members: () => ok([]),
       milestones: () => ok([]),
     },
-    projects: { milestones: () => ok([]) },
+    projects: { milestones: () => ok([]), boards: () => ok([]), createTag: vi.fn() },
     milestones: { pushToGitlab: vi.fn(), update: vi.fn(), remove: vi.fn() },
     gitlab: { listIntegrations: () => ok({ integrations: [] }) },
   }
@@ -84,36 +98,30 @@ describe('404 screen', () => {
 })
 
 describe('home screen', () => {
-  it('re-labels the summary cards after a switch', async () => {
-    const w = track(mount(HomeView))
-    const labels = () => w.vm.cards.map((c) => c.label)
-    expect(labels()).toEqual([
-      'Мои задачи',
-      'Все активные',
-      'Просрочено',
-      'Сегодня',
-      'На неделе',
-      'Выполнено',
-    ])
+  // v2 (#2960): the greeting and the section headers follow a language switch.
+  it('re-labels the greeting and the sections after a switch', async () => {
+    const { useAuthStore } = await import('@/stores/auth')
+    useAuthStore().user = { id: 'u1', name: 'Аня Ковалёва' }
+    const { useWorkspacesStore } = await import('@/stores/workspaces')
+    useWorkspacesStore().currentId = 'w1'
+    const w = track(
+      mount(
+        { render: () => h(NMessageProvider, null, { default: () => h(HomeView) }) },
+        { global: { stubs: { HomeAurora: true } } },
+      ),
+    )
+    for (let i = 0; i < 4; i++) {
+      await new Promise((r) => setTimeout(r, 0))
+      await w.vm.$nextTick()
+    }
+    const heads = () => w.findAll('.hl-name').map((n) => n.text())
+    expect(heads()).toEqual(['Просрочено', 'Сегодня'])
+    expect(w.find('[data-testid="home-greeting"]').text()).toMatch(/Аня$/)
+    expect(w.find('[data-testid="home-greeting"]').text()).toMatch(/^(Доброе|Добрый|Доброй)/)
 
     await setI18nLocale('en')
-    expect(labels()).toEqual([
-      'My tasks',
-      'All active',
-      'Overdue',
-      'Today',
-      'This week',
-      'Completed',
-    ])
-    // The keys drive the filter; they are wiring, not text.
-    expect(w.vm.cards.map((c) => c.key)).toEqual([
-      'me',
-      'all',
-      'overdue',
-      'today',
-      'week',
-      'completed',
-    ])
+    expect(heads()).toEqual(['Overdue', 'Today'])
+    expect(w.find('[data-testid="home-greeting"]').text()).toMatch(/^Good /)
   })
 })
 

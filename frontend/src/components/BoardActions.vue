@@ -39,9 +39,9 @@ function onChanged() {
   <div class="board-actions" data-tour="board-actions">
     <n-popover trigger="click" placement="bottom-end">
       <template #trigger>
-        <n-button size="small" quaternary>
+        <n-button size="small" quaternary :title="t('board.actions.tags')">
           <template #icon><n-icon :component="PricetagsOutline" /></template>
-          {{ t('board.actions.tags') }}
+          <span class="ba-lbl">{{ t('board.actions.tags') }}</span>
         </n-button>
       </template>
       <TagManager
@@ -52,9 +52,9 @@ function onChanged() {
       />
     </n-popover>
 
-    <n-button size="small" quaternary @click="msShow = true">
+    <n-button size="small" quaternary :title="t('board.actions.milestones')" @click="msShow = true">
       <template #icon><n-icon :component="RibbonOutline" /></template>
-      {{ t('board.actions.milestones') }}
+      <span class="ba-lbl">{{ t('board.actions.milestones') }}</span>
     </n-button>
 
     <n-button
@@ -62,10 +62,11 @@ function onChanged() {
       :quaternary="!isArchive"
       :secondary="isArchive"
       :type="isArchive ? 'primary' : undefined"
+      :title="t('board.actions.archive')"
       @click="isArchive ? null : openArchive()"
     >
       <template #icon><n-icon :component="ArchiveOutline" /></template>
-      {{ t('board.actions.archive') }}
+      <span class="ba-lbl">{{ t('board.actions.archive') }}</span>
     </n-button>
 
     <MilestoneManager
@@ -83,5 +84,11 @@ function onChanged() {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+/* A narrow window keeps the icons (each button still carries its title). */
+@media (max-width: 1280px) {
+  .ba-lbl {
+    display: none;
+  }
 }
 </style>

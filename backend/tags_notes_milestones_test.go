@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -391,6 +392,49 @@ func TestWorkspaceSearchMatchesSubstringAndBodies(t *testing.T) {
 	res = c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="+query+"zzz"), http.StatusOK)
 	if len(res["tasks"].([]any)) != 0 || len(res["notes"].([]any)) != 0 {
 		t.Fatalf("no-hit query: %v", res)
+	}
+}
+
+// Search for the ⌘K palette (#2957): a task's number finds it and sorts first,
+// task rows carry the status column and board/project names, and boards are
+// found by their own or their project's name.
+func TestWorkspaceSearchByNumberAndBoards(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Палитра без номера в заголовке")
+	num := fmt.Sprint(int(task["number"].(float64)))
+
+	for _, q := range []string{num, "%23" + num} { // «2950» and «#2950»
+		res := c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="+q), http.StatusOK)
+		tasks, _ := res["tasks"].([]any)
+		if len(tasks) == 0 {
+			t.Fatalf("q=%s: no task hits\n%v", q, res)
+		}
+		row := tasks[0].(map[string]any)
+		if row["id"] != task["id"] {
+			t.Fatalf("q=%s: exact number must sort first, got %v", q, row)
+		}
+		for _, k := range []string{"column_name", "board_name", "project_name", "column_color"} {
+			if _, ok := row[k]; !ok {
+				t.Fatalf("q=%s: task row lacks %q: %v", q, k, row)
+			}
+		}
+	}
+
+	board := c.expect(t, c.get("/boards/"+s.Board), http.StatusOK)
+	name := board["name"].(string)
+	res := c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="+url.QueryEscape(name)), http.StatusOK)
+	boards, _ := res["boards"].([]any)
+	found := false
+	for _, b := range boards {
+		if b.(map[string]any)["id"] == s.Board {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("board %q not found by name: %v", name, res["boards"])
 	}
 }
 

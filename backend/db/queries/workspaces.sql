@@ -42,6 +42,14 @@ SET estimation = $2, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- SetWorkspaceAppearance stores the rail tile's colour and icon (#2955). Its
+-- own endpoint, like the estimation config, so a rename never clobbers them.
+-- name: SetWorkspaceAppearance :one
+UPDATE workspaces
+SET color = $2, icon = $3, icon_mode = $4, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteWorkspace :exec
 DELETE FROM workspaces WHERE id = $1;
 

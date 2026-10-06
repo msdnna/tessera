@@ -22,6 +22,7 @@ const root = process.cwd()
 // selectors, checked separately.
 const MARKUP = [
   'src/components/Sidebar.vue',
+  'src/components/rail/AppRail.vue',
   'src/components/SidebarNode.vue',
   'src/components/ProjectRow.vue',
   'src/components/ProjectCreateModal.vue',
@@ -32,7 +33,8 @@ const MARKUP = [
   'src/components/BoardActions.vue',
   'src/components/SearchBar.vue',
   'src/components/SidebarFooter.vue',
-  'src/components/WorkspaceTools.vue',
+  'src/components/NotificationsBell.vue',
+  'src/components/task/TaskModalHeader.vue',
 ]
 const markup = MARKUP.map((f) => readFileSync(resolve(root, f), 'utf8')).join('\n')
 const kanban = readFileSync(resolve(root, 'src/components/KanbanBoard.vue'), 'utf8')
@@ -133,7 +135,7 @@ describe('Get Started scenario', () => {
       'card-fields',
       'card-open',
       'tm-due',
-      'tm-save',
+      'tm-close',
       'board-tools',
       'nav-sections',
       'done',

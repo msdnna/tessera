@@ -1,12 +1,11 @@
 {
   "nav": {
-    "home": "Home",
+    "home": "My tasks",
     "notes": "Notes",
     "documents": "Documents",
     "conferences": "Conferences",
     "reminders": "Reminders",
-    "milestones": "Milestones",
-    "newBadge": "new"
+    "milestones": "Milestones"
   },
   "workspace": {
     "create": "New workspace",
@@ -46,7 +45,8 @@
     "help": "Help",
     "helpCenter": "Help centre",
     "admin": "Administration",
-    "logout": "Log out"
+    "logout": "Log out",
+    "more": "More"
   },
   "tools": {
     "members": "Members",
@@ -62,14 +62,16 @@
     "darkTheme": "Dark theme"
   },
   "search": {
-    "placeholder": "Search tasks, notes and documents…",
+    "placeholder": "Search tasks, boards and commands",
+    "placeholderBoard": "Search this board and workspace…",
+    "boardNone": "Nothing on this board — results from the whole workspace",
     "tasks": "Tasks",
     "notes": "Notes",
     "documents": "Documents",
     "untitled": "Untitled",
     "help": "Help",
     "nothing": "Nothing found",
-    "hint": "Searches task titles and descriptions, note titles and text, document titles and help articles"
+    "everywhere": "Search everywhere"
   },
   "members": {
     "title": "Workspace members",
@@ -103,7 +105,8 @@
     }
   },
   "layout": {
-    "resize": "Drag to resize (double-click to collapse)",
+    "collapse": "Collapse the sidebar",
+    "expand": "Expand the sidebar",
     "projectGone": "The project was deleted or moved to another workspace — opened “Home”"
   },
   "servers": {
@@ -141,10 +144,239 @@
       "week": "This week",
       "completed": "Completed"
     },
-    "empty": "Nothing here yet"
+    "empty": "Nothing here yet",
+    "title": "My tasks",
+    "greet": {
+      "morning": "Good morning, {name}",
+      "day": "Good afternoon, {name}",
+      "evening": "Good evening, {name}",
+      "night": "Good night, {name}"
+    },
+    "pill": {
+      "today": "{n} for today",
+      "overdue": "{n} overdue",
+      "review": "{n} waits for your review | {n} wait for your review"
+    },
+    "section": {
+      "overdue": "Overdue",
+      "today": "Today",
+      "week": "This week",
+      "later": "Later",
+      "nodate": "No due date"
+    },
+    "allClear": "No open tasks on you",
+    "rowHint": {
+      "open": "open",
+      "complete": "complete",
+      "due": "due"
+    },
+    "quick": {
+      "placeholder": "New task: “Call tomorrow 11:00 !high #tag {'@'}name”",
+      "hintTyping": "create",
+      "hintBoard": "board",
+      "hintIdle": "from anywhere",
+      "untitled": "Untitled",
+      "in": "in",
+      "created": "Task #{n} created",
+      "noBoard": "No board to put the task on",
+      "taskTitle": "Task “{title}”"
+    },
+    "side": {
+      "reminders": "Reminders",
+      "noReminders": "No reminders for today",
+      "week": "Week",
+      "weekDone": "{done} of {total} done",
+      "inbox": "Inbox",
+      "inboxEmpty": "No new notifications"
+    }
   },
   "notFound": {
     "title": "Page not found",
     "text": "There is no such page, or it has been moved."
+  },
+  "keys": {
+    "then": "then",
+    "groups": {
+      "nav": "Navigation",
+      "board": "Board",
+      "card": "Selected card",
+      "create": "Quick create",
+      "palette": "Command palette",
+      "view": "View",
+      "task": "Open task",
+      "chart": "Gantt and timeline"
+    },
+    "nav": {
+      "palette": "Search and commands",
+      "goBoard": "Go to board",
+      "goInbox": "Inbox",
+      "goMine": "My tasks",
+      "sidebar": "Hide / show sidebar",
+      "shortcuts": "This cheat sheet"
+    },
+    "board": {
+      "addTask": "Task in the hovered column",
+      "quick": "Quick actions",
+      "filter": "Filter",
+      "group": "Grouping",
+      "layout": "View: kanban / list / timeline",
+      "select": "Select a card"
+    },
+    "card": {
+      "open": "Open",
+      "complete": "Complete",
+      "status": "Status",
+      "assignees": "Assignees",
+      "priority": "Priority",
+      "due": "Due date",
+      "tags": "Tags",
+      "subtask": "Subtask",
+      "move": "Move to column"
+    },
+    "create": {
+      "task": "Task in “To do”",
+      "reminder": "Reminder",
+      "note": "Note"
+    },
+    "palette": {
+      "select": "Select a result",
+      "actions": "Result actions",
+      "open": "Open",
+      "prefix": "Only tasks / people / commands"
+    },
+    "view": {
+      "theme": "Toggle theme",
+      "cardSize": "Card size",
+      "collapse": "Collapse column"
+    },
+    "go": {
+      "notes": "Notes",
+      "documents": "Documents",
+      "reminders": "Reminders",
+      "milestones": "Milestones",
+      "settings": "Settings"
+    },
+    "title": "Keyboard shortcuts",
+    "button": "Shortcuts",
+    "search": "Find an action or a key",
+    "nothing": "Nothing found",
+    "footBefore": "Keys show up in tooltips and menu items. This window opens with",
+    "footAfter": "from anywhere.",
+    "task": {
+      "next": "Next task",
+      "prev": "Previous task",
+      "close": "Close the task"
+    },
+    "chart": {
+      "today": "Jump to today",
+      "scroll": "Scroll in time",
+      "zoom": "Zoom",
+      "select": "Select a task",
+      "shift": "Shift the dates by a day",
+      "open": "Open the task"
+    }
+  },
+  "palette": {
+    "placeholder": "Task, board, person or command…",
+    "placeholderTask": "Action or field…",
+    "placeholderField": {
+      "status": "Status…",
+      "assignees": "Assignee…",
+      "priority": "Priority…",
+      "due": "Due: “tomorrow” or 12.10…",
+      "tags": "Tag — find or create…",
+      "subtask": "Subtask title…"
+    },
+    "back": "back",
+    "nothing": "Nothing found",
+    "typeToSearch": "Start typing — tasks, boards, people and commands",
+    "sections": {
+      "all": "All",
+      "tasks": "Tasks",
+      "boards": "Boards & milestones",
+      "people": "People",
+      "commands": "Commands"
+    },
+    "groups": {
+      "recent": "Recent",
+      "tasks": "Tasks",
+      "boards": "Boards & milestones",
+      "commands": "Commands",
+      "people": "People",
+      "notes": "Notes & documents",
+      "help": "Help",
+      "actions": "Task actions",
+      "more": "More"
+    },
+    "board": "Board",
+    "milestone": "Milestone",
+    "until": "until {date}",
+    "personNeedsBoard": "Open a board to filter by this person",
+    "hint": {
+      "actions": "actions",
+      "open": "open",
+      "choose": "choose",
+      "apply": "apply"
+    },
+    "foot": {
+      "select": "select",
+      "open": "open",
+      "actions": "actions",
+      "newTab": "in a new tab",
+      "apply": "apply",
+      "options": "options",
+      "toActions": "to actions",
+      "toResults": "to results",
+      "prefixes": "# tasks · {'@'} people · > commands",
+      "taskActions": "Task actions · {n}"
+    },
+    "task": {
+      "status": "Change status",
+      "now": "Now: {value}",
+      "assignees": "Assignees",
+      "nobody": "Unassigned",
+      "priority": "Priority",
+      "due": "Due date",
+      "noDue": "No due date",
+      "tags": "Tags",
+      "noTags": "No tags",
+      "subtask": "Create subtask",
+      "subtaskPlaceholder": "Type a title and press ↵",
+      "subtaskCreated": "Subtask created",
+      "createTag": "Create tag “{name}”",
+      "copyLink": "Copy link",
+      "copied": "Link copied",
+      "newTab": "Open in a new tab"
+    },
+    "due": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "nextWeek": "Next week",
+      "none": "Clear due date"
+    }
+  },
+  "quick": {
+    "menuTitle": "Quick create",
+    "menuThen": "N, then",
+    "allCommands": "All commands",
+    "title": {
+      "task": "New task in “To do”",
+      "reminder": "New reminder",
+      "note": "New note"
+    },
+    "placeholder": {
+      "task": "Task title",
+      "reminder": "Remind me about…",
+      "note": "Note title",
+      "noteBody": "Text (Markdown) — ⌘↵ to save"
+    },
+    "board": "Board",
+    "taskCreated": "Task #{n} created",
+    "reminderCreated": "Reminder created",
+    "noteCreated": "Note created"
+  },
+  "rail": {
+    "appearance": "Workspace appearance",
+    "add": "Add a workspace or a server"
   }
 }

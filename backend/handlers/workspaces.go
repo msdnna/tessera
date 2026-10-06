@@ -108,6 +108,46 @@ func (h *API) UpdateWorkspace(c *gin.Context) {
 	c.JSON(http.StatusOK, ws)
 }
 
+// maxIconLen caps a workspace icon: an emoji, a glyph name or a few letters.
+const maxIconLen = 64
+
+// SetWorkspaceAppearance sets the colour and icon of the workspace's tile on
+// the rail (#2955). Owners and admins only, like a rename: every member sees it.
+func (h *API) SetWorkspaceAppearance(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	if !h.requireManager(c, id) {
+		return
+	}
+	var req struct {
+		Color    string `json:"color"`
+		Icon     string `json:"icon"`
+		IconMode string `json:"icon_mode"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(req.Icon) > maxIconLen || len(req.Color) > maxIconLen {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "icon or color too long"})
+		return
+	}
+	ws, err := h.q.SetWorkspaceAppearance(c, db.SetWorkspaceAppearanceParams{
+		ID: id, Color: req.Color, Icon: req.Icon, IconMode: normIconMode(req.IconMode),
+	})
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	h.broadcast(id, "workspace.updated", ws)
+	c.JSON(http.StatusOK, ws)
+}
+
 // DeleteWorkspace removes a workspace (owner only).
 func (h *API) DeleteWorkspace(c *gin.Context) {
 	id, ok := parseID(c, "id")
