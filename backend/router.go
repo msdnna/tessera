@@ -146,6 +146,37 @@ func orDefault(v, def int64) int64 {
 	return v
 }
 
+// bodyLimitRoutes is the per-route transport budget table. Kept out of newRouter
+// so the tests that check it against the registered routes read the same map the
+// middleware is built from, rather than a copy that can drift (#2932).
+func bodyLimitRoutes(cfg *config.Config) map[string]int64 {
+	return map[string]int64{
+		routeAttachments: orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		routeUploads:     orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		routeDocPdf:      orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		// The validator's ceiling plus the envelope it travels in: the body is the
+		// document *and* the updated_at it is based on *and* the sender's
+		// connection id. Sized from the constant rather than restated, because a
+		// budget equal to it would refuse a document of exactly MaxDocContentBytes
+		// at the transport — the one size the validator promises to accept.
+		routeDocContent: handlers.MaxDocContentBytes + docContentEnvelope,
+		// The same body under a different envelope — the uploaded template carries
+		// title, description and icon beside the document, all of them bounded by
+		// truncateRunes, so the content route's slack covers them too.
+		routeDocTemplates: handlers.MaxDocContentBytes + docContentEnvelope,
+		// The chat's aggregate file ceiling plus its framing, for the same reason:
+		// a budget equal to MaxChatTotalBytes would refuse at the transport the one
+		// batch readChatSubmission promises to take.
+		routeConfMessages: handlers.MaxChatTotalBytes + chatFilesEnvelope,
+		routeWS:           middleware.NoBodyLimit,
+
+		routeSentryTunnel: handlers.MaxEnvelopeBytes,
+	}
+}
+
 // newRouter wires every route of the API onto a fresh gin engine and returns
 // it together with the resource-handler layer (main() reuses the latter for
 // the background workers and slug backfill).
@@ -248,31 +279,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// Cap request bodies before anything reads one. Ordering matters twice over:
 	// this must precede the rate limiter (whose by-email keying reads the body,
 	// and is only bounded because of this), and both must precede the handlers.
-	r.Use(middleware.BodyLimit(orDefault(cfg.MaxBodyBytes, config.DefaultMaxBodyBytes), map[string]int64{
-		routeAttachments: orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
-		routeUploads:     orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
-		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
-		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
-		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
-		routeDocPdf:      orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
-		// The validator's ceiling plus the envelope it travels in: the body is the
-		// document *and* the updated_at it is based on *and* the sender's
-		// connection id. Sized from the constant rather than restated, because a
-		// budget equal to it would refuse a document of exactly MaxDocContentBytes
-		// at the transport — the one size the validator promises to accept.
-		routeDocContent: handlers.MaxDocContentBytes + docContentEnvelope,
-		// The same body under a different envelope — the uploaded template carries
-		// title, description and icon beside the document, all of them bounded by
-		// truncateRunes, so the content route's slack covers them too.
-		routeDocTemplates: handlers.MaxDocContentBytes + docContentEnvelope,
-		// The chat's aggregate file ceiling plus its framing, for the same reason:
-		// a budget equal to MaxChatTotalBytes would refuse at the transport the one
-		// batch readChatSubmission promises to take.
-		routeConfMessages: handlers.MaxChatTotalBytes + chatFilesEnvelope,
-		routeWS:           middleware.NoBodyLimit,
-
-		routeSentryTunnel: handlers.MaxEnvelopeBytes,
-	}))
+	r.Use(middleware.BodyLimit(orDefault(cfg.MaxBodyBytes, config.DefaultMaxBodyBytes), bodyLimitRoutes(cfg)))
 	if cfg.RateLimitEnabled {
 		r.Use(middleware.RateLimit(authRateRules()))
 	}

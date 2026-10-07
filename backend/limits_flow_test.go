@@ -34,11 +34,9 @@ func TestBodyLimitRoutesExist(t *testing.T) {
 	for _, route := range r.Routes() {
 		registered[route.Path] = true
 	}
-	for _, want := range []string{
-		routeWS, routeUploads, routeAvatar, routeAttachments,
-		routeDocAssets, routeDocImport, routeDocPdf, routeDocContent, routeConfMessages,
-		routeDocTemplates, routeSentryTunnel,
-	} {
+	// Every entry of the table the middleware is built from, not a hand-kept
+	// copy of it (#2932).
+	for want := range bodyLimitRoutes(cfg) {
 		if !registered[want] {
 			t.Errorf("body-limit table names %q, which is not a registered route", want)
 		}
