@@ -1,7 +1,9 @@
 <script setup>
 // «Быстрые действия» (v2, #2956): the floating + in the working area's corner.
 // N opens it, the second key picks an item (T task into «К работе», R reminder,
-// M note), Esc closes; «N, then T» also works in one go while it's closed.
+// M a record), Esc closes; «N, then T» also works in one go while it's closed.
+// Reminders and notes are captured by the «Входящие» popover right above the
+// button (#2996); while it is open the button turns into its close cross.
 import { ref, computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -14,7 +16,9 @@ import {
   SearchOutline,
 } from '@vicons/ionicons5'
 import ShortcutKeys from './ShortcutKeys.vue'
+import CapturePop from './inbox/CapturePop.vue'
 import { useQuickStore } from '@/stores/quick'
+import { useInboxStore } from '@/stores/inbox'
 import { useBoardViewStore } from '@/stores/boardView'
 import { usePaletteStore } from '@/stores/palette'
 import { useResponsive } from '@/composables/useResponsive'
@@ -23,6 +27,7 @@ import { useShortcuts } from '@/composables/useShortcuts'
 const { t } = useI18n()
 const route = useRoute()
 const quick = useQuickStore()
+const inbox = useInboxStore()
 const boardView = useBoardViewStore()
 const palette = usePaletteStore()
 const { isMobile } = useResponsive()
@@ -36,10 +41,25 @@ const rootEl = ref(null)
 const buttonVisible = computed(() => {
   const p = route.path
   if (/^\/(conferences|documents)\/./.test(p)) return false
-  if (p === '/notes' && route.query.note) return false
   return true
 })
-const visible = computed(() => buttonVisible.value || quick.fabOpen)
+const capturing = computed(() => !!inbox.capture)
+const visible = computed(() => buttonVisible.value || quick.fabOpen || capturing.value)
+
+// «N, M» — a record typed by its text (a note unless it names a moment); «N, R»
+// — a reminder, the type fixed.
+function captureNote() {
+  quick.fabOpen = false
+  inbox.startCapture()
+}
+function captureReminder() {
+  quick.fabOpen = false
+  inbox.startCapture({ kind: 'reminder' })
+}
+function onFab() {
+  if (capturing.value) return inbox.endCapture()
+  quick.fabOpen = !quick.fabOpen
+}
 
 // On an open kanban the task goes into the board's own «К работе» quick-add,
 // right where the user is looking; anywhere else the dialog asks for a board.
@@ -51,13 +71,8 @@ function createTask() {
 
 const ITEMS = [
   { id: 'task', icon: AddOutline, keys: 'create.task', run: createTask },
-  {
-    id: 'reminder',
-    icon: AlarmOutline,
-    keys: 'create.reminder',
-    run: () => quick.create('reminder'),
-  },
-  { id: 'note', icon: DocumentTextOutline, keys: 'create.note', run: () => quick.create('note') },
+  { id: 'reminder', icon: AlarmOutline, keys: 'create.reminder', run: captureReminder },
+  { id: 'note', icon: DocumentTextOutline, keys: 'create.note', run: captureNote },
 ]
 // The bare second key, shown in the menu (the header says «N, затем»).
 const SECOND = { task: 'fab.task', reminder: 'fab.reminder', note: 'fab.note' }
@@ -71,14 +86,14 @@ const isOpen = () => quick.fabOpen
 useShortcuts({
   'board.quick': () => (quick.fabOpen = !quick.fabOpen),
   'create.task': createTask,
-  'create.reminder': () => quick.create('reminder'),
-  'create.note': () => quick.create('note'),
+  'create.reminder': captureReminder,
+  'create.note': captureNote,
 })
 useShortcuts(
   {
     'fab.task': createTask,
-    'fab.reminder': () => quick.create('reminder'),
-    'fab.note': () => quick.create('note'),
+    'fab.reminder': captureReminder,
+    'fab.note': captureNote,
     'fab.close': () => (quick.fabOpen = false),
   },
   { when: isOpen },
@@ -103,9 +118,15 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
     v-if="visible"
     ref="rootEl"
     class="fab-wrap"
-    :class="{ mobile: isMobile, docked: boardView.panelOpen && !isMobile }"
+    :class="{
+      mobile: isMobile,
+      docked: boardView.panelOpen && !isMobile,
+      inboxed: inbox.panelOpen && !isMobile,
+    }"
+    :style="inbox.panelOpen && !isMobile ? { '--inbox-w': `${inbox.width + 12}px` } : null"
     data-testid="quick-fab"
   >
+    <CapturePop />
     <transition name="fab-menu">
       <div v-if="quick.fabOpen" class="fab-menu" role="menu">
         <div class="fab-head">
@@ -122,7 +143,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
           @click="it.run"
         >
           <n-icon :component="it.icon" :size="16" class="fab-item-ic" />
-          <span class="fab-item-l">{{ t(`shell.keys.create.${it.id}`) }}</span>
+          <span class="fab-item-l">{{
+            it.id === 'note' ? t('inbox.panel.add') : t(`shell.keys.create.${it.id}`)
+          }}</span>
           <ShortcutKeys v-if="!isMobile" :id="SECOND[it.id]" />
         </button>
         <div class="fab-sp" />
@@ -135,26 +158,26 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
     </transition>
     <div class="fab-row">
       <transition name="fab-hint">
-        <div v-if="hint && !quick.fabOpen && !isMobile" class="fab-hint">
+        <div v-if="hint && !quick.fabOpen && !capturing && !isMobile" class="fab-hint">
           {{ t('shell.keys.board.quick') }}
           <ShortcutKeys id="board.quick" />
         </div>
       </transition>
       <button
-        v-if="buttonVisible || quick.fabOpen"
+        v-if="buttonVisible || quick.fabOpen || capturing"
         type="button"
         class="fab"
-        :class="{ open: quick.fabOpen }"
+        :class="{ open: quick.fabOpen || capturing }"
         data-testid="quick-fab-button"
         :aria-label="t('shell.keys.board.quick')"
-        :aria-expanded="quick.fabOpen"
+        :aria-expanded="quick.fabOpen || capturing"
         @mouseenter="hint = true"
         @mouseleave="hint = false"
-        @click="quick.fabOpen = !quick.fabOpen"
+        @click="onFab"
       >
         <n-icon
-          :component="quick.fabOpen ? CloseOutline : AddOutline"
-          :size="quick.fabOpen ? 24 : 26"
+          :component="quick.fabOpen || capturing ? CloseOutline : AddOutline"
+          :size="quick.fabOpen || capturing ? 24 : 26"
         />
       </button>
     </div>
@@ -179,6 +202,13 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
 /* The board's «Вид доски» panel owns the right edge while open (#2986). */
 .fab-wrap.docked {
   right: 376px;
+}
+/* So does the «Входящие» panel at the layout's edge (#2997). */
+.fab-wrap.inboxed {
+  right: calc(20px + var(--inbox-w, 400px));
+}
+.fab-wrap.inboxed.docked {
+  right: calc(376px + var(--inbox-w, 400px));
 }
 .fab-wrap.mobile {
   right: 18px;

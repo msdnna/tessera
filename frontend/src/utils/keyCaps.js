@@ -10,6 +10,7 @@ export const CAPS = {
   arrows: '↑↓',
   altEnter: isMac ? '⌥↵' : 'Alt ↵',
   modEnter: isMac ? '⌘↵' : 'Ctrl ↵',
+  shiftEnter: isMac ? '⇧↵' : 'Shift ↵',
   backspace: '⌫',
 }
 

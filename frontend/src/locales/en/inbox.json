@@ -1,0 +1,164 @@
+{
+  "title": "Inbox",
+  "kind": {
+    "note": "Note",
+    "reminder": "Reminder"
+  },
+  "capture": {
+    "title": "Record to the Inbox",
+    "byText": "by text",
+    "byTextHint": "Let the text decide the type again",
+    "manual": "manual",
+    "dest": "to the Inbox",
+    "placeholder": "A thought, or «tomorrow 10:00 call the bank»",
+    "helpReminder": "A date or a time makes a reminder: «tomorrow 10:00», «fri 18:30», «in 2 h».",
+    "helpNote": "No date — a note. #tag, {'@'}person, /2951 or /title — ties it to a task.",
+    "titleLabel": "Title",
+    "noTitle": "no title",
+    "noTask": "{ref} — no such task",
+    "bodyPlaceholder": "Text (Markdown)",
+    "addBody": "Add text",
+    "bodyHint": "text",
+    "fromBody": "from the text",
+    "kindHint": "type",
+    "saving": "Saving…",
+    "saved": "Saved to the Inbox.",
+    "openPanel": "Open · G I",
+    "offline": "Keep on this device"
+  },
+  "panel": {
+    "add": "Record",
+    "filter": {
+      "all": "All",
+      "reminders": "Reminders",
+      "notes": "Notes",
+      "board": "This board"
+    },
+    "boardNone": "Open a board to see the records tied to its tasks",
+    "group": {
+      "fired": "Due now",
+      "today": "Today",
+      "later": "Later",
+      "notes": "Notes"
+    },
+    "doneAll": "complete all",
+    "emptyTitle": "All clear",
+    "emptyText": "Reminders that go off and new notes land here.",
+    "emptyFiltered": "Nothing here",
+    "doneToday": "Done today — {n}",
+    "errorTitle": "Couldn't load",
+    "errorText": "Check the connection and try again.",
+    "hintSelect": "select",
+    "hintFilter": "filter",
+    "hintHide": "hide",
+    "resize": "Panel width"
+  },
+  "item": {
+    "since": "from {time}",
+    "private": "Only you see it",
+    "shared": "The workspace sees it",
+    "untitled": "Untitled",
+    "snoozedTip": "Snoozed, was due at {time}",
+    "collapse": "collapse, saved",
+    "actionFailed": "That didn't work — try again",
+    "retry": "retry"
+  },
+  "action": {
+    "open": "open",
+    "done": "complete",
+    "undone": "reopen",
+    "snooze": "snooze",
+    "toTask": "to task",
+    "toDoc": "to doc",
+    "link": "to a task",
+    "unlink": "Unlink from the task",
+    "visibility": "Shared with the workspace",
+    "tags": "Tags and mentions",
+    "delete": "Delete",
+    "menu": "Actions"
+  },
+  "menu": {
+    "open": "Open",
+    "done": "Complete",
+    "undone": "Reopen",
+    "snooze": "Snooze",
+    "toTask": "To a task",
+    "toDoc": "To a document",
+    "link": "Tie to a task",
+    "relink": "Tie to another task"
+  },
+  "snooze": {
+    "title": "Snooze",
+    "now": "now {time}",
+    "hour": "In an hour",
+    "evening": "This evening",
+    "morning": "Tomorrow morning",
+    "monday": "On Monday",
+    "due": "By the task's due",
+    "pick": "Date and time…",
+    "pickHint": "Words work too: «thu 15:30», «in 3 days».",
+    "pickPlaceholder": "thu 15:30",
+    "pickBad": "Couldn't read the date",
+    "apply": "Snooze"
+  },
+  "link": {
+    "title": "Tie to a task",
+    "placeholder": "Task number or title",
+    "none": "Nothing found",
+    "apply": "Tie"
+  },
+  "toast": {
+    "done": "Completed: «{title}»",
+    "doneAll": "Completed: {n}",
+    "snoozed": "Snoozed until {time}",
+    "deleted": "Record deleted",
+    "restored": "Record restored",
+    "taskCreated": "Task #{n} created",
+    "docCreated": "Document «{title}» created",
+    "linked": "Tied to #{n}",
+    "unlinked": "Unlinked from the task",
+    "private": "Only you see it now",
+    "shared": "The whole workspace sees it now",
+    "needBoard": "Open a board — the task goes into its first column",
+    "undoFailed": "Couldn't undo"
+  },
+  "dist": {
+    "now": "now",
+    "past": {
+      "min": "{n} min ago",
+      "hm": "{h} h {m} m ago",
+      "h": "{n} h ago",
+      "d": "{n} d ago"
+    },
+    "future": {
+      "min": "in {n} min",
+      "hm": "in {h} h {m} m",
+      "h": "in {n} h",
+      "d": "in {n} d"
+    }
+  },
+  "task": {
+    "title": "Reminders and notes",
+    "privacy": "only you see them",
+    "note": "Note",
+    "remind": "Remind",
+    "hour": "In an hour",
+    "morning": "Tomorrow",
+    "due": "By due",
+    "date": "Date…",
+    "datePlaceholder": "thu 15:30 or 12.10 18:00",
+    "empty": "No reminders or notes",
+    "reminded": "I'll remind you {when}"
+  },
+  "home": {
+    "title": "Inbox",
+    "today": "Today",
+    "notes": "Latest notes",
+    "all": "All {n}",
+    "empty": "No reminders today and no notes yet",
+    "snoozed": "snoozed"
+  },
+  "pill": {
+    "tip": "Reminder {when} — click to snooze"
+  }
+}

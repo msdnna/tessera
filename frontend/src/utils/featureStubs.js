@@ -24,6 +24,12 @@ export const FEATURE_STUBS = {
   // Timeline scale «Квартал» and the chart toggles in the board's view panel
   // (weekends, today line, progress, links, undated at the bottom) — #3021.
   'chart.scale': 3021,
+  // «Входящие» (#2972): #tags and @mentions of a record are read by the capture
+  // but not stored yet — #3040.
+  'inbox.tags': 3040,
+  // Capture without a connection: keep the record on the device and send it
+  // later — #3031.
+  'inbox.offline': 3031,
 }
 
 export function stubTask(key) {

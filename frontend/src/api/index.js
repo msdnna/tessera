@@ -503,6 +503,14 @@ export const notes = {
   get: (id) => api.get(`/notes/${id}`),
   update: (id, data) => api.patch(`/notes/${id}`, data),
   remove: (id) => api.delete(`/notes/${id}`),
+  // The task modal's «Напоминания и заметки» (#2998): notes tied to the task.
+  forTask: (taskId) => api.get(`/tasks/${taskId}/notes`),
+}
+
+// «Входящие» (#2972): the caller's reminders of the workspace (and those outside
+// every workspace) + the notes they may read, each with its task chip.
+export const inbox = {
+  list: (wsId) => api.get(`/workspaces/${wsId}/inbox`),
 }
 
 export const documents = {
@@ -668,6 +676,9 @@ export const reminders = {
   create: (data) => api.post('/reminders', data),
   update: (id, data) => api.patch(`/reminders/${id}`, data),
   remove: (id) => api.delete(`/reminders/${id}`),
+  // Moves the reminder later; the server keeps the first time in snoozed_from.
+  snooze: (id, remindAt) => api.post(`/reminders/${id}/snooze`, { remind_at: remindAt }),
+  forTask: (taskId) => api.get(`/tasks/${taskId}/reminders`),
 }
 
 export const columns = {

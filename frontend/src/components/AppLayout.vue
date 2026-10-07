@@ -40,6 +40,7 @@ import { isTauri } from '@/utils/serverBase'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useInboxStore } from '@/stores/inbox'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
@@ -60,6 +61,7 @@ const { t } = useI18n()
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
+const inbox = useInboxStore()
 const conflicts = useConflictsStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
@@ -128,6 +130,7 @@ useShortcuts({
 useRealtime(
   (ev) => {
     notes.onEvent(ev, authStore.user?.id)
+    inbox.onEvent(ev)
     conflicts.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
@@ -158,7 +161,11 @@ useRealtime(
   // the notification feed and the GitLab conflicts. See utils/shellResync.js for
   // why each one belongs there; all three are loaded once in onMounted below and
   // would otherwise stay at their pre-outage frame until a page reload (#2932).
-  () => resyncShell({ workspaces: ws, notifications: notes, conflicts }),
+  () => {
+    resyncShell({ workspaces: ws, notifications: notes, conflicts })
+    // The «Входящие» feed is socket-fed as well (#2972).
+    inbox.load()
+  },
 )
 
 // An admin changing a project's address rewrites the URL of every board under
@@ -247,6 +254,15 @@ watch(
   () => ws.currentId,
   (id) => conflicts.load(id),
 )
+// «Входящие» (#2972): the feed of the current workspace, and a clock that slides
+// a reminder into «Сработало» when its minute comes.
+watch(
+  () => ws.currentId,
+  (id) => id && inbox.load(id),
+  { immediate: true },
+)
+const inboxClock = setInterval(() => inbox.tick(), 30000)
+onBeforeUnmount(() => clearInterval(inboxClock))
 </script>
 
 <template>

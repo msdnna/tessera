@@ -166,10 +166,118 @@ export function parseQuick(text, { now = new Date(), people = [], tags = [] } = 
   return {
     title: rest.join(' '),
     day: day ? startOfDay(day) : time ? startOfDay(now) : null,
+    // Whether a date word was given (a bare time also fills `day` with today).
+    dated: !!day,
     time,
     due,
     priority,
     tags: tagHits,
     people: personHits,
+  }
+}
+
+// ── «Входящие» capture (#2996) ──
+//
+//   «завтра 10:00 созвон по релизу #frontend /2951»
+//   → a reminder tomorrow at 10:00 titled «Созвон по релизу», tag «frontend»
+//     (not stored yet, #3040), tied to task #2951.
+//
+// A date or a time makes the line a reminder, anything else a note. A date
+// without a time means 09:00; a bare time already past today means tomorrow.
+// «/123» names a task by number, «/слово» by a word of its title. «через 2 ч»,
+// «через 30 мин», «через 3 дня» count from now.
+
+export const CAPTURE_DEFAULT_HOUR = 9
+
+const IN_WORDS = new Set(['через', 'in'])
+const UNIT_MS = [
+  [/^(мин|минут[уы]?|m|min|mins|minutes?)$/, 60000],
+  [/^(ч|час|часа|часов|h|hr|hrs|hours?)$/, 3600000],
+  [/^(д|дн|день|дня|дней|d|days?)$/, DAY_MS],
+]
+
+function unitMs(word) {
+  const w = word.toLowerCase().replace(/\.$/, '')
+  return UNIT_MS.find(([re]) => re.test(w))?.[1] || null
+}
+
+/**
+ * Read one capture line.
+ * @returns {{
+ *   title: string,          // the rest, first letter raised
+ *   kind: 'reminder'|'note',
+ *   remindAt: string|null,  // ISO, when the line names a moment
+ *   day: Date|null, time: string|null, relative: boolean,
+ *   tags: Array<{ name: string, tag: object|null }>,
+ *   people: object[], mentions: string[],
+ *   taskRef: { number: number } | { word: string } | null,
+ * }}
+ */
+export function parseCapture(text, { now = new Date(), people = [], tags = [] } = {}) {
+  const words = String(text || '')
+    .split(/\s+/)
+    .filter(Boolean)
+  const rest = []
+  let taskRef = null
+  let offset = null
+  const kept = []
+  const mentions = []
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    // «через 2 ч» / «через 2ч» / «in 30 min»
+    if (IN_WORDS.has(w.toLowerCase()) && i + 1 < words.length) {
+      const m = /^(\d{1,3})([^\d]*)$/.exec(words[i + 1])
+      if (m) {
+        const unit = m[2] ? unitMs(m[2]) : i + 2 < words.length ? unitMs(words[i + 2]) : null
+        if (unit) {
+          offset = Number(m[1]) * unit
+          i += m[2] ? 1 : 2
+          continue
+        }
+      }
+    }
+    if (w.length > 1 && w.startsWith('/') && !taskRef) {
+      const ref = w.slice(1)
+      taskRef = /^#?\d+$/.test(ref) ? { number: Number(ref.replace('#', '')) } : { word: ref }
+      continue
+    }
+    if (w.length > 1 && w.startsWith('@')) mentions.push(w.slice(1))
+    kept.push(w)
+  }
+  const base = parseQuick(kept.join(' '), { now, people, tags })
+  // parseQuick keeps an unknown @handle in the title; the capture's people are
+  // a stub (#3040), so a handle never lands in the title either way.
+  for (const w of base.title.split(/\s+/).filter(Boolean)) {
+    if (w.length > 1 && w.startsWith('@')) continue
+    rest.push(w)
+  }
+
+  let remindAt = null
+  let day = base.day
+  if (offset != null) {
+    remindAt = new Date(now.getTime() + offset).toISOString()
+    day = startOfDay(new Date(remindAt))
+  } else if (base.dated || base.time) {
+    const d = base.day || startOfDay(now)
+    const [h, m] = (base.time || `${CAPTURE_DEFAULT_HOUR}:00`).split(':').map(Number)
+    let at = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m)
+    // «18:00» typed at 19:30 is tomorrow's — a reminder never starts in the past
+    // unless a day was named for it.
+    if (!base.dated && at <= now) at = new Date(at.getTime() + DAY_MS)
+    day = startOfDay(at)
+    remindAt = at.toISOString()
+  }
+  const title = rest.join(' ')
+  return {
+    title: title ? title[0].toLocaleUpperCase() + title.slice(1) : '',
+    kind: remindAt ? 'reminder' : 'note',
+    remindAt,
+    day,
+    time: base.time,
+    relative: offset != null,
+    tags: base.tags,
+    people: base.people,
+    mentions,
+    taskRef,
   }
 }

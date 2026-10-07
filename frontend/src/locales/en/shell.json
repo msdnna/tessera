@@ -447,20 +447,13 @@
     "menuThen": "N, then",
     "allCommands": "All commands",
     "title": {
-      "task": "New task in “To do”",
-      "reminder": "New reminder",
-      "note": "New note"
+      "task": "New task in “To do”"
     },
     "placeholder": {
-      "task": "Task title",
-      "reminder": "Remind me about…",
-      "note": "Note title",
-      "noteBody": "Text (Markdown) — ⌘↵ to save"
+      "task": "Task title"
     },
     "board": "Board",
-    "taskCreated": "Task #{n} created",
-    "reminderCreated": "Reminder created",
-    "noteCreated": "Note created"
+    "taskCreated": "Task #{n} created"
   },
   "rail": {
     "appearance": "Workspace appearance",

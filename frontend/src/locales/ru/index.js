@@ -12,6 +12,7 @@ import documents from './documents.json'
 import conferences from './conferences.json'
 import notes from './notes.json'
 import reminders from './reminders.json'
+import inbox from './inbox.json'
 import milestones from './milestones.json'
 import settings from './settings.json'
 import notifications from './notifications.json'
@@ -34,6 +35,7 @@ export default {
   conferences,
   notes,
   reminders,
+  inbox,
   milestones,
   settings,
   notifications,
