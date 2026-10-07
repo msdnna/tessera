@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -49,7 +50,7 @@ func (q *Queries) AddTaskTag(ctx context.Context, arg AddTaskTagParams) (int64, 
 const createTag = `-- name: CreateTag :one
 INSERT INTO tags (workspace_id, project_id, name, color)
 VALUES ($1, $2, $3, $4)
-RETURNING id, workspace_id, name, color, created_at, project_id
+RETURNING id, workspace_id, name, color, created_at, project_id, source
 `
 
 type CreateTagParams struct {
@@ -74,6 +75,7 @@ func (q *Queries) CreateTag(ctx context.Context, arg CreateTagParams) (Tag, erro
 		&i.Color,
 		&i.CreatedAt,
 		&i.ProjectID,
+		&i.Source,
 	)
 	return i, err
 }
@@ -116,11 +118,11 @@ func (q *Queries) DeleteTaskTagsAcrossWorkspaces(ctx context.Context, id uuid.UU
 }
 
 const ensureTag = `-- name: EnsureTag :one
-INSERT INTO tags (workspace_id, project_id, name, color)
-VALUES ($1, $2, $3, $4)
+INSERT INTO tags (workspace_id, project_id, name, color, source)
+VALUES ($1, $2, $3, $4, 'gitlab')
 ON CONFLICT (project_id, name) DO UPDATE
 SET color = COALESCE(NULLIF(EXCLUDED.color, ''), tags.color)
-RETURNING id, workspace_id, name, color, created_at, project_id
+RETURNING id, workspace_id, name, color, created_at, project_id, source
 `
 
 type EnsureTagParams struct {
@@ -134,6 +136,10 @@ type EnsureTagParams struct {
 // color) if absent. On conflict it refreshes the colour only when a non-empty
 // one is supplied, so the GitLab sync keeps label colours current without wiping
 // a colour set elsewhere. Used by the GitLab sync.
+//
+// A tag it creates is marked source = 'gitlab' (#3028); one that already existed
+// keeps the origin it has — a hand-made tag GitLab later starts using stays the
+// project's own.
 func (q *Queries) EnsureTag(ctx context.Context, arg EnsureTagParams) (Tag, error) {
 	row := q.db.QueryRow(ctx, ensureTag,
 		arg.WorkspaceID,
@@ -149,12 +155,13 @@ func (q *Queries) EnsureTag(ctx context.Context, arg EnsureTagParams) (Tag, erro
 		&i.Color,
 		&i.CreatedAt,
 		&i.ProjectID,
+		&i.Source,
 	)
 	return i, err
 }
 
 const getProjectTagByName = `-- name: GetProjectTagByName :one
-SELECT id, workspace_id, name, color, created_at, project_id FROM tags
+SELECT id, workspace_id, name, color, created_at, project_id, source FROM tags
 WHERE project_id = $1 AND lower(btrim(name)) = lower(btrim($2::text))
 ORDER BY created_at, id
 LIMIT 1
@@ -187,12 +194,13 @@ func (q *Queries) GetProjectTagByName(ctx context.Context, arg GetProjectTagByNa
 		&i.Color,
 		&i.CreatedAt,
 		&i.ProjectID,
+		&i.Source,
 	)
 	return i, err
 }
 
 const getTag = `-- name: GetTag :one
-SELECT id, workspace_id, name, color, created_at, project_id FROM tags WHERE id = $1
+SELECT id, workspace_id, name, color, created_at, project_id, source FROM tags WHERE id = $1
 `
 
 func (q *Queries) GetTag(ctx context.Context, id uuid.UUID) (Tag, error) {
@@ -205,12 +213,13 @@ func (q *Queries) GetTag(ctx context.Context, id uuid.UUID) (Tag, error) {
 		&i.Color,
 		&i.CreatedAt,
 		&i.ProjectID,
+		&i.Source,
 	)
 	return i, err
 }
 
 const listTags = `-- name: ListTags :many
-SELECT id, workspace_id, name, color, created_at, project_id FROM tags WHERE project_id = $1 ORDER BY name
+SELECT id, workspace_id, name, color, created_at, project_id, source FROM tags WHERE project_id = $1 ORDER BY name
 `
 
 func (q *Queries) ListTags(ctx context.Context, projectID uuid.UUID) ([]Tag, error) {
@@ -229,6 +238,62 @@ func (q *Queries) ListTags(ctx context.Context, projectID uuid.UUID) ([]Tag, err
 			&i.Color,
 			&i.CreatedAt,
 			&i.ProjectID,
+			&i.Source,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTagsWithCounts = `-- name: ListTagsWithCounts :many
+SELECT g.id, g.workspace_id, g.name, g.color, g.created_at, g.project_id, g.source,
+       (SELECT COUNT(*) FROM task_tags tt
+        JOIN tasks t ON t.id = tt.task_id AND t.archived_at IS NULL
+        JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
+        WHERE tt.tag_id = g.id) AS task_count
+FROM tags g
+WHERE g.project_id = $1
+ORDER BY g.name
+`
+
+type ListTagsWithCountsRow struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Name        string    `json:"name"`
+	Color       string    `json:"color"`
+	CreatedAt   time.Time `json:"created_at"`
+	ProjectID   uuid.UUID `json:"project_id"`
+	Source      string    `json:"source"`
+	TaskCount   int64     `json:"task_count"`
+}
+
+// ListTagsWithCounts is ListTags with the number of live tasks wearing each tag
+// — the «Задачи» column of the project window's tag table (#2990). Archived
+// tasks and tasks of deleted boards are not counted, like everywhere else a
+// figure is shown.
+func (q *Queries) ListTagsWithCounts(ctx context.Context, projectID uuid.UUID) ([]ListTagsWithCountsRow, error) {
+	rows, err := q.db.Query(ctx, listTagsWithCounts, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTagsWithCountsRow
+	for rows.Next() {
+		var i ListTagsWithCountsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Name,
+			&i.Color,
+			&i.CreatedAt,
+			&i.ProjectID,
+			&i.Source,
+			&i.TaskCount,
 		); err != nil {
 			return nil, err
 		}
@@ -275,7 +340,7 @@ func (q *Queries) ListTaskAssignees(ctx context.Context, taskID uuid.UUID) ([]Li
 }
 
 const listTaskTags = `-- name: ListTaskTags :many
-SELECT t.id, t.workspace_id, t.name, t.color, t.created_at, t.project_id
+SELECT t.id, t.workspace_id, t.name, t.color, t.created_at, t.project_id, t.source
 FROM tags t
 JOIN task_tags tt ON tt.tag_id = t.id
 WHERE tt.task_id = $1
@@ -298,6 +363,7 @@ func (q *Queries) ListTaskTags(ctx context.Context, taskID uuid.UUID) ([]Tag, er
 			&i.Color,
 			&i.CreatedAt,
 			&i.ProjectID,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}
@@ -310,7 +376,7 @@ func (q *Queries) ListTaskTags(ctx context.Context, taskID uuid.UUID) ([]Tag, er
 }
 
 const listWorkspaceTags = `-- name: ListWorkspaceTags :many
-SELECT id, workspace_id, name, color, created_at, project_id FROM tags WHERE workspace_id = $1 ORDER BY name
+SELECT id, workspace_id, name, color, created_at, project_id, source FROM tags WHERE workspace_id = $1 ORDER BY name
 `
 
 // ListWorkspaceTags returns every tag across all projects in a workspace, for
@@ -331,10 +397,47 @@ func (q *Queries) ListWorkspaceTags(ctx context.Context, workspaceID uuid.UUID) 
 			&i.Color,
 			&i.CreatedAt,
 			&i.ProjectID,
+			&i.Source,
 		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const mergeTagLinks = `-- name: MergeTagLinks :many
+INSERT INTO task_tags (task_id, tag_id, source)
+SELECT tt.task_id, $1, tt.source FROM task_tags tt WHERE tt.tag_id = $2
+ON CONFLICT (task_id, tag_id) DO NOTHING
+RETURNING task_id
+`
+
+type MergeTagLinksParams struct {
+	TargetID uuid.UUID `json:"target_id"`
+	SourceID uuid.UUID `json:"source_id"`
+}
+
+// MergeTagLinks moves a source tag's tasks onto the target: every task wearing
+// the source gets the target (keeping how the source got there), and returns
+// the tasks that did not have the target yet. The source row is deleted
+// separately (its own task_tags go with it by cascade).
+func (q *Queries) MergeTagLinks(ctx context.Context, arg MergeTagLinksParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, mergeTagLinks, arg.TargetID, arg.SourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var task_id uuid.UUID
+		if err := rows.Scan(&task_id); err != nil {
+			return nil, err
+		}
+		items = append(items, task_id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -389,8 +492,79 @@ func (q *Queries) RemoveTaskTag(ctx context.Context, arg RemoveTaskTagParams) (i
 	return result.RowsAffected(), nil
 }
 
+const restoreTag = `-- name: RestoreTag :one
+INSERT INTO tags (id, workspace_id, project_id, name, color, source)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (id) DO NOTHING
+RETURNING id, workspace_id, name, color, created_at, project_id, source
+`
+
+type RestoreTagParams struct {
+	ID          uuid.UUID `json:"id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	ProjectID   uuid.UUID `json:"project_id"`
+	Name        string    `json:"name"`
+	Color       string    `json:"color"`
+	Source      string    `json:"source"`
+}
+
+// RestoreTag puts a deleted tag back under its old id (the undo of a bulk
+// delete). Nothing is written if the id is taken; a name taken in the meantime
+// fails on the unique index and the caller skips that tag.
+func (q *Queries) RestoreTag(ctx context.Context, arg RestoreTagParams) (Tag, error) {
+	row := q.db.QueryRow(ctx, restoreTag,
+		arg.ID,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.Name,
+		arg.Color,
+		arg.Source,
+	)
+	var i Tag
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Color,
+		&i.CreatedAt,
+		&i.ProjectID,
+		&i.Source,
+	)
+	return i, err
+}
+
+const restoreTaskTag = `-- name: RestoreTaskTag :execrows
+INSERT INTO task_tags (task_id, tag_id, source)
+SELECT t.id, $1, $2::text
+FROM tasks t JOIN boards b ON b.id = t.board_id JOIN projects p ON p.id = b.project_id
+WHERE t.id = $3 AND p.workspace_id = $4
+ON CONFLICT (task_id, tag_id) DO NOTHING
+`
+
+type RestoreTaskTagParams struct {
+	TagID       uuid.UUID `json:"tag_id"`
+	Source      string    `json:"source"`
+	TaskID      uuid.UUID `json:"task_id"`
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+}
+
+// RestoreTaskTag re-attaches a restored tag to a task — only to a task of the
+// tag's own workspace that still exists.
+func (q *Queries) RestoreTaskTag(ctx context.Context, arg RestoreTaskTagParams) (int64, error) {
+	result, err := q.db.Exec(ctx, restoreTaskTag,
+		arg.TagID,
+		arg.Source,
+		arg.TaskID,
+		arg.WorkspaceID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setTagColor = `-- name: SetTagColor :one
-UPDATE tags SET color = $2 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at, project_id
+UPDATE tags SET color = $2 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at, project_id, source
 `
 
 type SetTagColorParams struct {
@@ -411,6 +585,7 @@ func (q *Queries) SetTagColor(ctx context.Context, arg SetTagColorParams) (Tag, 
 		&i.Color,
 		&i.CreatedAt,
 		&i.ProjectID,
+		&i.Source,
 	)
 	return i, err
 }
@@ -443,8 +618,41 @@ func (q *Queries) StripNonMemberAssignees(ctx context.Context, arg StripNonMembe
 	return result.RowsAffected(), nil
 }
 
+const tagTaskLinks = `-- name: TagTaskLinks :many
+
+SELECT tt.task_id, tt.source FROM task_tags tt WHERE tt.tag_id = $1
+`
+
+type TagTaskLinksRow struct {
+	TaskID uuid.UUID `json:"task_id"`
+	Source string    `json:"source"`
+}
+
+// ── merge and bulk delete (#2990) ──────────────────────────────
+// TagTaskLinks lists who wears a tag and how it got there — what a merge
+// journals and what a bulk delete hands back so the undo can put it back.
+func (q *Queries) TagTaskLinks(ctx context.Context, tagID uuid.UUID) ([]TagTaskLinksRow, error) {
+	rows, err := q.db.Query(ctx, tagTaskLinks, tagID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TagTaskLinksRow
+	for rows.Next() {
+		var i TagTaskLinksRow
+		if err := rows.Scan(&i.TaskID, &i.Source); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateTag = `-- name: UpdateTag :one
-UPDATE tags SET name = $2, color = $3 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at, project_id
+UPDATE tags SET name = $2, color = $3 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at, project_id, source
 `
 
 type UpdateTagParams struct {
@@ -463,6 +671,7 @@ func (q *Queries) UpdateTag(ctx context.Context, arg UpdateTagParams) (Tag, erro
 		&i.Color,
 		&i.CreatedAt,
 		&i.ProjectID,
+		&i.Source,
 	)
 	return i, err
 }

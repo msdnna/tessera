@@ -1551,7 +1551,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		if res.Group {
 			soft(ctx, "SetGitlabLinkGroup", h.q.SetGitlabLinkGroup(ctx, db.SetGitlabLinkGroupParams{TaskID: t.ID, GlIsGroup: true}))
 		}
-		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false)
+		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false, true, actorID)
 		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 		// No per-task broadcast during sync: a full import would flood every watcher
@@ -1661,7 +1661,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		if link.GlIsGroup != res.Group {
 			soft(ctx, "SetGitlabLinkGroup", h.q.SetGitlabLinkGroup(ctx, db.SetGitlabLinkGroupParams{TaskID: link.TaskID, GlIsGroup: res.Group}))
 		}
-		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden)
+		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden, false, actorID)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
 		if !link.DueOverridden && !frozen["due"] && dueDate != nil {

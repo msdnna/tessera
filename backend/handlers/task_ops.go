@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -703,29 +704,64 @@ func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID
 // reader cannot reconcile, and the /milestone quick action made it worse: the
 // history then showed "ran the commands" and not what the command did.
 //
-// The entry carries the milestone's TITLE rather than its id, for the reason the
+// The entry carries the milestone's TITLE for the reader, for the reason the
 // tag does: a milestone may be renamed or deleted (SetTaskMilestone's column is
-// ON DELETE SET NULL), and history must not decay into a dangling uuid. A
-// re-pin of the milestone the task already carries writes nothing — the same
-// no-op guard AddTaskTag gets from its rows count.
+// ON DELETE SET NULL), and history must not decay into a dangling uuid. Since
+// #2992 it also carries the ids — `milestone_id` (where the task landed, or the
+// stage it left on milestone_removed) and, on a move between stages, `from_id` /
+// `from_title` — because the stage page counts its scope change and burn-up
+// from these entries, and a title is not a key. A re-pin of the milestone the
+// task already carries writes nothing — the same no-op guard AddTaskTag gets
+// from its rows count.
 func (h *API) journalMilestone(c *gin.Context, taskID uuid.UUID, before, after *uuid.UUID, title string) {
+	h.journalMilestoneActor(c, taskID, middleware.CurrentUser(c), before, after, title)
+}
+
+// journalMilestoneActor is journalMilestone with an explicit actor, for the
+// paths outside a request (the GitLab sync, the recurrence worker); uuid.Nil
+// journals a system entry.
+func (h *API) journalMilestoneActor(ctx context.Context, taskID, actor uuid.UUID, before, after *uuid.UUID, title string) {
+	if data := milestoneEventData(ctx, h.q, before, after, title); data != nil {
+		kind := "milestone"
+		if after == nil {
+			kind = "milestone_removed"
+		}
+		h.logEventActor(ctx, taskID, actor, kind, data)
+	}
+}
+
+// milestoneTitler is the one read milestoneEventData needs (a *db.Queries).
+type milestoneTitler interface {
+	GetMilestone(ctx context.Context, id uuid.UUID) (db.Milestone, error)
+}
+
+// milestoneEventData builds the journal payload of a milestone change, or nil
+// when nothing changed. `title` is the new stage's (when there is one).
+func milestoneEventData(ctx context.Context, q milestoneTitler, before, after *uuid.UUID, title string) map[string]any {
 	switch {
 	case before == nil && after == nil:
-		return
+		return nil
 	case before != nil && after != nil && *before == *after:
-		return
-	case after != nil:
-		h.logEvent(c, taskID, "milestone", map[string]any{"title": title})
-	default:
-		// Cleared: the title of what was there is what the reader needs, and it is
-		// only reachable from the row the task pointed at a moment ago. A stage
-		// deleted in between leaves the bare phrase rather than a hole.
-		var was string
-		if m, err := h.q.GetMilestone(c, *before); err == nil {
+		return nil
+	}
+	// The title of what was there is only reachable from the row the task
+	// pointed at a moment ago. A stage deleted in between leaves the bare phrase
+	// rather than a hole.
+	var was string
+	if before != nil {
+		if m, err := q.GetMilestone(ctx, *before); err == nil {
 			was = m.Title
 		}
-		h.logEvent(c, taskID, "milestone_removed", map[string]any{"title": was})
 	}
+	if after == nil {
+		return map[string]any{"title": was, "milestone_id": before.String()}
+	}
+	data := map[string]any{"title": title, "milestone_id": after.String()}
+	if before != nil {
+		data["from_id"] = before.String()
+		data["from_title"] = was
+	}
+	return data
 }
 
 // milestonesLostToBoard names the tasks of a subtree whose milestone the move
@@ -766,7 +802,7 @@ func (h *API) milestonesLostToBoard(c *gin.Context, q *db.Queries, rootID, targe
 // journal write a move makes (TransferTask's reopened list does the same).
 func (h *API) journalLostMilestones(c *gin.Context, rows []db.SubtreeMilestonesOffProjectRow) {
 	for _, r := range rows {
-		h.logEvent(c, r.ID, "milestone_removed", map[string]any{"title": r.Title})
+		h.logEvent(c, r.ID, "milestone_removed", map[string]any{"title": r.Title, "milestone_id": r.MilestoneID.String()})
 	}
 }
 

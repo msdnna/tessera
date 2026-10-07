@@ -343,7 +343,7 @@ func (h *API) cloneRecurringTask(ctx context.Context, src db.Task, columnID uuid
 		}
 	}
 	h.carryDueNotify(ctx, src, clone.ID)
-	h.carryTaskPins(ctx, src, clone.ID)
+	h.carryTaskPins(ctx, src, clone.ID, actorID)
 	h.moveDocumentLinks(ctx, src.ID, clone.ID)
 	clone = h.carryAttachments(ctx, src, clone)
 	// The step the parent's due date took — each item's own window rides along
@@ -441,7 +441,7 @@ func (h *API) cloneChecklist(
 			}
 		}
 		h.carryDueNotify(ctx, s, sub.ID)
-		h.carryTaskPins(ctx, s, sub.ID)
+		h.carryTaskPins(ctx, s, sub.ID, uuid.Nil)
 		h.moveDocumentLinks(ctx, s.ID, sub.ID)
 		sub = h.carryAttachments(ctx, s, sub)
 		sub = h.carryItemRecurrence(ctx, s, sub)
@@ -499,11 +499,22 @@ func (h *API) carryDueNotify(ctx context.Context, src db.Task, dstID uuid.UUID) 
 // The milestone needs no workspace check here (applyMilestone's concern): the
 // clone is born on the source's own board, so a stage the source could hold is
 // one the clone can.
-func (h *API) carryTaskPins(ctx context.Context, src db.Task, dstID uuid.UUID) {
+//
+// The carried stage is journalled on the clone (#2992): the next occurrence joins
+// the sprint now, and the stage page counts it into the scope from that moment.
+func (h *API) carryTaskPins(ctx context.Context, src db.Task, dstID, actorID uuid.UUID) {
 	if src.MilestoneID != nil {
-		soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{
+		err := h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{
 			ID: dstID, MilestoneID: src.MilestoneID,
-		}))
+		})
+		soft(ctx, "SetTaskMilestone", err)
+		if err == nil {
+			var title string
+			if m, merr := h.q.GetMilestone(ctx, *src.MilestoneID); merr == nil {
+				title = m.Title
+			}
+			h.journalMilestoneActor(ctx, dstID, actorID, nil, src.MilestoneID, title)
+		}
 	}
 	if src.EisenhowerQuadrant != nil {
 		_, err := h.q.SetTaskEisenhower(ctx, db.SetTaskEisenhowerParams{

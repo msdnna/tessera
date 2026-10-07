@@ -403,6 +403,7 @@ type Milestone struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	Slug        string     `json:"slug"`
+	ClosedAt    *time.Time `json:"closed_at"`
 }
 
 type Note struct {
@@ -576,6 +577,7 @@ type Tag struct {
 	Color       string    `json:"color"`
 	CreatedAt   time.Time `json:"created_at"`
 	ProjectID   uuid.UUID `json:"project_id"`
+	Source      string    `json:"source"`
 }
 
 type TagPrefix struct {

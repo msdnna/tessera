@@ -6,6 +6,20 @@ RETURNING *;
 -- name: ListTags :many
 SELECT * FROM tags WHERE project_id = $1 ORDER BY name;
 
+-- ListTagsWithCounts is ListTags with the number of live tasks wearing each tag
+-- — the «Задачи» column of the project window's tag table (#2990). Archived
+-- tasks and tasks of deleted boards are not counted, like everywhere else a
+-- figure is shown.
+-- name: ListTagsWithCounts :many
+SELECT g.*,
+       (SELECT COUNT(*) FROM task_tags tt
+        JOIN tasks t ON t.id = tt.task_id AND t.archived_at IS NULL
+        JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
+        WHERE tt.tag_id = g.id) AS task_count
+FROM tags g
+WHERE g.project_id = $1
+ORDER BY g.name;
+
 -- ListWorkspaceTags returns every tag across all projects in a workspace, for
 -- read-only views that span projects (Home, cross-project task lists).
 -- name: ListWorkspaceTags :many
@@ -42,9 +56,13 @@ UPDATE tags SET color = $2 WHERE id = $1 RETURNING *;
 -- color) if absent. On conflict it refreshes the colour only when a non-empty
 -- one is supplied, so the GitLab sync keeps label colours current without wiping
 -- a colour set elsewhere. Used by the GitLab sync.
+--
+-- A tag it creates is marked source = 'gitlab' (#3028); one that already existed
+-- keeps the origin it has — a hand-made tag GitLab later starts using stays the
+-- project's own.
 -- name: EnsureTag :one
-INSERT INTO tags (workspace_id, project_id, name, color)
-VALUES ($1, $2, $3, $4)
+INSERT INTO tags (workspace_id, project_id, name, color, source)
+VALUES ($1, $2, $3, $4, 'gitlab')
 ON CONFLICT (project_id, name) DO UPDATE
 SET color = COALESCE(NULLIF(EXCLUDED.color, ''), tags.color)
 RETURNING *;
@@ -122,3 +140,38 @@ FROM users u
 JOIN task_assignees ta ON ta.user_id = u.id
 WHERE ta.task_id = $1
 ORDER BY u.name;
+
+-- ── merge and bulk delete (#2990) ──────────────────────────────
+
+-- TagTaskLinks lists who wears a tag and how it got there — what a merge
+-- journals and what a bulk delete hands back so the undo can put it back.
+-- name: TagTaskLinks :many
+SELECT tt.task_id, tt.source FROM task_tags tt WHERE tt.tag_id = $1;
+
+-- MergeTagLinks moves a source tag's tasks onto the target: every task wearing
+-- the source gets the target (keeping how the source got there), and returns
+-- the tasks that did not have the target yet. The source row is deleted
+-- separately (its own task_tags go with it by cascade).
+-- name: MergeTagLinks :many
+INSERT INTO task_tags (task_id, tag_id, source)
+SELECT tt.task_id, @target_id, tt.source FROM task_tags tt WHERE tt.tag_id = @source_id
+ON CONFLICT (task_id, tag_id) DO NOTHING
+RETURNING task_id;
+
+-- RestoreTag puts a deleted tag back under its old id (the undo of a bulk
+-- delete). Nothing is written if the id is taken; a name taken in the meantime
+-- fails on the unique index and the caller skips that tag.
+-- name: RestoreTag :one
+INSERT INTO tags (id, workspace_id, project_id, name, color, source)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (id) DO NOTHING
+RETURNING *;
+
+-- RestoreTaskTag re-attaches a restored tag to a task — only to a task of the
+-- tag's own workspace that still exists.
+-- name: RestoreTaskTag :execrows
+INSERT INTO task_tags (task_id, tag_id, source)
+SELECT t.id, @tag_id, @source::text
+FROM tasks t JOIN boards b ON b.id = t.board_id JOIN projects p ON p.id = b.project_id
+WHERE t.id = @task_id AND p.workspace_id = @workspace_id
+ON CONFLICT (task_id, tag_id) DO NOTHING;

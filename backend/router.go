@@ -578,6 +578,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/projects/:id/milestones", rh.CreateMilestone)
 			protected.PATCH("/milestones/:id", rh.UpdateMilestone)
 			protected.DELETE("/milestones/:id", rh.DeleteMilestone)
+			// Stage page (#2992): progress, burn-up, scope change, pace in one read.
+			protected.GET("/milestones/:id/metrics", rh.MilestoneMetrics)
 			protected.POST("/tasks/:id/milestone", rh.SetTaskMilestone)
 			protected.DELETE("/tasks/:id/milestone", rh.ClearTaskMilestone)
 			protected.POST("/milestones/:id/gitlab", rh.PushMilestoneToGitlab)
