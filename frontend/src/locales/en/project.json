@@ -30,7 +30,8 @@
     "delete": "Delete the board",
     "deleted": "Board “{name}” deleted",
     "restored": "Board “{name}” restored",
-    "restoreFailed": "Couldn't restore the board"
+    "restoreFailed": "Couldn't restore the board",
+    "kind": "Board view"
   },
   "milestone": {
     "backlog": "Backlog",

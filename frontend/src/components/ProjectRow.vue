@@ -523,7 +523,14 @@ watch(
 // ── new board: an empty row at the end of the project's boards ──
 // ↵ creates it and opens it, ⇧↵ creates it and offers another empty row, a
 // click away creates it without opening, Esc (or an empty click-away) drops it.
-// The kind chip (Kanban / List) is a stub until boards carry a kind (#3017).
+// The kind chip — Канбан / Список — is what the board opens in (#3017): Tab or a
+// click switches it, and it is stored on the board (boards.default_layout).
+const NEW_BOARD_KINDS = ['board', 'list']
+const newBoardKind = ref('board')
+function toggleNewBoardKind() {
+  const i = NEW_BOARD_KINDS.indexOf(newBoardKind.value)
+  newBoardKind.value = NEW_BOARD_KINDS[(i + 1) % NEW_BOARD_KINDS.length]
+}
 const addingBoard = ref(false)
 const newBoardName = ref('')
 const newBoardBusy = ref(false)
@@ -533,6 +540,7 @@ function startAddBoard() {
   expanded.value = true
   newBoardName.value = ''
   newBoardError.value = ''
+  newBoardKind.value = 'board'
   addingBoard.value = true
 }
 function cancelAddBoard() {
@@ -540,7 +548,12 @@ function cancelAddBoard() {
   newBoardName.value = ''
 }
 async function commitNewBoard(value, { via, shift }) {
-  if (via === 'tab') return // the kind switch — not built yet (#3017)
+  // Tab switches the kind and keeps the field open.
+  if (via === 'tab') {
+    toggleNewBoardKind()
+    nextTick(() => newBoardEditor.value?.focus())
+    return
+  }
   const n = value.trim()
   if (!n) {
     if (via !== 'enter') cancelAddBoard()
@@ -549,7 +562,10 @@ async function commitNewBoard(value, { via, shift }) {
   newBoardBusy.value = true
   newBoardError.value = ''
   try {
-    const res = await projApi.createBoard(props.project.id, { name: n })
+    const res = await projApi.createBoard(props.project.id, {
+      name: n,
+      default_layout: newBoardKind.value,
+    })
     // Point the Get Started guide's next step at this exact board (#2753 rework).
     tour.noteCreated({ boardId: res.data?.id })
     await store.loadBoards(props.project.id)
@@ -804,14 +820,21 @@ function onBoardKey(e, b) {
             @cancel="cancelAddBoard"
           >
             <template #trailing>
-              <span
+              <button
+                type="button"
                 class="kind-chip"
-                :title="t('common.stub.soon', { n: stubTask('board.newKind') })"
-                aria-disabled="true"
+                :title="`${t('project.board.kind')}: ${t(`board.layout.${newBoardKind}`)} · Tab`"
+                :data-kind="newBoardKind"
+                data-testid="new-board-kind"
+                @mousedown.prevent
+                @click.stop="toggleNewBoardKind"
               >
-                <TesseraIcon name="layout-kanban" :size="12" />
+                <TesseraIcon
+                  :name="newBoardKind === 'list' ? 'layout-list' : 'layout-kanban'"
+                  :size="12"
+                />
                 <n-icon :component="ChevronDownOutline" :size="10" />
-              </span>
+              </button>
             </template>
           </InlineEdit>
         </div>
@@ -1051,10 +1074,14 @@ function onBoardKey(e, b) {
   gap: 2px;
   height: 20px;
   padding: 0 4px;
+  border: 0;
   border-radius: 5px;
   background: var(--t-pill);
   color: var(--t-text2);
-  cursor: not-allowed;
-  opacity: 0.8;
+  font: inherit;
+  cursor: pointer;
+}
+.kind-chip:hover {
+  color: var(--t-text1);
 }
 </style>

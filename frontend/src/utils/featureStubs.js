@@ -18,8 +18,6 @@ export const FEATURE_STUBS = {
   'project.slugAliases': 3012,
   // Counts in the delete confirmations («3 доски и 148 задач») — #3014.
   'delete.counts': 3014,
-  // Kind of a new board (Kanban / List) chosen in the inline row — #3017.
-  'board.newKind': 3017,
   // Project settings window «Проект» (⌘,) — #2971.
   'project.window': 2971,
   // Timeline scale «Квартал» and the chart toggles in the board's view panel

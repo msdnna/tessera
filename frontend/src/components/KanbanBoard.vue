@@ -2157,6 +2157,26 @@ async function applyTaskQuery() {
   }
 }
 
+// Opening a board: its locally remembered state, then the board itself, then its
+// saved views — the default one wins on the first open of a session. A board
+// this device has never shown, with no default view, opens in the view it was
+// created in (#3017: boards.default_layout — Канбан or Список).
+async function openBoard(id) {
+  let seen
+  try {
+    seen = !!localStorage.getItem(`tessera_view_${id}`)
+  } catch {
+    seen = true // no storage — leave the layout alone
+  }
+  restoreView()
+  await load(id)
+  await bv.load()
+  const applied = bv.onOpen()
+  const start = board.value?.default_layout
+  if (!applied && !seen && start && start !== layout.value) layout.value = start
+  applyTaskQuery()
+}
+
 onMounted(async () => {
   window.addEventListener('pointerdown', onAnyPointer, true)
   ro = new ResizeObserver(() => measure())
@@ -2170,11 +2190,7 @@ onMounted(async () => {
   subbarRO = new ResizeObserver(() => fitSubbar())
   if (subbarEl.value) subbarRO.observe(subbarEl.value)
   nextTick(fitSubbar)
-  restoreView()
-  await load(props.boardId)
-  await bv.load()
-  bv.onOpen()
-  applyTaskQuery()
+  await openBoard(props.boardId)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onAnyPointer, true)
@@ -2194,11 +2210,7 @@ watch(
     resetCardViewport()
     // The loaded view is per-board: drop it before this board's state comes in.
     bv.forget()
-    restoreView()
-    await load(id)
-    await bv.load()
-    bv.onOpen()
-    applyTaskQuery()
+    await openBoard(id)
   },
 )
 watch(
