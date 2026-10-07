@@ -2,7 +2,6 @@
   "menu": {
     "addBoard": "Новая доска",
     "rename": "Переименовать",
-    "estimation": "Оценка задач…",
     "slug": "Изменить адрес…",
     "milestones": "Этапы…",
     "treeMode": "Показывать в дереве",
@@ -85,17 +84,8 @@
     "auto": "будет назначен автоматически"
   },
   "tags": {
-    "head": "Теги проекта",
-    "namePlaceholder": "Имя тега",
-    "renameHint": "{name} · двойной клик — переименовать",
-    "deleteConfirm": "Удалить тег? Он снимется со всех задач.",
-    "empty": "Тегов пока нет.",
-    "newPlaceholder": "Новый тег",
-    "add": "Добавить",
     "prefixMode": "Короткие префиксы",
-    "prefixModeHint": "Показывать сырой префикс (напр. «T») вместо понятного имени",
-    "prefixNames": "Имена префиксов",
-    "prefixPlaceholder": "напр. Статус"
+    "prefixModeHint": "Показывать сырой префикс (напр. «T») вместо понятного имени"
   },
   "icon": {
     "search": "Найти иконку",
@@ -114,5 +104,84 @@
     "searchPlaceholder": "Поиск по названию (англ.): home, code, rocket…",
     "loading": "Загрузка коллекции…",
     "notFound": "Ничего не найдено"
+  },
+  "window": {
+    "title": "Настройки проекта",
+    "outside": "Отдельные окна",
+    "members": "Участники",
+    "tabsHint": "вкладки",
+    "tab": {
+      "general": "Общее",
+      "tags": "Теги",
+      "stages": "Этапы",
+      "estimation": "Оценка"
+    },
+    "general": {
+      "autosave": "изменения сохраняются сразу",
+      "name": "Название",
+      "address": "Адрес",
+      "addressHint": "Используется в ссылках и API",
+      "look": "Иконка и цвет",
+      "lookHint": "Видны в сайдбаре, хлебных крошках и на рейле",
+      "group": "Группа",
+      "danger": "Опасная зона",
+      "dangerHint": "Архив обратим, удаление — нет",
+      "deleteArmed": "Точно удалить «{name}»? Ещё раз — удалить",
+      "deleteHint": "Удаление — в два шага: доски, задачи и этапы проекта пропадут без возврата"
+    },
+    "estimation": {
+      "source": "Настройка",
+      "workday": "Рабочее время",
+      "hoursPerDay": "часов в дне",
+      "daysPerWeek": "дней в неделе",
+      "scaleHint": "Значения в пикере оценки",
+      "addValue": "Добавить значение",
+      "resetValues": "Вернуть значения по умолчанию",
+      "customEmpty": "Без значений пикер оставит только поле ввода",
+      "kind": {
+        "time": "Часы",
+        "points": "Story points",
+        "tshirt": "Размер футболки",
+        "custom": "Своя единица"
+      }
+    }
+  },
+  "tagTable": {
+    "summary": "{tags} тегов · {groups} групп",
+    "newPlaceholder": "Новый тег — «префикс::имя» или просто имя",
+    "newInvalid": "После «::» нужно имя тега",
+    "filter": "Фильтр",
+    "taken": "Тег «{name}» уже есть — выберите оба и слейте",
+    "colTag": "Тег",
+    "colColor": "Цвет",
+    "colTasks": "Задачи",
+    "colSource": "Источник",
+    "empty": "Тегов пока нет — создайте первый в поле выше",
+    "noMatch": "Ничего не нашлось",
+    "prefixAdd": "Добавить понятное имя",
+    "prefixPlaceholder": "Понятное имя префикса",
+    "prefixNote": "понятное имя префикса · видно в тегах на карточках",
+    "fromGitlab": "из GitLab",
+    "ruledTitle": "Управляется правилом GitLab",
+    "ruledSub": "{prefix}* из {path} · меняйте в GitLab",
+    "renameHint": "Переименовать — клик, ↵ или F2",
+    "rename": "Переименовать",
+    "recolor": "Перекрасить",
+    "recolorMany": "Цвет для {n} тегов",
+    "delete": "Удалить",
+    "merge": "Слить в…",
+    "clear": "снять",
+    "selected": "{n} выбрано",
+    "mergeTitle": "Слить {n} тега в один",
+    "mergeSub": "Задачи получат выбранный тег, остальные исчезнут",
+    "mergeInto": "Слить в «{name}»",
+    "merged": "Слито тегов: {n}",
+    "sourceUser": "Tessera",
+    "sourceGitlab": "Лейбл GitLab",
+    "sourceRule": "Правило GitLab",
+    "deletedOne": "Тег «{name}» удалён",
+    "deletedMany": "Удалено тегов: {n}",
+    "restoredOne": "Тег «{name}» восстановлен",
+    "restoredMany": "Восстановлено тегов: {n}"
   }
 }

@@ -18,8 +18,12 @@ export const FEATURE_STUBS = {
   'project.slugAliases': 3012,
   // Counts in the delete confirmations («3 доски и 148 задач») — #3014.
   'delete.counts': 3014,
-  // Project settings window «Проект» (⌘,) — #2971.
-  'project.window': 2971,
+  // Editing, closing and reopening a GitLab-sourced stage with the change
+  // written back to GitLab (#3010) — until then such a stage is read-only here.
+  'stage.gitlabWrite': 3010,
+  // A stage's description changed in GitLab and here at once: resolving it in
+  // the conflict window (#3025, part of #3010).
+  'stage.descConflict': 3010,
   // Timeline scale «Квартал» and the chart toggles in the board's view panel
   // (weekends, today line, progress, links, undated at the bottom) — #3021.
   'chart.scale': 3021,

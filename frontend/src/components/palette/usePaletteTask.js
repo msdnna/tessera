@@ -8,6 +8,7 @@ import {
   workspaces as wsApi,
 } from '@/api'
 import { usePaletteStore } from '@/stores/palette'
+import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useFormat } from '@/composables/useFormat'
 import { rank } from '@/utils/fuzzy'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
@@ -62,6 +63,7 @@ export function usePaletteTask() {
   const { t } = useI18n()
   const message = useMessage()
   const palette = usePaletteStore()
+  const projectWindow = useProjectWindowStore()
   const { formatDate } = useFormat()
 
   const task = ref(null)
@@ -398,7 +400,21 @@ export function usePaletteTask() {
               }, 'stay'),
           }
         : null
-    return { rows, create }
+    // «Управлять тегами…» (#2990): the palette closes and the project window opens
+    // on its tag table, filtered by what was typed.
+    const manage = {
+      key: 'tag:manage',
+      icon: ICONS.SettingsOutline,
+      title: t('task.tags.manage'),
+      value: t('task.tags.manageWhere'),
+      pinned: true,
+      run: () => {
+        const pid = boardInfo.value?.project_id
+        palette.hide()
+        if (pid) projectWindow.open(pid, 'tags', { filter: q })
+      },
+    }
+    return { rows, create, manage }
   }
 
   function subtaskRows(query) {
@@ -458,8 +474,8 @@ export function usePaletteTask() {
       const { rows: all, typed } = dueRows(q)
       rows = typed ? all : filter(all)
     } else if (f === 'tags') {
-      const { rows: all, create } = tagRows(q)
-      rows = [...filter(all), ...(create ? [create] : [])]
+      const { rows: all, create, manage } = tagRows(q)
+      rows = [...filter(all), ...(create ? [create] : []), manage]
     } else rows = subtaskRows(q)
     return [{ id: f, title, rows }]
   }

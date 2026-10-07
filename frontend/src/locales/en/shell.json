@@ -223,7 +223,9 @@
       "task": "Open task",
       "chart": "Gantt and timeline",
       "sidebar": "Sidebar and spaces",
-      "views": "Saved views"
+      "views": "Saved views",
+      "project": "«Project» window",
+      "stage": "Milestone page"
     },
     "nav": {
       "palette": "Search and commands",
@@ -233,7 +235,8 @@
       "sidebar": "Hide / show sidebar",
       "shortcuts": "This cheat sheet",
       "goSidebar": "Focus the sidebar tree",
-      "goRail": "Focus the spaces rail"
+      "goRail": "Focus the spaces rail",
+      "goStage": "The board’s milestone page"
     },
     "board": {
       "addTask": "Task in the hovered column",
@@ -241,7 +244,9 @@
       "filter": "Filter",
       "group": "Grouping",
       "layout": "View: kanban / list / timeline / Gantt / calendar / matrix",
-      "select": "Select a card"
+      "select": "Select a card",
+      "stage": "Pick a milestone in the sub-toolbar",
+      "stageStrip": "Fold / unfold the milestone strip"
     },
     "card": {
       "open": "Open",
@@ -339,6 +344,23 @@
       "rename": "Rename the view",
       "delete": "Delete the view",
       "move": "Move the view up / down"
+    },
+    "project": {
+      "window": "«Project» window of the current project",
+      "tab": "Window tabs: General · Tags · Milestones · Estimation",
+      "close": "Close the window"
+    },
+    "tags": {
+      "select": "Select a tag row · a range",
+      "rename": "Rename a tag",
+      "new": "New tag or milestone · filter",
+      "bulk": "Merge · recolour · delete the selected tags"
+    },
+    "stage": {
+      "edit": "Edit the milestone goals",
+      "board": "The milestone board",
+      "close": "Close the milestone",
+      "back": "Back"
     }
   },
   "palette": {

@@ -32,6 +32,8 @@ export const GROUPS = [
   'palette',
   'view',
   'views',
+  'project',
+  'stage',
 ]
 
 export const CATALOG = [
@@ -39,12 +41,16 @@ export const CATALOG = [
   { id: 'nav.palette', keys: 'mod+k', group: 'nav', input: true, modal: true },
   { id: 'nav.goBoard', keys: 'g b', group: 'nav', command: 'GridOutline' },
   { id: 'nav.goInbox', keys: 'g i', group: 'nav', command: 'NotificationsOutline' },
+  // The page of the stage the open board is scoped to (#2993).
+  { id: 'nav.goStage', keys: 'g e', group: 'nav' },
   { id: 'nav.goMine', keys: 'g m', group: 'nav', command: 'HomeOutline' },
   { id: 'nav.sidebar', keys: '[', group: 'nav', command: 'EyeOutline' },
   { id: 'nav.shortcuts', keys: '?', group: 'nav', command: 'KeypadOutline' },
   // Undo toasts (#2969): ⌘Z takes back the newest one from anywhere but a text
   // field; F6 moves focus onto it.
-  { id: 'undo.last', keys: 'mod+z', group: 'nav' },
+  // `modal`: a toast raised inside a large window (the «Проект» window's tag
+  // table, #2990) is undone without leaving it.
+  { id: 'undo.last', keys: 'mod+z', group: 'nav', modal: true },
   { id: 'toast.focus', keys: 'f6', group: 'nav' },
 
   // Pages: palette commands without a key of their own.
@@ -80,6 +86,9 @@ export const CATALOG = [
   { id: 'board.quick', keys: 'n', group: 'board', eager: true },
   { id: 'board.filter', keys: 'f', group: 'board' },
   { id: 'board.group', keys: 'shift+g', group: 'board' },
+  // Stage selector in the sub-toolbar and the stage strip over the board (#2994).
+  { id: 'board.stage', keys: 'shift+e', group: 'board', command: 'TrailSignOutline' },
+  { id: 'board.stageStrip', keys: 'shift+h', group: 'board' },
   // Six equal views (#2970): Канбан · Список · Таймлайн · Гант · Календарь · Матрица.
   { id: 'board.layout', keys: 'v digit', group: 'board', digit: '1–6' },
   // The column under the pointer, or the selected card's (#2969): F2 renames in
@@ -193,6 +202,23 @@ export const CATALOG = [
   { id: 'views.rename', group: 'views', display: [['f2']] },
   { id: 'views.delete', group: 'views', display: [['backspace']] },
   { id: 'views.move', group: 'views', display: [['alt', '↑/↓']] },
+
+  // ── the «Проект» window (#2971): ⌘, opens it on the current project, digits
+  // switch its tabs. The tag table's keys are caught by the table itself (they
+  // only mean something on its rows); these entries list them.
+  { id: 'project.window', keys: 'mod+,', group: 'project', command: 'SettingsOutline' },
+  { id: 'project.tab', keys: 'digit', group: 'project', digit: '1–4', modal: true },
+  { id: 'project.close', keys: 'escape', modal: true, prio: 2 },
+  { id: 'tags.select', group: 'project', display: [['space'], ['shift', '↑/↓']] },
+  { id: 'tags.rename', group: 'project', display: [['enter'], ['f2']] },
+  { id: 'tags.new', group: 'project', display: [['n'], ['/']] },
+  { id: 'tags.bulk', group: 'project', display: [['m'], ['c'], ['backspace']] },
+
+  // ── the stage page (#2993) ──
+  { id: 'stage.edit', keys: 'e', group: 'stage' },
+  { id: 'stage.board', keys: 'b', group: 'stage' },
+  { id: 'stage.close', keys: 'shift+x', group: 'stage' },
+  { id: 'stage.back', keys: 'escape', group: 'stage' },
 ]
 
 export const byId = new Map(CATALOG.map((e) => [e.id, e]))

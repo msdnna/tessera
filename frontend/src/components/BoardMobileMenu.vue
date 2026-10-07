@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, h } from 'vue'
-import { NButton, NIcon, NDropdown, NModal, NCard } from 'naive-ui'
+import { computed, h } from 'vue'
+import { NButton, NIcon, NDropdown } from 'naive-ui'
 import {
   EllipsisVerticalOutline,
   PricetagsOutline,
@@ -8,12 +8,14 @@ import {
   CheckmarkOutline,
   OptionsOutline,
   CloseCircleOutline,
+  TrailSignOutline,
+  SettingsOutline,
 } from '@vicons/ionicons5'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { useBoardViewStore } from '@/stores/boardView'
 import { archiveQuery, withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
-import TagManager from './TagManager.vue'
+import { useProjectWindowStore } from '@/stores/projectWindow'
 import TesseraIcon from './TesseraIcon.vue'
 import { LAYOUTS, LAYOUT_ICONS } from '@/utils/boardViews'
 
@@ -21,7 +23,7 @@ const { t } = useI18n()
 const store = useBoardViewStore()
 const route = useRoute()
 const router = useRouter()
-const tagsOpen = ref(false)
+const projectWindow = useProjectWindowStore()
 // This menu is the phone's whole board toolbar (Topbar renders it *instead of*
 // BoardActions), so «Архив» has to carry its own state here: it is ticked while
 // the scope is on and selecting it again leaves — same toggle as the desktop
@@ -76,7 +78,11 @@ const options = computed(() => [
       ]
     : []),
   { type: 'divider', key: 'd2' },
+  // The project's tags and stages open the «Проект» window (#2971) — full
+  // screen on a phone.
   { key: 'tags', label: t('board.actions.tags'), icon: renderIcon(PricetagsOutline) },
+  { key: 'stages', label: t('board.actions.milestones'), icon: renderIcon(TrailSignOutline) },
+  { key: 'project', label: t('project.menu.settings'), icon: renderIcon(SettingsOutline) },
   // The label stays «Архив» in both states — the tick below is what says the
   // scope is on, exactly as it does for the active layout right above it.
   { key: 'archive', label: t('board.actions.archive'), icon: renderIcon(ArchiveOutline) },
@@ -109,14 +115,13 @@ function onSelect(key) {
   else if (key.startsWith('view:')) store.requestApplyView(key.slice(5))
   else if (key === 'view-none') store.requestClearView()
   else if (key === 'customize') store.openCustomize()
-  else if (key === 'tags') tagsOpen.value = true
+  else if (key === 'tags') projectWindow.open(store.projectId, 'tags')
+  else if (key === 'stages') projectWindow.open(store.projectId, 'stages')
+  else if (key === 'project') projectWindow.open(store.projectId, 'general')
   else if (key === 'archive') {
     if (isArchive.value) router.replace({ query: withoutArchiveQuery(route.query) })
     else router.push({ query: archiveQuery(route.query) })
   }
-}
-function onChanged() {
-  store.bumpReload()
 }
 </script>
 
@@ -132,18 +137,4 @@ function onChanged() {
       <n-icon :component="EllipsisVerticalOutline" />
     </n-button>
   </n-dropdown>
-
-  <n-modal v-model:show="tagsOpen">
-    <n-card :title="t('board.actions.tags')" style="max-width: 360px" role="dialog">
-      <!-- prefix-names is not decoration: TagManager merges the prefix-label editor
-           over it, and the endpoint is a full replace — without it a save wipes the
-           project's labels (same props as the desktop BoardActions popover). -->
-      <TagManager
-        :project-id="store.projectId"
-        :tags="store.tagsList"
-        :prefix-names="store.prefixNames"
-        @changed="onChanged"
-      />
-    </n-card>
-  </n-modal>
 </template>

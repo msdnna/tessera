@@ -91,42 +91,43 @@ describe('дата этапа хранится как date-only', () => {
   })
 })
 
-describe('MilestoneManager отправляет date-only', () => {
-  let MilestoneManager
+// The «Проект» window's stage tab (#2971) and its dates popover took over from
+// MilestoneManager: the same date-only contract holds for both.
+describe('окно «Проект» → Этапы отправляет date-only', () => {
+  let ProjectStagesTab
+  let StageDatesPopover
   beforeEach(async () => {
     vi.clearAllMocks()
     setActivePinia(createPinia())
-    MilestoneManager = (await import('@/components/MilestoneManager.vue')).default
+    ProjectStagesTab = (await import('@/components/project/ProjectStagesTab.vue')).default
+    StageDatesPopover = (await import('@/components/project/StageDatesPopover.vue')).default
   })
 
-  const mountManager = () =>
-    mount(MilestoneManager, {
-      props: { show: true, projectId: 'p-1', projectName: 'Tessera', wsId: 'w-1' },
+  it('создание строкой: даты уходят на сервер UTC-полночью выбранных дней', async () => {
+    const w = mount(ProjectStagesTab, {
+      props: { project: { id: 'p-1', slug: 'tessera' } },
       global: { stubs },
     })
-
-  it('создание: срок уходит на сервер UTC-полночью выбранного дня', async () => {
-    const w = mountManager()
     await w.vm.$nextTick()
     w.vm.newTitle = 'Sprint 1'
-    w.vm.newDue = PICKED_15_JUL
-    await w.vm.create()
+    w.vm.newRange = [PICKED_15_JUL, PICKED_15_JUL]
+    await w.vm.createStage()
 
     expect(createMilestone).toHaveBeenCalledTimes(1)
     const [, body] = createMilestone.mock.calls[0]
+    expect(body.start_date).toBe('2026-07-15T00:00:00.000Z')
     expect(body.due_date).toBe('2026-07-15T00:00:00.000Z')
   })
 
-  it('правка: срок из пикера тоже уходит UTC-полночью', async () => {
-    const w = mountManager()
-    await w.vm.$nextTick()
-    w.vm.editBuf = {
-      title: 'Sprint 1',
-      start_date: null,
-      due_date: PICKED_15_JUL,
-      state: 'active',
-    }
-    await w.vm.saveEdit({ id: 'm-1', description: '' })
+  it('правка дат: срок из пикера тоже уходит UTC-полночью', async () => {
+    const stage = { id: 'm-1', title: 'Sprint 1', description: '', state: 'active' }
+    const w = mount(StageDatesPopover, {
+      props: { show: false, stage, anchor: () => null },
+      global: { stubs },
+    })
+    await w.setProps({ show: true })
+    w.vm.range = [PICKED_15_JUL, PICKED_15_JUL]
+    await w.vm.submit()
 
     expect(updateMilestone).toHaveBeenCalledTimes(1)
     const [, body] = updateMilestone.mock.calls[0]
@@ -134,14 +135,17 @@ describe('MilestoneManager отправляет date-only', () => {
   })
 
   it('открытие на правку: date-only с сервера ложится в пикер тем же днём', async () => {
-    const w = mountManager()
-    await w.vm.$nextTick()
-    w.vm.startEdit({
+    const stage = {
       id: 'm-1',
       title: 'Sprint 1',
       due_date: '2026-07-15T00:00:00Z',
       state: 'active',
+    }
+    const w = mount(StageDatesPopover, {
+      props: { show: false, stage, anchor: () => null },
+      global: { stubs },
     })
-    expect(w.vm.editBuf.due_date).toBe(new Date(2026, 6, 15).getTime())
+    await w.setProps({ show: true })
+    expect(w.vm.range[1]).toBe(new Date(2026, 6, 15).getTime())
   })
 })

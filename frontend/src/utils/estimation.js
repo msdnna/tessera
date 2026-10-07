@@ -209,12 +209,54 @@ export function formatEstimate(value, cfg) {
 }
 
 // Discrete options for the modal's point picker (empty for time/custom, which
-// use a free-text field). T-shirt yields {label, value} sizes.
+// use a free-text field). T-shirt yields {label, value} sizes. A project may
+// replace the scale with its own values (#3029, `cfg.values`).
 export function scaleOptions(cfg) {
   if (cfg?.unit !== 'points') return []
+  if (Array.isArray(cfg?.values) && cfg.values.length) {
+    return cfg.values.map((v) => ({ label: formatEstimate(v, cfg), value: v }))
+  }
   const scale = POINTS_SCALES[cfg?.points_scale] || POINTS_SCALES.fibonacci
   if (cfg?.points_scale === 'tshirt') return scale.map((o) => ({ label: o.label, value: o.value }))
   return scale.map((v) => ({ label: String(v), value: v }))
+}
+
+// Quick picks above the free-text estimate field of a time (or custom) unit
+// (#3029): the project's own values, else for time the built-in ladder of
+// 1 / 2 / 4 / 8 / 16 / 24 hours (mockup ProjectWin «Оценка»). In minutes for
+// time, a plain count for custom.
+export const DEFAULT_TIME_VALUES = [60, 120, 240, 480, 960, 1440]
+export function quickValues(cfg) {
+  const u = cfg?.unit || 'time'
+  if (u === 'points') return []
+  if (Array.isArray(cfg?.values) && cfg.values.length) return [...cfg.values]
+  return u === 'time' ? [...DEFAULT_TIME_VALUES] : []
+}
+
+// The values the «Оценка» tab shows as the picker's scale: what quickValues /
+// scaleOptions would offer.
+export function pickerValues(cfg) {
+  if ((cfg?.unit || 'time') === 'points') return scaleOptions(cfg).map((o) => o.value)
+  return quickValues(cfg)
+}
+
+// A figure of the stage page and strip (#2993): time in whole hours («52ч»,
+// «7.5ч» under ten) — the mockup's «52 / 84 ч» — other units as formatted.
+export function formatHours(value, cfg) {
+  if (value == null) return ''
+  if ((cfg?.unit || 'time') !== 'time') return formatEstimate(value, cfg) || '0'
+  const h = value / 60
+  const n = h >= 10 || Number.isInteger(h) ? Math.round(h) : Math.round(h * 2) / 2
+  return t('task.estimate.short.hour', { n })
+}
+
+// A short label for one picker value: hours stay hours for time («16 ч», not
+// «2д» — the picker speaks the unit people estimate in), the rest as formatted.
+export function pickerLabel(value, cfg) {
+  if ((cfg?.unit || 'time') === 'time' && value % 60 === 0) {
+    return t('task.estimate.short.hour', { n: value / 60 })
+  }
+  return formatEstimate(value, cfg)
 }
 
 // Human name of the unit, for settings labels and aggregates. A custom unit is

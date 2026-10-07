@@ -20,10 +20,12 @@ import {
   TrashOutline,
   TimeOutline,
   TrailSignOutline,
+  SettingsOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, projects as projApi, gitlab as glApi } from '@/api'
 import { storeToRefs } from 'pinia'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useBoardViewStore } from '@/stores/boardView'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel, priorityOptions as priorityOptionList } from '@/utils/priority'
@@ -288,6 +290,16 @@ const completed = ref(false)
 const selectedTags = ref([])
 const selectedAssignees = ref([])
 const newTagName = ref('')
+// «Управлять тегами…» (#2990): the picker closes and the project window opens on
+// its tag table, filtered by what was typed.
+const projectWindow = useProjectWindowStore()
+function manageTags() {
+  const pid = projectId.value || boardInfo.value?.projectId
+  if (!pid) return
+  const filter = newTagName.value.trim()
+  fieldOpen.value = ''
+  projectWindow.open(pid, 'tags', { filter })
+}
 
 // Computed: the ladder is rebuilt per render so a language switch reaches it.
 const priorityOptions = computed(() => priorityOptionList())
@@ -1897,6 +1909,18 @@ useShortcuts(
                             @keydown.esc.stop="fieldOpen = ''"
                             @keyup.enter="createTag"
                           />
+                          <!-- The project's tag table (#2990): the «Проект» window on
+                               «Теги», filtered by what was typed here. -->
+                          <button
+                            type="button"
+                            class="menu-item tags-manage"
+                            data-testid="task-tags-manage"
+                            @click="manageTags"
+                          >
+                            <n-icon :component="SettingsOutline" :size="14" class="vico" />
+                            <span class="grow">{{ t('task.tags.manage') }}</span>
+                            <span class="muted">{{ t('task.tags.manageWhere') }}</span>
+                          </button>
                         </PopMenu>
                       </n-popover>
                       <ShortcutKeys id="task.tags" class="pkey" />
@@ -2588,6 +2612,17 @@ useShortcuts(
 }
 /* Tags trigger: one line; only the chips that wholly fit are rendered (+ a
    measured "+N"); the measurement row is invisible. */
+.tags-manage {
+  margin-top: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+}
+.tags-manage .muted {
+  font-size: 11.5px;
+}
 .tags-val {
   overflow: hidden;
   flex-wrap: nowrap;

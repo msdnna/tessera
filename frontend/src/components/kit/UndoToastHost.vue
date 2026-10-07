@@ -110,7 +110,10 @@ function onKey(e, toast) {
   left: var(--app-content-left, 0px);
   right: 0;
   bottom: 24px;
-  z-index: 1500;
+  /* Over the large windows (Naive modals sit at 2000) — a toast raised inside
+     the «Проект» window must stay visible and clickable — and under the
+     popovers (2050). */
+  z-index: 2040;
   display: flex;
   flex-direction: column;
   align-items: center;

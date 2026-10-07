@@ -22,6 +22,9 @@ import QuickActionsFab from './QuickActionsFab.vue'
 import QuickCreateModal from './QuickCreateModal.vue'
 import ShortcutsModal from './ShortcutsModal.vue'
 import WorkspaceDialogsHost from './WorkspaceDialogsHost.vue'
+import ProjectWindow from './project/ProjectWindow.vue'
+import { useProjectWindowStore } from '@/stores/projectWindow'
+import { useBoardViewStore } from '@/stores/boardView'
 import Sidebar from './Sidebar.vue'
 import AppRail from './rail/AppRail.vue'
 import Topbar from './Topbar.vue'
@@ -77,6 +80,8 @@ onBeforeUnmount(() => {
   if (!isTauri()) document.documentElement.style.setProperty('--app-rail-w', '0px')
 })
 const route = useRoute()
+const projectWindow = useProjectWindowStore()
+const boardViewStore = useBoardViewStore()
 const router = useRouter()
 // The start screen's header is translucent and lies over the page, so the
 // aurora runs under it (v2, #2960).
@@ -106,6 +111,15 @@ useShortcuts({
   'nav.goBoard': () => router.push(sGet('tessera_last_board') || '/'),
   'nav.goInbox': () => notes.requestFeed(),
   'view.theme': () => theme.toggle(),
+  // ⌘, — the «Проект» window of the project in front of you (#2971): the open
+  // board's, or the one in the address (a stage page). Toggles.
+  'project.window': () => {
+    if (projectWindow.projectId) return projectWindow.close()
+    const id =
+      (boardViewStore.active && boardViewStore.projectId) ||
+      ws.projects.find((p) => p.slug === route.params.projectSlug)?.id
+    if (id) projectWindow.open(id, 'general')
+  },
 })
 
 // Live notifications for the bell + native device notifications, addressed to the
@@ -372,6 +386,8 @@ watch(
     <QuickCreateModal />
     <ShortcutsModal />
     <WorkspaceDialogsHost />
+    <!-- The «Проект» window (#2971), opened from any of its doors. -->
+    <ProjectWindow />
 
     <!-- «G …» while a multi-key shortcut waits for its next key (#2956). -->
     <ShortcutPending />

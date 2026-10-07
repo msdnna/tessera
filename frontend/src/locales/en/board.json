@@ -361,5 +361,38 @@
   },
   "members": {
     "title": "Members · {count}"
+  },
+  "stage": {
+    "title": "Filter by milestone",
+    "caption": "Milestone",
+    "all": "All tasks",
+    "allSub": "No milestone filter",
+    "backlogSub": "Tasks without a milestone",
+    "search": "Find a milestone",
+    "active": "Active",
+    "planned": "Planned",
+    "showClosed": "Show closed",
+    "manage": "Manage milestones…",
+    "gitlab": "GitLab milestone",
+    "left": "{n} day left | {n} days left"
+  },
+  "strip": {
+    "progress": "{done} of {total}",
+    "left": "{n} day | {n} days",
+    "overdue": "−{n} day | −{n} days",
+    "noGoals": "No goals — add goals →",
+    "fold": "Fold the milestone strip",
+    "unfold": "Unfold the milestone strip",
+    "goals": "Milestone goals",
+    "byEstimate": "By estimate",
+    "estOf": "{done} of {total}",
+    "afterStart": "After the start",
+    "scope": "scope {from} → {to}",
+    "overdueTitle": "Overdue",
+    "ofOpen": "of {n} open | of {n} open",
+    "pageArrow": "Milestone page →",
+    "page": "Milestone page",
+    "hide": "Hide the strip on this board",
+    "closeArmed": "Close «{name}»?"
   }
 }

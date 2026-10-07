@@ -21,18 +21,22 @@ vi.mock('@/api', () => ({
   getAccessToken: () => null,
   projects: { milestones: vi.fn(() => Promise.resolve({ data: [] })) },
   milestones: {},
-  gitlab: { projectConfig: vi.fn(() => Promise.reject(new Error('no integration'))) },
+  gitlab: {
+    projectConfig: vi.fn(() => Promise.reject(new Error('no integration'))),
+    listIntegrations: vi.fn(() => Promise.resolve({ data: { integrations: [] } })),
+  },
 }))
 
 const DueEditor = (await import('@/components/DueEditor.vue')).default
-const MilestoneManager = (await import('@/components/MilestoneManager.vue')).default
+// The «Проект» window's stage tab (#2971) took over from MilestoneManager: its
+// new-stage row carries the range picker.
+const ProjectStagesTab = (await import('@/components/project/ProjectStagesTab.vue')).default
 const { useThemeStore } = await import('@/stores/theme')
 
 let wrapper = null
 
-// Both components render Naive pickers; MilestoneManager hides them behind a
-// modal, which teleports — findAllComponents still walks the component tree.
-// It also calls useMessage(), so it only mounts under a message provider.
+// Both components render Naive pickers and call useMessage(), so they only
+// mount under a message provider.
 function mountWith(component, props) {
   wrapper = mount(
     { render: () => h(NMessageProvider, null, { default: () => h(component, props) }) },
@@ -72,17 +76,16 @@ describe('DueEditor time picker', () => {
   })
 })
 
-describe('MilestoneManager date pickers', () => {
+describe('stage tab date pickers', () => {
   it('follow the date preset and the first day of the week', async () => {
     const theme = useThemeStore()
     theme.dateFormat = 'iso'
     theme.weekStart = 0 // Sunday → Naive's firstDayOfWeek 6
-    const w = mountWith(MilestoneManager, {
-      show: true,
-      projectId: '11111111-1111-1111-1111-111111111111',
-      projectName: 'Tessera',
-      wsId: '22222222-2222-2222-2222-222222222222',
+    const w = mountWith(ProjectStagesTab, {
+      project: { id: '11111111-1111-1111-1111-111111111111', slug: 'tessera' },
     })
+    await nextTick()
+    w.findComponent(ProjectStagesTab).vm.startAdd()
     await nextTick()
     await nextTick()
     const pickers = w.findAllComponents(NDatePicker)
@@ -98,12 +101,11 @@ describe('MilestoneManager date pickers', () => {
     theme.language = 'ru'
     theme.dateFormat = 'short' // 31.12.2026
     theme.weekStart = 1
-    const w = mountWith(MilestoneManager, {
-      show: true,
-      projectId: '11111111-1111-1111-1111-111111111111',
-      projectName: 'Tessera',
-      wsId: '22222222-2222-2222-2222-222222222222',
+    const w = mountWith(ProjectStagesTab, {
+      project: { id: '11111111-1111-1111-1111-111111111111', slug: 'tessera' },
     })
+    await nextTick()
+    w.findComponent(ProjectStagesTab).vm.startAdd()
     await nextTick()
     await nextTick()
     const pickers = w.findAllComponents(NDatePicker)

@@ -47,7 +47,12 @@ vi.mock('@/api', () => ({
     events: vi.fn(() => Promise.resolve({ data: [] })),
     documents: vi.fn(() => Promise.resolve({ data: [] })),
   },
-  projects: { createTag: (...a) => createTag(...a), createMilestone: vi.fn() },
+  projects: {
+    createTag: (...a) => createTag(...a),
+    createMilestone: vi.fn(),
+    tags: vi.fn(() => Promise.resolve({ data: [] })),
+    tagPrefixes: vi.fn(() => Promise.resolve({ data: [] })),
+  },
   boards: {
     get: vi.fn(() => Promise.resolve({ data: { name: 'Доска', project_id: 'p1' } })),
     columns: vi.fn(() => Promise.resolve({ data: [{ id: 'c1', name: 'К работе', position: 1 }] })),
@@ -55,7 +60,10 @@ vi.mock('@/api', () => ({
     createTask: vi.fn(),
   },
   workspaces: { members: vi.fn(() => Promise.resolve({ data: [] })) },
-  gitlab: { issueTemplates: vi.fn(() => Promise.resolve({ data: [] })) },
+  gitlab: {
+    issueTemplates: vi.fn(() => Promise.resolve({ data: [] })),
+    listIntegrations: vi.fn(() => Promise.resolve({ data: { integrations: [] } })),
+  },
   columns: { update: vi.fn(), remove: vi.fn() },
   users: { updatePrefs: vi.fn() },
 }))
@@ -314,29 +322,35 @@ describe('пикер тегов модалки задачи · набрано з
   })
 })
 
-// Менеджер тегов проекта — то же поле и та же нетерпеливость. Разрешать имя в
-// существующий тег тут нечего (тег уже виден в списке над полем), а вот второе
-// создание по второму Enter гасится ровно так же.
-describe('менеджер тегов проекта · двойной Enter', () => {
+// Таблица тегов окна «Проект» (#2990) — то же поле «Новый тег» и та же
+// нетерпеливость: второе создание по второму Enter гасится ровно так же.
+describe('таблица тегов проекта · двойной Enter', () => {
   it('не шлёт второе создание, пока первое в полёте', async () => {
     let release
     createTag.mockImplementationOnce(
       () => new Promise((res) => (release = () => res({ data: { id: 'new' } }))),
     )
-    const TagManager = (await import('@/components/TagManager.vue')).default
+    const ProjectTagsTab = (await import('@/components/project/ProjectTagsTab.vue')).default
     wrapper = mount(
       {
         render: () =>
           h(naive.NMessageProvider, null, {
-            default: () => h(TagManager, { projectId: 'p1', tags: TAGS }),
+            default: () => h(ProjectTagsTab, { project: { id: 'p1', slug: 'p' } }),
           }),
       },
       { attachTo: document.body },
     )
     await nextTick()
-    const input = wrapper.find('.add input').element
-    await typeEnter(input, 'совсем новый')
-    await typeEnter(input, 'совсем новый')
+    const input = wrapper.find('[data-testid="tag-new-input"]').element
+    const enter = async (text) => {
+      input.value = text
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await nextTick()
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      await nextTick()
+    }
+    await enter('совсем новый')
+    await enter('совсем новый')
     expect(createTag).toHaveBeenCalledTimes(1)
     release()
     await nextTick()

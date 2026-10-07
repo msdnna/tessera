@@ -436,6 +436,14 @@ export const projects = {
   deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
   tagPrefixes: (id) => sharedGet(`/projects/${id}/tag-prefixes`),
   setTagPrefixes: (id, prefixes) => api.put(`/projects/${id}/tag-prefixes`, { prefixes }),
+  // One prefix's friendly name (#2990); an empty label clears it.
+  setTagPrefix: (id, prefix, label) => api.patch(`/projects/${id}/tag-prefixes`, { prefix, label }),
+  // The «Проект» window's tag table (#2990): merge duplicates into one tag, and
+  // delete several at once — the answer is what the undo hands back to restore.
+  mergeTags: (id, targetId, sourceIds) =>
+    api.post(`/projects/${id}/tags/merge`, { target_id: targetId, source_ids: sourceIds }),
+  deleteTags: (id, ids) => api.post(`/projects/${id}/tags/delete`, { ids }),
+  restoreTags: (id, tags) => api.post(`/projects/${id}/tags/restore`, { tags }),
   // Per-project estimation override; `null` clears it to inherit the workspace default.
   setEstimation: (id, config) => api.put(`/projects/${id}/estimation`, config),
   // Milestones («Этап»): project-scoped.
@@ -448,6 +456,8 @@ export const milestones = {
   remove: (id) => api.delete(`/milestones/${id}`),
   // Explicitly create this native milestone in GitLab + link them (opt-in per milestone).
   pushToGitlab: (id) => api.post(`/milestones/${id}/gitlab`),
+  // Everything the stage page draws (#2992): progress, burn-up, scope, pace.
+  metrics: (id) => api.get(`/milestones/${id}/metrics`),
 }
 
 export const groups = {

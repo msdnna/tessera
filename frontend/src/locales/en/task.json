@@ -115,7 +115,9 @@
   },
   "tags": {
     "newPlaceholder": "New tag, Enter",
-    "alreadyOn": "That tag is already on the task"
+    "alreadyOn": "That tag is already on the task",
+    "manage": "Manage tags…",
+    "manageWhere": "«Project» window"
   },
   "people": {
     "author": "Author: {name}",

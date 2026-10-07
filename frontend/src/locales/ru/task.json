@@ -115,7 +115,9 @@
   },
   "tags": {
     "newPlaceholder": "Новый тег, Enter",
-    "alreadyOn": "Этот тег уже на задаче"
+    "alreadyOn": "Этот тег уже на задаче",
+    "manage": "Управлять тегами…",
+    "manageWhere": "окно «Проект»"
   },
   "people": {
     "author": "Автор: {name}",
