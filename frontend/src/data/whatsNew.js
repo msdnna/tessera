@@ -26,6 +26,23 @@
 //              elements.
 export const WHATS_NEW = [
   {
+    version: '0.187.0',
+    date: '2026-10-07',
+    titleKey: 'whatsNew.redesignV2.title',
+    itemKeys: [
+      'whatsNew.redesignV2.item1',
+      'whatsNew.redesignV2.item2',
+      'whatsNew.redesignV2.item3',
+      'whatsNew.redesignV2.item4',
+      'whatsNew.redesignV2.item5',
+    ],
+    spotlight: {
+      navKey: 'home',
+      titleKey: 'whatsNew.redesignV2.spotlightTitle',
+      bodyKey: 'whatsNew.redesignV2.spotlightBody',
+    },
+  },
+  {
     version: '0.185.0',
     date: '2026-09-09',
     titleKey: 'whatsNew.gitlabWebhook.title',

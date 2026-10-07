@@ -1,4 +1,14 @@
 {
+  "redesignV2": {
+    "title": "Tessera's new design",
+    "item1": "A refreshed interface: no divider lines, columns are coloured lanes, priority is a bar on the card's edge, assignees stack as avatars. On the left, the workspace rail: each space has its own colour and icon, set from the workspace menu.",
+    "item2": "Everything from the keyboard: ⌘K (Ctrl K) finds tasks, boards and commands, and Tab opens actions for the task you found. Arrows pick a card on the board, E completes it, S/A/P/D/L set status, assignees, priority, due date and tags, N opens quick actions. The full list is behind «?».",
+    "item3": "The task window is rebuilt: properties live in the right-hand panel, each with its own key; edits save as you make them, so there is no Save button any more; J/K step to neighbouring tasks, and the «All» feed shows moves between columns.",
+    "item4": "Gantt and timeline: Days / Weeks / Months scales, grouping by milestone, weekends and today on the grid. Home became «My tasks»: your tasks by due date and a quick-entry field — «tomorrow 10:00 !high #tag {'@'}name».",
+    "item5": "A broad reliability and security pass: archived tasks open read-only, search finds a task by its number and treats % and _ as text, says honestly when there are more results than shown, and the task's property menus work from the keyboard.",
+    "spotlightTitle": "Here it is — «My tasks»",
+    "spotlightBody": "What used to be Home: your open tasks by due date, today's reminders and quick entry. From the keyboard — G, then M."
+  },
   "gitlabWebhook": {
     "title": "GitLab: a webhook for instant sync",
     "item1": "The GitLab binding settings gained a «Webhook» section: generate a secret and URL and paste them into your project's Settings → Webhooks — changes then arrive within seconds instead of waiting for the periodic poll. The secret is shown once and can be regenerated or disabled; the last-event time sits next to it."
