@@ -87,4 +87,31 @@ describe('ActionMenu', () => {
     expect(w.emitted('update:show')).toEqual([[false]])
     w.unmount()
   })
+
+  // The view list (#2987): section headings are not rows, a row captioned with
+  // one digit answers to it, and the current row / note / lock are drawn.
+  it('lists views under headings and picks one by its digit', async () => {
+    const items = [
+      { heading: 'Мои' },
+      {
+        key: 'v:1',
+        label: 'Мой спринт',
+        glyph: 'layout-kanban',
+        active: true,
+        note: 'изменено',
+        noteWarn: true,
+        caps: ['1'],
+      },
+      { heading: 'Общие доски' },
+      { key: 'v:2', label: 'Релизный Гант', glyph: 'layout-gantt', locked: true, caps: ['2'] },
+    ]
+    const w = await open(items)
+    expect(menu().querySelectorAll('.am-section')).toHaveLength(2)
+    expect(menu().querySelector('[data-testid="action-menu-v:1"]').classList).toContain('current')
+    expect(menu().querySelector('.am-note.warn').textContent).toBe('изменено')
+    expect(menu().querySelector('[data-testid="action-menu-v:2"] .am-lock')).not.toBeNull()
+    key('2')
+    expect(w.emitted('select')).toEqual([['v:2']])
+    w.unmount()
+  })
 })

@@ -23,14 +23,10 @@ import {
   NIcon,
   NTooltip,
   NDropdown,
-  NPopconfirm,
   useMessage,
 } from 'naive-ui'
 import {
   GitNetworkOutline,
-  SaveOutline,
-  FolderOpenOutline,
-  TrashOutline,
   AddOutline,
   ChevronForwardOutline,
   ChevronDownOutline,
@@ -57,7 +53,7 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
 import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
 import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
-import { useBoardAutosave } from '@/composables/useBoardAutosave'
+import { useBoardViews } from '@/composables/useBoardViews'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
 import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
 import { tagLaneLabel, tagInPrefix, metaPrefixesFromRules } from '@/utils/tagGroups'
@@ -78,7 +74,7 @@ import {
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
 import { buildLists, collapseKey } from '@/utils/boardLists'
-import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
+import { LAYOUTS } from '@/utils/boardViews'
 import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
 import { BACKLOG_SCOPE, matchesScope, newTaskMilestoneId } from '@/utils/milestones'
@@ -99,6 +95,8 @@ import BoardActivityToasts from './BoardActivityToasts.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardCustomizePanel from './BoardCustomizePanel.vue'
+import ViewsSection from './boardViews/ViewsSection.vue'
+import ViewChip from './boardViews/ViewChip.vue'
 import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
 import ChartControls from './chart/ChartControls.vue'
 import BoardMembers from './BoardMembers.vue'
@@ -196,8 +194,10 @@ const autoCollapseEmpty = ref(false)
 // cardSize / stackFields / showEmpty / fieldVis are owned by the store (cards read
 // them from there) but remain part of this board's saved view — snapshotToolbar and
 // loadCustomize below read and write them exactly as before.
-const autosaveView = ref(false) // auto re-save the loaded named view on change
+// The «Вид доски» panel (#2986) — docked right of the board in every view.
 const customizeOpen = ref(false)
+const customizePanel = ref(null)
+watch([customizeOpen, isMobile], ([on, mobile]) => (boardViewStore.panelOpen = on && !mobile))
 // Board-name mirror for the customize panel's rename input (kept in sync with the
 // loaded board; committed via boards.update on blur/enter).
 const boardName = ref('')
@@ -291,15 +291,16 @@ watch(autoCollapseEmpty, (on) => {
     if (colCount(dcol) === 0 && k in colCollapse) delete colCollapse[k]
   }
 })
-// ── sub-toolbar fit (v2, #2954) ──
-// One row, never scrolled. Fitting starts from the full bar and gives ground in
-// a fixed order until the row fits: first the view switch takes only what the
-// rest leaves (it shows as many views as fit, the active one always), then the
-// grouping control drops its «Группировка» caption, then the composer folds
-// filter chips from the end into «+N», then the sort chips (taking back what
-// filter chips fit in the room they free), and last the shown-count. Every step
-// is a DOM update + measure inside one frame (the observer and nextTick both run
-// before paint), so nothing flickers.
+// ── sub-toolbar fit (v2, #2954, #2970) ──
+// One row, never scrolled. The view switch and the composer's chips own the
+// room (feedback: they are what the reader works with); everything else gives
+// way first. Fitting starts from the full bar and gives ground in a fixed order
+// until the row fits: the chart's text key hints → the «Группировка» caption →
+// the chart's scale segments (into a menu) → the view switch's captions (only
+// the active one keeps its own) → filter chips from the end into «+N» → the
+// sort chips (taking back what filter chips fit in the room they free) → the
+// board's people. Every step is a DOM update + measure inside one frame (the
+// observer and nextTick both run before paint), so nothing flickers.
 const subbarEl = ref(null)
 const composerEl = ref(null)
 const chipsClip = ref(null)
@@ -308,6 +309,8 @@ const foldFilters = ref(0) // how many filter chips (from the end) sit in «+N»
 const foldSorts = ref(false) // sort chips folded into «+N» too
 const compactGroup = ref(false) // grouping control without its caption
 const hideChartHints = ref(false) // Gantt/timeline: its text key hints go first
+const compactChart = ref(false) // Gantt/timeline: the scale as a menu
+const hidePeople = ref(false) // the board's avatars, the very last resort
 // The open Gantt / timeline view: its exposed controller drives ChartControls.
 const chartView = ref(null)
 // Its controls join the sub-toolbar once it mounts — fit the row again then.
@@ -338,23 +341,30 @@ async function fitSubbar() {
     foldSorts.value = false
     compactGroup.value = false
     hideChartHints.value = false
+    compactChart.value = false
+    hidePeople.value = false
     switchAvail.value = Infinity
-    await nextTick()
-    // Whatever the rest of the row needs at full size, the switch may not take.
-    const sw = [...bar.children].find((el) => el.classList.contains('layout-switch'))
-    const rest = bar.scrollWidth - (sw ? sw.offsetWidth : 0)
-    switchAvail.value = Math.max(0, bar.clientWidth - rest)
     await nextTick()
     // The chart's key hints are only text: they give their room up first.
     if (overflowing(bar) && timelineLike.value) {
       hideChartHints.value = true
       await nextTick()
     }
-    // The composer outranks the grouping caption: drop the caption first.
+    // The switch and the chips outrank the grouping caption: drop it first.
     if (overflowing(bar)) {
       compactGroup.value = true
       await nextTick()
     }
+    if (overflowing(bar) && timelineLike.value) {
+      compactChart.value = true
+      await nextTick()
+    }
+    // Whatever the rest of the row needs, the switch may not take: past that it
+    // drops its captions.
+    const sw = [...bar.children].find((el) => el.classList.contains('layout-switch'))
+    const rest = bar.scrollWidth - (sw ? sw.offsetWidth : 0)
+    switchAvail.value = Math.max(0, bar.clientWidth - rest)
+    await nextTick()
     for (let i = 0; i < filterChips.value.length && overflowing(bar); i++) {
       foldFilters.value = i + 1
       await nextTick()
@@ -373,9 +383,15 @@ async function fitSubbar() {
         }
       }
     }
+    if (overflowing(bar)) {
+      hidePeople.value = true
+      await nextTick()
+    }
   } finally {
     fitting = false
   }
+  // A focused control can scroll the clipped row sideways; the fit owns it.
+  bar.scrollLeft = 0
   if (refit) fitSubbar()
 }
 // Attach the bar's resize observer whenever the element itself arrives — the same
@@ -546,7 +562,6 @@ function toggleAuto() {
   groupMode.value = 'none'
   tagPrefix.value = ''
   sortLevels.value = []
-  currentViewName.value = ''
   autoSort.value = true
 }
 
@@ -568,7 +583,6 @@ function defaultToolbar(forLayout) {
     stackFields: false,
     showEmpty: true,
     fieldVis: defaultFieldVis(),
-    autosaveView: false,
   }
 }
 function snapshotToolbar() {
@@ -585,7 +599,6 @@ function snapshotToolbar() {
     stackFields: stackFields.value,
     showEmpty: showEmpty.value,
     fieldVis: { ...fieldVis },
-    autosaveView: autosaveView.value,
   }
 }
 function loadToolbar(s) {
@@ -608,7 +621,6 @@ function loadCustomize(s) {
   stackFields.value = !!s.stackFields
   showEmpty.value = s.showEmpty !== false
   Object.assign(fieldVis, defaultFieldVis(), s.fieldVis || {})
-  autosaveView.value = !!s.autosaveView
 }
 
 // Rebuild a pre-per-layout blob into a toolbar snapshot. Built on top of the
@@ -658,7 +670,6 @@ watch(
     stackFields,
     showEmpty,
     fieldVis,
-    autosaveView,
   ],
   persistView,
   { deep: true },
@@ -677,68 +688,32 @@ watch(
   () => nextTick(fitSubbar),
 )
 
-// ── saved views (per-user, server-side; cross-device) ──
-const savedViews = ref([])
-// Saved views are bound to a visualization: show only those for the current
-// layout (board views and timeline views are separate sets). Legacy views with
-// no stored layout default to 'board'.
-const viewsForLayout = computed(() =>
-  savedViews.value.filter((v) => viewLayout(v) === layout.value),
-)
-const currentViewName = ref('')
-// The visualization the loaded view was saved for. Tracked separately from `layout`
-// because the two come apart the moment the user switches layout with a view loaded.
-const currentViewLayout = ref('')
-const newViewName = ref('')
-const showSaveView = ref(false)
-const showLoadView = ref(false)
-
-async function loadViews() {
-  try {
-    savedViews.value = (await boards.views(props.boardId)).data || []
-  } catch {
-    savedViews.value = []
-  }
-}
-// Saved views are per-board, but the board does NOT remount when you switch boards —
-// so everything about the *loaded* view has to be dropped by hand, or it follows you
-// onto a board that has no such view: the button would still claim it as current, an
-// open save dialog would write the name typed for the previous board, and autosave
-// (its switch is per-board localStorage, so it can be on here) would materialise a
-// view named after the other board's on the first toolbar change. The list is emptied
-// too — `loadViews` is a request, and until it lands the popover offers the previous
-// board's views.
-function clearLoadedView() {
-  savedViews.value = []
-  currentViewName.value = ''
-  currentViewLayout.value = ''
-  newViewName.value = ''
-  showSaveView.value = false
-  showLoadView.value = false
-}
-// Snapshot / restore the full toolbar state that a view captures.
+// ── saved views (#2970): own + shared, server-side; the loaded one and its
+// «изменено» live in useBoardViews. The board hands over what a view captures
+// (currentViewConfig) and how to load one (applyViewConfig, as a bulk load). ──
+// Snapshot / restore the full toolbar state that a view captures. The header's
+// title search is the reader's moment, not part of a view.
 function currentViewConfig() {
   return {
     layout: layout.value,
     groupMode: groupMode.value,
     tagPrefix: tagPrefix.value,
-    sortLevels: sortLevels.value,
+    sortLevels: sortLevels.value.map((l) => ({ ...l })),
     subtasksExpanded: subtasksExpanded.value,
     autoSort: autoSort.value,
-    filters: cloneFilters(filters),
+    filters: { ...cloneFilters(filters), q: '' },
     colCollapse: { ...colCollapse },
     autoCollapseEmpty: autoCollapseEmpty.value,
     cardSize: cardSize.value,
     stackFields: stackFields.value,
     showEmpty: showEmpty.value,
     fieldVis: { ...fieldVis },
-    autosaveView: autosaveView.value,
   }
 }
 function applyViewConfig(c) {
   if (!c) return
   if (c.layout) layout.value = c.layout
-  if (c.groupMode) groupMode.value = c.groupMode
+  groupMode.value = c.groupMode || defaultToolbar(layout.value).groupMode
   tagPrefix.value = c.tagPrefix || ''
   if (Array.isArray(c.sortLevels)) sortLevels.value = c.sortLevels.map((l) => ({ ...l }))
   else if (c.sortBy && c.sortBy !== 'position')
@@ -751,74 +726,41 @@ function applyViewConfig(c) {
   // sort, which is what most views look like). Views predating the key read as
   // off — the state they were actually saved in, since it could not be captured.
   autoSort.value = !!c.autoSort
+  // The header search stays what the reader typed.
+  const q = filters.q
   Object.assign(filters, cloneFilters(c.filters))
+  filters.q = q
   loadCustomize(c)
 }
-async function saveView() {
-  const name = (newViewName.value || currentViewName.value).trim()
-  if (!name) return
-  // Names are per-board, not per-layout: the upsert key knows nothing about the
-  // visualization. Refuse rather than let the save quietly destroy a view the
-  // popover never listed (it only offers same-layout ones to overwrite).
-  const taken = conflictingViewLayout(savedViews.value, name, layout.value)
-  if (taken) {
-    message.error(t('board.views.nameTaken', { name, layout: t(`board.layout.${taken}`) }))
-    return
-  }
-  try {
-    await boards.saveView(props.boardId, { name, config: currentViewConfig() })
-    currentViewName.value = name
-    currentViewLayout.value = layout.value
-    newViewName.value = ''
-    showSaveView.value = false
-    await loadViews()
-    message.success(t('board.views.saved', { name }))
-  } catch (e) {
-    message.error(e.message)
-  }
+const bv = reactive(
+  useBoardViews({
+    boardId: toRef(props, 'boardId'),
+    currentConfig: currentViewConfig,
+    applyConfig: (c) => withViewLoad(() => applyViewConfig(c)),
+  }),
+)
+// The chip comes and goes with the loaded view, and its dot with «изменено».
+watch([() => bv.loaded?.name, () => bv.changed], () => nextTick(fitSubbar))
+function openPanel(section) {
+  customizeOpen.value = true
+  if (section) nextTick(() => customizePanel.value?.reveal(section))
 }
-function applyView(v) {
-  withViewLoad(() => {
-    applyViewConfig(v.config)
-    currentViewName.value = v.name
-    currentViewLayout.value = viewLayout(v)
-    showLoadView.value = false
-  })
-}
-async function deleteView(v) {
-  try {
-    await boards.deleteView(v.id)
-    if (currentViewName.value === v.name) {
-      currentViewName.value = ''
-      currentViewLayout.value = ''
-    }
-    await loadViews()
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-// Autosave: when enabled and a named view is loaded, re-save it (debounced,
-// silent) as the toolbar/customize state changes. Guarded by restoring/swapping
-// like persistView so applying a view doesn't immediately re-save it; the debounce
-// and its teardown live in the composable.
-useBoardAutosave({
-  enabled: autosaveView,
-  viewName: currentViewName,
-  config: currentViewConfig,
-  guarded: viewLoadInFlight,
-  save: async (name, config) => {
-    // A view belongs to the visualization it was saved for. Switching layout with a
-    // view loaded must not rewrite its layout behind the user's back: that drops it
-    // out of its own list (views are filtered by layout) — the same disappearance
-    // the composable's teardown guards against, just reached from the other side.
-    if (currentViewLayout.value && config.layout !== currentViewLayout.value) return
-    try {
-      await boards.saveView(props.boardId, { name, config })
-    } catch {
-      /* silent — a failed autosave shouldn't nag; manual save still surfaces errors */
-    }
-  },
-})
+// ⌘⇧S, the chip's «Сохранить текущее как…», a locked view's «Сохранить как
+// моё»: the panel opens on its views with the field ready.
+watch(
+  () => bv.saveAsDraft,
+  (d) => d && openPanel('views'),
+)
+// The closed «Представления» section's summary.
+const viewsSummary = computed(() =>
+  bv.loaded
+    ? bv.changed
+      ? `${bv.loaded.name} · ${t('board.views.changed')}`
+      : bv.loaded.name
+    : bv.views.length
+      ? String(bv.views.length)
+      : '',
+)
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
@@ -1746,8 +1688,8 @@ async function shiftFocused(dir) {
   }
 }
 
-// V, then 1–3: the three main views, in the order of the view switch.
-const LAYOUT_KEYS = ['board', 'list', 'timeline']
+// V, then 1–6: the six views, in the order of the view switch (#2970).
+const LAYOUT_KEYS = LAYOUTS
 const paletteStore = usePaletteStore()
 const openField = (field) => () => {
   const task = focusedTask()
@@ -1810,8 +1752,20 @@ useShortcuts(
       const sizes = ['compact', 'medium', 'large']
       cardSize.value = sizes[(sizes.indexOf(cardSize.value) + 1) % sizes.length]
     },
+    'view.panel': () => (customizeOpen.value ? (customizeOpen.value = false) : openPanel()),
+    // Saved views (#2987): ⌘S updates the loaded one (or saves anew when none
+    // is loaded / it is not the reader's to change), ⌘⇧S saves as new, ⌘⌫ resets.
+    'views.update': () => bv.update(),
+    'views.saveAs': () => bv.requestSaveAs(''),
+    'views.reset': () => bv.reset(),
   },
   { when: () => !!board.value && !isMobile.value },
+)
+// 1–9 / 0 pick a view while the panel is open (the chip's menu answers to the
+// digits on its own).
+useShortcuts(
+  { 'views.pick': (n) => bv.pick(n) },
+  { when: () => !!board.value && !isMobile.value && customizeOpen.value },
 )
 
 // «N, then T» on a board: the inline quick-add of the «К работе» column — the
@@ -2040,6 +1994,8 @@ useRealtime((ev) => {
   }
   // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
+  // The board's shared views changed (#2988) → re-read the list.
+  if (ev.type === 'board_views.changed' && ev.data?.board_id === props.boardId) bv.load()
   // Custom command dictionary edited elsewhere → the `/`-popup picks it up live.
   if (ev.type === 'workspace_commands.updated') wsStore.setCustomCommands(ev.data?.commands || [])
   // A link between two tasks changed → nudge the Gantt to re-read its edge list.
@@ -2140,22 +2096,20 @@ watch(
 // gear carries.
 watch(
   () => boardViewStore.customizeNonce,
-  () => {
-    if (!timelineLike.value) customizeOpen.value = true
-  },
+  () => openPanel(),
 )
 
-// Saved views, same story one button over — except the folder and the disk have no
-// fallback trigger at all, so from a phone a view could be neither loaded nor
-// saved. Publish the list the menu has to offer (only this layout's views: a view
-// belongs to its visualization) plus which one is loaded, and answer what the menu
-// asks. The work stays here because the config a save captures is this component's
-// whole toolbar state (currentViewConfig).
+// The phone's board menu lists the saved views too (it has no sub-toolbar chip
+// room to spare): publish the list and the loaded one, answer its ask.
 watch(
-  [viewsForLayout, currentViewName],
+  [() => bv.views, () => bv.loadedId],
   () => {
-    boardViewStore.savedViews = viewsForLayout.value.map((v) => ({ id: v.id, name: v.name }))
-    boardViewStore.currentViewName = currentViewName.value
+    boardViewStore.savedViews = bv.views.map((v) => ({
+      id: v.id,
+      name: v.name,
+      layout: v.config?.layout || 'board',
+    }))
+    boardViewStore.currentViewId = bv.loadedId
   },
   { immediate: true },
 )
@@ -2164,16 +2118,9 @@ watch(
   (req) => {
     if (!req) return
     if (req.op === 'apply') {
-      // Look the view up in the full list, not in the published summaries: applyView
-      // needs its `config`, and the ask can name a view the list has since dropped.
-      const v = savedViews.value.find((x) => x.id === req.id)
-      if (v) applyView(v)
-      return
-    }
-    if (req.op === 'save') {
-      newViewName.value = req.name || ''
-      saveView()
-    }
+      const v = bv.views.find((x) => x.id === req.id)
+      if (v) bv.apply(v)
+    } else if (req.op === 'clear') bv.clear()
   },
 )
 
@@ -2225,7 +2172,8 @@ onMounted(async () => {
   nextTick(fitSubbar)
   restoreView()
   await load(props.boardId)
-  loadViews()
+  await bv.load()
+  bv.onOpen()
   applyTaskQuery()
 })
 onBeforeUnmount(() => {
@@ -2244,12 +2192,12 @@ watch(
   async (id) => {
     if (!id) return
     resetCardViewport()
-    // Before restoreView: clearing the name makes the autosave signature empty, so a
-    // write armed on the board we are leaving is disarmed instead of landing here.
-    clearLoadedView()
+    // The loaded view is per-board: drop it before this board's state comes in.
+    bv.forget()
     restoreView()
     await load(id)
-    loadViews()
+    await bv.load()
+    bv.onOpen()
     applyTaskQuery()
   },
 )
@@ -2314,6 +2262,8 @@ async function restoreFromArchive(taskId) {
       <div ref="subbarEl" class="subbar">
         <!-- On a phone the view switch is part of the header's board menu. -->
         <BoardLayoutSwitch v-if="!isMobile" :available="switchAvail" @measured="fitSubbar" />
+        <!-- The loaded saved view (#2987): its chip and quick menu. -->
+        <ViewChip :bv="bv" @open-panel="openPanel('views')" />
         <div
           ref="composerEl"
           class="composer"
@@ -2506,10 +2456,10 @@ async function restoreFromArchive(taskId) {
           v-if="timelineLike"
           :ctl="chartView?.ctl"
           :hints="!hideChartHints && !isMobile"
-          :compact="isMobile"
+          :compact="isMobile || compactChart"
         />
 
-        <BoardMembers v-if="!isMobile" class="subbar-people" />
+        <BoardMembers v-if="!isMobile && !hidePeople" class="subbar-people" />
 
         <!-- Right-side tools — slide off to the right while the composer is
              expanded so the full chip set has room. -->
@@ -2549,221 +2499,147 @@ async function restoreFromArchive(taskId) {
             {{ t(autoActive ? 'board.tools.autoOn' : 'board.tools.autoOff') }}
           </n-tooltip>
 
-          <n-tooltip v-if="!timelineLike">
+          <!-- «Вид доски» (#2986): the one entry to every board setting, in every
+               view. The dot says the loaded view has been changed. -->
+          <n-tooltip>
             <template #trigger>
-              <n-button
-                size="small"
-                quaternary
-                class="ngrad bar-btn"
-                :type="customizeOpen ? 'primary' : 'default'"
-                data-tour="board-customize"
-                @click="customizeOpen = true"
-              >
-                <template #icon><n-icon :component="OptionsOutline" /></template>
-              </n-button>
+              <span class="panel-wrap">
+                <n-button
+                  size="small"
+                  quaternary
+                  class="ngrad bar-btn"
+                  :type="customizeOpen ? 'primary' : 'default'"
+                  data-tour="board-customize"
+                  data-testid="board-customize-btn"
+                  @click="customizeOpen ? (customizeOpen = false) : openPanel()"
+                >
+                  <template #icon><n-icon :component="OptionsOutline" /></template>
+                </n-button>
+                <span v-if="bv.changed" class="panel-dot" data-testid="board-customize-dot" />
+              </span>
             </template>
-            {{ t('board.tools.customize') }}
+            {{ t('board.tools.customize') }} · <ShortcutKeys id="view.panel" />
           </n-tooltip>
-
-          <!-- saved views: load (folder) + save (disk) -->
-          <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
-            <template #trigger>
-              <n-tooltip>
-                <template #trigger>
-                  <n-button
-                    size="small"
-                    quaternary
-                    class="ngrad bar-btn"
-                    :type="currentViewName ? 'primary' : 'default'"
-                  >
-                    <template #icon><n-icon :component="FolderOpenOutline" /></template>
-                  </n-button>
-                </template>
-                {{
-                  currentViewName
-                    ? t('board.views.current', { name: currentViewName })
-                    : t('board.views.load')
-                }}
-              </n-tooltip>
-            </template>
-            <div class="views-pop">
-              <div v-for="v in viewsForLayout" :key="v.id" class="view-row">
-                <button
-                  class="view-name"
-                  :class="{ active: v.name === currentViewName }"
-                  @click="applyView(v)"
-                >
-                  {{ v.name }}
-                </button>
-                <n-popconfirm
-                  :positive-button-props="{ type: 'error' }"
-                  :positive-text="t('common.action.delete')"
-                  @positive-click="deleteView(v)"
-                >
-                  <template #trigger>
-                    <n-button text size="tiny" type="error"
-                      ><n-icon :component="TrashOutline"
-                    /></n-button>
-                  </template>
-                  {{ t('board.views.deleteConfirm', { name: v.name }) }}
-                </n-popconfirm>
-              </div>
-              <n-text v-if="!viewsForLayout.length" depth="3" class="views-empty">
-                {{ t('board.views.empty') }}
-              </n-text>
-            </div>
-          </n-popover>
-
-          <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
-            <template #trigger>
-              <n-tooltip>
-                <template #trigger>
-                  <n-button size="small" quaternary class="ngrad bar-btn">
-                    <template #icon><n-icon :component="SaveOutline" /></template>
-                  </n-button>
-                </template>
-                {{ t('board.views.save') }}
-              </n-tooltip>
-            </template>
-            <div class="views-pop">
-              <n-input
-                v-model:value="newViewName"
-                size="small"
-                :placeholder="t('board.views.namePlaceholder')"
-                @keyup.enter="saveView"
-              />
-              <div v-if="viewsForLayout.length" class="views-over">
-                <n-text depth="3" class="views-lbl">{{ t('board.views.overwrite') }}</n-text>
-                <button
-                  v-for="v in viewsForLayout"
-                  :key="v.id"
-                  class="view-chip"
-                  @click="newViewName = v.name"
-                >
-                  {{ v.name }}
-                </button>
-              </div>
-              <n-button type="primary" size="small" block @click="saveView">{{
-                t('common.action.save')
-              }}</n-button>
-            </div>
-          </n-popover>
         </div>
       </div>
 
-      <BoardListView
-        v-if="layout === 'list'"
-        :columns="displayColumns"
-        :status-columns="columns"
-        :lists="lists"
-        :tags-map="tagsMap"
-        :members-map="membersMap"
-        :gitlab-members="gitlabMembersList"
-        :tag-prefix-names="tagPrefixNames"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @restore="restoreFromArchive"
-      />
+      <!-- The board and its «Вид доски» panel side by side (#2986): the panel is
+           docked, not floating — whatever the view, it gives up the width. -->
+      <div class="board-body">
+        <div class="board-main">
+          <BoardListView
+            v-if="layout === 'list'"
+            :columns="displayColumns"
+            :status-columns="columns"
+            :lists="lists"
+            :tags-map="tagsMap"
+            :members-map="membersMap"
+            :gitlab-members="gitlabMembersList"
+            :tag-prefix-names="tagPrefixNames"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @restore="restoreFromArchive"
+          />
 
-      <BoardCalendarView
-        v-else-if="layout === 'calendar'"
-        :tasks="filteredTasks"
-        :status-columns="columns"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @restore="restoreFromArchive"
-      />
+          <BoardCalendarView
+            v-else-if="layout === 'calendar'"
+            :tasks="filteredTasks"
+            :status-columns="columns"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @restore="restoreFromArchive"
+          />
 
-      <BoardTimelineView
-        v-else-if="layout === 'timeline'"
-        ref="chartView"
-        :done-column-id="board?.done_column_id || null"
-        :tasks="filteredTasks"
-        :status-columns="columns"
-        :members-map="membersMap"
-        :gitlab-members="gitlabMembersList"
-        :tags-map="tagsMap"
-        :group-mode="groupMode"
-        :tag-prefix="tagPrefix"
-        :tag-prefix-names="tagPrefixNames"
-        :project-id="board?.project_id"
-        :subtasks-by-parent="filteredSubtasksByParent"
-        :milestones="milestonesList"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @restore="restoreFromArchive"
-      />
+          <BoardTimelineView
+            v-else-if="layout === 'timeline'"
+            ref="chartView"
+            :done-column-id="board?.done_column_id || null"
+            :tasks="filteredTasks"
+            :status-columns="columns"
+            :members-map="membersMap"
+            :gitlab-members="gitlabMembersList"
+            :tags-map="tagsMap"
+            :group-mode="groupMode"
+            :tag-prefix="tagPrefix"
+            :tag-prefix-names="tagPrefixNames"
+            :project-id="board?.project_id"
+            :subtasks-by-parent="filteredSubtasksByParent"
+            :milestones="milestonesList"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @restore="restoreFromArchive"
+          />
 
-      <BoardGanttView
-        v-else-if="layout === 'gantt'"
-        ref="chartView"
-        :done-column-id="board?.done_column_id || null"
-        :board-id="boardId"
-        :tasks="filteredTasks"
-        :status-columns="columns"
-        :members-map="membersMap"
-        :gitlab-members="gitlabMembersList"
-        :tags-map="tagsMap"
-        :group-mode="groupMode"
-        :tag-prefix="tagPrefix"
-        :tag-prefix-names="tagPrefixNames"
-        :project-id="board?.project_id"
-        :auto-sort="autoActive"
-        :subtasks-by-parent="filteredSubtasksByParent"
-        :milestones="milestonesList"
-        :deps-token="depsToken"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @restore="restoreFromArchive"
-      />
+          <BoardGanttView
+            v-else-if="layout === 'gantt'"
+            ref="chartView"
+            :done-column-id="board?.done_column_id || null"
+            :board-id="boardId"
+            :tasks="filteredTasks"
+            :status-columns="columns"
+            :members-map="membersMap"
+            :gitlab-members="gitlabMembersList"
+            :tags-map="tagsMap"
+            :group-mode="groupMode"
+            :tag-prefix="tagPrefix"
+            :tag-prefix-names="tagPrefixNames"
+            :project-id="board?.project_id"
+            :auto-sort="autoActive"
+            :subtasks-by-parent="filteredSubtasksByParent"
+            :milestones="milestonesList"
+            :deps-token="depsToken"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @restore="restoreFromArchive"
+          />
 
-      <BoardMatrixView
-        v-else-if="layout === 'matrix'"
-        :tasks="filteredTasks"
-        :subtasks-by-parent="sortedSubtasksByParent"
-        :subtasks-total-by-parent="subtasksByParent"
-        :subtasks-expanded="subtasksExpanded"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @create="createInQuadrant"
-        @restore="restoreFromArchive"
-        @drag-state="onLayoutDragState"
-      />
+          <BoardMatrixView
+            v-else-if="layout === 'matrix'"
+            :tasks="filteredTasks"
+            :subtasks-by-parent="sortedSubtasksByParent"
+            :subtasks-total-by-parent="subtasksByParent"
+            :subtasks-expanded="subtasksExpanded"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @create="createInQuadrant"
+            @restore="restoreFromArchive"
+            @drag-state="onLayoutDragState"
+          />
 
-      <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
-        <draggable
-          :list="colModel"
-          group="columns"
-          item-key="key"
-          handle=".col-drag"
-          :disabled="!canReorderColumns"
-          class="cols"
-          :class="{ dragging }"
-          :animation="150"
-          :delay="160"
-          :delay-on-touch-only="true"
-          :touch-start-threshold="6"
-          @start="onDragStart"
-          @end="onBoardDragEnd"
-          @change="onColumnReorder"
-        >
-          <template #item="{ element: dcol }">
-            <div
-              class="col"
-              data-testid="column"
-              :data-column-key="dcol.key"
-              :data-column-name="dcol.rawName"
-              :class="{ collapsed: colCollapsedNow(dcol) }"
-              :style="{ '--col-c': dcol.color || NEUTRAL_COLUMN }"
-              @mouseenter="hoveredColKey = dcol.key"
-              @mouseleave="hoveredColKey === dcol.key && (hoveredColKey = null)"
+          <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
+            <draggable
+              :list="colModel"
+              group="columns"
+              item-key="key"
+              handle=".col-drag"
+              :disabled="!canReorderColumns"
+              class="cols"
+              :class="{ dragging }"
+              :animation="150"
+              :delay="160"
+              :delay-on-touch-only="true"
+              :touch-start-threshold="6"
+              @start="onDragStart"
+              @end="onBoardDragEnd"
+              @change="onColumnReorder"
             >
-              <!-- Collapsed strip: rotated title + count, click to expand. The real
+              <template #item="{ element: dcol }">
+                <div
+                  class="col"
+                  data-testid="column"
+                  :data-column-key="dcol.key"
+                  :data-column-name="dcol.rawName"
+                  :class="{ collapsed: colCollapsedNow(dcol) }"
+                  :style="{ '--col-c': dcol.color || NEUTRAL_COLUMN }"
+                  @mouseenter="hoveredColKey = dcol.key"
+                  @mouseleave="hoveredColKey === dcol.key && (hoveredColKey = null)"
+                >
+                  <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
                    drop target survives.
                    A real `<button>`, not a clickable div: the collapse chevron in
@@ -2781,160 +2657,202 @@ async function restoreFromArchive(taskId) {
                    column could not be reordered at all, and with «collapse empty
                    columns» on that is EVERY empty column — precisely the ones being
                    arranged while a board is still being set up. -->
-              <button
-                v-if="colCollapsedNow(dcol)"
-                class="col-strip"
-                :class="{ 'col-drag': canReorderColumns }"
-                type="button"
-                :title="stripTitle(dcol)"
-                @click="toggleCollapse(dcol)"
-              >
-                <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
-                <span class="strip-title">{{ dcol.name }}</span>
-                <span class="strip-count" :title="colCountTitle(dcol)">{{
-                  colCounts(dcol).tasks
-                }}</span>
-              </button>
-              <ColumnHeader
-                :dcol="dcol"
-                :count="colCounts(dcol).tasks"
-                :total="colCounts(dcol).total"
-                :estimate="columnEstimate(dcol)"
-                :editable="groupMode === 'status'"
-                :readonly="archivedMode"
-                :is-done="groupMode === 'status' && dcol.key === doneColumnId"
-                :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
-                :collapsed="isColCollapsed(dcol)"
-                :prefix-names="tagPrefixNames"
-                :last="groupMode === 'status' && dcol.key === colModel[colModel.length - 1]?.key"
-                :can-delete="groupMode === 'status' && colModel.length > 1"
-                :rename-request="colRenameReq"
-                @changed="onChanged"
-                @set-done="onSetDone"
-                @toggle-collapse="toggleCollapse(dcol)"
-                @rename-next="renameNextColumn(dcol)"
-                @delete="deleteColumn(dcol)"
-                @move="(dir) => moveColumn(dcol, dir)"
-                @add-right="startAddColumn(dcol)"
-              />
-              <draggable
-                :list="lists[dcol.key]"
-                group="tasks"
-                item-key="id"
-                class="drop t-hoverscroll"
-                ghost-class="ghost"
-                :force-fallback="true"
-                :fallback-on-body="true"
-                filter=".add-sub, .sub-add-input"
-                :prevent-on-filter="false"
-                :disabled="archivedMode"
-                :sort="canSortCards"
-                :animation="150"
-                :delay="160"
-                :delay-on-touch-only="true"
-                :touch-start-threshold="6"
-                @start="onCardDragStart"
-                @end="onBoardDragEnd"
-                @change="onColChange($event, dcol)"
-              >
-                <template #item="{ element, index }">
-                  <div
-                    :ref="(el) => regCard(el, cardKey(dcol.key, element.id))"
-                    class="card-wrap"
-                    :data-card="cardKey(dcol.key, element.id)"
+                  <button
+                    v-if="colCollapsedNow(dcol)"
+                    class="col-strip"
+                    :class="{ 'col-drag': canReorderColumns }"
+                    type="button"
+                    :title="stripTitle(dcol)"
+                    @click="toggleCollapse(dcol)"
                   >
-                    <div
-                      v-if="
-                        colCollapsedNow(dcol) || !(vis[cardKey(dcol.key, element.id)] ?? index < 12)
-                      "
-                      class="card-ph"
-                      :style="{
-                        height: (cardH[cardKey(dcol.key, element.id)] || VCARD_EST) + 'px',
-                      }"
-                    />
-                    <TaskCard
-                      v-else
-                      :task="element"
-                      :subtasks="sortedSubtasksByParent[element.id] || []"
-                      :subtasks-total="(subtasksByParent[element.id] || []).length"
-                      :subtasks-expanded="subtasksExpanded"
-                      :sorted="composerSorted"
-                      :dragging="draggingCard"
-                      :readonly="archivedMode"
-                      :selected="isFocused(dcol, element.id)"
-                      @open="(id) => onCardOpen(dcol, id)"
-                      @changed="onChanged"
-                      @restore="restoreFromArchive"
-                    />
-                  </div>
-                </template>
-              </draggable>
-
-              <template v-if="!archivedMode">
-                <div
-                  v-if="addingInColumn === dcol.key"
-                  class="add-task-input"
-                  data-testid="add-task-input"
-                >
-                  <n-input
-                    :ref="(el) => (taskInput = el)"
-                    v-model:value="newTaskTitle"
-                    type="textarea"
-                    size="small"
-                    :autosize="{ minRows: 1, maxRows: 4 }"
-                    :placeholder="t('board.column.taskPlaceholder')"
-                    @keydown.enter.exact.prevent="submitAddTask(dcol)"
-                    @keyup.esc="cancelAddTask"
-                    @blur="submitAddTask(dcol)"
+                    <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
+                    <span class="strip-title">{{ dcol.name }}</span>
+                    <span class="strip-count" :title="colCountTitle(dcol)">{{
+                      colCounts(dcol).tasks
+                    }}</span>
+                  </button>
+                  <ColumnHeader
+                    :dcol="dcol"
+                    :count="colCounts(dcol).tasks"
+                    :total="colCounts(dcol).total"
+                    :estimate="columnEstimate(dcol)"
+                    :editable="groupMode === 'status'"
+                    :readonly="archivedMode"
+                    :is-done="groupMode === 'status' && dcol.key === doneColumnId"
+                    :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
+                    :collapsed="isColCollapsed(dcol)"
+                    :prefix-names="tagPrefixNames"
+                    :last="
+                      groupMode === 'status' && dcol.key === colModel[colModel.length - 1]?.key
+                    "
+                    :can-delete="groupMode === 'status' && colModel.length > 1"
+                    :rename-request="colRenameReq"
+                    @changed="onChanged"
+                    @set-done="onSetDone"
+                    @toggle-collapse="toggleCollapse(dcol)"
+                    @rename-next="renameNextColumn(dcol)"
+                    @delete="deleteColumn(dcol)"
+                    @move="(dir) => moveColumn(dcol, dir)"
+                    @add-right="startAddColumn(dcol)"
                   />
+                  <draggable
+                    :list="lists[dcol.key]"
+                    group="tasks"
+                    item-key="id"
+                    class="drop t-hoverscroll"
+                    ghost-class="ghost"
+                    :force-fallback="true"
+                    :fallback-on-body="true"
+                    filter=".add-sub, .sub-add-input"
+                    :prevent-on-filter="false"
+                    :disabled="archivedMode"
+                    :sort="canSortCards"
+                    :animation="150"
+                    :delay="160"
+                    :delay-on-touch-only="true"
+                    :touch-start-threshold="6"
+                    @start="onCardDragStart"
+                    @end="onBoardDragEnd"
+                    @change="onColChange($event, dcol)"
+                  >
+                    <template #item="{ element, index }">
+                      <div
+                        :ref="(el) => regCard(el, cardKey(dcol.key, element.id))"
+                        class="card-wrap"
+                        :data-card="cardKey(dcol.key, element.id)"
+                      >
+                        <div
+                          v-if="
+                            colCollapsedNow(dcol) ||
+                            !(vis[cardKey(dcol.key, element.id)] ?? index < 12)
+                          "
+                          class="card-ph"
+                          :style="{
+                            height: (cardH[cardKey(dcol.key, element.id)] || VCARD_EST) + 'px',
+                          }"
+                        />
+                        <TaskCard
+                          v-else
+                          :task="element"
+                          :subtasks="sortedSubtasksByParent[element.id] || []"
+                          :subtasks-total="(subtasksByParent[element.id] || []).length"
+                          :subtasks-expanded="subtasksExpanded"
+                          :sorted="composerSorted"
+                          :dragging="draggingCard"
+                          :readonly="archivedMode"
+                          :selected="isFocused(dcol, element.id)"
+                          @open="(id) => onCardOpen(dcol, id)"
+                          @changed="onChanged"
+                          @restore="restoreFromArchive"
+                        />
+                      </div>
+                    </template>
+                  </draggable>
+
+                  <template v-if="!archivedMode">
+                    <div
+                      v-if="addingInColumn === dcol.key"
+                      class="add-task-input"
+                      data-testid="add-task-input"
+                    >
+                      <n-input
+                        :ref="(el) => (taskInput = el)"
+                        v-model:value="newTaskTitle"
+                        type="textarea"
+                        size="small"
+                        :autosize="{ minRows: 1, maxRows: 4 }"
+                        :placeholder="t('board.column.taskPlaceholder')"
+                        @keydown.enter.exact.prevent="submitAddTask(dcol)"
+                        @keyup.esc="cancelAddTask"
+                        @blur="submitAddTask(dcol)"
+                      />
+                    </div>
+                    <button
+                      v-else
+                      type="button"
+                      class="add-task"
+                      data-testid="add-task-button"
+                      @click="startAddTask(dcol)"
+                    >
+                      <n-icon :component="AddOutline" :size="15" />
+                      <span class="add-task-label">{{ t('board.column.addTask') }}</span>
+                      <ShortcutKeys v-if="!isMobile" id="board.addTask" class="add-task-key" />
+                    </button>
+                  </template>
                 </div>
-                <button
-                  v-else
-                  type="button"
-                  class="add-task"
-                  data-testid="add-task-button"
-                  @click="startAddTask(dcol)"
-                >
-                  <n-icon :component="AddOutline" :size="15" />
-                  <span class="add-task-label">{{ t('board.column.addTask') }}</span>
-                  <ShortcutKeys v-if="!isMobile" id="board.addTask" class="add-task-key" />
-                </button>
               </template>
-            </div>
-          </template>
-        </draggable>
+            </draggable>
 
-        <!-- inline new column (status mode; never in the archive — the tile would
+            <!-- inline new column (status mode; never in the archive — the tile would
              create a live column on the board from a read-only view) -->
-        <div v-if="showAddColumn" class="add-col" :class="{ 'add-col-mobile': isMobile }">
-          <n-input
-            v-if="addingColumn"
-            ref="colInput"
-            v-model:value="newColumnName"
-            size="small"
-            :loading="columnInFlight"
-            :placeholder="t('board.column.namePlaceholder')"
-            @keyup.enter="submitAddColumn"
-            @keyup.esc="addingColumn = false"
-            @blur="submitAddColumn"
-          />
-          <button
-            v-else
-            type="button"
-            class="add-col-btn"
-            data-testid="add-column"
-            @click="startAddColumn"
-          >
-            <n-icon :component="AddOutline" :size="16" />
-            <span>{{ t('board.column.add') }}</span>
-          </button>
-        </div>
-      </div>
+            <div v-if="showAddColumn" class="add-col" :class="{ 'add-col-mobile': isMobile }">
+              <n-input
+                v-if="addingColumn"
+                ref="colInput"
+                v-model:value="newColumnName"
+                size="small"
+                :loading="columnInFlight"
+                :placeholder="t('board.column.namePlaceholder')"
+                @keyup.enter="submitAddColumn"
+                @keyup.esc="addingColumn = false"
+                @blur="submitAddColumn"
+              />
+              <button
+                v-else
+                type="button"
+                class="add-col-btn"
+                data-testid="add-column"
+                @click="startAddColumn"
+              >
+                <n-icon :component="AddOutline" :size="16" />
+                <span>{{ t('board.column.add') }}</span>
+              </button>
+            </div>
+          </div>
 
-      <div v-if="layout === 'board' && !displayColumns.length" class="empty-board">
-        <n-text depth="3">
-          {{ t(groupMode === 'status' ? 'board.column.emptyStatus' : 'board.column.emptyTag') }}
-        </n-text>
+          <div v-if="layout === 'board' && !displayColumns.length" class="empty-board">
+            <n-text depth="3">
+              {{ t(groupMode === 'status' ? 'board.column.emptyStatus' : 'board.column.emptyTag') }}
+            </n-text>
+          </div>
+        </div>
+        <BoardCustomizePanel
+          ref="customizePanel"
+          v-model:show="customizeOpen"
+          v-model:board-name="boardName"
+          v-model:card-size="cardSize"
+          v-model:stack-fields="stackFields"
+          v-model:show-empty="showEmpty"
+          v-model:auto-collapse-empty="autoCollapseEmpty"
+          v-model:subtasks-expanded="subtasksExpanded"
+          :layout="layout"
+          :readonly="archivedMode"
+          :field-vis="fieldVis"
+          :facet-chips="facetChips"
+          :filters="filters"
+          :group-next-label="nextGroupModeLabel"
+          :group-label="groupChip?.text || ''"
+          :add-options="addOptions"
+          :board-icon="board?.icon || ''"
+          :board-color="board?.color || ''"
+          :board-icon-mode="board?.icon_mode || 'badge'"
+          :chart-ctl="timelineLike ? chartView?.ctl || null : null"
+          :views-summary="viewsSummary"
+          :digits-hint="bv.views.length > 0"
+          @set-field="setFieldVis"
+          @add-facet="onAddFacet"
+          @remove-chip="removeChip"
+          @chip-click="onChipClick"
+          @update-board="updateBoard"
+        >
+          <template #views>
+            <ViewsSection
+              :bv="bv"
+              :can-share="wsStore.canManage"
+              :members="boardViewStore.membersList.length"
+            />
+          </template>
+        </BoardCustomizePanel>
       </div>
     </div>
   </n-spin>
@@ -2956,31 +2874,6 @@ async function restoreFromArchive(taskId) {
   />
 
   <BoardActivityToasts ref="activityToasts" @open="openTask" />
-
-  <BoardCustomizePanel
-    v-model:show="customizeOpen"
-    v-model:board-name="boardName"
-    v-model:card-size="cardSize"
-    v-model:stack-fields="stackFields"
-    v-model:show-empty="showEmpty"
-    v-model:auto-collapse-empty="autoCollapseEmpty"
-    v-model:subtasks-expanded="subtasksExpanded"
-    v-model:autosave-view="autosaveView"
-    :readonly="archivedMode"
-    :field-vis="fieldVis"
-    :facet-chips="facetChips"
-    :group-next-label="nextGroupModeLabel"
-    :add-options="addOptions"
-    :current-view-name="currentViewName"
-    :board-icon="board?.icon || ''"
-    :board-color="board?.color || ''"
-    :board-icon-mode="board?.icon_mode || 'badge'"
-    @set-field="setFieldVis"
-    @add-facet="onAddFacet"
-    @remove-chip="removeChip"
-    @chip-click="onChipClick"
-    @update-board="updateBoard"
-  />
 </template>
 
 <style scoped>
@@ -2996,6 +2889,38 @@ async function restoreFromArchive(taskId) {
 }
 .subbar-spacer {
   flex: 1;
+}
+/* The board and its docked «Вид доски» panel (#2986): the views take what the
+   panel leaves. */
+.board-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.board-main {
+  flex: 1;
+  min-width: 0;
+}
+.panel-wrap {
+  position: relative;
+  display: inline-flex;
+}
+/* «изменено»: the loaded view no longer matches the board. */
+.panel-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #f0a020 86%, #000),
+    #f0a020 50%,
+    color-mix(in srgb, #f0a020 86%, #fff)
+  );
+  box-shadow: 0 0 0 2px var(--t-bg);
+  pointer-events: none;
 }
 .subbar-people {
   flex: none;
@@ -3239,61 +3164,6 @@ async function restoreFromArchive(taskId) {
 .sort-add {
   margin-top: 2px;
   align-self: flex-start;
-}
-.views-pop {
-  width: 240px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.view-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.view-name {
-  flex: 1;
-  text-align: left;
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: 6px 8px;
-  border-radius: 7px;
-  color: var(--t-text1);
-  font-size: 13px;
-}
-.view-name:hover {
-  background: var(--t-hover);
-}
-.view-name.active {
-  color: var(--t-primary);
-  font-weight: 600;
-}
-.views-empty {
-  font-size: 12px;
-}
-.views-over {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-.views-lbl {
-  font-size: 11px;
-  width: 100%;
-}
-.view-chip {
-  border: none;
-  background: var(--t-pill);
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 11px;
-  cursor: pointer;
-  color: var(--t-text2);
-}
-.view-chip:hover {
-  color: var(--t-text1);
 }
 .task-search {
   width: 220px;

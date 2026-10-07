@@ -11,12 +11,16 @@
 //   { key, label, icon, disabled: true, disabledTitle }          // no rights
 //   { key, label, icon, stub: 3005 }                             // not built yet
 //   { key, ..., busy: true } / { key, ..., failed: { title, sub } }
+//   { heading: 'Мои', aside: '2' }                               // section title
+//   { key, label, glyph: 'layout-kanban', active, note, noteWarn, locked,
+//     caps: ['1'] }                                // a list entry (#2987)
 // ]
 // Emits select(key, value) — value is the colour for a swatch row, the new
 // state for a switch row.
 //
 // Keys: ↑/↓ move, ↵ activates, Esc closes, and every row answers to its own
-// shortcut while the menu is open (the same key works on the row without it).
+// shortcut while the menu is open (the same key works on the row without it) —
+// a row whose `caps` is one plain character (a digit) answers to that key too.
 // The danger item arms on the first press — red, «Точно …?» with the cost —
 // and fires on the second; it disarms after 4 s, on ↑/↓ or when left.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
@@ -27,6 +31,7 @@ import Kbd from '@/components/Kbd.vue'
 import { CAPS } from '@/utils/keyCaps'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import TesseraIcon from '@/components/TesseraIcon.vue'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { byId } from '@/shortcuts/catalog'
 import { matchChord, parseKeys } from '@/shortcuts/keymap'
@@ -66,7 +71,7 @@ const { style } = useAnchoredPanel({
   onOutside: close,
 })
 
-const rows = computed(() => props.items.filter((i) => !i.gap))
+const rows = computed(() => props.items.filter((i) => !i.gap && !i.heading))
 const live = (i) => !i.disabled && !i.stub && !i.busy
 const active = ref(-1)
 const armed = ref('')
@@ -155,6 +160,16 @@ function onKeydown(e) {
     if (item) activate(item)
     return
   }
+  // A row captioned by one plain key (a digit) answers to it.
+  if (!hasMod(e) && e.key.length === 1) {
+    const hit = rows.value.find((i) => i.caps?.length === 1 && i.caps[0] === e.key)
+    if (hit) {
+      e.preventDefault()
+      e.stopPropagation()
+      activate(hit)
+      return
+    }
+  }
   // A row's own shortcut.
   for (const item of rows.value) {
     const entry = item.keys && byId.get(item.keys)
@@ -167,6 +182,10 @@ function onKeydown(e) {
       return
     }
   }
+}
+
+function hasMod(e) {
+  return e.metaKey || e.ctrlKey || e.altKey
 }
 
 function onLeave(item) {
@@ -198,6 +217,10 @@ function stubTitle(item) {
       </div>
       <template v-for="(item, idx) in items" :key="item.key || `gap-${idx}`">
         <div v-if="item.gap" class="am-gap" />
+        <div v-else-if="item.heading" class="am-head am-section">
+          <span class="am-head-text">{{ item.heading }}</span>
+          <span v-if="item.aside" class="am-head-aside">{{ item.aside }}</span>
+        </div>
 
         <!-- two-step danger, armed -->
         <div
@@ -242,6 +265,7 @@ function stubTitle(item) {
           role="menuitem"
           :class="{
             on: rows.indexOf(item) === active,
+            current: item.active,
             danger: item.danger,
             disabled: item.disabled || item.stub,
             swatch: item.swatch !== undefined,
@@ -253,8 +277,13 @@ function stubTitle(item) {
           @mouseleave="onLeave(item)"
           @click="item.swatch === undefined && activate(item)"
         >
-          <n-icon v-if="item.icon" :component="item.icon" :size="16" class="am-icon" />
+          <TesseraIcon v-if="item.glyph" :name="item.glyph" :size="15" class="am-icon am-glyph" />
+          <n-icon v-else-if="item.icon" :component="item.icon" :size="16" class="am-icon" />
           <span class="am-label">{{ item.label }}</span>
+          <span v-if="item.note" class="am-note" :class="{ warn: item.noteWarn }">{{
+            item.note
+          }}</span>
+          <n-icon v-if="item.locked" :component="LockClosedOutline" :size="13" class="am-lock" />
 
           <span v-if="item.swatch !== undefined" class="am-dots">
             <button
@@ -338,6 +367,33 @@ function stubTitle(item) {
 }
 .am-gap {
   height: 6px;
+}
+.am-section {
+  padding-top: 8px;
+}
+.am-row.current {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 16%, var(--t-pop)),
+    color-mix(in srgb, var(--t-primary) 26%, var(--t-pop))
+  );
+  font-weight: 600;
+}
+.am-row.current .am-glyph {
+  color: var(--t-primary);
+}
+.am-glyph {
+  color: var(--t-text3);
+}
+.am-note {
+  flex: none;
+  font-size: 11.5px;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
+.am-note.warn {
+  color: #f0a020;
+  font-weight: 600;
 }
 .am-row {
   display: flex;

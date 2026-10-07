@@ -107,6 +107,10 @@ const SENTINELS = {
   // decision about a dropdown, not a number the reader can act on.
   'view limit reached': 'boardViewLimitReached',
   'view config is too large': 'boardViewConfigTooLarge',
+  // Views v2 (#2970): a rename or a «сделать общим» into a list that already
+  // has the name; a shared view edited by somebody who is not a manager.
+  'view name taken': 'boardViewNameTaken',
+  'not your view': 'boardViewNotYours',
   // The ceiling on a document's task links, for the same reason as the two above:
   // no client mirrors it, so the links panel is where it is met. Its sibling
   // refusal ("block id is too long") is deliberately absent — the anchor is drawn

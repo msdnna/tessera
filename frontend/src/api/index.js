@@ -478,9 +478,12 @@ export const boards = {
   // Whole-board blocking dependency graph for the Gantt view (raw edge rows).
   dependencies: (id) => api.get(`/boards/${id}/dependencies`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
-  // Per-user saved board views (layouts).
+  // Saved board views (#2970): the reader's own + the board's shared ones.
   views: (id) => api.get(`/boards/${id}/views`),
-  saveView: (id, data) => api.post(`/boards/${id}/views`, data), // { name, config }
+  // { name, config, scope?: 'user' | 'board', is_default? } — upserts by name.
+  saveView: (id, data) => api.post(`/boards/${id}/views`, data),
+  // Partial: { name?, config?, scope?, is_default?, before_id?, after_id? }.
+  updateView: (viewId, data) => api.patch(`/views/${viewId}`, data),
   deleteView: (viewId) => api.delete(`/views/${viewId}`),
 }
 

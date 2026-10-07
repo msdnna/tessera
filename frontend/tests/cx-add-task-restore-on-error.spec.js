@@ -111,9 +111,8 @@ describe('a failed task create keeps the typed title (#2932)', () => {
   it('still commits on both Enter and blur', () => {
     // Both bindings are why a lost title is unrecoverable in the first place; if either
     // disappears this guard would be passing for the wrong reason.
-    const tile = board.slice(
-      board.indexOf('<div\n                  v-if="addingInColumn === dcol.key"'),
-    )
+    // Whitespace-tolerant: the template's indentation moves with its wrappers.
+    const tile = board.slice(board.search(/<div\s+v-if="addingInColumn === dcol\.key"/))
     const input = tile.slice(0, tile.indexOf('</n-input>') + 1 || 800)
     expect(input).toContain('@keydown.enter.exact.prevent="submitAddTask(dcol)"')
     expect(input).toContain('@blur="submitAddTask(dcol)"')

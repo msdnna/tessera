@@ -23,6 +23,8 @@
     "invitationWrongAccount": "This invitation was sent to a different address",
     "boardViewLimitReached": "Too many saved views on this board — delete one to add another",
     "boardViewConfigTooLarge": "This view's settings do not fit into a saved view",
+    "boardViewNameTaken": "This list already has a view with that name",
+    "boardViewNotYours": "Shared views are edited by the space owner and admins",
     "docLinkLimitReached": "Too many tasks linked to this document — unlink some first",
     "tooManyRequests": "Too many attempts — wait a minute and try again",
     "bodyTooLarge": "The request is too large — shorten the text or the attachment",

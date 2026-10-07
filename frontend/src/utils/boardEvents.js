@@ -62,6 +62,9 @@ const IGNORED = new Set([
   // (task.updated / task.moved / task.tagged / task.assigned …), each classified
   // on its own — so dropping this one loses nothing (#2932).
   'task.commented',
+  // The board's shared saved views changed (#2988): nothing on the board itself
+  // moves — the board's own branch re-reads the view list.
+  'board_views.changed',
 ])
 
 const META = new Set(['tag.created', 'tag.updated', 'tag.deleted', 'tag_prefixes.updated'])
