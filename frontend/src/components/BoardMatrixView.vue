@@ -18,8 +18,11 @@ const props = defineProps({
   subtasksTotalByParent: { type: Object, default: () => ({}) },
   subtasksExpanded: { type: Boolean, default: false },
   // A task is "urgent" when its due date falls within this many days (or is
-  // overdue). Default = roughly the current week.
-  urgentWindowDays: { type: Number, default: 7 },
+  // overdue), "important" from this priority up. Both are the board's view
+  // settings (#3018, panel «Матрица»); the defaults are the mockup's ≤ 3 days
+  // and ≥ high.
+  urgentWindowDays: { type: Number, default: 3 },
+  importantPriority: { type: Number, default: 3 },
   // The archive view (?archived=1) shows archived cards and promises to be
   // read-only. The kanban keeps that promise everywhere (column/card draggables,
   // «+ задача», TaskCard, TaskModal); the matrix is the same board in another
@@ -60,11 +63,9 @@ const quadrants = computed(() =>
 // (high/urgent), urgency from due-date proximity.
 //
 // Proximity is counted in whole calendar days of the user's timezone, not in
-// milliseconds — see isDueWithinDays(). The window is the one the «Срок: неделя»
-// facet above this very grid uses, so a card cannot be urgent here and outside
-// the week there.
+// milliseconds — see isDueWithinDays(), the same day count the «Срок» facet uses.
 function derive(t) {
-  const important = (t.priority || 0) >= 3
+  const important = (t.priority || 0) >= props.importantPriority
   const urgent = isDueWithinDays(t, props.urgentWindowDays, new Date(), formatters.value)
   if (important) return urgent ? 0 : 1
   return urgent ? 2 : 3
@@ -91,7 +92,11 @@ function rebuild() {
 // Also on the formatter set: the urgency window is read in the user's timezone,
 // so changing that preference re-sorts the grid instead of leaving it on the
 // calendar it was first built in.
-watch([() => props.tasks, formatters], rebuild, { immediate: true })
+watch(
+  [() => props.tasks, formatters, () => props.urgentWindowDays, () => props.importantPriority],
+  rebuild,
+  { immediate: true },
+)
 
 const dragging = ref(false)
 

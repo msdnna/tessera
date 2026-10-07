@@ -74,7 +74,7 @@ import {
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
 import { buildLists, collapseKey } from '@/utils/boardLists'
-import { LAYOUTS } from '@/utils/boardViews'
+import { LAYOUTS, MATRIX_DEFAULTS, matrixConfig } from '@/utils/boardViews'
 import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
 import { BACKLOG_SCOPE, matchesScope, newTaskMilestoneId } from '@/utils/milestones'
@@ -191,6 +191,9 @@ const autoSort = ref(false)
 // manually expanded (an explicit `false` wins over autoCollapseEmpty).
 const colCollapse = reactive({})
 const autoCollapseEmpty = ref(false)
+// The Eisenhower thresholds (#3018): urgent = due within N days, important =
+// priority from M up. Part of the board's state and of a saved view.
+const matrixCfg = reactive({ ...MATRIX_DEFAULTS })
 // cardSize / stackFields / showEmpty / fieldVis are owned by the store (cards read
 // them from there) but remain part of this board's saved view — snapshotToolbar and
 // loadCustomize below read and write them exactly as before.
@@ -583,6 +586,7 @@ function defaultToolbar(forLayout) {
     stackFields: false,
     showEmpty: true,
     fieldVis: defaultFieldVis(),
+    matrix: { ...MATRIX_DEFAULTS },
   }
 }
 function snapshotToolbar() {
@@ -599,6 +603,7 @@ function snapshotToolbar() {
     stackFields: stackFields.value,
     showEmpty: showEmpty.value,
     fieldVis: { ...fieldVis },
+    matrix: { ...matrixCfg },
   }
 }
 function loadToolbar(s) {
@@ -621,6 +626,7 @@ function loadCustomize(s) {
   stackFields.value = !!s.stackFields
   showEmpty.value = s.showEmpty !== false
   Object.assign(fieldVis, defaultFieldVis(), s.fieldVis || {})
+  Object.assign(matrixCfg, matrixConfig(s.matrix))
 }
 
 // Rebuild a pre-per-layout blob into a toolbar snapshot. Built on top of the
@@ -670,6 +676,7 @@ watch(
     stackFields,
     showEmpty,
     fieldVis,
+    matrixCfg,
   ],
   persistView,
   { deep: true },
@@ -708,6 +715,7 @@ function currentViewConfig() {
     stackFields: stackFields.value,
     showEmpty: showEmpty.value,
     fieldVis: { ...fieldVis },
+    matrix: { ...matrixCfg },
   }
 }
 function applyViewConfig(c) {
@@ -2615,6 +2623,8 @@ async function restoreFromArchive(taskId) {
             :subtasks-by-parent="sortedSubtasksByParent"
             :subtasks-total-by-parent="subtasksByParent"
             :subtasks-expanded="subtasksExpanded"
+            :urgent-window-days="matrixCfg.dueDays"
+            :important-priority="matrixCfg.minPriority"
             :readonly="archivedMode"
             @open="openTask"
             @changed="onChanged"
@@ -2850,7 +2860,9 @@ async function restoreFromArchive(taskId) {
           :board-icon-mode="board?.icon_mode || 'badge'"
           :chart-ctl="timelineLike ? chartView?.ctl || null : null"
           :views-summary="viewsSummary"
+          :matrix="matrixCfg"
           :digits-hint="bv.views.length > 0"
+          @update:matrix="(m) => Object.assign(matrixCfg, matrixConfig(m))"
           @set-field="setFieldVis"
           @add-facet="onAddFacet"
           @remove-chip="removeChip"

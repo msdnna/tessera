@@ -87,8 +87,17 @@ const props = defineProps({
   defaultOpen: { type: Array, default: () => ['views'] },
   // Footer hint for the view digits (only when there are views to pick).
   digitsHint: { type: Boolean, default: false },
+  // The Eisenhower thresholds (#3018): { dueDays, minPriority }.
+  matrix: { type: Object, default: () => ({ dueDays: 3, minPriority: 3 }) },
 })
-const emit = defineEmits(['set-field', 'add-facet', 'remove-chip', 'chip-click', 'update-board'])
+const emit = defineEmits([
+  'set-field',
+  'add-facet',
+  'remove-chip',
+  'chip-click',
+  'update-board',
+  'update:matrix',
+])
 
 const { t } = useI18n()
 const { isMobile } = useResponsive()
@@ -100,6 +109,7 @@ const SECTION_ICONS = {
   views: BookmarksOutline,
   cards: AlbumsOutline,
   scale: CalendarOutline,
+  matrix: GridOutline,
   facets: FunnelOutline,
   columns: GridOutline,
   board: ColorPaletteOutline,
@@ -108,6 +118,7 @@ const sections = computed(() => {
   const out = ['views']
   if (props.layout === 'board' || props.layout === 'matrix') out.push('cards')
   if (isChart.value) out.push('scale')
+  if (props.layout === 'matrix') out.push('matrix')
   out.push('facets')
   if (props.layout === 'board') out.push('columns')
   if (!props.readonly) out.push('board')
@@ -177,6 +188,10 @@ const summary = computed(() => ({
     named: { size: t(`board.customize.sizePlural.${cardSize.value}`), n: fieldsOn.value },
   }),
   scale: props.chartCtl ? t(`board.chart.scale.${props.chartCtl.scale}`) : '',
+  matrix: t('board.customize.matrix.summary', {
+    days: dueLabel(props.matrix.dueDays),
+    priority: priorityLabel(props.matrix.minPriority),
+  }),
   facets: [
     props.groupLabel,
     filtersOn.value
@@ -225,6 +240,14 @@ const fields = computed(() =>
   })),
 )
 const highPill = { background: softFill(HIGH), color: HIGH }
+
+// ── matrix thresholds (#3018) ──
+const DUE_DAYS = [1, 3, 7, 14]
+const MIN_PRIORITY = [2, 3, 4]
+const dueLabel = (n) => t('board.customize.matrix.dueDays', n, { named: { n } })
+function setMatrix(patch) {
+  emit('update:matrix', { ...props.matrix, ...patch })
+}
 
 // ── scale (timeline / Gantt) ──
 const SCALES = ['days', 'weeks', 'months']
@@ -472,6 +495,42 @@ const sw = (on) =>
               </div>
               <div v-if="chartCtl?.hint && !isMobile" class="cp-note">{{ chartCtl.hint }}</div>
               <div class="cp-note">{{ t('board.customize.chartNote') }}</div>
+            </template>
+
+            <template v-else-if="key === 'matrix'">
+              <div class="cp-lbl">{{ t('board.customize.matrix.due') }}</div>
+              <div class="cp-seg" role="radiogroup" data-testid="matrix-due">
+                <button
+                  v-for="n in DUE_DAYS"
+                  :key="n"
+                  type="button"
+                  role="radio"
+                  class="cp-seg-btn"
+                  :class="{ on: matrix.dueDays === n }"
+                  :aria-checked="matrix.dueDays === n"
+                  @click="setMatrix({ dueDays: n })"
+                >
+                  {{ dueLabel(n) }}
+                </button>
+              </div>
+              <div class="cp-lbl cp-lbl-row">{{ t('board.customize.matrix.important') }}</div>
+              <div class="cp-seg" role="radiogroup" data-testid="matrix-priority">
+                <button
+                  v-for="p in MIN_PRIORITY"
+                  :key="p"
+                  type="button"
+                  role="radio"
+                  class="cp-seg-btn cp-prio"
+                  :class="{ on: matrix.minPriority === p }"
+                  :aria-checked="matrix.minPriority === p"
+                  :style="{ '--pc': PRIORITY_COLORS[p] }"
+                  @click="setMatrix({ minPriority: p })"
+                >
+                  <n-icon :component="FlagOutline" :size="12" class="cp-prio-ic" />
+                  {{ priorityLabel(p) }}
+                </button>
+              </div>
+              <div class="cp-note">{{ t('board.customize.matrix.note') }}</div>
             </template>
 
             <template v-else-if="key === 'facets'">
@@ -857,6 +916,15 @@ const sw = (on) =>
   box-shadow: var(--t-sh-card);
   color: var(--t-text1);
   font-weight: 600;
+}
+.cp-prio {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.cp-prio-ic {
+  color: var(--pc);
 }
 .cp-seg-btn.stub {
   color: var(--t-placeholder);

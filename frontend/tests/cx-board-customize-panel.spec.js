@@ -58,7 +58,11 @@ describe('BoardCustomizePanel sections', () => {
 
   it('keeps cards on the matrix and drops the board section in the archive', () => {
     const w = mountPanel({ layout: 'matrix', readonly: true })
-    expect(heads(w)).toEqual(['customize-sec-cards', 'customize-sec-facets'])
+    expect(heads(w)).toEqual([
+      'customize-sec-cards',
+      'customize-sec-matrix',
+      'customize-sec-facets',
+    ])
     w.unmount()
   })
 
@@ -128,6 +132,33 @@ describe('BoardCustomizePanel scale', () => {
     expect(w.text()).toContain('Тяните')
     await w.find('.cp-scale button[role="switch"]').trigger('click')
     expect(c.toggleLeft).toHaveBeenCalledOnce()
+    w.unmount()
+  })
+})
+
+describe('BoardCustomizePanel matrix thresholds (#3018)', () => {
+  it('summarises and sets the urgency window and the importance floor', async () => {
+    const w = mountPanel({
+      layout: 'matrix',
+      defaultOpen: [],
+      matrix: { dueDays: 3, minPriority: 3 },
+    })
+    expect(w.find('[data-testid="customize-sec-matrix"] .cp-head-sum').text()).toBe(
+      '≤ 3 дня · ≥ Высокий',
+    )
+    await w.find('[data-testid="customize-sec-matrix"]').trigger('click')
+    const days = w.findAll('[data-testid="matrix-due"] button')
+    expect(days.map((b) => b.attributes('aria-checked'))).toEqual([
+      'false',
+      'true',
+      'false',
+      'false',
+    ])
+    await days[2].trigger('click')
+    expect(w.emitted('update:matrix')).toEqual([[{ dueDays: 7, minPriority: 3 }]])
+    const prio = w.findAll('[data-testid="matrix-priority"] button')
+    await prio[2].trigger('click')
+    expect(w.emitted('update:matrix')[1]).toEqual([{ dueDays: 3, minPriority: 4 }])
     w.unmount()
   })
 })
