@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -929,9 +930,21 @@ func (r *syncRun) fetchIssues(ctx context.Context) ([]gitlab.Issue, []int64, err
 		// re-delivered but whose GitLab updatedAt is unchanged (nothing to do).
 		return r.h.dropUnchangedIssues(ctx, r.integ.ID, assigned), linkedIids, nil
 	}
+	// Only refetch linked issues the pull above did not already bring: every issue
+	// comes with all its discussions, so asking for the same ones twice doubled the
+	// cost of a sweep on exactly the projects where it was already too slow.
+	fetched := make(map[int64]bool, len(assigned))
+	for _, is := range assigned {
+		fetched[is.IID] = true
+	}
 	iidStrs := make([]string, 0, len(linkedIids))
 	for _, id := range linkedIids {
-		iidStrs = append(iidStrs, strconv.FormatInt(id, 10))
+		if !fetched[id] {
+			iidStrs = append(iidStrs, strconv.FormatInt(id, 10))
+		}
+	}
+	if len(iidStrs) == 0 {
+		return assigned, linkedIids, nil
 	}
 	linked, lerr := r.client.IssuesByIIDs(ctx, r.integ.ProjectPath, iidStrs)
 	if lerr != nil {
@@ -1342,7 +1355,7 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		// incremental pull can't see). full_sync_interval_sec = 0 disables the forced
 		// sweep (full then only runs on the very first sync).
 		mode := "incremental"
-		if fullSyncDue(integ) {
+		if fullSyncDue(integ) && !fullSweepBackingOff(integ, time.Now()) {
 			mode = "full"
 		}
 		handle.SetOp(syncOpKey(mode), syncOpLabel(mode))
@@ -1350,6 +1363,13 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		handle.SetCounts(created, updated)
 		handle.Finish(serr)
 		cancel()
+		if mode == "full" {
+			if serr != nil {
+				fullSweepFailedAt.Store(integ.ID, time.Now())
+			} else {
+				fullSweepFailedAt.Delete(integ.ID)
+			}
+		}
 		if serr != nil {
 			log.Printf("gitlab auto-sync ws=%s: %v", integ.WorkspaceID, serr)
 			continue
@@ -1372,6 +1392,30 @@ func fullSyncDue(integ db.GitlabIntegration) bool {
 		return false
 	}
 	return time.Since(*integ.LastFullSyncedAt) >= time.Duration(integ.FullSyncIntervalSec)*time.Second
+}
+
+// fullSweepRetryAfter is how long the auto worker waits after a failed periodic
+// full sweep before trying another one. In between it keeps pulling
+// incrementally: a sweep that keeps failing (GitLab timing out on a big project)
+// used to be retried every tick as "full" again, so not even the cheap delta got
+// through and the board stopped updating altogether.
+const fullSweepRetryAfter = time.Hour
+
+// fullSweepFailedAt remembers when an integration's last automatic full sweep
+// failed (integration id → time.Time). In memory on purpose: a restart simply
+// tries the sweep again.
+var fullSweepFailedAt sync.Map
+
+// fullSweepBackingOff reports whether a due periodic sweep should yield to an
+// incremental pull because the previous attempt failed less than
+// fullSweepRetryAfter ago. A binding that has never had a full sync is never
+// held back — there is no delta to pull without one.
+func fullSweepBackingOff(integ db.GitlabIntegration, now time.Time) bool {
+	if integ.LastFullSyncedAt == nil {
+		return false
+	}
+	v, ok := fullSweepFailedAt.Load(integ.ID)
+	return ok && now.Sub(v.(time.Time)) < fullSweepRetryAfter
 }
 
 // ── helpers ────────────────────────────────────────────────
