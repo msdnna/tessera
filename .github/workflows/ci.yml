@@ -133,7 +133,7 @@ jobs:
 
       # setup-go's go-version-file reads only the `go` directive and ignores
       # `toolchain`, so it would install go1.25.0 while go.mod pins toolchain
-      # go1.25.9 → "compile: version mismatch". Resolve the toolchain explicitly.
+      # go1.25.14 → "compile: version mismatch". Resolve the toolchain explicitly.
       - name: Resolve Go version from go.mod toolchain directive
         id: gover
         run: |

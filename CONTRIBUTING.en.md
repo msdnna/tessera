@@ -20,7 +20,7 @@ A monorepo of independently versioned components (each has its own `VERSION`):
 
 ## Requirements
 
-- **Go 1.25.x** (in the Makefile — the `GO` variable, `go1.25.9` by default; `go` in CI).
+- **Go 1.25.x** (in the Makefile — the `GO` variable, `go1.25.14` by default; `go` in CI).
 - **Node 22+** and **Corepack** (Yarn 4 — only `corepack yarn ...`, not plain `yarn`).
 - **Docker** + Docker Compose (Postgres for dev/tests).
 - **JDK 21** + Android SDK (compileSdk 37) — for `android/`.

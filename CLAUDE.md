@@ -38,7 +38,7 @@ deploy/     прод-деплой (по мере необходимости)
 
 | Слой | Технологии |
 |------|-----------|
-| Backend | Go 1.25.9 + **gin**; PostgreSQL 17 + **JSONB**; `pgx/v5` + **sqlc** (типобезопасный SQL) + `golang-migrate` (embed) |
+| Backend | Go 1.25.14 + **gin**; PostgreSQL 17 + **JSONB**; `pgx/v5` + **sqlc** (типобезопасный SQL) + `golang-migrate` (embed) |
 | Realtime | WebSocket fan-out hub (`internal/realtime`), workspace-scoped события — заложено с Фазы 0 |
 | Auth | JWT 15m access + ротируемый refresh (SHA-256), bcrypt; первый юзер = admin; refresh-on-401 |
 | Frontend | Vue 3 + Vite + **Naive UI** + Pinia + Vue Router; **Yarn 4** (`corepack yarn`, не плейн!) |
@@ -128,7 +128,7 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   `make scan-baseline-update` и диff в тот же коммит. Подробности —
   `docs/security-scanning.md`.
 
-- **Go:** только `go1.25.9` (Makefile зовёт его через `GO ?= go1.25.9`), НЕ системный `go`.
+- **Go:** только `go1.25.14` (Makefile зовёт его через `GO ?= go1.25.14`), НЕ системный `go`.
   sqlc-бинарь: `~/go/bin/sqlc`.
 - **Frontend:** только `corepack yarn ...` (проект на `yarn@4.x`; плейн yarn падает).
   `corepack yarn lint` / `build` / `test` (vitest) / `dev` (Vite на :5174, проксирует `/api` → :8090).

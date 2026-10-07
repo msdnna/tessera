@@ -159,7 +159,7 @@ func runSuite(m *testing.M) int {
 
 // goTool picks the Go that must do the building. `go test` doesn't hand the test
 // binary its own toolchain path, and on this box the pinned toolchain is the
-// versioned wrapper (go1.25.9) while plain `go` may be older — building with
+// versioned wrapper (go1.25.14) while plain `go` may be older — building with
 // that one fails on the toolchain directive. So: an explicit E2E_GO wins (the
 // Makefile passes it), otherwise try the wrapper named after the version this
 // binary was compiled with, otherwise plain `go` (the CI layout, where setup-go

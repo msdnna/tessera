@@ -20,7 +20,7 @@
 
 ## Требования
 
-- **Go 1.25.x** (в Makefile — переменная `GO`, по умолчанию `go1.25.9`; в CI — `go`).
+- **Go 1.25.x** (в Makefile — переменная `GO`, по умолчанию `go1.25.14`; в CI — `go`).
 - **Node 22+** и **Corepack** (Yarn 4 — только `corepack yarn ...`, не плейн `yarn`).
 - **Docker** + Docker Compose (Postgres для dev/тестов).
 - **JDK 21** + Android SDK (compileSdk 37) — для `android/`.
