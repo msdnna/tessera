@@ -689,3 +689,35 @@ lint-desktop: ## cargo fmt --check + clippy on the desktop crate
 .PHONY: test-desktop
 test-desktop: ## cargo test on the desktop crate
 	cd $(DESKTOP_DIR) && $(CARGO) test
+
+# ── SonarQube (стенд по требованию, #2937) ─────────────────
+# Отдельный compose-проект: `make up` стенд не поднимает, `make down` не гасит.
+SONAR_HOME ?= $(HOME)/sonarqube
+# 9000 занят self-hosted Sentry (его контейнер уже держит порт), поэтому 9001.
+# Проверить свободен ли порт на этой машине нельзя ни `ss` (не видит
+# опубликованные docker-порты), ни curl'ом (закрытый порт тут не отвечает
+# refused, а висит до таймаута) — единственный честный ответ даёт сам bind.
+SONAR_PORT ?= 9001
+SONAR_COMPOSE := $(COMPOSE) -p tessera-sonar -f deploy/sonarqube/docker-compose.yml
+
+.PHONY: sonar-up
+sonar-up: ## Поднять стенд SonarQube на localhost:$(SONAR_PORT) и дождаться готовности
+	@mkdir -p $(SONAR_HOME)/db $(SONAR_HOME)/data $(SONAR_HOME)/extensions $(SONAR_HOME)/logs
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) up -d
+	@bash ./tools/sonar-wait.sh $(SONAR_PORT)
+
+.PHONY: sonar-down
+sonar-down: ## Погасить стенд (данные в $(SONAR_HOME) остаются)
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) down
+
+.PHONY: sonar-logs
+sonar-logs: ## Хвост логов стенда
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) logs -f --tail=100
+
+.PHONY: sonar-token
+sonar-token: ## Сменить дефолтный пароль admin и выпустить токен анализа (идемпотентно)
+	@SONAR_PORT=$(SONAR_PORT) bash ./tools/sonar-token.sh
+
+.PHONY: sonar-scan
+sonar-scan: sonar-token ## Проанализировать рабочее дерево (PROJECT_KEY=tessera-scratch для веток)
+	bash ./tools/sonar-scan.sh
