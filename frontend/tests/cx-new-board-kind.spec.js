@@ -34,10 +34,10 @@ describe('new board kind', () => {
   it('opens a never-seen board in its kind unless a default view applied', () => {
     const fn = board.slice(board.indexOf('async function openBoard('))
     const body = fn.slice(0, fn.indexOf('\n}'))
-    expect(body).toContain('const applied = bv.onOpen()')
+    expect(body).toContain('const applied = bv.onOpen({ applyDefault: untouched })')
     expect(body).toContain('board.value?.default_layout')
     expect(body).toContain(
-      'if (!applied && !seen && start && start !== layout.value) layout.value = start',
+      'if (untouched && !applied && !seen && start && start !== layout.value) layout.value = start',
     )
   })
 })

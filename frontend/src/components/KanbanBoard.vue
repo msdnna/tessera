@@ -2177,11 +2177,15 @@ async function openBoard(id) {
     seen = true // no storage — leave the layout alone
   }
   restoreView()
+  // A view picked while the board was still loading is the reader's choice: the
+  // star and the board's own kind must not take it back.
+  const before = layout.value
   await load(id)
   await bv.load()
-  const applied = bv.onOpen()
+  const untouched = layout.value === before
+  const applied = bv.onOpen({ applyDefault: untouched })
   const start = board.value?.default_layout
-  if (!applied && !seen && start && start !== layout.value) layout.value = start
+  if (untouched && !applied && !seen && start && start !== layout.value) layout.value = start
   applyTaskQuery()
 }
 

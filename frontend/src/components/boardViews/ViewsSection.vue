@@ -117,11 +117,16 @@ function startSave(name = '') {
   saveScope.value = 'user'
   nextTick(() => saveEditor.value?.focus())
 }
+// An ask from outside (⌘⇧S, the chip, «Сохранить как моё») — also the one that
+// opened the panel and mounted this section, hence `immediate`. Consumed here.
 watch(
   () => props.bv.saveAsDraft,
   (d) => {
-    if (d) startSave(d.name || '')
+    if (!d) return
+    props.bv.takeSaveAs()
+    startSave(d.name || '')
   },
+  { immediate: true },
 )
 async function commitSave(value, { via }) {
   const n = (value || '').trim()

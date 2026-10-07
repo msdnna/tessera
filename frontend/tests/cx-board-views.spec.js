@@ -183,4 +183,12 @@ describe('useBoardViews', () => {
     expect(api.updateView).toHaveBeenCalledWith('m2', { before_id: null, after_id: 'm1' })
     w.unmount()
   })
+
+  it('leaves the star alone when the reader changed the board while it loaded', async () => {
+    const { bv, applied, w } = setup()
+    await bv.load()
+    expect(bv.onOpen({ applyDefault: false })).toBe(false)
+    expect(applied).toHaveLength(0)
+    w.unmount()
+  })
 })

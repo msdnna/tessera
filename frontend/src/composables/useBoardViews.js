@@ -101,7 +101,9 @@ export function useBoardViews({ boardId, currentConfig, applyConfig }) {
 
   // After the first load on a board: the default view (once a session), else the
   // view the board was last loaded from. Returns true when a view was applied.
-  function onOpen() {
+  // `applyDefault: false` — the reader already changed the board while it was
+  // loading; their click wins over the star.
+  function onOpen({ applyDefault = true } = {}) {
     const id = boardId.value
     let fresh
     try {
@@ -112,7 +114,7 @@ export function useBoardViews({ boardId, currentConfig, applyConfig }) {
     }
     const remembered = lsGet(LOADED_KEY(id))
     const def = defaultView(views.value)
-    if (def && fresh && remembered !== def.id) {
+    if (applyDefault && def && fresh && remembered !== def.id) {
       apply(def)
       return true
     }
@@ -144,6 +146,12 @@ export function useBoardViews({ boardId, currentConfig, applyConfig }) {
 
   function requestSaveAs(name = '') {
     saveAsDraft.value = { name, n: ++draftSeq }
+  }
+  // The panel's field took the ask.
+  function takeSaveAs() {
+    const d = saveAsDraft.value
+    saveAsDraft.value = null
+    return d
   }
 
   // ⌘S — re-save the loaded view from the board. A view the reader may not edit
@@ -318,6 +326,7 @@ export function useBoardViews({ boardId, currentConfig, applyConfig }) {
     update,
     saveAs,
     requestSaveAs,
+    takeSaveAs,
     rename,
     overwrite,
     setDefault,
