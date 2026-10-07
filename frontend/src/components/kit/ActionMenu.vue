@@ -97,6 +97,8 @@ watch(
     await nextTick()
     if (!props.inline) panel.value?.focus({ preventScroll: true })
   },
+  // A menu mounted already open (inline, the design-system card) arms too.
+  { immediate: true },
 )
 
 function activate(item, value) {
@@ -267,11 +269,22 @@ function stubTitle(item) {
               @click.stop="activate(item, c.hex)"
             />
           </span>
-          <span v-else-if="item.toggle !== undefined" class="am-switch" :class="{ on: item.toggle }">
+          <span
+            v-else-if="item.toggle !== undefined"
+            class="am-switch"
+            :class="{ on: item.toggle }"
+          >
             <span class="am-knob" />
           </span>
-          <n-icon v-else-if="item.disabled" :component="LockClosedOutline" :size="14" class="am-lock" />
-          <span v-else-if="item.stub" class="am-soon">{{ t('common.stub.badge', { n: item.stub }) }}</span>
+          <n-icon
+            v-else-if="item.disabled"
+            :component="LockClosedOutline"
+            :size="14"
+            class="am-lock"
+          />
+          <span v-else-if="item.stub" class="am-soon">{{
+            t('common.stub.badge', { n: item.stub })
+          }}</span>
           <ShortcutKeys v-else-if="item.keys" :id="item.keys" />
           <span v-else-if="item.caps" class="am-caps">
             <Kbd v-for="(c, i) in item.caps" :key="i">{{ c }}</Kbd>

@@ -80,8 +80,12 @@ watch(
     if (!on || props.inline) return
     await nextTick()
     await nextTick()
-    const root = isMobile.value ? document.querySelector(`[data-testid="${props.testid}"]`) : panel.value
-    const first = root?.querySelector('input:not([disabled]), textarea:not([disabled]), [tabindex="0"]')
+    const root = isMobile.value
+      ? document.querySelector(`[data-testid="${props.testid}"]`)
+      : panel.value
+    const first = root?.querySelector(
+      'input:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
+    )
     first?.focus()
     if (first?.select && first.dataset.noSelect === undefined) first.select()
   },
@@ -131,7 +135,13 @@ function onKeydown(e) {
     const items = focusables()
     if (!items.length) return
     const i = items.indexOf(document.activeElement)
-    const next = e.shiftKey ? (i <= 0 ? items.length - 1 : i - 1) : i === items.length - 1 ? 0 : i + 1
+    const next = e.shiftKey
+      ? i <= 0
+        ? items.length - 1
+        : i - 1
+      : i === items.length - 1
+        ? 0
+        : i + 1
     e.preventDefault()
     items[next].focus()
   }
@@ -184,7 +194,7 @@ const sheetShow = computed({
         <slot v-if="$slots.foot" name="foot" />
         <span v-else-if="hintParts" class="pf-hint">
           <Kbd v-if="hintParts.cap">{{ hintParts.cap }}</Kbd>
-          {{ hintParts.text }}
+          <span class="pf-hint-text">{{ hintParts.text }}</span>
         </span>
         <span class="pf-spacer" />
         <button type="button" class="pf-cancel" @click="busy ? emit('abort') : close()">
@@ -297,8 +307,18 @@ const sheetShow = computed({
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+}
+/* A long hint gives way to the buttons: it ellipsizes, they never clip. */
+.pf-hint-text {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.pf-cancel,
+.pf-primary {
+  flex-shrink: 0;
 }
 .pf-spacer {
   flex: 1;
