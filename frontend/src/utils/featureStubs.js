@@ -22,6 +22,9 @@ export const FEATURE_STUBS = {
   'board.newKind': 3017,
   // Project settings window «Проект» (⌘,) — #2971.
   'project.window': 2971,
+  // Timeline scale «Квартал» and the chart toggles in the board's view panel
+  // (weekends, today line, progress, links, undated at the bottom) — #3021.
+  'chart.scale': 3021,
 }
 
 export function stubTask(key) {

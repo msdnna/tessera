@@ -29,7 +29,7 @@ const props = defineProps({
   subtitle: { type: String, default: '' },
   variant: { type: String, default: 'pop' }, // 'pop' | 'sidebar'
   width: { type: Number, default: 340 },
-  // Space kept free under the panel (and the right margin of the pop variant).
+  // Space kept free under the panel (the owner's padding sets the sides).
   gap: { type: Number, default: 12 },
   // Catalog id of the key that toggles the panel — shown next to the close «×».
   toggleKey: { type: String, default: '' },
@@ -89,7 +89,14 @@ watch(
 onBeforeUnmount(unbind)
 
 function onKeydown(e) {
-  if (e.key !== 'Escape' || e.isComposing) return
+  if (e.isComposing) return
+  // Plain arrows belong to the panel: they must not also walk the board's
+  // card selection underneath.
+  if (e.key.startsWith('Arrow') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.stopPropagation()
+    return
+  }
+  if (e.key !== 'Escape') return
   // A field or a menu inside the panel answers Esc first (they stop it).
   e.stopPropagation()
   close()
@@ -99,7 +106,6 @@ const style = computed(() => ({
   width: `${props.width}px`,
   flexBasis: `${props.width}px`,
   height: height.value ? `${height.value}px` : undefined,
-  marginRight: props.variant === 'pop' ? `${props.gap}px` : undefined,
 }))
 defineExpose({ measure, el })
 </script>
@@ -248,8 +254,9 @@ defineExpose({ measure, el })
   flex: 0 0 40px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   padding: 0 14px;
+  overflow: hidden;
   background: var(--t-foot);
   font-size: 11.5px;
   color: var(--t-text3);

@@ -1,15 +1,15 @@
 <script setup>
-import { computed, h, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NDropdown, NIcon } from 'naive-ui'
-import { ChevronDownOutline } from '@vicons/ionicons5'
 import { useBoardViewStore } from '@/stores/boardView'
+import { LAYOUTS, LAYOUT_ICONS } from '@/utils/boardViews'
 import TesseraIcon from './TesseraIcon.vue'
 
-// v2 segmented view switch (#2954). It is the stretchy part of the board's
-// sub-toolbar: the board measures what the other pieces leave (`available`, px)
-// and the switch shows as many views as fit there, the rest behind a chevron.
-// The active view is always a visible segment.
+// v2 segmented view switch (#2954, #2970). Six equal views — Канбан · Список ·
+// Таймлайн · Гант · Календарь · Матрица (V, then 1–6) — and no «more» menu: when
+// the sub-toolbar is short, the segments drop their captions (the active one
+// keeps its own), so every view stays one click away. The board measures what
+// the other pieces leave (`available`, px).
 const props = defineProps({
   available: { type: Number, default: Infinity },
 })
@@ -18,30 +18,15 @@ const emit = defineEmits(['measured'])
 
 const store = useBoardViewStore()
 const { t } = useI18n()
-// Display order on the bar. Labels are resolved per render so the switcher
-// follows a language change.
-const LAYOUTS = [
-  { value: 'board', icon: 'layout-kanban' },
-  { value: 'list', icon: 'layout-list' },
-  { value: 'calendar', icon: 'layout-calendar' },
-  { value: 'timeline', icon: 'layout-timeline' },
-  { value: 'gantt', icon: 'layout-gantt' },
-  { value: 'matrix', icon: 'layout-matrix' },
-]
-// Which views claim the room first when not all fit (the design's trio leads).
-const PRIORITY = ['board', 'list', 'timeline', 'calendar', 'gantt', 'matrix']
 const label = (v) => t(`board.layout.${v}`)
 
 // Natural segment widths, read from an invisible row of all segments.
 const measureEl = ref(null)
 const widths = reactive({})
-const chevronW = ref(28)
 function measure() {
   const row = measureEl.value
   if (!row) return
   for (const el of row.querySelectorAll('[data-seg]')) widths[el.dataset.seg] = el.offsetWidth
-  const chev = row.querySelector('[data-chevron]')
-  if (chev) chevronW.value = chev.offsetWidth
   emit('measured')
 }
 let ro = null
@@ -60,67 +45,43 @@ watch(
 // Container chrome: 3px padding each side, 2px between segments.
 const PAD = 6
 const GAP = 2
-const shownKeys = computed(() => {
-  const all = LAYOUTS.map((o) => o.value)
-  // Not measured yet → assume a wide segment, never zero (zero would show all).
-  const w = (k) => widths[k] || 120
-  const total = (keys, chevron) =>
-    PAD +
-    keys.reduce((n, k) => n + w(k), 0) +
-    GAP * (keys.length - 1 + (chevron ? 1 : 0)) +
-    (chevron ? chevronW.value : 0)
-  if (total(all, false) <= props.available) return all
-  const keep = [store.layout]
-  for (const k of PRIORITY) {
-    if (keep.includes(k)) continue
-    if (total([...keep, k], true) <= props.available) keep.push(k)
-  }
-  return all.filter((k) => keep.includes(k))
+const full = computed(() => {
+  // Not measured yet → assume they fit (the board re-fits once measured).
+  const w = (k) => widths[k] || 0
+  const total = PAD + LAYOUTS.reduce((n, k) => n + w(k), 0) + GAP * (LAYOUTS.length - 1)
+  return total <= props.available
 })
-const shown = computed(() => LAYOUTS.filter((o) => shownKeys.value.includes(o.value)))
-const overflow = computed(() =>
-  LAYOUTS.filter((o) => !shownKeys.value.includes(o.value)).map((o) => ({
-    key: o.value,
-    label: label(o.value),
-    icon: () => h(TesseraIcon, { name: o.icon }),
+const segments = computed(() =>
+  LAYOUTS.map((value) => ({
+    value,
+    icon: LAYOUT_ICONS[value],
+    caption: full.value || store.layout === value,
   })),
 )
 </script>
 
 <template>
-  <div class="layout-switch" data-tour="board-layout">
+  <div class="layout-switch" :class="{ compact: !full }" data-tour="board-layout">
     <button
-      v-for="o in shown"
+      v-for="(o, i) in segments"
       :key="o.value"
       type="button"
       class="seg"
-      :class="{ active: store.layout === o.value }"
+      :class="{ active: store.layout === o.value, icon: !o.caption }"
       :data-layout="o.value"
+      :title="o.caption ? undefined : `${label(o.value)} · V ${i + 1}`"
+      :aria-label="label(o.value)"
       @click="store.layout = o.value"
     >
       <TesseraIcon :name="o.icon" class="seg-ic" />
-      {{ label(o.value) }}
+      <template v-if="o.caption">{{ label(o.value) }}</template>
     </button>
-    <n-dropdown
-      v-if="overflow.length"
-      trigger="click"
-      placement="bottom-start"
-      :options="overflow"
-      @select="(k) => (store.layout = k)"
-    >
-      <button type="button" class="seg seg-more" :title="t('board.layout.more')">
-        <n-icon :component="ChevronDownOutline" :size="13" />
-      </button>
-    </n-dropdown>
 
     <!-- Invisible natural-width row the fit is computed from. -->
     <div ref="measureEl" class="seg-measure" aria-hidden="true">
-      <span v-for="o in LAYOUTS" :key="o.value" class="seg" :data-seg="o.value">
-        <TesseraIcon :name="o.icon" class="seg-ic" />
-        {{ label(o.value) }}
-      </span>
-      <span class="seg seg-more" data-chevron>
-        <n-icon :component="ChevronDownOutline" :size="13" />
+      <span v-for="v in LAYOUTS" :key="v" class="seg" :data-seg="v">
+        <TesseraIcon :name="LAYOUT_ICONS[v]" class="seg-ic" />
+        {{ label(v) }}
       </span>
     </div>
   </div>
@@ -170,11 +131,10 @@ const overflow = computed(() =>
 .seg.active .seg-ic {
   color: var(--t-primary);
 }
-.seg-more {
-  width: 28px;
+.seg.icon {
+  width: 30px;
   padding: 0;
   justify-content: center;
-  color: var(--t-text3);
 }
 /* Measured with the active weight so a segment never grows once selected. */
 /* Zero-size and clipped so the row never adds scrollable overflow to the page;

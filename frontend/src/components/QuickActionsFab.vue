@@ -103,7 +103,7 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
     v-if="visible"
     ref="rootEl"
     class="fab-wrap"
-    :class="{ mobile: isMobile }"
+    :class="{ mobile: isMobile, docked: boardView.panelOpen && !isMobile }"
     data-testid="quick-fab"
   >
     <transition name="fab-menu">
@@ -175,6 +175,10 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
 }
 .fab-wrap > * {
   pointer-events: auto;
+}
+/* The board's «Вид доски» panel owns the right edge while open (#2986). */
+.fab-wrap.docked {
+  right: 376px;
 }
 .fab-wrap.mobile {
   right: 18px;

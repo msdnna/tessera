@@ -31,6 +31,7 @@ export const GROUPS = [
   'create',
   'palette',
   'view',
+  'views',
 ]
 
 export const CATALOG = [
@@ -79,7 +80,8 @@ export const CATALOG = [
   { id: 'board.quick', keys: 'n', group: 'board', eager: true },
   { id: 'board.filter', keys: 'f', group: 'board' },
   { id: 'board.group', keys: 'shift+g', group: 'board' },
-  { id: 'board.layout', keys: 'v digit', group: 'board', digit: '1–3' },
+  // Six equal views (#2970): Канбан · Список · Таймлайн · Гант · Календарь · Матрица.
+  { id: 'board.layout', keys: 'v digit', group: 'board', digit: '1–6' },
   // The column under the pointer, or the selected card's (#2969): F2 renames in
   // the header, ⌫ deletes at once with an undo toast, ⌘⇧←/→ moves it.
   { id: 'col.rename', keys: 'f2', group: 'board' },
@@ -177,6 +179,20 @@ export const CATALOG = [
   { id: 'view.theme', keys: 'shift+t', group: 'view', command: 'ContrastOutline' },
   { id: 'view.cardSize', keys: 'shift+c', group: 'view' },
   { id: 'view.collapse', keys: 'h', group: 'view' },
+  // The board's view panel (#2986): one entry for every setting of the board.
+  { id: 'view.panel', keys: 'shift+v', group: 'view', command: 'OptionsOutline' },
+
+  // ── saved views (#2987): ⌘S updates the loaded view, ⌘⇧S saves the board as a
+  // new one, ⌘⌫ drops the changes. Digits pick a view while the panel is open
+  // (the chip's menu answers to them too). F2 / ⌫ / ⌥↑↓ work on the panel's row
+  // under the keyboard cursor — the row catches them, these entries only list them.
+  { id: 'views.update', keys: 'mod+s', group: 'views', command: 'SaveOutline' },
+  { id: 'views.saveAs', keys: 'mod+shift+s', group: 'views', command: 'BookmarkOutline' },
+  { id: 'views.reset', keys: 'mod+backspace', group: 'views', command: 'ArrowUndoOutline' },
+  { id: 'views.pick', keys: 'digit', group: 'views', digit: '0–9' },
+  { id: 'views.rename', group: 'views', display: [['f2']] },
+  { id: 'views.delete', group: 'views', display: [['backspace']] },
+  { id: 'views.move', group: 'views', display: [['alt', '↑/↓']] },
 ]
 
 export const byId = new Map(CATALOG.map((e) => [e.id, e]))

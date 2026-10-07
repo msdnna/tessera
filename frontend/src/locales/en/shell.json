@@ -222,7 +222,8 @@
       "view": "View",
       "task": "Open task",
       "chart": "Gantt and timeline",
-      "sidebar": "Sidebar and spaces"
+      "sidebar": "Sidebar and spaces",
+      "views": "Saved views"
     },
     "nav": {
       "palette": "Search and commands",
@@ -239,7 +240,7 @@
       "quick": "Quick actions",
       "filter": "Filter",
       "group": "Grouping",
-      "layout": "View: kanban / list / timeline",
+      "layout": "View: kanban / list / timeline / Gantt / calendar / matrix",
       "select": "Select a card"
     },
     "card": {
@@ -267,7 +268,8 @@
     "view": {
       "theme": "Toggle theme",
       "cardSize": "Card size",
-      "collapse": "Collapse column"
+      "collapse": "Collapse column",
+      "panel": "«Board view» panel"
     },
     "go": {
       "notes": "Notes",
@@ -328,6 +330,15 @@
       "board": "Create a board",
       "group": "Create a group",
       "workspace": "Create a space"
+    },
+    "views": {
+      "update": "Update the loaded view",
+      "saveAs": "Save the board as a new view",
+      "reset": "Discard changes to the view",
+      "pick": "View by position (0 — none), in the panel and the chip menu",
+      "rename": "Rename the view",
+      "delete": "Delete the view",
+      "move": "Move the view up / down"
     }
   },
   "palette": {

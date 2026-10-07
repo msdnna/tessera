@@ -27,6 +27,10 @@ import {
   SettingsOutline,
   SwapHorizontalOutline,
   TrailSignOutline,
+  ArrowUndoOutline,
+  BookmarkOutline,
+  OptionsOutline,
+  SaveOutline,
 } from '@vicons/ionicons5'
 
 export const ICONS = {
@@ -55,4 +59,8 @@ export const ICONS = {
   SettingsOutline,
   SwapHorizontalOutline,
   TrailSignOutline,
+  ArrowUndoOutline,
+  BookmarkOutline,
+  OptionsOutline,
+  SaveOutline,
 }

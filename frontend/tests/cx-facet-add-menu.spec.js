@@ -16,6 +16,7 @@
 // hidden one anchored to a collapsed button), and the drawer actually uses it.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { ref, computed, defineComponent, nextTick } from 'vue'
 import { NDropdown } from 'naive-ui'
 import { readFileSync } from 'node:fs'
@@ -128,6 +129,7 @@ describe('useFacetAddMenu on a phone', () => {
 
 describe('BoardCustomizePanel «+» on a phone', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     window.matchMedia = vi.fn().mockReturnValue({
       matches: true, // ≤768px — the viewport where the drawer is the only way in
       addEventListener: () => {},
@@ -141,6 +143,7 @@ describe('BoardCustomizePanel «+» on a phone', () => {
     const w = mount(BoardCustomizePanel, {
       props: {
         show: true,
+        defaultOpen: ['facets'],
         boardName: 'Доска релиза',
         boardIcon: '',
         boardColor: '#7c5cff',
@@ -157,10 +160,10 @@ describe('BoardCustomizePanel «+» on a phone', () => {
     return w
   }
 
-  // IconColorPicker carries an n-dropdown of its own (the SVG/PNG upload menu) and
-  // comes first in the drawer, so the facet menu is picked by its trigger wrapper.
+  // IconColorPicker carries an n-dropdown of its own (the SVG/PNG upload menu), so
+  // the facet menu is picked by its trigger.
   const addDropdown = (w) =>
-    w.findAllComponents(NDropdown).find((d) => d.element.classList?.contains('chips'))
+    w.findAllComponents(NDropdown).find((d) => d.element.classList?.contains('cp-chips'))
 
   it('drills like the composer instead of fanning submenus off-screen', async () => {
     const w = await mountPanel()
