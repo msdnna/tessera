@@ -832,6 +832,13 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		h.flushJournal(context.WithoutCancel(ctx), j)
 	}()
 
+	// The binding's board is soft-deleted (0078): the sync sits out until the
+	// board is restored or purged. The scheduled paths already skip such
+	// bindings; this is the gate for the manual and webhook ones.
+	if b, berr := h.q.GetBoardAny(ctx, integ.BoardID); berr == nil && b.DeletedAt != nil {
+		return 0, 0, errors.New("integration board is deleted")
+	}
+
 	client, assignUser, cerr := h.syncClient(ctx, cred)
 	if cerr != nil {
 		return 0, 0, cerr
@@ -1572,6 +1579,12 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 	default:
 		// Snapshot the pre-update task so the journal can diff what changed.
 		old, _ := h.q.GetTask(ctx, link.TaskID)
+		// A mirror standing on a soft-deleted board (0078) is in the trash: leave
+		// it there. Updating it would route it through its labels back onto a live
+		// board — out from under both the restore and the purge.
+		if ob, berr := h.q.GetBoardAny(ctx, old.BoardID); berr == nil && ob.DeletedAt != nil {
+			return link.TaskID, false, true
+		}
 		// Fields with an open write-back conflict are frozen: don't overwrite the
 		// user's pending value from GitLab until they resolve it. title/description
 		// are written in the bulk update below, so resolve the freeze up here.

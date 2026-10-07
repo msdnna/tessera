@@ -263,11 +263,16 @@ func (h *API) deliveryStillInReach(ctx context.Context, n db.Notification) error
 // taskStillInReach reports whether userID may still be shown taskID, asked about
 // the workspace the task is in *now* rather than the one a stored row remembers.
 // An unreadable task or board answers yes: the caller's job is to refuse a
-// delivery that would leak, not one whose lookup failed.
+// delivery that would leak, not one whose lookup failed. A board that reads
+// fine but is soft-deleted (0078) answers no — the task is in the trash, and a
+// held delivery must not render its title after the user threw it away.
 func (h *API) taskStillInReach(ctx context.Context, userID, taskID uuid.UUID) bool {
 	t, err := h.q.GetTask(ctx, taskID)
 	if err != nil {
 		return true
+	}
+	if b, berr := h.q.GetBoardAny(ctx, t.BoardID); berr == nil && b.DeletedAt != nil {
+		return false
 	}
 	ws, werr := h.q.WorkspaceIDForBoard(ctx, t.BoardID)
 	if werr != nil {

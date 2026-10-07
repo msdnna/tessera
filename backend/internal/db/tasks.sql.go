@@ -670,6 +670,7 @@ WHERE archived_at IS NULL
   AND due_date IS NOT NULL
   AND due_date <= now()
   AND recurrence->>'trigger' = 'schedule'
+  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = tasks.board_id AND b.deleted_at IS NULL)
 ORDER BY due_date
 `
 

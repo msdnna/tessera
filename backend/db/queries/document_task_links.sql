@@ -34,6 +34,7 @@ SELECT l.id, l.document_id, l.task_id, l.block_id, l.quote, l.created_by, l.crea
        t.completed_at AS task_completed_at
 FROM document_task_links l
 JOIN tasks t ON t.id = l.task_id
+JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
 WHERE l.document_id = $1
 ORDER BY l.created_at;
 

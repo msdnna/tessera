@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"testing"
 )
@@ -19,98 +20,72 @@ import (
 // clears a finished quarter, and it takes far more tasks at once than deleting
 // them one by one ever would — 25 MB per file, no cap on the count.
 //
+// Since the soft delete (0078, #2969) a column and a board no longer delete at
+// once: a column hands its cards to a neighbour, a board waits in the trash, and
+// the trash worker does the board's sweep when it finishes the delete.
+//
 // Each test keeps a sibling container alive. A sweep that cleared the upload root
 // — the cheapest wrong fix — would satisfy every "the files are gone" assertion
 // and fail exactly these.
 
-// TestDeletingAColumnTakesItsTasksAttachments: board_columns.id is the FK tasks
-// cascade from, so dropping a column silently deletes every card standing in it.
-func TestDeletingAColumnTakesItsTasksAttachments(t *testing.T) {
+// TestDeletingAColumnKeepsItsTasksAttachments: since the soft delete (0078,
+// #2969) a column no longer takes its cards along — they move to the board's
+// first remaining column — so their files must stay exactly where they are.
+func TestDeletingAColumnKeepsItsTasksAttachments(t *testing.T) {
 	t.Parallel()
 	owner := signup(t)
 	s := mkStack(t, owner)
-	doomed, kept := s.col(t, 0), s.col(t, 1)
+	doomed, first := s.col(t, 0), s.col(t, 1)
 
 	task := mkTask(t, owner, s.Board, doomed, "Карточка в удаляемой колонке")["id"].(string)
 	attachFile(t, owner, task, "смета.pdf", []byte("%PDF-1.7 smeta"))
-	neighbour := mkTask(t, owner, s.Board, kept, "Карточка в соседней колонке")["id"].(string)
-	attachFile(t, owner, neighbour, "сосед.txt", []byte("neighbour"))
 
 	owner.expect(t, owner.del("/columns/"+doomed), http.StatusNoContent)
 
-	if got := owner.get("/tasks/" + task); got.Status != http.StatusNotFound {
-		t.Fatalf("task in a deleted column still readable: %d", got.Status)
+	got := owner.expect(t, owner.get("/tasks/"+task), http.StatusOK)
+	if got["column_id"] != first {
+		t.Fatalf("card of a deleted column landed in %v, want the first remaining column %s", got["column_id"], first)
 	}
-	if n, ok := countFiles(t, taskUploadDir(task)); ok {
-		t.Fatalf("column delete left %d file(s) no row points at", n)
-	}
-	if n, ok := countFiles(t, taskUploadDir(neighbour)); !ok || n != 1 {
-		t.Fatalf("the sweep reached a column that was not deleted: %d file(s) left (exists=%v)", n, ok)
+	if n, ok := countFiles(t, taskUploadDir(task)); !ok || n != 1 {
+		t.Fatalf("column delete touched the card's files: %d left (exists=%v)", n, ok)
 	}
 }
 
-// TestDeletingAColumnTakesSubtasksStandingElsewhere: the sweep reads the doomed
-// tasks off column_id, on the grounds that a subtree is wholly inside whichever
-// container holds its root. That holds for a board, a project and a workspace —
-// MoveSubtreeToBoard exists to keep it holding — but not for a column: a subtask
-// is a card of its own, the board draws it and a drag moves it, so it stands
-// wherever it was dragged and its parent stands somewhere else.
-//
-// tasks.parent_id is ON DELETE CASCADE, so deleting the parent's column takes
-// that subtask too, out of a column nobody deleted and at any depth. Its
-// task_attachments rows go with it — and its directory is not in the sweep's
-// list, so the bytes stay on disk with nothing left pointing at them.
-func TestDeletingAColumnTakesSubtasksStandingElsewhere(t *testing.T) {
+// TestDeletingAColumnLeavesSubtasksStandingElsewhere: a subtask is a card of its
+// own and stands wherever it was dragged. Deleting its parent's column moves the
+// parent; the subtask stays in its column, its place among its siblings and its
+// files untouched.
+func TestDeletingAColumnLeavesSubtasksStandingElsewhere(t *testing.T) {
 	t.Parallel()
 	owner := signup(t)
 	s := mkStack(t, owner)
-	doomed, kept, third := s.col(t, 0), s.col(t, 1), s.col(t, 2)
+	doomed, kept := s.col(t, 0), s.col(t, 2)
 
 	parent := mkTask(t, owner, s.Board, doomed, "Эпик в удаляемой колонке")["id"].(string)
-	attachFile(t, owner, parent, "план.md", []byte("# план"))
-
-	subtask := func(t *testing.T, parentID, title, column string) string {
-		t.Helper()
-		id := owner.expect(t, owner.post("/boards/"+s.Board+"/tasks", map[string]any{
-			"title": title, "column_id": doomed, "parent_id": parentID,
-		}), http.StatusCreated)["id"].(string)
-		// Dragged out of the parent's column, which is the whole point.
-		owner.expect(t, owner.patch("/tasks/"+id+"/move",
-			map[string]any{"column_id": column}), http.StatusOK)
-		return id
-	}
-	// A child one column over and a grandchild two: the cascade is not depth-limited,
-	// so neither is the sweep that has to match it.
-	child := subtask(t, parent, "Подзадача в работе", kept)
+	child := owner.expect(t, owner.post("/boards/"+s.Board+"/tasks", map[string]any{
+		"title": "Подзадача на ревью", "column_id": doomed, "parent_id": parent,
+	}), http.StatusCreated)["id"].(string)
+	owner.expect(t, owner.patch("/tasks/"+child+"/move",
+		map[string]any{"column_id": kept}), http.StatusOK)
 	attachFile(t, owner, child, "патч.diff", []byte("--- a\n+++ b"))
-	grandchild := subtask(t, child, "Под-подзадача на ревью", third)
-	attachFile(t, owner, grandchild, "лог.txt", []byte("trace"))
-
-	neighbour := mkTask(t, owner, s.Board, kept, "Карточка в соседней колонке")["id"].(string)
-	attachFile(t, owner, neighbour, "сосед.txt", []byte("neighbour"))
+	before := owner.expect(t, owner.get("/tasks/"+child), http.StatusOK)
 
 	owner.expect(t, owner.del("/columns/"+doomed), http.StatusNoContent)
 
-	// The cascade really does reach them — otherwise the file assertions below
-	// would pass for the wrong reason.
-	for _, id := range []string{child, grandchild} {
-		if got := owner.get("/tasks/" + id); got.Status != http.StatusNotFound {
-			t.Fatalf("subtask %s survived its parent's column delete: %d", id, got.Status)
-		}
+	after := owner.expect(t, owner.get("/tasks/"+child), http.StatusOK)
+	if after["column_id"] != kept || after["position"] != before["position"] {
+		t.Fatalf("subtask moved with its parent's column: column %v→%v, position %v→%v",
+			before["column_id"], after["column_id"], before["position"], after["position"])
 	}
-	for _, id := range []string{parent, child, grandchild} {
-		if n, ok := countFiles(t, taskUploadDir(id)); ok {
-			t.Fatalf("task %s kept %d attachment file(s) no row points at", id, n)
-		}
-	}
-	if n, ok := countFiles(t, taskUploadDir(neighbour)); !ok || n != 1 {
-		t.Fatalf("the sweep reached a card that was not deleted: %d file(s) left (exists=%v)", n, ok)
+	if n, ok := countFiles(t, taskUploadDir(child)); !ok || n != 1 {
+		t.Fatalf("subtask files touched: %d left (exists=%v)", n, ok)
 	}
 }
 
-// TestDeletingABoardTakesEveryTaskAttachment: a board is the unit a team retires,
-// and it holds the whole tree — subtasks included, each with its own directory.
-func TestDeletingABoardTakesEveryTaskAttachment(t *testing.T) {
+// TestPurgingADeletedBoardTakesEveryTaskAttachment: a deleted board keeps every
+// file while it can still be restored, and the trash worker sweeps them all —
+// subtasks included — when it finishes the delete. Another board's files stay.
+func TestPurgingADeletedBoardTakesEveryTaskAttachment(t *testing.T) {
 	t.Parallel()
 	owner := signup(t)
 	s := mkStack(t, owner)
@@ -123,21 +98,28 @@ func TestDeletingABoardTakesEveryTaskAttachment(t *testing.T) {
 	}), http.StatusCreated)["id"].(string)
 	attachFile(t, owner, child, "патч.diff", []byte("--- a\n+++ b"))
 
-	// A second board in the same project: its files must stay.
 	other := mkBoard(t, owner, s.Project, "Доска рядом")
 	otherCol := owner.get("/boards/" + other + "/columns").listBody(t)[0]["id"].(string)
 	neighbour := mkTask(t, owner, other, otherCol, "Карточка на соседней доске")["id"].(string)
 	attachFile(t, owner, neighbour, "сосед.txt", []byte("neighbour"))
 
 	owner.expect(t, owner.del("/boards/"+s.Board), http.StatusNoContent)
+	for _, id := range []string{parent, child} {
+		if n, ok := countFiles(t, taskUploadDir(id)); !ok || n != 1 {
+			t.Fatalf("task %s lost its files while the board can still be restored: %d (exists=%v)", id, n, ok)
+		}
+	}
+
+	ageTrash(t, "boards", s.Board)
+	testAPI.PurgeTrash(context.Background())
 
 	for _, id := range []string{parent, child} {
 		if n, ok := countFiles(t, taskUploadDir(id)); ok {
-			t.Fatalf("task %s kept %d attachment file(s) after the board delete", id, n)
+			t.Fatalf("task %s kept %d attachment file(s) after the purge", id, n)
 		}
 	}
 	if n, ok := countFiles(t, taskUploadDir(neighbour)); !ok || n != 1 {
-		t.Fatalf("the sweep reached a board that was not deleted: %d file(s) left (exists=%v)", n, ok)
+		t.Fatalf("the purge reached a board that was not deleted: %d file(s) left (exists=%v)", n, ok)
 	}
 }
 
@@ -192,6 +174,17 @@ func TestDeletingAWorkspaceTakesEveryTaskAttachment(t *testing.T) {
 	}
 	if n, ok := countFiles(t, taskUploadDir(neighbour)); !ok || n != 1 {
 		t.Fatalf("the sweep reached a workspace that was not deleted: %d file(s) left (exists=%v)", n, ok)
+	}
+}
+
+// ageTrash backdates a soft-deleted row past the trash retention, so the purge
+// takes it on its next pass — without the test waiting a day or purging rows
+// that parallel tests deleted a moment ago.
+func ageTrash(t *testing.T, table, id string) {
+	t.Helper()
+	if _, err := testPool.Exec(context.Background(),
+		"UPDATE "+table+" SET deleted_at = now() - interval '2 days' WHERE id = $1 AND deleted_at IS NOT NULL", id); err != nil {
+		t.Fatalf("age %s %s: %v", table, id, err)
 	}
 }
 

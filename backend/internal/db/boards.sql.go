@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -20,6 +21,9 @@ type BoardSlugExistsInProjectParams struct {
 	Slug      string    `json:"slug"`
 }
 
+// BoardSlugExistsInProject deliberately counts soft-deleted boards: the slug
+// stays reserved while the board can still be restored, so the restore never
+// collides with a newer board that took the same address.
 func (q *Queries) BoardSlugExistsInProject(ctx context.Context, arg BoardSlugExistsInProjectParams) (bool, error) {
 	row := q.db.QueryRow(ctx, boardSlugExistsInProject, arg.ProjectID, arg.Slug)
 	var exists bool
@@ -57,10 +61,19 @@ func (q *Queries) BoardsMissingSlug(ctx context.Context) ([]BoardsMissingSlugRow
 	return items, nil
 }
 
+const clearColumnMoves = `-- name: ClearColumnMoves :exec
+DELETE FROM column_deletion_moves WHERE column_id = $1
+`
+
+func (q *Queries) ClearColumnMoves(ctx context.Context, columnID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearColumnMoves, columnID)
+	return err
+}
+
 const createBoard = `-- name: CreateBoard :one
 INSERT INTO boards (project_id, name, slug, position)
 VALUES ($1, $2, $3, $4)
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
 `
 
 type CreateBoardParams struct {
@@ -90,6 +103,7 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 		&i.Icon,
 		&i.Color,
 		&i.IconMode,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -97,7 +111,7 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 const createColumn = `-- name: CreateColumn :one
 INSERT INTO board_columns (board_id, name, name_key, color, position)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, board_id, name, color, position, created_at, updated_at, name_key
+RETURNING id, board_id, name, color, position, created_at, updated_at, name_key, deleted_at, deleted_was_done
 `
 
 type CreateColumnParams struct {
@@ -130,6 +144,8 @@ func (q *Queries) CreateColumn(ctx context.Context, arg CreateColumnParams) (Boa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.NameKey,
+		&i.DeletedAt,
+		&i.DeletedWasDone,
 	)
 	return i, err
 }
@@ -152,10 +168,41 @@ func (q *Queries) DeleteColumn(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const getBoard = `-- name: GetBoard :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE id = $1
+const deletedBoardTaskIDs = `-- name: DeletedBoardTaskIDs :many
+SELECT t.id FROM tasks t JOIN boards b ON b.id = t.board_id
+WHERE b.deleted_at IS NOT NULL AND b.deleted_at < $1::timestamptz
 `
 
+// PurgeDeletedBoards finishes deletes older than the cutoff. The task ids come
+// back first (DeletedBoardTaskIDs) so the caller can sweep their uploads after
+// the cascade, exactly like the immediate delete used to.
+func (q *Queries) DeletedBoardTaskIDs(ctx context.Context, cutoff time.Time) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, deletedBoardTaskIDs, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getBoard = `-- name: GetBoard :one
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at FROM boards WHERE id = $1 AND deleted_at IS NULL
+`
+
+// A soft-deleted board (0078) answers as missing to every reader: GetBoard is
+// the gate most board-scoped endpoints pass through. GetBoardAny is for the few
+// paths that deal with the deleted row itself (restore, purge).
 func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
 	row := q.db.QueryRow(ctx, getBoard, id)
 	var i Board
@@ -171,16 +218,41 @@ func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
 		&i.Icon,
 		&i.Color,
 		&i.IconMode,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const getBoardAny = `-- name: GetBoardAny :one
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at FROM boards WHERE id = $1
+`
+
+func (q *Queries) GetBoardAny(ctx context.Context, id uuid.UUID) (Board, error) {
+	row := q.db.QueryRow(ctx, getBoardAny, id)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DoneColumnID,
+		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getBoardBySlugForUser = `-- name: GetBoardBySlugForUser :one
-SELECT b.id, b.project_id, b.name, b.position, b.created_at, b.updated_at, b.done_column_id, b.slug, b.icon, b.color, b.icon_mode
+SELECT b.id, b.project_id, b.name, b.position, b.created_at, b.updated_at, b.done_column_id, b.slug, b.icon, b.color, b.icon_mode, b.deleted_at
 FROM boards b
 JOIN projects p ON p.id = b.project_id
 JOIN memberships m ON m.workspace_id = p.workspace_id AND m.user_id = $1
-WHERE b.slug = $2
+WHERE b.slug = $2 AND b.deleted_at IS NULL
 ORDER BY (p.workspace_id = $3) DESC NULLS LAST, b.created_at, b.id
 LIMIT 1
 `
@@ -218,12 +290,13 @@ func (q *Queries) GetBoardBySlugForUser(ctx context.Context, arg GetBoardBySlugF
 		&i.Icon,
 		&i.Color,
 		&i.IconMode,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getBoardInProjectBySlug = `-- name: GetBoardInProjectBySlug :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE project_id = $1 AND slug = $2
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at FROM boards WHERE project_id = $1 AND slug = $2 AND deleted_at IS NULL
 `
 
 type GetBoardInProjectBySlugParams struct {
@@ -246,14 +319,17 @@ func (q *Queries) GetBoardInProjectBySlug(ctx context.Context, arg GetBoardInPro
 		&i.Icon,
 		&i.Color,
 		&i.IconMode,
+		&i.DeletedAt,
 	)
 	return i, err
 }
 
 const getColumn = `-- name: GetColumn :one
-SELECT id, board_id, name, color, position, created_at, updated_at, name_key FROM board_columns WHERE id = $1
+SELECT id, board_id, name, color, position, created_at, updated_at, name_key, deleted_at, deleted_was_done FROM board_columns WHERE id = $1 AND deleted_at IS NULL
 `
 
+// GetColumn hides soft-deleted columns (0078): nothing may move a card into one
+// or edit it. GetColumnAny serves restore.
 func (q *Queries) GetColumn(ctx context.Context, id uuid.UUID) (BoardColumn, error) {
 	row := q.db.QueryRow(ctx, getColumn, id)
 	var i BoardColumn
@@ -266,12 +342,36 @@ func (q *Queries) GetColumn(ctx context.Context, id uuid.UUID) (BoardColumn, err
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.NameKey,
+		&i.DeletedAt,
+		&i.DeletedWasDone,
+	)
+	return i, err
+}
+
+const getColumnAny = `-- name: GetColumnAny :one
+SELECT id, board_id, name, color, position, created_at, updated_at, name_key, deleted_at, deleted_was_done FROM board_columns WHERE id = $1
+`
+
+func (q *Queries) GetColumnAny(ctx context.Context, id uuid.UUID) (BoardColumn, error) {
+	row := q.db.QueryRow(ctx, getColumnAny, id)
+	var i BoardColumn
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.NameKey,
+		&i.DeletedAt,
+		&i.DeletedWasDone,
 	)
 	return i, err
 }
 
 const listBoards = `-- name: ListBoards :many
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode FROM boards WHERE project_id = $1 ORDER BY position, created_at, id
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at FROM boards WHERE project_id = $1 AND deleted_at IS NULL ORDER BY position, created_at, id
 `
 
 // ListBoards: created_at/id break position ties — see ListColumns below, the
@@ -297,6 +397,7 @@ func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board,
 			&i.Icon,
 			&i.Color,
 			&i.IconMode,
+			&i.DeletedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -309,7 +410,7 @@ func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board,
 }
 
 const listColumns = `-- name: ListColumns :many
-SELECT id, board_id, name, color, position, created_at, updated_at, name_key FROM board_columns WHERE board_id = $1 ORDER BY position, created_at, id
+SELECT id, board_id, name, color, position, created_at, updated_at, name_key, deleted_at, deleted_was_done FROM board_columns WHERE board_id = $1 AND deleted_at IS NULL ORDER BY position, created_at, id
 `
 
 // ListColumns: created_at/id break position ties, exactly as for cards
@@ -339,6 +440,8 @@ func (q *Queries) ListColumns(ctx context.Context, boardID uuid.UUID) ([]BoardCo
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.NameKey,
+			&i.DeletedAt,
+			&i.DeletedWasDone,
 		); err != nil {
 			return nil, err
 		}
@@ -351,7 +454,7 @@ func (q *Queries) ListColumns(ctx context.Context, boardID uuid.UUID) ([]BoardCo
 }
 
 const maxBoardPosition = `-- name: MaxBoardPosition :one
-SELECT coalesce(max(position), 0)::double precision FROM boards WHERE project_id = $1
+SELECT coalesce(max(position), 0)::double precision FROM boards WHERE project_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) MaxBoardPosition(ctx context.Context, projectID uuid.UUID) (float64, error) {
@@ -362,7 +465,7 @@ func (q *Queries) MaxBoardPosition(ctx context.Context, projectID uuid.UUID) (fl
 }
 
 const maxColumnPosition = `-- name: MaxColumnPosition :one
-SELECT coalesce(max(position), 0)::double precision FROM board_columns WHERE board_id = $1
+SELECT coalesce(max(position), 0)::double precision FROM board_columns WHERE board_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) MaxColumnPosition(ctx context.Context, boardID uuid.UUID) (float64, error) {
@@ -372,12 +475,91 @@ func (q *Queries) MaxColumnPosition(ctx context.Context, boardID uuid.UUID) (flo
 	return column_1, err
 }
 
+const moveColumnSubtasks = `-- name: MoveColumnSubtasks :execrows
+UPDATE tasks SET column_id = $1::uuid, updated_at = now()
+WHERE column_id = $2::uuid AND parent_id IS NOT NULL
+`
+
+type MoveColumnSubtasksParams struct {
+	Target uuid.UUID `json:"target"`
+	Source uuid.UUID `json:"source"`
+}
+
+func (q *Queries) MoveColumnSubtasks(ctx context.Context, arg MoveColumnSubtasksParams) (int64, error) {
+	result, err := q.db.Exec(ctx, moveColumnSubtasks, arg.Target, arg.Source)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const moveColumnTasks = `-- name: MoveColumnTasks :execrows
+UPDATE tasks t
+SET column_id = $1::uuid,
+    position = $2::double precision + ordered.rn * $3::double precision,
+    updated_at = now()
+FROM (
+    SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
+    FROM tasks WHERE column_id = $4::uuid AND parent_id IS NULL
+) ordered
+WHERE t.id = ordered.id
+`
+
+type MoveColumnTasksParams struct {
+	Target uuid.UUID `json:"target"`
+	Base   float64   `json:"base"`
+	Gap    float64   `json:"gap"`
+	Source uuid.UUID `json:"source"`
+}
+
+// Only top-level cards are renumbered onto the target's ladder: a subtask's
+// position orders it among its siblings under the parent, not in the column, so
+// MoveColumnSubtasks changes nothing but the column.
+// (UPDATE … FROM (subquery), not a CTE: sqlc mis-parses UPDATE … FROM with a
+// leading WITH — see RebalanceColumnPositions.)
+func (q *Queries) MoveColumnTasks(ctx context.Context, arg MoveColumnTasksParams) (int64, error) {
+	result, err := q.db.Exec(ctx, moveColumnTasks,
+		arg.Target,
+		arg.Base,
+		arg.Gap,
+		arg.Source,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const purgeDeletedBoards = `-- name: PurgeDeletedBoards :execrows
+DELETE FROM boards WHERE deleted_at IS NOT NULL AND deleted_at < $1::timestamptz
+`
+
+func (q *Queries) PurgeDeletedBoards(ctx context.Context, cutoff time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeDeletedBoards, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const purgeDeletedColumns = `-- name: PurgeDeletedColumns :execrows
+DELETE FROM board_columns WHERE deleted_at IS NOT NULL AND deleted_at < $1::timestamptz
+`
+
+func (q *Queries) PurgeDeletedColumns(ctx context.Context, cutoff time.Time) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeDeletedColumns, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const rebalanceColumnPositions = `-- name: RebalanceColumnPositions :exec
 UPDATE board_columns t
 SET position = ordered.rn * $1::double precision, updated_at = now()
 FROM (
     SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
-    FROM board_columns WHERE board_id = $2::uuid
+    FROM board_columns WHERE board_id = $2::uuid AND deleted_at IS NULL
 ) ordered
 WHERE t.id = ordered.id
 `
@@ -399,11 +581,95 @@ func (q *Queries) RebalanceColumnPositions(ctx context.Context, arg RebalanceCol
 	return err
 }
 
+const recordColumnMoves = `-- name: RecordColumnMoves :execrows
+INSERT INTO column_deletion_moves (column_id, task_id, moved_to, from_position)
+SELECT t.column_id, t.id, $1::uuid, t.position
+FROM tasks t WHERE t.column_id = $2::uuid
+`
+
+type RecordColumnMovesParams struct {
+	MovedTo  uuid.UUID `json:"moved_to"`
+	ColumnID uuid.UUID `json:"column_id"`
+}
+
+func (q *Queries) RecordColumnMoves(ctx context.Context, arg RecordColumnMovesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, recordColumnMoves, arg.MovedTo, arg.ColumnID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const restoreBoard = `-- name: RestoreBoard :one
+UPDATE boards SET deleted_at = NULL, updated_at = now()
+WHERE id = $1 AND deleted_at IS NOT NULL
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
+`
+
+func (q *Queries) RestoreBoard(ctx context.Context, id uuid.UUID) (Board, error) {
+	row := q.db.QueryRow(ctx, restoreBoard, id)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DoneColumnID,
+		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const restoreColumn = `-- name: RestoreColumn :one
+UPDATE board_columns SET deleted_at = NULL, deleted_was_done = false, updated_at = now()
+WHERE id = $1 AND deleted_at IS NOT NULL
+RETURNING id, board_id, name, color, position, created_at, updated_at, name_key, deleted_at, deleted_was_done
+`
+
+func (q *Queries) RestoreColumn(ctx context.Context, id uuid.UUID) (BoardColumn, error) {
+	row := q.db.QueryRow(ctx, restoreColumn, id)
+	var i BoardColumn
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.NameKey,
+		&i.DeletedAt,
+		&i.DeletedWasDone,
+	)
+	return i, err
+}
+
+const restoreColumnTasks = `-- name: RestoreColumnTasks :execrows
+UPDATE tasks t
+SET column_id = m.column_id, position = m.from_position, updated_at = now()
+FROM column_deletion_moves m
+WHERE m.column_id = $1::uuid AND t.id = m.task_id AND t.column_id = m.moved_to
+`
+
+func (q *Queries) RestoreColumnTasks(ctx context.Context, columnID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, restoreColumnTasks, columnID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const setBoardDoneColumn = `-- name: SetBoardDoneColumn :one
 UPDATE boards
 SET done_column_id = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
 `
 
 type SetBoardDoneColumnParams struct {
@@ -426,6 +692,7 @@ func (q *Queries) SetBoardDoneColumn(ctx context.Context, arg SetBoardDoneColumn
 		&i.Icon,
 		&i.Color,
 		&i.IconMode,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -444,11 +711,71 @@ func (q *Queries) SetBoardSlug(ctx context.Context, arg SetBoardSlugParams) erro
 	return err
 }
 
+const softDeleteBoard = `-- name: SoftDeleteBoard :one
+UPDATE boards SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
+`
+
+// SoftDeleteBoard hides a board from every reader (0078); RestoreBoard brings it
+// back while the purge worker hasn't taken it yet. Both answer no row when the
+// board is already in the state asked for, so a double click can't flip it twice.
+func (q *Queries) SoftDeleteBoard(ctx context.Context, id uuid.UUID) (Board, error) {
+	row := q.db.QueryRow(ctx, softDeleteBoard, id)
+	var i Board
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.DoneColumnID,
+		&i.Slug,
+		&i.Icon,
+		&i.Color,
+		&i.IconMode,
+		&i.DeletedAt,
+	)
+	return i, err
+}
+
+const softDeleteColumn = `-- name: SoftDeleteColumn :one
+UPDATE board_columns SET deleted_at = now(), deleted_was_done = $1::boolean
+WHERE id = $2::uuid AND deleted_at IS NULL
+RETURNING id, board_id, name, color, position, created_at, updated_at, name_key, deleted_at, deleted_was_done
+`
+
+type SoftDeleteColumnParams struct {
+	WasDone bool      `json:"was_done"`
+	ID      uuid.UUID `json:"id"`
+}
+
+// Soft delete of a column (0078). The cards it held don't go with it any more:
+// RecordColumnMoves notes where each one stood, MoveColumnTasks appends them —
+// in their old order — to the end of the target column, and RestoreColumnTasks
+// puts back the ones still standing where the delete left them.
+func (q *Queries) SoftDeleteColumn(ctx context.Context, arg SoftDeleteColumnParams) (BoardColumn, error) {
+	row := q.db.QueryRow(ctx, softDeleteColumn, arg.WasDone, arg.ID)
+	var i BoardColumn
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.NameKey,
+		&i.DeletedAt,
+		&i.DeletedWasDone,
+	)
+	return i, err
+}
+
 const updateBoard = `-- name: UpdateBoard :one
 UPDATE boards
 SET name = $2, position = $3, icon = $4, color = $5, icon_mode = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
 `
 
 type UpdateBoardParams struct {
@@ -482,6 +809,7 @@ func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board
 		&i.Icon,
 		&i.Color,
 		&i.IconMode,
+		&i.DeletedAt,
 	)
 	return i, err
 }
@@ -492,7 +820,7 @@ SET name = $2,
     name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END,
     color = $3, position = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, name, color, position, created_at, updated_at, name_key
+RETURNING id, board_id, name, color, position, created_at, updated_at, name_key, deleted_at, deleted_was_done
 `
 
 type UpdateColumnParams struct {
@@ -523,6 +851,8 @@ func (q *Queries) UpdateColumn(ctx context.Context, arg UpdateColumnParams) (Boa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.NameKey,
+		&i.DeletedAt,
+		&i.DeletedWasDone,
 	)
 	return i, err
 }

@@ -3,7 +3,7 @@ SELECT t.*
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
-WHERE p.workspace_id = $1 AND t.number = $2;
+WHERE p.workspace_id = $1 AND t.number = $2 AND b.deleted_at IS NULL;
 
 -- name: AddTaskRelation :one
 INSERT INTO task_relations (task_id, related_task_id, kind, source)
@@ -62,9 +62,10 @@ SELECT
     COALESCE(bc.name, '')  AS related_column_name,
     COALESCE(bc.color, '') AS related_column_color,
     bc.name_key            AS related_column_name_key,
-    COALESCE(bc.position = (SELECT MIN(fc.position) FROM board_columns fc WHERE fc.board_id = t.board_id), false)::boolean AS related_column_first
+    COALESCE(bc.position = (SELECT MIN(fc.position) FROM board_columns fc WHERE fc.board_id = t.board_id AND fc.deleted_at IS NULL), false)::boolean AS related_column_first
 FROM deduped d
 JOIN tasks t ON t.id = d.related_task_id
+JOIN boards rb ON rb.id = t.board_id AND rb.deleted_at IS NULL
 LEFT JOIN board_columns bc ON bc.id = t.column_id
 ORDER BY d.created_at;
 

@@ -258,13 +258,13 @@ func TestColumnCRUD(t *testing.T) {
 		t.Fatalf("invalid before_id: %d", r.Status)
 	}
 
-	// Delete removes the column AND its tasks (FK cascade).
-	task := mkTask(t, c, s.Board, newID, "Пропадёт с колонкой")
+	// Delete hides the column; its cards move to the first column (0078, #2969).
+	task := mkTask(t, c, s.Board, newID, "Переедет в первую колонку")
 	if r := c.del("/columns/" + newID); r.Status != http.StatusNoContent {
 		t.Fatalf("delete column: %d\n%s", r.Status, r.Body)
 	}
-	if r := c.get("/tasks/" + task["id"].(string)); r.Status != http.StatusNotFound {
-		t.Fatalf("task survived column delete: %d", r.Status)
+	if got := c.expect(t, c.get("/tasks/"+task["id"].(string)), http.StatusOK); got["column_id"] != s.col(t, 0) {
+		t.Fatalf("card of a deleted column landed in %v, want the first column", got["column_id"])
 	}
 	if cols = c.get("/boards/" + s.Board + "/columns").listBody(t); len(cols) != 4 {
 		t.Fatalf("columns after delete = %d, want 4", len(cols))

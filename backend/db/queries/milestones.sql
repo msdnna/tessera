@@ -20,7 +20,7 @@ SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date,
        m.state, m.position, m.slug, m.created_at, m.updated_at,
        l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id,
        p.name AS project_name, p.slug AS project_slug,
-       COALESCE((SELECT b.slug FROM boards b WHERE b.project_id = p.id
+       COALESCE((SELECT b.slug FROM boards b WHERE b.project_id = p.id AND b.deleted_at IS NULL
         ORDER BY b.position, b.created_at LIMIT 1), '') AS board_slug,
        COUNT(t.id) AS task_count,
        COUNT(t.id) FILTER (WHERE t.completed_at IS NOT NULL) AS done_count,
@@ -29,6 +29,7 @@ FROM milestones m
 JOIN projects p ON p.id = m.project_id
 LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
 LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+    AND EXISTS (SELECT 1 FROM boards tb WHERE tb.id = t.board_id AND tb.deleted_at IS NULL)
 WHERE p.workspace_id = $1
 GROUP BY m.id, l.gl_web_url, l.gl_global_id, p.name, p.slug, p.id
 ORDER BY p.name, m.position, m.created_at;

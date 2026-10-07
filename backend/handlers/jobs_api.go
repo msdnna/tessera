@@ -211,5 +211,6 @@ func (h *API) workerRunners() map[string]workerRunner {
 		}},
 		jobRecurrence:     {recurrenceLock, h.advanceScheduleDue},
 		jobConfRecordings: {confRecordingsLock, h.SweepConferenceRecordings},
+		jobTrashPurge:     {trashPurgeLock, h.PurgeTrash},
 	}
 }

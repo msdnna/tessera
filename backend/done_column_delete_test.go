@@ -79,22 +79,20 @@ func TestDeleteColumnKeepsBoardWithoutDoneColumn(t *testing.T) {
 	}
 }
 
-// The last column can go too — there is nothing left to point at, and the delete
-// must not fail trying.
-func TestDeleteLastColumnLeavesBoardWithoutDone(t *testing.T) {
+// The last column can't go: since the soft delete (0078) a column's cards move
+// to another column of the board, and the last one has nowhere to send them.
+func TestDeleteLastColumnRefused(t *testing.T) {
 	owner := signup(t)
 	st := mkStack(t, owner)
+	last := len(st.Columns) - 1
 
-	for i := range st.Columns {
-		if r := owner.del("/columns/" + st.col(t, i)); r.Status != http.StatusNoContent {
-			t.Fatalf("delete column %d status %d, want 204\n%s", i, r.Status, r.Body)
-		}
+	for i := 0; i < last; i++ {
+		owner.expect(t, owner.del("/columns/"+st.col(t, i)), http.StatusNoContent)
 	}
-	if got := boardDone(t, owner, st.Board); got != "" {
-		t.Fatalf("empty board kept done column %q", got)
+	if r := owner.del("/columns/" + st.col(t, last)); r.Status != http.StatusConflict {
+		t.Fatalf("delete last column status %d, want 409\n%s", r.Status, r.Body)
 	}
-	cols := owner.get("/boards/" + st.Board + "/columns").listBody(t)
-	if len(cols) != 0 {
-		t.Fatalf("board still has %d columns", len(cols))
+	if got := boardDone(t, owner, st.Board); got != st.col(t, last) {
+		t.Fatalf("done column %q, want the surviving %s", got, st.col(t, last))
 	}
 }

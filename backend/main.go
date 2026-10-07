@@ -162,6 +162,10 @@ func main() {
 	// somebody records a call.
 	spawn("conference_recordings", rh.RunConferenceRecordingWorker)
 
+	// Background worker — finishes soft deletes of boards and columns once their
+	// undo window is over (#2969, migration 0078).
+	spawn("trash_purge", rh.RunTrashWorker)
+
 	// Explicit server so we can bound the header read and idle keep-alive without
 	// capping ReadTimeout/WriteTimeout — those would forcibly cut long-lived
 	// WebSocket connections and large attachment up/downloads. ReadHeaderTimeout

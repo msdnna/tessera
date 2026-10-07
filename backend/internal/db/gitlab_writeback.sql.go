@@ -308,6 +308,7 @@ const listOpenConflicts = `-- name: ListOpenConflicts :many
 SELECT w.id, w.task_id, w.integration_id, w.change_kind, w.payload, w.status, w.attempts, w.last_error, w.next_attempt_at, w.created_at, w.updated_at, w.conflict, w.resolution, w.resolved_by, w.resolved_at, w.actor_user_id, t.title AS task_title, t.number AS task_number
 FROM gitlab_writebacks w
 JOIN tasks t ON t.id = w.task_id
+JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
 WHERE w.integration_id = $1 AND w.status = 'conflict'
 ORDER BY w.updated_at DESC
 `
@@ -378,6 +379,7 @@ const listOpenConflictsByWorkspace = `-- name: ListOpenConflictsByWorkspace :man
 SELECT w.id, w.task_id, w.integration_id, w.change_kind, w.payload, w.status, w.attempts, w.last_error, w.next_attempt_at, w.created_at, w.updated_at, w.conflict, w.resolution, w.resolved_by, w.resolved_at, w.actor_user_id, t.title AS task_title, t.number AS task_number
 FROM gitlab_writebacks w
 JOIN tasks t ON t.id = w.task_id
+JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
 JOIN gitlab_integrations i ON i.id = w.integration_id
 WHERE i.workspace_id = $1 AND w.status = 'conflict'
 ORDER BY w.updated_at DESC

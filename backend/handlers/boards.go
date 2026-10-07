@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -330,7 +331,10 @@ func (h *API) UpdateBoard(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-// DeleteBoard removes a board and its columns/tasks.
+// DeleteBoard soft-deletes a board (0078): it disappears for every reader at
+// once, and RestoreBoard can bring it back until the trash worker purges it
+// (trashRetention). The v2 client offers that undo in a toast. Nothing else is
+// touched here — columns and cards stay as they are, so a restore is exact.
 func (h *API) DeleteBoard(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -347,24 +351,45 @@ func (h *API) DeleteBoard(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	// Retiring a board takes every card on it through tasks.board_id's cascade —
-	// the same deletion DeleteTask sweeps after, reached by a different gesture.
-	// Read the ids and delete in one transaction so the sweep list is exactly what
-	// the delete took, then sweep once it is committed.
-	var gone []uuid.UUID
-	if err := h.inTx(c, func(q *db.Queries) error {
-		var err error
-		if gone, err = q.TaskIDsOnBoard(c, id); err != nil {
-			return err
-		}
-		return q.DeleteBoard(c, id)
-	}); err != nil {
+	if _, err := h.q.SoftDeleteBoard(c, id); notFound(c, err) {
+		return
+	} else if err != nil {
 		fail(c, err)
 		return
 	}
-	h.purgeTaskUploads(gone)
 	h.broadcast(wsID, "board.deleted", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
+}
+
+// RestoreBoard undoes DeleteBoard while the board is still in the trash. The
+// board comes back as it was; clients learn about it through board.created, the
+// event they already handle for a new board (the Android client included).
+func (h *API) RestoreBoard(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForDeletedBoard(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	b, err := h.q.RestoreBoard(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	h.broadcast(wsID, "board.created", b)
+	c.JSON(http.StatusOK, b)
 }
 
 // SetDoneColumn configures which column auto-completes tasks (or, when column_id
@@ -579,7 +604,23 @@ func (h *API) MoveColumn(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-// DeleteColumn removes a column and its tasks.
+// columnMoveGap spaces the cards a column delete appends to its target — the
+// same ladder step a fresh column's cards get.
+const columnMoveGap = 1024.0
+
+// DeleteColumn soft-deletes a column (0078). Its cards no longer go with it:
+// they move to another column of the board, keeping their order, and
+// RestoreColumn can put everything back while the column is in the trash.
+//
+// The target is the board's first remaining column — except when the deleted
+// column was the completing one. Then the board's done flag moves to the
+// rightmost remaining column (an unannounced NULL would stop the board closing
+// anything, see #2588 and the repair in migration 0046), and the cards follow
+// it there: they are finished work, and dropping a hundred completed cards into
+// «К работе» would undo them in bulk. completed_at is left as it was either way,
+// and nothing is pushed to GitLab — this is housekeeping of the board, not a
+// move anyone made on a card. The last column of a board can't be deleted:
+// there would be nowhere to put its cards.
 func (h *API) DeleteColumn(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -596,72 +637,151 @@ func (h *API) DeleteColumn(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	// Read the row before the delete purely for its board: the event below is
-	// workspace-scoped, so without a board every open board in the workspace has to
-	// treat the deletion as possibly its own and re-read its columns, its cards and
-	// its board record (frontend classifyEvent → `column-purge`).
 	col, err := h.q.GetColumn(c, id)
+	if notFound(c, err) {
+		return
+	}
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	// Same cascade as DeleteBoard, one level down: tasks.column_id is the FK, so
-	// dropping a column deletes every card standing in it — and tasks.parent_id then
-	// takes their subtasks out of whatever columns those were dragged to.
-	// TaskIDsInColumn walks that tree, because the sweep needs the whole of it.
-	//
-	// Deleting the board's completing column also clears boards.done_column_id —
-	// that FK is ON DELETE SET NULL (migration 0007, back when NULL meant "fall
-	// back to the rightmost column"). Since #2588 NULL means the opposite: the
-	// board has NO completing column and stops closing anything (doneColumnID has
-	// no fallback, so applyMove never sets completed_at). Nothing announces that:
-	// the reader deletes «Готово», makes a new last column, drags cards into it
-	// and they just never complete. Migration 0046 repaired exactly this state for
-	// legacy NULL boards by pinning them to their rightmost column; do the same
-	// repair here, in the transaction that opens it.
-	var gone []uuid.UUID
-	var repointed *db.Board
+	var (
+		target    db.BoardColumn
+		moved     int64
+		repointed *db.Board
+	)
+	errLastColumn := errors.New("the last column of a board can't be deleted")
 	if err := h.inTx(c, func(q *db.Queries) error {
 		board, err := q.GetBoard(c, col.BoardID)
 		if err != nil {
 			return err
 		}
-		// Read the pointer BEFORE the delete: afterwards NULL no longer tells a
-		// board that just lost its done column from one deliberately left without.
-		wasDone := board.DoneColumnID != nil && *board.DoneColumnID == id
-		if gone, err = q.TaskIDsInColumn(c, id); err != nil {
+		cols, err := q.ListColumns(c, col.BoardID)
+		if err != nil {
 			return err
 		}
-		if err = q.DeleteColumn(c, id); err != nil {
+		rest := make([]db.BoardColumn, 0, len(cols))
+		for _, cc := range cols {
+			if cc.ID != id {
+				rest = append(rest, cc)
+			}
+		}
+		if len(rest) == 0 {
+			return errLastColumn
+		}
+		wasDone := board.DoneColumnID != nil && *board.DoneColumnID == id
+		target = rest[0]
+		if wasDone {
+			target = rest[len(rest)-1]
+		}
+		base, err := q.MaxTaskPositionInColumn(c, target.ID)
+		if err != nil {
+			return err
+		}
+		if _, err = q.RecordColumnMoves(c, db.RecordColumnMovesParams{MovedTo: target.ID, ColumnID: id}); err != nil {
+			return err
+		}
+		if moved, err = q.MoveColumnTasks(c, db.MoveColumnTasksParams{
+			Target: target.ID, Base: base, Gap: columnMoveGap, Source: id,
+		}); err != nil {
+			return err
+		}
+		subs, err := q.MoveColumnSubtasks(c, db.MoveColumnSubtasksParams{Target: target.ID, Source: id})
+		if err != nil {
+			return err
+		}
+		moved += subs
+		if _, err = q.SoftDeleteColumn(c, db.SoftDeleteColumnParams{WasDone: wasDone, ID: id}); err != nil {
 			return err
 		}
 		if !wasDone {
 			return nil
 		}
-		// Rightmost of what is left, read through ListColumns so "rightmost" means
-		// the same column the board shows last. An empty board keeps the NULL —
-		// there is nothing to point at.
-		cols, err := q.ListColumns(c, col.BoardID)
-		if err != nil || len(cols) == 0 {
-			return err
-		}
-		last := cols[len(cols)-1].ID
-		updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: col.BoardID, DoneColumnID: &last})
+		updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: col.BoardID, DoneColumnID: &target.ID})
 		if err != nil {
 			return err
 		}
 		repointed = &updated
 		return nil
 	}); err != nil {
+		if errors.Is(err, errLastColumn) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		if notFound(c, err) {
+			return
+		}
 		fail(c, err)
 		return
 	}
-	h.purgeTaskUploads(gone)
-	h.broadcast(wsID, "column.deleted", gin.H{"id": id, "board_id": col.BoardID})
+	h.broadcast(wsID, "column.deleted", gin.H{
+		"id": id, "board_id": col.BoardID, "moved_to": target.ID, "moved": moved,
+	})
 	if repointed != nil {
 		h.broadcast(wsID, "board.updated", *repointed)
 	}
 	c.Status(http.StatusNoContent)
+}
+
+// RestoreColumn undoes DeleteColumn: the column returns to its place, the cards
+// the delete moved go back to where they stood — those still in the column the
+// delete put them in; a card someone has moved since stays where they put it —
+// and a column deleted as the completing one gets the done flag back.
+func (h *API) RestoreColumn(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForDeletedColumn(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	var (
+		col       db.BoardColumn
+		repointed *db.Board
+	)
+	if err := h.inTx(c, func(q *db.Queries) error {
+		before, err := q.GetColumnAny(c, id)
+		if err != nil {
+			return err
+		}
+		if col, err = q.RestoreColumn(c, id); err != nil {
+			return err
+		}
+		if _, err = q.RestoreColumnTasks(c, id); err != nil {
+			return err
+		}
+		if err = q.ClearColumnMoves(c, id); err != nil {
+			return err
+		}
+		if !before.DeletedWasDone {
+			return nil
+		}
+		updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: col.BoardID, DoneColumnID: &col.ID})
+		if err != nil {
+			return err
+		}
+		repointed = &updated
+		return nil
+	}); err != nil {
+		if notFound(c, err) {
+			return
+		}
+		fail(c, err)
+		return
+	}
+	h.broadcast(wsID, "column.restored", gin.H{"id": col.ID, "board_id": col.BoardID, "column": col})
+	if repointed != nil {
+		h.broadcast(wsID, "board.updated", *repointed)
+	}
+	c.JSON(http.StatusOK, col)
 }
 
 // neighborColumnPositions resolves the positions of the before/after columns.
