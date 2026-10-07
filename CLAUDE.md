@@ -201,6 +201,20 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   Обновить ⌘S / Сбросить ⌘⌫; логика — `composables/useBoardViews.js`, чистая часть —
   `utils/boardViews.js`. Конфиг представления = состояние доски (`currentViewConfig`), поиск и
   этап в него не входят. `boards.default_layout` — вид новой доски.
+- **Окно «Проект», этапы и теги (#2971, миграция 0080):** настройки проекта — крупное окно
+  `components/project/ProjectWindow.vue` (стор `projectWindow.open(id, tab, {filter})`, ⌘,)
+  с вкладками Общее · Теги · Этапы · Оценка; TagManager/MilestoneManager удалены. Таблица тегов
+  (`utils/tagTable.js`): имя префикса — точечный `PATCH /projects/:id/tag-prefixes`, слияние
+  `POST …/tags/merge`, массовое удаление `POST …/tags/delete` + undo `POST …/tags/restore`
+  (теги возвращаются под прежними id), `tags.source` user|gitlab, замок — префиксы правил GitLab
+  проекта. Этап: два хранимых состояния + `closed_at`, «Запланирован» = активный со стартом
+  впереди (`utils/milestones.stageState`). Страница этапа `/project/<slug>/stage/<slug>` —
+  `views/StageView.vue` на `GET /milestones/:id/metrics`; объём/burn-up считаются по журналу
+  `milestone`/`milestone_removed` (несут `milestone_id`, при переносе `from_id`), поэтому
+  **любой новый путь смены `milestone_id` обязан журналить** (`journalMilestoneActor`). На доске
+  — селектор этапа в подбаре (⇧E) и полоса этапа (⇧H), выбор и свёрнутость — localStorage на
+  доску. GitLab-этапы read-only до #3010. Навигация из окна-оверлея — после отмотки его
+  history-записи (`ProjectWindow.navigate`), иначе `back()` из `useOverlayBack` отменит push.
 - **Редактор описаний/комментариев — собственный `MarkdownEditor.vue`** (textarea +
   тулбар + Написать/Просмотр + @-mentions), хранит **Markdown**. **TipTap пробовали и
   отвергли** (тема/бандл) — не возвращать без явного запроса.

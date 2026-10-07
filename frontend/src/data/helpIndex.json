@@ -1675,6 +1675,118 @@
       }
     },
     {
+      "slug": "project-window",
+      "path": "boards/project-window.md",
+      "title": "Окно «Проект»",
+      "category": "Доски",
+      "order": 27,
+      "updated": "2026-10-07",
+      "keywords": [
+        "проект",
+        "настройки проекта",
+        "окно проекта",
+        "теги",
+        "этапы",
+        "оценка",
+        "адрес",
+        "иконка",
+        "цвет",
+        "группа",
+        "удалить проект",
+        "Ctrl+запятая"
+      ],
+      "platforms": ["web", "android"],
+      "headings": [
+        {
+          "id": "как-открыть",
+          "text": "Как открыть",
+          "level": 2
+        },
+        {
+          "id": "общее",
+          "text": "Общее",
+          "level": 2
+        },
+        {
+          "id": "теги",
+          "text": "Теги",
+          "level": 2
+        },
+        {
+          "id": "этапы",
+          "text": "Этапы",
+          "level": 2
+        },
+        {
+          "id": "оценка",
+          "text": "Оценка",
+          "level": 2
+        },
+        {
+          "id": "клавиши",
+          "text": "Клавиши",
+          "level": 2
+        }
+      ],
+      "text": "Всё, что настраивается у проекта, собрано в одном окне: название и адрес, иконка и цвет, теги, этапы и единица оценки задач. Правки сохраняются сразу — кнопки «Сохранить» здесь нет. Окно «Проект» на вкладке «Общее» Как открыть Ctrl+, (на Mac — ⌘,) — окно проекта, который у вас перед глазами: открытой доски или страницы этапа. Повторное нажатие закрывает. Меню проекта в дереве слева → «Настройки проекта», или «Этапы…» — сразу на вкладке этапов. Кнопки «Теги» и «Этапы» в шапке доски (на телефоне — в меню доски с тремя точками). Палитра команд (Ctrl+K) → «Окно «Проект» текущего проекта». Пункт «Управлять тегами…» в выборе тегов у задачи — окно откроется на вкладке «Теги» с фильтром по тому, что вы успели набрать. Вкладки переключаются цифрами 1–4 или кликом. Esc сначала закрывает то, что открыто внутри (меню строки, палитру цвета, выбор строк), и только потом само окно — фокус возвращается туда, откуда его открыли. На телефоне окно занимает весь экран, вкладки идут строкой сверху. Слева внизу — ссылки на окна пространства, которые тоже касаются проекта: «Участники» и «GitLab». Они открываются вместо окна проекта. Общее Название сохраняется по Enter или когда поле теряет фокус. Esc возвращает прежнее. Адрес — часть ссылки …/project/<адрес>. Менять его могут владелец и администраторы пространства. Ссылки со старым адресом перестанут открываться — подпись под полем об этом напоминает. Иконка и цвет — те же, что в сайдбаре, хлебных крошках и на рейле. Группа — в какой группе проектов он лежит в дереве. Опасная зона. «Архивировать» пока недоступно. «Удалить проект» — в два шага: первое нажатие спрашивает «Точно удалить?», второе удаляет вместе со всеми досками, задачами и этапами. Теги Таблица тегов проекта, сгруппированных по префиксам; подробно — в статье Теги, префиксы и управление ими. Этапы Список этапов проекта с датами, состоянием, прогрессом и номером в GitLab. Новый этап — кнопка «+ Этап» или N: появится пустая строка, Tab переводит к датам, Enter создаёт. Клик по строке открывает страницу этапа. Подробнее — в статье Этапы. Оценка Единица, в которой оцениваются задачи проекта, и значения в выборе оценки: Часы — время; рядом задаются часов в рабочем дне и дней в неделе (по ним «3д» превращается в часы). Story points — шкала Фибоначчи или линейная. Размер футболки — XS…XXL. Своя единица — число с вашим названием («у.е.»). Переключатель «Наследовать» оставляет проект на настройке пространства. Шкала — быстрые значения в выборе оценки у задачи: + добавляет значение (вводится в единице проекта, например 3ч), крестик на значении убирает его, «Вернуть значения по умолчанию» откатывает к встроенному набору. Клавиши Клавиша Что делает --- --- Ctrl+, Окно «Проект» текущего проекта 1–4 Вкладки: Общее · Теги · Этапы · Оценка Esc Закрыть то, что открыто внутри, потом окно",
+      "locales": {
+        "en": {
+          "path": "boards/project-window.en.md",
+          "title": "The «Project» window",
+          "category": "Boards",
+          "updated": "2026-10-07",
+          "keywords": [
+            "project",
+            "project settings",
+            "project window",
+            "tags",
+            "milestones",
+            "milestones",
+            "estimation",
+            "address",
+            "icon",
+            "colour",
+            "group",
+            "delete project",
+            "Ctrl+comma"
+          ],
+          "headings": [
+            {
+              "id": "how-to-open-it",
+              "text": "How to open it",
+              "level": 2
+            },
+            {
+              "id": "general",
+              "text": "General",
+              "level": 2
+            },
+            {
+              "id": "tags",
+              "text": "Tags",
+              "level": 2
+            },
+            {
+              "id": "milestones",
+              "text": "Milestones",
+              "level": 2
+            },
+            {
+              "id": "estimation",
+              "text": "Estimation",
+              "level": 2
+            },
+            {
+              "id": "keys",
+              "text": "Keys",
+              "level": 2
+            }
+          ],
+          "text": "Everything a project is set up with lives in one window: its name and address, icon and colour, tags, milestones and the unit tasks are estimated in. Changes save at once — there is no «Save» button here. The «Project» window on the «General» tab How to open it Ctrl+, (⌘, on a Mac) — the window of the project in front of you: the open board's or the milestone page's. Press it again to close. The project menu in the tree on the left → «Project settings», or «Milestones…» to land on the milestones tab. The «Tags» and «Milestones» buttons in the board header (on a phone — in the board's three-dot menu). The command palette (Ctrl+K) → «The «Project» window of the current project». «Manage tags…» in a task's tag picker — the window opens on «Tags», filtered by what you had typed. Switch tabs with the digits 1–4 or a click. Esc first closes whatever is open inside (a row menu, the colour palette, a selection) and only then the window itself — focus returns to where you opened it from. On a phone the window fills the screen and the tabs run along the top. At the bottom left are links to the workspace windows that also concern the project: «Members» and «GitLab». They open in place of the project window. General Name saves on Enter or when the field loses focus. Esc puts the old one back. Address — the …/project/<address> part of a link. The workspace owner and admins can change it. Links with the old address stop opening — the note under the field says so. Icon and colour — the same ones the sidebar, breadcrumbs and the rail show. Group — which project group it sits in in the tree. Danger zone. «Archive» is not available yet. «Delete project» takes two steps: the first press asks «Delete for good?», the second deletes it with all its boards, tasks and milestones. Tags The project's tag table, grouped by prefix; see Tags, prefixes and how to manage them. Milestones The project's milestones with their dates, state, progress and GitLab number. A new milestone — the «+ Milestone» button or N: an empty row appears, Tab moves to the dates, Enter creates it. A click on a row opens the milestone page. More in Milestones. Estimation The unit the project's tasks are estimated in, and the values of the estimate picker: Hours — time; next to it, hours in a working day and days in a week (they turn «3d» into hours). Story points — a Fibonacci or a linear scale. T-shirt size — XS…XXL. Custom unit — a number with your own name for it. The «Inherit» switch keeps the project on the workspace's setting. Scale — the quick values of a task's estimate picker: + adds one (typed in the project's unit, e.g. 3h), the cross on a value removes it, «Back to the default values» returns to the built-in set. Keys Key What it does --- --- Ctrl+, The «Project» window of the current project 1–4 Tabs: General · Tags · Milestones · Estimation Esc Close what is open inside, then the window"
+        }
+      }
+    },
+    {
       "slug": "task-modal",
       "path": "tasks/task-modal.md",
       "title": "Окно задачи",
@@ -2976,7 +3088,7 @@
       "title": "Теги, префиксы и управление ими",
       "category": "Теги",
       "order": 36,
-      "updated": "2026-08-28",
+      "updated": "2026-10-07",
       "keywords": [
         "теги",
         "метки",
@@ -2985,8 +3097,10 @@
         "переименовать",
         "цвет",
         "удалить",
+        "слить",
+        "дубли",
         "группировка",
-        "поповер",
+        "окно проекта",
         "Enter",
         "GitLab"
       ],
@@ -3008,18 +3122,18 @@
           "level": 3
         },
         {
-          "id": "переименовать-двойным-кликом",
-          "text": "Переименовать — двойным кликом",
+          "id": "переименовать-кликом-без-двойного",
+          "text": "Переименовать — кликом, без двойного",
           "level": 3
         },
         {
-          "id": "цвет-только-в-режиме-правки",
-          "text": "Цвет — только в режиме правки",
+          "id": "цвет",
+          "text": "Цвет",
           "level": 3
         },
         {
-          "id": "удалить",
-          "text": "Удалить",
+          "id": "выбрать-несколько-слить-перекрасить-удалить",
+          "text": "Выбрать несколько: слить, перекрасить, удалить",
           "level": 3
         },
         {
@@ -3048,7 +3162,7 @@
           "level": 2
         }
       ],
-      "text": "Тег в Tessera — не просто цветная метка. Колонки доски можно разложить по тегам, и тогда тег превращается в направление работы: команда, компонент, клиент, стадия проработки. Поэтому теги стоит заводить осознанно и называть по системе — на них держится второй взгляд на доску. Управление тегами проекта: список, переименование и цвет Теги живут в проекте, а не в задаче Набор тегов принадлежит проекту: все доски одного проекта видят один список, а соседний проект — свой собственный. Тег, снятый со всех задач, из списка не исчезает: он остаётся заготовкой, и колонка по нему на доске просто будет пустой. Где ими управлять Кнопка «Теги» в шапке доски открывает поповер со всем списком тегов проекта. На узком экране она же лежит в меню доски (значок с тремя точками). В поповере видно всё сразу: какие теги есть, какого они цвета и как разложены по префиксам. Создать Внизу поповера — поле «Новый тег». Введите имя и нажмите «Добавить» или Enter. Новый тег получает первый цвет палитры (фиолетовый) — цвет меняется отдельно, при переименовании. Переименовать — двойным кликом Одиночный клик по тегу в поповере ничего не делает: это не кнопка, а образец того, как тег выглядит на карточке. Переименование открывается двойным кликом — подсказка при наведении говорит то же самое («имя · двойной клик — переименовать»). Тег превращается в поле ввода; Enter или клик мимо сохраняют, имя без изменений просто закрывает поле. Цвет — только в режиме правки Палитра из восьми цветов появляется под тегом, который вы правите, и больше нигде. Это и есть ответ на частый вопрос «где поменять цвет тега»: двойной клик по тегу → ряд кружков под ним → клик по нужному. Цвет применяется сразу, поле имени при этом не закрывается. Цвет — не только украшение: из него собираются градиент чипа на карточке, цвет колонки при группировке по тегам и заливка в фильтрах. Удалить Корзина справа от тега удаляет его со всех задач проекта разом — об этом честно предупреждает подтверждение. Отмены нет: восстановить тег означает завести его заново и расставить руками. Если тег просто перестал быть нужен, но историю ломать не хочется, надёжнее переименовать его (например, добавить «архив») и не использовать дальше. Префиксы: как из тегов получается система Тег с двоеточием в имени Tessera читает как префикс и значение: Сложность::высокая — разделитель ::; Статус: в ревью — разделитель : (двоеточие с пробелом). Обе записи равноправны. Всё, что до разделителя, — префикс (пространство имён), всё после — значение. Что это даёт: 1. Двухсегментный чип. Такой тег рисуется как в GitLab: слева залитый сегмент с именем префикса, справа — значение. Один взгляд на карточку, и понятно, что «высокая» — это про сложность, а не про приоритет. 2. Группировку списков. В поповере тегов, в выборе тегов у задачи и в фильтре доски теги собираются в группы по префиксу, с заголовком у каждой. Список из сорока тегов остаётся читаемым. 3. Колонки по одному префиксу. На доске можно сгруппировать не «по всем тегам», а по конкретному префиксу — тогда колонками станут только его значения, а остальные теги в раскладке не участвуют. Подробнее — Панель доски. Регистр и пробелы вокруг префикса не важны: Сложность:: и сложность :: — один и тот же префикс. Имена префиксов Префикс в имени тега бывает коротким — T: bug, S: doing. Читать такое на карточке неудобно, и для этого есть «Имена префиксов» внизу поповера: рядом с каждым найденным префиксом — поле для понятного названия. Написали у T: имя «Тип» — и во всех чипах, заголовках групп и фильтрах вместо T появится «Тип». Сохраняется по Enter или по клику мимо поля. Имена префиксов — настройка проекта: их видят все участники. Пустое поле снимает имя, и префикс снова показывается как есть. Раздел появляется только тогда, когда в проекте есть хотя бы один тег с префиксом, — иначе имени неоткуда взяться. Короткие префиксы — переключатель для себя Рядом стоит переключатель «Короткие префиксы». Он делает обратное: показывает сырой префикс (T) вместо понятного имени («Тип»). Это личная настройка этого устройства — она не меняется у коллег и не переезжает на телефон. Полезно, когда чипов на карточке много и место дороже слов. Теги на задаче В окне задачи и в быстром меню карточки теги выбираются из того же списка, сгруппированного по префиксам: клик по тегу вешает его, повторный — снимает. Главная спотыкалка при переходе из ClickUp — создание тега прямо отсюда. Внизу выбора есть поле, подписанное «Новый тег, Enter», и подпись не преувеличивает: кнопки рядом с ним нет, тег создаётся только по Enter. Введённое и не подтверждённое имя не сохранится, а поповер закроется как ни в чём не бывало. Созданный так тег сразу вешается на задачу и получает случайный цвет из палитры — если цвет важен, поправьте его потом в поповере тегов доски. Одна задача может нести сколько угодно тегов. При группировке доски по тегам она покажется в каждой соответствующей колонке — это одна и та же карточка, а не копии. Теги и GitLab На доске, связанной с GitLab, метки приезжают из репозитория тегами. Часть из них разбирается правилами в поля задачи: метка S: done может означать колонку, P: high — приоритет. Такие теги не предлагаются в выборе у задачи: повесить их вручную значило бы разойтись с полем, которым они управляют. В поповере доски они видны и правятся как обычные — там вы смотрите на список меток проекта, а не назначаете их. Как настраиваются сами правила разбора — в статье GitLab: синхронизация.",
+      "text": "Тег в Tessera — не просто цветная метка. Колонки доски можно разложить по тегам, и тогда тег превращается в направление работы: команда, компонент, клиент, стадия проработки. Поэтому теги стоит заводить осознанно и называть по системе — на них держится второй взгляд на доску. Таблица тегов в окне «Проект»: группы по префиксам, выбор и слияние Теги живут в проекте, а не в задаче Набор тегов принадлежит проекту: все доски одного проекта видят один список, а соседний проект — свой собственный. Тег, снятый со всех задач, из списка не исчезает: он остаётся заготовкой, и колонка по нему на доске просто будет пустой. Где ими управлять Теги проекта — вкладка «Теги» окна «Проект». Открыть её можно кнопкой «Теги» в шапке доски, пунктом «Управлять тегами…» в выборе тегов у задачи или Ctrl+, и цифрой 2. Это таблица: теги сгруппированы по префиксам, у каждого — цвет, сколько задач его носит и откуда он взялся (Tessera — заведён здесь, Лейбл GitLab — пришёл из синхронизации). Создать Поле «Новый тег» над таблицей (клавиша N). Введите имя и нажмите Enter. Запись префикс::имя кладёт тег в группу этого префикса, а если такой группы нет — заводит её. Новый тег получает случайный цвет палитры. Имя, которое в проекте уже есть (без учёта регистра), не создаётся — поле так и скажет. Рядом — фильтр (клавиша /): ищет по имени тега и по понятному имени его группы. Переименовать — кликом, без двойного Клик по тегу в таблице, Enter или F2 на строке превращают его в поле ввода. Enter или клик мимо сохраняют, Esc отменяет. Цвет Кружок в колонке «Цвет» открывает палитру из семи цветов — клик применяет цвет сразу. Цвет — не только украшение: из него собираются градиент чипа на карточке, цвет колонки при группировке по тегам и заливка в фильтрах. Выбрать несколько: слить, перекрасить, удалить Квадрат слева от тега (или Пробел на строке) выбирает её, Shift+↑/↓ — диапазон. Внизу появляется панель действий: «Слить в…» (M) — для дублей вроде design / дизайн / ui. Окно предложит тег, в который сливать (по умолчанию — самый используемый), и после подтверждения все задачи остальных получат его, а остальные теги исчезнут. В истории задач слияние видно, как обычная правка тегов. «Перекрасить» (C) — один цвет на все выбранные. «Удалить» (⌫) — сразу, со всех задач проекта. Внизу экрана появится тост «Отменить» — 7 секунд, чтобы вернуть теги вместе с задачами, на которых они висели (или Ctrl+Z). Esc снимает выбор. Те же действия по одному тегу — в меню «⋯» его строки. Префиксы: как из тегов получается система Тег с двоеточием в имени Tessera читает как префикс и значение: Сложность::высокая — разделитель ::; Статус: в ревью — разделитель : (двоеточие с пробелом). Обе записи равноправны. Всё, что до разделителя, — префикс (пространство имён), всё после — значение. Что это даёт: 1. Двухсегментный чип. Такой тег рисуется как в GitLab: слева залитый сегмент с именем префикса, справа — значение. Один взгляд на карточку, и понятно, что «высокая» — это про сложность, а не про приоритет. 2. Группировку списков. В поповере тегов, в выборе тегов у задачи и в фильтре доски теги собираются в группы по префиксу, с заголовком у каждой. Список из сорока тегов остаётся читаемым. 3. Колонки по одному префиксу. На доске можно сгруппировать не «по всем тегам», а по конкретному префиксу — тогда колонками станут только его значения, а остальные теги в раскладке не участвуют. Подробнее — Панель доски. Регистр и пробелы вокруг префикса не важны: Сложность:: и сложность :: — один и тот же префикс. Имена префиксов Префикс в имени тега бывает коротким — T: bug, S: doing. Читать такое на карточке неудобно, поэтому у группы в таблице есть понятное имя: клик по заголовку группы (или F2 на нём) открывает поле прямо в заголовке. Написали у T: имя «Тип» — и во всех чипах, заголовках групп и фильтрах вместо T появится «Тип». Сохраняется по Enter или клику мимо, пустое поле снимает имя — префикс снова показывается как есть. Сырой префикс всегда виден рядом серой плашкой. Имена префиксов — настройка проекта: их видят все участники. Правка одной группы не трогает имена остальных. Короткие префиксы — переключатель для себя Справа в заголовке вкладки «Теги» — переключатель «Короткие префиксы». Он делает обратное: показывает сырой префикс (T) вместо понятного имени («Тип»). Это личная настройка этого устройства — она не меняется у коллег и не переезжает на телефон. Полезно, когда чипов на карточке много и место дороже слов. Теги на задаче В окне задачи и в быстром меню карточки теги выбираются из того же списка, сгруппированного по префиксам: клик по тегу вешает его, повторный — снимает. Главная спотыкалка при переходе из ClickUp — создание тега прямо отсюда. Внизу выбора есть поле, подписанное «Новый тег, Enter», и подпись не преувеличивает: кнопки рядом с ним нет, тег создаётся только по Enter. Введённое и не подтверждённое имя не сохранится, а поповер закроется как ни в чём не бывало. Созданный так тег сразу вешается на задачу и получает случайный цвет из палитры — если цвет важен, поправьте его в таблице тегов: пункт «Управлять тегами…» под выбором открывает её с фильтром по набранному. Одна задача может нести сколько угодно тегов. При группировке доски по тегам она покажется в каждой соответствующей колонке — это одна и та же карточка, а не копии. Теги и GitLab На доске, связанной с GitLab, метки приезжают из репозитория тегами — в таблице у них источник «Лейбл GitLab». Часть из них разбирается правилами в поля задачи: метка S: done может означать колонку, P: high — приоритет. Такие теги не предлагаются в выборе у задачи: повесить их вручную значило бы разойтись с полем, которым они управляют. Теги, чей префикс подпадает под правило GitLab, в таблице с замком: их нельзя выбрать, переименовать или перекрасить — имя и цвет приходят из GitLab, и следующая синхронизация вернула бы своё. Подсказка на теге говорит, из какого репозитория правило. Как настраиваются сами правила разбора — в статье GitLab: синхронизация.",
       "android": {
         "path": "tags/tags.android.md",
         "updated": "2026-08-28",
@@ -3130,7 +3244,7 @@
           "path": "tags/tags.en.md",
           "title": "Tags, prefixes and how to manage them",
           "category": "Tags",
-          "updated": "2026-08-28",
+          "updated": "2026-10-07",
           "keywords": [
             "tags",
             "labels",
@@ -3139,8 +3253,10 @@
             "rename",
             "colour",
             "delete",
+            "merge",
+            "duplicates",
             "grouping",
-            "popover",
+            "project window",
             "Enter",
             "GitLab"
           ],
@@ -3161,18 +3277,18 @@
               "level": 3
             },
             {
-              "id": "rename-with-a-double-click",
-              "text": "Rename — with a double click",
+              "id": "rename-with-a-click-no-double-click",
+              "text": "Rename — with a click, no double click",
               "level": 3
             },
             {
-              "id": "colour-only-while-editing",
-              "text": "Colour — only while editing",
+              "id": "colour",
+              "text": "Colour",
               "level": 3
             },
             {
-              "id": "delete",
-              "text": "Delete",
+              "id": "select-several-merge-recolour-delete",
+              "text": "Select several: merge, recolour, delete",
               "level": 3
             },
             {
@@ -3201,7 +3317,7 @@
               "level": 2
             }
           ],
-          "text": "A tag in Tessera is more than a coloured label. Board columns can be laid out by tag, and then a tag becomes a direction of work: a team, a component, a client, a stage of refinement. That is why tags are worth creating deliberately and naming systematically — the second view of your board rests on them. Project tag management: the list, renaming and colour Tags belong to the project, not to the task The set of tags belongs to the project: every board of one project sees the same list, and a neighbouring project has its own. A tag removed from every task does not disappear from the list — it stays as a blank, and its column on a tag-grouped board is simply empty. Where to manage them The Tags button in the board header opens a popover with the project's whole tag list. On a narrow screen the same thing lives in the board menu (the three-dot icon). The popover shows everything at once: which tags exist, what colour they are and how they group by prefix. Create At the bottom of the popover there is a New tag field. Type a name and press Add or Enter. A new tag takes the first colour of the palette (purple) — the colour is changed separately, while renaming. Rename — with a double click A single click on a tag in the popover does nothing: it is not a button but a sample of how the tag looks on a card. Renaming opens on a double click — the hover tooltip says as much (“name · double-click to rename”). The tag turns into an input; Enter or a click elsewhere saves it, and an unchanged name simply closes the field. Colour — only while editing The palette of eight colours appears under the tag you are editing, and nowhere else. That is the answer to the frequent “where do I change a tag's colour”: double-click the tag → the row of circles under it → click the one you want. The colour applies immediately and the name field stays open. The colour is not just decoration: the chip gradient on a card, the column colour under tag grouping and the fill in filters are all derived from it. Delete The bin next to a tag removes it from every task in the project at once — the confirmation says so plainly. There is no undo: restoring a tag means creating it again and re-applying it by hand. If a tag is simply no longer needed but you would rather not break the history, it is safer to rename it (adding “archive”, say) and stop using it. Prefixes: how tags become a system Tessera reads a tag whose name contains a colon as a prefix and a value: Difficulty::high — the :: separator; Status: in review — the : separator (a colon and a space). Both spellings are equal. Everything before the separator is the prefix (the namespace), everything after it is the value. What that buys you: 1. A two-segment chip. Such a tag is drawn the way GitLab draws it: a filled segment with the prefix name on the left, the value on the right. One glance at the card and it is clear that “high” is about difficulty, not about priority. 2. Grouped lists. In the tag popover, in a task's tag picker and in the board filter, tags are collected into groups by prefix, each with its own header. A list of forty tags stays readable. 3. Columns for a single prefix. A board can be grouped not “by all tags” but by one prefix — then only its values become columns, and the rest of the tags stay out of the layout. See The board bar. Case and spaces around the prefix do not matter: Difficulty:: and difficulty :: are the same prefix. Prefix names A prefix inside a tag name is often short — T: bug, S: doing. That is awkward to read on a card, which is what Prefix names at the bottom of the popover is for: next to every prefix found there is a field for a friendly name. Give T: the name “Type” and every chip, group header and filter shows “Type” instead of T. It is saved with Enter or by clicking outside the field. Prefix names are a project setting: everyone sees them. The section appears only once the project has at least one prefixed tag — otherwise there is nothing to name. Short prefixes — a switch for yourself Next to it sits the Short prefixes switch. It does the opposite: it shows the raw prefix (T) instead of the friendly name (“Type”). This is a personal setting of this device — it does not change for your colleagues and does not travel to your phone. Handy when a card carries many chips and space is worth more than words. Tags on a task In the task window and in a card's quick menu, tags are picked from the same list grouped by prefix: click a tag to attach it, click again to remove it. The main stumbling block when moving from ClickUp is creating a tag right there. There is a field at the bottom of the picker labelled “New tag, Enter”, and the label does not overstate it: there is no button next to it, a tag is created only with Enter. A name typed and not confirmed is not saved, and the popover closes as if nothing happened. A tag created this way is attached to the task straight away and gets a random colour from the palette — if the colour matters, fix it afterwards in the board's tag popover. One task can carry any number of tags. When the board is grouped by tags it appears in every matching column — the same card, not copies. Tags and GitLab On a board linked to GitLab, repository labels arrive as tags. Some of them are parsed by rules into task fields: the label S: done may mean a column, P: high a priority. Such tags are not offered in a task's picker: attaching one by hand would mean disagreeing with the field it drives. In the board popover they are visible and editable like any other — there you are looking at the project's label list, not assigning labels. How the parsing rules themselves are configured is covered in GitLab: synchronisation.",
+          "text": "A tag in Tessera is more than a coloured label. Board columns can be laid out by tag, and then a tag becomes a direction of work: a team, a component, a client, a stage of refinement. That is why tags are worth creating deliberately and naming systematically — the second view of your board rests on them. The tag table in the «Project» window: prefix groups, selection and merging Tags belong to the project, not to the task The set of tags belongs to the project: every board of one project sees the same list, and a neighbouring project has its own. A tag removed from every task does not disappear from the list — it stays as a blank, and its column on a tag-grouped board is simply empty. Where to manage them A project's tags are the «Tags» tab of the «Project» window. Open it with the «Tags» button in the board header, with «Manage tags…» in a task's tag picker, or with Ctrl+, and the digit 2. It is a table: tags grouped by prefix, each with its colour, how many tasks carry it and where it came from (Tessera — created here, GitLab label — brought in by the sync). Create The «New tag» field above the table (key N). Type a name and press Enter. prefix::name puts the tag into that prefix's group, and creates the group when there is none. A new tag gets a random palette colour. A name the project already has (case aside) is not created — the field says so. Next to it is the filter (key /): it matches the tag name and its group's friendly name. Rename — with a click, no double click A click on a tag in the table, Enter or F2 on its row turns it into a field. Enter or a click elsewhere saves, Esc cancels. Colour The dot in the «Colour» column opens a palette of seven colours — a click applies it at once. Colour is not just decoration: it builds the chip gradient on a card, the column colour when grouping by tags and the fill in filters. Select several: merge, recolour, delete The square to the left of a tag (or Space on its row) selects it, Shift+↑/↓ — a range. An action bar appears at the bottom: «Merge into…» (M) — for duplicates like design / дизайн / ui. It offers the tag to merge into (the most used by default), and once confirmed every task of the others gets it and the others disappear. Task history shows the merge as an ordinary tag edit. «Recolour» (C) — one colour for all the selected. «Delete» (⌫) — at once, from every task of the project. An «Undo» toast appears at the bottom — 7 seconds to bring the tags back together with the tasks they were on (or Ctrl+Z). Esc clears the selection. The same actions for one tag are in its row's «⋯» menu. Prefixes: how tags become a system Tessera reads a tag whose name contains a colon as a prefix and a value: Difficulty::high — the :: separator; Status: in review — the : separator (a colon and a space). Both spellings are equal. Everything before the separator is the prefix (the namespace), everything after it is the value. What that buys you: 1. A two-segment chip. Such a tag is drawn the way GitLab draws it: a filled segment with the prefix name on the left, the value on the right. One glance at the card and it is clear that “high” is about difficulty, not about priority. 2. Grouped lists. In the tag popover, in a task's tag picker and in the board filter, tags are collected into groups by prefix, each with its own header. A list of forty tags stays readable. 3. Columns for a single prefix. A board can be grouped not “by all tags” but by one prefix — then only its values become columns, and the rest of the tags stay out of the layout. See The board bar. Case and spaces around the prefix do not matter: Difficulty:: and difficulty :: are the same prefix. Prefix names A prefix in a tag name is often short — T: bug, S: doing. That reads poorly on a card, so a group in the table has a friendly name: a click on the group header (or F2 on it) opens a field right in the header. Name T: «Type» and every chip, group header and filter shows «Type» instead of T. It saves on Enter or a click elsewhere; an empty field removes the name and the prefix shows as is again. The raw prefix is always visible next to it on a grey plate. Prefix names are a project setting: every member sees them. Editing one group leaves the names of the others alone. Short prefixes — a switch for yourself On the right of the «Tags» tab header sits the Short prefixes switch. It does the opposite: it shows the raw prefix (T) instead of the friendly name (“Type”). This is a personal setting of this device — it does not change for your colleagues and does not travel to your phone. Handy when a card carries many chips and space is worth more than words. Tags on a task In the task window and in a card's quick menu, tags are picked from the same list grouped by prefix: click a tag to attach it, click again to remove it. The main stumbling block when moving from ClickUp is creating a tag right there. There is a field at the bottom of the picker labelled “New tag, Enter”, and the label does not overstate it: there is no button next to it, a tag is created only with Enter. A name typed and not confirmed is not saved, and the popover closes as if nothing happened. A tag created this way is attached to the task straight away and gets a random colour from the palette — if the colour matters, fix it in the tag table: «Manage tags…» under the picker opens it filtered by what you typed. One task can carry any number of tags. When the board is grouped by tags it appears in every matching column — the same card, not copies. Tags and GitLab On a board linked to GitLab, labels come in from the repository as tags — their source in the table is «GitLab label». Some of them are parsed by rules into task fields: an S: done label can mean a column, P: high a priority. Such tags are not offered in a task's picker: attaching one by hand would split it from the field it drives. Tags whose prefix falls under a GitLab rule carry a lock in the table: they cannot be selected, renamed or recoloured — their name and colour come from GitLab, and the next sync would put its own back. The hint on such a tag says which repository the rule comes from. How the parsing rules are set up is in GitLab: sync.",
           "android": {
             "path": "tags/tags.android.en.md",
             "updated": "2026-08-28",
@@ -3782,7 +3898,7 @@
       "title": "Этапы",
       "category": "Этапы",
       "order": 60,
-      "updated": "2026-08-28",
+      "updated": "2026-10-07",
       "keywords": [
         "этапы",
         "вехи",
@@ -3790,18 +3906,27 @@
         "спринт",
         "релиз",
         "прогресс",
+        "burn-up",
+        "burn-down",
+        "метрики",
+        "цели",
         "сроки",
         "закрытые",
-        "архив",
         "бэклог",
+        "полоса этапа",
         "дерево проектов",
         "gitlab"
       ],
       "platforms": ["web", "android"],
       "headings": [
         {
-          "id": "что-видно-в-списке",
-          "text": "Что видно в списке",
+          "id": "где-найти-этапы",
+          "text": "Где найти этапы",
+          "level": 2
+        },
+        {
+          "id": "состояния",
+          "text": "Состояния",
           "level": 2
         },
         {
@@ -3810,33 +3935,18 @@
           "level": 2
         },
         {
-          "id": "создать",
-          "text": "Создать",
-          "level": 3
+          "id": "страница-этапа",
+          "text": "Страница этапа",
+          "level": 2
         },
         {
-          "id": "переименовать-и-переставить-сроки",
-          "text": "Переименовать и переставить сроки",
-          "level": 3
-        },
-        {
-          "id": "закрыть-и-открыть-заново",
-          "text": "Закрыть и открыть заново",
-          "level": 3
-        },
-        {
-          "id": "удалить",
-          "text": "Удалить",
-          "level": 3
+          "id": "на-доске-селектор-и-полоса-этапа",
+          "text": "На доске: селектор и полоса этапа",
+          "level": 2
         },
         {
           "id": "как-задача-попадает-в-этап",
           "text": "Как задача попадает в этап",
-          "level": 2
-        },
-        {
-          "id": "этапы-в-дереве-проектов",
-          "text": "Этапы в дереве проектов",
           "level": 2
         },
         {
@@ -3845,7 +3955,7 @@
           "level": 2
         }
       ],
-      "text": "Этап (веха, milestone) — точка, к которой должен быть готов набор задач: релиз, демо, спринт, сдача заказчику. Раздел открывается пунктом «Этапы» в боковой панели и показывает этапы всех проектов пространства сразу. Раздел «Этапы»: этапы проектов с прогрессом Что видно в списке Этапы сгруппированы по проектам. В строке этапа — название, сроки (с 1 сентября, до 15 сентября или оба), полоса прогресса и счётчик выполненных задач (например, 3/6). Пока к этапу не привязана ни одна задача, вместо прогресса написано «нет задач». Переключатель справа сверху выбирает, что показывать: «Активные» — только открытые этапы, «Все» — вместе с закрытыми. Если активных нет, раздел прямо предлагает переключиться на «Все» — пустой экран не выглядит поломкой. Клик по строке открывает доску проекта, отфильтрованную по этому этапу, — сразу видно, что осталось. Управление этапами проекта Этапы заводятся в отдельном окне: шестерёнка у названия проекта в разделе «Этапы» или пункт «Этапы…» в контекстном меню проекта в дереве слева. Управление этапами проекта: создание, сроки, закрытие Создать Нижняя строка окна — форма создания: название, необязательные начало и конец, кнопка «Создать». Пока название пустое, кнопка неактивна; Enter в поле названия делает то же самое, что кнопка. Даты необязательны обе. Этап без сроков — нормальная ситуация: он просто не покажет диапазон в списке. Переименовать и переставить сроки Клик по названию этапа превращает строку в форму правки: поле имени и два выбора даты. Галочка сохраняет, «Отмена» выходит без изменений. Даты очищаются крестиком в самом поле — так этап лишается срока, не теряя задач. Закрыть и открыть заново Кнопка с галочкой закрывает этап: он остаётся со всеми задачами и историей, но уходит из «активных» — в списке раздела он покажется только на «Все», а в дереве проектов спрячется, пока не включить показ закрытых. Кнопка со стрелками открывает его обратно. Закрытая строка приглушена, так что перепутать открытый этап с закрытым трудно. Это и есть «архивные» этапы: отдельного архива для них нет, состояние переключается прямо здесь и обратимо. Удалить Корзина удаляет этап после подтверждения. Оно говорит главное: задачи останутся, но потеряют этап — данные не пропадают, теряется только привязка. Как задача попадает в этап Этап выбирается в окне задачи, в поле «Этап». Оттуда же его можно создать на ходу — строка «Новый этап…» в списке заводит этап в проекте и сразу вешает его на задачу. Одна задача принадлежит одному этапу; сняли выбор — задача из этапа выпала, прогресс пересчитался. Если задача лежит в закрытом этапе, рядом со значением так и написано — «закрыт». На доске по этапам можно группировать (колонки станут этапами, плюс колонка «Без этапа») и фильтровать — так же, как по тегам и исполнителям; подробнее в статье Панель доски. Когда доска открыта в рамках одного этапа, сверху видна плашка «Показан один этап» с кнопкой «Сбросить этап». Этапы в дереве проектов По умолчанию под проектом в боковой панели перечислены его доски. Это настраивается: контекстное меню проекта → «Показывать в дереве» → «Доски», «Этапы» или «Доски и этапы». В режимах с этапами под проектом появляются строки этапов и отдельная строка «Бэклог» — задачи без этапа. Клик по любой из них открывает доску проекта с соответствующим фильтром. Порядок: открытые этапы выше закрытых, внутри — по сроку, ближайший вниз списка. Закрытые этапы в дереве по умолчанию скрыты. Когда этапы в дереве показываются, в том же меню появляется переключатель «Показывать закрытые этапы». Одно ограничение: строки этапов — это навигация по доске проекта, поэтому в проекте без единой доски открыть этап из дерева не получится — приложение об этом скажет. Связь с GitLab Если проект связан с GitLab, этап синхронизируется с одноимённой вехой репозитория. У такого этапа рядом с названием значок GitLab, ведущий на веху в самом GitLab, а править его в Tessera нельзя — ни имя, ни сроки, ни состояние: источник истины в GitLab, и подсказка на названии говорит об этом прямо. Обратное направление доступно: у собственного этапа Tessera есть кнопка «В GitLab», которая создаёт одноимённую веху в связанном репозитории и связывает их. Удаление связанного этапа предупреждает отдельно: в GitLab веха останется, снимется только связь. Синхронизация не обязательна — этапы полностью работают и без неё. Как настраивается сама связь, описано в статье GitLab: синхронизация.",
+      "text": "Этап (веха, спринт, milestone) — точка, к которой должен быть готов набор задач: релиз, демо, спринт, сдача заказчику. У каждого этапа есть цели, сроки, своя страница с метриками, а на доске — полоса с прогрессом. Страница этапа: цели, burn-up и метрики Где найти этапы Раздел «Этапы» в боковой панели — этапы всех проектов пространства сразу, с прогрессом. Переключатель «Активные» / «Все» добавляет закрытые. Клик по строке открывает страницу этапа, шестерёнка у проекта — его этапы в окне «Проект». Дерево проектов. Меню проекта → «Показывать в дереве» → «Этапы» или «Доски и этапы»: под проектом появятся его этапы с процентом готовности и строка «Бэклог» (задачи без этапа). Этап открывает свою страницу, «Бэклог» — доску проекта с этим фильтром. Закрытые скрыты, пока в том же меню не включить «Показывать закрытые этапы». Окно «Проект» → «Этапы» — управление этапами проекта (ниже). Селектор этапа на доске — фильтр доски по этапу (ниже). Состояния Этапов хранится два состояния, как в GitLab: активный и закрытый. «Запланирован» — это активный этап, чьё начало ещё впереди; Tessera показывает его так сама, отдельно ничего ставить не нужно. У закрытого этапа запоминается дата закрытия. Управление этапами проекта Вкладка «Этапы» окна «Проект»: строка этапа — название, «осталось N дн.», даты, состояние, прогресс «сделано / всего» и номер вехи в GitLab. Закрытые собраны в сворачиваемую группу внизу. Этапы проекта в окне «Проект» Создать — кнопка «+ Этап» или N: пустая строка, имя, Tab — даты, Enter — создать (и сразу можно вводить следующий). Даты необязательны. Открыть — клик по строке или Enter: страница этапа. Меню строки («⋯» или .): переименовать (F2), даты, закрыть или открыть снова, создать веху в GitLab, удалить. Удаление — в два шага; задачи останутся, но потеряют этап. Страница этапа Открывается из списка этапов, из дерева, по клику на имя в полосе этапа и клавишами G, затем E с доски, отфильтрованной по этапу. Шапка: имя, состояние, даты, сколько осталось, ссылка на веху в GitLab. Кнопки «Открыть доску этапа» (B) — доска, где лежит больше всего задач этапа, сразу с фильтром — и «Закрыть этап» (Shift+X, в два шага: первое нажатие спрашивает «Точно закрыть?»). Цели — описание этапа в Markdown. «Изменить» или E открывает редактор с упоминаниями через @; Ctrl+Enter сохраняет, Esc отменяет (если текст менялся — со вторым нажатием). Burn-up — линия «сделано» против линии объёма по дням этапа, пунктиром — прогноз до конца этапа по темпу последних пяти рабочих дней. Переключатели: задачи / оценка, burn-up / burn-down. Выходные подложены серым, сегодня — вертикальная отметка. До старта этапа графика нет. Прогресс — два кольца: по числу задач и по оценке. Сигналы — «просрочено», «без оценки», «без исполнителя»: клик фильтрует список задач ниже. По статусам — полоса из цветов колонок. Изменение объёма — сколько задач добавлено и снято после первого дня этапа и как изменился объём. По исполнителям — сделано / всего и оценка на человека. Темп — сколько сделано за этот этап против трёх прошлых закрытых, со средним и прогнозом. Задачи этапа — по статусам, незавершённые сверху; клик открывает задачу. Объём и burn-up считаются по истории: каждое добавление задачи в этап и снятие с него записывается в историю задачи (вручную, синхронизацией GitLab или повтором задачи). Задачи, попавшие в этап до того, как Tessera стала это записывать, считаются в этапе со дня своего создания. На доске: селектор и полоса этапа В подбаре доски, рядом с группировкой, — селектор этапа (Shift+E): «Этап: Спринт 42 ▬ 58 %». Меню: активные этапы с прогрессом, запланированные, «Бэклог» (B) — задачи без этапа, «Все задачи» (A) — без фильтра; закрытые — под «Показать закрытые». Сверху поиск; внизу «Управлять этапами…». Выбор запоминается на доску: вернувшись на неё, вы увидите тот же этап. Когда выбран один этап, между подбаром и колонками появляется полоса этапа. Свёрнутая — одна строка: имя, даты, прогресс «18 из 31», первая строка целей и сколько дней осталось. Shift+H или шеврон разворачивает её: цели целиком и три цифры — прогресс по оценке, изменение объёма после старта, просроченные. Состояние полосы запоминается. В меню «⋯» — закрыть этап, открыть в GitLab, скрыть полосу на этой доске (вернуть — тем же Shift+H). Без целей полоса предлагает «Добавить цели →». Полоса этапа над доской Новая задача, созданная на доске с фильтром по этапу, сразу получает этот этап. Как задача попадает в этап Этап выбирается в окне задачи, в поле «Этап»; оттуда же его можно создать на ходу. Одна задача принадлежит одному этапу. На доске по этапам можно и группировать (колонки станут этапами, плюс «Без этапа») — подробнее в статье Панель доски. Связь с GitLab Если проект связан с GitLab, этап синхронизируется с вехой репозитория: имя, даты, состояние и описание (цели) приезжают из GitLab. Такой этап в Tessera пока только для чтения — правка целей, дат и закрытие с записью обратно в GitLab ещё в работе, кнопки показывают «Скоро». Собственный этап Tessera можно создать в GitLab пунктом меню «В GitLab». Удаление связанного этапа предупреждает отдельно: в GitLab веха останется, снимется только связь. Как настраивается сама связь — в статье GitLab: синхронизация.",
       "android": {
         "path": "milestones/milestones.android.md",
         "updated": "2026-08-24",
@@ -3883,23 +3993,33 @@
           "path": "milestones/milestones.en.md",
           "title": "Milestones",
           "category": "Milestones",
-          "updated": "2026-08-28",
+          "updated": "2026-10-07",
           "keywords": [
+            "milestones",
             "milestones",
             "sprint",
             "release",
             "progress",
+            "burn-up",
+            "burn-down",
+            "metrics",
+            "goals",
             "dates",
             "closed",
-            "archive",
             "backlog",
+            "milestone strip",
             "project tree",
             "gitlab"
           ],
           "headings": [
             {
-              "id": "what-the-list-shows",
-              "text": "What the list shows",
+              "id": "where-to-find-milestones",
+              "text": "Where to find milestones",
+              "level": 2
+            },
+            {
+              "id": "states",
+              "text": "States",
               "level": 2
             },
             {
@@ -3908,33 +4028,18 @@
               "level": 2
             },
             {
-              "id": "create",
-              "text": "Create",
-              "level": 3
-            },
-            {
-              "id": "rename-and-move-the-dates",
-              "text": "Rename and move the dates",
-              "level": 3
-            },
-            {
-              "id": "close-and-reopen",
-              "text": "Close and reopen",
-              "level": 3
-            },
-            {
-              "id": "delete",
-              "text": "Delete",
-              "level": 3
-            },
-            {
-              "id": "how-a-task-joins-a-milestone",
-              "text": "How a task joins a milestone",
+              "id": "the-milestone-page",
+              "text": "The milestone page",
               "level": 2
             },
             {
-              "id": "milestones-in-the-project-tree",
-              "text": "Milestones in the project tree",
+              "id": "on-the-board-the-selector-and-the-milestone-strip",
+              "text": "On the board: the selector and the milestone strip",
+              "level": 2
+            },
+            {
+              "id": "how-a-task-gets-into-a-milestone",
+              "text": "How a task gets into a milestone",
               "level": 2
             },
             {
@@ -3943,7 +4048,7 @@
               "level": 2
             }
           ],
-          "text": "A milestone is a point by which a set of tasks has to be ready: a release, a demo, a sprint, a handover. The section opens from Milestones in the sidebar and shows the milestones of every project in the workspace at once. The Milestones section: project milestones with progress What the list shows Milestones are grouped by project. A row carries the name, the dates (from 1 September, until 15 September, or both), a progress bar and a counter of completed tasks (3/6, say). While no task is attached, the progress reads «no tasks» instead. The switch in the top right chooses what to show: Active — open milestones only, All — closed ones as well. If there are no active ones, the section suggests switching to «All» outright, so an empty screen doesn't look like a fault. Clicking a row opens the project's board filtered by that milestone — what is left is visible at once. Managing a project's milestones Milestones are created in a dialog of their own: the gear next to the project name in the Milestones section, or Milestones… in the project's context menu in the tree on the left. Managing a project's milestones: creating, dates, closing Create The bottom row of the dialog is the creation form: a name, an optional start and end, and the Create button. While the name is empty the button is disabled; Enter in the name field does the same thing as the button. Both dates are optional. A milestone without dates is perfectly normal — it just won't show a range in the list. Rename and move the dates Clicking the name turns the row into an edit form: a name field and two date pickers. The tick saves, Cancel leaves it as it was. Dates are cleared by the small cross in the field itself, which strips a milestone of its deadline without touching its tasks. Close and reopen The tick button closes a milestone: it keeps all its tasks and history but leaves the active set — it shows up in the section only under «All», and it hides from the project tree until closed ones are turned on. The arrows button reopens it. A closed row is dimmed, so an open milestone is hard to mistake for a closed one. These are the «archived» milestones: there is no separate archive for them, the state is toggled right here and is reversible. Delete The bin deletes a milestone after a confirmation, which says the thing that matters: the tasks stay, they just lose their milestone. Nothing is lost but the attachment. How a task joins a milestone The milestone is picked in the task window, in the Milestone field. It can also be created on the spot — the «New milestone…» row in the list creates one in the project and attaches it to the task straight away. A task belongs to one milestone; clear the choice and it leaves, and the progress is recounted. If the task sits in a closed milestone, the value says so — «closed». A board can be grouped by milestone (columns become milestones, plus a «No milestone» column) and filtered by it, exactly as by tags and assignees — see The board bar. When a board is opened scoped to a single milestone, a «One milestone shown» chip appears on top with a «Clear milestone» button. Milestones in the project tree By default a project in the sidebar lists its boards. That is configurable: the project's context menu → Show in the tree → Boards, Milestones or Boards and milestones. In the modes that include milestones, milestone rows appear under the project along with a Backlog row — the tasks with no milestone. Clicking any of them opens the project's board with the matching filter. The order: open milestones above closed ones, and within each group by date, the nearest one further down. Closed milestones are hidden in the tree by default. Once milestones are shown there, the same menu grows a Show closed milestones toggle. One limitation: milestone rows are navigation over the project's board, so a project without a single board cannot open a milestone from the tree — the app says so. GitLab If the project is linked to GitLab, a milestone syncs with the repository milestone of the same name. Such a milestone carries a GitLab icon next to its name that leads to the milestone in GitLab itself, and it cannot be edited in Tessera — not the name, not the dates, not the state: GitLab is the source of truth, and the hint on the name says exactly that. The other direction is available: a native Tessera milestone has a To GitLab button that creates a milestone of the same name in the linked repository and links the two. Deleting a linked milestone warns separately: the GitLab milestone stays, only the link is dropped. Syncing is not required — milestones work perfectly well without it. How the link itself is set up is described in GitLab sync.",
+          "text": "A milestone (stage, sprint) is a point by which a set of tasks must be done: a release, a demo, a sprint, a hand-over. Each milestone has goals, dates, its own page with metrics, and on the board — a strip with its progress. The milestone page: goals, burn-up and metrics Where to find milestones The «Milestones» section in the sidebar — the milestones of every project of the workspace at once, with progress. The «Active» / «All» switch adds the closed ones. A click on a row opens the milestone page; the gear by a project opens its milestones in the «Project» window. The project tree. Project menu → «Show in the tree» → «Milestones» or «Boards and milestones»: the project's milestones appear under it with their percentage, plus a «Backlog» row (tasks without a milestone). A milestone opens its page, «Backlog» the project's board with that filter. Closed ones stay hidden until «Show closed milestones» is on in the same menu. The «Project» window → «Milestones» — managing the project's milestones (below). The milestone selector on the board — filtering the board by milestone (below). States A milestone stores two states, as GitLab does: active and closed. «Planned» is an active milestone whose start is still ahead; Tessera shows it so by itself, there is nothing to set. A closed milestone remembers when it was closed. Managing a project's milestones The «Milestones» tab of the «Project» window: a milestone row shows the name, «N days left», dates, state, progress «done / total» and the GitLab milestone number. Closed milestones sit in a folding group at the bottom. A project's milestones in the «Project» window Create — the «+ Milestone» button or N: an empty row, the name, Tab — dates, Enter — create (and type the next one right away). Dates are optional. Open — a click on the row or Enter: the milestone page. Row menu («⋯» or .): rename (F2), dates, close or reopen, create the milestone in GitLab, delete. Deleting takes two steps; the tasks stay but lose the milestone. The milestone page It opens from the milestone list, from the tree, with a click on the name in the milestone strip, and with G, then E from a board filtered by a milestone. Header: name, state, dates, days left, a link to the GitLab milestone. «Open the milestone board» (B) — the board holding most of the milestone's tasks, already filtered — and «Close the milestone» (Shift+X, two steps: the first press asks «Close it for sure?»). Goals — the milestone description in Markdown. «Edit» or E opens the editor with @ mentions; Ctrl+Enter saves, Esc cancels (with a second press if the text changed). Burn-up — the «done» line against the scope line over the milestone's days, and dashed — the forecast to the end of the milestone at the pace of the last five working days. Switches: tasks / estimate, burn-up / burn-down. Weekends sit on a grey band, today is a vertical mark. Before the milestone starts there is no chart. Progress — two rings: by task count and by estimate. Signals — «overdue», «no estimate», «no assignee»: a click filters the task list below. By status — a bar in the column colours. Scope change — how many tasks were added and removed after the milestone's first day and how the scope moved. By assignee — done / total and the estimate per person. Pace — what this milestone has done against the three previous closed ones, with the average and the forecast. Milestone tasks — by status, unfinished first; a click opens the task. Scope and burn-up are counted from history: every time a task joins or leaves a milestone it is written to the task's history (by hand, by the GitLab sync or by a repeating task). Tasks that were in a milestone before Tessera started recording this count as in it from the day they were created. On the board: the selector and the milestone strip In the board's sub-toolbar, next to the grouping, is the milestone selector (Shift+E): «Milestone: Sprint 42 ▬ 58 %». Its menu: active milestones with progress, planned ones, «Backlog» (B) — tasks without a milestone, «All tasks» (A) — no filter; closed ones under «Show closed». A search on top, «Manage milestones…» at the bottom. The pick is remembered per board: come back and you see the same milestone. With one milestone picked, a milestone strip appears between the sub-toolbar and the columns. Folded, it is one row: the name, dates, progress «18 of 31», the first line of the goals and the days left. Shift+H or the chevron unfolds it: the goals in full and three figures — progress by estimate, scope change since the start, overdue. The strip remembers its state. Its «⋯» menu: close the milestone, open it in GitLab, hide the strip on this board (bring it back with the same Shift+H). Without goals the strip offers «Add goals →». The milestone strip over the board A task created on a board filtered by a milestone gets that milestone right away. How a task gets into a milestone The milestone is picked in the task window, in the «Milestone» field; you can also create one there on the fly. A task belongs to one milestone. The board can also be grouped by milestone (columns become milestones, plus «No milestone») — see Board toolbar. GitLab If the project is linked to GitLab, a milestone is synced with the repository's milestone: name, dates, state and description (the goals) come from GitLab. Such a milestone is read-only in Tessera for now — editing the goals and dates and closing it with the change written back to GitLab are still in the works, the buttons say «Soon». A Tessera-native milestone can be created in GitLab with the «To GitLab» menu item. Deleting a linked milestone warns separately: the milestone stays in GitLab, only the link goes. How the link itself is set up is in GitLab: sync.",
           "android": {
             "path": "milestones/milestones.android.en.md",
             "updated": "2026-08-24",

@@ -368,31 +368,54 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'conference-room')
     })
 
-    // ── tags and milestone management (#2823, wave 3) ──
+    // ── the «Проект» window, the stage page and strip (#2971) ──
+
+    test('окно проекта', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('board-tags').click()
+      await expect(page.getByTestId('project-window')).toBeVisible()
+      await page.getByTestId('project-tab-general').click()
+      await expect(page.getByTestId('project-general')).toBeVisible()
+      await shoot(page, scheme, 'project-window')
+    })
 
     test('управление тегами', async ({ page }) => {
       await openBoard(page)
-      // The tag popover hangs off the first button of `.board-actions`; the
-      // caption is translated, so the anchor is the position in that row.
-      await page.locator('.board-actions button').first().click()
-      await expect(page.locator('.tagmgr')).toBeVisible()
-      // Double-click is what opens the rename field and the colour swatches under
-      // it — the gesture the article exists to document, so the shot has to show
-      // its result rather than the resting list.
-      await page.locator('.tagmgr .chip').first().dblclick()
-      await expect(page.locator('.tagmgr .swatches')).toBeVisible()
-      await shoot(page, scheme, 'tags-manager')
+      await page.getByTestId('board-tags').click()
+      const tab = page.getByTestId('project-tags')
+      await expect(tab.getByTestId('tag-row').first()).toBeVisible()
+      // Two rows picked: the selection bar is what the article walks through.
+      await tab.getByTestId('tag-check').nth(0).click()
+      await tab.getByTestId('tag-check').nth(1).click()
+      await expect(page.getByTestId('tag-selection-bar')).toBeVisible()
+      await shoot(page, scheme, 'project-tags')
     })
 
     test('управление этапами', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('board-stages').click()
+      await expect(page.getByTestId('stage-row').first()).toBeVisible()
+      await shoot(page, scheme, 'project-stages')
+    })
+
+    test('страница этапа', async ({ page }) => {
       await page.goto('/milestones')
-      await page.locator('.ms-manage').first().click()
-      const card = page.locator('.m-card')
-      await expect(card).toBeVisible()
-      // The rows arrive in their own request; waiting for one keeps the shutter
-      // off the empty state, which is a picture of nothing.
-      await expect(card.locator('.m-row').first()).toBeVisible()
-      await shoot(page, scheme, 'milestones-manage')
+      await page.locator('.ms-row', { hasText: 'Релиз 2.4' }).first().click()
+      await expect(page.getByTestId('stage-progress')).toBeVisible()
+      await shoot(page, scheme, 'stage-page')
+    })
+
+    test('полоса этапа', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('stage-select').click()
+      await page.getByTestId('stage-option').first().click()
+      const strip = page.getByTestId('stage-strip')
+      await expect(strip).toBeVisible()
+      if ((await strip.getAttribute('data-open')) !== '1') {
+        await page.getByTestId('stage-strip-toggle').click()
+      }
+      await expect(strip).toHaveAttribute('data-open', '1')
+      await shoot(page, scheme, 'stage-strip')
     })
 
     // Admin screens (#2810). They exist only for a global admin, and the backend
