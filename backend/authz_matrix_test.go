@@ -6,10 +6,21 @@
 //     resource resolves, 404 when the id doesn't exist at all;
 //   - malformed UUID param → 400 (parseID), except GET /boards/:id which
 //     falls back to slug lookup and answers 404.
+//
+// The first sweep reads the route table of the built router rather than a list
+// kept here. It used to be a hand-written list "kept in sync with router.go",
+// and by the time that was noticed it covered 156 of 227 protected routes: the
+// whole /documents and /conferences families, the job console and the webhook
+// secret routes had been added without it. A route that the list forgets is a
+// route whose authentication nothing asserts, and the omission is invisible —
+// the sweep still passes, over fewer routes. So the list is now the *public*
+// surface, which is short, rarely changes, and has to be declared on purpose.
 package main
 
 import (
+	"encoding/base64"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -17,179 +28,218 @@ import (
 // (all real rows use gen_random_uuid).
 const dummyID = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee"
 
-// protectedRoutes lists every route behind middleware.Auth (keep in sync with
-// router.go), with path params substituted so gin matches the route.
-func protectedRoutes() []struct{ method, path string } {
-	u := dummyID
-	return []struct{ method, path string }{
-		{"GET", "/auth/me"},
-		{"POST", "/auth/resend-verification"},
-		{"POST", "/auth/tokens"},
-		{"GET", "/auth/tokens"},
-		{"DELETE", "/auth/tokens/" + u},
-		{"PATCH", "/users/me"},
-		{"PUT", "/users/me/password"},
-		{"PUT", "/users/me/preferences"},
-		{"PUT", "/users/me/avatar"},
-		{"DELETE", "/users/me/avatar"},
-		{"POST", "/workspaces"},
-		{"GET", "/workspaces"},
-		{"GET", "/workspaces/" + u},
-		{"PATCH", "/workspaces/" + u},
-		{"PUT", "/workspaces/" + u + "/appearance"},
-		{"DELETE", "/workspaces/" + u},
-		{"GET", "/workspaces/" + u + "/search"},
-		{"GET", "/workspaces/" + u + "/tasks"},
-		{"GET", "/workspaces/" + u + "/tasks/by-number/1"},
-		{"GET", "/board-by-slug"},
-		{"GET", "/workspaces/" + u + "/summary"},
-		{"GET", "/workspaces/" + u + "/members"},
-		{"POST", "/workspaces/" + u + "/members"},
-		{"PATCH", "/workspaces/" + u + "/members/" + u},
-		{"DELETE", "/workspaces/" + u + "/members/" + u},
-		{"POST", "/workspaces/" + u + "/invitations"},
-		{"GET", "/workspaces/" + u + "/invitations"},
-		{"DELETE", "/workspaces/" + u + "/invitations/" + u},
-		{"POST", "/invitations/accept"},
-		{"GET", "/admin/users"},
-		{"PATCH", "/admin/users/" + u + "/active"},
-		{"PATCH", "/admin/users/" + u + "/admin"},
-		{"POST", "/admin/users/" + u + "/reset-link"},
-		{"GET", "/admin/oauth/gitlab"},
-		{"PUT", "/admin/oauth/gitlab"},
-		{"POST", "/workspaces/" + u + "/groups"},
-		{"GET", "/workspaces/" + u + "/groups"},
-		{"POST", "/workspaces/" + u + "/projects"},
-		{"GET", "/workspaces/" + u + "/projects"},
-		{"POST", "/projects/" + u + "/tags"},
-		{"GET", "/projects/" + u + "/tags"},
-		{"GET", "/workspaces/" + u + "/tags"},
-		{"GET", "/projects/" + u + "/tag-prefixes"},
-		{"PUT", "/projects/" + u + "/tag-prefixes"},
-		{"GET", "/workspaces/" + u + "/tag-prefixes"},
-		{"PUT", "/workspaces/" + u + "/estimation"},
-		{"PUT", "/projects/" + u + "/estimation"},
-		{"POST", "/workspaces/" + u + "/notes"},
-		{"GET", "/workspaces/" + u + "/notes"},
-		{"PATCH", "/groups/" + u},
-		{"PATCH", "/groups/" + u + "/move"},
-		{"DELETE", "/groups/" + u},
-		{"GET", "/projects/" + u},
-		{"PATCH", "/projects/" + u},
-		{"PATCH", "/projects/" + u + "/move"},
-		{"POST", "/projects/" + u + "/transfer"},
-		{"DELETE", "/projects/" + u},
-		{"POST", "/projects/" + u + "/boards"},
-		{"GET", "/projects/" + u + "/boards"},
-		{"GET", "/boards/" + u},
-		{"PATCH", "/boards/" + u},
-		{"PATCH", "/boards/" + u + "/done-column"},
-		{"DELETE", "/boards/" + u},
-		{"POST", "/boards/" + u + "/columns"},
-		{"GET", "/boards/" + u + "/columns"},
-		{"POST", "/boards/" + u + "/tasks"},
-		{"GET", "/boards/" + u + "/tasks"},
-		{"GET", "/boards/" + u + "/subtasks"},
-		{"GET", "/boards/" + u + "/archive"},
-		{"GET", "/boards/" + u + "/dependencies"},
-		{"GET", "/boards/" + u + "/views"},
-		{"POST", "/boards/" + u + "/views"},
-		{"DELETE", "/views/" + u},
-		{"PATCH", "/columns/" + u},
-		{"PATCH", "/columns/" + u + "/move"},
-		{"DELETE", "/columns/" + u},
-		{"GET", "/tasks/" + u},
-		{"PATCH", "/tasks/" + u},
-		{"PATCH", "/tasks/" + u + "/move"},
-		{"PATCH", "/tasks/" + u + "/eisenhower"},
-		{"PATCH", "/tasks/" + u + "/parent"},
-		{"PATCH", "/tasks/" + u + "/transfer"},
-		{"PATCH", "/tasks/" + u + "/archive"},
-		{"PATCH", "/tasks/" + u + "/restore"},
-		{"DELETE", "/tasks/" + u},
-		{"POST", "/tasks/" + u + "/tags"},
-		{"DELETE", "/tasks/" + u + "/tags/" + u},
-		{"POST", "/tasks/" + u + "/assignees"},
-		{"DELETE", "/tasks/" + u + "/assignees/" + u},
-		{"POST", "/tasks/" + u + "/gitlab-assignees"},
-		{"DELETE", "/tasks/" + u + "/gitlab-assignees/someone"},
-		{"POST", "/tasks/" + u + "/gitlab-issue"},
-		{"POST", "/tasks/" + u + "/gitlab-group"},
-		{"DELETE", "/tasks/" + u + "/gitlab-group"},
-		{"GET", "/tasks/" + u + "/events"},
-		{"GET", "/tasks/" + u + "/comments"},
-		{"POST", "/tasks/" + u + "/comments"},
-		{"PATCH", "/comments/" + u},
-		{"DELETE", "/comments/" + u},
-		{"GET", "/tasks/" + u + "/relations"},
-		{"POST", "/tasks/" + u + "/relations"},
-		{"DELETE", "/relations/" + u},
-		{"GET", "/tasks/" + u + "/attachments"},
-		{"POST", "/tasks/" + u + "/attachments"},
-		{"GET", "/attachments/" + u + "/download"},
-		{"DELETE", "/attachments/" + u},
-		{"POST", "/uploads"},
-		{"GET", "/notifications"},
-		{"GET", "/notifications/unread-count"},
-		{"POST", "/notifications/" + u + "/read"},
-		{"POST", "/notifications/read-all"},
-		{"GET", "/notification-channels"},
-		{"POST", "/notification-channels"},
-		{"PATCH", "/notification-channels/" + u},
-		{"DELETE", "/notification-channels/" + u},
-		{"POST", "/notification-channels/" + u + "/test"},
-		{"POST", "/notification-devices"},
-		{"POST", "/notification-template-preview"},
-		{"GET", "/notification-prefs"},
-		{"PUT", "/notification-prefs"},
-		{"PATCH", "/tasks/" + u + "/due-notify"},
-		{"GET", "/notification-routes"},
-		{"POST", "/notification-routes"},
-		{"PATCH", "/notification-routes/" + u},
-		{"DELETE", "/notification-routes/" + u},
-		{"PATCH", "/tags/" + u},
-		{"DELETE", "/tags/" + u},
-		{"GET", "/workspaces/" + u + "/milestones"},
-		{"GET", "/projects/" + u + "/milestones"},
-		{"POST", "/projects/" + u + "/milestones"},
-		{"PATCH", "/milestones/" + u},
-		{"DELETE", "/milestones/" + u},
-		{"POST", "/tasks/" + u + "/milestone"},
-		{"DELETE", "/tasks/" + u + "/milestone"},
-		{"POST", "/milestones/" + u + "/gitlab"},
-		{"GET", "/notes/" + u},
-		{"PATCH", "/notes/" + u},
-		{"DELETE", "/notes/" + u},
-		{"GET", "/gitlab/connection"},
-		{"POST", "/gitlab/connection"},
-		{"DELETE", "/gitlab/connection"},
-		{"GET", "/workspaces/" + u + "/gitlab/integrations"},
-		{"POST", "/workspaces/" + u + "/gitlab/integrations"},
-		{"PUT", "/workspaces/" + u + "/gitlab/integrations/" + u},
-		{"DELETE", "/workspaces/" + u + "/gitlab/integrations/" + u},
-		{"POST", "/workspaces/" + u + "/gitlab/integrations/" + u + "/sync"},
-		{"GET", "/workspaces/" + u + "/gitlab/members"},
-		{"GET", "/workspaces/" + u + "/gitlab/issue-templates"},
-		{"GET", "/workspaces/" + u + "/gitlab/sync-runs"},
-		{"GET", "/workspaces/" + u + "/gitlab/sync-runs/" + u + "/actions"},
-		{"POST", "/workspaces/" + u + "/gitlab/sync-runs/" + u + "/actions/" + u + "/retry"},
-		{"GET", "/workspaces/" + u + "/gitlab/conflicts"},
-		{"POST", "/tasks/" + u + "/gitlab/conflicts/" + u + "/resolve"},
-		{"POST", "/reminders"},
-		{"GET", "/reminders"},
-		{"PATCH", "/reminders/" + u},
-		{"DELETE", "/reminders/" + u},
+// publicKind says why a route sits outside the protected group.
+type publicKind int
+
+const (
+	// publicAnon needs no credential at all: health, the login surface, a blob
+	// served by unguessable name.
+	publicAnon publicKind = iota
+	// publicSelfAuth is outside middleware.Auth only because the caller cannot
+	// send an Authorization header (a browser WebSocket, an <img>), and the
+	// handler authenticates for itself — a bearer in the subprotocol, the media
+	// cookie, an HMAC signature, a shared secret. Anonymous access must still be
+	// refused, which is what TestAuthzPublicSurface checks.
+	publicSelfAuth
+)
+
+// publicRoute is one declared exemption from the 401 sweep.
+type publicRoute struct {
+	kind publicKind
+	// query is appended to the path for the anonymous probe. A signed proxy
+	// answers 400 to a request carrying no parameters at all, and that 400 proves
+	// nothing about the signature check, so the probe hands it a well-formed
+	// query with a deliberately wrong signature instead.
+	query string
+	// wantAnon is the exact status an anonymous caller must get from a
+	// publicSelfAuth route. Pinned rather than "anything but 2xx", because the
+	// interesting regression does not produce a 2xx: a socket that stopped
+	// checking the bearer would fail the *upgrade* of this header-less GET and
+	// answer 400, which has to read as a failure rather than as a refusal.
+	wantAnon int
+}
+
+// unsignedSig is a signature that cannot be the HMAC of anything.
+const unsignedSig = "0000000000000000000000000000000000000000000000000000000000000000"
+
+// publicAPIRoutes is every /api route deliberately registered outside the
+// protected group, keyed "METHOD /path" with gin's own param placeholders (the
+// path as router.go writes it, minus the /api prefix).
+//
+// This is the allowlist the 401 sweep subtracts: a new route is protected as far
+// as the test is concerned unless it is named here. Registering one in the
+// public group by mistake — the failure the sweep exists to catch — therefore
+// fails the test instead of quietly widening the anonymous surface.
+func publicAPIRoutes() map[string]publicRoute {
+	anon := publicRoute{kind: publicAnon}
+	selfAuth := func(status int, query string) publicRoute {
+		return publicRoute{kind: publicSelfAuth, query: query, wantAnon: status}
 	}
+	// Enough of a query for the three signed proxies to reach their HMAC check.
+	assetQ := "?ws=" + dummyID +
+		"&p=" + base64.RawURLEncoding.EncodeToString([]byte("/uploads/deadbeef/x.png")) +
+		"&sig=" + unsignedSig
+	avatarQ := "?ws=" + dummyID +
+		"&u=" + base64.RawURLEncoding.EncodeToString([]byte("https://gitlab.invalid/avatar.png")) +
+		"&sig=" + unsignedSig
+	docAssetQ := "?doc=" + dummyID + "&ws=" + dummyID + "&n=x.png&sig=" + unsignedSig
+	return map[string]publicRoute{
+		"GET /health":         anon,
+		"GET /health/ready":   anon,
+		"GET /version":        anon,
+		"GET /client-config":  anon,
+		"POST /sentry-tunnel": anon,
+		// The credential surface: a caller that has no session is the point.
+		"POST /auth/register":        anon,
+		"POST /auth/login":           anon,
+		"POST /auth/refresh":         anon,
+		"POST /auth/logout":          anon,
+		"POST /auth/verify-email":    anon,
+		"POST /auth/forgot-password": anon,
+		"POST /auth/reset-password":  anon,
+		"GET /auth/providers":        anon,
+		"GET /auth/gitlab/authorize": anon,
+		"GET /auth/gitlab/callback":  anon,
+		// The desktop/mobile OAuth return trades a one-time handoff code for the
+		// session: the caller has none yet by construction (#2932).
+		"POST /auth/oauth/handoff": anon,
+		// Inline media and avatars: an <img> sends no header. /uploads/:name is
+		// guarded by the media cookie only when MEDIA_REQUIRE_AUTH is on (off in
+		// this harness, as in the default install), and an avatar blob is keyed by
+		// user id on purpose.
+		"GET /uploads/:name":    anon,
+		"GET /users/:id/avatar": anon,
+		// Sockets: the browser WebSocket API cannot send Authorization, so each
+		// handler checks the bearer (header or subprotocol) *before* upgrading —
+		// which is why a plain GET gets a 401 and not a handshake error.
+		"GET /ws":                 selfAuth(http.StatusUnauthorized, ""),
+		"GET /documents/:id/ws":   selfAuth(http.StatusUnauthorized, ""),
+		"GET /conferences/:id/ws": selfAuth(http.StatusUnauthorized, ""),
+		// Signed proxies: the capability is the HMAC over the query string.
+		"GET /gitlab/asset":    selfAuth(http.StatusForbidden, assetQ),
+		"GET /gitlab/avatar":   selfAuth(http.StatusForbidden, avatarQ),
+		"GET /documents/asset": selfAuth(http.StatusForbidden, docAssetQ),
+		// GitLab has no Tessera session; the binding's shared secret in
+		// X-Gitlab-Token authenticates. An unknown binding is 404 without detail,
+		// so the route can't be used to enumerate integration ids.
+		"POST /gitlab/webhook/:integrationId": selfAuth(http.StatusNotFound, ""),
+	}
+}
+
+// apiRoute is one route of the built router, with the /api prefix stripped.
+type apiRoute struct{ method, tmpl string }
+
+// key is the publicAPIRoutes lookup form.
+func (r apiRoute) key() string { return r.method + " " + r.tmpl }
+
+// path substitutes gin's params so the router actually matches the route: ids
+// get a well-formed UUID that resolves to nothing, everything else a value no
+// row carries. What comes back is therefore 401/403/404 — never a side effect.
+func (r apiRoute) path() string {
+	segs := strings.Split(r.tmpl, "/")
+	for i, s := range segs {
+		name, isParam := strings.CutPrefix(s, ":")
+		if !isParam {
+			continue
+		}
+		switch {
+		case name == "number":
+			segs[i] = "1"
+		case strings.EqualFold(name, "id"), strings.HasSuffix(name, "Id"), strings.HasSuffix(name, "ID"):
+			segs[i] = dummyID
+		default:
+			segs[i] = "nothing-by-this-name"
+		}
+	}
+	return strings.Join(segs, "/")
+}
+
+// apiRoutes reads every /api route off the engine the harness is serving.
+func apiRoutes(t *testing.T) []apiRoute {
+	t.Helper()
+	if testRouter == nil {
+		t.Fatal("testRouter is nil — the harness did not boot")
+	}
+	var out []apiRoute
+	for _, ri := range testRouter.Routes() {
+		tmpl, ok := strings.CutPrefix(ri.Path, "/api")
+		if !ok || tmpl == "" {
+			continue // static/SPA routes are not part of the API surface
+		}
+		out = append(out, apiRoute{method: ri.Method, tmpl: tmpl})
+	}
+	if len(out) == 0 {
+		t.Fatal("no /api routes found on the router")
+	}
+	return out
+}
+
+// protectedRoutes is every /api route the public allowlist does not exempt.
+func protectedRoutes(t *testing.T) []apiRoute {
+	t.Helper()
+	public := publicAPIRoutes()
+	var out []apiRoute
+	for _, r := range apiRoutes(t) {
+		if _, exempt := public[r.key()]; !exempt {
+			out = append(out, r)
+		}
+	}
+	return out
 }
 
 // Every protected route rejects a request without a bearer token with 401
 // before any handler logic runs.
 func TestAuthzNoToken(t *testing.T) {
 	t.Parallel()
-	for _, rt := range protectedRoutes() {
-		r := doReq(t, "", rt.method, rt.path, nil)
+	routes := protectedRoutes(t)
+	// A guard on the guard: if the allowlist ever swallowed most of the surface
+	// (a stray "/" entry, a refactor that moved routes out of /api), the sweep
+	// would still pass over whatever was left. The count only grows.
+	if len(routes) < 200 {
+		t.Fatalf("only %d protected routes found — the sweep has lost coverage", len(routes))
+	}
+	for _, rt := range routes {
+		r := doReq(t, "", rt.method, rt.path(), nil)
 		if r.Status != http.StatusUnauthorized {
-			t.Errorf("%s %s: status %d, want 401\n%s", rt.method, rt.path, r.Status, r.Body)
+			t.Errorf("%s %s: status %d, want 401\n%s", rt.method, rt.path(), r.Status, r.Body)
+		}
+	}
+}
+
+// The public surface is exactly what publicAPIRoutes declares, and the routes
+// that authenticate for themselves do authenticate.
+//
+// The second half is the part with teeth: /ws, the document and conference
+// sockets and the three signed proxies are outside middleware.Auth because their
+// callers cannot send a header, so nothing but their own first lines stands
+// between an anonymous request and a workspace's content. Losing that check
+// would look like nothing from the outside — the route would simply start
+// answering.
+func TestAuthzPublicSurface(t *testing.T) {
+	t.Parallel()
+	routes := apiRoutes(t)
+	public := publicAPIRoutes()
+	registered := map[string]bool{}
+	for _, r := range routes {
+		registered[r.key()] = true
+	}
+	// A stale exemption is a route that no longer exists — or worse, one that was
+	// renamed and is now swept as protected under its old name while the new name
+	// sits in the public group.
+	for key := range public {
+		if !registered[key] {
+			t.Errorf("publicAPIRoutes names %q, which the router does not register", key)
+		}
+	}
+	for _, r := range routes {
+		pr, ok := public[r.key()]
+		if !ok || pr.kind != publicSelfAuth {
+			continue
+		}
+		res := doReq(t, "", r.method, r.path()+pr.query, nil)
+		if res.Status != pr.wantAnon {
+			t.Errorf("%s %s: anonymous request answered %d, want %d — this route authenticates for itself\n%s",
+				r.method, r.path()+pr.query, res.Status, pr.wantAnon, res.Body)
 		}
 	}
 }

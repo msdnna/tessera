@@ -38,7 +38,11 @@ import (
 )
 
 var (
-	testServer  *httptest.Server
+	testServer *httptest.Server
+	// testRouter is the very engine testServer serves, kept so a test can read
+	// the route table instead of restating it (see authz_matrix_test.go: a
+	// hand-written route list silently stops covering what it doesn't list).
+	testRouter  *gin.Engine
 	testPool    *pgxpool.Pool
 	testQueries *db.Queries
 	testAPI     *handlers.API // spawn Run*Worker(ctx) again to drain an outbox now (workers drain once at startup)
@@ -114,6 +118,7 @@ func TestMain(m *testing.M) {
 	}
 	router, rh := newRouter(cfg, testQueries, testPool, hub, mail.New(mail.Config{}))
 	testAPI = rh
+	testRouter = router
 	testServer = httptest.NewServer(router)
 	defer testServer.Close()
 
