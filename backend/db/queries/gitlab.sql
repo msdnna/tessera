@@ -52,20 +52,25 @@ WHERE board_id IN (SELECT id FROM boards WHERE project_id = $1);
 -- name: GetGitlabIntegration :one
 SELECT * FROM gitlab_integrations WHERE id = $1;
 
+-- A binding whose board is soft-deleted (0078) is hidden with the board and
+-- sits out the sync until the board is restored or purged (the purge takes the
+-- binding by cascade).
 -- name: ListGitlabIntegrationsByWorkspace :many
-SELECT * FROM gitlab_integrations WHERE workspace_id = $1 ORDER BY name, created_at;
+SELECT * FROM gitlab_integrations WHERE workspace_id = $1
+  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL)
+ORDER BY name, created_at;
 
 -- GetGitlabIntegrationByBoard resolves the binding that mirrors into a given board
 -- (task-scoped operations: create-issue, board-scoped sync).
 -- name: GetGitlabIntegrationByBoard :one
-SELECT * FROM gitlab_integrations WHERE board_id = $1;
+SELECT * FROM gitlab_integrations WHERE board_id = $1 AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL);
 
 -- GetGitlabIntegrationByProject resolves a binding whose target board lives in a
 -- project (milestone push is project-scoped). Picks the oldest when several.
 -- name: GetGitlabIntegrationByProject :one
 SELECT i.* FROM gitlab_integrations i
 JOIN boards b ON b.id = i.board_id
-WHERE b.project_id = $1
+WHERE b.project_id = $1 AND b.deleted_at IS NULL
 ORDER BY i.created_at
 LIMIT 1;
 
@@ -104,7 +109,8 @@ SELECT * FROM gitlab_integrations
 WHERE enabled
   AND sync_interval_sec > 0
   AND owner_user_id IS NOT NULL
-  AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec));
+  AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
+  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL);
 
 -- ListDueSyncIntegrations returns integrations due for unattended sync regardless
 -- of an owner credential — used when an instance service token drives the sync.
@@ -112,7 +118,8 @@ WHERE enabled
 SELECT * FROM gitlab_integrations
 WHERE enabled
   AND sync_interval_sec > 0
-  AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec));
+  AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
+  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL);
 
 -- ── Webhook (near-realtime trigger, #2594) ─────────────────
 

@@ -11,7 +11,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { NIcon, NDropdown, NTooltip, NPopconfirm } from 'naive-ui'
 import { AddOutline, HelpCircleOutline, LogInOutline } from '@vicons/ionicons5'
 import BrandLogo from '@/components/BrandLogo.vue'
-import ServerEditModal from '@/components/ServerEditModal.vue'
+import ServerFormPopover from './ServerFormPopover.vue'
 import RailTile from './RailTile.vue'
 import RailAppearance from './RailAppearance.vue'
 import VersionBadge from '@/components/VersionBadge.vue'
@@ -23,6 +23,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useHelpStore } from '@/stores/help'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { handleRowKeys } from '@/composables/useRowKeys'
 import { useServerBadges } from '@/composables/useServerBadges'
 import { sSetFor } from '@/utils/serverStorage'
 import { serverLabel } from '@/utils/servers'
@@ -88,7 +90,12 @@ async function pick(server, w) {
 // on the current workspace — with the sidebar collapsed this is where members
 // and integrations are reached — and appearance / delete on the others.
 const menu = ref({ show: false, x: 0, y: 0, kind: '', target: null })
-const wsMenu = useWorkspaceMenu(() => (menu.value.kind === 'ws' ? menu.value.target : null))
+const railEl = ref(null)
+const tileEl = (id) => railEl.value?.querySelector(`[data-ws="${CSS.escape(id)}"]`) || null
+const wsMenu = useWorkspaceMenu(
+  () => (menu.value.kind === 'ws' ? menu.value.target : null),
+  () => (menu.value.target ? tileEl(menu.value.target.id) : null),
+)
 const menuOptions = computed(() => {
   const { kind } = menu.value
   if (kind === 'server') {
@@ -105,7 +112,8 @@ function openMenu(kind, target, e) {
   if (!menuOptions.value.length) menu.value.show = false
 }
 
-const serverEdit = ref({ show: false, server: null })
+// The server form opens at the door that asked: the server tile, or «+».
+const serverEdit = ref({ show: false, server: null, anchor: null })
 
 // Removing a profile purges its namespace — the refresh token included — and, if
 // it was the last one, puts a fresh profile pointed at the public default in its
@@ -133,13 +141,22 @@ function onMenu(key) {
   const { kind, target } = menu.value
   if (key === 'integrations') return // a submenu head
   menu.value.show = false
-  if (key === 'server-edit') serverEdit.value = { show: true, server: target }
+  if (key === 'server-edit')
+    serverEdit.value = {
+      show: true,
+      server: target,
+      anchor: railEl.value?.querySelector(`[data-server="${CSS.escape(target.id)}"]`) || null,
+    }
   else if (key === 'server-remove') askRemove(target)
   else if (kind === 'ws') wsMenu.select(key)
 }
+const addBtn = ref(null)
+function openCreate() {
+  dialogs.open('create', null, addBtn.value)
+}
 function onAdd(key) {
-  if (key === 'server-add') serverEdit.value = { show: true, server: null }
-  else dialogs.open('create')
+  if (key === 'server-add') serverEdit.value = { show: true, server: null, anchor: addBtn.value }
+  else openCreate()
 }
 
 // ── «+»: a new workspace; on desktop also a new server ──
@@ -152,8 +169,8 @@ function onServerSave(patch) {
   if (serverEdit.value.server) servers.update(serverEdit.value.server.id, patch)
   else servers.add(patch)
 }
-// The modal's own «Удалить сервер» confirms in place (ServerEditModal), so by the
-// time it reaches here the answer is already yes.
+// The form's own «Удалить сервер» takes two presses (ServerFormPopover), so by
+// the time it reaches here the answer is already yes.
 function onServerRemove(id) {
   serverEdit.value.show = false
   servers.remove(id)
@@ -163,10 +180,43 @@ function serverBadge(s) {
   return s.id === servers.activeId ? 0 : servers.badges[s.id] || 0
 }
 const serverName = (s) => s.name || serverLabel(s.url)
+
+// ── keyboard (#2969): G W gets onto the rail, ↑/↓ walk the workspace tiles,
+// ⇧N opens «Новое пространство», I the focused tile's «Оформление».
+function tiles() {
+  return [...(railEl.value?.querySelectorAll('[data-ws]') || [])].filter(
+    (el) => el.offsetParent !== null,
+  )
+}
+function focusRail() {
+  const list = tiles()
+  const cur = list.find((el) => el.getAttribute('aria-current') === 'true') || list[0]
+  cur?.focus()
+}
+useShortcuts({ 'nav.goRail': focusRail })
+function onRailKey(e) {
+  const list = tiles()
+  const i = list.indexOf(document.activeElement)
+  if (i < 0) return
+  if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    list[Math.min(list.length - 1, Math.max(0, i + (e.key === 'ArrowDown' ? 1 : -1)))].focus()
+    return
+  }
+  const id = list[i].getAttribute('data-ws')
+  const w = ws.list.find((x) => x.id === id)
+  handleRowKeys(e, {
+    'row.new': openCreate,
+    'row.icon': () => {
+      if (w && ['owner', 'admin'].includes(w.my_role))
+        dialogs.open('appearance', w.id === ws.currentId ? null : w, list[i])
+    },
+  })
+}
 </script>
 
 <template>
-  <div class="ar" data-testid="app-rail">
+  <div ref="railEl" class="ar" data-testid="app-rail">
     <!-- The logo carries the build versions (v2): they used to be a line in the
          working area's corner, under the FAB. A click opens «Что нового», as the
          line did (#2812). -->
@@ -186,7 +236,7 @@ const serverName = (s) => s.name || serverLabel(s.url)
       <div class="ar-tip-sub ar-ver-hint">{{ t('app.whatsNew.historyTitle') }}</div>
     </n-tooltip>
 
-    <div class="ar-list" data-tour="ws-switch">
+    <div class="ar-list" data-tour="ws-switch" @keydown="onRailKey">
       <!-- Web: one server, the one serving this page — just its workspaces. -->
       <template v-if="!desktop">
         <RailTile
@@ -265,8 +315,10 @@ const serverName = (s) => s.name || serverLabel(s.url)
         @select="onAdd"
       >
         <button
+          ref="addBtn"
           type="button"
           class="ar-add"
+          :class="{ open: dialogs.current === 'create' }"
           data-testid="rail-add"
           :aria-label="t('shell.rail.add')"
         >
@@ -276,11 +328,13 @@ const serverName = (s) => s.name || serverLabel(s.url)
       <n-tooltip v-else-if="auth.isAuthenticated" placement="right" :delay="300">
         <template #trigger>
           <button
+            ref="addBtn"
             type="button"
             class="ar-add"
+            :class="{ open: dialogs.current === 'create' }"
             data-testid="rail-add"
             :aria-label="t('shell.workspace.create')"
-            @click="dialogs.open('create')"
+            @click="openCreate"
           >
             <n-icon :component="AddOutline" :size="18" />
           </button>
@@ -330,10 +384,11 @@ const serverName = (s) => s.name || serverLabel(s.url)
       {{ t('shell.servers.removeConfirm', { name: removeAsk.name }) }}
     </n-popconfirm>
 
-    <ServerEditModal
+    <ServerFormPopover
       v-if="servers.enabled"
       v-model:show="serverEdit.show"
       :server="serverEdit.server"
+      :anchor="() => serverEdit.anchor || addBtn"
       @save="onServerSave"
       @remove="onServerRemove"
     />
@@ -429,6 +484,10 @@ const serverName = (s) => s.name || serverLabel(s.url)
 .ar-help:hover {
   color: var(--t-text1);
   background: var(--t-hover);
+}
+.ar-add.open {
+  background: var(--t-active);
+  color: var(--t-primary);
 }
 .ar-tip-name {
   font-weight: 600;

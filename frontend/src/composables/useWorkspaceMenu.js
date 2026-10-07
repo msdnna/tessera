@@ -43,7 +43,8 @@ function withCount(label, count) {
 //
 // `workspace` is a getter; for a workspace other than the current one (a rail
 // tile's right-click) only the actions that don't need it to be open remain.
-export function useWorkspaceMenu(workspace = null) {
+// `anchor` (a getter) is the element the small dialogs open at (#2969).
+export function useWorkspaceMenu(workspace = null, anchor = null) {
   const { t } = useI18n()
   const message = useMessage()
   const ws = useWorkspacesStore()
@@ -108,7 +109,7 @@ export function useWorkspaceMenu(workspace = null) {
       return
     }
     if (key === 'integrations') return
-    dialogs.open(key, isCurrent.value ? null : target.value)
+    dialogs.open(key, isCurrent.value ? null : target.value, anchor ? anchor() : null)
   }
 
   return { options, select }

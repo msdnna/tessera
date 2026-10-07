@@ -3,7 +3,7 @@ title: Board columns
 category: Boards
 order: 22
 keywords: columns, statuses, drag, rename, colour, completing column, collapse, delete, defaults
-updated: 2026-08-28
+updated: 2026-10-07
 ---
 
 A column is a task's status. A new board starts with four columns, and the set can be changed however you like: renamed, coloured, reordered, added to and deleted.
@@ -26,13 +26,13 @@ A column is moved **by its header**: take it by the name or by the status glyph 
 
 ## Renaming with a double click
 
-**A double click on the name** turns the header into an input. Enter saves; clicking away saves too (the field commits on blur). An empty name, or one you didn't actually change, just closes the field.
+**A double click on the name** (or **F2** while the pointer is over the column) turns the header into a field right in place. Enter saves, clicking away saves too, **Esc** cancels. **Tab** saves and opens the next column's rename straight away — handy for going through a whole board. An empty name isn't saved: Enter says a name is needed, clicking away just closes the field.
 
-The same entry lives in the context menu: **right-click the header** → “Rename”.
+The same entry lives in the column menu: **right-click the header** or press “…” → “Rename”.
 
 ## Colour
 
-The “…” button in the header opens the column settings. The top row is nine circles: “Default” and eight colours. The colour paints the column's top edge as a gradient strip, faintly tints its background and border, and colours the status glyph in the header. It doesn't reach the cards — a card carries its own colours (priority, tags).
+The “…” button in the header (or a right click on it) opens the column menu. Its **Colour** row holds seven circles right in the menu. The colour paints the column's top edge as a gradient strip, faintly tints its background and border, and colours the status glyph in the header. It doesn't reach the cards — a card carries its own colours (priority, tags).
 
 ## The completing column
 
@@ -44,7 +44,7 @@ When a task enters the completing column, a completion date is stamped and a “
 
 If no column is set explicitly, the rightmost one counts as completing. Hence the most common confusion: **a column was moved, and tasks in a different column started counting as done**. If tasks aren't being marked complete even though they visually sit “at the end”, check in the “…” menu which column offers “Stop completing” — that one is it.
 
-Deleting the completing column doesn't break the board, but it doesn't hand the role to a neighbour either: the explicit assignment is simply cleared, and the board goes back to treating the rightmost column as completing.
+Deleting the completing column doesn't break the board: the role passes to the rightmost remaining column, and the deleted column's tasks move there too, staying done. Undoing the delete brings back both the column and its role.
 
 ## Collapsing
 
@@ -58,7 +58,9 @@ There's an automatic counterpart next to it: the **Collapse empty columns** togg
 
 The **＋ New column** button to the right of the last column asks for a name and appends a column at the end. Inside a column there's its own **＋ New task** button: type a title and press Enter, and the task is created right in that column without opening the task window.
 
-Deletion lives in the “…” menu, under **Delete the column**. It asks for confirmation, and for good reason: **a column is deleted together with all of its tasks**, and they do *not* go to the archive. If the tasks are worth keeping, move them to another column first.
+**New column to the right** in the column menu creates a column right after it.
+
+Deletion lives in the column menu, under **Delete the column** (or **⌫** while the pointer is over the column). The column goes at once, with no questions, and **its tasks don't disappear** — they move to the board's first column. A message “Column … deleted · N tasks moved to …” appears at the bottom with an **Undo** button (or **⌘Z** / **Ctrl+Z**): undoing puts the column back and returns its tasks to where they stood. A board's last column can't be deleted: its tasks would have nowhere to go.
 
 ## What else the header shows
 

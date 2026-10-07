@@ -37,10 +37,18 @@ test('создание колонки и задачи, переименован�
   await expect(column(page, 'E2E переименована')).toBeVisible()
   await expect(column(page, 'E2E колонка')).toHaveCount(0)
 
-  // delete it (menu → «Удалить колонку» → confirm)
+  // delete it (menu → «Удалить колонку»): it goes at once, and the undo toast
+  // brings it back with its card (#2969)
   await column(page, 'E2E переименована').locator('.col-menu').click()
-  await page.getByTestId('column-delete').click()
-  await page.getByTestId('column-delete-confirm').click()
+  await page.getByTestId('column-actions-delete').click()
+  await expect(column(page, 'E2E переименована')).toHaveCount(0)
+  await expect(page.getByTestId('column')).toHaveCount(before)
+  await page.getByTestId('undo-toast-undo').click()
+  await expect(cardsIn(page, 'E2E переименована').filter({ hasText: 'E2E задача' })).toBeVisible()
+
+  // …and deleted again for good: the card moves to the first column, not away
+  await column(page, 'E2E переименована').locator('.col-menu').click()
+  await page.getByTestId('column-actions-delete').click()
   await expect(column(page, 'E2E переименована')).toHaveCount(0)
   await expect(page.getByTestId('column')).toHaveCount(before)
 })

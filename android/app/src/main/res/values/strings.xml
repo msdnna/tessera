@@ -558,7 +558,7 @@
     <string name="board_column_color">Цвет колонки</string>
     <string name="board_column_done">Завершающая</string>
     <string name="board_column_delete">Удалить колонку</string>
-    <string name="board_column_delete_confirm">Удалить «%1$s» и задачи в ней?</string>
+    <string name="board_column_delete_confirm">Удалить колонку «%1$s»? Задачи переедут в первую колонку.</string>
 
     <!-- Доска: счётчики колонки и бара (веб-паритет #2850/#2851). В скобках —
          итог с учётом подзадач; подсказка открывается долгим нажатием. -->

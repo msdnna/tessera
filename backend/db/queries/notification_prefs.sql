@@ -31,7 +31,8 @@ WHERE due_date IS NOT NULL
   AND completed_at IS NULL
   AND archived_at IS NULL
   AND due_date <= now() + interval '31 days'
-  AND due_date >= now() - interval '7 days';
+  AND due_date >= now() - interval '7 days'
+  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = tasks.board_id AND b.deleted_at IS NULL);
 
 -- name: GetDueNotificationState :one
 SELECT * FROM due_notification_state WHERE task_id = $1 AND user_id = $2;

@@ -32,6 +32,14 @@ export { TagPill } from './tags/TagPill.jsx'
 export { UserAvatar } from './people/UserAvatar.jsx'
 export { ProjectIcon } from './navigation/ProjectIcon.jsx'
 
+// Interaction model v2 (#2969): inline edit, popover forms, menus, undo toasts
+export { InlineEdit } from './interaction/InlineEdit.jsx'
+export { PopoverForm } from './interaction/PopoverForm.jsx'
+export { FormField } from './interaction/FormField.jsx'
+export { ColorIconPicker } from './interaction/ColorIconPicker.jsx'
+export { ActionMenu } from './interaction/ActionMenu.jsx'
+export { UndoToast } from './interaction/UndoToast.jsx'
+
 // Editor, feedback
 export { MarkdownEditor } from './editor/MarkdownEditor.jsx'
 export { EmptyState } from './feedback/EmptyState.jsx'

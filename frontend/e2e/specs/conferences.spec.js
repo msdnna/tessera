@@ -42,8 +42,8 @@ async function openConferences(page, workspaceId) {
 // as a scheduler — so there is no list row to click here.
 async function schedule(page, title) {
   await page.getByTestId('conference-schedule').click()
-  // The testid sits on the naive wrapper, not on the control it renders.
-  await page.getByTestId('conference-title').locator('input').fill(title)
+  // A popover form since #2969: the testid sits on the input itself.
+  await page.getByTestId('conference-title').fill(title)
   await page.getByTestId('conference-submit').click()
 
   await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)

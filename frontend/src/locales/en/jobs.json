@@ -19,7 +19,8 @@
     "notify_delivery": "Notification delivery",
     "notify_scanner": "Due dates and reminders scan",
     "recurrence": "Recurring tasks",
-    "conference_recordings": "Conference recordings"
+    "conference_recordings": "Conference recordings",
+    "trash_purge": "Trash purge"
   },
   "op": {
     "sync_scan": "checking integrations due for a sync",
@@ -28,6 +29,7 @@
     "due_scan": "checking due dates and reminders",
     "recurrence": "advancing recurring tasks",
     "recording_sweep": "checking conference recordings and sweeping expired ones",
+    "trash_purge": "purging boards and columns past their undo window",
     "sync_full": "full sync",
     "sync_incremental": "incremental sync"
   },

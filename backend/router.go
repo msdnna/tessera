@@ -481,6 +481,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/boards/:id", rh.UpdateBoard)
 			protected.PATCH("/boards/:id/done-column", rh.SetDoneColumn)
 			protected.DELETE("/boards/:id", rh.DeleteBoard)
+			protected.POST("/boards/:id/restore", rh.RestoreBoard)
 			protected.POST("/boards/:id/columns", rh.CreateColumn)
 			protected.GET("/boards/:id/columns", rh.ListColumns)
 			protected.POST("/boards/:id/tasks", rh.CreateTask)
@@ -495,6 +496,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/columns/:id", rh.UpdateColumn)
 			protected.PATCH("/columns/:id/move", rh.MoveColumn)
 			protected.DELETE("/columns/:id", rh.DeleteColumn)
+			protected.POST("/columns/:id/restore", rh.RestoreColumn)
 
 			protected.GET("/tasks/:id", rh.GetTask)
 			protected.GET("/tasks/:id/description", rh.GetTaskDescription)

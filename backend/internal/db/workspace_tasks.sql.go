@@ -32,6 +32,7 @@ JOIN board_columns c ON c.id = t.column_id
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 WHERE p.workspace_id = $1
+    AND b.deleted_at IS NULL
     AND ($2::bool OR t.parent_id IS NULL)
     AND t.archived_at IS NULL
 GROUP BY t.id, b.name, p.name, p.color, c.name, c.name_key, c.color
@@ -146,6 +147,7 @@ WITH scoped AS (
     JOIN boards b ON b.id = t.board_id
     JOIN projects p ON p.id = b.project_id
     WHERE p.workspace_id = $7
+        AND b.deleted_at IS NULL
         AND t.parent_id IS NULL
         AND t.archived_at IS NULL
 )

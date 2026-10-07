@@ -467,6 +467,8 @@ export const boards = {
   update: (id, data) => api.patch(`/boards/${id}`, data),
   setDoneColumn: (id, columnId) => api.patch(`/boards/${id}/done-column`, { column_id: columnId }),
   remove: (id) => api.delete(`/boards/${id}`),
+  // Undo of a delete while the board is still in the trash (#2969, migration 0078).
+  restore: (id) => api.post(`/boards/${id}/restore`),
   columns: (id) => sharedGet(`/boards/${id}/columns`),
   createColumn: (id, data) => api.post(`/boards/${id}/columns`, data),
   // params.milestone: '<slug|uuid>' scopes to one sprint, 'backlog' to no-sprint tasks.
@@ -659,6 +661,8 @@ export const columns = {
   update: (id, data) => api.patch(`/columns/${id}`, data),
   move: (id, data) => api.patch(`/columns/${id}/move`, data),
   remove: (id) => api.delete(`/columns/${id}`),
+  // Undo of a delete: the column and the cards it handed over come back (#2969).
+  restore: (id) => api.post(`/columns/${id}/restore`),
 }
 
 export const tasks = {

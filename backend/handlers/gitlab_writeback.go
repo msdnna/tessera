@@ -381,6 +381,14 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 		return res, notify.Permanent(fmt.Errorf("task no longer linked: %w", err))
 	}
 	res.glIid = link.GlIid
+	// The task's board is soft-deleted (0078): hold the push — a retry, not a
+	// refusal. A restore lets it through on the next attempt; the purge takes the
+	// link, and the next attempt then gives up on "task no longer linked".
+	if t, terr := h.q.GetTask(ctx, w.TaskID); terr == nil {
+		if b, berr := h.q.GetBoardAny(ctx, t.BoardID); berr == nil && b.DeletedAt != nil {
+			return res, errors.New("task board is deleted")
+		}
+	}
 	integ, err := h.q.GetGitlabIntegrationByID(ctx, w.IntegrationID)
 	if err != nil {
 		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))

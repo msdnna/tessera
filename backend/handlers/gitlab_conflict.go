@@ -381,6 +381,12 @@ func (h *API) ResolveGitlabConflict(c *gin.Context) {
 	if !h.requireMember(c, integ.WorkspaceID) {
 		return
 	}
+	// The conflict is authorized through its binding, so the task's own board is
+	// asked separately: a task on a soft-deleted board (0078) is gone, and
+	// resolving its conflict would push it to GitLab from the trash.
+	if _, _, ok := h.loadTask(c, taskID); !ok {
+		return
+	}
 	uid := middleware.CurrentUser(c)
 	link, err := h.q.GetGitlabLinkByTask(c, taskID)
 	if err != nil {

@@ -23,17 +23,20 @@ type Board struct {
 	Icon         string     `json:"icon"`
 	Color        string     `json:"color"`
 	IconMode     string     `json:"icon_mode"`
+	DeletedAt    *time.Time `json:"deleted_at"`
 }
 
 type BoardColumn struct {
-	ID        uuid.UUID `json:"id"`
-	BoardID   uuid.UUID `json:"board_id"`
-	Name      string    `json:"name"`
-	Color     string    `json:"color"`
-	Position  float64   `json:"position"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	NameKey   *string   `json:"name_key"`
+	ID             uuid.UUID  `json:"id"`
+	BoardID        uuid.UUID  `json:"board_id"`
+	Name           string     `json:"name"`
+	Color          string     `json:"color"`
+	Position       float64    `json:"position"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	NameKey        *string    `json:"name_key"`
+	DeletedAt      *time.Time `json:"deleted_at"`
+	DeletedWasDone bool       `json:"deleted_was_done"`
 }
 
 type BoardView struct {
@@ -44,6 +47,13 @@ type BoardView struct {
 	Config    []byte    `json:"config"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ColumnDeletionMove struct {
+	ColumnID     uuid.UUID `json:"column_id"`
+	TaskID       uuid.UUID `json:"task_id"`
+	MovedTo      uuid.UUID `json:"moved_to"`
+	FromPosition float64   `json:"from_position"`
 }
 
 type Conference struct {

@@ -11,7 +11,8 @@
     "delete": "Delete",
     "retry": "Retry",
     "search": "Search",
-    "more": "More"
+    "more": "More",
+    "done": "Done"
   },
   "priority": {
     "none": "No priority",
@@ -127,5 +128,67 @@
     "clearedPlaceholder": "will be cleared on save",
     "undoClear": "Undo the clearing",
     "clear": "Clear the stored value"
+  },
+  "undo": {
+    "undo": "Undo",
+    "retry": "Retry",
+    "close": "Close",
+    "undoing": "Undoing…",
+    "done": "Restored",
+    "failed": "Couldn't undo",
+    "seconds": "{n} s",
+    "region": "Undo actions"
+  },
+  "inline": {
+    "save": "save",
+    "cancel": "cancel",
+    "create": "create",
+    "kind": "view",
+    "next": "next"
+  },
+  "form": {
+    "cancel": "Cancel",
+    "field": "field",
+    "pick": "pick",
+    "suggest": "use the free one",
+    "free": "Free:",
+    "or": "or",
+    "saving": "Saving…"
+  },
+  "picker": {
+    "label": "Icon and colour",
+    "all": "All icons",
+    "initialsEmpty": "Aa",
+    "icons": {
+      "initials": "initials",
+      "briefcase": "briefcase",
+      "code": "code",
+      "rocket": "rocket",
+      "flask": "flask",
+      "star": "star",
+      "book": "book",
+      "bulb": "bulb",
+      "home": "home",
+      "school": "school",
+      "heart": "heart",
+      "game": "game"
+    }
+  },
+  "colors": {
+    "purple": "Purple",
+    "blue": "Blue",
+    "teal": "Teal",
+    "green": "Green",
+    "orange": "Orange",
+    "red": "Red",
+    "pink": "Pink"
+  },
+  "stub": {
+    "soon": "Coming soon · #{n}",
+    "badge": "soon"
+  },
+  "menu": {
+    "deleting": "Deleting…",
+    "retry": "retry"
   }
 }

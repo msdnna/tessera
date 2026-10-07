@@ -912,7 +912,12 @@ func (h *API) loadTask(c *gin.Context, id uuid.UUID) (db.Task, uuid.UUID, bool) 
 		fail(c, err)
 		return db.Task{}, uuid.Nil, false
 	}
+	// A task on a soft-deleted board (0078) is gone for every reader: the board
+	// resolver doesn't see the board, and that is a 404, not a failure.
 	wsID, err := h.q.WorkspaceIDForBoard(c, t.BoardID)
+	if notFound(c, err) {
+		return db.Task{}, uuid.Nil, false
+	}
 	if err != nil {
 		fail(c, err)
 		return db.Task{}, uuid.Nil, false

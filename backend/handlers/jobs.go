@@ -17,6 +17,7 @@ const (
 	jobNotifyScanner     = "notify_scanner"
 	jobRecurrence        = "recurrence"
 	jobConfRecordings    = "conference_recordings"
+	jobTrashPurge        = "trash_purge"
 )
 
 // backgroundWorkers is the fixed roster of tick-loop workers, in display order.
@@ -33,6 +34,7 @@ var backgroundWorkers = []struct {
 	{jobNotifyScanner, "Сканирование сроков и напоминаний", 60},
 	{jobRecurrence, "Повторяющиеся задачи", 60},
 	{jobConfRecordings, "Записи конференций", 60},
+	{jobTrashPurge, "Уборка удалённого", 600},
 }
 
 // RegisterBackgroundWorkers records the tick-loop workers as heartbeat entries so
@@ -56,6 +58,7 @@ const (
 	opRecurrence  = "recurrence"
 
 	opRecordingSweep = "recording_sweep"
+	opTrashPurge     = "trash_purge"
 )
 
 // #nosec G101 -- Russian worker labels shown in the admin UI; the entropy check
@@ -68,6 +71,7 @@ var workerOps = map[string]string{
 	opDueScan:        "проверка сроков и напоминаний",
 	opRecurrence:     "продвижение повторяющихся задач",
 	opRecordingSweep: "проверка записей конференций и уборка по сроку",
+	opTrashPurge:     "окончательное удаление досок и колонок после срока отмены",
 }
 
 // tick refreshes a worker's heartbeat; a thin wrapper so worker loops don't import

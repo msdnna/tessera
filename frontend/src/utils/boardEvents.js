@@ -90,16 +90,16 @@ export function classifyEvent(ev, { boardId, hasTask } = {}) {
     const owner = type === 'board.updated' ? ev?.data?.id : ev?.data?.board_id
     if (owner && boardId && owner !== boardId) return 'ignore'
     if (type === 'board.updated') return 'board'
-    if (type !== 'column.deleted') return 'columns'
+    if (type !== 'column.deleted' && type !== 'column.restored') return 'columns'
   }
-  // Deleting a column takes every card standing in it with it (the server
-  // cascades through tasks.column_id), yet it broadcasts a single
-  // `column.deleted` — no task events at all. Re-reading just the column list
-  // would leave those cards in `allTasks`: invisible when grouped by status
-  // (their column_id no longer matches any rendered column), but fully alive in
-  // the tag/milestone groupings and in the list/calendar/gantt views, which
-  // bucket every task regardless of its column. Hence its own kind (#2932).
-  if (type === 'column.deleted') return 'column-purge'
+  // Deleting a column moves every card standing in it to another column (since
+  // the soft delete, #2969 — before that it took them along), and restoring it
+  // moves them back; either way a single `column.deleted` / `column.restored`
+  // is broadcast and no task events at all. Re-reading just the column list
+  // would leave every moved card where it stood in `allTasks`, and the board
+  // record may have changed too (the done flag follows a deleted «Готово»).
+  // Hence their own kind (#2932).
+  if (type === 'column.deleted' || type === 'column.restored') return 'column-purge'
 
   // Events that name a board tell us straight away whether they concern us.
   // (Only some do: the id-only payloads carry no board at all.)

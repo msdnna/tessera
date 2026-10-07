@@ -24,6 +24,7 @@ const (
 	NotifyScanLock     = "notify_scan"
 	recurrenceLock     = "recurrence"
 	confRecordingsLock = "conference_recordings"
+	trashPurgeLock     = "trash_purge"
 )
 
 // withAdvisoryLock runs fn only if this process can take the named Postgres

@@ -14,13 +14,24 @@
 //   digit    caption of the digit range of a `digit` chord
 //   command  shown in the palette's «Команды» section; the value is its icon
 //   to       route a key-less command opens (palette only)
+//   form     palette form a key-less command opens (palette only, #2982)
 //   input    also fires while the cursor is in a text field
 //   modal    also fires while a modal dialog is open
 //   repeat   fires on auto-repeat (held arrow keys)
 //   eager    fires on its own key even though longer sequences start with it
 //   prio     wins over other entries completed by the same key (default 0)
 
-export const GROUPS = ['nav', 'board', 'card', 'task', 'chart', 'create', 'palette', 'view']
+export const GROUPS = [
+  'nav',
+  'sidebar',
+  'board',
+  'card',
+  'task',
+  'chart',
+  'create',
+  'palette',
+  'view',
+]
 
 export const CATALOG = [
   // ── navigation ──
@@ -30,6 +41,10 @@ export const CATALOG = [
   { id: 'nav.goMine', keys: 'g m', group: 'nav', command: 'HomeOutline' },
   { id: 'nav.sidebar', keys: '[', group: 'nav', command: 'EyeOutline' },
   { id: 'nav.shortcuts', keys: '?', group: 'nav', command: 'KeypadOutline' },
+  // Undo toasts (#2969): ⌘Z takes back the newest one from anywhere but a text
+  // field; F6 moves focus onto it.
+  { id: 'undo.last', keys: 'mod+z', group: 'nav' },
+  { id: 'toast.focus', keys: 'f6', group: 'nav' },
 
   // Pages: palette commands without a key of their own.
   { id: 'go.notes', command: 'DocumentTextOutline', to: '/notes' },
@@ -38,12 +53,40 @@ export const CATALOG = [
   { id: 'go.milestones', command: 'TrailSignOutline', to: '/milestones' },
   { id: 'go.settings', command: 'SettingsOutline', to: '/settings' },
 
+  // ── sidebar and spaces (#2969): the tree row under the keyboard cursor, and
+  // the rail. They work on the selected row without opening its menu, and the
+  // menu lists the same keys.
+  { id: 'nav.goSidebar', keys: 'g s', group: 'sidebar' },
+  { id: 'nav.goRail', keys: 'g w', group: 'sidebar' },
+  // R works too (row.renameR); the hint shows the one key the mockup names.
+  { id: 'row.rename', keys: 'f2', group: 'sidebar' },
+  { id: 'row.renameR', keys: 'r' },
+  { id: 'row.new', keys: 'shift+n', group: 'sidebar' },
+  // ⇧F10 works too (row.menuF10).
+  { id: 'row.menu', keys: '.', group: 'sidebar' },
+  { id: 'row.menuF10', keys: 'shift+f10' },
+  { id: 'row.open', keys: 'enter' },
+  { id: 'row.icon', keys: 'i', group: 'sidebar' },
+  { id: 'row.slug', keys: 'u', group: 'sidebar' },
+  { id: 'row.move', keys: 'm', group: 'sidebar' },
+  { id: 'row.copyLink', keys: 'mod+shift+c', group: 'sidebar' },
+  { id: 'row.settings', keys: 'mod+,', group: 'sidebar' },
+  { id: 'row.archive', keys: 'e', group: 'sidebar' },
+  { id: 'row.delete', keys: 'mod+backspace', group: 'sidebar' },
+
   // ── board ──
   { id: 'board.addTask', keys: 'c', group: 'board' },
   { id: 'board.quick', keys: 'n', group: 'board', eager: true },
   { id: 'board.filter', keys: 'f', group: 'board' },
   { id: 'board.group', keys: 'shift+g', group: 'board' },
   { id: 'board.layout', keys: 'v digit', group: 'board', digit: '1–3' },
+  // The column under the pointer, or the selected card's (#2969): F2 renames in
+  // the header, ⌫ deletes at once with an undo toast, ⌘⇧←/→ moves it.
+  { id: 'col.rename', keys: 'f2', group: 'board' },
+  { id: 'col.delete', keys: 'backspace', group: 'board' },
+  { id: 'col.move', group: 'board', display: [['mod', 'shift', '←/→']] },
+  { id: 'col.moveLeft', keys: 'mod+shift+arrowleft' },
+  { id: 'col.moveRight', keys: 'mod+shift+arrowright' },
   {
     id: 'board.select',
     group: 'board',
@@ -101,6 +144,14 @@ export const CATALOG = [
   { id: 'chart.shiftLeft', keys: 'shift+arrowleft', repeat: true },
   { id: 'chart.shiftRight', keys: 'shift+arrowright', repeat: true },
   { id: 'chart.clear', keys: 'escape' },
+
+  // ── palette forms (#2969 / #2982): create commands walked through field by
+  // field inside the palette — palette-only, no key of their own. `form` names
+  // the form usePaletteForm opens.
+  { id: 'form.project', command: 'FolderOpenOutline', form: 'project', group: 'create' },
+  { id: 'form.board', command: 'GridOutline', form: 'board', group: 'create' },
+  { id: 'form.group', command: 'FolderOutline', form: 'group', group: 'create' },
+  { id: 'form.workspace', command: 'AppsOutline', form: 'workspace', group: 'create' },
 
   // ── quick create ──
   { id: 'create.task', keys: 'n t', group: 'create', command: 'AddOutline' },

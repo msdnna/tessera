@@ -109,6 +109,7 @@ SELECT change_kind FROM gitlab_writebacks WHERE task_id = $1 AND status = 'confl
 SELECT w.*, t.title AS task_title, t.number AS task_number
 FROM gitlab_writebacks w
 JOIN tasks t ON t.id = w.task_id
+JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
 WHERE w.integration_id = $1 AND w.status = 'conflict'
 ORDER BY w.updated_at DESC;
 
@@ -118,6 +119,7 @@ ORDER BY w.updated_at DESC;
 SELECT w.*, t.title AS task_title, t.number AS task_number
 FROM gitlab_writebacks w
 JOIN tasks t ON t.id = w.task_id
+JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
 JOIN gitlab_integrations i ON i.id = w.integration_id
 WHERE i.workspace_id = $1 AND w.status = 'conflict'
 ORDER BY w.updated_at DESC;

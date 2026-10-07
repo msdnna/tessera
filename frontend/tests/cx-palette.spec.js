@@ -62,6 +62,7 @@ vi.mock('@/api', () => ({
 }))
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn(), resolve: (p) => ({ href: String(p) }) }),
+  useRoute: () => ({ params: {}, query: {}, path: '/' }),
 }))
 vi.mock('naive-ui', async (importOriginal) => ({
   ...(await importOriginal()),

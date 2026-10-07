@@ -17,6 +17,7 @@ SELECT b.id, b.name, b.slug, b.icon, b.color, b.icon_mode, p.slug AS project_slu
 FROM boards b
 JOIN projects p ON p.id = b.project_id
 WHERE p.workspace_id = $1
+  AND b.deleted_at IS NULL
   AND (b.name ILIKE '%' || $2 || '%' OR p.name ILIKE '%' || $2 || '%')
 ORDER BY (b.name ILIKE '%' || $2 || '%') DESC, p.name, b.position
 LIMIT 10
@@ -164,6 +165,7 @@ JOIN projects p ON p.id = b.project_id
 JOIN board_columns bc ON bc.id = t.column_id
 LEFT JOIN milestones m ON m.id = t.milestone_id
 WHERE p.workspace_id = $1
+  AND b.deleted_at IS NULL
   AND t.archived_at IS NULL
   AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%'
        OR t.number = $3::bigint)

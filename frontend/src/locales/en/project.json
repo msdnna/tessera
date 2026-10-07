@@ -11,7 +11,15 @@
     "treeBoth": "Boards and milestones",
     "showClosedMilestones": "Show closed milestones",
     "transfer": "Move to another workspace",
-    "delete": "Delete the project"
+    "delete": "Delete the project",
+    "appearance": "Icon and colour…",
+    "managerOnly": "Available to the space owner and admins",
+    "copyLink": "Copy link",
+    "settings": "Project settings",
+    "archive": "Archive",
+    "linkCopied": "Link copied",
+    "linkCopyFailed": "Couldn't copy the link",
+    "move": "Move to another space…"
   },
   "board": {
     "add": "Add a board",
@@ -20,7 +28,9 @@
     "open": "Open",
     "rename": "Rename",
     "delete": "Delete the board",
-    "deleteConfirm": "Delete the board “{name}” with all its tasks?"
+    "deleted": "Board “{name}” deleted",
+    "restored": "Board “{name}” restored",
+    "restoreFailed": "Couldn't restore the board"
   },
   "milestone": {
     "backlog": "Backlog",
@@ -36,7 +46,8 @@
     "warningStrong": "will stop working.",
     "submit": "Change the address",
     "taken": "That address is taken — pick another one",
-    "changed": "The project address has been changed"
+    "changed": "The project address has been changed",
+    "oldLinks": "Links to the old address {old} will stop working; open tabs switch over by themselves."
   },
   "transfer": {
     "title": "Move to another workspace",
@@ -46,11 +57,23 @@
     "empty": "No other workspaces — create one first.",
     "submit": "Move",
     "done": "The project has been moved to another workspace",
-    "doneStripped": "The project has been moved. Assignees removed (not workspace members): {n}"
+    "doneStripped": "The project has been moved. Assignees removed (not workspace members): {n}",
+    "titleShort": "Move “{name}”",
+    "subtitle": "to another space",
+    "moving": "Moving…",
+    "space": "Space",
+    "travels": "Boards, tasks and history move with the project.",
+    "losing": "Members missing from “{space}” lose access: {n}.",
+    "youAdmin": "you are an admin"
   },
   "remove": {
     "title": "Delete the project",
-    "message": "The project will be deleted with all its boards and tasks. This cannot be undone."
+    "message": "The project will be deleted with all its boards and tasks. This cannot be undone.",
+    "armed": "Delete “{name}” for good?",
+    "armedSub": "no undo",
+    "armedSubBoards": "{boards} with every task · no undo",
+    "boards": "{n} board | {n} boards",
+    "failed": "Couldn't delete"
   },
   "create": {
     "title": "New project",

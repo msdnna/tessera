@@ -543,7 +543,7 @@
     <string name="board_column_color">Column colour</string>
     <string name="board_column_done">Done column</string>
     <string name="board_column_delete">Delete column</string>
-    <string name="board_column_delete_confirm">Delete “%1$s” and the tasks in it?</string>
+    <string name="board_column_delete_confirm">Delete the column “%1$s”? Its tasks move to the first column.</string>
 
     <!-- Board: column / composer counters (web parity #2850/#2851). The bracketed
          number folds in every subtask; the hint opens on a long press. -->

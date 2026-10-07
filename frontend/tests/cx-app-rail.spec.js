@@ -34,7 +34,7 @@ function mountRail() {
       stubs: {
         NDropdown: true,
         NModal: true,
-        ServerEditModal: true,
+        ServerFormPopover: true,
         WorkspaceAppearanceModal: true,
         ConfirmByName: true,
       },

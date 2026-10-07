@@ -40,17 +40,20 @@ const NAMED_CODES = {
 // Characters typed with Shift on most layouts; written bare in a binding.
 const CHAR_KEYS = new Set(['?', '#', '@', '>'])
 
-// keyOf names the physical key of a keyboard event: 'g', '7', 'arrowup', '['.
-// Null for keys a binding never names (bare modifiers, F-keys, media keys).
+// keyOf names the physical key of a keyboard event: 'g', '7', 'arrowup', '[',
+// 'f2'. Null for keys a binding never names (bare modifiers, media keys).
+// Function keys arrived with the v2 interaction model (#2969): F2 renames,
+// F6 jumps to the undo toast, ⇧F10 opens a row's menu.
 export function keyOf(e) {
   const code = e.code || ''
   if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase()
+  if (/^F([1-9]|1[0-2])$/.test(code)) return code.toLowerCase()
   const digit = /^(?:Digit|Numpad)(\d)$/.exec(code)
   if (digit) return digit[1]
   if (NAMED_CODES[code]) return NAMED_CODES[code]
   // Synthetic events (tests, some IMEs) may carry no code: fall back to key.
   const k = (e.key || '').toLowerCase()
-  if (/^[a-z0-9]$/.test(k)) return k
+  if (/^[a-z0-9]$/.test(k) || /^f([1-9]|1[0-2])$/.test(k)) return k
   return Object.values(NAMED_CODES).includes(k) ? k : null
 }
 
@@ -111,7 +114,7 @@ export function capsOf(chord, digitLabel = '0–9') {
   const k = chord.key
   if (k === 'digit') caps.push(digitLabel)
   else if (KEY_CAPS[k]) caps.push(KEY_CAPS[k])
-  else caps.push(k.length === 1 ? k.toUpperCase() : k)
+  else caps.push(k.length === 1 || /^f\d+$/.test(k) ? k.toUpperCase() : k)
   return caps
 }
 

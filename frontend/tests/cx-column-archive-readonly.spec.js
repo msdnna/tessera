@@ -11,10 +11,10 @@
 // 40 live ones, and a confirm that says «delete the column and its tasks». No undo.
 //
 // Pinned here: with `readonly`, the header opens neither menu nor rename, and the
-// API is never reached.
+// API is never reached. (Since #2969 the delete no longer takes the cards — they
+// move to another column — but the archive stays a place to look, not to edit.)
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { NDropdown } from 'naive-ui'
 
 vi.mock('naive-ui', async () => {
   const actual = await vi.importActual('naive-ui')
@@ -58,11 +58,12 @@ describe('ColumnHeader in the archive view', () => {
     archived.unmount()
   })
 
-  it('ignores the right-click menu that would arm the delete confirm', async () => {
+  it('ignores the right-click menu', async () => {
     const w = mountHead(true)
     await w.get('.col-head').trigger('contextmenu')
 
-    expect(w.findComponent(NDropdown).props('show')).toBe(false)
+    expect(document.body.querySelector('[data-testid="column-actions"]')).toBeNull()
+    expect(w.emitted('delete')).toBeUndefined()
     expect(remove).not.toHaveBeenCalled()
     w.unmount()
   })

@@ -2,29 +2,21 @@
 // One home for the workspace dialogs (v2). Their doors — the workspace menu in
 // the sidebar header, the rail tile's menu, the footer «⋯» — only call
 // `wsDialogs.open(name)`; this host renders the modal that name stands for.
-import { computed, ref, watch } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
-import { NModal, NCard, NInput, NButton, useMessage } from 'naive-ui'
+import { computed } from 'vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { DEFAULT_ESTIMATION } from '@/utils/estimation'
 import { workspaceName } from '@/utils/defaultNames'
-import { humanizeError } from '@/utils/errors'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
-import EstimationModal from './EstimationModal.vue'
+import EstimationPopover from './EstimationPopover.vue'
 import WorkspaceCommandsModal from './WorkspaceCommandsModal.vue'
 import BackgroundJobsModal from './BackgroundJobsModal.vue'
-import WorkspaceAppearanceModal from './rail/WorkspaceAppearanceModal.vue'
-import ConfirmByName from './ConfirmByName.vue'
+import WorkspaceFormPopover from './rail/WorkspaceFormPopover.vue'
+import WorkspaceDeletePopover from './rail/WorkspaceDeletePopover.vue'
 
-const { t } = useI18n()
-const route = useRoute()
-const router = useRouter()
-const message = useMessage()
 const ws = useWorkspacesStore()
 const auth = useAuthStore()
 const dialogs = useWsDialogsStore()
@@ -49,42 +41,27 @@ const create = slot('create')
 const del = slot('delete')
 
 // Browser Back closes these modals instead of leaving the board.
-for (const s of [members, gitlab, estimation, commands, jobs])
-  useOverlayBack(s, () => (s.value = false))
+for (const s of [members, gitlab, commands, jobs]) useOverlayBack(s, () => (s.value = false))
 
 const target = computed(() => dialogs.target || ws.current)
 
-const newName = ref('')
-watch(create, (open) => open && (newName.value = ''))
-async function createWorkspace() {
-  const name = newName.value.trim()
-  if (!name) return
-  try {
-    await ws.createWorkspace(name)
-    create.value = false
-    // A board belongs to the workspace we just left.
-    if (route.params.projectSlug || route.params.id) router.push('/')
-  } catch (e) {
-    message.error(humanizeError(e))
-  }
-}
-
-async function deleteWorkspace() {
-  try {
-    await ws.removeWorkspace(target.value.id)
-    message.success(t('shell.workspace.deleted'))
-    router.push('/') // the tree fully changed — land on Home
-  } catch (e) {
-    message.error(humanizeError(e))
-  }
-}
+// The small three — create, appearance, delete — are popover forms at the door
+// that opened them (#2969): a rail tile or «+» opens them to its right, the
+// sidebar header under itself.
+const anchorEl = () => dialogs.anchor || document.querySelector('[data-testid="ws-head"]')
+const onRail = computed(() => !!dialogs.anchor?.closest?.('[data-testid="app-rail"]'))
+const placement = computed(() => (onRail.value ? 'right-start' : 'bottom-start'))
+const offset = computed(() => (onRail.value ? { x: 8, y: -8 } : { x: 0, y: 6 }))
 </script>
 
 <template>
   <MembersModal v-model:show="members" :ws-id="ws.currentId" />
   <GitLabModal v-model:show="gitlab" :ws-id="ws.currentId" />
-  <EstimationModal
+  <EstimationPopover
     v-model:show="estimation"
+    :anchor="anchorEl"
+    :placement="placement"
+    :offset="offset"
     scope="workspace"
     :target-id="ws.currentId"
     :name="workspaceName(ws.current)"
@@ -93,50 +70,26 @@ async function deleteWorkspace() {
   />
   <WorkspaceCommandsModal v-model:show="commands" :workspace-id="ws.currentId" />
   <BackgroundJobsModal v-if="auth.isAdmin" v-model:show="jobs" />
-  <WorkspaceAppearanceModal v-model:show="appearance" :workspace="target" />
-
-  <n-modal v-model:show="create">
-    <n-card
-      :title="t('shell.workspace.create')"
-      style="max-width: 360px"
-      role="dialog"
-      :bordered="false"
-    >
-      <n-input
-        v-model:value="newName"
-        :placeholder="t('shell.workspace.namePlaceholder')"
-        autofocus
-        @keyup.enter="createWorkspace"
-      />
-      <template #footer>
-        <div class="wd-actions">
-          <n-button size="small" @click="create = false">{{ t('common.action.cancel') }}</n-button>
-          <n-button
-            type="primary"
-            size="small"
-            :disabled="!newName.trim()"
-            @click="createWorkspace"
-          >
-            {{ t('common.action.create') }}
-          </n-button>
-        </div>
-      </template>
-    </n-card>
-  </n-modal>
-
-  <ConfirmByName
+  <WorkspaceFormPopover
+    v-model:show="create"
+    kind="create"
+    :anchor="anchorEl"
+    :placement="placement"
+    :offset="offset"
+  />
+  <WorkspaceFormPopover
+    v-model:show="appearance"
+    kind="appearance"
+    :workspace="target"
+    :anchor="anchorEl"
+    :placement="placement"
+    :offset="offset"
+  />
+  <WorkspaceDeletePopover
     v-model:show="del"
-    :name="workspaceName(target)"
-    :title="t('shell.workspace.delete')"
-    :message="t('shell.workspace.deleteMessage')"
-    @confirm="deleteWorkspace"
+    :workspace="target"
+    :anchor="anchorEl"
+    :placement="placement"
+    :offset="offset"
   />
 </template>
-
-<style scoped>
-.wd-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-</style>

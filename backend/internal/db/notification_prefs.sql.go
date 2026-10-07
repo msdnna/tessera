@@ -98,6 +98,7 @@ WHERE due_date IS NOT NULL
   AND archived_at IS NULL
   AND due_date <= now() + interval '31 days'
   AND due_date >= now() - interval '7 days'
+  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = tasks.board_id AND b.deleted_at IS NULL)
 `
 
 // ListDueTasksForScan returns incomplete, non-archived tasks with a due date in a

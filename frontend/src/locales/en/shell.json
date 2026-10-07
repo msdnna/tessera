@@ -36,7 +36,12 @@
     "delete": "Delete group",
     "deleteConfirm": "Subgroups will be deleted, projects will lose their group. Delete?",
     "deleteTitle": "Delete the group “{name}”?",
-    "deleteWarning": "Subgroups will be deleted, projects will lose their group. This cannot be undone."
+    "deleteWarning": "Subgroups will be deleted, projects will lose their group. This cannot be undone.",
+    "appearance": "Icon and colour…",
+    "namePlaceholder": "Group name",
+    "deleteArmed": "Delete “{name}” for good?",
+    "deleteArmedSub": "subgroups go, projects lose the group · no undo",
+    "deleteFailed": "Couldn't delete"
   },
   "user": {
     "profile": "Profile",
@@ -132,7 +137,8 @@
     "insecureNote": "The setting is saved but has no effect yet: certificate checking can only be turned off for the whole application — that is a task of its own.",
     "errUrl": "That does not look like a server address",
     "errUrlScheme": "The address must start with http:// or https://",
-    "signedOut": "Sign-in required"
+    "signedOut": "Sign-in required",
+    "removeArmed": "Really remove? Press again"
   },
   "spotlight": {
     "aria": "Hint",
@@ -215,7 +221,8 @@
       "palette": "Command palette",
       "view": "View",
       "task": "Open task",
-      "chart": "Gantt and timeline"
+      "chart": "Gantt and timeline",
+      "sidebar": "Sidebar and spaces"
     },
     "nav": {
       "palette": "Search and commands",
@@ -223,7 +230,9 @@
       "goInbox": "Inbox",
       "goMine": "My tasks",
       "sidebar": "Hide / show sidebar",
-      "shortcuts": "This cheat sheet"
+      "shortcuts": "This cheat sheet",
+      "goSidebar": "Focus the sidebar tree",
+      "goRail": "Focus the spaces rail"
     },
     "board": {
       "addTask": "Task in the hovered column",
@@ -285,6 +294,40 @@
       "select": "Select a task",
       "shift": "Shift the dates by a day",
       "open": "Open the task"
+    },
+    "undo": {
+      "last": "Undo the last action"
+    },
+    "toast": {
+      "focus": "Jump to the undo toast"
+    },
+    "row": {
+      "rename": "Rename",
+      "renameR": "Rename",
+      "new": "New inside the selected",
+      "menu": "Row menu",
+      "menuF10": "Row menu",
+      "open": "Open",
+      "icon": "Icon and colour",
+      "slug": "Change address",
+      "move": "Move to another space",
+      "copyLink": "Copy link",
+      "settings": "Project settings",
+      "archive": "Archive",
+      "delete": "Delete"
+    },
+    "col": {
+      "rename": "Rename the column",
+      "delete": "Delete the column",
+      "move": "Move the column",
+      "moveLeft": "Move the column left",
+      "moveRight": "Move the column right"
+    },
+    "form": {
+      "project": "Create a project",
+      "board": "Create a board",
+      "group": "Create a group",
+      "workspace": "Create a space"
     }
   },
   "palette": {
@@ -389,5 +432,81 @@
   "rail": {
     "appearance": "Workspace appearance",
     "add": "Add a workspace or a server"
+  },
+  "projectForm": {
+    "title": "New project",
+    "inGroup": "in group “{group}”",
+    "atRoot": "at the top of the space",
+    "name": "Name",
+    "namePlaceholder": "Project name",
+    "slug": "Address",
+    "fromName": "from the name",
+    "slugPlaceholder": "project-address",
+    "creating": "Creating…"
+  },
+  "workspaceForm": {
+    "createTitle": "New space",
+    "createSub": "Its own projects, people and access",
+    "styleTitle": "Space appearance",
+    "styleSub": "Seen by every member of “{name}”",
+    "look": "Colour and icon",
+    "lookRail": "Colour and icon on the rail",
+    "deleteTitle": "Delete “{name}” for good?",
+    "deleteSub": "Every project, board and task of the space will be deleted. This can’t be undone.",
+    "deleteForever": "Delete for good",
+    "deleteHint": "The button unlocks once the name matches.",
+    "typeName": "Type the name of the space"
+  },
+  "paletteForm": {
+    "root": "At the top of the space",
+    "typed": "Typed in the line above",
+    "groupSub": "Where the sidebar cursor is",
+    "parentSub": "Inside which group",
+    "projectSub": "The project the board goes into",
+    "lookSub": "← → colour · ↑ ↓ icon",
+    "fields": {
+      "name": "Name",
+      "slug": "Address",
+      "group": "Group",
+      "project": "Project",
+      "look": "Icon and colour"
+    },
+    "fieldsTitle": {
+      "project": "Project fields",
+      "board": "Board fields",
+      "group": "Group fields",
+      "workspace": "Space fields"
+    },
+    "step": "step {n} of {total}",
+    "needName": "A name first",
+    "needProject": "No project for the board",
+    "created": {
+      "project": "Project “{name}” created",
+      "board": "Board “{name}” created",
+      "group": "Group “{name}” created",
+      "workspace": "Space “{name}” created"
+    },
+    "placeholder": {
+      "name": "Name",
+      "slug": "Address",
+      "group": "Find a group",
+      "project": "Find a project",
+      "look": "← → colour · ↑ ↓ icon"
+    },
+    "foot": {
+      "create": "create",
+      "next": "next field",
+      "back": "back",
+      "createOpen": "create and open"
+    },
+    "nextField": "next field",
+    "fill": "fill in",
+    "cmdSub": {
+      "project": "At the top of the space · step by step, no mouse",
+      "projectIn": "In group “{group}” · step by step, no mouse",
+      "board": "In project “{project}”",
+      "group": "In space “{space}”",
+      "workspace": "Its own projects, people and access"
+    }
   }
 }

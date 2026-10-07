@@ -18,13 +18,15 @@ import {
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { useRoute } from 'vue-router'
-import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useTourStore } from '@/stores/tour'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
 import { workspaceName } from '@/utils/defaultNames'
-import ProjectCreateModal from './ProjectCreateModal.vue'
+import ProjectCreatePopover from './sidebar/ProjectCreatePopover.vue'
+import NewGroupRow from './sidebar/NewGroupRow.vue'
+import { useSidebarDraft } from '@/composables/useSidebarDraft'
+import { handleRowKeys, handleTreeNav } from '@/composables/useRowKeys'
+import { useShortcuts } from '@/composables/useShortcuts'
 import {
   moveSidebarGroup,
   moveSidebarProject,
@@ -46,7 +48,6 @@ defineProps({
 
 const { t } = useI18n()
 const store = useWorkspacesStore()
-const tour = useTourStore()
 const conflicts = useConflictsStore()
 const message = useMessage()
 const route = useRoute()
@@ -92,40 +93,42 @@ const addOptions = computed(() => [
   { label: t('shell.tree.addGroup'), key: 'group', icon: menuIcon(FolderOutline) },
 ])
 
-// Projects are named in a modal (the name decides the URL address, which is
-// assigned once); groups keep the create-then-rename flow.
-const projModalShow = ref(false)
-
-// The project modal reports its new project so the Get Started guide can point
-// its next step («+» to add a board) at that row rather than the first (#2753).
-function onProjectCreated(project) {
-  tour.noteCreated({ projectId: project?.id })
-  store.refresh()
+// v2 interaction model (#2969): a project is created in a popover form at the
+// «+», a group as an empty row typed in place at the end of the tree. (The
+// form reports its project to the Get Started guide itself; so does the row.)
+const projFormOpen = ref(false)
+const addBtn = ref(null)
+const draft = useSidebarDraft()
+function addAtRoot(key) {
+  if (key === 'project') projFormOpen.value = true
+  else draft.startGroup(null)
 }
 
-async function addAtRoot(key) {
-  if (key === 'project') {
-    projModalShow.value = true
-    return
-  }
-  try {
-    // Same as onProjectCreated above: the guide's «Группа создана» and «перетащите
-    // проект в группу» steps have to point at the group this click just made, not
-    // at whichever group happens to be first in the tree (#2778 rework).
-    // The seed name is localised: a group is renamed right after it appears (the
-    // guide's next step is exactly that), so it reads in the language the person
-    // is working in rather than in whichever one the server was seeded with.
-    const res = await wsApi.createGroup(store.currentId, { name: t('shell.group.defaultName') })
-    tour.noteCreated({ groupId: res.data?.id })
-    await store.refresh()
-  } catch (e) {
-    message.error(e.message)
-  }
+// ── keyboard: ↑/↓ over the rows, G S to get in, ⇧N on «Проекты» ──
+const treeBox = ref(null)
+function onTreeKey(e) {
+  handleTreeNav(e, treeBox.value?.closest('.sidebar') || treeBox.value)
 }
+function onHeadKey(e) {
+  handleRowKeys(e, {
+    'row.new': () => draft.startGroup(null),
+    'row.menu': () => addBtn.value?.$el?.click(),
+  })
+}
+function focusTree() {
+  const root = treeBox.value
+  if (!root) return
+  const target =
+    root.querySelector('.board-row.active[data-tree-row]') || root.querySelector('[data-tree-row]')
+  target?.focus()
+  target?.scrollIntoView?.({ block: 'nearest' })
+}
+useShortcuts({ 'nav.goSidebar': focusTree })
 
 // The workspace menu under its name (v2): members, integrations, appearance,
 // create, delete — the doors of the former tool row live here now.
-const wsMenu = useWorkspaceMenu()
+const wsHead = ref(null)
+const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
 </script>
 
 <template>
@@ -140,7 +143,7 @@ const wsMenu = useWorkspaceMenu()
         :options="wsMenu.options.value"
         @select="wsMenu.select"
       >
-        <button type="button" class="ws-head" data-testid="ws-head">
+        <button ref="wsHead" type="button" class="ws-head" data-testid="ws-head">
           <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
           <span
             v-if="conflicts.count"
@@ -224,7 +227,15 @@ const wsMenu = useWorkspaceMenu()
 
     <div v-if="collapsed" class="rail-sep" />
 
-    <div v-if="!collapsed" class="proj-head">
+    <div
+      v-if="!collapsed"
+      class="proj-head"
+      data-tree-row
+      tabindex="-1"
+      @keydown="onHeadKey"
+      @keydown.down.prevent="onTreeKey"
+      @keydown.up.prevent="onTreeKey"
+    >
       <n-text depth="3" strong>{{ t('shell.tree.projects') }}</n-text>
       <!-- node-props tags each option for the Get Started guide (#2753): naive
            merges them into the option node, so the tour can anchor on a menu
@@ -235,7 +246,14 @@ const wsMenu = useWorkspaceMenu()
         :node-props="(o) => ({ 'data-tour': `menu-${o.key}` })"
         @select="addAtRoot"
       >
-        <n-button text size="small" :title="t('shell.tree.add')" data-tour="proj-add">
+        <n-button
+          ref="addBtn"
+          text
+          size="small"
+          :title="t('shell.tree.add')"
+          data-tour="proj-add"
+          data-testid="tree-add"
+        >
           <n-icon :component="AddOutline" />
         </n-button>
       </n-dropdown>
@@ -245,48 +263,51 @@ const wsMenu = useWorkspaceMenu()
          padding rule from here doesn't win — and without one the rows ran flush
          to the sidebar's right edge. The same 8px gutter as the links above. -->
     <n-scrollbar v-if="!collapsed" class="tree" content-style="padding: 0 8px">
-      <draggable
-        :list="rootGrpModel"
-        group="sidebar-grp"
-        item-key="id"
-        ghost-class="sb-ghost"
-        class="sb-dropzone"
-        :animation="150"
-        :delay="160"
-        :delay-on-touch-only="true"
-        :touch-start-threshold="6"
-        @start="onDragStart"
-        @end="onDragEnd"
-        @change="onRootGrp"
-      >
-        <template #item="{ element }">
-          <SidebarNode :group="element" :depth="0" />
-        </template>
-      </draggable>
-      <draggable
-        :list="rootProjModel"
-        group="sidebar-proj"
-        item-key="id"
-        ghost-class="sb-ghost"
-        class="sb-dropzone"
-        :animation="150"
-        :delay="160"
-        :delay-on-touch-only="true"
-        :touch-start-threshold="6"
-        @start="onDragStart"
-        @end="onDragEnd"
-        @change="onRootProj"
-      >
-        <template #item="{ element }">
-          <ProjectRow :project="element" :depth="0" />
-        </template>
-      </draggable>
-      <EmptyState
-        v-if="!rootGroups.length && !ungrouped.length"
-        :icon="FolderOutline"
-        :text="t('shell.tree.empty')"
-        size="small"
-      />
+      <div ref="treeBox" class="tree-box" @keydown="onTreeKey">
+        <draggable
+          :list="rootGrpModel"
+          group="sidebar-grp"
+          item-key="id"
+          ghost-class="sb-ghost"
+          class="sb-dropzone"
+          :animation="150"
+          :delay="160"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="6"
+          @start="onDragStart"
+          @end="onDragEnd"
+          @change="onRootGrp"
+        >
+          <template #item="{ element }">
+            <SidebarNode :group="element" :depth="0" />
+          </template>
+        </draggable>
+        <NewGroupRow v-if="draft.isGroupDraft(null)" />
+        <draggable
+          :list="rootProjModel"
+          group="sidebar-proj"
+          item-key="id"
+          ghost-class="sb-ghost"
+          class="sb-dropzone"
+          :animation="150"
+          :delay="160"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="6"
+          @start="onDragStart"
+          @end="onDragEnd"
+          @change="onRootProj"
+        >
+          <template #item="{ element }">
+            <ProjectRow :project="element" :depth="0" />
+          </template>
+        </draggable>
+        <EmptyState
+          v-if="!rootGroups.length && !ungrouped.length && !draft.draft.value"
+          :icon="FolderOutline"
+          :text="t('shell.tree.empty')"
+          size="small"
+        />
+      </div>
     </n-scrollbar>
     <n-scrollbar v-else class="rail-scroll">
       <div class="rail">
@@ -309,11 +330,18 @@ const wsMenu = useWorkspaceMenu()
 
     <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
 
-    <ProjectCreateModal v-model:show="projModalShow" @created="onProjectCreated" />
+    <ProjectCreatePopover v-model:show="projFormOpen" :anchor="() => addBtn?.$el || null" />
   </div>
 </template>
 
 <style scoped>
+.proj-head {
+  outline: 0;
+  border-radius: var(--t-r-ctl);
+}
+.proj-head:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--t-primary);
+}
 .sidebar {
   display: flex;
   flex-direction: column;

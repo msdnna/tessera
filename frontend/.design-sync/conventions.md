@@ -2,9 +2,19 @@
 
 Tessera is a task tracker (tasks, notes, reminders). Its killer feature is a kanban
 board whose columns can be **grouped by tag**. Layout: project tree sidebar on the
-left, the board in the centre, every entity (task, project, board, members,
-settings) edited in a centred **Modal**. Russian is the product language — write
-UI copy in Russian unless asked otherwise.
+left, the board in the centre. Russian is the product language — write UI copy in
+Russian unless asked otherwise.
+
+**Fewer modals (v2 interaction model, #2969).** Four tiers, smallest first:
+0 · **InlineEdit** — rename or name a new row in place (F2 / double click, ↵ saves,
+Esc cancels); 1 · **PopoverForm** at its anchor, no scrim, 1–3 `FormField`s (on a
+phone it becomes a bottom sheet) — create a project, change an address, a space's
+appearance; 1′ · the same form walked through in the ⌘K palette; 2 · a big window
+(`Modal`) only for big entities — the task, GitLab, members, background jobs,
+commands, conflicts, help, the cheat sheet, the project window. Row menus are
+**ActionMenu** (a key on every row). Reversible deletes happen at once and offer an
+**UndoToast** (7 s, ⌘Z); irreversible ones take a second press (the armed red row)
+or the typed name (a danger PopoverForm).
 
 ## Setup — always wrap in `TesseraProvider`
 
