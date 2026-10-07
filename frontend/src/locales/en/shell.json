@@ -215,7 +215,8 @@
       "palette": "Command palette",
       "view": "View",
       "task": "Open task",
-      "chart": "Gantt and timeline"
+      "chart": "Gantt and timeline",
+      "sidebar": "Sidebar and spaces"
     },
     "nav": {
       "palette": "Search and commands",
@@ -223,7 +224,9 @@
       "goInbox": "Inbox",
       "goMine": "My tasks",
       "sidebar": "Hide / show sidebar",
-      "shortcuts": "This cheat sheet"
+      "shortcuts": "This cheat sheet",
+      "goSidebar": "Focus the sidebar tree",
+      "goRail": "Focus the spaces rail"
     },
     "board": {
       "addTask": "Task in the hovered column",
@@ -285,6 +288,27 @@
       "select": "Select a task",
       "shift": "Shift the dates by a day",
       "open": "Open the task"
+    },
+    "undo": {
+      "last": "Undo the last action"
+    },
+    "toast": {
+      "focus": "Jump to the undo toast"
+    },
+    "row": {
+      "rename": "Rename",
+      "renameR": "Rename",
+      "new": "New inside the selected",
+      "menu": "Row menu",
+      "menuF10": "Row menu",
+      "open": "Open",
+      "icon": "Icon and colour",
+      "slug": "Change address",
+      "move": "Move to another space",
+      "copyLink": "Copy link",
+      "settings": "Project settings",
+      "archive": "Archive",
+      "delete": "Delete"
     }
   },
   "palette": {

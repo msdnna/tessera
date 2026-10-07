@@ -11,6 +11,8 @@ export function useResponsive(breakpoint = 768) {
   }
 
   onMounted(() => {
+    // No matchMedia (jsdom, very old webviews): stay on the desktop layout.
+    if (typeof window.matchMedia !== 'function') return
     mql = window.matchMedia(`(max-width: ${breakpoint}px)`)
     isMobile.value = mql.matches
     mql.addEventListener('change', update)

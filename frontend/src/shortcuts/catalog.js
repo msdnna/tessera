@@ -20,7 +20,7 @@
 //   eager    fires on its own key even though longer sequences start with it
 //   prio     wins over other entries completed by the same key (default 0)
 
-export const GROUPS = ['nav', 'board', 'card', 'task', 'chart', 'create', 'palette', 'view']
+export const GROUPS = ['nav', 'sidebar', 'board', 'card', 'task', 'chart', 'create', 'palette', 'view']
 
 export const CATALOG = [
   // ── navigation ──
@@ -30,6 +30,10 @@ export const CATALOG = [
   { id: 'nav.goMine', keys: 'g m', group: 'nav', command: 'HomeOutline' },
   { id: 'nav.sidebar', keys: '[', group: 'nav', command: 'EyeOutline' },
   { id: 'nav.shortcuts', keys: '?', group: 'nav', command: 'KeypadOutline' },
+  // Undo toasts (#2969): ⌘Z takes back the newest one from anywhere but a text
+  // field; F6 moves focus onto it.
+  { id: 'undo.last', keys: 'mod+z', group: 'nav' },
+  { id: 'toast.focus', keys: 'f6', group: 'nav' },
 
   // Pages: palette commands without a key of their own.
   { id: 'go.notes', command: 'DocumentTextOutline', to: '/notes' },
@@ -37,6 +41,25 @@ export const CATALOG = [
   { id: 'go.reminders', command: 'AlarmOutline', to: '/reminders' },
   { id: 'go.milestones', command: 'TrailSignOutline', to: '/milestones' },
   { id: 'go.settings', command: 'SettingsOutline', to: '/settings' },
+
+  // ── sidebar and spaces (#2969): the tree row under the keyboard cursor, and
+  // the rail. They work on the selected row without opening its menu, and the
+  // menu lists the same keys.
+  { id: 'nav.goSidebar', keys: 'g s', group: 'sidebar' },
+  { id: 'nav.goRail', keys: 'g w', group: 'sidebar' },
+  { id: 'row.rename', keys: 'f2', group: 'sidebar', display: [['F2'], ['R']] },
+  { id: 'row.renameR', keys: 'r' },
+  { id: 'row.new', keys: 'shift+n', group: 'sidebar' },
+  { id: 'row.menu', keys: '.', group: 'sidebar', display: [['.'], ['⇧', 'F10']] },
+  { id: 'row.menuF10', keys: 'shift+f10' },
+  { id: 'row.open', keys: 'enter' },
+  { id: 'row.icon', keys: 'i', group: 'sidebar' },
+  { id: 'row.slug', keys: 'u', group: 'sidebar' },
+  { id: 'row.move', keys: 'm', group: 'sidebar' },
+  { id: 'row.copyLink', keys: 'mod+shift+c', group: 'sidebar' },
+  { id: 'row.settings', keys: 'mod+,', group: 'sidebar' },
+  { id: 'row.archive', keys: 'e', group: 'sidebar' },
+  { id: 'row.delete', keys: 'mod+backspace', group: 'sidebar' },
 
   // ── board ──
   { id: 'board.addTask', keys: 'c', group: 'board' },

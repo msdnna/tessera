@@ -17,6 +17,7 @@ import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import ShortcutKeys from './ShortcutKeys.vue'
 import ShortcutPending from './ShortcutPending.vue'
 import CommandPalette from './palette/CommandPalette.vue'
+import UndoToastHost from '@/components/kit/UndoToastHost.vue'
 import QuickActionsFab from './QuickActionsFab.vue'
 import QuickCreateModal from './QuickCreateModal.vue'
 import ShortcutsModal from './ShortcutsModal.vue'
@@ -334,6 +335,9 @@ watch(
         </n-drawer-content>
       </n-drawer>
     </n-layout>
+
+    <!-- Undo toasts of the v2 interaction model (#2969), over the work area. -->
+    <UndoToastHost />
 
     <!-- App-level conflict resolver: opened from any surface via the conflicts store
        (e.g. the «Конфликт» pill on a task card). -->
