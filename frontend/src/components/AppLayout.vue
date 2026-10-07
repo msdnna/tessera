@@ -20,6 +20,7 @@ import CommandPalette from './palette/CommandPalette.vue'
 import UndoToastHost from '@/components/kit/UndoToastHost.vue'
 import QuickActionsFab from './QuickActionsFab.vue'
 import QuickCreateModal from './QuickCreateModal.vue'
+import InboxPanel from './inbox/InboxPanel.vue'
 import ShortcutsModal from './ShortcutsModal.vue'
 import WorkspaceDialogsHost from './WorkspaceDialogsHost.vue'
 import ProjectWindow from './project/ProjectWindow.vue'
@@ -67,6 +68,12 @@ const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
 const { isMobile } = useResponsive()
 const { collapsed, layoutWidth, toggle } = useSidebarSize()
+// ≤1024px the «Входящие» panel lies over the content instead of squeezing it.
+const narrow = ref(typeof window !== 'undefined' && window.innerWidth <= 1024)
+const onResize = () => (narrow.value = window.innerWidth <= 1024)
+onMounted(() => window.addEventListener('resize', onResize))
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+const inboxOver = computed(() => narrow.value && inbox.panelOpen)
 
 // The rail (#2955). On desktop it is docked at the app root (App.vue), so it also
 // covers the login/offline screens (#2930); on the web it has nothing to offer
@@ -111,7 +118,14 @@ useShortcuts({
   'nav.goMine': () => router.push('/'),
   // The board the user last had open (BoardView remembers it); Home if none.
   'nav.goBoard': () => router.push(sGet('tessera_last_board') || '/'),
-  'nav.goInbox': () => notes.requestFeed(),
+  // «Входящие» (#2997): open with the focus in the list; from inside — close.
+  'nav.goInbox': () => {
+    if (!inbox.panelOpen) return inbox.open({ focus: true })
+    const inside = document.activeElement?.closest?.('[data-testid="inbox-panel"]')
+    if (inside) inbox.close()
+    else inbox.open({ focus: true })
+  },
+  'nav.goNotifications': () => notes.requestFeed(),
   'view.theme': () => theme.toggle(),
   // ⌘, — the «Проект» window of the project in front of you (#2971): the open
   // board's, or the one in the address (a stage page). Toggles.
@@ -317,22 +331,31 @@ onBeforeUnmount(() => clearInterval(inboxClock))
         <n-layout-header :class="{ 'hdr-glass': homeGlass }">
           <Topbar />
         </n-layout-header>
-        <n-layout-content
-          class="page-slot page-slot--desktop"
-          :content-style="homeGlass ? 'padding: 68px 16px 16px' : 'padding: 16px'"
+        <!-- The content and the «Входящие» panel side by side (#2997): the panel
+             docks under the top bar and the page gives up the width. -->
+        <div
+          class="work-row"
+          :class="{ 'inbox-over': inboxOver }"
           :style="{ height: homeGlass ? '100vh' : 'calc(100vh - 52px)' }"
         >
-          <router-view v-slot="{ Component }">
-            <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
+          <n-layout-content
+            class="page-slot page-slot--desktop"
+            :content-style="homeGlass ? 'padding: 68px 16px 16px' : 'padding: 16px'"
+            style="height: 100%"
+          >
+            <router-view v-slot="{ Component }">
+              <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
                  a multi-root component) stalls the out-in enter and blanks the
                  content until reload (#2708). The leaving page is taken out of
                  flow (position:absolute, see .page-leave-active) so the incoming
                  page doesn't jump while the old one fades. -->
-            <transition name="page">
-              <component :is="Component" />
-            </transition>
-          </router-view>
-        </n-layout-content>
+              <transition name="page">
+                <component :is="Component" />
+              </transition>
+            </router-view>
+          </n-layout-content>
+          <InboxPanel class="inbox-slot" :class="{ glass: homeGlass }" />
+        </div>
         <QuickActionsFab />
       </n-layout>
     </n-layout>
@@ -355,6 +378,7 @@ onBeforeUnmount(() => clearInterval(inboxClock))
         </router-view>
       </n-layout-content>
       <QuickActionsFab />
+      <InboxPanel />
       <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
         <n-drawer-content body-content-style="padding: 0">
           <!-- The rail rides along in the drawer on a phone (#2955). -->
@@ -457,6 +481,30 @@ onBeforeUnmount(() => clearInterval(inboxClock))
 .drawer-sidebar {
   flex: 1;
   min-width: 0;
+}
+/* The page and the «Входящие» panel (#2997). */
+.work-row {
+  position: relative;
+  display: flex;
+  min-height: 0;
+}
+.work-row > .page-slot {
+  flex: 1;
+  min-width: 0;
+}
+/* On the start screen the header lies over the page: the panel starts under it. */
+.inbox-slot.glass {
+  padding-top: 52px;
+}
+/* ≤1024px: over the content, with the popover shadow it now needs. */
+.work-row.inbox-over .inbox-slot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 8;
+}
+.work-row.inbox-over .inbox-slot :deep(.dock) {
+  box-shadow: var(--t-sh-pop);
 }
 /* Positioning context for the working-area version footer. */
 .work-pane {

@@ -225,18 +225,20 @@
       "sidebar": "Sidebar and spaces",
       "views": "Saved views",
       "project": "«Project» window",
-      "stage": "Milestone page"
+      "stage": "Milestone page",
+      "inbox": "Inbox"
     },
     "nav": {
       "palette": "Search and commands",
       "goBoard": "Go to board",
-      "goInbox": "Inbox",
+      "goInbox": "Inbox — open / hide",
       "goMine": "My tasks",
       "sidebar": "Hide / show sidebar",
       "shortcuts": "This cheat sheet",
       "goSidebar": "Focus the sidebar tree",
       "goRail": "Focus the spaces rail",
-      "goStage": "The board’s milestone page"
+      "goStage": "The board’s milestone page",
+      "goNotifications": "Notifications under the bell"
     },
     "board": {
       "addTask": "Task in the hovered column",
@@ -277,9 +279,7 @@
       "panel": "«Board view» panel"
     },
     "go": {
-      "notes": "Notes",
       "documents": "Documents",
-      "reminders": "Reminders",
       "milestones": "Milestones",
       "settings": "Settings"
     },
@@ -292,7 +292,9 @@
     "task": {
       "next": "Next task",
       "prev": "Previous task",
-      "close": "Close the task"
+      "close": "Close the task",
+      "remind": "Remind about the task (1–3, D — date)",
+      "note": "A note on the task"
     },
     "chart": {
       "today": "Jump to today",
@@ -361,6 +363,17 @@
       "board": "The milestone board",
       "close": "Close the milestone",
       "back": "Back"
+    },
+    "inbox": {
+      "select": "Select a record",
+      "filter": "Filter: all · reminders · notes · this board",
+      "open": "Open the record",
+      "done": "Complete the reminder",
+      "snooze": "Snooze",
+      "toTask": "Turn into a task",
+      "toDoc": "Turn into a document",
+      "link": "Tie to a task",
+      "delete": "Delete (undo ⌘Z)"
     }
   },
   "palette": {

@@ -1,6 +1,6 @@
 <script setup>
-import { NButton, NIcon } from 'naive-ui'
-import { MenuOutline, ChevronForwardOutline } from '@vicons/ionicons5'
+import { NButton, NIcon, NTooltip } from 'naive-ui'
+import { MenuOutline, ChevronForwardOutline, FileTrayOutline } from '@vicons/ionicons5'
 import SearchBar from './SearchBar.vue'
 import NotificationsBell from './NotificationsBell.vue'
 import { computed } from 'vue'
@@ -10,6 +10,7 @@ import BoardMobileMenu from './BoardMobileMenu.vue'
 import HelpHint from './help/HelpHint.vue'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useQuickStore } from '@/stores/quick'
+import { useInboxStore } from '@/stores/inbox'
 import ShortcutKeys from './ShortcutKeys.vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -24,6 +25,7 @@ const { t } = useI18n()
 const board = useBoardViewStore()
 const ws = useWorkspacesStore()
 const quick = useQuickStore()
+const inbox = useInboxStore()
 // An open document fills the header with its own controls (#2727); the
 // cheat-sheet button gives up its place there — `?` still opens the sheet.
 const route = useRoute()
@@ -83,6 +85,27 @@ const onHome = computed(() => route.path === '/')
            and picks its article from the route (#2794). -->
       <!-- The bell is the shell's, not the workspace's (v2): the feed spans
            every workspace, so it stays here whatever the sidebar does. -->
+      <!-- «Входящие» (#2997): the panel, with the count of reminders that went
+           off; next to the bell, which keeps mentions and GitLab events. -->
+      <n-tooltip :disabled="mobile" :delay="400">
+        <template #trigger>
+          <button
+            type="button"
+            class="tb-inbox"
+            :class="{ on: inbox.panelOpen }"
+            :aria-label="t('inbox.title')"
+            :aria-pressed="inbox.panelOpen"
+            data-testid="inbox-button"
+            @click="inbox.toggle()"
+          >
+            <n-icon :component="FileTrayOutline" :size="18" />
+            <span v-if="inbox.fired" class="tb-inbox-n" data-testid="inbox-fired">{{
+              inbox.fired > 9 ? '9+' : inbox.fired
+            }}</span>
+          </button>
+        </template>
+        <span class="tb-tip">{{ t('inbox.title') }} <ShortcutKeys id="nav.goInbox" /></span>
+      </n-tooltip>
       <NotificationsBell />
       <!-- The cheat sheet (#2956); on a phone there is no keyboard to press. -->
       <button
@@ -102,6 +125,60 @@ const onHome = computed(() => route.path === '/')
 </template>
 
 <style scoped>
+/* «Входящие» (#2997): a quiet button; the count is the fired reminders —
+   attention, so the orange of a fired reminder, not the accent. */
+.tb-inbox {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  justify-content: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  cursor: pointer;
+}
+.tb-inbox:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.tb-inbox.on {
+  background: color-mix(in srgb, var(--t-primary) 18%, transparent);
+  color: var(--t-primary);
+}
+.tb-inbox:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+.tb-inbox-n {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #f0a020 86%, #000),
+    #f0a020 50%,
+    color-mix(in srgb, #f0a020 86%, #fff)
+  );
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.tb-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
 /* v2 (#2954): three tracks so the search sits on the true centre whatever the
    crumbs and actions on either side weigh. */
 .topbar {

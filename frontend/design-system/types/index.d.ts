@@ -357,7 +357,8 @@ export declare function ActionMenu(props: ActionMenuProps): ReactElement
 export interface UndoToastProps extends IslandHostProps {
   /** «Колонка «Бэклог» удалена · 14 задач в «К работе»». */
   caption?: string
-  icon?: 'trash' | 'archive'
+  /** check — completed, moon — snoozed («Входящие», #2997). */
+  icon?: 'trash' | 'archive' | 'check' | 'moon'
   status?: 'live' | 'busy' | 'done' | 'error'
   /** Time left, 0..1 (the bottom bar). */
   progress?: number

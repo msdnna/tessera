@@ -13,6 +13,9 @@ const props = defineProps({
   // hint inside the search field.
   joined: { type: Boolean, default: false },
   soft: { type: Boolean, default: false },
+  // Sequences without «затем» between the chords («N M») — the mockups' tight
+  // spots: a panel's header button, a footer hint (#2997).
+  bare: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()
@@ -23,7 +26,7 @@ const capsText = (caps) => (caps[0] === 'Ctrl' ? caps.join(' ') : caps.join(''))
 <template>
   <span class="sk">
     <template v-for="(caps, i) in chords" :key="i">
-      <span v-if="i > 0" class="sk-then">{{ t('shell.keys.then') }}</span>
+      <span v-if="i > 0 && !bare" class="sk-then">{{ t('shell.keys.then') }}</span>
       <Kbd v-if="joined" :soft="soft">{{ capsText(caps) }}</Kbd>
       <template v-else>
         <Kbd v-for="(cap, j) in caps" :key="j" :soft="soft">{{ cap }}</Kbd>

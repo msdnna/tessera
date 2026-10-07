@@ -37,6 +37,9 @@ const props = defineProps({
   // `{ spacer: true }`. Desktop only; nothing on a phone.
   hints: { type: Array, default: () => [] },
   testid: { type: String, default: 'dock-panel' },
+  // Phone: the whole height under the top bar instead of a half sheet
+  // («Входящие», #2997).
+  full: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:show', 'close'])
 const { t } = useI18n()
@@ -115,6 +118,7 @@ defineExpose({ measure, el })
     v-if="isMobile"
     :show="show"
     :testid="testid"
+    :full="full"
     class="dock-sheet"
     @update:show="(v) => (v ? null : close())"
   >
@@ -151,7 +155,7 @@ defineExpose({ measure, el })
           data-testid="dock-close"
           @click="close"
         >
-          <ShortcutKeys v-if="toggleKey" :id="toggleKey" />
+          <ShortcutKeys v-if="toggleKey" :id="toggleKey" bare />
           <n-icon :component="CloseOutline" :size="17" />
         </button>
       </header>
@@ -161,7 +165,7 @@ defineExpose({ measure, el })
           <template v-for="(h, i) in hints" :key="i">
             <span v-if="h.spacer" class="dock-fill" />
             <span v-else class="dock-hint">
-              <ShortcutKeys v-if="h.id" :id="h.id" />
+              <ShortcutKeys v-if="h.id" :id="h.id" bare />
               <template v-else>
                 <kbd v-for="(c, j) in h.caps" :key="j" class="dock-kbd">{{ c }}</kbd>
               </template>

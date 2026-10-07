@@ -34,13 +34,17 @@ export const GROUPS = [
   'views',
   'project',
   'stage',
+  'inbox',
 ]
 
 export const CATALOG = [
   // ── navigation ──
   { id: 'nav.palette', keys: 'mod+k', group: 'nav', input: true, modal: true },
   { id: 'nav.goBoard', keys: 'g b', group: 'nav', command: 'GridOutline' },
-  { id: 'nav.goInbox', keys: 'g i', group: 'nav', command: 'NotificationsOutline' },
+  // «Входящие» (#2997): opens the panel with the focus in the list, and back.
+  { id: 'nav.goInbox', keys: 'g i', group: 'nav', command: 'FileTrayOutline' },
+  // The bell's feed (mentions, assignments, GitLab) — G I went to «Входящие».
+  { id: 'nav.goNotifications', keys: 'g n', group: 'nav', command: 'NotificationsOutline' },
   // The page of the stage the open board is scoped to (#2993).
   { id: 'nav.goStage', keys: 'g e', group: 'nav' },
   { id: 'nav.goMine', keys: 'g m', group: 'nav', command: 'HomeOutline' },
@@ -54,9 +58,7 @@ export const CATALOG = [
   { id: 'toast.focus', keys: 'f6', group: 'nav' },
 
   // Pages: palette commands without a key of their own.
-  { id: 'go.notes', command: 'DocumentTextOutline', to: '/notes' },
   { id: 'go.documents', command: 'DocumentsOutline', to: '/documents' },
-  { id: 'go.reminders', command: 'AlarmOutline', to: '/reminders' },
   { id: 'go.milestones', command: 'TrailSignOutline', to: '/milestones' },
   { id: 'go.settings', command: 'SettingsOutline', to: '/settings' },
 
@@ -137,6 +139,10 @@ export const CATALOG = [
   { id: 'task.due', keys: 'd', modal: true },
   { id: 'task.tags', keys: 'l', modal: true },
   { id: 'task.subtask', keys: 'shift+n', modal: true },
+  // «Напоминания и заметки» of the open task (#2998): ⇧R offers the quick
+  // moments (then 1–3 or D), ⇧M opens the capture with the task filled in.
+  { id: 'task.remind', keys: 'shift+r', group: 'task', modal: true },
+  { id: 'task.note', keys: 'shift+m', group: 'task', modal: true },
 
   // ── the Gantt / timeline views (#2959): the selected bar and the time axis ──
   { id: 'chart.today', keys: 't', group: 'chart' },
@@ -213,6 +219,18 @@ export const CATALOG = [
   { id: 'tags.rename', group: 'project', display: [['enter'], ['f2']] },
   { id: 'tags.new', group: 'project', display: [['n'], ['/']] },
   { id: 'tags.bulk', group: 'project', display: [['m'], ['c'], ['backspace']] },
+
+  // ── «Входящие» (#2997): caught by the panel's list itself while it has the
+  // focus (they mean something only on its records); listed for the sheet.
+  { id: 'inbox.select', group: 'inbox', display: [['arrowup', 'arrowdown']] },
+  { id: 'inbox.filter', group: 'inbox', display: [['1–4']] },
+  { id: 'inbox.open', group: 'inbox', display: [['enter']] },
+  { id: 'inbox.done', group: 'inbox', display: [['e']] },
+  { id: 'inbox.snooze', group: 'inbox', display: [['h']] },
+  { id: 'inbox.toTask', group: 'inbox', display: [['t']] },
+  { id: 'inbox.toDoc', group: 'inbox', display: [['shift', 'D']] },
+  { id: 'inbox.link', group: 'inbox', display: [['l']] },
+  { id: 'inbox.delete', group: 'inbox', display: [['backspace']] },
 
   // ── the stage page (#2993) ──
   { id: 'stage.edit', keys: 'e', group: 'stage' },

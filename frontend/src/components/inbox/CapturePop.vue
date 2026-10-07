@@ -397,6 +397,7 @@ const sheetShow = computed({
         <div v-if="bodyOpen" ref="bodyWrap" class="cap-body">
           <MarkdownEditor
             v-model="body"
+            variant="boxed"
             :min-rows="4"
             :placeholder="t('inbox.capture.bodyPlaceholder')"
           />
@@ -531,6 +532,7 @@ const sheetShow = computed({
   color: var(--t-primary);
 }
 .cap-mode {
+  flex: none;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -556,6 +558,9 @@ const sheetShow = computed({
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-size: 12px;
   color: var(--t-text3);
   white-space: nowrap;
