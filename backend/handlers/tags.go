@@ -136,10 +136,15 @@ func (h *API) ListTags(c *gin.Context) {
 	if !h.requireMember(c, wsID) {
 		return
 	}
-	tags, err := h.q.ListTags(c, projectID)
+	// With the task count and origin of each tag (#2990, #3028) — the tag table
+	// of the «Проект» window shows both; every other reader ignores them.
+	tags, err := h.q.ListTagsWithCounts(c, projectID)
 	if err != nil {
 		fail(c, err)
 		return
+	}
+	if tags == nil {
+		tags = []db.ListTagsWithCountsRow{}
 	}
 	c.JSON(http.StatusOK, tags)
 }

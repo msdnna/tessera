@@ -444,6 +444,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Tag-prefix display names (provider-neutral; GitLab modal is one editor).
 			protected.GET("/projects/:id/tag-prefixes", rh.ListTagPrefixes)
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
+			// The tag table of the «Проект» window (#2990): one prefix's name,
+			// merging, bulk delete and its undo.
+			protected.PATCH("/projects/:id/tag-prefixes", rh.SetTagPrefix)
+			protected.POST("/projects/:id/tags/merge", rh.MergeTags)
+			protected.POST("/projects/:id/tags/delete", rh.DeleteTags)
+			protected.POST("/projects/:id/tags/restore", rh.RestoreTags)
 			protected.GET("/workspaces/:id/tag-prefixes", rh.ListWorkspaceTagPrefixes)
 
 			// Quick-action registry: built-in commands + the workspace's custom
