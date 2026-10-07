@@ -135,15 +135,17 @@ test('шаг «Группа создана» подсвечивает созда
 
   await page.locator('[data-tour="proj-add"]').click()
   await page.locator('[data-tour="menu-group"]').click()
+  // С #2969 группа называется прямо в дереве: пустая строка, имя, Enter.
+  const name = `E2E группа ${id}`
+  await page.getByTestId('new-group-row').locator('input').fill(name)
+  await page.getByTestId('new-group-row').locator('input').press('Enter')
   await expect(pop).toContainText(t('tour.steps.group-created.title'))
 
   // Подсвечена (data-tour-active вешает оверлей на свои якоря) ровно одна строка
-  // группы — и это не засеянная, а только что созданная. Имя ей даёт клиент
-  // (`shell.group.defaultName` в Sidebar.vue), поэтому и здесь оно из каталога:
-  // на английском прогоне группа называется «Group».
+  // группы — и это не засеянная, а только что созданная.
   const lit = page.locator('[data-tour="group-row"][data-tour-active]')
   await expect(lit).toHaveCount(1)
-  await expect(lit).toContainText(t('shell.group.defaultName'))
+  await expect(lit).toContainText(name)
   expect(
     await lit.evaluate((el) => el.closest('[data-tour-group]').getAttribute('data-tour-group')),
   ).not.toBe(group.id)

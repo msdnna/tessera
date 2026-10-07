@@ -89,11 +89,11 @@
     },
     "menu-group": {
       "title": "Pick “Group”",
-      "body": "Now the second menu item comes in handy."
+      "body": "The group is named right in the tree: type a name and press Enter."
     },
     "group-created": {
       "title": "The group is created",
-      "body": "It is called “Group” — double-click the name to rename it."
+      "body": "Rename it with a double-click on the name or with F2."
     },
     "dnd-project": {
       "title": "Drag the project into the group",
