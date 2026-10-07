@@ -47,7 +47,8 @@ const dash = computed(() => ringDash(props.pct, r.value))
   flex: none;
 }
 .ring-track {
-  stroke: var(--t-pill);
+  /* Visible on both themes' metric cards (--t-pill vanishes on light --t-col). */
+  stroke: color-mix(in srgb, var(--t-text3) 24%, transparent);
 }
 .ring-fill {
   stroke: url(#t-accent-grad-svg);

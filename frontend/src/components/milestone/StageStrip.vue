@@ -207,7 +207,9 @@ async function onMenu(key) {
     <div v-if="open && !mobile" class="sstrip-body">
       <div class="sstrip-goals">
         <div class="sstrip-h">{{ t('board.strip.goals') }}</div>
-        <RichContent v-if="stage.description" :source="stage.description" class="sstrip-md" />
+        <div v-if="stage.description" class="sstrip-md">
+          <RichContent :source="stage.description" />
+        </div>
         <button v-else type="button" class="sstrip-add" @click="openPage(true)">
           {{ t('board.strip.noGoals') }}
         </button>

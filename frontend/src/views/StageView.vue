@@ -615,12 +615,11 @@ const forecastLabel = computed(() => {
                 </button>
               </div>
             </template>
-            <RichContent
-              v-else-if="stage.description"
-              class="sp-goals"
-              :source="stage.description"
-              :members="members"
-            />
+            <!-- A wrapper, not a class on RichContent: it renders a fragment, and
+                 the heading sizes below need this scope on an element. -->
+            <div v-else-if="stage.description" class="sp-goals">
+              <RichContent :source="stage.description" :members="members" />
+            </div>
             <button v-else-if="!linked" type="button" class="sp-goals-empty" @click="startEdit">
               {{ t('milestones.page.goalsEmpty') }}
             </button>
