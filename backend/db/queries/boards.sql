@@ -1,6 +1,6 @@
 -- name: CreateBoard :one
-INSERT INTO boards (project_id, name, slug, position)
-VALUES ($1, $2, $3, $4)
+INSERT INTO boards (project_id, name, slug, position, default_layout)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- ListBoards: created_at/id break position ties — see ListColumns below, the
@@ -58,7 +58,8 @@ SELECT coalesce(max(position), 0)::double precision FROM boards WHERE project_id
 
 -- name: UpdateBoard :one
 UPDATE boards
-SET name = $2, position = $3, icon = $4, color = $5, icon_mode = $6, updated_at = now()
+SET name = $2, position = $3, icon = $4, color = $5, icon_mode = $6, default_layout = $7,
+    updated_at = now()
 WHERE id = $1
 RETURNING *;
 

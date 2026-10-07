@@ -491,6 +491,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/boards/:id/dependencies", rh.BoardDependencies)
 			protected.GET("/boards/:id/views", rh.ListBoardViews)
 			protected.POST("/boards/:id/views", rh.SaveBoardView)
+			protected.PATCH("/views/:id", rh.UpdateBoardView)
 			protected.DELETE("/views/:id", rh.DeleteBoardView)
 
 			protected.PATCH("/columns/:id", rh.UpdateColumn)

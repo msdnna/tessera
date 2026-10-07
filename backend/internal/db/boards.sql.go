@@ -71,16 +71,17 @@ func (q *Queries) ClearColumnMoves(ctx context.Context, columnID uuid.UUID) erro
 }
 
 const createBoard = `-- name: CreateBoard :one
-INSERT INTO boards (project_id, name, slug, position)
-VALUES ($1, $2, $3, $4)
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
+INSERT INTO boards (project_id, name, slug, position, default_layout)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout
 `
 
 type CreateBoardParams struct {
-	ProjectID uuid.UUID `json:"project_id"`
-	Name      string    `json:"name"`
-	Slug      string    `json:"slug"`
-	Position  float64   `json:"position"`
+	ProjectID     uuid.UUID `json:"project_id"`
+	Name          string    `json:"name"`
+	Slug          string    `json:"slug"`
+	Position      float64   `json:"position"`
+	DefaultLayout string    `json:"default_layout"`
 }
 
 func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board, error) {
@@ -89,6 +90,7 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 		arg.Name,
 		arg.Slug,
 		arg.Position,
+		arg.DefaultLayout,
 	)
 	var i Board
 	err := row.Scan(
@@ -104,6 +106,7 @@ func (q *Queries) CreateBoard(ctx context.Context, arg CreateBoardParams) (Board
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }
@@ -197,7 +200,7 @@ func (q *Queries) DeletedBoardTaskIDs(ctx context.Context, cutoff time.Time) ([]
 }
 
 const getBoard = `-- name: GetBoard :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at FROM boards WHERE id = $1 AND deleted_at IS NULL
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout FROM boards WHERE id = $1 AND deleted_at IS NULL
 `
 
 // A soft-deleted board (0078) answers as missing to every reader: GetBoard is
@@ -219,12 +222,13 @@ func (q *Queries) GetBoard(ctx context.Context, id uuid.UUID) (Board, error) {
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }
 
 const getBoardAny = `-- name: GetBoardAny :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at FROM boards WHERE id = $1
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout FROM boards WHERE id = $1
 `
 
 func (q *Queries) GetBoardAny(ctx context.Context, id uuid.UUID) (Board, error) {
@@ -243,12 +247,13 @@ func (q *Queries) GetBoardAny(ctx context.Context, id uuid.UUID) (Board, error) 
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }
 
 const getBoardBySlugForUser = `-- name: GetBoardBySlugForUser :one
-SELECT b.id, b.project_id, b.name, b.position, b.created_at, b.updated_at, b.done_column_id, b.slug, b.icon, b.color, b.icon_mode, b.deleted_at
+SELECT b.id, b.project_id, b.name, b.position, b.created_at, b.updated_at, b.done_column_id, b.slug, b.icon, b.color, b.icon_mode, b.deleted_at, b.default_layout
 FROM boards b
 JOIN projects p ON p.id = b.project_id
 JOIN memberships m ON m.workspace_id = p.workspace_id AND m.user_id = $1
@@ -291,12 +296,13 @@ func (q *Queries) GetBoardBySlugForUser(ctx context.Context, arg GetBoardBySlugF
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }
 
 const getBoardInProjectBySlug = `-- name: GetBoardInProjectBySlug :one
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at FROM boards WHERE project_id = $1 AND slug = $2 AND deleted_at IS NULL
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout FROM boards WHERE project_id = $1 AND slug = $2 AND deleted_at IS NULL
 `
 
 type GetBoardInProjectBySlugParams struct {
@@ -320,6 +326,7 @@ func (q *Queries) GetBoardInProjectBySlug(ctx context.Context, arg GetBoardInPro
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }
@@ -371,7 +378,7 @@ func (q *Queries) GetColumnAny(ctx context.Context, id uuid.UUID) (BoardColumn, 
 }
 
 const listBoards = `-- name: ListBoards :many
-SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at FROM boards WHERE project_id = $1 AND deleted_at IS NULL ORDER BY position, created_at, id
+SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout FROM boards WHERE project_id = $1 AND deleted_at IS NULL ORDER BY position, created_at, id
 `
 
 // ListBoards: created_at/id break position ties — see ListColumns below, the
@@ -398,6 +405,7 @@ func (q *Queries) ListBoards(ctx context.Context, projectID uuid.UUID) ([]Board,
 			&i.Color,
 			&i.IconMode,
 			&i.DeletedAt,
+			&i.DefaultLayout,
 		); err != nil {
 			return nil, err
 		}
@@ -603,7 +611,7 @@ func (q *Queries) RecordColumnMoves(ctx context.Context, arg RecordColumnMovesPa
 const restoreBoard = `-- name: RestoreBoard :one
 UPDATE boards SET deleted_at = NULL, updated_at = now()
 WHERE id = $1 AND deleted_at IS NOT NULL
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout
 `
 
 func (q *Queries) RestoreBoard(ctx context.Context, id uuid.UUID) (Board, error) {
@@ -622,6 +630,7 @@ func (q *Queries) RestoreBoard(ctx context.Context, id uuid.UUID) (Board, error)
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }
@@ -669,7 +678,7 @@ const setBoardDoneColumn = `-- name: SetBoardDoneColumn :one
 UPDATE boards
 SET done_column_id = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout
 `
 
 type SetBoardDoneColumnParams struct {
@@ -693,6 +702,7 @@ func (q *Queries) SetBoardDoneColumn(ctx context.Context, arg SetBoardDoneColumn
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }
@@ -712,7 +722,7 @@ func (q *Queries) SetBoardSlug(ctx context.Context, arg SetBoardSlugParams) erro
 }
 
 const softDeleteBoard = `-- name: SoftDeleteBoard :one
-UPDATE boards SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
+UPDATE boards SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout
 `
 
 // SoftDeleteBoard hides a board from every reader (0078); RestoreBoard brings it
@@ -734,6 +744,7 @@ func (q *Queries) SoftDeleteBoard(ctx context.Context, id uuid.UUID) (Board, err
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }
@@ -773,18 +784,20 @@ func (q *Queries) SoftDeleteColumn(ctx context.Context, arg SoftDeleteColumnPara
 
 const updateBoard = `-- name: UpdateBoard :one
 UPDATE boards
-SET name = $2, position = $3, icon = $4, color = $5, icon_mode = $6, updated_at = now()
+SET name = $2, position = $3, icon = $4, color = $5, icon_mode = $6, default_layout = $7,
+    updated_at = now()
 WHERE id = $1
-RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at
+RETURNING id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout
 `
 
 type UpdateBoardParams struct {
-	ID       uuid.UUID `json:"id"`
-	Name     string    `json:"name"`
-	Position float64   `json:"position"`
-	Icon     string    `json:"icon"`
-	Color    string    `json:"color"`
-	IconMode string    `json:"icon_mode"`
+	ID            uuid.UUID `json:"id"`
+	Name          string    `json:"name"`
+	Position      float64   `json:"position"`
+	Icon          string    `json:"icon"`
+	Color         string    `json:"color"`
+	IconMode      string    `json:"icon_mode"`
+	DefaultLayout string    `json:"default_layout"`
 }
 
 func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board, error) {
@@ -795,6 +808,7 @@ func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board
 		arg.Icon,
 		arg.Color,
 		arg.IconMode,
+		arg.DefaultLayout,
 	)
 	var i Board
 	err := row.Scan(
@@ -810,6 +824,7 @@ func (q *Queries) UpdateBoard(ctx context.Context, arg UpdateBoardParams) (Board
 		&i.Color,
 		&i.IconMode,
 		&i.DeletedAt,
+		&i.DefaultLayout,
 	)
 	return i, err
 }

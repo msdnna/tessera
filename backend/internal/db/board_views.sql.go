@@ -7,27 +7,29 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
 
 const boardViewNameExists = `-- name: BoardViewNameExists :one
 SELECT EXISTS (
-    SELECT 1 FROM board_views WHERE board_id = $1 AND user_id = $2 AND name = $3
+    SELECT 1 FROM board_views
+    WHERE board_id = $1 AND user_id = $2 AND name = $3 AND scope = 'user'
 )
 `
 
 type BoardViewNameExistsParams struct {
-	BoardID uuid.UUID `json:"board_id"`
-	UserID  uuid.UUID `json:"user_id"`
-	Name    string    `json:"name"`
+	BoardID uuid.UUID  `json:"board_id"`
+	UserID  *uuid.UUID `json:"user_id"`
+	Name    string     `json:"name"`
 }
 
 // BoardViewNameExists answers whether the save about to happen is an overwrite
 // rather than a new row. Only asked once the count is already at the cap, and
-// what makes the cap safe to have: the board's autosave re-saves the loaded view
-// on every toolbar change, so refusing by count alone would freeze the layout of
-// exactly the user who uses the feature most.
+// what makes the cap safe to have: an overwrite must keep working for a user who
+// is at the cap, or saving the loaded view would freeze for exactly the user who
+// uses the feature most.
 func (q *Queries) BoardViewNameExists(ctx context.Context, arg BoardViewNameExistsParams) (bool, error) {
 	row := q.db.QueryRow(ctx, boardViewNameExists, arg.BoardID, arg.UserID, arg.Name)
 	var exists bool
@@ -35,13 +37,39 @@ func (q *Queries) BoardViewNameExists(ctx context.Context, arg BoardViewNameExis
 	return exists, err
 }
 
+const clearSharedBoardViewDefault = `-- name: ClearSharedBoardViewDefault :exec
+UPDATE board_views SET is_default = false
+WHERE board_id = $1 AND scope = 'board' AND is_default
+`
+
+func (q *Queries) ClearSharedBoardViewDefault(ctx context.Context, boardID uuid.UUID) error {
+	_, err := q.db.Exec(ctx, clearSharedBoardViewDefault, boardID)
+	return err
+}
+
+const clearUserBoardViewDefault = `-- name: ClearUserBoardViewDefault :exec
+UPDATE board_views SET is_default = false
+WHERE board_id = $1 AND user_id = $2 AND scope = 'user' AND is_default
+`
+
+type ClearUserBoardViewDefaultParams struct {
+	BoardID uuid.UUID  `json:"board_id"`
+	UserID  *uuid.UUID `json:"user_id"`
+}
+
+// One star per list: setting it clears the previous one in the same list.
+func (q *Queries) ClearUserBoardViewDefault(ctx context.Context, arg ClearUserBoardViewDefaultParams) error {
+	_, err := q.db.Exec(ctx, clearUserBoardViewDefault, arg.BoardID, arg.UserID)
+	return err
+}
+
 const countBoardViews = `-- name: CountBoardViews :one
-SELECT count(*) FROM board_views WHERE board_id = $1 AND user_id = $2
+SELECT count(*) FROM board_views WHERE board_id = $1 AND user_id = $2 AND scope = 'user'
 `
 
 type CountBoardViewsParams struct {
-	BoardID uuid.UUID `json:"board_id"`
-	UserID  uuid.UUID `json:"user_id"`
+	BoardID uuid.UUID  `json:"board_id"`
+	UserID  *uuid.UUID `json:"user_id"`
 }
 
 // CountBoardViews counts one user's saved views on one board — the guard in
@@ -50,6 +78,17 @@ type CountBoardViewsParams struct {
 // member filling their own picker would lock the board's views for everybody.
 func (q *Queries) CountBoardViews(ctx context.Context, arg CountBoardViewsParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countBoardViews, arg.BoardID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countSharedBoardViews = `-- name: CountSharedBoardViews :one
+SELECT count(*) FROM board_views WHERE board_id = $1 AND scope = 'board'
+`
+
+func (q *Queries) CountSharedBoardViews(ctx context.Context, boardID uuid.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countSharedBoardViews, boardID)
 	var count int64
 	err := row.Scan(&count)
 	return count, err
@@ -65,7 +104,7 @@ func (q *Queries) DeleteBoardView(ctx context.Context, id uuid.UUID) error {
 }
 
 const getBoardView = `-- name: GetBoardView :one
-SELECT id, board_id, user_id, name, config, created_at, updated_at FROM board_views WHERE id = $1
+SELECT id, board_id, user_id, name, config, created_at, updated_at, scope, is_default, position, created_by FROM board_views WHERE id = $1
 `
 
 func (q *Queries) GetBoardView(ctx context.Context, id uuid.UUID) (BoardView, error) {
@@ -79,28 +118,57 @@ func (q *Queries) GetBoardView(ctx context.Context, id uuid.UUID) (BoardView, er
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Scope,
+		&i.IsDefault,
+		&i.Position,
+		&i.CreatedBy,
 	)
 	return i, err
 }
 
-const listBoardViews = `-- name: ListBoardViews :many
-SELECT id, board_id, user_id, name, config, created_at, updated_at FROM board_views WHERE board_id = $1 AND user_id = $2 ORDER BY name
+const listBoardViewsForUser = `-- name: ListBoardViewsForUser :many
+
+SELECT v.id, v.board_id, v.user_id, v.name, v.config, v.created_at, v.updated_at, v.scope, v.is_default, v.position, v.created_by, COALESCE(u.name, '')::text AS creator_name
+FROM board_views v
+LEFT JOIN users u ON u.id = v.created_by
+WHERE v.board_id = $1 AND (v.scope = 'board' OR v.user_id = $2)
+ORDER BY (v.scope = 'board'), v.position, v.name, v.id
 `
 
-type ListBoardViewsParams struct {
-	BoardID uuid.UUID `json:"board_id"`
-	UserID  uuid.UUID `json:"user_id"`
+type ListBoardViewsForUserParams struct {
+	BoardID uuid.UUID  `json:"board_id"`
+	UserID  *uuid.UUID `json:"user_id"`
 }
 
-func (q *Queries) ListBoardViews(ctx context.Context, arg ListBoardViewsParams) ([]BoardView, error) {
-	rows, err := q.db.Query(ctx, listBoardViews, arg.BoardID, arg.UserID)
+type ListBoardViewsForUserRow struct {
+	ID          uuid.UUID  `json:"id"`
+	BoardID     uuid.UUID  `json:"board_id"`
+	UserID      *uuid.UUID `json:"user_id"`
+	Name        string     `json:"name"`
+	Config      []byte     `json:"config"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	Scope       string     `json:"scope"`
+	IsDefault   bool       `json:"is_default"`
+	Position    float64    `json:"position"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	CreatorName string     `json:"creator_name"`
+}
+
+// Board views (#2970): a named snapshot of the board's toolbar. scope = 'user'
+// is one person's (user_id = them), scope = 'board' is shared with everybody on
+// the board (user_id IS NULL, created_by = whoever made it).
+// ListBoardViewsForUser returns what one reader sees on a board: their own views
+// and the board's shared ones — own first, then shared, each in its own order.
+func (q *Queries) ListBoardViewsForUser(ctx context.Context, arg ListBoardViewsForUserParams) ([]ListBoardViewsForUserRow, error) {
+	rows, err := q.db.Query(ctx, listBoardViewsForUser, arg.BoardID, arg.UserID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []BoardView
+	var items []ListBoardViewsForUserRow
 	for rows.Next() {
-		var i BoardView
+		var i ListBoardViewsForUserRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.BoardID,
@@ -109,6 +177,11 @@ func (q *Queries) ListBoardViews(ctx context.Context, arg ListBoardViewsParams) 
 			&i.Config,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.Scope,
+			&i.IsDefault,
+			&i.Position,
+			&i.CreatedBy,
+			&i.CreatorName,
 		); err != nil {
 			return nil, err
 		}
@@ -120,28 +193,83 @@ func (q *Queries) ListBoardViews(ctx context.Context, arg ListBoardViewsParams) 
 	return items, nil
 }
 
-const upsertBoardView = `-- name: UpsertBoardView :one
-INSERT INTO board_views (board_id, user_id, name, config, updated_at)
-VALUES ($1, $2, $3, $4, now())
-ON CONFLICT (board_id, user_id, name) DO UPDATE
-SET config = EXCLUDED.config, updated_at = now()
-RETURNING id, board_id, user_id, name, config, created_at, updated_at
+const maxSharedBoardViewPosition = `-- name: MaxSharedBoardViewPosition :one
+SELECT COALESCE(max(position), 0)::float8 FROM board_views
+WHERE board_id = $1 AND scope = 'board'
 `
 
-type UpsertBoardViewParams struct {
-	BoardID uuid.UUID `json:"board_id"`
-	UserID  uuid.UUID `json:"user_id"`
-	Name    string    `json:"name"`
-	Config  []byte    `json:"config"`
+func (q *Queries) MaxSharedBoardViewPosition(ctx context.Context, boardID uuid.UUID) (float64, error) {
+	row := q.db.QueryRow(ctx, maxSharedBoardViewPosition, boardID)
+	var column_1 float64
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
-// UpsertBoardView creates a view or overwrites the user's same-named one.
-func (q *Queries) UpsertBoardView(ctx context.Context, arg UpsertBoardViewParams) (BoardView, error) {
-	row := q.db.QueryRow(ctx, upsertBoardView,
-		arg.BoardID,
-		arg.UserID,
+const maxUserBoardViewPosition = `-- name: MaxUserBoardViewPosition :one
+SELECT COALESCE(max(position), 0)::float8 FROM board_views
+WHERE board_id = $1 AND user_id = $2 AND scope = 'user'
+`
+
+type MaxUserBoardViewPositionParams struct {
+	BoardID uuid.UUID  `json:"board_id"`
+	UserID  *uuid.UUID `json:"user_id"`
+}
+
+// The end of one list — where a new view goes.
+func (q *Queries) MaxUserBoardViewPosition(ctx context.Context, arg MaxUserBoardViewPositionParams) (float64, error) {
+	row := q.db.QueryRow(ctx, maxUserBoardViewPosition, arg.BoardID, arg.UserID)
+	var column_1 float64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const sharedBoardViewNameExists = `-- name: SharedBoardViewNameExists :one
+SELECT EXISTS (
+    SELECT 1 FROM board_views WHERE board_id = $1 AND name = $2 AND scope = 'board'
+)
+`
+
+type SharedBoardViewNameExistsParams struct {
+	BoardID uuid.UUID `json:"board_id"`
+	Name    string    `json:"name"`
+}
+
+func (q *Queries) SharedBoardViewNameExists(ctx context.Context, arg SharedBoardViewNameExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, sharedBoardViewNameExists, arg.BoardID, arg.Name)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const updateBoardView = `-- name: UpdateBoardView :one
+UPDATE board_views
+SET name = $2, config = $3, scope = $4, user_id = $5, position = $6, is_default = $7,
+    updated_at = now()
+WHERE id = $1
+RETURNING id, board_id, user_id, name, config, created_at, updated_at, scope, is_default, position, created_by
+`
+
+type UpdateBoardViewParams struct {
+	ID        uuid.UUID  `json:"id"`
+	Name      string     `json:"name"`
+	Config    []byte     `json:"config"`
+	Scope     string     `json:"scope"`
+	UserID    *uuid.UUID `json:"user_id"`
+	Position  float64    `json:"position"`
+	IsDefault bool       `json:"is_default"`
+}
+
+// UpdateBoardView writes every mutable field at once; the handler merges the
+// partial PATCH over the stored row first.
+func (q *Queries) UpdateBoardView(ctx context.Context, arg UpdateBoardViewParams) (BoardView, error) {
+	row := q.db.QueryRow(ctx, updateBoardView,
+		arg.ID,
 		arg.Name,
 		arg.Config,
+		arg.Scope,
+		arg.UserID,
+		arg.Position,
+		arg.IsDefault,
 	)
 	var i BoardView
 	err := row.Scan(
@@ -152,6 +280,96 @@ func (q *Queries) UpsertBoardView(ctx context.Context, arg UpsertBoardViewParams
 		&i.Config,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Scope,
+		&i.IsDefault,
+		&i.Position,
+		&i.CreatedBy,
+	)
+	return i, err
+}
+
+const upsertBoardView = `-- name: UpsertBoardView :one
+INSERT INTO board_views (board_id, user_id, name, config, scope, position, created_by, updated_at)
+VALUES ($1, $2, $3, $4, 'user', $5, $2, now())
+ON CONFLICT (board_id, user_id, name) WHERE scope = 'user' DO UPDATE
+SET config = EXCLUDED.config, updated_at = now()
+RETURNING id, board_id, user_id, name, config, created_at, updated_at, scope, is_default, position, created_by
+`
+
+type UpsertBoardViewParams struct {
+	BoardID  uuid.UUID  `json:"board_id"`
+	UserID   *uuid.UUID `json:"user_id"`
+	Name     string     `json:"name"`
+	Config   []byte     `json:"config"`
+	Position float64    `json:"position"`
+}
+
+// UpsertBoardView creates a personal view or overwrites the user's same-named
+// one — the save the old two-button toolbar (and the Android client) makes.
+// A new row goes to the end of the list; an overwrite keeps its place.
+func (q *Queries) UpsertBoardView(ctx context.Context, arg UpsertBoardViewParams) (BoardView, error) {
+	row := q.db.QueryRow(ctx, upsertBoardView,
+		arg.BoardID,
+		arg.UserID,
+		arg.Name,
+		arg.Config,
+		arg.Position,
+	)
+	var i BoardView
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.UserID,
+		&i.Name,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Scope,
+		&i.IsDefault,
+		&i.Position,
+		&i.CreatedBy,
+	)
+	return i, err
+}
+
+const upsertSharedBoardView = `-- name: UpsertSharedBoardView :one
+INSERT INTO board_views (board_id, user_id, name, config, scope, position, created_by, updated_at)
+VALUES ($1, NULL, $2, $3, 'board', $4, $5, now())
+ON CONFLICT (board_id, name) WHERE scope = 'board' DO UPDATE
+SET config = EXCLUDED.config, updated_at = now()
+RETURNING id, board_id, user_id, name, config, created_at, updated_at, scope, is_default, position, created_by
+`
+
+type UpsertSharedBoardViewParams struct {
+	BoardID   uuid.UUID  `json:"board_id"`
+	Name      string     `json:"name"`
+	Config    []byte     `json:"config"`
+	Position  float64    `json:"position"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+}
+
+// UpsertSharedBoardView is the same for the board's shared list.
+func (q *Queries) UpsertSharedBoardView(ctx context.Context, arg UpsertSharedBoardViewParams) (BoardView, error) {
+	row := q.db.QueryRow(ctx, upsertSharedBoardView,
+		arg.BoardID,
+		arg.Name,
+		arg.Config,
+		arg.Position,
+		arg.CreatedBy,
+	)
+	var i BoardView
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.UserID,
+		&i.Name,
+		&i.Config,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Scope,
+		&i.IsDefault,
+		&i.Position,
+		&i.CreatedBy,
 	)
 	return i, err
 }

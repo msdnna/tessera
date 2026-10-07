@@ -12,18 +12,19 @@ import (
 )
 
 type Board struct {
-	ID           uuid.UUID  `json:"id"`
-	ProjectID    uuid.UUID  `json:"project_id"`
-	Name         string     `json:"name"`
-	Position     float64    `json:"position"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	DoneColumnID *uuid.UUID `json:"done_column_id"`
-	Slug         string     `json:"slug"`
-	Icon         string     `json:"icon"`
-	Color        string     `json:"color"`
-	IconMode     string     `json:"icon_mode"`
-	DeletedAt    *time.Time `json:"deleted_at"`
+	ID            uuid.UUID  `json:"id"`
+	ProjectID     uuid.UUID  `json:"project_id"`
+	Name          string     `json:"name"`
+	Position      float64    `json:"position"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DoneColumnID  *uuid.UUID `json:"done_column_id"`
+	Slug          string     `json:"slug"`
+	Icon          string     `json:"icon"`
+	Color         string     `json:"color"`
+	IconMode      string     `json:"icon_mode"`
+	DeletedAt     *time.Time `json:"deleted_at"`
+	DefaultLayout string     `json:"default_layout"`
 }
 
 type BoardColumn struct {
@@ -40,13 +41,17 @@ type BoardColumn struct {
 }
 
 type BoardView struct {
-	ID        uuid.UUID `json:"id"`
-	BoardID   uuid.UUID `json:"board_id"`
-	UserID    uuid.UUID `json:"user_id"`
-	Name      string    `json:"name"`
-	Config    []byte    `json:"config"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID  `json:"id"`
+	BoardID   uuid.UUID  `json:"board_id"`
+	UserID    *uuid.UUID `json:"user_id"`
+	Name      string     `json:"name"`
+	Config    []byte     `json:"config"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Scope     string     `json:"scope"`
+	IsDefault bool       `json:"is_default"`
+	Position  float64    `json:"position"`
+	CreatedBy *uuid.UUID `json:"created_by"`
 }
 
 type ColumnDeletionMove struct {
