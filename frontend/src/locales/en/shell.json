@@ -454,7 +454,7 @@
     "deleteTitle": "Delete “{name}” for good?",
     "deleteSub": "Every project, board and task of the space will be deleted. This can’t be undone.",
     "deleteForever": "Delete for good",
-    "deleteHint": "enabled once the name is typed",
+    "deleteHint": "The button unlocks once the name matches.",
     "typeName": "Type the name of the space"
   },
   "paletteForm": {

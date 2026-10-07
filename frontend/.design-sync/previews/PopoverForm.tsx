@@ -58,11 +58,13 @@ export const DeleteSpace = () => (
     title="Удалить «Студия Север» навсегда?"
     subtitle="Все проекты, доски и задачи пространства будут удалены. Отменить это нельзя."
     primary="Удалить навсегда"
-    hint="активна после ввода имени"
     danger
-    width={320}
+    width={340}
   >
-    <FormField label="Введите название пространства">
+    <FormField
+      label="Введите название пространства"
+      message="Кнопка станет активной, когда название совпадёт."
+    >
       <input className="kf-input" defaultValue="Студия Север" />
     </FormField>
   </PopoverForm>

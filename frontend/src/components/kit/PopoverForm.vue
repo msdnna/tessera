@@ -311,6 +311,9 @@ const sheetShow = computed({
   overflow: hidden;
 }
 /* A long hint gives way to the buttons: it ellipsizes, they never clip. */
+.pf-hint .kbd {
+  flex-shrink: 0;
+}
 .pf-hint-text {
   min-width: 0;
   overflow: hidden;

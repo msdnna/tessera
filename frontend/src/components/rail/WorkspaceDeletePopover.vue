@@ -63,7 +63,7 @@ async function submit() {
     :anchor="anchor"
     :placement="placement"
     :offset="offset"
-    :width="320"
+    :width="340"
     :title="t('shell.workspaceForm.deleteTitle', { name })"
     :subtitle="t('shell.workspaceForm.deleteSub')"
     :primary="t('shell.workspaceForm.deleteForever')"
@@ -71,12 +71,15 @@ async function submit() {
     :busy="busy"
     :disabled="!matches"
     danger
-    :hint="t('shell.workspaceForm.deleteHint')"
     testid="ws-delete"
     @update:show="emit('update:show', $event)"
     @submit="submit"
   >
-    <FormField :label="t('shell.workspaceForm.typeName')" :error="error">
+    <FormField
+      :label="t('shell.workspaceForm.typeName')"
+      :error="error"
+      :message="t('shell.workspaceForm.deleteHint')"
+    >
       <input
         v-model="typed"
         class="kf-input"
