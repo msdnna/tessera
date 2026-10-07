@@ -222,12 +222,10 @@ export function createFormatters(rawPrefs) {
 
   const timeOptions = (o) => {
     const rest = intlFields(o)
-    return {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: prefs.timeFormat === '12h',
-      ...rest,
-    }
+    // Intl throws (TypeError "Invalid option") when a style shortcut meets an
+    // explicit field, so `timeStyle` replaces the hour/minute defaults.
+    const fields = 'timeStyle' in rest ? {} : { hour: '2-digit', minute: '2-digit' }
+    return { ...fields, hour12: prefs.timeFormat === '12h', ...rest }
   }
 
   function formatDate(value, override = {}) {
@@ -260,6 +258,11 @@ export function createFormatters(rawPrefs) {
       // Same zone for both halves — otherwise a date-only value would print its
       // UTC day next to a clock read in the user's timezone.
       return `${isoDate(zonedParts(d, zone))} ${formatTime(d, { ...timeOnly, timeZone: zone || null })}`
+    }
+    // Style shortcuts cannot be mixed with the preset's day/month/year fields.
+    if ('dateStyle' in override || 'timeStyle' in override) {
+      const styled = { hour12: prefs.timeFormat === '12h', ...intlFields(override) }
+      return cached('date', locale, { ...styled, timeZone: zone }).format(d)
     }
     const dateOpts = dateOptions(override)
     const timeOpts = hasTimeField(override) ? timeOptions(override) : timeOptions({})

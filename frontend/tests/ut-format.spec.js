@@ -87,6 +87,19 @@ describe('formatDate / formatDateTime honour the timezone preference', () => {
     expect(f.formatDate(LATE, { timeZone: 'UTC' })).toBe('01.01.2026')
   })
 
+  it('accepts Intl style shortcuts without mixing in field defaults', () => {
+    // dateStyle/timeStyle next to hour/day fields makes Intl throw "Invalid option".
+    for (const prefs of [RU_MSK, EN_NY, { ...RU_MSK, dateFormat: 'iso' }]) {
+      const f = createFormatters(prefs)
+      expect(() => f.formatDateTime(LATE, { dateStyle: 'short', timeStyle: 'short' })).not.toThrow()
+      expect(() => f.formatDateTime(LATE, { timeStyle: 'short' })).not.toThrow()
+      expect(() => f.formatTime(LATE, { timeStyle: 'short' })).not.toThrow()
+    }
+    expect(
+      createFormatters(RU_MSK).formatDateTime(LATE, { dateStyle: 'short', timeStyle: 'short' }),
+    ).toBe('02.01.2026, 02:30')
+  })
+
   it('keeps date and clock in one timezone for the iso preset', () => {
     const f = createFormatters({ ...RU_MSK, dateFormat: 'iso' })
     expect(f.formatDate(LATE)).toBe('2026-01-02')
