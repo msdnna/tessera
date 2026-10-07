@@ -81,8 +81,8 @@ const mountHead = () =>
     global: { stubs: { TesseraIcon: true } },
   })
 
-// The rename input replaces the caption, so it is the only `.n-input` in the header.
-const renameInput = (w) => w.find('.n-input input')
+// The rename input replaces the caption (the kit's InlineEdit since #2969).
+const renameInput = (w) => w.find('.ie-input')
 
 async function openRename(w) {
   await w.find('.col-title').trigger('dblclick')
@@ -109,9 +109,9 @@ describe('column header rename — Esc (#2932)', () => {
     const w = mountHead()
     const inp = await openRename(w)
     await inp.setValue('Готово')
-    await inp.trigger('keyup.esc')
+    await inp.trigger('keydown', { key: 'Escape' })
     expect(columnsUpdate).not.toHaveBeenCalled()
-    expect(w.find('.n-input input').exists()).toBe(false)
+    expect(w.find('.ie-input').exists()).toBe(false)
     expect(w.find('.col-title').text()).toBe(DCOL.name)
     w.unmount()
   })
@@ -121,7 +121,7 @@ describe('column header rename — Esc (#2932)', () => {
     const w = mountHead()
     const inp = await openRename(w)
     await inp.setValue('Готово')
-    await inp.trigger('keyup.esc')
+    await inp.trigger('keydown', { key: 'Escape' })
     await inp.trigger('blur')
     expect(columnsUpdate).not.toHaveBeenCalled()
     w.unmount()
@@ -132,7 +132,7 @@ describe('column header rename — Esc (#2932)', () => {
     const w = mountHead()
     const inp = await openRename(w)
     await inp.setValue('Готово')
-    await inp.trigger('keyup.enter')
+    await inp.trigger('keydown', { key: 'Enter' })
     expect(columnsUpdate).toHaveBeenCalledTimes(1)
     expect(columnsUpdate.mock.calls[0][1]).toMatchObject({ name: 'Готово' })
     w.unmount()
@@ -152,7 +152,7 @@ describe('column header rename — Esc (#2932)', () => {
     const w = mountHead()
     const inp = await openRename(w)
     await inp.setValue('Готово')
-    await inp.trigger('keyup.enter')
+    await inp.trigger('keydown', { key: 'Enter' })
     await inp.trigger('blur')
     expect(columnsUpdate).toHaveBeenCalledTimes(1)
     w.unmount()
@@ -163,7 +163,7 @@ describe('column header rename — Esc (#2932)', () => {
     const w = mountHead()
     const inp = await openRename(w)
     await inp.setValue('Готово')
-    await inp.trigger('keyup.esc')
+    await inp.trigger('keydown', { key: 'Escape' })
     const again = await openRename(w)
     expect(again.element.value).toBe(DCOL.name)
     w.unmount()

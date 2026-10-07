@@ -67,6 +67,13 @@ export const CATALOG = [
   { id: 'board.filter', keys: 'f', group: 'board' },
   { id: 'board.group', keys: 'shift+g', group: 'board' },
   { id: 'board.layout', keys: 'v digit', group: 'board', digit: '1–3' },
+  // The column under the pointer, or the selected card's (#2969): F2 renames in
+  // the header, ⌫ deletes at once with an undo toast, ⌘⇧←/→ moves it.
+  { id: 'col.rename', keys: 'f2', group: 'board' },
+  { id: 'col.delete', keys: 'backspace', group: 'board' },
+  { id: 'col.move', group: 'board', display: [['mod', 'shift', '←/→']] },
+  { id: 'col.moveLeft', keys: 'mod+shift+arrowleft' },
+  { id: 'col.moveRight', keys: 'mod+shift+arrowright' },
   {
     id: 'board.select',
     group: 'board',

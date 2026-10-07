@@ -309,6 +309,13 @@
       "settings": "Project settings",
       "archive": "Archive",
       "delete": "Delete"
+    },
+    "col": {
+      "rename": "Rename the column",
+      "delete": "Delete the column",
+      "move": "Move the column",
+      "moveLeft": "Move the column left",
+      "moveRight": "Move the column right"
     }
   },
   "palette": {

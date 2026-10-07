@@ -7,7 +7,6 @@ import {
   NButton,
   NInput,
   NPopover,
-  NPopconfirm,
   NText,
   NDropdown,
   NModal,
@@ -56,6 +55,7 @@ import MilestoneManager from './MilestoneManager.vue'
 import { DEFAULT_ESTIMATION, resolveEstimation } from '@/utils/estimation'
 import { BACKLOG_SCOPE, matchesScope, milestoneKey } from '@/utils/milestones'
 import { pressMoved } from '@/utils/dnd'
+import { useBoardTrash } from '@/composables/useBoardTrash'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
 
@@ -114,13 +114,11 @@ async function commitBoardRename(b) {
     message.error(e.message)
   }
 }
-async function removeBoard(b) {
-  try {
-    await boardsApi.remove(b.id)
-    await store.loadBoards(props.project.id)
-  } catch (e) {
-    message.error(e.message)
-  }
+// Deleting a board happens at once and offers the undo in a toast (#2969): the
+// server keeps it restorable (migration 0078).
+const boardTrash = useBoardTrash()
+function removeBoard(b) {
+  return boardTrash.removeBoard(props.project, b)
 }
 
 const boards = computed(() => store.boardsByProject[props.project.id] || [])
@@ -472,23 +470,13 @@ function onBoardCtx(e, b) {
   bcY.value = e.clientY
   nextTick(() => (bcShow.value = true))
 }
-// Deleting a board takes its columns and every card standing on them, with no
-// undo, so the menu never calls the API straight off: it arms the same confirm
-// the board's «…» popover shows, anchored where the menu stood (the task card's
-// right-click delete has the same shape). It matters most on touch — this menu
-// also opens on a long press in the mobile drawer.
-const bcDeleteConfirm = ref(false)
 function onBoardCtxSelect(key) {
   const b = bcTarget.value
   bcShow.value = false
   if (!b) return
   if (key === 'open') router.push(`/project/${props.project.slug}/board/${b.slug}`)
   else if (key === 'rename') startBoardRename(b)
-  else if (key === 'delete') bcDeleteConfirm.value = true
-}
-function confirmBoardDelete() {
-  const b = bcTarget.value
-  if (b) removeBoard(b)
+  else if (key === 'delete') removeBoard(b)
 }
 
 // Touch long-press → context menus (the native contextmenu is unreliable on the
@@ -747,19 +735,17 @@ async function addBoard() {
                 <template #icon><n-icon :component="CreateOutline" /></template>
                 {{ t('project.board.rename') }}
               </n-button>
-              <n-popconfirm
-                :positive-button-props="{ type: 'error' }"
-                :positive-text="t('common.action.delete')"
-                @positive-click="removeBoard(b)"
+              <n-button
+                type="error"
+                ghost
+                size="small"
+                block
+                data-testid="board-delete"
+                @click="removeBoard(b)"
               >
-                <template #trigger>
-                  <n-button type="error" ghost size="small" block>
-                    <template #icon><n-icon :component="TrashOutline" /></template>
-                    {{ t('project.board.delete') }}
-                  </n-button>
-                </template>
-                {{ t('project.board.deleteConfirm', { name: b.name }) }}
-              </n-popconfirm>
+                <template #icon><n-icon :component="TrashOutline" /></template>
+                {{ t('project.board.delete') }}
+              </n-button>
             </div>
           </n-popover>
         </div>
@@ -801,18 +787,6 @@ async function addBoard() {
       @select="onBoardCtxSelect"
       @clickoutside="bcShow = false"
     />
-    <n-popconfirm
-      v-model:show="bcDeleteConfirm"
-      :x="bcX"
-      :y="bcY"
-      :positive-button-props="{ type: 'error', 'data-testid': 'board-ctx-delete-confirm' }"
-      :positive-text="t('common.action.delete')"
-      @positive-click="confirmBoardDelete"
-      @clickoutside="bcDeleteConfirm = false"
-    >
-      <template #trigger><span /></template>
-      {{ t('project.board.deleteConfirm', { name: bcTarget?.name || '' }) }}
-    </n-popconfirm>
 
     <ConfirmByName
       v-model:show="confirmDelete"

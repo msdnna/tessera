@@ -20,7 +20,9 @@
     "open": "Open",
     "rename": "Rename",
     "delete": "Delete the board",
-    "deleteConfirm": "Delete the board “{name}” with all its tasks?"
+    "deleted": "Board “{name}” deleted",
+    "restored": "Board “{name}” restored",
+    "restoreFailed": "Couldn't restore the board"
   },
   "milestone": {
     "backlog": "Backlog",

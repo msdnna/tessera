@@ -61,13 +61,27 @@
     "setDone": "Make it completing",
     "unsetDone": "Stop completing",
     "delete": "Delete the column",
-    "deleteConfirm": "Delete the column with all its tasks?",
     "defaultName": {
       "todo": "To do",
       "in_progress": "In progress",
       "review": "In review",
       "done": "Done"
-    }
+    },
+    "color": "Colour",
+    "doneToggle": "“Done” column",
+    "collapseShort": "Collapse",
+    "moveLeft": "Move left",
+    "moveRight": "Move right",
+    "addRight": "New column to the right",
+    "tasks": "{n} task | {n} tasks",
+    "nameEmpty": "The name can't be empty",
+    "lastColumn": "The last column can't go — its tasks would have nowhere to move",
+    "deleted": "Column “{name}” deleted · {tasks} moved to “{target}”",
+    "deletedEmpty": "Column “{name}” deleted",
+    "restored": "Column “{name}” restored",
+    "restoreFailed": "Couldn't restore the column",
+    "renameHint": "Double-click to rename",
+    "tagLocked": "A tag is renamed in the project's tags"
   },
   "group": {
     "noMilestone": "No milestone",

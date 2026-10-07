@@ -43,30 +43,46 @@ afterEach(async () => {
 describe('column header', () => {
   const dcol = { key: 'c1', name: 'В процессе', color: '' }
 
-  it('re-renders the context menu after a switch', async () => {
+  // The v2 column menu (#2969): ActionMenu rows built in a computed, so their
+  // labels follow a language switch.
+  const labels = (w) => w.vm.menuItems.filter((o) => !o.gap).map((o) => o.label)
+  it('re-renders the column menu after a switch', async () => {
     const w = mount(ColumnHeader, { props: { dcol, editable: true } })
-    expect(w.vm.ctxOptions.map((o) => o.label).filter(Boolean)).toEqual([
+    expect(labels(w)).toEqual([
       'Переименовать',
-      'Сделать завершающей',
+      'Цвет',
+      'Колонка «Готово»',
+      'Свернуть',
+      'Сдвинуть влево',
+      'Сдвинуть вправо',
+      'Новая колонка справа',
       'Удалить колонку',
     ])
 
     await setI18nLocale('en')
-    expect(w.vm.ctxOptions.map((o) => o.label).filter(Boolean)).toEqual([
-      'Rename',
-      'Make it completing',
-      'Delete the column',
+    expect(labels(w)[0]).toBe('Rename')
+    expect(labels(w).at(-1)).toBe('Delete the column')
+    // The keys drive onMenu; they are wiring, not text.
+    expect(w.vm.menuItems.filter((o) => !o.gap).map((o) => o.key)).toEqual([
+      'rename',
+      'color',
+      'done',
+      'collapse',
+      'moveLeft',
+      'moveRight',
+      'addRight',
+      'delete',
     ])
-    // The keys drive onCtxSelect; they are wiring, not text.
-    expect(w.vm.ctxOptions.map((o) => o.key)).toEqual(['rename', 'done', 'd1', 'delete'])
   })
 
-  it('flips the done entry with the column state, in either language', async () => {
+  it('the done switch follows the column state, in either language', async () => {
     const done = mount(ColumnHeader, { props: { dcol, editable: true, isDone: true } })
-    expect(done.vm.ctxOptions[1].label).toBe('Снять завершение')
+    const row = () => done.vm.menuItems.find((o) => o.key === 'done')
+    expect(row().toggle).toBe(true)
+    expect(row().label).toBe('Колонка «Готово»')
 
     await setI18nLocale('en')
-    expect(done.vm.ctxOptions[1].label).toBe('Stop completing')
+    expect(row().label).toBe('“Done” column')
   })
 })
 

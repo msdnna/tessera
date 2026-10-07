@@ -197,7 +197,7 @@ for (const scheme of ['light', 'dark']) {
     test('меню колонки', async ({ page }) => {
       await openBoard(page)
       await page.locator('[data-testid="column"]').first().locator('.col-menu').click()
-      await expect(page.getByTestId('column-delete')).toBeVisible()
+      await expect(page.getByTestId('column-actions-delete')).toBeVisible()
       await shoot(page, scheme, 'board-columns')
     })
 

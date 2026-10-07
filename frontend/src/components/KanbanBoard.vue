@@ -88,8 +88,10 @@ import { moveFocus, neighbourColumn, planShift, planComplete } from '@/utils/car
 import { doneTarget } from '@/utils/status'
 import { todoColumn } from '@/utils/columnStatus'
 import { taskBasePatch } from '@/utils/taskPatch'
+import { humanizeError } from '@/utils/errors'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { usePaletteStore } from '@/stores/palette'
+import { useUndoStore } from '@/stores/undo'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -1841,7 +1843,13 @@ const colInput = ref(null)
 // be immune because it clears its input synchronously before awaiting; doing that here
 // would throw the typed name away whenever the request fails, so the guard is explicit.
 const columnInFlight = ref(false)
-function startAddColumn() {
+// «Новая колонка справа» (#2969) remembers which column the new one goes after;
+// the plain «＋ колонка» at the end of the board leaves it null.
+const addColumnAfter = ref(null)
+function startAddColumn(after = null) {
+  // A click handler hands over its event (a KeyboardEvent has a `key` too), so
+  // only a column of this board counts.
+  addColumnAfter.value = colModel.value.some((d) => d.key === after?.key) ? after.key : null
   addingColumn.value = true
   newColumnName.value = ''
   nextTick(() => colInput.value?.focus?.())
@@ -1865,6 +1873,16 @@ async function submitAddColumn() {
     // draws it, so it never flashes collapsed. Turning the toggle on afterwards still
     // wins: its watcher clears the overrides of every empty column.
     if (data?.id) colCollapse[colCollapseKey({ key: data.id })] = false
+    // Placed right of the column whose menu asked for it: the server appends,
+    // so move it into the gap between that column and its right neighbour.
+    const after = addColumnAfter.value
+    if (data?.id && after) {
+      const cols = colModel.value
+      const i = cols.findIndex((d) => d.key === after)
+      const next = i >= 0 ? cols[i + 1] : null
+      if (i >= 0 && next) await columnsApi.move(data.id, { before_id: after, after_id: next.key })
+    }
+    addColumnAfter.value = null
     newColumnName.value = ''
     addingColumn.value = false
     await load(props.boardId)
@@ -1879,6 +1897,100 @@ async function submitAddColumn() {
 
 // A task edit or tag-list change touches both tasks and workspace meta, so do
 // a full (debounced) board reload.
+// ── column actions of the v2 interaction model (#2969) ──
+const undoStore = useUndoStore()
+// The column a column key acts on: the one under the pointer, or the selected
+// card's — but only while that selection is visible (kbdFocus); a card merely
+// clicked is a starting point, not a target for ⌫.
+function colTarget() {
+  if (kbdFocus.value && focusedCard.value) {
+    return colModel.value.find((d) => d.key === focusedCard.value.colKey) || null
+  }
+  return colModel.value.find((d) => d.key === hoveredColKey.value) || null
+}
+const colRenameReq = ref(null)
+function requestColumnRename(dcol) {
+  if (!dcol) return
+  if (isColCollapsed(dcol)) toggleCollapse(dcol)
+  colRenameReq.value = { key: dcol.key, n: (colRenameReq.value?.n || 0) + 1 }
+}
+function renameNextColumn(dcol) {
+  const cols = colModel.value
+  const next = cols[cols.findIndex((d) => d.key === dcol.key) + 1]
+  if (next) requestColumnRename(next)
+}
+// Where the server sends a deleted column's cards (backend DeleteColumn): the
+// first remaining column, or — for the completing column — the one that takes
+// over the done flag, the rightmost.
+function deleteTarget(dcol) {
+  const rest = colModel.value.filter((d) => d.key !== dcol.key)
+  if (!rest.length) return null
+  return dcol.key === doneColumnId.value ? rest[rest.length - 1] : rest[0]
+}
+async function deleteColumn(dcol) {
+  if (groupMode.value !== 'status' || !editable()) return
+  const target = deleteTarget(dcol)
+  if (!target) return
+  const { key, name } = dcol
+  const targetName = target.name
+  const n = colCounts(dcol).tasks
+  suppress()
+  try {
+    await columnsApi.remove(key)
+  } catch (e) {
+    message.error(humanizeError(e))
+    return
+  }
+  if (focusedCard.value?.colKey === key) focusedCard.value = null
+  if (hoveredColKey.value === key) hoveredColKey.value = null
+  await load(props.boardId, { silent: true })
+  undoStore.push({
+    icon: 'trash',
+    text: () =>
+      n
+        ? t('board.column.deleted', { name, target: targetName, tasks: t('board.column.tasks', n) })
+        : t('board.column.deletedEmpty', { name }),
+    doneText: () => t('board.column.restored', { name }),
+    errorText: () => t('board.column.restoreFailed'),
+    undo: async () => {
+      suppress()
+      await columnsApi.restore(key)
+      await load(props.boardId, { silent: true })
+    },
+  })
+}
+async function moveColumn(dcol, dir) {
+  if (groupMode.value !== 'status' || !editable()) return
+  const cols = colModel.value
+  const i = cols.findIndex((d) => d.key === dcol.key)
+  if (i < 0) return
+  const plan =
+    dir === 'left'
+      ? i > 0 && { before_id: cols[i - 2]?.key ?? null, after_id: cols[i - 1].key }
+      : i < cols.length - 1 && { before_id: cols[i + 1].key, after_id: cols[i + 2]?.key ?? null }
+  if (!plan) return
+  suppress()
+  try {
+    await columnsApi.move(dcol.key, plan)
+    await load(props.boardId, { silent: true })
+  } catch (e) {
+    message.error(humanizeError(e))
+    load(props.boardId)
+  }
+}
+useShortcuts(
+  {
+    'col.rename': () => requestColumnRename(colTarget()),
+    'col.delete': () => {
+      const d = colTarget()
+      if (d && colModel.value.length > 1) deleteColumn(d)
+    },
+    'col.moveLeft': () => colTarget() && moveColumn(colTarget(), 'left'),
+    'col.moveRight': () => colTarget() && moveColumn(colTarget(), 'right'),
+  },
+  { when: () => kanbanOn() && editable() && groupMode.value === 'status' && !!colTarget() },
+)
+
 function onChanged() {
   suppress()
   scheduleReload()
@@ -2649,6 +2761,7 @@ async function restoreFromArchive(taskId) {
               :class="{ collapsed: colCollapsedNow(dcol) }"
               :style="{ '--col-c': dcol.color || NEUTRAL_COLUMN }"
               @mouseenter="hoveredColKey = dcol.key"
+              @mouseleave="hoveredColKey === dcol.key && (hoveredColKey = null)"
             >
               <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
@@ -2693,9 +2806,16 @@ async function restoreFromArchive(taskId) {
                 :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
                 :collapsed="isColCollapsed(dcol)"
                 :prefix-names="tagPrefixNames"
+                :last="groupMode === 'status' && dcol.key === colModel[colModel.length - 1]?.key"
+                :can-delete="groupMode === 'status' && colModel.length > 1"
+                :rename-request="colRenameReq"
                 @changed="onChanged"
                 @set-done="onSetDone"
                 @toggle-collapse="toggleCollapse(dcol)"
+                @rename-next="renameNextColumn(dcol)"
+                @delete="deleteColumn(dcol)"
+                @move="(dir) => moveColumn(dcol, dir)"
+                @add-right="startAddColumn(dcol)"
               />
               <draggable
                 :list="lists[dcol.key]"
