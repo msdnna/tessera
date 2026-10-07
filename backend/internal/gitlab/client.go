@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"tessera/internal/netguard"
@@ -362,10 +363,20 @@ func isGraphQLTimeout(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "gitlab graphql: Timeout on ")
 }
 
+// issuePageSizes remembers, per GitLab project, the page size that last got
+// through without a timeout. A Client lives for one sync run, so without it
+// every run would pay the same string of server-side timeouts (about a minute
+// each) before reaching a size that works.
+var issuePageSizes sync.Map // baseURL + "\x00" + projectPath → int
+
 func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map[string]any) ([]Issue, error) {
 	var out []Issue
 	var after *string
+	sizeKey := c.baseURL + "\x00" + projectPath
 	first := issuesPageSize
+	if v, ok := issuePageSizes.Load(sizeKey); ok {
+		first = v.(int)
+	}
 	for {
 		var data struct {
 			Project *struct {
@@ -385,6 +396,7 @@ func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map
 		if err := c.do(ctx, issuesQuery, vars, &data); err != nil {
 			if isGraphQLTimeout(err) && first > minIssuesPageSize {
 				first = max(first/2, minIssuesPageSize)
+				issuePageSizes.Store(sizeKey, first)
 				continue
 			}
 			return nil, err

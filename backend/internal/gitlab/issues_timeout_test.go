@@ -51,6 +51,16 @@ func TestQueryIssues_HalvesPageOnGraphQLTimeout(t *testing.T) {
 	if fmt.Sprint(firsts) != fmt.Sprint(want) {
 		t.Fatalf("page sizes = %v, want %v", firsts, want)
 	}
+
+	// The next run (a fresh Client, as every sync makes) starts where this one
+	// ended instead of timing out through 50 and 25 again.
+	firsts = nil
+	if _, err := New(srv.URL, "tok").AllIssues(context.Background(), "grp/proj"); err != nil {
+		t.Fatalf("second AllIssues: %v", err)
+	}
+	if fmt.Sprint(firsts) != fmt.Sprint([]int{12, 12}) {
+		t.Fatalf("second run page sizes = %v, want [12 12]", firsts)
+	}
 }
 
 func TestQueryIssues_GivesUpAtSmallestPage(t *testing.T) {
