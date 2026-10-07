@@ -21,9 +21,6 @@ export const FEATURE_STUBS = {
   // Editing, closing and reopening a GitLab-sourced stage with the change
   // written back to GitLab (#3010) — until then such a stage is read-only here.
   'stage.gitlabWrite': 3010,
-  // A stage's description changed in GitLab and here at once: resolving it in
-  // the conflict window (#3025, part of #3010).
-  'stage.descConflict': 3010,
   // Timeline scale «Квартал» and the chart toggles in the board's view panel
   // (weekends, today line, progress, links, undated at the bottom) — #3021.
   'chart.scale': 3021,
