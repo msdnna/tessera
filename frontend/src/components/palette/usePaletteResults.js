@@ -1,11 +1,12 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useHelpStore } from '@/stores/help'
 import { usePaletteStore } from '@/stores/palette'
+import { workspaceName } from '@/utils/defaultNames'
 import { CATALOG } from '@/shortcuts/catalog'
 import { isLive, runShortcut } from '@/shortcuts/dispatcher'
 import { rank } from '@/utils/fuzzy'
@@ -39,6 +40,25 @@ export function usePaletteResults() {
   const board = useBoardViewStore()
   const help = useHelpStore()
   const palette = usePaletteStore()
+  const route = useRoute()
+
+  // Where a palette form would create its thing — said under the command, as
+  // the mockup does («В группе «Продукт» · пошагово, без мыши»).
+  function formSub(form) {
+    const project = ws.projects.find((p) => p.slug === route.params.projectSlug) || null
+    if (form === 'project') {
+      const group = ws.groups.find((g) => g.id === project?.group_id)
+      return group
+        ? t('shell.paletteForm.cmdSub.projectIn', { group: group.name })
+        : t('shell.paletteForm.cmdSub.project')
+    }
+    if (form === 'board') {
+      const target = project || ws.projects[0]
+      return target ? t('shell.paletteForm.cmdSub.board', { project: target.name }) : ''
+    }
+    if (form === 'group') return t('shell.paletteForm.cmdSub.group', { space: workspaceName(ws.current) })
+    return t('shell.paletteForm.cmdSub.workspace')
+  }
   const { formatDate } = useFormat()
 
   // A typed prefix wins; otherwise the section pill the user clicked.
@@ -135,16 +155,23 @@ export function usePaletteResults() {
   const commandRows = computed(() => {
     void openedAt.value
     const term = parsed.value.term
-    const live = CATALOG.filter((e) => e.command && (e.to || isLive(e.id)))
+    const live = CATALOG.filter((e) => e.command && (e.to || e.form || isLive(e.id)))
     const label = (e) => t(`shell.keys.${e.id}`)
     return rank(live, (e) => [label(e)], term).map((e) => ({
       key: `cmd:${e.id}`,
       icon: ICONS[e.command],
       title: label(e),
       hl: term,
-      sub: t(`shell.keys.groups.${e.group || 'nav'}`),
+      sub: e.form ? formSub(e.form) : t(`shell.keys.groups.${e.group || 'nav'}`),
       keys: e.keys || e.display ? e.id : null,
+      form: e.form || null,
       run: (ctx) => {
+        // A palette form takes over the palette itself (step mode).
+        if (e.form) {
+          palette.scope = { form: e.form, step: 0 }
+          palette.query = ''
+          return 'stay'
+        }
         if (e.to) go(e.to, ctx)
         // After the palette has closed, so the command's own UI (a menu, a
         // dialog) doesn't open under a closing overlay.

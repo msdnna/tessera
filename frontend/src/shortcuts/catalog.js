@@ -14,6 +14,7 @@
 //   digit    caption of the digit range of a `digit` chord
 //   command  shown in the palette's «Команды» section; the value is its icon
 //   to       route a key-less command opens (palette only)
+//   form     palette form a key-less command opens (palette only, #2982)
 //   input    also fires while the cursor is in a text field
 //   modal    also fires while a modal dialog is open
 //   repeat   fires on auto-repeat (held arrow keys)
@@ -133,6 +134,14 @@ export const CATALOG = [
   { id: 'chart.shiftLeft', keys: 'shift+arrowleft', repeat: true },
   { id: 'chart.shiftRight', keys: 'shift+arrowright', repeat: true },
   { id: 'chart.clear', keys: 'escape' },
+
+  // ── palette forms (#2969 / #2982): create commands walked through field by
+  // field inside the palette — palette-only, no key of their own. `form` names
+  // the form usePaletteForm opens.
+  { id: 'form.project', command: 'FolderOpenOutline', form: 'project', group: 'create' },
+  { id: 'form.board', command: 'GridOutline', form: 'board', group: 'create' },
+  { id: 'form.group', command: 'FolderOutline', form: 'group', group: 'create' },
+  { id: 'form.workspace', command: 'AppsOutline', form: 'workspace', group: 'create' },
 
   // ── quick create ──
   { id: 'create.task', keys: 'n t', group: 'create', command: 'AddOutline' },

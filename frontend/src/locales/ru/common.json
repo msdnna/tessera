@@ -158,7 +158,21 @@
   "picker": {
     "label": "Иконка и цвет",
     "all": "Все иконки",
-    "initialsEmpty": "Аа"
+    "initialsEmpty": "Аа",
+    "icons": {
+      "initials": "инициалы",
+      "briefcase": "портфель",
+      "code": "код",
+      "rocket": "ракета",
+      "flask": "колба",
+      "star": "звезда",
+      "book": "книга",
+      "bulb": "лампочка",
+      "home": "дом",
+      "school": "учёба",
+      "heart": "сердце",
+      "game": "игра"
+    }
   },
   "colors": {
     "purple": "Фиолетовый",

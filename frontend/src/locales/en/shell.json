@@ -321,6 +321,12 @@
       "move": "Move the column",
       "moveLeft": "Move the column left",
       "moveRight": "Move the column right"
+    },
+    "form": {
+      "project": "Create a project",
+      "board": "Create a board",
+      "group": "Create a group",
+      "workspace": "Create a space"
     }
   },
   "palette": {
@@ -449,5 +455,57 @@
     "deleteForever": "Delete for good",
     "deleteHint": "enabled once the name is typed",
     "typeName": "Type the name of the space"
+  },
+  "paletteForm": {
+    "root": "At the top of the space",
+    "typed": "Typed in the line above",
+    "groupSub": "Where the sidebar cursor is",
+    "parentSub": "Inside which group",
+    "projectSub": "The project the board goes into",
+    "lookSub": "← → colour · ↑ ↓ icon",
+    "fields": {
+      "name": "Name",
+      "slug": "Address",
+      "group": "Group",
+      "project": "Project",
+      "look": "Icon and colour"
+    },
+    "fieldsTitle": {
+      "project": "Project fields",
+      "board": "Board fields",
+      "group": "Group fields",
+      "workspace": "Space fields"
+    },
+    "step": "step {n} of {total}",
+    "needName": "A name first",
+    "needProject": "No project for the board",
+    "created": {
+      "project": "Project “{name}” created",
+      "board": "Board “{name}” created",
+      "group": "Group “{name}” created",
+      "workspace": "Space “{name}” created"
+    },
+    "placeholder": {
+      "name": "Name",
+      "slug": "Address",
+      "group": "Find a group",
+      "project": "Find a project",
+      "look": "← → colour · ↑ ↓ icon"
+    },
+    "foot": {
+      "create": "create",
+      "next": "next field",
+      "back": "back",
+      "createOpen": "create and open"
+    },
+    "nextField": "next field",
+    "fill": "fill in",
+    "cmdSub": {
+      "project": "At the top of the space · step by step, no mouse",
+      "projectIn": "In group “{group}” · step by step, no mouse",
+      "board": "In project “{project}”",
+      "group": "In space “{space}”",
+      "workspace": "Its own projects, people and access"
+    }
   }
 }

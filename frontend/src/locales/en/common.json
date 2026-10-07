@@ -158,7 +158,21 @@
   "picker": {
     "label": "Icon and colour",
     "all": "All icons",
-    "initialsEmpty": "Aa"
+    "initialsEmpty": "Aa",
+    "icons": {
+      "initials": "initials",
+      "briefcase": "briefcase",
+      "code": "code",
+      "rocket": "rocket",
+      "flask": "flask",
+      "star": "star",
+      "book": "book",
+      "bulb": "bulb",
+      "home": "home",
+      "school": "school",
+      "heart": "heart",
+      "game": "game"
+    }
   },
   "colors": {
     "purple": "Purple",

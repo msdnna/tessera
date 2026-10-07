@@ -7,7 +7,7 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NSpin } from 'naive-ui'
-import { SearchOutline, CloseOutline, Checkmark } from '@vicons/ionicons5'
+import { SearchOutline, CloseOutline, Checkmark, ChevronForwardOutline } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import TesseraIcon from '@/components/TesseraIcon.vue'
@@ -19,26 +19,33 @@ import { hasModKey } from '@/utils/keys'
 import { highlight } from '@/utils/fuzzy'
 import { usePaletteResults } from './usePaletteResults'
 import { usePaletteTask } from './usePaletteTask'
+import { usePaletteForm } from './usePaletteForm'
 
 const { t } = useI18n()
 const palette = usePaletteStore()
 const results = usePaletteResults()
 const taskScope = usePaletteTask()
+const form = usePaletteForm()
 
 const inputEl = ref(null)
 const listEl = ref(null)
 const active = ref(0)
 
-const scoped = computed(() => !!palette.scope)
-const field = computed(() => palette.scope?.field || null)
+// Three modes: results, a task's actions (scope.taskId) and a palette form
+// (scope.form, #2982).
+const scoped = computed(() => !!palette.scope?.taskId)
+const formMode = computed(() => !!palette.scope?.form)
+const field = computed(() => (scoped.value ? palette.scope?.field || null : null))
 
-const groups = computed(() =>
-  scoped.value ? taskScope.groupsFor(palette.query) : results.groups.value,
-)
+const groups = computed(() => {
+  if (formMode.value) return form.groupsFor(palette.query)
+  return scoped.value ? taskScope.groupsFor(palette.query) : results.groups.value
+})
 const flat = computed(() => groups.value.flatMap((g) => g.rows))
-const loading = computed(() =>
-  scoped.value ? taskScope.loading.value : results.loading.value && !flat.value.length,
-)
+const loading = computed(() => {
+  if (formMode.value) return false
+  return scoped.value ? taskScope.loading.value : results.loading.value && !flat.value.length
+})
 
 // Section pills (results mode). A pill with a prefix writes it into the query
 // so what the list shows is always spelled out in the field.
@@ -58,6 +65,7 @@ function pickSection(s) {
 }
 
 const placeholder = computed(() => {
+  if (formMode.value) return t(`shell.paletteForm.placeholder.${form.field.value?.key || 'name'}`)
   if (!scoped.value) return t('shell.palette.placeholder')
   if (!field.value) return t('shell.palette.placeholderTask')
   return t(`shell.palette.placeholderField.${field.value}`)
@@ -83,6 +91,16 @@ watch(
 watch(flat, (rows) => {
   if (active.value >= rows.length) active.value = Math.max(0, rows.length - 1)
 })
+// In a form the highlighted row is the current field (option lists start at
+// the top, like any list).
+watch(
+  () => [formMode.value, form.step.value, form.field.value?.type],
+  async () => {
+    if (!formMode.value) return
+    await nextTick()
+    active.value = form.field.value?.type === 'pick' ? Math.max(0, flat.value.findIndex((r) => r.checked)) : form.step.value
+  },
+)
 
 // ── open / close ──
 let releaseBlocker = null
@@ -130,6 +148,7 @@ async function runRow(row, e) {
 // (task actions). The query typed before narrowing comes back on the way out.
 let savedQuery = ''
 function forward() {
+  if (formMode.value) return form.next()
   const row = flat.value[active.value]
   if (!row) return
   if (!scoped.value && row.task) {
@@ -143,6 +162,7 @@ function forward() {
 }
 
 function back() {
+  if (formMode.value) return form.prev()
   if (!scoped.value) return
   if (field.value) {
     palette.scope = { ...palette.scope, field: null, direct: false }
@@ -154,8 +174,56 @@ function back() {
   }
 }
 
+async function submitForm(open) {
+  const next = await form.submit(open)
+  if (next === 'close') palette.hide()
+  inputEl.value?.focus()
+}
+
+// Keys of the form mode: Tab / ⇧Tab and ↑/↓ walk the fields (↑/↓ walk the
+// options on a pick field), ↵ creates from any field, ⌘↵ creates and opens;
+// on «Иконка и цвет» ←/→ is the colour and ↑/↓ the icon.
+function onFormKey(e) {
+  const mod = hasModKey(e)
+  const f = form.field.value
+  if (f?.type === 'look' && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
+    e.preventDefault()
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') form.shiftColor(e.key === 'ArrowRight' ? 1 : -1)
+    else form.shiftIcon(e.key === 'ArrowDown' ? 1 : -1)
+    return true
+  }
+  switch (e.key) {
+    case 'Tab':
+      e.preventDefault()
+      if (e.shiftKey) form.prev()
+      else form.next()
+      return true
+    case 'ArrowDown':
+    case 'ArrowUp':
+      if (f?.type === 'pick') return false
+      e.preventDefault()
+      if (e.key === 'ArrowDown') form.next()
+      else form.prev()
+      return true
+    case 'Enter':
+      e.preventDefault()
+      if (f?.type === 'pick' && !mod) runRow(flat.value[active.value], e)
+      else submitForm(mod)
+      return true
+    case 'Backspace':
+      if (!palette.query && form.step.value === 0) {
+        e.preventDefault()
+        form.exit()
+        return true
+      }
+      return false
+  }
+  return false
+}
+
 function onKeydown(e) {
   if (e.isComposing) return
+  if (formMode.value && onFormKey(e)) return
   const mod = hasModKey(e)
   switch (e.key) {
     case 'ArrowDown':
@@ -201,6 +269,14 @@ function rowIndex(row) {
 }
 
 const foot = computed(() => {
+  if (formMode.value) {
+    return [
+      { caps: ['↵'], label: t('shell.paletteForm.foot.create') },
+      { caps: ['Tab'], label: t('shell.paletteForm.foot.next') },
+      { id: 'palette.back', label: t('shell.paletteForm.foot.back') },
+      { id: 'palette.newTab', label: t('shell.paletteForm.foot.createOpen') },
+    ]
+  }
   if (!scoped.value) {
     return [
       { caps: ['↑', '↓'], label: t('shell.palette.foot.select') },
@@ -219,7 +295,9 @@ const foot = computed(() => {
     },
   ]
 })
+const formTitle = computed(() => (form.kind.value ? t(`shell.keys.form.${form.kind.value}`) : ''))
 const footRight = computed(() => {
+  if (formMode.value) return `> ${formTitle.value}`
   if (!scoped.value) return t('shell.palette.foot.prefixes')
   if (field.value) return t(`shell.palette.task.${field.value}`)
   return t('shell.palette.foot.taskActions', { n: flat.value.length })
@@ -228,12 +306,14 @@ const footRight = computed(() => {
 // A row the keyboard can do more with: Tab narrows to a task (results) or
 // opens a field (task actions).
 const tabLabel = (row) => {
+  if (formMode.value) return row.fieldHint && form.field.value?.type !== 'pick' ? t('shell.paletteForm.nextField') : null
   if (!scoped.value && row.task) return t('shell.palette.hint.actions')
   if (scoped.value && !field.value && row.field) return t('shell.palette.hint.choose')
   return null
 }
 const enterLabel = (row) => {
-  if (!scoped.value) return row.task ? t('shell.palette.hint.open') : null
+  if (formMode.value) return null
+  if (!scoped.value) return row.task ? t('shell.palette.hint.open') : row.form ? t('shell.paletteForm.fill') : null
   return field.value ? t('shell.palette.hint.apply') : null
 }
 </script>
@@ -244,7 +324,29 @@ const enterLabel = (row) => {
       <div v-if="palette.open" class="cp-scrim" @mousedown.self="palette.hide()">
         <div class="cp" role="dialog" aria-modal="true" data-testid="command-palette">
           <div class="cp-input">
-            <n-icon :component="SearchOutline" :size="19" class="cp-search-ico" />
+            <n-icon
+              :component="formMode ? ChevronForwardOutline : SearchOutline"
+              :size="19"
+              class="cp-search-ico"
+            />
+            <template v-if="formMode">
+              <span class="cp-chip cp-chip-cmd" data-testid="palette-form-chip">
+                <span class="cp-chip-gt">&gt;</span>
+                <span class="cp-chip-title">{{ formTitle }}</span>
+                <button
+                  type="button"
+                  class="cp-chip-x"
+                  :aria-label="t('shell.paletteForm.foot.back')"
+                  @mousedown.prevent
+                  @click="form.exit()"
+                >
+                  <n-icon :component="CloseOutline" :size="13" />
+                </button>
+              </span>
+              <span v-if="form.field.value" class="cp-chip cp-chip-field">{{
+                t(`shell.paletteForm.fields.${form.field.value.key}`)
+              }}</span>
+            </template>
             <span v-if="scoped && taskScope.task.value" class="cp-chip">
               <TesseraIcon
                 v-if="chipStatus"
@@ -274,14 +376,17 @@ const enterLabel = (row) => {
               autocomplete="off"
               @keydown="onKeydown"
             />
-            <span v-if="scoped" class="cp-back">
+            <span v-if="scoped || formMode" class="cp-back">
               <ShortcutKeys id="palette.back" joined />
               {{ t('shell.palette.back') }}
             </span>
             <ShortcutKeys id="palette.close" />
           </div>
 
-          <div v-if="!scoped" class="cp-tabs">
+          <div v-if="formMode && form.error.value" class="cp-error" role="alert">
+            {{ form.error.value }}
+          </div>
+          <div v-if="!scoped && !formMode" class="cp-tabs">
             <button
               v-for="s in SECTIONS"
               :key="s.id"
@@ -460,6 +565,24 @@ const enterLabel = (row) => {
 }
 .cp-chip-num {
   color: var(--t-text3);
+}
+.cp-chip-gt {
+  color: var(--t-text3);
+  font-weight: 700;
+}
+.cp-chip-cmd .cp-chip-title {
+  font-weight: 600;
+}
+.cp-chip-field {
+  padding: 0 9px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+}
+.cp-error {
+  flex: none;
+  padding: 8px 18px;
+  font-size: 12.5px;
+  color: #e0533d;
 }
 .cp-chip-title {
   font-weight: 600;
