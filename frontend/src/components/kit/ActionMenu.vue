@@ -46,12 +46,14 @@ const props = defineProps({
   // Open with this two-step item already armed (⌘⌫ on a row: the first press
   // is the one that opened the menu).
   arm: { type: String, default: '' },
+  // Drawn in place (design-system previews), not floating at an anchor.
+  inline: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:show', 'select'])
 const { t } = useI18n()
 
 const panel = ref(null)
-const showRef = computed(() => props.show)
+const showRef = computed(() => props.show && !props.inline)
 function close() {
   emit('update:show', false)
 }
@@ -93,7 +95,7 @@ watch(
       active.value = rows.value.indexOf(pre)
     }
     await nextTick()
-    panel.value?.focus({ preventScroll: true })
+    if (!props.inline) panel.value?.focus({ preventScroll: true })
   },
 )
 
@@ -175,14 +177,15 @@ function stubTitle(item) {
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport to="body" :disabled="inline">
     <div
       v-if="show"
       ref="panel"
       class="am kit-menu"
+      :class="{ inline }"
       role="menu"
       tabindex="-1"
-      :style="{ ...style, width: `${width}px` }"
+      :style="inline ? { width: `${width}px` } : { ...style, width: `${width}px` }"
       :data-testid="testid"
       @keydown="onKeydown"
       @focusout="(e) => !panel?.contains(e.relatedTarget) && disarm()"
@@ -294,6 +297,10 @@ function stubTitle(item) {
   color: var(--t-text1);
   outline: 0;
   --t-surface: var(--t-pop);
+}
+.am.inline {
+  position: relative;
+  z-index: auto;
 }
 .am-head {
   display: flex;

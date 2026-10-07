@@ -32,6 +32,9 @@ const props = defineProps({
   // Horizontal offset of the hint tooltip, so it lines up with the text.
   hintLeft: { type: Number, default: 0 },
   showHint: { type: Boolean, default: true },
+  // Focus and select on mount — what every real use wants; the design
+  // system's previews turn it off so several fields don't fight for focus.
+  autofocus: { type: Boolean, default: true },
 })
 const emit = defineEmits(['update:modelValue', 'commit', 'cancel'])
 
@@ -67,6 +70,7 @@ const value = computed({
 let settled = false
 
 onMounted(async () => {
+  if (!props.autofocus) return
   await nextTick()
   input.value?.focus()
   input.value?.select()

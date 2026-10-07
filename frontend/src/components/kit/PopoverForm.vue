@@ -46,6 +46,9 @@ const props = defineProps({
   testid: { type: String, default: 'popover-form' },
   // data-tour of the primary button, for the Get Started guide.
   submitTour: { type: String, default: undefined },
+  // Drawn in place instead of floating at an anchor — the design system's
+  // previews and compositions, which have no anchor to float at.
+  inline: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:show', 'submit', 'cancel', 'abort', 'suggest', 'escape'])
 
@@ -58,7 +61,7 @@ function close() {
   emit('cancel')
 }
 
-const showDesktop = computed(() => props.show && !isMobile.value)
+const showDesktop = computed(() => props.show && !isMobile.value && !props.inline)
 const { style } = useAnchoredPanel({
   show: showDesktop,
   anchor: () => props.anchor(),
@@ -74,7 +77,7 @@ const { style } = useAnchoredPanel({
 watch(
   () => props.show,
   async (on) => {
-    if (!on) return
+    if (!on || props.inline) return
     await nextTick()
     await nextTick()
     const root = isMobile.value ? document.querySelector(`[data-testid="${props.testid}"]`) : panel.value
@@ -158,14 +161,15 @@ const sheetShow = computed({
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport to="body" :disabled="inline">
     <div
-      v-if="showDesktop"
+      v-if="showDesktop || (inline && show)"
       ref="panel"
       class="pf kit-form"
+      :class="{ inline }"
       role="dialog"
       :aria-label="title"
-      :style="{ ...style, width: `${width}px` }"
+      :style="inline ? { width: `${width}px` } : { ...style, width: `${width}px` }"
       :data-testid="testid"
       @keydown="onKeydown"
     >
@@ -210,7 +214,7 @@ const sheetShow = computed({
   </Teleport>
 
   <BottomSheet
-    v-if="isMobile"
+    v-if="isMobile && !inline"
     v-model:show="sheetShow"
     :title="title"
     :subtitle="subtitle"
@@ -238,6 +242,7 @@ const sheetShow = computed({
 <style scoped>
 .pf {
   position: fixed;
+  max-width: 100%;
   z-index: 2050;
   overflow: hidden;
   border-radius: var(--t-r-pop);
@@ -245,6 +250,10 @@ const sheetShow = computed({
   box-shadow: var(--t-sh-pop);
   color: var(--t-text1);
   --t-surface: var(--t-pop);
+}
+.pf.inline {
+  position: relative;
+  z-index: auto;
 }
 .pf-head {
   display: flex;

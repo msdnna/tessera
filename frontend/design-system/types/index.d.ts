@@ -225,6 +225,155 @@ export interface ModalProps extends IslandHostProps {
 }
 export declare function Modal(props: ModalProps): ReactElement
 
+// ── Interaction model v2 ──────────────────────────────────────────────────────
+
+export interface InlineEditProps extends IslandHostProps {
+  /** The text (controlled). */
+  value?: string
+  /** Initial text when uncontrolled. */
+  defaultValue?: string
+  onChange?: (value: string) => void
+  placeholder?: string
+  /** 'row' — a sidebar tree row (28px field in a 32px row); 'header' — a column header (26px, semibold). */
+  variant?: 'row' | 'header'
+  /** A reason the value can't be saved: red ring, alert icon, the text in the hint. */
+  error?: string
+  /** Saving: a spinner replaces the ↵ cap. */
+  busy?: boolean
+  /** Which keys the hint under the field explains: rename, new row, new board (+ Tab for its kind), column (+ Tab to the next). */
+  hint?: 'save' | 'create' | 'createView' | 'column'
+  /** Horizontal offset of the hint tooltip, px. */
+  hintLeft?: number
+  showHint?: boolean
+  /** Focus and select on mount (the app always does). Default false here. */
+  autofocus?: boolean
+  /** Fired on ↵ / ⇧↵ / Tab / click away. */
+  onCommit?: (value: string, how: { via: 'enter' | 'tab' | 'blur'; shift: boolean }) => void
+  /** Fired on Esc. */
+  onCancel?: () => void
+  /** Extra content before the ↵ cap (e.g. a new board's kind chip). */
+  trailing?: ReactNode
+}
+export declare function InlineEdit(props: InlineEditProps): ReactElement
+
+export interface PopoverFormProps extends IslandHostProps {
+  /** The question in the header: «Новый проект», «Адрес проекта». */
+  title?: string
+  /** Under the title, text3: «в группе «Продукт»». */
+  subtitle?: string
+  /** Label of the primary button: «Создать», «Сохранить», «Удалить навсегда». */
+  primary?: string
+  /** Primary label while busy: «Создаём…». */
+  busyLabel?: string
+  busy?: boolean
+  /** Primary greyed out (empty required field, an error). */
+  disabled?: boolean
+  /** Red primary — the type-the-name delete. */
+  danger?: boolean
+  /** Footer hint on the left: 'tab' («Tab поле»), 'list' («↑↓ выбрать»), 'suggest' («⌥↵ подставить свободный») or free text. */
+  hint?: string
+  /** 320–380 in the app. Default 340. */
+  width?: number
+  /** The fields — FormField elements. */
+  children?: ReactNode
+  /** Replaces the footer hint (a secondary action like «Удалить сервер»). */
+  foot?: ReactNode
+  onSubmit?: (how: { open: boolean }) => void
+  onCancel?: () => void
+  onSuggest?: () => void
+}
+export declare function PopoverForm(props: PopoverFormProps): ReactElement
+
+export interface FormFieldProps extends IslandHostProps {
+  label?: string
+  /** Right side of the label row: «из названия», the picked colour's name. */
+  aside?: string
+  /** Shows «…/project/<preview>» under the control (empty string → «…»). */
+  preview?: string | null
+  /** Red-iconed reason under the control. */
+  error?: string
+  /** With an error: «Свободно: <suggestion> или ⌥↵». */
+  suggestion?: string
+  /** Quiet note under the control (hidden while there is an error). */
+  message?: string
+  /** The control: an <input className="kf-input"/>, a ColorIconPicker… */
+  children?: ReactNode
+  onSuggest?: (suggestion: string) => void
+}
+export declare function FormField(props: FormFieldProps): ReactElement
+
+export interface ColorIconPickerProps extends IslandHostProps {
+  /** One of the seven: '#7c5cff' '#2f80ed' '#0eb0a9' '#18a058' '#f0a020' '#e0533d' '#eb2f96'. */
+  color?: string
+  /** '' = initials of `name`; project set: 'briefcase' 'code' 'rocket' 'flask' 'star' 'book' 'bulb'; space set: 'briefcase' 'home' 'code' 'rocket' 'school' 'heart' 'game'. */
+  icon?: string
+  /** The name typed above — its initials are the first icon. */
+  name?: string
+  set?: 'project' | 'space'
+  onColorChange?: (color: string) => void
+  onIconChange?: (icon: string) => void
+}
+export declare function ColorIconPicker(props: ColorIconPickerProps): ReactElement
+
+export interface ActionMenuProps extends IslandHostProps {
+  /** Caps header (11.5/600): the row's name. */
+  header?: string
+  /** Right side of the header: the project's group, «3 задачи». */
+  headerAside?: string
+  /** 300 for a project row, 284 for a column. */
+  width?: number
+  /** Key of a two-step item to show armed (red, «Точно удалить?»). */
+  armed?: string
+  items: Array<{
+    key?: string
+    label?: string
+    /** ionicons5 export name: 'CreateOutline', 'TrashOutline'. */
+    icon?: string
+    /** Key caps on the right: ['F2'], ['⌘', '⌫']. */
+    caps?: string[]
+    /** Red icon, soft red hover. */
+    danger?: boolean
+    /** Two-step: the first press arms the row with this title and cost. */
+    confirm?: { title: string; sub?: string }
+    /** Colour row: the picked colour (seven dots). */
+    swatch?: string
+    /** Switch row: its state. */
+    toggle?: boolean
+    /** No rights: lock instead of the keys, `disabledTitle` as the tooltip. */
+    disabled?: boolean
+    disabledTitle?: string
+    /** Not built yet: «скоро», tooltip «Скоро · #N». */
+    stub?: number
+    busy?: boolean
+    busyLabel?: string
+    failed?: { title: string; sub: string }
+    /** A 6px group gap instead of a row. */
+    gap?: boolean
+  }>
+  onSelect?: (key: string, value?: unknown) => void
+}
+export declare function ActionMenu(props: ActionMenuProps): ReactElement
+
+export interface UndoToastProps extends IslandHostProps {
+  /** «Колонка «Бэклог» удалена · 14 задач в «К работе»». */
+  caption?: string
+  icon?: 'trash' | 'archive'
+  status?: 'live' | 'busy' | 'done' | 'error'
+  /** Time left, 0..1 (the bottom bar). */
+  progress?: number
+  /** Under the pointer: the bar turns grey and stops. */
+  paused?: boolean
+  /** prefers-reduced-motion: «7 с» text instead of the bar. */
+  reduced?: boolean
+  secondsLeft?: number
+  /** An older toast in the stack: scaled to 96%, 90% opacity. */
+  older?: boolean
+  onUndo?: () => void
+  onRetry?: () => void
+  onClose?: () => void
+}
+export declare function UndoToast(props: UndoToastProps): ReactElement
+
 // ── Board ───────────────────────────────────────────────────────────────────
 
 export interface TaskCardProps extends IslandHostProps {
