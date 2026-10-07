@@ -77,7 +77,7 @@
     },
     "board-composer": {
       "title": "Grouping, sorting, filters",
-      "body": "The “+” on this bar adds grouping (including by tag), sorting and filters, and on the right is the card layout setting."
+      "body": "The “+” on this bar adds grouping (including by tag), sorting and filters, and on the right are the sliders of the “Board view” panel (⇧V): cards, columns and saved views."
     },
     "dnd-card": {
       "title": "Drag the card",

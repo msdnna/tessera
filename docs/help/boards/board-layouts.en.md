@@ -3,14 +3,14 @@ title: Visualizations: list, calendar, timeline, Gantt, matrix
 category: Boards
 order: 25
 keywords: visualizations, view, list, calendar, timeline, gantt, chart, matrix, eisenhower, dependencies, zoom
-updated: 2026-08-28
+updated: 2026-10-07
 ---
 
-The same board tasks can be looked at in six ways. The visualization switcher sits in the board header; the chosen one is remembered for that board.
+The same board tasks can be looked at in six ways: Kanban, List, Timeline, Gantt, Calendar and Matrix. The switcher sits on the board bar — six equal segments, from the keyboard `V`, then `1`–`6`; when room is short the segments stay icons and only the chosen one keeps its caption. The chosen view is remembered for that board.
 
 It's important to understand that these are **not different boards and not copies of the tasks**. It's one set of cards shown differently: move a task in the calendar and it moves on the Kanban too.
 
-Each visualization has its own memory: grouping, sorts and filters are kept separately for each. A filter set on the Gantt won't turn up on the Kanban. Saved views are tied to a visualization as well — see [Saved views](/help/board-saved-views).
+Each visualization has its own memory: grouping, sorts and filters are kept separately for each. A filter set on the Gantt won't turn up on the Kanban. A saved view remembers the view kind too: apply it and the board switches to where it was saved. See [Board views](/help/board-saved-views).
 
 ## Board
 
@@ -84,7 +84,7 @@ A 2×2 square: the columns are “Urgent” and “Not urgent”, the rows “Im
 | Urgent, not important | Delegate it |
 | Neither urgent nor important | It can wait |
 
-**Tasks place themselves.** A task counts as important when its priority is high or urgent; as urgent when its due date falls roughly within the coming week or has already passed. That is, the matrix doesn't ask you to fill in two more fields: it reads the priority and the due date the tasks already have.
+**Tasks place themselves.** A task counts as important when its priority is high or urgent; as urgent when its due date falls within the next 3 days or has already passed. Both thresholds are changed in the Board view panel, section “Matrix”. That is, the matrix doesn't ask you to fill in two more fields: it reads the priority and the due date the tasks already have.
 
 The automatic placement can be overruled: **drag a card into another quadrant** and it is pinned there. Such a task gets a “by hand” mark; clicking the mark returns it to its automatic place.
 

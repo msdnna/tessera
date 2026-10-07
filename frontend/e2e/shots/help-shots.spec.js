@@ -201,24 +201,33 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'board-columns')
     })
 
+    // «Вид доски» (#2986): the panel docked next to the board, «Карточки» open.
     test('настройка вида', async ({ page }) => {
       await openBoard(page)
       await page.locator('[data-tour="board-customize"]').click()
-      await expect(page.locator('.n-drawer')).toBeVisible()
+      await expect(page.getByTestId('board-customize')).toBeVisible()
+      await page.getByTestId('customize-sec-cards').click()
       await shoot(page, scheme, 'board-customize')
     })
 
+    // Saved views (#2987): an empty list would picture the empty state, not the
+    // feature — so the shot saves a view first (the field in the panel's list),
+    // then opens the chip's menu with it.
     test('сохранённые представления', async ({ page }) => {
       await openBoard(page)
-      // An empty list would picture the empty state, not the feature — so the
-      // shot saves a view first, then opens the list that now has it. The two
-      // buttons are the last pair of `.bar-tools` (folder, then disk).
-      const tools = page.locator('.bar-tools .bar-btn')
-      await tools.nth(2).click()
-      await page.locator('.views-pop input').fill('Мой спринт')
-      await page.locator('.views-pop input').press('Enter')
-      await tools.nth(1).click()
-      await expect(page.locator('.views-pop .view-name')).toBeVisible()
+      await page.locator('[data-tour="board-customize"]').click()
+      await expect(page.getByTestId('board-customize')).toBeVisible()
+      // The light run saves it; the dark one (a fresh browser) applies it.
+      const saved = page.getByTestId('view-row-1')
+      if (await saved.count()) await saved.click()
+      else {
+        await page.getByTestId('views-save-as').click()
+        const field = page.getByTestId('views-save-input').locator('input')
+        await field.fill('Мой спринт')
+        await field.press('Enter')
+      }
+      await page.getByTestId('view-chip').click()
+      await expect(page.getByTestId('view-chip-menu')).toBeVisible()
       await shoot(page, scheme, 'board-views')
     })
 
@@ -231,19 +240,19 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'board-archive')
     })
 
-    // The switcher lists the visualizations in a fixed order (board, list,
-    // calendar, timeline, gantt, matrix), so an index beats a caption here.
+    // Every segment of the switcher names its view (`data-layout`) — steadier
+    // than an index or a caption.
     const LAYOUTS = [
-      { idx: 1, name: 'board-list', ready: '.list-view' },
-      { idx: 2, name: 'board-calendar', ready: '.cal-cell' },
-      { idx: 3, name: 'board-timeline', ready: '[data-testid="chart-controls"]' },
-      { idx: 4, name: 'board-gantt', ready: '[data-testid="chart-controls"]' },
-      { idx: 5, name: 'board-matrix', ready: '.m-colhead' },
+      { key: 'list', name: 'board-list', ready: '.list-view' },
+      { key: 'calendar', name: 'board-calendar', ready: '.cal-cell' },
+      { key: 'timeline', name: 'board-timeline', ready: '[data-testid="chart-controls"]' },
+      { key: 'gantt', name: 'board-gantt', ready: '[data-testid="chart-controls"]' },
+      { key: 'matrix', name: 'board-matrix', ready: '.m-colhead' },
     ]
     for (const layout of LAYOUTS) {
       test(`визуализация: ${layout.name}`, async ({ page }) => {
         await openBoard(page)
-        await page.locator('[data-tour="board-layout"] button').nth(layout.idx).click()
+        await page.locator(`[data-tour="board-layout"] [data-layout="${layout.key}"]`).click()
         await expect(page.locator(layout.ready).first()).toBeVisible()
         await shoot(page, scheme, layout.name)
       })

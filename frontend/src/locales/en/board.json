@@ -354,7 +354,6 @@
     },
     "hintScroll": "scroll",
     "hintZoom": "zoom",
-    "settings": "Customize the view",
     "workDays": "{n} working day | {n} working days",
     "overdueBy": "{n} day overdue | {n} days overdue",
     "lanes": "Collapse / expand the group",
