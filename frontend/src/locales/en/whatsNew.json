@@ -1,4 +1,10 @@
 {
+  "interactionV2": {
+    "title": "Fewer windows, more editing in place",
+    "item1": "Columns, groups, projects and boards are renamed in place — double-click or F2. New projects, groups, boards and workspaces are created from a short form at the «+» button or as a row right in the tree, without separate windows.",
+    "item2": "Deleting a column or a board can be undone: an «Undo» toast appears at the bottom (⌘Z / Ctrl+Z). Tasks of a deleted column are not lost — they move to the first column and go back when you undo.",
+    "item3": "The sidebar and the rail work from the keyboard: G S — to the tree, G W — to workspaces, arrows — between rows, «.» — the row menu. In ⌘K, «Create project / board / group / workspace» open a step-by-step form right inside the palette."
+  },
   "redesignV2": {
     "title": "Tessera's new design",
     "item1": "A refreshed interface: no divider lines, columns are coloured lanes, priority is a bar on the card's edge, assignees stack as avatars. On the left, the workspace rail: each space has its own colour and icon, set from the workspace menu.",
