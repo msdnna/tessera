@@ -41,12 +41,13 @@ type glNote struct {
 }
 
 type glMilestone struct {
-	ID        int64
-	IID       int64
-	Title     string
-	State     string // active | closed
-	StartDate string // YYYY-MM-DD or ""
-	DueDate   string
+	ID          int64
+	IID         int64
+	Title       string
+	Description string
+	State       string // active | closed
+	StartDate   string // YYYY-MM-DD or ""
+	DueDate     string
 }
 
 type glIssue struct {
@@ -534,7 +535,8 @@ func (f *fakeGitlab) issueNode(is *glIssue) map[string]any {
 	if m := is.Milestone; m != nil {
 		ms = map[string]any{
 			"id": fmt.Sprintf("gid://gitlab/Milestone/%d", m.ID), "iid": strconv.FormatInt(m.IID, 10),
-			"title": m.Title, "state": m.State, "startDate": m.StartDate, "dueDate": m.DueDate,
+			"title": m.Title, "description": m.Description, "state": m.State,
+			"startDate": m.StartDate, "dueDate": m.DueDate,
 			"webPath": "/" + f.projectPath + "/-/milestones/" + strconv.FormatInt(m.IID, 10),
 		}
 	}
