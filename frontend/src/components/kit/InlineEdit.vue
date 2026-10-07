@@ -35,6 +35,9 @@ const props = defineProps({
   // Focus and select on mount — what every real use wants; the design
   // system's previews turn it off so several fields don't fight for focus.
   autofocus: { type: Boolean, default: true },
+  // Draw the hint in <body> (default — the sidebar clips overflow). The design
+  // system's previews keep it in place, under the field, inside the card.
+  teleportHint: { type: Boolean, default: true },
 })
 const emit = defineEmits(['update:modelValue', 'commit', 'cancel'])
 
@@ -58,7 +61,9 @@ function placeTip() {
   }
   raf = requestAnimationFrame(placeTip)
 }
-onMounted(placeTip)
+onMounted(() => {
+  if (props.teleportHint) placeTip()
+})
 onBeforeUnmount(() => cancelAnimationFrame(raf))
 const value = computed({
   get: () => props.modelValue,
@@ -165,12 +170,12 @@ const keysHint = computed(() => {
       <n-icon v-else-if="error" :component="AlertCircleOutline" :size="15" class="ie-alert" />
       <Kbd v-else class="ie-kbd">{{ CAPS.enter }}</Kbd>
     </span>
-    <Teleport to="body">
+    <Teleport to="body" :disabled="!teleportHint">
     <span
       v-if="showHint && (error || keysHint.length)"
       class="ie-tip"
-      :class="{ err: !!error }"
-      :style="tipPos"
+      :class="{ err: !!error, local: !teleportHint }"
+      :style="teleportHint ? tipPos : { left: `${hintLeft}px` }"
       role="status"
     >
       <template v-if="error">{{ error }}</template>
@@ -263,6 +268,10 @@ const keysHint = computed(() => {
   font-weight: 400;
   white-space: nowrap;
   pointer-events: none;
+}
+.ie-tip.local {
+  position: absolute;
+  top: calc(100% + 6px);
 }
 .ie-tip.err {
   padding: 0 10px;

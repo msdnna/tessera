@@ -34,6 +34,9 @@
     },
     "Tabs": {
       "cardMode": "column"
+    },
+    "UndoToast": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"

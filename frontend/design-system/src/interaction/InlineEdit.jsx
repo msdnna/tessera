@@ -23,6 +23,8 @@ export const InlineEdit = vueIsland(InlineEditVue, {
     hintLeft: p.hintLeft ?? 0,
     showHint: p.showHint ?? true,
     autofocus: !!p.autofocus,
+    // In place under the field: a design has no clipping sidebar to escape.
+    teleportHint: false,
   }),
   model: {
     vueProp: 'modelValue',
