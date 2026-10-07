@@ -9,7 +9,8 @@ import { expectFitsWidth } from './_layout.js'
 //
 // v2 (#2959): the chart's own toolbar row is gone — its controls live in the
 // board's sub-toolbar (ChartControls), the counters and the link hint in the
-// «Настроить вид» popover. The breakage the report showed can still happen there,
+// board's «Вид доски» panel, section «Шкала» (#2986; a bottom sheet on a phone).
+// The breakage the report showed can still happen there,
 // and the width gates still cannot see it: squeezing costs the page no width. So
 // this asserts on the boxes that would break — the controls' height and each
 // chip's line count — and on the hint staying off a touch screen.
@@ -59,9 +60,17 @@ test('Гант на телефоне: подсказка не растёт в к
   const h = await controls.evaluate((el) => el.getBoundingClientRect().height)
   expect(h, `контролы Ганта заняли ${Math.round(h)}px — ряд переносится`).toBeLessThan(50)
 
-  // Gate 2: each counter chip in the settings popover is one line.
-  await page.getByTestId('chart-settings').tap()
-  const chips = page.locator('.cc-counter')
+  // Gate 2: each counter chip in the view panel is one line. The panel opens from
+  // the same header menu; its «Шкала» section is a tap away.
+  await page
+    .locator('.tb-right .n-button')
+    .filter({ has: page.locator('.n-icon') })
+    .first()
+    .tap()
+  await page.locator('.n-dropdown-option', { hasText: 'Вид доски' }).first().click()
+  await expect(page.getByTestId('board-customize')).toBeVisible({ timeout: 10000 })
+  await page.getByTestId('customize-sec-scale').tap()
+  const chips = page.locator('.cp-counter')
   await expect(chips.first()).toBeVisible()
   const n = await chips.count()
   expect(n, 'плашек-счётчиков нет — проверять нечего').toBeGreaterThan(0)
@@ -78,7 +87,7 @@ test('Гант на телефоне: подсказка не растёт в к
 
   // The link hint is dropped rather than shown: it describes dragging a knob
   // that `:hover` reveals at 14px, an affordance a touch screen does not have.
-  await expect(page.locator('.cc-note')).toBeHidden()
+  await expect(page.locator('.cp-scale .cp-note', { hasText: /Тяните|Drag/ })).toHaveCount(0)
   await page.keyboard.press('Escape')
 
   await expectFitsWidth(page, 'Гант на телефоне')
