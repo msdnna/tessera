@@ -95,7 +95,7 @@ describe('ColumnHeader rename', () => {
     await input.setValue('  ')
     await input.trigger('keydown', { key: 'Enter' })
     await nextTick()
-    expect(w.text()).toContain('Название не может быть пустым')
+    expect(document.body.textContent).toContain('Название не может быть пустым')
     expect(w.find('input').exists()).toBe(true)
     await w.get('input').setValue('')
     await w.get('input').trigger('blur')

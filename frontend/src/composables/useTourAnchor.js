@@ -28,6 +28,8 @@ export const PANEL_SEL = [
   '.n-base-select-menu',
   '.n-color-picker-panel',
   '.n-cascader-menu',
+  // The v2 interaction kit (#2969): the row menu.
+  '.kit-menu',
 ].join(',')
 
 // Larger overlay surfaces the user may open mid-tour — a create-workspace modal,
@@ -35,7 +37,10 @@ export const PANEL_SEL = [
 // never darkens something the user just opened (#2753 rework), but unlike the
 // small pickers they are NOT fed to popover placement: the tour popover has to be
 // free to sit *inside* a modal (naming a project, filling a task field).
-export const SURFACE_SEL = ['.n-modal', '.n-drawer'].join(',')
+// The kit's popover form and bottom sheet (#2969) took over from the small
+// create modals, so they are surfaces the same way: the guide names a project
+// inside one.
+export const SURFACE_SEL = ['.n-modal', '.n-drawer', '.kit-form', '.kit-sheet'].join(',')
 
 // The container an advanceOn.moved spec's element currently sits in, read as a
 // plain string so the store can compare "before" with "now" without holding on

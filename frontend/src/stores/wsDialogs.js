@@ -13,14 +13,18 @@ export const useWsDialogsStore = defineStore('wsDialogs', () => {
   // The workspace a rail tile's menu was opened on (appearance / delete can
   // target a tile other than the current workspace); null = the current one.
   const target = ref(null)
+  // Where the small ones (create / appearance / delete — popover forms since
+  // #2969) open: the element of the door that asked, else the sidebar header.
+  const anchor = ref(null)
 
-  function open(name, workspace = null) {
+  function open(name, workspace = null, anchorEl = null) {
     target.value = workspace
+    anchor.value = anchorEl
     current.value = name
   }
   function close() {
     current.value = ''
   }
 
-  return { current, target, open, close }
+  return { current, target, anchor, open, close }
 })

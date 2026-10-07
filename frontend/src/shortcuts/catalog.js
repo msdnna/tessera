@@ -47,10 +47,12 @@ export const CATALOG = [
   // menu lists the same keys.
   { id: 'nav.goSidebar', keys: 'g s', group: 'sidebar' },
   { id: 'nav.goRail', keys: 'g w', group: 'sidebar' },
-  { id: 'row.rename', keys: 'f2', group: 'sidebar', display: [['F2'], ['R']] },
+  // R works too (row.renameR); the hint shows the one key the mockup names.
+  { id: 'row.rename', keys: 'f2', group: 'sidebar' },
   { id: 'row.renameR', keys: 'r' },
   { id: 'row.new', keys: 'shift+n', group: 'sidebar' },
-  { id: 'row.menu', keys: '.', group: 'sidebar', display: [['.'], ['⇧', 'F10']] },
+  // ⇧F10 works too (row.menuF10).
+  { id: 'row.menu', keys: '.', group: 'sidebar' },
   { id: 'row.menuF10', keys: 'shift+f10' },
   { id: 'row.open', keys: 'enter' },
   { id: 'row.icon', keys: 'i', group: 'sidebar' },

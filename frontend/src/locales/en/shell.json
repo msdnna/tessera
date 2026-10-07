@@ -36,7 +36,12 @@
     "delete": "Delete group",
     "deleteConfirm": "Subgroups will be deleted, projects will lose their group. Delete?",
     "deleteTitle": "Delete the group “{name}”?",
-    "deleteWarning": "Subgroups will be deleted, projects will lose their group. This cannot be undone."
+    "deleteWarning": "Subgroups will be deleted, projects will lose their group. This cannot be undone.",
+    "appearance": "Icon and colour…",
+    "namePlaceholder": "Group name",
+    "deleteArmed": "Delete “{name}” for good?",
+    "deleteArmedSub": "subgroups go, projects lose the group · no undo",
+    "deleteFailed": "Couldn't delete"
   },
   "user": {
     "profile": "Profile",
@@ -420,5 +425,29 @@
   "rail": {
     "appearance": "Workspace appearance",
     "add": "Add a workspace or a server"
+  },
+  "projectForm": {
+    "title": "New project",
+    "inGroup": "in group “{group}”",
+    "atRoot": "at the top of the space",
+    "name": "Name",
+    "namePlaceholder": "Project name",
+    "slug": "Address",
+    "fromName": "from the name",
+    "slugPlaceholder": "project-address",
+    "creating": "Creating…"
+  },
+  "workspaceForm": {
+    "createTitle": "New space",
+    "createSub": "Its own projects, people and access",
+    "styleTitle": "Space appearance",
+    "styleSub": "Seen by every member of “{name}”",
+    "look": "Colour and icon",
+    "lookRail": "Colour and icon on the rail",
+    "deleteTitle": "Delete “{name}” for good?",
+    "deleteSub": "Every project, board and task of the space will be deleted. This can’t be undone.",
+    "deleteForever": "Delete for good",
+    "deleteHint": "enabled once the name is typed",
+    "typeName": "Type the name of the space"
   }
 }

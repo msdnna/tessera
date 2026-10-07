@@ -42,6 +42,8 @@ const props = defineProps({
   // When the owner handles Esc itself (back to a menu), set this.
   escapeBack: { type: Boolean, default: false },
   testid: { type: String, default: 'popover-form' },
+  // data-tour of the primary button, for the Get Started guide.
+  submitTour: { type: String, default: undefined },
 })
 const emit = defineEmits(['update:show', 'submit', 'cancel', 'abort', 'suggest', 'escape'])
 
@@ -158,7 +160,7 @@ const sheetShow = computed({
     <div
       v-if="showDesktop"
       ref="panel"
-      class="pf"
+      class="pf kit-form"
       role="dialog"
       :aria-label="title"
       :style="{ ...style, width: `${width}px` }"
@@ -188,6 +190,7 @@ const sheetShow = computed({
           :class="{ danger, disabled: !canSubmit && !busy, busy }"
           :disabled="!canSubmit"
           :data-testid="`${testid}-submit`"
+          :data-tour="submitTour"
           @click="submit(false)"
         >
           <template v-if="busy">

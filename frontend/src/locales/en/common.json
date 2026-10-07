@@ -11,7 +11,8 @@
     "delete": "Delete",
     "retry": "Retry",
     "search": "Search",
-    "more": "More"
+    "more": "More",
+    "done": "Done"
   },
   "priority": {
     "none": "No priority",
@@ -151,7 +152,8 @@
     "pick": "pick",
     "suggest": "use the free one",
     "free": "Free:",
-    "or": "or"
+    "or": "or",
+    "saving": "Saving…"
   },
   "picker": {
     "label": "Icon and colour",

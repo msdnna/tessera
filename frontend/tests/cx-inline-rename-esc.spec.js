@@ -182,37 +182,31 @@ describe('sidebar inline fields — Esc (#2932)', async () => {
   const process = (await import('node:process')).default
   const src = readFileSync(resolve(process.cwd(), 'src/components/ProjectRow.vue'), 'utf8')
 
-  // Every `<n-input>` element in the template, as raw text.
-  const inputs = src.match(/<n-input\b[\s\S]*?\/>/g) || []
+  // Since #2969 the three commit-on-blur fields (project rename, board rename,
+  // «новая доска») are the kit's InlineEdit, which owns the contract this file
+  // pins: Esc cancels, the blur after it is silent, ↵ + blur writes once
+  // (tests/cx-inline-edit.spec.js). What is left to pin here is that each of
+  // them takes the cancel, and that no bare commit-on-blur `<n-input>` is back.
+  // The tag ends at `/>` or at a `>` alone on its line — an attribute may hold `=>`.
+  const fields = src.match(/<InlineEdit\b[\s\S]*?(?:\/>|\n\s*>)/g) || []
 
-  // Three commit-on-blur fields (project rename, board rename, «новая доска»), plus
-  // the slug field in the modal — that one has no `@blur` at all and is cancelled by
-  // closing the dialog, so it stays out of this contract by construction.
-  it('finds the inline fields and the one modal field', () => {
-    expect(inputs.length).toBe(4)
-    expect(inputs.filter((i) => /@blur=/.test(i))).toHaveLength(3)
+  it('finds the three inline fields', () => {
+    expect(fields.length).toBe(3)
   })
 
-  it('gives every field that commits on blur an Esc handler', () => {
-    const committing = inputs.filter((i) => /@blur=/.test(i))
-    expect(committing.length).toBe(3)
-    for (const i of committing) expect(i).toMatch(/@keyup\.esc=/)
+  it('gives every inline field an Esc (cancel) handler', () => {
+    for (const f of fields) expect(f).toMatch(/@cancel=/)
   })
 
-  // The cancels close the field AND drop the buffer: `addBoard`/`commitRename` also
-  // run on blur, so a name left behind would be created/committed by the next stray
-  // focus+blur of the reopened input.
-  it('cancels clear the buffer, not just the flag', () => {
-    expect(src).toMatch(/function cancelRename\(\)\s*\{[^}]*nameEdit\.value = ''/)
-    expect(src).toMatch(/function cancelBoardRename\(\)\s*\{[^}]*boardNameEdit\.value = ''/)
-    expect(src).toMatch(/function cancelAddBoard\(\)\s*\{[^}]*newBoardName\.value = ''/)
+  it('has no commit-on-blur n-input left', () => {
+    const bare = (src.match(/<n-input\b[\s\S]*?\/>/g) || []).filter((i) => /@blur=/.test(i))
+    expect(bare).toHaveLength(0)
   })
 
   // A commit arriving after the field closed must not write.
-  it('guards both renames against a commit on a closed field', () => {
-    expect(src).toMatch(/async function commitRename\(\)\s*\{\s*if \(!renaming\.value\) return/)
+  it('guards the board rename against a commit on a closed field', () => {
     expect(src).toMatch(
-      /async function commitBoardRename\(b\)\s*\{[\s\S]{0,400}?if \(editingBoardId\.value !== b\.id\) return/,
+      /async function commitBoardRename\(b, value, \{ via \}\)\s*\{\s*if \(editingBoardId\.value !== b\.id\) return/,
     )
   })
 })

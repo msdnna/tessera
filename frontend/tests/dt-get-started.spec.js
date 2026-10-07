@@ -25,7 +25,10 @@ const MARKUP = [
   'src/components/rail/AppRail.vue',
   'src/components/SidebarNode.vue',
   'src/components/ProjectRow.vue',
-  'src/components/ProjectCreateModal.vue',
+  // The project form and the new-group row took over from the modal and the
+  // create-then-rename group (#2969).
+  'src/components/sidebar/ProjectCreatePopover.vue',
+  'src/components/sidebar/NewGroupRow.vue',
   'src/components/task/TaskCardPills.vue',
   'src/components/TaskModal.vue',
   'src/components/KanbanBoard.vue',

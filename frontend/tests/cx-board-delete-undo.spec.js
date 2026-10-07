@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { NDropdown } from 'naive-ui'
+import { nextTick } from 'vue'
 
 vi.mock('naive-ui', async () => {
   const actual = await vi.importActual('naive-ui')
@@ -51,6 +51,7 @@ function mountRow() {
   store.boardsByProject = { [PROJECT.id]: [BOARD] }
   store.loadBoards = vi.fn(() => Promise.resolve())
   return mount(ProjectRow, {
+    attachTo: document.body,
     props: { project: PROJECT },
     global: {
       stubs: {
@@ -64,12 +65,10 @@ function mountRow() {
     },
   })
 }
-const boardMenu = (w) => w.findAllComponents(NDropdown).at(-1)
-
 async function deleteFromMenu(w) {
-  await w.get('.board-row').trigger('contextmenu')
-  await w.vm.$nextTick()
-  boardMenu(w).vm.$emit('select', 'delete')
+  await w.get('.board-row').trigger('contextmenu', { clientX: 10, clientY: 10 })
+  await nextTick()
+  document.body.querySelector('[data-testid="board-actions-delete"]').click()
   await flushPromises()
 }
 

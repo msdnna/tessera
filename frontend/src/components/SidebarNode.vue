@@ -1,18 +1,11 @@
 <script setup>
-import { ref, computed, watch, nextTick, h } from 'vue'
+// A group in the sidebar tree (v2 interaction model, #2969): the row is a
+// keyboard stop (↑/↓ from the tree, ←/→ fold, F2 rename, ⇧N new project, «.»
+// menu), renames in place, and its «+» opens the new-project popover at itself.
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import {
-  NIcon,
-  NButton,
-  NInput,
-  NDropdown,
-  NPopover,
-  NPopconfirm,
-  NModal,
-  NCard,
-  useMessage,
-} from 'naive-ui'
+import { NIcon, NButton, useMessage } from 'naive-ui'
 import {
   FolderOutline,
   ChevronForwardOutline,
@@ -21,12 +14,11 @@ import {
   CreateOutline,
   TrashOutline,
   DocumentTextOutline,
+  ColorPaletteOutline,
 } from '@vicons/ionicons5'
-
-const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
-const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
-import { workspaces as wsApi, groups as groupsApi } from '@/api'
+import { groups as groupsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
+import { humanizeError } from '@/utils/errors'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import {
   moveSidebarGroup,
@@ -37,11 +29,15 @@ import {
 import { pressMoved } from '@/utils/dnd'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
-import { useTourStore } from '@/stores/tour'
+import { useSidebarDraft } from '@/composables/useSidebarDraft'
+import { handleRowKeys } from '@/composables/useRowKeys'
 import ProjectRow from './ProjectRow.vue'
-import ProjectCreateModal from './ProjectCreateModal.vue'
 import ProjectIcon from './ProjectIcon.vue'
-import IconColorPicker from './IconColorPicker.vue'
+import InlineEdit from './kit/InlineEdit.vue'
+import ActionMenu from './kit/ActionMenu.vue'
+import ProjectCreatePopover from './sidebar/ProjectCreatePopover.vue'
+import AppearancePopover from './sidebar/AppearancePopover.vue'
+import NewGroupRow from './sidebar/NewGroupRow.vue'
 
 const props = defineProps({
   group: { type: Object, required: true },
@@ -52,55 +48,68 @@ const { t } = useI18n()
 const store = useWorkspacesStore()
 const message = useMessage()
 const tree = useTreeExpand()
-const tour = useTourStore()
+const draft = useSidebarDraft()
 
 // Persisted expand state; groups default open.
 const expanded = computed({
   get: () => tree.isExpanded(props.group.id, true),
   set: (v) => tree.setExpanded(props.group.id, v),
 })
-const renaming = ref(false)
-const nameEdit = ref('')
-const renameInput = ref(null)
-const settingsShow = ref(false)
 
-// right-click context menu
-const ctxShow = ref(false)
-const ctxX = ref(0)
-const ctxY = ref(0)
-// Computed, not a module constant: a frozen table keeps the language of the
-// first render and never follows a switch.
-const ctxOptions = computed(() => [
-  { label: t('shell.group.newProject'), key: 'add-project', icon: menuIcon(DocumentTextOutline) },
-  { label: t('shell.group.newGroup'), key: 'add-group', icon: menuIcon(FolderOutline) },
-  { type: 'divider', key: 'd1' },
-  { label: t('shell.group.rename'), key: 'rename', icon: menuIcon(CreateOutline) },
-  {
-    label: t('shell.group.delete'),
-    key: 'delete',
-    icon: dangerIcon(TrashOutline),
-    props: { style: 'color:#e0533d' },
-  },
-])
+const rowEl = ref(null)
+const plusBtn = ref(null)
+const moreBtn = ref(null)
+
+// ── the row menu: «⋯», right click, long press, «.» / ⇧F10 ──
+const menuOpen = ref(false)
+const menuAt = ref(null)
+const menuAnchor = () => menuAt.value || rowEl.value
+function openMenu(at = null) {
+  menuAt.value = at
+  menuOpen.value = true
+}
 function onCtx(e) {
   if (pressMoved()) return
-  ctxShow.value = false
-  ctxX.value = e.clientX
-  ctxY.value = e.clientY
-  nextTick(() => (ctxShow.value = true))
+  openMenu({ x: e.clientX, y: e.clientY })
 }
 const lp = useLongPress(onCtx)
-function onCtxSelect(key) {
-  ctxShow.value = false
-  if (key === 'add-project') onAdd('project')
-  else if (key === 'add-group') onAdd('group')
-  else if (key === 'rename') startRename()
-  else if (key === 'delete') confirmDelete.value = true
-}
 
-// Context-menu delete needs its own confirmation (the settings-popover path uses
-// an inline n-popconfirm; the dropdown menu can't host one, so it opens a modal).
-const confirmDelete = ref(false)
+// Delete state is read by the menu rows (busy / failed), so it lives up here.
+const deleting = ref(false)
+const deleteFailed = ref('')
+
+const subgroups = computed(() => store.childGroups(props.group.id))
+const childProjects = computed(() => store.projectsInGroup(props.group.id))
+const menuItems = computed(() => [
+  { key: 'add-project', label: t('shell.group.newProject'), icon: DocumentTextOutline, keys: 'row.new' },
+  { key: 'add-group', label: t('shell.group.newGroup'), icon: FolderOutline },
+  { gap: true },
+  { key: 'rename', label: t('shell.group.rename'), icon: CreateOutline, keys: 'row.rename' },
+  { key: 'icon', label: t('shell.group.appearance'), icon: ColorPaletteOutline, keys: 'row.icon' },
+  { gap: true },
+  {
+    key: 'delete',
+    label: t('shell.group.delete'),
+    icon: TrashOutline,
+    danger: true,
+    keys: 'row.delete',
+    confirm: {
+      title: t('shell.group.deleteArmed', { name: props.group.name }),
+      sub: t('shell.group.deleteArmedSub'),
+    },
+    busy: deleting.value,
+    failed: deleteFailed.value
+      ? { title: t('shell.group.deleteFailed'), sub: deleteFailed.value }
+      : null,
+  },
+])
+function onMenu(key) {
+  if (key === 'add-project') openProjectForm()
+  else if (key === 'add-group') startSubgroup()
+  else if (key === 'rename') startRename()
+  else if (key === 'icon') openAppearance(true)
+  else if (key === 'delete') remove()
+}
 
 const initials = computed(() => (props.group.name || '?').trim().slice(0, 2).toUpperCase())
 
@@ -115,8 +124,10 @@ async function applyGroup(patch) {
       ...patch,
     })
     await store.refresh()
+    return true
   } catch (e) {
-    message.error(e.message)
+    message.error(humanizeError(e))
+    return false
   }
 }
 
@@ -134,9 +145,6 @@ const glyphColor = computed(() =>
   iconMode.value ? (colored.value ? props.group.color : 'var(--t-primary)') : '',
 )
 
-const subgroups = computed(() => store.childGroups(props.group.id))
-const childProjects = computed(() => store.projectsInGroup(props.group.id))
-
 const grpModel = ref([])
 const projModel = ref([])
 watch(subgroups, (v) => (grpModel.value = [...v]), { immediate: true })
@@ -145,63 +153,105 @@ const onGrpChange = (evt) => moveSidebarGroup(evt, grpModel.value, props.group.i
 const onProjChange = (evt) =>
   moveSidebarProject(evt, projModel.value, props.group.id, store, message)
 
-const addOptions = computed(() => [
-  { label: t('shell.tree.addProject'), key: 'project', icon: menuIcon(DocumentTextOutline) },
-  { label: t('shell.tree.addGroup'), key: 'group', icon: menuIcon(FolderOutline) },
-])
-
-// Projects are named in a modal (see ProjectCreateModal); groups keep the
-// create-then-rename flow.
-const projModalShow = ref(false)
-
-async function onAdd(key) {
-  if (key === 'project') {
-    projModalShow.value = true
-    return
-  }
-  try {
-    // The new group is reported to the guide (as the project modal reports its
-    // project) so the steps that follow point at *this* group and not at the
-    // first one in the tree (#2778 rework).
-    const res = await wsApi.createGroup(store.currentId, {
-      name: t('shell.group.defaultName'),
-      parent_id: props.group.id,
-    })
-    tour.noteCreated({ groupId: res.data?.id })
-    await store.refresh()
-    expanded.value = true
-  } catch (e) {
-    message.error(e.message)
-  }
+// ── new project: popover form at the «+» (or at the row for ⇧N / the menu) ──
+const projectFormOpen = ref(false)
+const projectFormAt = ref(null)
+function openProjectForm(at = null) {
+  projectFormAt.value = at
+  projectFormOpen.value = true
 }
-
-async function onProjectCreated() {
-  await store.refresh()
+const projectFormAnchor = () =>
+  projectFormAt.value === 'plus' ? plusBtn.value?.$el || rowEl.value : rowEl.value
+function onProjectCreated() {
   expanded.value = true
 }
 
+// ── new subgroup: an empty row at the end of this group's children ──
+function startSubgroup() {
+  expanded.value = true
+  draft.startGroup(props.group.id)
+}
+
+// ── appearance ──
+const appearanceOpen = ref(false)
+const appearanceFromMenu = ref(false)
+function openAppearance(fromMenu = false) {
+  appearanceFromMenu.value = fromMenu
+  appearanceOpen.value = true
+}
+function appearanceBack() {
+  appearanceOpen.value = false
+  openMenu(menuAt.value)
+}
+
+// ── rename in place ──
+const renaming = ref(false)
+const nameEdit = ref('')
+const renameBusy = ref(false)
 function startRename() {
-  settingsShow.value = false
   nameEdit.value = props.group.name
   renaming.value = true
-  nextTick(() => renameInput.value?.focus())
 }
+async function commitRename(value, { via }) {
+  const n = value.trim()
+  if (!n || n === props.group.name) {
+    // An empty name is not saved: ↵ does nothing, a click away gives up.
+    if (!n && via === 'enter') return
+    renaming.value = false
+    return
+  }
+  renameBusy.value = true
+  const ok = await applyGroup({ name: n })
+  renameBusy.value = false
+  if (ok) {
+    renaming.value = false
+    rowEl.value?.focus()
+  }
+}
+function cancelRename() {
+  renaming.value = false
+  rowEl.value?.focus()
+}
+
+// ── delete: irreversible (subgroups go, projects lose the group) → two steps ──
 async function remove() {
-  confirmDelete.value = false
+  deleting.value = true
+  deleteFailed.value = ''
   try {
     await groupsApi.remove(props.group.id)
+    menuOpen.value = false
     await store.refresh()
   } catch (e) {
-    message.error(e.message)
+    deleteFailed.value = humanizeError(e)
+  } finally {
+    deleting.value = false
   }
 }
 
-// click-outside saves if changed, else cancels
-async function commitRename() {
-  renaming.value = false
-  const n = nameEdit.value.trim()
-  if (!n || n === props.group.name) return
-  await applyGroup({ name: n })
+// ── keys of the focused row ──
+function onRowKey(e) {
+  if (renaming.value) return
+  if (e.key === 'ArrowRight' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    if (!expanded.value) expanded.value = true
+    return
+  }
+  if (e.key === 'ArrowLeft' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    if (expanded.value) expanded.value = false
+    else rowEl.value?.parentElement?.parentElement?.closest('.group-node')?.querySelector('[data-tree-row]')?.focus()
+    return
+  }
+  handleRowKeys(e, {
+    'row.open': () => (expanded.value = !expanded.value),
+    'row.rename': startRename,
+    'row.renameR': startRename,
+    'row.new': () => openProjectForm(),
+    'row.menu': () => openMenu(),
+    'row.menuF10': () => openMenu(),
+    'row.icon': () => openAppearance(false),
+    'row.delete': () => openMenu(),
+  })
 }
 </script>
 
@@ -214,8 +264,14 @@ async function commitRename() {
        so a project in a subgroup reports the subgroup, not its parent. -->
   <div class="group-node" :data-tour-group="group.id">
     <div
+      ref="rowEl"
       class="row group-row"
+      :class="{ ctx: menuOpen, editing: renaming }"
       data-tour="group-row"
+      data-tree-row
+      tabindex="-1"
+      :aria-expanded="expanded"
+      @keydown="onRowKey"
       @contextmenu.prevent.stop="onCtx"
       @touchstart.passive="lp.start"
       @touchend="lp.cancel"
@@ -242,59 +298,42 @@ async function commitRename() {
         />
         <n-icon v-else :component="FolderOutline" :size="16" :color="glyphColor || undefined" />
       </span>
-      <n-input
+      <InlineEdit
         v-if="renaming"
-        ref="renameInput"
-        v-model:value="nameEdit"
-        size="tiny"
-        @keyup.enter="commitRename"
-        @blur="commitRename"
+        v-model="nameEdit"
+        :busy="renameBusy"
+        :hint-left="-40"
+        @commit="commitRename"
+        @cancel="cancelRename"
       />
       <span v-else class="name" @click="expanded = !expanded" @dblclick="startRename">
         {{ group.name }}
       </span>
-      <n-dropdown trigger="click" :options="addOptions" @select="onAdd">
-        <n-button class="hover-btn" text size="tiny" :title="t('shell.tree.add')" @click.stop>
+      <template v-if="!renaming">
+        <n-button
+          ref="plusBtn"
+          class="hover-btn"
+          text
+          size="tiny"
+          :class="{ open: projectFormOpen && projectFormAt === 'plus' }"
+          :title="t('shell.group.newProject')"
+          data-testid="group-add-project"
+          @click.stop="openProjectForm('plus')"
+        >
           <n-icon :component="AddOutline" />
         </n-button>
-      </n-dropdown>
-      <n-popover v-model:show="settingsShow" trigger="click" placement="right-start">
-        <template #trigger>
-          <n-button class="hover-btn" text size="tiny" @click.stop>
-            <n-icon :component="EllipsisHorizontalOutline" />
-          </n-button>
-        </template>
-        <div class="gsettings">
-          <IconColorPicker
-            :icon="group.icon"
-            :color="group.color"
-            :mode="group.icon_mode || 'badge'"
-            :initials="initials"
-            fallback-folder
-            transparent-default
-            @update:icon="applyGroup({ icon: $event })"
-            @update:color="applyGroup({ color: $event })"
-            @update:mode="applyGroup({ icon_mode: $event })"
-          />
-          <n-button type="primary" ghost size="small" block @click="startRename">
-            <template #icon><n-icon :component="CreateOutline" /></template>
-            {{ t('shell.group.rename') }}
-          </n-button>
-          <n-popconfirm
-            :positive-button-props="{ type: 'error' }"
-            :positive-text="t('common.action.delete')"
-            @positive-click="remove"
-          >
-            <template #trigger>
-              <n-button type="error" ghost size="small" block>
-                <template #icon><n-icon :component="TrashOutline" /></template>
-                {{ t('shell.group.delete') }}
-              </n-button>
-            </template>
-            {{ t('shell.group.deleteConfirm') }}
-          </n-popconfirm>
-        </div>
-      </n-popover>
+        <n-button
+          ref="moreBtn"
+          class="hover-btn"
+          text
+          size="tiny"
+          :class="{ open: menuOpen && !menuAt }"
+          data-testid="group-menu"
+          @click.stop="openMenu()"
+        >
+          <n-icon :component="EllipsisHorizontalOutline" />
+        </n-button>
+      </template>
     </div>
 
     <div v-show="expanded" class="children">
@@ -316,6 +355,7 @@ async function commitRename() {
           <SidebarNode :group="element" :depth="depth + 1" />
         </template>
       </draggable>
+      <NewGroupRow v-if="draft.isGroupDraft(group.id)" :parent-id="group.id" />
       <draggable
         :list="projModel"
         group="sidebar-proj"
@@ -336,44 +376,38 @@ async function commitRename() {
       </draggable>
     </div>
 
-    <n-dropdown
-      trigger="manual"
-      placement="bottom-start"
-      :show="ctxShow"
-      :x="ctxX"
-      :y="ctxY"
-      :options="ctxOptions"
-      @select="onCtxSelect"
-      @clickoutside="ctxShow = false"
+    <ActionMenu
+      v-model:show="menuOpen"
+      :anchor="menuAnchor"
+      :placement="menuAt ? 'point' : 'right-start'"
+      :header="group.name"
+      :items="menuItems"
+      testid="group-actions"
+      @select="onMenu"
     />
-
-    <ProjectCreateModal
-      v-model:show="projModalShow"
+    <ProjectCreatePopover
+      v-model:show="projectFormOpen"
+      :anchor="projectFormAnchor"
       :group-id="group.id"
+      :group-name="group.name"
       @created="onProjectCreated"
     />
-
-    <n-modal v-model:show="confirmDelete">
-      <n-card
-        :title="t('shell.group.deleteTitle', { name: group.name })"
-        style="max-width: 400px"
-        role="dialog"
-        :bordered="false"
-      >
-        <p class="confirm-msg">{{ t('shell.group.deleteWarning') }}</p>
-        <template #footer>
-          <div class="confirm-actions">
-            <n-button size="small" @click="confirmDelete = false">
-              {{ t('common.action.cancel') }}
-            </n-button>
-            <n-button type="error" size="small" @click="remove()">
-              <template #icon><n-icon :component="TrashOutline" /></template>
-              {{ t('common.action.delete') }}
-            </n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
+    <AppearancePopover
+      v-model:show="appearanceOpen"
+      :anchor="() => rowEl"
+      :subtitle="group.name"
+      :icon="group.icon"
+      :color="group.color"
+      :mode="group.icon_mode || 'badge'"
+      :initials="initials"
+      fallback-folder
+      transparent-default
+      :escape-back="appearanceFromMenu"
+      @escape="appearanceBack"
+      @update:icon="applyGroup({ icon: $event })"
+      @update:color="applyGroup({ color: $event })"
+      @update:mode="applyGroup({ icon_mode: $event })"
+    />
   </div>
 </template>
 
@@ -443,21 +477,28 @@ async function commitRename() {
 .children {
   margin-left: 14px;
 }
-.gsettings {
-  width: 200px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+.row {
+  outline: 0;
 }
-.confirm-msg {
-  margin: 0;
-  color: var(--t-text2);
-  font-size: 13px;
-  line-height: 1.5;
+.row:focus-visible {
+  background: var(--t-hover-side);
+  box-shadow: inset 0 0 0 2px var(--t-primary);
 }
-.confirm-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.row.ctx {
+  background: var(--t-hover);
+  box-shadow: var(--t-sh-card);
+}
+.row.ctx .hover-btn,
+.row:focus-visible .hover-btn {
+  opacity: 1;
+}
+.hover-btn.open {
+  opacity: 1;
+  background: var(--t-active);
+  color: var(--t-primary);
+  border-radius: 7px;
+}
+.row.editing {
+  padding-right: 4px;
 }
 </style>

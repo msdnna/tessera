@@ -10,7 +10,7 @@
 //
 // The hint under the field stays visible after mouse use too: it is the only
 // place Tab and ⇧↵ are explained (mockup «Отступления от handoff»).
-import { computed, nextTick, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { AlertCircleOutline } from '@vicons/ionicons5'
@@ -37,6 +37,26 @@ const emit = defineEmits(['update:modelValue', 'commit', 'cancel'])
 
 const { t } = useI18n()
 const input = ref(null)
+const box = ref(null)
+
+// The hint is drawn in <body> at the field's coordinates: the sidebar clips its
+// overflow, and a tooltip inside the row would be cut at the sidebar's edge.
+// It follows the field frame by frame while the field is open — a new row
+// settles into a list that is still expanding, and the tree scrolls — and only
+// one inline field exists at a time, so the loop costs next to nothing.
+const tipPos = ref({ left: '0px', top: '0px' })
+let raf = 0
+function placeTip() {
+  const r = box.value?.getBoundingClientRect()
+  if (r) {
+    const left = `${Math.round(r.left + props.hintLeft)}px`
+    const top = `${Math.round(r.bottom + 6)}px`
+    if (left !== tipPos.value.left || top !== tipPos.value.top) tipPos.value = { left, top }
+  }
+  raf = requestAnimationFrame(placeTip)
+}
+onMounted(placeTip)
+onBeforeUnmount(() => cancelAnimationFrame(raf))
 const value = computed({
   get: () => props.modelValue,
   set: (v) => emit('update:modelValue', v),
@@ -119,7 +139,7 @@ const keysHint = computed(() => {
 </script>
 
 <template>
-  <span class="ie" :class="[variant, { error: !!error }]">
+  <span ref="box" class="ie" :class="[variant, { error: !!error }]">
     <input
       ref="input"
       v-model="value"
@@ -141,11 +161,12 @@ const keysHint = computed(() => {
       <n-icon v-else-if="error" :component="AlertCircleOutline" :size="15" class="ie-alert" />
       <Kbd v-else class="ie-kbd">{{ CAPS.enter }}</Kbd>
     </span>
+    <Teleport to="body">
     <span
       v-if="showHint && (error || keysHint.length)"
       class="ie-tip"
       :class="{ err: !!error }"
-      :style="{ left: `${hintLeft}px` }"
+      :style="tipPos"
       role="status"
     >
       <template v-if="error">{{ error }}</template>
@@ -156,6 +177,7 @@ const keysHint = computed(() => {
         </template>
       </template>
     </span>
+    </Teleport>
   </span>
 </template>
 
@@ -222,8 +244,8 @@ const keysHint = computed(() => {
   color: #e0533d;
 }
 .ie-tip {
-  position: absolute;
-  top: calc(100% + 6px);
+  position: fixed;
+  z-index: 2060;
   display: inline-flex;
   align-items: center;
   gap: 6px;

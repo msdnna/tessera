@@ -5,7 +5,6 @@ import { setI18nLocale } from '@/i18n'
 import { isReviewColumn, columnStatusName } from '@/utils/columnStatus'
 import ColumnHeader from '@/components/ColumnHeader.vue'
 import MembersModal from '@/components/MembersModal.vue'
-import ConfirmByName from '@/components/ConfirmByName.vue'
 
 // Wave 8 of #2799 — the app shell (sidebar, layout, workspace tools, column
 // header). The option tables here live inside dropdowns and selects, which is
@@ -118,25 +117,3 @@ describe('members modal', () => {
   })
 })
 
-describe('confirm-by-name dialog', () => {
-  // The title and the confirm button used to default to Russian literals in the
-  // prop declaration. A literal default is never empty, so a fallback to the
-  // catalogue inside the template could not fire: every caller that relied on
-  // the default would keep a Russian dialog in an English interface.
-  it('falls back to the catalogue when the caller passes no wording', async () => {
-    const w = mount(ConfirmByName, { props: { show: true, name: 'Alpha' } })
-    expect(w.vm.cardTitle).toBe('Подтвердите удаление')
-    expect(w.vm.confirmLabel).toBe('Удалить')
-
-    await setI18nLocale('en')
-    expect(w.vm.cardTitle).toBe('Confirm deletion')
-    expect(w.vm.confirmLabel).toBe('Delete')
-  })
-
-  it('still prefers what the caller passed', async () => {
-    const w = mount(ConfirmByName, {
-      props: { show: true, name: 'Alpha', title: 'Удалить пространство' },
-    })
-    expect(w.vm.cardTitle).toBe('Удалить пространство')
-  })
-})

@@ -43,6 +43,9 @@ const props = defineProps({
   headerAside: { type: String, default: '' },
   items: { type: Array, default: () => [] },
   testid: { type: String, default: 'action-menu' },
+  // Open with this two-step item already armed (⌘⌫ on a row: the first press
+  // is the one that opened the menu).
+  arm: { type: String, default: '' },
 })
 const emit = defineEmits(['update:show', 'select'])
 const { t } = useI18n()
@@ -71,7 +74,7 @@ function disarm() {
   armed.value = ''
   clearTimeout(disarmTimer)
 }
-function arm(key) {
+function armItem(key) {
   armed.value = key
   clearTimeout(disarmTimer)
   disarmTimer = setTimeout(disarm, 4000)
@@ -84,6 +87,11 @@ watch(
     disarm()
     if (!on) return
     active.value = rows.value.findIndex(live)
+    const pre = props.arm && rows.value.find((i) => i.key === props.arm && i.confirm && live(i))
+    if (pre) {
+      armItem(pre.key)
+      active.value = rows.value.indexOf(pre)
+    }
     await nextTick()
     panel.value?.focus({ preventScroll: true })
   },
@@ -92,7 +100,7 @@ watch(
 function activate(item, value) {
   if (!live(item)) return
   if (item.confirm && armed.value !== item.key) {
-    arm(item.key)
+    armItem(item.key)
     active.value = rows.value.indexOf(item)
     return
   }
@@ -171,7 +179,7 @@ function stubTitle(item) {
     <div
       v-if="show"
       ref="panel"
-      class="am"
+      class="am kit-menu"
       role="menu"
       tabindex="-1"
       :style="{ ...style, width: `${width}px` }"

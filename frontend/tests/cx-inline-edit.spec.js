@@ -61,7 +61,8 @@ describe('InlineEdit', () => {
     await input.setValue('Баги 2')
     await input.trigger('blur')
     expect(w.emitted('commit')).toHaveLength(2)
-    expect(w.text()).toContain('Доска «Баги» уже есть в проекте')
+    // The hint is teleported to <body> (the sidebar clips overflow).
+    expect(document.body.textContent).toContain('Доска «Баги» уже есть в проекте')
     w.unmount()
   })
 })

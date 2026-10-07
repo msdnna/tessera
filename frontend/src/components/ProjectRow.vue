@@ -1,22 +1,17 @@
 <script setup>
-import { ref, computed, nextTick, watch, onBeforeUnmount, h } from 'vue'
+// A project in the sidebar tree, with its boards and sprint nodes (v2
+// interaction model, #2969). Rows are keyboard stops (↑/↓ from the tree, ←/→
+// fold, ↵ open, F2 rename, ⇧N new board, «.» menu, I/U/M on the project), names
+// edit in place, a new board is an empty row, and the menus are ActionMenus
+// whose small forms (address, move, icon) open as popovers at the same row.
+import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
-import {
-  NIcon,
-  NButton,
-  NInput,
-  NPopover,
-  NText,
-  NDropdown,
-  NModal,
-  NCard,
-  NSelect,
-  useMessage,
-} from 'naive-ui'
+import { NIcon, NButton, NText, useMessage } from 'naive-ui'
 import {
   EllipsisHorizontalOutline,
   ChevronForwardOutline,
+  ChevronDownOutline,
   AddOutline,
   CreateOutline,
   TrashOutline,
@@ -24,40 +19,37 @@ import {
   TimerOutline,
   RibbonOutline,
   GitBranchOutline,
-  CheckmarkOutline,
-  CheckboxOutline,
-  SquareOutline,
   SwapHorizontalOutline,
   LinkOutline,
+  CopyOutline,
+  SettingsOutline,
+  ArchiveOutline,
+  ColorPaletteOutline,
+  EyeOutline,
 } from '@vicons/ionicons5'
-
-const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
-// Red icon for destructive menu entries (the label is reddened via the option's
-// props.style; NIcon needs the colour set explicitly — it doesn't inherit it).
-const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
-// Orange (warning) icon for dangerous-but-not-destructive entries (e.g. transfer).
-const warnIcon = (icon) => () => h(NIcon, { color: '#f0a020' }, { default: () => h(icon) })
-// Primary-tinted icon for the "selected" checkmark / checkbox in the tree menu.
-const primIcon = (icon) => () => h(NIcon, { color: 'var(--t-primary)' }, { default: () => h(icon) })
 import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
-import { makeSlug } from '@/utils/slug'
-import { workspaceName } from '@/utils/defaultNames'
+import { humanizeError } from '@/utils/errors'
+import { stubTask } from '@/utils/featureStubs'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
 import { useBoardViewStore } from '@/stores/boardView'
 import ProjectIcon from './ProjectIcon.vue'
 import TesseraIcon from './TesseraIcon.vue'
-import IconColorPicker from './IconColorPicker.vue'
-import ConfirmByName from './ConfirmByName.vue'
 import EstimationModal from './EstimationModal.vue'
 import MilestoneManager from './MilestoneManager.vue'
+import InlineEdit from './kit/InlineEdit.vue'
+import ActionMenu from './kit/ActionMenu.vue'
+import AppearancePopover from './sidebar/AppearancePopover.vue'
+import ProjectSlugPopover from './sidebar/ProjectSlugPopover.vue'
+import ProjectMovePopover from './sidebar/ProjectMovePopover.vue'
 import { DEFAULT_ESTIMATION, resolveEstimation } from '@/utils/estimation'
 import { BACKLOG_SCOPE, matchesScope, milestoneKey } from '@/utils/milestones'
 import { pressMoved } from '@/utils/dnd'
 import { useBoardTrash } from '@/composables/useBoardTrash'
 import { useLongPress } from '@/composables/useLongPress'
 import { useTreeExpand } from '@/composables/useTreeExpand'
+import { handleRowKeys } from '@/composables/useRowKeys'
 
 const props = defineProps({
   project: { type: Object, required: true },
@@ -78,51 +70,14 @@ const expanded = computed({
   get: () => tree.isExpanded(props.project.id, false),
   set: (v) => tree.setExpanded(props.project.id, v),
 })
-const addingBoard = ref(false)
-const newBoardName = ref('')
-const renaming = ref(false)
-const nameEdit = ref('')
-const renameInput = ref(null)
-const boardInput = ref(null)
-const settingsShow = ref(false)
-
-// board inline edit
-const editingBoardId = ref(null)
-const boardNameEdit = ref('')
-const boardEditInput = ref(null)
-function startBoardRename(b) {
-  editingBoardId.value = b.id
-  boardNameEdit.value = b.name
-  nextTick(() => boardEditInput.value?.focus?.())
-}
-function cancelBoardRename() {
-  editingBoardId.value = null
-  boardNameEdit.value = ''
-}
-async function commitBoardRename(b) {
-  // Guarded on the row still being the one under edit: Esc (and a committing
-  // Enter) close the field, and anything arriving after that — the blur of a
-  // removed node, a second commit — must not write.
-  if (editingBoardId.value !== b.id) return
-  editingBoardId.value = null
-  const n = boardNameEdit.value.trim()
-  if (!n || n === b.name) return
-  try {
-    await boardsApi.update(b.id, { name: n })
-    await store.loadBoards(props.project.id)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-// Deleting a board happens at once and offers the undo in a toast (#2969): the
-// server keeps it restorable (migration 0078).
-const boardTrash = useBoardTrash()
-function removeBoard(b) {
-  return boardTrash.removeBoard(props.project, b)
-}
-
+const rowEl = ref(null)
 const boards = computed(() => store.boardsByProject[props.project.id] || [])
 const initials = computed(() => (props.project.name || '?').trim().slice(0, 2).toUpperCase())
+const groupName = computed(() => store.groups.find((g) => g.id === props.project.group_id)?.name || '')
+const boardPath = (b) => `/project/${props.project.slug}/board/${b.slug}`
+function openBoard(b) {
+  router.push(boardPath(b))
+}
 
 // ── Sidebar tree mode: boards | milestones | both ──
 const treeMode = computed(() => props.project.tree_mode || 'boards')
@@ -172,10 +127,7 @@ function openMilestone(m) {
     message.warning(t('project.milestone.noBoard'))
     return
   }
-  router.push({
-    path: `/project/${props.project.slug}/board/${b.slug}`,
-    query: { milestone: m ? milestoneKey(m) : BACKLOG_SCOPE },
-  })
+  router.push({ path: boardPath(b), query: { milestone: m ? milestoneKey(m) : BACKLOG_SCOPE } })
 }
 function msActive(m) {
   const scope = String(route.query.milestone || '')
@@ -185,37 +137,13 @@ function msActive(m) {
   )
 }
 
+async function ensureBoards() {
+  if (!store.boardsByProject[props.project.id]) await store.loadBoards(props.project.id)
+}
 async function toggle() {
   expanded.value = !expanded.value
-  if (expanded.value && !store.boardsByProject[props.project.id]) {
-    await store.loadBoards(props.project.id)
-  }
+  if (expanded.value) await ensureBoards()
   if (expanded.value) loadMilestones()
-}
-
-// inline rename — click-outside saves if changed, else cancels
-function startRename() {
-  settingsShow.value = false
-  nameEdit.value = props.project.name
-  renaming.value = true
-  nextTick(() => renameInput.value?.focus())
-}
-// Esc abandons the rename, and `commitRename` refuses to fire once the field is
-// closed. Without both, Esc did nothing at all here: the input stayed open with
-// the edited text, and the click that followed went through `@blur` and PUT the
-// rename the reader had just cancelled. Same shape in the board rename and the
-// column header below/next door — every other inline field in the app answers
-// Esc, these commit to shared data and did not.
-function cancelRename() {
-  renaming.value = false
-  nameEdit.value = ''
-}
-async function commitRename() {
-  if (!renaming.value) return
-  renaming.value = false
-  const n = nameEdit.value.trim()
-  if (!n || n === props.project.name) return
-  await updateField({ name: n })
 }
 
 // settings apply immediately (mirrors the column header pattern)
@@ -231,9 +159,40 @@ async function updateField(patch) {
       ...patch,
     })
     await store.refresh()
+    return true
   } catch (e) {
-    message.error(e.message)
+    message.error(humanizeError(e))
+    return false
   }
+}
+
+// ── project rename in place ──
+const renaming = ref(false)
+const nameEdit = ref('')
+const renameBusy = ref(false)
+function startRename() {
+  nameEdit.value = props.project.name
+  renaming.value = true
+}
+async function commitRename(value, { via }) {
+  const n = value.trim()
+  if (!n || n === props.project.name) {
+    // An empty name is never saved: ↵ does nothing, a click away gives up.
+    if (!n && via === 'enter') return
+    renaming.value = false
+    return
+  }
+  renameBusy.value = true
+  const ok = await updateField({ name: n })
+  renameBusy.value = false
+  if (ok) {
+    renaming.value = false
+    rowEl.value?.focus()
+  }
+}
+function cancelRename() {
+  renaming.value = false
+  rowEl.value?.focus()
 }
 
 // Icon colouring: "badge" tints the box (legacy; no colour ⇒ primary badge),
@@ -261,184 +220,166 @@ const boardBox = (b) =>
 const boardGlyph = (b) =>
   b.icon_mode === 'icon' ? (boardColored(b) ? b.color : 'var(--t-primary)') : ''
 const boardInitials = (b) => (b.name || '?').trim().slice(0, 2).toUpperCase()
-const confirmDelete = ref(false)
-function remove() {
-  confirmDelete.value = true
-}
+const boardActive = (b) =>
+  route.params.projectSlug === props.project.slug &&
+  route.params.boardSlug === b.slug &&
+  !route.query.milestone
+
+// ── project delete: irreversible → two steps in the menu ──
+const deleting = ref(false)
+const deleteFailed = ref('')
 async function doRemove() {
+  deleting.value = true
+  deleteFailed.value = ''
   try {
     await projApi.remove(props.project.id)
+    projMenuOpen.value = false
     // If a board of this project is open, it would start 404-ing — go Home first.
     if (route.params.projectSlug === props.project.slug) router.push('/')
     await store.refresh()
   } catch (e) {
-    message.error(e.message)
+    deleteFailed.value = humanizeError(e)
+  } finally {
+    deleting.value = false
   }
 }
 
-// right-click menus (project row + board rows)
-const pcShow = ref(false)
-const pcX = ref(0)
-const pcY = ref(0)
-const pcOptions = computed(() => {
-  const opts = [
-    { label: t('project.menu.addBoard'), key: 'add-board', icon: menuIcon(AddOutline) },
-    { type: 'divider', key: 'd1' },
-    { label: t('project.menu.rename'), key: 'rename', icon: menuIcon(CreateOutline) },
-    { label: t('project.menu.estimation'), key: 'estimation', icon: menuIcon(TimerOutline) },
-    // Manager-only — hidden for members, and refused server-side regardless.
-    ...(store.canManage
-      ? [{ label: t('project.menu.slug'), key: 'slug', icon: menuIcon(LinkOutline) }]
-      : []),
-    { label: t('project.menu.milestones'), key: 'milestones', icon: menuIcon(RibbonOutline) },
-    {
-      label: t('project.menu.treeMode'),
-      key: 'tree-mode',
-      icon: menuIcon(GitBranchOutline),
-      children: [
-        {
-          label: t('project.menu.treeBoards'),
-          key: 'tm-boards',
-          icon: treeMode.value === 'boards' ? primIcon(CheckmarkOutline) : undefined,
-        },
-        {
-          label: t('project.menu.treeMilestones'),
-          key: 'tm-milestones',
-          icon: treeMode.value === 'milestones' ? primIcon(CheckmarkOutline) : undefined,
-        },
-        {
-          label: t('project.menu.treeBoth'),
-          key: 'tm-both',
-          icon: treeMode.value === 'both' ? primIcon(CheckmarkOutline) : undefined,
-        },
-      ],
-    },
-  ]
-  if (showMilestones.value) {
-    opts.push({
-      label: t('project.menu.showClosedMilestones'),
-      key: 'toggle-closed',
-      icon: primIcon(showClosedSprints.value ? CheckboxOutline : SquareOutline),
-    })
-  }
-  opts.push({ type: 'divider', key: 'd2' })
-  opts.push({
-    label: t('project.menu.transfer'),
-    key: 'transfer',
-    icon: warnIcon(SwapHorizontalOutline),
-    props: { style: 'color:#f0a020' },
-  })
-  opts.push({
-    label: t('project.menu.delete'),
-    key: 'delete',
-    icon: dangerIcon(TrashOutline),
-    props: { style: 'color:#e0533d' },
-  })
-  return opts
-})
+// ── the project menu ──
+const projMenuOpen = ref(false)
+const projMenuAt = ref(null)
+const projMenuArm = ref('')
+function openProjectMenu(at = null, arm = '') {
+  projMenuAt.value = at
+  projMenuArm.value = arm
+  projMenuOpen.value = true
+}
 function onProjectCtx(e) {
   if (pressMoved()) return
-  pcShow.value = false
-  pcX.value = e.clientX
-  pcY.value = e.clientY
-  nextTick(() => (pcShow.value = true))
+  openProjectMenu({ x: e.clientX, y: e.clientY })
 }
-function onProjectCtxSelect(key) {
-  pcShow.value = false
-  if (key === 'add-board') startAddBoard()
+const TREE_MODES = ['boards', 'milestones', 'both']
+const TREE_LABEL = { boards: 'treeBoards', milestones: 'treeMilestones', both: 'treeBoth' }
+const projMenuItems = computed(() => [
+  { key: 'open', label: t('project.board.open'), icon: OpenOutline, keys: 'row.open' },
+  { key: 'add-board', label: t('project.menu.addBoard'), icon: AddOutline, keys: 'row.new' },
+  { gap: true },
+  { key: 'rename', label: t('project.menu.rename'), icon: CreateOutline, keys: 'row.rename' },
+  { key: 'icon', label: t('project.menu.appearance'), icon: ColorPaletteOutline, keys: 'row.icon' },
+  {
+    key: 'slug',
+    label: t('project.menu.slug'),
+    icon: LinkOutline,
+    keys: 'row.slug',
+    disabled: !store.canManage,
+    disabledTitle: t('project.menu.managerOnly'),
+  },
+  { key: 'move', label: t('project.menu.move'), icon: SwapHorizontalOutline, keys: 'row.move' },
+  { gap: true },
+  { key: 'copy-link', label: t('project.menu.copyLink'), icon: CopyOutline, keys: 'row.copyLink' },
+  {
+    key: 'settings',
+    label: t('project.menu.settings'),
+    icon: SettingsOutline,
+    keys: 'row.settings',
+    stub: stubTask('project.window'),
+  },
+  // Until the project window (#2971) takes them, the project's own settings
+  // stay reachable here.
+  { key: 'milestones', label: t('project.menu.milestones'), icon: RibbonOutline },
+  { key: 'estimation', label: t('project.menu.estimation'), icon: TimerOutline },
+  {
+    key: 'tree-mode',
+    label: `${t('project.menu.treeMode')}: ${t(`project.menu.${TREE_LABEL[treeMode.value]}`).toLowerCase()}`,
+    icon: GitBranchOutline,
+  },
+  ...(showMilestones.value
+    ? [{ key: 'toggle-closed', label: t('project.menu.showClosedMilestones'), icon: EyeOutline, toggle: showClosedSprints.value }]
+    : []),
+  { gap: true },
+  {
+    key: 'archive',
+    label: t('project.menu.archive'),
+    icon: ArchiveOutline,
+    keys: 'row.archive',
+    stub: stubTask('project.archive'),
+  },
+  {
+    key: 'delete',
+    label: t('project.menu.delete'),
+    icon: TrashOutline,
+    danger: true,
+    keys: 'row.delete',
+    disabled: !store.canManage,
+    disabledTitle: t('project.menu.managerOnly'),
+    confirm: {
+      title: t('project.remove.armed', { name: props.project.name }),
+      sub: boards.value.length
+        ? t('project.remove.armedSubBoards', { boards: t('project.remove.boards', boards.value.length) })
+        : t('project.remove.armedSub'),
+    },
+    busy: deleting.value,
+    failed: deleteFailed.value ? { title: t('project.remove.failed'), sub: deleteFailed.value } : null,
+  },
+])
+async function onProjectMenu(key, value) {
+  if (key === 'open') openProject()
+  else if (key === 'add-board') startAddBoard()
   else if (key === 'rename') startRename()
-  else if (key === 'estimation') estShow.value = true
-  else if (key === 'slug') openSlugEdit()
+  else if (key === 'icon') openForm('icon', true)
+  else if (key === 'slug') openForm('slug', true)
+  else if (key === 'move') openForm('move', true)
+  else if (key === 'copy-link') copyLink()
   else if (key === 'milestones') msShow.value = true
-  else if (key === 'tm-boards') updateField({ tree_mode: 'boards' })
-  else if (key === 'tm-milestones') updateField({ tree_mode: 'milestones' })
-  else if (key === 'tm-both') updateField({ tree_mode: 'both' })
-  else if (key === 'toggle-closed') toggleShowClosed()
-  else if (key === 'transfer') openTransfer()
-  else if (key === 'delete') remove()
+  else if (key === 'estimation') estShow.value = true
+  else if (key === 'tree-mode') {
+    const next = TREE_MODES[(TREE_MODES.indexOf(treeMode.value) + 1) % TREE_MODES.length]
+    updateField({ tree_mode: next })
+  } else if (key === 'toggle-closed') {
+    if (value !== showClosedSprints.value) toggleShowClosed()
+  } else if (key === 'delete') doRemove()
 }
 
-// ── Change the project's URL address (owner/admin) ──
-// The address is assigned once at creation and deliberately survives renames,
-// so links keep working. Changing it here is the escape hatch — at the cost of
-// every link already handed out, hence the warning.
-const slugShow = ref(false)
-const slugInput = ref('')
-const slugError = ref('')
-const slugBusy = ref(false)
-const slugPreview = computed(() => makeSlug(slugInput.value))
-function openSlugEdit() {
-  settingsShow.value = false
-  slugInput.value = props.project.slug || ''
-  slugError.value = ''
-  slugShow.value = true
+async function openProject() {
+  await ensureBoards()
+  expanded.value = true
+  if (boards.value[0]) openBoard(boards.value[0])
 }
-async function doSetSlug() {
-  const next = slugPreview.value
-  if (!next || slugBusy.value) return
-  if (next === props.project.slug) {
-    slugShow.value = false
-    return
-  }
-  slugBusy.value = true
-  slugError.value = ''
+async function copyLink() {
+  await ensureBoards()
+  const b = boards.value[0]
+  const url = `${window.location.origin}${b ? boardPath(b) : '/'}`
   try {
-    const res = await projApi.setSlug(props.project.id, next)
-    slugShow.value = false
-    // Keep an open board of this project reachable: same board, new address.
-    if (route.params.projectSlug === props.project.slug) {
-      router.replace({
-        ...route,
-        params: { ...route.params, projectSlug: res.data.slug },
-      })
-    }
-    await store.refresh()
-    message.success(t('project.slug.changed'))
-  } catch (e) {
-    if (e.status === 409) slugError.value = t('project.slug.taken')
-    else message.error(e.message)
-  } finally {
-    slugBusy.value = false
+    await navigator.clipboard.writeText(url)
+    message.success(t('project.menu.linkCopied'))
+  } catch {
+    message.error(t('project.menu.linkCopyFailed'))
   }
 }
 
-// ── Transfer project to another workspace (dangerous) ──
-const transferShow = ref(false)
-const transferTarget = ref(null)
-const transferBusy = ref(false)
-// Other workspaces the user belongs to — the current one is excluded (nothing to
-// move to). `store.list` holds every workspace the user can access.
-const transferOptions = computed(() =>
-  store.list
-    .filter((w) => w.id !== store.currentId)
-    .map((w) => ({ label: workspaceName(w), value: w.id })),
-)
-function openTransfer() {
-  transferTarget.value = null
-  transferShow.value = true
+// ── popover forms at the project row: icon & colour, address, move ──
+const form = ref('')
+const formFromMenu = ref(false)
+function openForm(name, fromMenu = false) {
+  if (name === 'slug' && !store.canManage) return
+  formFromMenu.value = fromMenu
+  form.value = name
 }
-async function doTransfer() {
-  if (!transferTarget.value || transferBusy.value) return
-  transferBusy.value = true
-  try {
-    const res = await projApi.transfer(props.project.id, { workspace_id: transferTarget.value })
-    transferShow.value = false
-    const stripped = res.data?.stripped_assignees || 0
-    message.success(
-      stripped > 0
-        ? t('project.transfer.doneStripped', { n: stripped })
-        : t('project.transfer.done'),
-    )
-    // The project just left the current workspace — if a board of it is open,
-    // it no longer belongs here, so return home. Then refresh the tree.
-    if (route.params.projectSlug === props.project.slug) router.push('/')
-    await store.refresh()
-  } catch (e) {
-    message.error(e.message)
-  } finally {
-    transferBusy.value = false
-  }
+const formShow = (name) =>
+  computed({
+    get: () => form.value === name,
+    set: (v) => {
+      if (!v && form.value === name) form.value = ''
+    },
+  })
+const iconShow = formShow('icon')
+const slugShow = formShow('slug')
+const moveShow = formShow('move')
+// Esc in a form opened from the menu steps back to the menu.
+function formBack() {
+  form.value = ''
+  openProjectMenu(projMenuAt.value)
 }
+const rowAnchor = () => rowEl.value
 
 // Milestone manager for this project.
 const msShow = ref(false)
@@ -447,34 +388,69 @@ const msShow = ref(false)
 const estShow = ref(false)
 const estInherited = computed(() => resolveEstimation(null, store.current) || DEFAULT_ESTIMATION)
 
-const bcShow = ref(false)
-const bcX = ref(0)
-const bcY = ref(0)
-const bcTarget = ref(null)
-// Computed, not a constant: a module-scope array would keep the labels of the
-// language the sidebar first rendered in (pitfall 1 of #2799).
-const bcOptions = computed(() => [
-  { label: t('project.board.open'), key: 'open', icon: menuIcon(OpenOutline) },
-  { label: t('project.board.rename'), key: 'rename', icon: menuIcon(CreateOutline) },
-  {
-    label: t('project.board.delete'),
-    key: 'delete',
-    icon: dangerIcon(TrashOutline),
-    props: { style: 'color:#e0533d' },
-  },
-])
-function onBoardCtx(e, b) {
-  bcTarget.value = b
-  bcShow.value = false
-  bcX.value = e.clientX
-  bcY.value = e.clientY
-  nextTick(() => (bcShow.value = true))
+// ── boards: rename in place, menu, delete with undo ──
+const editingBoardId = ref(null)
+const boardNameEdit = ref('')
+const boardRenameBusy = ref(false)
+const boardRows = {}
+function startBoardRename(b) {
+  editingBoardId.value = b.id
+  boardNameEdit.value = b.name
 }
-function onBoardCtxSelect(key) {
-  const b = bcTarget.value
-  bcShow.value = false
+function cancelBoardRename(b) {
+  editingBoardId.value = null
+  nextTick(() => boardRows[b.id]?.focus())
+}
+async function commitBoardRename(b, value, { via }) {
+  if (editingBoardId.value !== b.id) return
+  const n = value.trim()
+  if (!n || n === b.name) {
+    if (!n && via === 'enter') return
+    editingBoardId.value = null
+    return
+  }
+  boardRenameBusy.value = true
+  try {
+    await boardsApi.update(b.id, { name: n })
+    await store.loadBoards(props.project.id)
+    editingBoardId.value = null
+    nextTick(() => boardRows[b.id]?.focus())
+  } catch (e) {
+    message.error(humanizeError(e))
+  } finally {
+    boardRenameBusy.value = false
+  }
+}
+// Deleting a board happens at once and offers the undo in a toast (#2969): the
+// server keeps it restorable (migration 0078).
+const boardTrash = useBoardTrash()
+function removeBoard(b) {
+  return boardTrash.removeBoard(props.project, b)
+}
+
+const boardMenuOpen = ref(false)
+const boardMenuAt = ref(null)
+const boardMenuTarget = ref(null)
+function openBoardMenu(b, at = null) {
+  boardMenuTarget.value = b
+  boardMenuAt.value = at
+  boardMenuOpen.value = true
+}
+function onBoardCtx(e, b) {
+  openBoardMenu(b, { x: e.clientX, y: e.clientY })
+}
+const boardMenuAnchor = () =>
+  boardMenuAt.value || (boardMenuTarget.value && boardRows[boardMenuTarget.value.id]) || null
+const boardMenuItems = computed(() => [
+  { key: 'open', label: t('project.board.open'), icon: OpenOutline, keys: 'row.open' },
+  { key: 'rename', label: t('project.board.rename'), icon: CreateOutline, keys: 'row.rename' },
+  { gap: true },
+  { key: 'delete', label: t('project.board.delete'), icon: TrashOutline, danger: true, keys: 'row.delete' },
+])
+function onBoardMenu(key) {
+  const b = boardMenuTarget.value
   if (!b) return
-  if (key === 'open') router.push(`/project/${props.project.slug}/board/${b.slug}`)
+  if (key === 'open') openBoard(b)
   else if (key === 'rename') startBoardRename(b)
   else if (key === 'delete') removeBoard(b)
 }
@@ -484,10 +460,10 @@ function onBoardCtxSelect(key) {
 const lpProj = useLongPress(onProjectCtx)
 let bTimer = null
 function bStart(e, b) {
-  const t = e.touches && e.touches[0]
-  if (!t) return
-  const x = t.clientX
-  const y = t.clientY
+  const tt = e.touches && e.touches[0]
+  if (!tt) return
+  const x = tt.clientX
+  const y = tt.clientY
   clearTimeout(bTimer)
   bTimer = setTimeout(() => {
     if (!pressMoved()) onBoardCtx({ clientX: x, clientY: y }, b)
@@ -525,43 +501,112 @@ watch(
   },
 )
 
-// inline board creation via the "+" button
+// ── new board: an empty row at the end of the project's boards ──
+// ↵ creates it and opens it, ⇧↵ creates it and offers another empty row, a
+// click away creates it without opening, Esc (or an empty click-away) drops it.
+// The kind chip (Kanban / List) is a stub until boards carry a kind (#3017).
+const addingBoard = ref(false)
+const newBoardName = ref('')
+const newBoardBusy = ref(false)
+const newBoardError = ref('')
+const newBoardEditor = ref(null)
 function startAddBoard() {
   expanded.value = true
-  addingBoard.value = true
   newBoardName.value = ''
-  nextTick(() => boardInput.value?.focus())
+  newBoardError.value = ''
+  addingBoard.value = true
 }
-// Esc drops the typed name as well as closing the field: `addBoard` also fires on
-// blur, and a name left behind would be created by the next stray focus+blur of a
-// reopened input.
 function cancelAddBoard() {
   addingBoard.value = false
   newBoardName.value = ''
 }
-async function addBoard() {
-  const n = newBoardName.value.trim()
-  // Clear + close before await so the @blur on input removal doesn't duplicate.
-  newBoardName.value = ''
-  addingBoard.value = false
-  if (!n) return
+async function commitNewBoard(value, { via, shift }) {
+  if (via === 'tab') return // the kind switch — not built yet (#3017)
+  const n = value.trim()
+  if (!n) {
+    if (via !== 'enter') cancelAddBoard()
+    return
+  }
+  newBoardBusy.value = true
+  newBoardError.value = ''
   try {
     const res = await projApi.createBoard(props.project.id, { name: n })
     // Point the Get Started guide's next step at this exact board (#2753 rework).
     tour.noteCreated({ boardId: res.data?.id })
     await store.loadBoards(props.project.id)
     expanded.value = true
+    if (via === 'enter' && shift) {
+      newBoardName.value = ''
+      newBoardEditor.value?.focus()
+    } else {
+      addingBoard.value = false
+      newBoardName.value = ''
+      if (via === 'enter' && res.data?.slug) openBoard(res.data)
+    }
   } catch (e) {
-    message.error(e.message)
+    newBoardError.value = humanizeError(e)
+    newBoardEditor.value?.focus()
+  } finally {
+    newBoardBusy.value = false
   }
+}
+
+// ── keys of the focused rows ──
+function onProjectKey(e) {
+  if (renaming.value) return
+  if (!e.metaKey && !e.ctrlKey && !e.altKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+    e.preventDefault()
+    if (e.key === 'ArrowRight' && !expanded.value) toggle()
+    else if (e.key === 'ArrowLeft') {
+      if (expanded.value) expanded.value = false
+      else rowEl.value?.closest('.group-node')?.querySelector('[data-tree-row]')?.focus()
+    }
+    return
+  }
+  handleRowKeys(e, {
+    'row.open': openProject,
+    'row.rename': startRename,
+    'row.renameR': startRename,
+    'row.new': startAddBoard,
+    'row.menu': () => openProjectMenu(),
+    'row.menuF10': () => openProjectMenu(),
+    'row.icon': () => openForm('icon'),
+    'row.slug': () => openForm('slug'),
+    'row.move': () => openForm('move'),
+    'row.copyLink': copyLink,
+    'row.delete': () => store.canManage && openProjectMenu(null, 'delete'),
+  })
+}
+function onBoardKey(e, b) {
+  if (editingBoardId.value === b.id) return
+  if (e.key === 'ArrowLeft' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    e.preventDefault()
+    rowEl.value?.focus()
+    return
+  }
+  handleRowKeys(e, {
+    'row.open': () => openBoard(b),
+    'row.rename': () => startBoardRename(b),
+    'row.renameR': () => startBoardRename(b),
+    'row.new': startAddBoard,
+    'row.menu': () => openBoardMenu(b),
+    'row.menuF10': () => openBoardMenu(b),
+    'row.delete': () => removeBoard(b),
+  })
 }
 </script>
 
 <template>
   <div class="project-block" :data-tour-project="project.id">
     <div
+      ref="rowEl"
       class="row project-row"
+      :class="{ ctx: projMenuOpen || !!form, editing: renaming }"
       data-tour="project-row"
+      data-tree-row
+      tabindex="-1"
+      :aria-expanded="expanded"
+      @keydown="onProjectKey"
       @contextmenu.prevent.stop="onProjectCtx"
       @touchstart.passive="lpProj.start"
       @touchend="lpProj.cancel"
@@ -576,56 +621,38 @@ async function addBoard() {
       <span class="picon" :class="{ 'picon-bare': bare }" :style="boxStyle" @click="toggle">
         <ProjectIcon :icon="project.icon" :initials="initials" :size="13" :color="glyphColor" />
       </span>
-      <n-input
+      <InlineEdit
         v-if="renaming"
-        ref="renameInput"
-        v-model:value="nameEdit"
-        size="tiny"
-        @keyup.enter="commitRename"
-        @keyup.esc="cancelRename"
-        @blur="commitRename"
+        v-model="nameEdit"
+        :busy="renameBusy"
+        :hint-left="-34"
+        @commit="commitRename"
+        @cancel="cancelRename"
       />
       <span v-else class="name" @click="toggle" @dblclick="startRename">{{ project.name }}</span>
 
-      <n-button
-        class="hover-btn"
-        text
-        size="tiny"
-        :title="t('project.board.add')"
-        data-tour="board-add"
-        @click.stop="startAddBoard"
-      >
-        <n-icon :component="AddOutline" />
-      </n-button>
-      <n-popover v-model:show="settingsShow" trigger="click" placement="right-start">
-        <template #trigger>
-          <n-button class="hover-btn" text size="tiny" @click.stop>
-            <n-icon :component="EllipsisHorizontalOutline" />
-          </n-button>
-        </template>
-        <div class="settings">
-          <IconColorPicker
-            :icon="project.icon"
-            :color="project.color"
-            :mode="project.icon_mode || 'badge'"
-            :initials="initials"
-            allow-upload
-            @update:icon="updateField({ icon: $event })"
-            @update:color="updateField({ color: $event })"
-            @update:mode="updateField({ icon_mode: $event })"
-          />
-          <div class="action-row">
-            <n-button type="primary" ghost size="small" @click="startRename">
-              <template #icon><n-icon :component="CreateOutline" /></template>
-              {{ t('project.menu.rename') }}
-            </n-button>
-            <n-button type="error" ghost size="small" @click="remove">
-              <template #icon><n-icon :component="TrashOutline" /></template>
-              {{ t('common.action.delete') }}
-            </n-button>
-          </div>
-        </div>
-      </n-popover>
+      <template v-if="!renaming">
+        <n-button
+          class="hover-btn"
+          text
+          size="tiny"
+          :title="t('project.board.add')"
+          data-tour="board-add"
+          @click.stop="startAddBoard"
+        >
+          <n-icon :component="AddOutline" />
+        </n-button>
+        <n-button
+          class="hover-btn"
+          :class="{ open: projMenuOpen && !projMenuAt }"
+          text
+          size="tiny"
+          data-testid="project-menu"
+          @click.stop="openProjectMenu()"
+        >
+          <n-icon :component="EllipsisHorizontalOutline" />
+        </n-button>
+      </template>
     </div>
 
     <div v-if="expanded" class="boards">
@@ -638,7 +665,10 @@ async function addBoard() {
           :key="m.id"
           class="row board-row ms-row"
           :class="{ active: msActive(m), closed: m.state === 'closed' }"
+          data-tree-row
+          tabindex="-1"
           @click="openMilestone(m)"
+          @keydown.enter.prevent="openMilestone(m)"
         >
           <span class="chev-spacer" />
           <span class="bicon"><n-icon :component="RibbonOutline" /></span>
@@ -647,7 +677,10 @@ async function addBoard() {
         <div
           class="row board-row ms-row"
           :class="{ active: msActive(null) }"
+          data-tree-row
+          tabindex="-1"
           @click="openMilestone(null)"
+          @keydown.enter.prevent="openMilestone(null)"
         >
           <span class="chev-spacer" />
           <span class="bicon"><n-icon :component="GitBranchOutline" /></span>
@@ -662,18 +695,19 @@ async function addBoard() {
         <div
           v-for="b in boards"
           :key="b.id"
+          :ref="(el) => (boardRows[b.id] = el)"
           class="row board-row"
           data-tour="board-row"
+          data-tree-row
+          tabindex="-1"
           :data-tour-board="b.id"
           :class="{
-            active:
-              route.params.projectSlug === project.slug &&
-              route.params.boardSlug === b.slug &&
-              !route.query.milestone,
+            active: boardActive(b),
+            ctx: boardMenuOpen && boardMenuTarget?.id === b.id,
+            editing: editingBoardId === b.id,
           }"
-          @click="
-            editingBoardId !== b.id && router.push(`/project/${project.slug}/board/${b.slug}`)
-          "
+          @click="editingBoardId !== b.id && openBoard(b)"
+          @keydown="onBoardKey($event, b)"
           @contextmenu.prevent.stop="onBoardCtx($event, b)"
           @touchstart.passive="bStart($event, b)"
           @touchend="bCancel"
@@ -704,62 +738,63 @@ async function addBoard() {
             </span>
             <TesseraIcon v-else name="layout-kanban" :size="15" />
           </span>
-          <n-input
+          <InlineEdit
             v-if="editingBoardId === b.id"
-            :ref="(el) => el && (boardEditInput = el)"
-            v-model:value="boardNameEdit"
-            size="tiny"
-            @click.stop
-            @keyup.enter="commitBoardRename(b)"
-            @keyup.esc="cancelBoardRename"
-            @blur="commitBoardRename(b)"
+            v-model="boardNameEdit"
+            :busy="boardRenameBusy"
+            :hint-left="-6"
+            @commit="(v, how) => commitBoardRename(b, v, how)"
+            @cancel="cancelBoardRename(b)"
           />
           <span v-else class="name" @dblclick.stop="startBoardRename(b)">{{ b.name }}</span>
-          <!-- The open board's task count — what its filter leaves (v2, as in the
-               mockup). It gives its place to «⋯» under the pointer. -->
-          <span
-            v-if="boardView.boardId === b.id && boardView.shownTasks != null"
-            class="bcount"
-            data-testid="board-count"
-            :title="boardView.shownTitle"
-            >{{ boardView.shownTasks }}</span
-          >
-          <n-popover trigger="click" placement="right-start">
-            <template #trigger>
-              <n-button class="hover-btn" text size="tiny" @click.stop>
-                <n-icon :component="EllipsisHorizontalOutline" />
-              </n-button>
-            </template>
-            <div class="action-col" @click.stop>
-              <n-button size="small" block @click="startBoardRename(b)">
-                <template #icon><n-icon :component="CreateOutline" /></template>
-                {{ t('project.board.rename') }}
-              </n-button>
-              <n-button
-                type="error"
-                ghost
-                size="small"
-                block
-                data-testid="board-delete"
-                @click="removeBoard(b)"
-              >
-                <template #icon><n-icon :component="TrashOutline" /></template>
-                {{ t('project.board.delete') }}
-              </n-button>
-            </div>
-          </n-popover>
+          <template v-if="editingBoardId !== b.id">
+            <!-- The open board's task count — what its filter leaves (v2, as in the
+                 mockup). It gives its place to «⋯» under the pointer. -->
+            <span
+              v-if="boardView.boardId === b.id && boardView.shownTasks != null"
+              class="bcount"
+              data-testid="board-count"
+              :title="boardView.shownTitle"
+              >{{ boardView.shownTasks }}</span
+            >
+            <n-button
+              class="hover-btn"
+              :class="{ open: boardMenuOpen && boardMenuTarget?.id === b.id && !boardMenuAt }"
+              text
+              size="tiny"
+              data-testid="board-menu"
+              @click.stop="openBoardMenu(b)"
+            >
+              <n-icon :component="EllipsisHorizontalOutline" />
+            </n-button>
+          </template>
         </div>
-        <div v-if="addingBoard" class="row">
-          <n-input
-            ref="boardInput"
-            v-model:value="newBoardName"
-            size="tiny"
+        <div v-if="addingBoard" class="row board-row new-board" data-testid="new-board-row">
+          <span class="chev-spacer" />
+          <span class="bicon"><TesseraIcon name="layout-kanban" :size="15" /></span>
+          <InlineEdit
+            ref="newBoardEditor"
+            v-model="newBoardName"
+            hint="createView"
+            :busy="newBoardBusy"
+            :error="newBoardError"
             :placeholder="t('project.board.namePlaceholder')"
+            :hint-left="-6"
             data-tour="board-name"
-            @keyup.enter="addBoard"
-            @keyup.esc="cancelAddBoard"
-            @blur="addBoard"
-          />
+            @commit="commitNewBoard"
+            @cancel="cancelAddBoard"
+          >
+            <template #trailing>
+              <span
+                class="kind-chip"
+                :title="t('common.stub.soon', { n: stubTask('board.newKind') })"
+                aria-disabled="true"
+              >
+                <TesseraIcon name="layout-kanban" :size="12" />
+                <n-icon :component="ChevronDownOutline" :size="10" />
+              </span>
+            </template>
+          </InlineEdit>
         </div>
         <n-text v-if="!boards.length && !addingBoard" depth="3" class="empty">{{
           t('project.board.empty')
@@ -767,130 +802,57 @@ async function addBoard() {
       </template>
     </div>
 
-    <n-dropdown
-      trigger="manual"
-      placement="bottom-start"
-      :show="pcShow"
-      :x="pcX"
-      :y="pcY"
-      :options="pcOptions"
-      @select="onProjectCtxSelect"
-      @clickoutside="pcShow = false"
+    <ActionMenu
+      v-model:show="projMenuOpen"
+      :anchor="() => projMenuAt || rowEl"
+      :placement="projMenuAt ? 'point' : 'right-start'"
+      :header="project.name"
+      :header-aside="groupName"
+      :items="projMenuItems"
+      :arm="projMenuArm"
+      testid="project-actions"
+      @select="onProjectMenu"
     />
-    <n-dropdown
-      trigger="manual"
-      placement="bottom-start"
-      :show="bcShow"
-      :x="bcX"
-      :y="bcY"
-      :options="bcOptions"
-      @select="onBoardCtxSelect"
-      @clickoutside="bcShow = false"
-    />
-
-    <ConfirmByName
-      v-model:show="confirmDelete"
-      :name="project.name"
-      :title="t('project.remove.title')"
-      :message="t('project.remove.message')"
-      @confirm="doRemove"
+    <ActionMenu
+      v-model:show="boardMenuOpen"
+      :anchor="boardMenuAnchor"
+      :placement="boardMenuAt ? 'point' : 'right-start'"
+      :width="260"
+      :header="boardMenuTarget?.name || ''"
+      :items="boardMenuItems"
+      testid="board-actions"
+      @select="onBoardMenu"
     />
 
-    <n-modal v-model:show="slugShow">
-      <n-card
-        :title="t('project.slug.title')"
-        style="max-width: 420px"
-        role="dialog"
-        :bordered="false"
-      >
-        <div class="slug-body">
-          <n-text depth="3" class="slug-hint">
-            {{ t('project.slug.current') }}
-            <span class="slug-url">/project/{{ project.slug }}</span>
-          </n-text>
-          <n-input
-            v-model:value="slugInput"
-            :placeholder="t('project.slug.placeholder')"
-            :status="slugError ? 'error' : undefined"
-            :disabled="slugBusy"
-            @keyup.enter="doSetSlug"
-          />
-          <n-text v-if="slugError" type="error" class="slug-hint">{{ slugError }}</n-text>
-          <n-text depth="3" class="slug-hint">
-            {{ t('project.slug.next') }}
-            <span v-if="slugPreview" class="slug-url">/project/{{ slugPreview }}</span>
-            <span v-else>—</span>
-          </n-text>
-          <!-- i18n-t, not three concatenated spans: the emphasised half sits in
-               different places in different languages. -->
-          <i18n-t keypath="project.slug.warning" tag="p" class="slug-warn" scope="global">
-            <template #strong
-              ><strong>{{ t('project.slug.warningStrong') }}</strong></template
-            >
-          </i18n-t>
-        </div>
-        <template #footer>
-          <div class="slug-actions">
-            <n-button size="small" :disabled="slugBusy" @click="slugShow = false">{{
-              t('common.action.cancel')
-            }}</n-button>
-            <n-button
-              type="primary"
-              size="small"
-              :disabled="!slugPreview || slugBusy"
-              :loading="slugBusy"
-              @click="doSetSlug"
-            >
-              {{ t('project.slug.submit') }}
-            </n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <n-modal v-model:show="transferShow">
-      <n-card
-        :title="t('project.transfer.title')"
-        style="max-width: 440px"
-        role="dialog"
-        :bordered="false"
-      >
-        <div class="transfer-body">
-          <i18n-t keypath="project.transfer.warning" tag="p" class="transfer-warn" scope="global">
-            <template #name>{{ project.name }}</template>
-            <template #strong
-              ><strong>{{ t('project.transfer.warningStrong') }}</strong></template
-            >
-          </i18n-t>
-          <n-select
-            v-model:value="transferTarget"
-            :options="transferOptions"
-            :placeholder="t('project.transfer.placeholder')"
-            :disabled="transferBusy"
-          />
-          <n-text v-if="!transferOptions.length" depth="3" class="transfer-empty">
-            {{ t('project.transfer.empty') }}
-          </n-text>
-        </div>
-        <template #footer>
-          <div class="transfer-actions">
-            <n-button size="small" :disabled="transferBusy" @click="transferShow = false">
-              {{ t('common.action.cancel') }}
-            </n-button>
-            <n-button
-              type="warning"
-              size="small"
-              :disabled="!transferTarget"
-              :loading="transferBusy"
-              @click="doTransfer"
-            >
-              <template #icon><n-icon :component="SwapHorizontalOutline" /></template>
-              {{ t('project.transfer.submit') }}
-            </n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
+    <AppearancePopover
+      v-model:show="iconShow"
+      :anchor="rowAnchor"
+      :subtitle="project.name"
+      :icon="project.icon"
+      :color="project.color"
+      :mode="project.icon_mode || 'badge'"
+      :initials="initials"
+      allow-upload
+      :escape-back="formFromMenu"
+      @escape="formBack"
+      @update:icon="updateField({ icon: $event })"
+      @update:color="updateField({ color: $event })"
+      @update:mode="updateField({ icon_mode: $event })"
+    />
+    <ProjectSlugPopover
+      v-model:show="slugShow"
+      :anchor="rowAnchor"
+      :project="project"
+      :escape-back="formFromMenu"
+      @escape="formBack"
+    />
+    <ProjectMovePopover
+      v-model:show="moveShow"
+      :anchor="rowAnchor"
+      :project="project"
+      :escape-back="formFromMenu"
+      @escape="formBack"
+    />
 
     <EstimationModal
       v-model:show="estShow"
@@ -900,7 +862,6 @@ async function addBoard() {
       :value="project.estimation || null"
       :inherited="estInherited"
     />
-
     <MilestoneManager
       v-model:show="msShow"
       :project-id="project.id"
@@ -1039,64 +1000,41 @@ async function addBoard() {
   font-size: 12px;
   padding: 2px 8px;
 }
-.settings {
-  width: 264px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+.row {
+  outline: 0;
 }
-.action-row {
-  display: flex;
-  gap: 8px;
+.row:focus-visible {
+  background: var(--t-hover-side);
+  box-shadow: inset 0 0 0 2px var(--t-primary);
 }
-.action-row :deep(.n-button) {
-  flex: 1;
+.row.ctx {
+  background: var(--t-hover);
+  box-shadow: var(--t-sh-card);
 }
-.action-col {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 190px;
+.row.ctx .hover-btn,
+.row:focus-visible .hover-btn {
+  opacity: 1;
 }
-.transfer-body {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+.row.editing {
+  padding-right: 4px;
 }
-.transfer-warn {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
+.hover-btn.open {
+  opacity: 1 !important;
+  background: var(--t-active);
+  color: var(--t-primary);
+  border-radius: 7px;
+}
+.kind-chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 5px;
+  background: var(--t-pill);
   color: var(--t-text2);
-}
-.transfer-empty {
-  font-size: 12px;
-}
-.transfer-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-.slug-body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.slug-hint {
-  font-size: 12px;
-}
-.slug-url {
-  font-family: var(--t-font-mono, ui-monospace, monospace);
-}
-.slug-warn {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--t-text2);
-}
-.slug-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  cursor: not-allowed;
+  opacity: 0.8;
 }
 </style>
