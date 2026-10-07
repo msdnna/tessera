@@ -11,11 +11,11 @@ import (
 // recorder is a stand-in Enforcer. Mutex-guarded because the room calls it from
 // whichever goroutine issued the command, and the assertions run on the test's.
 type recorder struct {
-	mu      sync.Mutex
-	kicks   []uuid.UUID
-	evicts  []uuid.UUID
-	mutes   []muteCall
-	inLock  func() // called while the enforcer runs, to probe the room's lock
+	mu     sync.Mutex
+	kicks  []uuid.UUID
+	evicts []uuid.UUID
+	mutes  []muteCall
+	inLock func() // called while the enforcer runs, to probe the room's lock
 }
 
 type muteCall struct {

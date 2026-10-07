@@ -307,10 +307,10 @@ type StateMsg struct {
 // this to tell "I am presenting" from "my other tab is presenting", which is
 // the difference between a stop-sharing button and a lie.
 type welcomeMsg struct {
-	Type         string `json:"type"`
-	ConnID       string `json:"conn_id"`
-	UserID       string `json:"user_id"`
-	Role         string `json:"role"`
+	Type   string `json:"type"`
+	ConnID string `json:"conn_id"`
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
 	// CanModerate travels alongside Role so the client shows the kick/force-mute
 	// controls to a workspace admin who is a plain member of the call (#2878) —
 	// Role alone would hide them.

@@ -270,9 +270,9 @@ func TestRenderDocHTMLWritesPageGeometry(t *testing.T) {
 func TestRenderDocHTMLDefaultPageGeometry(t *testing.T) {
 	const wantA4 = "@page { size: 210mm 297mm; margin: 20mm 20mm 20mm 20mm; }"
 	for name, root := range map[string]docNode{
-		"no attrs":      {Type: "doc"},
-		"page null":     {Type: "doc", Attrs: map[string]any{"page": nil}},
-		"page rubbish":  {Type: "doc", Attrs: map[string]any{"page": "A4"}},
+		"no attrs":     {Type: "doc"},
+		"page null":    {Type: "doc", Attrs: map[string]any{"page": nil}},
+		"page rubbish": {Type: "doc", Attrs: map[string]any{"page": "A4"}},
 		"page impossible": {Type: "doc", Attrs: map[string]any{"page": map[string]any{
 			"w": float64(1), "h": float64(1), "ml": float64(0), "mr": float64(0), "mt": float64(0), "mb": float64(0),
 		}}},

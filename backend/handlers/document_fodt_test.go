@@ -51,11 +51,11 @@ var fodtNodeRendering = map[string]struct {
 	// An image the export does not hold the bytes of renders as a link, not as a
 	// draw:image the converter's LibreOffice would fetch — see
 	// TestRenderDocFODTDoesNotLetTheConverterFetchRemoteImages.
-	"image": {docNode{Type: "image", Attrs: map[string]any{"src": "https://x/y.png", "alt": "к"}}, `<text:a xlink:type="simple" xlink:href="https://x/y.png" text:style-name="Internet_20_Link">Изображение: к</text:a>`},
-	"table":          {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell"}}}}}, `<table:table table:name="Table1"`},
-	"tableRow":       {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell"}}}}}, "<table:table-row>"},
-	"tableHeader":    {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableHeader", Content: []docNode{txt("H")}}}}}}, `<text:p text:style-name="Table_20_Heading">H</text:p>`},
-	"tableCell":      {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell", Attrs: map[string]any{"colspan": float64(2)}}}}}}, `table:number-columns-spanned="2"`},
+	"image":       {docNode{Type: "image", Attrs: map[string]any{"src": "https://x/y.png", "alt": "к"}}, `<text:a xlink:type="simple" xlink:href="https://x/y.png" text:style-name="Internet_20_Link">Изображение: к</text:a>`},
+	"table":       {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell"}}}}}, `<table:table table:name="Table1"`},
+	"tableRow":    {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell"}}}}}, "<table:table-row>"},
+	"tableHeader": {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableHeader", Content: []docNode{txt("H")}}}}}}, `<text:p text:style-name="Table_20_Heading">H</text:p>`},
+	"tableCell":   {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell", Attrs: map[string]any{"colspan": float64(2)}}}}}}, `table:number-columns-spanned="2"`},
 	// Unlike the HTML route, the geometry really does travel — that is the point
 	// of this renderer. See TestRenderDocFODTSectionsGetOwnPageLayout.
 	"sectionBreak": {

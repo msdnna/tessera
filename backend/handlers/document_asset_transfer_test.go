@@ -57,10 +57,10 @@ func TestInlineDocAssetStillRefusesUnsignedURLs(t *testing.T) {
 
 	base := "/api/documents/asset?doc=" + docID.String() + "&n=" + name
 	cases := map[string]string{
-		"forged signature":  base + "&ws=" + wsID.String() + "&sig=deadbeef",
-		"no signature":      base + "&ws=" + wsID.String(),
-		"no workspace":      base + "&sig=" + h.signAsset(wsID, docAssetRel(docID, name)),
-		"other workspace":   base + "&ws=" + uuid.New().String() + "&sig=" + h.signAsset(wsID, docAssetRel(docID, name)),
+		"forged signature": base + "&ws=" + wsID.String() + "&sig=deadbeef",
+		"no signature":     base + "&ws=" + wsID.String(),
+		"no workspace":     base + "&sig=" + h.signAsset(wsID, docAssetRel(docID, name)),
+		"other workspace":  base + "&ws=" + uuid.New().String() + "&sig=" + h.signAsset(wsID, docAssetRel(docID, name)),
 		"signature for another file": "/api/documents/asset?doc=" + docID.String() + "&ws=" + wsID.String() +
 			"&n=" + name + "&sig=" + h.signAsset(wsID, docAssetRel(uuid.New(), name)),
 	}

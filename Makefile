@@ -53,8 +53,12 @@ tidy: ## go mod tidy
 	cd backend && $(GO) mod tidy
 
 .PHONY: lint-backend
-lint-backend: ## Run golangci-lint
+lint-backend: ## Run golangci-lint (includes the gofmt gate)
 	cd backend && golangci-lint run ./...
+
+.PHONY: format-backend
+format-backend: ## Auto-format Go sources via gofmt
+	cd backend && $(GO) fmt ./...
 
 # show_skips runs a go test command and then surfaces any tier that skipped
 # itself for want of a database (#2736). The indirection is not decoration:

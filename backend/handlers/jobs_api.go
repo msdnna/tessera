@@ -33,16 +33,16 @@ type jobDTO struct {
 	CurrentOp    string     `json:"current_op,omitempty"`
 	CurrentOpKey string     `json:"current_op_key,omitempty"`
 	Mode         string     `json:"mode,omitempty"`
-	Trigger     string     `json:"trigger,omitempty"`
-	IntervalSec int        `json:"interval_sec,omitempty"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	FinishedAt  *time.Time `json:"finished_at,omitempty"`
-	LastTickAt  *time.Time `json:"last_tick_at,omitempty"`
-	Created     int        `json:"created"`
-	Updated     int        `json:"updated"`
-	Error       string     `json:"error,omitempty"`
-	Cancelable  bool       `json:"cancelable"`
-	Persisted   bool       `json:"persisted"` // came from durable storage (survives restart)
+	Trigger      string     `json:"trigger,omitempty"`
+	IntervalSec  int        `json:"interval_sec,omitempty"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	FinishedAt   *time.Time `json:"finished_at,omitempty"`
+	LastTickAt   *time.Time `json:"last_tick_at,omitempty"`
+	Created      int        `json:"created"`
+	Updated      int        `json:"updated"`
+	Error        string     `json:"error,omitempty"`
+	Cancelable   bool       `json:"cancelable"`
+	Persisted    bool       `json:"persisted"` // came from durable storage (survives restart)
 }
 
 // jobsJournalWindow is how far back finished sync runs are shown in the panel,

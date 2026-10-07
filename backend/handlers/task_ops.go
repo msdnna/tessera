@@ -61,7 +61,9 @@ func (e forbiddenErr) Error() string { return e.msg }
 // is up against and offer a reload or an overwrite.
 type staleErr struct{ current db.Task }
 
-func (e staleErr) Error() string { return "задача изменена другим клиентом" }
+func (e staleErr) Error() string {
+	return "задача изменена другим клиентом"
+}
 
 // errTaskGone is the other way an optimistic-lock write can miss: the row is
 // not stale, it is gone — deleted between the caller's read and its write.

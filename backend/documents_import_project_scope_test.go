@@ -67,7 +67,7 @@ func TestDocumentImportRejectsProjectFromAnotherWorkspace(t *testing.T) {
 	}
 	// And nothing was created: the refusal has to come before the document, the
 	// way a failed conversion leaves none behind.
-	if n := len(c.get("/workspaces/"+home+"/documents").listBody(t)); n != 0 {
+	if n := len(c.get("/workspaces/" + home + "/documents").listBody(t)); n != 0 {
 		t.Fatalf("a refused import left %d documents behind", n)
 	}
 }

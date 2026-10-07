@@ -526,4 +526,3 @@ func (h *API) userName(c *gin.Context, uid uuid.UUID) string {
 	}
 	return u.Name
 }
-

@@ -830,7 +830,6 @@ func (h *API) replyThread(ctx context.Context, payload map[string]any) (string, 
 	return parseDiscussionGID(target.GlDiscussionID), true
 }
 
-
 // parseDiscussionGID reduces a stored discussion global id
 // ("gid://gitlab/Discussion/<sha>") to the sha-style id the REST API expects. A
 // value that is already bare is returned unchanged — the REST create path stores

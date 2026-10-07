@@ -22,22 +22,22 @@ func TestAllowedPublic(t *testing.T) {
 		{"93.184.216.34", true},
 		{"2606:4700:4700::1111", true}, // public IPv6
 
-		{"127.0.0.1", false},            // loopback
-		{"::1", false},                  // loopback v6
-		{"10.0.0.1", false},             // private 10/8
-		{"172.16.0.1", false},           // private 172.16/12
-		{"172.31.255.255", false},       // private 172.16/12 upper edge
-		{"192.168.1.1", false},          // private 192.168/16
-		{"169.254.169.254", false},      // link-local → cloud metadata
-		{"fe80::1", false},              // link-local v6
-		{"fc00::1", false},              // IPv6 ULA (private)
-		{"0.0.0.0", false},              // unspecified
-		{"::", false},                   // unspecified v6
-		{"224.0.0.1", false},            // multicast
-		{"100.64.0.1", false},           // CGNAT 100.64/10 lower edge
-		{"100.127.255.255", false},      // CGNAT 100.64/10 upper edge
-		{"100.63.255.255", true},        // just below CGNAT — normal public ARIN space
-		{"100.128.0.1", true},           // just above CGNAT — normal public space
+		{"127.0.0.1", false},       // loopback
+		{"::1", false},             // loopback v6
+		{"10.0.0.1", false},        // private 10/8
+		{"172.16.0.1", false},      // private 172.16/12
+		{"172.31.255.255", false},  // private 172.16/12 upper edge
+		{"192.168.1.1", false},     // private 192.168/16
+		{"169.254.169.254", false}, // link-local → cloud metadata
+		{"fe80::1", false},         // link-local v6
+		{"fc00::1", false},         // IPv6 ULA (private)
+		{"0.0.0.0", false},         // unspecified
+		{"::", false},              // unspecified v6
+		{"224.0.0.1", false},       // multicast
+		{"100.64.0.1", false},      // CGNAT 100.64/10 lower edge
+		{"100.127.255.255", false}, // CGNAT 100.64/10 upper edge
+		{"100.63.255.255", true},   // just below CGNAT — normal public ARIN space
+		{"100.128.0.1", true},      // just above CGNAT — normal public space
 	}
 	for _, tc := range cases {
 		t.Run(tc.ip, func(t *testing.T) {

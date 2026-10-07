@@ -212,4 +212,3 @@ func dumpDeliveries(t *testing.T) string {
 	}
 	return out
 }
-

@@ -21,7 +21,7 @@ func TestListMembersCarriesGitlabLogin(t *testing.T) {
 	owner.expect(t, owner.post("/workspaces/"+s.WS+"/members",
 		map[string]any{"email": member.Email, "role": "member"}), http.StatusCreated)
 
-	for _, id := range []struct{ providerUserID, username string } {
+	for _, id := range []struct{ providerUserID, username string }{
 		{"9001", "e.polyansky"},
 		{"9002", "e.polyansky.mirror"},
 	} {

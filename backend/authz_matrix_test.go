@@ -214,8 +214,8 @@ func TestAuthzForeignResources(t *testing.T) {
 	stranger := signup(t) // member of nothing owner owns
 
 	cases := []struct {
-		name, method, prefix, id, suffix string
-		body                             any
+		name, method, prefix, id, suffix  string
+		body                              any
 		wantForeign, wantMissing, wantBad int
 	}{
 		// Workspace routes authorize on the :id param directly → unknown id

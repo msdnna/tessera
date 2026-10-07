@@ -17,11 +17,11 @@ type Writeback struct {
 	PushState           bool              `json:"push_state"`
 	PushPriority        bool              `json:"push_priority"`
 	PushComments        bool              `json:"push_comments"`
-	PushLabels          bool              `json:"push_labels"`     // reconcile tag-namespace labels
-	PushDue             bool              `json:"push_due"`        // push the issue's own due_date
-	PushAssignees       bool              `json:"push_assignees"`  // push the resolved assignee set
-	PushEstimate        bool              `json:"push_estimate"`   // push timeEstimate (time unit only)
-	PushMilestone       bool              `json:"push_milestone"`  // push the task's milestone (GitLab-linked only)
+	PushLabels          bool              `json:"push_labels"`    // reconcile tag-namespace labels
+	PushDue             bool              `json:"push_due"`       // push the issue's own due_date
+	PushAssignees       bool              `json:"push_assignees"` // push the resolved assignee set
+	PushEstimate        bool              `json:"push_estimate"`  // push timeEstimate (time unit only)
+	PushMilestone       bool              `json:"push_milestone"` // push the task's milestone (GitLab-linked only)
 	PushTitleDesc       bool              `json:"push_title_desc"`
 	PushCreate          bool              `json:"push_create"`     // allow creating a GitLab issue from a task
 	FetchTemplates      bool              `json:"fetch_templates"` // offer repo issue templates when creating

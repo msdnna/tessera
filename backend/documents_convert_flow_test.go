@@ -140,7 +140,7 @@ func TestDocumentImportLeavesNothingBehindWhenConversionFails(t *testing.T) {
 	// This is why the handler converts before it creates: an empty document
 	// named after a file that failed to import is litter the user has to find
 	// and clean up, and it looks like a partial success.
-	if n := len(c.get("/workspaces/"+ws+"/documents").listBody(t)); n != 0 {
+	if n := len(c.get("/workspaces/" + ws + "/documents").listBody(t)); n != 0 {
 		t.Fatalf("a failed conversion left %d documents behind", n)
 	}
 }

@@ -193,15 +193,15 @@ type attachmentRefOut struct {
 	Size     int64  `json:"size"`
 }
 type taskDetailOut struct {
-	ID            string        `json:"id"`
-	Number        *int64        `json:"number,omitempty"`
-	Title         string        `json:"title"`
-	Description   string        `json:"description"`
-	Priority      int           `json:"priority"`
-	PriorityLabel string        `json:"priority_label"`
-	Column        string        `json:"column,omitempty"`
-	Due           string        `json:"due,omitempty"`
-	Overdue       bool          `json:"overdue,omitempty"`
+	ID            string `json:"id"`
+	Number        *int64 `json:"number,omitempty"`
+	Title         string `json:"title"`
+	Description   string `json:"description"`
+	Priority      int    `json:"priority"`
+	PriorityLabel string `json:"priority_label"`
+	Column        string `json:"column,omitempty"`
+	Due           string `json:"due,omitempty"`
+	Overdue       bool   `json:"overdue,omitempty"`
 	// Archived: this task is off the board (soft-deleted, restorable). Every
 	// listing tool drops archived tasks before ranking, so the only way to reach
 	// one is to ask for it directly — by id or by #number — and without the flag
@@ -210,12 +210,12 @@ type taskDetailOut struct {
 	Completed bool     `json:"completed"`
 	Estimate  *float64 `json:"estimate,omitempty"`
 
-	Tags          []string      `json:"tags,omitempty"`
-	Assignees     []assigneeOut `json:"assignees,omitempty"`
-	Subtasks      []subtaskOut  `json:"subtasks,omitempty"`
-	Comments      []commentOut  `json:"comments,omitempty"`
-	Images        []imageRefOut `json:"images,omitempty"`
-	GitlabURL     string        `json:"gitlab_url,omitempty"`
+	Tags      []string      `json:"tags,omitempty"`
+	Assignees []assigneeOut `json:"assignees,omitempty"`
+	Subtasks  []subtaskOut  `json:"subtasks,omitempty"`
+	Comments  []commentOut  `json:"comments,omitempty"`
+	Images    []imageRefOut `json:"images,omitempty"`
+	GitlabURL string        `json:"gitlab_url,omitempty"`
 
 	Relations   []relationOut      `json:"relations,omitempty"`
 	Attachments []attachmentRefOut `json:"attachments,omitempty"`

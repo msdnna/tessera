@@ -57,9 +57,9 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		return
 	}
 	var req struct {
-		ClientID     string          `json:"client_id"`
-		ClientSecret string          `json:"client_secret"`
-		GlBaseURL    string          `json:"gl_base_url"`
+		ClientID      string          `json:"client_id"`
+		ClientSecret  string          `json:"client_secret"`
+		GlBaseURL     string          `json:"gl_base_url"`
 		Enabled       bool            `json:"enabled"`
 		OrgMap        json.RawMessage `json:"org_map"`
 		ServiceToken  string          `json:"service_token"`

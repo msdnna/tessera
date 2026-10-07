@@ -13,10 +13,10 @@ const (
 	jobGitlabSyncCron    = "gitlab_sync_cron"
 	jobGitlabWebhookCron = "gitlab_webhook_cron"
 	jobGitlabWriteback   = "gitlab_writeback"
-	jobNotifyDelivery  = "notify_delivery"
-	jobNotifyScanner   = "notify_scanner"
-	jobRecurrence      = "recurrence"
-	jobConfRecordings  = "conference_recordings"
+	jobNotifyDelivery    = "notify_delivery"
+	jobNotifyScanner     = "notify_scanner"
+	jobRecurrence        = "recurrence"
+	jobConfRecordings    = "conference_recordings"
 )
 
 // backgroundWorkers is the fixed roster of tick-loop workers, in display order.
@@ -50,10 +50,10 @@ func (h *API) RegisterBackgroundWorkers() {
 const (
 	opSyncScan    = "sync_scan"
 	opWebhookScan = "webhook_scan"
-	opWriteback  = "writeback"
-	opDelivery   = "delivery"
-	opDueScan    = "due_scan"
-	opRecurrence = "recurrence"
+	opWriteback   = "writeback"
+	opDelivery    = "delivery"
+	opDueScan     = "due_scan"
+	opRecurrence  = "recurrence"
 
 	opRecordingSweep = "recording_sweep"
 )

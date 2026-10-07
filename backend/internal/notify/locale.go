@@ -40,10 +40,10 @@ type bundle struct {
 	// so the noun has to agree with it: a digest combines two rows or more, which
 	// in Russian is the "few" form far more often than not.
 	digestNoun [3]string
-	instant      string // duration under a second
-	durationHM   string // {h} {m}
-	durationMS   string // {m} {s}
-	durationS    string // {s}
+	instant    string // duration under a second
+	durationHM string // {h} {m}
+	durationMS string // {m} {s}
+	durationS  string // {s}
 	// deviceLabel names a client's auto-registered device channel when the client
 	// didn't send a name of its own.
 	deviceLabel string
@@ -175,8 +175,8 @@ var bundles = map[string]bundle{
 			"conference_invite": "Conference invitation",
 			"test":              "Channel test",
 		},
-		fallbackKind:    "Notification",
-		listSep:         ", ",
+		fallbackKind: "Notification",
+		listSep:      ", ",
 		// No Oxford comma: the web client's locale for English is en-GB (see
 		// utils/format.js localeTag), and that is what Intl.ListFormat words there.
 		listLast:        " and ",

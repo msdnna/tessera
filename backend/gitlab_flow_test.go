@@ -545,9 +545,9 @@ func (f *fakeGitlab) issueNode(is *glIssue) map[string]any {
 		"updatedAt": is.UpdatedAt.UTC().Format(time.RFC3339),
 		"createdAt": is.CreatedAt.UTC().Format(time.RFC3339),
 		"dueDate":   is.DueDate, "timeEstimate": 0, "milestone": ms,
-		"author":    map[string]any{"username": f.username, "name": "GL Bot", "avatarUrl": ""},
-		"assignees": map[string]any{"nodes": assignees},
-		"labels":    map[string]any{"nodes": labels},
+		"author":      map[string]any{"username": f.username, "name": "GL Bot", "avatarUrl": ""},
+		"assignees":   map[string]any{"nodes": assignees},
+		"labels":      map[string]any{"nodes": labels},
 		"discussions": map[string]any{"nodes": discussions},
 	}
 }
@@ -951,7 +951,7 @@ func TestGitlabSyncFlow(t *testing.T) {
 
 	// The label became a project-scoped tag with its prefix kept (default rules).
 	tagNames := map[string]bool{}
-	for _, tg := range c.get("/projects/"+s.Project+"/tags").listBody(t) {
+	for _, tg := range c.get("/projects/" + s.Project + "/tags").listBody(t) {
 		tagNames[tg["name"].(string)] = true
 	}
 	if !tagNames["T: bug"] {
@@ -960,7 +960,7 @@ func TestGitlabSyncFlow(t *testing.T) {
 
 	// The GitLab milestone was mirrored as a native project milestone.
 	msTitles := map[string]bool{}
-	for _, m := range c.get("/projects/"+s.Project+"/milestones").listBody(t) {
+	for _, m := range c.get("/projects/" + s.Project + "/milestones").listBody(t) {
 		msTitles[m["title"].(string)] = true
 	}
 	if !msTitles["Sprint 1"] {

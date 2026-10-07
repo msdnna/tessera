@@ -52,15 +52,15 @@ type Entry struct {
 	Status       Status     `json:"status"`
 	CurrentOp    string     `json:"current_op,omitempty"`
 	CurrentOpKey string     `json:"current_op_key,omitempty"`
-	IntervalSec int        `json:"interval_sec,omitempty"` // worker tick interval (for next-run estimate)
-	QueuedAt    *time.Time `json:"queued_at,omitempty"`
-	StartedAt   *time.Time `json:"started_at,omitempty"`
-	FinishedAt  *time.Time `json:"finished_at,omitempty"`
-	LastTickAt  *time.Time `json:"last_tick_at,omitempty"`
-	Created     int        `json:"created"`
-	Updated     int        `json:"updated"`
-	Error       string     `json:"error,omitempty"`
-	Cancelable  bool       `json:"cancelable"`
+	IntervalSec  int        `json:"interval_sec,omitempty"` // worker tick interval (for next-run estimate)
+	QueuedAt     *time.Time `json:"queued_at,omitempty"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	FinishedAt   *time.Time `json:"finished_at,omitempty"`
+	LastTickAt   *time.Time `json:"last_tick_at,omitempty"`
+	Created      int        `json:"created"`
+	Updated      int        `json:"updated"`
+	Error        string     `json:"error,omitempty"`
+	Cancelable   bool       `json:"cancelable"`
 }
 
 type slot struct {

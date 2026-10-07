@@ -429,7 +429,7 @@ func TestGitlabWritebackPushFlow(t *testing.T) {
 
 	// Journal: push run(s) with four ok push-actions in total.
 	pushActions := 0
-	for _, run := range c.get("/workspaces/"+s.WS+"/gitlab/sync-runs").listBody(t) {
+	for _, run := range c.get("/workspaces/" + s.WS + "/gitlab/sync-runs").listBody(t) {
 		if run["kind"] != "push" {
 			continue
 		}
@@ -583,7 +583,7 @@ func TestGitlabWritebackRetry(t *testing.T) {
 	var runID, actionID string
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) && actionID == "" {
-		for _, run := range c.get("/workspaces/"+s.WS+"/gitlab/sync-runs").listBody(t) {
+		for _, run := range c.get("/workspaces/" + s.WS + "/gitlab/sync-runs").listBody(t) {
 			if run["kind"] != "push" {
 				continue
 			}

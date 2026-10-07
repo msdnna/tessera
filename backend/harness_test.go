@@ -257,11 +257,11 @@ func (c *client) do(method, path string, body any) resp {
 }
 
 // get/post/patch/put/del are one-line sugar over do.
-func (c *client) get(path string) resp               { return c.do(http.MethodGet, path, nil) }
-func (c *client) post(path string, body any) resp    { return c.do(http.MethodPost, path, body) }
-func (c *client) patch(path string, body any) resp   { return c.do(http.MethodPatch, path, body) }
-func (c *client) put(path string, body any) resp     { return c.do(http.MethodPut, path, body) }
-func (c *client) del(path string) resp               { return c.do(http.MethodDelete, path, nil) }
+func (c *client) get(path string) resp             { return c.do(http.MethodGet, path, nil) }
+func (c *client) post(path string, body any) resp  { return c.do(http.MethodPost, path, body) }
+func (c *client) patch(path string, body any) resp { return c.do(http.MethodPatch, path, body) }
+func (c *client) put(path string, body any) resp   { return c.do(http.MethodPut, path, body) }
+func (c *client) del(path string) resp             { return c.do(http.MethodDelete, path, nil) }
 func (c *client) expect(t *testing.T, r resp, want int) map[string]any {
 	t.Helper()
 	if r.Status != want {
