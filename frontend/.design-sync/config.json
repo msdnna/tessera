@@ -37,6 +37,9 @@
     },
     "UndoToast": {
       "cardMode": "column"
+    },
+    "InlineEdit": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"
