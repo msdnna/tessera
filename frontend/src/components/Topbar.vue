@@ -212,6 +212,8 @@ const onHome = computed(() => route.path === '/')
   display: flex;
   align-items: center;
   gap: 8px;
+  /* A page's crumbs (the stage page, #2993) shrink with the track. */
+  min-width: 0;
 }
 .tb-slot:empty {
   display: none;

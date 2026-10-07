@@ -75,6 +75,12 @@ const routes = [
         path: 'project/:projectSlug/board/:boardSlug',
         component: () => import('@/views/BoardView.vue'),
       },
+      // The stage page (#2993): slugs like the board's — the stage slug is
+      // unique within its project (milestones.slug).
+      {
+        path: 'project/:projectSlug/stage/:stageSlug',
+        component: () => import('@/views/StageView.vue'),
+      },
       // Legacy / deep links by id (UUID or bare slug) — BoardView resolves them
       // and canonicalizes the URL to /project/<slug>/board/<slug>.
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },
