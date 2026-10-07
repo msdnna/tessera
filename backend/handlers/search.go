@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"tessera/internal/db"
+	"tessera/middleware"
 )
 
 // likeEscaper quotes the characters LIKE reserves, so a query means itself. The
@@ -104,7 +105,9 @@ func (h *API) Search(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	notes, err := h.q.SearchNotes(c, db.SearchNotesParams{WorkspaceID: wsID, Column2: &term})
+	notes, err := h.q.SearchNotes(c, db.SearchNotesParams{
+		WorkspaceID: wsID, Column2: &term, Viewer: middleware.CurrentUser(c),
+	})
 	if err != nil {
 		fail(c, err)
 		return

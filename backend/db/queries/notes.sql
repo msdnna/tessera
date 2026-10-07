@@ -1,10 +1,32 @@
 -- name: CreateNote :one
-INSERT INTO notes (workspace_id, project_id, author_id, title, body, slug)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO notes (workspace_id, project_id, author_id, title, body, slug, task_id, visibility)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
+-- ListNotes lists the notes of a workspace the viewer may read: the shared ones
+-- and their own private ones (0081). A private note is its author's alone — it
+-- never shows up in a colleague's list, search or socket.
 -- name: ListNotes :many
-SELECT * FROM notes WHERE workspace_id = $1 ORDER BY updated_at DESC;
+SELECT * FROM notes
+WHERE workspace_id = @workspace_id
+  AND (visibility = 'workspace' OR author_id = @viewer::uuid)
+ORDER BY updated_at DESC;
+
+-- InboxNotes is ListNotes for the «Входящие» feed (#2972), capped: the feed is a
+-- list of recent records, not an archive.
+-- name: InboxNotes :many
+SELECT * FROM notes
+WHERE workspace_id = @workspace_id
+  AND (visibility = 'workspace' OR author_id = @viewer::uuid)
+ORDER BY updated_at DESC
+LIMIT 300;
+
+-- ListTaskNotes lists the notes tied to a task that the viewer may read.
+-- name: ListTaskNotes :many
+SELECT * FROM notes
+WHERE task_id = @task_id
+  AND (visibility = 'workspace' OR author_id = @viewer::uuid)
+ORDER BY updated_at DESC;
 
 -- name: NoteSlugExists :one
 SELECT EXISTS(SELECT 1 FROM notes WHERE workspace_id = $1 AND slug = $2);
@@ -20,7 +42,7 @@ SELECT * FROM notes WHERE id = $1;
 
 -- name: UpdateNote :one
 UPDATE notes
-SET title = $2, body = $3, updated_at = now()
+SET title = $2, body = $3, task_id = $4, visibility = $5, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

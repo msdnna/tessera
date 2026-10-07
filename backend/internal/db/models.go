@@ -416,6 +416,8 @@ type Note struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	Slug        string     `json:"slug"`
+	TaskID      *uuid.UUID `json:"task_id"`
+	Visibility  string     `json:"visibility"`
 }
 
 type Notification struct {
@@ -560,14 +562,18 @@ type RefreshToken struct {
 }
 
 type Reminder struct {
-	ID         uuid.UUID  `json:"id"`
-	UserID     uuid.UUID  `json:"user_id"`
-	TaskID     *uuid.UUID `json:"task_id"`
-	RemindAt   time.Time  `json:"remind_at"`
-	Message    string     `json:"message"`
-	Done       bool       `json:"done"`
-	CreatedAt  time.Time  `json:"created_at"`
-	NotifiedAt *time.Time `json:"notified_at"`
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	TaskID      *uuid.UUID `json:"task_id"`
+	RemindAt    time.Time  `json:"remind_at"`
+	Message     string     `json:"message"`
+	Done        bool       `json:"done"`
+	CreatedAt   time.Time  `json:"created_at"`
+	NotifiedAt  *time.Time `json:"notified_at"`
+	Body        string     `json:"body"`
+	DoneAt      *time.Time `json:"done_at"`
+	SnoozedFrom *time.Time `json:"snoozed_from"`
+	WorkspaceID *uuid.UUID `json:"workspace_id"`
 }
 
 type Tag struct {

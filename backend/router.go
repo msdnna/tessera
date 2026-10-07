@@ -464,6 +464,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Notes (workspace-scoped).
 			protected.POST("/workspaces/:id/notes", rh.CreateNote)
 			protected.GET("/workspaces/:id/notes", rh.ListNotes)
+			// «Входящие» (#2972): the caller's reminders + readable notes as one feed.
+			protected.GET("/workspaces/:id/inbox", rh.Inbox)
 
 			// Documents (workspace-scoped, nested via parent_id).
 			protected.POST("/workspaces/:id/documents", rh.CreateDocument)
@@ -507,6 +509,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			protected.GET("/tasks/:id", rh.GetTask)
 			protected.GET("/tasks/:id/description", rh.GetTaskDescription)
+			// The task modal's «Напоминания и заметки» (#2998): own reminders,
+			// readable notes.
+			protected.GET("/tasks/:id/reminders", rh.ListTaskReminders)
+			protected.GET("/tasks/:id/notes", rh.ListTaskNotes)
 			protected.PATCH("/tasks/:id", rh.UpdateTask)
 			protected.PATCH("/tasks/:id/move", rh.MoveTask)
 			protected.PATCH("/tasks/:id/eisenhower", rh.SetTaskEisenhower)
@@ -735,6 +741,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/reminders", rh.CreateReminder)
 			protected.GET("/reminders", rh.ListReminders)
 			protected.PATCH("/reminders/:id", rh.UpdateReminder)
+			protected.POST("/reminders/:id/snooze", rh.SnoozeReminder)
 			protected.DELETE("/reminders/:id", rh.DeleteReminder)
 		}
 	}
