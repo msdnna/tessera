@@ -249,29 +249,30 @@ func formatNoteGID(id int64) string { return fmt.Sprintf("gid://gitlab/Note/%d",
 
 // Issue is a GitLab issue reduced to the fields the sync needs.
 type Issue struct {
-	GlobalID       string
-	IID            int64
-	Title          string
-	Description    string
-	WebURL         string
-	State          string // opened | closed
-	UpdatedAt      *time.Time
-	CreatedAt      *time.Time // issue/task creation timestamp (always present)
-	DueDate        *time.Time // issue's own due date (date-only), nil when unset
-	TimeEstimate   int64      // issue time estimate in seconds (0 when unset)
-	MilestoneDue   *time.Time // due date (End date) of the issue's milestone, if any
-	MilestoneStart *time.Time // start date of the issue's milestone (date-only), if any
-	MilestoneGID   string     // milestone GraphQL global id (gid://gitlab/Milestone/<n>), "" when none
-	MilestoneIID   int64      // milestone iid (0 when none/unavailable)
-	MilestoneTitle string     // milestone title
-	MilestoneState string     // active | closed
-	MilestoneURL   string     // milestone web path/url
-	Labels         []Label
-	AuthorLogin    string // GitLab username of the issue author (may not be a Tessera user)
-	AuthorName     string
-	AuthorAvatar   string // author avatar URL, "" when none
-	Assignees      []Person
-	Notes          []Note // user comments (system notes filtered out)
+	GlobalID             string
+	IID                  int64
+	Title                string
+	Description          string
+	WebURL               string
+	State                string // opened | closed
+	UpdatedAt            *time.Time
+	CreatedAt            *time.Time // issue/task creation timestamp (always present)
+	DueDate              *time.Time // issue's own due date (date-only), nil when unset
+	TimeEstimate         int64      // issue time estimate in seconds (0 when unset)
+	MilestoneDue         *time.Time // due date (End date) of the issue's milestone, if any
+	MilestoneStart       *time.Time // start date of the issue's milestone (date-only), if any
+	MilestoneGID         string     // milestone GraphQL global id (gid://gitlab/Milestone/<n>), "" when none
+	MilestoneIID         int64      // milestone iid (0 when none/unavailable)
+	MilestoneTitle       string     // milestone title
+	MilestoneDescription string     // milestone description (Markdown), "" when none
+	MilestoneState       string     // active | closed
+	MilestoneURL         string     // milestone web path/url
+	Labels               []Label
+	AuthorLogin          string // GitLab username of the issue author (may not be a Tessera user)
+	AuthorName           string
+	AuthorAvatar         string // author avatar URL, "" when none
+	Assignees            []Person
+	Notes                []Note // user comments (system notes filtered out)
 }
 
 const issuesQuery = `
@@ -290,7 +291,7 @@ query($path: ID!, $username: String, $iids: [String!], $after: String, $updatedA
         createdAt
         dueDate
         timeEstimate
-        milestone { id iid title state startDate dueDate webPath }
+        milestone { id iid title description state startDate dueDate webPath }
         author { username name avatarUrl }
         assignees { nodes { username name avatarUrl } }
         labels { nodes { title color } }
@@ -395,13 +396,14 @@ type issueNode struct {
 	DueDate      string     `json:"dueDate"`
 	TimeEstimate int64      `json:"timeEstimate"` // seconds (0 when unset)
 	Milestone    *struct {
-		ID        string `json:"id"`
-		IID       string `json:"iid"`
-		Title     string `json:"title"`
-		State     string `json:"state"`
-		StartDate string `json:"startDate"`
-		DueDate   string `json:"dueDate"`
-		WebPath   string `json:"webPath"`
+		ID          string `json:"id"`
+		IID         string `json:"iid"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		State       string `json:"state"`
+		StartDate   string `json:"startDate"`
+		DueDate     string `json:"dueDate"`
+		WebPath     string `json:"webPath"`
 	} `json:"milestone"`
 	Author *struct {
 		Username  string `json:"username"`
@@ -467,6 +469,7 @@ func (n issueNode) toIssue(base string) Issue {
 		issue.MilestoneGID = n.Milestone.ID
 		issue.MilestoneIID, _ = strconv.ParseInt(n.Milestone.IID, 10, 64)
 		issue.MilestoneTitle = n.Milestone.Title
+		issue.MilestoneDescription = n.Milestone.Description
 		issue.MilestoneState = strings.ToLower(n.Milestone.State)
 		issue.MilestoneURL = absAvatar(base, n.Milestone.WebPath)
 	}

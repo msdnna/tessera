@@ -53,7 +53,7 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 
 // ensureGitlabMilestone upserts the native milestone + link for a GitLab milestone,
 // returning the native milestone id. GitLab is the source of truth for the synced
-// fields (title/dates/state).
+// fields (title/description/dates/state) — an empty GitLab value clears ours too.
 func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegration, projectID uuid.UUID, issue gitlab.Issue) (uuid.UUID, error) {
 	state := issue.MilestoneState
 	if state != "closed" {
@@ -74,7 +74,7 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 	case err == nil:
 		// Refresh the native milestone from GitLab + the link.
 		if _, uerr := h.q.UpdateMilestone(ctx, db.UpdateMilestoneParams{
-			ID: link.MilestoneID, Title: issue.MilestoneTitle, Description: "",
+			ID: link.MilestoneID, Title: issue.MilestoneTitle, Description: issue.MilestoneDescription,
 			StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: state,
 		}); uerr != nil {
 			return uuid.Nil, uerr
@@ -93,7 +93,7 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 		var mID uuid.UUID
 		if terr := h.inTx(ctx, func(q *db.Queries) error {
 			m, cerr := q.CreateMilestone(ctx, db.CreateMilestoneParams{
-				ProjectID: projectID, Title: issue.MilestoneTitle, Description: "",
+				ProjectID: projectID, Title: issue.MilestoneTitle, Description: issue.MilestoneDescription,
 				StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: &st,
 				Slug: slug,
 			})
