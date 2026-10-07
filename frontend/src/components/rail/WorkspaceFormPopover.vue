@@ -58,7 +58,9 @@ watch(
   { immediate: true },
 )
 
-const title = computed(() => (isCreate.value ? t('shell.workspaceForm.createTitle') : t('shell.workspaceForm.styleTitle')))
+const title = computed(() =>
+  isCreate.value ? t('shell.workspaceForm.createTitle') : t('shell.workspaceForm.styleTitle'),
+)
 const subtitle = computed(() =>
   isCreate.value
     ? t('shell.workspaceForm.createSub')
@@ -73,7 +75,11 @@ async function submit() {
   try {
     if (isCreate.value) {
       const w = await store.createWorkspace(n)
-      const res = await wsApi.setAppearance(w.id, { color: color.value, icon: icon.value, icon_mode: 'badge' })
+      const res = await wsApi.setAppearance(w.id, {
+        color: color.value,
+        icon: icon.value,
+        icon_mode: 'badge',
+      })
       store.patchWorkspace(res.data)
       // A board belongs to the workspace we just left.
       if (route.params.projectSlug || route.params.id) router.push('/')
@@ -123,7 +129,9 @@ async function submit() {
         data-testid="ws-form-name"
       />
     </FormField>
-    <FormField :label="isCreate ? t('shell.workspaceForm.look') : t('shell.workspaceForm.lookRail')">
+    <FormField
+      :label="isCreate ? t('shell.workspaceForm.look') : t('shell.workspaceForm.lookRail')"
+    >
       <ColorIconPicker v-model:icon="icon" v-model:color="color" :name="name" set="space" />
     </FormField>
   </PopoverForm>

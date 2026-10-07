@@ -71,7 +71,13 @@ function onKey(e, toast) {
 
 <template>
   <Teleport to="body">
-    <div ref="root" class="ut-stack" role="region" aria-live="polite" :aria-label="t('common.undo.region')">
+    <div
+      ref="root"
+      class="ut-stack"
+      role="region"
+      aria-live="polite"
+      :aria-label="t('common.undo.region')"
+    >
       <transition-group name="ut">
         <UndoToast
           v-for="(toast, i) in list"

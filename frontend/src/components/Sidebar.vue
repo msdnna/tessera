@@ -264,49 +264,49 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
          to the sidebar's right edge. The same 8px gutter as the links above. -->
     <n-scrollbar v-if="!collapsed" class="tree" content-style="padding: 0 8px">
       <div ref="treeBox" class="tree-box" @keydown="onTreeKey">
-      <draggable
-        :list="rootGrpModel"
-        group="sidebar-grp"
-        item-key="id"
-        ghost-class="sb-ghost"
-        class="sb-dropzone"
-        :animation="150"
-        :delay="160"
-        :delay-on-touch-only="true"
-        :touch-start-threshold="6"
-        @start="onDragStart"
-        @end="onDragEnd"
-        @change="onRootGrp"
-      >
-        <template #item="{ element }">
-          <SidebarNode :group="element" :depth="0" />
-        </template>
-      </draggable>
-      <NewGroupRow v-if="draft.isGroupDraft(null)" />
-      <draggable
-        :list="rootProjModel"
-        group="sidebar-proj"
-        item-key="id"
-        ghost-class="sb-ghost"
-        class="sb-dropzone"
-        :animation="150"
-        :delay="160"
-        :delay-on-touch-only="true"
-        :touch-start-threshold="6"
-        @start="onDragStart"
-        @end="onDragEnd"
-        @change="onRootProj"
-      >
-        <template #item="{ element }">
-          <ProjectRow :project="element" :depth="0" />
-        </template>
-      </draggable>
-      <EmptyState
-        v-if="!rootGroups.length && !ungrouped.length && !draft.draft.value"
-        :icon="FolderOutline"
-        :text="t('shell.tree.empty')"
-        size="small"
-      />
+        <draggable
+          :list="rootGrpModel"
+          group="sidebar-grp"
+          item-key="id"
+          ghost-class="sb-ghost"
+          class="sb-dropzone"
+          :animation="150"
+          :delay="160"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="6"
+          @start="onDragStart"
+          @end="onDragEnd"
+          @change="onRootGrp"
+        >
+          <template #item="{ element }">
+            <SidebarNode :group="element" :depth="0" />
+          </template>
+        </draggable>
+        <NewGroupRow v-if="draft.isGroupDraft(null)" />
+        <draggable
+          :list="rootProjModel"
+          group="sidebar-proj"
+          item-key="id"
+          ghost-class="sb-ghost"
+          class="sb-dropzone"
+          :animation="150"
+          :delay="160"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="6"
+          @start="onDragStart"
+          @end="onDragEnd"
+          @change="onRootProj"
+        >
+          <template #item="{ element }">
+            <ProjectRow :project="element" :depth="0" />
+          </template>
+        </draggable>
+        <EmptyState
+          v-if="!rootGroups.length && !ungrouped.length && !draft.draft.value"
+          :icon="FolderOutline"
+          :text="t('shell.tree.empty')"
+          size="small"
+        />
       </div>
     </n-scrollbar>
     <n-scrollbar v-else class="rail-scroll">
@@ -330,10 +330,7 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
 
     <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
 
-    <ProjectCreatePopover
-      v-model:show="projFormOpen"
-      :anchor="() => addBtn?.$el || null"
-    />
+    <ProjectCreatePopover v-model:show="projFormOpen" :anchor="() => addBtn?.$el || null" />
   </div>
 </template>
 

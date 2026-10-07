@@ -19,11 +19,16 @@ const PROJECT = [
     icon: 'TrashOutline',
     danger: true,
     caps: ['⌘', '⌫'],
-    confirm: { title: 'Точно удалить «Tessera Web»?', sub: '3 доски со всеми задачами · без возврата' },
+    confirm: {
+      title: 'Точно удалить «Tessera Web»?',
+      sub: '3 доски со всеми задачами · без возврата',
+    },
   },
 ]
 
-export const Project = () => <ActionMenu header="Tessera Web" headerAside="Продукт" items={PROJECT} />
+export const Project = () => (
+  <ActionMenu header="Tessera Web" headerAside="Продукт" items={PROJECT} />
+)
 
 export const ProjectArmed = () => (
   <ActionMenu header="Tessera Web" headerAside="Продукт" items={PROJECT} armed="delete" />
@@ -40,7 +45,12 @@ export const Column = () => (
       { key: 'done', label: 'Колонка «Готово»', icon: 'CheckmarkDoneOutline', toggle: false },
       { gap: true },
       { key: 'collapse', label: 'Свернуть', icon: 'ChevronBackOutline', caps: ['H'] },
-      { key: 'right', label: 'Сдвинуть вправо', icon: 'ArrowForwardOutline', caps: ['⌘', '⇧', '→'] },
+      {
+        key: 'right',
+        label: 'Сдвинуть вправо',
+        icon: 'ArrowForwardOutline',
+        caps: ['⌘', '⇧', '→'],
+      },
       { key: 'add', label: 'Новая колонка справа', icon: 'AddOutline' },
       { gap: true },
       { key: 'delete', label: 'Удалить колонку', icon: 'TrashOutline', danger: true, caps: ['⌫'] },

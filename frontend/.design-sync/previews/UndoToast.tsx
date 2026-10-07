@@ -1,7 +1,9 @@
 import { UndoToast } from '@tessera/design-system'
 
 const Stack = ({ children }) => (
-  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>{children}</div>
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8 }}>
+    {children}
+  </div>
 )
 
 export const States = () => (

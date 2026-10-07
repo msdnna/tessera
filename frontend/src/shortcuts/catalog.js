@@ -21,7 +21,17 @@
 //   eager    fires on its own key even though longer sequences start with it
 //   prio     wins over other entries completed by the same key (default 0)
 
-export const GROUPS = ['nav', 'sidebar', 'board', 'card', 'task', 'chart', 'create', 'palette', 'view']
+export const GROUPS = [
+  'nav',
+  'sidebar',
+  'board',
+  'card',
+  'task',
+  'chart',
+  'create',
+  'palette',
+  'view',
+]
 
 export const CATALOG = [
   // ── navigation ──

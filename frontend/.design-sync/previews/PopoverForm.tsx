@@ -1,7 +1,13 @@
 import { PopoverForm, FormField, ColorIconPicker } from '@tessera/design-system'
 
 export const NewProject = () => (
-  <PopoverForm title="Новый проект" subtitle="в группе «Продукт»" primary="Создать" hint="tab" width={348}>
+  <PopoverForm
+    title="Новый проект"
+    subtitle="в группе «Продукт»"
+    primary="Создать"
+    hint="tab"
+    width={348}
+  >
     <FormField label="Название">
       <input className="kf-input" defaultValue="Tessera Web" placeholder="Название проекта" />
     </FormField>
@@ -15,7 +21,13 @@ export const NewProject = () => (
 )
 
 export const SlugTaken = () => (
-  <PopoverForm title="Адрес проекта" subtitle="Tessera Web" primary="Сохранить" hint="suggest" disabled>
+  <PopoverForm
+    title="Адрес проекта"
+    subtitle="Tessera Web"
+    primary="Сохранить"
+    hint="suggest"
+    disabled
+  >
     <FormField
       label="Адрес"
       preview="site"
@@ -28,7 +40,13 @@ export const SlugTaken = () => (
 )
 
 export const Busy = () => (
-  <PopoverForm title="Новая доска" subtitle="в проекте «Tessera Web»" primary="Создать" busyLabel="Создаём…" busy>
+  <PopoverForm
+    title="Новая доска"
+    subtitle="в проекте «Tessera Web»"
+    primary="Создать"
+    busyLabel="Создаём…"
+    busy
+  >
     <FormField label="Название">
       <input className="kf-input" defaultValue="Ретро команды" disabled />
     </FormField>

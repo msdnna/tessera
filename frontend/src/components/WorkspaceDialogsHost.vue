@@ -41,8 +41,7 @@ const create = slot('create')
 const del = slot('delete')
 
 // Browser Back closes these modals instead of leaving the board.
-for (const s of [members, gitlab, commands, jobs])
-  useOverlayBack(s, () => (s.value = false))
+for (const s of [members, gitlab, commands, jobs]) useOverlayBack(s, () => (s.value = false))
 
 const target = computed(() => dialogs.target || ws.current)
 

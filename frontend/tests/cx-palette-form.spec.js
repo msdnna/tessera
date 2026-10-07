@@ -11,7 +11,9 @@ const push = vi.fn()
 
 vi.mock('@/api', () => ({
   workspaces: {
-    search: vi.fn(() => Promise.resolve({ data: { tasks: [], boards: [], notes: [], documents: [] } })),
+    search: vi.fn(() =>
+      Promise.resolve({ data: { tasks: [], boards: [], notes: [], documents: [] } }),
+    ),
     members: vi.fn(() => Promise.resolve({ data: [] })),
     milestones: vi.fn(() => Promise.resolve({ data: [] })),
     createProject: (...a) => createProject(...a),
@@ -68,7 +70,9 @@ describe('palette forms', () => {
   }
   const input = () => document.querySelector('[data-testid=palette-input]')
   const key = async (k, opts = {}) => {
-    input().dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...opts }))
+    input().dispatchEvent(
+      new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...opts }),
+    )
     await flushPromises()
   }
   const type = async (text) => {
@@ -89,7 +93,9 @@ describe('palette forms', () => {
     document.querySelector('[data-row="cmd:form.project"]').click()
     await flushPromises()
     expect(palette.scope).toEqual({ form: 'project', step: 0 })
-    expect(document.querySelector('[data-testid="palette-form-chip"]').textContent).toContain('Создать проект')
+    expect(document.querySelector('[data-testid="palette-form-chip"]').textContent).toContain(
+      'Создать проект',
+    )
     expect(palette.query).toBe('')
   })
 
@@ -108,7 +114,12 @@ describe('palette forms', () => {
     expect(createProject).toHaveBeenCalledOnce()
     const [ws, body] = createProject.mock.calls[0]
     expect(ws).toBe('w1')
-    expect(body).toMatchObject({ name: 'Tessera Web', group_id: 'g1', icon: 'code', color: '#2f80ed' })
+    expect(body).toMatchObject({
+      name: 'Tessera Web',
+      group_id: 'g1',
+      icon: 'code',
+      color: '#2f80ed',
+    })
     expect(body.slug).toBeUndefined() // left alone → the server derives it
     expect(palette.open).toBe(false)
   })

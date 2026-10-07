@@ -10,7 +10,14 @@
 import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { FolderOutline, GridOutline, LinkOutline, TextOutline, ColorPaletteOutline, AppsOutline } from '@vicons/ionicons5'
+import {
+  FolderOutline,
+  GridOutline,
+  LinkOutline,
+  TextOutline,
+  ColorPaletteOutline,
+  AppsOutline,
+} from '@vicons/ionicons5'
 import { usePaletteStore } from '@/stores/palette'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
@@ -37,7 +44,15 @@ export function usePaletteForm() {
 
   const kind = computed(() => palette.scope?.form || null)
   const step = computed(() => palette.scope?.step ?? 0)
-  const values = reactive({ name: '', slug: '', slugTouched: false, group: null, project: null, color: '', icon: '' })
+  const values = reactive({
+    name: '',
+    slug: '',
+    slugTouched: false,
+    group: null,
+    project: null,
+    color: '',
+    icon: '',
+  })
   const busy = ref(false)
   const error = ref('')
 
@@ -93,7 +108,8 @@ export function usePaletteForm() {
   function loadQuery() {
     const f = field.value
     if (!f) return
-    if (f.type === 'text') palette.query = f.key === 'slug' ? values.slug || makeSlug(values.name) : values[f.key]
+    if (f.type === 'text')
+      palette.query = f.key === 'slug' ? values.slug || makeSlug(values.name) : values[f.key]
     else palette.query = ''
   }
   watch([kind, step], loadQuery)
@@ -131,7 +147,10 @@ export function usePaletteForm() {
   const icons = computed(() => (kind.value === 'workspace' ? SPACE_ICONS : PROJECT_ICONS))
   function shiftColor(d) {
     const n = PICKER_COLORS.length
-    const i = Math.max(0, PICKER_COLORS.findIndex((c) => c.hex === values.color))
+    const i = Math.max(
+      0,
+      PICKER_COLORS.findIndex((c) => c.hex === values.color),
+    )
     values.color = PICKER_COLORS[(i + d + n) % n].hex
   }
   function shiftIcon(d) {
@@ -141,7 +160,8 @@ export function usePaletteForm() {
   }
 
   // ── labels ──
-  const groupName = (id) => store.groups.find((g) => g.id === id)?.name || t('shell.paletteForm.root')
+  const groupName = (id) =>
+    store.groups.find((g) => g.id === id)?.name || t('shell.paletteForm.root')
   const projectName = (id) => store.projects.find((p) => p.id === id)?.name || '—'
   const colorName = computed(() => {
     const c = PICKER_COLORS.find((x) => x.hex === values.color)
@@ -149,16 +169,34 @@ export function usePaletteForm() {
   })
   const iconName = computed(() => t(`common.picker.icons.${values.icon || 'initials'}`))
   const lookValue = computed(() => `${iconName.value} · ${colorName.value}`)
-  const slugValue = computed(() => (values.slugTouched ? makeSlug(values.slug) : makeSlug(values.name)))
+  const slugValue = computed(() =>
+    values.slugTouched ? makeSlug(values.slug) : makeSlug(values.name),
+  )
 
-  const ICONS = { name: TextOutline, slug: LinkOutline, group: FolderOutline, project: GridOutline, look: ColorPaletteOutline }
+  const ICONS = {
+    name: TextOutline,
+    slug: LinkOutline,
+    group: FolderOutline,
+    project: GridOutline,
+    look: ColorPaletteOutline,
+  }
 
   function fieldRow(f, i) {
     const active = i === step.value
-    const base = { key: `field:${f.key}`, icon: ICONS[f.key], title: t(`shell.paletteForm.fields.${f.key}`), run: () => (go(i), 'stay') }
+    const base = {
+      key: `field:${f.key}`,
+      icon: ICONS[f.key],
+      title: t(`shell.paletteForm.fields.${f.key}`),
+      run: () => (go(i), 'stay'),
+    }
     switch (f.key) {
       case 'name':
-        return { ...base, sub: active ? t('shell.paletteForm.typed') : '', value: values.name || '—', fieldHint: active }
+        return {
+          ...base,
+          sub: active ? t('shell.paletteForm.typed') : '',
+          value: values.name || '—',
+          fieldHint: active,
+        }
       case 'slug':
         return {
           ...base,
@@ -169,12 +207,20 @@ export function usePaletteForm() {
       case 'group':
         return {
           ...base,
-          sub: kind.value === 'group' ? t('shell.paletteForm.parentSub') : t('shell.paletteForm.groupSub'),
+          sub:
+            kind.value === 'group'
+              ? t('shell.paletteForm.parentSub')
+              : t('shell.paletteForm.groupSub'),
           value: groupName(values.group),
           fieldHint: active,
         }
       case 'project':
-        return { ...base, sub: t('shell.paletteForm.projectSub'), value: projectName(values.project), fieldHint: active }
+        return {
+          ...base,
+          sub: t('shell.paletteForm.projectSub'),
+          value: projectName(values.project),
+          fieldHint: active,
+        }
       case 'look':
         return {
           ...base,
@@ -225,7 +271,14 @@ export function usePaletteForm() {
     const f = field.value
     if (!f) return []
     if (f.type === 'pick') {
-      return [{ id: 'options', title: t(`shell.paletteForm.fields.${f.key}`), count: null, rows: optionRows(query) }]
+      return [
+        {
+          id: 'options',
+          title: t(`shell.paletteForm.fields.${f.key}`),
+          count: null,
+          rows: optionRows(query),
+        },
+      ]
     }
     return [
       {
@@ -273,7 +326,11 @@ export function usePaletteForm() {
         await store.refresh()
       } else if (kind.value === 'workspace') {
         const w = await store.createWorkspace(name)
-        const res = await wsApi.setAppearance(w.id, { color: values.color, icon: values.icon, icon_mode: 'badge' })
+        const res = await wsApi.setAppearance(w.id, {
+          color: values.color,
+          icon: values.icon,
+          icon_mode: 'badge',
+        })
         store.patchWorkspace(res.data)
         if (route.params.projectSlug || route.params.id) router.push('/')
       }

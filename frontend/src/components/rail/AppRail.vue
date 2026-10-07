@@ -184,7 +184,9 @@ const serverName = (s) => s.name || serverLabel(s.url)
 // ── keyboard (#2969): G W gets onto the rail, ↑/↓ walk the workspace tiles,
 // ⇧N opens «Новое пространство», I the focused tile's «Оформление».
 function tiles() {
-  return [...(railEl.value?.querySelectorAll('[data-ws]') || [])].filter((el) => el.offsetParent !== null)
+  return [...(railEl.value?.querySelectorAll('[data-ws]') || [])].filter(
+    (el) => el.offsetParent !== null,
+  )
 }
 function focusRail() {
   const list = tiles()

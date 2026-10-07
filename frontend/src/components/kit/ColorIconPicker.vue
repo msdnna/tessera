@@ -32,7 +32,9 @@ const SETS = {
 const icons = computed(() => SETS[props.set] || SETS.project)
 
 const initials = computed(() => {
-  const clean = String(props.name || '').replace(/[«»"]/g, '').trim()
+  const clean = String(props.name || '')
+    .replace(/[«»"]/g, '')
+    .trim()
   return clean ? initialsOf(clean) : t('common.picker.initialsEmpty')
 })
 const colorIndex = computed(() => PICKER_COLORS.findIndex((c) => c.hex === props.color))

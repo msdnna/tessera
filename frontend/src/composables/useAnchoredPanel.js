@@ -29,7 +29,8 @@ export function useAnchoredPanel({
     const a = anchor()
     if (!a) return null
     if (typeof a.getBoundingClientRect === 'function') return a.getBoundingClientRect()
-    if (typeof a.x === 'number') return { left: a.x, right: a.x, top: a.y, bottom: a.y, width: 0, height: 0 }
+    if (typeof a.x === 'number')
+      return { left: a.x, right: a.x, top: a.y, bottom: a.y, width: 0, height: 0 }
     return null
   }
 

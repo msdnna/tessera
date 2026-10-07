@@ -81,7 +81,12 @@ const deleteFailed = ref('')
 const subgroups = computed(() => store.childGroups(props.group.id))
 const childProjects = computed(() => store.projectsInGroup(props.group.id))
 const menuItems = computed(() => [
-  { key: 'add-project', label: t('shell.group.newProject'), icon: DocumentTextOutline, keys: 'row.new' },
+  {
+    key: 'add-project',
+    label: t('shell.group.newProject'),
+    icon: DocumentTextOutline,
+    keys: 'row.new',
+  },
   { key: 'add-group', label: t('shell.group.newGroup'), icon: FolderOutline },
   { gap: true },
   { key: 'rename', label: t('shell.group.rename'), icon: CreateOutline, keys: 'row.rename' },
@@ -239,7 +244,11 @@ function onRowKey(e) {
   if (e.key === 'ArrowLeft' && !e.metaKey && !e.ctrlKey && !e.altKey) {
     e.preventDefault()
     if (expanded.value) expanded.value = false
-    else rowEl.value?.parentElement?.parentElement?.closest('.group-node')?.querySelector('[data-tree-row]')?.focus()
+    else
+      rowEl.value?.parentElement?.parentElement
+        ?.closest('.group-node')
+        ?.querySelector('[data-tree-row]')
+        ?.focus()
     return
   }
   handleRowKeys(e, {

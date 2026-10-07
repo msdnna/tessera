@@ -171,21 +171,21 @@ const keysHint = computed(() => {
       <Kbd v-else class="ie-kbd">{{ CAPS.enter }}</Kbd>
     </span>
     <Teleport to="body" :disabled="!teleportHint">
-    <span
-      v-if="showHint && (error || keysHint.length)"
-      class="ie-tip"
-      :class="{ err: !!error, local: !teleportHint }"
-      :style="teleportHint ? tipPos : { left: `${hintLeft}px` }"
-      role="status"
-    >
-      <template v-if="error">{{ error }}</template>
-      <template v-else>
-        <template v-for="([cap, text], i) in keysHint" :key="i">
-          <Kbd :class="{ gap: i > 0 }">{{ cap }}</Kbd>
-          <span v-if="text">{{ text }}</span>
+      <span
+        v-if="showHint && (error || keysHint.length)"
+        class="ie-tip"
+        :class="{ err: !!error, local: !teleportHint }"
+        :style="teleportHint ? tipPos : { left: `${hintLeft}px` }"
+        role="status"
+      >
+        <template v-if="error">{{ error }}</template>
+        <template v-else>
+          <template v-for="([cap, text], i) in keysHint" :key="i">
+            <Kbd :class="{ gap: i > 0 }">{{ cap }}</Kbd>
+            <span v-if="text">{{ text }}</span>
+          </template>
         </template>
-      </template>
-    </span>
+      </span>
     </Teleport>
   </span>
 </template>

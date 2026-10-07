@@ -98,7 +98,13 @@ watch(
   async () => {
     if (!formMode.value) return
     await nextTick()
-    active.value = form.field.value?.type === 'pick' ? Math.max(0, flat.value.findIndex((r) => r.checked)) : form.step.value
+    active.value =
+      form.field.value?.type === 'pick'
+        ? Math.max(
+            0,
+            flat.value.findIndex((r) => r.checked),
+          )
+        : form.step.value
   },
 )
 
@@ -188,7 +194,8 @@ function onFormKey(e) {
   const f = form.field.value
   if (f?.type === 'look' && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(e.key)) {
     e.preventDefault()
-    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') form.shiftColor(e.key === 'ArrowRight' ? 1 : -1)
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+      form.shiftColor(e.key === 'ArrowRight' ? 1 : -1)
     else form.shiftIcon(e.key === 'ArrowDown' ? 1 : -1)
     return true
   }
@@ -306,14 +313,18 @@ const footRight = computed(() => {
 // A row the keyboard can do more with: Tab narrows to a task (results) or
 // opens a field (task actions).
 const tabLabel = (row) => {
-  if (formMode.value) return row.fieldHint && form.field.value?.type !== 'pick' ? t('shell.paletteForm.nextField') : null
+  if (formMode.value)
+    return row.fieldHint && form.field.value?.type !== 'pick'
+      ? t('shell.paletteForm.nextField')
+      : null
   if (!scoped.value && row.task) return t('shell.palette.hint.actions')
   if (scoped.value && !field.value && row.field) return t('shell.palette.hint.choose')
   return null
 }
 const enterLabel = (row) => {
   if (formMode.value) return null
-  if (!scoped.value) return row.task ? t('shell.palette.hint.open') : row.form ? t('shell.paletteForm.fill') : null
+  if (!scoped.value)
+    return row.task ? t('shell.palette.hint.open') : row.form ? t('shell.paletteForm.fill') : null
   return field.value ? t('shell.palette.hint.apply') : null
 }
 </script>

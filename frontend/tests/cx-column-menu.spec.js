@@ -18,7 +18,9 @@ vi.mock('naive-ui', async () => {
 
 const remove = vi.fn()
 const update = vi.fn(() => Promise.resolve({ data: {} }))
-vi.mock('@/api', () => ({ columns: { remove: (...a) => remove(...a), update: (...a) => update(...a) } }))
+vi.mock('@/api', () => ({
+  columns: { remove: (...a) => remove(...a), update: (...a) => update(...a) },
+}))
 
 const { default: ColumnHeader } = await import('@/components/ColumnHeader.vue')
 

@@ -108,16 +108,45 @@ const menuBtn = ref(null)
 const menuAnchor = () => menuAt.value || menuBtn.value?.$el || null
 const menuItems = computed(() => [
   { key: 'rename', label: t('board.column.rename'), icon: CreateOutline, keys: 'col.rename' },
-  { key: 'color', label: t('board.column.color'), icon: ColorPaletteOutline, swatch: props.dcol.color || '' },
-  { key: 'done', label: t('board.column.doneToggle'), icon: CheckmarkDoneOutline, toggle: props.isDone },
+  {
+    key: 'color',
+    label: t('board.column.color'),
+    icon: ColorPaletteOutline,
+    swatch: props.dcol.color || '',
+  },
+  {
+    key: 'done',
+    label: t('board.column.doneToggle'),
+    icon: CheckmarkDoneOutline,
+    toggle: props.isDone,
+  },
   { gap: true },
-  { key: 'collapse', label: t('board.column.collapseShort'), icon: ChevronBackOutline, keys: 'view.collapse' },
+  {
+    key: 'collapse',
+    label: t('board.column.collapseShort'),
+    icon: ChevronBackOutline,
+    keys: 'view.collapse',
+  },
   ...(props.first
     ? []
-    : [{ key: 'moveLeft', label: t('board.column.moveLeft'), icon: ArrowBackOutline, keys: 'col.moveLeft' }]),
+    : [
+        {
+          key: 'moveLeft',
+          label: t('board.column.moveLeft'),
+          icon: ArrowBackOutline,
+          keys: 'col.moveLeft',
+        },
+      ]),
   ...(props.last
     ? []
-    : [{ key: 'moveRight', label: t('board.column.moveRight'), icon: ArrowForwardOutline, keys: 'col.moveRight' }]),
+    : [
+        {
+          key: 'moveRight',
+          label: t('board.column.moveRight'),
+          icon: ArrowForwardOutline,
+          keys: 'col.moveRight',
+        },
+      ]),
   { key: 'addRight', label: t('board.column.addRight'), icon: AddOutline },
   { gap: true },
   {
@@ -249,9 +278,12 @@ defineExpose({ startRename, openMenu })
          and a tag lane's caption is whatever the reader named the tag. -->
     <n-tooltip v-else-if="canEdit" placement="bottom-start" :delay="700" :show-arrow="false">
       <template #trigger>
-        <span class="col-title col-drag can-rename" :aria-label="dcol.name" @dblclick="startRename">{{
-          dcol.name
-        }}</span>
+        <span
+          class="col-title col-drag can-rename"
+          :aria-label="dcol.name"
+          @dblclick="startRename"
+          >{{ dcol.name }}</span
+        >
       </template>
       <span class="ch-tip">
         {{ t('board.column.renameHint') }}

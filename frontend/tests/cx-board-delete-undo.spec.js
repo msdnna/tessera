@@ -25,7 +25,11 @@ vi.mock('vue-router', () => ({
 const removeBoard = vi.fn(() => Promise.resolve({}))
 const restoreBoard = vi.fn(() => Promise.resolve({ data: {} }))
 vi.mock('@/api', () => ({
-  projects: { remove: vi.fn(), update: vi.fn(), boards: vi.fn(() => Promise.resolve({ data: [] })) },
+  projects: {
+    remove: vi.fn(),
+    update: vi.fn(),
+    boards: vi.fn(() => Promise.resolve({ data: [] })),
+  },
   boards: {
     remove: (...a) => removeBoard(...a),
     restore: (...a) => restoreBoard(...a),

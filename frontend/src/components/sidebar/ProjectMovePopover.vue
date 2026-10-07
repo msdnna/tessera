@@ -89,7 +89,9 @@ async function submit() {
     emit('update:show', false)
     const stripped = res.data?.stripped_assignees || 0
     message.success(
-      stripped > 0 ? t('project.transfer.doneStripped', { n: stripped }) : t('project.transfer.done'),
+      stripped > 0
+        ? t('project.transfer.doneStripped', { n: stripped })
+        : t('project.transfer.done'),
     )
     // The project just left the current workspace — if a board of it is open,
     // it no longer belongs here, so return home. Then refresh the tree.
@@ -140,14 +142,21 @@ async function submit() {
           :aria-selected="w.id === picked"
           @click="picked = w.id"
         >
-          <span class="mv-ava" :style="{ background: hueGrad(tileColor(w)) }">{{ tileLabel(w) }}</span>
+          <span class="mv-ava" :style="{ background: hueGrad(tileColor(w)) }">{{
+            tileLabel(w)
+          }}</span>
           <span class="mv-text">
             <span class="mv-name">{{ workspaceName(w) }}</span>
             <span v-if="w.my_role === 'owner' || w.my_role === 'admin'" class="mv-meta">{{
               t('project.transfer.youAdmin')
             }}</span>
           </span>
-          <n-icon v-if="w.id === picked" :component="CheckmarkOutline" :size="16" class="grad-icon" />
+          <n-icon
+            v-if="w.id === picked"
+            :component="CheckmarkOutline"
+            :size="16"
+            class="grad-icon"
+          />
         </div>
       </div>
     </FormField>

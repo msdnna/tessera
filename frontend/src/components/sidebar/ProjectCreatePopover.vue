@@ -69,9 +69,13 @@ function onSlugInput(e) {
   slugError.value = ''
 }
 
-const disabled = computed(() => !name.value.trim() || (slugTouched.value && !preview.value) || !!slugError.value)
+const disabled = computed(
+  () => !name.value.trim() || (slugTouched.value && !preview.value) || !!slugError.value,
+)
 const subtitle = computed(() =>
-  props.groupName ? t('shell.projectForm.inGroup', { group: props.groupName }) : t('shell.projectForm.atRoot'),
+  props.groupName
+    ? t('shell.projectForm.inGroup', { group: props.groupName })
+    : t('shell.projectForm.atRoot'),
 )
 
 let aborted = false
@@ -160,7 +164,13 @@ function abort() {
       />
     </FormField>
     <FormField :label="t('common.picker.label')">
-      <ColorIconPicker v-model:icon="icon" v-model:color="color" :name="name" set="project" allow-upload />
+      <ColorIconPicker
+        v-model:icon="icon"
+        v-model:color="color"
+        :name="name"
+        set="project"
+        allow-upload
+      />
     </FormField>
   </PopoverForm>
 </template>

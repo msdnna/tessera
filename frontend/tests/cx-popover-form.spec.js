@@ -6,7 +6,13 @@ import PopoverForm from '@/components/kit/PopoverForm.vue'
 
 async function open(props = {}) {
   const w = mount(PopoverForm, {
-    props: { show: false, title: 'Новая доска', primary: 'Создать', anchor: () => ({ x: 0, y: 0 }), ...props },
+    props: {
+      show: false,
+      title: 'Новая доска',
+      primary: 'Создать',
+      anchor: () => ({ x: 0, y: 0 }),
+      ...props,
+    },
     slots: { default: '<input class="kf-input" data-testid="name" />' },
     attachTo: document.body,
   })
@@ -17,7 +23,9 @@ async function open(props = {}) {
 }
 const field = () => document.body.querySelector('[data-testid="name"]')
 const key = (k, extra = {}) =>
-  field().dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...extra }))
+  field().dispatchEvent(
+    new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...extra }),
+  )
 
 afterEach(() => {
   document.body.innerHTML = ''

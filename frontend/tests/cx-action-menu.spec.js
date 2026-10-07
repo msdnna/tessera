@@ -9,7 +9,12 @@ const ITEMS = [
   { key: 'rename', label: 'Переименовать', keys: 'row.rename' },
   { key: 'soon', label: 'Архивировать', stub: 3005 },
   { gap: true },
-  { key: 'delete', label: 'Удалить проект', danger: true, confirm: { title: 'Точно удалить?', sub: 'без возврата' } },
+  {
+    key: 'delete',
+    label: 'Удалить проект',
+    danger: true,
+    confirm: { title: 'Точно удалить?', sub: 'без возврата' },
+  },
 ]
 
 async function open(items = ITEMS) {
@@ -23,7 +28,9 @@ async function open(items = ITEMS) {
 }
 const menu = () => document.body.querySelector('[data-testid="action-menu"]')
 const key = (k, extra = {}) =>
-  menu().dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...extra }))
+  menu().dispatchEvent(
+    new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...extra }),
+  )
 
 afterEach(() => {
   vi.useRealTimers()

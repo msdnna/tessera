@@ -26,7 +26,13 @@ useOverlayBack(toRef(props, 'show'), close)
   <Teleport to="body">
     <transition name="bs">
       <div v-if="open" class="bs-scrim" @click.self="close">
-        <div class="bs kit-sheet" :class="{ full }" role="dialog" aria-modal="true" :data-testid="testid">
+        <div
+          class="bs kit-sheet"
+          :class="{ full }"
+          role="dialog"
+          aria-modal="true"
+          :data-testid="testid"
+        >
           <span class="bs-handle" aria-hidden="true" />
           <div v-if="title || subtitle" class="bs-head">
             <div class="bs-title">{{ title }}</div>

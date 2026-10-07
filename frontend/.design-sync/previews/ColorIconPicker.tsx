@@ -1,7 +1,9 @@
 import { ColorIconPicker } from '@tessera/design-system'
 
 const Surface = ({ children }) => (
-  <div style={{ width: 316, padding: 16, borderRadius: 16, background: 'var(--t-pop)' }}>{children}</div>
+  <div style={{ width: 316, padding: 16, borderRadius: 16, background: 'var(--t-pop)' }}>
+    {children}
+  </div>
 )
 
 export const Project = () => (

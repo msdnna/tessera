@@ -44,10 +44,16 @@ const customLabel = ref('')
 // Computed, not constants — a module-level list of labels would freeze at the
 // language of the first render (pitfall 1 of #2799).
 const unitOptions = computed(() =>
-  ['time', 'points', 'custom'].map((value) => ({ label: t(`task.estimate.config.unitOption.${value}`), value })),
+  ['time', 'points', 'custom'].map((value) => ({
+    label: t(`task.estimate.config.unitOption.${value}`),
+    value,
+  })),
 )
 const scaleOptions = computed(() =>
-  ['fibonacci', 'tshirt', 'linear'].map((value) => ({ label: t(`task.estimate.config.scaleOption.${value}`), value })),
+  ['fibonacci', 'tshirt', 'linear'].map((value) => ({
+    label: t(`task.estimate.config.scaleOption.${value}`),
+    value,
+  })),
 )
 
 // Seed the form from the stored value whenever it opens.
@@ -71,7 +77,11 @@ const inheritLabel = computed(() => {
   const cfg = props.inherited || DEFAULT_ESTIMATION
   const u = unitName(cfg)
   if (cfg.unit === 'time')
-    return t('task.estimate.config.inheritTime', { unit: u, hours: cfg.hours_per_day || 8, days: cfg.days_per_week || 5 })
+    return t('task.estimate.config.inheritTime', {
+      unit: u,
+      hours: cfg.hours_per_day || 8,
+      days: cfg.days_per_week || 5,
+    })
   return u
 })
 
@@ -103,7 +113,11 @@ function buildConfig() {
   if (inherit.value) return null
   if (unit.value === 'points') return { unit: 'points', points_scale: pointsScale.value }
   if (unit.value === 'custom') return { unit: 'custom', custom_label: customLabel.value.trim() }
-  return { unit: 'time', hours_per_day: clamp(hoursPerDay.value, 1, 24, 8), days_per_week: clamp(daysPerWeek.value, 1, 7, 5) }
+  return {
+    unit: 'time',
+    hours_per_day: clamp(hoursPerDay.value, 1, 24, 8),
+    days_per_week: clamp(daysPerWeek.value, 1, 7, 5),
+  }
 }
 
 async function save() {

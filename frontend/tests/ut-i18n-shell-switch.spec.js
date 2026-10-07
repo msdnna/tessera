@@ -116,4 +116,3 @@ describe('members modal', () => {
     expect(w.vm.roleOptions.map((o) => o.value)).toEqual(['member', 'admin'])
   })
 })
-

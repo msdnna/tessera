@@ -56,7 +56,8 @@ export function usePaletteResults() {
       const target = project || ws.projects[0]
       return target ? t('shell.paletteForm.cmdSub.board', { project: target.name }) : ''
     }
-    if (form === 'group') return t('shell.paletteForm.cmdSub.group', { space: workspaceName(ws.current) })
+    if (form === 'group')
+      return t('shell.paletteForm.cmdSub.group', { space: workspaceName(ws.current) })
     return t('shell.paletteForm.cmdSub.workspace')
   }
   const { formatDate } = useFormat()

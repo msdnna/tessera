@@ -73,7 +73,9 @@ const expanded = computed({
 const rowEl = ref(null)
 const boards = computed(() => store.boardsByProject[props.project.id] || [])
 const initials = computed(() => (props.project.name || '?').trim().slice(0, 2).toUpperCase())
-const groupName = computed(() => store.groups.find((g) => g.id === props.project.group_id)?.name || '')
+const groupName = computed(
+  () => store.groups.find((g) => g.id === props.project.group_id)?.name || '',
+)
 const boardPath = (b) => `/project/${props.project.slug}/board/${b.slug}`
 function openBoard(b) {
   router.push(boardPath(b))
@@ -293,7 +295,14 @@ const projMenuItems = computed(() => [
     icon: GitBranchOutline,
   },
   ...(showMilestones.value
-    ? [{ key: 'toggle-closed', label: t('project.menu.showClosedMilestones'), icon: EyeOutline, toggle: showClosedSprints.value }]
+    ? [
+        {
+          key: 'toggle-closed',
+          label: t('project.menu.showClosedMilestones'),
+          icon: EyeOutline,
+          toggle: showClosedSprints.value,
+        },
+      ]
     : []),
   { gap: true },
   {
@@ -314,11 +323,15 @@ const projMenuItems = computed(() => [
     confirm: {
       title: t('project.remove.armed', { name: props.project.name }),
       sub: boards.value.length
-        ? t('project.remove.armedSubBoards', { boards: t('project.remove.boards', boards.value.length) })
+        ? t('project.remove.armedSubBoards', {
+            boards: t('project.remove.boards', boards.value.length),
+          })
         : t('project.remove.armedSub'),
     },
     busy: deleting.value,
-    failed: deleteFailed.value ? { title: t('project.remove.failed'), sub: deleteFailed.value } : null,
+    failed: deleteFailed.value
+      ? { title: t('project.remove.failed'), sub: deleteFailed.value }
+      : null,
   },
 ])
 async function onProjectMenu(key, value) {
@@ -445,7 +458,13 @@ const boardMenuItems = computed(() => [
   { key: 'open', label: t('project.board.open'), icon: OpenOutline, keys: 'row.open' },
   { key: 'rename', label: t('project.board.rename'), icon: CreateOutline, keys: 'row.rename' },
   { gap: true },
-  { key: 'delete', label: t('project.board.delete'), icon: TrashOutline, danger: true, keys: 'row.delete' },
+  {
+    key: 'delete',
+    label: t('project.board.delete'),
+    icon: TrashOutline,
+    danger: true,
+    keys: 'row.delete',
+  },
 ])
 function onBoardMenu(key) {
   const b = boardMenuTarget.value

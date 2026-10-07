@@ -43,7 +43,9 @@ const { t } = useI18n()
     </div>
     <div v-if="error && suggestion" class="kf-suggest">
       {{ t('common.form.free') }}
-      <button type="button" class="kf-chip" @click="emit('suggest', suggestion)">{{ suggestion }}</button>
+      <button type="button" class="kf-chip" @click="emit('suggest', suggestion)">
+        {{ suggestion }}
+      </button>
       {{ t('common.form.or') }}
       <Kbd>{{ CAPS.altEnter }}</Kbd>
     </div>

@@ -158,7 +158,8 @@ describe('ProjectCreatePopover.vue', () => {
     const store = useWorkspacesStore()
     store.list = [{ id: 'ws1', name: 'WS', my_role: role }]
     store.currentId = 'ws1'
-    const ProjectCreatePopover = (await import('@/components/sidebar/ProjectCreatePopover.vue')).default
+    const ProjectCreatePopover = (await import('@/components/sidebar/ProjectCreatePopover.vue'))
+      .default
     const w = mount(ProjectCreatePopover, {
       props: { show: false, anchor: () => ({ x: 0, y: 0 }) },
       attachTo: document.body,
