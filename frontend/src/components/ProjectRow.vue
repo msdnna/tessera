@@ -806,7 +806,11 @@ function onBoardKey(e, b) {
         </div>
         <div v-if="addingBoard" class="row board-row new-board" data-testid="new-board-row">
           <span class="chev-spacer" />
-          <span class="bicon"><TesseraIcon name="layout-kanban" :size="15" /></span>
+          <span class="bicon"
+            ><TesseraIcon
+              :name="newBoardKind === 'list' ? 'layout-list' : 'layout-kanban'"
+              :size="15"
+          /></span>
           <InlineEdit
             ref="newBoardEditor"
             v-model="newBoardName"
