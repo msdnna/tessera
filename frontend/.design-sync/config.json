@@ -40,6 +40,12 @@
     },
     "InlineEdit": {
       "cardMode": "column"
+    },
+    "ColorIconPicker": {
+      "cardMode": "column"
+    },
+    "FormField": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"
