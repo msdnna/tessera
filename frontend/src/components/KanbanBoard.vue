@@ -32,7 +32,6 @@ import {
   ChevronDownOutline,
   FunnelOutline,
   OptionsOutline,
-  RibbonOutline,
   ArchiveOutline,
   GitBranchOutline,
 } from '@vicons/ionicons5'
@@ -77,7 +76,16 @@ import { buildLists, collapseKey } from '@/utils/boardLists'
 import { LAYOUTS, MATRIX_DEFAULTS, matrixConfig } from '@/utils/boardViews'
 import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
-import { BACKLOG_SCOPE, matchesScope, newTaskMilestoneId } from '@/utils/milestones'
+import {
+  BACKLOG_SCOPE,
+  matchesScope,
+  milestoneKey,
+  newTaskMilestoneId,
+  stagePath,
+} from '@/utils/milestones'
+import { useProjectWindowStore } from '@/stores/projectWindow'
+import StageSelect from './milestone/StageSelect.vue'
+import StageStrip from './milestone/StageStrip.vue'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
 import { moveFocus, neighbourColumn, planShift, planComplete } from '@/utils/cardNav'
@@ -311,6 +319,7 @@ const switchAvail = ref(Infinity) // px the view switch may take
 const foldFilters = ref(0) // how many filter chips (from the end) sit in «+N»
 const foldSorts = ref(false) // sort chips folded into «+N» too
 const compactGroup = ref(false) // grouping control without its caption
+const compactStage = ref(false) // stage selector without its caption and progress
 const hideChartHints = ref(false) // Gantt/timeline: its text key hints go first
 const compactChart = ref(false) // Gantt/timeline: the scale as a menu
 const hidePeople = ref(false) // the board's avatars, the very last resort
@@ -343,6 +352,7 @@ async function fitSubbar() {
     foldFilters.value = 0
     foldSorts.value = false
     compactGroup.value = false
+    compactStage.value = false
     hideChartHints.value = false
     compactChart.value = false
     hidePeople.value = false
@@ -356,6 +366,11 @@ async function fitSubbar() {
     // The switch and the chips outrank the grouping caption: drop it first.
     if (overflowing(bar)) {
       compactGroup.value = true
+      await nextTick()
+    }
+    // …and the stage selector's caption and mini progress right after (#2994).
+    if (overflowing(bar)) {
+      compactStage.value = true
       await nextTick()
     }
     if (overflowing(bar) && timelineLike.value) {
@@ -457,21 +472,119 @@ function exitArchive() {
 // board (and de-highlights the sidebar sprint node). The value is passed to the
 // API verbatim — the server resolves slug or UUID.
 const milestoneScope = computed(() => (route.query.milestone ? String(route.query.milestone) : ''))
-const milestoneScopeLabel = computed(() => {
-  const s = milestoneScope.value
-  if (!s) return ''
-  if (s === BACKLOG_SCOPE) return t('board.scope.backlog')
-  // Keyed by id, so a slug scope needs a scan (a project has few milestones).
-  return (
-    (milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)))?.title ||
-    t('board.scope.milestoneFallback')
-  )
-})
 function clearMilestoneScope() {
   const q = { ...route.query }
   delete q.milestone
   router.replace({ query: q })
+  rememberStage('')
 }
+
+// ── stage selector and strip (#2994) ──
+// The selector in the sub-toolbar replaced the removable chip: it picks one
+// stage, «Бэклог» or «Все задачи», and the pick is remembered per board (local,
+// non-critical UX state). The strip over the board shows the picked stage.
+const projectWindow = useProjectWindowStore()
+const stageSel = ref(null)
+const stageKey = (name) => `tessera_stage_${name}_${props.boardId}`
+function rememberStage(key) {
+  try {
+    if (key) localStorage.setItem(stageKey('pick'), key)
+    else localStorage.removeItem(stageKey('pick'))
+  } catch {
+    // private mode: the pick just isn't remembered
+  }
+}
+function pickStage(v) {
+  const key = typeof v === 'string' ? v : milestoneKey(v)
+  const q = { ...route.query }
+  if (key) q.milestone = key
+  else delete q.milestone
+  router.replace({ query: q })
+  rememberStage(key)
+}
+// Coming back to a board without ?milestone= puts its remembered stage back —
+// once per visit, and only a stage that is still open (or the backlog).
+let stageRestored = ''
+watch(
+  () => [props.boardId, milestonesList.value.length],
+  () => {
+    if (!props.boardId || stageRestored === props.boardId || !milestonesList.value.length) return
+    stageRestored = props.boardId
+    if (route.query.milestone || route.query.archived) return
+    let saved = ''
+    try {
+      saved = localStorage.getItem(stageKey('pick')) || ''
+    } catch {
+      saved = ''
+    }
+    if (!saved) return
+    const ok =
+      saved === BACKLOG_SCOPE ||
+      milestonesList.value.some((m) => matchesScope(m, saved) && m.state !== 'closed')
+    if (ok) router.replace({ query: { ...route.query, milestone: saved } })
+    else rememberStage('')
+  },
+)
+const stripStage = computed(() => {
+  const s = milestoneScope.value
+  if (!s || s === BACKLOG_SCOPE) return null
+  return milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)) || null
+})
+function readFlag(name) {
+  try {
+    return localStorage.getItem(stageKey(name)) === '1'
+  } catch {
+    return false
+  }
+}
+function writeFlag(name, on) {
+  try {
+    if (on) localStorage.setItem(stageKey(name), '1')
+    else localStorage.removeItem(stageKey(name))
+  } catch {
+    // ignore
+  }
+}
+const stripOpen = ref(false)
+const stripHidden = ref(false)
+watch(
+  () => `${props.boardId}`,
+  () => {
+    stripOpen.value = readFlag('strip')
+    stripHidden.value = readFlag('striphide')
+  },
+  { immediate: true },
+)
+function setStripOpen(v) {
+  stripOpen.value = v
+  writeFlag('strip', v)
+}
+function hideStrip() {
+  stripHidden.value = true
+  writeFlag('striphide', true)
+}
+function toggleStrip() {
+  if (!stripStage.value) return
+  if (stripHidden.value) {
+    stripHidden.value = false
+    writeFlag('striphide', false)
+    return
+  }
+  setStripOpen(!stripOpen.value)
+}
+const stripRev = ref(0)
+// The strip's «18 из 31» comes from the stage rollups: when the board's tasks
+// change under a picked stage, re-read them (debounced — one request per burst).
+let stripTimer = 0
+watch(allTasks, () => {
+  if (!stripStage.value) return
+  clearTimeout(stripTimer)
+  stripTimer = setTimeout(() => {
+    reloadMilestones()
+    stripRev.value++
+  }, 800)
+})
+onBeforeUnmount(() => clearTimeout(stripTimer))
 // ── composer facets: filters, multi-level sort, chips and the add menu ──
 // The facet layer (filter state + the menus and chips over it) lives in
 // `useBoardFacets`; grouping stays here because it builds the board's columns.
@@ -1766,6 +1879,13 @@ useShortcuts(
     'views.update': () => bv.update(),
     'views.saveAs': () => bv.requestSaveAs(''),
     'views.reset': () => bv.reset(),
+    // The stage selector, the strip, and the page of the stage in front (#2994).
+    'board.stage': () => stageSel.value?.open(),
+    'board.stageStrip': () => toggleStrip(),
+    'nav.goStage': () => {
+      const p = wsStore.projects.find((x) => x.id === board.value?.project_id)
+      if (stripStage.value && p) router.push(stagePath(p.slug, stripStage.value))
+    },
   },
   { when: () => !!board.value && !isMobile.value },
 )
@@ -2312,21 +2432,6 @@ async function restoreFromArchive(taskId) {
                 ×
               </button>
             </span>
-            <span
-              v-if="milestoneScope"
-              class="facet facet-accent"
-              :title="t('board.scope.milestoneTitle')"
-            >
-              <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
-              {{ milestoneScopeLabel }}
-              <button
-                class="facet-x"
-                :title="t('board.scope.milestoneClear')"
-                @click.stop="clearMilestoneScope"
-              >
-                ×
-              </button>
-            </span>
 
             <!-- Sort chips: click toggles direction, drag reorders primary/secondary. The
                  touch trio keeps a swipe across the bar from reordering sort
@@ -2475,6 +2580,20 @@ async function restoreFromArchive(taskId) {
           </button>
         </n-dropdown>
 
+        <!-- Stage selector (#2994): one stage, «Бэклог» or «Все задачи» — in place
+             of the scope chip that used to sit among the filters. Hidden while the
+             project has no stages at all. -->
+        <StageSelect
+          v-if="milestonesList.length || milestoneScope"
+          ref="stageSel"
+          :stages="milestonesList"
+          :scope="milestoneScope"
+          :compact="isMobile || compactStage"
+          :disabled="archivedMode"
+          @pick="pickStage"
+          @manage="projectWindow.open(board.project_id, 'stages')"
+        />
+
         <!-- Gantt / timeline: scale, today, key hints, view settings (v2, #2959) -->
         <ChartControls
           v-if="timelineLike"
@@ -2546,6 +2665,21 @@ async function restoreFromArchive(taskId) {
           </n-tooltip>
         </div>
       </div>
+
+      <!-- The stage strip (#2994): the picked stage's goals and progress between
+           the sub-toolbar and the columns. -->
+      <StageStrip
+        v-if="stripStage && !stripHidden && !archivedMode"
+        :stage="stripStage"
+        :project-slug="wsStore.projects.find((p) => p.id === board.project_id)?.slug || ''"
+        :open="stripOpen"
+        :estimation="wsStore.estimationFor(board.project_id)"
+        :mobile="isMobile"
+        :revision="stripRev"
+        @update:open="setStripOpen"
+        @hide="hideStrip"
+        @changed="reloadMilestones"
+      />
 
       <!-- The board and its «Вид доски» panel side by side (#2986): the panel is
            docked, not floating — whatever the view, it gives up the width. -->
@@ -3080,11 +3214,6 @@ async function restoreFromArchive(taskId) {
 .gc-val {
   font-weight: 600;
   color: var(--t-text1);
-}
-/* Sprint scope chip: the accent capsule like any filter. */
-.facet-accent .facet-ic {
-  color: var(--t-primary);
-  opacity: 1;
 }
 /* Archive scope chip: amber capsule. */
 .facet-archive {
