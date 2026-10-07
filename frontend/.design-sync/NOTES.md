@@ -126,6 +126,16 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   published at runtime by `themeVars()` (styles/tokens.js), not by a stylesheet:
   they are in `_ds_bundle.js`, not `_ds_bundle.css`. Validate conventions names
   against the bundle text for them.
+- The interaction kit (#2969: InlineEdit, PopoverForm, FormField, ActionMenu,
+  UndoToast, ColorIconPicker) renders in its DS-only modes: PopoverForm/ActionMenu
+  `inline` (no anchor, no teleport), InlineEdit `teleportHint: false` (hint
+  absolutely under the field, not on `body`). A change to the anchored/teleported
+  path in the SFC is invisible in the cards; check the app too. ActionMenu reacts
+  to `arm` with `immediate` — the card mounts it already open.
+- `UndoToast`, `InlineEdit`, `ColorIconPicker`, `FormField` are `cardMode: column`
+  (their stories are wider than a grid cell — validate flags `GRID_OVERFLOW`).
+- `design-system/dist/` is NOT rebuilt by the driver: run `corepack yarn build:ds`
+  after any SFC change, or the driver happily re-bundles the stale dist.
 - The mermaid stub relies on RichContent wrapping `initialize()` in try/catch.
 - Converter deps are network-installed from npm (react@19 latest at sync time).
 
@@ -139,6 +149,11 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   consecutive runs) — a different card each time, so it is not a render failure.
   The driver's verdict then reads `validate: false`; re-run `package-validate.mjs`
   standalone on the same build until it exits 0 (1–3 tries), then capture/upload.
+  Since 2026-10-07 (#2969 re-sync) the staged copies are patched locally instead:
+  `sed -i 's/timeout: 15000 }/timeout: 45000 }/' .ds-sync/package-validate.mjs`
+  and `s/timeout: 15_000 }/timeout: 45_000 }/` in `.ds-sync/package-capture.mjs`
+  (sheet pages). Re-apply after every re-copy of the scripts — with it the driver
+  ran clean three times in a row.
   Keep the bundle small (mermaid stub, minify) for this reason too.
 - The same link slows the upload: `write_files` of the 3.2 MB `_ds_bundle.js` can
   hit the tool's 60 s client timeout (2026-10-06). Upload it alone in its own call
