@@ -76,7 +76,9 @@ export function useAnchoredPanel({
     // A popover's own pickers (Naive selects, menus, a nested icon search) live
     // in teleported layers: clicking them is not "outside".
     const el = target instanceof Element ? target : target.parentElement
-    return !!el?.closest('.n-popover, .n-dropdown-menu, .n-modal-container, .n-base-select-menu')
+    return !!el?.closest(
+      '.n-popover, .n-dropdown-menu, .n-modal-container, .n-base-select-menu, .v-binder-follower-container',
+    )
   }
 
   function onPointerDown(e) {

@@ -11,7 +11,7 @@ import { DEFAULT_ESTIMATION } from '@/utils/estimation'
 import { workspaceName } from '@/utils/defaultNames'
 import MembersModal from './MembersModal.vue'
 import GitLabModal from './GitLabModal.vue'
-import EstimationModal from './EstimationModal.vue'
+import EstimationPopover from './EstimationPopover.vue'
 import WorkspaceCommandsModal from './WorkspaceCommandsModal.vue'
 import BackgroundJobsModal from './BackgroundJobsModal.vue'
 import WorkspaceFormPopover from './rail/WorkspaceFormPopover.vue'
@@ -41,7 +41,7 @@ const create = slot('create')
 const del = slot('delete')
 
 // Browser Back closes these modals instead of leaving the board.
-for (const s of [members, gitlab, estimation, commands, jobs])
+for (const s of [members, gitlab, commands, jobs])
   useOverlayBack(s, () => (s.value = false))
 
 const target = computed(() => dialogs.target || ws.current)
@@ -58,8 +58,11 @@ const offset = computed(() => (onRail.value ? { x: 8, y: -8 } : { x: 0, y: 6 }))
 <template>
   <MembersModal v-model:show="members" :ws-id="ws.currentId" />
   <GitLabModal v-model:show="gitlab" :ws-id="ws.currentId" />
-  <EstimationModal
+  <EstimationPopover
     v-model:show="estimation"
+    :anchor="anchorEl"
+    :placement="placement"
+    :offset="offset"
     scope="workspace"
     :target-id="ws.currentId"
     :name="workspaceName(ws.current)"

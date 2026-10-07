@@ -11,7 +11,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { NIcon, NDropdown, NTooltip, NPopconfirm } from 'naive-ui'
 import { AddOutline, HelpCircleOutline, LogInOutline } from '@vicons/ionicons5'
 import BrandLogo from '@/components/BrandLogo.vue'
-import ServerEditModal from '@/components/ServerEditModal.vue'
+import ServerFormPopover from './ServerFormPopover.vue'
 import RailTile from './RailTile.vue'
 import RailAppearance from './RailAppearance.vue'
 import VersionBadge from '@/components/VersionBadge.vue'
@@ -112,7 +112,8 @@ function openMenu(kind, target, e) {
   if (!menuOptions.value.length) menu.value.show = false
 }
 
-const serverEdit = ref({ show: false, server: null })
+// The server form opens at the door that asked: the server tile, or «+».
+const serverEdit = ref({ show: false, server: null, anchor: null })
 
 // Removing a profile purges its namespace — the refresh token included — and, if
 // it was the last one, puts a fresh profile pointed at the public default in its
@@ -140,7 +141,12 @@ function onMenu(key) {
   const { kind, target } = menu.value
   if (key === 'integrations') return // a submenu head
   menu.value.show = false
-  if (key === 'server-edit') serverEdit.value = { show: true, server: target }
+  if (key === 'server-edit')
+    serverEdit.value = {
+      show: true,
+      server: target,
+      anchor: railEl.value?.querySelector(`[data-server="${CSS.escape(target.id)}"]`) || null,
+    }
   else if (key === 'server-remove') askRemove(target)
   else if (kind === 'ws') wsMenu.select(key)
 }
@@ -149,7 +155,7 @@ function openCreate() {
   dialogs.open('create', null, addBtn.value)
 }
 function onAdd(key) {
-  if (key === 'server-add') serverEdit.value = { show: true, server: null }
+  if (key === 'server-add') serverEdit.value = { show: true, server: null, anchor: addBtn.value }
   else openCreate()
 }
 
@@ -163,8 +169,8 @@ function onServerSave(patch) {
   if (serverEdit.value.server) servers.update(serverEdit.value.server.id, patch)
   else servers.add(patch)
 }
-// The modal's own «Удалить сервер» confirms in place (ServerEditModal), so by the
-// time it reaches here the answer is already yes.
+// The form's own «Удалить сервер» takes two presses (ServerFormPopover), so by
+// the time it reaches here the answer is already yes.
 function onServerRemove(id) {
   serverEdit.value.show = false
   servers.remove(id)
@@ -376,10 +382,11 @@ function onRailKey(e) {
       {{ t('shell.servers.removeConfirm', { name: removeAsk.name }) }}
     </n-popconfirm>
 
-    <ServerEditModal
+    <ServerFormPopover
       v-if="servers.enabled"
       v-model:show="serverEdit.show"
       :server="serverEdit.server"
+      :anchor="() => serverEdit.anchor || addBtn"
       @save="onServerSave"
       @remove="onServerRemove"
     />

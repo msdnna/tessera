@@ -14,6 +14,13 @@
   font: inherit;
   font-size: 13.5px;
 }
+.kf-input.kf-area {
+  height: auto;
+  min-height: 64px;
+  padding: 8px 10px;
+  resize: vertical;
+  line-height: 1.45;
+}
 .kf-input::placeholder {
   color: var(--t-placeholder);
 }

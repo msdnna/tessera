@@ -13,6 +13,8 @@
 // свободный» (emits `suggest`), Tab / ⇧Tab cycle inside, Esc closes — or, while
 // `busy`, emits `abort` so the owner can cancel the request. An owner opened
 // from a menu listens to `escape` to step back to it instead of closing.
+// The `foot` slot replaces the key hint on the footer's left (a secondary
+// action — «Удалить сервер»).
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Kbd from '@/components/Kbd.vue'
@@ -175,7 +177,8 @@ const sheetShow = computed({
         <slot />
       </div>
       <div class="pf-foot">
-        <span v-if="hintParts" class="pf-hint">
+        <slot v-if="$slots.foot" name="foot" />
+        <span v-else-if="hintParts" class="pf-hint">
           <Kbd v-if="hintParts.cap">{{ hintParts.cap }}</Kbd>
           {{ hintParts.text }}
         </span>

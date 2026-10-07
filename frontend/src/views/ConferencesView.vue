@@ -17,10 +17,7 @@ import { useI18n } from 'vue-i18n'
 import {
   NButton,
   NIcon,
-  NInput,
-  NModal,
   NDatePicker,
-  NInputNumber,
   NRadioGroup,
   NRadioButton,
   NPopconfirm,
@@ -45,6 +42,8 @@ import { useRealtime } from '@/composables/useRealtime'
 import { hueGrad, tagPillBg } from '@/utils/gradient'
 import { canModerateConference } from '@/utils/confLobby'
 import EmptyState from '@/components/EmptyState.vue'
+import PopoverForm from '@/components/kit/PopoverForm.vue'
+import FormField from '@/components/kit/FormField.vue'
 import ConferenceRoom from '@/components/conference/ConferenceRoom.vue'
 import ConferenceRecordings from '@/components/conference/ConferenceRecordings.vue'
 
@@ -258,6 +257,7 @@ async function inviteOne(userId) {
 // number in the box is the number that will apply — a blank field that silently
 // becomes 30 is how people find out about a retention policy by losing a file.
 const RECORDING_TTL_DEFAULT = 30
+const scheduleBtn = ref(null)
 const dlg = ref({
   show: false,
   saving: false,
@@ -290,7 +290,7 @@ async function submit() {
       title,
       description: dlg.value.description.trim(),
       scheduled_at: dlg.value.at ? new Date(dlg.value.at).toISOString() : null,
-      // Cleared field (n-input-number answers null) falls back to the server's
+      // A cleared field (v-model.number answers '') falls back to the server's
       // own default rather than being sent as 0 — «хранить вечно» is a decision,
       // not something an empty box should make on the user's behalf.
       recording_ttl_days: Number.isFinite(dlg.value.ttl) ? dlg.value.ttl : RECORDING_TTL_DEFAULT,
@@ -502,6 +502,7 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
             <n-radio-button value="ended">{{ $t('conferences.filter.ended') }}</n-radio-button>
           </n-radio-group>
           <n-button
+            ref="scheduleBtn"
             type="primary"
             size="small"
             :disabled="!ws.currentId"
@@ -729,29 +730,40 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
       </n-spin>
     </template>
 
-    <!-- SCHEDULE -->
-    <!-- style, not a scoped rule: naive teleports the modal out of this
-         component, where scoped CSS no longer reaches it. -->
-    <n-modal
+    <!-- SCHEDULE: a popover form at «Запланировать» (v2 interaction model,
+         #2969 / #2983) — it replaced the modal. -->
+    <PopoverForm
       v-model:show="dlg.show"
-      preset="card"
-      style="max-width: 460px"
-      :bordered="false"
+      :anchor="() => scheduleBtn?.$el || null"
+      placement="bottom-end"
+      :offset="{ x: 0, y: 6 }"
+      :width="380"
       :title="$t('conferences.create.title')"
+      :primary="$t('conferences.create.submit')"
+      :busy-label="$t('common.form.saving')"
+      :busy="dlg.saving"
+      :disabled="!dlg.title.trim()"
+      hint="tab"
+      testid="conference"
+      @submit="submit"
     >
-      <div class="form">
-        <n-input
-          v-model:value="dlg.title"
+      <FormField :label="$t('conferences.create.name')">
+        <input
+          v-model="dlg.title"
+          class="kf-input"
           :placeholder="$t('conferences.create.namePlaceholder')"
           data-testid="conference-title"
-          @keyup.enter="submit"
         />
-        <n-input
-          v-model:value="dlg.description"
-          type="textarea"
-          :rows="3"
+      </FormField>
+      <FormField>
+        <textarea
+          v-model="dlg.description"
+          class="kf-input kf-area"
+          rows="3"
           :placeholder="$t('conferences.create.descriptionPlaceholder')"
         />
+      </FormField>
+      <FormField :label="$t('conferences.create.at')" :message="$t('conferences.create.atHint')">
         <n-date-picker
           v-model:value="dlg.at"
           type="datetime"
@@ -760,32 +772,22 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
           :format="dateTimePattern"
           :placeholder="$t('conferences.create.at')"
         />
-        <div class="hint">{{ $t('conferences.create.atHint') }}</div>
-        <!-- Retention for this call's recordings (#2877). It lives in the
-             scheduling dialog because it is a property of the meeting, and
-             because the moment to decide how long a recording is kept is before
-             one exists — not while looking at the file you are about to lose. -->
-        <n-input-number v-model:value="dlg.ttl" :min="0" :max="3650" data-testid="conference-ttl">
-          <template #prefix>{{ $t('conferences.create.ttl') }}</template>
-        </n-input-number>
-        <div class="hint">{{ $t('conferences.create.ttlHint') }}</div>
-      </div>
-      <template #footer>
-        <div class="foot">
-          <n-button quaternary @click="dlg.show = false">
-            {{ $t('conferences.create.cancel') }}
-          </n-button>
-          <n-button
-            type="primary"
-            :loading="dlg.saving"
-            data-testid="conference-submit"
-            @click="submit"
-          >
-            {{ $t('conferences.create.submit') }}
-          </n-button>
-        </div>
-      </template>
-    </n-modal>
+      </FormField>
+      <!-- Retention for this call's recordings (#2877). It lives in the
+           scheduling form because it is a property of the meeting, and
+           because the moment to decide how long a recording is kept is before
+           one exists — not while looking at the file you are about to lose. -->
+      <FormField :label="$t('conferences.create.ttl')" :message="$t('conferences.create.ttlHint')">
+        <input
+          v-model.number="dlg.ttl"
+          class="kf-input"
+          type="number"
+          min="0"
+          max="3650"
+          data-testid="conference-ttl"
+        />
+      </FormField>
+    </PopoverForm>
   </div>
 </template>
 

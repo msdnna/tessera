@@ -36,7 +36,7 @@ import { useTourStore } from '@/stores/tour'
 import { useBoardViewStore } from '@/stores/boardView'
 import ProjectIcon from './ProjectIcon.vue'
 import TesseraIcon from './TesseraIcon.vue'
-import EstimationModal from './EstimationModal.vue'
+import EstimationPopover from './EstimationPopover.vue'
 import MilestoneManager from './MilestoneManager.vue'
 import InlineEdit from './kit/InlineEdit.vue'
 import ActionMenu from './kit/ActionMenu.vue'
@@ -854,8 +854,9 @@ function onBoardKey(e, b) {
       @escape="formBack"
     />
 
-    <EstimationModal
+    <EstimationPopover
       v-model:show="estShow"
+      :anchor="rowAnchor"
       scope="project"
       :target-id="project.id"
       :name="project.name"

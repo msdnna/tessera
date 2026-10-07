@@ -137,7 +137,8 @@
     "insecureNote": "The setting is saved but has no effect yet: certificate checking can only be turned off for the whole application — that is a task of its own.",
     "errUrl": "That does not look like a server address",
     "errUrlScheme": "The address must start with http:// or https://",
-    "signedOut": "Sign-in required"
+    "signedOut": "Sign-in required",
+    "removeArmed": "Really remove? Press again"
   },
   "spotlight": {
     "aria": "Hint",
