@@ -40,6 +40,11 @@ export const FEATURE_STUBS = {
   'admin.roles': 3063,
   'admin.userSpaces': 3078,
   'admin.csv': 3080,
+  // Documents (#3106): the trash (#3006), a document's stage (#3044), template
+  // categories (#3045).
+  'documents.trash': 3006,
+  'documents.milestone': 3044,
+  'documents.templateCategories': 3045,
 }
 
 export function stubTask(key) {

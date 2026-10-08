@@ -36,7 +36,8 @@ test('документ: сохранение шаблона и создание 
   const created = page.waitForResponse(
     (r) => /\/document-templates$/.test(r.url()) && r.request().method() === 'POST',
   )
-  await page.getByTestId('doc-save-template').click()
+  await page.getByTestId('doc-actions').click()
+  await page.getByTestId('doc-action-saveTemplate').click()
   expect((await created).status()).toBe(201)
   await page.getByTestId('doc-back').click()
 

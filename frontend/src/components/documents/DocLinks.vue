@@ -438,8 +438,11 @@ function approvalMeta(a) {
   color: var(--t-text2);
 }
 .panel-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .grow {
   flex: 1;
@@ -549,19 +552,18 @@ function approvalMeta(a) {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  padding: 10px 10px 10px 12px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 12px;
+  background: var(--t-card);
 }
-/* The open route takes the accent; closed ones stay neutral — the panel is read
-   to find out what is being asked of you now. */
+/* The open route takes the accent strip (v2, задача 3106); closed ones stay neutral —
+   the panel is read to find out what is being asked of you now. */
 .approval.pending {
-  border-color: transparent;
   background:
-    linear-gradient(var(--t-surface), var(--t-surface)) padding-box,
-    var(--t-accent-grad) border-box;
-  border: 1px solid transparent;
+    linear-gradient(var(--t-card), var(--t-card)) padding-box,
+    var(--t-accent-grad-vert) border-box;
 }
 .approval-head {
   display: flex;
@@ -612,7 +614,7 @@ function approvalMeta(a) {
   flex-wrap: wrap;
   font-size: 11px;
   padding-left: 6px;
-  border-left: 2px solid var(--t-border);
+  border-left: 2px solid var(--t-ctl);
 }
 .step.signed,
 .step.current {
@@ -624,7 +626,7 @@ function approvalMeta(a) {
 .step.rejected {
   border-left-color: transparent;
   background:
-    linear-gradient(var(--t-surface), var(--t-surface)) padding-box,
+    linear-gradient(var(--t-card), var(--t-card)) padding-box,
     var(--t-error-grad) border-box;
 }
 .step-name {

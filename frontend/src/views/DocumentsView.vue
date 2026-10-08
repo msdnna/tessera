@@ -2,30 +2,27 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import {
-  NAlert,
-  NButton,
-  NDropdown,
-  NIcon,
-  NInput,
-  NModal,
-  NSpin,
-  NText,
-  useMessage,
-} from 'naive-ui'
+import { NIcon, NSpin, NTooltip, useMessage } from 'naive-ui'
 import {
   AddOutline,
+  AlertCircleOutline,
   ArrowBackOutline,
   BookmarkOutline,
   ChatbubbleEllipsesOutline,
+  ChevronForwardOutline,
   CloudUploadOutline,
   DocumentsOutline,
+  DocumentTextOutline,
   DownloadOutline,
-  EllipsisHorizontalOutline,
+  EllipsisHorizontal,
+  FolderOutline,
+  GitNetworkOutline,
   GridOutline,
   LinkOutline,
   ListOutline,
   TimeOutline,
+  TrailSignOutline,
+  TrashOutline,
 } from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
@@ -35,6 +32,8 @@ import DocHistory from '@/components/documents/DocHistory.vue'
 import DocLinks from '@/components/documents/DocLinks.vue'
 import DocTemplates from '@/components/documents/DocTemplates.vue'
 import DocToc from '@/components/documents/DocToc.vue'
+import DocTree from '@/components/documents/DocTree.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
 import { fileToTemplate } from '@/utils/docImport'
 import {
   EXPORT_LABELS,
@@ -60,6 +59,9 @@ import { useDocLinks } from '@/composables/useDocLinks'
 import { useDocPresence } from '@/composables/useDocPresence'
 import { useDocVersions } from '@/composables/useDocVersions'
 import { useFormat } from '@/composables/useFormat'
+import { sGet, sSet } from '@/utils/serverStorage'
+import { stubTask } from '@/utils/featureStubs'
+import { workspaceName } from '@/utils/defaultNames'
 import { toDocJSON } from '@/utils/docSchema'
 import { blockNodeById, quoteFromBlock } from '@/utils/docComments'
 import { docOutline, headingForBlock } from '@/utils/docToc'
@@ -68,7 +70,7 @@ const message = useMessage()
 const { t } = useI18n()
 const wsStore = useWorkspacesStore()
 const theme = useThemeStore()
-const { formatDate } = useFormat()
+const { formatDate, formatDateTime } = useFormat()
 const route = useRoute()
 const router = useRouter()
 
@@ -826,6 +828,19 @@ const tplBusy = ref('')
 const tplError = ref('')
 
 const galleryCards = computed(() => [...savedTemplates.value, ...builtinCards()])
+// The count on the tree's «Шаблоны» row is known once the gallery has loaded;
+// until then the row shows none rather than a request on every visit.
+const tplLoaded = ref(false)
+// Where a document made from the gallery lands — the folder the grid is in.
+const parentTitle = computed(() =>
+  trail.value.length ? trail.value[trail.value.length - 1].title : wsLabel.value,
+)
+
+// «Пустой документ» — the gallery's first tile, the same create as «Новый».
+async function createFromGallery() {
+  templatesOpen.value = false
+  await create()
+}
 
 async function openTemplates() {
   templatesOpen.value = true
@@ -835,6 +850,7 @@ async function openTemplates() {
   try {
     const res = await docsApi.templates(wsStore.currentId)
     savedTemplates.value = res.data || []
+    tplLoaded.value = true
   } catch (e) {
     tplError.value = e.message
   } finally {
@@ -942,48 +958,75 @@ async function rename() {
   }
 }
 
-// Delete / new nested doc used to sit as bare buttons under the text, where they
-// were in the way of reading (#2727). They live in the header's «Действия» menu
-// now — with the delete confirmation moved to a dialog, because a menu item has
-// no anchor a popconfirm could hang off.
+// The document's «⋯» menu (v2, #3106): nested document, the children, save as
+// template, export — and deletion as the menu's two-step item instead of a
+// dialog: a document is deleted for good (no trash yet — #3006), so the first
+// press arms it and names the cost, the second deletes.
+const actionsOpen = ref(false)
+const actionsAnchor = ref(null)
+const removing = ref(false)
+const removeFailed = ref('')
+function openActions(e) {
+  actionsAnchor.value = e.currentTarget
+  removeFailed.value = ''
+  actionsOpen.value = true
+}
 const docActions = computed(() => {
-  // testid on every item: the e2e suite has to reach them by something other
-  // than their wording, which is about to move into the locale files (#2799).
-  const items = [
-    {
-      key: 'nested',
-      label: t('documents.view.action.nested'),
-      props: { 'data-testid': 'doc-action-nested' },
-    },
-  ]
+  const items = [{ key: 'nested', label: t('documents.view.action.nested'), icon: AddOutline }]
   if (childCount.value)
     items.push({
       key: 'children',
       label: t('documents.view.action.children', { count: childCount.value }),
-      props: { 'data-testid': 'doc-action-children' },
+      icon: FolderOutline,
     })
-  items.push({ key: 'div', type: 'divider' })
   items.push({
+    key: 'saveTemplate',
+    label: t('documents.view.saveTemplate'),
+    icon: BookmarkOutline,
+  })
+  items.push({ heading: t('documents.view.export') })
+  for (const o of exportOptions.value)
+    items.push({
+      key: `export-${o.key}`,
+      label: o.label,
+      icon: DownloadOutline,
+      ...(exporting.value === o.key ? { busy: true, busyLabel: o.label } : {}),
+    })
+  items.push({ gap: true })
+  const remove = {
     key: 'remove',
     label: t('documents.view.action.remove'),
-    props: { 'data-testid': 'doc-action-remove' },
-  })
+    icon: TrashOutline,
+    danger: true,
+    confirm: {
+      title: t('documents.view.remove.title'),
+      sub: childCount.value
+        ? t('documents.view.remove.withChildren', { count: childCount.value })
+        : t('documents.view.remove.single'),
+    },
+  }
+  if (removing.value) remove.busy = true
+  else if (removeFailed.value)
+    remove.failed = { title: t('common.menu.failed'), sub: removeFailed.value }
+  items.push(remove)
   return items
 })
 
-function onDocAction(key) {
+async function onDocAction(key) {
   if (key === 'nested') createNested()
   else if (key === 'children') drillInto(selected.value)
-  else if (key === 'remove') removeAsk.value = true
+  else if (key === 'saveTemplate') saveAsTemplate()
+  else if (key.startsWith('export-')) exportAs(key.slice('export-'.length))
+  else if (key === 'remove') await remove()
 }
 
-const removeAsk = ref(false)
-
 async function remove() {
-  removeAsk.value = false
   if (!selected.value?.id) return
+  removing.value = true
+  removeFailed.value = ''
   try {
     await docsApi.remove(selected.value.id, childCount.value > 0)
+    actionsOpen.value = false
     cancelSave()
     closeRoom()
     comments.close()
@@ -994,7 +1037,9 @@ async function remove() {
     router.replace('/documents')
     await loadList()
   } catch (e) {
-    message.error(e.message)
+    removeFailed.value = e.message
+  } finally {
+    removing.value = false
   }
 }
 
@@ -1117,12 +1162,67 @@ const annotationLines = ref([])
 // things that are no longer side by side.
 const NARROW_PX = 900
 const narrow = ref(false)
-// The header slots (Topbar.vue) exist only when this view runs inside AppLayout;
-// a unit test mounting it bare has none, and a narrow header has no room anyway.
-// Either way the controls stay in .head instead of vanishing into a missing
-// teleport target.
-const topbarSlots = ref(false)
-const inTopbar = computed(() => topbarSlots.value && !narrow.value)
+
+/* ---- the document tree (v2, #3106) ---------------------------------------- */
+
+// The tree is a 240px column beside the documents. With a document open it has
+// to share the row with the text, the outline rail and the discussion — and the
+// text keeping its width is the older promise (#2738): on a narrow desktop the
+// tree folds away and its button floats it over the text instead.
+const rootEl = ref(null)
+const rootWidth = ref(0)
+let rootObserver = null
+const TREE_BESIDE_DOC = 1100
+const TREE_BESIDE_GRID = 720
+const treeHidden = ref(sGet('tessera_doc_tree') === '0')
+const treeFloating = ref(false)
+const treeFits = computed(
+  () => rootWidth.value >= (selected.value ? TREE_BESIDE_DOC : TREE_BESIDE_GRID),
+)
+const showTree = computed(() => !narrow.value && treeFits.value && !treeHidden.value)
+function toggleTree() {
+  if (treeFits.value) {
+    treeHidden.value = !treeHidden.value
+    sSet('tessera_doc_tree', treeHidden.value ? '0' : '1')
+    treeFloating.value = false
+  } else {
+    treeFloating.value = !treeFloating.value
+  }
+}
+watch(showTree, (on) => {
+  if (on) treeFloating.value = false
+})
+async function openFromTree(doc) {
+  treeFloating.value = false
+  if (doc?.id === selected.value?.id) return
+  trail.value = []
+  await open(doc)
+}
+async function createFromTree() {
+  treeFloating.value = false
+  trail.value = []
+  await create()
+}
+const wsLabel = computed(() => workspaceName(wsStore.current))
+
+// The open document's place: its parents, root first — the crumbs in its head.
+const ancestors = computed(() => {
+  const out = []
+  let pid = selected.value?.parent_id
+  const seen = new Set()
+  while (pid && !seen.has(pid)) {
+    seen.add(pid)
+    const p = list.value.find((d) => d.id === pid)
+    if (!p) break
+    out.unshift(p)
+    pid = p.parent_id
+  }
+  return out
+})
+const milestoneTask = stubTask('documents.milestone')
+function fmtUpdated(v) {
+  return v ? formatDateTime(v) : ''
+}
 let linkFrame = 0
 let workObserver = null
 let narrowQuery = null
@@ -1229,7 +1329,11 @@ watch(workEl, (el, prev) => {
 })
 
 onMounted(async () => {
-  topbarSlots.value = !!document.getElementById('tb-slot-left')
+  if (window.ResizeObserver && rootEl.value) {
+    rootObserver = new ResizeObserver(([e]) => (rootWidth.value = e.contentRect.width))
+    rootObserver.observe(rootEl.value)
+  }
+  rootWidth.value = rootEl.value?.clientWidth || 0
   window.addEventListener('beforeunload', onBeforeUnload)
   window.addEventListener('resize', scheduleLinks)
   narrowQuery = window.matchMedia?.(`(max-width: ${NARROW_PX}px)`)
@@ -1256,6 +1360,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', scheduleLinks)
   narrowQuery?.removeEventListener('change', onNarrowChange)
   workObserver?.disconnect()
+  rootObserver?.disconnect()
   if (linkFrame) cancelAnimationFrame(linkFrame)
   clearTimeout(pullTimer)
   flushSave()
@@ -1304,98 +1409,175 @@ watch(
 </script>
 
 <template>
-  <div class="docs">
-    <!-- Grid: documents as tiles with a preview, no editing surface. -->
-    <template v-if="!selected">
-      <div class="head">
-        <div class="crumbs">
-          <n-button text size="small" @click="crumbTo(-1)">
-            {{ $t('documents.view.crumbRoot') }}
-          </n-button>
-          <template v-for="(c, i) in trail" :key="c.id">
-            <span class="sep">/</span>
-            <n-button text size="small" @click="crumbTo(i)">{{ c.title }}</n-button>
-          </template>
+  <div
+    ref="rootEl"
+    class="docs"
+    :class="{ narrow, 'with-tree': showTree, compact: rootWidth < 1180 }"
+  >
+    <!-- The tree (v2, #3106): beside the documents when it fits, floated over
+         them from the head's button when it does not, and gone on a phone —
+         there the grid is the way in. -->
+    <doc-tree
+      v-if="showTree || (treeFloating && !narrow)"
+      class="docs-tree"
+      :class="{ floating: !showTree }"
+      :floating="!showTree"
+      :docs="list"
+      :selected-id="selected?.id || ''"
+      :ws-id="wsStore.currentId || ''"
+      :ws-name="wsLabel"
+      :templates-count="tplLoaded ? galleryCards.length : 0"
+      @open="openFromTree"
+      @create="createFromTree"
+      @templates="openTemplates"
+      @close="treeFloating = false"
+    />
+
+    <div class="docs-main">
+      <!-- Grid: documents as tiles with a preview, no editing surface. -->
+      <template v-if="!selected">
+        <div class="dhead">
+          <button
+            v-if="!showTree && !narrow"
+            type="button"
+            class="dh-ic"
+            :class="{ on: treeFloating }"
+            :title="$t('documents.tree.show')"
+            :aria-label="$t('documents.tree.show')"
+            data-testid="doc-tree-toggle"
+            @click="toggleTree"
+          >
+            <n-icon :component="GitNetworkOutline" :size="16" />
+          </button>
+          <nav class="dcrumbs" :aria-label="$t('documents.view.crumbRoot')">
+            <button
+              type="button"
+              class="dcrumb"
+              :class="{ cur: !trail.length }"
+              @click="crumbTo(-1)"
+            >
+              {{ $t('documents.view.crumbRoot') }}
+            </button>
+            <template v-for="(c, i) in trail" :key="c.id">
+              <n-icon :component="ChevronForwardOutline" :size="12" class="dcrumb-sep" />
+              <button
+                type="button"
+                class="dcrumb"
+                :class="{ cur: i === trail.length - 1 }"
+                @click="crumbTo(i)"
+              >
+                {{ c.title }}
+              </button>
+            </template>
+          </nav>
+          <span class="grow" />
+          <div class="dh-actions">
+            <button
+              type="button"
+              class="dh-btn"
+              data-testid="doc-import"
+              :disabled="importing"
+              :title="importHint"
+              @click="pickImport"
+            >
+              <n-icon :component="CloudUploadOutline" :size="15" />
+              <span class="dh-btn-l">{{ $t('documents.view.import') }}</span>
+            </button>
+            <input
+              ref="importInput"
+              type="file"
+              class="hidden-file"
+              :accept="importAccept()"
+              @change="onImportPicked"
+            />
+            <button type="button" class="dh-btn" data-testid="doc-templates" @click="openTemplates">
+              <n-icon :component="GridOutline" :size="15" />
+              <span class="dh-btn-l">{{ $t('documents.view.fromTemplate') }}</span>
+            </button>
+            <button type="button" class="dh-btn primary" data-testid="doc-new" @click="create">
+              <n-icon :component="AddOutline" :size="16" />
+              <span class="dh-btn-l">{{ $t('documents.view.create') }}</span>
+            </button>
+          </div>
         </div>
-        <n-button
-          size="small"
-          data-testid="doc-import"
-          :loading="importing"
-          :title="importHint"
-          @click="pickImport"
-        >
-          <template #icon><n-icon :component="CloudUploadOutline" /></template>
-          {{ $t('documents.view.import') }}
-        </n-button>
-        <input
-          ref="importInput"
-          type="file"
-          class="hidden-file"
-          :accept="importAccept()"
-          @change="onImportPicked"
-        />
-        <n-button size="small" data-testid="doc-templates" @click="openTemplates">
-          <template #icon><n-icon :component="GridOutline" /></template>
-          {{ $t('documents.view.fromTemplate') }}
-        </n-button>
-        <n-button type="primary" size="small" data-testid="doc-new" @click="create">
-          <template #icon><n-icon :component="AddOutline" /></template>
-          {{ $t('documents.view.create') }}
-        </n-button>
-      </div>
 
-      <div v-if="tiles.length" class="grid">
-        <button v-for="d in tiles" :key="d.id" type="button" class="tile" @click="open(d)">
-          <div class="tile-head">
-            <span v-if="d.icon" class="doc-emoji">{{ d.icon }}</span>
-            <n-icon v-else :component="DocumentsOutline" :size="16" />
-            <span class="tile-title">{{ d.title || $t('documents.view.untitled') }}</span>
-          </div>
-          <p class="tile-preview">
-            {{ d.preview || $t('documents.view.emptyPreview') }}
-          </p>
-          <div class="tile-foot">
-            <span>{{ fmtDate(d.updated_at) }}</span>
-            <span v-if="list.filter((x) => x.parent_id === d.id).length">
-              {{
-                $t('documents.view.nestedCount', {
-                  count: list.filter((x) => x.parent_id === d.id).length,
-                })
-              }}
-            </span>
-          </div>
-        </button>
-      </div>
-      <empty-state
-        v-else
-        :icon="DocumentsOutline"
-        :text="$t('documents.view.empty')"
-        size="small"
-      />
-    </template>
+        <div v-if="tiles.length" class="grid">
+          <button v-for="d in tiles" :key="d.id" type="button" class="tile" @click="open(d)">
+            <div class="tile-head">
+              <span v-if="d.icon" class="doc-emoji">{{ d.icon }}</span>
+              <n-icon v-else :component="DocumentTextOutline" :size="16" class="tile-glyph" />
+              <span class="tile-title">{{ d.title || $t('documents.view.untitled') }}</span>
+            </div>
+            <p class="tile-preview">
+              {{ d.preview || $t('documents.view.emptyPreview') }}
+            </p>
+            <div class="tile-foot">
+              <span>{{ fmtDate(d.updated_at) }}</span>
+              <span v-if="list.filter((x) => x.parent_id === d.id).length" class="tile-nested">
+                <n-icon :component="FolderOutline" :size="12" />
+                {{
+                  $t('documents.view.nestedCount', {
+                    count: list.filter((x) => x.parent_id === d.id).length,
+                  })
+                }}
+              </span>
+            </div>
+          </button>
+        </div>
+        <empty-state v-else :icon="DocumentsOutline" :text="$t('documents.view.empty')">
+          <button type="button" class="dh-btn primary" @click="create">
+            <n-icon :component="AddOutline" :size="16" />
+            <span>{{ $t('documents.view.create') }}</span>
+          </button>
+        </empty-state>
+      </template>
 
-    <!-- Editor: title + working area, as asked in the review of #2726. -->
-    <template v-else>
-      <!-- «К списку» and the document's own controls ride in the app header:
-           there is free space beside the search, and the working area is left to
-           the document itself (#2727). On a narrow screen the header has no room
-           for them, and in a bare unit-test mount the slots do not exist — both
-           cases fall back to rendering here, in .head. -->
-      <div class="head">
-        <teleport to="#tb-slot-left" :disabled="!inTopbar">
-          <n-button quaternary size="small" data-testid="doc-back" @click="backToGrid">
-            <template #icon><n-icon :component="ArrowBackOutline" /></template>
-            {{ $t('documents.view.back') }}
-          </n-button>
-        </teleport>
-        <teleport to="#tb-slot-right" :disabled="!inTopbar">
+      <!-- Editor: the document's head, its title and the working area. -->
+      <template v-else>
+        <!-- The document's own head row (v2, #3106, mockup DocsPage): where it
+             lives on the left, presence, save state and its tools on the right.
+             It used to ride in the app header (#2727); in v2 the header names
+             the section and the document keeps its controls above itself. -->
+        <div class="dhead doc" data-testid="doc-head">
+          <button
+            v-if="!showTree && !narrow"
+            type="button"
+            class="dh-ic"
+            :class="{ on: treeFloating }"
+            :title="$t('documents.tree.show')"
+            :aria-label="$t('documents.tree.show')"
+            data-testid="doc-tree-toggle"
+            @click="toggleTree"
+          >
+            <n-icon :component="GitNetworkOutline" :size="16" />
+          </button>
+          <nav class="dcrumbs" :aria-label="$t('documents.view.crumbRoot')">
+            <button
+              type="button"
+              class="dcrumb root"
+              :title="$t('documents.view.back')"
+              data-testid="doc-back"
+              @click="backToGrid"
+            >
+              <n-icon v-if="narrow" :component="ArrowBackOutline" :size="16" />
+              <span v-else>{{ $t('documents.view.crumbRoot') }}</span>
+            </button>
+            <template v-if="!narrow">
+              <template v-for="a in ancestors" :key="a.id">
+                <n-icon :component="ChevronForwardOutline" :size="12" class="dcrumb-sep" />
+                <button type="button" class="dcrumb" @click="open(a)">
+                  {{ a.title || $t('documents.view.untitled') }}
+                </button>
+              </template>
+              <n-icon :component="ChevronForwardOutline" :size="12" class="dcrumb-sep" />
+              <span class="dcrumb cur">{{ selected.title || $t('documents.view.untitled') }}</span>
+            </template>
+          </nav>
+          <span class="grow" />
           <span class="status">
             <!-- Who else has this document open (#2729). Each person carries their
-               own colour — the same one that stripes the block they are holding,
-               which is what makes "жёлтый блок занят" readable as a sentence
-               about a person rather than as generic "someone is editing". The
-               editing state is a ring, not a different colour: the colour is the
-               identity and must not double as a status. -->
+                 own colour — the same one that stripes the block they are
+                 holding. Editing is a filled disc, the colour stays the identity. -->
             <span v-if="others.length" class="viewers">
               <span
                 v-for="v in others"
@@ -1412,9 +1594,32 @@ watch(
                 {{ initials(v.name) }}
               </span>
             </span>
-            <n-button
-              quaternary
-              size="tiny"
+            <span
+              class="save-state"
+              :class="saving ? 'saving' : dirty ? 'dirty' : 'saved'"
+              data-testid="doc-save-state"
+              :data-state="saving ? 'saving' : dirty ? 'dirty' : 'saved'"
+              :title="
+                saving
+                  ? $t('documents.view.state.saving')
+                  : dirty
+                    ? $t('documents.view.state.dirty')
+                    : $t('documents.view.state.saved')
+              "
+            >
+              <span class="save-dot" />
+              <span class="save-l">{{
+                saving
+                  ? $t('documents.view.state.saving')
+                  : dirty
+                    ? $t('documents.view.state.dirty')
+                    : $t('documents.view.state.saved')
+              }}</span>
+            </span>
+            <button
+              type="button"
+              class="dh-ic"
+              :class="{ on: commentsOpen }"
               :title="
                 commentsOpen
                   ? $t('documents.view.comments.hide')
@@ -1423,232 +1628,237 @@ watch(
               data-testid="doc-comments-toggle"
               @click="toggleComments"
             >
-              <template #icon><n-icon :component="ChatbubbleEllipsesOutline" /></template>
-              {{ comments.openCount.value || '' }}
-            </n-button>
-            <n-button
-              quaternary
-              size="tiny"
+              <n-icon :component="ChatbubbleEllipsesOutline" :size="16" />
+              <span v-if="comments.openCount.value" class="dh-n">{{
+                comments.openCount.value
+              }}</span>
+            </button>
+            <button
+              type="button"
+              class="dh-ic"
+              :class="{ on: tocOpen }"
               :title="tocOpen ? $t('documents.view.toc.hide') : $t('documents.view.toc.show')"
               data-testid="doc-toc-toggle"
               @click="toggleToc"
             >
-              <template #icon><n-icon :component="ListOutline" /></template>
-            </n-button>
-            <n-button
-              quaternary
-              size="tiny"
+              <n-icon :component="ListOutline" :size="16" />
+            </button>
+            <button
+              type="button"
+              class="dh-ic"
+              :class="{ on: historyOpen }"
               :title="
                 historyOpen ? $t('documents.view.history.hide') : $t('documents.view.history.show')
               "
               data-testid="doc-history-toggle"
               @click="toggleHistory"
             >
-              <template #icon><n-icon :component="TimeOutline" /></template>
-            </n-button>
-            <n-button
-              quaternary
-              size="tiny"
+              <n-icon :component="TimeOutline" :size="16" />
+            </button>
+            <button
+              type="button"
+              class="dh-ic"
+              :class="{ on: linksOpen }"
               :title="linksOpen ? $t('documents.view.links.hide') : $t('documents.view.links.show')"
               data-testid="doc-links-toggle"
               @click="toggleLinks"
             >
-              <template #icon><n-icon :component="LinkOutline" /></template>
-            </n-button>
-            <n-button
-              quaternary
-              size="tiny"
-              :title="$t('documents.view.saveTemplate')"
-              data-testid="doc-save-template"
-              @click="saveAsTemplate"
-            >
-              <template #icon><n-icon :component="BookmarkOutline" /></template>
-            </n-button>
-            <n-dropdown trigger="click" :options="exportOptions" @select="exportAs">
-              <n-button
-                quaternary
-                size="tiny"
-                :title="$t('documents.view.export')"
-                data-testid="doc-export"
-                :loading="!!exporting"
-              >
-                <template #icon><n-icon :component="DownloadOutline" /></template>
-              </n-button>
-            </n-dropdown>
-            <n-dropdown trigger="click" :options="docActions" @select="onDocAction">
-              <n-button
-                quaternary
-                size="tiny"
-                :title="$t('documents.view.actions')"
-                data-testid="doc-actions"
-              >
-                <template #icon><n-icon :component="EllipsisHorizontalOutline" /></template>
-              </n-button>
-            </n-dropdown>
-            <n-text v-if="saving" depth="3" data-testid="doc-save-state" data-state="saving">
-              {{ $t('documents.view.state.saving') }}
-            </n-text>
-            <n-text v-else-if="dirty" depth="3" data-testid="doc-save-state" data-state="dirty">
-              {{ $t('documents.view.state.dirty') }}
-            </n-text>
-            <n-text v-else depth="3" data-testid="doc-save-state" data-state="saved">
-              {{ $t('documents.view.state.saved') }}
-            </n-text>
-          </span>
-        </teleport>
-      </div>
-
-      <n-alert v-if="conflict" type="warning" class="conflict" data-testid="doc-conflict">
-        {{ $t('documents.view.conflict') }}
-        <n-button text size="small" @click="reload">{{ $t('documents.view.reload') }}</n-button>
-      </n-alert>
-      <n-alert v-else-if="saveError" type="error" class="conflict">
-        {{ saveError }}
-      </n-alert>
-
-      <n-spin v-if="loading" size="small" />
-      <template v-else>
-        <n-input
-          v-model:value="title"
-          :placeholder="$t('documents.view.titlePlaceholder')"
-          class="title plain"
-          @blur="rename"
-        />
-        <div ref="workEl" class="work">
-          <!-- Which block each remark is about, drawn rather than implied. The
-               layer spans the editor and the panel because the line crosses the
-               gap between them; it never takes a pointer event. -->
-          <svg v-if="annotationLines.length" class="annotation-lines" aria-hidden="true">
-            <path v-for="l in annotationLines" :key="l.id" :d="l.d" :class="{ active: l.active }" />
-          </svg>
-          <doc-editor
-            ref="editorRef"
-            :model-value="content"
-            :upload-image="uploadImage"
-            :upload-pdf="uploadPdf"
-            :locks="paintedLocks"
-            :comments="comments.openCounts.value"
-            class="editor"
-            @change="onEditorChange"
-            @block-focus="onBlockFocus"
-            @blocked="onBlocked"
-            @blur="onEditorBlur"
-            @annotate="onAnnotate"
-            @select-comments="comments.activeBlockId.value = $event"
-          />
-          <doc-toc
-            v-if="tocOpen"
-            :rows="outline"
-            :active-id="activeHeadingId"
-            :narrow="narrow"
-            @go="goToHeading"
-            @close="tocOpen = false"
-          />
-          <doc-comments
-            v-if="commentsOpen"
-            ref="commentsRef"
-            :groups="comments.groups.value"
-            :active-block-id="comments.activeBlockId.value"
-            :user-id="myUserId"
-            :loading="comments.loading.value"
-            :pending-quote="pendingQuote"
-            :pending-block="!!pendingBlockId"
-            :narrow="narrow"
-            @close="commentsOpen = false"
-            @add="onCommentAdd"
-            @reply="onCommentReply"
-            @edit="onCommentEdit"
-            @resolve="onCommentResolve"
-            @remove="onCommentRemove"
-            @clear-anchor="clearAnchor"
-            @select="comments.activeBlockId.value = $event"
-          />
-          <!-- The sidebar overlays the discussion instead of joining the row:
-               that is what keeps the text column from shrinking, and it is why
-               the two panels below are mutually exclusive rather than merely
-               narrow (#2738). It never covers the whole working area — the
-               document stays readable behind it. -->
-          <aside v-if="sidePanel" class="side" data-testid="doc-side">
-            <doc-history
-              v-if="historyOpen"
-              :versions="versions.versions.value"
-              :selected-id="versions.selectedId.value"
-              :baseline="versions.baseline.value"
-              :rows="versions.rows.value"
-              :summary="versions.summary.value"
-              :ready="versions.ready.value"
-              :loading="versions.loading.value"
-              :error="versions.error.value"
-              @select="versions.select"
-              @snapshot="onSnapshot"
-              @restore="onRestore"
-              @close="toggleHistory"
-            />
-            <doc-links
-              v-if="linksOpen"
-              :links="links.links.value"
-              :approvals="links.approvals.value"
-              :user-id="myUserId"
-              :ws-id="wsStore.currentId"
-              :can-manage="wsStore.canManage"
-              :can-raise="links.canRaise.value"
-              :loading="links.loading.value"
-              :error="links.error.value"
-              :anchor-block-id="linkAnchorId"
-              :anchor-quote="linkAnchorQuote"
-              @link="onLink"
-              @unlink="onUnlink"
-              @raise="onRaiseApproval"
-              @decide="onDecide"
-              @cancel="onCancelApproval"
-              @open-task="onOpenTask"
-              @close="toggleLinks"
-            />
-          </aside>
-        </div>
-        <div v-if="children.length" class="nested">
-          <n-text depth="3">{{ $t('documents.view.nestedTitle') }}</n-text>
-          <div class="grid small">
-            <button v-for="d in children" :key="d.id" type="button" class="tile" @click="open(d)">
-              <div class="tile-head">
-                <span v-if="d.icon" class="doc-emoji">{{ d.icon }}</span>
-                <n-icon v-else :component="DocumentsOutline" :size="16" />
-                <span class="tile-title">{{ d.title || $t('documents.view.untitled') }}</span>
-              </div>
-              <p class="tile-preview">{{ d.preview || $t('documents.view.emptyPreview') }}</p>
+              <n-icon :component="LinkOutline" :size="16" />
             </button>
-          </div>
+            <button
+              type="button"
+              class="dh-ic"
+              :class="{ on: actionsOpen }"
+              :title="$t('documents.view.actions')"
+              :aria-label="$t('documents.view.actions')"
+              data-testid="doc-actions"
+              @click="openActions"
+            >
+              <n-icon :component="EllipsisHorizontal" :size="16" />
+            </button>
+          </span>
         </div>
-        <!-- Delete / nested-document moved into the header's «Действия» menu
-             (#2727): under the text they were permanent furniture beside a rare
-             action. -->
-        <n-modal
-          v-model:show="removeAsk"
-          preset="dialog"
-          type="error"
-          :title="$t('documents.view.remove.title')"
-          :positive-text="$t('common.action.delete')"
-          :negative-text="$t('common.action.cancel')"
-          :positive-button-props="{ type: 'error' }"
-          :content="
-            childCount
-              ? $t('documents.view.remove.withChildren', { count: childCount })
-              : $t('documents.view.remove.single')
-          "
-          @positive-click="remove"
-        />
+
+        <div v-if="conflict" class="doc-alert warn" role="alert" data-testid="doc-conflict">
+          <n-icon :component="AlertCircleOutline" :size="16" />
+          <span>{{ $t('documents.view.conflict') }}</span>
+          <button type="button" class="doc-alert-act" @click="reload">
+            {{ $t('documents.view.reload') }}
+          </button>
+        </div>
+        <div v-else-if="saveError" class="doc-alert bad" role="alert">
+          <n-icon :component="AlertCircleOutline" :size="16" />
+          <span>{{ saveError }}</span>
+        </div>
+
+        <n-spin v-if="loading" size="small" />
+        <template v-else>
+          <div class="dtitle-wrap">
+            <input
+              v-model="title"
+              class="dtitle"
+              :placeholder="$t('documents.view.titlePlaceholder')"
+              :aria-label="$t('documents.view.titlePlaceholder')"
+              data-testid="doc-title"
+              @blur="rename"
+              @keydown.enter.prevent="$event.target.blur()"
+            />
+            <div class="dmeta">
+              <span v-if="selected.updated_at" class="dmeta-t">{{
+                $t('documents.view.updatedAt', { time: fmtUpdated(selected.updated_at) })
+              }}</span>
+              <button v-if="childCount" type="button" class="dchip" @click="drillInto(selected)">
+                <n-icon :component="FolderOutline" :size="13" />
+                {{ $t('documents.view.nestedCount', { count: childCount }) }}
+              </button>
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <span class="dchip stub" aria-disabled="true" data-testid="doc-milestone">
+                    <n-icon :component="TrailSignOutline" :size="13" />
+                    {{ $t('documents.view.milestone') }}
+                  </span>
+                </template>
+                {{ $t('common.stub.soon', { n: milestoneTask }) }}
+              </n-tooltip>
+            </div>
+          </div>
+          <div ref="workEl" class="work">
+            <!-- Which block each remark is about, drawn rather than implied. The
+                 layer spans the editor and the panel because the line crosses the
+                 gap between them; it never takes a pointer event. -->
+            <svg v-if="annotationLines.length" class="annotation-lines" aria-hidden="true">
+              <path
+                v-for="l in annotationLines"
+                :key="l.id"
+                :d="l.d"
+                :class="{ active: l.active }"
+              />
+            </svg>
+            <doc-editor
+              ref="editorRef"
+              :model-value="content"
+              :upload-image="uploadImage"
+              :upload-pdf="uploadPdf"
+              :locks="paintedLocks"
+              :comments="comments.openCounts.value"
+              class="editor"
+              @change="onEditorChange"
+              @block-focus="onBlockFocus"
+              @blocked="onBlocked"
+              @blur="onEditorBlur"
+              @annotate="onAnnotate"
+              @select-comments="comments.activeBlockId.value = $event"
+            />
+            <doc-toc
+              v-if="tocOpen"
+              :rows="outline"
+              :active-id="activeHeadingId"
+              :narrow="narrow"
+              @go="goToHeading"
+              @close="tocOpen = false"
+            />
+            <doc-comments
+              v-if="commentsOpen"
+              ref="commentsRef"
+              :groups="comments.groups.value"
+              :active-block-id="comments.activeBlockId.value"
+              :user-id="myUserId"
+              :loading="comments.loading.value"
+              :pending-quote="pendingQuote"
+              :pending-block="!!pendingBlockId"
+              :narrow="narrow"
+              @close="commentsOpen = false"
+              @add="onCommentAdd"
+              @reply="onCommentReply"
+              @edit="onCommentEdit"
+              @resolve="onCommentResolve"
+              @remove="onCommentRemove"
+              @clear-anchor="clearAnchor"
+              @select="comments.activeBlockId.value = $event"
+            />
+            <!-- The sidebar overlays the discussion instead of joining the row:
+                 that is what keeps the text column from shrinking, and it is why
+                 the two panels below are mutually exclusive rather than merely
+                 narrow (#2738). It never covers the whole working area — the
+                 document stays readable behind it. -->
+            <aside v-if="sidePanel" class="side" data-testid="doc-side">
+              <doc-history
+                v-if="historyOpen"
+                :versions="versions.versions.value"
+                :selected-id="versions.selectedId.value"
+                :baseline="versions.baseline.value"
+                :rows="versions.rows.value"
+                :summary="versions.summary.value"
+                :ready="versions.ready.value"
+                :loading="versions.loading.value"
+                :error="versions.error.value"
+                @select="versions.select"
+                @snapshot="onSnapshot"
+                @restore="onRestore"
+                @close="toggleHistory"
+              />
+              <doc-links
+                v-if="linksOpen"
+                :links="links.links.value"
+                :approvals="links.approvals.value"
+                :user-id="myUserId"
+                :ws-id="wsStore.currentId"
+                :can-manage="wsStore.canManage"
+                :can-raise="links.canRaise.value"
+                :loading="links.loading.value"
+                :error="links.error.value"
+                :anchor-block-id="linkAnchorId"
+                :anchor-quote="linkAnchorQuote"
+                @link="onLink"
+                @unlink="onUnlink"
+                @raise="onRaiseApproval"
+                @decide="onDecide"
+                @cancel="onCancelApproval"
+                @open-task="onOpenTask"
+                @close="toggleLinks"
+              />
+            </aside>
+          </div>
+          <div v-if="children.length" class="nested">
+            <div class="nested-title">{{ $t('documents.view.nestedTitle') }}</div>
+            <div class="grid small">
+              <button v-for="d in children" :key="d.id" type="button" class="tile" @click="open(d)">
+                <div class="tile-head">
+                  <span v-if="d.icon" class="doc-emoji">{{ d.icon }}</span>
+                  <n-icon v-else :component="DocumentTextOutline" :size="16" class="tile-glyph" />
+                  <span class="tile-title">{{ d.title || $t('documents.view.untitled') }}</span>
+                </div>
+                <p class="tile-preview">{{ d.preview || $t('documents.view.emptyPreview') }}</p>
+              </button>
+            </div>
+          </div>
+        </template>
       </template>
-    </template>
+    </div>
+
+    <ActionMenu
+      v-model:show="actionsOpen"
+      :anchor="() => actionsAnchor"
+      placement="bottom-end"
+      :width="290"
+      :header="selected?.title || ''"
+      :items="docActions"
+      testid="doc-action"
+      @select="onDocAction"
+    />
 
     <!-- Outside the grid/editor branches: the gallery is reachable from the
-         grid, but "сохранить как шаблон" refreshes it from the editor too. -->
+         grid and the tree, but "сохранить как шаблон" refreshes it from the
+         editor too. -->
     <doc-templates
       v-model:show="templatesOpen"
       :templates="galleryCards"
       :loading="tplLoading"
       :busy="tplBusy"
       :error="tplError"
+      :target="parentTitle"
       @use="useTemplate"
+      @blank="createFromGallery"
       @upload="uploadTemplate"
       @remove="removeTemplate"
     />
@@ -1662,81 +1872,314 @@ watch(
   display: none;
 }
 
+/* v2 (задача 3106): the tree column and the documents side by side. No lines — the
+   tree is a --t-col surface, the head is spacing, panels are their own
+   surfaces. */
 .docs {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  gap: 16px;
   height: 100%;
   min-height: 0;
 }
-.head {
+.docs-tree {
+  flex: none;
+}
+/* Floated over the documents when it does not fit beside them. */
+.docs-tree.floating {
+  position: absolute;
+  top: 44px;
+  left: 0;
+  bottom: 0;
+  z-index: 6;
+}
+.docs-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.dhead {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  /* The three action buttons («Импорт» / «Из шаблона» / «Новый») are ~330px of
-     unshrinkable content, so on a phone this row ran 42px past the pane and the
-     «Новый» button was simply unreachable (задача 2893 — номер словом, а не через
-     решётку: гвард «no literal colours» в tests/cx-doc-editor.spec.js принимает
-     решётку с четырьмя цифрами за hex-цвет). Wrapping costs nothing on a wide
-     screen — there the row has never needed a second line. */
+  min-height: 36px;
   flex-wrap: wrap;
 }
-/* Both halves teleport into the app header on a wide screen; what stays behind
-   is an empty flex row that would still spend the .docs gap. */
-.head:empty {
-  display: none;
-}
-.crumbs {
+.dcrumbs {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   min-width: 0;
   overflow: hidden;
 }
-.sep {
+/* An open document's head stays one row: the crumbs give way (the parents
+   first, then the title), the tools never wrap under them. */
+.dhead.doc {
+  flex-wrap: nowrap;
+}
+.dhead.doc .dcrumbs {
+  flex: 0 1 auto;
+}
+.dhead.doc .status {
+  flex: none;
+  flex-wrap: nowrap;
+}
+.dhead.doc .dcrumb {
+  flex: 0 1 auto;
+  min-width: 36px;
+}
+.dhead.doc .dcrumb.root {
+  flex: none;
+}
+.dcrumb {
+  flex: none;
+  max-width: 220px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text3);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+button.dcrumb:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.dcrumb:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+.dcrumb.cur {
+  flex: 0 1 auto;
+  color: var(--t-text1);
+  font-weight: 650;
+  cursor: default;
+}
+.dcrumb.root {
+  display: inline-flex;
+  align-items: center;
+}
+.dcrumb-sep {
+  flex: none;
   color: var(--t-text3);
 }
+.grow {
+  flex: 1;
+}
+.dh-actions,
 .status {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.dh-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dh-btn:hover {
+  background: var(--t-hover);
+}
+.dh-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+.dh-btn.primary {
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+}
+.dh-btn.primary:hover {
+  filter: brightness(1.06);
+}
+.dh-btn:focus-visible,
+.dh-ic:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
+}
+.dh-ic {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 7px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
   font-size: 12px;
+  cursor: pointer;
+}
+.dh-ic:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.dh-ic.on {
+  background: var(--t-ctl);
+  color: var(--t-primary);
+}
+.dh-n {
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.save-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+  font-size: 12px;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
+.save-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t-text3);
+}
+.save-state.dirty .save-dot,
+.save-state.saving .save-dot {
+  background: var(--t-primary);
 }
 /* Presence avatars. Initials rather than photos: the roster is a live hint at
-   the edge of the header, and loading an avatar per viewer would be a request
+   the edge of the head, and loading an avatar per viewer would be a request
    burst every time someone opens the document. */
 .viewers {
   display: flex;
   align-items: center;
+  margin-right: 6px;
 }
 .viewer {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   margin-left: -6px;
   /* The person's own colour, not the app accent: with two people in a document
-     one accent-coloured badge cannot say which of them is in the yellow block.
-     Falls back to neutral when no colour was supplied. */
-  border: 1px solid var(--doc-user-color, var(--t-surface));
+     one accent-coloured badge cannot say which of them is in the yellow block. */
   border-radius: 50%;
-  background: var(--t-surface-alt);
-  color: var(--doc-user-color, var(--t-text2));
+  box-shadow: 0 0 0 2px var(--t-bg);
+  background: var(--t-ctl);
+  color: var(--doc-user-color);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 650;
 }
 .viewer:first-child {
   margin-left: 0;
 }
-/* Actively editing — filled with the app-wide diagonal gradient, but of this
-   person's hue rather than the accent (--doc-user-grad comes from hueGrad in the
-   script; the accent is the fallback when nobody supplied a colour). */
+/* Actively editing — filled with the app-wide diagonal gradient of this
+   person's hue (--doc-user-grad comes from hueGrad in the script). */
 .viewer.editing {
-  background: var(--doc-user-grad, var(--t-accent-grad));
-  color: var(--doc-user-on, var(--t-on-primary));
-  border-color: transparent;
+  background: var(--doc-user-grad);
+  color: var(--doc-user-on);
+}
+.doc-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--t-col);
+  font-size: 13px;
+  color: var(--t-text1);
+}
+.doc-alert.warn :deep(svg) {
+  color: var(--t-primary);
+}
+.doc-alert.bad {
+  color: var(--t-error);
+}
+.doc-alert-act {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--t-ctl);
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.dtitle-wrap {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 4px 2px;
+}
+/* The title: 30/700 on the canvas, no field chrome — it is the document's
+   heading, edited in place. */
+.dtitle {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.dtitle::placeholder {
+  color: var(--t-placeholder);
+}
+.dtitle:focus-visible {
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
+.dmeta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.dchip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: var(--t-r-pill);
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.dchip:hover {
+  color: var(--t-text1);
+}
+.dchip.stub {
+  opacity: 0.55;
+  cursor: default;
 }
 .grid {
   display: grid;
@@ -1744,6 +2187,7 @@ watch(
   gap: 12px;
   overflow-y: auto;
   align-content: start;
+  padding: 2px;
 }
 .grid.small {
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -1756,29 +2200,39 @@ watch(
   flex-direction: column;
   gap: 6px;
   min-height: 128px;
-  padding: 12px;
+  padding: 14px;
   text-align: left;
-  border: 1px solid var(--t-border);
-  border-radius: 10px;
-  background: var(--t-surface);
+  border: 0;
+  border-radius: var(--t-r-card);
+  background: var(--t-card);
+  box-shadow: var(--t-sh-card);
   color: var(--t-text1);
+  font: inherit;
   cursor: pointer;
   transition:
-    border-color 0.12s ease,
+    box-shadow 0.12s ease,
     background 0.12s ease;
 }
 .tile:hover {
-  background: var(--t-hover);
-  border-color: var(--t-primary);
+  background: var(--t-card-hover);
+  box-shadow: var(--t-sh-hover);
+}
+.tile:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
 }
 .tile-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   min-width: 0;
 }
+.tile-glyph {
+  flex: none;
+  color: var(--t-text3);
+}
 .tile-title {
-  font-weight: 600;
+  font-weight: 650;
   font-size: 14px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1787,8 +2241,8 @@ watch(
 .tile-preview {
   flex: 1;
   margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 12.5px;
+  line-height: 1.5;
   color: var(--t-text3);
   overflow: hidden;
   display: -webkit-box;
@@ -1799,12 +2253,14 @@ watch(
 .tile-foot {
   display: flex;
   justify-content: space-between;
-  font-size: 11px;
+  gap: 8px;
+  font-size: 11.5px;
   color: var(--t-text3);
 }
-.title :deep(input) {
-  font-size: 18px;
-  font-weight: 600;
+.tile-nested {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 /* Editor and annotation panel share the working area; the panel is fixed-width
    so the text column does not reflow every time a thread is opened. */
@@ -1827,16 +2283,18 @@ watch(
   z-index: 1;
   overflow: visible;
 }
-/* Idle links stay at border weight: a dozen equally bright curves read worse
-   than the margin counters they are meant to explain. The selected thread is
-   the one that gets the accent. */
+/* Idle links stay quiet: a dozen equally bright curves read worse than the
+   margin counters they are meant to explain. The selected thread is the one
+   that gets the accent. */
 .annotation-lines path {
   fill: none;
-  stroke: var(--t-border);
+  stroke: var(--t-text3);
+  stroke-opacity: 0.35;
   stroke-width: 1.5;
 }
 .annotation-lines path.active {
   stroke: var(--t-primary);
+  stroke-opacity: 1;
   stroke-width: 2;
 }
 .editor {
@@ -1848,13 +2306,8 @@ watch(
    cx-doc-editor.spec.js reads one as a literal colour). Taken out of the flow
    entirely: in the row they were two more fixed 300px columns, and three panels
    beside a flex:1 text column left the text 14px wide. Overlaid, they cost the
-   text nothing — opening one cannot reflow a single line.
-
-   320px is chosen against the discussion, not against the window: that panel is
-   300px plus the 12px gap, so the sidebar lands almost exactly on top of it and
-   the document keeps the width it already had. With the discussion hidden the
-   same 320px eats into the text instead, which is the tradeoff the user picked —
-   the document stays on screen either way. */
+   text nothing — opening one cannot reflow a single line. 320px lands almost
+   exactly on top of the discussion (300px plus the 12px gap). */
 .side {
   position: absolute;
   top: 0;
@@ -1867,16 +2320,36 @@ watch(
   width: 320px;
   max-width: 100%;
   min-height: 0;
-  padding: 10px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
-  /* The panel is opaque and sits over live content, so it needs an edge the flat
-     border alone does not give it — without the shadow the discussion behind it
-     reads as part of the same column. The blur is drawn in the border colour
-     rather than a black wash: a literal colour cannot follow the theme, and a
-     dark halo that looks right on white turns into a smudge on the dark one. */
-  box-shadow: -8px 0 20px var(--t-border);
+  padding: 12px;
+  box-sizing: border-box;
+  border-radius: var(--t-r-pop);
+  background: var(--t-pop);
+  /* The panel is opaque and sits over live content: the popover shadow is its
+     edge (v2 — no outline). */
+  box-shadow: var(--t-sh-pop);
+}
+.nested {
+  flex: none;
+}
+.nested-title {
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
+}
+.doc-emoji {
+  font-size: 14px;
+  line-height: 1;
+}
+/* Tight head: the save state keeps its dot, the words go to the tooltip. */
+.docs.compact .save-l {
+  display: none;
+}
+@media (hover: none) {
+  .save-l {
+    display: none;
+  }
 }
 /* On a narrow screen the panel goes under the editor instead of squeezing the
    text into a column nobody can read. */
@@ -1889,23 +2362,20 @@ watch(
   .side {
     width: 100%;
   }
-}
-.conflict {
-  flex: none;
-}
-.nested {
-  flex: none;
-}
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.grow {
-  flex: 1;
-}
-.doc-emoji {
-  font-size: 14px;
-  line-height: 1;
+  .save-l {
+    display: none;
+  }
+  .dh-btn-l {
+    display: none;
+  }
+  .dh-btn {
+    padding: 0 10px;
+  }
+  .dtitle {
+    font-size: 24px;
+  }
+  .status {
+    flex-wrap: nowrap;
+  }
 }
 </style>

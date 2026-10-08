@@ -78,20 +78,62 @@
       "insert": "Insert",
       "upload": "Upload"
     },
-    "paragraph": { "label": "Text", "hint": "Plain paragraph" },
-    "h1": { "label": "Heading 1", "hint": "Large heading" },
-    "h2": { "label": "Heading 2", "hint": "Medium heading" },
-    "h3": { "label": "Heading 3", "hint": "Small heading" },
-    "blockquote": { "label": "Quote", "hint": "Highlighted block of text" },
-    "bulletList": { "label": "Bulleted list", "hint": "List with bullets" },
-    "orderedList": { "label": "Numbered list", "hint": "List in order" },
-    "taskList": { "label": "Task list", "hint": "Checkboxes" },
-    "table": { "label": "Table 3×3", "hint": "With a header row" },
-    "horizontalRule": { "label": "Divider", "hint": "Horizontal rule" },
-    "sectionBreak": { "label": "Section break", "hint": "Its own orientation from here" },
-    "codeBlock": { "label": "Code block", "hint": "Monospaced block" },
-    "image": { "label": "Image", "hint": "Pick a file" },
-    "pdf": { "label": "PDF", "hint": "Embed a file to read" }
+    "paragraph": {
+      "label": "Text",
+      "hint": "Plain paragraph"
+    },
+    "h1": {
+      "label": "Heading 1",
+      "hint": "Large heading"
+    },
+    "h2": {
+      "label": "Heading 2",
+      "hint": "Medium heading"
+    },
+    "h3": {
+      "label": "Heading 3",
+      "hint": "Small heading"
+    },
+    "blockquote": {
+      "label": "Quote",
+      "hint": "Highlighted block of text"
+    },
+    "bulletList": {
+      "label": "Bulleted list",
+      "hint": "List with bullets"
+    },
+    "orderedList": {
+      "label": "Numbered list",
+      "hint": "List in order"
+    },
+    "taskList": {
+      "label": "Task list",
+      "hint": "Checkboxes"
+    },
+    "table": {
+      "label": "Table 3×3",
+      "hint": "With a header row"
+    },
+    "horizontalRule": {
+      "label": "Divider",
+      "hint": "Horizontal rule"
+    },
+    "sectionBreak": {
+      "label": "Section break",
+      "hint": "Its own orientation from here"
+    },
+    "codeBlock": {
+      "label": "Code block",
+      "hint": "Monospaced block"
+    },
+    "image": {
+      "label": "Image",
+      "hint": "Pick a file"
+    },
+    "pdf": {
+      "label": "PDF",
+      "hint": "Embed a file to read"
+    }
   },
   "toolbar": {
     "more": "More tools",
@@ -185,7 +227,20 @@
       "title": "Retrospective",
       "description": "What went well, what got in the way, what we change",
       "body": "# Retrospective\n\n**Period:**\n\n## What went well\n\n-\n\n## What got in the way\n\n-\n\n## What we change\n\n- [ ] Action — owner\n"
-    }
+    },
+    "newTitle": "New document",
+    "into": "in “{target}”",
+    "source": {
+      "all": "All",
+      "builtin": "Built-in",
+      "mine": "My templates"
+    },
+    "categories": "Categories",
+    "blank": "Blank document",
+    "blankHint": "Start from a clean page",
+    "hintPick": "select",
+    "create": "Create",
+    "removeArmed": "Delete?"
   },
   "view": {
     "crumbRoot": "Documents",
@@ -202,10 +257,22 @@
     "back": "Back to list",
     "viewerEditing": "{name} — editing",
     "viewerViewing": "{name} — reading",
-    "comments": { "show": "Show the discussion", "hide": "Hide the discussion" },
-    "toc": { "show": "Outline", "hide": "Hide the outline" },
-    "history": { "show": "Version history", "hide": "Hide the history" },
-    "links": { "show": "Links and approval", "hide": "Hide the links" },
+    "comments": {
+      "show": "Show the discussion",
+      "hide": "Hide the discussion"
+    },
+    "toc": {
+      "show": "Outline",
+      "hide": "Hide the outline"
+    },
+    "history": {
+      "show": "Version history",
+      "hide": "Hide the history"
+    },
+    "links": {
+      "show": "Links and approval",
+      "hide": "Hide the links"
+    },
     "saveTemplate": "Save as a template",
     "export": "Export the document",
     "actions": "Actions",
@@ -254,7 +321,19 @@
       "exportFailed": "Could not convert the document",
       "exportGeneric": "Could not export the document",
       "save": "Could not save"
-    }
+    },
+    "updatedAt": "edited {time}",
+    "milestone": "Stage"
+  },
+  "tree": {
+    "search": "Find a document",
+    "searchPlaceholder": "Document title",
+    "nothing": "Nothing found",
+    "fold": "Collapse",
+    "unfold": "Expand",
+    "templates": "Templates",
+    "trash": "Trash",
+    "show": "Document tree"
   },
   "comments": {
     "title": "Discussion",
@@ -276,7 +355,9 @@
     "draftDoc": "Comment on the document…",
     "send": "Send",
     "someone": "Member",
-    "error": { "load": "Could not load the comments" }
+    "error": {
+      "load": "Could not load the comments"
+    }
   },
   "history": {
     "title": "History",
@@ -301,7 +382,10 @@
       "moved": "moved"
     },
     "diffImage": "[image]",
-    "error": { "load": "Could not load the history", "version": "Could not load the version" }
+    "error": {
+      "load": "Could not load the history",
+      "version": "Could not load the version"
+    }
   },
   "links": {
     "title": "Links and approval",
@@ -333,8 +417,13 @@
     "approversPlaceholder": "Approvers",
     "approversTooMany": "A route may ask at most {max} approvers",
     "submit": "Send",
-    "mode": { "sequential": "One by one", "parallel": "All at once" },
-    "error": { "load": "Could not load the links" }
+    "mode": {
+      "sequential": "One by one",
+      "parallel": "All at once"
+    },
+    "error": {
+      "load": "Could not load the links"
+    }
   },
   "approval": {
     "status": {
@@ -343,7 +432,11 @@
       "rejected": "Rejected",
       "cancelled": "Withdrawn"
     },
-    "step": { "pending": "waiting", "approved": "signed", "rejected": "rejected" }
+    "step": {
+      "pending": "waiting",
+      "approved": "signed",
+      "rejected": "rejected"
+    }
   },
   "pdf": {
     "prevPage": "Previous page",
@@ -356,7 +449,12 @@
     "openFailedReason": "Could not open the PDF: {reason}",
     "noSrc": "the block carries no file link",
     "noLink": "The server returned no file link",
-    "unit": { "b": "B", "kb": "KB", "mb": "MB", "gb": "GB" }
+    "unit": {
+      "b": "B",
+      "kb": "KB",
+      "mb": "MB",
+      "gb": "GB"
+    }
   },
   "section": {
     "caption": "From here: {orientation} {size}"

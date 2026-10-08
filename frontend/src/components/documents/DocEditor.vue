@@ -782,9 +782,8 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
 .doc-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 12px 28px;
-  background: var(--t-surface-alt);
-  border-radius: 8px;
+  padding: 8px 4px 28px;
+  border-radius: var(--t-r-col);
   min-height: 0;
 }
 .hidden-file {
@@ -852,17 +851,16 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   width: 300px;
   max-height: 320px;
   overflow-y: auto;
-  padding: 4px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  padding: 6px;
+  border-radius: var(--t-r-pop);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
 }
 /* A rule between groups rather than around them: the first group sits right
    under the menu's own border and a second line there would read as a gap. */
 .slash-group + .slash-group {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--t-border);
+  margin-top: 6px;
+  padding-top: 2px;
 }
 .slash-group-title {
   padding: 2px 8px 4px;
@@ -880,7 +878,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   min-height: 32px;
   padding: 4px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   color: var(--t-text1);
   font-size: 13px;
@@ -940,12 +938,12 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   margin: 0 auto;
   padding: var(--doc-sheet-pt, 40px) var(--doc-sheet-pr, 40px) var(--doc-sheet-pb, 56px)
     var(--doc-sheet-pl, 88px);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  border-radius: var(--t-r-col);
+  background: var(--t-col);
   min-height: 480px;
   color: var(--t-text1);
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.65;
 }
 /* Sectioned rendering (задача 2827). A document with a section break has more
    than one page geometry, and one element cannot be two sheets — so the paper
@@ -972,9 +970,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   box-sizing: border-box;
   margin: 0 auto;
   padding-top: 8px;
-  border-left: 1px solid var(--t-border);
-  border-right: 1px solid var(--t-border);
-  background: var(--t-surface);
+  background: var(--t-col);
 }
 .doc-content.sectioned :deep(.ProseMirror > h1),
 .doc-content.sectioned :deep(.ProseMirror > h2),
@@ -984,12 +980,10 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
 /* The sheet's own top and bottom edges. Mid-document the bands meet, so only the
    first and last block close the paper. */
 .doc-content.sectioned :deep(.ProseMirror > *:first-child) {
-  border-top: 1px solid var(--t-border);
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--t-r-col) var(--t-r-col) 0 0;
 }
 .doc-content.sectioned :deep(.ProseMirror > *:last-child) {
-  border-bottom: 1px solid var(--t-border);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--t-r-col) var(--t-r-col);
 }
 /* The break itself: a labelled rule that says what the section after it is. It
    is a band like any other block, so the caption sits inside the new section's
