@@ -893,8 +893,17 @@ const dayLabel = (c) =>
 .cal-cell.weekend {
   background: color-mix(in srgb, var(--t-col) 55%, transparent);
 }
+/* Another month: paler surface and text (not `opacity` on the cell — that made
+   the whole cell a compositing layer of its own, and the hover tint went under). */
 .cal-cell.out {
-  opacity: 0.5;
+  background: color-mix(in srgb, var(--t-col) 50%, transparent);
+}
+.cal-cell.out .cal-daynum,
+.cal-cell.out .cal-mon {
+  color: var(--t-placeholder);
+}
+.cal-cell.out .cal-pills {
+  opacity: 0.55;
 }
 .cal-cell:hover {
   background: color-mix(in srgb, var(--t-hover) 80%, var(--t-col));
@@ -906,7 +915,6 @@ const dayLabel = (c) =>
 .cal-cell.drop {
   background: var(--t-drop);
   box-shadow: var(--t-sh-drop);
-  opacity: 1;
 }
 .cal-todayline {
   position: absolute;
