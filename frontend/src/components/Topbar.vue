@@ -42,7 +42,12 @@ const pageCrumb = computed(() => {
   const p = route.path
   if (p === '/documents' || p.startsWith('/documents/'))
     return { cur: t('documents.view.crumbRoot'), sub: workspaceName(ws.current) }
-  if (p === '/settings') return { cur: t('settings.title'), sub: t('settings.crumb') }
+  if (p === '/settings') {
+    // The section rides in ?s= (#3106); the crumb names the open one.
+    const s = route.query.s
+    const known = ['security', 'appearance', 'locale', 'notifications', 'app']
+    return { cur: t('settings.title'), sub: t(`settings.nav.${known.includes(s) ? s : 'profile'}`) }
+  }
   if (p === '/admin')
     return {
       cur: t('settings.admin.title'),

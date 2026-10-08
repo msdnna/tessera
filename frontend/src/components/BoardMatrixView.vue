@@ -242,7 +242,7 @@ function reveal() {
     const id = cursor.value?.id
     root.value
       ?.querySelector(`.m-card-wrap[data-task-id="${CSS.escape(id || '')}"]`)
-      ?.scrollIntoView({ block: 'nearest' })
+      ?.scrollIntoView?.({ block: 'nearest' })
   })
 }
 function step(dir) {
