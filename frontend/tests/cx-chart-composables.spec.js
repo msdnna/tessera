@@ -277,12 +277,12 @@ describe('useChartTimeline', () => {
     expect(zoomIdx.value).toBe(ZOOM.length - 1)
     applyZoom(-5)
     expect(zoomIdx.value).toBe(0)
-    expect(tier.value).toBe('months')
+    expect(tier.value).toBe('quarters')
     zoomOut()
     expect(zoomIdx.value).toBe(0)
   })
 
-  // v2 (#2959): the toolbar's «Дни / Недели / Месяцы» presets.
+  // v2 (#2959): the toolbar's «День / Неделя / Месяц» presets, «Квартал» since #3021.
   it('jumps to a scale preset and reports the scale the zoom sits in', async () => {
     const { scale, setScale, dayW, zoomIn } = timelineFor([task('a')])
     expect(scale.value).toBe('days')
@@ -294,6 +294,9 @@ describe('useChartTimeline', () => {
     expect(scale.value).toBe('months')
     zoomIn()
     expect(scale.value).toBe('months') // 6px/day still groups by months
+    setScale('quarters')
+    expect(dayW.value).toBe(2)
+    expect(scale.value).toBe('quarters')
     setScale('days')
     expect(scale.value).toBe('days')
   })

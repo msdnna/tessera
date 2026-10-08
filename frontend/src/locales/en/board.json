@@ -386,17 +386,18 @@
     },
     "people": "People",
     "scale": {
-      "days": "Days",
-      "weeks": "Weeks",
-      "months": "Months",
-      "quarters": "Quarters"
+      "days": "Day",
+      "weeks": "Week",
+      "months": "Month",
+      "quarters": "Quarter"
     },
     "hintScroll": "scroll",
     "hintZoom": "zoom",
     "workDays": "{n} working day | {n} working days",
     "overdueBy": "{n} day overdue | {n} days overdue",
     "lanes": "Collapse / expand the group",
-    "shiftHint": "shift dates"
+    "shiftHint": "shift dates",
+    "quarter": "Q{q} {year}"
   },
   "members": {
     "title": "Members · {count}"

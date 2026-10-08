@@ -96,3 +96,8 @@
   color: var(--t-text3);
   font-size: 14px;
 }
+
+/* «Шкала» (#3021): the progress line inside the bars switched off. */
+.tl-inner.no-progress :deep(.bar-prog) {
+  display: none;
+}

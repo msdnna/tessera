@@ -2909,10 +2909,12 @@ async function restoreFromArchive(taskId) {
             :project-id="board?.project_id"
             :subtasks-by-parent="filteredSubtasksByParent"
             :milestones="milestonesList"
+            :chart="chartCfg"
             :readonly="archivedMode"
             @open="openTask"
             @changed="onChanged"
             @restore="restoreFromArchive"
+            @update:scale="(sc) => (chartCfg.scale = sc)"
           />
 
           <BoardGanttView
@@ -2933,10 +2935,12 @@ async function restoreFromArchive(taskId) {
             :subtasks-by-parent="filteredSubtasksByParent"
             :milestones="milestonesList"
             :deps-token="depsToken"
+            :chart="chartCfg"
             :readonly="archivedMode"
             @open="openTask"
             @changed="onChanged"
             @restore="restoreFromArchive"
+            @update:scale="(sc) => (chartCfg.scale = sc)"
           />
 
           <BoardMatrixView
@@ -3184,8 +3188,12 @@ async function restoreFromArchive(taskId) {
           :chart-ctl="timelineLike ? chartView?.ctl || null : null"
           :views-summary="viewsSummary"
           :matrix="matrixCfg"
+          :chart="chartCfg"
           :digits-hint="bv.views.length > 0"
           @update:matrix="(m) => Object.assign(matrixCfg, matrixConfig(m))"
+          @update:chart="
+            (c) => Object.assign(chartCfg, chartConfig({ ...c, scale: chartCfg.scale }))
+          "
           @set-field="setFieldVis"
           @add-facet="onAddFacet"
           @remove-chip="removeChip"

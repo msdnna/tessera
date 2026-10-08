@@ -22,6 +22,7 @@ import ChartAxisHeader from './chart/ChartAxisHeader.vue'
 import ChartLaneHeader from './chart/ChartLaneHeader.vue'
 import ChartMilestoneMarkers from './chart/ChartMilestoneMarkers.vue'
 import ChartTaskRow from './chart/ChartTaskRow.vue'
+import { CHART_DEFAULTS } from '@/utils/boardViews'
 import ChartUnscheduled from './chart/ChartUnscheduled.vue'
 import ChartTaskMenu from './chart/ChartTaskMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
@@ -78,8 +79,11 @@ const props = defineProps({
   // those writes to the live task the archived row stands for; the arrows
   // themselves still render, because reading the graph is the point of the view.
   readonly: { type: Boolean, default: false },
+  // The board's «Шкала» (#3021): the scale preset and what the chart draws —
+  // weekends, the today line, progress, links (Gantt), the undated strip.
+  chart: { type: Object, default: () => ({ ...CHART_DEFAULTS }) },
 })
-const emit = defineEmits(['open', 'changed', 'restore'])
+const emit = defineEmits(['open', 'changed', 'restore', 'update:scale'])
 
 // Estimation unit/config of the project — drives every estimate the chart renders
 // (lane totals, the ghost bar, the bar tooltip).
@@ -154,6 +158,7 @@ const {
   weekBands,
   weekRangeBands,
   yearBands,
+  quarterBands,
   weekendOffset,
   todayIndex,
   hourTicks,
@@ -339,6 +344,19 @@ const { viewRows, toggleLane, laneSummary, selectedId, select, selectedLabel, ct
   hint: computed(() => t('board.chart.linkHint')),
   onOpen: (id) => emit('open', id),
 })
+
+// The scale is the board's state (#3021): a saved one is applied, and a zoom
+// that crosses into another scale is reported back so the view remembers it.
+watch(
+  () => props.chart?.scale,
+  (sc) => {
+    if (sc && sc !== timeline.scale.value) timeline.setScale(sc)
+  },
+  { immediate: true },
+)
+watch(timeline.scale, (sc) => {
+  if (sc !== props.chart?.scale) emit('update:scale', sc)
+})
 defineExpose({ ctl })
 const msX = (lane) =>
   lane.milestone?.due_date
@@ -491,7 +509,7 @@ onBeforeUnmount(() => {
     >
       <div
         class="tl-inner"
-        :class="[tier, { animate, collapsed: leftCollapsed }]"
+        :class="[tier, { animate, collapsed: leftCollapsed, 'no-progress': !chart.progress }]"
         :style="{
           width: `${leftW + axisW}px`,
           '--tl-day-w': `${dayW}px`,
@@ -501,7 +519,7 @@ onBeforeUnmount(() => {
       >
         <div
           class="tl-backdrop"
-          :class="{ weekends: tier === 'days' || tier === 'hours' }"
+          :class="{ weekends: chart.weekends && (tier === 'days' || tier === 'hours') }"
           :style="{
             left: `${leftW}px`,
             backgroundPositionX: `${(weekendOffset - 5) * dayW}px`,
@@ -517,6 +535,7 @@ onBeforeUnmount(() => {
           :week-bands="weekBands"
           :week-range-bands="weekRangeBands"
           :year-bands="yearBands"
+          :quarter-bands="quarterBands"
           :days="days"
           :hour-ticks="hourTicks"
         />
@@ -525,11 +544,11 @@ onBeforeUnmount(() => {
              full-height dependency-arrow SVG overlay on top -->
         <div ref="bodyEl" class="tl-body">
           <div
-            v-if="tier === 'days' || tier === 'hours'"
+            v-if="chart.today && (tier === 'days' || tier === 'hours')"
             class="tl-todaycol"
             :style="{ left: `${leftW + todayIndex * dayW}px`, width: `${dayW}px` }"
           />
-          <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
+          <div v-if="chart.today" class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
           <!-- milestone dates as markers, unless the milestones are the groups
                (then each closes its group with its own diamond row) -->
           <ChartMilestoneMarkers
@@ -572,7 +591,7 @@ onBeforeUnmount(() => {
               :animate="animate"
               :selected="selectedId === r.task.id"
               :sel-label="selectedId === r.task.id ? selectedLabel : null"
-              :linkable="!readonly"
+              :linkable="!readonly && chart.links"
               :link-from-id="link ? link.fromId : null"
               @open="$emit('open', $event)"
               @select="select"
@@ -585,6 +604,7 @@ onBeforeUnmount(() => {
 
           <!-- dependency arrows + live link preview -->
           <svg
+            v-if="chart.links"
             class="g-arrows"
             :width="leftW + axisW"
             :height="positions.height"
@@ -644,7 +664,12 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <ChartUnscheduled :tasks="unscheduled" @open="$emit('open', $event)" @menu="menu.open" />
+    <ChartUnscheduled
+      v-if="chart.undated"
+      :tasks="unscheduled"
+      @open="$emit('open', $event)"
+      @menu="menu.open"
+    />
 
     <ChartTaskMenu
       :show="menu.show.value"

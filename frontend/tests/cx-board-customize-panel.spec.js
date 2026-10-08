@@ -123,9 +123,9 @@ describe('BoardCustomizePanel scale', () => {
     expect(segs.map((b) => b.classes().includes('on'))).toEqual([false, true, false, false])
     await segs[2].trigger('click')
     expect(c.setScale).toHaveBeenCalledWith('months')
-    // «Квартал» is not built yet (#3021): visible, inert, says when.
-    expect(segs[3].attributes('aria-disabled')).toBe('true')
-    expect(segs[3].attributes('title')).toContain('3021')
+    // «Квартал» is a scale like the others (#3021).
+    await segs[3].trigger('click')
+    expect(c.setScale).toHaveBeenCalledWith('quarters')
     const chips = w.findAll('.cp-counter')
     expect(chips.map((x) => x.text())).toEqual(['3 просрочено', '2 без дат'])
     expect(chips[0].classes()).toContain('overdue')
@@ -133,6 +133,29 @@ describe('BoardCustomizePanel scale', () => {
     await w.find('.cp-scale button[role="switch"]').trigger('click')
     expect(c.toggleLeft).toHaveBeenCalledOnce()
     w.unmount()
+  })
+
+  // #3021: the toggles are real — they hand the board a new «Шкала» config;
+  // the links are the Gantt's alone.
+  it('switches what the chart draws, links on the Gantt only', async () => {
+    const chart = {
+      scale: 'days',
+      weekends: true,
+      today: true,
+      progress: true,
+      links: true,
+      undated: true,
+    }
+    const tl = mountPanel({ layout: 'timeline', chartCtl: ctl(), defaultOpen: ['scale'], chart })
+    expect(tl.find('[data-testid="chart-toggle-links"]').exists()).toBe(false)
+    await tl.find('[data-testid="chart-toggle-weekends"]').trigger('click')
+    expect(tl.emitted('update:chart')[0][0]).toMatchObject({ weekends: false, today: true })
+    tl.unmount()
+    const g = mountPanel({ layout: 'gantt', chartCtl: ctl(), defaultOpen: ['scale'], chart })
+    expect(g.find('[data-testid="chart-toggle-links"]').attributes('aria-checked')).toBe('true')
+    await g.find('[data-testid="chart-toggle-links"]').trigger('click')
+    expect(g.emitted('update:chart')[0][0].links).toBe(false)
+    g.unmount()
   })
 })
 

@@ -12,6 +12,7 @@ import {
   buildWeekBands,
   buildWeekRangeBands,
   buildYearBands,
+  buildQuarterBands,
   hourTicksInWindow,
   hourStepFor,
   SCALE_DAYW,
@@ -36,11 +37,11 @@ import { useFormat } from '@/composables/useFormat'
 //   * container px    — scroll container, offset from axis px by leftW + scrollLeft;
 //   * viewport px     — clientX/clientY, used for the fixed-position date pill.
 
-// px per day. The range spans month-grouping (zoomed out) through hour-precision
-// (zoomed in); stops land inside each tier: months ≤6, weeks 10–18, days 24–112,
-// hours ≥140 (≥3 hour ticks fit).
-export const ZOOM = [4, 6, 10, 14, 18, 24, 32, 44, 60, 84, 112, 140, 180, 230]
-export const DEFAULT_ZOOM_IDX = 5 // → 24px/day: the days scale preset (v2, #2959)
+// px per day. The range spans quarter-grouping (zoomed out) through hour-precision
+// (zoomed in); stops land inside each tier: quarters ≤3, months 4–6, weeks 10–18,
+// days 24–112, hours ≥140 (≥3 hour ticks fit).
+export const ZOOM = [2, 3, 4, 6, 10, 14, 18, 24, 32, 44, 60, 84, 112, 140, 180, 230]
+export const DEFAULT_ZOOM_IDX = 7 // → 24px/day: the days scale preset (v2, #2959)
 
 export function useChartTimeline({
   scheduled,
@@ -156,7 +157,12 @@ export function useChartTimeline({
     buildDays(range.value.start, range.value.days, todayMs, formatters.value),
   )
   const monthBands = computed(() =>
-    buildMonthBands(days.value, formatters.value, { short: tier.value === 'months' }),
+    buildMonthBands(days.value, formatters.value, {
+      short: tier.value === 'months' || tier.value === 'quarters',
+    }),
+  )
+  const quarterBands = computed(() =>
+    tier.value === 'quarters' ? buildQuarterBands(days.value) : [],
   )
   const weekBands = computed(() =>
     tier.value === 'weeks' ? buildWeekBands(days.value, formatters.value) : [],
@@ -396,6 +402,7 @@ export function useChartTimeline({
     weekBands,
     weekRangeBands,
     yearBands,
+    quarterBands,
     weekendOffset,
     todayIndex,
     hourTicks,

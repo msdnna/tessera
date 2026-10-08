@@ -45,7 +45,7 @@ import { useFormat } from '@/composables/useFormat'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel } from '@/utils/priority'
 import { softFill } from '@/utils/gradient'
-import { stubTask } from '@/utils/featureStubs'
+import { CHART_DEFAULTS, CHART_SCALES } from '@/utils/boardViews'
 import { countActiveFilters } from '@/utils/facetKeys'
 
 const show = defineModel('show', { type: Boolean, default: false })
@@ -89,6 +89,8 @@ const props = defineProps({
   digitsHint: { type: Boolean, default: false },
   // The Eisenhower thresholds (#3018): { dueDays, minPriority }.
   matrix: { type: Object, default: () => ({ dueDays: 3, minPriority: 3 }) },
+  // The «Шкала» toggles (#3021): { weekends, today, progress, links, undated }.
+  chart: { type: Object, default: () => ({ ...CHART_DEFAULTS }) },
 })
 const emit = defineEmits([
   'set-field',
@@ -97,6 +99,7 @@ const emit = defineEmits([
   'chip-click',
   'update-board',
   'update:matrix',
+  'update:chart',
 ])
 
 const { t } = useI18n()
@@ -250,9 +253,15 @@ function setMatrix(patch) {
 }
 
 // ── scale (timeline / Gantt) ──
-const SCALES = ['days', 'weeks', 'months']
-const CHART_STUBS = ['weekends', 'today', 'progress', 'links', 'undated']
-const scaleStub = stubTask('chart.scale')
+// What the chart draws on top of the bars (#3021). Links are the Gantt's alone.
+const chartToggles = computed(() =>
+  ['weekends', 'today', 'progress', 'links', 'undated'].filter(
+    (k) => k !== 'links' || props.layout === 'gantt',
+  ),
+)
+function setChart(k) {
+  emit('update:chart', { ...props.chart, [k]: !props.chart[k] })
+}
 
 // ── facets: the composer's «+» menu behind the panel's own «+» ──
 // On a phone naive's side submenus open past the edge of the screen, which is why
@@ -441,9 +450,9 @@ const sw = (on) =>
             </template>
 
             <template v-else-if="key === 'scale'">
-              <div class="cp-seg" role="tablist">
+              <div class="cp-seg" role="tablist" data-testid="chart-scale-seg">
                 <button
-                  v-for="s in SCALES"
+                  v-for="s in CHART_SCALES"
                   :key="s"
                   type="button"
                   class="cp-seg-btn"
@@ -452,14 +461,6 @@ const sw = (on) =>
                   @click="chartCtl?.setScale(s)"
                 >
                   {{ t(`board.chart.scale.${s}`) }}
-                </button>
-                <button
-                  type="button"
-                  class="cp-seg-btn stub"
-                  aria-disabled="true"
-                  :title="t('common.stub.soon', { n: scaleStub })"
-                >
-                  {{ t('board.chart.scale.quarters') }}
                 </button>
               </div>
               <button
@@ -473,17 +474,19 @@ const sw = (on) =>
                 <span class="cp-row-lbl">{{ t('board.chart.showTasks') }}</span>
                 <component :is="sw(!chartCtl.leftCollapsed)" />
               </button>
-              <div
-                v-for="k in CHART_STUBS"
+              <button
+                v-for="k in chartToggles"
                 :key="k"
-                class="cp-row stub"
-                aria-disabled="true"
-                :title="t('common.stub.soon', { n: scaleStub })"
+                type="button"
+                role="switch"
+                class="cp-row"
+                :aria-checked="chart[k] !== false"
+                :data-testid="`chart-toggle-${k}`"
+                @click="setChart(k)"
               >
                 <span class="cp-row-lbl">{{ t(`board.customize.chart.${k}`) }}</span>
-                <span class="cp-soon">{{ t('common.stub.badge') }}</span>
-                <component :is="sw(false)" />
-              </div>
+                <component :is="sw(chart[k] !== false)" />
+              </button>
               <div v-if="chartCtl?.counters?.length" class="cp-counters">
                 <span
                   v-for="c in chartCtl.counters"

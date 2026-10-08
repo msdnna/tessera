@@ -21,9 +21,6 @@ export const FEATURE_STUBS = {
   // Editing, closing and reopening a GitLab-sourced stage with the change
   // written back to GitLab (#3010) — until then such a stage is read-only here.
   'stage.gitlabWrite': 3010,
-  // Timeline scale «Квартал» and the chart toggles in the board's view panel
-  // (weekends, today line, progress, links, undated at the bottom) — #3021.
-  'chart.scale': 3021,
   // «Входящие» (#2972): #tags and @mentions of a record are read by the capture
   // but not stored yet — #3040.
   'inbox.tags': 3040,

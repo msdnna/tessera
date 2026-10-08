@@ -285,7 +285,7 @@ describe('ChartControls.vue', () => {
     const ctl = ctlOf()
     const w = mount(ChartControls, { props: { ctl }, global: { stubs } })
     const segs = w.findAll('.cc-seg-btn')
-    expect(segs.map((b) => b.classes().includes('on'))).toEqual([true, false, false])
+    expect(segs.map((b) => b.classes().includes('on'))).toEqual([true, false, false, false])
     await segs[2].trigger('click')
     expect(ctl.setScale).toHaveBeenCalledWith('months')
   })

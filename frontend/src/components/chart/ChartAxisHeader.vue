@@ -4,17 +4,20 @@
 //   days   — week ranges («28 сент. – 4 окт.») over day numbers;
 //   hours  — months over day numbers, hour ticks under them;
 //   weeks  — months over week ranges («29–4»);
-//   months — years over months.
+//   months — years over months;
+//   quarters — quarters over months (#3021).
 // Every band comes precomputed from useChartTimeline, so this is pure layout —
 // shared verbatim by the Timeline and Gantt views.
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+const ROMAN = ['I', 'II', 'III', 'IV']
+const quarterLabel = (b) => t('board.chart.quarter', { q: b.q, qr: ROMAN[b.q - 1], year: b.year })
 
 defineProps({
   leftW: { type: Number, required: true },
   dayW: { type: Number, required: true },
-  // 'hours' | 'days' | 'weeks' | 'months'
+  // 'hours' | 'days' | 'weeks' | 'months' | 'quarters'
   tier: { type: String, required: true },
   collapsed: { type: Boolean, default: false },
   // How many tasks the chart shows — next to «Задача».
@@ -23,6 +26,7 @@ defineProps({
   weekBands: { type: Array, default: () => [] },
   weekRangeBands: { type: Array, default: () => [] },
   yearBands: { type: Array, default: () => [] },
+  quarterBands: { type: Array, default: () => [] },
   days: { type: Array, default: () => [] },
   hourTicks: { type: Array, default: () => [] },
 })
@@ -46,6 +50,16 @@ defineProps({
             :style="{ width: `${w.span * dayW}px` }"
           >
             {{ w.label }}
+          </div>
+        </template>
+        <template v-else-if="tier === 'quarters'">
+          <div
+            v-for="b in quarterBands"
+            :key="b.key"
+            class="tl-b1"
+            :style="{ width: `${b.span * dayW}px` }"
+          >
+            {{ b.span * dayW > 56 ? quarterLabel(b) : '' }}
           </div>
         </template>
         <template v-else-if="tier === 'months'">
@@ -80,7 +94,7 @@ defineProps({
           {{ w.label }}
         </div>
       </div>
-      <div v-else-if="tier === 'months'" class="tl-band tl-band2">
+      <div v-else-if="tier === 'months' || tier === 'quarters'" class="tl-band tl-band2">
         <div
           v-for="(m, i) in monthBands"
           :key="i"

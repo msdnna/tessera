@@ -22,7 +22,7 @@ defineProps({
 })
 
 const { t } = useI18n()
-const SCALES = ['days', 'weeks', 'months']
+const SCALES = ['days', 'weeks', 'months', 'quarters']
 // A phone has no room for three segments: the scale becomes a menu.
 const scaleOptions = computed(() =>
   SCALES.map((s) => ({ key: s, label: t(`board.chart.scale.${s}`) })),
