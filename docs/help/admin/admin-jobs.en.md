@@ -3,13 +3,13 @@ title: Background jobs
 category: Administration
 order: 88
 keywords: administration, background jobs, workers, worker, synchronization, queue, log, error, run
-updated: 2026-08-26
+updated: 2026-10-08
 platforms: web
 ---
 
 Some of Tessera's work happens on its own, out of the user's sight: it polls GitLab, pushes changes there, sends notifications, watches reminder due dates and creates recurring tasks. The **Background jobs** window shows what of this is running right now, when it will happen next, and what ended with an error.
 
-It's opened with the server-icon button in the sidebar header (in the tools row to the right of the logo) — visible only to an instance admin.
+It's opened with the **Background jobs** item in the “⋯” menu of the sidebar footer or in the column of sections on the [Administration](/help/admin-users) screen — both are visible only to an instance admin.
 
 ![The Background jobs window: the list on the left, the selected job's card on the right](../assets/background-jobs-light.png)
 
@@ -25,13 +25,13 @@ A **sync** is a one-off pass with a beginning and an end: a specific run of the 
 
 There are five of them, each with its own role:
 
-| Worker                        | Interval | What it does                                                       |
-| ----------------------------- | -------- | ------------------------------------------------------------------ |
-| GitLab auto-sync              | 30 s     | checks which integrations are due for a sync and starts them       |
-| GitLab write-back             | 10 s     | pushes the accumulated task changes to GitLab (write-back)         |
-| Notification delivery         | 10 s     | works through the notification queue and sends them over channels  |
-| Due dates and reminders scan  | 60 s     | looks for task due dates that have arrived and reminders that fired |
-| Recurring tasks               | 60 s     | creates the next occurrence on schedule                            |
+| Worker                       | Interval | What it does                                                        |
+| ---------------------------- | -------- | ------------------------------------------------------------------- |
+| GitLab auto-sync             | 30 s     | checks which integrations are due for a sync and starts them        |
+| GitLab write-back            | 10 s     | pushes the accumulated task changes to GitLab (write-back)          |
+| Notification delivery        | 10 s     | works through the notification queue and sends them over channels   |
+| Due dates and reminders scan | 60 s     | looks for task due dates that have arrived and reminders that fired |
+| Recurring tasks              | 60 s     | creates the next occurrence on schedule                             |
 
 The intervals are fixed; you can't configure them from the interface.
 

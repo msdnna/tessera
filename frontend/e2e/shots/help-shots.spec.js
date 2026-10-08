@@ -45,32 +45,22 @@ const CAPTIONS = {
   ru: {
     integrations: 'Интеграции',
     jobs: 'Фоновые задания',
-    adminUsers: 'Пользователи экземпляра',
     // Substring of the bindings heading («Привязки GitLab → доска»).
     bindingsHead: 'Привязки',
     configureWriteback: /Настроить действия/,
     configureRules: 'Настроить правила',
-    notifications: 'Уведомления',
     thisDevice: 'это устройство',
-    routesTitle: 'Правила маршрутизации',
-    addRule: 'Добавить правило',
-    newRule: 'Новое правило',
     events: 'События',
     mention: 'Упоминания',
   },
   en: {
     integrations: 'Integrations',
     jobs: 'Background jobs',
-    adminUsers: 'Users on this instance',
     // Substring of «GitLab → board bindings» — lower-case, the match is exact.
     bindingsHead: 'bindings',
     configureWriteback: /Configure actions/,
     configureRules: 'Configure rules',
-    notifications: 'Notifications',
     thisDevice: 'this device',
-    routesTitle: 'Routing rules',
-    addRule: 'Add rule',
-    newRule: 'New rule',
     events: 'Events',
     mention: 'Mentions',
   },
@@ -323,8 +313,31 @@ for (const scheme of ['light', 'dark']) {
 
     test('документы', async ({ page }) => {
       await page.goto('/documents')
-      await expect(page.getByText('Регламент релиза')).toBeVisible()
+      await expect(page.getByTestId('doc-tree')).toBeVisible()
+      await expect(page.locator('.tile', { hasText: 'Регламент релиза' })).toBeVisible()
       await shoot(page, scheme, 'documents')
+    })
+
+    // The open document with the tree beside it (v2, #3106): the head row with
+    // the crumbs and tools, the title, the sheet and the discussion card.
+    test('документ открыт', async ({ page }) => {
+      // Wide enough for the tree to stay beside an open document (it folds away
+      // under ~1400px, see DocumentsView TREE_BESIDE_DOC).
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await page.goto('/documents')
+      await page.locator('.tile', { hasText: 'Регламент релиза' }).click()
+      await expect(page.locator('.ProseMirror')).toBeVisible()
+      await expect(page.getByTestId('doc-save-state')).toHaveAttribute('data-state', 'saved')
+      await page.waitForTimeout(400)
+      await shoot(page, scheme, 'documents-doc')
+    })
+
+    test('шаблоны документов', async ({ page }) => {
+      await page.goto('/documents')
+      await page.getByTestId('doc-templates').click()
+      await expect(page.getByTestId('tpl-tile').first()).toBeVisible()
+      await page.waitForTimeout(300)
+      await shoot(page, scheme, 'documents-templates')
     })
 
     // «Входящие» (#2972) — the panel next to the board, and the capture field
@@ -428,31 +441,25 @@ for (const scheme of ['light', 'dark']) {
     test('администрирование', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
       await page.goto('/admin')
-      await expect(page.getByText(L.adminUsers)).toBeVisible()
-      // The user rows arrive in a second request; without this the shutter can
-      // catch the OAuth card above an empty list.
-      await expect(page.locator('.urow').first()).toBeVisible()
-      // The OAuth card alone is taller than the viewport, so the accounts — what
-      // this shot is of — start below the fold. Scrolled to the search field:
-      // the list keeps its own heading in frame instead of floating loose.
-      await page.locator('.admin .search').scrollIntoViewIfNeeded()
+      // The user rows arrive in their own request; without this the shutter can
+      // catch the section head over an empty table.
+      await expect(page.getByTestId('admin-user').first()).toBeVisible()
+      await page.waitForTimeout(300)
       await shoot(page, scheme, 'admin-users')
     })
 
     test('вход через GitLab (OAuth)', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      // The card is half again as tall as the standard viewport, and an element
-      // screenshot that has to scroll to stitch comes back half-painted (the app
-      // footer lands in the middle of it). Growing the window instead keeps the
-      // whole card on one rendered page; the shot is cropped to the card anyway,
-      // so the wider window changes nothing else in the picture.
+      // The card is taller than the standard viewport, and an element screenshot
+      // that has to scroll to stitch comes back half-painted. Growing the window
+      // keeps the whole card on one rendered page; the shot is cropped to it.
       await page.setViewportSize({ width: 1440, height: 1600 })
-      await page.goto('/admin')
-      const card = page.locator('.oauth-card')
+      await page.goto('/admin?s=integrations')
+      const card = page.getByTestId('admin-oauth')
       await expect(card).toBeVisible()
       // The values come from the seed (demo.js), so the form is documented
       // filled in, not as a column of empty boxes.
-      await expect(card.locator('.oauth-mono textarea')).toHaveValue(/demo-group/)
+      await expect(card.locator('.av-mono textarea')).toHaveValue(/demo-group/)
       await shoot(page, scheme, 'admin-oauth', card)
     })
 
@@ -541,10 +548,8 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'background-jobs', modal)
     })
 
-    // Notification settings (#2810, wave 4). They live in a long settings page,
-    // so both shots are of the viewport scrolled to the block in question rather
-    // than of the section element — the section is taller than any sane window,
-    // and an element screenshot that has to stitch comes back half-painted.
+    // Notification settings (#2810, wave 4; v2 #3106 — their own section of
+    // the settings screen, `?s=notifications`).
     async function openNotificationSettings(page) {
       // Without the permission the device row carries a red «Уведомления
       // запрещены в браузере» line — a picture of a headless browser's default,
@@ -553,60 +558,45 @@ for (const scheme of ['light', 'dark']) {
       // The client registers this browser as a device channel on boot, but only
       // after the tour/what's-new chain ahead of it — later than the settings
       // screen fetches the channel list, so the row is missing on a cold load.
-      // Waiting for that POST and then reloading makes the row deterministic:
-      // without it the light shot (the first test to run) had no device row and
-      // its dark twin, running after the channel already existed, had one.
+      // Waiting for that POST and then reloading makes the row deterministic.
       const registered = page
         .waitForResponse((r) => r.url().includes('/notification-devices'), { timeout: 15000 })
         .catch(() => null)
-      await page.goto('/settings')
+      await page.goto('/settings?s=notifications')
       await registered
       await page.reload()
-      const section = page
-        .locator('section.card')
-        .filter({ has: page.getByRole('heading', { name: L.notifications }) })
+      const section = page.getByTestId('notification-settings')
       await expect(section).toBeVisible()
       await expect(section.getByText(L.thisDevice)).toBeVisible()
-      // Channels arrive in their own request; the seeded one keeps the shutter
-      // off the spinner and off the «Каналов пока нет» empty state.
-      // Exact: the channel's own row, not the two rule rows that list it as a
+      // Exact: the channel's own card, not the rule rows that list it as a
       // delivery target («→ Рабочая почта, Мой телеграм · …»).
       await expect(section.getByText('Мой телеграм', { exact: true })).toBeVisible()
       return section
     }
 
-    // scrollIntoViewIfNeeded only scrolls until the element is *somewhere* in the
-    // viewport, which leaves the settings screen showing the tail of the security
-    // card above the block being documented. `block: 'start'` pins it to the top.
-    async function scrollToTop(locator) {
-      await locator.evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'instant' }))
-    }
-
     test('уведомления: каналы доставки', async ({ page }) => {
-      const section = await openNotificationSettings(page)
-      await scrollToTop(section)
+      await openNotificationSettings(page)
+      await page.waitForTimeout(300)
       await shoot(page, scheme, 'notifications-channels')
     })
 
     test('уведомления: правила маршрутизации', async ({ page }) => {
       const section = await openNotificationSettings(page)
-      // The rule editor over the rule list: the picture has to show both the
-      // order of the rules (first match wins) and what a rule is made of, so the
-      // list is scrolled up first and the form opened on top of it.
-      const block = section.locator('.block', { hasText: L.routesTitle }).first()
-      await scrollToTop(block)
-      await section.getByRole('button', { name: L.addRule }).click()
-      const modal = page.locator('.n-card', { hasText: L.newRule })
-      await expect(modal).toBeVisible()
-      // Pick the events so the form is documented in use, not empty. The label is
-      // a <span> above the select, so the click has to land on the selection box
-      // itself; the options then render in a detached dropdown layer, outside the
-      // modal — hence the page-level locator for them.
-      await modal.locator('.field', { hasText: L.events }).locator('.n-base-selection').click()
+      // The rule editor next to the rule list: the picture has to show both the
+      // order of the rules (first match wins) and what a rule is made of.
+      const block = section.getByTestId('notif-routes')
+      await block.evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'instant' }))
+      await section.getByTestId('notif-route-add').click()
+      const form = page.getByTestId('notif-route-form')
+      await expect(form).toBeVisible()
+      // Pick the events so the form is documented in use, not empty. The
+      // options render in a detached dropdown layer, outside the form.
+      await form.locator('.kf', { hasText: L.events }).locator('.n-base-selection').click()
       await page.locator('.n-base-select-option', { hasText: L.mention }).first().click()
-      await page.keyboard.press('Escape') // close the dropdown, keep the modal
-      // The pick lands as a tag inside the select — that is what has to be in frame.
-      await expect(modal.locator('.n-tag', { hasText: L.mention })).toBeVisible()
+      // Close the dropdown with a click on the form's title — Esc would close
+      // the form itself.
+      await form.locator('.pf-title').click()
+      await expect(form.locator('.n-tag', { hasText: L.mention })).toBeVisible()
       await shoot(page, scheme, 'notifications-routes')
     })
 

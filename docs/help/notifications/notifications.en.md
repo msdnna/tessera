@@ -3,7 +3,7 @@ title: Notifications
 category: Notifications
 order: 70
 keywords: notifications, channels, email, telegram, webhook, shoutrrr, routing, rules, quiet hours, digest, deadline, reminders, template
-updated: 2026-08-25
+updated: 2026-10-08
 ---
 
 Notifications in Tessera come in two kinds, and only the second is configurable.
@@ -12,23 +12,23 @@ Notifications in Tessera come in two kinds, and only the second is configurable.
 
 **External** — the same event delivered outward: by email, to Telegram, by a webhook to your own service. By default nothing goes out: first you set up a **channel** (where to deliver), then a **rule** (what exactly to send to it).
 
-All of this lives in **Settings** (the gear in the bottom bar) under **Notifications**.
+All of this lives in **Settings** (the gear in the sidebar footer, or `G` then `,`) — the **Notifications** section in the column on the left. Everything here is saved as you change it; there is no Save button.
 
 ![The Notifications section: the list of delivery channels](../assets/notifications-channels-light.png)
 
 ## Delivery channels
 
-A channel is a single recipient address. There can be as many as you like, and each is switched on and off with its own toggle; a switched-off one stays in the list but receives nothing.
+A channel is a single recipient address; on screen it's a card with the type's icon. There can be as many as you like, and each is switched on and off with the toggle on its card; a switched-off one stays in the list but receives nothing. The rest of a channel's actions — **Test**, **Edit**, **Delete** — are in the card's **“⋯”** menu.
 
-**Add channel** opens a form. The type is chosen once, at creation — you can't change it afterwards; a channel of the type you need is set up anew.
+**Add channel** (the last card in the grid) opens a form next to the button. The type is chosen once, at creation — you can't change it afterwards; a channel of the type you need is set up anew.
 
-| Type                         | What you fill in                                                            |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| **Email**                    | the address (the account address is filled in by default)                   |
-| **Telegram**                 | the Chat ID and the bot token                                               |
-| **Webhook**                  | the URL, the method (`POST` by default) and, if needed, an `Authorization` header |
-| **Shoutrrr (any service)**   | one Service URL string — `slack://…`, `discord://…`, `ntfy://…` and a dozen more |
-| **System notifications**     | nothing: the channel is set up by the client itself                          |
+| Type                       | What you fill in                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| **Email**                  | the address (the account address is filled in by default)                         |
+| **Telegram**               | the Chat ID and the bot token                                                     |
+| **Webhook**                | the URL, the method (`POST` by default) and, if needed, an `Authorization` header |
+| **Shoutrrr (any service)** | one Service URL string — `slack://…`, `discord://…`, `ntfy://…` and a dozen more  |
+| **System notifications**   | nothing: the channel is set up by the client itself                               |
 
 **Telegram.** The bot is created through `@BotFather`, which also hands out the token. The Chat ID is your own identifier in Telegram (or `@channel_name` if the bot is an admin there); you need to message the bot once yourself, otherwise it isn't allowed to write first.
 
@@ -36,32 +36,32 @@ A channel is a single recipient address. There can be as many as you like, and e
 
 **Shoutrrr** is the same idea, but without your own handler: a single URL describes both the service and the credentials, and Slack, Discord, ntfy, Gotify, Matrix, Pushover, Teams and others are supported. The URL format for each service is in shoutrrr's own documentation.
 
-**System notifications** are the device or browser you signed in from. Such a channel appears in the list on its own and is marked **this device** if it's opened from that very device; you can't add it by hand, but you can rename, disable and delete it. In a browser it shows the operating system's pop-up notification while the tab with Tessera is open, and it requires permission — if it hasn't been granted yet, an **Allow** button appears under the channel name. The mobile app with this channel gets notifications even when closed.
+**System notifications** are the device or browser you signed in from. Such a channel appears in the list on its own and is marked **this device** if it's opened from that very device; you can't add it by hand, but you can rename, disable and delete it. In a browser it shows the operating system's pop-up notification while the tab with Tessera is open, and it requires permission — if it hasn't been granted yet, the card says so and the channel's “⋯” menu gets an **Allow** item. The mobile app with this channel gets notifications even when closed.
 
 ### Secrets, testing and deletion
 
 The bot token, the Service URL and the `Authorization` header are stored encrypted and aren't shown back. When you edit a channel, the secret field is empty: leave it empty and the previous value is kept, enter a new one and it's replaced. You can wipe the secret entirely with the eraser next to the field.
 
-**Test** sends a probe message to the channel right now, bypassing the queue. Success marks the channel with a **verified** label, and it's the best way to make sure the token is right — an error comes back as text from the service itself. For email you may get the reply “SMTP isn't configured on the server”: the letter is then only written to the server log, and that's a question for the instance administrator, not for the channel's settings.
+**Test** (in the channel's “⋯” menu) sends a probe message to the channel right now, bypassing the queue. Success marks the channel with a **verified** label, and it's the best way to make sure the token is right — an error comes back as text from the service itself. For email you may get the reply “SMTP isn't configured on the server”: the letter is then only written to the server log, and that's a question for the instance administrator, not for the channel's settings.
 
-When you delete a channel, Tessera warns you if it's used in rules: the rules themselves stay, but they stop delivering anywhere.
+Deleting is the last item of the “⋯” menu, and it takes two presses: the first arms it and states the cost — how many rules use the channel (the rules stay, but stop delivering there) — the second deletes. Deletion can't be undone.
 
 ## Message template
 
 Every channel (except the system one) has its own text template. An empty template means the default text: the gist of the notification plus a link to the app.
 
-The **Edit** button opens the editor: on the left is the template field with a live preview on sample data, on the right is the list of fields, each inserted with a click at the cursor position.
+The **Edit** button next to the message template field in the channel form opens the editor window: on the left is the template field with a live preview on sample data, on the right is the list of fields, each inserted with a click at the cursor position.
 
-| Field            | What it substitutes                    |
-| ---------------- | -------------------------------------- |
-| `{{.Text}}`      | the ready notification text            |
-| `{{.Title}}`     | the title by event type                |
-| `{{.Kind}}`      | the event type (`assigned`, `comment`, …) |
-| `{{.TaskNumber}}` | the task number                       |
-| `{{.TaskTitle}}` | the task title                         |
-| `{{.Actor}}`     | who triggered it                       |
-| `{{.Workspace}}` | the workspace name                     |
-| `{{.Link}}`      | the link to the app                    |
+| Field             | What it substitutes                       |
+| ----------------- | ----------------------------------------- |
+| `{{.Text}}`       | the ready notification text               |
+| `{{.Title}}`      | the title by event type                   |
+| `{{.Kind}}`       | the event type (`assigned`, `comment`, …) |
+| `{{.TaskNumber}}` | the task number                           |
+| `{{.TaskTitle}}`  | the task title                            |
+| `{{.Actor}}`      | who triggered it                          |
+| `{{.Workspace}}`  | the workspace name                        |
+| `{{.Link}}`       | the link to the app                       |
 
 The syntax is Go templates, and conditions are available too: `{{if .TaskNumber}}#{{.TaskNumber}} {{end}}{{.Text}}`. A broken template won't be saved: the error appears in the preview right away, and on an attempt to save — under the channel form.
 
@@ -70,6 +70,8 @@ The syntax is Go templates, and conditions are available too: `{{if .TaskNumber}
 Rules decide which event goes to which channels. They are checked **top to bottom, and the first match fires** — the rest are no longer considered. As long as there are no rules, external channels stay silent, no matter how many are set up.
 
 ![Routing rules: the list of rules and the form for a new rule](../assets/notifications-routes-light.png)
+
+**Add rule** opens a form next to the button; each row of the list has a toggle and a **“⋯”** menu (Edit and a two-press Delete), and the number on the left is the rule's place in the checking order.
 
 A rule has three settings:
 
@@ -97,7 +99,7 @@ The same three settings exist on each task separately — by clicking the date o
 
 **Quiet hours** — a “do not disturb” window that can cross midnight (for example, 22:00–08:00). External notifications in that window are **held** and arrive all at once after it ends; system notifications to the device simply aren't shown during quiet hours — a pop-up can't be postponed. Internal notifications on the bell come as usual. The time is counted in your time zone — it's taken from the localization settings.
 
-Changes in this block are applied with the **Save** button — unlike channels and rules, which are saved immediately.
+Changes in this block are saved on their own, half a second after you make them — just like channels and rules.
 
 ## How delivery really works
 
@@ -110,10 +112,10 @@ If delivery fails, Tessera retries it up to five times with a growing pause (rou
 1. **Is there a rule.** Channels without rules receive nothing — that's the most common cause.
 2. **A rule higher in the list.** The first matching rule takes the event for itself; check that a silencer rule isn't intercepting it.
 3. **The channel and the rule are enabled.** A disabled channel is dim in the list; a disabled rule is too.
-4. **The channel is verified.** Press **Test**: it will show the real service error.
+4. **The channel is verified.** Choose **Test** in the channel's menu: it will show the real service error.
 5. **Quiet hours.** If it's a quiet window right now, external notifications will come after it ends, and system ones won't come at all.
 6. **Digest.** With the digest on, a message waits for the end of the window and arrives together with the rest.
-7. **Browser permission** — for system notifications; the **Allow** button under the channel appears if there's none.
+7. **Browser permission** — for system notifications; if there's none, the channel's “⋯” menu gets an **Allow** item.
 8. **Email doesn't go out at all** — SMTP may not be configured on the server: the channel test will tell you.
 
 ## What's next
