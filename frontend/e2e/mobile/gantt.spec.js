@@ -41,15 +41,10 @@ test('Гант на телефоне: подсказка не растёт в к
   await openBoard(page, seed.boardId)
   await settle(page)
 
-  // The layout switcher on a phone lives in the header's "⋮" menu (Topbar renders
-  // BoardMobileMenu only in its mobile branch). Naive's dropdown will not take a
-  // data-testid — the option is reached by its label.
-  await page
-    .locator('.tb-right .n-button')
-    .filter({ has: page.locator('.n-icon') })
-    .first()
-    .tap()
-  await page.locator('.n-dropdown-option', { hasText: 'Гант' }).first().click()
+  // The layout switcher on a phone lives in the header's «⋮» menu — a sheet of
+  // ActionMenu rows on the touch (#2976), each with its own test id.
+  await page.getByTestId('board-mobile-menu').tap()
+  await page.getByTestId('board-mobile-menu-list-layout:gantt').tap()
   await page.waitForTimeout(700)
 
   const controls = page.getByTestId('chart-controls')
@@ -61,13 +56,8 @@ test('Гант на телефоне: подсказка не растёт в к
   expect(h, `контролы Ганта заняли ${Math.round(h)}px — ряд переносится`).toBeLessThan(50)
 
   // Gate 2: each counter chip in the view panel is one line. The panel opens from
-  // the same header menu; its «Шкала» section is a tap away.
-  await page
-    .locator('.tb-right .n-button')
-    .filter({ has: page.locator('.n-icon') })
-    .first()
-    .tap()
-  await page.locator('.n-dropdown-option', { hasText: 'Вид доски' }).first().click()
+  // the header's «Вид доски» button; its «Шкала» section is a tap away.
+  await page.getByTestId('mobile-board-view').tap()
   await expect(page.getByTestId('board-customize')).toBeVisible({ timeout: 10000 })
   await page.getByTestId('customize-sec-scale').tap()
   const chips = page.locator('.cp-counter')

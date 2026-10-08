@@ -107,7 +107,7 @@ for (const route of ROUTES) {
 // its rows and filters inside the width.
 test('мобильная вёрстка: «Входящие» — полноэкранный лист', async ({ page }, testInfo) => {
   await visit(page, '/')
-  await page.getByTestId('inbox-button').click()
+  await page.getByTestId('mobile-tab-inbox').tap()
   const sheet = page.getByTestId('inbox-panel')
   await expect(sheet).toBeVisible()
   await expect(page.getByTestId('inbox-filters')).toBeVisible()
@@ -126,7 +126,8 @@ test('мобильная вёрстка: доска', async ({ page, seed }, tes
 
 // The list and the calendar on a phone (#2973): 56px rows without the field
 // columns, the month as dots — neither may push the page sideways. The layout is
-// picked in the header's board menu, as a reader would.
+// picked in the header's board menu (a sheet on the touch, #2976), as a reader
+// would.
 for (const [key, label] of [
   ['list', 'Список'],
   ['calendar', 'Календарь'],
@@ -134,8 +135,8 @@ for (const [key, label] of [
   test(`мобильная вёрстка: ${label.toLowerCase()}`, async ({ page, seed }, testInfo) => {
     await openBoard(page, seed.boardId)
     await settle(page)
-    await page.locator('.tb-right .n-button').first().click()
-    await page.locator('.n-dropdown-option', { hasText: label }).first().click()
+    await page.getByTestId('board-mobile-menu').tap()
+    await page.getByTestId(`board-mobile-menu-list-layout:${key}`).tap()
     await expect(page.getByTestId(key === 'list' ? 'list-view' : 'calendar-view')).toBeVisible()
     await page.waitForTimeout(300)
     await report(page, testInfo, `board-${key}`)
@@ -143,9 +144,16 @@ for (const [key, label] of [
   })
 }
 
-test('мобильная вёрстка: модалка задачи', async ({ page, seed, backend }, testInfo) => {
+// A board of its own (#2962): on the shared seeded board the desktop tier has
+// already left a column of cards by the time this runs, the new card lands
+// below the column's visible window, and the board's windowing draws it as a
+// placeholder without a TaskCard — so the locator below never found it.
+test('мобильная вёрстка: модалка задачи', async ({ page, backend }, testInfo) => {
+  const { board, columns } = await backend.freshBoard('mob-modal')
   const title = `Моб ${Date.now().toString(36)}`
-  await backend.createTask(seed.columns[0].id, title, {
+  await backend.post(`/boards/${board.id}/tasks`, {
+    column_id: columns[0].id,
+    title,
     description: [
       'Длинная строка без пробелов, чтобы поймать перенос: ',
       'ААААААААААААААААААААААААААААААААААААААААААААААААААААААААААА',
@@ -154,10 +162,10 @@ test('мобильная вёрстка: модалка задачи', async ({ 
       '\n| значение | значение | значение | значение |',
     ].join(''),
   })
-  await openBoard(page, seed.boardId)
+  await openBoard(page, board.id)
   await settle(page)
 
-  await cardsIn(page, seed.columns[0].name).filter({ hasText: title }).first().click()
+  await cardsIn(page, columns[0].name).filter({ hasText: title }).first().click()
   const modal = page.getByTestId('task-modal')
   await expect(modal).toBeVisible({ timeout: 10000 })
   await page.waitForTimeout(500)
@@ -170,10 +178,12 @@ test('мобильная вёрстка: модалка задачи', async ({ 
   await expectPaneFitsWidth(modal, 'модалка задачи')
 })
 
-test('мобильная вёрстка: сайдбар в дровере', async ({ page }, testInfo) => {
-  await visit(page, '/')
-  // Topbar.vue renders the hamburger only in its `mobile` branch, as `.menu-btn`.
-  await page.locator('.menu-btn').first().click()
+test('мобильная вёрстка: сайдбар в дровере', async ({ page, seed }, testInfo) => {
+  // No hamburger on a phone (#2976): the tree opens from the board's name in
+  // the header.
+  await openBoard(page, seed.boardId)
+  await settle(page)
+  await page.getByTestId('mobile-board-switch').tap()
   const drawer = page.locator('.n-drawer')
   await expect(drawer).toBeVisible({ timeout: 10000 })
   await page.waitForTimeout(400)

@@ -97,14 +97,27 @@ test('мобильные документы: панели не стекаютс�
   await expect(page.locator('.doc-toolbar [data-tbtn="table"]')).toHaveCount(0)
   await page.screenshot({ path: resolve(SHOTS, 'doc-mobile-arrival.png'), fullPage: false })
 
-  // ...and it gives them back.
+  // ...and it gives them back — in the same one row, which then scrolls
+  // sideways (#2961). At ≤640px the strip never wraps (DocToolbar.vue, «Phone
+  // width», #2894): the expanded groups would otherwise stack four rows of
+  // buttons over the text. This spec was written before that rule reached the
+  // branch and still expected the expanded tools to wrap into a second row.
   await page.getByTestId('doc-toolbar-more').tap()
   await page.waitForTimeout(200)
+  await expect(page.locator('.doc-toolbar [data-tbtn="table"]')).toHaveCount(1)
+  expect(await toolbarRows(page), 'развёрнутый тулбар переносится во второй ряд').toBe(1)
+  const strip = await page
+    .locator('.doc-toolbar .row')
+    .first()
+    .evaluate((el) => ({ sw: el.scrollWidth, cw: el.clientWidth }))
+  expect(strip.sw, 'развёрнутые группы не листаются вбок — их просто нет').toBeGreaterThan(strip.cw)
+  await page.locator('.doc-toolbar [data-tbtn="table"]').scrollIntoViewIfNeeded()
   await expect(page.locator('.doc-toolbar [data-tbtn="table"]')).toBeVisible()
-  expect(await toolbarRows(page)).toBeGreaterThan(1)
+  await expectFitsWidth(page, 'документ с развёрнутым тулбаром')
   await page.getByTestId('doc-toolbar-more').tap()
   await page.waitForTimeout(200)
   expect(await toolbarRows(page)).toBe(1)
+  await expect(page.locator('.doc-toolbar [data-tbtn="table"]')).toHaveCount(0)
 
   // --- 3. The outline opens ON the screen -----------------------------------
   await page.getByTestId('doc-toc-toggle').tap()
