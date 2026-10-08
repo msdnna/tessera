@@ -31,6 +31,8 @@ import HomeAurora from '@/components/home/HomeAurora.vue'
 import HomeQuickEntry from '@/components/home/HomeQuickEntry.vue'
 import HomeTaskList from '@/components/home/HomeTaskList.vue'
 import HomeSideCards from '@/components/home/HomeSideCards.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
+import { useResponsive } from '@/composables/useResponsive'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -42,6 +44,10 @@ const palette = usePaletteStore()
 // pill read today's reminders from it.
 const inbox = useInboxStore()
 const { formatDate, formatTime, firstDayOfWeek, formatters } = useFormat()
+// A phone (#2976 — package G «Мои задачи»): the screen's own large title with
+// the date and the avatar (to «Ещё») in place of the greeting — there is no
+// header above it.
+const { isMobile } = useResponsive()
 
 const loading = ref(false)
 // Non-empty = the last load was refused (#2932). Kept apart from the toast: the
@@ -235,8 +241,27 @@ watch(() => wsStore.currentId, load)
     <n-spin :show="loading && !tasks.length" :rotate="false" class="home-spin">
       <template #icon><TesseraSpinner /></template>
       <div class="home-inner">
-        <header class="home-greet">
+        <header v-if="isMobile" class="home-mhead">
           <div class="hg-text">
+            <h1 class="hg-hello" data-testid="home-greeting">{{ t('shell.nav.home') }}</h1>
+            <div class="hg-date">{{ dateLine }}</div>
+          </div>
+          <button
+            type="button"
+            class="hg-me"
+            :aria-label="t('shell.user.more')"
+            data-testid="home-avatar"
+            @click="router.push('/more')"
+          >
+            <UserAvatar
+              :user-id="auth.user?.id || ''"
+              :name="auth.user?.name || auth.user?.email || ''"
+              class="hg-av"
+            />
+          </button>
+        </header>
+        <header class="home-greet">
+          <div v-if="!isMobile" class="hg-text">
             <div class="hg-date">{{ dateLine }}</div>
             <h1 class="hg-hello" data-testid="home-greeting">{{ greeting }}</h1>
           </div>
@@ -376,6 +401,69 @@ watch(() => wsStore.currentId, load)
   }
   .hg-hello {
     font-size: 26px;
+  }
+}
+/* ── a phone (#2976) ── */
+.home-mhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+.home-mhead .hg-hello {
+  margin: 0 0 4px;
+  font-size: 28px;
+}
+.hg-me {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.hg-av {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+@media (max-width: 768px) {
+  /* No header above: the aurora starts at the status bar. */
+  .home :deep(.h-aurora) {
+    top: calc(-1 * (var(--page-pad, 12px) + var(--safe-top)));
+  }
+  .home-inner {
+    gap: 14px;
+  }
+  /* The counts in one row that scrolls sideways, 34px chips. */
+  .home-greet:has(.hg-pills:empty) {
+    display: none;
+  }
+  .hg-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -4px;
+    padding: 0 4px;
+    scrollbar-width: none;
+  }
+  .hg-pills::-webkit-scrollbar {
+    display: none;
+  }
+  .hg-pill {
+    flex: none;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 17px;
   }
 }
 </style>

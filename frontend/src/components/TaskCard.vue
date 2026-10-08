@@ -597,17 +597,34 @@ async function submitAddSub() {
    (there's no on-card checkbox anymore); add-subtask stays in the "⋯" menu. */
 @media (hover: none) {
   .card-actions {
+    top: 2px;
+    right: 2px;
     opacity: 1;
     transform: none;
     pointer-events: auto;
     background: transparent;
     box-shadow: none;
   }
-  .ca-sub {
+  /* On a phone (#2976) only «⋯» stays on the card — completing is its first
+     item and the task sheet's button; two buttons ate the title's first line.
+     The title keeps the corner free for it. */
+  .ca-sub,
+  .ca-complete {
     display: none;
   }
   .ca-btn {
+    position: relative;
+    width: 32px;
+    height: 32px;
     color: var(--t-text3);
+  }
+  .ca-btn::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+  }
+  .card-top {
+    padding-right: 26px;
   }
 }
 /* Each expanded subtask card: rounded bottom only, peeking ~8px from under the

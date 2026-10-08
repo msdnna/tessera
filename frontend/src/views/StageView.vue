@@ -25,7 +25,6 @@ import {
   CreateOutline,
   ChevronDownOutline,
   ChevronForwardOutline,
-  ChevronBackOutline,
   RefreshOutline,
   TrashOutline,
   PersonOutline,
@@ -457,9 +456,9 @@ const forecastLabel = computed(() => {
     <template v-else-if="stage">
       <!-- ── head ── -->
       <header v-if="isMobile" class="sp-mhead">
-        <button type="button" class="sp-back" :title="t('common.action.close')" @click="back">
-          <n-icon :component="ChevronBackOutline" :size="20" />
-        </button>
+        <!-- «‹ Этапы» is the shell's header on a phone (#2976); the page names
+             the stage under it, large, with its badge. -->
+        <span class="sp-badge sp-mbadge"><n-icon :component="TrailSignOutline" :size="22" /></span>
         <div class="sp-mtitle">
           <div class="sp-mproj">{{ project.name }} · {{ t('milestones.page.stageWord') }}</div>
           <div class="sp-mname">{{ stage.title }}</div>
@@ -1614,8 +1613,11 @@ const forecastLabel = computed(() => {
 .sp-mhead {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.sp-mbadge {
+  flex: none;
 }
 .sp-back {
   display: inline-flex;
@@ -1638,8 +1640,9 @@ const forecastLabel = computed(() => {
   color: var(--t-text3);
 }
 .sp-mname {
-  font-size: 16px;
+  font-size: 24px;
   font-weight: 700;
+  letter-spacing: -0.01em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

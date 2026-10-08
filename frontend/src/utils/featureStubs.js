@@ -71,6 +71,9 @@ export const FEATURE_STUBS = {
   'jobs.history': 3067,
   // Workspace commands: palette macros and task templates (#3069).
   'commands.macros': 3069,
+  // The phone (#2976, package G): «Отложить» a task by swiping its row on
+  // «Мои задачи» — a task has a due date, not a snooze (#3108).
+  'home.snoozeTask': 3108,
 }
 
 export function stubTask(key) {

@@ -162,6 +162,30 @@ const descInitialMode = ref('write')
 // stacked layout the properties are part of the flow, so the state is a no-op
 // there. ──
 const { isMobile: narrow } = useResponsive(1099)
+// A phone (#2976 — package G «Задача»): the card is a sheet the full height of
+// the screen under the status bar, radius 18; pulled down by its handle, it
+// closes.
+const { isMobile: phone } = useResponsive()
+const pullY = ref(0)
+let pull = null
+function onPullDown(e) {
+  if (e.button > 0) return
+  pull = { y: e.clientY, t: performance.now(), id: e.pointerId }
+  e.currentTarget.setPointerCapture?.(e.pointerId)
+}
+function onPullMove(e) {
+  if (!pull || e.pointerId !== pull.id) return
+  pullY.value = Math.max(0, e.clientY - pull.y)
+}
+function onPullUp(e) {
+  if (!pull) return
+  const dy = Math.max(0, e.clientY - pull.y)
+  const v = dy / Math.max(1, performance.now() - pull.t)
+  const h = cardRef.value?.offsetHeight || 800
+  pull = null
+  pullY.value = 0
+  if (dy > h * 0.25 || v > 0.6) close()
+}
 
 // ── where to show the task: centred modal (default), fullscreen, or a right-hand
 // side panel that leaves the board underneath usable (#2716). All three are the
@@ -1253,11 +1277,25 @@ useShortcuts(
         'tm-sidebar': layout === 'sidebar',
         'tm-wide': wide,
         'tm-pane-hidden': wide && rightHidden,
+        'tm-phone': phone,
+        'tm-pulling': pullY > 0,
       }"
+      :style="pullY ? { transform: `translateY(${pullY}px)` } : null"
       role="dialog"
       aria-modal="true"
       data-testid="task-modal"
     >
+      <div
+        v-if="phone"
+        class="tm-grab"
+        aria-hidden="true"
+        @pointerdown="onPullDown"
+        @pointermove="onPullMove"
+        @pointerup="onPullUp"
+        @pointercancel="onPullUp"
+      >
+        <span class="tm-handle" />
+      </div>
       <TaskModalHeader
         ref="headerRef"
         :task="task"
@@ -2163,7 +2201,7 @@ useShortcuts(
   --t-surface: var(--t-pop);
 }
 /* Narrow screens: one column, the card as tall as its content allows. */
-.tm-card:not(.tm-wide):not(.tm-sidebar):not(.tm-fullscreen) {
+.tm-card:not(.tm-wide):not(.tm-sidebar):not(.tm-fullscreen):not(.tm-phone) {
   width: min(680px, 94vw);
   height: auto;
   max-height: 92vh;
@@ -2875,5 +2913,44 @@ a.menu-item {
   .tm-card:not(.tm-wide) .tm-composer {
     padding: 8px 14px 14px;
   }
+}
+
+/* ── a phone: the full-height sheet (#2976 — package G «Задача») ── */
+.tm-card.tm-phone {
+  /* In the modal's own centring box, pinned to its bottom edge. */
+  position: relative;
+  align-self: flex-end;
+  margin: auto 0 0;
+  width: 100vw;
+  height: calc(var(--app-vh, 100vh) - var(--safe-top) - 8px);
+  max-height: none;
+  border-radius: 18px 18px 0 0;
+  transition: transform 0.2s ease;
+}
+.tm-card.tm-phone.tm-pulling {
+  transition: none;
+}
+.tm-grab {
+  flex: none;
+  display: flex;
+  justify-content: center;
+  height: 20px;
+  padding-top: 8px;
+  box-sizing: border-box;
+  touch-action: none;
+  cursor: grab;
+}
+.tm-handle {
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--t-kbd);
+}
+.tm-card.tm-phone .prow {
+  min-height: 44px;
+}
+.tm-card.tm-phone .tm-composer {
+  padding-bottom: calc(12px + var(--safe-bottom));
+  background: var(--t-sub);
 }
 </style>

@@ -175,7 +175,7 @@ defineExpose({ closeMenus })
       </span>
       <button
         type="button"
-        class="tmh-btn"
+        class="tmh-btn tmh-arrow"
         :title="t('task.head.prev')"
         data-testid="task-prev"
         :disabled="nav.index <= 0"
@@ -185,7 +185,7 @@ defineExpose({ closeMenus })
       </button>
       <button
         type="button"
-        class="tmh-btn"
+        class="tmh-btn tmh-arrow"
         :title="t('task.head.next')"
         data-testid="task-next"
         :disabled="nav.index >= nav.total - 1"
@@ -411,6 +411,30 @@ defineExpose({ closeMenus })
   .tmh-crumb,
   .tmh-help {
     display: none;
+  }
+}
+/* The phone's sheet (#2976): 40px targets; the arrows between tasks go — a
+   sheet is opened from a list and closed back to it. */
+@media (max-width: 768px) {
+  .tmh {
+    flex-basis: 52px;
+    gap: 2px;
+  }
+  .tmh-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+  .tmh-arrow,
+  .tmh-space {
+    display: none;
+  }
+  .tmh-crumb:first-of-type {
+    display: inline;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

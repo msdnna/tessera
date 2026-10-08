@@ -825,8 +825,7 @@ defineExpose({ startRename, startAdd })
 
 /* ── phone: no field captions, the header and the rows taller ── */
 .list-view.mobile .lv-scroll {
-  max-height: calc(100vh - 130px);
-  max-height: calc(100dvh - 130px);
+  max-height: calc(var(--app-vh, 100vh) - var(--m-head-h, 52px) - var(--mnav-h, 0px) - 78px);
   padding: 0 0 80px;
 }
 .list-view.mobile .lv-ghead {

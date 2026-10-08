@@ -1070,7 +1070,7 @@ const dayLabel = (c) =>
 
 /* ── phone: the month as dots, a tap opens the day ── */
 .cal.mobile {
-  height: calc(100dvh - 140px);
+  height: calc(var(--app-vh, 100vh) - var(--m-head-h, 52px) - var(--mnav-h, 0px) - 88px);
   min-height: 420px;
 }
 .cal.mobile .cal-bar {

@@ -167,11 +167,11 @@ defineExpose({ focus: () => inputEl.value?.focus() })
         @keydown.tab="onTab"
         @keydown.esc="text = ''"
       />
-      <span v-if="typing" class="hq-hint">
+      <span v-if="typing" class="hq-hint kbd-hint">
         <ShortcutKeys id="card.open" /> {{ t('shell.home.quick.hintTyping') }} ·
         <ShortcutKeys id="palette.actions" /> {{ t('shell.home.quick.hintBoard') }}
       </span>
-      <span v-else class="hq-hint">
+      <span v-else class="hq-hint kbd-hint">
         {{ t('shell.home.quick.hintIdle') }} <ShortcutKeys id="create.task" />
       </span>
     </div>
@@ -398,5 +398,27 @@ defineExpose({ focus: () => inputEl.value?.focus() })
 }
 .hq-bproj {
   color: var(--t-text3);
+}
+
+/* A phone (#2976 — package G): a 44px field on the card level, no key hints. */
+@media (max-width: 768px) {
+  .hq-box {
+    height: 48px;
+    padding: 0 14px;
+    gap: 10px;
+    border-radius: 12px;
+    background: var(--t-card);
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+  .hq-box:focus-within {
+    box-shadow: 0 0 0 2px var(--t-primary);
+  }
+  .hq-hint {
+    display: none;
+  }
+  .hq-input {
+    font-size: 16px;
+  }
 }
 </style>

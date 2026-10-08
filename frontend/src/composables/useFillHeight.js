@@ -14,7 +14,9 @@ export function useFillHeight(el, { bottom = 16, min = 360 } = {}) {
     const node = el.value
     if (!node || typeof window === 'undefined') return
     const top = node.getBoundingClientRect().top
-    const h = Math.max(min, Math.round(window.innerHeight - top - bottom))
+    // A phone's bottom navigation (#2976) is not the view's to fill.
+    const nav = document.querySelector('[data-testid="mobile-tabbar"]')?.offsetHeight || 0
+    const h = Math.max(min, Math.round(window.innerHeight - top - bottom - nav))
     if (h !== height.value) height.value = h
   }
   onMounted(() => {

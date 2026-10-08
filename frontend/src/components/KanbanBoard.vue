@@ -918,6 +918,16 @@ const viewsSummary = computed(() =>
 //    container (clientWidth already excludes the sidebar, padding and its own
 //    scrollbar) instead of guessing from window size, so columns never overflow.
 const boardScroll = ref(null)
+// The column a phone's swipe rests on (#2976): the snapped one, read off the
+// strip's scroll offset in column steps.
+const mobileCol = ref(0)
+function onBoardScroll() {
+  const el = boardScroll.value
+  if (!el || !isMobile.value) return
+  const step = (colWidth.value || 1) + 12
+  const n = displayColumns.value.length
+  mobileCol.value = Math.max(0, Math.min(n - 1, Math.round(el.scrollLeft / step)))
+}
 const containerWidth = ref(0)
 let ro = null
 function measure() {
@@ -2960,7 +2970,13 @@ async function restoreFromArchive(taskId) {
             @drag-state="onLayoutDragState"
           />
 
-          <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
+          <div
+            v-else
+            ref="boardScroll"
+            class="board-scroll"
+            :style="colStyleVars"
+            @scroll.passive="onBoardScroll"
+          >
             <draggable
               :list="colModel"
               group="columns"
@@ -3157,6 +3173,29 @@ async function restoreFromArchive(taskId) {
                 <span>{{ t('board.column.add') }}</span>
               </button>
             </div>
+          </div>
+          <!-- A phone (#2976 — package G «Доска»): which column the swipe is on,
+               over the bottom navigation. -->
+          <div
+            v-if="isMobile && layout === 'board' && displayColumns.length > 1"
+            class="m-colpos"
+            data-testid="mobile-column-position"
+          >
+            <span class="m-dots" aria-hidden="true">
+              <span
+                v-for="(c, i) in displayColumns"
+                :key="c.key"
+                class="m-dot"
+                :class="{ on: i === mobileCol }"
+              />
+            </span>
+            <span class="m-colpos-l">{{
+              t('board.column.position', {
+                name: displayColumns[mobileCol]?.name || '',
+                n: mobileCol + 1,
+                total: displayColumns.length,
+              })
+            }}</span>
           </div>
 
           <div v-if="layout === 'board' && !displayColumns.length" class="empty-board">
@@ -3526,7 +3565,7 @@ async function restoreFromArchive(taskId) {
   .board-wrap.has-bg {
     margin: -12px;
     padding: 12px;
-    min-height: calc(100dvh - 52px);
+    min-height: calc(var(--app-vh, 100vh) - var(--m-head-h, 52px) - var(--mnav-h, 0px));
   }
   .sb-label {
     display: none;
@@ -3597,12 +3636,13 @@ async function restoreFromArchive(taskId) {
    stretch the columns to fill the screen so the whole area is a drop target
    (offset ≈ header + sub-toolbar; tune if a gap/extra scroll appears). */
 @media (max-width: 768px) {
+  /* The screen under the header and over the bottom navigation, less the
+     sub-toolbar and the column indicator (#2976). */
   .board-scroll {
     scroll-snap-type: x mandatory;
     scroll-behavior: smooth;
     align-items: stretch;
-    height: calc(100vh - 130px);
-    height: calc(100dvh - 130px);
+    height: calc(var(--app-vh, 100vh) - var(--m-head-h, 52px) - var(--mnav-h, 0px) - 108px);
   }
   .cols {
     align-items: stretch;
@@ -3614,6 +3654,33 @@ async function restoreFromArchive(taskId) {
   .col {
     align-self: stretch;
     max-height: none;
+  }
+}
+/* The phone's column indicator (#2976). */
+@media (max-width: 768px) {
+  .m-colpos {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 24px;
+    font-size: 12.5px;
+    color: var(--t-text3);
+  }
+  .m-dots {
+    display: inline-flex;
+    gap: 5px;
+  }
+  .m-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--t-kbd);
+    transition: width 0.15s ease;
+  }
+  .m-dot.on {
+    width: 18px;
+    background: var(--t-accent-grad);
   }
 }
 .add-task-input {
