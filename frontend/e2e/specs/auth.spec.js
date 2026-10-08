@@ -36,7 +36,9 @@ test('неверный пароль оставляет на странице в�
   // outside the step's anchor — the «⋯» menu below included. It starts after the
   // first screen settles, so a test that clicks first races it: wait and skip.
   await expect(page.getByTestId('tour-pop')).toBeVisible({ timeout: 15000 })
+  // v2 (#3000): «Прервать» asks first; «Завершить обучение» ends it.
   await page.getByTestId('tour-skip').click()
+  await page.getByTestId('tour-finish').click()
   await expect(page.getByTestId('tour-pop')).toHaveCount(0)
 
   // «Выйти» sits in the footer's «⋯» menu (v2, #2953).
@@ -85,7 +87,9 @@ test('логаут разлогинивает и защищает приватн
   // outside the step's anchor — the «⋯» menu below included. It starts after the
   // first screen settles, so a test that clicks first races it: wait and skip.
   await expect(page.getByTestId('tour-pop')).toBeVisible({ timeout: 15000 })
+  // v2 (#3000): «Прервать» asks first; «Завершить обучение» ends it.
   await page.getByTestId('tour-skip').click()
+  await page.getByTestId('tour-finish').click()
   await expect(page.getByTestId('tour-pop')).toHaveCount(0)
 
   // «Выйти» sits in the footer's «⋯» menu (v2, #2953).

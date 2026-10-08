@@ -108,8 +108,14 @@ export async function seedBoard(token, label) {
 // into in #2749, except the guide can't baseline itself silently (it *is* the
 // thing new users get), so the ack is written as "skipped". Called from
 // register() — see the note there.
+//
+// The spotlight hints (#3000) are switched off for the same reason: a hint card
+// takes ↵ and Esc while it is on screen, and a contextual one turns up exactly
+// where specs click (the stage strip, the undo toast). Specs about the hints
+// serve their own acks.
 export async function skipTour(token) {
-  return api.post('/users/me/acknowledgements', { key: 'getstarted:skipped' }, token)
+  for (const key of ['getstarted:skipped', 'hints:off:new', 'hints:off:ctx'])
+    await api.post('/users/me/acknowledgements', { key }, token)
 }
 
 // The interface language of a run (#2800). `E2E_LANG=en` runs the whole suite
