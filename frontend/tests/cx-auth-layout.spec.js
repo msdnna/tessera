@@ -97,3 +97,20 @@ describe('AuthLayout language toggle', () => {
     expect(toggle().text()).toBe('RU')
   })
 })
+
+// The app's route <Transition mode="out-in"> animates one element. A fragment
+// root (an abstract config provider wrapping the page) never finished its leave,
+// and signing in or up left a blank screen with no app behind it (#3107).
+describe('AuthLayout root', () => {
+  beforeEach(() => setActivePinia(createPinia()))
+  afterEach(() => {
+    wrapper?.unmount()
+    wrapper = null
+  })
+
+  it('renders a single element, so a route transition can leave it', () => {
+    mountLayout()
+    expect(wrapper.element.nodeType).toBe(Node.ELEMENT_NODE)
+    expect(wrapper.element.classList.contains('auth')).toBe(true)
+  })
+})

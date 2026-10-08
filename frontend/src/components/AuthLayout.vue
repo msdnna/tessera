@@ -119,8 +119,13 @@ const overrides = {
 </script>
 
 <template>
-  <n-config-provider :theme-overrides="overrides" abstract>
-    <div class="auth">
+  <div class="auth">
+    <!-- The element is the root, the provider inside it: the app's route
+         <Transition mode="out-in"> needs one element to animate, and an abstract
+         provider at the root left it a fragment — the leave never finished and
+         the next screen never mounted. No comment above the root either: in a
+         dev build it is a node of its own. -->
+    <n-config-provider :theme-overrides="overrides" abstract>
       <HomeAurora frozen class="auth-aurora" />
 
       <main class="auth-stage">
@@ -212,8 +217,8 @@ const overrides = {
         </div>
         <span class="auth-build">{{ t('shell.auth.build', { version, host }) }}</span>
       </footer>
-    </div>
-  </n-config-provider>
+    </n-config-provider>
+  </div>
 </template>
 
 <style scoped>

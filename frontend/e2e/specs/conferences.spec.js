@@ -47,7 +47,9 @@ async function schedule(page, title) {
   await page.getByTestId('conference-submit').click()
 
   await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)
-  await expect(page.getByTestId('conference-room')).toBeVisible()
+  // The lobby (v2, #3107): the meeting's card with «Подключиться»; the room
+  // itself appears once you are in it.
+  await expect(page.getByTestId('conference-join')).toBeVisible()
   return new URL(page.url()).pathname.split('/').pop()
 }
 
@@ -62,7 +64,7 @@ test('конференция: планирование, вход, ростер �
   const row = page.getByTestId('conference-row').filter({ hasText: title })
   await expect(row).toHaveCount(1)
   await row.click()
-  await expect(page.getByTestId('conference-room')).toBeVisible()
+  await expect(page.getByTestId('conference-lobby')).toBeVisible()
 
   // Before joining the room is a stated non-participation, not a broken call.
   await expect(page.getByTestId('conference-participants')).toHaveCount(0)
