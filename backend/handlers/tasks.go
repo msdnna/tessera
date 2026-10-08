@@ -708,7 +708,7 @@ func (h *API) RestoreTask(c *gin.Context) {
 		return
 	}
 	h.logEvent(c, id, "restored", nil)
-	h.broadcast(wsID, "task.restored", gin.H{"id": id})
+	h.broadcastAs(c, wsID, "task.restored", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
 
@@ -743,7 +743,7 @@ func (h *API) DeleteTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.loadTask(c, id)
+	t, wsID, ok := h.loadTask(c, id)
 	if !ok {
 		return
 	}
@@ -760,6 +760,13 @@ func (h *API) DeleteTask(c *gin.Context) {
 		// pushDetachedChildren).
 		h.pushDetachedChildren(c, detached, id)
 	}
+	// Who has to hear about it is read before the delete — afterwards the
+	// assignee rows are gone with the tasks. After a detach this is the root
+	// alone; otherwise every subtask the cascade is about to take as well.
+	participants, perr := h.q.TaskSubtreeParticipants(c, id)
+	if perr != nil {
+		soft(c, "TaskSubtreeParticipants", perr)
+	}
 	gone, err := h.q.DeleteTask(c, id)
 	if err != nil {
 		fail(c, err)
@@ -772,7 +779,12 @@ func (h *API) DeleteTask(c *gin.Context) {
 	// ?subtasks=detach run re-parented the children a statement earlier, and
 	// they keep both their rows and their files.
 	h.purgeTaskUploads(gone)
-	h.broadcast(wsID, "task.deleted", gin.H{"id": id})
+	h.notifyDeleted(c, wsID, participants)
+	// The task is gone, so the event itself says which one it was: a client that
+	// never had the card loaded (a toast, another board) has nothing to look it up by.
+	h.broadcastAs(c, wsID, "task.deleted", gin.H{
+		"id": id, "number": t.Number, "title": t.Title, "board_id": t.BoardID,
+	})
 	c.Status(http.StatusNoContent)
 }
 

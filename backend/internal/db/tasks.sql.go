@@ -1675,6 +1675,73 @@ func (q *Queries) TaskIDsOnBoard(ctx context.Context, boardID uuid.UUID) ([]uuid
 	return items, nil
 }
 
+const taskSubtreeParticipants = `-- name: TaskSubtreeParticipants :many
+WITH RECURSIVE down AS (
+    SELECT t.id, 0 AS depth FROM tasks t WHERE t.id = $1
+    UNION ALL
+    SELECT t.id, down.depth + 1 FROM tasks t JOIN down ON t.parent_id = down.id
+    WHERE down.depth < 64
+),
+people AS (
+    SELECT ta.user_id, d.id AS task_id, d.depth
+    FROM down d JOIN task_assignees ta ON ta.task_id = d.id
+    UNION ALL
+    SELECT t.created_by AS user_id, d.id AS task_id, d.depth
+    FROM down d JOIN tasks t ON t.id = d.id
+    WHERE t.created_by IS NOT NULL
+)
+SELECT DISTINCT ON (p.user_id)
+    p.user_id::uuid AS user_id, t.id AS task_id, t.number, t.title, t.board_id
+FROM people p JOIN tasks t ON t.id = p.task_id
+ORDER BY p.user_id, p.depth, t.position, t.id
+`
+
+type TaskSubtreeParticipantsRow struct {
+	UserID  uuid.UUID `json:"user_id"`
+	TaskID  uuid.UUID `json:"task_id"`
+	Number  *int64    `json:"number"`
+	Title   string    `json:"title"`
+	BoardID uuid.UUID `json:"board_id"`
+}
+
+// TaskSubtreeParticipants names who has to hear that a task is being deleted:
+// the assignees and the creator of the task and of every subtask the delete
+// takes with it by cascade. Read before the delete — afterwards the rows are gone
+// and the notification has to carry the task's number and title itself.
+//
+// One row per person, about the task nearest the root they took part in: a
+// participant of the root hears about the root (its subtasks are implied), a
+// participant of a subtask alone hears about that subtask under its own number.
+//
+// The descent carries its depth (that is what orders "nearest the root"), so
+// UNION cannot stop it on a parent ring the way it stops DeleteTask's below; the
+// depth bound does instead — far deeper than any real checklist, and finite.
+func (q *Queries) TaskSubtreeParticipants(ctx context.Context, id uuid.UUID) ([]TaskSubtreeParticipantsRow, error) {
+	rows, err := q.db.Query(ctx, taskSubtreeParticipants, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []TaskSubtreeParticipantsRow
+	for rows.Next() {
+		var i TaskSubtreeParticipantsRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.TaskID,
+			&i.Number,
+			&i.Title,
+			&i.BoardID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const transferTask = `-- name: TransferTask :one
 UPDATE tasks
 SET board_id = $2, column_id = $3, parent_id = NULL, position = $4,

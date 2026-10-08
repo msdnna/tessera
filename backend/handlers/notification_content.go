@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // Notification content lives here: every notification carries both the legacy
@@ -27,6 +29,10 @@ const (
 	evUpdated     = "task_updated"
 	evMoved       = "task_moved"
 	evArchived    = "task_archived"
+	evDeleted     = "task_deleted"
+	evUnassigned  = "task_unassigned"
+	evCompleted   = "task_completed"
+	evReopened    = "task_reopened"
 	evComment     = "task_comment"
 	evThreadReply = "task_thread_reply"
 	evMention     = "task_mention"
@@ -51,6 +57,18 @@ const kindConferenceInvite = "conference_invite"
 const (
 	kindDueSoon  = "due_soon"
 	kindReminder = "reminder"
+)
+
+// The routing kinds of what was done to a task the reader takes part in (#3114),
+// beside the older assigned/updated/moved/archived. kindDeleted is the odd one:
+// its task is gone by the time anyone reads the row, so the row carries no
+// task_id (the foreign key would cascade it away) and the payload says which
+// task it was — see msgDeleted.
+const (
+	kindDeleted    = "deleted"
+	kindUnassigned = "unassigned"
+	kindCompleted  = "completed"
+	kindReopened   = "reopened"
 )
 
 // notifyMsg is one notification's content: the legacy pre-rendered sentence and
@@ -168,6 +186,57 @@ func msgArchived(actor string, number *int64, title string) notifyMsg {
 	p["actor"] = actor
 	return notifyMsg{
 		text:    fmt.Sprintf("%s архивировал(а) задачу #%s%s", actor, taskRef(number), shortCtx(title)),
+		payload: p,
+	}
+}
+
+// msgDeleted announces that a task the reader took part in was deleted. The task
+// is gone by the time the row is read: notifications.task_id is a foreign key
+// with ON DELETE CASCADE, so the row is written with no task at all, and
+// everything a reader needs to recognise the task travels in the payload — the
+// number, the whole title (always, like msgDueSoon: a bare number of a task that
+// no longer exists says nothing) and the board it stood on (`board_id`, for a
+// client that wants to say where; there is nothing left to open).
+func msgDeleted(actor string, number *int64, title string, boardID uuid.UUID) notifyMsg {
+	title = strings.TrimSpace(title)
+	p := event(evDeleted, number)
+	p["actor"] = actor
+	p["title"] = title
+	p["board_id"] = boardID.String()
+	return notifyMsg{
+		text:    fmt.Sprintf("%s удалил(а) задачу #%s «%s»", actor, taskRef(number), title),
+		payload: p,
+	}
+}
+
+// msgUnassigned is msgAssigned's mirror: the reader was taken off a task.
+func msgUnassigned(actor string, number *int64, title string) notifyMsg {
+	p := withCtx(event(evUnassigned, number), "title", title)
+	p["actor"] = actor
+	return notifyMsg{
+		text:    fmt.Sprintf("%s снял(а) вас с задачи #%s%s", actor, taskRef(number), shortCtx(title)),
+		payload: p,
+	}
+}
+
+// msgCompleted / msgReopened report a task entering or leaving the completed
+// state — by the checkbox or by a drag into or out of the board's done column.
+// They stand in for task_updated / task_moved for that change: «X выполнил(а)
+// задачу» is what the reader wants to hear, not which column it landed in.
+func msgCompleted(actor string, number *int64, title string) notifyMsg {
+	p := withCtx(event(evCompleted, number), "title", title)
+	p["actor"] = actor
+	return notifyMsg{
+		text:    fmt.Sprintf("%s выполнил(а) задачу #%s%s", actor, taskRef(number), shortCtx(title)),
+		payload: p,
+	}
+}
+
+func msgReopened(actor string, number *int64, title string) notifyMsg {
+	p := withCtx(event(evReopened, number), "title", title)
+	p["actor"] = actor
+	return notifyMsg{
+		text:    fmt.Sprintf("%s вернул(а) в работу задачу #%s%s", actor, taskRef(number), shortCtx(title)),
 		payload: p,
 	}
 }

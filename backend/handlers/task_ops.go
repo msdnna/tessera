@@ -359,10 +359,7 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 		soft(c, "MarkGitlabEstimateOverridden", h.q.MarkGitlabEstimateOverridden(c, t.ID))
 	}
 	changes := h.journalUpdate(c, t, edited)
-	if len(changes) > 0 {
-		h.notifyTaskParticipants(c, updated, wsID, "updated",
-			msgUpdated(h.actorName(c), updated.Number, changes))
-	}
+	h.notifyTaskEdit(c, updated, wsID, changes)
 	// Mirror user-side changes back to a linked GitLab issue (opt-in per integration).
 	// These read `updated` deliberately: a writeback mirrors the state the task is
 	// actually left in, so a recurrence that moved the deadline is a deadline the
@@ -393,6 +390,32 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 	}
 	h.broadcastAs(c, wsID, "task.updated", updated)
 	return updated, nil
+}
+
+// notifyTaskEdit tells a task's participants about an edit. changes are
+// journalUpdate's field names. A close or a reopen is its own notification
+// (completed / reopened — what the reader wants to hear about, and a kind a
+// routing rule can pick on its own); whatever else the same request changed still
+// goes out as «изменил(а)» without the completion word in it.
+func (h *API) notifyTaskEdit(c *gin.Context, t db.Task, wsID uuid.UUID, changes []string) {
+	if len(changes) == 0 {
+		return
+	}
+	actor := h.actorName(c)
+	rest := make([]string, 0, len(changes))
+	for _, f := range changes {
+		switch f {
+		case "completed":
+			h.notifyTaskParticipants(c, t, wsID, kindCompleted, msgCompleted(actor, t.Number, t.Title))
+		case "reopened":
+			h.notifyTaskParticipants(c, t, wsID, kindReopened, msgReopened(actor, t.Number, t.Title))
+		default:
+			rest = append(rest, f)
+		}
+	}
+	if len(rest) > 0 {
+		h.notifyTaskParticipants(c, t, wsID, "updated", msgUpdated(actor, t.Number, rest))
+	}
 }
 
 // ── column move ────────────────────────────────────────────────
@@ -487,12 +510,12 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 			}
 		}
 		h.logEvent(c, t.ID, "moved", moved)
-		h.notifyTaskParticipants(c, updated, wsID, "moved",
-			msgMoved(h.actorName(c), updated.Number, col.Name, col.NameKey))
 	}
 
 	// Auto-toggle completion based on the board's configured "done" column:
-	// moving in completes the task, moving out reopens it.
+	// moving in completes the task, moving out reopens it. Which of the two (if
+	// either) happened decides the notification below.
+	completedNow, reopenedNow := false, false
 	if board, berr := h.q.GetBoard(c, t.BoardID); berr == nil {
 		doneID := doneColumnID(board)
 		targetIsDone := doneID != nil && *doneID == columnID
@@ -513,6 +536,7 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 				ExpectedUpdatedAt: &updated.UpdatedAt,
 			}); derr == nil {
 				updated = done
+				completedNow = true
 				h.logEvent(c, t.ID, "completed", nil)
 				// A "complete"-triggered recurring task bounces straight back out of
 				// done with its due date advanced — overriding the move just made.
@@ -534,9 +558,26 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
 			}); derr == nil {
 				updated = reopened
+				reopenedNow = true
 				h.logEvent(c, t.ID, "reopened", nil)
 			}
 		}
+	}
+
+	// One notification per move, saying what the move meant to the reader: into
+	// the done column it is «выполнил(а)», out of it «вернул(а) в работу», any
+	// other column change a plain move. A completion without a column change (a
+	// reorder inside a done column that held an open task) is still a completion.
+	switch {
+	case completedNow:
+		h.notifyTaskParticipants(c, updated, wsID, kindCompleted,
+			msgCompleted(h.actorName(c), updated.Number, updated.Title))
+	case reopenedNow:
+		h.notifyTaskParticipants(c, updated, wsID, kindReopened,
+			msgReopened(h.actorName(c), updated.Number, updated.Title))
+	case t.ColumnID != columnID:
+		h.notifyTaskParticipants(c, updated, wsID, "moved",
+			msgMoved(h.actorName(c), updated.Number, col.Name, col.NameKey))
 	}
 
 	// Column-triggered recurrence: moving the task into its configured column
@@ -598,10 +639,20 @@ func (h *API) applyAssignee(c *gin.Context, t db.Task, wsID, userID uuid.UUID, a
 			msgAssigned(h.actorName(c), t.Number, t.Title))
 		h.broadcastAs(c, wsID, "task.assigned", gin.H{"task_id": t.ID, "user_id": userID})
 	} else {
-		if err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: t.ID, UserID: userID}); err != nil {
+		removed, err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: t.ID, UserID: userID})
+		if err != nil {
 			return err
 		}
 		h.logEvent(c, t.ID, "unassigned", map[string]any{"user_id": userID})
+		// The mirror of "assigned to you" — only when someone was actually taken
+		// off: a repeated remove (two clients, a retried request) must not tell a
+		// person twice. notify skips taking yourself off, and the membership gate
+		// in deliverNotification skips an ex-member being cleaned off a task they
+		// can no longer open (the remove arm stays unguarded above for that case).
+		if removed > 0 {
+			h.notify(c, userID, wsID, &t.ID, kindUnassigned,
+				msgUnassigned(h.actorName(c), t.Number, t.Title))
+		}
 		h.broadcastAs(c, wsID, "task.unassigned", gin.H{"task_id": t.ID, "user_id": userID})
 	}
 	h.enqueueWriteback(c, t.ID, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
@@ -1145,7 +1196,7 @@ func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach boo
 	h.logEvent(c, t.ID, "archived", nil)
 	h.notifyTaskParticipants(c, t, wsID, "archived",
 		msgArchived(h.actorName(c), t.Number, t.Title))
-	h.broadcast(wsID, "task.archived", gin.H{"id": t.ID})
+	h.broadcastAs(c, wsID, "task.archived", gin.H{"id": t.ID})
 	return nil
 }
 

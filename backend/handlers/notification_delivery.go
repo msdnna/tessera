@@ -699,6 +699,13 @@ func (h *API) templateData(ctx context.Context, n db.Notification, lang string) 
 			d.TaskNumber = t.Number
 		}
 	}
+	// A deleted task has no row left to read and the notification no task_id
+	// (msgDeleted): what it was travels in the payload, and the template's task
+	// fields are filled from there so a channel template naming {{.TaskTitle}}
+	// still says which task went.
+	if n.Kind == kindDeleted && n.TaskID == nil {
+		d.TaskTitle, d.TaskNumber = deletedTaskOf(n)
+	}
 	if n.ActorID != nil {
 		if u, err := h.q.GetUserByID(ctx, *n.ActorID); err == nil {
 			d.Actor = u.Name
@@ -770,6 +777,19 @@ func notifySentence(n db.Notification, lang string) string {
 		}
 	}
 	return notify.Sentence(p, lang, n.Text)
+}
+
+// deletedTaskOf reads the title and number a `deleted` notification carries in
+// its payload in place of a task row.
+func deletedTaskOf(n db.Notification) (string, *int64) {
+	var p struct {
+		Title      string `json:"title"`
+		TaskNumber *int64 `json:"task_number"`
+	}
+	if len(n.Payload) == 0 || json.Unmarshal(n.Payload, &p) != nil {
+		return "", nil
+	}
+	return p.Title, p.TaskNumber
 }
 
 // conferenceOf returns the conference a notification points at, or "" for the

@@ -461,7 +461,7 @@ func (q *Queries) ReassignProjectTagsWorkspace(ctx context.Context, arg Reassign
 	return err
 }
 
-const removeTaskAssignee = `-- name: RemoveTaskAssignee :exec
+const removeTaskAssignee = `-- name: RemoveTaskAssignee :execrows
 DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2
 `
 
@@ -470,9 +470,12 @@ type RemoveTaskAssigneeParams struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
-func (q *Queries) RemoveTaskAssignee(ctx context.Context, arg RemoveTaskAssigneeParams) error {
-	_, err := q.db.Exec(ctx, removeTaskAssignee, arg.TaskID, arg.UserID)
-	return err
+func (q *Queries) RemoveTaskAssignee(ctx context.Context, arg RemoveTaskAssigneeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, removeTaskAssignee, arg.TaskID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const removeTaskTag = `-- name: RemoveTaskTag :execrows

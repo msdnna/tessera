@@ -19,7 +19,8 @@ func TestTimedKindsIgnoreTheDigestWindow(t *testing.T) {
 	}
 	// Поток активности окно по-прежнему собирает — иначе освобождение
 	// таймированных видов отключило бы дайджест целиком.
-	for _, kind := range []string{"assigned", "comment", "mention", "updated", "moved", "archived", "integration_sync"} {
+	for _, kind := range []string{"assigned", "comment", "mention", "updated", "moved", "archived", "integration_sync",
+		kindDeleted, kindUnassigned, kindCompleted, kindReopened} {
 		if got := digestMinutesFor(kind, window); got != window {
 			t.Errorf("%s: окно дайджеста потеряно (got %d, want %d)", kind, got, window)
 		}

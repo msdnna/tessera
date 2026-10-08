@@ -117,7 +117,7 @@ ORDER BY t.name;
 -- name: AddTaskAssignee :exec
 INSERT INTO task_assignees (task_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;
 
--- name: RemoveTaskAssignee :exec
+-- name: RemoveTaskAssignee :execrows
 DELETE FROM task_assignees WHERE task_id = $1 AND user_id = $2;
 
 -- StripNonMemberAssignees removes assignees from a project's tasks who are not

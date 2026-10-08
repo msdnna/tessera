@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"tessera/internal/db"
 )
 
@@ -23,6 +25,15 @@ func TestNotifyMsgLegacyText(t *testing.T) {
 		{"updated", msgUpdated("Иван", &num, []string{"title", "due"}), "Иван изменил(а) задачу #42: название, срок"},
 		{"moved", msgMoved("Иван", &num, "Готово", ptr("done")), "Иван переместил(а) задачу #42 → «Готово»"},
 		{"archived", msgArchived("Иван", &num, "Полить цветы"), "Иван архивировал(а) задачу #42 «Полить цветы»"},
+		{"unassigned", msgUnassigned("Иван", &num, "Полить цветы"), "Иван снял(а) вас с задачи #42 «Полить цветы»"},
+		{"completed", msgCompleted("Иван", &num, "Полить цветы"), "Иван выполнил(а) задачу #42 «Полить цветы»"},
+		{"reopened", msgReopened("Иван", &num, "Полить цветы"), "Иван вернул(а) в работу задачу #42 «Полить цветы»"},
+		// The task is gone, so its title is said whatever its length.
+		{
+			"deleted/long title",
+			msgDeleted("Иван", &num, " Очень длинное название задачи ", uuid.Nil),
+			"Иван удалил(а) задачу #42 «Очень длинное название задачи»",
+		},
 		{"comment", msgComment("Иван", &num, "Готово"), "Иван прокомментировал #42 «Готово»"},
 		{"thread reply", msgThreadReply("Иван", &num, "Готово"), "Иван ответил(а) в обсуждении #42 «Готово»"},
 		{"mention", msgMention("Иван", &num, "Готово"), "Иван упомянул(а) вас в #42 «Готово»"},
@@ -127,6 +138,29 @@ func TestNotifyMsgPayload(t *testing.T) {
 	p = decode(t, msgMoved("Иван", &num, "Протестировано", nil))
 	if _, ok := p["column_key"]; ok {
 		t.Fatalf("a user-named column should carry no key, got %v", p["column_key"])
+	}
+}
+
+// A deleted task leaves no row to join, so the payload alone says which task it
+// was: its number, its whole title and its board (#3114). templateData reads the
+// same two facts back for channel templates.
+func TestMsgDeletedCarriesTheTask(t *testing.T) {
+	num := int64(7)
+	board := uuid.New()
+	m := msgDeleted("Алиса", &num, "Очень длинное название задачи", board)
+	p := decode(t, m)
+	if p["event"] != evDeleted || p["actor"] != "Алиса" || p["task_number"] != float64(7) {
+		t.Fatalf("deleted payload = %v", p)
+	}
+	if p["title"] != "Очень длинное название задачи" {
+		t.Fatalf("title = %v, want the whole title even past the inline limit", p["title"])
+	}
+	if p["board_id"] != board.String() {
+		t.Fatalf("board_id = %v, want %s", p["board_id"], board)
+	}
+	title, n := deletedTaskOf(db.Notification{Kind: kindDeleted, Payload: m.json()})
+	if title != "Очень длинное название задачи" || n == nil || *n != 7 {
+		t.Fatalf("deletedTaskOf = %q, %v", title, n)
 	}
 }
 

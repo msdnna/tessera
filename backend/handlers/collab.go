@@ -85,6 +85,21 @@ func (h *API) notifyTaskParticipantsExcept(c *gin.Context, t db.Task, wsID uuid.
 	}
 }
 
+// notifyDeleted tells the participants of a deleted task (and of the subtasks
+// that went with it) that it is gone. participants is read before the delete
+// (TaskSubtreeParticipants): one row per person, about the task nearest the root
+// they took part in. The notification carries no task_id — the row would cascade
+// away with the task — so number, title and board ride in the payload.
+func (h *API) notifyDeleted(c *gin.Context, wsID uuid.UUID, participants []db.TaskSubtreeParticipantsRow) {
+	if len(participants) == 0 {
+		return
+	}
+	actor := h.actorName(c)
+	for _, p := range participants {
+		h.notify(c, p.UserID, wsID, nil, kindDeleted, msgDeleted(actor, p.Number, p.Title, p.BoardID))
+	}
+}
+
 // actorName returns the current user's display name for notification text.
 func (h *API) actorName(c *gin.Context) string {
 	u, err := h.q.GetUserByID(c, middleware.CurrentUser(c))
@@ -240,7 +255,7 @@ func (h *API) CreateComment(c *gin.Context) {
 		return
 	}
 	h.logEvent(c, id, "comment", map[string]any{"comment_id": cm.ID})
-	h.broadcast(wsID, "task.commented", gin.H{"task_id": id})
+	h.broadcastAs(c, wsID, "task.commented", gin.H{"task_id": id})
 	// Mirror the comment to a linked GitLab issue as a note (opt-in per integration).
 	wb := map[string]any{"comment_id": cm.ID.String(), "body": body}
 	if parentID != nil {
