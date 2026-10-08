@@ -3,22 +3,18 @@ import { tourEvent } from '@/utils/tourEvents'
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { NModal, NInput, NButton, NPopover, NIcon, NSpin, NPopconfirm, useMessage } from 'naive-ui'
+import { NModal, NInput, NButton, NPopover, NIcon, NSpin, useMessage } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
   CheckmarkOutline,
   PlayForwardOutline,
   ChevronDownOutline,
-  ChevronForwardOutline,
-  ChevronBackOutline,
-  ArchiveOutline,
   ArrowUndoOutline,
   LayersOutline,
   LogoGitlab,
   OpenOutline,
   RepeatOutline,
-  TrashOutline,
   TimeOutline,
   TrailSignOutline,
   SettingsOutline,
@@ -39,6 +35,7 @@ import { sortedColumns, columnById, nextColumn, doneTarget, moveNeighbors } from
 import { planComplete } from '@/utils/cardNav'
 import { columnStatusName } from '@/utils/columnStatus'
 import { useShortcuts } from '@/composables/useShortcuts'
+import { useTaskModalMenu } from '@/composables/useTaskModalMenu'
 import { columnName } from '@/utils/defaultNames'
 import { taskLink } from '@/utils/taskLink'
 import { buildMentionItems } from '@/utils/mentions'
@@ -894,28 +891,18 @@ async function toggleGlGroup() {
 }
 // Archive (soft delete). Subtasks go to the archive with the parent unless the
 // user chooses to detach them (keep them on the board).
-async function archiveTask(detachChildren) {
-  try {
-    await tasksApi.archive(props.taskId, detachChildren ? { subtasks: 'detach' } : undefined)
-    emit('changed')
-    close()
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-const archiveHasSubs = computed(() => (task.value?.subtasks?.length || 0) > 0)
-async function handleArchiveNegative() {
-  if (archiveHasSubs.value) await archiveTask(true)
-}
-async function doDelete() {
-  try {
-    await tasksApi.remove(props.taskId)
-    emit('changed')
-    close()
-  } catch (e) {
-    message.error(e.message)
-  }
-}
+// The head's «⋯» (#3112): GitLab, the side panel, archive (at once, with an
+// undo toast) and the two-step delete.
+const moreMenu = useTaskModalMenu({
+  task,
+  readonly: () => ro.value,
+  wide: () => wide.value,
+  paneHidden: () => rightHidden.value,
+  togglePane: () => toggleRightPane(),
+  restore: () => emit('restore', props.taskId),
+  changed: () => emit('changed'),
+  close: () => close(),
+})
 
 // ── transfer to another board (the header's crumbs menu) ──
 async function transferTo(boardId) {
@@ -1310,72 +1297,14 @@ useShortcuts(
         :narrow="narrow"
         :shared="shared"
         :readonly="ro"
+        :more-items="moreMenu.items.value"
         @navigate="emit('navigate', $event)"
         @update:layout="setLayout"
         @share="shareTask"
         @close="close"
         @transfer="transferTo"
-      >
-        <template #more>
-          <a
-            v-if="task?.gitlab"
-            class="menu-item"
-            :href="task.gitlab.web_url"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <n-icon :component="LogoGitlab" :size="15" />
-            <span class="grow">{{ t('task.head.openGitlab') }}</span>
-            <span class="muted">!{{ task.gitlab.iid }}</span>
-          </a>
-          <div v-if="wide" class="menu-item" @click="toggleRightPane">
-            <n-icon
-              :component="rightHidden ? ChevronBackOutline : ChevronForwardOutline"
-              :size="15"
-            />
-            <span>{{ rightHidden ? t('task.head.showPane') : t('task.head.hidePane') }}</span>
-          </div>
-          <template v-if="ro">
-            <div class="menu-item" @click="emit('restore', taskId)">
-              <n-icon :component="ArrowUndoOutline" :size="15" />
-              <span>{{ t('task.action.restore') }}</span>
-            </div>
-          </template>
-          <template v-else>
-            <n-popconfirm
-              :positive-text="
-                archiveHasSubs ? t('task.footer.archiveBoth') : t('task.confirm.archiveYes')
-              "
-              :negative-text="
-                archiveHasSubs ? t('task.footer.detachSubtasks') : t('common.action.cancel')
-              "
-              @positive-click="() => archiveTask(false)"
-              @negative-click="handleArchiveNegative"
-            >
-              <template #trigger>
-                <div class="menu-item" data-testid="task-archive" @click.stop>
-                  <n-icon :component="ArchiveOutline" :size="15" />
-                  <span>{{ t('task.action.archive') }}</span>
-                </div>
-              </template>
-              {{ archiveHasSubs ? t('task.footer.archiveWithSubs') : t('task.confirm.archive') }}
-            </n-popconfirm>
-            <n-popconfirm
-              :positive-button-props="{ type: 'error' }"
-              :positive-text="t('task.confirm.deleteYes')"
-              @positive-click="doDelete"
-            >
-              <template #trigger>
-                <div class="menu-item danger" data-testid="task-delete" @click.stop>
-                  <n-icon :component="TrashOutline" :size="15" />
-                  <span>{{ t('task.action.delete') }}</span>
-                </div>
-              </template>
-              {{ t('task.confirm.delete') }}
-            </n-popconfirm>
-          </template>
-        </template>
-      </TaskModalHeader>
+        @more="moreMenu.select"
+      />
 
       <n-spin :show="loading" :rotate="false" class="tm-spin">
         <template #icon><TesseraSpinner /></template>

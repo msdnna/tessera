@@ -72,6 +72,10 @@ export const FEATURE_STUBS = {
   // The phone (#2976, package G): «Отложить» a task by swiping its row on
   // «Мои задачи» — a task has a due date, not a snooze (#3108).
   'home.snoozeTask': 3108,
+  // The board (#3112): the star after the crumbs — favourite boards (#3115);
+  // «Кто сейчас смотрит» in the board's people — presence on a board (#3116).
+  'board.favorite': 3115,
+  'board.presence': 3116,
 }
 
 export function stubTask(key) {

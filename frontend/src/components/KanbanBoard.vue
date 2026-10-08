@@ -15,22 +15,14 @@ import { tourEvent } from '@/utils/tourEvents'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import {
-  NSpin,
-  NButton,
-  NInput,
-  NText,
-  NPopover,
-  NIcon,
-  NTooltip,
-  NDropdown,
-  useMessage,
-} from 'naive-ui'
+import { NSpin, NIcon, NTooltip, useMessage } from 'naive-ui'
 import {
   GitNetworkOutline,
   AddOutline,
+  AlbumsOutline,
   ChevronForwardOutline,
   ChevronDownOutline,
+  EllipsisHorizontalOutline,
   FunnelOutline,
   OptionsOutline,
   ArchiveOutline,
@@ -55,7 +47,8 @@ import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewpo
 import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
 import { useBoardViews } from '@/composables/useBoardViews'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
-import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
+import { useFacetAddMenu, facetRows } from '@/composables/useFacetAddMenu'
+import { useBoardActions } from '@/composables/useBoardActions'
 import { tagLaneLabel, tagInPrefix, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumLaneEffort, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
@@ -119,6 +112,11 @@ import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
 import ChartControls from './chart/ChartControls.vue'
 import BoardMembers from './BoardMembers.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
+import ActionMenu from './kit/ActionMenu.vue'
+import InlineEdit from './kit/InlineEdit.vue'
+import QuickAddField from './kit/QuickAddField.vue'
+import EmptyState from './EmptyState.vue'
+import './kit/kit.css'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
@@ -474,6 +472,24 @@ const archivedMode = computed(() => isArchiveQuery(route.query))
 // reserving the tile's 232px there — every column in an archived board came out that
 // much narrower between them, with a dead band along the right edge.
 const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMode.value)
+// The board has columns but not one task yet (#3112, CatalogE «Пустая доска»):
+// a card over the lanes offers the first one. Not while one is being typed.
+const noTasks = computed(
+  () =>
+    !loading.value &&
+    !archivedMode.value &&
+    layout.value === 'board' &&
+    displayColumns.value.length > 0 &&
+    allTasks.value.length === 0 &&
+    addingInColumn.value === null,
+)
+function addFirstTask() {
+  const cols = colModel.value
+  const todo = groupMode.value === 'status' ? todoColumn(cols) : cols[0]
+  if (!todo) return
+  if (isColCollapsed(todo)) toggleCollapse(todo)
+  startAddTask(todo)
+}
 // Can the columns be dragged into a new order right now? Status grouping only (tag
 // and milestone lanes have no stored order to write back), never in the archive.
 // Asked in two places that must agree: the column draggable's `:disabled`, and the
@@ -619,6 +635,7 @@ const {
   nextGroupModeLabel,
   addOptions,
   onAddFacet,
+  facetIsOn,
   removeChip,
   onChipClick,
   toggleSortDir,
@@ -644,19 +661,55 @@ const {
   clearMilestoneScope,
 })
 
-// Mobile: the "+" menu drills into one sub-list at a time (with a «Назад») rather
-// than fanning out side submenus that run off a narrow screen. The behaviour lives
-// in a composable because the customize drawer renders the same menu behind its own
-// «+» — and on a phone that drawer is the settings surface one can always reach.
-// Each call site keeps its own open/level state (one shared `show` would pop both
-// dropdowns at once), so this instance belongs to the composer's button alone.
-const {
-  show: addShow,
-  menuOptions: addMenuOptions,
-  renderLabel: renderAddLabel,
-  onSelect: onAddSelect,
-  onShow: onAddShow,
-} = useFacetAddMenu({ options: addOptions, isMobile, onPick: onAddFacet })
+// The composer's «+» (#3112): kit/ActionMenu with a submenu per section — on a
+// phone the sheet's second screen — and what is in force ticked. The «Вид доски»
+// panel has its own instance behind its own «+» (one shared `show` would pop
+// both menus at once).
+const addBtnEl = ref(null)
+const addMenu = useFacetAddMenu({ options: addOptions, isOn: facetIsOn, onPick: onAddFacet })
+
+// «+N»: the chips the bar had no room for, as menu rows — a sort row turns its
+// direction, a filter row (ticked: it is on) takes the filter off.
+const moreBtnEl = ref(null)
+const moreOpen = ref(false)
+const moreItems = computed(() => [
+  ...(foldSorts.value && sortLevels.value.length
+    ? [
+        { heading: t('board.composer.sorts') },
+        ...sortLevels.value.map((l) => ({
+          key: `sort:${l.field}`,
+          label: `${sortFieldLabel(l.field)} ${l.dir === 'desc' ? '↓' : '↑'}`,
+          icon: CHIP_ICONS.sort,
+        })),
+      ]
+    : []),
+  ...(hiddenChips.value.length
+    ? [
+        { heading: t('board.composer.filters') },
+        ...hiddenChips.value.map((ci) => ({
+          key: `chip:${ci}`,
+          label: filterChips.value[ci].text,
+          icon: filterChips.value[ci].icon,
+          checked: true,
+        })),
+      ]
+    : []),
+])
+function onMoreSelect(key) {
+  if (key.startsWith('sort:')) {
+    const l = sortLevels.value.find((x) => x.field === key.slice(5))
+    if (l) toggleSortDir(l)
+  } else if (key.startsWith('chip:')) {
+    const c = filterChips.value[Number(key.slice(5))]
+    if (c) removeChip(c)
+  }
+}
+
+// The board's own actions (#3112) — tags, stages, project settings, GitLab,
+// the archive — behind «⋯» after «Вид доски»; the phone's menu has the same rows.
+const boardActions = useBoardActions()
+const actionsBtnEl = ref(null)
+const actionsOpen = ref(false)
 function toggleSubtasksExpanded() {
   subtasksExpanded.value = !subtasksExpanded.value
 }
@@ -971,7 +1024,10 @@ const colWidth = computed(() =>
 )
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 // The grouping control lists the same choices as the add menu's «Группировка».
-const groupOptions = computed(() => addOptions.value.find((o) => o.key === 'group')?.children || [])
+const groupOpen = ref(false)
+const groupItems = computed(() =>
+  facetRows(addOptions.value.find((o) => o.key === 'group')?.children || [], facetIsOn),
+)
 // A column with no colour of its own (status column left on default, «Без тегов»)
 // is tinted with the neutral grey of the v2 lanes (#2954).
 const NEUTRAL_COLUMN = '#9aa0aa'
@@ -2015,7 +2071,7 @@ useShortcuts(
 )
 useShortcuts(
   {
-    'board.filter': () => onAddShow(true),
+    'board.filter': () => (addMenu.show.value = true),
     'board.group': () => groupCtlEl.value?.click(),
     'board.layout': (n) => {
       const next = LAYOUT_KEYS[n - 1]
@@ -2666,64 +2722,54 @@ async function restoreFromArchive(taskId) {
             </template>
           </div>
 
-          <n-popover v-if="foldedCount" trigger="click" placement="bottom-start">
-            <template #trigger>
-              <button
-                type="button"
-                class="facet facet-more"
-                data-testid="composer-more"
-                :title="t('board.composer.more', { count: foldedCount })"
-              >
-                +{{ foldedCount }}
-              </button>
-            </template>
-            <div class="more-chips">
-              <template v-if="foldSorts">
-                <span
-                  v-for="l in sortLevels"
-                  :key="l.field"
-                  class="facet sortable"
-                  @click="toggleSortDir(l)"
-                >
-                  <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
-                  {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
-                  <button
-                    class="facet-x"
-                    :title="t('board.composer.remove')"
-                    @click.stop="removeSort(l)"
-                  >
-                    ×
-                  </button>
-                </span>
-              </template>
-              <span v-for="ci in hiddenChips" :key="ci" class="facet">
-                <n-icon class="facet-ic" :component="filterChips[ci].icon" :size="13" />
-                {{ filterChips[ci].text }}
-                <button
-                  class="facet-x"
-                  :title="t('board.composer.remove')"
-                  @click.stop="removeChip(filterChips[ci])"
-                >
-                  ×
-                </button>
-              </span>
-            </div>
-          </n-popover>
-
-          <n-dropdown
-            :show="addShow"
-            scrollable
-            trigger="click"
-            placement="bottom-start"
-            :options="addMenuOptions"
-            :render-label="renderAddLabel"
-            @update:show="onAddShow"
-            @select="onAddSelect"
+          <button
+            v-if="foldedCount"
+            ref="moreBtnEl"
+            type="button"
+            class="facet facet-more"
+            :class="{ open: moreOpen }"
+            data-testid="composer-more"
+            :title="t('board.composer.more', { count: foldedCount })"
+            aria-haspopup="menu"
+            :aria-expanded="moreOpen"
+            @click="moreOpen = !moreOpen"
           >
-            <button class="facet-add" :title="t('board.composer.add')">
-              <n-icon :component="AddOutline" :size="14" />
-            </button>
-          </n-dropdown>
+            +{{ foldedCount }}
+          </button>
+          <ActionMenu
+            v-model:show="moreOpen"
+            :anchor="() => moreBtnEl"
+            placement="bottom-start"
+            :offset="{ x: 0, y: 6 }"
+            :width="260"
+            :items="moreItems"
+            testid="composer-more-menu"
+            @select="onMoreSelect"
+          />
+
+          <button
+            ref="addBtnEl"
+            type="button"
+            class="facet-add"
+            :class="{ open: addMenu.show.value }"
+            :title="t('board.composer.add')"
+            aria-haspopup="menu"
+            :aria-expanded="addMenu.show.value"
+            data-testid="facet-add"
+            @click="addMenu.show.value = !addMenu.show.value"
+          >
+            <n-icon :component="AddOutline" :size="14" />
+          </button>
+          <ActionMenu
+            v-model:show="addMenu.show.value"
+            :anchor="() => addBtnEl"
+            placement="bottom-start"
+            :offset="{ x: -6, y: 8 }"
+            :width="240"
+            :items="addMenu.items.value"
+            testid="facet"
+            @select="addMenu.onSelect"
+          />
 
           <button
             v-if="hasClearableFacets"
@@ -2738,28 +2784,36 @@ async function restoreFromArchive(taskId) {
         <!-- Grouping: its own control next to the composer (v2, #2954) — a
              setting of the board, not one more filter. Opens the same grouping
              options as the composer's add menu. -->
-        <n-dropdown
+        <button
           v-if="groupChip"
-          trigger="click"
-          placement="bottom-start"
-          :options="groupOptions"
-          @select="onAddFacet"
+          ref="groupCtlEl"
+          type="button"
+          class="group-ctl"
+          :class="{ open: groupOpen }"
+          data-testid="group-control"
+          data-tour="board-grouping"
+          aria-haspopup="menu"
+          :aria-expanded="groupOpen"
+          @click="groupOpen = !groupOpen"
         >
-          <button
-            ref="groupCtlEl"
-            type="button"
-            class="group-ctl"
-            data-testid="group-control"
-            data-tour="board-grouping"
-          >
-            <n-icon class="gc-ic" :component="groupChip.icon" :size="14" />
-            <span v-if="!isMobile && !compactGroup" class="gc-lbl">{{
-              t('board.facet.menu.group')
-            }}</span>
-            <span class="gc-val">{{ groupChip.text }}</span>
-            <n-icon class="gc-ic" :component="ChevronDownOutline" :size="12" />
-          </button>
-        </n-dropdown>
+          <n-icon class="gc-ic" :component="groupChip.icon" :size="14" />
+          <span v-if="!isMobile && !compactGroup" class="gc-lbl">{{
+            t('board.facet.menu.group')
+          }}</span>
+          <span class="gc-val">{{ groupChip.text }}</span>
+          <n-icon class="gc-ic" :component="ChevronDownOutline" :size="12" />
+        </button>
+        <ActionMenu
+          v-model:show="groupOpen"
+          :anchor="() => groupCtlEl"
+          placement="bottom-start"
+          :offset="{ x: 0, y: 6 }"
+          :width="260"
+          :header="t('board.facet.menu.group')"
+          :items="groupItems"
+          testid="group-menu"
+          @select="onAddFacet"
+        />
 
         <!-- Stage selector (#2994): one stage, «Бэклог» or «Все задачи» — in place
              of the scope chip that used to sit among the filters. Hidden while the
@@ -2783,25 +2837,26 @@ async function restoreFromArchive(taskId) {
           :compact="isMobile || compactChart"
         />
 
-        <BoardMembers v-if="!isMobile && !hidePeople" class="subbar-people" />
+        <BoardMembers v-if="!isMobile && !hidePeople" :tasks="allTasks" class="subbar-people" />
 
         <!-- Right-side tools — slide off to the right while the composer is
              expanded so the full chip set has room. -->
         <div class="bar-tools">
-          <!-- Subtasks: compact rows on the card ⇄ full child cards (v2: a tool of
-               its own, out of the composer). -->
+          <!-- v2 icon buttons, 34px (#3112). Subtasks: compact rows on the card ⇄
+               full child cards (a tool of its own, out of the composer). -->
           <n-tooltip>
             <template #trigger>
-              <n-button
-                size="small"
-                quaternary
-                class="ngrad bar-btn"
-                :type="subtasksExpanded ? 'primary' : 'default'"
+              <button
+                type="button"
+                class="bar-ic"
+                :class="{ on: subtasksExpanded }"
+                :aria-pressed="subtasksExpanded"
+                :aria-label="t('board.composer.subtasksOff')"
                 data-testid="subtasks-toggle"
                 @click="toggleSubtasksExpanded"
               >
-                <template #icon><n-icon :component="GitBranchOutline" /></template>
-              </n-button>
+                <n-icon :component="GitBranchOutline" :size="17" />
+              </button>
             </template>
             {{ t(subtasksExpanded ? 'board.composer.subtasksOn' : 'board.composer.subtasksOff') }}
           </n-tooltip>
@@ -2810,15 +2865,17 @@ async function restoreFromArchive(taskId) {
              no-group/no-sort and orders rows by the blocking graph. -->
           <n-tooltip v-if="layout === 'gantt'">
             <template #trigger>
-              <n-button
-                size="small"
-                quaternary
-                class="ngrad bar-btn"
-                :type="autoActive ? 'primary' : 'default'"
+              <button
+                type="button"
+                class="bar-ic"
+                :class="{ on: autoActive }"
+                :aria-pressed="autoActive"
+                :aria-label="t('board.tools.autoOff')"
+                data-testid="gantt-auto"
                 @click="toggleAuto"
               >
-                <template #icon><n-icon :component="GitNetworkOutline" /></template>
-              </n-button>
+                <n-icon :component="GitNetworkOutline" :size="17" />
+              </button>
             </template>
             {{ t(autoActive ? 'board.tools.autoOn' : 'board.tools.autoOff') }}
           </n-tooltip>
@@ -2828,22 +2885,58 @@ async function restoreFromArchive(taskId) {
           <n-tooltip>
             <template #trigger>
               <span class="panel-wrap">
-                <n-button
-                  size="small"
-                  quaternary
-                  class="ngrad bar-btn"
-                  :type="customizeOpen ? 'primary' : 'default'"
+                <button
+                  type="button"
+                  class="bar-ic"
+                  :class="{ on: customizeOpen }"
+                  :aria-pressed="customizeOpen"
+                  :aria-label="t('board.tools.customize')"
                   data-tour="board-customize"
                   data-testid="board-customize-btn"
                   @click="customizeOpen ? (customizeOpen = false) : openPanel()"
                 >
-                  <template #icon><n-icon :component="OptionsOutline" /></template>
-                </n-button>
+                  <n-icon :component="OptionsOutline" :size="17" />
+                </button>
                 <span v-if="bv.changed" class="panel-dot" data-testid="board-customize-dot" />
               </span>
             </template>
-            {{ t('board.tools.customize') }} · <ShortcutKeys id="view.panel" />
+            <span class="bar-tip">
+              {{ t('board.tools.customize') }} <ShortcutKeys id="view.panel" />
+            </span>
           </n-tooltip>
+
+          <!-- «⋯ Действия доски» (#3112, Board.dc): tags, stages, the project's
+               settings, GitLab, the archive. -->
+          <n-tooltip :disabled="actionsOpen">
+            <template #trigger>
+              <button
+                ref="actionsBtnEl"
+                type="button"
+                class="bar-ic"
+                :class="{ on: actionsOpen || boardActions.isArchive.value }"
+                :aria-label="t('board.actions.more')"
+                aria-haspopup="menu"
+                :aria-expanded="actionsOpen"
+                data-tour="board-actions"
+                data-testid="board-more"
+                @click="actionsOpen = !actionsOpen"
+              >
+                <n-icon :component="EllipsisHorizontalOutline" :size="17" />
+              </button>
+            </template>
+            {{ t('board.actions.more') }}
+          </n-tooltip>
+          <ActionMenu
+            v-model:show="actionsOpen"
+            :anchor="() => actionsBtnEl"
+            placement="bottom-end"
+            :offset="{ x: 0, y: 6 }"
+            :width="260"
+            :header="t('board.actions.more')"
+            :items="boardActions.items.value"
+            testid="board-more-menu"
+            @select="boardActions.select"
+          />
         </div>
       </div>
 
@@ -3123,15 +3216,12 @@ async function restoreFromArchive(taskId) {
                       class="add-task-input"
                       data-testid="add-task-input"
                     >
-                      <n-input
+                      <QuickAddField
                         :ref="(el) => (taskInput = el)"
-                        v-model:value="newTaskTitle"
-                        type="textarea"
-                        size="small"
-                        :autosize="{ minRows: 1, maxRows: 4 }"
+                        v-model="newTaskTitle"
                         :placeholder="t('board.column.taskPlaceholder')"
-                        @keydown.enter.exact.prevent="submitAddTask(dcol)"
-                        @keyup.esc="cancelAddTask"
+                        @submit="submitAddTask(dcol)"
+                        @cancel="cancelAddTask"
                         @blur="submitAddTask(dcol)"
                       />
                     </div>
@@ -3154,16 +3244,17 @@ async function restoreFromArchive(taskId) {
             <!-- inline new column (status mode; never in the archive — the tile would
              create a live column on the board from a read-only view) -->
             <div v-if="showAddColumn" class="add-col" :class="{ 'add-col-mobile': isMobile }">
-              <n-input
+              <InlineEdit
                 v-if="addingColumn"
                 ref="colInput"
-                v-model:value="newColumnName"
-                size="small"
-                :loading="columnInFlight"
+                v-model="newColumnName"
+                variant="header"
+                hint="create"
+                class="add-col-edit"
+                :busy="columnInFlight"
                 :placeholder="t('board.column.namePlaceholder')"
-                @keyup.enter="submitAddColumn"
-                @keyup.esc="addingColumn = false"
-                @blur="submitAddColumn"
+                @commit="submitAddColumn"
+                @cancel="addingColumn = false"
               />
               <button
                 v-else
@@ -3201,10 +3292,27 @@ async function restoreFromArchive(taskId) {
             }}</span>
           </div>
 
-          <div v-if="layout === 'board' && !displayColumns.length" class="empty-board">
-            <n-text depth="3">
-              {{ t(groupMode === 'status' ? 'board.column.emptyStatus' : 'board.column.emptyTag') }}
-            </n-text>
+          <EmptyState
+            v-if="layout === 'board' && !displayColumns.length"
+            class="empty-board"
+            :icon="AlbumsOutline"
+            :text="t(groupMode === 'status' ? 'board.column.emptyStatus' : 'board.column.emptyTag')"
+          />
+          <!-- Columns, not a task yet (CatalogE «Пустая доска»): a card over the
+               lanes. «Из бэклога» of the mockup is not here — moving tasks out of
+               the backlog is the stage selector's (⇧E) job, not a board action. -->
+          <div v-if="noTasks" class="empty-tasks" data-testid="board-empty">
+            <EmptyState
+              class="empty-tasks-card"
+              :icon="AlbumsOutline"
+              :title="t('board.empty.title')"
+              :text="t('board.empty.text')"
+            >
+              <button type="button" class="kit-btn primary" @click="addFirstTask">
+                {{ t('board.empty.create') }}
+                <ShortcutKeys id="board.addTask" />
+              </button>
+            </EmptyState>
           </div>
         </div>
         <BoardCustomizePanel
@@ -3224,6 +3332,7 @@ async function restoreFromArchive(taskId) {
           :group-next-label="nextGroupModeLabel"
           :group-label="groupChip?.text || ''"
           :add-options="addOptions"
+          :facet-is-on="facetIsOn"
           :board-icon="board?.icon || ''"
           :board-color="board?.color || ''"
           :board-icon-mode="board?.icon_mode || 'badge'"
@@ -3344,10 +3453,41 @@ async function restoreFromArchive(taskId) {
   min-height: calc(100vh - 52px);
   box-sizing: border-box;
 }
-/* Right-side toolbar buttons match the composer bar's height. */
-.bar-btn {
-  height: 34px;
+/* Right-side toolbar buttons (v2, #3112): 34px, radius 10, the hover well;
+   on — the accent wash, like the header's «Входящие». */
+.bar-ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.bar-ic:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.bar-ic.on {
+  background: color-mix(in srgb, var(--t-primary) 18%, transparent);
+  color: var(--t-primary);
+}
+.bar-ic:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+.bar-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .bar-tools {
   display: flex;
@@ -3393,12 +3533,6 @@ async function restoreFromArchive(taskId) {
   font-weight: 600;
   cursor: pointer;
 }
-.more-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: 320px;
-}
 .facet {
   display: inline-flex;
   align-items: center;
@@ -3437,7 +3571,8 @@ async function restoreFromArchive(taskId) {
   white-space: nowrap;
   cursor: pointer;
 }
-.group-ctl:hover {
+.group-ctl:hover,
+.group-ctl.open {
   background: var(--t-hover);
 }
 .gc-ic {
@@ -3496,7 +3631,8 @@ async function restoreFromArchive(taskId) {
   cursor: pointer;
   flex: none;
 }
-.facet-add:hover {
+.facet-add:hover,
+.facet-add.open {
   color: var(--t-text1);
 }
 /* Reference figure, not a control — flat neutral grey, no accent gradient. */
@@ -3954,6 +4090,31 @@ async function restoreFromArchive(taskId) {
   width: 100%;
 }
 .empty-board {
-  padding: 24px;
+  padding: 48px 24px;
+}
+/* «На доске пока нет задач»: centred over the lanes, which stay visible and
+   usable around it. */
+.board-main {
+  position: relative;
+}
+.empty-tasks {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.empty-tasks-card {
+  max-width: 340px;
+  padding: 26px 30px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--t-pop) 92%, transparent);
+  box-shadow: var(--t-sh-pop);
+  pointer-events: auto;
+}
+.add-col-edit {
+  margin-left: 0;
 }
 </style>

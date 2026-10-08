@@ -1,19 +1,20 @@
 <script setup>
 import { NIcon, NTooltip } from 'naive-ui'
-import { ChevronForwardOutline, FileTrayOutline } from '@vicons/ionicons5'
+import { ChevronForwardOutline, FileTrayOutline, StarOutline } from '@vicons/ionicons5'
 import SearchBar from './SearchBar.vue'
 import NotificationsBell from './NotificationsBell.vue'
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import BoardActions from './BoardActions.vue'
-import HelpHint from './help/HelpHint.vue'
 import { useBoardViewStore } from '@/stores/boardView'
+import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useQuickStore } from '@/stores/quick'
 import { useInboxStore } from '@/stores/inbox'
 import ShortcutKeys from './ShortcutKeys.vue'
+import ActionMenu from './kit/ActionMenu.vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { workspaceName } from '@/utils/defaultNames'
+import { stubTask } from '@/utils/featureStubs'
 
 // The desktop header. A phone has a header of its own (mobile/MobileTopbar,
 // #2976) next to the bottom navigation.
@@ -24,12 +25,43 @@ const ws = useWorkspacesStore()
 const quick = useQuickStore()
 const inbox = useInboxStore()
 const route = useRoute()
-// Board actions only make sense on a desktop board view.
+const router = useRouter()
+const projectWindow = useProjectWindowStore()
 const onBoard = () => board.active
 // v2 (#2954): on a board the header's left side names where you are — project ›
 // board. The view switch moved down into the board's sub-toolbar.
-const crumbProject = computed(() => ws.projects.find((p) => p.id === board.projectId)?.name || '')
+const project = computed(() => ws.projects.find((p) => p.id === board.projectId) || null)
+const crumbProject = computed(() => project.value?.name || '')
 const crumbBoard = computed(() => board.board?.name || '')
+// Both crumbs are doors (#3112): the project opens its «Проект» window, the
+// board lists the project's boards to jump to. The star after them is the
+// favourite board — a stub until #3115.
+const favoriteStub = stubTask('board.favorite')
+function openProject() {
+  if (board.projectId) projectWindow.open(board.projectId, 'general')
+}
+const boardCrumb = ref(null)
+const boardsOpen = ref(false)
+function toggleBoards() {
+  boardsOpen.value = !boardsOpen.value
+  // The tree loads a project's boards when it is expanded; the crumb may be
+  // the first to ask.
+  if (boardsOpen.value && board.projectId && !ws.boardsByProject[board.projectId])
+    ws.loadBoards(board.projectId)
+}
+const boardItems = computed(() =>
+  (ws.boardsByProject[board.projectId] || []).map((b) => ({
+    key: b.id,
+    label: b.name,
+    glyph: 'layout-kanban',
+    active: b.id === board.boardId,
+  })),
+)
+function goBoard(id) {
+  const b = (ws.boardsByProject[board.projectId] || []).find((x) => x.id === id)
+  if (!b || b.id === board.boardId || !project.value) return
+  router.push(`/project/${project.value.slug}/board/${b.slug}`)
+}
 // The start screen names itself and the workspace (v2, #2960).
 const onHome = computed(() => route.path === '/')
 // Screens with a section column name themselves the same way (v2, #3106):
@@ -64,14 +96,62 @@ const pageCrumb = computed(() => {
          The containers are always rendered so the teleport target exists. -->
     <div class="tb-left">
       <div v-if="onBoard() && crumbBoard" class="crumbs" data-testid="board-crumbs">
-        <span v-if="crumbProject" class="crumb" data-tour="crumb-project">{{ crumbProject }}</span>
+        <button
+          v-if="crumbProject"
+          type="button"
+          class="crumb crumb-btn"
+          :title="t('board.crumbs.projectSettings')"
+          data-tour="crumb-project"
+          data-testid="crumb-project"
+          @click="openProject"
+        >
+          {{ crumbProject }}
+        </button>
         <n-icon
           v-if="crumbProject"
           :component="ChevronForwardOutline"
           :size="12"
           class="crumb-sep"
         />
-        <span class="crumb crumb-cur">{{ crumbBoard }}</span>
+        <button
+          ref="boardCrumb"
+          type="button"
+          class="crumb crumb-btn crumb-cur"
+          :class="{ open: boardsOpen }"
+          :title="t('board.crumbs.boards')"
+          aria-haspopup="menu"
+          :aria-expanded="boardsOpen"
+          data-testid="crumb-board"
+          @click="toggleBoards"
+        >
+          {{ crumbBoard }}
+        </button>
+        <n-tooltip :delay="300">
+          <template #trigger>
+            <span
+              class="crumb-star"
+              role="button"
+              tabindex="0"
+              aria-disabled="true"
+              :aria-label="t('board.crumbs.favorite')"
+              data-testid="crumb-favorite"
+            >
+              <n-icon :component="StarOutline" :size="14" />
+            </span>
+          </template>
+          {{ t('board.crumbs.favorite') }} · {{ t('common.stub.soon', { n: favoriteStub }) }}
+        </n-tooltip>
+        <ActionMenu
+          v-model:show="boardsOpen"
+          :anchor="() => boardCrumb"
+          placement="bottom-start"
+          :offset="{ x: 0, y: 6 }"
+          :width="260"
+          :header="crumbProject"
+          :items="boardItems"
+          testid="crumb-boards"
+          @select="goBoard"
+        />
       </div>
       <div v-if="onHome" class="crumbs" data-testid="home-crumbs">
         <span class="crumb crumb-cur">{{ t('shell.home.title') }}</span>
@@ -94,9 +174,8 @@ const pageCrumb = computed(() => {
 
     <div class="tb-right">
       <div id="tb-slot-right" class="tb-slot" />
-      <BoardActions v-if="onBoard()" />
-      <!-- Contextual help for whatever screen is open; hides itself on /help
-           and picks its article from the route (#2794). -->
+      <!-- The board's tags, stages and archive moved into its «⋯» (#3112); help
+           is the rail's «?» and F1, on the article about the screen. -->
       <!-- The bell is the shell's, not the workspace's (v2): the feed spans
            every workspace, so it stays here whatever the sidebar does. -->
       <!-- «Входящие» (#2997): the panel, with the count of reminders that went
@@ -132,7 +211,6 @@ const pageCrumb = computed(() => {
         <span class="tb-keys-l">{{ t('shell.keys.button') }}</span>
         <ShortcutKeys id="nav.shortcuts" />
       </button>
-      <HelpHint :size="18" />
     </div>
   </div>
 </template>
@@ -260,6 +338,46 @@ const pageCrumb = computed(() => {
 .crumb-cur {
   font-weight: 600;
   color: var(--t-text1);
+}
+/* The crumbs are doors (#3112): text3 → text1 on hover, a soft well, no
+   underline. */
+.crumb-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 28px;
+  margin: 0 -6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.crumb-btn:hover,
+.crumb-btn.open {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.crumb-btn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+/* Favourite boards are not built yet (#3115): drawn, inert. */
+.crumb-star {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-left: 2px;
+  border-radius: 7px;
+  color: var(--t-text3);
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 .crumb-sep,
 .crumb-dot {

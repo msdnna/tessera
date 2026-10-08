@@ -29,8 +29,7 @@ vi.mock('vue-router', () => ({
 const { default: BoardMobileMenu } = await import('@/components/BoardMobileMenu.vue')
 
 const STUBS = { TagManager: true, MilestoneManager: true, TesseraIcon: true }
-const flat = (options) => options.flatMap((o) => (o.children ? [o, ...o.children] : [o]))
-const entry = (w) => flat(w.vm.options).find((o) => o.key === 'customize')
+const entry = (w) => w.vm.items.find((o) => o.key === 'customize')
 
 beforeEach(() => {
   setActivePinia(createPinia())

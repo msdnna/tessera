@@ -15,7 +15,7 @@
 // views are the first section, drawn by the board through the `views` slot.
 import { computed, h, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NDropdown, NIcon, NInput } from 'naive-ui'
+import { NIcon, NInput } from 'naive-ui'
 import {
   AddOutline,
   AlbumsOutline,
@@ -37,6 +37,7 @@ import {
   TrailSignOutline,
 } from '@vicons/ionicons5'
 import DockPanel from './kit/DockPanel.vue'
+import ActionMenu from './kit/ActionMenu.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
 import IconColorPicker from './IconColorPicker.vue'
 import { useResponsive } from '@/composables/useResponsive'
@@ -69,6 +70,8 @@ const props = defineProps({
   // menu, so this panel doesn't reimplement the composer.
   facetChips: { type: Array, default: () => [] },
   addOptions: { type: Array, default: () => [] },
+  // Which facet-menu keys are in force — ticked in the «+» menu.
+  facetIsOn: { type: Function, default: () => false },
   filters: { type: Object, default: () => ({}) },
   // Label of the grouping the group chip steps to when clicked (the chip cycles —
   // see useBoardFacets). Shown as its tooltip, the same one the composer carries.
@@ -264,19 +267,13 @@ function setChart(k) {
 }
 
 // ── facets: the composer's «+» menu behind the panel's own «+» ──
-// On a phone naive's side submenus open past the edge of the screen, which is why
-// the composer drills into one sub-list at a time — and this panel is the settings
-// surface a phone can always reach. Own instance, own open/level state: sharing
-// the composer's would pop both dropdowns at once.
-const {
-  show: addShow,
-  menuOptions: addMenuOptions,
-  renderLabel: renderAddLabel,
-  onSelect: onAddSelect,
-  onShow: onAddShow,
-} = useFacetAddMenu({
+// kit/ActionMenu with a submenu per section — on a phone the sheet's second
+// screen (#3112). Own instance, own open state: sharing the composer's would
+// pop both menus at once.
+const addBtn = ref(null)
+const addMenu = useFacetAddMenu({
   options: computed(() => props.addOptions),
-  isMobile,
+  isOn: (k) => props.facetIsOn(k),
   onPick: (k) => emit('add-facet', k),
 })
 
@@ -563,20 +560,27 @@ const sw = (on) =>
                     ×
                   </button>
                 </span>
-                <n-dropdown
-                  :show="addShow"
-                  trigger="click"
-                  placement="bottom-start"
-                  scrollable
-                  :options="addMenuOptions"
-                  :render-label="renderAddLabel"
-                  @update:show="onAddShow"
-                  @select="onAddSelect"
+                <button
+                  ref="addBtn"
+                  type="button"
+                  class="cp-chip-add"
+                  :title="t('board.composer.add')"
+                  aria-haspopup="menu"
+                  :aria-expanded="addMenu.show.value"
+                  @click="addMenu.show.value = !addMenu.show.value"
                 >
-                  <button type="button" class="cp-chip-add" :title="t('board.composer.add')">
-                    <n-icon :component="AddOutline" :size="14" />
-                  </button>
-                </n-dropdown>
+                  <n-icon :component="AddOutline" :size="14" />
+                </button>
+                <ActionMenu
+                  v-model:show="addMenu.show.value"
+                  :anchor="() => addBtn"
+                  placement="bottom-start"
+                  :offset="{ x: 0, y: 4 }"
+                  :width="240"
+                  :items="addMenu.items.value"
+                  testid="facet"
+                  @select="addMenu.onSelect"
+                />
               </div>
             </template>
 

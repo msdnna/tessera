@@ -1,14 +1,15 @@
 // «Архив» is a scope of the board (?archived=1), and the control that opens it is
 // the one that should close it. Neither of the two did.
 //
-//   * The desktop button (BoardActions) renders PRESSED inside the archive
-//     (`type="primary"` + `secondary`) and then swallowed the click that would
-//     un-press it: `@click="isArchive ? null : openArchive()"`.
-//   * The phone menu (BoardMobileMenu) is the whole board toolbar there — Topbar
-//     renders it *instead of* BoardActions — and its entry carried no state at
-//     all: no tick, while every layout entry in the same dropdown gets one. From
-//     inside the archive it re-pushed the identical query, which Vue Router
-//     answers with a resolved NavigationFailure: a dead entry, silently.
+//   * The desktop button (then BoardActions) rendered PRESSED inside the
+//     archive and then swallowed the click that would un-press it.
+//   * The phone menu (BoardMobileMenu) carried no state at all: no tick, while
+//     every layout entry in the same dropdown gets one. From inside the archive
+//     it re-pushed the identical query, which Vue Router answers with a resolved
+//     NavigationFailure: a dead entry, silently.
+//
+// Both are one row now (#3112): useBoardActions, under the desktop «⋯» and in
+// the phone's menu.
 //
 // The only way back was the scope chip's «×» in the board composer — a different
 // control, in a different place, from the one that got the reader in.
@@ -33,7 +34,6 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ push, replace }),
 }))
 
-const { default: BoardActions } = await import('@/components/BoardActions.vue')
 const { default: BoardMobileMenu } = await import('@/components/BoardMobileMenu.vue')
 
 const STUBS = { TagManager: true, MilestoneManager: true, TesseraIcon: true }
@@ -75,44 +75,17 @@ describe('utils/boardScope', () => {
   })
 })
 
-describe('BoardActions «Архив» button', () => {
-  const btn = (w) => w.find('[data-testid="board-archive"]')
+describe('the «Архив» row (useBoardActions, desktop «⋯» and the phone menu)', () => {
+  const row = (w) => w.vm.items.find((i) => i.key === 'archive')
 
-  it('opens the archive from a live board', async () => {
-    const w = mount(BoardActions, { global: { stubs: STUBS } })
-    await btn(w).trigger('click')
-
-    expect(push).toHaveBeenCalledWith({ query: { archived: '1' } })
-    expect(replace).not.toHaveBeenCalled()
-    w.unmount()
-  })
-
-  it('leaves the archive when pressed again — the pressed look is a toggle', async () => {
-    route.query = { archived: '1', tag: 'bug' }
-    const w = mount(BoardActions, { global: { stubs: STUBS } })
-    await btn(w).trigger('click')
-
-    // replace, not push: the archive must not become a step in the back history
-    // of the board it overlays (same as the composer chip's «×»).
-    expect(replace).toHaveBeenCalledWith({ query: { tag: 'bug' } })
-    expect(push).not.toHaveBeenCalled()
-    w.unmount()
-  })
-})
-
-describe('BoardMobileMenu «Архив» entry', () => {
-  const archiveOption = (w) => w.vm.options.find((o) => o.key === 'archive')
-
-  it('is marked while the scope is on, plain while it is off', () => {
+  it('is checked while the scope is on, plain while it is off', () => {
     const live = mount(BoardMobileMenu, { global: { stubs: STUBS } })
-    expect(live.vm.isActive(archiveOption(live))).toBe(false)
-    expect(live.vm.items.find((i) => i.key === 'archive').active).toBe(false)
+    expect(row(live).checked).toBe(false)
     live.unmount()
 
     route.query = { archived: '1' }
     const archived = mount(BoardMobileMenu, { global: { stubs: STUBS } })
-    expect(archived.vm.isActive(archiveOption(archived))).toBe(true)
-    expect(archived.vm.items.find((i) => i.key === 'archive').active).toBe(true)
+    expect(row(archived).checked).toBe(true)
     archived.unmount()
   })
 
@@ -122,6 +95,7 @@ describe('BoardMobileMenu «Архив» entry', () => {
     w.vm.onSelect('archive')
 
     expect(push).toHaveBeenCalledWith({ query: { archived: '1' } })
+    expect(replace).not.toHaveBeenCalled()
     w.unmount()
   })
 
@@ -130,6 +104,8 @@ describe('BoardMobileMenu «Архив» entry', () => {
     const w = mount(BoardMobileMenu, { global: { stubs: STUBS } })
     w.vm.onSelect('archive')
 
+    // replace, not push: the archive must not become a step in the back history
+    // of the board it overlays (same as the composer chip's «×»).
     expect(replace).toHaveBeenCalledWith({ query: { tag: 'bug' } })
     expect(push).not.toHaveBeenCalled()
     w.unmount()

@@ -34,7 +34,6 @@ const MARKUP = [
   'src/components/TaskModal.vue',
   'src/components/KanbanBoard.vue',
   'src/components/BoardLayoutSwitch.vue',
-  'src/components/BoardActions.vue',
   'src/components/SearchBar.vue',
   'src/components/SidebarFooter.vue',
   'src/components/NotificationsBell.vue',

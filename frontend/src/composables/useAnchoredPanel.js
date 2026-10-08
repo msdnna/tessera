@@ -13,13 +13,15 @@ import { pushBlocker } from '@/shortcuts/dispatcher'
 //   placement  'right-start' (to the right, tops aligned) | 'bottom-start' |
 //              'bottom-end' | 'point' (at the {x, y} itself)
 //   offset     { x, y } nudges from the anchor edge (mockup: 4px right, −6px up)
+//   (placement and offset may be getters — read on every placement, so one
+//   panel can open at a pointer one time and under a button the next)
 export function useAnchoredPanel({
   show,
   anchor,
   panel,
   onOutside,
-  placement = 'right-start',
-  offset = { x: 4, y: -6 },
+  placement: placementOpt = 'right-start',
+  offset: offsetOpt = { x: 4, y: -6 },
 }) {
   const style = ref({ left: '0px', top: '0px' })
   let release = null
@@ -38,6 +40,8 @@ export function useAnchoredPanel({
     const r = anchorRect()
     const el = panel.value
     if (!r || !el) return
+    const placement = typeof placementOpt === 'function' ? placementOpt() : placementOpt
+    const offset = typeof offsetOpt === 'function' ? offsetOpt() : offsetOpt
     const w = el.offsetWidth
     const h = el.offsetHeight
     let left

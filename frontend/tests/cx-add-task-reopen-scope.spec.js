@@ -196,8 +196,9 @@ describe('KanbanBoard wires the success path through that rule (#2932)', () => {
     // Both bindings are what makes the race reachable at all; without them this guard
     // would be passing for the wrong reason.
     const tile = board.slice(board.indexOf('v-if="addingInColumn === dcol.key"'))
-    const input = tile.slice(0, tile.indexOf('</n-input>') + 1 || 800)
-    expect(input).toContain('@keydown.enter.exact.prevent="submitAddTask(dcol)"')
+    // kit/QuickAddField (#3112): ↵ is its `submit`, the click away its `blur`.
+    const input = tile.slice(0, 800)
+    expect(input).toContain('@submit="submitAddTask(dcol)"')
     expect(input).toContain('@blur="submitAddTask(dcol)"')
   })
 })

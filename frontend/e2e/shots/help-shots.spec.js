@@ -237,10 +237,10 @@ for (const scheme of ['light', 'dark']) {
 
     test('панель доски: меню добавления', async ({ page }) => {
       await openBoard(page)
-      // The add menu renders in a detached dropdown layer, so the frame is the
-      // whole page — cropping to the bar would cut the menu the shot is about.
+      // The add menu renders in a detached layer, so the frame is the whole
+      // page — cropping to the bar would cut the menu the shot is about.
       await page.locator('.facet-add').click()
-      await expect(page.locator('.n-dropdown-option').first()).toBeVisible()
+      await expect(page.getByTestId('facet-group')).toBeVisible()
       await shoot(page, scheme, 'board-composer')
     })
 
@@ -448,7 +448,8 @@ for (const scheme of ['light', 'dark']) {
 
     test('окно проекта', async ({ page }) => {
       await openBoard(page)
-      await page.getByTestId('board-tags').click()
+      await page.getByTestId('board-more').click()
+      await page.getByTestId('board-more-menu-tags').click()
       await expect(page.getByTestId('project-window')).toBeVisible()
       await page.getByTestId('project-tab-general').click()
       await expect(page.getByTestId('project-general')).toBeVisible()
@@ -457,7 +458,8 @@ for (const scheme of ['light', 'dark']) {
 
     test('управление тегами', async ({ page }) => {
       await openBoard(page)
-      await page.getByTestId('board-tags').click()
+      await page.getByTestId('board-more').click()
+      await page.getByTestId('board-more-menu-tags').click()
       const tab = page.getByTestId('project-tags')
       await expect(tab.getByTestId('tag-row').first()).toBeVisible()
       // Two rows picked: the selection bar is what the article walks through.
@@ -469,7 +471,8 @@ for (const scheme of ['light', 'dark']) {
 
     test('управление этапами', async ({ page }) => {
       await openBoard(page)
-      await page.getByTestId('board-stages').click()
+      await page.getByTestId('board-more').click()
+      await page.getByTestId('board-more-menu-stages').click()
       await expect(page.getByTestId('stage-row').first()).toBeVisible()
       await shoot(page, scheme, 'project-stages')
     })

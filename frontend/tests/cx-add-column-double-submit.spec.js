@@ -83,15 +83,17 @@ describe('column create is not re-entrant (#2932)', () => {
   it('still commits on both Enter and blur', () => {
     // If either binding ever goes away the race is gone, but so is a commit path the
     // reader relies on — this test would then be passing for the wrong reason.
+    // The field is kit/InlineEdit (#3112): its one `commit` is ↵ and the click
+    // away alike (`{ via: 'enter' | 'blur' }`).
     const tile = board.slice(board.indexOf('<div v-if="showAddColumn"'))
-    const input = tile.slice(0, tile.indexOf('</n-input>') + 1 || tile.indexOf('/>') + 2)
-    expect(input).toContain('@keyup.enter="submitAddColumn"')
-    expect(input).toContain('@blur="submitAddColumn"')
+    const input = tile.slice(0, tile.indexOf('/>') + 2)
+    expect(input).toContain('<InlineEdit')
+    expect(input).toContain('@commit="submitAddColumn"')
   })
 
   it('shows the input as busy while the create is in flight', () => {
     const tile = board.slice(board.indexOf('<div v-if="showAddColumn"'))
-    expect(tile.slice(0, 600)).toContain(':loading="columnInFlight"')
+    expect(tile.slice(0, 600)).toContain(':busy="columnInFlight"')
   })
 
   it('still lets the next column be created after one succeeds', () => {

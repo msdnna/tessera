@@ -210,7 +210,7 @@
     },
     "tags-window": {
       "title": "Project tags",
-      "body": "Tags, their prefixes and merging are in the «Project» window, on the «Tags» tab. It opens from here or with ⌘,."
+      "body": "Tags, their prefixes and merging are in the «Project» window, on the «Tags» tab. It opens from the board’s ⋯ menu or with ⌘,."
     },
     "group-add": {
       "title": "Project groups",
@@ -228,7 +228,7 @@
     },
     "gitlab-board": {
       "title": "GitLab on the board",
-      "body": "Connections, rules and the sync journal are in the GitLab window from the board’s menu."
+      "body": "Connections, rules and the sync journal are in the GitLab window from the board’s ⋯ menu."
     },
     "gitlab-card": {
       "title": "Tasks from GitLab",
@@ -296,7 +296,7 @@
     },
     "wc-project": {
       "title": "The «Project» window",
-      "body": "A project’s tags, stages and estimation are in one window: ⌘, on the board or the project’s menu."
+      "body": "A project’s tags, stages and estimation are in one window: ⌘, or the ⋯ menu on the board, the project’s menu in the tree."
     },
     "wc-palette": {
       "title": "Everything from the keyboard",

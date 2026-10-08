@@ -118,24 +118,8 @@ describe('the archive menu', () => {
 
     expect(tasksApi.update).not.toHaveBeenCalled()
     expect(tasksApi.move).not.toHaveBeenCalled()
-    expect(menu.deleteConfirmShow.value).toBe(false)
-    expect(menu.archiveConfirmShow.value).toBe(false)
-  })
-
-  // One step further along: the popconfirms stay mounted, so a positive-click can
-  // land after the scope changed under them.
-  it('refuses a confirm that lands after the flag is up', async () => {
-    const readonly = ref(false)
-    const menu = useTaskMenu({ readonly, onRestore: () => {} })
-    menu.open(EVT, TASK)
-    await frame()
-    await menu.select('delete')
-    expect(menu.deleteConfirmShow.value).toBe(true)
-
-    readonly.value = true
-    await menu.confirmDelete()
-    await menu.confirmArchive()
-
+    // «Удалить» armed in the menu before the flag went up lands here as a plain
+    // select (#3112) — it must be refused all the same.
     expect(tasksApi.remove).not.toHaveBeenCalled()
     expect(tasksApi.archive).not.toHaveBeenCalled()
   })

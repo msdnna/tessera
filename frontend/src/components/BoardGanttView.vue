@@ -24,7 +24,7 @@ import ChartMilestoneMarkers from './chart/ChartMilestoneMarkers.vue'
 import ChartTaskRow from './chart/ChartTaskRow.vue'
 import { CHART_DEFAULTS } from '@/utils/boardViews'
 import ChartUnscheduled from './chart/ChartUnscheduled.vue'
-import ChartTaskMenu from './chart/ChartTaskMenu.vue'
+import TaskActionMenu from './task/TaskActionMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
 
 const { t } = useI18n()
@@ -464,8 +464,7 @@ const linkPath = computed(() => {
 //
 // The confirm is anchored to the pointer, not to an element: `.g-del` is an SVG
 // <g>, which Naive's trigger slot cannot host. That's the same manual `:show` +
-// `:x`/`:y` popconfirm with an empty trigger that ChartTaskMenu already uses for
-// the chart's delete/archive.
+// `:x`/`:y` popconfirm with an empty trigger.
 const edgeConfirm = ref(null) // { id, x, y } — the edge awaiting confirmation
 function askRemoveEdge(e, a) {
   if (props.readonly) return
@@ -671,20 +670,7 @@ onBeforeUnmount(() => {
       @menu="menu.open"
     />
 
-    <ChartTaskMenu
-      :show="menu.show.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :options="menu.options.value"
-      :delete-show="menu.deleteConfirmShow.value"
-      :archive-show="menu.archiveConfirmShow.value"
-      @select="menu.select"
-      @close="menu.show.value = false"
-      @update:delete-show="menu.deleteConfirmShow.value = $event"
-      @delete-confirm="menu.confirmDelete()"
-      @update:archive-show="menu.archiveConfirmShow.value = $event"
-      @archive-confirm="menu.confirmArchive()"
-    />
+    <TaskActionMenu :menu="menu" />
 
     <ChartCursorPill v-if="cursor" :x="cursorPill.x" :y="cursorPill.top + 4" :label="cursorLabel" />
   </div>

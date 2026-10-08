@@ -20,7 +20,7 @@
 // like a short one.
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NDropdown, NIcon, NPopconfirm } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import {
   AddOutline,
   ChevronDownOutline,
@@ -28,6 +28,7 @@ import {
   TrailSignOutline,
 } from '@vicons/ionicons5'
 import { useTaskMenu } from '@/composables/useTaskMenu'
+import TaskActionMenu from './task/TaskActionMenu.vue'
 import { useDateLocale } from '@/composables/useDateLocale'
 import { useResponsive } from '@/composables/useResponsive'
 import { useShortcuts } from '@/composables/useShortcuts'
@@ -622,39 +623,7 @@ defineExpose({ startRename, startAdd })
       </div>
     </div>
 
-    <n-dropdown
-      trigger="manual"
-      placement="bottom-start"
-      :show="menu.show.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :options="menu.options.value"
-      @select="menu.select"
-      @clickoutside="menu.show.value = false"
-    />
-    <n-popconfirm
-      v-model:show="menu.deleteConfirmShow.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :positive-button-props="{ type: 'error' }"
-      :positive-text="t('task.confirm.deleteYes')"
-      @positive-click="menu.confirmDelete()"
-      @clickoutside="menu.deleteConfirmShow.value = false"
-    >
-      <template #trigger><span /></template>
-      {{ t('task.confirm.delete') }}
-    </n-popconfirm>
-    <n-popconfirm
-      v-model:show="menu.archiveConfirmShow.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :positive-text="t('task.confirm.archiveYes')"
-      @positive-click="menu.confirmArchive()"
-      @clickoutside="menu.archiveConfirmShow.value = false"
-    >
-      <template #trigger><span /></template>
-      {{ t('task.confirm.archive') }}
-    </n-popconfirm>
+    <TaskActionMenu :menu="menu" />
   </div>
 </template>
 

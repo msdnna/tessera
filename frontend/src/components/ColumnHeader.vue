@@ -4,7 +4,7 @@
 // and the delete happens at once — the board offers the undo in a toast.
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NButton, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NTooltip, useMessage } from 'naive-ui'
 import {
   AddOutline,
   ArrowBackOutline,
@@ -105,7 +105,7 @@ const message = useMessage()
 const menuOpen = ref(false)
 const menuAt = ref(null) // { x, y } for a right click, null for the «⋯» button
 const menuBtn = ref(null)
-const menuAnchor = () => menuAt.value || menuBtn.value?.$el || null
+const menuAnchor = () => menuAt.value || menuBtn.value || null
 const menuItems = computed(() => [
   { key: 'rename', label: t('board.column.rename'), icon: CreateOutline, keys: 'col.rename' },
   {
@@ -305,27 +305,28 @@ defineExpose({ startRename, openMenu })
         >Σ {{ estimate }}</span
       >
       <span class="col-gap" />
-      <n-button
-        text
-        size="tiny"
+      <button
+        type="button"
         class="col-collapse"
         :title="t('board.column.collapse')"
         @click.stop="emit('toggle-collapse')"
       >
         <n-icon :component="ChevronBackOutline" />
-      </n-button>
-      <n-button
+      </button>
+      <button
         v-if="canEdit"
         ref="menuBtn"
-        text
-        size="tiny"
+        type="button"
         class="col-menu"
         :class="{ open: menuOpen && !menuAt }"
+        :title="t('common.action.more')"
+        aria-haspopup="menu"
+        :aria-expanded="menuOpen"
         data-testid="column-menu"
         @click.stop="openMenu()"
       >
         <n-icon :component="EllipsisHorizontalOutline" />
-      </n-button>
+      </button>
     </template>
 
     <ActionMenu
@@ -409,11 +410,18 @@ defineExpose({ startRename, openMenu })
 .col-collapse,
 .col-menu {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
   height: 24px;
+  padding: 0;
+  border: 0;
   border-radius: 7px;
+  background: transparent;
   font-size: 14px;
   color: var(--t-text3);
+  cursor: pointer;
 }
 .col-menu {
   font-size: 15px;

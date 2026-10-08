@@ -18,7 +18,8 @@ test('окно «Проект»: теги — создать, переимено
   await backend.post(`/tasks/${task.id}/tags`, { tag_id: b.id })
 
   await openBoard(page, board.id)
-  await page.getByTestId('board-tags').click()
+  await page.getByTestId('board-more').click()
+  await page.getByTestId('board-more-menu-tags').click()
   const tab = page.getByTestId('project-tags')
   await expect(tab).toBeVisible()
 
@@ -70,7 +71,8 @@ test('этапы: создать в окне, страница этапа с ц�
   await backend.post(`/boards/${board.id}/tasks`, { column_id: todo.id, title: 'Вне этапа' })
 
   await openBoard(page, board.id)
-  await page.getByTestId('board-stages').click()
+  await page.getByTestId('board-more').click()
+  await page.getByTestId('board-more-menu-stages').click()
   await expect(page.getByTestId('project-stages')).toBeVisible()
 
   // N — an empty row; ↵ creates the stage.

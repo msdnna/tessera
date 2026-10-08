@@ -33,8 +33,8 @@ vi.mock('vue-router', () => ({
 const { default: BoardMobileMenu } = await import('@/components/BoardMobileMenu.vue')
 
 const STUBS = { TagManager: true, MilestoneManager: true, TesseraIcon: true }
-const flat = (options) => options.flatMap((o) => (o.children ? [o, ...o.children] : [o]))
-const keys = (w) => flat(w.vm.options).map((o) => o.key)
+const keys = (w) => w.vm.items.map((o) => o.key)
+const isActive = (w, key) => !!w.vm.items.find((i) => i.key === key)?.active
 
 function menuWithViews(views, current = '') {
   const w = mount(BoardMobileMenu, { global: { stubs: STUBS } })
@@ -102,15 +102,15 @@ describe('BoardMobileMenu saved views', () => {
 
   it('marks the loaded view, like the active layout', () => {
     const { w } = menuWithViews([{ id: 'v1', name: 'Мои', layout: 'board' }], 'v1')
-    expect(w.vm.isActive({ key: 'view:v1' })).toBe(true)
-    expect(w.vm.isActive({ key: 'view:v2' })).toBe(false)
+    expect(isActive(w, 'view:v1')).toBe(true)
+    expect(isActive(w, 'view:v2')).toBe(false)
     expect(w.vm.items.find((i) => i.key === 'view:v1').active).toBe(true)
     w.unmount()
   })
 
   it('marks nothing when no view is loaded', () => {
     const { w } = menuWithViews([{ id: 'v1', name: '', layout: 'board' }], '')
-    expect(w.vm.isActive({ key: 'view:v1' })).toBe(false)
+    expect(isActive(w, 'view:v1')).toBe(false)
     w.unmount()
   })
 })

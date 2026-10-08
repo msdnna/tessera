@@ -297,7 +297,7 @@ const TAGS = [
   { id: 'tags-columns', anchor: '[data-column-name]', mode: 'info' },
   {
     id: 'tags-window',
-    anchor: 'board-tags',
+    anchor: 'board-actions',
     mode: 'info',
     item: 'tags.manage',
     final: true,

@@ -378,11 +378,15 @@ describe('useTaskMenu', () => {
     expect(keys).toContain('open')
     expect(keys).toContain('toggle')
     expect(keys).toContain('prio')
-    // The move submenu excludes the task's current column (c1).
+    // The move submenu lists every column and ticks the task's own (c1) (#3112).
     const move = options.value.find((o) => o.key === 'move')
     expect(move).toBeTruthy()
-    const colKeys = move.children.map((c) => c.key)
-    expect(colKeys).toEqual(['col:c2'])
+    expect(move.children.map((c) => c.key)).toEqual(['col:c1', 'col:c2'])
+    expect(move.children.map((c) => !!c.checked)).toEqual([true, false])
+    // The priority submenu: a row per level with its digit, the current one ticked.
+    const prio = options.value.find((o) => o.key === 'prio')
+    expect(prio.children.map((c) => c.caps[0])).toEqual(['0', '1', '2', '3', '4'])
+    expect(prio.children[0].checked).toBe(true)
   })
 
   it('omits the move submenu when no other columns exist', () => {
@@ -400,19 +404,26 @@ describe('useTaskMenu', () => {
     expect(onChanged).toHaveBeenCalled()
   })
 
-  it('delete select defers to a confirm flag, then confirmDelete calls the api', async () => {
+  // «Удалить» is a two-step row (#3112): the menu arms it, the second press is
+  // the select that reaches here.
+  it('delete is a two-step row; its select calls the api', async () => {
     const onChanged = vi.fn()
-    const { open, select, deleteConfirmShow, confirmDelete } = useTaskMenu({ onChanged })
+    const { open, select, options } = useTaskMenu({ onChanged })
     open({ clientX: 0, clientY: 0 }, { id: 't5', title: 'Y' })
+    const del = options.value.find((o) => o.key === 'delete')
+    expect(del.danger).toBe(true)
+    expect(del.confirm.title).toBeTruthy()
     await select('delete')
-    expect(deleteConfirmShow.value).toBe(true)
-    await confirmDelete()
     expect(tasksApi.remove).toHaveBeenCalledWith('t5')
+    expect(onChanged).toHaveBeenCalled()
   })
 
   it('col: select moves the task to the chosen column', async () => {
     const { open, select } = useTaskMenu({})
     open({ clientX: 0, clientY: 0 }, { id: 't2', title: 'Z', column_id: 'c1' })
+    // The task's own column is a no-op.
+    await select('col:c1')
+    expect(tasksApi.move).not.toHaveBeenCalled()
     await select('col:c9')
     expect(tasksApi.move).toHaveBeenCalledWith('t2', {
       column_id: 'c9',

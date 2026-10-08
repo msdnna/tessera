@@ -8,7 +8,11 @@
     "move": "Move to a column",
     "archive": "Archive",
     "delete": "Delete",
-    "addSubtask": "Add a subtask"
+    "addSubtask": "Add a subtask",
+    "archived": "Task «{title}» archived",
+    "archivedUndone": "Task «{title}» restored",
+    "deleteArmed": "Delete the task?",
+    "deleteArmedSub": "For good — along with its files"
   },
   "confirm": {
     "delete": "Delete permanently? This cannot be undone.",

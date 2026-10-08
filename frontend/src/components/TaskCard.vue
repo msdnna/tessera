@@ -1,12 +1,12 @@
 <script setup>
 // A board card: title, meta row, hover actions and the child list. The property
 // pills and the child list are their own components (`task/TaskCardPills.vue`,
-// `task/TaskCardSubtasks.vue`), and the right-click menu is the shared
-// `useTaskMenu` the list/calendar/timeline views already use — what's left here
-// is the card frame itself.
+// `task/TaskCardSubtasks.vue`), and the row menu (right-click, «⋯») is the
+// shared `useTaskMenu` the list/calendar/timeline views use too, drawn by
+// `task/TaskActionMenu` (#3112) — what's left here is the card frame itself.
 import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip, NInput, NDropdown, NPopconfirm, useMessage } from 'naive-ui'
+import { NIcon, NTooltip, useMessage } from 'naive-ui'
 import {
   CheckmarkCircle,
   CheckmarkOutline,
@@ -26,8 +26,11 @@ import { taskBasePatch } from '@/utils/taskPatch'
 import { normalizeTitle } from '@/utils/title'
 import TaskCardPills from './task/TaskCardPills.vue'
 import TaskCardSubtasks from './task/TaskCardSubtasks.vue'
+import TaskActionMenu from './task/TaskActionMenu.vue'
+import InlineEdit from './kit/InlineEdit.vue'
+import QuickAddField from './kit/QuickAddField.vue'
 import { useBoardViewStore } from '@/stores/boardView'
-import { useTaskMenu, menuIcon } from '@/composables/useTaskMenu'
+import { useTaskMenu, subtaskRow } from '@/composables/useTaskMenu'
 import { keysText } from '@/shortcuts/labels'
 
 const props = defineProps({
@@ -190,7 +193,7 @@ async function apply(patch) {
 }
 const toggleDone = () => apply({ completed: !done.value })
 
-// ── right-click context menu (works for the card and for collapsed subtasks) ──
+// ── the row menu: right-click (the card and its collapsed subtasks) or «⋯» ──
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
@@ -200,15 +203,11 @@ const menu = useTaskMenu({
   columns,
   // "Create subtask" only makes sense on the card itself, not on a child row.
   // Built per open, not once: the label has to follow a language change.
-  extra: (target) =>
-    target?.id === props.task.id
-      ? [{ label: t('task.menu.addSubtask'), key: 'subtask', icon: menuIcon(GitBranchOutline) }]
-      : [],
-  dangerDelete: true,
+  extra: (target) => (target?.id === props.task.id ? [subtaskRow()] : []),
 })
-function openCtx(e, target) {
+function openCtx(e, target, el = null) {
   if (props.readonly) return // archive view: no context menu
-  menu.open(e, target || props.task)
+  menu.open(e, target || props.task, el)
 }
 
 // ── adding a subtask ──
@@ -284,7 +283,11 @@ async function submitAddSub() {
         >
           <n-icon :component="GitBranchOutline" :size="15" />
         </button>
-        <button class="ca-btn ca-more" :title="t('common.action.more')" @click.stop="openCtx">
+        <button
+          class="ca-btn ca-more"
+          :title="t('common.action.more')"
+          @click.stop="(e) => openCtx(e, null, e.currentTarget)"
+        >
           <n-icon :component="EllipsisHorizontal" :size="16" />
         </button>
       </div>
@@ -292,16 +295,15 @@ async function submitAddSub() {
       <!-- No on-card checkbox: completion lives in the hover bar / context menu
            (the check icon left of the title was redundant). -->
       <div class="card-top">
-        <n-input
+        <InlineEdit
           v-if="editingTitle"
           ref="titleInput"
-          v-model:value="titleEdit"
-          size="small"
+          v-model="titleEdit"
           class="title-edit"
+          :hint-left="-2"
           @click.stop
-          @keyup.enter="commitTitle"
-          @keyup.esc="cancelTitleEdit"
-          @blur="commitTitle"
+          @commit="commitTitle"
+          @cancel="cancelTitleEdit"
         />
         <n-tooltip
           v-else
@@ -425,50 +427,19 @@ async function submitAddSub() {
     <!-- Adding a subtask is triggered from the hover action bar / context menu;
          this is just the inline title input it reveals. -->
     <div v-if="!nested && addingSub" class="sub-add-input" @click.stop>
-      <n-input
+      <QuickAddField
         ref="subInput"
-        v-model:value="newSubTitle"
-        size="tiny"
+        v-model="newSubTitle"
+        size="small"
+        :max-rows="2"
         :placeholder="t('task.card.subtaskPlaceholder')"
-        @keyup.enter="submitAddSub"
-        @keyup.esc="addingSub = false"
+        @submit="submitAddSub"
+        @cancel="addingSub = false"
         @blur="submitAddSub"
       />
     </div>
 
-    <n-dropdown
-      trigger="manual"
-      placement="bottom-start"
-      :show="menu.show.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :options="menu.options.value"
-      @select="menu.select"
-      @clickoutside="menu.show.value = false"
-    />
-    <n-popconfirm
-      v-model:show="menu.deleteConfirmShow.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :positive-button-props="{ type: 'error' }"
-      :positive-text="t('task.confirm.deleteYes')"
-      @positive-click="menu.confirmDelete()"
-      @clickoutside="menu.deleteConfirmShow.value = false"
-    >
-      <template #trigger><span /></template>
-      {{ t('task.confirm.delete') }}
-    </n-popconfirm>
-    <n-popconfirm
-      v-model:show="menu.archiveConfirmShow.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :positive-text="t('task.confirm.archiveYes')"
-      @positive-click="menu.confirmArchive()"
-      @clickoutside="menu.archiveConfirmShow.value = false"
-    >
-      <template #trigger><span /></template>
-      {{ t('task.confirm.archive') }}
-    </n-popconfirm>
+    <TaskActionMenu :menu="menu" />
   </div>
 </template>
 

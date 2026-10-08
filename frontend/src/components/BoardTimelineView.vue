@@ -25,7 +25,7 @@ import ChartMilestoneMarkers from './chart/ChartMilestoneMarkers.vue'
 import ChartTaskRow from './chart/ChartTaskRow.vue'
 import { CHART_DEFAULTS } from '@/utils/boardViews'
 import ChartUnscheduled from './chart/ChartUnscheduled.vue'
-import ChartTaskMenu from './chart/ChartTaskMenu.vue'
+import TaskActionMenu from './task/TaskActionMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
 import UserAvatar from './UserAvatar.vue'
 
@@ -435,20 +435,7 @@ const hoverEstimateRange = computed(() =>
       @menu="menu.open"
     />
 
-    <ChartTaskMenu
-      :show="menu.show.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :options="menu.options.value"
-      :delete-show="menu.deleteConfirmShow.value"
-      :archive-show="menu.archiveConfirmShow.value"
-      @select="menu.select"
-      @close="menu.show.value = false"
-      @update:delete-show="menu.deleteConfirmShow.value = $event"
-      @delete-confirm="menu.confirmDelete()"
-      @update:archive-show="menu.archiveConfirmShow.value = $event"
-      @archive-confirm="menu.confirmArchive()"
-    />
+    <TaskActionMenu :menu="menu" />
 
     <!-- hover preview: a compact task-card snapshot -->
     <Teleport to="body">

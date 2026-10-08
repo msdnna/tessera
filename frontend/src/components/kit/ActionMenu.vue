@@ -10,6 +10,8 @@
 //   { key, label, icon, toggle: true|false }                     // switch row
 //   { key, label, icon, checked: true|false }                    // check mark
 //   { key, label, dot: '#f0a020' }                 // a colour dot for an icon
+//   { key, label, avatar: { userId, src, name } }  // a person's face for an icon
+//   { key, ..., testid }                           // its own data-testid
 //   { key, label, icon, disabled: true, disabledTitle }          // no rights
 //   { key, label, icon, stub: 3005 }                             // not built yet
 //   { key, ..., busy: true } / { key, ..., failed: { title, sub } }
@@ -49,6 +51,7 @@ import { CAPS } from '@/utils/keyCaps'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import TesseraIcon from '@/components/TesseraIcon.vue'
+import UserAvatar from '@/components/UserAvatar.vue'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { useResponsive } from '@/composables/useResponsive'
@@ -72,6 +75,9 @@ const props = defineProps({
   arm: { type: String, default: '' },
   // Drawn in place (design-system previews), not floating at an anchor.
   inline: { type: Boolean, default: false },
+  // Floating, but rendered where it is mounted instead of in <body> — inside a
+  // modal, whose focus trap would otherwise pull the focus back out of the menu.
+  inPlace: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:show', 'select'])
 const { t } = useI18n()
@@ -94,8 +100,8 @@ const { style } = useAnchoredPanel({
   show: showRef,
   anchor: () => props.anchor(),
   panel,
-  placement: props.placement,
-  offset: props.offset,
+  placement: () => props.placement,
+  offset: () => props.offset,
   onOutside: close,
 })
 
@@ -344,7 +350,7 @@ function stubTitle(item) {
 </script>
 
 <template>
-  <Teleport to="body" :disabled="inline">
+  <Teleport to="body" :disabled="inline || inPlace">
     <div v-if="show && sheet" class="am-scrim" aria-hidden="true" />
     <div
       v-if="show"
@@ -455,7 +461,7 @@ function stubTitle(item) {
             :aria-expanded="item.children ? sub === item : undefined"
             :aria-checked="item.checked !== undefined ? !!item.checked : undefined"
             :title="item.stub ? stubTitle(item) : item.disabled ? item.disabledTitle : undefined"
-            :data-testid="`${testid}-${item.key}`"
+            :data-testid="item.testid || `${testid}-${item.key}`"
             :data-am-sub="item.children ? item.key : undefined"
             @mouseenter="onHover(lvl.depth, item)"
             @mouseleave="onLeave(item)"
@@ -467,6 +473,13 @@ function stubTitle(item) {
               class="am-dot-icon"
               :style="{ background: hueGrad(item.dot) }"
               aria-hidden="true"
+            />
+            <UserAvatar
+              v-else-if="item.avatar"
+              class="am-avatar"
+              :user-id="item.avatar.userId || ''"
+              :src="item.avatar.src || ''"
+              :name="item.avatar.name || item.label"
             />
             <n-icon v-else-if="item.icon" :component="item.icon" :size="16" class="am-icon" />
             <span class="am-label">{{ item.label }}</span>
@@ -567,6 +580,17 @@ function stubTitle(item) {
   height: 9px;
   margin: 0 3.5px;
   border-radius: 50%;
+}
+.am-avatar {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0 -2px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 600;
 }
 .am-back {
   color: var(--t-text2);

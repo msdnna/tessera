@@ -21,7 +21,9 @@
     "shown": "showing: {tasks} ({total})",
     "shownFlat": "showing: {tasks}",
     "shownTitle": "Tasks shown: {tasks}; in brackets — {total} including subtasks",
-    "shownTitleFlat": "Tasks shown: {tasks} (no subtasks)"
+    "shownTitleFlat": "Tasks shown: {tasks} (no subtasks)",
+    "filters": "Filters",
+    "sorts": "Sorting"
   },
   "tools": {
     "autoOn": "Auto-sort by dependencies (on)",
@@ -163,7 +165,8 @@
     "tags": "Tags",
     "milestones": "Milestones",
     "archive": "Archive",
-    "menu": "Board menu"
+    "menu": "Board menu",
+    "more": "Board actions"
   },
   "customize": {
     "title": "Board view",
@@ -402,7 +405,9 @@
     "quarter": "Q{q} {year}"
   },
   "members": {
-    "title": "Members · {count}"
+    "title": "On the board · {count}",
+    "tasks": "tasks",
+    "watching": "Who is looking now"
   },
   "stage": {
     "title": "Filter by milestone",
@@ -436,5 +441,15 @@
     "page": "Milestone page",
     "hide": "Hide the strip on this board",
     "closeArmed": "Close «{name}»?"
+  },
+  "crumbs": {
+    "projectSettings": "Project settings",
+    "boards": "Project boards",
+    "favorite": "Add to favourites"
+  },
+  "empty": {
+    "title": "No tasks on the board yet",
+    "text": "The columns are set up — add the first task.",
+    "create": "Create a task"
   }
 }

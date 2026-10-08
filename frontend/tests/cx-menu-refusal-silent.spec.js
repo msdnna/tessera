@@ -121,9 +121,8 @@ describe('useTaskMenu refusals', () => {
   it('reports a refused delete — the loudest of the three', async () => {
     refuse(remove)
     const { api, onChanged } = host()
+    // The menu armed it; the second press is this select (#3112).
     await api.select('delete')
-    expect(api.deleteConfirmShow.value).toBe(true)
-    await api.confirmDelete()
     expect(toast.error).toHaveBeenCalledWith('Недостаточно прав')
     expect(onChanged).toHaveBeenCalled()
   })
@@ -132,7 +131,6 @@ describe('useTaskMenu refusals', () => {
     refuse(archive)
     const { api } = host()
     await api.select('archive')
-    await api.confirmArchive()
     expect(toast.error).toHaveBeenCalledWith('Недостаточно прав')
   })
 
@@ -154,7 +152,7 @@ describe('useTaskMenu refusals', () => {
     const onChanged = vi.fn()
     const api = useTaskMenu({ onChanged, columns: COLS })
     api.open({ clientX: 0, clientY: 0 }, TASK)
-    await api.confirmDelete()
+    await api.select('delete')
     expect(remove).toHaveBeenCalledWith('t1')
     expect(onChanged).toHaveBeenCalled()
   })

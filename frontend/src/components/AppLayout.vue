@@ -66,6 +66,7 @@ import { usePaletteStore } from '@/stores/palette'
 import { useHelpStore } from '@/stores/help'
 import { sGet } from '@/utils/serverStorage'
 import { unwindOverlay } from '@/utils/overlayNav'
+import { helpSlugForPath } from '@/utils/helpContext'
 import { treeEventNeedsRefresh } from '@/utils/treeEvents'
 import { resyncShell } from '@/utils/shellResync'
 
@@ -139,7 +140,9 @@ useShortcuts({
     else inbox.open({ focus: true })
   },
   'nav.goNotifications': () => notes.requestFeed(),
-  'nav.help': () => (help.centerShown ? help.closeCenter() : help.openCenter()),
+  // F1 (#3112): the help centre on the article about the screen in front of you.
+  'nav.help': () =>
+    help.centerShown ? help.closeCenter() : help.openCenter(helpSlugForPath(route.path)),
   'go.documents': () => router.push('/documents'),
   'go.settings': () => router.push('/settings'),
   'view.theme': () => theme.toggle(),
