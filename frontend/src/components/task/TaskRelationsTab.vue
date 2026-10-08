@@ -146,6 +146,13 @@ function onRelKey(e) {
     else addRelation()
   }
 }
+// Picking the kind hands the keyboard back to the task field — the next thing
+// to type.
+const numInput = ref(null)
+function pickKind(k) {
+  relKind.value = k
+  numInput.value?.focus()
+}
 function openForm() {
   adding.value = true
   relPickerOpen.value = true
@@ -371,7 +378,7 @@ async function removeRelation(r) {
               :class="{ on: relKind === k.value }"
               :aria-checked="relKind === k.value"
               :data-testid="`rel-kind-${k.value}`"
-              @click="relKind = k.value"
+              @click="pickKind(k.value)"
             >
               {{ k.label }}
             </button>
@@ -381,6 +388,7 @@ async function removeRelation(r) {
           <div class="rel-num-field">
             <span class="rel-hash" aria-hidden="true">#</span>
             <input
+              ref="numInput"
               v-model="relNumber"
               class="kf-input"
               :placeholder="t('task.relations.searchPlaceholder')"
