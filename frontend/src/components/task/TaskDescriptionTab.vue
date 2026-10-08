@@ -11,8 +11,6 @@
 // it reverts to when the edit is cancelled.
 import { ref, computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon } from 'naive-ui'
-import { CreateOutline } from '@vicons/ionicons5'
 import RichContent from '../RichContent.vue'
 import MarkdownEditor from '../MarkdownEditor.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
@@ -117,9 +115,12 @@ defineExpose({ startEdit, editing })
     </template>
     <template v-else-if="modelValue && modelValue.trim()">
       <!-- A wrapper, not a class on RichContent: it renders a fragment. -->
+      <!-- The text itself is the door to the editor: it tints on hover and says
+           so on the tooltip (the mockup draws no button over the prose). -->
       <div
         class="desc-prose"
         :class="{ editable: !readonly }"
+        :title="readonly ? undefined : t('task.desc.editHint')"
         data-testid="desc-prose"
         @click="onProseClick"
       >
@@ -132,18 +133,6 @@ defineExpose({ startEdit, editing })
           @toggle="onToggle"
         />
       </div>
-      <button
-        v-if="!readonly"
-        type="button"
-        class="desc-edit"
-        data-testid="desc-edit"
-        :title="t('task.desc.edit')"
-        @click="startEdit"
-      >
-        <n-icon :component="CreateOutline" :size="14" />
-        {{ t('task.desc.edit') }}
-        <ShortcutKeys id="task.editDesc" />
-      </button>
     </template>
     <button
       v-else-if="!readonly"
@@ -152,7 +141,7 @@ defineExpose({ startEdit, editing })
       data-testid="desc-add"
       @click="startEdit"
     >
-      <span>{{ t('task.desc.add') }}</span>
+      <span class="desc-empty-t">{{ t('task.desc.add') }}</span>
       <ShortcutKeys id="task.editDesc" class="desc-key" />
     </button>
     <div v-else class="desc-none">{{ t('task.desc.none') }}</div>
@@ -173,7 +162,14 @@ defineExpose({ startEdit, editing })
   border-radius: 10px;
 }
 .desc-prose.editable {
+  /* The hover tint reaches past the text without moving it. */
+  margin: -6px -10px;
+  padding: 6px 10px;
   cursor: text;
+  transition: background 0.12s ease;
+}
+.desc-prose.editable:hover {
+  background: color-mix(in srgb, var(--t-hover) 60%, transparent);
 }
 .desc-prose :deep(.md) {
   font-size: inherit;
@@ -201,40 +197,34 @@ defineExpose({ startEdit, editing })
 .desc-prose :deep(.md strong) {
   color: var(--t-text1);
 }
+.desc-prose :deep(.md p) {
+  margin: 0 0 8px;
+}
+.desc-prose :deep(.md ul),
+.desc-prose :deep(.md ol) {
+  margin: 4px 0 8px;
+  padding-left: 22px;
+}
+.desc-prose :deep(.md li) {
+  margin: 4px 0;
+}
+.desc-prose :deep(.md li > p) {
+  margin: 0;
+}
+.desc-prose :deep(.md li::marker) {
+  color: var(--t-text3);
+}
+/* A ticked list written loose («- [ ] …» after a blank line) wraps its box in a
+   paragraph — RichContent's own rule only sees a bare one. */
+.desc-prose :deep(.md li:has(> p > input[type='checkbox'])) {
+  list-style: none;
+}
 .desc-prose :deep(.md code) {
   padding: 1px 5px;
   border-radius: 5px;
   background: var(--t-pill);
   color: var(--t-text1);
   font-size: 12.5px;
-}
-/* «Изменить ⇧E»: a quiet door at the top right, shown on hover / focus. */
-.desc-edit {
-  position: absolute;
-  top: -4px;
-  right: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 28px;
-  padding: 0 5px 0 9px;
-  border: 0;
-  border-radius: 8px;
-  background: var(--t-ctl);
-  color: var(--t-text2);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 500;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-.desc:hover .desc-edit,
-.desc-edit:focus-visible {
-  opacity: 1;
-}
-.desc-edit:hover {
-  color: var(--t-text1);
 }
 /* Empty: one line that reads as a field to fill, not an open editor. */
 .desc-empty {
@@ -256,8 +246,9 @@ defineExpose({ startEdit, editing })
   cursor: text;
   transition: background 0.12s ease;
 }
-.desc-empty > span {
+.desc-empty-t {
   flex: 1;
+  min-width: 0;
 }
 .desc-empty:hover,
 .desc-empty:focus-visible {
@@ -277,7 +268,6 @@ defineExpose({ startEdit, editing })
   color: var(--t-text3);
 }
 @media (hover: none) {
-  .desc-edit,
   .desc-key {
     display: none;
   }

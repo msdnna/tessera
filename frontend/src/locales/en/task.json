@@ -155,9 +155,9 @@
   "desc": {
     "template": "Issue template…",
     "placeholder": "Add a description…",
-    "edit": "Edit",
     "add": "Add a description…",
-    "none": "No description"
+    "none": "No description",
+    "editHint": "Click the text to edit it (⇧E)"
   },
   "comments": {
     "someone": "Someone",

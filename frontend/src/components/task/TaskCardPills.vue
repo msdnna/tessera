@@ -138,7 +138,8 @@ const tagPickerFlat = computed(() =>
   buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value).flatMap((g) => g.tags),
 )
 const creatingTag = ref(false)
-// The v2 tag picker (#3113), anchored at whichever tag pill this card draws.
+// The v2 tag picker (#3113): opened from whichever tag pill this card draws,
+// standing beside the card (the mockup) — over it, it would hide the pill.
 const tagOpen = ref(false)
 const tagBtn = ref(null)
 // «Управлять тегами…»: the project window on «Теги», filtered by what was typed.
@@ -735,7 +736,8 @@ const toggleGlAssignee = (m) =>
     <TagPicker
       v-if="!readonly && show('tags')"
       :show="tagOpen"
-      :anchor="() => tagBtn"
+      :anchor="() => tagBtn?.closest?.('.card') || tagBtn"
+      placement="right-start"
       :tags="tags"
       :selected="task.tag_ids || []"
       :prefix-names="tagPrefixNames"

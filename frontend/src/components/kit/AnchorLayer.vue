@@ -13,7 +13,7 @@
 // The kit pieces drawn into it use their `inline` mode: <ActionMenu inline>,
 // <PopoverForm inline>. Keys typed inside never reach the global dispatcher — the
 // modal's own one-letter keys (E, S, J…) would otherwise fire under a menu.
-import { computed, inject, nextTick, ref, watch } from 'vue'
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { useResponsive } from '@/composables/useResponsive'
@@ -49,6 +49,18 @@ const { style, place } = useAnchoredPanel({
   offset: props.offset,
   onOutside: close,
 })
+
+// The content can grow after it opened (a list that loads, a section that
+// appears) — re-place it then, or it hangs off the bottom of the screen.
+let ro = null
+watch(panel, (el) => {
+  ro?.disconnect()
+  ro = null
+  if (!el || typeof ResizeObserver === 'undefined') return
+  ro = new ResizeObserver(() => place())
+  ro.observe(el)
+})
+onBeforeUnmount(() => ro?.disconnect())
 
 const sheetShow = computed({
   get: () => props.show && isMobile.value,

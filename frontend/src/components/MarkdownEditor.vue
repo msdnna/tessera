@@ -179,6 +179,8 @@ onMounted(() => {
   ro = new ResizeObserver((entries) => {
     const w = entries[0]?.contentRect?.width
     if (w) {
+      // A new width re-wraps the text: the field's height is stale.
+      if (Math.round(w) !== Math.round(width.value)) nextTick(autoGrow)
       width.value = w
       compact.value = w < 560
       if (!compact.value) fmtOpen.value = false
@@ -220,6 +222,12 @@ function autoGrow() {
   // which would leave a giant textarea once the panel is shown again. The height is
   // recomputed via the exposed autoGrow() when the panel reappears.
   if (el.clientWidth === 0) return
+  // An empty composer is one line high: Chrome counts a wrapped placeholder in
+  // scrollHeight, which would open a blank box under the hint.
+  if (composer.value && !el.value) {
+    el.style.height = ''
+    return
+  }
   const sp = scrollParent(el)
   const top = sp ? sp.scrollTop : null
   el.style.height = 'auto'
@@ -1466,6 +1474,28 @@ defineExpose({
            all — TaskModal hosts it in .desc-head) only carries insert/preview, so
            lists, checkboxes and spoilers need a home of their own. -->
         <div v-if="variant === 'default' && writing" class="md2-toolbar md2-format">
+          <!-- Without the top bar (the fullscreen window) its two inserts come
+               down here. -->
+          <template v-if="!toolbar">
+            <button
+              type="button"
+              class="md2-tbtn"
+              :class="{ busy: uploading }"
+              :title="$t('documents.editor.tool.image')"
+              @mousedown.prevent="pickImage"
+            >
+              <n-icon :component="ImageOutline" :size="15" />
+            </button>
+            <button
+              type="button"
+              class="md2-tbtn"
+              :title="$t('documents.editor.tool.mermaid')"
+              @mousedown.prevent="insertMermaid"
+            >
+              <n-icon :component="GitNetworkOutline" :size="15" />
+            </button>
+            <span class="md2-tsep" />
+          </template>
           <button
             v-for="b in tools"
             :key="b.key"
@@ -2506,11 +2536,17 @@ defineExpose({
 }
 .md2-cava {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 24px;
   height: 24px;
   margin-bottom: 11px;
   border-radius: 50%;
-  font-size: 10px;
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  font-size: 9.5px;
+  font-weight: 600;
 }
 .md2-cbtn {
   flex: none;

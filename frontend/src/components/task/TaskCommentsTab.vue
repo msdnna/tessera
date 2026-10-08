@@ -496,10 +496,16 @@ function reportCommands(summary) {
 function ownLive(c) {
   return !props.readonly && !!c.author_id && c.author_id === meId.value
 }
-function startEditComment(c) {
+// The edit form's editor — one at a time, like the reply's (function ref: a
+// string ref inside v-for collects into an array).
+const editEditor = ref(null)
+async function startEditComment(c) {
   editingCommentId.value = c.id
   editingCommentBody.value = c.body
   editingCommentOriginal.value = c.body
+  // Into the field at once: its Esc and ⌘↵ only work from there.
+  await nextTick()
+  editEditor.value?.focus?.()
 }
 // Who this edit newly mentions: the people the saved text chips, minus the ones
 // the text already chipped before it was opened for editing. Computed here
@@ -669,6 +675,7 @@ async function onCommentCheck(c, i) {
                 </div>
                 <MarkdownEditor
                   v-if="editingCommentId === it.th.root.id"
+                  :ref="(el) => (editEditor = el)"
                   v-model="editingCommentBody"
                   variant="v2"
                   :mention-items="mentionItems"
@@ -760,6 +767,7 @@ async function onCommentCheck(c, i) {
                       </div>
                       <MarkdownEditor
                         v-if="editingCommentId === r.id"
+                        :ref="(el) => (editEditor = el)"
                         v-model="editingCommentBody"
                         variant="v2"
                         :mention-items="mentionItems"
@@ -1064,6 +1072,15 @@ async function onCommentCheck(c, i) {
 .c-text {
   font-size: 14px;
   line-height: 1.55;
+}
+/* RichContent's root carries no scope of ours, so the paragraph margins of the
+   rendered text are trimmed from the bubble — a one-line comment otherwise
+   floats in a box twice its height. */
+.c-bubble :deep(.md > :first-child) {
+  margin-top: 0;
+}
+.c-bubble :deep(.md > :last-child) {
+  margin-bottom: 0;
 }
 /* Rendered markdown wraps text in <p>, whose default 1em top/bottom margin opens
    a wide gap under the header and above the actions — a one-line comment looked

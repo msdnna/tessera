@@ -77,6 +77,7 @@ function close() {
           :command-items="commandItems"
           :attach-task-id="attachTaskId"
           split
+          :toolbar="false"
           :expandable="false"
           @update:model-value="emit('update:modelValue', $event)"
           @attachments-changed="emit('attachments-changed')"

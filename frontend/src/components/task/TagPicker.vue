@@ -154,6 +154,7 @@ watch(
     await nextTick()
     input.value?.focus({ preventScroll: true })
   },
+  { immediate: true },
 )
 
 function close() {
@@ -473,8 +474,15 @@ defineExpose({ query })
   background: var(--t-accent-grad);
 }
 .tp-pill {
+  flex: none;
   min-width: 0;
   max-width: 190px;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .tp-grow {
   flex: 1;
