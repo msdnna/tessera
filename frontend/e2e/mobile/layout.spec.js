@@ -89,9 +89,7 @@ test('контроль: подсаженный перебор ширины ло�
 // not hide the state of the eight behind it — the whole point of an inventory.
 const ROUTES = [
   { label: 'home', path: '/' },
-  { label: 'notes', path: '/notes' },
   { label: 'documents', path: '/documents' },
-  { label: 'reminders', path: '/reminders' },
   { label: 'milestones', path: '/milestones' },
   { label: 'settings', path: '/settings' },
   { label: 'conferences', path: '/conferences' },
@@ -105,19 +103,18 @@ for (const route of ROUTES) {
   })
 }
 
-// The failure mode the width gates structurally cannot see: a flex row that
-// *shrinks* rather than overflows. Squeezing costs the page no width, so every
-// gate above stays green while the control becomes unusable — on «Напоминания»
-// the date picker was down to 43px of client width, showing «Выбра…» and an
-// icon. Asserted on the picker's own box, not on a screenshot, and with a floor
-// (150px) well under the 200px the fix sets, so ordinary restyling of the row
-// does not make this red.
-test('мобильная вёрстка: строка добавления напоминания не сплющена', async ({ page }) => {
-  await visit(page, '/reminders')
-  const picker = page.locator('.add-row .n-date-picker').first()
-  await expect(picker).toBeVisible()
-  const w = await picker.evaluate((el) => el.getBoundingClientRect().width)
-  expect(w, `поле даты сжато до ${Math.round(w)}px — дату в нём не прочитать`).toBeGreaterThan(150)
+// «Входящие» (#2972) on a phone: a full-height sheet from the header button,
+// its rows and filters inside the width.
+test('мобильная вёрстка: «Входящие» — полноэкранный лист', async ({ page }, testInfo) => {
+  await visit(page, '/')
+  await page.getByTestId('inbox-button').click()
+  const sheet = page.getByTestId('inbox-panel')
+  await expect(sheet).toBeVisible()
+  await expect(page.getByTestId('inbox-filters')).toBeVisible()
+  const box = await sheet.boundingBox()
+  const vw = page.viewportSize().width
+  expect(box.width, 'лист шире экрана').toBeLessThanOrEqual(vw + 1)
+  await report(page, testInfo, 'inbox')
 })
 
 test('мобильная вёрстка: доска', async ({ page, seed }, testInfo) => {

@@ -189,7 +189,9 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
   position: absolute;
   right: 20px;
   bottom: 20px;
-  z-index: 20;
+  /* Above a card that lifts itself to 50 (a card with a subtask tray), so the
+     menu and the «Входящие» capture never slide under one (#2996). */
+  z-index: 60;
   display: flex;
   flex-direction: column;
   align-items: flex-end;

@@ -95,7 +95,7 @@ test('логаут разлогинивает и защищает приватн
 
   // The guard must hold after a fresh load too — logout revokes the refresh
   // token server-side, so bootstrap has nothing left to trade.
-  await page.goto('/notes')
+  await page.goto('/documents')
   await expect(page).toHaveURL(/\/login/)
 })
 

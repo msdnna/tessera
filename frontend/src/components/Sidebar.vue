@@ -6,9 +6,9 @@ import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip, useMessage } fr
 import {
   CheckmarkDoneOutline,
   DocumentTextOutline,
+  FileTrayOutline,
   DocumentsOutline,
   VideocamOutline,
-  AlarmOutline,
   RibbonOutline,
   AddOutline,
   FolderOutline,
@@ -20,6 +20,7 @@ const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
 import { useRoute } from 'vue-router'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useInboxStore } from '@/stores/inbox'
 import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
 import { workspaceName } from '@/utils/defaultNames'
 import ProjectCreatePopover from './sidebar/ProjectCreatePopover.vue'
@@ -49,6 +50,7 @@ defineProps({
 const { t } = useI18n()
 const store = useWorkspacesStore()
 const conflicts = useConflictsStore()
+const inbox = useInboxStore()
 const message = useMessage()
 const route = useRoute()
 
@@ -166,6 +168,28 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
     <div v-if="collapsed" class="rail-sep" />
 
     <nav class="nav">
+      <!-- «Входящие» (#2999): one row in place of «Заметки» and «Напоминания».
+           It opens the panel rather than a page; the count is the reminders
+           that went off. -->
+      <n-tooltip :disabled="!collapsed" placement="right">
+        <template #trigger>
+          <button
+            type="button"
+            class="nav-link nav-btn"
+            :class="{ 'router-link-active': inbox.panelOpen }"
+            data-nav="inbox"
+            data-testid="nav-inbox"
+            :aria-pressed="inbox.panelOpen"
+            @click="inbox.toggle()"
+          >
+            <n-icon :component="FileTrayOutline" :size="16" />
+            <span v-if="!collapsed" class="nav-label">{{ t('shell.nav.inbox') }}</span>
+            <span v-if="inbox.fired && !collapsed" class="nav-count">{{ inbox.fired }}</span>
+            <span v-else-if="inbox.fired" class="nav-dot" />
+          </button>
+        </template>
+        {{ t('shell.nav.inbox') }}
+      </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
@@ -174,15 +198,6 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
           </router-link>
         </template>
         {{ t('shell.nav.home') }}
-      </n-tooltip>
-      <n-tooltip :disabled="!collapsed" placement="right">
-        <template #trigger>
-          <router-link to="/notes" class="nav-link" data-nav="notes">
-            <n-icon :component="DocumentTextOutline" :size="16" />
-            <span v-if="!collapsed">{{ t('shell.nav.notes') }}</span>
-          </router-link>
-        </template>
-        {{ t('shell.nav.notes') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
@@ -201,15 +216,6 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
           </router-link>
         </template>
         {{ t('shell.nav.conferences') }}
-      </n-tooltip>
-      <n-tooltip :disabled="!collapsed" placement="right">
-        <template #trigger>
-          <router-link to="/reminders" class="nav-link" data-nav="reminders">
-            <n-icon :component="AlarmOutline" :size="16" />
-            <span v-if="!collapsed">{{ t('shell.nav.reminders') }}</span>
-          </router-link>
-        </template>
-        {{ t('shell.nav.reminders') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
@@ -462,6 +468,41 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
   font-size: 13.5px;
   color: var(--t-text2);
   text-decoration: none;
+}
+.nav-btn {
+  position: relative;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.nav-label {
+  flex: 1;
+}
+.nav-count {
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+}
+.nav-dot {
+  position: absolute;
+  top: 7px;
+  right: 9px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
 }
 .nav-link :deep(.n-icon) {
   color: var(--t-text3);

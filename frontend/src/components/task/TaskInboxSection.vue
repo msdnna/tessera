@@ -230,7 +230,7 @@ async function snooze(r, at) {
 </script>
 
 <template>
-  <section v-if="task" class="tis" data-testid="task-inbox" data-tour="tm-inbox">
+  <section v-if="task" class="tis" data-testid="task-inbox">
     <div class="tis-head">
       <span class="tis-title">{{ t('inbox.task.title') }}</span>
       <span v-if="rows.length" class="tis-count">{{ rows.length }}</span>

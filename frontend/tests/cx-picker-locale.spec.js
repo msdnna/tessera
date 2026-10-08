@@ -5,7 +5,7 @@
 // and default to `yyyy-MM-dd` / `HH:mm`, with the week starting wherever the
 // *interface language* pack says — none of which follows those three settings.
 // So every picker has to be handed `:format` (and `:first-day-of-week` where it
-// shows a calendar); RemindersView and ConferencesView already do, and
+// shows a calendar); ConferencesView already does, and
 // useFormat/useDateLocale exist for exactly this.
 //
 // What this pins is the wiring, not the patterns themselves (ut-format covers

@@ -1,10 +1,9 @@
 {
   "nav": {
+    "inbox": "Inbox",
     "home": "My tasks",
-    "notes": "Notes",
     "documents": "Documents",
     "conferences": "Conferences",
-    "reminders": "Reminders",
     "milestones": "Milestones"
   },
   "workspace": {

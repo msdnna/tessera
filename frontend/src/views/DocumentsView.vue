@@ -376,7 +376,7 @@ function fmtDate(v) {
 // So every step after an await asks whether it is still the answer being waited
 // for. Leaving counts as a new question too: `backToGrid` and the workspace switch
 // bump the counter, and an answer that lands afterwards belongs to nobody.
-// Same comparison as BoardView / HomeView / NotesView / TaskModal.
+// Same comparison as BoardView / HomeView / TaskModal.
 let openSeq = 0
 
 async function loadList() {

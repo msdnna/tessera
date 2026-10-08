@@ -1,10 +1,9 @@
 {
   "nav": {
+    "inbox": "Входящие",
     "home": "Мои задачи",
-    "notes": "Заметки",
     "documents": "Документы",
     "conferences": "Конференции",
-    "reminders": "Напоминания",
     "milestones": "Этапы"
   },
   "workspace": {

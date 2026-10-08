@@ -326,7 +326,7 @@ const sheetShow = computed({
           </button>
           <span v-else class="cap-mode">{{ t('inbox.capture.byText') }}</span>
           <span class="cap-fill" />
-          <span class="cap-dest">
+          <span v-if="!isMobile" class="cap-dest">
             <n-icon :component="LockClosedOutline" :size="11" />
             {{ t('inbox.capture.dest') }}
           </span>
@@ -789,6 +789,26 @@ const sheetShow = computed({
 .cap-seg-btn:focus-visible {
   outline: 2px solid var(--t-primary);
   outline-offset: 2px;
+}
+.bs-btn {
+  flex: 1;
+  height: 46px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+.bs-btn.primary {
+  flex: 2;
+  background: var(--t-accent-grad);
+  color: #fff;
+}
+.bs-btn.primary:disabled {
+  background: var(--t-pill);
+  color: var(--t-placeholder);
 }
 @media (max-width: 768px) {
   .cap-line {

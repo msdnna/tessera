@@ -276,6 +276,25 @@ watch(
   { immediate: true },
 )
 const inboxClock = setInterval(() => inbox.tick(), 30000)
+// `?inbox=notes|reminders[&note=<slug|id>]` — where the old /notes and
+// /reminders addresses redirect (#2999), and what a search result names.
+watch(
+  () => [route.query.inbox, route.query.note, inbox.loaded],
+  ([which, note]) => {
+    if (!which) return
+    if (note && !inbox.loaded) return inbox.load()
+    if (note) {
+      const n = inbox.notes.find((x) => x.slug === note || x.id === note)
+      if (n) inbox.reveal('note', n.id)
+      else inbox.open({ filter: 'notes' })
+    } else inbox.open({ filter: which === 'reminders' ? 'reminders' : 'notes' })
+    const query = { ...route.query }
+    delete query.inbox
+    delete query.note
+    router.replace({ ...route, query })
+  },
+  { immediate: true },
+)
 onBeforeUnmount(() => clearInterval(inboxClock))
 </script>
 

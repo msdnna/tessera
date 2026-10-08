@@ -17,11 +17,13 @@ import { usePaletteStore } from '@/stores/palette'
 import { useRouter } from 'vue-router'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useInboxStore } from '@/stores/inbox'
 import { useHelpStore } from '@/stores/help'
 import { useBoardViewStore } from '@/stores/boardView'
 
 const { t } = useI18n()
 const router = useRouter()
+const inbox = useInboxStore()
 const ws = useWorkspacesStore()
 const help = useHelpStore()
 const board = useBoardViewStore()
@@ -189,7 +191,8 @@ function gotoTask(t) {
 function gotoNote(n) {
   open.value = false
   q.value = ''
-  router.push(`/notes?note=${n.slug || n.id}`)
+  // Notes live in the «Входящие» panel now (#2999): open it on this one.
+  inbox.reveal('note', n.id)
 }
 
 function gotoDocument(d) {

@@ -268,8 +268,9 @@ export const GET_STARTED = [
   // ── 11. Остальные разделы ────────────────────────────────────────────────
   {
     id: 'nav-sections',
-    anchor: '[data-nav="notes"]',
-    extra: ['[data-nav="documents"]', '[data-nav="reminders"]'],
+    // «Входящие» (#2999) took the place of «Заметки» and «Напоминания».
+    anchor: '[data-nav="inbox"]',
+    extra: ['[data-nav="documents"]', '[data-nav="conferences"]'],
     mode: 'info',
   },
   {

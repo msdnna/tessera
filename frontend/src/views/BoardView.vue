@@ -23,7 +23,7 @@ const boardId = ref(null)
 // KanbanBoard is keyed on `boardId` (a remount), `ensureWorkspace` moves the
 // whole app's scope, and the canonicalization REWRITES THE URL — a late answer
 // for the board the reader left would take them back to it, address bar and all,
-// with nothing on screen to say why. Same comparison as HomeView / NotesView /
+// with nothing on screen to say why. Same comparison as HomeView /
 // TaskModal.
 let resolveSeq = 0
 
