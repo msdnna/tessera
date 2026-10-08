@@ -7,7 +7,7 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { NIcon, NTooltip } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import {
   BulbOutline,
   ColorPaletteOutline,
@@ -26,11 +26,11 @@ import SettingsSecurity from '@/components/settings/SettingsSecurity.vue'
 import SettingsAppearance from '@/components/settings/SettingsAppearance.vue'
 import SettingsLocale from '@/components/settings/SettingsLocale.vue'
 import SettingsApp from '@/components/settings/SettingsApp.vue'
+import SettingsHints from '@/components/settings/SettingsHints.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useQuickStore } from '@/stores/quick'
 import { useResponsive } from '@/composables/useResponsive'
 import { isTauri } from '@/utils/serverBase'
-import { stubTask } from '@/utils/featureStubs'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -47,6 +47,7 @@ const SECTIONS = {
   locale: { icon: LanguageOutline, comp: SettingsLocale },
   notifications: { icon: NotificationsOutline, comp: NotificationSettings },
   app: { icon: DesktopOutline, comp: SettingsApp },
+  hints: { icon: BulbOutline, comp: SettingsHints },
 }
 const MAIN = ['profile', 'security', 'appearance', 'locale', 'notifications']
 
@@ -55,7 +56,6 @@ const section = computed(() => {
   return typeof s === 'string' && SECTIONS[s] ? s : 'profile'
 })
 const current = computed(() => SECTIONS[section.value])
-const hintsTask = stubTask('settings.hints')
 
 function pick(key) {
   if (key === section.value) return
@@ -153,16 +153,18 @@ function select(key) {
         <span class="sv-item-l">{{ t('settings.nav.keys') }}</span>
         <ShortcutKeys id="nav.shortcuts" class="sv-item-k" />
       </button>
-      <n-tooltip :delay="300" placement="right">
-        <template #trigger>
-          <span class="sv-item stub" data-testid="settings-nav-hints" aria-disabled="true">
-            <n-icon :component="BulbOutline" :size="16" class="sv-item-ic" />
-            <span class="sv-item-l">{{ t('settings.nav.hints') }}</span>
-            <span class="sv-pill">{{ t('common.stub.badge') }}</span>
-          </span>
-        </template>
-        {{ t('common.stub.soon', { n: hintsTask }) }}
-      </n-tooltip>
+      <button
+        type="button"
+        class="sv-item"
+        :class="{ active: section === 'hints' }"
+        :aria-current="section === 'hints' ? 'page' : undefined"
+        data-nav="hints"
+        data-testid="settings-nav-hints"
+        @click="select('hints')"
+      >
+        <n-icon :component="BulbOutline" :size="16" class="sv-item-ic" />
+        <span class="sv-item-l">{{ t('settings.nav.hints') }}</span>
+      </button>
       <span v-if="!isMobile" class="sv-grow" />
       <div v-if="!isMobile" class="sv-foot">
         <ShortcutKeys id="go.settings" bare />
@@ -269,13 +271,6 @@ function select(key) {
 }
 .sv-item.active .sv-item-ic :deep([stroke='currentColor']) {
   stroke: url(#t-accent-grad-svg);
-}
-.sv-item.stub {
-  opacity: 0.55;
-  cursor: default;
-}
-.sv-item.stub:hover {
-  background: transparent;
 }
 .sv-item-ic {
   flex: none;

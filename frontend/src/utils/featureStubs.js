@@ -27,10 +27,8 @@ export const FEATURE_STUBS = {
   // Capture without a connection: keep the record on the device and send it
   // later — #3031.
   'inbox.offline': 3031,
-  // Settings (#3106): the «Подсказки» section belongs to the tour stream
-  // (#3000); two-factor sign-in (#3081); quiet-hours exceptions «Только
-  // срочное и упоминания» (#3050).
-  'settings.hints': 3000,
+  // Settings (#3106): two-factor sign-in (#3081); quiet-hours exceptions
+  // «Только срочное и упоминания» (#3050).
   'settings.twoFactor': 3081,
   'notifications.quietExceptions': 3050,
   // Administration (#3106): invitations across workspaces (#3079), roles and

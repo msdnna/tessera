@@ -18,7 +18,8 @@
     "appearance": "theme and accent · saved instantly",
     "locale": "language, dates and time zone · saved instantly",
     "notifications": "where and what to notify about · saved instantly",
-    "app": "server address, launch at login and updates"
+    "app": "server address, launch at login and updates",
+    "hints": "the tour and the hints across the interface · saved at once"
   },
   "profile": {
     "title": "Profile",
@@ -380,5 +381,42 @@
       "mute": "Mute (deliver nowhere)",
       "channels": "Delivery channels"
     }
+  },
+  "hints": {
+    "tour": {
+      "title": "The «Get started» tour",
+      "basics": "Basics · {n} of {of}",
+      "passed": "Basics done · {n} chapter of {of} | Basics done · {n} chapters of {of}",
+      "checklist": "Checklist on «My tasks»",
+      "checklistSub": "chapters and progress in the right column",
+      "resume": "Continue the chapter",
+      "restart": "Start over"
+    },
+    "kinds": {
+      "new": "New after updates",
+      "newSub": "«What’s new» and hints at what changed",
+      "ctx": "Hints at first encounter",
+      "ctxSub": "when a feature opens for the first time",
+      "note": "No more than two hints a session. They don’t show during the tour, windows, the ⌘K palette or a drag."
+    },
+    "col": {
+      "hint": "Hint",
+      "kind": "Kind",
+      "state": "State"
+    },
+    "kind": {
+      "new": "New in v2",
+      "ctx": "First encounter"
+    },
+    "state": {
+      "shown": "shown",
+      "shownAt": "shown {date}",
+      "queue": "in the queue · #{n}",
+      "later": "after «What’s new»",
+      "off": "off"
+    },
+    "again": "Show again",
+    "reset": "Show the hints again",
+    "resetNote": "Every hint goes back into the queue and shows one at a time."
   }
 }
