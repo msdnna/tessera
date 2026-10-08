@@ -12,6 +12,12 @@
 //
 // `page` is the phone's page-like sheet («Входящие»): from the status bar down
 // to the bottom navigation, which stays live under it — no scrim, no handle.
+//
+// `bare` is a sheet over a live screen (the tour on a phone, #3000): no scrim of
+// its own — the screen around it keeps taking taps — and `z` lifts it over a
+// layer that draws its own dim (the tour's cutout). `lift` stands it on the
+// bottom navigation instead of over it; `top` docks it under the status bar —
+// for when what it talks about sits where the sheet would be.
 import { computed, ref, toRef, watch, onBeforeUnmount } from 'vue'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 
@@ -21,6 +27,10 @@ const props = defineProps({
   subtitle: { type: String, default: '' },
   full: { type: Boolean, default: false },
   page: { type: Boolean, default: false },
+  bare: { type: Boolean, default: false },
+  z: { type: Number, default: 0 },
+  lift: { type: Boolean, default: false },
+  top: { type: Boolean, default: false },
   testid: { type: String, default: 'bottom-sheet' },
 })
 const emit = defineEmits(['update:show', 'close'])
@@ -102,11 +112,17 @@ const sheetStyle = computed(() =>
 <template>
   <Teleport to="body">
     <transition name="bs">
-      <div v-if="open" class="bs-scrim" :class="{ page }" @click.self="!page && close()">
+      <div
+        v-if="open"
+        class="bs-scrim"
+        :class="{ page, bare }"
+        :style="z ? { zIndex: z } : null"
+        @click.self="!page && !bare && close()"
+      >
         <div
           ref="sheet"
           class="bs kit-sheet"
-          :class="{ full: full || expanded, page, dragging }"
+          :class="{ full: full || expanded, page, dragging, lift, top }"
           :style="sheetStyle"
           role="dialog"
           aria-modal="true"
@@ -213,6 +229,32 @@ const sheetStyle = computed(() =>
   display: flex;
   gap: 10px;
   margin-top: 4px;
+}
+/* Standing on the bottom navigation; or docked at the top of the screen. */
+.bs.lift {
+  bottom: var(--mnav-h, 0px);
+  padding-bottom: 16px;
+  border-radius: 24px 24px 0 0;
+}
+.bs.top {
+  top: calc(var(--safe-top) + 8px);
+  bottom: auto;
+  margin: 0 8px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+  border-radius: 24px;
+}
+.bs.top .bs-grab {
+  display: none;
+}
+/* A sheet over a live screen: the scrim is see-through and lets taps through;
+   only the sheet itself takes them. */
+.bs-scrim.bare {
+  background: transparent;
+  pointer-events: none;
+}
+.bs-scrim.bare .bs {
+  pointer-events: auto;
 }
 /* The page-like sheet: under the status bar down to the bottom navigation,
    which stays live (#2976). Below the FAB (60) and the tab bar (90). */

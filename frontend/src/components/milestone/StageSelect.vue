@@ -32,6 +32,7 @@ import {
 } from '@/utils/milestones'
 import ShortcutKeys from '../ShortcutKeys.vue'
 import Kbd from '../Kbd.vue'
+import { tourEvent } from '@/utils/tourEvents'
 
 const props = defineProps({
   stages: { type: Array, default: () => [] },
@@ -105,6 +106,7 @@ const isCursor = (key) => rows.value[cursor.value]?.key === key
 
 function pick(row) {
   open.value = false
+  tourEvent('stage.selected')
   if (!row.stage) emit('pick', row.key)
   else emit('pick', row.stage)
 }

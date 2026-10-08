@@ -357,6 +357,12 @@ export const meta = {
 export const acknowledgements = {
   list: () => api.get('/users/me/acknowledgements', { skipLoader: true }),
   ack: (key) => api.post('/users/me/acknowledgements', { key }, { skipLoader: true }),
+  // One exact key, or a whole namespace (`prefix` must end in «:») — #3100.
+  forget: ({ key, prefix }) =>
+    api.delete('/users/me/acknowledgements', {
+      params: key ? { key } : { prefix },
+      skipLoader: true,
+    }),
 }
 
 // Global-admin panel (every endpoint re-checks is_admin server-side).

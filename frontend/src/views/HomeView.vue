@@ -31,6 +31,8 @@ import HomeAurora from '@/components/home/HomeAurora.vue'
 import HomeQuickEntry from '@/components/home/HomeQuickEntry.vue'
 import HomeTaskList from '@/components/home/HomeTaskList.vue'
 import HomeSideCards from '@/components/home/HomeSideCards.vue'
+import TourChecklist from '@/components/tour/TourChecklist.vue'
+import { useOnboardingStore } from '@/stores/onboarding'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { useResponsive } from '@/composables/useResponsive'
 
@@ -43,6 +45,8 @@ const palette = usePaletteStore()
 // «Входящие» (#2998): the shell keeps the feed; the side block and the header
 // pill read today's reminders from it.
 const inbox = useInboxStore()
+// «Начало работы» (#3000): the first card of the right column, until hidden.
+const onboarding = useOnboardingStore()
 const { formatDate, formatTime, firstDayOfWeek, formatters } = useFormat()
 // A phone (#2976 — package G «Мои задачи»): the screen's own large title with
 // the date and the avatar (to «Ещё») in place of the greeting — there is no
@@ -306,6 +310,7 @@ watch(() => wsStore.currentId, load)
             />
           </div>
           <aside class="home-side">
+            <TourChecklist v-if="!onboarding.hidden && !isMobile" />
             <HomeSideCards :reminders="todayReminders" :week="week" />
           </aside>
         </div>
@@ -389,6 +394,12 @@ watch(() => wsStore.currentId, load)
   grid-template-columns: minmax(0, 1fr) 340px;
   gap: 24px;
   align-items: start;
+}
+.home-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
 }
 @media (max-width: 1100px) {
   .home-grid {

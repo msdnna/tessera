@@ -1,4 +1,5 @@
 <script setup>
+import { tourEvent } from '@/utils/tourEvents'
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -675,6 +676,7 @@ async function refreshEvents() {
 function setPriority(p) {
   priority.value = p
   applyMeta()
+  if (p) tourEvent('task.priority')
 }
 // ── milestone («Этап») ──
 const newMilestoneTitle = ref('')
@@ -714,6 +716,7 @@ async function createMilestone() {
 // DueEditor commits start + due + recurrence together.
 function onDueApply(patch) {
   dueTs.value = patch.due_date ? new Date(patch.due_date).getTime() : null
+  if (dueTs.value) tourEvent('task.due')
   startTs.value = patch.start_date ? new Date(patch.start_date).getTime() : null
   recurrence.value = patch.recurrence
   applyMeta()
@@ -1037,6 +1040,7 @@ async function toggleGlAssignee(m) {
 async function saveDesc() {
   descSaved.value = description.value
   await applyMeta()
+  if (descSaved.value) tourEvent('task.described')
 }
 
 function openRelated(rel) {

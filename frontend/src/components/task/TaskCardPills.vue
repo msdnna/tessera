@@ -6,6 +6,7 @@
 // from the board store, not from props — so the card passes only the task it
 // renders. The row decides for itself whether it has anything to show: when no
 // field survives the size preset and the customize toggles it renders nothing.
+import { tourEvent } from '@/utils/tourEvents'
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover, NTooltip, NInput, useMessage } from 'naive-ui'
@@ -347,6 +348,8 @@ async function run(fn) {
     return false
   }
   emit('changed')
+  // «Поля на карточке» of the «Начало работы» checklist (#3000).
+  tourEvent('task.fields')
   return true
 }
 // Inline edits send the full-replace body minus the description — see

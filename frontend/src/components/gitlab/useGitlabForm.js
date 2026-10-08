@@ -3,6 +3,7 @@
 // лейблов, Обратная запись) through provide/inject. The logic is the same as
 // before the v2 window; what is new is marked so — dirty tracking for the
 // explicit save, rule order, the header's «N мин назад».
+import { tourEvent } from '@/utils/tourEvents'
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from 'naive-ui'
@@ -829,6 +830,7 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
       // button does an incremental pull; the dropdown's "Полная синхронизация" passes
       // mode='full'.
       const { data } = await glApi.sync(wsId(), currentId.value, mode)
+      tourEvent('gitlab.synced')
       if (data?.already_running) {
         message.warning(t('gitlab.modal.sync.alreadyRunning'))
       } else {

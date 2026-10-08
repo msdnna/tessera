@@ -36,7 +36,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useThemeStore, COLOR_THEMES } from '@/stores/theme'
 import { useHelpStore } from '@/stores/help'
 import { useWhatsNewStore } from '@/stores/whatsNew'
-import { useTourStore } from '@/stores/tour'
+import { useTourLauncher } from '@/composables/useTourLauncher'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useResponsive } from '@/composables/useResponsive'
 import { useVersionInfo } from '@/composables/useVersionInfo'
@@ -51,7 +51,7 @@ const notes = useNotificationsStore()
 const theme = useThemeStore()
 const help = useHelpStore()
 const whatsNew = useWhatsNewStore()
-const tour = useTourStore()
+const { launch: launchTour } = useTourLauncher()
 const dialogs = useWsDialogsStore()
 const { isMobile } = useResponsive()
 const { web } = useVersionInfo()
@@ -107,9 +107,9 @@ const tile = (tone) => ({
 const language = computed(() => t(`common.language.${theme.language === 'en' ? 'en' : 'ru'}`))
 const host = typeof location !== 'undefined' ? location.host : ''
 
+// The phone's «Основы» (#3000) — a bottom sheet over the navigation.
 function startTour() {
-  router.push('/')
-  tour.startGuide()
+  launchTour('start')
 }
 function logout() {
   auth.logout()

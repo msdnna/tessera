@@ -36,6 +36,7 @@ import { percent } from '@/utils/milestoneMetrics'
 import RichContent from '../RichContent.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
 import ActionMenu from '../kit/ActionMenu.vue'
+import { tourEvent } from '@/utils/tourEvents'
 
 const props = defineProps({
   stage: { type: Object, required: true },
@@ -101,6 +102,7 @@ const synced = computed(() =>
 
 // On a phone the strip does not unfold — its chevron leads to the stage page.
 function toggle() {
+  tourEvent('stage.strip')
   if (props.mobile) openPage()
   else emit('update:open', !props.open)
 }

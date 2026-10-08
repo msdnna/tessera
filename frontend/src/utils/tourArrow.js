@@ -1,5 +1,5 @@
 // Geometry of the curved gradient arrow that "draws" itself from a popover to
-// the element it points at. Extracted from SidebarSpotlight.vue (#2749) so the
+// the element it points at. Extracted from the v1 sidebar spotlight (#2749) so the
 // Get Started tour (#2753) can reuse the exact same look on any DOM node.
 
 // ── Popover placement (pure, so it can be unit-tested against real layouts) ──
@@ -53,11 +53,14 @@ export function choosePlacement(
   u,
   anchors,
   avoid,
-  { popW, popH, vw, vh, gaps, edge, panels = [] },
+  { popW, popH, vw, vh, gaps, edge, panels = [], prefer = null },
 ) {
   let order = groupIsHorizontal(anchors, u)
     ? ['bottom', 'top', 'right', 'left']
     : ['right', 'left', 'bottom', 'top']
+  // A side the caller asks for goes first — a step in the sidebar reads best
+  // with its popover beside the tree rather than over it (#3000).
+  if (prefer && order.includes(prefer)) order = [prefer, ...order.filter((x) => x !== prefer)]
 
   // An open picker (calendar/tags dropdown) always opens on one side of its
   // field; the popover must not sit on that side even if their boxes don't quite

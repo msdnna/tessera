@@ -81,6 +81,8 @@ beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
   setActivePinia(createPinia())
+  // The «Засчитано» beat (#3000) has its own test in st-tour.spec.js.
+  useTourStore().doneMs = 0
   document.body.innerHTML = ''
 })
 afterEach(() => {
@@ -106,7 +108,7 @@ describe('TourOverlay', () => {
     expect(pop()).toBe(null)
   })
 
-  it('shows «Понятно» and «Пропустить» on an info step', async () => {
+  it('shows «Понятно» and «Прервать» on an info step', async () => {
     anchor('ws-switch')
     const tour = useTourStore()
     tour.start([INFO])
@@ -118,7 +120,7 @@ describe('TourOverlay', () => {
     expect(document.querySelector('[data-testid="tour-skip"]')).not.toBe(null)
   })
 
-  it('shows only «Пропустить» on an action step — the user has to act', async () => {
+  it('shows only «Прервать» on an action step — the user has to act', async () => {
     anchor('proj-add')
     const tour = useTourStore()
     tour.start([ACTION])
@@ -128,7 +130,7 @@ describe('TourOverlay', () => {
     expect(document.querySelector('[data-testid="tour-skip"]')).not.toBe(null)
   })
 
-  it('«Понятно» advances, «Пропустить» ends the guide', async () => {
+  it('«Понятно» advances; «Прервать» asks, «Завершить обучение» ends the guide', async () => {
     anchor('ws-switch')
     anchor('proj-add')
     const tour = useTourStore()
@@ -139,10 +141,47 @@ describe('TourOverlay', () => {
     await nextTick()
     expect(tour.current.id).toBe('open-menu')
 
+    // v2 (#3000): the question in place of the step, the anchor kept.
     document.querySelector('[data-testid="tour-skip"]').click()
+    await nextTick()
+    expect(tour.confirming).toBe(true)
+    expect(pop().dataset.kind).toBe('confirm')
+    expect(pop().textContent).toContain('Прервать обучение?')
+
+    document.querySelector('[data-testid="tour-finish"]').click()
     await nextTick()
     expect(tour.active).toBe(false)
     expect(pop()).toBe(null)
+  })
+
+  it('«Продолжить позже» steps aside and keeps the step for later', async () => {
+    anchor('ws-switch')
+    const tour = useTourStore()
+    tour.start('basics')
+    await render()
+    tour.abort()
+    await nextTick()
+    document.querySelector('[data-testid="tour-later"]').click()
+    await nextTick()
+    expect(tour.active).toBe(false)
+    expect(tour.persisted()).toEqual({ chapter: 'basics', step: 'workspaces' })
+    expect(apiMock.acknowledgements.ack).not.toHaveBeenCalled()
+  })
+
+  it('numbers the step inside its chapter and offers «Назад» on info steps', async () => {
+    anchor('ws-switch')
+    const tour = useTourStore()
+    tour.start([INFO, { id: 'card-fields', anchor: 'ws-switch' }, ACTION])
+    await render()
+    expect(pop().textContent).toContain('1 из 3')
+    expect(document.querySelector('[data-testid="tour-back"]')).toBe(null)
+    tour.next()
+    await nextTick()
+    await nextTick()
+    expect(pop().textContent).toContain('2 из 3')
+    document.querySelector('[data-testid="tour-back"]').click()
+    await nextTick()
+    expect(tour.current.id).toBe('workspaces')
   })
 
   it('advances an action step when the user clicks the real anchor', async () => {
@@ -266,7 +305,15 @@ describe('TourOverlay', () => {
       await render()
       expect(pop()).toBe(null)
 
-      await vi.advanceTimersByTimeAsync(9000)
+      // v2 (#3000): no silent skip — «Ждём…», then «Не видим …» counting down.
+      await vi.advanceTimersByTimeAsync(1500)
+      await nextTick()
+      expect(pop().dataset.kind).toBe('loading')
+      await vi.advanceTimersByTimeAsync(7000)
+      await nextTick()
+      expect(pop().dataset.kind).toBe('missing')
+      expect(tour.current.id).toBe('ghost')
+      await vi.advanceTimersByTimeAsync(5000)
       await nextTick()
       expect(tour.current.id).toBe('open-menu')
     } finally {

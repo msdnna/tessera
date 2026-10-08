@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { inbox as inboxApi, notes as notesApi, reminders as remApi } from '@/api'
 import { firedCount, remindersByTask } from '@/utils/inbox'
 import { sGet, sSet } from '@/utils/serverStorage'
+import { tourEvent } from '@/utils/tourEvents'
 
 // «Входящие» (#2972): the user's reminders and notes of the current workspace,
 // the panel's state and the capture popover's. One copy for the whole shell —
@@ -161,10 +162,12 @@ export const useInboxStore = defineStore('inbox', () => {
   // ── mutations: each answers with the saved record, already in the feed ──
   async function createNote(data) {
     const res = await notesApi.create(wsId.value, data)
+    tourEvent('inbox.captured')
     return putNote(res.data)
   }
   async function createReminder(data) {
     const res = await remApi.create({ workspace_id: wsId.value, ...data })
+    tourEvent('inbox.captured')
     return putReminder(res.data)
   }
   async function updateReminder(r, patch) {
@@ -177,9 +180,11 @@ export const useInboxStore = defineStore('inbox', () => {
   }
   async function snooze(r, at) {
     const res = await remApi.snooze(r.id, new Date(at).toISOString())
+    tourEvent('inbox.handled')
     return putReminder(res.data)
   }
   async function setDone(r, done) {
+    if (done) tourEvent('inbox.handled')
     return updateReminder(r, { done })
   }
   async function remove(rec) {

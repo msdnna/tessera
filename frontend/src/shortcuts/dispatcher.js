@@ -15,6 +15,7 @@ import { ref } from 'vue'
 import { byId } from './catalog'
 import { parseKeys, matchChord, capsOf } from './keymap'
 import { isTypingTarget } from '@/utils/keys'
+import { tourEvent } from '@/utils/tourEvents'
 
 export const SEQ_TIMEOUT = 1000
 
@@ -98,9 +99,18 @@ function clearPending() {
   pendingCaps.value = []
 }
 
+// Keys the «Начало работы» checklist counts (#3000): driving a card from the
+// keyboard, folding the stage strip.
+function report(id) {
+  if (id === 'board.stageStrip') tourEvent('stage.strip')
+  else if (id.startsWith('card.') && id !== 'card.clear') tourEvent('card.keys')
+}
+
 function fire(id, args, e) {
   const h = liveHandler(id)
-  if (h) h.run(...args, e)
+  if (!h) return
+  h.run(...args, e)
+  report(id)
 }
 
 export function handleKeydown(e) {

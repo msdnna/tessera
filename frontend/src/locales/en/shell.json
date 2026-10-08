@@ -506,6 +506,22 @@
     "commands": {
       "edit": "Commands: edit the row, save",
       "move": "Commands: reorder"
+    },
+    "tour": {
+      "next": "Tour: next",
+      "back": "Tour: back",
+      "abort": "Tour: stop"
+    },
+    "hint": {
+      "ok": "Hint: got it",
+      "close": "Hint: don’t show again"
+    },
+    "whatsnew": {
+      "go": "«What’s new»: main button",
+      "later": "«What’s new»: later"
+    },
+    "help": {
+      "tour": "The «Get started» tour"
     }
   },
   "palette": {

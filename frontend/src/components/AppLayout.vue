@@ -37,7 +37,7 @@ import SidebarSpotlight from './SidebarSpotlight.vue'
 import TourOverlay from './TourOverlay.vue'
 import HelpDrawer from './help/HelpDrawer.vue'
 import HelpCenterModal from './help/HelpCenterModal.vue'
-import { notificationChannels } from '@/api'
+import { notificationChannels, gitlab as gitlabApi } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -47,6 +47,11 @@ import { useInboxStore } from '@/stores/inbox'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
+import { useOnboardingStore } from '@/stores/onboarding'
+import { useWsDialogsStore } from '@/stores/wsDialogs'
+import { useQuickStore } from '@/stores/quick'
+import { useTourLauncher } from '@/composables/useTourLauncher'
+import { setTourEventSink } from '@/utils/tourEvents'
 import { useResponsive } from '@/composables/useResponsive'
 import { useVisualViewport } from '@/composables/useVisualViewport'
 import { useEdgeSwipe } from '@/composables/useEdgeSwipe'
@@ -72,6 +77,7 @@ const inbox = useInboxStore()
 const conflicts = useConflictsStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
+const onboarding = useOnboardingStore()
 const { isMobile } = useResponsive()
 const { collapsed, layoutWidth, toggle } = useSidebarSize()
 // ≤1024px the «Входящие» panel lies over the content instead of squeezing it.
@@ -155,6 +161,8 @@ useRealtime(
   (ev) => {
     notes.onEvent(ev, authStore.user?.id)
     inbox.onEvent(ev)
+    // The «Начало работы» checklist counts what the user did themselves (#3102).
+    onboarding.onSocket(ev, authStore.user?.id)
     conflicts.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
@@ -286,9 +294,18 @@ onMounted(async () => {
   // stays silent for. Only when the acks were actually read (`load()` → true):
   // an empty set from a failed request would re-run the guide for a user who has
   // already been through it.
-  whatsNew
-    .load()
-    .then((ok) => ok && tour.autoStart({ acked: whatsNew.acked, mobile: isMobile.value }))
+  //
+  // An account invited into a space that already has projects gets «Знакомство»
+  // instead of «Основы» — it has nothing to create (#3000).
+  whatsNew.load().then(
+    (ok) =>
+      ok &&
+      tour.autoStart({
+        acked: whatsNew.acked,
+        mobile: isMobile.value,
+        invited: ws.current?.my_role !== 'owner' && ws.projects.length > 0,
+      }),
+  )
   // On desktop, ask for notification permission up front so reminders can fire
   // without waiting for the first event (best-effort).
   if (isTauri()) {
@@ -350,6 +367,74 @@ watch(
   { immediate: true },
 )
 onBeforeUnmount(() => clearInterval(inboxClock))
+
+// ── «Начало работы» (#3000): the checklist's client-side events, the tour from
+// an address, and whether the GitLab chapter is open ──
+setTourEventSink((name) => onboarding.note(name))
+onBeforeUnmount(() => setTourEventSink(null))
+const wsDialogs = useWsDialogsStore()
+const quick = useQuickStore()
+watch(
+  () => route.query.task,
+  (v) => v && onboarding.note('task.opened'),
+)
+watch(
+  () => route.path,
+  (p) => /\/stage\//.test(p) && onboarding.note('stage.page'),
+  { immediate: true },
+)
+watch(
+  () => inbox.panelOpen,
+  (v) => v && onboarding.note('inbox.opened'),
+)
+watch(
+  () => palette.open,
+  (v) => v && onboarding.note('palette.opened'),
+)
+watch(
+  () => quick.sheetOpen,
+  (v) => v && onboarding.note('sheet.opened'),
+)
+watch(
+  () => [projectWindow.projectId, projectWindow.tab],
+  ([id, tab]) => {
+    if (!id) return
+    onboarding.note('project.window')
+    if (tab === 'tags') onboarding.note('tags.opened')
+  },
+)
+watch(
+  () => wsDialogs.current,
+  (v) => v === 'gitlab' && onboarding.note('gitlab.opened'),
+)
+// `?tour=<chapter>|start` — ⌘K «Обучение», links from the help articles.
+const { launch: launchTour } = useTourLauncher()
+watch(
+  () => route.query.tour,
+  async (which) => {
+    if (!which) return
+    const query = { ...route.query }
+    delete query.tour
+    await router.replace({ ...route, query })
+    launchTour(String(which))
+  },
+  { immediate: true },
+)
+// The GitLab chapter waits for a GitLab project bound in this space.
+watch(
+  () => ws.currentId,
+  async (id) => {
+    onboarding.gitlabBound = false
+    if (!id) return
+    try {
+      const { data } = await gitlabApi.listIntegrations(id)
+      if (ws.currentId === id) onboarding.gitlabBound = (data || []).length > 0
+    } catch {
+      /* no rights or offline — the chapter stays locked */
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -486,8 +571,8 @@ onBeforeUnmount(() => clearInterval(inboxClock))
     <WhatsNewModal />
     <SidebarSpotlight />
 
-    <!-- Get Started guide (#2753). Inert until the tour store is started — the
-         autostart / «Обучение» entry point is wired up separately. -->
+    <!-- The «Начало работы» tour (#2753, chapters since #3000). Inert until the
+         tour store is started — by the autostart, the checklist, «Обучение». -->
     <TourOverlay />
 
     <!-- Contextual help (#2794): one drawer for the whole app, opened by the «?»

@@ -39,6 +39,7 @@ function openWindow(tab) {
       quaternary
       :title="t('board.actions.tags')"
       data-testid="board-tags"
+      data-tour="board-tags"
       @click="openWindow('tags')"
     >
       <template #icon><n-icon :component="PricetagsOutline" /></template>

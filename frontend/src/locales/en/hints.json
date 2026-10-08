@@ -1,0 +1,71 @@
+{
+  "kind": {
+    "new": "New in v2",
+    "release": "New",
+    "ctx": "Tip"
+  },
+  "card": {
+    "more": "{n} more in the queue",
+    "session": "{n} of {of} this session"
+  },
+  "items": {
+    "inbox": {
+      "name": "«Inbox» in the top bar",
+      "title": "Inbox",
+      "body": "Notes and reminders are now one feed — open it from here or with G I.",
+      "mobile": "Notes and reminders are now one feed. To write a thought down — the + above the navigation."
+    },
+    "capture": {
+      "name": "Capture · N M / N R",
+      "title": "Write a thought down",
+      "body": "One line: with a time it’s a reminder, without — a note. N M / N R.",
+      "mobile": "Write a thought down in one line: with a time it’s a reminder, without — a note."
+    },
+    "stage-menu": {
+      "name": "Stage selector",
+      "title": "The stage, right on the board",
+      "body": "Pick a sprint, the backlog or all tasks here or with ⇧E."
+    },
+    "stage-strip": {
+      "name": "Stage strip",
+      "title": "The stage’s goals and progress",
+      "body": "Unfold the strip to see the description and the metrics. ⇧H folds or unfolds it.",
+      "meta": "first board with a stage",
+      "wait": "waits for a board with a stage"
+    },
+    "view-options": {
+      "name": "«Board view» button",
+      "title": "Board view is here",
+      "body": "Card size, fields and saved views. ⇧V."
+    },
+    "view-chip": {
+      "name": "Saved view chip",
+      "title": "The board’s view",
+      "body": "Switch views quickly or take one back to how it was saved.",
+      "meta": "first saved view",
+      "wait": "waits for the first saved view"
+    },
+    "project-settings": {
+      "name": "Project settings",
+      "title": "The «Project» window",
+      "body": "A project’s tags, stages and estimation are in one window — ⌘, or the project’s menu."
+    },
+    "palette": {
+      "name": "⌘K palette",
+      "title": "Everything from the keyboard",
+      "body": "Search, commands, actions on a task (Tab) — in the ⌘K palette."
+    },
+    "undo": {
+      "name": "Undo a delete ⌘Z",
+      "title": "A delete can be undone",
+      "body": "The toast stays 7 seconds, and ⌘Z undoes the latest delete.",
+      "meta": "first delete",
+      "wait": "waits for the first delete"
+    },
+    "rail": {
+      "name": "Rail of spaces",
+      "title": "Spaces are on the left",
+      "body": "Each space has its own colour and icon. A new one is created with «+» at the foot of the rail."
+    }
+  }
+}

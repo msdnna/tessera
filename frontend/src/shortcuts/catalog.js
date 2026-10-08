@@ -184,6 +184,22 @@ export const CATALOG = [
   { id: 'matrix.pinUp', keys: 'mod+arrowup' },
   { id: 'matrix.pinDown', keys: 'mod+arrowdown' },
 
+  // ── the «Начало работы» tour and the spotlight hints (#3000). Shown on the
+  // tour's popover and the hint card, not in the cheat sheet. `prio` above the
+  // board's own ↵/←/Esc: while a step or a hint is on screen they answer to
+  // it. The tour's ↵/← also work inside the task window (`modal`); its Esc
+  // doesn't — there Esc closes the window, which is a step of «Основы».
+  { id: 'tour.next', keys: 'enter', modal: true, prio: 3 },
+  { id: 'tour.back', keys: 'arrowleft', modal: true, prio: 3 },
+  { id: 'tour.abort', keys: 'escape', prio: 3 },
+  { id: 'hint.ok', keys: 'enter', prio: 4 },
+  { id: 'hint.close', keys: 'escape', prio: 4 },
+  // «Что нового» (WhatsNewV2): ↵ is its main button; Esc is the window's own.
+  { id: 'whatsnew.go', keys: 'enter', modal: true, prio: 5 },
+  { id: 'whatsnew.later', display: [['escape']] },
+  // «Обучение» from ⌘K: the address starts the tour (AppLayout reads `?tour=`).
+  { id: 'help.tour', command: 'SchoolOutline', to: '/?tour=start' },
+
   // ── the open task (#2958): the modal's own keys. `modal` because the task
   // modal is a Naive dialog; the field keys mirror the selected card's, so the
   // cheat sheet lists only what is new here.

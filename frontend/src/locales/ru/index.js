@@ -16,6 +16,7 @@ import settings from './settings.json'
 import notifications from './notifications.json'
 import gitlab from './gitlab.json'
 import tour from './tour.json'
+import hints from './hints.json'
 import help from './help.json'
 import jobs from './jobs.json'
 import commands from './commands.json'
@@ -37,6 +38,7 @@ export default {
   notifications,
   gitlab,
   tour,
+  hints,
   help,
   jobs,
   commands,

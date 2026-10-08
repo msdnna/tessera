@@ -53,13 +53,13 @@ describe('the guide', () => {
 
     const pop = () => document.querySelector('[data-testid="tour-pop"]').textContent
     expect(pop()).toContain('Пространства')
-    expect(pop()).toContain('Пропустить')
+    expect(pop()).toContain('Прервать')
 
     await setI18nLocale('en')
     await nextTick()
-    expect(pop()).toContain('Workspaces')
+    expect(pop()).toContain('Spaces')
     expect(pop()).not.toContain('Пространства')
-    expect(pop()).toContain('Skip')
+    expect(pop()).toContain('Stop')
 
     w.unmount()
     document.body.innerHTML = ''

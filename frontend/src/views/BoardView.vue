@@ -75,7 +75,9 @@ watch(() => route.params, resolve, { immediate: true, deep: true })
        collapses to a comment while resolving, so without this wrapper the view is
        a non-element root of the page <transition> (a stream of Vue warnings). The
        wrapper gives the transition one stable element to track. -->
-  <div class="board-view">
+  <!-- data-tour-open-board: the tour's «Добавьте доску» waits for THIS board to
+       come up (#3000). -->
+  <div class="board-view" :data-tour-open-board="boardId">
     <KanbanBoard v-if="boardId" :key="boardId" :board-id="boardId" />
   </div>
 </template>

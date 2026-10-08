@@ -11,6 +11,7 @@ import {
   onBeforeUnmount,
   nextTick,
 } from 'vue'
+import { tourEvent } from '@/utils/tourEvents'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
@@ -444,6 +445,8 @@ watch(subbarEl, (el) => {
   nextTick(fitSubbar)
 })
 const groupMode = ref('status') // 'status' | 'tag'
+// Columns by tags is the chapter «Группировка по тегам» of the checklist (#3000).
+watch(groupMode, (m) => m === 'tag' && tourEvent('board.grouped'))
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
 // Friendly display names for tag prefixes (canonical prefix → label, owned by the
 // store) are loaded per-project. Falls back to the raw prefix where no name is

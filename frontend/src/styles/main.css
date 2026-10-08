@@ -826,3 +826,10 @@ body {
 [data-tour-active] {
   opacity: 1 !important;
 }
+/* «Создать задачу» at the foot of a column shows on hover only (v2): while the
+   tour's «Создайте задачу» points at it, the row stays out — the v1 tour
+   highlighted a 0px strip there (#3000). */
+.add-task[data-tour-active] {
+  height: 34px !important;
+  margin-top: 0 !important;
+}

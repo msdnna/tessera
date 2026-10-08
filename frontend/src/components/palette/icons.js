@@ -32,9 +32,11 @@ import {
   BookmarkOutline,
   OptionsOutline,
   SaveOutline,
+  SchoolOutline,
 } from '@vicons/ionicons5'
 
 export const ICONS = {
+  SchoolOutline,
   AddOutline,
   AlarmOutline,
   AppsOutline,

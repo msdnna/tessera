@@ -64,7 +64,7 @@ const pageCrumb = computed(() => {
          The containers are always rendered so the teleport target exists. -->
     <div class="tb-left">
       <div v-if="onBoard() && crumbBoard" class="crumbs" data-testid="board-crumbs">
-        <span v-if="crumbProject" class="crumb">{{ crumbProject }}</span>
+        <span v-if="crumbProject" class="crumb" data-tour="crumb-project">{{ crumbProject }}</span>
         <n-icon
           v-if="crumbProject"
           :component="ChevronForwardOutline"

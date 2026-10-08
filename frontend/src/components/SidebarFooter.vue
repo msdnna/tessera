@@ -14,7 +14,7 @@ import {
 } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { useTourStore } from '@/stores/tour'
+import { useTourLauncher } from '@/composables/useTourLauncher'
 import { useHelpStore } from '@/stores/help'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useApiImage } from '@/composables/useApiImage'
@@ -28,7 +28,7 @@ const props = defineProps({
 const { t } = useI18n()
 const authStore = useAuthStore()
 const router = useRouter()
-const tour = useTourStore()
+const { launch: launchTour } = useTourLauncher()
 const help = useHelpStore()
 const dialogs = useWsDialogsStore()
 
@@ -46,13 +46,11 @@ function openHelp() {
   help.openCenter()
 }
 
-// The Get Started guide's permanent entry point (#2753): the autostart only ever
-// fires once per account, so this is how anyone re-runs it. The first step points
-// at the workspace switcher, so the guide is started from Home rather than from
-// whatever screen the user happened to be on.
+// The tour's permanent entry point (#2753): the autostart only ever fires once
+// per account, so this is how anyone re-runs it — «Основы» from the start, from
+// «Мои задачи» (on a phone: the phone's «Основы», #3000).
 function startTour() {
-  router.push('/')
-  tour.startGuide()
+  launchTour('start')
 }
 
 // One «Помощь» button in the footer covering both ways of answering "how does
