@@ -938,6 +938,7 @@ onMounted(() => {
   min-height: 0;
   overflow-y: auto;
   padding: 8px 4px 40px 0;
+  container-type: inline-size;
 }
 .av-head {
   display: flex;
@@ -1285,6 +1286,22 @@ onMounted(() => {
   font-size: 12px;
 }
 
+/* A narrow pane (a laptop with the sidebar open) drops the stub columns first:
+   they carry no data yet, the user, role and status do. */
+@container (max-width: 860px) {
+  .av-thead .c-spaces,
+  .av-thead .c-login,
+  .av-thead .c-2fa,
+  .av-row .c-spaces,
+  .av-row .c-login,
+  .av-row .c-2fa {
+    display: none;
+  }
+  .av-thead,
+  .av-row {
+    grid-template-columns: minmax(180px, 1fr) 150px minmax(120px, 0.6fr) 32px;
+  }
+}
 /* Phone: chips over the section, rows stack name / role · status. */
 .av.mobile {
   display: flex;

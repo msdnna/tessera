@@ -42,3 +42,12 @@
     font-size: 16px;
   }
 }
+
+/* A Naive select inside a kit popover or sheet (#3106 — the notification
+   channel and rule forms): Naive teleports its menu to <body> at its own
+   stacking level (~2000), which is under PopoverForm (2050) and BottomSheet
+   (2100) — the options were drawn behind the form that opened them. A menu is
+   always the topmost thing on screen, so lift every select menu above both. */
+.v-binder-follower-container:has(.n-base-select-menu) {
+  z-index: 2200 !important;
+}
