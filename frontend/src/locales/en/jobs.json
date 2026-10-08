@@ -9,7 +9,6 @@
   "cancelling": "Cancelling…",
   "run": "Run now",
   "cancel": "Stop",
-  "nextRunPrefix": "· next run {when}",
   "name": {
     "gitlab_sync": "GitLab sync · {arg}"
   },
@@ -68,5 +67,26 @@
     "duration": "Duration",
     "createdUpdated": "Created / updated",
     "error": "Error"
-  }
+  },
+  "crumb": "Administration",
+  "nav": {
+    "all": "All",
+    "running": "Running",
+    "pending": "Queued",
+    "failed": "Failed",
+    "done": "Finished",
+    "type": "Type",
+    "workers": "Workers",
+    "syncs": "GitLab"
+  },
+  "summary": "running: {running} · queued: {pending}",
+  "search": "Find a job",
+  "noMatch": "Nothing matches",
+  "historyStub": "30-day history",
+  "openKey": "open the window",
+  "nextRun": "next {when}",
+  "log": "Log",
+  "logStub": "Steps, progress and the live log",
+  "follow": "Follow",
+  "copy": "Copy"
 }

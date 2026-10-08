@@ -9,7 +9,6 @@
   "cancelling": "Отменяется…",
   "run": "Запустить сейчас",
   "cancel": "Остановить",
-  "nextRunPrefix": "· след. запуск {when}",
   "name": {
     "gitlab_sync": "Синхронизация GitLab · {arg}"
   },
@@ -68,5 +67,26 @@
     "duration": "Длительность",
     "createdUpdated": "Создано / обновлено",
     "error": "Ошибка"
-  }
+  },
+  "crumb": "Администрирование",
+  "nav": {
+    "all": "Все",
+    "running": "Идут",
+    "pending": "В очереди",
+    "failed": "С ошибкой",
+    "done": "Завершены",
+    "type": "Тип",
+    "workers": "Фоновые процессы",
+    "syncs": "GitLab"
+  },
+  "summary": "идут: {running} · в очереди: {pending}",
+  "search": "Найти задание",
+  "noMatch": "Ничего не нашлось",
+  "historyStub": "История за 30 дней",
+  "openKey": "открыть окно",
+  "nextRun": "следующий {when}",
+  "log": "Лог",
+  "logStub": "Шаги, прогресс и живой лог",
+  "follow": "Следить",
+  "copy": "Копировать"
 }
