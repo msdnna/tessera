@@ -213,7 +213,8 @@
   "menu": {
     "deleting": "Deleting…",
     "retry": "retry",
-    "failed": "Couldn't delete"
+    "failed": "Couldn't delete",
+    "back": "Back"
   },
   "window": {
     "sections": "sections"
