@@ -8,13 +8,21 @@ updated: 2026-10-08
 
 Notifications in Tessera come in two kinds, and only the second is configurable.
 
-**Internal** — the bell in the bottom bar: you were assigned a task, someone replied to your comment, you were mentioned. They always come, they can't be turned off, and the counter on the bell shows the unread ones.
+**Internal** — the bell in the app's header: you were assigned a task, someone replied to your comment, you were mentioned, invited to a conference, a GitLab sync reported back. They always come, they can't be turned off, and the counter on the bell shows the unread ones. How the feed itself works is under "The bell" below.
 
 **External** — the same event delivered outward: by email, to Telegram, by a webhook to your own service. By default nothing goes out: first you set up a **channel** (where to deliver), then a **rule** (what exactly to send to it).
 
 All of this lives in **Settings** (the gear in the sidebar footer, or `G` then `,`) — the **Notifications** section in the column on the left. Everything here is saved as you change it; there is no Save button.
 
 ![The Notifications section: the list of delivery channels](../assets/notifications-channels-light.png)
+
+## The bell
+
+The bell opens the feed over the current screen (or keys <kbd>G</kbd> then <kbd>N</kbd>). At the top are the filters **All · Mentions · Assigned · GitLab**, each with its unread count. The feed is split into **New** — unread, on a soft accent with a dot — and **Earlier**. A row says who did it (in bold), what happened, which task it is about (under the line) or a quote of the comment, and when.
+
+Clicking a row marks it read and opens the task or the conference — even in another workspace. While the feed is open these keys work: <kbd>↑</kbd> <kbd>↓</kbd> — pick a row, <kbd>↵</kbd> — open it, <kbd>E</kbd> — mark it read, <kbd>⇧</kbd> <kbd>E</kbd> — mark all read. The gear in the feed's head leads to the notification settings.
+
+The feed shows the latest 50 notifications. A separate page with the whole history and answering a meeting invitation with "Accept / Decline" right from the feed are in the works — those buttons are visible but inactive and labelled "Soon".
 
 ## Delivery channels
 

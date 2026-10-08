@@ -21,7 +21,7 @@ Instance admin rights give you: this screen, its **Integrations** section (sign-
 
 ## How the screen is laid out
 
-On the left is the column of sections: **Users**, **Server** (the instance address and the API and web client versions), **Integrations** ([sign-in through GitLab](/help/admin-gitlab-oauth)) and **Background jobs** — the last item opens the [jobs window](/help/admin-jobs). The open section is kept in the address, so you can bookmark it. Items marked **soon** — invitations across all workspaces, roles and permissions — are still in the works.
+On the left is the column of sections: **Users**, **Server** (the instance address and the API and web client versions), **Integrations** ([sign-in through GitLab](/help/admin-gitlab-oauth)), **Help** (readers' answers to "Was this article helpful?" — per article and language, the share of "yes" as a bar) and **Background jobs** — the last item opens the [jobs window](/help/admin-jobs). The open section is kept in the address, so you can bookmark it. Items marked **soon** — invitations across all workspaces, roles and permissions — are still in the works.
 
 ## The list and search
 

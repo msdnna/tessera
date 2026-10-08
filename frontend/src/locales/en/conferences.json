@@ -5,7 +5,7 @@
   "filter": {
     "all": "All",
     "scheduled": "Scheduled",
-    "live": "Live now",
+    "live": "Live",
     "ended": "Finished"
   },
   "status": {

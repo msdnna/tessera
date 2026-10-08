@@ -647,10 +647,11 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
             >
               <n-icon :component="FlashOutline" :size="15" />
               {{ $t('conferences.instant.button') }}
-              <ShortcutKeys id="meet.instant" bare />
             </button>
           </template>
-          {{ $t('conferences.instant.hint') }}
+          <span class="tip">
+            {{ $t('conferences.instant.hint') }} <ShortcutKeys id="meet.instant" bare />
+          </span>
         </n-tooltip>
         <button
           ref="scheduleBtn"
@@ -1066,9 +1067,22 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
 .head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 10px;
   margin-bottom: 18px;
+}
+.head > * {
+  flex: none;
+}
+/* The filter gives way first when the row is tight — it scrolls, the buttons
+   keep their labels. */
+.head > .seg {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .h {
   margin: 0;
@@ -1096,7 +1110,7 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
 .seg-btn {
   flex: none;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 9px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -1430,6 +1444,9 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   }
 }
 @media (max-width: 760px) {
+  .head {
+    flex-wrap: wrap;
+  }
   .h {
     font-size: 20px;
     flex: 1 0 100%;
