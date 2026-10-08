@@ -33,6 +33,8 @@ import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import TesseraIcon from '@/components/TesseraIcon.vue'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
+import { useOverlayBack } from '@/composables/useOverlayBack'
+import { useResponsive } from '@/composables/useResponsive'
 import { byId } from '@/shortcuts/catalog'
 import { matchChord, parseKeys } from '@/shortcuts/keymap'
 import { hueGrad } from '@/utils/gradient'
@@ -62,6 +64,15 @@ const showRef = computed(() => props.show && !props.inline)
 function close() {
   emit('update:show', false)
 }
+// A phone (#2976 — package G «Ярусы на мобильном»): the menu is a sheet from
+// the bottom over a scrim, rows 48px, the two-step item just as on a desktop;
+// the system Back closes it.
+const { isMobile } = useResponsive()
+const sheet = computed(() => isMobile.value && !props.inline)
+useOverlayBack(
+  computed(() => props.show && sheet.value),
+  close,
+)
 const { style } = useAnchoredPanel({
   show: showRef,
   anchor: () => props.anchor(),
@@ -199,18 +210,20 @@ function stubTitle(item) {
 
 <template>
   <Teleport to="body" :disabled="inline">
+    <div v-if="show && sheet" class="am-scrim" aria-hidden="true" />
     <div
       v-if="show"
       ref="panel"
       class="am kit-menu"
-      :class="{ inline }"
+      :class="{ inline, sheet }"
       role="menu"
       tabindex="-1"
-      :style="inline ? { width: `${width}px` } : { ...style, width: `${width}px` }"
+      :style="inline ? { width: `${width}px` } : sheet ? null : { ...style, width: `${width}px` }"
       :data-testid="testid"
       @keydown="onKeydown"
       @focusout="(e) => !panel?.contains(e.relatedTarget) && disarm()"
     >
+      <span v-if="sheet" class="am-handle" aria-hidden="true" />
       <div v-if="header" class="am-head">
         <span class="am-head-text">{{ header }}</span>
         <span v-if="headerAside" class="am-head-aside">{{ headerAside }}</span>
@@ -565,5 +578,66 @@ function stubTitle(item) {
 .am-switch.on .am-knob {
   transform: translateX(12px);
   background: #fff;
+}
+
+/* ── a phone: the sheet (#2976) ── */
+.am-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2049;
+  background: var(--t-scrim);
+}
+.am.sheet {
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: calc(100% - var(--safe-top) - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 10px calc(14px + var(--safe-bottom));
+  border-radius: 18px 18px 0 0;
+  box-shadow: var(--t-sh-drag);
+  animation: am-up 0.2s ease;
+}
+.am-handle {
+  flex: none;
+  align-self: center;
+  width: 36px;
+  height: 5px;
+  margin: 8px 0 6px;
+  border-radius: 3px;
+  background: var(--t-kbd);
+}
+.am.sheet .am-row {
+  min-height: 48px;
+  gap: 14px;
+  padding: 0 10px 0 12px;
+  border-radius: 10px;
+  font-size: 15.5px;
+}
+.am.sheet .am-row.on:not(.current) {
+  background: transparent;
+}
+.am.sheet .am-row.current {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 16%, var(--t-pop)),
+    color-mix(in srgb, var(--t-primary) 26%, var(--t-pop))
+  );
+}
+.am.sheet .am-head {
+  padding: 10px 12px 6px;
+  font-size: 12px;
+}
+@keyframes am-up {
+  from {
+    transform: translateY(24px);
+    opacity: 0.6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .am.sheet {
+    animation: none;
+  }
 }
 </style>

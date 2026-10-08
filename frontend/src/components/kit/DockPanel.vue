@@ -40,6 +40,9 @@ const props = defineProps({
   // Phone: the whole height under the top bar instead of a half sheet
   // («Входящие», #2997).
   full: { type: Boolean, default: false },
+  // Phone: a page above the bottom navigation, with a large title and no
+  // close button — the tab that opened it closes it (#2976, «Входящие»).
+  page: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:show', 'close'])
 const { t } = useI18n()
@@ -119,15 +122,24 @@ defineExpose({ measure, el })
     :show="show"
     :testid="testid"
     :full="full"
+    :page="page"
     class="dock-sheet"
     @update:show="(v) => (v ? null : close())"
   >
-    <div class="dock-sheet-head">
-      <span class="dock-title">{{ title }}</span>
-      <span v-if="subtitle" class="dock-sub">{{ subtitle }}</span>
+    <div class="dock-sheet-head" :class="{ page }" data-sheet-grab>
+      <span class="dock-sheet-titles">
+        <span class="dock-title">{{ title }}</span>
+        <span v-if="subtitle" class="dock-sub">{{ subtitle }}</span>
+      </span>
       <span class="dock-fill" />
       <slot name="actions" />
-      <button type="button" class="dock-x touch" :title="t('common.action.close')" @click="close">
+      <button
+        v-if="!page"
+        type="button"
+        class="dock-x touch"
+        :title="t('common.action.close')"
+        @click="close"
+      >
         <n-icon :component="CloseOutline" :size="20" />
       </button>
     </div>
@@ -311,6 +323,29 @@ defineExpose({ measure, el })
   align-items: center;
   gap: 8px;
   min-width: 0;
+}
+.dock-sheet-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+/* The page-like sheet: the screen's large title (26/700) over its subtitle. */
+.dock-sheet-head.page {
+  padding: 14px 2px 2px 6px;
+}
+.dock-sheet-head.page .dock-sheet-titles {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.dock-sheet-head.page .dock-title {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.dock-sheet-head.page .dock-sub {
+  font-size: 13.5px;
 }
 .dock-x.touch {
   width: 40px;

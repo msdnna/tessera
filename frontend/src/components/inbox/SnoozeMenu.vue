@@ -15,6 +15,8 @@ import {
 } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
+import { useOverlayBack } from '@/composables/useOverlayBack'
+import { useResponsive } from '@/composables/useResponsive'
 import { useFormat } from '@/composables/useFormat'
 import { snoozeOptions } from '@/utils/inbox'
 import { parseCapture } from '@/utils/quickParse'
@@ -37,6 +39,13 @@ const showRef = computed(() => props.show)
 function close() {
   emit('update:show', false)
 }
+// A phone (#2976 — package G «Входящие»): the variants in a sheet from the
+// bottom, rows 48px; the system Back closes it.
+const { isMobile: sheet } = useResponsive()
+useOverlayBack(
+  computed(() => props.show && sheet.value),
+  close,
+)
 const { style, place } = useAnchoredPanel({
   show: showRef,
   anchor: () => props.anchor(),
@@ -146,16 +155,19 @@ function onKey(e) {
 
 <template>
   <Teleport to="body">
+    <div v-if="show && sheet" class="sz-scrim" aria-hidden="true" />
     <div
       v-if="show"
       ref="panel"
       class="sz kit-menu"
-      :style="style"
+      :class="{ sheet }"
+      :style="sheet ? null : style"
       role="menu"
       tabindex="-1"
       :data-testid="testid"
       @keydown="onKey"
     >
+      <span v-if="sheet" class="sz-handle" aria-hidden="true" />
       <div class="sz-head">
         <span class="sz-head-t">{{ t('inbox.snooze.title') }}</span>
         <span class="sz-head-now">{{ t('inbox.snooze.now', { time: formatTime(now) }) }}</span>
@@ -312,5 +324,38 @@ function onKey(e) {
   font-size: 11.5px;
   line-height: 1.4;
   color: var(--t-text3);
+}
+
+/* ── a phone: the sheet (#2976) ── */
+.sz-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 2059;
+  background: var(--t-scrim);
+}
+.sz.sheet {
+  left: 0;
+  right: 0;
+  bottom: var(--kb-h, 0px);
+  width: auto;
+  padding: 0 10px calc(14px + var(--safe-bottom));
+  border-radius: 18px 18px 0 0;
+  box-shadow: var(--t-sh-drag);
+}
+.sz-handle {
+  align-self: center;
+  width: 36px;
+  height: 5px;
+  margin: 8px 0 6px;
+  border-radius: 3px;
+  background: var(--t-kbd);
+}
+.sz.sheet .sz-row {
+  min-height: 48px;
+  font-size: 15px;
+}
+.sz.sheet .sz-input {
+  height: 44px;
+  font-size: 16px;
 }
 </style>

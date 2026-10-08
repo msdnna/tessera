@@ -247,4 +247,20 @@ const ICONS = {
     transition: none;
   }
 }
+
+/* A phone (#2976 — package G «Undo-тост»): the screen's width less 12+12,
+   52px, «Отменить» a 44px target. */
+@media (max-width: 768px) {
+  .ut {
+    width: calc(100vw - 24px);
+    max-width: none;
+    height: 52px;
+  }
+  .ut-text {
+    flex: 1;
+  }
+  .ut-action {
+    height: 44px;
+  }
+}
 </style>
