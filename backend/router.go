@@ -389,6 +389,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// future onboarding. Keyed by an opaque client-owned string.
 			protected.GET("/users/me/acknowledgements", rh.ListMyAcknowledgements)
 			protected.POST("/users/me/acknowledgements", rh.AcknowledgeMe)
+			protected.DELETE("/users/me/acknowledgements", rh.ForgetMyAcknowledgements)
 
 			// Workspaces & membership.
 			protected.POST("/workspaces", rh.CreateWorkspace)

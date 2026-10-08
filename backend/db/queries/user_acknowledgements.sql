@@ -21,3 +21,17 @@ FROM user_acknowledgements
 WHERE key LIKE 'helpful:%'
 GROUP BY key
 ORDER BY key;
+
+-- name: DeleteUserAcknowledgement :execrows
+-- «Показать снова» for one hint (#3100): the flag is gone, so the client puts
+-- the hint back in its queue. Zero rows is not an error — the flag may never
+-- have been written on this account.
+DELETE FROM user_acknowledgements
+WHERE user_id = $1 AND key = $2;
+
+-- name: DeleteUserAcknowledgementsByPrefix :execrows
+-- «Показать подсказки заново» / «Начать с начала» (#3100): every flag under one
+-- namespace at once (spotlight:, getstarted:). starts_with() rather than LIKE so
+-- a key carrying % or _ can't widen the match.
+DELETE FROM user_acknowledgements
+WHERE user_id = $1 AND starts_with(key, sqlc.arg(prefix)::text);

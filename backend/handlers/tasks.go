@@ -896,7 +896,7 @@ func (h *API) SetTaskEisenhower(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "task.updated", t)
+	h.broadcastAs(c, wsID, "task.updated", t)
 	c.JSON(http.StatusOK, t)
 }
 

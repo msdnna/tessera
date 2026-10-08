@@ -596,13 +596,13 @@ func (h *API) applyAssignee(c *gin.Context, t db.Task, wsID, userID uuid.UUID, a
 		h.logEvent(c, t.ID, "assigned", map[string]any{"user_id": userID})
 		h.notify(c, userID, wsID, &t.ID, "assigned",
 			msgAssigned(h.actorName(c), t.Number, t.Title))
-		h.broadcast(wsID, "task.assigned", gin.H{"task_id": t.ID, "user_id": userID})
+		h.broadcastAs(c, wsID, "task.assigned", gin.H{"task_id": t.ID, "user_id": userID})
 	} else {
 		if err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: t.ID, UserID: userID}); err != nil {
 			return err
 		}
 		h.logEvent(c, t.ID, "unassigned", map[string]any{"user_id": userID})
-		h.broadcast(wsID, "task.unassigned", gin.H{"task_id": t.ID, "user_id": userID})
+		h.broadcastAs(c, wsID, "task.unassigned", gin.H{"task_id": t.ID, "user_id": userID})
 	}
 	h.enqueueWriteback(c, t.ID, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	return nil
@@ -640,7 +640,7 @@ func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) 
 		if rows > 0 {
 			h.logEvent(c, taskID, "tagged", map[string]any{"tag": tag.Name})
 		}
-		h.broadcast(wsID, "task.tagged", gin.H{"task_id": taskID, "tag_id": tagID})
+		h.broadcastAs(c, wsID, "task.tagged", gin.H{"task_id": taskID, "tag_id": tagID})
 	} else {
 		rows, err := h.q.RemoveTaskTag(c, db.RemoveTaskTagParams{TaskID: taskID, TagID: tagID})
 		if err != nil {
@@ -649,7 +649,7 @@ func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) 
 		if rows > 0 {
 			h.logEvent(c, taskID, "untagged", map[string]any{"tag": tag.Name})
 		}
-		h.broadcast(wsID, "task.untagged", gin.H{"task_id": taskID, "tag_id": tagID})
+		h.broadcastAs(c, wsID, "task.untagged", gin.H{"task_id": taskID, "tag_id": tagID})
 	}
 	// Reconcile labels back to the linked issue (the worker reads the task's
 	// current tags, so the empty payload coalesces a burst into one row).
@@ -689,7 +689,7 @@ func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID
 	soft(c, "MarkGitlabMilestoneOverridden", h.q.MarkGitlabMilestoneOverridden(c, taskID))
 	h.enqueueWriteback(c, taskID, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
 	if t, err := h.q.GetTask(c, taskID); err == nil {
-		h.broadcast(wsID, "task.updated", t)
+		h.broadcastAs(c, wsID, "task.updated", t)
 	}
 	return nil
 }

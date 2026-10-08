@@ -121,7 +121,7 @@ func (h *API) CreateProjectGroup(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "group.created", g)
+	h.broadcastAs(c, wsID, "group.created", g)
 	c.JSON(http.StatusCreated, g)
 }
 
@@ -163,7 +163,7 @@ func (h *API) UpdateProjectGroup(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(g.WorkspaceID, "group.updated", updated)
+	h.broadcastAs(c, g.WorkspaceID, "group.updated", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -211,7 +211,7 @@ func (h *API) MoveProjectGroup(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(g.WorkspaceID, "group.moved", updated)
+	h.broadcastAs(c, g.WorkspaceID, "group.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -290,7 +290,7 @@ func (h *API) CreateProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "project.created", p)
+	h.broadcastAs(c, wsID, "project.created", p)
 	c.JSON(http.StatusCreated, p)
 }
 
@@ -350,7 +350,7 @@ func (h *API) UpdateProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(p.WorkspaceID, "project.updated", updated)
+	h.broadcastAs(c, p.WorkspaceID, "project.updated", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -402,7 +402,7 @@ func (h *API) SetProjectSlug(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(p.WorkspaceID, "project.updated", updated)
+	h.broadcastAs(c, p.WorkspaceID, "project.updated", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -450,7 +450,7 @@ func (h *API) MoveProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(p.WorkspaceID, "project.moved", updated)
+	h.broadcastAs(c, p.WorkspaceID, "project.moved", updated)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -707,7 +707,7 @@ func (h *API) TransferProject(c *gin.Context) {
 
 	// The project leaves the source workspace and joins the target — tell both.
 	h.broadcast(p.WorkspaceID, "project.deleted", gin.H{"id": p.ID})
-	h.broadcast(req.WorkspaceID, "project.created", updated)
+	h.broadcastAs(c, req.WorkspaceID, "project.created", updated)
 	c.JSON(http.StatusOK, gin.H{
 		"project": updated, "stripped_assignees": stripped, "renumbered_tasks": renumbered,
 		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,

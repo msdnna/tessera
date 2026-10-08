@@ -105,7 +105,7 @@ func (h *API) CreateBoard(c *gin.Context) {
 		return
 	}
 
-	h.broadcast(p.WorkspaceID, "board.created", b)
+	h.broadcastAs(c, p.WorkspaceID, "board.created", b)
 	c.JSON(http.StatusCreated, b)
 }
 
@@ -420,7 +420,7 @@ func (h *API) RestoreBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "board.created", b)
+	h.broadcastAs(c, wsID, "board.created", b)
 	c.JSON(http.StatusOK, b)
 }
 
