@@ -378,6 +378,24 @@ describe('refresh-on-401', () => {
     window.removeEventListener('auth:expired', spy)
   })
 
+  // #3107: a wrong password answers 401 from /auth/login. That is the form's
+  // own refusal, not an expired session — no refresh, no sign-out teardown
+  // (which reset the auth screen's language to the browser's).
+  it('treats a 401 from the sign-in form as a refusal, not an expired session', async () => {
+    instanceAdapter.mockImplementation((config) =>
+      fail(config, 401, { error: 'invalid credentials' }),
+    )
+    const spy = vi.fn()
+    window.addEventListener('auth:expired', spy)
+
+    await expect(api.post('/auth/login', { email: 'a@b.c', password: 'x' })).rejects.toMatchObject({
+      status: 401,
+    })
+    expect(globalAdapter).not.toHaveBeenCalled()
+    expect(spy).not.toHaveBeenCalled()
+    window.removeEventListener('auth:expired', spy)
+  })
+
   it('does not attempt refresh for a 401 on the refresh endpoint itself', async () => {
     localStorage.setItem('tessera_refresh_token', 'ref1')
     // A direct call to the refresh URL through the instance returning 401 must not

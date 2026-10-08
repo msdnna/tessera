@@ -191,10 +191,16 @@ api.interceptors.response.use(
     const original = err.config
     const isUnauthorized = err.response?.status === 401
     const isRefreshCall = original?.url?.includes('/auth/refresh')
+    // A 401 from the sign-in form itself is a wrong password, not an expired
+    // session: there is nothing to refresh, and treating it as one ran the whole
+    // sign-out teardown — which put the auth screen back on the browser's
+    // language, so a reader who had switched it to Russian saw the form flip to
+    // English under the «wrong password» banner (#3107).
+    const isCredentialCall = /\/auth\/(login|register)$/.test(original?.url || '')
     // Tracks why a refresh attempt on this response failed, so the teardown
     // below can tell "the session is over" from "we couldn't ask".
     let refreshOffline = false
-    if (isUnauthorized && original && !original._retry && !isRefreshCall) {
+    if (isUnauthorized && original && !original._retry && !isRefreshCall && !isCredentialCall) {
       original._retry = true
       const { token: newToken, offline } = await refreshAccessToken()
       if (newToken) {
@@ -208,7 +214,7 @@ api.interceptors.response.use(
     // reach the server the session is left intact and the request just fails —
     // the connection overlay is already up, and the next attempt (once the link
     // is back) refreshes normally instead of landing on /login.
-    if (isUnauthorized && !isRefreshCall && !refreshOffline) {
+    if (isUnauthorized && !isRefreshCall && !isCredentialCall && !refreshOffline) {
       setAccessToken('')
       sRemove('tessera_refresh_token')
       sRemove('tessera_user')
