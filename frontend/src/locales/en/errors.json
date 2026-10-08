@@ -40,7 +40,9 @@
     "channelRequiresField": "The “{type}” channel needs {field}",
     "templateTooLong": "The template is longer than {limit} characters — shorten it",
     "templateError": "Template error: {detail}",
-    "smtpNotConfigured": "SMTP is not configured on the server — the email was logged, not sent"
+    "smtpNotConfigured": "SMTP is not configured on the server — the email was logged, not sent",
+    "conferencesNotConfigured": "Calls are not set up on this server — ask your administrator",
+    "recordingNotConfigured": "Recording is not enabled on this server — your administrator turns it on"
   },
   "validation": {
     "email": "Enter a valid email",

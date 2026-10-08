@@ -1370,10 +1370,16 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
 .call-bar.inline {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   justify-content: space-between;
   gap: 8px;
   margin-bottom: 12px;
+}
+/* Inline, the name gives way — the controls on the right keep their place. */
+.call-bar.inline .crumb {
+  flex: 1;
+}
+.call-bar.inline .call-actions {
+  flex: none;
 }
 .detail-spin,
 .detail-spin :deep(.n-spin-content) {

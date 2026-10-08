@@ -40,7 +40,9 @@
     "channelRequiresField": "Каналу «{type}» нужно поле {field}",
     "templateTooLong": "Шаблон длиннее {limit} символов — сократите его",
     "templateError": "Ошибка в шаблоне: {detail}",
-    "smtpNotConfigured": "SMTP на сервере не настроен — письмо записано в лог, но не отправлено"
+    "smtpNotConfigured": "SMTP на сервере не настроен — письмо записано в лог, но не отправлено",
+    "conferencesNotConfigured": "Звонки на этом сервере не настроены — это вопрос к администратору",
+    "recordingNotConfigured": "Запись на этом сервере не включена — её включает администратор"
   },
   "validation": {
     "email": "Введите корректный email",

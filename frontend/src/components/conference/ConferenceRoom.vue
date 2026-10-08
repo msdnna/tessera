@@ -901,7 +901,7 @@ function onInviteShow(show) {
                  get into the queue. -->
             <button
               type="button"
-              class="cb"
+              class="cb wide-only"
               :class="{ on: screenOn, wait: wantScreen && !screenOn }"
               :disabled="!connected"
               data-testid="conference-screen"
@@ -940,7 +940,7 @@ function onInviteShow(show) {
         <!-- Reactions are #3054: visible, inactive. -->
         <n-tooltip>
           <template #trigger>
-            <span class="cb-stub">
+            <span class="cb-stub wide-only">
               <button type="button" class="cb" disabled data-testid="conference-reactions">
                 <n-icon :component="HappyOutline" />
               </button>
@@ -1579,6 +1579,22 @@ function onInviteShow(show) {
     border-radius: 13px;
     flex: none;
   }
+  .cb-gap {
+    width: 0;
+  }
+}
+/* A phone: no screen share in a mobile browser, no reactions yet — the dock
+   keeps what fits one thumb-row. */
+@media (max-width: 600px) {
+  .wide-only {
+    display: none !important;
+  }
+  .cb {
+    width: 40px;
+    height: 40px;
+  }
+}
+@media (max-width: 900px) {
   .leave-l,
   .cb.leave :deep(.sk) {
     display: none;

@@ -44,31 +44,28 @@ test('мобильная комната: шапка звонка в одну с�
   await openRoom(page, backend, seed.workspaceId, `Моб конф ${seed.runId}-head`)
   await page.screenshot({ path: resolve(SHOTS, 'conference-room.png'), fullPage: true })
 
-  // The four controls of the header: back, the status pill, leave, end. On a
-  // phone all four fall back out of the topbar, and before the fix they landed
-  // in two different parents — back above the title, pill+buttons below it —
-  // which is the «слиплись» from the report: two half-rows of controls with the
-  // heading wedged between them.
-  const back = await box(page, '.back')
-  const pill = await box(page, '.call-actions .pill')
-  const leave = await box(page, '[data-testid="conference-leave"]')
+  // v2 (#3107): the header of a call is back, the call's name and «Завершить»;
+  // «Выйти» moved to the dock at the bottom. On a phone the header falls back
+  // out of the topbar, and it has to stay ONE row (#2893, round 2: back above
+  // the title and the buttons below it was the «слиплись» of the report).
+  const back = await box(page, '[data-testid="conference-back"]')
+  const title = await box(page, '.crumb-t')
   const end = await box(page, '[data-testid="conference-end"]')
 
   const mid = (b) => b.y + b.height / 2
   for (const [name, b] of [
-    ['статус', pill],
-    ['«Выйти»', leave],
+    ['название', title],
     ['«Завершить»', end],
   ]) {
     expect(
       Math.abs(mid(b) - mid(back)),
-      `${name} не на одной строке с «К списку»: центры разъехались на ` +
+      `${name} не на одной строке со стрелкой назад: центры разъехались на ` +
         `${Math.round(Math.abs(mid(b) - mid(back)))}px`,
     ).toBeLessThanOrEqual(6)
   }
 
-  // …and they are a row of separate controls, not a strip of touching ones.
-  const inOrder = [back, pill, leave, end].sort((a, b) => a.x - b.x)
+  // …a row of separate controls, not a strip of touching ones…
+  const inOrder = [back, title, end].sort((a, b) => a.x - b.x)
   for (let i = 1; i < inOrder.length; i++) {
     const gap = inOrder[i].x - (inOrder[i - 1].x + inOrder[i - 1].width)
     expect(
@@ -76,10 +73,12 @@ test('мобильная комната: шапка звонка в одну с�
       `соседние контролы в шапке слиплись: между ними ${Math.round(gap)}px`,
     ).toBeGreaterThanOrEqual(4)
   }
-
-  // The two buttons are icons here (the report asked for it), so the row has to
-  // fit with room to spare rather than only just fit.
   expect(end.x + end.width, 'шапка звонка не помещается в экран').toBeLessThanOrEqual(393)
+
+  // …and «Выйти» is on the dock, inside the screen.
+  const leave = await box(page, '[data-testid="conference-leave"]')
+  expect(leave.y + leave.height, '«Выйти» ниже экрана').toBeLessThanOrEqual(844)
+  expect(leave.x + leave.width, '«Выйти» за правым краем').toBeLessThanOrEqual(393)
 })
 
 test('мобильная комната: ростер и сцена по ширине рабочей области', async ({

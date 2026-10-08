@@ -134,6 +134,10 @@ const SENTINELS = {
   // 200: the channel probe answers {ok:true, warning} when the server has no
   // SMTP, and both clients print that string as-is (#2932).
   'smtp is not configured': 'smtpNotConfigured',
+  // The media server behind conferences and its recorder are optional parts of
+  // an instance; their 503s used to reach the call screen in English (#3107).
+  'conferences are not configured on this server': 'conferencesNotConfigured',
+  'recording is not configured on this server': 'recordingNotConfigured',
   forbidden: 'forbidden',
   unauthorized: 'unauthorized',
   'not found': 'notFound',
