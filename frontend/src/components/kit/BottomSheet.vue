@@ -32,6 +32,9 @@ const props = defineProps({
   lift: { type: Boolean, default: false },
   top: { type: Boolean, default: false },
   testid: { type: String, default: 'bottom-sheet' },
+  // Where the sheet is mounted: <body>, or the body of the Naive modal it was
+  // opened from — that modal's focus trap rejects any focus outside it (#3113).
+  to: { type: [String, Object], default: 'body' },
 })
 const emit = defineEmits(['update:show', 'close'])
 
@@ -110,7 +113,7 @@ const sheetStyle = computed(() =>
 </script>
 
 <template>
-  <Teleport to="body">
+  <Teleport :to="to">
     <transition name="bs">
       <div
         v-if="open"

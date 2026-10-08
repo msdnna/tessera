@@ -11,7 +11,7 @@ import { pushBlocker } from '@/shortcuts/dispatcher'
 //   panel      ref<Element> — the panel itself (for measuring and click-outside)
 //   onOutside  called on a pointerdown outside panel and anchor
 //   placement  'right-start' (to the right, tops aligned) | 'bottom-start' |
-//              'bottom-end' | 'point' (at the {x, y} itself)
+//              'bottom-end' | 'top-end' | 'point' (at the {x, y} itself)
 //   offset     { x, y } nudges from the anchor edge (mockup: 4px right, −6px up)
 //   (placement and offset may be getters — read on every placement, so one
 //   panel can open at a pointer one time and under a button the next)
@@ -55,6 +55,12 @@ export function useAnchoredPanel({
         left = r.right - w + offset.x
         top = r.bottom + offset.y
         break
+      // Above the anchor, right edges aligned — for a control at the bottom of
+      // the screen (the comment composer, #3113).
+      case 'top-end':
+        left = r.right - w + offset.x
+        top = r.top - h - offset.y
+        break
       case 'point':
         left = r.left + offset.x
         top = r.top + offset.y
@@ -81,9 +87,14 @@ export function useAnchoredPanel({
     // A popover's own pickers (Naive selects, menus, a nested icon search) live
     // in teleported layers: clicking them is not "outside".
     const el = target instanceof Element ? target : target.parentElement
-    return !!el?.closest(
+    const layer = el?.closest(
       '.n-popover, .n-dropdown-menu, .n-modal-container, .n-base-select-menu, .v-binder-follower-container',
     )
+    if (!layer) return false
+    // …unless that layer is the popover's own ground: opened from inside a modal
+    // (the task modal, #3113), a click elsewhere in that modal is a click outside.
+    if (a && typeof a.contains === 'function' && layer.contains(a)) return false
+    return !layer.contains(panel.value)
   }
 
   function onPointerDown(e) {
