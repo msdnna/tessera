@@ -1,12 +1,11 @@
 <script setup>
-import { NButton, NIcon, NTooltip } from 'naive-ui'
-import { MenuOutline, ChevronForwardOutline, FileTrayOutline } from '@vicons/ionicons5'
+import { NIcon, NTooltip } from 'naive-ui'
+import { ChevronForwardOutline, FileTrayOutline } from '@vicons/ionicons5'
 import SearchBar from './SearchBar.vue'
 import NotificationsBell from './NotificationsBell.vue'
 import { computed } from 'vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import BoardActions from './BoardActions.vue'
-import BoardMobileMenu from './BoardMobileMenu.vue'
 import HelpHint from './help/HelpHint.vue'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useQuickStore } from '@/stores/quick'
@@ -16,10 +15,8 @@ import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 import { workspaceName } from '@/utils/defaultNames'
 
-const props = defineProps({
-  mobile: { type: Boolean, default: false },
-})
-defineEmits(['menu'])
+// The desktop header. A phone has a header of its own (mobile/MobileTopbar,
+// #2976) next to the bottom navigation.
 
 const { t } = useI18n()
 const board = useBoardViewStore()
@@ -28,7 +25,7 @@ const quick = useQuickStore()
 const inbox = useInboxStore()
 const route = useRoute()
 // Board actions only make sense on a desktop board view.
-const onBoard = () => board.active && !props.mobile
+const onBoard = () => board.active
 // v2 (#2954): on a board the header's left side names where you are — project ›
 // board. The view switch moved down into the board's sub-toolbar.
 const crumbProject = computed(() => ws.projects.find((p) => p.id === board.projectId)?.name || '')
@@ -59,11 +56,7 @@ const pageCrumb = computed(() => {
 </script>
 
 <template>
-  <div class="topbar" :class="{ mobile }">
-    <n-button v-if="mobile" class="menu-btn" quaternary circle @click="$emit('menu')">
-      <n-icon :component="MenuOutline" />
-    </n-button>
-
+  <div class="topbar">
     <!-- Page-owned header controls land in these two slots via <teleport>. The
          board fills its side of the header from a store, but a view whose
          controls are wired to a dozen pieces of its own state (the open
@@ -80,12 +73,12 @@ const pageCrumb = computed(() => {
         />
         <span class="crumb crumb-cur">{{ crumbBoard }}</span>
       </div>
-      <div v-if="onHome && !mobile" class="crumbs" data-testid="home-crumbs">
+      <div v-if="onHome" class="crumbs" data-testid="home-crumbs">
         <span class="crumb crumb-cur">{{ t('shell.home.title') }}</span>
         <span class="crumb-dot">·</span>
         <span class="crumb">{{ workspaceName(ws.current) }}</span>
       </div>
-      <div v-if="pageCrumb && !mobile" class="crumbs" data-testid="page-crumbs">
+      <div v-if="pageCrumb" class="crumbs" data-testid="page-crumbs">
         <span class="crumb crumb-cur">{{ pageCrumb.cur }}</span>
         <span class="crumb-dot">·</span>
         <span class="crumb">{{ pageCrumb.sub }}</span>
@@ -102,15 +95,13 @@ const pageCrumb = computed(() => {
     <div class="tb-right">
       <div id="tb-slot-right" class="tb-slot" />
       <BoardActions v-if="onBoard()" />
-      <!-- Mobile board controls: layout + tags + archive in one menu. -->
-      <BoardMobileMenu v-if="mobile && board.active" />
       <!-- Contextual help for whatever screen is open; hides itself on /help
            and picks its article from the route (#2794). -->
       <!-- The bell is the shell's, not the workspace's (v2): the feed spans
            every workspace, so it stays here whatever the sidebar does. -->
       <!-- «Входящие» (#2997): the panel, with the count of reminders that went
            off; next to the bell, which keeps mentions and GitLab events. -->
-      <n-tooltip :disabled="mobile" :delay="400">
+      <n-tooltip :delay="400">
         <template #trigger>
           <button
             type="button"
@@ -130,9 +121,8 @@ const pageCrumb = computed(() => {
         <span class="tb-tip">{{ t('inbox.title') }} <ShortcutKeys id="nav.goInbox" /></span>
       </n-tooltip>
       <NotificationsBell />
-      <!-- The cheat sheet (#2956); on a phone there is no keyboard to press. -->
+      <!-- The cheat sheet (#2956). -->
       <button
-        v-if="!mobile"
         type="button"
         class="tb-keys"
         data-testid="shortcuts-button"
@@ -214,27 +204,6 @@ const pageCrumb = computed(() => {
   gap: 16px;
   padding: 0 16px;
   position: relative;
-}
-/* A phone has no room for three tracks: back to a row where the search takes
-   whatever the hamburger and the board menu leave. */
-.topbar.mobile {
-  display: flex;
-  gap: 8px;
-  padding-left: 52px;
-}
-.topbar.mobile .tb-left:empty,
-.topbar.mobile .tb-left:has(> .tb-slot:empty:only-child) {
-  display: none;
-}
-.topbar.mobile .tb-center {
-  flex: 1;
-}
-.topbar.mobile .tb-right {
-  flex: none;
-}
-.menu-btn {
-  position: absolute;
-  left: 10px;
 }
 .tb-left,
 .tb-right {

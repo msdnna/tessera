@@ -136,7 +136,7 @@ describe('BoardMobileMenu: «Теги» с мобильной доски', () =>
     store.projectId = 'p-1'
     const BoardMobileMenu = (await import('@/components/BoardMobileMenu.vue')).default
     const w = mount(BoardMobileMenu, { global: { stubs } })
-    w.findComponent(naive.NDropdown).vm.$emit('select', 'tags')
+    w.findComponent({ name: 'ActionMenu' }).vm.$emit('select', 'tags')
     await settle(w)
     const win = useProjectWindowStore()
     expect(win.projectId).toBe('p-1')

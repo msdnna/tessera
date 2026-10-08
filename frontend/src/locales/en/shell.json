@@ -679,5 +679,18 @@
       "group": "In space “{space}”",
       "workspace": "Its own projects, people and access"
     }
+  },
+  "mobile": {
+    "back": "Back",
+    "board": "Board",
+    "search": "Search",
+    "nav": "Main navigation",
+    "appearance": "Appearance",
+    "whatsNew": "What's new",
+    "openTree": "Projects and boards",
+    "findBoard": "Find a board",
+    "swipeDone": "Done",
+    "swipeSnooze": "Snooze",
+    "swipeComplete": "Complete"
   }
 }

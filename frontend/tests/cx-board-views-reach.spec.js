@@ -100,16 +100,17 @@ describe('BoardMobileMenu saved views', () => {
     w.unmount()
   })
 
-  it('ticks the loaded view, like the active layout', () => {
+  it('marks the loaded view, like the active layout', () => {
     const { w } = menuWithViews([{ id: 'v1', name: 'Мои', layout: 'board' }], 'v1')
-    expect(w.vm.renderLabel({ key: 'view:v1', label: 'Мои' })).toBeTypeOf('object')
-    expect(w.vm.renderLabel({ key: 'view:v2', label: 'Спринт' })).toBe('Спринт')
+    expect(w.vm.isActive({ key: 'view:v1' })).toBe(true)
+    expect(w.vm.isActive({ key: 'view:v2' })).toBe(false)
+    expect(w.vm.items.find((i) => i.key === 'view:v1').active).toBe(true)
     w.unmount()
   })
 
-  it('ticks nothing when no view is loaded', () => {
+  it('marks nothing when no view is loaded', () => {
     const { w } = menuWithViews([{ id: 'v1', name: '', layout: 'board' }], '')
-    expect(w.vm.renderLabel({ key: 'view:v1', label: '' })).toBe('')
+    expect(w.vm.isActive({ key: 'view:v1' })).toBe(false)
     w.unmount()
   })
 })

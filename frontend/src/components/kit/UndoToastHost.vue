@@ -109,7 +109,8 @@ function onKey(e, toast) {
   position: fixed;
   left: var(--app-content-left, 0px);
   right: 0;
-  bottom: 24px;
+  /* Over the phone's bottom navigation with a 12px gap (#2976). */
+  bottom: max(24px, calc(var(--mnav-h, 0px) + 12px));
   /* Over the large windows (Naive modals sit at 2000) — a toast raised inside
      the «Проект» window must stay visible and clickable — and under the
      popovers (2050). */

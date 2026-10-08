@@ -41,6 +41,10 @@ const rootEl = ref(null)
 const buttonVisible = computed(() => {
   const p = route.path
   if (/^\/(conferences|documents)\/./.test(p)) return false
+  // A phone (#2976 — package G): screens without anything to create keep the
+  // corner free — the stage page, «Ещё», the notification feed.
+  if (isMobile.value && (/\/stage\//.test(p) || p === '/more' || p === '/notifications'))
+    return false
   return true
 })
 const capturing = computed(() => !!inbox.capture)
@@ -212,9 +216,10 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
 .fab-wrap.inboxed.docked {
   right: calc(376px + var(--inbox-w, 400px));
 }
+/* A phone: 16px off the edge and off the bottom navigation (#2976). */
 .fab-wrap.mobile {
-  right: 18px;
-  bottom: 44px;
+  right: 16px;
+  bottom: calc(16px + var(--mnav-h, 0px));
 }
 .fab-row {
   display: flex;

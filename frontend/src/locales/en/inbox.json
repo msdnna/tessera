@@ -51,7 +51,9 @@
     "hintSelect": "select",
     "hintFilter": "filter",
     "hintHide": "hide",
-    "resize": "Panel width"
+    "resize": "Panel width",
+    "firedN": "{n} went off",
+    "notesN": "{n} note | {n} notes"
   },
   "item": {
     "since": "from {time}",

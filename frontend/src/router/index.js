@@ -110,6 +110,11 @@ const routes = [
       // open article instead of navigating anywhere.
       { path: 'milestones', component: () => import('@/views/MilestonesView.vue') },
       { path: 'settings', component: () => import('@/views/SettingsView.vue') },
+      // The phone's «Ещё» tab and the notification feed as a page (#2976 —
+      // package G). Both send a wider window elsewhere: «Ещё» to the settings,
+      // the feed to the bell's popover.
+      { path: 'more', component: () => import('@/views/MoreView.vue') },
+      { path: 'notifications', component: () => import('@/views/NotificationsView.vue') },
       {
         path: 'admin',
         component: () => import('@/views/AdminView.vue'),

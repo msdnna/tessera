@@ -29,6 +29,8 @@ import { useBoardViewStore } from '@/stores/boardView'
 import Sidebar from './Sidebar.vue'
 import AppRail from './rail/AppRail.vue'
 import Topbar from './Topbar.vue'
+import MobileTopbar from './mobile/MobileTopbar.vue'
+import MobileTabBar from './mobile/MobileTabBar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
 import WhatsNewModal from './WhatsNewModal.vue'
 import SidebarSpotlight from './SidebarSpotlight.vue'
@@ -46,6 +48,8 @@ import { useConflictsStore } from '@/stores/conflicts'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
 import { useResponsive } from '@/composables/useResponsive'
+import { useVisualViewport } from '@/composables/useVisualViewport'
+import { useEdgeSwipe } from '@/composables/useEdgeSwipe'
 import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
@@ -56,6 +60,7 @@ import { useThemeStore } from '@/stores/theme'
 import { usePaletteStore } from '@/stores/palette'
 import { useHelpStore } from '@/stores/help'
 import { sGet } from '@/utils/serverStorage'
+import { unwindOverlay } from '@/utils/overlayNav'
 import { treeEventNeedsRefresh } from '@/utils/treeEvents'
 import { resyncShell } from '@/utils/shellResync'
 
@@ -222,6 +227,50 @@ const drawerOpen = ref(false)
 // Browser Back closes the mobile sidebar drawer instead of navigating.
 useOverlayBack(drawerOpen, () => (drawerOpen.value = false))
 
+// ── the phone shell (v2, #2976 — package G, navigation model A) ──
+// A header per screen, the page, and the bottom navigation; the project tree is
+// a drawer opened from the board's name, the «Доска» tab or a swipe in from the
+// left edge.
+const { keyboardOpen } = useVisualViewport()
+useEdgeSwipe(() => (drawerOpen.value = true), {
+  enabled: computed(() => isMobile.value && !drawerOpen.value),
+})
+// Screens with their own large title and nothing to go back to carry no header:
+// «Мои задачи», «Ещё», the notification feed. A call has a bar of its own.
+const inConference = computed(() => /^\/conferences\/./.test(route.path))
+const mobileHeader = computed(
+  () => !['/', '/more', '/notifications'].includes(route.path) && !inConference.value,
+)
+// The tab bar steps away while typing (the keyboard takes its place) and for a
+// call, which owns the whole screen.
+const mobileNav = computed(() => isMobile.value && !keyboardOpen.value && !inConference.value)
+watchEffect(() => {
+  const root = document.documentElement.style
+  root.setProperty('--mnav-h', mobileNav.value ? 'calc(64px + var(--safe-bottom))' : '0px')
+  root.setProperty(
+    '--m-head-h',
+    isMobile.value && mobileHeader.value ? 'calc(56px + var(--safe-top))' : '0px',
+  )
+})
+onBeforeUnmount(() => {
+  document.documentElement.style.setProperty('--mnav-h', '0px')
+  document.documentElement.style.removeProperty('--m-head-h')
+})
+// «Найти доску» in the drawer: the palette on «Доски и этапы», once the drawer's
+// history entry has unwound (utils/overlayNav).
+async function findBoard() {
+  await unwindOverlay(() => (drawerOpen.value = false))
+  palette.show()
+  palette.section = 'boards'
+}
+// The page's padding: the feed is edge to edge; the title screens start under
+// the status bar.
+const mobilePad = computed(() => {
+  if (route.path === '/notifications') return 'padding: 0'
+  if (!mobileHeader.value) return 'padding: calc(12px + var(--safe-top)) 12px 12px'
+  return 'padding: 4px 12px 12px'
+})
+
 onMounted(async () => {
   await authStore.verify()
   await ws.loadWorkspaces()
@@ -384,15 +433,15 @@ onBeforeUnmount(() => clearInterval(inboxClock))
       </n-layout>
     </n-layout>
 
-    <!-- Mobile: hamburger opens the sidebar in a drawer -->
-    <n-layout v-else class="work-pane" :class="{ 'home-glass': homeGlass }" style="height: 100vh">
-      <n-layout-header :class="{ 'hdr-glass': homeGlass }">
-        <Topbar :mobile="true" @menu="drawerOpen = true" />
+    <!-- Phone (#2976): header · page · bottom navigation; the tree in a drawer. -->
+    <n-layout v-else class="work-pane m-pane">
+      <n-layout-header v-if="mobileHeader" class="m-head">
+        <MobileTopbar @drawer="drawerOpen = true" />
       </n-layout-header>
       <n-layout-content
         class="page-slot page-slot--mobile"
-        :content-style="homeGlass ? 'padding: 64px 12px 12px' : 'padding: 12px'"
-        :style="{ height: homeGlass ? '100vh' : 'calc(100vh - 52px)' }"
+        :content-style="mobilePad"
+        style="height: calc(var(--app-vh) - var(--m-head-h, 0px) - var(--mnav-h, 0px))"
       >
         <router-view v-slot="{ Component }">
           <!-- see the desktop branch: no out-in, leaving page goes absolute (#2708) -->
@@ -403,12 +452,18 @@ onBeforeUnmount(() => clearInterval(inboxClock))
       </n-layout-content>
       <QuickActionsFab />
       <InboxPanel />
-      <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
+      <MobileTabBar v-if="mobileNav" @drawer="drawerOpen = true" />
+      <n-drawer
+        v-model:show="drawerOpen"
+        width="min(340px, 88vw)"
+        placement="left"
+        class="m-drawer"
+      >
         <n-drawer-content body-content-style="padding: 0">
           <!-- The rail rides along in the drawer on a phone (#2955). -->
           <div class="drawer-split">
             <AppRail />
-            <Sidebar :mobile="true" class="drawer-sidebar" />
+            <Sidebar :mobile="true" class="drawer-sidebar" @find="findBoard" />
           </div>
         </n-drawer-content>
       </n-drawer>
@@ -482,7 +537,7 @@ onBeforeUnmount(() => clearInterval(inboxClock))
    overflow:hidden pins the shell to the viewport — the scrolling belongs to the
    n-layout-content inside, never to the page itself (#2930). */
 .app-shell {
-  height: 100vh;
+  height: var(--app-vh, 100vh);
   overflow: hidden;
   /* Reserve the gutter for the app-root server rail (#2930); 0 on web/mobile
      where --app-rail-w is unset/0. border-box so the padding eats into the
@@ -501,6 +556,13 @@ onBeforeUnmount(() => clearInterval(inboxClock))
 .drawer-split {
   display: flex;
   height: 100%;
+}
+/* The phone shell (#2976). */
+.m-pane {
+  height: var(--app-vh, 100vh);
+}
+.m-head {
+  padding-top: var(--safe-top);
 }
 .drawer-sidebar {
   flex: 1;

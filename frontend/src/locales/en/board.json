@@ -120,7 +120,8 @@
     "restored": "Column “{name}” restored",
     "restoreFailed": "Couldn't restore the column",
     "renameHint": "Double-click to rename",
-    "tagLocked": "A tag is renamed in the project's tags"
+    "tagLocked": "A tag is renamed in the project's tags",
+    "position": "{name} · {n} of {total}"
   },
   "group": {
     "noMilestone": "No milestone",
@@ -161,7 +162,8 @@
     "view": "View",
     "tags": "Tags",
     "milestones": "Milestones",
-    "archive": "Archive"
+    "archive": "Archive",
+    "menu": "Board menu"
   },
   "customize": {
     "title": "Board view",

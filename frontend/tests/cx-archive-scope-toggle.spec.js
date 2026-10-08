@@ -103,15 +103,16 @@ describe('BoardActions «Архив» button', () => {
 describe('BoardMobileMenu «Архив» entry', () => {
   const archiveOption = (w) => w.vm.options.find((o) => o.key === 'archive')
 
-  it('is ticked while the scope is on, plain while it is off', () => {
+  it('is marked while the scope is on, plain while it is off', () => {
     const live = mount(BoardMobileMenu, { global: { stubs: STUBS } })
-    // No tick = the label is returned as-is (a string), not wrapped in a vnode.
-    expect(live.vm.renderLabel(archiveOption(live))).toBe(archiveOption(live).label)
+    expect(live.vm.isActive(archiveOption(live))).toBe(false)
+    expect(live.vm.items.find((i) => i.key === 'archive').active).toBe(false)
     live.unmount()
 
     route.query = { archived: '1' }
     const archived = mount(BoardMobileMenu, { global: { stubs: STUBS } })
-    expect(typeof archived.vm.renderLabel(archiveOption(archived))).toBe('object')
+    expect(archived.vm.isActive(archiveOption(archived))).toBe(true)
+    expect(archived.vm.items.find((i) => i.key === 'archive').active).toBe(true)
     archived.unmount()
   })
 

@@ -17,6 +17,7 @@ import {
   AlarmOutline,
   ArrowRedoOutline,
   CheckmarkDoneOutline,
+  CheckmarkOutline,
   CloudOfflineOutline,
   CreateOutline,
   DocumentOutline,
@@ -29,6 +30,7 @@ import {
   UnlinkOutline,
 } from '@vicons/ionicons5'
 import DockPanel from '@/components/kit/DockPanel.vue'
+import SwipeRow from '@/components/kit/SwipeRow.vue'
 import ActionMenu from '@/components/kit/ActionMenu.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import InboxItem from './InboxItem.vue'
@@ -283,6 +285,34 @@ const hints = computed(() => [
   { id: 'nav.goInbox', text: t('inbox.panel.hintHide') },
 ])
 const filterLabel = (f) => t(`inbox.panel.filter.${f}`)
+// A phone (#2976 — package G «Входящие»): a reminder swipes right to be done,
+// left to be put off (the variants in a sheet).
+function swipeFor(rec) {
+  return {
+    left: rec.done
+      ? []
+      : [
+          {
+            key: 'done',
+            label: t('shell.mobile.swipeComplete'),
+            icon: CheckmarkOutline,
+            tone: '#18a058',
+          },
+        ],
+    right: [
+      { key: 'snooze', label: t('shell.mobile.swipeSnooze'), icon: AlarmOutline, tone: '#f0a020' },
+    ],
+  }
+}
+// The count next to the title; on a phone, under the large title, it says
+// what the count is made of (#2976 — package G «Входящие»).
+const subtitle = computed(() => {
+  if (!isMobile.value) return inbox.total ? String(inbox.total) : ''
+  const parts = []
+  if (inbox.fired) parts.push(t('inbox.panel.firedN', { n: inbox.fired }))
+  parts.push(t('inbox.panel.notesN', inbox.notes.length, { named: { n: inbox.notes.length } }))
+  return parts.join(' · ')
+})
 </script>
 
 <template>
@@ -307,10 +337,11 @@ const filterLabel = (f) => t(`inbox.panel.filter.${f}`)
       v-model:show="show"
       variant="sidebar"
       :title="t('inbox.title')"
-      :subtitle="inbox.total ? String(inbox.total) : ''"
+      :subtitle="subtitle"
       :width="inbox.width"
       :hints="hints"
       full
+      :page="isMobile"
       testid="inbox-panel"
     >
       <template #actions>
@@ -406,22 +437,29 @@ const filterLabel = (f) => t(`inbox.panel.filter.${f}`)
                 {{ t('inbox.panel.doneAll') }}
               </button>
             </div>
-            <InboxItem
+            <component
+              :is="isMobile && r.kind === 'reminder' ? SwipeRow : 'div'"
               v-for="r in g.items"
               :key="keyOf(r)"
-              :rec="r"
-              :now="inbox.now"
-              :selected="inbox.selected === keyOf(r)"
-              :kbd="kbd && !isMobile"
-              :expanded="inbox.expanded === keyOf(r)"
-              :touch="isMobile"
-              @select="!kbd && selectKey(keyOf(r))"
-              @open="open(r)"
-              @task="act.openTask(r)"
-              @menu="(el) => openMenu(r, el)"
-              @collapse="collapse"
-              @contextmenu.prevent="openMenu(r)"
-            />
+              class="ib-cell"
+              v-bind="isMobile && r.kind === 'reminder' ? swipeFor(r) : {}"
+              @action="(a) => run(a, r)"
+            >
+              <InboxItem
+                :rec="r"
+                :now="inbox.now"
+                :selected="inbox.selected === keyOf(r)"
+                :kbd="kbd && !isMobile"
+                :expanded="inbox.expanded === keyOf(r)"
+                :touch="isMobile"
+                @select="!kbd && selectKey(keyOf(r))"
+                @open="open(r)"
+                @task="act.openTask(r)"
+                @menu="(el) => openMenu(r, el)"
+                @collapse="collapse"
+                @contextmenu.prevent="openMenu(r)"
+              />
+            </component>
           </section>
         </template>
       </div>

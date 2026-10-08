@@ -51,7 +51,9 @@
     "hintSelect": "выбрать",
     "hintFilter": "фильтр",
     "hintHide": "скрыть",
-    "resize": "Ширина панели"
+    "resize": "Ширина панели",
+    "firedN": "{n} сработало",
+    "notesN": "{n} заметка | {n} заметки | {n} заметок"
   },
   "item": {
     "since": "с {time}",

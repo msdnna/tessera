@@ -14,6 +14,7 @@ import TesseraIcon from '@/components/TesseraIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import { usePaletteStore } from '@/stores/palette'
 import { useOverlayBack } from '@/composables/useOverlayBack'
+import { useResponsive } from '@/composables/useResponsive'
 import { pushBlocker } from '@/shortcuts/dispatcher'
 import { hasModKey } from '@/utils/keys'
 import { highlight } from '@/utils/fuzzy'
@@ -23,6 +24,9 @@ import { usePaletteForm } from './usePaletteForm'
 
 const { t } = useI18n()
 const palette = usePaletteStore()
+// A phone (#2976 — package G «Поиск»): the palette is the whole screen, with
+// «Отмена» next to the field instead of Esc.
+const { isMobile } = useResponsive()
 const results = usePaletteResults()
 const taskScope = usePaletteTask()
 const form = usePaletteForm()
@@ -392,6 +396,16 @@ const enterLabel = (row) => {
               {{ t('shell.palette.back') }}
             </span>
             <ShortcutKeys id="palette.close" />
+            <button
+              v-if="isMobile"
+              type="button"
+              class="cp-cancel"
+              data-testid="palette-cancel"
+              @mousedown.prevent
+              @click="palette.hide()"
+            >
+              {{ t('common.action.cancel') }}
+            </button>
           </div>
 
           <div v-if="formMode && form.error.value" class="cp-error" role="alert">
@@ -846,8 +860,65 @@ const enterLabel = (row) => {
 }
 
 @media (max-width: 768px) {
+  /* The whole screen, over the keyboard's top edge (#2976). */
   .cp-scrim {
-    padding: 12px 8px;
+    padding: 0;
+    background: var(--t-bg);
+  }
+  .cp {
+    width: 100%;
+    height: calc(var(--app-vh, 100vh) - var(--kb-h, 0px));
+    max-height: none;
+    padding-top: calc(10px + var(--safe-top));
+    box-sizing: border-box;
+    border-radius: 0;
+    background: var(--t-bg);
+    box-shadow: none;
+  }
+  .cp-input {
+    height: 48px;
+    margin: 0 10px 10px 12px;
+    padding: 0 6px 0 14px;
+    gap: 10px;
+    border-radius: 14px;
+    background: var(--t-sub);
+    box-shadow: inset 0 0 0 2px var(--t-primary);
+  }
+  .cp-cancel {
+    flex: none;
+    height: 44px;
+    margin-right: -88px;
+    padding: 0 4px 0 18px;
+    border: 0;
+    background: transparent;
+    color: var(--t-primary);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .cp-input:has(.cp-cancel) {
+    margin-right: 92px;
+  }
+  /* The areas scroll sideways in one row of 34px chips. */
+  .cp-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0 12px 10px;
+    scrollbar-width: none;
+  }
+  .cp-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .cp-tab {
+    flex: none;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 17px;
+    font-size: 13.5px;
+  }
+  .cp-row {
+    min-height: 56px;
   }
   .cp-foot {
     display: none;
