@@ -272,6 +272,20 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   `session.transport`/`room` (драйвер `.design-sync/.cache/v2e2.mjs`, `mockCall`). «Статья
   помогла?» — ack `helpful:<slug>:<lang>:yes|no` без своей таблицы, итоги — `GET
   /admin/help-feedback` и раздел «Справка» админки. F1 — справка.
+- **Тур «Начало работы» и подсказки (#3000, #3070):** тур — главы (`data/getStarted.js`:
+  «Основы» 10 шагов, главы по выбору, «Знакомство» для приглашённого, «Основы» телефона нижним
+  листом, мини-тур «Что изменилось»), движок `stores/tour.js` (правила `click/count/set/appear/
+  vanish/moved`, «Назад» по инфо-шагам, Esc → «Прервать?», «Засчитано»), слой `TourOverlay.vue`
+  («Не видим …» с отсчётом вместо молчаливого пропуска). Чек-лист на «Моих задачах» —
+  `stores/onboarding.js` считает **результаты** по событиям: свои события сокета (бэкенд кладёт
+  `actor` в создание/перенос проекта и группы, доски, этапа, теги/исполнителей — **новый
+  user-initiated broadcast делать `broadcastAs`**) и клиентские `tourEvent()` (`utils/tourEvents`).
+  Подсказки — `data/hints.js` + `stores/hints.js` + `tour/SpotlightHint.vue` (любой якорь,
+  «новое»/«при первой встрече», ≤2 за сессию, ждут свободный экран). Всё — в
+  `user_acknowledgements`: `getstarted:*` (done/skipped, `ch:<глава>`, `item:<результат>[:self]`,
+  `checklist:hidden`), `spotlight:<ключ>`, `hints:off:new|ctx`, `whatschanged:v2|later`;
+  сброс — `DELETE /users/me/acknowledgements?key=|prefix=`. Новый якорь шага — в `MARKUP`
+  `tests/dt-get-started.spec.js`; e2e-пользователи (`register()`) выключают тур и подсказки.
 - **Редактор описаний/комментариев — собственный `MarkdownEditor.vue`** (textarea +
   тулбар + Написать/Просмотр + @-mentions), хранит **Markdown**. **TipTap пробовали и
   отвергли** (тема/бандл) — не возвращать без явного запроса.
