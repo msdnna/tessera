@@ -40,6 +40,57 @@ export function matrixConfig(m) {
   }
 }
 
+// The list's field columns (#3020), left to right after the title, and their
+// widths from the mockup (ListView: приоритет 112, срок 92, люди 92, оценка 62,
+// теги 150). The reader drags a column wider or narrower; the widths are part of
+// the board's state and of a saved view.
+export const LIST_FIELDS = ['priority', 'due', 'people', 'estimate', 'tags']
+export const LIST_WIDTHS = Object.freeze({
+  priority: 112,
+  due: 92,
+  people: 92,
+  estimate: 62,
+  tags: 150,
+})
+export const LIST_WIDTH_MIN = 48
+export const LIST_WIDTH_MAX = 360
+export function clampListWidth(w) {
+  return Math.round(Math.min(LIST_WIDTH_MAX, Math.max(LIST_WIDTH_MIN, w)))
+}
+export function listConfig(l) {
+  const widths = {}
+  for (const k of LIST_FIELDS) {
+    const w = l?.widths?.[k]
+    widths[k] = Number.isFinite(w) ? clampListWidth(w) : LIST_WIDTHS[k]
+  }
+  return { widths }
+}
+
+// The calendar's mode (#3019): the month grid, or a week of full-height days.
+export const CALENDAR_MODES = ['month', 'week']
+export function calendarConfig(c) {
+  return { mode: CALENDAR_MODES.includes(c?.mode) ? c.mode : 'month' }
+}
+
+// The timeline / Gantt «Шкала» (#3021): the scale preset and what the chart
+// draws on top of the bars. The defaults keep what the chart has always drawn —
+// weekends, the today line, progress, the Gantt's links and the undated strip.
+export const CHART_SCALES = ['days', 'weeks', 'months', 'quarters']
+export const CHART_TOGGLES = ['weekends', 'today', 'progress', 'links', 'undated']
+export const CHART_DEFAULTS = Object.freeze({
+  scale: 'days',
+  weekends: true,
+  today: true,
+  progress: true,
+  links: true,
+  undated: true,
+})
+export function chartConfig(c) {
+  const out = { scale: CHART_SCALES.includes(c?.scale) ? c.scale : CHART_DEFAULTS.scale }
+  for (const k of CHART_TOGGLES) out[k] = typeof c?.[k] === 'boolean' ? c[k] : CHART_DEFAULTS[k]
+  return out
+}
+
 // The visualization a saved view belongs to. Views predating per-layout sets carry
 // no layout in their config and count as board views.
 export function viewLayout(v) {
@@ -87,6 +138,9 @@ export function normalizeViewConfig(c) {
     showEmpty: c?.showEmpty !== false,
     fieldVis: sortedObject({ ...defaultFieldVis(), ...(c?.fieldVis || {}) }),
     matrix: matrixConfig(c?.matrix),
+    list: listConfig(c?.list),
+    calendar: calendarConfig(c?.calendar),
+    chart: chartConfig(c?.chart),
   }
 }
 
@@ -96,7 +150,8 @@ export function sameViewConfig(a, b) {
 
 // What differs between the loaded view and the board now, as a list of areas
 // for the «изменено» note: [{ area, value? }] in a fixed order.
-//   area ∈ layout | group | sort | filters | cards | columns | matrix
+//   area ∈ layout | group | sort | filters | cards | columns | matrix | list |
+//          calendar | scale
 export function viewChanges(saved, now) {
   const a = normalizeViewConfig(saved)
   const b = normalizeViewConfig(now)
@@ -122,6 +177,9 @@ export function viewChanges(saved, now) {
   )
     out.push({ area: 'columns' })
   if (differ('matrix')) out.push({ area: 'matrix' })
+  if (differ('list')) out.push({ area: 'list' })
+  if (differ('calendar')) out.push({ area: 'calendar' })
+  if (differ('chart')) out.push({ area: 'scale' })
   return out
 }
 

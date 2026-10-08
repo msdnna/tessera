@@ -26,6 +26,7 @@ export const GROUPS = [
   'sidebar',
   'board',
   'card',
+  'list',
   'task',
   'chart',
   'create',
@@ -124,6 +125,23 @@ export const CATALOG = [
   { id: 'card.move', group: 'card', display: [['mod', '←/→']] },
   { id: 'card.moveLeft', keys: 'mod+arrowleft' },
   { id: 'card.moveRight', keys: 'mod+arrowright' },
+
+  // ── the «Список» view (#3020): rows under the keyboard cursor. ↵ E P D A L S
+  // and ⌘←/→ are the selected card's keys (above), C the board's; these are the
+  // list's own.
+  { id: 'list.select', group: 'list', display: [['arrowup', 'arrowdown']] },
+  { id: 'list.extend', group: 'list', display: [['shift', '↑/↓']] },
+  { id: 'list.fold', group: 'list', display: [['arrowleft', 'arrowright']] },
+  { id: 'list.rename', keys: 'f2', group: 'list' },
+  { id: 'list.reorder', group: 'list', display: [['mod', '↑/↓']] },
+  { id: 'list.up', keys: 'arrowup', repeat: true },
+  { id: 'list.down', keys: 'arrowdown', repeat: true },
+  { id: 'list.extendUp', keys: 'shift+arrowup', repeat: true },
+  { id: 'list.extendDown', keys: 'shift+arrowdown', repeat: true },
+  { id: 'list.collapse', keys: 'arrowleft' },
+  { id: 'list.expand', keys: 'arrowright' },
+  { id: 'list.moveUp', keys: 'mod+arrowup' },
+  { id: 'list.moveDown', keys: 'mod+arrowdown' },
 
   // ── the open task (#2958): the modal's own keys. `modal` because the task
   // modal is a Naive dialog; the field keys mirror the selected card's, so the

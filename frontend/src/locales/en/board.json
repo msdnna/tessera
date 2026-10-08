@@ -74,7 +74,10 @@
       "filters": "filters",
       "cards": "cards",
       "columns": "columns",
-      "matrix": "matrix thresholds"
+      "matrix": "matrix thresholds",
+      "list": "column widths",
+      "calendar": "calendar mode",
+      "scale": "scale"
     }
   },
   "column": {
@@ -301,7 +304,26 @@
     "noDue": "No due date"
   },
   "list": {
-    "empty": "— empty —"
+    "empty": "No tasks",
+    "addTask": "Task",
+    "complete": "Complete",
+    "reopen": "Reopen",
+    "assign": "Assign someone",
+    "resize": "Drag to resize; double-click to reset",
+    "hintOpen": "open",
+    "hintRename": "name",
+    "hintComplete": "complete",
+    "hintPriority": "priority",
+    "hintOrder": "order",
+    "col": {
+      "number": "No.",
+      "task": "Task",
+      "priority": "Priority",
+      "due": "Due",
+      "people": "People",
+      "estimate": "Estimate",
+      "tags": "Tags"
+    }
   },
   "matrix": {
     "urgent": "Urgent",

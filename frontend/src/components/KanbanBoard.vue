@@ -73,7 +73,15 @@ import {
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
 import { buildLists, collapseKey } from '@/utils/boardLists'
-import { LAYOUTS, MATRIX_DEFAULTS, matrixConfig } from '@/utils/boardViews'
+import {
+  LAYOUTS,
+  MATRIX_DEFAULTS,
+  matrixConfig,
+  listConfig,
+  calendarConfig,
+  chartConfig,
+  CHART_DEFAULTS,
+} from '@/utils/boardViews'
 import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
 import {
@@ -202,6 +210,11 @@ const autoCollapseEmpty = ref(false)
 // The Eisenhower thresholds (#3018): urgent = due within N days, important =
 // priority from M up. Part of the board's state and of a saved view.
 const matrixCfg = reactive({ ...MATRIX_DEFAULTS })
+// The list's field-column widths (#3020), the calendar's month/week mode (#3019)
+// and the timeline/Gantt «Шкала» (#3021): the board's state, saved with a view.
+const listCfg = reactive(listConfig())
+const calendarCfg = reactive(calendarConfig())
+const chartCfg = reactive({ ...CHART_DEFAULTS })
 // cardSize / stackFields / showEmpty / fieldVis are owned by the store (cards read
 // them from there) but remain part of this board's saved view — snapshotToolbar and
 // loadCustomize below read and write them exactly as before.
@@ -695,11 +708,15 @@ function defaultToolbar(forLayout) {
     filters: emptyFilters(),
     colCollapse: {},
     autoCollapseEmpty: false,
-    cardSize: 'medium',
+    // The matrix draws compact cards two to a row (#2973, mockup MatrixView).
+    cardSize: forLayout === 'matrix' ? 'compact' : 'medium',
     stackFields: false,
     showEmpty: true,
     fieldVis: defaultFieldVis(),
     matrix: { ...MATRIX_DEFAULTS },
+    list: listConfig(),
+    calendar: calendarConfig(),
+    chart: { ...CHART_DEFAULTS },
   }
 }
 function snapshotToolbar() {
@@ -717,6 +734,9 @@ function snapshotToolbar() {
     showEmpty: showEmpty.value,
     fieldVis: { ...fieldVis },
     matrix: { ...matrixCfg },
+    list: listConfig(listCfg),
+    calendar: { ...calendarCfg },
+    chart: { ...chartCfg },
   }
 }
 function loadToolbar(s) {
@@ -740,6 +760,9 @@ function loadCustomize(s) {
   showEmpty.value = s.showEmpty !== false
   Object.assign(fieldVis, defaultFieldVis(), s.fieldVis || {})
   Object.assign(matrixCfg, matrixConfig(s.matrix))
+  Object.assign(listCfg, listConfig(s.list))
+  Object.assign(calendarCfg, calendarConfig(s.calendar))
+  Object.assign(chartCfg, chartConfig(s.chart))
 }
 
 // Rebuild a pre-per-layout blob into a toolbar snapshot. Built on top of the
@@ -790,6 +813,9 @@ watch(
     showEmpty,
     fieldVis,
     matrixCfg,
+    listCfg,
+    calendarCfg,
+    chartCfg,
   ],
   persistView,
   { deep: true },
@@ -829,6 +855,9 @@ function currentViewConfig() {
     showEmpty: showEmpty.value,
     fieldVis: { ...fieldVis },
     matrix: { ...matrixCfg },
+    list: listConfig(listCfg),
+    calendar: { ...calendarCfg },
+    chart: { ...chartCfg },
   }
 }
 function applyViewConfig(c) {
@@ -1566,6 +1595,46 @@ function cancelAddTask() {
   addingInColumn.value = null
   newTaskTitle.value = ''
 }
+function laneMilestoneId(dcol) {
+  return newTaskMilestoneId({
+    groupMode: groupMode.value,
+    lane: dcol,
+    scopeId: scopeMilestoneId(),
+  })
+}
+// A task typed into a lane of another view (the list's «＋ Задача» / C, #3020):
+// filed exactly as the kanban files one typed into that column — the status
+// column itself, or the first column pre-tagged / stamped with the lane's
+// tag / milestone. Extra fields (a calendar day's due) ride along. Resolves to
+// the new task, or null when it could not be created.
+async function createInLane(dcol, title, extra = {}) {
+  const name = normalizeTitle(title)
+  if (!name || !board.value) return null
+  const columnId = dcol && groupMode.value === 'status' ? dcol.key : columns.value[0]?.id
+  if (!columnId) {
+    message.warning(t('board.column.needStatus'))
+    return null
+  }
+  const milestoneId = dcol
+    ? laneMilestoneId(dcol)
+    : newTaskMilestoneId({ scopeId: scopeMilestoneId() })
+  suppress()
+  try {
+    const res = await boards.createTask(board.value.id, {
+      column_id: columnId,
+      title: name,
+      ...extra,
+    })
+    if (dcol && groupMode.value === 'tag' && dcol.tag)
+      await tasksApi.addTag(res.data.id, dcol.tag.id)
+    if (milestoneId) await tasksApi.setMilestone(res.data.id, milestoneId)
+    await load(props.boardId, { silent: true })
+    return res.data
+  } catch (e) {
+    message.error(e.message)
+    return null
+  }
+}
 async function submitAddTask(dcol) {
   // Enter is caught on keydown so the textarea never gets to insert its newline;
   // normalizeTitle is the backstop for pasted multi-line text.
@@ -1746,9 +1815,15 @@ function navigateTask(dir) {
   router.replace({ query: { ...route.query, task: numberOf(id) ?? id } })
 }
 
+// The task actions behind the keys (E, P 0–4, ⌘←/→), shared by the kanban's
+// selected card and the other views' own selections (list rows, matrix and
+// calendar picks — #2973). `reload: false` lets a batch (several list rows)
+// reload once at the end.
 async function completeFocused() {
   const task = focusedTask()
-  if (!task) return
+  if (task) await completeTask(task)
+}
+async function completeTask(task, { reload = true } = {}) {
   const plan = planComplete({
     completed: !!task.completed_at,
     columnId: task.column_id,
@@ -1764,7 +1839,7 @@ async function completeFocused() {
     } else {
       await tasksApi.update(task.id, { ...taskBasePatch(task), completed: plan.op === 'complete' })
     }
-    scheduleReload()
+    if (reload) scheduleReload()
   } catch (e) {
     message.error(e.message)
   }
@@ -1772,13 +1847,76 @@ async function completeFocused() {
 
 async function setFocusedPriority(value) {
   const task = focusedTask()
+  if (task) await setTaskPriority(task, value)
+}
+async function setTaskPriority(task, value, { reload = true } = {}) {
   if (!task || value > 4) return
   suppress()
   try {
     await tasksApi.update(task.id, { ...taskBasePatch(task), priority: value })
-    scheduleReload()
+    if (reload) scheduleReload()
   } catch (e) {
     message.error(e.message)
+  }
+}
+// A batch from another view's selection: every task once, one reload after.
+async function completeTasks(list) {
+  for (const task of list) await completeTask(task, { reload: false })
+  scheduleReload()
+}
+async function setTasksPriority(list, value) {
+  for (const task of list) await setTaskPriority(task, value, { reload: false })
+  scheduleReload()
+}
+// ⌘←/→ on list rows: each one into the lane next to its own, as on the kanban.
+async function shiftTasks(items, dir) {
+  suppress()
+  try {
+    for (const { task, laneKey } of items) {
+      const from = colModel.value.find((d) => d.key === laneKey)
+      const to = from && neighbourColumn(colModel.value, from.key, dir)
+      if (!to) continue
+      const intents = planShift({
+        groupMode: groupMode.value,
+        from,
+        to,
+        taskId: task.id,
+        tailId: null,
+      })
+      if (intents.length) await runIntents(intents)
+    }
+    await load(props.boardId, { silent: true })
+  } catch (e) {
+    message.error(e.message)
+    load(props.boardId)
+  }
+}
+// ⌘↑/↓ on a list row: one step up/down inside its status column. Only where the
+// list shows the stored order (status lanes, no composer sort) — the same rule
+// the kanban's card drag follows (utils/boardDnd canSortWithinLane).
+async function reorderTask({ task, laneKey, beforeId, afterId }) {
+  if (!canSortCards.value || groupMode.value !== 'status') return
+  suppress()
+  try {
+    await tasksApi.move(task.id, { column_id: laneKey, before_id: beforeId, after_id: afterId })
+    await load(props.boardId, { silent: true })
+  } catch (e) {
+    message.error(e.message)
+    load(props.boardId)
+  }
+}
+// F2 / double click on a list row: the title edited in place.
+async function renameTask(task, title) {
+  const next = normalizeTitle(title)
+  if (!next || next === task.title) return true
+  suppress()
+  try {
+    await tasksApi.update(task.id, { ...taskBasePatch(task), title: next })
+    await load(props.boardId, { silent: true })
+    return true
+  } catch (e) {
+    message.error(humanizeError(e))
+    return false
   }
 }
 
@@ -2076,6 +2214,18 @@ useShortcuts(
 function onChanged() {
   suppress()
   scheduleReload()
+}
+
+// What the list view's keys and in-place edits run (#3020): the same task
+// actions the kanban's selected card uses.
+const listActions = {
+  complete: (list) => completeTasks(list),
+  priority: (list, value) => setTasksPriority(list, value),
+  shift: (items, dir) => shiftTasks(items, dir),
+  reorder: (plan) => reorderTask(plan),
+  rename: (task, title) => renameTask(task, title),
+  create: (dcol, title) => createInLane(dcol, title),
+  field: (task, field) => paletteStore.openTask(task.id, field),
 }
 
 // Matrix view quick-add: create the task in the board's first column, then pin it
@@ -2687,17 +2837,28 @@ async function restoreFromArchive(taskId) {
         <div class="board-main">
           <BoardListView
             v-if="layout === 'list'"
-            :columns="displayColumns"
+            :columns="colModel"
             :status-columns="columns"
             :lists="lists"
+            :group-mode="groupMode"
+            :done-column-id="doneColumnId"
+            :counts="countsByCol"
+            :subtasks-by-parent="filteredSubtasksByParent"
+            :est-cfg="estCfg"
             :tags-map="tagsMap"
             :members-map="membersMap"
             :gitlab-members="gitlabMembersList"
             :tag-prefix-names="tagPrefixNames"
+            :widths="listCfg.widths"
+            :is-folded="isColCollapsed"
+            :can-reorder="canSortCards && groupMode === 'status'"
+            :actions="listActions"
             :readonly="archivedMode"
             @open="openTask"
             @changed="onChanged"
             @restore="restoreFromArchive"
+            @fold="toggleCollapse"
+            @resize="(k, w) => (listCfg.widths[k] = w)"
           />
 
           <BoardCalendarView

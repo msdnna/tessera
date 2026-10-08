@@ -155,7 +155,8 @@ describe('every cardless layout wires the restore through', () => {
   ]) {
     it(`${file} emits restore from its menu`, () => {
       const code = src(file)
-      expect(code).toContain("defineEmits(['open', 'changed', 'restore'])")
+      // Views with keys of their own add events after these three (#2973).
+      expect(code).toMatch(/defineEmits\(\[\s*'open',\s*'changed',\s*'restore'/)
       const call = code.slice(code.indexOf('useTaskMenu({'))
       expect(call.slice(0, call.indexOf('})'))).toContain("onRestore: (id) => emit('restore', id)")
     })

@@ -221,7 +221,8 @@
       "views": "Saved views",
       "project": "«Project» window",
       "stage": "Milestone page",
-      "inbox": "Inbox"
+      "inbox": "Inbox",
+      "list": "List"
     },
     "nav": {
       "palette": "Search and commands",
@@ -369,6 +370,13 @@
       "toDoc": "Turn into a document",
       "link": "Tie to a task",
       "delete": "Delete (undo ⌘Z)"
+    },
+    "list": {
+      "select": "Select a row",
+      "extend": "Select several rows",
+      "fold": "Fold / unfold the group",
+      "rename": "Rename in place",
+      "reorder": "Move up / down in the column"
     }
   },
   "palette": {
