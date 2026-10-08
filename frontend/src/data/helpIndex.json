@@ -6,7 +6,7 @@
       "title": "Первые шаги",
       "category": "Начало работы",
       "order": 10,
-      "updated": "2026-10-08",
+      "updated": "2026-10-09",
       "keywords": [
         "старт",
         "регистрация",
@@ -39,7 +39,7 @@
           "level": 2
         }
       ],
-      "text": "Tessera — таск-трекер: доски с задачами, документы, заметки и напоминания. Эта статья проводит по пути от пустого аккаунта до первой задачи на доске. Пространство Всё содержимое живёт внутри пространства (workspace). Пространство — это отдельный контур со своими проектами, досками и участниками; переключиться между ними можно в шапке боковой панели. Первое пространство создаётся вместе с аккаунтом, так что начинать с нуля не придётся. Пригласить коллегу: меню пространства (его имя вверху боковой панели) → «Участники». Адреса в поле приглашения превращаются в чипы — по <kbd>Enter</kbd>, запятой или пробелу, так можно позвать сразу нескольких; «Пригласить» отправляет. Зарегистрированного добавим сразу, новому придёт письмо со ссылкой (ссылку можно и скопировать). Роль — «Участник» или «Админ»; владелец пространства один, и роль ему не меняют. Проекты и группы Слева — дерево проектов. Проекты можно складывать в группы, группы вкладываются друг в друга: удобно, когда направлений много. Кнопка «+» в заголовке «Проекты» создаёт проект или группу в корне; такая же кнопка есть у каждого узла дерева. Проект перетаскивается в группу мышью. Доска Доска принадлежит проекту и состоит из колонок. Новая доска сразу приходит с четырьмя колонками — их можно переименовать, добавить свои и переставить. Задача создаётся кнопкой «+» в шапке колонки, переносится между колонками перетаскиванием. Клик по карточке открывает окно задачи: описание, подзадачи, теги, исполнители, приоритет, срок и комментарии. Одна из колонок доски — завершающая: задача, попавшая в неё, считается выполненной, и у неё проставляется дата завершения. Важно именно попадание в колонку, а не название задачи или галочка — подробнее в статье Доски и задачи. Доска проекта с колонками и карточками Что дальше Доски и задачи — группировка по тегам, представления, фильтры. Документы — совместный редактор, импорт из Word, история версий. Конференции — видеозвонки с демонстрацией экрана, чатом и записью прямо в трекере. Входящие — заметки и напоминания одной лентой: записать откуда угодно, разобрать, не уходя с доски. Этапы — вехи релизов и прогресс по ним. Частые вопросы — короткие ответы на то, обо что спотыкаются чаще всего. Внизу боковой панели есть кнопка «Помощь» со знаком вопроса, а в ней два пункта. «Обучение» — интерактивный путеводитель, который проводит по интерфейсу прямо в приложении; его можно запустить в любой момент и пройти заново. «Справочный центр» — эта справка: она открывается окном поверх текущего экрана, так что доска, с которой вы её позвали, никуда не девается. Ещё быстрее — клавиша <kbd>F1</kbd>, она же закрывает справку. В окне справки слева — разделы и статьи, сверху — поиск (<kbd>/</kbd> ставит в него курсор, <kbd>↑</kbd> <kbd>↓</kbd> и <kbd>↵</kbd> выбирают результат), справа — оглавление статьи. Внизу статьи можно ответить, помогла ли она: ответ один на статью, а администраторы видят итоги в «Администрировании» → «Справка» и по ним понимают, какие статьи пора переписать.",
+      "text": "Tessera — таск-трекер: доски с задачами, документы, заметки и напоминания. Эта статья проводит по пути от пустого аккаунта до первой задачи на доске. Пространство Всё содержимое живёт внутри пространства (workspace). Пространство — это отдельный контур со своими проектами, досками и участниками; переключиться между ними можно в шапке боковой панели. Первое пространство создаётся вместе с аккаунтом, так что начинать с нуля не придётся. Пригласить коллегу: меню пространства (его имя вверху боковой панели) → «Участники». Адреса в поле приглашения превращаются в чипы — по <kbd>Enter</kbd>, запятой или пробелу, так можно позвать сразу нескольких; «Пригласить» отправляет. Зарегистрированного добавим сразу, новому придёт письмо со ссылкой (ссылку можно и скопировать). Роль — «Участник» или «Админ»; владелец пространства один, и роль ему не меняют. Проекты и группы Слева — дерево проектов. Проекты можно складывать в группы, группы вкладываются друг в друга: удобно, когда направлений много. Кнопка «+» в заголовке «Проекты» создаёт проект или группу в корне; такая же кнопка есть у каждого узла дерева. Проект перетаскивается в группу мышью. Доска Доска принадлежит проекту и состоит из колонок. Новая доска сразу приходит с четырьмя колонками — их можно переименовать, добавить свои и переставить. Задача создаётся кнопкой «+» в шапке колонки, переносится между колонками перетаскиванием. Клик по карточке открывает окно задачи: описание, подзадачи, теги, исполнители, приоритет, срок и комментарии. Одна из колонок доски — завершающая: задача, попавшая в неё, считается выполненной, и у неё проставляется дата завершения. Важно именно попадание в колонку, а не название задачи или галочка — подробнее в статье Доски и задачи. Доска проекта с колонками и карточками Что дальше Доски и задачи — группировка по тегам, представления, фильтры. Документы — совместный редактор, импорт из Word, история версий. Конференции — видеозвонки с демонстрацией экрана, чатом и записью прямо в трекере. Входящие — заметки и напоминания одной лентой: записать откуда угодно, разобрать, не уходя с доски. Этапы — вехи релизов и прогресс по ним. Частые вопросы — короткие ответы на то, обо что спотыкаются чаще всего. Внизу боковой панели есть кнопка «Помощь» со знаком вопроса, а в ней два пункта. «Обучение» — тур по интерфейсу прямо в приложении: главы, чек-лист на «Моих задачах» и подсказки у новых элементов, подробнее — в статье Обучение и подсказки; его можно запустить в любой момент и пройти заново. «Справочный центр» — эта справка: она открывается окном поверх текущего экрана, так что доска, с которой вы её позвали, никуда не девается. Ещё быстрее — клавиша <kbd>F1</kbd>, она же закрывает справку. В окне справки слева — разделы и статьи, сверху — поиск (<kbd>/</kbd> ставит в него курсор, <kbd>↑</kbd> <kbd>↓</kbd> и <kbd>↵</kbd> выбирают результат), справа — оглавление статьи. Внизу статьи можно ответить, помогла ли она: ответ один на статью, а администраторы видят итоги в «Администрировании» → «Справка» и по ним понимают, какие статьи пора переписать.",
       "android": {
         "path": "start/first-steps.android.md",
         "updated": "2026-08-24",
@@ -82,7 +82,7 @@
           "path": "start/first-steps.en.md",
           "title": "First steps",
           "category": "Getting started",
-          "updated": "2026-10-08",
+          "updated": "2026-10-09",
           "keywords": ["start", "sign up", "workspace", "project", "board", "onboarding", "guide"],
           "headings": [
             {
@@ -106,7 +106,7 @@
               "level": 2
             }
           ],
-          "text": "Tessera is a task tracker: boards with tasks, documents, notes and reminders. This article walks the path from an empty account to your first task on a board. Workspace Everything lives inside a workspace. A workspace is a self-contained space with its own projects, boards and members; you switch between them in the header of the sidebar. Your first workspace is created together with your account, so you never start from nothing. To invite a colleague: the workspace menu (its name at the top of the sidebar) → Members. Addresses in the invite field turn into chips — on <kbd>Enter</kbd>, a comma or a space — so several people can be invited at once; Invite sends. A registered person is added at once, a new one gets an email with a link (the link can be copied too). The role is “Member” or “Admin”; the workspace has a single owner whose role is never changed. Projects and groups On the left is the project tree. Projects can be filed into groups, and groups nest inside one another: handy when you have many directions of work. The “+” button in the “Projects” heading creates a project or a group at the root; every node in the tree has the same button. Drag a project into a group with the mouse. Board A board belongs to a project and is made of columns. A new board arrives with four columns already — you can rename them, add your own and reorder them. A task is created with the “+” button in a column header and moved between columns by dragging. Clicking a card opens the task window: description, subtasks, tags, assignees, priority, due date and comments. One of the board's columns is the completing one: a task that lands in it counts as done and is stamped with a completion date. What matters is landing in the column, not the task's title or a checkbox — see Boards and tasks for more. A project board with columns and cards What's next Boards and tasks — grouping by tags, views, filters. Documents — the collaborative editor, Word import, version history. Conferences — video calls with screen sharing, chat and recording right in the tracker. Inbox — notes and reminders in one feed: record from anywhere, sort them out without leaving the board. Milestones — release milestones and progress toward them. FAQ — short answers to the things people trip over most often. At the bottom of the sidebar there is a Help button with a question mark, and inside it two items. Get started is an interactive guide that walks you through the interface right inside the app; you can launch it at any time and go through it again. Help centre is this help: it opens as a window over your current screen, so the board you called it from never goes away. Faster still is <kbd>F1</kbd>, which also closes it. In the help window the sections and articles are on the left, the search is at the top (<kbd>/</kbd> puts the cursor there, <kbd>↑</kbd> <kbd>↓</kbd> and <kbd>↵</kbd> pick a result), and the article's contents are on the right. At the bottom of an article you can say whether it helped: one answer per article, and administrators see the totals under Administration → Help, which tells them which articles need rewriting.",
+          "text": "Tessera is a task tracker: boards with tasks, documents, notes and reminders. This article walks the path from an empty account to your first task on a board. Workspace Everything lives inside a workspace. A workspace is a self-contained space with its own projects, boards and members; you switch between them in the header of the sidebar. Your first workspace is created together with your account, so you never start from nothing. To invite a colleague: the workspace menu (its name at the top of the sidebar) → Members. Addresses in the invite field turn into chips — on <kbd>Enter</kbd>, a comma or a space — so several people can be invited at once; Invite sends. A registered person is added at once, a new one gets an email with a link (the link can be copied too). The role is “Member” or “Admin”; the workspace has a single owner whose role is never changed. Projects and groups On the left is the project tree. Projects can be filed into groups, and groups nest inside one another: handy when you have many directions of work. The “+” button in the “Projects” heading creates a project or a group at the root; every node in the tree has the same button. Drag a project into a group with the mouse. Board A board belongs to a project and is made of columns. A new board arrives with four columns already — you can rename them, add your own and reorder them. A task is created with the “+” button in a column header and moved between columns by dragging. Clicking a card opens the task window: description, subtasks, tags, assignees, priority, due date and comments. One of the board's columns is the completing one: a task that lands in it counts as done and is stamped with a completion date. What matters is landing in the column, not the task's title or a checkbox — see Boards and tasks for more. A project board with columns and cards What's next Boards and tasks — grouping by tags, views, filters. Documents — the collaborative editor, Word import, version history. Conferences — video calls with screen sharing, chat and recording right in the tracker. Inbox — notes and reminders in one feed: record from anywhere, sort them out without leaving the board. Milestones — release milestones and progress toward them. FAQ — short answers to the things people trip over most often. At the bottom of the sidebar there is a Help button with a question mark, and inside it two items. Get started is a tour of the interface right inside the app: chapters, a checklist on «My tasks» and hints at new elements — see Tour and hints; you can launch it at any time and go through it again. Help centre is this help: it opens as a window over your current screen, so the board you called it from never goes away. Faster still is <kbd>F1</kbd>, which also closes it. In the help window the sections and articles are on the left, the search is at the top (<kbd>/</kbd> puts the cursor there, <kbd>↑</kbd> <kbd>↓</kbd> and <kbd>↵</kbd> pick a result), and the article's contents are on the right. At the bottom of an article you can say whether it helped: one answer per article, and administrators see the totals under Administration → Help, which tells them which articles need rewriting.",
           "android": {
             "path": "start/first-steps.android.en.md",
             "updated": "2026-08-24",
@@ -144,6 +144,112 @@
             ],
             "text": "Tessera is a task tracker: boards with tasks, documents, notes and reminders. This article walks the path from an empty account to your first task on a board — the way it looks in the Android app. Workspace Everything lives inside a workspace. A workspace is a self-contained space with its own projects, boards and members. Your first workspace is created together with your account, so you never start from nothing. The app's navigation is tucked into the side menu: the “☰” button at the left of the top bar, or a swipe from the left edge of the screen. At the top of the menu is the current workspace; tapping it switches to another, and the “＋” button next to it creates a new one. To invite a colleague: the workspace menu (“…” next to its name) → “Members” → “Invite by email”. The invitee gets an email with a link; the role is “Member” or “Admin”, and the workspace has a single owner whose role is never changed. Projects and groups The project tree is in the same side menu, below the sections. Projects are filed into groups, and groups nest inside one another. The “＋” button in the “PROJECTS” heading creates a project or a group at the root; every node in the tree has the same button. To move a project into a group, press and hold its row and drag — the tree scrolls on its own as you carry the project to the edge of the screen. Tapping a project opens its board and closes the menu. Board A board belongs to a project and is made of columns. A new board arrives with four columns already — you can rename them, add your own and reorder them. On a phone the columns do not fit across the screen, so the board swipes sideways: one column takes up almost the full width, and its neighbours peek in from the edge. Empty columns can be collapsed into narrow strips, so the board scrolls through faster. A task is created with the field at the end of a column: scroll the list to the bottom and type a title. To move a card to another column, press and hold it and drag — or open the task and change its column with the status chip, which is usually faster on a phone. Tapping a card opens the task screen: description, subtasks, tags, assignees, priority, due date and comments. One of the board's columns is the completing one: a task that lands in it counts as done and is stamped with a completion date. What matters is landing in the column, not the task's title — see Boards and tasks for more. A project board in the app What's next Boards and tasks — grouping by tags, views, filters. Documents — the collaborative editor: read and edit right from your phone. Conferences — video calls with screen sharing, chat and recording right in the app. Notes — short jottings that don't need a task. Reminders — the app itself is how push notifications are delivered. Milestones — release milestones and progress toward them. FAQ — short answers to the things people trip over most often. The Help item in the side menu opens this help — the help centre works offline, with the articles living inside the app rather than being downloaded. Next to it, in the side-menu footer, there is an interactive tutorial — a guide through the interface right inside the app; you can launch it at any time and go through it again."
           }
+        }
+      }
+    },
+    {
+      "slug": "hints",
+      "path": "start/hints.md",
+      "title": "Обучение и подсказки",
+      "category": "Начало работы",
+      "order": 15,
+      "updated": "2026-10-09",
+      "keywords": [
+        "обучение",
+        "тур",
+        "онбординг",
+        "чек-лист",
+        "начало работы",
+        "подсказки",
+        "spotlight",
+        "что нового",
+        "мини-тур",
+        "главы"
+      ],
+      "platforms": ["web"],
+      "headings": [
+        {
+          "id": "тур-начало-работы",
+          "text": "Тур «Начало работы»",
+          "level": 2
+        },
+        {
+          "id": "чек-лист-на-моих-задачах",
+          "text": "Чек-лист на «Моих задачах»",
+          "level": 2
+        },
+        {
+          "id": "подсказки",
+          "text": "Подсказки",
+          "level": 2
+        },
+        {
+          "id": "что-нового-и-что-изменилось",
+          "text": "«Что нового» и «Что изменилось»",
+          "level": 2
+        },
+        {
+          "id": "настройки-подсказки",
+          "text": "Настройки → «Подсказки»",
+          "level": 2
+        },
+        {
+          "id": "на-телефоне",
+          "text": "На телефоне",
+          "level": 2
+        }
+      ],
+      "text": "Tessera учит работать с собой прямо в интерфейсе: тур показывает настоящие кнопки и засчитывает настоящие действия, чек-лист на «Моих задачах» помнит, что уже сделано, а короткие подсказки появляются у новых элементов сами. Тур «Начало работы» Тур идёт по живому интерфейсу: экран затемняется, нужный элемент остаётся в светлом окне, к нему тянется стрелка, а рядом — карточка шага. Шаг-информацию закрывает «Понятно» (<kbd>↵</kbd>), шаг-действие засчитывается сам, когда вы действительно это сделали: создали проект, перенесли карточку, открыли задачу. Плашка на карточке шага говорит, что именно его засчитает. Пока шаг засчитывается, карточка на мгновение показывает «Засчитано». Шаг «Назовите проект» на форме нового проекта Тур разбит на главы. Обязательная — «Основы»: пространство, проект, доска, задача, поля на карточке, перенос, окно задачи — десять шагов. Остальные главы по выбору: «Задача целиком», «Входящие», «Этапы», «Клавиатура и ⌘K», «Группировка по тегам», «Проекты и группы» и «GitLab» (она открывается, когда к доске подключён проект GitLab). Того, кого пригласили в пространство с готовыми проектами, встречает короткая глава «Знакомство» — без создания проекта. В шапке карточки — глава и номер шага («Основы · 3 из 10»), под текстом — полоски шагов главы. <kbd>←</kbd> «Назад» возвращает к предыдущему шагу-информации той же главы. Через шаг-действие назад не пройти — созданное не откатывается. <kbd>Esc</kbd> спрашивает «Прервать обучение?». «Продолжить позже» убирает тур, а прогресс остаётся в чек-листе; «Завершить обучение» выключает тур насовсем — сам он больше не откроется. Повторный <kbd>Esc</kbd> возвращает к шагу. Если элемента шага нет на экране, карточка ждёт его у края экрана, а через несколько секунд предлагает «Пропустить шаг» и отсчитывает время. Свёрнутую боковую панель тур разворачивает сам. Новый аккаунт получает «Основы» после первого входа. Запустить тур заново можно из меню «Помощь» → «Обучение» в футере боковой панели, из палитры <kbd>Ctrl</kbd> <kbd>K</kbd> (команда «Обучение») и из чек-листа. Чек-лист на «Моих задачах» Первая карточка правой колонки «Моих задач» — «Начало работы». В ней результаты, а не шаги тура: «Создать проект», «Добавить доску», «Создать задачу» и так далее. Результат отмечается, даже если вы сделали это без тура — тогда рядом написано «сделано без тура». Строка запускает главу с шага, который её засчитывает; «Продолжить» возвращает туда, где вы остановились. Чек-лист «Начало работы» на «Моих задачах» Ниже — главы по выбору с прогрессом. Шеврон сворачивает карточку в одну строку, меню «⋯» — «Начать с начала» и «Скрыть насовсем». Когда пройдено всё, карточка становится зелёной. Подсказки Подсказка — небольшая карточка со стрелкой к элементу, без затемнения. Бывает двух видов: «Новое» — у того, что появилось или переехало после обновления, и «Подсказка» — при первой встрече с функцией, например у полосы этапа на первой доске с этапом или у отмены удаления. Подсказки показываются по одной и не больше двух за сессию, не мешают туру, окнам, палитре и перетаскиванию. Закрывает подсказку «Понятно», <kbd>↵</kbd>, <kbd>Esc</kbd> или клик по самому элементу — больше она не появится. Если элемента сейчас нет на экране, подсказка подождёт и не задержит следующую. Подсказка у кнопки «Входящие» «Что нового» и «Что изменилось» После обновления Tessera окно «Что нового» рассказывает, что поменялось. Тем, кто пользовался прежним интерфейсом, один раз показывается карточка нового интерфейса с кнопкой «Показать, что изменилось» — мини-тур из шести шагов по «Входящим», этапу на доске, виду доски, окну «Проект» и палитре. «Позже» отправляет те же пункты в подсказки. Всю историю изменений открывает номер версии в футере. Настройки → «Подсказки» Всё про обучение и подсказки собрано в Настройках → «Подсказки»: прогресс обучения, выключатель чек-листа на «Моих задачах», «Продолжить главу» и «Начать с начала»; выключатели видов: «Новое после обновлений» (вместе с окном «Что нового») и «Подсказки при первой встрече»; таблица подсказок с состоянием — показана, в очереди, ждёт своего элемента — и «Показать снова» у каждой показанной; «Показать подсказки заново» возвращает в очередь все. Настройки → «Подсказки» На телефоне На телефоне тур — нижний лист над навигацией: шаг, «Назад», «Понятно» и «Прервать», а нужный элемент подсвечен на экране. Если лист закрыл бы элемент, он уходит наверх. Запустить тур — «Ещё» → «Обучение». Подсказки на телефоне — карточка над нижней навигацией, закрывается кнопкой или свайпом вниз.",
+      "locales": {
+        "en": {
+          "path": "start/hints.en.md",
+          "title": "Tour and hints",
+          "category": "Getting started",
+          "updated": "2026-10-09",
+          "keywords": [
+            "tour",
+            "onboarding",
+            "get started",
+            "checklist",
+            "hints",
+            "spotlight",
+            "what's new",
+            "mini-tour",
+            "chapters"
+          ],
+          "headings": [
+            {
+              "id": "the-get-started-tour",
+              "text": "The «Get started» tour",
+              "level": 2
+            },
+            {
+              "id": "the-checklist-on-my-tasks",
+              "text": "The checklist on «My tasks»",
+              "level": 2
+            },
+            {
+              "id": "hints",
+              "text": "Hints",
+              "level": 2
+            },
+            {
+              "id": "what-s-new-and-what-changed",
+              "text": "«What's new» and «What changed»",
+              "level": 2
+            },
+            {
+              "id": "settings-hints",
+              "text": "Settings → «Hints»",
+              "level": 2
+            },
+            {
+              "id": "on-a-phone",
+              "text": "On a phone",
+              "level": 2
+            }
+          ],
+          "text": "Tessera teaches itself right in the interface: the tour points at real buttons and counts real actions, the checklist on «My tasks» remembers what's already done, and short hints appear at new elements on their own. The «Get started» tour The tour walks the live interface: the screen dims, the element in play stays in a bright window, an arrow reaches for it, and the step's card sits next to it. An info step is closed with «Got it» (<kbd>↵</kbd>); an action step counts itself once you actually did it: created a project, moved a card, opened a task. The plate on the step's card says what counts it. While a step is being counted, the card briefly says «Counted». The «Name the project» step on the new-project form The tour is split into chapters. The required one is «Basics»: the space, a project, a board, a task, the fields on the card, moving it, the task window — ten steps. The rest are optional: «The whole task», «Inbox», «Stages», «Keyboard and ⌘K», «Grouping by tags», «Projects and groups» and «GitLab» (it opens once a GitLab project is connected to a board). Someone invited into a space that already has projects is greeted by a short «Welcome» chapter — with nothing to create. The card's header shows the chapter and the step's number («Basics · 3 of 10»), and the chapter's steps are bars under the text. <kbd>←</kbd> «Back» returns to the previous info step of the same chapter. There's no way back through an action step — what was created stays. <kbd>Esc</kbd> asks «Stop the tour?». «Continue later» puts the tour away while the progress stays in the checklist; «End the tour» switches it off for good — it won't open by itself again. A second <kbd>Esc</kbd> goes back to the step. If a step's element isn't on screen, the card waits for it at the edge of the screen and after a few seconds offers «Skip the step» with a countdown. A collapsed sidebar is expanded by the tour itself. A new account gets «Basics» after the first sign-in. To take the tour again: «Help» → «Get started» in the sidebar footer, the <kbd>Ctrl</kbd> <kbd>K</kbd> palette (the «Get started» command) or the checklist. The checklist on «My tasks» The first card of the right column on «My tasks» is «Get started». It lists results, not tour steps: «Create a project», «Add a board», «Create a task» and so on. A result is ticked even when you did it without the tour — then it says «done without the tour». A row starts its chapter from the step that counts it; «Continue» goes back to where you stopped. The «Get started» checklist on «My tasks» Below are the optional chapters with their progress. The chevron folds the card into one line; the «⋯» menu has «Start over» and «Hide for good». Once everything is done, the card turns green. Hints A hint is a small card with an arrow to an element, with no dimming. There are two kinds: «New» — at something that appeared or moved after an update, and «Tip» — at the first encounter with a feature, such as the stage strip on the first board with a stage, or undoing a delete. Hints show one at a time, at most two a session, and stay out of the way of the tour, windows, the palette and dragging. A hint is closed by «Got it», <kbd>↵</kbd>, <kbd>Esc</kbd> or a click on the element itself — it won't come back. If its element isn't on screen right now, the hint waits without holding up the next one. A hint at the «Inbox» button «What's new» and «What changed» After a Tessera update the «What's new» window tells what changed. Those who used the previous interface get, once, a card of the new interface with «Show what changed» — a six-step mini-tour of «Inbox», the stage on the board, the board view, the «Project» window and the palette. «Later» sends the same points to the hints. The whole changelog opens from the version number in the footer. Settings → «Hints» Everything about the tour and hints is in Settings → «Hints»: the tour's progress, the checklist switch for «My tasks», «Continue the chapter» and «Start over»; switches for the kinds: «New after updates» (together with the «What's new» window) and «Hints at first encounter»; a table of hints with their state — shown, in the queue, waiting for its element — and «Show again» at each shown one; «Show the hints again» puts them all back into the queue. Settings → «Hints» On a phone On a phone the tour is a bottom sheet above the navigation: the step, «Back», «Got it» and «Stop», with the element highlighted on screen. If the sheet would cover the element, it moves to the top. To start the tour — «More» → «Get started». Hints on a phone are a card above the bottom navigation, closed with its button or a swipe down."
         }
       }
     },

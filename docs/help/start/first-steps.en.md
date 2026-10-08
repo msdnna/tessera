@@ -3,7 +3,7 @@ title: First steps
 category: Getting started
 order: 10
 keywords: start, sign up, workspace, project, board, onboarding, guide
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 Tessera is a task tracker: boards with tasks, documents, notes and reminders. This article walks the path from an empty account to your first task on a board.
@@ -37,6 +37,6 @@ One of the board's columns is the **completing** one: a task that lands in it co
 - [Milestones](/help/milestones) — release milestones and progress toward them.
 - [FAQ](/help/faq) — short answers to the things people trip over most often.
 
-At the bottom of the sidebar there is a **Help** button with a question mark, and inside it two items. **Get started** is an interactive guide that walks you through the interface right inside the app; you can launch it at any time and go through it again. **Help centre** is this help: it opens as a window over your current screen, so the board you called it from never goes away. Faster still is <kbd>F1</kbd>, which also closes it.
+At the bottom of the sidebar there is a **Help** button with a question mark, and inside it two items. **Get started** is a tour of the interface right inside the app: chapters, a checklist on «My tasks» and hints at new elements — see [Tour and hints](/help/hints); you can launch it at any time and go through it again. **Help centre** is this help: it opens as a window over your current screen, so the board you called it from never goes away. Faster still is <kbd>F1</kbd>, which also closes it.
 
 In the help window the sections and articles are on the left, the search is at the top (<kbd>/</kbd> puts the cursor there, <kbd>↑</kbd> <kbd>↓</kbd> and <kbd>↵</kbd> pick a result), and the article's contents are on the right. At the bottom of an article you can say **whether it helped**: one answer per article, and administrators see the totals under Administration → Help, which tells them which articles need rewriting.

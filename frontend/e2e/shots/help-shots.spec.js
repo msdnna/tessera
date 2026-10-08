@@ -139,8 +139,80 @@ async function openBoard(page) {
   await expect(page.getByTestId('task-card').first()).toBeVisible()
 }
 
+// The tour and the hints (#3000) read the account's acks; the shots serve them
+// from a fixed list so every frame starts from the state it shows, whatever the
+// demo account has acked by now (register() switches the hints off for e2e).
+async function withAcks(page, keys) {
+  await page.route('**/api/users/me/acknowledgements**', (r) =>
+    r.request().method() === 'GET'
+      ? r.fulfill({ json: keys.map((key) => ({ key, ack_at: '2026-10-06T10:00:00Z' })) })
+      : r.fulfill({ json: { key: 'x', ack_at: '2026-10-06T10:00:00Z' } }),
+  )
+}
+const SEEN = ['getstarted:skipped', 'whatsnew:web:999.0.0', 'whatschanged:v2']
+
 for (const scheme of ['light', 'dark']) {
   test.describe(`${scheme}`, () => {
+    test('тур: шаг «Назовите проект»', async ({ page }) => {
+      await withAcks(page, SEEN)
+      await page.goto('/?tour=basics')
+      await expect(page.getByTestId('tour-pop')).toBeVisible({ timeout: 15000 })
+      await page.getByTestId('tour-next').click()
+      await page.locator('[data-tour="proj-add"]').click()
+      await page.locator('[data-tour="menu-project"]').click()
+      const field = page.locator(
+        '[data-tour="project-name"] input, input[data-tour="project-name"]',
+      )
+      await field.first().fill(LANG === 'ru' ? 'Сайт компании' : 'Company website')
+      await expect(page.getByTestId('tour-pop')).toHaveAttribute('data-kind', 'action')
+      await page.waitForTimeout(600)
+      await shoot(page, scheme, 'tour-step')
+    })
+
+    test('чек-лист «Начало работы»', async ({ page }) => {
+      await withAcks(page, [
+        'whatsnew:web:999.0.0',
+        'whatschanged:v2',
+        'hints:off:new',
+        'hints:off:ctx',
+        'getstarted:item:basics.project',
+        'getstarted:item:basics.board',
+        'getstarted:item:basics.task',
+        'getstarted:item:basics.fields:self',
+        'getstarted:item:inbox.open:self',
+      ])
+      await page.goto('/')
+      const list = page.getByTestId('tour-checklist')
+      await expect(list).toBeVisible({ timeout: 15000 })
+      // The «+» floats over the column's corner — out of an element shot.
+      await page.addStyleTag({ content: '[data-testid="quick-fab"] { display: none !important }' })
+      await shoot(page, scheme, 'tour-checklist', list)
+    })
+
+    test('подсказка у элемента', async ({ page }) => {
+      await withAcks(page, [...SEEN, 'whatschanged:later', 'hints:off:ctx'])
+      await openBoard(page)
+      await expect(page.getByTestId('spotlight-card')).toBeVisible({ timeout: 15000 })
+      await page.waitForTimeout(700)
+      await shoot(page, scheme, 'tour-spotlight')
+    })
+
+    test('настройки: подсказки', async ({ page }) => {
+      await withAcks(page, [
+        ...SEEN,
+        'whatschanged:later',
+        'getstarted:done',
+        'getstarted:ch:inbox',
+        'spotlight:inbox',
+        'spotlight:capture',
+        'spotlight:palette',
+        'spotlight:rail',
+      ])
+      await page.goto('/settings?s=hints')
+      await expect(page.getByTestId('settings-hints')).toBeVisible({ timeout: 15000 })
+      await shoot(page, scheme, 'settings-hints')
+    })
+
     test('доска', async ({ page }) => {
       await openBoard(page)
       await shoot(page, scheme, 'board')
