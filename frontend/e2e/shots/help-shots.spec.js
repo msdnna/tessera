@@ -655,11 +655,11 @@ for (const scheme of ['light', 'dark']) {
 
     test('справочный центр', async ({ page }) => {
       // The centre is a modal over the current screen (#2792), so the shot is
-      // taken the way a reader gets there: from the board, through the footer's
+      // taken the way a reader gets there: from the board, through the rail's
       // «Помощь» menu — the board stays behind it, which is the whole point.
       await page.goto(`/board/${seed.boardId}`)
-      await page.locator('[data-tour="footer-help"]').click()
-      await page.locator('[data-help-menu="center"]').click()
+      await page.locator('[data-tour="rail-help"]').click()
+      await page.getByTestId('help-menu-center').click()
       await expect(page.locator('.h-article')).toBeVisible()
       await shoot(page, scheme, 'help')
     })

@@ -1,6 +1,6 @@
-import { computed, h } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, useMessage } from 'naive-ui'
+import { useMessage } from 'naive-ui'
 import {
   AddOutline,
   ColorPaletteOutline,
@@ -15,31 +15,12 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
-
-const icon = (c, color) => () => h(NIcon, color ? { color } : null, { default: () => h(c) })
-
-// An orange count pill after a menu label — unresolved GitLab conflicts.
-function withCount(label, count) {
-  if (!count) return label
-  return () =>
-    h('span', { style: 'display:inline-flex;align-items:center;gap:8px' }, [
-      label,
-      h(
-        'span',
-        {
-          style:
-            'min-width:18px;height:18px;padding:0 5px;border-radius:9px;display:inline-flex;' +
-            'align-items:center;justify-content:center;font-size:11px;font-weight:600;' +
-            'background:#e0922f;color:#fff;',
-        },
-        count > 9 ? '9+' : String(count),
-      ),
-    ])
-}
+import { workspaceName } from '@/utils/defaultNames'
 
 // The workspace menu (v2): what used to be the tool row under the workspace
 // name — members, integrations — plus the workspace's own actions (appearance,
-// create, delete). One source for the sidebar header and the rail tile's menu.
+// create, delete). One source for the sidebar header and the rail tile's menu,
+// both drawn by kit/ActionMenu (#3110): `header` is its title, `items` its rows.
 //
 // `workspace` is a getter; for a workspace other than the current one (a rail
 // tile's right-click) only the actions that don't need it to be open remain.
@@ -54,50 +35,71 @@ export function useWorkspaceMenu(workspace = null, anchor = null) {
 
   const target = computed(() => (workspace ? workspace() : ws.current))
   const isCurrent = computed(() => !!target.value && target.value.id === ws.currentId)
+  const header = computed(() => (target.value ? workspaceName(target.value) : ''))
 
-  const options = computed(() => {
+  // Unresolved GitLab conflicts: an orange count after «Интеграции» and GitLab.
+  const conflictNote = computed(() =>
+    conflicts.count
+      ? { note: conflicts.count > 9 ? '9+' : String(conflicts.count), noteWarn: true }
+      : {},
+  )
+
+  const items = computed(() => {
     const w = target.value
     if (!w) return []
     const manage = ['owner', 'admin'].includes(w.my_role)
     const out = []
     if (isCurrent.value) {
-      out.push({ label: t('shell.tools.members'), key: 'members', icon: icon(PeopleOutline) })
+      out.push({ key: 'members', label: t('shell.tools.members'), icon: PeopleOutline })
       out.push({
-        label: withCount(t('shell.tools.integrations'), conflicts.count),
         key: 'integrations',
-        icon: icon(ExtensionPuzzleOutline),
+        label: t('shell.tools.integrations'),
+        icon: ExtensionPuzzleOutline,
+        ...conflictNote.value,
+        subWidth: 230,
         children: [
-          { label: withCount('GitLab', conflicts.count), key: 'gitlab', icon: icon(LogoGitlab) },
+          { key: 'gitlab', label: 'GitLab', icon: LogoGitlab, ...conflictNote.value },
           // The unit is a workspace setting whose PUT is gated by requireManager
           // server-side (#2932): offer it only to those the endpoint will accept.
           ...(manage
-            ? [{ label: t('shell.tools.estimation'), key: 'estimation', icon: icon(TimerOutline) }]
+            ? [{ key: 'estimation', label: t('shell.tools.estimation'), icon: TimerOutline }]
             : []),
           // The dictionary is workspace settings: owner/admin only (the PUT is
           // gated by requireManager server-side, this only hides a door that
           // would 403).
           ...(ws.commandsCanManage
-            ? [{ label: t('shell.tools.commands'), key: 'commands', icon: icon(TerminalOutline) }]
+            ? [{ key: 'commands', label: t('shell.tools.commands'), icon: TerminalOutline }]
             : []),
         ],
       })
     }
     if (manage)
       out.push({
-        label: t('shell.rail.appearance'),
         key: 'appearance',
-        icon: icon(ColorPaletteOutline),
+        label: t('shell.rail.appearance'),
+        icon: ColorPaletteOutline,
+        keys: 'row.icon',
       })
     if (isCurrent.value) {
-      out.push({ type: 'divider', key: 'd1' })
-      out.push({ label: t('shell.workspace.create'), key: 'create', icon: icon(AddOutline) })
-    }
-    if (w.owner_id === auth.user?.id) {
+      out.push({ gap: true })
       out.push({
-        label: t('shell.workspace.delete'),
+        key: 'create',
+        label: t('shell.workspace.create'),
+        icon: AddOutline,
+        keys: 'row.new',
+      })
+    }
+    // Not a two-step row: it opens the form that asks for the name
+    // (rail/WorkspaceDeletePopover). The last workspace can't go.
+    if (w.owner_id === auth.user?.id) {
+      if (!isCurrent.value && out.length) out.push({ gap: true })
+      out.push({
         key: 'delete',
-        icon: icon(TrashOutline, '#e0533d'),
-        props: { style: 'color:#e0533d' },
+        label: t('shell.workspace.delete'),
+        icon: TrashOutline,
+        danger: true,
+        disabled: ws.list.length <= 1,
+        disabledTitle: t('shell.workspace.deleteLast'),
       })
     }
     return out
@@ -112,5 +114,5 @@ export function useWorkspaceMenu(workspace = null, anchor = null) {
     dialogs.open(key, isCurrent.value ? null : target.value, anchor ? anchor() : null)
   }
 
-  return { options, select }
+  return { header, items, select }
 }

@@ -185,13 +185,14 @@
     "url": "Address",
     "urlPlaceholder": "https://tessera.example.com",
     "remove": "Remove server",
-    "removeConfirm": "Remove “{name}”? The session on that server is dropped and the address has to be entered again.",
     "insecure": "Skip certificate check",
     "insecureNote": "The setting is saved but has no effect yet: certificate checking can only be turned off for the whole application — that is a task of its own.",
     "errUrl": "That does not look like a server address",
     "errUrlScheme": "The address must start with http:// or https://",
     "signedOut": "Sign-in required",
-    "removeArmed": "Really remove? Press again"
+    "removeArmed": "Really remove? Press again",
+    "removeArmedTitle": "Remove «{name}»?",
+    "removeArmedSub": "The session ends; you will have to enter the address again"
   },
   "spotlight": {
     "aria": "Hint",

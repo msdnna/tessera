@@ -110,10 +110,10 @@ test('«Обучение» in the sidebar footer restarts the guide', async ({ p
   await page.getByTestId('tour-finish').click()
   await expect(pop).toHaveCount(0)
 
-  // «Обучение» lives in the footer's «Помощь» menu next to the help centre
-  // (#2792), so restarting the guide is two clicks: open the menu, pick the item.
-  await page.locator('[data-tour="footer-help"]').click()
-  await page.locator('[data-help-menu="tour"]').click()
+  // «Обучение» lives in the rail's «Помощь» menu next to the help centre
+  // (#3110), so restarting the guide is two clicks: open the menu, pick the item.
+  await page.locator('[data-tour="rail-help"]').click()
+  await page.getByTestId('help-menu-tour').click()
   await expect(pop).toBeVisible()
   await expect(pop).toContainText(t('tour.steps.workspaces.title'))
 })

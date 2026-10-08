@@ -8,9 +8,19 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { NIcon, NDropdown, NTooltip, NPopconfirm } from 'naive-ui'
-import { AddOutline, HelpCircleOutline, LogInOutline } from '@vicons/ionicons5'
+import { NIcon, NTooltip } from 'naive-ui'
+import {
+  AddOutline,
+  CreateOutline,
+  HelpCircleOutline,
+  LibraryOutline,
+  LogInOutline,
+  SchoolOutline,
+  ServerOutline,
+  TrashOutline,
+} from '@vicons/ionicons5'
 import BrandLogo from '@/components/BrandLogo.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
 import ServerFormPopover from './ServerFormPopover.vue'
 import RailTile from './RailTile.vue'
 import RailAppearance from './RailAppearance.vue'
@@ -24,10 +34,12 @@ import { useHelpStore } from '@/stores/help'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
 import { useShortcuts } from '@/composables/useShortcuts'
+import { useTourLauncher } from '@/composables/useTourLauncher'
 import { handleRowKeys } from '@/composables/useRowKeys'
 import { useServerBadges } from '@/composables/useServerBadges'
 import { sSetFor } from '@/utils/serverStorage'
 import { serverLabel } from '@/utils/servers'
+import { helpSlugForPath } from '@/utils/helpContext'
 import { workspaceName } from '@/utils/defaultNames'
 import { initials } from '@/utils/initials'
 import { tileColor, tileLabel } from './workspaceTile'
@@ -42,6 +54,7 @@ const auth = useAuthStore()
 const help = useHelpStore()
 const dialogs = useWsDialogsStore()
 const whatsNew = useWhatsNewStore()
+const { launch: launchTour } = useTourLauncher()
 useServerBadges()
 
 const desktop = computed(() => servers.enabled && servers.list.length > 0)
@@ -88,7 +101,9 @@ async function pick(server, w) {
 // ── context menus ──
 // A workspace tile carries the workspace menu (useWorkspaceMenu): the full one
 // on the current workspace — with the sidebar collapsed this is where members
-// and integrations are reached — and appearance / delete on the others.
+// and integrations are reached — and appearance / delete on the others. On
+// desktop a server's head tile has its own: edit and remove. Both are
+// kit/ActionMenu at the pointer (#3110).
 const menu = ref({ show: false, x: 0, y: 0, kind: '', target: null })
 const railEl = ref(null)
 const tileEl = (id) => railEl.value?.querySelector(`[data-ws="${CSS.escape(id)}"]`) || null
@@ -96,50 +111,48 @@ const wsMenu = useWorkspaceMenu(
   () => (menu.value.kind === 'ws' ? menu.value.target : null),
   () => (menu.value.target ? tileEl(menu.value.target.id) : null),
 )
-const menuOptions = computed(() => {
-  const { kind } = menu.value
+const serverName = (s) => s.name || serverLabel(s.url)
+// Removing a profile purges its namespace — the refresh token included — and, if
+// it was the last one, puts a fresh profile pointed at the public default in its
+// place (servers.remove). A slip one row below «Изменить» would sign the user out
+// AND erase a self-hosted server's address with no undo, so the row takes two
+// presses (#2932).
+const menuItems = computed(() => {
+  const { kind, target } = menu.value
   if (kind === 'server') {
     return [
-      { label: t('common.action.edit'), key: 'server-edit' },
-      { label: t('shell.servers.remove'), key: 'server-remove' },
+      { key: 'server-edit', label: t('common.action.edit'), icon: CreateOutline },
+      { gap: true },
+      {
+        key: 'server-remove',
+        label: t('shell.servers.remove'),
+        icon: TrashOutline,
+        danger: true,
+        confirm: {
+          title: t('shell.servers.removeArmedTitle', { name: serverName(target) }),
+          sub: t('shell.servers.removeArmedSub'),
+        },
+      },
     ]
   }
-  if (kind === 'ws') return wsMenu.options.value
+  if (kind === 'ws') return wsMenu.items.value
   return []
+})
+const menuHeader = computed(() => {
+  const { kind, target } = menu.value
+  if (kind === 'server') return target ? serverName(target) : ''
+  return kind === 'ws' ? wsMenu.header.value : ''
 })
 function openMenu(kind, target, e) {
   menu.value = { show: true, x: e.clientX, y: e.clientY, kind, target }
-  if (!menuOptions.value.length) menu.value.show = false
+  if (!menuItems.value.length) menu.value.show = false
 }
 
 // The server form opens at the door that asked: the server tile, or «+».
 const serverEdit = ref({ show: false, server: null, anchor: null })
 
-// Removing a profile purges its namespace — the refresh token included — and, if
-// it was the last one, puts a fresh profile pointed at the public default in its
-// place (servers.remove). A slip one item below «Изменить» would sign the user out
-// AND erase a self-hosted server's address with no undo, so the menu never calls
-// it straight off: it opens a confirm where the menu stood (#2932).
-const removeAsk = ref({ show: false, x: 0, y: 0, id: '', name: '' })
-function askRemove(server) {
-  const { x, y } = menu.value
-  removeAsk.value = {
-    show: true,
-    x,
-    y,
-    id: server.id,
-    name: server.name || serverLabel(server.url),
-  }
-}
-function doRemove() {
-  const { id } = removeAsk.value
-  removeAsk.value = { ...removeAsk.value, show: false, id: '' }
-  if (id) servers.remove(id)
-}
-
 function onMenu(key) {
   const { kind, target } = menu.value
-  if (key === 'integrations') return // a submenu head
   menu.value.show = false
   if (key === 'server-edit')
     serverEdit.value = {
@@ -147,23 +160,37 @@ function onMenu(key) {
       server: target,
       anchor: railEl.value?.querySelector(`[data-server="${CSS.escape(target.id)}"]`) || null,
     }
-  else if (key === 'server-remove') askRemove(target)
+  else if (key === 'server-remove') servers.remove(target.id)
   else if (kind === 'ws') wsMenu.select(key)
 }
 const addBtn = ref(null)
 function openCreate() {
   dialogs.open('create', null, addBtn.value)
 }
+
+// ── «+»: a new workspace; on desktop also a new server ──
+const addOpen = ref(false)
+const addItems = computed(() => [
+  { key: 'create', label: t('shell.workspace.create'), icon: AddOutline },
+  { key: 'server-add', label: t('shell.servers.addTitle'), icon: ServerOutline },
+])
 function onAdd(key) {
   if (key === 'server-add') serverEdit.value = { show: true, server: null, anchor: addBtn.value }
   else openCreate()
 }
 
-// ── «+»: a new workspace; on desktop also a new server ──
-const addOptions = computed(() => [
-  { label: t('shell.workspace.create'), key: 'create' },
-  { label: t('shell.servers.addTitle'), key: 'server-add' },
+// ── «?» (#3110): the one door to help — the help centre on the article about
+// the screen in front of you (as F1), and the tour.
+const helpBtn = ref(null)
+const helpOpen = ref(false)
+const helpItems = computed(() => [
+  { key: 'center', label: t('shell.user.helpCenter'), icon: LibraryOutline, keys: 'nav.help' },
+  { key: 'tour', label: t('shell.user.tour'), icon: SchoolOutline },
 ])
+function onHelp(key) {
+  if (key === 'tour') launchTour('start')
+  else help.openCenter(helpSlugForPath(route.path))
+}
 
 function onServerSave(patch) {
   if (serverEdit.value.server) servers.update(serverEdit.value.server.id, patch)
@@ -179,7 +206,6 @@ function onServerRemove(id) {
 function serverBadge(s) {
   return s.id === servers.activeId ? 0 : servers.badges[s.id] || 0
 }
-const serverName = (s) => s.name || serverLabel(s.url)
 
 // ── keyboard (#2969): G W gets onto the rail, ↑/↓ walk the workspace tiles,
 // ⇧N opens «Новое пространство», I the focused tile's «Оформление».
@@ -233,7 +259,6 @@ function onRailKey(e) {
         </button>
       </template>
       <VersionBadge mode="block" />
-      <div class="ar-tip-sub ar-ver-hint">{{ t('app.whatsNew.historyTitle') }}</div>
     </n-tooltip>
 
     <div class="ar-list" data-tour="ws-switch" @keydown="onRailKey">
@@ -307,24 +332,20 @@ function onRailKey(e) {
         </div>
       </template>
 
-      <n-dropdown
+      <button
         v-if="desktop"
-        trigger="click"
-        placement="right-start"
-        :options="addOptions"
-        @select="onAdd"
+        ref="addBtn"
+        type="button"
+        class="ar-add"
+        :class="{ open: addOpen || dialogs.current === 'create' }"
+        data-testid="rail-add"
+        :aria-label="t('shell.rail.add')"
+        aria-haspopup="menu"
+        :aria-expanded="addOpen"
+        @click="addOpen = !addOpen"
       >
-        <button
-          ref="addBtn"
-          type="button"
-          class="ar-add"
-          :class="{ open: dialogs.current === 'create' }"
-          data-testid="rail-add"
-          :aria-label="t('shell.rail.add')"
-        >
-          <n-icon :component="AddOutline" :size="18" />
-        </button>
-      </n-dropdown>
+        <n-icon :component="AddOutline" :size="18" />
+      </button>
       <n-tooltip v-else-if="auth.isAuthenticated" placement="right" :delay="300">
         <template #trigger>
           <button
@@ -344,45 +365,58 @@ function onRailKey(e) {
     </div>
 
     <RailAppearance />
-    <n-tooltip v-if="auth.isAuthenticated" placement="right" :delay="300">
+    <n-tooltip v-if="auth.isAuthenticated" placement="right" :delay="300" :disabled="helpOpen">
       <template #trigger>
         <button
+          ref="helpBtn"
           type="button"
           class="ar-help"
-          :aria-label="t('shell.user.helpCenter')"
-          @click="help.openCenter()"
+          :class="{ open: helpOpen }"
+          :aria-label="t('shell.user.help')"
+          aria-haspopup="menu"
+          :aria-expanded="helpOpen"
+          data-tour="rail-help"
+          data-testid="rail-help"
+          @click="helpOpen = !helpOpen"
         >
           <n-icon :component="HelpCircleOutline" :size="18" />
         </button>
       </template>
-      {{ t('shell.user.helpCenter') }}
+      {{ t('shell.user.help') }}
     </n-tooltip>
 
-    <n-dropdown
-      trigger="manual"
-      placement="bottom-start"
-      :show="menu.show"
-      :x="menu.x"
-      :y="menu.y"
-      :options="menuOptions"
-      @select="onMenu"
-      @clickoutside="menu.show = false"
+    <ActionMenu
+      v-model:show="helpOpen"
+      :anchor="() => helpBtn"
+      placement="right-start"
+      :offset="{ x: 8, y: -6 }"
+      :width="248"
+      :header="t('shell.user.help')"
+      :items="helpItems"
+      testid="help-menu"
+      @select="onHelp"
     />
-
-    <n-popconfirm
-      :show="removeAsk.show"
-      :x="removeAsk.x"
-      :y="removeAsk.y"
-      trigger="manual"
-      :positive-button-props="{ type: 'error', 'data-testid': 'server-remove-confirm' }"
-      :positive-text="t('shell.servers.remove')"
-      @positive-click="doRemove"
-      @negative-click="removeAsk.show = false"
-      @clickoutside="removeAsk.show = false"
-    >
-      <template #trigger><span /></template>
-      {{ t('shell.servers.removeConfirm', { name: removeAsk.name }) }}
-    </n-popconfirm>
+    <ActionMenu
+      v-model:show="menu.show"
+      :anchor="() => ({ x: menu.x, y: menu.y })"
+      placement="point"
+      :width="264"
+      :header="menuHeader"
+      :items="menuItems"
+      testid="rail-menu"
+      @select="onMenu"
+    />
+    <ActionMenu
+      v-if="desktop"
+      v-model:show="addOpen"
+      :anchor="() => addBtn"
+      placement="right-start"
+      :offset="{ x: 8, y: -6 }"
+      :width="240"
+      :items="addItems"
+      testid="rail-add-menu"
+      @select="onAdd"
+    />
 
     <ServerFormPopover
       v-if="servers.enabled"
@@ -408,24 +442,28 @@ function onRailKey(e) {
   padding: 12px 0;
   background: var(--t-rail);
 }
+/* The same well as a workspace tile (RailTile .rt): 44×44, radius 14. */
 .ar-logo {
   flex: none;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 4px;
-  padding: 0 4px;
+  padding: 0;
   border: none;
-  border-radius: 10px;
+  border-radius: 14px;
   background: transparent;
   cursor: pointer;
+  transition: background 0.12s ease;
 }
 .ar-logo:hover {
   background: var(--t-hover);
 }
-.ar-ver-hint {
-  margin-top: 6px;
+.ar-logo:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
 }
 /* The tiles scroll when there are more than fit; the logo and help stay put. */
 .ar-list {
@@ -482,6 +520,10 @@ function onRailKey(e) {
 }
 .ar-add:hover,
 .ar-help:hover {
+  color: var(--t-text1);
+  background: var(--t-hover);
+}
+.ar-help.open {
   color: var(--t-text1);
   background: var(--t-hover);
 }

@@ -23,6 +23,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useInboxStore } from '@/stores/inbox'
 import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
+import ActionMenu from './kit/ActionMenu.vue'
 import { workspaceName } from '@/utils/defaultNames'
 import ProjectCreatePopover from './sidebar/ProjectCreatePopover.vue'
 import NewGroupRow from './sidebar/NewGroupRow.vue'
@@ -134,6 +135,7 @@ useShortcuts({ 'nav.goSidebar': focusTree })
 // The workspace menu under its name (v2): members, integrations, appearance,
 // create, delete — the doors of the former tool row live here now.
 const wsHead = ref(null)
+const wsMenuOpen = ref(false)
 const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
 </script>
 
@@ -146,23 +148,25 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
     <div class="brand">
       <!-- The logo and the workspace tiles live on the rail now (v2, #2955);
            the header names the current workspace and holds its menu. -->
-      <n-dropdown
+      <button
         v-if="!collapsed"
-        trigger="click"
-        placement="bottom-start"
-        :options="wsMenu.options.value"
-        @select="wsMenu.select"
+        ref="wsHead"
+        type="button"
+        class="ws-head"
+        :class="{ open: wsMenuOpen }"
+        data-testid="ws-head"
+        aria-haspopup="menu"
+        :aria-expanded="wsMenuOpen"
+        @click="wsMenuOpen = !wsMenuOpen"
       >
-        <button ref="wsHead" type="button" class="ws-head" data-testid="ws-head">
-          <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
-          <span
-            v-if="conflicts.count"
-            class="ws-head-dot"
-            :title="t('shell.tools.integrationsConflicts', { count: conflicts.count })"
-          />
-          <n-icon :component="ChevronDownOutline" :size="13" class="ws-head-chev" />
-        </button>
-      </n-dropdown>
+        <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
+        <span
+          v-if="conflicts.count"
+          class="ws-head-dot"
+          :title="t('shell.tools.integrationsConflicts', { count: conflicts.count })"
+        />
+        <n-icon :component="ChevronDownOutline" :size="13" class="ws-head-chev" />
+      </button>
       <button
         v-else
         type="button"
@@ -172,6 +176,17 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
       >
         <n-icon :component="ChevronForwardOutline" :size="16" />
       </button>
+      <ActionMenu
+        v-model:show="wsMenuOpen"
+        :anchor="() => wsHead"
+        placement="bottom-start"
+        :offset="{ x: 0, y: 4 }"
+        :width="264"
+        :header="wsMenu.header.value"
+        :items="wsMenu.items.value"
+        testid="ws-menu"
+        @select="wsMenu.select"
+      />
     </div>
     <div v-if="collapsed" class="rail-sep" />
 
@@ -411,7 +426,8 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
   font-weight: 650;
   cursor: pointer;
 }
-.ws-head:hover {
+.ws-head:hover,
+.ws-head.open {
   background: var(--t-hover-side);
 }
 .ws-head-name {
