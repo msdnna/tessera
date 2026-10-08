@@ -3,7 +3,7 @@ title: Customizing the board view
 category: Boards
 order: 23
 keywords: board view, customize, panel, card size, fields, stacked, empty fields, scale, matrix, thresholds, board icon, board colour, collapse
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 The sliders button on the right of the board bar (or the `⇧V` key, or the palette command “Board view”) opens the **Board view** panel. It docks on the right inside the board, under the bar with the chips: the board moves over and makes room, nothing is covered. The panel holds everything about the board: saved views, how the cards look, grouping and filters, columns, the board's name and icon.
@@ -39,7 +39,16 @@ A practical trick: on a board grouped by tags, switch off the “Tags” field �
 
 ## Scale (timeline and Gantt)
 
-The scale — Days, Weeks, Months (the same as the segments on the board bar), the **Show the task column** switch, the “overdue / links / undated” counters and the hint about dragging a dependency. The Quarters scale and the switches for shaded weekends, the today line, progress, links and undated tasks are marked “soon” for now.
+The scale — Day, Week, Month or Quarter (the same as the segments on the board bar); in Quarter the quarters are named over the months. Below it, the switches:
+
+- **Show the task column** — the left column with the titles;
+- **Shade weekends** — Saturdays and Sundays tinted;
+- **“Today” line** — the vertical line and the highlight of the current day;
+- **Progress inside the bar** — the line of done subtasks along the bottom of the bar;
+- **Links between tasks** — Gantt only: the dependency arrows and the knob they are dragged from;
+- **Undated tasks at the bottom** — the block of tasks with no dates under the chart.
+
+The scale and the switches are remembered for the board and saved in a view; zooming with the wheel onto another scale marks the view “changed”. The section also has the “overdue / links / undated” counters and the hint about dragging a dependency.
 
 ## Matrix
 
@@ -64,4 +73,4 @@ The board's name is edited right here: Enter or a click outside the field saves 
 
 ## What of this goes into a saved view
 
-Everything set in the panel except the “Board” section — the view, grouping, sorting, filters, card size and fields, collapsed columns, the matrix thresholds — is saved into a board view. The name, icon and colour belong to the board itself: they are the same for everybody and do not depend on the view.
+Everything set in the panel except the “Board” section — the view, grouping, sorting, filters, card size and fields, collapsed columns, the matrix thresholds, the timeline scale, and also the list's column widths and the calendar mode — is saved into a board view. The name, icon and colour belong to the board itself: they are the same for everybody and do not depend on the view.

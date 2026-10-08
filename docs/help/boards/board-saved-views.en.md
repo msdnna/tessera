@@ -3,7 +3,7 @@ title: Board views
 category: Boards
 order: 24
 keywords: saved views, save, update, reset, changed, default, star, shared, personal, rename, order, delete
-updated: 2026-10-07
+updated: 2026-10-08
 ---
 
 A combination of view, grouping, sorting, filters and card settings you have put together is a **saved view**. You can name and save it to come back to it in one click instead of assembling the chips again.
@@ -22,7 +22,8 @@ A saved view remembers how you look at the board:
 - every filter, and whether subtasks are expanded;
 - which columns are collapsed and whether empty ones collapse automatically;
 - the card size, “Stacked”, “Show empty” and the visibility of each field;
-- the matrix thresholds.
+- the matrix thresholds;
+- the list's column widths, the calendar mode (month or week), the scale and the switches of the timeline and the Gantt.
 
 Not saved are **the text in the search field** (that is your query of the moment), **the milestone** and **the archive** — that is where you are, not how you look.
 
