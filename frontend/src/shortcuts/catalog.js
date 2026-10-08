@@ -38,6 +38,7 @@ export const GROUPS = [
   'project',
   'stage',
   'inbox',
+  'notifications',
   'settings',
   'admin',
 ]
@@ -290,6 +291,12 @@ export const CATALOG = [
   { id: 'stage.back', keys: 'escape', group: 'stage' },
 
   // ── settings and administration (#3106) ──
+  // The bell's feed (#3107, PackageE «NotifPop»): the popover answers these
+  // itself while it is open — display rows for the cheat sheet and its footer.
+  { id: 'notifications.select', group: 'notifications', display: [['arrowup', 'arrowdown']] },
+  { id: 'notifications.open', group: 'notifications', display: [['enter']] },
+  { id: 'notifications.read', group: 'notifications', display: [['E']] },
+  { id: 'notifications.readAll', group: 'notifications', display: [['shift', 'E']] },
   { id: 'settings.sections', group: 'settings', display: [['arrowup', 'arrowdown']] },
   { id: 'admin.search', keys: '/', group: 'admin' },
   { id: 'admin.rows', group: 'admin', display: [['arrowup', 'arrowdown']] },

@@ -231,7 +231,8 @@
       "calendar": "Calendar",
       "matrix": "Matrix",
       "settings": "Settings",
-      "admin": "Administration"
+      "admin": "Administration",
+      "notifications": "Notifications"
     },
     "nav": {
       "palette": "Search and commands",
@@ -406,6 +407,12 @@
       "search": "Search users",
       "rows": "Move between users",
       "menu": "User actions"
+    },
+    "notifications": {
+      "select": "Notifications: select",
+      "open": "Notifications: open",
+      "read": "Notifications: mark read",
+      "readAll": "Notifications: mark all read"
     }
   },
   "palette": {

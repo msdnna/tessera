@@ -45,6 +45,10 @@ export const FEATURE_STUBS = {
   'documents.trash': 3006,
   'documents.milestone': 3044,
   'documents.templateCategories': 3045,
+  // Notifications (#3107): «Принять / Отклонить» a meeting invitation right in
+  // the feed (#3051), the page of all notifications with paging (#3049).
+  'notifications.rsvp': 3051,
+  'notifications.all': 3049,
 }
 
 export function stubTask(key) {

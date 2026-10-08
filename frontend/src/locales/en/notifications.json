@@ -45,5 +45,27 @@
   },
   "reason": {
     "unknown": "unknown error"
+  },
+  "pop": {
+    "settings": "Notification settings",
+    "filter": {
+      "all": "All",
+      "mentions": "Mentions",
+      "assigned": "Assigned",
+      "gitlab": "GitLab"
+    },
+    "fresh": "New",
+    "earlier": "Earlier",
+    "emptyFilter": "Nothing here yet",
+    "accept": "Accept",
+    "decline": "Decline",
+    "select": "select",
+    "open": "open",
+    "read": "read",
+    "all": "All notifications",
+    "now": "just now",
+    "minutes": "{n} min",
+    "quote": "“{text}”",
+    "hours": "{n} h"
   }
 }

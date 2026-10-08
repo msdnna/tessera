@@ -32,7 +32,13 @@ export function notificationTitle(kind, t = i18n.global.t, te = i18n.global.te) 
 }
 
 // The one-line sentence shown in the bell feed and as a native notification body.
-export function notificationText(n, { t = i18n.global.t, te = i18n.global.te, formatters } = {}) {
+// `ctx: false` leaves the inlined content (the task title, the comment excerpt)
+// out of the sentence — the feed draws it under the line as a chip or a quote
+// (v2, #3107), and saying it twice reads as a stutter.
+export function notificationText(
+  n,
+  { t = i18n.global.t, te = i18n.global.te, formatters, ctx = true } = {},
+) {
   if (!n) return ''
   const p = n.payload || {}
   const event = p.event
@@ -49,7 +55,8 @@ export function notificationText(n, { t = i18n.global.t, te = i18n.global.te, fo
   return t(key, {
     actor: p.actor || '',
     ref: p.task_number ?? '?',
-    ctx: p.title || p.excerpt ? t('notifications.ctx', { text: p.title || p.excerpt }) : '',
+    ctx:
+      ctx && (p.title || p.excerpt) ? t('notifications.ctx', { text: p.title || p.excerpt }) : '',
     // A seeded column arrives with its name_key (#2800), so it is captioned the
     // same way the board captions it — a name the user chose has no key and is
     // shown verbatim.
