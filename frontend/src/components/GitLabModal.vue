@@ -31,8 +31,8 @@ import {
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
 import GitLabJournalPanel from '@/components/GitLabJournalPanel.vue'
-import ConflictResolverPanel from '@/components/ConflictResolverPanel.vue'
 import { useGitlabStore } from '@/stores/gitlab'
+import { useConflictsStore } from '@/stores/conflicts'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { priorityLabel, priorityOptions } from '@/utils/priority'
 import { columnName } from '@/utils/defaultNames'
@@ -49,6 +49,7 @@ const emit = defineEmits(['update:show'])
 const { t } = useI18n()
 const message = useMessage()
 const gl = useGitlabStore()
+const conflictsStore = useConflictsStore()
 const { formatDateTime, datePattern, firstDayOfWeek } = useFormat()
 const ws = useWorkspacesStore()
 
@@ -918,7 +919,7 @@ const syncMenu = computed(() => [
 function onSyncMenu(key) {
   if (key === 'full') syncNow('full')
   else if (key === 'journal') openRight('journal')
-  else if (key === 'conflicts') openRight('conflicts')
+  else if (key === 'conflicts') conflictsStore.openResolver()
 }
 async function loadConflictCount() {
   try {
@@ -1636,14 +1637,6 @@ watch(
               ref="journalRef"
               class="gl-pane-fill"
               :ws-id="wsId"
-            />
-
-            <!-- CONFLICTS: write-back conflict resolver -->
-            <conflict-resolver-panel
-              v-else-if="rightMode === 'conflicts'"
-              class="gl-pane-fill"
-              :ws-id="wsId"
-              @resolved="loadConflictCount"
             />
           </div>
         </div>

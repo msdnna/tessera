@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { gitlab as glApi } from '@/api'
 
 // Open GitLab write-back conflicts for the current workspace. Surfaced as orange
@@ -16,6 +16,19 @@ export const useConflictsStore = defineStore('conflicts', () => {
   const count = computed(() => list.value.length)
   const taskIds = computed(() => new Set(list.value.map((c) => c.task_id)))
   const has = (taskId) => taskIds.value.has(taskId)
+
+  // Choices made in the resolver window but not applied yet (#2975): Esc closes
+  // the window and keeps them, so reopening lands where the user left. Per
+  // conflict id: { [field]: { pick: 'base'|'ours'|'theirs'|'manual', text } }.
+  // Session-only — a reload starts over, like any unsaved draft.
+  const drafts = reactive({})
+  function draftFor(id) {
+    if (!drafts[id]) drafts[id] = {}
+    return drafts[id]
+  }
+  function dropDraft(id) {
+    delete drafts[id]
+  }
 
   // Open the conflicts resolver, optionally focused on one task's conflict.
   function openResolver(taskId = null) {
@@ -58,6 +71,7 @@ export const useConflictsStore = defineStore('conflicts', () => {
     loadSeq++
     list.value = []
     wsId.value = null
+    for (const id of Object.keys(drafts)) delete drafts[id]
   }
 
   return {
@@ -71,5 +85,7 @@ export const useConflictsStore = defineStore('conflicts', () => {
     resolverOpen,
     focusTaskId,
     openResolver,
+    draftFor,
+    dropDraft,
   }
 })

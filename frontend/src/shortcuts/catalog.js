@@ -305,7 +305,7 @@ export const CATALOG = [
   },
   { id: 'conflict.prev', keys: 'mod+[', modal: true },
   { id: 'conflict.next', keys: 'mod+]', modal: true },
-  { id: 'conflict.apply', keys: 'mod+enter', group: 'window', modal: true },
+  { id: 'conflict.apply', keys: 'mod+enter', group: 'window', modal: true, input: true },
   { id: 'jobs.stop', keys: 'shift+backspace', group: 'window', modal: true },
   { id: 'jobs.run', keys: 'r', modal: true },
   { id: 'members.invite', keys: 'i', group: 'window', modal: true },

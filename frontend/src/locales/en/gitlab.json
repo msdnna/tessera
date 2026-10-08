@@ -289,24 +289,13 @@
     }
   },
   "conflicts": {
-    "title": "GitLab write-back conflicts",
     "empty": "No open conflicts",
-    "select": "Pick a conflict on the left",
     "loading": "Loading conflicts…",
     "resolved": "Conflict resolved",
     "taskFallback": "Task",
-    "hint": "Both you and GitLab changed this since the last sync. Choose whose value to keep.",
-    "hintManual": "Both you and GitLab changed this since the last sync. Choose whose value to keep, or merge them by hand.",
-    "colBase": "Before (base)",
-    "colTheirs": "GitLab",
-    "colOurs": "Mine (Tessera)",
     "merged": "Merged value",
     "mergedPlaceholder": "Enter the final value",
     "emptyValue": "— empty —",
-    "acceptOurs": "Keep mine",
-    "acceptTheirs": "Keep GitLab",
-    "mergeManual": "Merge by hand…",
-    "saveMerge": "Save the merge",
     "field": {
       "title": "Title",
       "description": "Description",
@@ -325,6 +314,25 @@
     "state": {
       "open": "Open",
       "closed": "Closed"
-    }
+    },
+    "windowTitle": "Resolve conflicts",
+    "position": "task {i} of {n}",
+    "queue": "Tasks in conflict",
+    "left": "{n} field left | {n} fields left",
+    "readyShort": "all chosen",
+    "fromPush": "issue #{iid} · {at}",
+    "onePush": "The decisions go to GitLab in one push",
+    "openTask": "Open the task",
+    "hintV2": "The fields changed both in Tessera and in GitLab since the last sync. Pick a version for each field.",
+    "colField": "Field",
+    "colBaseShort": "Base",
+    "autoSide": "auto · changed only in {side}",
+    "choose": "pick a version",
+    "manualPicked": "merged by hand",
+    "decided": "{done} of {n} fields",
+    "keyVersion": "version",
+    "postpone": "Postpone",
+    "apply": "Apply and push",
+    "keyFieldHint": "↑↓ — field, B / T / G — version, M — merge by hand"
   }
 }
