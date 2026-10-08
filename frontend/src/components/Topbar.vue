@@ -26,10 +26,7 @@ const board = useBoardViewStore()
 const ws = useWorkspacesStore()
 const quick = useQuickStore()
 const inbox = useInboxStore()
-// An open document fills the header with its own controls (#2727); the
-// cheat-sheet button gives up its place there — `?` still opens the sheet.
 const route = useRoute()
-const pageOwnsHeader = computed(() => /^\/documents\/./.test(route.path))
 // Board actions only make sense on a desktop board view.
 const onBoard = () => board.active && !props.mobile
 // v2 (#2954): on a board the header's left side names where you are — project ›
@@ -38,10 +35,25 @@ const crumbProject = computed(() => ws.projects.find((p) => p.id === board.proje
 const crumbBoard = computed(() => board.board?.name || '')
 // The start screen names itself and the workspace (v2, #2960).
 const onHome = computed(() => route.path === '/')
+// Screens with a section column name themselves the same way (v2, #3106):
+// «Документы · пространство», «Настройки · профиль», «Администрирование ·
+// сервер host».
+const pageCrumb = computed(() => {
+  const p = route.path
+  if (p === '/documents' || p.startsWith('/documents/'))
+    return { cur: t('documents.view.crumbRoot'), sub: workspaceName(ws.current) }
+  if (p === '/settings') return { cur: t('settings.title'), sub: t('settings.crumb') }
+  if (p === '/admin')
+    return {
+      cur: t('settings.admin.title'),
+      sub: t('settings.admin.crumb', { host: location.host }),
+    }
+  return null
+})
 </script>
 
 <template>
-  <div class="topbar" :class="{ mobile, 'page-owned': pageOwnsHeader && !mobile }">
+  <div class="topbar" :class="{ mobile }">
     <n-button v-if="mobile" class="menu-btn" quaternary circle @click="$emit('menu')">
       <n-icon :component="MenuOutline" />
     </n-button>
@@ -66,6 +78,11 @@ const onHome = computed(() => route.path === '/')
         <span class="crumb crumb-cur">{{ t('shell.home.title') }}</span>
         <span class="crumb-dot">·</span>
         <span class="crumb">{{ workspaceName(ws.current) }}</span>
+      </div>
+      <div v-if="pageCrumb && !mobile" class="crumbs" data-testid="page-crumbs">
+        <span class="crumb crumb-cur">{{ pageCrumb.cur }}</span>
+        <span class="crumb-dot">·</span>
+        <span class="crumb">{{ pageCrumb.sub }}</span>
       </div>
       <div id="tb-slot-left" class="tb-slot" />
     </div>
@@ -109,7 +126,7 @@ const onHome = computed(() => route.path === '/')
       <NotificationsBell />
       <!-- The cheat sheet (#2956); on a phone there is no keyboard to press. -->
       <button
-        v-if="!mobile && !pageOwnsHeader"
+        v-if="!mobile"
         type="button"
         class="tb-keys"
         data-testid="shortcuts-button"
@@ -191,16 +208,6 @@ const onHome = computed(() => route.path === '/')
   gap: 16px;
   padding: 0 16px;
   position: relative;
-}
-/* An open document fills both sides with its own controls (#2727): the sides
-   take what their content needs and the search gives way in the middle, rather
-   than sliding over the «back» button. */
-.topbar.page-owned {
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
-}
-.topbar.page-owned .search-wrap {
-  max-width: 420px;
-  margin: 0 auto;
 }
 /* A phone has no room for three tracks: back to a row where the search takes
    whatever the hamburger and the board menu leave. */

@@ -189,6 +189,7 @@
   },
   "menu": {
     "deleting": "Deleting…",
-    "retry": "retry"
+    "retry": "retry",
+    "failed": "Couldn't delete"
   }
 }

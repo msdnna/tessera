@@ -38,6 +38,8 @@ export const GROUPS = [
   'project',
   'stage',
   'inbox',
+  'settings',
+  'admin',
 ]
 
 export const CATALOG = [
@@ -60,10 +62,11 @@ export const CATALOG = [
   { id: 'undo.last', keys: 'mod+z', group: 'nav', modal: true },
   { id: 'toast.focus', keys: 'f6', group: 'nav' },
 
-  // Pages: palette commands without a key of their own.
-  { id: 'go.documents', command: 'DocumentsOutline', to: '/documents' },
+  // Pages: palette commands. Documents and settings got a key of their own in
+  // v2 (#3106, PackageE): G D, G «,».
+  { id: 'go.documents', keys: 'g d', group: 'nav', command: 'DocumentsOutline', to: '/documents' },
   { id: 'go.milestones', command: 'TrailSignOutline', to: '/milestones' },
-  { id: 'go.settings', command: 'SettingsOutline', to: '/settings' },
+  { id: 'go.settings', keys: 'g ,', group: 'nav', command: 'SettingsOutline', to: '/settings' },
 
   // ── sidebar and spaces (#2969): the tree row under the keyboard cursor, and
   // the rail. They work on the selected row without opening its menu, and the
@@ -285,6 +288,12 @@ export const CATALOG = [
   { id: 'stage.board', keys: 'b', group: 'stage' },
   { id: 'stage.close', keys: 'shift+x', group: 'stage' },
   { id: 'stage.back', keys: 'escape', group: 'stage' },
+
+  // ── settings and administration (#3106) ──
+  { id: 'settings.sections', group: 'settings', display: [['arrowup', 'arrowdown']] },
+  { id: 'admin.search', keys: '/', group: 'admin' },
+  { id: 'admin.rows', group: 'admin', display: [['arrowup', 'arrowdown']] },
+  { id: 'admin.menu', group: 'admin', display: [['enter']] },
 ]
 
 export const byId = new Map(CATALOG.map((e) => [e.id, e]))

@@ -126,6 +126,8 @@ useShortcuts({
     else inbox.open({ focus: true })
   },
   'nav.goNotifications': () => notes.requestFeed(),
+  'go.documents': () => router.push('/documents'),
+  'go.settings': () => router.push('/settings'),
   'view.theme': () => theme.toggle(),
   // ⌘, — the «Проект» window of the project in front of you (#2971): the open
   // board's, or the one in the address (a stage page). Toggles.

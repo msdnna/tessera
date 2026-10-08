@@ -224,7 +224,9 @@
       "inbox": "Inbox",
       "list": "List",
       "calendar": "Calendar",
-      "matrix": "Matrix"
+      "matrix": "Matrix",
+      "settings": "Settings",
+      "admin": "Administration"
     },
     "nav": {
       "palette": "Search and commands",
@@ -391,6 +393,14 @@
     "matrix": {
       "pin": "Pin into the next quadrant",
       "auto": "Back to the automatic place"
+    },
+    "settings": {
+      "sections": "Settings sections"
+    },
+    "admin": {
+      "search": "Search users",
+      "rows": "Move between users",
+      "menu": "User actions"
     }
   },
   "palette": {

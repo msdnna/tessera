@@ -1,5 +1,26 @@
 {
   "title": "Settings",
+  "crumb": "profile",
+  "nav": {
+    "profile": "Profile",
+    "security": "Security",
+    "appearance": "Appearance",
+    "locale": "Language & format",
+    "notifications": "Notifications",
+    "app": "App",
+    "keys": "Keyboard shortcuts",
+    "hints": "Hints",
+    "desktopPill": "desktop",
+    "footHint": "settings"
+  },
+  "sub": {
+    "profile": "how others see you in workspaces",
+    "security": "password and sign-in",
+    "appearance": "theme and accent · saved instantly",
+    "locale": "language, dates and time zone · saved instantly",
+    "notifications": "where and what to notify about · saved instantly",
+    "app": "server address, launch at login and updates"
+  },
   "profile": {
     "title": "Profile",
     "email": "Email (login)",
@@ -36,7 +57,10 @@
     "invalid": "Check the fields: the new password must be at least 8 characters and match the confirmation",
     "noPassword": "This account has no password — it signs in through an external provider. To set one, we'll send a link to {email}.",
     "setLink": "Send a link",
-    "linkSent": "If the account exists, a link has been sent to {email}"
+    "linkSent": "If the account exists, a link has been sent to {email}",
+    "password": "Password",
+    "twoFactor": "Two-factor authentication",
+    "twoFactorHint": "A code from an authenticator app at sign-in"
   },
   "appearance": {
     "title": "Appearance",
@@ -93,30 +117,75 @@
     "upToDate": "You are on the latest version.",
     "available": "Version {version} is available.",
     "downloading": "Downloading the update…",
-    "error": "Update failed: {error}"
+    "error": "Update failed: {error}",
+    "webOnly": "This is where the desktop app keeps its own settings: server address, launch at login and updates. A browser has none of them; download the app if you need it."
   },
   "admin": {
     "title": "Administration",
-    "usersCount": "Users on this instance — {n}",
+    "crumb": "server {host}",
+    "hostVersion": "{version} · self-hosted",
+    "nav": {
+      "users": "Users",
+      "invites": "Invitations",
+      "roles": "Roles & permissions",
+      "server": "Server",
+      "integrations": "Integrations",
+      "jobs": "Background jobs"
+    },
+    "invite": "Invite",
+    "csv": "Export CSV",
     "search": "Search by name or email",
     "empty": "Nobody found",
+    "filter": {
+      "all": "All",
+      "active": "Active",
+      "admins": "Admins",
+      "blocked": "Blocked",
+      "invited": "Invited"
+    },
+    "col": {
+      "user": "User",
+      "role": "Role",
+      "spaces": "Workspaces",
+      "status": "Status",
+      "login": "Last sign-in",
+      "twoFactor": "2FA"
+    },
+    "role": {
+      "admin": "Administrator",
+      "adminShort": "Admin",
+      "user": "User",
+      "current": "current",
+      "selfLocked": "You can't change your own role"
+    },
+    "status": {
+      "active": "Active",
+      "blocked": "Blocked"
+    },
     "badge": {
-      "admin": "admin",
       "you": "you",
-      "disabled": "deactivated",
       "unverified": "unverified"
     },
     "action": {
-      "resetLink": "Copy the password reset link",
-      "makeAdmin": "Make admin",
-      "revokeAdmin": "Revoke admin",
-      "activate": "Activate",
-      "deactivate": "Deactivate"
+      "resetLink": "Copy password reset link",
+      "activate": "Unblock sign-in",
+      "deactivate": "Block sign-in"
     },
     "confirm": {
       "revokeAdmin": "Revoke admin rights from {name}?",
-      "deactivate": "Deactivate {name}? They will not be able to sign in."
+      "revokeAdminSub": "The admin screens will no longer be available to them",
+      "deactivateTitle": "Block sign-in for {name}?",
+      "deactivateSub": "Tasks, comments and authorship are kept"
     },
+    "server": {
+      "address": "Address",
+      "api": "API version",
+      "apiBuilt": "API build",
+      "web": "Web client version",
+      "webBuilt": "Web client build",
+      "whatsNew": "What's new"
+    },
+    "integrationsSub": "sign-in and sync through GitLab",
     "msg": {
       "activated": "Account activated",
       "deactivated": "Account deactivated",
@@ -242,12 +311,14 @@
       "quietFrom": "From",
       "quietTo": "To",
       "quietHint": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone.",
-      "quietHintTz": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone ({tz})."
+      "quietHintTz": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone ({tz}).",
+      "quietExceptions": "Only urgent and mentions"
     },
     "confirm": {
       "deleteChannel": "Delete the channel “{name}”?",
       "channelUsedIn": "It is used by {n} rule — it will stop delivering to this channel. | It is used by {n} rules — they will stop delivering to this channel.",
-      "deleteRoute": "Delete this routing rule?"
+      "deleteRoute": "Delete this routing rule?",
+      "irreversible": "This cannot be undone"
     },
     "channelForm": {
       "newTitle": "New channel",

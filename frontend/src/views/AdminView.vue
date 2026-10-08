@@ -1,31 +1,109 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+// Administration (v2, #3106, mockup AdminPage). The settings layout — a sunken
+// section column, the open section on the right, `?s=` in the address — over
+// the same admin API as before: the instance's users (admin flag, sign-in
+// allowed, password-reset link), the GitLab OAuth app, the background jobs
+// window. What the mockup draws without an API behind it — invitations across
+// workspaces, roles, a user's workspaces and last sign-in, 2FA, CSV export — is
+// a visible «Скоро · #N» stub (utils/featureStubs.js).
+//
+// Users are a table without lines: each row is its own --t-col surface. The
+// role is a control (ActionMenu), the rest of a row's actions sit in «⋯»;
+// revoking admin rights and blocking sign-in are two-step items.
+import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NTag, NPopconfirm, NIcon, NSpin, NInput, NSwitch, useMessage } from 'naive-ui'
-import { ShieldCheckmarkOutline, KeyOutline, SearchOutline, LogoGitlab } from '@vicons/ionicons5'
+import { useRoute, useRouter } from 'vue-router'
+import { NButton, NIcon, NInput, NSpin, NSwitch, NTooltip, useMessage } from 'naive-ui'
+import {
+  BuildOutline,
+  ChevronDownOutline,
+  CloudDownloadOutline,
+  EllipsisHorizontal,
+  GitBranchOutline,
+  KeyOutline,
+  LockClosedOutline,
+  LockOpenOutline,
+  LogoGitlab,
+  MailOutline,
+  PeopleOutline,
+  PersonAddOutline,
+  PersonOutline,
+  SearchOutline,
+  ServerOutline,
+  ShieldCheckmarkOutline,
+  ShieldOutline,
+  SyncOutline,
+} from '@vicons/ionicons5'
 import { admin } from '@/api'
 import { copyText } from '@/utils/clipboard'
+import { stubTask } from '@/utils/featureStubs'
+import { humanizeError } from '@/utils/errors'
 import { useAuthStore } from '@/stores/auth'
+import { useWsDialogsStore } from '@/stores/wsDialogs'
+import { useWhatsNewStore } from '@/stores/whatsNew'
+import { useVersionInfo } from '@/composables/useVersionInfo'
+import { useFormat } from '@/composables/useFormat'
+import { useResponsive } from '@/composables/useResponsive'
+import { useShortcuts } from '@/composables/useShortcuts'
 import UserAvatar from '@/components/UserAvatar.vue'
-import TesseraSpinner from '@/components/TesseraSpinner.vue'
 import SecretInput from '@/components/SecretInput.vue'
+import BrandLogo from '@/components/BrandLogo.vue'
+import Kbd from '@/components/Kbd.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
+import '@/components/settings/settings.css'
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
+const dialogs = useWsDialogsStore()
+const whatsNew = useWhatsNewStore()
 const message = useMessage()
+const { isMobile } = useResponsive()
+const { web, api: apiVersion } = useVersionInfo()
+const { formatDateTime } = useFormat()
 
+const host = location.host
+const SECTIONS = ['users', 'server', 'integrations']
+const section = computed(() => {
+  const s = route?.query?.s
+  return typeof s === 'string' && SECTIONS.includes(s) ? s : 'users'
+})
+function pick(key) {
+  if (key !== section.value) router.replace({ query: { ...route.query, s: key } })
+}
+const STUB = {
+  invites: stubTask('admin.invites'),
+  roles: stubTask('admin.roles'),
+  spaces: stubTask('admin.userSpaces'),
+  csv: stubTask('admin.csv'),
+  twoFactor: stubTask('settings.twoFactor'),
+}
+
+// ── users ──
 const loading = ref(false)
 const users = ref([])
 const query = ref('')
-const busy = ref('') // id currently mutating, to disable its row buttons
-
+const filter = ref('all')
+const busy = ref('')
 const meId = computed(() => auth.user?.id)
+
+const counts = computed(() => ({
+  all: users.value.length,
+  active: users.value.filter((u) => u.active).length,
+  admins: users.value.filter((u) => u.is_admin).length,
+  blocked: users.value.filter((u) => !u.active).length,
+}))
+const FILTERS = ['all', 'active', 'admins', 'blocked']
 const filtered = computed(() => {
   const q = query.value.trim().toLowerCase()
-  if (!q) return users.value
-  return users.value.filter(
-    (u) => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q),
-  )
+  return users.value.filter((u) => {
+    if (filter.value === 'active' && !u.active) return false
+    if (filter.value === 'admins' && !u.is_admin) return false
+    if (filter.value === 'blocked' && u.active) return false
+    if (!q) return true
+    return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
+  })
 })
 
 async function load() {
@@ -40,32 +118,123 @@ async function load() {
   }
 }
 
-async function toggleActive(u) {
+// ── row menus: the role control and «⋯» ──
+const menu = ref({ show: false, anchor: null, kind: '', user: null })
+const menuBusy = ref(false)
+const menuFailed = ref('')
+function openMenu(kind, u, el) {
+  menuFailed.value = ''
+  menu.value = { show: true, anchor: el, kind, user: u }
+}
+const menuItems = computed(() => {
+  const u = menu.value.user
+  if (!u) return []
+  const pending = (item) => {
+    if (menuBusy.value) return { ...item, busy: true }
+    if (menuFailed.value)
+      return { ...item, failed: { title: t('common.menu.failed'), sub: menuFailed.value } }
+    return item
+  }
+  if (menu.value.kind === 'role') {
+    return [
+      {
+        key: 'admin',
+        label: t('settings.admin.role.admin'),
+        icon: ShieldCheckmarkOutline,
+        active: u.is_admin,
+        note: u.is_admin ? t('settings.admin.role.current') : '',
+      },
+      u.is_admin
+        ? pending({
+            key: 'user',
+            label: t('settings.admin.role.user'),
+            icon: PersonOutline,
+            danger: true,
+            confirm: {
+              title: t('settings.admin.confirm.revokeAdmin', { name: u.name }),
+              sub: t('settings.admin.confirm.revokeAdminSub'),
+            },
+          })
+        : {
+            key: 'user',
+            label: t('settings.admin.role.user'),
+            icon: PersonOutline,
+            active: true,
+            note: t('settings.admin.role.current'),
+          },
+      { gap: true },
+      { key: 'roles', label: t('settings.admin.nav.roles'), icon: KeyOutline, stub: STUB.roles },
+    ]
+  }
+  const items = [
+    { key: 'reset', label: t('settings.admin.action.resetLink'), icon: KeyOutline },
+    { gap: true },
+  ]
+  if (u.active) {
+    items.push(
+      pending({
+        key: 'block',
+        label: t('settings.admin.action.deactivate'),
+        icon: LockClosedOutline,
+        danger: true,
+        confirm: {
+          title: t('settings.admin.confirm.deactivateTitle', { name: u.name }),
+          sub: t('settings.admin.confirm.deactivateSub'),
+        },
+      }),
+    )
+  } else {
+    items.push({
+      key: 'unblock',
+      label: t('settings.admin.action.activate'),
+      icon: LockOpenOutline,
+    })
+  }
+  return items
+})
+
+async function onMenu(key) {
+  const u = menu.value.user
+  if (!u) return
+  if (key === 'admin' && !u.is_admin) return setAdmin(u, true)
+  if (key === 'user' && u.is_admin) return setAdmin(u, false)
+  if (key === 'reset') return copyResetLink(u)
+  if (key === 'block') return setActive(u, false)
+  if (key === 'unblock') return setActive(u, true)
+}
+
+async function setAdmin(u, value) {
+  menuBusy.value = true
+  menuFailed.value = ''
   busy.value = u.id
   try {
-    await admin.setActive(u.id, !u.active)
-    u.active = !u.active
+    await admin.setAdmin(u.id, value)
+    u.is_admin = value
+    menu.value.show = false
     message.success(
-      u.active ? t('settings.admin.msg.activated') : t('settings.admin.msg.deactivated'),
+      value ? t('settings.admin.msg.adminGranted') : t('settings.admin.msg.adminRevoked'),
     )
   } catch (e) {
-    message.error(e.message)
+    menuFailed.value = humanizeError(e)
   } finally {
+    menuBusy.value = false
     busy.value = ''
   }
 }
 
-async function toggleAdmin(u) {
+async function setActive(u, value) {
+  menuBusy.value = true
+  menuFailed.value = ''
   busy.value = u.id
   try {
-    await admin.setAdmin(u.id, !u.is_admin)
-    u.is_admin = !u.is_admin
-    message.success(
-      u.is_admin ? t('settings.admin.msg.adminGranted') : t('settings.admin.msg.adminRevoked'),
-    )
+    await admin.setActive(u.id, value)
+    u.active = value
+    menu.value.show = false
+    message.success(value ? t('settings.admin.msg.activated') : t('settings.admin.msg.deactivated'))
   } catch (e) {
-    message.error(e.message)
+    menuFailed.value = humanizeError(e)
   } finally {
+    menuBusy.value = false
     busy.value = ''
   }
 }
@@ -75,8 +244,7 @@ async function copyResetLink(u) {
   try {
     const res = await admin.resetLink(u.id)
     const link = res.data?.link || ''
-    // The backend returns a path-only link when PUBLIC_URL is unset — qualify it
-    // against the current origin so the copied value is always clickable.
+    // A path-only link when PUBLIC_URL is unset — qualify it against this origin.
     const full = link.startsWith('http') ? link : `${window.location.origin}${link}`
     if (await copyText(full)) message.success(t('settings.admin.msg.resetLinkCopied'))
     else message.info(full)
@@ -87,10 +255,34 @@ async function copyResetLink(u) {
   }
 }
 
-// ── GitLab OAuth app config ──
-// Verbatim technical tokens: GitLab scope names and a JSON sample. They read
-// the same in every language, but they still have to come through a binding —
-// as bare template text the no-bare-strings rule would (rightly) flag them.
+// ── keys: «/» search, ↑↓ rows, ↵ the row's menu ──
+const searchRef = ref(null)
+const rowEls = {}
+useShortcuts({
+  'admin.search': () => {
+    if (section.value !== 'users') return
+    searchRef.value?.focus()
+  },
+})
+function onRowKey(e, u, i) {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    const next = filtered.value[i + (e.key === 'ArrowDown' ? 1 : -1)]
+    if (next) rowEls[next.id]?.focus()
+  } else if (e.key === 'Enter' && e.target === e.currentTarget) {
+    e.preventDefault()
+    openMenu('row', u, e.currentTarget.querySelector('[data-row-more]') || e.currentTarget)
+  }
+}
+function onSearchKey(e) {
+  if (e.key === 'ArrowDown' && filtered.value.length) {
+    e.preventDefault()
+    rowEls[filtered.value[0].id]?.focus()
+  }
+}
+
+// ── GitLab OAuth app (Интеграции) ──
+// Verbatim technical tokens: GitLab scope names and a JSON sample.
 const SCOPE_READ_API = 'read_api'
 const SCOPE_API = 'api'
 const ORG_MAP_SAMPLE =
@@ -148,7 +340,7 @@ async function saveOAuth() {
       client_id: oauth.value.client_id.trim(),
       client_secret: oauth.value.client_secret, // empty keeps the stored one
       service_token: oauth.value.service_token, // empty keeps the stored one
-      clear_client_secret: oauth.value.clear_secret, // explicit erase
+      clear_client_secret: oauth.value.clear_secret,
       clear_service_token: oauth.value.clear_service_token,
       enabled: oauth.value.enabled,
       org_map: orgMap,
@@ -169,6 +361,19 @@ async function saveOAuth() {
   }
 }
 
+// ── server ──
+function fmtBuilt(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : formatDateTime(d)
+}
+
+const paneEl = ref(null)
+function select(key) {
+  pick(key)
+  nextTick(() => paneEl.value?.scrollTo?.({ top: 0 }))
+}
+
 onMounted(() => {
   load()
   loadOAuth()
@@ -176,367 +381,972 @@ onMounted(() => {
 </script>
 
 <template>
-  <n-spin :show="loading" :rotate="false">
-    <template #icon><TesseraSpinner /></template>
-    <div class="admin">
-      <div class="head">
-        <h2 class="title">
-          <n-icon :component="ShieldCheckmarkOutline" class="title-ic" />
-          {{ t('settings.admin.title') }}
-        </h2>
-        <span class="sub">{{ t('settings.admin.usersCount', { n: users.length }) }}</span>
+  <div class="av" :class="{ mobile: isMobile }" data-testid="admin-view">
+    <nav class="av-nav" :aria-label="t('settings.admin.title')">
+      <div v-if="!isMobile" class="av-host">
+        <BrandLogo :height="20" :wordmark="false" />
+        <span class="av-host-who">
+          <span class="av-host-name">{{ host }}</span>
+          <span class="av-host-ver">{{
+            t('settings.admin.hostVersion', { version: apiVersion?.version || web.version })
+          }}</span>
+        </span>
       </div>
+      <button
+        type="button"
+        class="av-item"
+        :class="{ active: section === 'users' }"
+        data-testid="admin-nav-users"
+        @click="select('users')"
+      >
+        <n-icon :component="PeopleOutline" :size="16" class="av-item-ic" />
+        <span class="av-item-l">{{ t('settings.admin.nav.users') }}</span>
+        <span class="av-item-n">{{ users.length || '' }}</span>
+      </button>
+      <n-tooltip :delay="300" placement="right">
+        <template #trigger>
+          <span class="av-item stub" aria-disabled="true" data-testid="admin-nav-invites">
+            <n-icon :component="MailOutline" :size="16" class="av-item-ic" />
+            <span class="av-item-l">{{ t('settings.admin.nav.invites') }}</span>
+            <span class="av-pill">{{ t('common.stub.badge') }}</span>
+          </span>
+        </template>
+        {{ t('common.stub.soon', { n: STUB.invites }) }}
+      </n-tooltip>
+      <n-tooltip :delay="300" placement="right">
+        <template #trigger>
+          <span class="av-item stub" aria-disabled="true" data-testid="admin-nav-roles">
+            <n-icon :component="KeyOutline" :size="16" class="av-item-ic" />
+            <span class="av-item-l">{{ t('settings.admin.nav.roles') }}</span>
+            <span class="av-pill">{{ t('common.stub.badge') }}</span>
+          </span>
+        </template>
+        {{ t('common.stub.soon', { n: STUB.roles }) }}
+      </n-tooltip>
+      <span class="av-gap" />
+      <button
+        type="button"
+        class="av-item"
+        :class="{ active: section === 'server' }"
+        data-testid="admin-nav-server"
+        @click="select('server')"
+      >
+        <n-icon :component="ServerOutline" :size="16" class="av-item-ic" />
+        <span class="av-item-l">{{ t('settings.admin.nav.server') }}</span>
+      </button>
+      <button
+        type="button"
+        class="av-item"
+        :class="{ active: section === 'integrations' }"
+        data-testid="admin-nav-integrations"
+        @click="select('integrations')"
+      >
+        <n-icon :component="GitBranchOutline" :size="16" class="av-item-ic" />
+        <span class="av-item-l">{{ t('settings.admin.nav.integrations') }}</span>
+      </button>
+      <button
+        type="button"
+        class="av-item"
+        data-testid="admin-nav-jobs"
+        @click="dialogs.open('jobs')"
+      >
+        <n-icon :component="SyncOutline" :size="16" class="av-item-ic" />
+        <span class="av-item-l">{{ t('settings.admin.nav.jobs') }}</span>
+      </button>
+    </nav>
 
-      <!-- GitLab OAuth ("Войти через GitLab") -->
-      <div class="oauth-card">
-        <h3 class="oauth-h">
-          <n-icon :component="LogoGitlab" class="oauth-ic" /> {{ t('settings.admin.oauth.title') }}
-        </h3>
-        <p class="oauth-hint">
-          <b>{{ t('settings.admin.oauth.hint.loginLabel') }}</b>
-          <i18n-t keypath="settings.admin.oauth.hint.login" tag="span" scope="global">
-            <template #scope
-              ><code>{{ SCOPE_READ_API }}</code></template
-            >
-            <template #redirect
-              ><code>{{ callbackUrl }}</code></template
-            >
-            <template #toggle
-              ><b>{{ t('settings.admin.oauth.hint.toggle') }}</b></template
-            >
-          </i18n-t>
-          <br />
-          <b>{{ t('settings.admin.oauth.hint.syncLabel') }}</b>
-          <i18n-t keypath="settings.admin.oauth.hint.sync" tag="span" scope="global">
-            <template #token
-              ><b>{{ t('settings.admin.oauth.hint.serviceToken') }}</b></template
-            >
-            <template #api
-              ><code>{{ SCOPE_API }}</code></template
-            >
-          </i18n-t>
-        </p>
-        <div class="oauth-grid">
-          <label>{{ t('settings.admin.oauth.field.baseUrl') }}</label>
-          <n-input
-            v-model:value="oauth.gl_base_url"
-            size="small"
-            :placeholder="t('settings.admin.oauth.placeholder.baseUrl')"
-            :input-props="{ autocomplete: 'off', name: 'oauth-base-url' }"
-          />
-          <label>{{ t('settings.admin.oauth.field.appId') }}</label>
-          <n-input
-            v-model:value="oauth.client_id"
-            size="small"
-            :placeholder="t('settings.admin.oauth.placeholder.clientId')"
-            :input-props="{ autocomplete: 'off', name: 'oauth-client-id' }"
-          />
-          <label>{{ t('settings.admin.oauth.field.secret') }}</label>
-          <SecretInput
-            v-model:value="oauth.client_secret"
-            v-model:cleared="oauth.clear_secret"
-            :stored="oauth.has_secret"
-            size="small"
-            :placeholder="t('settings.admin.oauth.placeholder.clientSecret')"
-            :stored-placeholder="t('settings.admin.oauth.storedPlaceholder')"
-            :input-props="{ autocomplete: 'new-password', name: 'oauth-secret' }"
-          />
-          <label>
-            {{ t('settings.admin.oauth.field.serviceToken') }}
-            <span class="oauth-sub">{{ t('settings.admin.oauth.field.serviceTokenSub') }}</span>
+    <section ref="paneEl" class="av-pane" :data-section="section">
+      <!-- Users -->
+      <template v-if="section === 'users'">
+        <header class="av-head">
+          <h1 class="av-title">{{ t('settings.admin.nav.users') }}</h1>
+          <span class="av-sub">{{ users.length }}</span>
+          <span class="av-grow" />
+          <n-tooltip :delay="300">
+            <template #trigger>
+              <span class="av-stub-btn" data-testid="admin-csv">
+                <n-button secondary disabled>
+                  <template #icon><n-icon :component="CloudDownloadOutline" /></template>
+                  {{ t('settings.admin.csv') }}
+                </n-button>
+              </span>
+            </template>
+            {{ t('common.stub.soon', { n: STUB.csv }) }}
+          </n-tooltip>
+          <n-tooltip :delay="300">
+            <template #trigger>
+              <span class="av-stub-btn" data-testid="admin-invite">
+                <n-button type="primary" disabled>
+                  <template #icon><n-icon :component="PersonAddOutline" /></template>
+                  {{ t('settings.admin.invite') }}
+                </n-button>
+              </span>
+            </template>
+            {{ t('common.stub.soon', { n: STUB.invites }) }}
+          </n-tooltip>
+        </header>
+
+        <div class="av-tools">
+          <label class="av-search">
+            <n-icon :component="SearchOutline" :size="15" class="av-search-ic" />
+            <input
+              ref="searchRef"
+              v-model="query"
+              class="av-search-in"
+              :placeholder="t('settings.admin.search')"
+              data-testid="admin-search"
+              @keydown="onSearchKey"
+              @keydown.esc="query = ''"
+            />
+            <Kbd v-if="!query" class="av-kbd">/</Kbd>
           </label>
-          <div class="oauth-token-cell">
+          <div class="av-seg" role="tablist">
+            <button
+              v-for="f in FILTERS"
+              :key="f"
+              type="button"
+              role="tab"
+              class="av-seg-b"
+              :class="{ on: filter === f }"
+              :aria-selected="filter === f"
+              :data-testid="`admin-filter-${f}`"
+              @click="filter = f"
+            >
+              {{ t(`settings.admin.filter.${f}`) }}
+              <span class="av-seg-n">{{ counts[f] }}</span>
+            </button>
+            <n-tooltip :delay="300">
+              <template #trigger>
+                <span class="av-seg-b stub" aria-disabled="true">{{
+                  t('settings.admin.filter.invited')
+                }}</span>
+              </template>
+              {{ t('common.stub.soon', { n: STUB.invites }) }}
+            </n-tooltip>
+          </div>
+        </div>
+
+        <n-spin :show="loading && !users.length" size="small">
+          <div class="av-table" role="table" data-testid="admin-users">
+            <div v-if="!isMobile" class="av-thead" role="row">
+              <span class="c-user">{{ t('settings.admin.col.user') }}</span>
+              <span class="c-role">{{ t('settings.admin.col.role') }}</span>
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <span class="c-spaces stub">{{ t('settings.admin.col.spaces') }}</span>
+                </template>
+                {{ t('common.stub.soon', { n: STUB.spaces }) }}
+              </n-tooltip>
+              <span class="c-status">{{ t('settings.admin.col.status') }}</span>
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <span class="c-login stub">{{ t('settings.admin.col.login') }}</span>
+                </template>
+                {{ t('common.stub.soon', { n: STUB.spaces }) }}
+              </n-tooltip>
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <span class="c-2fa stub">{{ t('settings.admin.col.twoFactor') }}</span>
+                </template>
+                {{ t('common.stub.soon', { n: STUB.twoFactor }) }}
+              </n-tooltip>
+              <span class="c-more" />
+            </div>
+            <div
+              v-for="(u, i) in filtered"
+              :key="u.id"
+              :ref="(el) => (rowEls[u.id] = el)"
+              class="av-row"
+              :class="{ off: !u.active }"
+              role="row"
+              tabindex="0"
+              data-testid="admin-user"
+              :data-user="u.email"
+              @keydown="onRowKey($event, u, i)"
+            >
+              <span class="c-user">
+                <UserAvatar class="av-ava" :user-id="u.id" :name="u.name" :src="u.avatar_url" />
+                <span class="av-who">
+                  <span class="av-name">
+                    <span class="av-name-t">{{ u.name }}</span>
+                    <span v-if="u.id === meId" class="av-you">{{
+                      t('settings.admin.badge.you')
+                    }}</span>
+                  </span>
+                  <span class="av-mail">
+                    {{ u.email }}
+                    <span v-if="!u.email_verified" class="av-unv">
+                      · {{ t('settings.admin.badge.unverified') }}</span
+                    >
+                  </span>
+                </span>
+              </span>
+              <span class="c-role">
+                <button
+                  v-if="u.id !== meId"
+                  type="button"
+                  class="av-role"
+                  :class="{ admin: u.is_admin }"
+                  :disabled="busy === u.id"
+                  data-testid="admin-role"
+                  @click="openMenu('role', u, $event.currentTarget)"
+                >
+                  {{
+                    u.is_admin ? t('settings.admin.role.adminShort') : t('settings.admin.role.user')
+                  }}
+                  <n-icon :component="ChevronDownOutline" :size="12" />
+                </button>
+                <n-tooltip v-else :delay="300">
+                  <template #trigger>
+                    <span class="av-role static" :class="{ admin: u.is_admin }">
+                      {{
+                        u.is_admin
+                          ? t('settings.admin.role.adminShort')
+                          : t('settings.admin.role.user')
+                      }}
+                      <n-icon :component="LockClosedOutline" :size="11" />
+                    </span>
+                  </template>
+                  {{ t('settings.admin.role.selfLocked') }}
+                </n-tooltip>
+              </span>
+              <span v-if="!isMobile" class="c-spaces av-dim">—</span>
+              <span class="c-status">
+                <span class="av-dot" :class="u.active ? 'on' : 'off'" />
+                {{
+                  u.active ? t('settings.admin.status.active') : t('settings.admin.status.blocked')
+                }}
+              </span>
+              <span v-if="!isMobile" class="c-login av-dim">—</span>
+              <span v-if="!isMobile" class="c-2fa av-dim">
+                <n-icon :component="ShieldOutline" :size="15" />
+              </span>
+              <span class="c-more">
+                <button
+                  v-if="u.id !== meId"
+                  type="button"
+                  class="av-more"
+                  data-row-more
+                  :disabled="busy === u.id"
+                  :aria-label="t('common.action.more')"
+                  data-testid="admin-user-menu"
+                  @click="openMenu('row', u, $event.currentTarget)"
+                >
+                  <n-icon :component="EllipsisHorizontal" :size="16" />
+                </button>
+                <button
+                  v-else
+                  type="button"
+                  class="av-more"
+                  :disabled="busy === u.id"
+                  :title="t('settings.admin.action.resetLink')"
+                  :aria-label="t('settings.admin.action.resetLink')"
+                  @click="copyResetLink(u)"
+                >
+                  <n-icon :component="KeyOutline" :size="15" />
+                </button>
+              </span>
+            </div>
+            <p v-if="!filtered.length && !loading" class="av-empty">
+              {{ t('settings.admin.empty') }}
+            </p>
+          </div>
+        </n-spin>
+      </template>
+
+      <!-- Server -->
+      <template v-else-if="section === 'server'">
+        <header class="av-head">
+          <h1 class="av-title">{{ t('settings.admin.nav.server') }}</h1>
+          <span class="av-sub">{{ host }}</span>
+        </header>
+        <section class="st-card av-server" data-testid="admin-server">
+          <div class="av-kv">
+            <span class="av-k">{{ t('settings.admin.server.address') }}</span>
+            <span class="av-v">{{ host }}</span>
+            <span class="av-k">{{ t('settings.admin.server.api') }}</span>
+            <span class="av-v">
+              {{ apiVersion?.version || '—' }}
+              <span v-if="apiVersion?.commit" class="av-dim">· {{ apiVersion.commit }}</span>
+            </span>
+            <span v-if="apiVersion?.builtAt" class="av-k">{{
+              t('settings.admin.server.apiBuilt')
+            }}</span>
+            <span v-if="apiVersion?.builtAt" class="av-v">{{ fmtBuilt(apiVersion.builtAt) }}</span>
+            <span class="av-k">{{ t('settings.admin.server.web') }}</span>
+            <span class="av-v">
+              {{ web.version || '—' }}
+              <span v-if="web.commit" class="av-dim">· {{ web.commit }}</span>
+            </span>
+            <span v-if="web.builtAt" class="av-k">{{ t('settings.admin.server.webBuilt') }}</span>
+            <span v-if="web.builtAt" class="av-v">{{ fmtBuilt(web.builtAt) }}</span>
+          </div>
+          <div class="st-actions av-left">
+            <n-button secondary @click="whatsNew.openHistory()">
+              {{ t('settings.admin.server.whatsNew') }}
+            </n-button>
+            <n-button secondary @click="dialogs.open('jobs')">
+              <template #icon><n-icon :component="BuildOutline" /></template>
+              {{ t('settings.admin.nav.jobs') }}
+            </n-button>
+          </div>
+        </section>
+      </template>
+
+      <!-- Integrations: the GitLab OAuth app -->
+      <template v-else>
+        <header class="av-head">
+          <h1 class="av-title">{{ t('settings.admin.nav.integrations') }}</h1>
+          <span class="av-sub">{{ t('settings.admin.integrationsSub') }}</span>
+        </header>
+        <section class="st-card av-oauth" data-testid="admin-oauth">
+          <div class="st-card-head">
+            <span class="av-gl"><n-icon :component="LogoGitlab" :size="18" /></span>
+            <span class="av-oauth-title">{{ t('settings.admin.oauth.title') }}</span>
+            <span class="st-card-aside">
+              <span>{{ t('settings.admin.oauth.field.enabled') }}</span>
+              <n-switch v-model:value="oauth.enabled" />
+            </span>
+          </div>
+          <p class="st-hint">
+            <b>{{ t('settings.admin.oauth.hint.loginLabel') }}</b>
+            <i18n-t keypath="settings.admin.oauth.hint.login" tag="span" scope="global">
+              <template #scope
+                ><code>{{ SCOPE_READ_API }}</code></template
+              >
+              <template #redirect
+                ><code>{{ callbackUrl }}</code></template
+              >
+              <template #toggle
+                ><b>{{ t('settings.admin.oauth.hint.toggle') }}</b></template
+              >
+            </i18n-t>
+            <br />
+            <b>{{ t('settings.admin.oauth.hint.syncLabel') }}</b>
+            <i18n-t keypath="settings.admin.oauth.hint.sync" tag="span" scope="global">
+              <template #token
+                ><b>{{ t('settings.admin.oauth.hint.serviceToken') }}</b></template
+              >
+              <template #api
+                ><code>{{ SCOPE_API }}</code></template
+              >
+            </i18n-t>
+          </p>
+          <div class="st-grid2">
+            <label class="st-field">
+              <span class="st-label">{{ t('settings.admin.oauth.field.baseUrl') }}</span>
+              <n-input
+                v-model:value="oauth.gl_base_url"
+                :placeholder="t('settings.admin.oauth.placeholder.baseUrl')"
+                :input-props="{ autocomplete: 'off', name: 'oauth-base-url' }"
+              />
+            </label>
+            <label class="st-field">
+              <span class="st-label">{{ t('settings.admin.oauth.field.appId') }}</span>
+              <n-input
+                v-model:value="oauth.client_id"
+                :placeholder="t('settings.admin.oauth.placeholder.clientId')"
+                :input-props="{ autocomplete: 'off', name: 'oauth-client-id' }"
+              />
+            </label>
+          </div>
+          <label class="st-field">
+            <span class="st-label">{{ t('settings.admin.oauth.field.secret') }}</span>
+            <SecretInput
+              v-model:value="oauth.client_secret"
+              v-model:cleared="oauth.clear_secret"
+              :stored="oauth.has_secret"
+              :placeholder="t('settings.admin.oauth.placeholder.clientSecret')"
+              :stored-placeholder="t('settings.admin.oauth.storedPlaceholder')"
+              :input-props="{ autocomplete: 'new-password', name: 'oauth-secret' }"
+            />
+          </label>
+          <label class="st-field">
+            <span class="st-label">
+              {{ t('settings.admin.oauth.field.serviceToken') }}
+              <span class="av-label-sub">{{
+                t('settings.admin.oauth.field.serviceTokenSub')
+              }}</span>
+            </span>
             <SecretInput
               v-model:value="oauth.service_token"
               v-model:cleared="oauth.clear_service_token"
               :stored="oauth.has_service_token"
-              size="small"
               :placeholder="t('settings.admin.oauth.placeholder.serviceToken')"
               :stored-placeholder="t('settings.admin.oauth.storedPlaceholder')"
               :input-props="{ autocomplete: 'new-password', name: 'oauth-service-token' }"
             />
-            <span v-if="oauth.clear_service_token" class="oauth-warn">
+            <span v-if="oauth.clear_service_token" class="st-err">
               {{ t('settings.admin.oauth.clearWarn') }}
             </span>
-          </div>
-          <label>
-            {{ t('settings.admin.oauth.field.sudo') }}
-            <span class="oauth-sub">{{ t('settings.admin.oauth.field.sudoSub') }}</span>
           </label>
-          <div><n-switch v-model:value="oauth.sudo_writeback" /></div>
-          <label>{{ t('settings.admin.oauth.field.enabled') }}</label>
-          <div><n-switch v-model:value="oauth.enabled" /></div>
-          <label>
-            {{ t('settings.admin.oauth.field.orgMap') }}
-            <span class="oauth-sub">{{ t('settings.admin.oauth.field.orgMapSub') }}</span>
+          <label class="st-toggle">
+            <span class="st-toggle-l">
+              {{ t('settings.admin.oauth.field.sudo') }}
+              <span class="st-toggle-sub">{{ t('settings.admin.oauth.field.sudoSub') }}</span>
+            </span>
+            <n-switch v-model:value="oauth.sudo_writeback" />
           </label>
-          <n-input
-            v-model:value="oauth.org_map"
-            type="textarea"
-            size="small"
-            :autosize="{ minRows: 4, maxRows: 14 }"
-            :placeholder="ORG_MAP_SAMPLE"
-            class="oauth-mono"
-          />
-        </div>
-        <div class="oauth-foot">
-          <n-button type="primary" size="small" :loading="oauthSaving" @click="saveOAuth">
-            {{ t('common.action.save') }}
-          </n-button>
-        </div>
-      </div>
-
-      <n-input
-        v-model:value="query"
-        :placeholder="t('settings.admin.search')"
-        clearable
-        class="search"
-      >
-        <template #prefix><n-icon :component="SearchOutline" /></template>
-      </n-input>
-
-      <div class="list">
-        <div v-for="u in filtered" :key="u.id" class="urow" :class="{ off: !u.active }">
-          <UserAvatar class="ava" :user-id="u.id" :name="u.name" :src="u.avatar_url" />
-          <div class="who">
-            <div class="line1">
-              <span class="uname">{{ u.name }}</span>
-              <n-tag v-if="u.is_admin" size="small" type="warning" round>{{
-                t('settings.admin.badge.admin')
-              }}</n-tag>
-              <n-tag v-if="u.id === meId" size="small" round>{{
-                t('settings.admin.badge.you')
-              }}</n-tag>
-              <n-tag v-if="!u.active" size="small" type="error" round>{{
-                t('settings.admin.badge.disabled')
-              }}</n-tag>
-              <n-tag v-if="!u.email_verified" size="small" round :bordered="false">{{
-                t('settings.admin.badge.unverified')
-              }}</n-tag>
-            </div>
-            <div class="umail">{{ u.email }}</div>
-          </div>
-
-          <div class="actions">
-            <n-button
-              size="small"
-              quaternary
-              :disabled="busy === u.id"
-              :title="t('settings.admin.action.resetLink')"
-              @click="copyResetLink(u)"
-            >
-              <template #icon><n-icon :component="KeyOutline" /></template>
+          <label class="st-field">
+            <span class="st-label">
+              {{ t('settings.admin.oauth.field.orgMap') }}
+              <span class="av-label-sub">{{ t('settings.admin.oauth.field.orgMapSub') }}</span>
+            </span>
+            <n-input
+              v-model:value="oauth.org_map"
+              type="textarea"
+              :autosize="{ minRows: 4, maxRows: 14 }"
+              :placeholder="ORG_MAP_SAMPLE"
+              class="av-mono"
+            />
+          </label>
+          <div class="st-actions">
+            <n-button type="primary" :loading="oauthSaving" @click="saveOAuth">
+              {{ t('common.action.save') }}
             </n-button>
-
-            <!-- Admin toggle: granting is one click; revoking confirms. Never self. -->
-            <template v-if="u.id !== meId">
-              <n-button
-                v-if="!u.is_admin"
-                size="small"
-                :disabled="busy === u.id"
-                @click="toggleAdmin(u)"
-              >
-                {{ t('settings.admin.action.makeAdmin') }}
-              </n-button>
-              <n-popconfirm v-else @positive-click="toggleAdmin(u)">
-                <template #trigger>
-                  <n-button size="small" :disabled="busy === u.id">{{
-                    t('settings.admin.action.revokeAdmin')
-                  }}</n-button>
-                </template>
-                {{ t('settings.admin.confirm.revokeAdmin', { name: u.name }) }}
-              </n-popconfirm>
-
-              <!-- Active toggle: deactivating confirms (blocks login). -->
-              <n-button
-                v-if="!u.active"
-                size="small"
-                type="primary"
-                ghost
-                :disabled="busy === u.id"
-                @click="toggleActive(u)"
-              >
-                {{ t('settings.admin.action.activate') }}
-              </n-button>
-              <n-popconfirm v-else @positive-click="toggleActive(u)">
-                <template #trigger>
-                  <n-button size="small" type="error" ghost :disabled="busy === u.id">
-                    {{ t('settings.admin.action.deactivate') }}
-                  </n-button>
-                </template>
-                {{ t('settings.admin.confirm.deactivate', { name: u.name }) }}
-              </n-popconfirm>
-            </template>
           </div>
-        </div>
+        </section>
+      </template>
+    </section>
 
-        <div v-if="!filtered.length && !loading" class="empty">
-          {{ t('settings.admin.empty') }}
-        </div>
-      </div>
-    </div>
-  </n-spin>
+    <ActionMenu
+      v-model:show="menu.show"
+      :anchor="() => menu.anchor"
+      placement="bottom-end"
+      :width="300"
+      :header="menu.user?.name || ''"
+      :items="menuItems"
+      testid="admin-menu"
+      @select="onMenu"
+    />
+  </div>
 </template>
 
 <style scoped>
-.admin {
-  max-width: 900px;
-  margin: 0 auto;
-  padding: 8px 4px 40px;
-}
-.head {
-  margin: 4px 0 16px;
-}
-.title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 22px;
-  font-weight: 700;
-  color: var(--t-text1);
-  margin: 0;
-}
-.title-ic {
-  color: var(--t-primary);
-  font-size: 22px;
-}
-.sub {
-  font-size: 13px;
-  color: var(--t-text3);
-}
-.search {
-  margin-bottom: 14px;
-  max-width: 360px;
-}
-.oauth-card {
-  border: 1px solid var(--t-border);
-  background: var(--t-surface);
-  border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 18px;
-}
-.oauth-h {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 0 6px;
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--t-text1);
-}
-.oauth-ic {
-  color: var(--t-primary);
-}
-.oauth-hint {
-  font-size: 12px;
-  color: var(--t-text3);
-  margin: 0 0 12px;
-  line-height: 1.5;
-}
-.oauth-hint code {
-  background: var(--t-fill-2, rgba(140, 140, 160, 0.14));
-  padding: 1px 5px;
-  border-radius: 5px;
-}
-.oauth-grid {
+.av {
   display: grid;
-  grid-template-columns: 130px 1fr;
-  gap: 10px 12px;
-  align-items: center;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 28px;
+  height: 100%;
+  min-height: 0;
 }
-.oauth-grid > label {
+.av-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  border-radius: var(--t-r-col);
+  background: var(--t-sub);
+  min-height: 0;
+  overflow-y: auto;
+}
+.av-host {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px 14px;
+  min-width: 0;
+}
+.av-host-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.av-host-name {
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--t-text1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.av-host-ver {
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.av-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.av-item:hover {
+  background: var(--t-hover);
+}
+.av-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--t-primary);
+}
+.av-item.active {
+  background: var(--t-active);
+  font-weight: 650;
+}
+.av-item.active .av-item-ic {
+  color: var(--t-primary);
+}
+.av-item.active .av-item-ic :deep([stroke='currentColor']) {
+  stroke: url(#t-accent-grad-svg);
+}
+.av-item.stub {
+  opacity: 0.55;
+  cursor: default;
+}
+.av-item.stub:hover {
+  background: transparent;
+}
+.av-item-ic {
+  flex: none;
+  color: var(--t-text2);
+}
+.av-item-l {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.av-item-n {
+  font-size: 12px;
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
+}
+.av-pill {
+  flex: none;
+  padding: 2px 7px;
+  border-radius: var(--t-r-pill);
+  background: var(--t-pill);
+  color: var(--t-text3);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+.av-gap {
+  flex: none;
+  height: 14px;
+}
+.av-pane {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 4px 40px 0;
+}
+.av-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 10px 0 18px;
+}
+.av-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--t-text1);
+}
+.av-sub {
   font-size: 13px;
   color: var(--t-text3);
 }
-.oauth-sub {
-  display: block;
-  font-size: 11px;
-  opacity: 0.7;
+.av-grow {
+  flex: 1;
 }
-.oauth-token-cell {
+.av-head .av-stub-btn {
+  align-self: center;
+}
+.av-head .av-stub-btn + .av-stub-btn {
+  margin-left: 8px;
+}
+.av-stub-btn {
+  display: inline-flex;
+}
+.av-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.av-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 260px;
+  height: 36px;
+  padding: 0 8px 0 12px;
+  box-sizing: border-box;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
+}
+.av-search:focus-within {
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
+.av-search-ic {
+  color: var(--t-text3);
+}
+.av-search-in {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 13.5px;
+}
+.av-search-in::placeholder {
+  color: var(--t-placeholder);
+}
+.av-seg {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
+}
+.av-seg-b {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.av-seg-b:hover {
+  color: var(--t-text1);
+}
+.av-seg-b.on {
+  background: var(--t-card);
+  color: var(--t-text1);
+  font-weight: 650;
+  box-shadow: var(--t-sh-card);
+}
+.av-seg-b:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: -2px;
+}
+.av-seg-b.stub {
+  opacity: 0.5;
+  cursor: default;
+}
+.av-seg-n {
+  font-size: 12px;
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
+}
+.av-table {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
-.oauth-warn {
-  font-size: 12px;
-  color: var(--t-error);
-}
-.oauth-mono :deep(textarea) {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-.oauth-foot {
-  margin-top: 12px;
-  display: flex;
-  justify-content: flex-end;
-}
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.urow {
-  display: flex;
+.av-thead,
+.av-row {
+  display: grid;
+  grid-template-columns:
+    minmax(200px, 2.2fr) 150px minmax(100px, 1.1fr) minmax(120px, 1fr)
+    minmax(70px, 0.7fr) 44px 32px;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--t-border);
-  background: var(--t-surface);
+  padding: 0 12px;
 }
-.urow.off {
-  opacity: 0.62;
+.av-thead {
+  height: 32px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
-.ava {
-  width: 36px;
-  height: 36px;
+.av-thead .stub {
+  opacity: 0.6;
+  cursor: default;
+}
+.av-row {
+  min-height: 52px;
+  border-radius: 12px;
+  background: var(--t-col);
+  color: var(--t-text1);
+}
+.av-row:hover {
+  background: color-mix(in srgb, var(--t-col) 70%, var(--t-card));
+}
+.av-row:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--t-primary);
+}
+.av-row.off {
+  opacity: 0.6;
+}
+.c-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.av-ava {
   flex: none;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: var(--t-accent-grad);
   color: var(--t-on-primary);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 650;
 }
-.who {
-  flex: 1;
+.av-who {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
-.line1 {
+.av-name {
   display: flex;
   align-items: center;
   gap: 6px;
-  flex-wrap: wrap;
+  min-width: 0;
 }
-.uname {
-  font-weight: 600;
-  color: var(--t-text1);
-}
-.umail {
-  font-size: 12px;
-  color: var(--t-text3);
+.av-name-t {
+  font-size: 13.5px;
+  font-weight: 650;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
-.actions {
-  display: flex;
+.av-you {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--t-r-pill);
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 10.5px;
+  font-weight: 650;
+}
+.av-mail {
+  font-size: 12px;
+  color: var(--t-text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.av-unv {
+  color: #c98612;
+}
+/* Role: accent for an admin (the instance's owner-level right), neutral for
+   everyone else — the mockup's «владелец» accent / «участник» --v-ctl. */
+.av-role {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--t-ctl);
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.av-role.admin {
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+}
+.av-role:hover:not(.static) {
+  filter: brightness(1.08);
+}
+.av-role:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
+}
+.av-role.static {
+  cursor: default;
+}
+.c-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+}
+.av-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+.av-dot.on {
+  background: #3aa675;
+}
+.av-dot.off {
+  background: #e0533d;
+}
+.av-dim {
+  color: var(--t-text3);
+  opacity: 0.6;
+}
+.av-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+}
+.av-more:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.av-more:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+.av-empty {
+  margin: 30px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.av-kbd {
   flex: none;
 }
-.empty {
-  text-align: center;
-  color: var(--t-text3);
-  margin-top: 40px;
+@media (hover: none) {
+  .av-kbd {
+    display: none;
+  }
 }
-@media (max-width: 768px) {
-  .urow {
-    flex-wrap: wrap;
-  }
-  .actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
+.av-server {
+  max-width: 640px;
+}
+.av-kv {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  gap: 10px 16px;
+  font-size: 13.5px;
+}
+.av-k {
+  color: var(--t-text3);
+}
+.av-v {
+  color: var(--t-text1);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.av-left {
+  justify-content: flex-start;
+}
+.av-oauth {
+  max-width: 880px;
+}
+.av-gl {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: color-mix(in srgb, #e24329 16%, var(--t-col));
+  color: #e24329;
+}
+.av-oauth-title {
+  font-size: 14.5px;
+  font-weight: 650;
+}
+.av-oauth .st-hint code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--t-pill);
+}
+.av-label-sub {
+  display: block;
+  margin-top: 2px;
+  font-weight: 500;
+  color: var(--t-text3);
+  opacity: 0.85;
+}
+.av-mono :deep(textarea) {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+/* Phone: chips over the section, rows stack name / role · status. */
+.av.mobile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: auto;
+}
+.av.mobile .av-nav {
+  flex-direction: row;
+  overflow-x: auto;
+  padding: 6px;
+  border-radius: var(--t-r-card);
+  scrollbar-width: none;
+}
+.av.mobile .av-gap {
+  width: 6px;
+  height: auto;
+}
+.av.mobile .av-item-l {
+  overflow: visible;
+}
+.av.mobile .av-pane {
+  overflow: visible;
+  padding: 0;
+}
+.av.mobile .av-title {
+  font-size: 22px;
+}
+.av.mobile .av-search {
+  width: 100%;
+}
+.av.mobile .av-seg {
+  overflow-x: auto;
+  max-width: 100%;
+  scrollbar-width: none;
+}
+.av.mobile .av-row {
+  grid-template-columns: minmax(0, 1fr) auto 32px;
+  grid-template-areas:
+    'user user more'
+    'role status more';
+  gap: 6px 10px;
+  padding: 10px 12px;
+}
+.av.mobile .c-user {
+  grid-area: user;
+}
+.av.mobile .c-role {
+  grid-area: role;
+}
+.av.mobile .c-status {
+  grid-area: status;
+  justify-self: end;
+}
+.av.mobile .c-more {
+  grid-area: more;
+}
+.av.mobile .av-kv {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+}
+.av.mobile .av-v {
+  margin-bottom: 8px;
 }
 </style>
