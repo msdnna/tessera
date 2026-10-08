@@ -593,3 +593,40 @@ for (const scheme of ['light', 'dark']) {
     })
   })
 }
+
+// ── the phone (#2976 — package G) ──
+// The mobile web at 390×844 with touch: the bottom navigation, the board, the
+// tree in its drawer and «Ещё». Scale 1, like the rest of the set — the article
+// shows them at their own size.
+for (const scheme of ['light', 'dark']) {
+  test.describe(`телефон · ${scheme}`, () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+
+    test('телефон: доска', async ({ page }) => {
+      await openBoard(page)
+      await expect(page.getByTestId('mobile-tabbar')).toBeVisible()
+      await shoot(page, scheme, 'mobile-board')
+    })
+
+    test('телефон: дерево в дровере', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('mobile-board-switch').tap()
+      await expect(page.locator('.n-drawer').getByTestId('sidebar')).toBeVisible()
+      await page.waitForTimeout(400)
+      await shoot(page, scheme, 'mobile-drawer')
+    })
+
+    test('телефон: мои задачи', async ({ page }) => {
+      await page.goto('/')
+      await expect(page.getByTestId('home')).toBeVisible()
+      await page.waitForLoadState('networkidle').catch(() => {})
+      await shoot(page, scheme, 'mobile-home')
+    })
+
+    test('телефон: ещё', async ({ page }) => {
+      await page.goto('/more')
+      await expect(page.getByTestId('more-page')).toBeVisible()
+      await shoot(page, scheme, 'mobile-more')
+    })
+  })
+}
