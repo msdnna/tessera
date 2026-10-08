@@ -45,10 +45,12 @@ import UserAvatar from '../UserAvatar.vue'
 import DueEditor from '../DueEditor.vue'
 import RichContent from '../RichContent.vue'
 import TagPill from '../TagPill.vue'
+import ReminderPill from './ReminderPill.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useInboxStore } from '@/stores/inbox'
 import { useTagFit } from '@/composables/useTagFit'
 
 const props = defineProps({
@@ -65,6 +67,13 @@ const theme = useThemeStore()
 const wsStore = useWorkspacesStore()
 const conflictsStore = useConflictsStore()
 const hasConflict = computed(() => conflictsStore.has(props.task.id))
+// The reader's next open reminder on this task (#2998) — read from the shell's
+// «Входящие» copy (one map for the whole board), shown after the due pill.
+// A done task carries no bell.
+const inbox = useInboxStore()
+const reminder = computed(() =>
+  props.task.completed_at ? null : inbox.byTask.get(props.task.id)?.[0] || null,
+)
 const { formatDue, formatters } = useFormat()
 const { t } = useI18n()
 const message = useMessage()
@@ -106,6 +115,7 @@ const hasAnyPill = computed(
     hasConflict.value ||
     (show('priority') && (showEmpty.value || stackFields.value || props.task.priority)) ||
     (show('due') && (showEmpty.value || stackFields.value || due.value)) ||
+    (show('due') && !!reminder.value) ||
     (show('estimate') && (stackFields.value || estText.value)) ||
     (show('milestone') && (stackFields.value || taskMilestone.value)) ||
     (show('description') && !stackFields.value && hasDescription.value) ||
@@ -540,6 +550,14 @@ const toggleGlAssignee = (m) =>
         @notify="saveDueNotify"
       />
     </n-popover>
+
+    <!-- reminder bell (#2998): right after the due date -->
+    <ReminderPill
+      v-if="show('due') && reminder"
+      :reminder="reminder"
+      :task="task"
+      :readonly="readonly"
+    />
 
     <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
     <n-tooltip v-if="show('estimate') && (estText || stackFields)">

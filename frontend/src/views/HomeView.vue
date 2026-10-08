@@ -1,17 +1,18 @@
 <script setup>
 // The start screen, «Мои задачи» (v2, #2960): the aurora over the top, a
 // greeting with today's counts, the quick entry, my open tasks by due date, and
-// a side column of reminders, the week and the inbox. The header above goes
+// a side column with «Входящие» (today's reminders, latest notes) and the week. The header above goes
 // translucent here (AppLayout) so the aurora runs under it.
 import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import { NSpin, NButton, useMessage } from 'naive-ui'
 import { CheckmarkDoneOutline, CloudOfflineOutline } from '@vicons/ionicons5'
-import { workspaces as wsApi, reminders as remApi, tasks as tasksApi } from '@/api'
+import { workspaces as wsApi, tasks as tasksApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { usePaletteStore } from '@/stores/palette'
+import { useInboxStore } from '@/stores/inbox'
 import { useFormat } from '@/composables/useFormat'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { capitalizeFirst } from '@/utils/format'
@@ -37,6 +38,9 @@ const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
 const palette = usePaletteStore()
+// «Входящие» (#2998): the shell keeps the feed; the side block and the header
+// pill read today's reminders from it.
+const inbox = useInboxStore()
 const { formatDate, formatTime, firstDayOfWeek, formatters } = useFormat()
 
 const loading = ref(false)
@@ -46,7 +50,6 @@ const loadError = ref('')
 const tasks = ref([])
 const tags = ref([])
 const members = ref([])
-const reminders = ref([])
 
 const meId = computed(() => auth.user?.id)
 const now = ref(new Date())
@@ -66,7 +69,6 @@ function clearPage() {
   tasks.value = []
   tags.value = []
   members.value = []
-  reminders.value = []
   loadedWs = ''
 }
 
@@ -77,11 +79,10 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [tk, tg, mem, rem] = await Promise.allSettled([
+    const [tk, tg, mem] = await Promise.allSettled([
       wsApi.tasks(wsId, { include_subtasks: 1 }),
       wsApi.tags(wsId),
       wsApi.members(wsId),
-      remApi.list(),
     ])
     // A workspace switch abandoned this request: the space the reader left must
     // not decide the screen by finishing last (#2932).
@@ -99,7 +100,6 @@ async function load() {
     tasks.value = ok(tk)
     tags.value = ok(tg)
     members.value = ok(mem)
-    reminders.value = ok(rem)
     now.value = new Date()
     loadedWs = wsId
   } finally {
@@ -148,7 +148,7 @@ const todayReminders = computed(() => {
     now.value.getMonth(),
     now.value.getDate(),
   ).getTime()
-  return reminders.value
+  return inbox.reminders
     .filter((r) => !r.done && dueDay(r.remind_at) === today)
     .sort((a, b) => a.remind_at.localeCompare(b.remind_at))
 })

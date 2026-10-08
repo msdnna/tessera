@@ -199,12 +199,8 @@
       "taskTitle": "Задача «{title}»"
     },
     "side": {
-      "reminders": "Напоминания",
-      "noReminders": "На сегодня напоминаний нет",
       "week": "Неделя",
-      "weekDone": "{done} из {total} выполнено",
-      "inbox": "Входящие",
-      "inboxEmpty": "Новых уведомлений нет"
+      "weekDone": "{done} из {total} выполнено"
     }
   },
   "notFound": {

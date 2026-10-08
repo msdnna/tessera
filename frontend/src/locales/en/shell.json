@@ -199,12 +199,8 @@
       "taskTitle": "Task “{title}”"
     },
     "side": {
-      "reminders": "Reminders",
-      "noReminders": "No reminders for today",
       "week": "Week",
-      "weekDone": "{done} of {total} done",
-      "inbox": "Inbox",
-      "inboxEmpty": "No new notifications"
+      "weekDone": "{done} of {total} done"
     }
   },
   "notFound": {

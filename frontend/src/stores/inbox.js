@@ -50,6 +50,7 @@ export const useInboxStore = defineStore('inbox', () => {
   const lastCaptured = ref('')
 
   let seq = 0
+  let capSeq = 0
   let reloadTimer = 0
 
   const fired = computed(() => firedCount(reminders.value, now.value))
@@ -241,8 +242,14 @@ export const useInboxStore = defineStore('inbox', () => {
   }
 
   // ── capture ──
+  // opts: { kind, text, inline } — `inline` is the copy inside the task modal.
   function startCapture(opts = {}) {
-    capture.value = { kind: opts.kind || null, text: opts.text || '', seq: ++seq }
+    capture.value = {
+      kind: opts.kind || null,
+      text: opts.text || '',
+      inline: !!opts.inline,
+      seq: ++capSeq,
+    }
   }
   function endCapture() {
     capture.value = null

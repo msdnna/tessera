@@ -43,7 +43,13 @@ const ws = useWorkspacesStore()
 const { isMobile } = useResponsive()
 const { whenLong } = useInboxFormat()
 
-const show = computed(() => !!inbox.capture)
+// The FAB's popover and the copy inside the task modal (#2998: the modal traps
+// the focus, so its «Заметка ⇧M» captures in place) share the store's capture;
+// each shows only the captures meant for it.
+const props = defineProps({
+  inline: { type: Boolean, default: false },
+})
+const show = computed(() => !!inbox.capture && !!inbox.capture.inline === props.inline)
 const text = ref('')
 const body = ref('')
 const bodyOpen = ref(false)
@@ -60,7 +66,7 @@ watch(
   () => inbox.capture?.seq,
   async () => {
     const c = inbox.capture
-    if (!c) {
+    if (!c || !show.value) {
       release?.()
       release = null
       return
@@ -243,7 +249,7 @@ function onDocDown(e) {
   if (!text.value.trim() && !body.value.trim()) close()
 }
 watch(
-  () => show.value && !isMobile.value,
+  () => show.value && !isMobile.value && !props.inline,
   (on) => {
     if (on) document.addEventListener('pointerdown', onDocDown, true)
     else document.removeEventListener('pointerdown', onDocDown, true)
@@ -266,17 +272,17 @@ const sheetShow = computed({
 <template>
   <template v-if="show">
     <component
-      :is="isMobile ? BottomSheet : 'div'"
-      v-bind="isMobile ? { show: sheetShow, testid: 'capture' } : {}"
+      :is="isMobile && !inline ? BottomSheet : 'div'"
+      v-bind="isMobile && !inline ? { show: sheetShow, testid: 'capture' } : {}"
       @update:show="(v) => (v ? null : close())"
     >
       <div
         ref="panel"
         class="cap"
-        :class="{ sheet: isMobile }"
+        :class="{ sheet: isMobile && !inline, inline }"
         role="dialog"
         :aria-label="t('inbox.capture.title')"
-        :data-testid="isMobile ? 'capture-body' : 'capture'"
+        :data-testid="isMobile && !inline ? 'capture-body' : 'capture'"
         @keydown="onPanelKey"
       >
         <div class="cap-top">
@@ -402,7 +408,7 @@ const sheetShow = computed({
             :placeholder="t('inbox.capture.bodyPlaceholder')"
           />
         </div>
-        <button v-else-if="isMobile" type="button" class="cap-addbody" @click="openBody">
+        <button v-else-if="isMobile && !inline" type="button" class="cap-addbody" @click="openBody">
           <n-icon :component="CreateOutline" :size="17" />
           {{ t('inbox.capture.addBody') }}
         </button>
@@ -418,7 +424,7 @@ const sheetShow = computed({
           </n-tooltip>
         </div>
 
-        <div v-if="!isMobile" class="cap-foot">
+        <div v-if="!isMobile || inline" class="cap-foot">
           <span v-if="bodyOpen" class="cap-hint">
             <Kbd>{{ CAPS.modEnter }}</Kbd
             >{{ t('inbox.capture.fromBody') }}
@@ -455,7 +461,7 @@ const sheetShow = computed({
           </button>
         </div>
       </div>
-      <template v-if="isMobile" #actions>
+      <template v-if="isMobile && !inline" #actions>
         <button type="button" class="bs-btn" @click="close">{{ t('common.form.cancel') }}</button>
         <button
           type="button"
@@ -486,6 +492,16 @@ const sheetShow = computed({
   color: var(--t-text1);
   --t-surface: var(--t-pop);
   overflow: hidden;
+}
+.cap.inline {
+  width: auto;
+  max-width: none;
+  background: var(--t-sub);
+  box-shadow: none;
+  --t-surface: var(--t-sub);
+}
+.cap.inline .cap-foot {
+  background: color-mix(in srgb, var(--t-sub) 70%, var(--t-bg));
 }
 .cap.sheet {
   width: auto;

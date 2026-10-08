@@ -73,6 +73,7 @@ import TaskModalHeader from './task/TaskModalHeader.vue'
 import TaskCommentsTab from './task/TaskCommentsTab.vue'
 import TaskDescriptionTab from './task/TaskDescriptionTab.vue'
 import TaskSubtasksTab from './task/TaskSubtasksTab.vue'
+import TaskInboxSection from './task/TaskInboxSection.vue'
 import TaskRelationsTab from './task/TaskRelationsTab.vue'
 import TaskFilesTab from './task/TaskFilesTab.vue'
 import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
@@ -232,6 +233,7 @@ const comments = ref([])
 const commentsHydrated = ref(false)
 const commentsTab = ref(null)
 const subtasksTab = ref(null)
+const inboxSection = ref(null)
 
 // ── «Поделиться»: copy a shareable link to this task ──
 // The link (/board/<id>?task=<n>) self-canonicalizes to slugs, so it is correct
@@ -1219,6 +1221,10 @@ useShortcuts(
     'task.due': () => openField('due'),
     'task.tags': () => openField('tags'),
     'task.subtask': () => canEdit() && subtasksTab.value?.startAdd(),
+    // «Напоминания и заметки» (#2998): reminders and notes are the reader's own,
+    // so a read-only task still takes them — only an archived one doesn't.
+    'task.remind': () => !ro.value && inboxSection.value?.startRemind(),
+    'task.note': () => !ro.value && inboxSection.value?.startNote(),
   },
   { when: keysLive },
 )
@@ -2066,6 +2072,8 @@ useShortcuts(
                 @changed="onSubtaskChanged"
                 @group-parent="toggleGlGroup"
               />
+
+              <TaskInboxSection ref="inboxSection" class="tm-inbox" :task="task" :readonly="ro" />
 
               <section class="tm-activity" data-tour="tm-activity">
                 <div class="act-head">

@@ -1,17 +1,22 @@
 <script setup>
-// The start screen's right column (v2, #2960): today's reminders, the week
-// (my tasks due each day — done stacked under what is still open), and the
-// newest notifications.
+// The start screen's right column (v2, #2960): «Входящие» — today's reminders
+// and the latest notes (#2998, mockup HomeB: one block in place of «Напоминания»
+// and the notification feed, which stays under the bell) — and the week (my
+// tasks due each day — done stacked under what is still open).
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
 import { NIcon } from 'naive-ui'
-import { AlarmOutline, BarChartOutline, FileTrayOutline } from '@vicons/ionicons5'
+import {
+  AddOutline,
+  ArrowForwardOutline,
+  BarChartOutline,
+  DocumentTextOutline,
+  FileTrayOutline,
+} from '@vicons/ionicons5'
 import { useFormat } from '@/composables/useFormat'
-import { useNotificationsStore } from '@/stores/notifications'
-import { useWorkspacesStore } from '@/stores/workspaces'
-import { notificationText } from '@/utils/notificationText'
-import { notificationRoute } from '@/utils/notificationRoute'
+import { useInboxFormat } from '@/composables/useInboxFormat'
+import { useInboxStore } from '@/stores/inbox'
+import { firstLine, recordState } from '@/utils/inbox'
 import ShortcutKeys from '../ShortcutKeys.vue'
 
 const props = defineProps({
@@ -21,49 +26,103 @@ const props = defineProps({
   week: { type: Object, default: () => ({ days: [], done: 0, total: 0 }) },
 })
 
-const { t, te } = useI18n()
-const router = useRouter()
-const { formatTime, formatDate, formatRelative, formatters } = useFormat()
-const notes = useNotificationsStore()
-const ws = useWorkspacesStore()
+const { t } = useI18n()
+const { formatTime, formatDate } = useFormat()
+const { ago, noteWhen } = useInboxFormat()
+const inbox = useInboxStore()
 
-const nextId = computed(() => props.reminders.find((r) => Date.parse(r.remind_at) > Date.now())?.id)
-const inbox = computed(() => notes.items.slice(0, 4))
+const now = computed(() => inbox.now)
+const nextId = computed(
+  () => props.reminders.find((r) => Date.parse(r.remind_at) > now.value.getTime())?.id,
+)
+const notes = computed(() =>
+  [...inbox.notes].sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at)).slice(0, 3),
+)
+const state = (r) => recordState(r, now.value)
+function remHint(r) {
+  const st = state(r)
+  if (st === 'snoozed') return t('inbox.home.snoozed')
+  if (st === 'fired' || r.id === nextId.value) return ago(r.remind_at, now.value)
+  return ''
+}
+function noteSub(n) {
+  const line = firstLine(n.body)
+  return n.task ? `#${n.task.number} · ${line || n.task.title}` : line
+}
 const maxDay = computed(() => Math.max(1, ...props.week.days.map((d) => d.done + d.open)))
 const H = 84 // px of a day's column
 const barH = (n) => (n ? Math.max(8, Math.round((n / maxDay.value) * H)) : 0)
 
-function openNote(n) {
-  notes.markRead(n.id)
-  if (n.workspace_id && n.workspace_id !== ws.currentId) ws.selectWorkspace(n.workspace_id)
-  const to = notificationRoute(n)
-  if (to) router.push(to)
+function openRecord(r) {
+  inbox.reveal(r.kind, r.id)
 }
-const noteText = (n) => notificationText(n, { t, te, formatters: formatters.value })
 </script>
 
 <template>
   <div class="hs">
-    <section class="hs-card">
+    <section class="hs-card" data-testid="home-inbox">
       <div class="hs-head">
-        <n-icon :component="AlarmOutline" :size="15" class="hs-ico" />
-        <span class="hs-title">{{ t('shell.home.side.reminders') }}</span>
-        <ShortcutKeys id="create.reminder" />
+        <n-icon :component="FileTrayOutline" :size="15" class="hs-ico" />
+        <button type="button" class="hs-title hs-link" @click="inbox.open({ focus: true })">
+          {{ t('inbox.home.title') }}
+        </button>
+        <span v-if="inbox.fired" class="hs-badge fired">{{ inbox.fired }}</span>
+        <ShortcutKeys id="nav.goInbox" bare />
+      </div>
+      <div v-if="reminders.length" class="hs-sec">
+        {{ t('inbox.home.today') }} <span class="hs-sec-n">{{ reminders.length }}</span>
       </div>
       <div
         v-for="r in reminders"
         :key="r.id"
         class="hs-row"
-        :class="{ next: r.id === nextId }"
-        @click="router.push('/reminders')"
+        :class="[state(r), { next: r.id === nextId }]"
+        data-testid="home-inbox-reminder"
+        @click="openRecord(r)"
       >
-        <span class="hs-time" :class="{ 'accent-grad-text': r.id === nextId }">{{
+        <span class="hs-time" :class="[state(r), { 'accent-grad-text': r.id === nextId }]">{{
           formatTime(r.remind_at)
         }}</span>
         <span class="hs-text">{{ r.message }}</span>
-        <span v-if="r.id === nextId" class="hs-when">{{ formatRelative(r.remind_at) }}</span>
+        <span v-if="remHint(r)" class="hs-when" :class="state(r)">{{ remHint(r) }}</span>
       </div>
-      <div v-if="!reminders.length" class="hs-empty">{{ t('shell.home.side.noReminders') }}</div>
+      <div v-if="notes.length" class="hs-sec">
+        {{ t('inbox.home.notes') }} <span class="hs-sec-n">{{ notes.length }}</span>
+      </div>
+      <div
+        v-for="n in notes"
+        :key="n.id"
+        class="hs-row hs-note"
+        data-testid="home-inbox-note"
+        @click="openRecord(n)"
+      >
+        <span class="hs-note-ic"><n-icon :component="DocumentTextOutline" :size="14" /></span>
+        <span class="hs-note-t">
+          <span class="hs-text">{{ n.title }}</span>
+          <span v-if="noteSub(n)" class="hs-note-sub">{{ noteSub(n) }}</span>
+        </span>
+        <span class="hs-when">{{ noteWhen(n, now) }}</span>
+      </div>
+      <div v-if="!reminders.length && !notes.length" class="hs-empty">
+        {{ t('inbox.home.empty') }}
+      </div>
+      <div class="hs-foot">
+        <button type="button" class="hs-add" @click="inbox.startCapture()">
+          <n-icon :component="AddOutline" :size="14" />
+          {{ t('inbox.panel.add') }}
+          <ShortcutKeys id="create.note" bare />
+        </button>
+        <span class="hs-fill" />
+        <button
+          type="button"
+          class="hs-all"
+          data-testid="home-inbox-all"
+          @click="inbox.open({ focus: true })"
+        >
+          {{ t('inbox.home.all', { n: inbox.total }) }}
+          <n-icon :component="ArrowForwardOutline" :size="13" />
+        </button>
+      </div>
     </section>
 
     <section class="hs-card">
@@ -83,27 +142,6 @@ const noteText = (n) => notificationText(n, { t, te, formatters: formatters.valu
           <span class="hs-dow">{{ formatDate(d.ms, { weekday: 'short', timeZone: null }) }}</span>
         </div>
       </div>
-    </section>
-
-    <section class="hs-card">
-      <div class="hs-head">
-        <n-icon :component="FileTrayOutline" :size="15" class="hs-ico" />
-        <span class="hs-title">{{ t('shell.home.side.inbox') }}</span>
-        <span v-if="notes.unread" class="hs-badge">{{
-          notes.unread > 99 ? '99+' : notes.unread
-        }}</span>
-      </div>
-      <div
-        v-for="n in inbox"
-        :key="n.id"
-        class="hs-row hs-note"
-        :class="{ unread: !n.read_at }"
-        @click="openNote(n)"
-      >
-        <span class="hs-text">{{ noteText(n) }}</span>
-        <span class="hs-when">{{ formatRelative(n.created_at) }}</span>
-      </div>
-      <div v-if="!inbox.length" class="hs-empty">{{ t('shell.home.side.inboxEmpty') }}</div>
     </section>
   </div>
 </template>
@@ -185,19 +223,106 @@ const noteText = (n) => notificationText(n, { t, te, formatters: formatters.valu
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.hs-row.next .hs-text,
-.hs-note.unread .hs-text {
+.hs-row .hs-text {
+  color: var(--t-text1);
+}
+.hs-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.hs-badge.fired {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #f0a020 86%, #000),
+    #f0a020 50%,
+    color-mix(in srgb, #f0a020 86%, #fff)
+  );
+}
+.hs-sec {
+  padding: 8px 6px 2px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
+}
+.hs-sec-n {
+  margin-left: 4px;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+.hs-time.fired,
+.hs-when.fired {
+  color: #f0a020;
+}
+.hs-time.snoozed {
+  color: var(--t-text3);
+  font-weight: 500;
+}
+.hs-note-ic {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+}
+.hs-note-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0;
+}
+.hs-note-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.hs-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px 0;
+}
+.hs-fill {
+  flex: 1;
+}
+.hs-add,
+.hs-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.hs-add:hover,
+.hs-all:hover {
+  background: var(--t-hover);
   color: var(--t-text1);
 }
 .hs-note {
   min-height: 40px;
 }
-.hs-note .hs-text {
-  white-space: normal;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-}
+
 .hs-when {
   flex: none;
   font-size: 11.5px;
