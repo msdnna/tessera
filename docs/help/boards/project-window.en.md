@@ -14,7 +14,7 @@ Everything a project is set up with lives in one window: its name and address, i
 
 - **Ctrl+,** (**⌘,** on a Mac) — the window of the project in front of you: the open board's or the milestone page's. Press it again to close.
 - The project menu in the tree on the left → **«Project settings»**, or **«Milestones…»** to land on the milestones tab.
-- The **«Tags»** and **«Milestones»** buttons in the board header (on a phone — in the board's three-dot menu).
+- A click on the project name in the breadcrumbs above the board, or **«Tags»**, **«Milestones»**, **«Project settings»** in the **«⋯»** menu on the right of the board bar (on a phone — in the board's three-dot menu).
 - The command palette (**Ctrl+K**) → «The «Project» window of the current project».
 - **«Manage tags…»** in a task's tag picker — the window opens on «Tags», filtered by what you had typed.
 

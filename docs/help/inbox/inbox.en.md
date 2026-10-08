@@ -31,7 +31,7 @@ The line already understands `#tag` and `@person`, but saving them with the reco
 
 ## The feed
 
-The panel opens with the tray button in the header (next to the bell; the number on it counts reminders that went off), the **Inbox** row in the sidebar, or the keys **G, then I**. **G I** again from inside the feed hides it. Drag the panel's left edge to change its width — it is remembered.
+The panel opens with the tray button in the header (next to the bell; the number on it counts reminders that went off) or the keys **G, then I**. **G I** again from inside the feed hides it. Drag the panel's left edge to change its width — it is remembered.
 
 On top are the filters: **All · Reminders · Notes · This board** (the last shows records tied to tasks of the open board). Records are grouped:
 

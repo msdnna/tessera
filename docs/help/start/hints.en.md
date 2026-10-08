@@ -23,7 +23,7 @@ The card's header shows the chapter and the step's number («Basics · 3 of 10»
 - <kbd>Esc</kbd> asks **«Stop the tour?»**. «Continue later» puts the tour away while the progress stays in the checklist; «End the tour» switches it off for good — it won't open by itself again. A second <kbd>Esc</kbd> goes back to the step.
 - If a step's element isn't on screen, the card waits for it at the edge of the screen and after a few seconds offers **«Skip the step»** with a countdown. A collapsed sidebar is expanded by the tour itself.
 
-A new account gets «Basics» after the first sign-in. To take the tour again: **«Help» → «Get started»** in the sidebar footer, the <kbd>Ctrl</kbd> <kbd>K</kbd> palette (the «Get started» command) or the checklist.
+A new account gets «Basics» after the first sign-in. To take the tour again: **«?» → «Get started»** at the bottom of the space rail, the <kbd>Ctrl</kbd> <kbd>K</kbd> palette (the «Get started» command) or the checklist.
 
 ## The checklist on «My tasks»
 

@@ -10,6 +10,11 @@ The board is the main working screen. Columns set the stages, cards are the task
 
 ![A board with tasks laid out across columns](../assets/board-light.png)
 
+## What's on the screen
+
+- **Header** — the breadcrumbs “project › board”: a click on the project opens the [«Project» window](/help/project-window), a click on the board opens the list of the project's boards for a quick jump. Next to them is the favourites star (coming soon).
+- **The “⋯” button on the right of the board bar** — the board menu: «Tags», «Milestones», «Project settings», GitLab and «Archive». Next to it is a cascade of avatars — the people who have tasks on this board.
+
 ## Grouping by tags
 
 A board's columns don't have to be stages. The **Board view** panel (the sliders button on the board bar, `⇧V`) has a **“Grouping and filters”** section: switch the grouping to tags and you get a board where a column is a tag, not a stage. The very same set of tasks can be viewed either as a flow through stages or as a layout by direction, team or client — without rebuilding the board.
