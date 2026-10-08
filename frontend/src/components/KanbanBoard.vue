@@ -73,6 +73,7 @@ import {
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
 import { buildLists, collapseKey } from '@/utils/boardLists'
+import { dateOnlyISO } from '@/utils/calendarView'
 import {
   LAYOUTS,
   MATRIX_DEFAULTS,
@@ -2227,6 +2228,23 @@ const listActions = {
   create: (dcol, title) => createInLane(dcol, title),
   field: (task, field) => paletteStore.openTask(task.id, field),
 }
+// The calendar's (#3019): the same, plus a due moved to another day and a task
+// typed into a day — due that day (date-only), in the board's first column.
+const calendarActions = {
+  ...listActions,
+  setDates: (task, dates) => setTaskDates(task, dates),
+  create: (day, title) => createInLane(null, title, { due_date: dateOnlyISO(day) }),
+}
+async function setTaskDates(task, { due_date, start_date }) {
+  suppress()
+  try {
+    await tasksApi.update(task.id, { ...taskBasePatch(task), due_date, start_date })
+    await load(props.boardId, { silent: true })
+  } catch (e) {
+    message.error(humanizeError(e))
+    load(props.boardId)
+  }
+}
 
 // Matrix view quick-add: create the task in the board's first column, then pin it
 // to the chosen Eisenhower quadrant (the matrix has no column to drop into).
@@ -2865,10 +2883,15 @@ async function restoreFromArchive(taskId) {
             v-else-if="layout === 'calendar'"
             :tasks="filteredTasks"
             :status-columns="columns"
+            :done-column-id="doneColumnId"
+            :mode="calendarCfg.mode"
+            :actions="calendarActions"
             :readonly="archivedMode"
             @open="openTask"
             @changed="onChanged"
             @restore="restoreFromArchive"
+            @update:mode="(m) => (calendarCfg.mode = m)"
+            @drag-state="onLayoutDragState"
           />
 
           <BoardTimelineView

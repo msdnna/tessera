@@ -27,6 +27,7 @@ export const GROUPS = [
   'board',
   'card',
   'list',
+  'calendar',
   'task',
   'chart',
   'create',
@@ -142,6 +143,27 @@ export const CATALOG = [
   { id: 'list.expand', keys: 'arrowright' },
   { id: 'list.moveUp', keys: 'mod+arrowup' },
   { id: 'list.moveDown', keys: 'mod+arrowdown' },
+
+  // ── the «Календарь» view (#3019): a day cursor, and a task picked inside it
+  // (↵). E P D A L S on the picked task are the selected card's keys.
+  { id: 'cal.today', keys: 't', group: 'calendar' },
+  {
+    id: 'cal.days',
+    group: 'calendar',
+    display: [['arrowleft', 'arrowright', 'arrowup', 'arrowdown']],
+  },
+  { id: 'cal.period', group: 'calendar', display: [['shift', '←/→']] },
+  { id: 'cal.pick', group: 'calendar', display: [['enter']] },
+  { id: 'cal.shift', group: 'calendar', display: [['shift', '←/→']] },
+  { id: 'cal.add', group: 'calendar', display: [['C']] },
+  { id: 'cal.left', keys: 'arrowleft', repeat: true },
+  { id: 'cal.right', keys: 'arrowright', repeat: true },
+  { id: 'cal.up', keys: 'arrowup', repeat: true },
+  { id: 'cal.down', keys: 'arrowdown', repeat: true },
+  { id: 'cal.prev', keys: 'shift+arrowleft', repeat: true },
+  { id: 'cal.next', keys: 'shift+arrowright', repeat: true },
+  { id: 'cal.enter', keys: 'enter' },
+  { id: 'cal.clear', keys: 'escape' },
 
   // ── the open task (#2958): the modal's own keys. `modal` because the task
   // modal is a Naive dialog; the field keys mirror the selected card's, so the

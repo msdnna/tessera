@@ -2,7 +2,7 @@ import { ref, computed, watch, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useFormat } from '@/composables/useFormat'
 import { useShortcuts } from '@/composables/useShortcuts'
-import { columnStatusName } from '@/utils/columnStatus'
+import { taskStatus } from '@/utils/columnStatus'
 import { sortedColumns } from '@/utils/status'
 import { DAY_MS, startOfDay, parseDate, spanOf, workingDays } from '@/utils/timeAxis'
 
@@ -33,21 +33,8 @@ export function useChartView({
   // ── status: the board header's glyph in the column's colour ──
   const cols = computed(() => sortedColumns(props.statusColumns || []))
   function statusOf(task) {
-    const col = cols.value.find((c) => c.id === task.column_id)
-    if (!col) return { icon: task.completed_at ? 'status-done' : 'status-todo', color: '' }
-    const list = cols.value
-    const done = props.doneColumnId
-      ? col.id === props.doneColumnId
-      : col.id === list[list.length - 1]?.id
-    return {
-      icon: columnStatusName({
-        isDone: done || !!task.completed_at,
-        first: col.id === list[0]?.id,
-        name: col.name,
-        nameKey: col.name_key,
-      }),
-      color: col.color || '',
-    }
+    const { icon, color } = taskStatus(task, cols.value, props.doneColumnId)
+    return { icon, color }
   }
 
   // Subtask progress (done/all children); a completed task is full, a task

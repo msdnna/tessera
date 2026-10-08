@@ -222,7 +222,8 @@
       "project": "«Project» window",
       "stage": "Milestone page",
       "inbox": "Inbox",
-      "list": "List"
+      "list": "List",
+      "calendar": "Calendar"
     },
     "nav": {
       "palette": "Search and commands",
@@ -377,6 +378,14 @@
       "fold": "Fold / unfold the group",
       "rename": "Rename in place",
       "reorder": "Move up / down in the column"
+    },
+    "cal": {
+      "today": "Go to today",
+      "days": "Move by days",
+      "period": "Month or week back / forward",
+      "pick": "Tasks of the day: pick, open",
+      "shift": "On a picked task — due by a day",
+      "add": "Task on the picked day"
     }
   },
   "palette": {

@@ -301,7 +301,22 @@
   },
   "calendar": {
     "today": "Today",
-    "noDue": "No due date"
+    "noDue": "No due date",
+    "todayMark": "today",
+    "byDue": "by due date",
+    "undated": "{n} undated",
+    "dragHint": "drag onto a day",
+    "more": "+{n} more",
+    "dropTo": "due → {date}",
+    "addTask": "Task on this day",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "mode": {
+      "month": "Month",
+      "week": "Week"
+    }
   },
   "list": {
     "empty": "No tasks",
