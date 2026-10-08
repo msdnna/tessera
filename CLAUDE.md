@@ -215,6 +215,16 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   — селектор этапа в подбаре (⇧E) и полоса этапа (⇧H), выбор и свёрнутость — localStorage на
   доску. GitLab-этапы read-only до #3010. Навигация из окна-оверлея — после отмотки его
   history-записи (`ProjectWindow.navigate`), иначе `back()` из `useOverlayBack` отменит push.
+- **«Входящие» (#2972, миграция 0081):** заметки и напоминания — одна лента в `kit/DockPanel`
+  (variant sidebar) справа под шапкой (`components/inbox/*`, стор `stores/inbox` — лента
+  пространства из `GET /workspaces/:id/inbox`, сокет, часы; чистая часть — `utils/inbox.js`).
+  Захват — `inbox/CapturePop` у FAB (N M / N R, разбор `parseCapture` в `utils/quickParse`), в
+  модалке задачи — его inline-копия (фокус-ловушка NModal). Две таблицы, не одна сущность:
+  `notes.visibility` private|workspace (личная видна только автору **во всех чтениях и в сокете**
+  — новый запрос по заметкам обязан фильтровать `visibility = 'workspace' OR author_id = viewer`),
+  `notes.task_id`; у `reminders` — `body`, `done_at` (идёт за `done`), `snoozed_from`,
+  `workspace_id` (NULL — видно в любом пространстве). Разделов `/notes` `/reminders` больше нет
+  (редирект в панель); пилл-колокольчик на карточке — из стора, без запроса на карточку.
 - **Редактор описаний/комментариев — собственный `MarkdownEditor.vue`** (textarea +
   тулбар + Написать/Просмотр + @-mentions), хранит **Markdown**. **TipTap пробовали и
   отвергли** (тема/бандл) — не возвращать без явного запроса.

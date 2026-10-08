@@ -327,20 +327,23 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'documents')
     })
 
-    test('заметки', async ({ page }) => {
-      await page.goto('/notes')
-      // Open one: the list alone leaves two thirds of the screen saying
-      // «Выберите заметку», which is a picture of nothing.
-      await page.locator('.note-item', { hasText: 'Итоги планирования' }).click()
-      // The body opens in a textarea, so it is a value, not page text.
-      await expect(page.locator('.editor textarea')).toHaveValue(/Импорт CSV/)
-      await shoot(page, scheme, 'notes')
+    // «Входящие» (#2972) — the panel next to the board, and the capture field
+    // with a line read into a reminder tied to a task.
+    test('входящие', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('inbox-button').click()
+      await expect(page.getByTestId('inbox-panel')).toContainText('Созвон по релизу 2.4')
+      await shoot(page, scheme, 'inbox')
     })
 
-    test('напоминания', async ({ page }) => {
-      await page.goto('/reminders')
-      await expect(page.getByText('Созвон по релизу 2.4 в 11:00')).toBeVisible()
-      await shoot(page, scheme, 'reminders')
+    test('запись во входящие', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('quick-fab-button').click()
+      await page.locator('.fab-item[data-item="note"]').click()
+      // «/пустых» finds «Ревизия пустых состояний» by a word of its title.
+      await page.getByTestId('capture-input').fill('завтра 10:00 созвон по текстам /пустых')
+      await expect(page.getByTestId('capture-task')).toBeVisible()
+      await shoot(page, scheme, 'inbox-capture')
     })
 
     test('этапы', async ({ page }) => {

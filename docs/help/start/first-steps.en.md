@@ -33,8 +33,7 @@ One of the board's columns is the **completing** one: a task that lands in it co
 - [Boards and tasks](/help/boards-and-tasks) — grouping by tags, views, filters.
 - [Documents](/help/documents) — the collaborative editor, Word import, version history.
 - [Conferences](/help/conferences) — video calls with screen sharing, chat and recording right in the tracker.
-- [Notes](/help/notes) — short jottings that don't need a task.
-- [Reminders](/help/reminders) — one-off reminders and push to your phone.
+- [Inbox](/help/inbox) — notes and reminders in one feed: record from anywhere, sort them out without leaving the board.
 - [Milestones](/help/milestones) — release milestones and progress toward them.
 - [FAQ](/help/faq) — short answers to the things people trip over most often.
 

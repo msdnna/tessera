@@ -91,7 +91,7 @@ The bottom block of the section is about the notifications Tessera sends itself,
 
 The same three settings exist on each task separately — by clicking the date on the card, in the “Notifications” block. The value “Default” means “as in the settings”, and any other value overrides the general rule for that task. If the due date is moved, the notification is re-armed.
 
-**Deliver reminders to external channels** is about the “Reminders” section: when a reminder fires, whether to send it to the channels. The switch acts only on future ones: turning it on won't bring you old reminders.
+**Deliver reminders to external channels** is about the reminders from the Inbox: when a reminder fires, whether to send it to the channels. The switch acts only on future ones: turning it on won't bring you old reminders.
 
 **Group into a digest** — a window of 5, 15, 30 or 60 minutes. The notifications gathered over the window arrive as a single message per channel (“Digest — N notifications”) instead of a stream of separate ones. This doesn't affect system notifications: a push that arrives half an hour late is useless.
 
@@ -118,5 +118,5 @@ If delivery fails, Tessera retries it up to five times with a growing pause (rou
 
 ## What's next
 
-- How due dates and reminders are built on their own — [Reminders](/help/reminders).
+- How due dates and reminders are built on their own — [Inbox](/help/inbox).
 - What happens to the delivery queue on the server side — [Background jobs](/help/admin-jobs) (for the instance administrator).

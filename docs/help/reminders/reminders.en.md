@@ -2,6 +2,7 @@
 title: Reminders
 category: Reminders
 order: 55
+platforms: android
 keywords: reminders, remind, notifications, push, due date, alarm, android
 updated: 2026-08-21
 ---

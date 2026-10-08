@@ -500,6 +500,14 @@ export async function seedDemo(runId, base) {
     title: 'Вопросы к поддержке',
     body: 'Собрать частые обращения за месяц и свести в статьи справки.',
   })
+  // «Входящие» (#2972): a private note tied to a task, the way the capture
+  // makes them.
+  await post(`/workspaces/${ws.id}/notes`, {
+    title: 'Тексты пустых состояний',
+    body: 'Проверить формулировки с поддержкой до релиза.',
+    task_id: byTitle('Ревизия пустых состояний').id,
+    visibility: 'private',
+  })
 
   // Documents get real text, not just titles: the grid shows each document's
   // preview line, and three cards reading «Пустой документ» would be a picture
@@ -559,13 +567,22 @@ export async function seedDemo(runId, base) {
     scheduled_at: iso(base, -6),
   })
 
+  // Reminders live in the workspace's «Входящие» (#2972): one already due, one
+  // tied to a task, two ahead.
+  await post('/reminders', {
+    remind_at: iso(base, -0.02),
+    message: 'Проверить сборку релиза 2.4',
+    workspace_id: ws.id,
+  })
   await post('/reminders', {
     remind_at: iso(base, 1),
     message: 'Созвон по релизу 2.4 в 11:00',
+    task_id: byTitle('Push-уведомления о напоминаниях').id,
   })
   await post('/reminders', {
     remind_at: iso(base, 3),
     message: 'Собрать обратную связь по онбордингу',
+    workspace_id: ws.id,
   })
 
   await seedNotifications(t, ws.id)
