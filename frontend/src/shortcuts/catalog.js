@@ -28,6 +28,7 @@ export const GROUPS = [
   'card',
   'list',
   'calendar',
+  'matrix',
   'task',
   'chart',
   'create',
@@ -164,6 +165,13 @@ export const CATALOG = [
   { id: 'cal.next', keys: 'shift+arrowright', repeat: true },
   { id: 'cal.enter', keys: 'enter' },
   { id: 'cal.clear', keys: 'escape' },
+
+  // ── the Eisenhower matrix (#2973): the arrows, ↵ and E P D A L S work on the
+  // selected card as on the kanban; these pin it into a quadrant and back.
+  { id: 'matrix.pin', group: 'matrix', display: [['mod', '←/→/↑/↓']] },
+  { id: 'matrix.auto', keys: 'backspace', group: 'matrix' },
+  { id: 'matrix.pinUp', keys: 'mod+arrowup' },
+  { id: 'matrix.pinDown', keys: 'mod+arrowdown' },
 
   // ── the open task (#2958): the modal's own keys. `modal` because the task
   // modal is a Naive dialog; the field keys mirror the selected card's, so the

@@ -223,7 +223,8 @@
       "stage": "Milestone page",
       "inbox": "Inbox",
       "list": "List",
-      "calendar": "Calendar"
+      "calendar": "Calendar",
+      "matrix": "Matrix"
     },
     "nav": {
       "palette": "Search and commands",
@@ -386,6 +387,10 @@
       "pick": "Tasks of the day: pick, open",
       "shift": "On a picked task — due by a day",
       "add": "Task on the picked day"
+    },
+    "matrix": {
+      "pin": "Pin into the next quadrant",
+      "auto": "Back to the automatic place"
     }
   },
   "palette": {

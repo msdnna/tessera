@@ -2947,6 +2947,7 @@ async function restoreFromArchive(taskId) {
             :subtasks-expanded="subtasksExpanded"
             :urgent-window-days="matrixCfg.dueDays"
             :important-priority="matrixCfg.minPriority"
+            :actions="listActions"
             :readonly="archivedMode"
             @open="openTask"
             @changed="onChanged"

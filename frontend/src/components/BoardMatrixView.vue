@@ -1,14 +1,34 @@
 <script setup>
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+// The Eisenhower matrix (v2, #2973; mockups MatrixView, PackageD frame 7).
+//
+// Four quadrants tinted like columns (radius 18, no lines), compact cards two to
+// a row by default, the axis captions saying the thresholds («Срочно · срок ≤ 3
+// дней», «Важно · приоритет ≥ высокий» — the view panel's «Матрица», #3018).
+// A card dragged into another quadrant is pinned there and wears «вручную»;
+// the mark (or ⌫ on the selected card) gives it back to the automatic place.
+//
+// Keyboard (desktop): the arrows walk the cards and cross into the neighbouring
+// quadrant at an edge, ⌘ + arrow pins the card into the quadrant that way, ⌫
+// unpins, ↵ opens, E / P / D / A / L / S as on the board. The selection shows
+// only once the keyboard is in use.
+import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
 import { NIcon, NInput, useMessage } from 'naive-ui'
-import { CloseCircleOutline } from '@vicons/ionicons5'
+import { AddOutline, CloseOutline, FlameOutline, PinOutline } from '@vicons/ionicons5'
+import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import { tasks as tasksApi } from '@/api'
 import { normalizeTitle } from '@/utils/title'
 import { isDueWithinDays } from '@/utils/taskFilter'
+import { priorityLabel } from '@/utils/priority'
+import { hueGrad } from '@/utils/gradient'
+import { matrixMove, neighbourQuad } from '@/utils/matrixNav'
 import { useFormat } from '@/composables/useFormat'
+import { useResponsive } from '@/composables/useResponsive'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { useFillHeight } from '@/composables/useFillHeight'
+import { useBoardViewStore } from '@/stores/boardView'
 
 const props = defineProps({
   // Filtered top-level board tasks (same array the kanban groups).
@@ -30,6 +50,9 @@ const props = defineProps({
   // quadrant «＋» (which creates a LIVE task in the board's first column, gone
   // from view the moment it lands), the quadrant drag and the live card menu.
   readonly: { type: Boolean, default: false },
+  // The board's task actions behind the keys (KanbanBoard): complete, priority,
+  // field.
+  actions: { type: Object, default: () => ({}) },
 })
 const emit = defineEmits(['open', 'changed', 'create', 'restore', 'drag-state'])
 const message = useMessage()
@@ -46,10 +69,10 @@ const { formatters } = useFormat()
 // Index and class stay constant; the title/hint are looked up per render so the
 // grid follows a language change.
 const QUADRANT_KEYS = [
-  { i: 0, key: 'do', cls: 'q-do' },
-  { i: 1, key: 'plan', cls: 'q-plan' },
-  { i: 2, key: 'delegate', cls: 'q-delegate' },
-  { i: 3, key: 'drop', cls: 'q-drop' },
+  { i: 0, key: 'do', cls: 'q-do', color: '#e0533d' },
+  { i: 1, key: 'plan', cls: 'q-plan', color: '#2f80ed' },
+  { i: 2, key: 'delegate', cls: 'q-delegate', color: '#f0a020' },
+  { i: 3, key: 'drop', cls: 'q-drop', color: '#9aa0aa' },
 ]
 const quadrants = computed(() =>
   QUADRANT_KEYS.map((q) => ({
@@ -169,27 +192,164 @@ function submitAdd(qi) {
   // quadrant — the matrix doesn't own a column to drop into.
   emit('create', { title, quadrant: qi })
 }
+
+// ── the axis captions: the thresholds in words ──
+const urgentCaption = computed(() =>
+  t('board.matrix.urgentAxis', {
+    days: t('board.customize.matrix.dueDays', props.urgentWindowDays, {
+      named: { n: props.urgentWindowDays },
+    }),
+  }),
+)
+const importantCaption = computed(() =>
+  t('board.matrix.importantAxis', {
+    priority: priorityLabel(props.importantPriority).toLowerCase(),
+  }),
+)
+
+// ── height: the grid fills the window down to its bottom ──
+const root = ref(null)
+const { height: fillH } = useFillHeight(root, { bottom: 16, min: 360 })
+
+// ── keyboard ──
+const { isMobile } = useResponsive()
+const { cardSize } = storeToRefs(useBoardViewStore())
+// Compact cards go two to a row (the mockup), bigger ones one.
+const cols = computed(() => (cardSize.value === 'compact' ? 2 : 1))
+const cursor = ref(null) // { q, id }
+const kbd = ref(false)
+function onAnyPointer() {
+  kbd.value = false
+}
+onMounted(() => window.addEventListener('pointerdown', onAnyPointer, true))
+onBeforeUnmount(() => window.removeEventListener('pointerdown', onAnyPointer, true))
+const quadIds = computed(() => buckets.value.map((b) => b.map((x) => x.id)))
+const cursorTask = computed(() => {
+  const c = cursor.value
+  return (c && (buckets.value[c.q] || []).find((x) => x.id === c.id)) || null
+})
+watch(buckets, () => {
+  // A card that moved quadrant keeps the selection; one that left drops it.
+  const c = cursor.value
+  if (!c) return
+  const q = quadIds.value.findIndex((ids) => ids.includes(c.id))
+  cursor.value = q < 0 ? null : { q, id: c.id }
+})
+const isPicked = (q, id) =>
+  kbd.value && !isMobile.value && cursor.value?.q === q && cursor.value?.id === id
+function reveal() {
+  nextTick(() => {
+    const id = cursor.value?.id
+    root.value
+      ?.querySelector(`.m-card-wrap[data-task-id="${CSS.escape(id || '')}"]`)
+      ?.scrollIntoView({ block: 'nearest' })
+  })
+}
+function step(dir) {
+  if (!kbd.value && cursorTask.value) {
+    kbd.value = true
+    reveal()
+    return
+  }
+  kbd.value = true
+  cursor.value = matrixMove(quadIds.value, cols.value, cursor.value, dir)
+  reveal()
+}
+function onCardOpen(q, id) {
+  cursor.value = { q, id }
+  emit('open', id)
+}
+// ⌘ + arrow: pin the selected card into the quadrant that way.
+async function pinToward(dir) {
+  const task = cursorTask.value
+  const q = task && neighbourQuad(cursor.value.q, dir)
+  if (q == null) return
+  try {
+    await tasksApi.eisenhower(task.id, q)
+    cursor.value = { q, id: task.id }
+    emit('changed')
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+const run = (name, ...args) => props.actions?.[name]?.(...args)
+const on = () => !isMobile.value && !props.readonly
+useShortcuts(
+  {
+    'card.up': () => step('up'),
+    'card.down': () => step('down'),
+    'card.left': () => step('left'),
+    'card.right': () => step('right'),
+  },
+  { when: () => !isMobile.value },
+)
+useShortcuts(
+  {
+    'card.open': () => emit('open', cursor.value.id),
+    'card.clear': () => (cursor.value = null),
+  },
+  { when: () => !isMobile.value && kbd.value && !!cursorTask.value },
+)
+useShortcuts(
+  {
+    'card.complete': () => run('complete', [cursorTask.value]),
+    'card.priority': (v) => run('priority', [cursorTask.value], v),
+    'card.priorityPick': () => run('field', cursorTask.value, 'priority'),
+    'card.due': () => run('field', cursorTask.value, 'due'),
+    'card.assignees': () => run('field', cursorTask.value, 'assignees'),
+    'card.tags': () => run('field', cursorTask.value, 'tags'),
+    'card.status': () => run('field', cursorTask.value, 'status'),
+    'card.moveLeft': () => pinToward('left'),
+    'card.moveRight': () => pinToward('right'),
+    'matrix.pinUp': () => pinToward('up'),
+    'matrix.pinDown': () => pinToward('down'),
+    'matrix.auto': () => isPinned(cursorTask.value) && resetAuto(cursorTask.value),
+  },
+  { when: () => on() && kbd.value && !!cursorTask.value },
+)
+useShortcuts(
+  {
+    'board.addTask': () => startAdd(cursor.value?.q ?? 0),
+  },
+  { when: on },
+)
+defineExpose({ startAdd })
 </script>
 
 <template>
-  <div class="matrix">
+  <div
+    ref="root"
+    class="matrix"
+    :class="{ mobile: isMobile }"
+    :style="fillH && !isMobile ? { height: `${fillH}px` } : null"
+    data-testid="matrix-view"
+  >
     <div class="m-corner" />
-    <div class="m-colhead m-col-urgent">{{ t('board.matrix.urgent') }}</div>
+    <div class="m-colhead m-col-urgent">
+      <n-icon :component="FlameOutline" :size="13" />{{ urgentCaption }}
+    </div>
     <div class="m-colhead">{{ t('board.matrix.notUrgent') }}</div>
 
     <div class="m-rowhead m-row-important">
-      <span>{{ t('board.matrix.important') }}</span>
+      <span>{{ importantCaption }}</span>
     </div>
     <div class="m-rowhead m-row-unimportant">
       <span>{{ t('board.matrix.notImportant') }}</span>
     </div>
 
-    <div v-for="q in quadrants" :key="q.i" class="m-quad" :class="[q.cls, `m-cell-${q.i}`]">
+    <div
+      v-for="q in quadrants"
+      :key="q.i"
+      class="m-quad"
+      :class="[q.cls, `m-cell-${q.i}`]"
+      :style="{ '--q': q.color }"
+      data-testid="matrix-quadrant"
+    >
       <div class="m-quad-head">
-        <div class="m-quad-titles">
-          <span class="m-quad-title">{{ q.title }}</span>
-          <span class="m-quad-hint">{{ q.hint }}</span>
-        </div>
+        <span class="m-dot" :style="{ background: hueGrad(q.color) }" />
+        <span class="m-quad-title">{{ q.title }}</span>
+        <span class="m-quad-hint">{{ q.hint }}</span>
+        <span class="m-space" />
         <span class="m-count">{{ buckets[q.i].length }}</span>
         <button
           v-if="!readonly"
@@ -198,7 +358,7 @@ function submitAdd(qi) {
           :title="t('board.matrix.addTask')"
           @click="startAdd(q.i)"
         >
-          ＋
+          <n-icon :component="AddOutline" :size="14" />
         </button>
       </div>
 
@@ -207,7 +367,7 @@ function submitAdd(qi) {
         group="eisenhower"
         item-key="id"
         class="m-list"
-        :class="{ 'fade-bottom': addingIn === q.i }"
+        :class="{ 'fade-bottom': addingIn === q.i, two: cols === 2 }"
         :disabled="readonly"
         :animation="150"
         :delay="120"
@@ -218,28 +378,31 @@ function submitAdd(qi) {
         @change="onQuadChange($event, q.i)"
       >
         <template #item="{ element }">
-          <div class="m-card-wrap">
-            <button
-              v-if="isPinned(element) && !readonly"
-              type="button"
-              class="m-pin"
-              :title="t('board.matrix.pinned')"
-              @click.stop="resetAuto(element)"
-            >
-              <n-icon :component="CloseCircleOutline" />
-              <span>{{ t('board.matrix.pinnedShort') }}</span>
-            </button>
+          <div class="m-card-wrap" :data-task-id="element.id">
             <TaskCard
               :task="element"
               :subtasks="subtasksByParent[element.id] || []"
               :subtasks-total="(subtasksTotalByParent[element.id] || []).length"
               :subtasks-expanded="subtasksExpanded"
               :dragging="dragging"
+              :selected="isPicked(q.i, element.id)"
               :readonly="readonly"
-              @open="$emit('open', $event)"
+              @open="onCardOpen(q.i, $event)"
               @changed="$emit('changed')"
               @restore="$emit('restore', $event)"
             />
+            <button
+              v-if="isPinned(element) && !readonly"
+              type="button"
+              class="m-pin"
+              :title="t('board.matrix.pinned')"
+              data-testid="matrix-pin"
+              @click.stop="resetAuto(element)"
+            >
+              <n-icon class="m-pin-ic" :component="PinOutline" :size="11" />
+              <span>{{ t('board.matrix.pinnedShort') }}</span>
+              <n-icon class="m-pin-x" :component="CloseOutline" :size="11" />
+            </button>
           </div>
         </template>
       </draggable>
@@ -264,12 +427,9 @@ function submitAdd(qi) {
 <style scoped>
 .matrix {
   display: grid;
-  grid-template-columns: 22px 1fr 1fr;
-  grid-template-rows: 26px 1fr 1fr;
-  gap: 8px;
-  /* Fill the content area below header + toolbar so quadrants scroll internally
-     (mirrors the kanban board-scroll height). Sized to clear the header (53) +
-     content padding (16×2) + composer bar so the work area itself doesn't scroll. */
+  grid-template-columns: 28px minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: 24px minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px 12px;
   height: calc(100vh - 156px);
   height: calc(100dvh - 156px);
   min-height: 360px;
@@ -278,37 +438,34 @@ function submitAdd(qi) {
   grid-row: 1;
   grid-column: 1;
 }
-.m-colhead {
+/* The axis captions: small caps, the thresholds in words. */
+.m-colhead,
+.m-rowhead span {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  gap: 6px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--t-text2);
-  letter-spacing: 0.02em;
-}
-.m-col-urgent {
-  color: var(--t-text1);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-text3);
+  white-space: nowrap;
 }
 .m-rowhead {
   grid-column: 1;
   display: flex;
   align-items: center;
   justify-content: center;
+  min-height: 0;
+  overflow: hidden;
 }
 .m-rowhead span {
   writing-mode: vertical-rl;
   transform: rotate(180deg);
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--t-text2);
-  letter-spacing: 0.04em;
 }
 .m-row-important {
   grid-row: 2;
-}
-.m-row-important span {
-  color: var(--t-text1);
 }
 .m-row-unimportant {
   grid-row: 3;
@@ -332,85 +489,92 @@ function submitAdd(qi) {
   grid-column: 3;
 }
 
+/* A tray in the quadrant's tone over the column surface — no frame. */
 .m-quad {
   display: flex;
   flex-direction: column;
+  gap: 8px;
   min-height: 0;
-  border: 1px solid var(--t-border);
-  border-radius: 12px;
-  background: var(--t-surface);
+  padding: 8px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--q) var(--t-col-tone), var(--t-col));
   overflow: hidden;
-  /* A soft same-hue wash per quadrant (subtle, matches the calm palette). */
-  border-top: 3px solid var(--q-accent, var(--t-border));
 }
-.q-do {
-  --q-accent: #ef5d5d;
-  background: color-mix(in srgb, #ef5d5d 6%, var(--t-surface));
-}
-.q-plan {
-  --q-accent: #5b8def;
-  background: color-mix(in srgb, #5b8def 5%, var(--t-surface));
-}
-.q-delegate {
-  --q-accent: #e6a43b;
-  background: color-mix(in srgb, #e6a43b 6%, var(--t-surface));
-}
-.q-drop {
-  --q-accent: #9aa0aa;
-  background: color-mix(in srgb, #9aa0aa 5%, var(--t-surface));
-}
-
 .m-quad-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px 6px;
+  height: 30px;
+  padding: 0 4px 0 6px;
+  flex: none;
 }
-.m-quad-titles {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-  min-width: 0;
+.m-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
 }
 .m-quad-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 13.5px;
+  font-weight: 650;
   color: var(--t-text1);
+  white-space: nowrap;
 }
 .m-quad-hint {
-  font-size: 11px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
   color: var(--t-text3);
+}
+.m-space {
+  flex: 1;
 }
 .m-count {
-  margin-left: auto;
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 12.5px;
   color: var(--t-text3);
-  min-width: 18px;
-  text-align: center;
 }
 .m-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
   border: none;
+  border-radius: 7px;
   background: transparent;
   color: var(--t-text3);
-  font-size: 17px;
-  line-height: 1;
   cursor: pointer;
-  padding: 0 2px;
-  border-radius: 6px;
+  opacity: 0;
+}
+.m-quad:hover .m-add,
+.m-add:focus-visible {
+  opacity: 1;
 }
 .m-add:hover {
   color: var(--t-text1);
   background: var(--t-hover);
 }
+@media (hover: none) {
+  .m-add {
+    opacity: 1;
+  }
+}
 .m-list {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 2px 8px 10px;
-  display: flex;
-  flex-direction: column;
+  padding: 2px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 8px;
+  align-content: start;
+  scrollbar-width: thin;
+}
+.m-list.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 /* When the quick-add input is open below, fade the last cards into it (no hard
    overlap edge) — the card softly dissolves as it nears the input. */
@@ -420,52 +584,75 @@ function submitAdd(qi) {
 }
 .m-card-wrap {
   position: relative;
+  min-width: 0;
 }
+.m-card-wrap:hover {
+  z-index: 2;
+}
+/* «вручную»: a small pill on the card's top edge; a click gives the card back
+   to its automatic quadrant. */
 .m-pin {
   position: absolute;
-  top: 5px;
-  right: 5px;
-  z-index: 2;
+  top: -6px;
+  right: 10px;
+  z-index: 3;
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 10px;
+  height: 18px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--t-r-pill);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-card);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 600;
   line-height: 1;
-  color: var(--t-text3);
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  border-radius: 999px;
-  padding: 2px 6px 2px 4px;
   cursor: pointer;
-  /* Hidden until the card is hovered so it doesn't sit on top of the task
-     number; on touch (no hover) it stays visible. */
-  opacity: 0;
-  transition: opacity 0.12s ease;
 }
-.m-card-wrap:hover .m-pin,
-.m-pin:focus-visible {
-  opacity: 1;
+.m-pin-ic {
+  color: var(--q);
 }
-@media (hover: none) {
-  .m-pin {
-    opacity: 1;
-  }
+.m-pin-x {
+  display: none;
 }
 .m-pin:hover {
-  color: var(--t-error);
-  border-color: var(--t-error);
+  color: var(--t-text1);
+}
+.m-pin:hover .m-pin-ic {
+  display: none;
+}
+.m-pin:hover .m-pin-x {
+  display: inline-flex;
 }
 .m-add-input {
-  padding: 0 8px 10px;
+  flex: none;
 }
-/* A visible border + solid surface so the input doesn't melt into the tinted
-   quadrant background. */
 .m-add-input :deep(.n-input) {
-  background-color: var(--t-surface);
-  border-radius: 7px;
-  box-shadow: inset 0 0 0 1px var(--t-border);
+  background-color: var(--t-card);
+  border-radius: 9px;
 }
-.m-add-input :deep(.n-input--focus) {
-  box-shadow: inset 0 0 0 1px var(--t-primary);
+
+/* ── phone: one column of quadrants, each as tall as its cards ── */
+.matrix.mobile {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: none;
+  height: auto;
+  min-height: 0;
+}
+.matrix.mobile .m-corner,
+.matrix.mobile .m-colhead,
+.matrix.mobile .m-rowhead {
+  display: none;
+}
+.matrix.mobile .m-quad {
+  grid-row: auto;
+  grid-column: auto;
+  overflow: visible;
+}
+.matrix.mobile .m-list {
+  overflow: visible;
 }
 </style>

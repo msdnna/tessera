@@ -346,18 +346,20 @@
     "important": "Important",
     "notImportant": "Not important",
     "addTask": "Add a task",
-    "pinned": "Placed by hand — return to auto",
+    "pinned": "Placed by hand — back to automatic (⌫)",
     "pinnedShort": "by hand",
     "quadrant": {
-      "doTitle": "Urgent and important",
-      "doHint": "Do it now",
-      "planTitle": "Important, not urgent",
-      "planHint": "Schedule it",
-      "delegateTitle": "Urgent, not important",
-      "delegateHint": "Delegate it",
-      "dropTitle": "Neither urgent nor important",
-      "dropHint": "It can wait"
-    }
+      "doTitle": "Do",
+      "doHint": "urgent and important",
+      "planTitle": "Schedule",
+      "planHint": "important, not urgent",
+      "delegateTitle": "Delegate",
+      "delegateHint": "urgent, not important",
+      "dropTitle": "Later",
+      "dropHint": "neither urgent nor important"
+    },
+    "urgentAxis": "Urgent · due ≤ {days}",
+    "importantAxis": "Important · priority ≥ {priority}"
   },
   "chart": {
     "taskColumn": "Task",

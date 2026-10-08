@@ -342,22 +342,24 @@
   },
   "matrix": {
     "urgent": "Срочно",
-    "notUrgent": "Несрочно",
+    "notUrgent": "Не срочно",
     "important": "Важно",
-    "notImportant": "Неважно",
+    "notImportant": "Не важно",
     "addTask": "Добавить задачу",
-    "pinned": "Размещено вручную — вернуть на авто",
+    "pinned": "Размещено вручную — вернуть на авто (⌫)",
     "pinnedShort": "вручную",
     "quadrant": {
-      "doTitle": "Срочно и важно",
-      "doHint": "Сделать сейчас",
-      "planTitle": "Важно, не срочно",
-      "planHint": "Запланировать",
-      "delegateTitle": "Срочно, не важно",
-      "delegateHint": "Делегировать",
-      "dropTitle": "Не срочно, не важно",
-      "dropHint": "Может подождать"
-    }
+      "doTitle": "Сделать",
+      "doHint": "срочно и важно",
+      "planTitle": "Запланировать",
+      "planHint": "важно, не срочно",
+      "delegateTitle": "Делегировать",
+      "delegateHint": "срочно, не важно",
+      "dropTitle": "Отложить",
+      "dropHint": "не срочно и не важно"
+    },
+    "urgentAxis": "Срочно · срок ≤ {days}",
+    "importantAxis": "Важно · приоритет ≥ {priority}"
   },
   "chart": {
     "taskColumn": "Задача",
