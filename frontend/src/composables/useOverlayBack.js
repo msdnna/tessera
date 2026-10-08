@@ -11,8 +11,16 @@ import { watch, onBeforeUnmount } from 'vue'
 //   useOverlayBack(showRef, () => (showRef.value = false))
 //
 // `isOpen` must be a ref<boolean>; `close` flips it to false (and may do more).
+//
+// Overlays stack (the conflicts window over the GitLab window, #2975): each
+// entry carries its own id, and a popstate closes an overlay only when its own
+// entry is no longer the current one. Without the id, the `back()` the TOP
+// overlay makes when it is closed from the UI reached the one under it as well,
+// which took it for the Back button and closed too.
+let seq = 0
 export function useOverlayBack(isOpen, close) {
   let pushed = false
+  const id = ++seq
 
   function detach() {
     window.removeEventListener('popstate', onPop)
@@ -20,8 +28,10 @@ export function useOverlayBack(isOpen, close) {
 
   function onPop() {
     // Back was pressed while the overlay is open: our dummy entry is already
-    // gone, so just tear down and close the overlay (no further nav).
+    // gone, so just tear down and close the overlay (no further nav). Still on
+    // our entry — the pop was an overlay above us unwinding its own.
     if (!isOpen.value) return
+    if (window.history.state?.tOverlay === id) return
     pushed = false
     detach()
     close()
@@ -30,13 +40,13 @@ export function useOverlayBack(isOpen, close) {
   watch(isOpen, (open) => {
     if (open && !pushed) {
       pushed = true
-      window.history.pushState({ ...window.history.state, tOverlay: true }, '')
+      window.history.pushState({ ...window.history.state, tOverlay: id }, '')
       window.addEventListener('popstate', onPop)
     } else if (!open && pushed) {
       // Closed from the UI — remove our entry so we don't strand it in history.
       pushed = false
       detach()
-      if (window.history.state && window.history.state.tOverlay) window.history.back()
+      if (window.history.state?.tOverlay === id) window.history.back()
     }
   })
 

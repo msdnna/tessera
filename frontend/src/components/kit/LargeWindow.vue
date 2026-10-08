@@ -157,7 +157,11 @@ defineExpose({ topmost, close })
     :mask-closable="true"
     transform-origin="center"
   >
+    <!-- v-if: the card leaves at once rather than through the scrim's fade —
+         a key pressed right after closing (E on the stage page the window led
+         to) must not still find a modal on screen and be swallowed. -->
     <div
+      v-if="show"
       class="lw-card"
       :class="{ 'lw-mobile': isMobile, 'lw-nonav': noNav }"
       role="dialog"

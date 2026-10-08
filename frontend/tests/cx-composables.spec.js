@@ -310,10 +310,48 @@ describe('useOverlayBack', () => {
     await nextTick()
     expect(pushSpy).toHaveBeenCalled()
 
-    // Simulate the browser Back button while the overlay is open.
+    // Simulate the browser Back button while the overlay is open: the browser
+    // has already left our entry when popstate fires.
+    window.history.replaceState(null, '')
     window.dispatchEvent(new PopStateEvent('popstate'))
     expect(close).toHaveBeenCalled()
     pushSpy.mockRestore()
+  })
+
+  // #2975: the conflicts window over the GitLab window. Closing the top one from
+  // the UI unwinds its entry with back(); the one under it must stay open.
+  it('a popstate that lands on our own entry is not ours to handle', async () => {
+    const { useOverlayBack } = await import('@/composables/useOverlayBack')
+    const lower = ref(false)
+    const upper = ref(false)
+    const closeLower = vi.fn(() => (lower.value = false))
+    const closeUpper = vi.fn(() => (upper.value = false))
+    mount(
+      defineComponent({
+        setup() {
+          useOverlayBack(lower, closeLower)
+          useOverlayBack(upper, closeUpper)
+          return () => null
+        },
+      }),
+    )
+    lower.value = true
+    await nextTick()
+    const lowerState = window.history.state
+    upper.value = true
+    await nextTick()
+    // The upper closes from the UI: it calls back(); the browser lands on the
+    // lower's entry and fires popstate.
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {
+      window.history.replaceState(lowerState, '')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    upper.value = false
+    await nextTick()
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(closeLower).not.toHaveBeenCalled()
+    expect(lower.value).toBe(true)
+    back.mockRestore()
   })
 })
 
