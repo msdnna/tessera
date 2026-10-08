@@ -251,3 +251,23 @@ test('конференция: медиа через фейковые устро�
   await page.getByTestId('conference-leave').click()
   await expect(page.getByTestId('conference-join')).toBeVisible()
 })
+
+// «Мгновенная» (v2, #3107): one press creates an untimed call and takes you
+// straight into it — the seat on the server is the proof.
+test('конференция: мгновенная встреча создаётся и сразу заводит в звонок', async ({
+  page,
+  backend,
+  seed,
+}) => {
+  await openConferences(page, seed.workspaceId)
+  await page.getByTestId('conference-instant').click()
+  await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)
+  await expect(page.getByTestId('conference-leave')).toBeVisible()
+
+  const id = new URL(page.url()).pathname.split('/').pop()
+  const participants = await backend.get(`/conferences/${id}/participants`)
+  expect((participants || []).filter((p) => p.joined_at && !p.left_at)).toHaveLength(1)
+
+  await page.getByTestId('conference-leave').click()
+  await expect(page.getByTestId('conference-join')).toBeVisible()
+})
