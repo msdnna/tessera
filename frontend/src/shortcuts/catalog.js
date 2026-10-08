@@ -288,6 +288,9 @@ export const CATALOG = [
   { id: 'win.filter', keys: '/', group: 'window', modal: true },
   { id: 'win.new', keys: 'n', group: 'window', modal: true },
   { id: 'gitlab.sync', keys: 'shift+s', group: 'window', modal: true },
+  // The binding form is one PUT of the whole binding: ⌘S saves it (also from a
+  // field — the save bar names the key).
+  { id: 'gitlab.save', keys: 'mod+s', modal: true, input: true },
   { id: 'journal.retry', keys: 'r', group: 'window', modal: true },
   { id: 'journal.resolve', keys: 'c', group: 'window', modal: true },
   { id: 'conflict.pick', group: 'window', display: [['B'], ['T'], ['G']] },

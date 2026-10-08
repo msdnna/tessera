@@ -459,7 +459,10 @@ defineExpose({ topmost, close })
 .lw-tab.active .lw-tab-ic {
   color: var(--t-primary);
 }
-.lw-tab.active .lw-tab-ic :deep([stroke='currentColor']) {
+/* The gradient stroke only on shapes: an axis-aligned <line> has a zero-area
+   bounding box and vanishes under an objectBoundingBox gradient (the list
+   icon's bars) — those keep the flat accent. */
+.lw-tab.active .lw-tab-ic :deep(:not(line)[stroke='currentColor']) {
   stroke: url(#t-accent-grad-svg);
 }
 .lw-tab-l {
